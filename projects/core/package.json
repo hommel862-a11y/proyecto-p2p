@@ -1,0 +1,9 @@
+{
+  "name": "@p2p/core",
+  "version": "0.0.1",
+  "description": "Framework-agnostic P2P decision-support core (pure TypeScript, zero Angular imports).",
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false
+}
