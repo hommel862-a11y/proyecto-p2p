@@ -1,12 +1,22 @@
 {
   "name": "p2p",
   "version": "0.0.0",
+  "description": "P2P Decision-Support Tool (Binance P2P — Venezuela). Angular web app wrapped by Capacitor (Android) and Electron (desktop).",
+  "author": "P2P Decision Tool contributors",
+  "main": "electron/dist/main/index.js",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "cap:sync": "cap sync android",
+    "cap:build": "cap build android",
+    "electron:start": "electron .",
+    "electron:build": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win --config electron-builder.yml",
+    "test:electron": "cd electron && npx vitest run",
+    "e2e": "playwright test",
+    "e2e:electron": "node e2e/electron/e2e.mjs"
   },
   "private": true,
   "packageManager": "npm@11.19.0",
@@ -17,6 +27,7 @@
     "@angular/forms": "^22.1.0",
     "@angular/platform-browser": "^22.1.0",
     "@angular/router": "^22.1.0",
+    "@capacitor/android": "^8.5.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
@@ -24,8 +35,15 @@
     "@angular/build": "^22.1.6",
     "@angular/cli": "^22.1.6",
     "@angular/compiler-cli": "^22.1.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.4.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "jsdom": "^28.0.0",
     "ng-packagr": "^22.1.0",
+    "playwright": "^1.62.1",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2",
     "vitest": "^4.0.8"
