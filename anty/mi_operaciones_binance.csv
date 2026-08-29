@@ -1,0 +1,4 @@
+Fecha/Hora,Tipo,Par,Cantidad,Tasa Bs,Total Bs,Banco,Contraparte,Tiempo Liberacion (min),Spread vs BCV,Clasificacion,Estado,Notas
+2026-07-30 00:37,VENTA,EUR,500.00,910.00,"455,000.00",Banesco,@EuroVzla_Master,5,22.28%,EXCELENTE,COMPLETADA,Ciclo automatico
+2026-07-30 00:37,COMPRA,EUR,2000.00,910.00,"1,820,000.00",Banesco,@EuroVzla_Master,5,22.28%,EXCELENTE,COMPLETADA,Ciclo automatico
+2026-07-30 00:37,VENTA,EUR,2000.00,910.00,"1,820,000.00",Banesco,@EuroVzla_Master,5,22.28%,EXCELENTE,COMPLETADA,Ciclo automatico
