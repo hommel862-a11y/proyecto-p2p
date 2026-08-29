@@ -1,0 +1,73 @@
+<section class="panel">
+  <h2>Spread Monitor</h2>
+
+  <div class="grid">
+    <label>
+      Buy price (VES/USDT)
+      <input
+        type="number"
+        [value]="buyPrice()"
+        (input)="buyPrice.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      Sell price (VES/USDT)
+      <input
+        type="number"
+        [value]="sellPrice()"
+        (input)="sellPrice.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      Amount
+      <input
+        type="number"
+        [value]="amount()"
+        (input)="amount.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      Unit
+      <select [value]="unit()" (change)="setUnit($any($event.target).value)">
+        <option value="USDT">USDT</option>
+        <option value="VES">VES</option>
+      </select>
+    </label>
+    <label>
+      Seller commission (%)
+      <input
+        type="number"
+        [value]="commissionPct()"
+        (input)="commissionPct.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      Favorable threshold (VES/USDT)
+      <input
+        type="number"
+        [value]="threshold()"
+        (input)="threshold.set(+$any($event.target).value)"
+      />
+    </label>
+  </div>
+
+  @if (error(); as err) {
+    <p class="error" role="alert">{{ err }}</p>
+  }
+
+  @if (alert().kind; as kind) {
+    <p class="alert" [class.favorable]="kind === 'favorable'" [class.unfavorable]="kind === 'unfavorable'" role="alert">
+      {{ alert().message }}
+    </p>
+  }
+
+  @if (result(); as r) {
+    <dl class="out">
+      <div><dt>USDT received</dt><dd>{{ usdtReceived() }} USDT</dd></div>
+      <div><dt>VES received</dt><dd>{{ vesReceived() }} VES</dd></div>
+      <div><dt>Unit spread</dt><dd>{{ unitSpread() }} VES/USDT</dd></div>
+      <div><dt>Spread gain</dt><dd>{{ gainVes() }} Bs</dd></div>
+      <div><dt>Net after commission</dt><dd>{{ netVesAfterCommission() }} VES</dd></div>
+    </dl>
+  }
+</section>

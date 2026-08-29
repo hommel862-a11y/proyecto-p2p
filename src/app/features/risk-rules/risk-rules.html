@@ -1,0 +1,43 @@
+<section class="panel">
+  <h2>Risk Rules</h2>
+  <p class="note">Safety barrier only — never predicts or auto-executes. Default min spread 15, max concurrent 3, max risk 1%, daily loss cap 4%.</p>
+
+  <div class="grid">
+    <label>
+      Min spread (VES/USDT)
+      <input type="number" [value]="draft().minSpread" (input)="patch({ minSpread: +$any($event.target).value })" />
+    </label>
+    <label>
+      Max concurrent ops
+      <input type="number" [value]="draft().maxConcurrentOps" (input)="patch({ maxConcurrentOps: +$any($event.target).value })" />
+    </label>
+    <label>
+      Max risk / trade (%)
+      <input type="number" [value]="draft().maxRiskPerTradePct" (input)="patch({ maxRiskPerTradePct: +$any($event.target).value })" />
+    </label>
+    <label>
+      Daily loss cap (%)
+      <input type="number" [value]="draft().dailyLossCapPct" (input)="patch({ dailyLossCapPct: +$any($event.target).value })" />
+    </label>
+    <label>
+      Max consecutive errors
+      <input type="number" [value]="draft().maxConsecutiveErrors" (input)="patch({ maxConsecutiveErrors: +$any($event.target).value })" />
+    </label>
+    <label>
+      API status
+      <select [value]="draft().apiStatus" (change)="patch({ apiStatus: $any($event.target).value })">
+        <option value="ok">ok</option>
+        <option value="down">down</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="actions">
+    <button type="button" (click)="save()">Save rules</button>
+    <button type="button" (click)="reset()">Reset to defaults</button>
+  </div>
+
+  <p class="verdict" role="alert" [class.allow]="verdict().decision === 'ALLOW'" [class.deny]="verdict().decision === 'DENY'" [class.pause]="verdict().decision === 'PAUSE'">
+    Engine verdict on sample state: {{ verdict().decision }} — {{ verdict().reason }}
+  </p>
+</section>

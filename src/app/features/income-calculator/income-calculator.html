@@ -1,0 +1,70 @@
+<section class="panel">
+  <h2>Income Calculator</h2>
+  <p class="note">Capital = (daily target × {{ daysPerYear() }} days) ÷ APR. Year basis is explicitly {{ daysPerYear() }} days.</p>
+
+  <div class="grid">
+    <label>
+      Daily target (USD)
+      <input
+        type="number"
+        [value]="targetUsd()"
+        (input)="targetUsd.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      APR (%)
+      <input
+        type="number"
+        [value]="aprPct()"
+        (input)="aprPct.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      Days / year
+      <input
+        type="number"
+        [value]="daysPerYear()"
+        (input)="daysPerYear.set(+$any($event.target).value)"
+      />
+    </label>
+    <label>
+      VES/USDT rate (optional)
+      <input
+        type="number"
+        [value]="rate()"
+        (input)="rate.set(+$any($event.target).value)"
+      />
+    </label>
+  </div>
+
+  @if (result(); as r) {
+    <dl class="out">
+      <div><dt>Annual income</dt><dd>{{ annual() }} USD</dd></div>
+      <div><dt>Required capital</dt><dd>{{ capital() }} USD</dd></div>
+      <div><dt>Capital in Bs</dt><dd>{{ capitalBs() }} VES</dd></div>
+    </dl>
+  } @else {
+    <p class="error" role="alert">Enter a positive daily target and APR.</p>
+  }
+
+  <table>
+    <thead>
+      <tr>
+        <th>Target / day</th>
+        @for (band of bands; track band) {
+          <th>{{ band }}%</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of table(); track row.target) {
+        <tr>
+          <th>{{ row.target }} USD</th>
+          @for (cell of row.cells; track $index) {
+            <td>{{ cell }}</td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+</section>

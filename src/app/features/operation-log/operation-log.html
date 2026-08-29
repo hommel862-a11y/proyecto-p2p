@@ -1,0 +1,99 @@
+<section class="panel">
+  <h2>Operation Log</h2>
+
+  <form class="grid" (submit)="$event.preventDefault(); add()">
+    <label>
+      Type
+      <select [value]="form().type" (change)="patchForm({ type: $any($event.target).value })">
+        <option value="buy">buy</option>
+        <option value="sell">sell</option>
+      </select>
+    </label>
+    <label>
+      VES amount
+      <input
+        type="number"
+        [value]="form().vesAmount"
+        (input)="patchForm({ vesAmount: +$any($event.target).value })"
+      />
+    </label>
+    <label>
+      USDT amount
+      <input
+        type="number"
+        [value]="form().usdtAmount"
+        (input)="patchForm({ usdtAmount: +$any($event.target).value })"
+      />
+    </label>
+    <label>
+      Price (VES/USDT)
+      <input
+        type="number"
+        [value]="form().price"
+        (input)="patchForm({ price: +$any($event.target).value })"
+      />
+    </label>
+    <label>
+      Fees (VES)
+      <input
+        type="number"
+        [value]="form().fees"
+        (input)="patchForm({ fees: +$any($event.target).value })"
+      />
+    </label>
+    <label>
+      Merchant note
+      <input
+        type="text"
+        [value]="form().merchantNote"
+        (input)="patchForm({ merchantNote: $any($event.target).value })"
+      />
+    </label>
+    <label>
+      Error-free
+      <input
+        type="checkbox"
+        [checked]="form().errorFree"
+        (change)="patchForm({ errorFree: $any($event.target).checked })"
+      />
+    </label>
+    <button type="submit">Record operation</button>
+  </form>
+
+  <dl class="out">
+    <div><dt>Operations</dt><dd>{{ summary().operations }}</dd></div>
+    <div><dt>PnL (VES)</dt><dd>{{ summary().pnlVes }} Bs</dd></div>
+    <div><dt>PnL (USDT)</dt><dd>{{ summary().pnlUsdt }} USDT</dd></div>
+    <div><dt>Capital deployed</dt><dd>{{ summary().capitalDeployed }} VES</dd></div>
+    <div><dt>Exposure</dt><dd>{{ summary().exposure }} USDT</dd></div>
+    <div><dt>Zero-error streak</dt><dd>{{ summary().zeroErrorStreak }}</dd></div>
+  </dl>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th><th>Type</th><th>VES</th><th>USDT</th><th>Price</th><th>Merchant</th><th>Error-free</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (o of operations(); track o.id) {
+        <tr>
+          <td>{{ o.timestamp }}</td>
+          <td>{{ o.type }}</td>
+          <td>{{ o.vesAmount }}</td>
+          <td>{{ o.usdtAmount }}</td>
+          <td>{{ o.price }}</td>
+          <td>{{ o.merchantNote }}</td>
+          <td>{{ o.errorFree ? 'yes' : 'no' }}</td>
+          <td><button type="button" (click)="remove(o.id)">Remove</button></td>
+        </tr>
+      } @empty {
+        <tr><td colspan="8">No operations recorded yet.</td></tr>
+      }
+    </tbody>
+  </table>
+
+  <div class="backup">
+    <button type="button" (click)="exportAll()">Export backup (console)</button>
+  </div>
+</section>
