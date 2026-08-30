@@ -10,8 +10,29 @@
   --accent-2: #3aa0ff;
   --danger: #ff5d6c;
   --warn: #ffb020;
+  --input-bg: #0c152b;
+  --row-bg: #0c152b;
+  --scroll: #223052;
   --radius: 14px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] {
+  --bg-0: #f4f6fb;
+  --bg-1: #e7edf7;
+  --panel: #ffffff;
+  --panel-2: #f3f6fc;
+  --line: #d7deec;
+  --text: #14213d;
+  --muted: #5b6b8c;
+  --accent: #119e63;
+  --accent-2: #2b7de0;
+  --danger: #d83a4a;
+  --warn: #b9791a;
+  --input-bg: #eef2f9;
+  --row-bg: #eef2f9;
+  --scroll: #c3ccdd;
+  --shadow: 0 10px 30px rgba(20, 33, 61, 0.12);
 }
 
 * { box-sizing: border-box; }
@@ -43,7 +64,7 @@ a { color: var(--accent-2); text-decoration: none; }
 label { color: var(--muted); font-size: 0.82rem; }
 
 input, select {
-  background: #0c152b;
+  background: var(--input-bg);
   border: 1px solid var(--line);
   color: var(--text);
   border-radius: 10px;
@@ -91,7 +112,7 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #223052; border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 8px; }
 
 /* ---- Feature panels (shared by all 4 modules) ---- */
 .panel {
@@ -117,7 +138,7 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--lin
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: #0c152b;
+  background: var(--row-bg);
   border: 1px solid var(--line);
   border-radius: 10px;
 }

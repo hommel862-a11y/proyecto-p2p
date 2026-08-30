@@ -120,4 +120,52 @@ describe('OperationLog', () => {
     const f2 = TestBed.createComponent(OperationLog);
     expect(f2.componentInstance.operations().length).toBe(1);
   });
+
+  describe('pair filter', () => {
+    it('setPairFilter narrows visibleOps to the selected pair', () => {
+      const f = create();
+      const c = f.componentInstance;
+      c.operations.set([
+        op({ id: 'u1', pair: 'USDT' }),
+        op({ id: 'e1', pair: 'EUR' }),
+        op({ id: 'u2', pair: 'USDT' }),
+      ]);
+      expect(c.visibleOps().length).toBe(3);
+      c.setPairFilter('EUR');
+      expect(c.visibleOps().map((o) => o.id)).toEqual(['e1']);
+      c.setPairFilter('USDT');
+      expect(c.visibleOps().map((o) => o.id)).toEqual(['u1', 'u2']);
+      c.setPairFilter('all');
+      expect(c.visibleOps().length).toBe(3);
+    });
+
+    it('summary reflects only the filtered subset', () => {
+      const f = create();
+      const c = f.componentInstance;
+      c.operations.set([
+        op({ id: 'u1', type: 'buy', pair: 'USDT', vesAmount: 20000, usdtAmount: 25, price: 800 }),
+        op({ id: 'e1', type: 'buy', pair: 'EUR', vesAmount: 10000, usdtAmount: 10, price: 1000 }),
+      ]);
+      c.setPairFilter('EUR');
+      expect(c.summary().operations).toBe(1);
+      expect(c.summary().pnlVes).toBe(-10000);
+      expect(c.summary().exposure).toBe(10);
+      c.setPairFilter('all');
+      expect(c.summary().operations).toBe(2);
+      expect(c.summary().pnlVes).toBe(-30000);
+    });
+
+    it('filter control stays visible when the filtered list is empty so the user can switch back', () => {
+      const f = create();
+      const c = f.componentInstance;
+      c.operations.set([op({ id: 'u1', pair: 'USDT' })]);
+      f.detectChanges();
+      c.setPairFilter('EUR');
+      f.detectChanges();
+      expect(c.visibleOps().length).toBe(0);
+      // 3 selects: Tipo + Par in the form grid + the pair filter (which must remain)
+      expect(f.nativeElement.querySelectorAll('select')).toHaveLength(3);
+      expect(f.nativeElement.textContent).toContain('Aún no hay operaciones registradas.');
+    });
+  });
 });

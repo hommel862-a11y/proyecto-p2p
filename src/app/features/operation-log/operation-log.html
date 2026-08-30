@@ -52,6 +52,20 @@
     <div><dt>Racha sin errores</dt><dd>{{ summary().zeroErrorStreak }}</dd></div>
   </dl>
 
+  @if (operations().length) {
+    <div class="actions">
+      <label class="inline">
+        Filtrar por par
+        <select [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
+          <option value="all">Todos</option>
+          <option value="USDT">USDT/VES</option>
+          <option value="EUR">EUR/VES</option>
+        </select>
+      </label>
+      <span class="note">El resumen refleja solo el par seleccionado</span>
+    </div>
+  }
+
   <table>
     <thead>
       <tr>
@@ -59,7 +73,7 @@
       </tr>
     </thead>
     <tbody>
-      @for (o of operations(); track o.id) {
+      @for (o of visibleOps(); track o.id) {
         <tr>
           <td>{{ o.timestamp }}</td>
           <td>{{ o.type === 'buy' ? 'compra' : 'venta' }}</td>
@@ -72,7 +86,7 @@
           <td><button type="button" (click)="remove(o.id)">Eliminar</button></td>
         </tr>
       } @empty {
-        <tr><td colspan="8">Aún no hay operaciones registradas.</td></tr>
+        <tr><td colspan="9">Aún no hay operaciones registradas.</td></tr>
       }
     </tbody>
   </table>

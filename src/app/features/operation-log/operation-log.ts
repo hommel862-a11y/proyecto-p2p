@@ -39,7 +39,19 @@ export class OperationLog {
   private readonly storage = inject(StorageService);
 
   readonly operations = signal<Operation[]>(this.load());
-  readonly summary = computed(() => computeLogSummary(this.operations()));
+  readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>('all');
+
+  readonly visibleOps = computed(() => {
+    const f = this.pairFilter();
+    const ops = this.operations();
+    return f === 'all' ? ops : ops.filter((o) => o.pair === f);
+  });
+
+  readonly summary = computed(() => computeLogSummary(this.visibleOps()));
+
+  setPairFilter(p: 'all' | 'USDT' | 'EUR'): void {
+    this.pairFilter.set(p);
+  }
   readonly form = signal<OpDraft>({ ...EMPTY_DRAFT });
 
   private load(): Operation[] {

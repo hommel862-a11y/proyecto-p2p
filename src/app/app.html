@@ -36,7 +36,12 @@
   <div class="main">
     <header class="topbar">
       <h1>Herramienta de Decisión P2P</h1>
-      <span class="pill"><span class="dot"></span> Manual · sin conexión a Binance</span>
+      <div class="topbar-actions">
+        <button type="button" class="btn-ghost" (click)="toggleTheme()">
+          {{ theme() === 'dark' ? 'Modo claro' : 'Modo oscuro' }}
+        </button>
+        <span class="pill"><span class="dot"></span> Manual · sin conexión a Binance</span>
+      </div>
     </header>
     <section class="content">
       <router-outlet />
