@@ -22,7 +22,7 @@ describe('IncomeCalculator', () => {
     f.detectChanges();
     expect(c.annual()).toBe(7300);
     expect(c.capital()).toBe(73000);
-    expect(f.nativeElement.textContent).toContain('73000');
+    expect(f.nativeElement.textContent).toContain('73.000');
   });
 
   it('renders the 1/5/20 × 8/10/15% table (365-day basis)', () => {

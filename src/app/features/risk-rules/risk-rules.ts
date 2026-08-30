@@ -22,6 +22,12 @@ export class RiskRules {
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
 
+  /** trading pair context for the spread threshold label (USDT/VES or EUR/VES). */
+  readonly pair = signal<'USDT' | 'EUR'>('USDT');
+  setPair(value: string): void {
+    this.pair.set(value === 'EUR' ? 'EUR' : 'USDT');
+  }
+
   readonly verdict = computed(() => this.risks.evaluate(this.risks.sampleState()));
 
   save(): void {
@@ -35,5 +41,23 @@ export class RiskRules {
 
   patch(p: Partial<RiskConfig>): void {
     this.draft.set({ ...this.draft(), ...p });
+  }
+
+  private readonly REASON_LABELS: Record<string, string> = {
+    'api-failure': 'fallo de API',
+    'daily loss cap exceeded': 'tope de pérdida diaria superado',
+    'consecutive errors limit reached': 'límite de errores consecutivos alcanzado',
+    'max concurrent operations reached': 'máximo de operaciones concurrentes alcanzado',
+    'spread below minimum': 'spread por debajo del mínimo',
+    'risk per trade exceeded': 'riesgo por operación superado',
+    'ok': 'dentro de límites',
+  };
+
+  decisionLabel(d: string): string {
+    return d === 'ALLOW' ? 'PERMITIR' : d === 'DENY' ? 'DENEGAR' : 'PAUSAR';
+  }
+
+  reasonLabel(r: string): string {
+    return this.REASON_LABELS[r] ?? r;
   }
 }

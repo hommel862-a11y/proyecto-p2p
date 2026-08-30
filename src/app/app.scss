@@ -1,0 +1,95 @@
+.layout { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 248px;
+  flex: 0 0 248px;
+  background: linear-gradient(180deg, #0c1428, #0a1124);
+  border-right: 1px solid var(--line);
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 14px;
+  font-size: 1.15rem;
+}
+.brand .logo {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #04130c; font-weight: 800;
+}
+.brand b { color: var(--text); }
+
+.nav { display: flex; flex-direction: column; gap: 6px; }
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.nav a svg { width: 20px; height: 20px; flex: 0 0 20px; }
+.nav a:hover { background: var(--panel); color: var(--text); }
+.nav a.active {
+  background: linear-gradient(180deg, rgba(25, 195, 125, 0.16), rgba(58, 160, 255, 0.10));
+  color: var(--text);
+  border-color: rgba(25, 195, 125, 0.45);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  padding: 10px 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 17, 36, 0.6);
+  backdrop-filter: blur(6px);
+}
+.topbar h1 { font-size: 1.05rem; margin: 0; }
+
+.content {
+  padding: 24px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 760px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    flex: none;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  .sidebar-foot { display: none; }
+}

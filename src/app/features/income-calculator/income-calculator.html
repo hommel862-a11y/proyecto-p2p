@@ -1,56 +1,40 @@
 <section class="panel">
-  <h2>Income Calculator</h2>
-  <p class="note">Capital = (daily target × {{ daysPerYear() }} days) ÷ APR. Year basis is explicitly {{ daysPerYear() }} days.</p>
+  <h2>Calculadora de Ingresos</h2>
+  <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. La base del año es explícitamente de {{ daysPerYear() }} días.</p>
 
   <div class="grid">
     <label>
-      Daily target (USD)
-      <input
-        type="number"
-        [value]="targetUsd()"
-        (input)="targetUsd.set(+$any($event.target).value)"
-      />
+      Meta diaria (USD)
+      <input type="number" [value]="targetUsd()" (input)="targetUsd.set(+$any($event.target).value)" />
     </label>
     <label>
-      APR (%)
-      <input
-        type="number"
-        [value]="aprPct()"
-        (input)="aprPct.set(+$any($event.target).value)"
-      />
+      Tasa anual (APR) (%)
+      <input type="number" [value]="aprPct()" (input)="aprPct.set(+$any($event.target).value)" />
     </label>
     <label>
-      Days / year
-      <input
-        type="number"
-        [value]="daysPerYear()"
-        (input)="daysPerYear.set(+$any($event.target).value)"
-      />
+      Días / año
+      <input type="number" [value]="daysPerYear()" (input)="daysPerYear.set(+$any($event.target).value)" />
     </label>
     <label>
-      VES/USDT rate (optional)
-      <input
-        type="number"
-        [value]="rate()"
-        (input)="rate.set(+$any($event.target).value)"
-      />
+      Tasa VES/USDT (opcional)
+      <input type="number" [value]="rate()" (input)="rate.set(+$any($event.target).value)" />
     </label>
   </div>
 
   @if (result(); as r) {
     <dl class="out">
-      <div><dt>Annual income</dt><dd>{{ annual() }} USD</dd></div>
-      <div><dt>Required capital</dt><dd>{{ capital() }} USD</dd></div>
-      <div><dt>Capital in Bs</dt><dd>{{ capitalBs() }} VES</dd></div>
+      <div><dt>Ingreso anual</dt><dd>{{ annual() | usdt }}</dd></div>
+      <div><dt>Capital requerido</dt><dd>{{ capital() | usdt }}</dd></div>
+      <div><dt>Capital en Bs</dt><dd>{{ capitalBs() | ves }}</dd></div>
     </dl>
   } @else {
-    <p class="error" role="alert">Enter a positive daily target and APR.</p>
+    <p class="error" role="alert">Ingresa una meta diaria y un APR positivos.</p>
   }
 
   <table>
     <thead>
       <tr>
-        <th>Target / day</th>
+        <th>Meta / día</th>
         @for (band of bands; track band) {
           <th>{{ band }}%</th>
         }
@@ -59,9 +43,9 @@
     <tbody>
       @for (row of table(); track row.target) {
         <tr>
-          <th>{{ row.target }} USD</th>
+          <th>{{ row.target | usdt }}</th>
           @for (cell of row.cells; track $index) {
-            <td>{{ cell }}</td>
+            <td>{{ cell | usdt }}</td>
           }
         </tr>
       }

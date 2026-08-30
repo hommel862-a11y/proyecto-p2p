@@ -1,1 +1,148 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  --bg-0: #0b1020;
+  --bg-1: #0f1830;
+  --panel: #121b33;
+  --panel-2: #16203c;
+  --line: #223052;
+  --text: #e6ecf7;
+  --muted: #8ea0c4;
+  --accent: #19c37d;
+  --accent-2: #3aa0ff;
+  --danger: #ff5d6c;
+  --warn: #ffb020;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 82% -10%, rgba(58, 160, 255, 0.18), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(25, 195, 125, 0.14), transparent 55%),
+    linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  background-attachment: fixed;
+}
+
+h1, h2, h3 { font-weight: 700; letter-spacing: 0.2px; margin: 0 0 0.4em; }
+a { color: var(--accent-2); text-decoration: none; }
+
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+label { color: var(--muted); font-size: 0.82rem; }
+
+input, select {
+  background: #0c152b;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(25, 195, 125, 0.18);
+}
+
+button, .btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 600;
+  background: linear-gradient(180deg, var(--accent), #13a96b);
+  color: #04130c;
+  transition: transform 0.08s, filter 0.15s;
+}
+button:hover, .btn:hover { filter: brightness(1.06); }
+button:active { transform: translateY(1px); }
+.btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #223052; border-radius: 8px; }
+
+/* ---- Feature panels (shared by all 4 modules) ---- */
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  max-width: 780px;
+}
+.panel h2 { margin-top: 0; font-size: 1.25rem; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.out { display: grid; gap: 10px; margin: 16px 0 0; }
+.out > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #0c152b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.out dt { color: var(--muted); font-size: 0.85rem; margin: 0; }
+.out dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.error {
+  color: var(--danger);
+  background: rgba(255, 93, 108, 0.12);
+  border: 1px solid rgba(255, 93, 108, 0.4);
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+
+.alert { padding: 10px 12px; border-radius: 10px; margin: 12px 0; border: 1px solid var(--line); }
+.alert.favorable { color: var(--accent); background: rgba(25, 195, 125, 0.12); border-color: rgba(25, 195, 125, 0.45); }
+.alert.unfavorable { color: var(--danger); background: rgba(255, 93, 108, 0.12); border-color: rgba(255, 93, 108, 0.45); }
+
+.note { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
+
+.verdict { padding: 12px 14px; border-radius: 10px; font-weight: 700; margin: 14px 0 0; border: 1px solid var(--line); }
+.verdict.allow { color: var(--accent); background: rgba(25, 195, 125, 0.12); border-color: rgba(25, 195, 125, 0.45); }
+.verdict.deny { color: var(--danger); background: rgba(255, 93, 108, 0.12); border-color: rgba(255, 93, 108, 0.45); }
+.verdict.pause { color: var(--warn); background: rgba(255, 176, 32, 0.12); border-color: rgba(255, 176, 32, 0.45); }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.backup { margin-top: 14px; }

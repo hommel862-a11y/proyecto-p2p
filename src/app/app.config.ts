@@ -3,13 +3,14 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withHashLocation } from '@angular/router';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
-    provideRouter(routes),
+    // HashLocationStrategy: la app carga también sobre file:// (útil para empaquetado Electron y APK sin server)
+    provideRouter(routes, withHashLocation()),
   ]
 };

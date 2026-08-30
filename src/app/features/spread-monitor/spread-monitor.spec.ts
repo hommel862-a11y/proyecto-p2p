@@ -87,7 +87,7 @@ describe('SpreadMonitor', () => {
     f.detectChanges();
     expect(c.unitSpread()).toBe(20);
     expect(c.alert().kind).toBe('unfavorable');
-    expect(f.nativeElement.textContent).toContain('Unfavorable');
+    expect(f.nativeElement.textContent).toContain('Desfavorable');
   });
 
   it('Scenario E (invalid): zero/negative price => error message, no result', () => {
@@ -100,6 +100,6 @@ describe('SpreadMonitor', () => {
     f.detectChanges();
     expect(c.result()).toBeNull();
     expect(c.error()).not.toBeNull();
-    expect(f.nativeElement.textContent).toContain('must be a positive number');
+    expect(f.nativeElement.textContent).toContain('número positivo');
   });
 });

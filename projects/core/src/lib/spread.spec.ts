@@ -22,10 +22,10 @@ describe('computeSpread', () => {
   });
 
   it('rejects zero or negative buy/sell price and amount', () => {
-    expect(() => computeSpread(0, 820, 25, 'USDT')).toThrow(/positive/i);
-    expect(() => computeSpread(-5, 820, 25, 'USDT')).toThrow(/positive/i);
-    expect(() => computeSpread(800, 0, 25, 'USDT')).toThrow(/positive/i);
-    expect(() => computeSpread(800, 820, 0, 'USDT')).toThrow(/positive/i);
+    expect(() => computeSpread(0, 820, 25, 'USDT')).toThrow(/positivo/i);
+    expect(() => computeSpread(-5, 820, 25, 'USDT')).toThrow(/positivo/i);
+    expect(() => computeSpread(800, 0, 25, 'USDT')).toThrow(/positivo/i);
+    expect(() => computeSpread(800, 820, 0, 'USDT')).toThrow(/positivo/i);
   });
 
   it('rejects commission rate outside 0..0.35%', () => {

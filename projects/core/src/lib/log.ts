@@ -52,24 +52,22 @@ export function computeLogSummary(ops: readonly Operation[]): LogSummary {
   let buyUsdt = 0;
   let sellUsdt = 0;
   let fees = 0;
-  let usdtVolume = 0;
 
   for (const o of ops) {
     if (o.type === 'buy') {
       buyVes += o.vesAmount;
       buyUsdt += o.usdtAmount;
     } else {
-      sellVes += o.usdtAmount * o.price;
+      // Prefer the recorded VES leg when present; fall back to price×USDT for legacy entries.
+      sellVes += o.vesAmount > 0 ? o.vesAmount : o.usdtAmount * o.price;
       sellUsdt += o.usdtAmount;
     }
     fees += o.fees;
-    usdtVolume += o.usdtAmount;
   }
 
   const pnlVes = sellVes - buyVes - fees;
   const denomUsdt = buyUsdt + sellUsdt;
-  const weightedAvg =
-    usdtVolume > 0 && denomUsdt > 0 ? (buyVes + sellVes) / denomUsdt : 0;
+  const weightedAvg = denomUsdt > 0 ? (buyVes + sellVes) / denomUsdt : 0;
   const pnlUsdt = weightedAvg > 0 ? pnlVes / weightedAvg : 0;
 
   const exposure = buyUsdt - sellUsdt;

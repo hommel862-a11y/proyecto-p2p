@@ -3,7 +3,7 @@
  * All values are synchronous and deterministic. No network, no Angular.
  */
 
-export type AmountUnit = 'USDT' | 'VES';
+export type AmountUnit = 'USDT' | 'EUR' | 'VES';
 
 export interface SpreadResult {
   /** USDT the operator ends up holding after the round trip. */
@@ -16,11 +16,13 @@ export interface SpreadResult {
   gainVes: number;
   /** VES after subtracting the optional seller commission. */
   netVesAfterCommission: number;
+  /** profit in VES after subtracting the seller commission (gain − commission). */
+  netGainVes: number;
 }
 
 function assertPositive(name: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${name} must be a positive number`);
+    throw new Error('El valor debe ser un número positivo');
   }
 }
 
@@ -42,7 +44,7 @@ export function computeSpread(
   assertPositive('sellPrice', sellPrice);
   assertPositive('amount', amount);
   if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 0.0035) {
-    throw new Error('commissionRate must be between 0 and 0.0035 (0.35%)');
+    throw new Error('La comisión debe estar entre 0 y 0.35 (0.35%)');
   }
 
   const usdtReceived = unit === 'USDT' ? amount : amount / buyPrice;
@@ -50,6 +52,7 @@ export function computeSpread(
   const unitSpread = sellPrice - buyPrice;
   const gainVes = usdtReceived * unitSpread;
   const netVesAfterCommission = vesReceived * (1 - commissionRate);
+  const netGainVes = gainVes - vesReceived * commissionRate;
 
-  return { usdtReceived, vesReceived, unitSpread, gainVes, netVesAfterCommission };
+  return { usdtReceived, vesReceived, unitSpread, gainVes, netVesAfterCommission, netGainVes };
 }

@@ -5,6 +5,7 @@ import {
   signal,
 } from '@angular/core';
 import { capitalFromDailyIncome, toBs, DEFAULT_DAYS_PER_YEAR } from '@p2p/core';
+import { FORMAT_PIPES } from '../../core/format';
 
 /**
  * C2 — Income calculator. Thin view over {@link capitalFromDailyIncome}: target/APR/days
@@ -13,6 +14,7 @@ import { capitalFromDailyIncome, toBs, DEFAULT_DAYS_PER_YEAR } from '@p2p/core';
 @Component({
   selector: 'app-income-calculator',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FORMAT_PIPES],
   templateUrl: './income-calculator.html',
 })
 export class IncomeCalculator {

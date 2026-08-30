@@ -20,7 +20,11 @@ export class WebStorageAdapter implements StoragePort {
   get<T>(key: string): T | null {
     const raw = this.backend.getItem(key);
     if (raw === null) return null;
-    return JSON.parse(raw) as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
   }
 
   set<T>(key: string, value: T): void {
@@ -43,9 +47,15 @@ export class WebStorageAdapter implements StoragePort {
   }
 
   importAll(json: string): void {
-    const data = JSON.parse(json) as Record<string, string>;
-    for (const [k, v] of Object.entries(data)) {
-      this.backend.setItem(k, v);
+    let data: unknown;
+    try {
+      data = JSON.parse(json);
+    } catch {
+      return;
+    }
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return;
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      if (typeof v === 'string') this.backend.setItem(k, v);
     }
   }
 }

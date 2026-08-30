@@ -1,53 +1,40 @@
 <section class="panel">
-  <h2>Spread Monitor</h2>
+  <h2>Monitor de Spread</h2>
 
   <div class="grid">
     <label>
-      Buy price (VES/USDT)
-      <input
-        type="number"
-        [value]="buyPrice()"
-        (input)="buyPrice.set(+$any($event.target).value)"
-      />
+      Par
+      <select [value]="pair()" (change)="setPair($any($event.target).value)">
+        <option value="USDT">USDT/VES</option>
+        <option value="EUR">EUR/VES</option>
+      </select>
     </label>
     <label>
-      Sell price (VES/USDT)
-      <input
-        type="number"
-        [value]="sellPrice()"
-        (input)="sellPrice.set(+$any($event.target).value)"
-      />
+      Precio de compra (VES/{{ pair() }})
+      <input type="number" [value]="buyPrice()" (input)="buyPrice.set(+$any($event.target).value)" />
     </label>
     <label>
-      Amount
-      <input
-        type="number"
-        [value]="amount()"
-        (input)="amount.set(+$any($event.target).value)"
-      />
+      Precio de venta (VES/{{ pair() }})
+      <input type="number" [value]="sellPrice()" (input)="sellPrice.set(+$any($event.target).value)" />
     </label>
     <label>
-      Unit
+      Monto
+      <input type="number" [value]="amount()" (input)="amount.set(+$any($event.target).value)" />
+    </label>
+    <label>
+      Unidad
       <select [value]="unit()" (change)="setUnit($any($event.target).value)">
-        <option value="USDT">USDT</option>
+        <option [value]="pair()">{{ pair() }}</option>
         <option value="VES">VES</option>
       </select>
     </label>
     <label>
-      Seller commission (%)
-      <input
-        type="number"
-        [value]="commissionPct()"
-        (input)="commissionPct.set(+$any($event.target).value)"
-      />
+      Comisión del vendedor (%)
+      <input type="number" [value]="commissionPct()" (input)="commissionPct.set(+$any($event.target).value)" />
     </label>
     <label>
-      Favorable threshold (VES/USDT)
-      <input
-        type="number"
-        [value]="threshold()"
-        (input)="threshold.set(+$any($event.target).value)"
-      />
+      Umbral favorable (VES/{{ pair() }})
+      <input type="number" [value]="threshold()" (input)="threshold.set(+$any($event.target).value)" />
     </label>
   </div>
 
@@ -63,11 +50,12 @@
 
   @if (result(); as r) {
     <dl class="out">
-      <div><dt>USDT received</dt><dd>{{ usdtReceived() }} USDT</dd></div>
-      <div><dt>VES received</dt><dd>{{ vesReceived() }} VES</dd></div>
-      <div><dt>Unit spread</dt><dd>{{ unitSpread() }} VES/USDT</dd></div>
-      <div><dt>Spread gain</dt><dd>{{ gainVes() }} Bs</dd></div>
-      <div><dt>Net after commission</dt><dd>{{ netVesAfterCommission() }} VES</dd></div>
+      <div><dt>{{ pair() }} recibidos</dt><dd>{{ usdtReceived() | usdt }}</dd></div>
+      <div><dt>VES recibidos</dt><dd>{{ vesReceived() | ves }}</dd></div>
+      <div><dt>Spread unitario</dt><dd>{{ unitSpread() | num }} VES/{{ pair() }}</dd></div>
+      <div><dt>Ganancia de spread</dt><dd>{{ gainVes() | ves }}</dd></div>
+      <div><dt>Recibido neto (tras comisión)</dt><dd>{{ netVesAfterCommission() | ves }}</dd></div>
+      <div><dt>Ganancia neta (tras comisión)</dt><dd>{{ netGainVes() | ves }}</dd></div>
     </dl>
   }
 </section>

@@ -1,0 +1,48 @@
+<section class="panel">
+  <header>
+    <h1>Estadísticas</h1>
+    <p class="note">Rendimiento agrupado de tu registro de operaciones. Los periodos usan la fecha UTC del registro.</p>
+  </header>
+
+  <div class="actions">
+    <button type="button" [class.active]="period() === 'day'" (click)="setPeriod('day')">Día</button>
+    <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
+    <button type="button" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')">Trimestre</button>
+  </div>
+
+  <div class="grid">
+    <div class="out"><span>Operaciones</span><strong>{{ fmtNum(totals().operations) }}</strong></div>
+    <div class="out"><span>Ganancia neta (Bs)</span><strong [class.verdict]="totals().pnlVes >= 0" [class.alert]="totals().pnlVes < 0">{{ fmtVes(totals().pnlVes) }}</strong></div>
+    <div class="out"><span>Volumen (USDT)</span><strong>{{ fmtUsd(totals().volumeUsdt) }}</strong></div>
+    <div class="out"><span>Comisiones (Bs)</span><strong>{{ fmtVes(totals().fees) }}</strong></div>
+  </div>
+
+  @if (rows().length === 0) {
+    <p class="note">Aún no hay operaciones registradas. Usa «Registro de Operaciones» para empezar a acumular datos.</p>
+  } @else {
+    <table>
+      <thead>
+        <tr>
+          <th>{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
+          <th>Ops</th>
+          <th>Ganancia (Bs)</th>
+          <th>Ganancia (USDT)</th>
+          <th>Volumen (USDT)</th>
+          <th>Comisiones (Bs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (r of rows(); track r.period) {
+          <tr>
+            <td>{{ r.period }}</td>
+            <td>{{ fmtNum(r.operations) }}</td>
+            <td [class.verdict]="r.pnlVes >= 0" [class.alert]="r.pnlVes < 0">{{ fmtVes(r.pnlVes) }}</td>
+            <td>{{ fmtUsd(r.pnlUsdt) }}</td>
+            <td>{{ fmtUsd(r.volumeUsdt) }}</td>
+            <td>{{ fmtVes(r.fees) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</section>

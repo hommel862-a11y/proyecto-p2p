@@ -84,12 +84,17 @@ describe('OperationLog', () => {
     });
     c.add();
     const saved = c.operations()[0];
-    const json = c.exportAll();
-    mem.clear();
-    c.operations.set([]);
-    c.importAll(json);
-    expect(c.operations().length).toBe(1);
-    expect(c.operations()[0]).toEqual(saved);
+    const json = c.serializeBackup();
+    const parsed = c.parseBackup(json);
+    expect(parsed.length).toBe(1);
+    expect(parsed[0]).toEqual(saved);
+  });
+
+  it('parseBackup rejects malformed backups', () => {
+    const f = create();
+    const c = f.componentInstance;
+    expect(() => c.parseBackup('{"foo":1}')).toThrow();
+    expect(() => c.parseBackup('not json')).toThrow();
   });
 
   it('add() appends an operation and persists it', () => {

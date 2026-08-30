@@ -35,6 +35,14 @@ describe('computeLogSummary', () => {
     expect(computeLogSummary(ops).pnlVes).toBe(400);
   });
 
+  it('uses recorded sell vesAmount when it differs from price×usdt (slippage)', () => {
+    const ops: Operation[] = [
+      op({ id: 'a', type: 'buy', vesAmount: 20000, usdtAmount: 25, price: 800 }),
+      op({ id: 'b', type: 'sell', vesAmount: 21000, usdtAmount: 25, price: 820 }),
+    ];
+    expect(computeLogSummary(ops).pnlVes).toBe(1000);
+  });
+
   it('zero-error streak counts trailing error-free operations', () => {
     const ops: Operation[] = [
       op({ id: 'a', errorFree: true }),

@@ -26,4 +26,16 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/risk-rules/risk-rules').then((m) => m.RiskRules),
   },
+  {
+    path: 'stats',
+    title: 'Statistics',
+    loadComponent: () =>
+      import('./features/stats/stats').then((m) => m.Stats),
+  },
+  {
+    path: 'guide',
+    title: 'Usage Guide',
+    loadComponent: () =>
+      import('./features/guide/guide').then((m) => m.Guide),
+  },
 ];

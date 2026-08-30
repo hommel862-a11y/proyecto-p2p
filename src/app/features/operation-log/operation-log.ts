@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { computeLogSummary, type Operation } from '@p2p/core';
 import { StorageService } from '../../core/storage';
+import { FORMAT_PIPES } from '../../core/format';
 
 const OPS_KEY = 'p2p.operations';
 
@@ -30,6 +31,7 @@ const EMPTY_DRAFT: OpDraft = {
 @Component({
   selector: 'app-operation-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FORMAT_PIPES],
   templateUrl: './operation-log.html',
 })
 export class OperationLog {
@@ -68,13 +70,58 @@ export class OperationLog {
     this.storage.set(OPS_KEY, next);
   }
 
-  exportAll(): string {
-    return this.storage.exportAll();
+  /** Serialize the current ledger to a backup JSON string. */
+  serializeBackup(): string {
+    return JSON.stringify(
+      {
+        app: 'p2p-decisor',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        operations: this.operations(),
+      },
+      null,
+      2,
+    );
   }
 
-  importAll(json: string): void {
-    this.storage.importAll(json);
-    this.reload();
+  /** Parse a backup string into operations, validating shape. Throws on invalid input. */
+  parseBackup(text: string): Operation[] {
+    const parsed = JSON.parse(text);
+    const ops = Array.isArray(parsed) ? parsed : parsed?.operations;
+    if (!Array.isArray(ops)) throw new Error('el archivo no tiene operaciones');
+    return ops.filter(
+      (o: Partial<Operation>) => o && typeof o === 'object' && 'type' in o && 'timestamp' in o,
+    ) as Operation[];
+  }
+
+  /** Download the operation ledger as a JSON backup file. */
+  downloadBackup(): void {
+    const blob = new Blob([this.serializeBackup()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `p2p-operaciones-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Import operations from a backup file, replacing the current ledger after validation. */
+  importFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const clean = this.parseBackup(String(reader.result));
+        this.operations.set(clean);
+        this.storage.set(OPS_KEY, clean);
+        input.value = '';
+      } catch (e) {
+        alert('No se pudo importar el respaldo: ' + (e as Error).message);
+      }
+    };
+    reader.readAsText(file);
   }
 
   patchForm(patch: Partial<OpDraft>): void {

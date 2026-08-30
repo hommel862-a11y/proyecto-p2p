@@ -37,7 +37,7 @@ describe('RiskRules', () => {
     f.detectChanges();
     expect(c.verdict().decision).toBe('ALLOW');
     expect(c.verdict().reason).toBe('ok');
-    expect(f.nativeElement.textContent).toContain('ALLOW');
+    expect(f.nativeElement.textContent).toContain('PERMITIR');
   });
 
   it('min-spread rule => DENY when spread below configured minimum', () => {

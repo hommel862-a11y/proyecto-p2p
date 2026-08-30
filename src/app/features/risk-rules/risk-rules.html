@@ -1,43 +1,50 @@
 <section class="panel">
-  <h2>Risk Rules</h2>
-  <p class="note">Safety barrier only — never predicts or auto-executes. Default min spread 15, max concurrent 3, max risk 1%, daily loss cap 4%.</p>
+  <h2>Reglas de Riesgo</h2>
+  <p class="note">Barrera de seguridad únicamente — nunca predice ni ejecuta automáticamente. Por defecto: spread mínimo 15, máx. operaciones concurrentes 3, riesgo máx. por operación 1%, tope de pérdida diaria 4%.</p>
 
   <div class="grid">
     <label>
-      Min spread (VES/USDT)
+      Par de referencia
+      <select [value]="pair()" (change)="setPair($any($event.target).value)">
+        <option value="USDT">USDT/VES</option>
+        <option value="EUR">EUR/VES</option>
+      </select>
+    </label>
+    <label>
+      Spread mínimo (VES/{{ pair() }})
       <input type="number" [value]="draft().minSpread" (input)="patch({ minSpread: +$any($event.target).value })" />
     </label>
     <label>
-      Max concurrent ops
+      Máx. operaciones concurrentes
       <input type="number" [value]="draft().maxConcurrentOps" (input)="patch({ maxConcurrentOps: +$any($event.target).value })" />
     </label>
     <label>
-      Max risk / trade (%)
+      Riesgo máx. por operación (%)
       <input type="number" [value]="draft().maxRiskPerTradePct" (input)="patch({ maxRiskPerTradePct: +$any($event.target).value })" />
     </label>
     <label>
-      Daily loss cap (%)
+      Tope de pérdida diaria (%)
       <input type="number" [value]="draft().dailyLossCapPct" (input)="patch({ dailyLossCapPct: +$any($event.target).value })" />
     </label>
     <label>
-      Max consecutive errors
+      Máx. errores consecutivos
       <input type="number" [value]="draft().maxConsecutiveErrors" (input)="patch({ maxConsecutiveErrors: +$any($event.target).value })" />
     </label>
     <label>
-      API status
+      Estado de API
       <select [value]="draft().apiStatus" (change)="patch({ apiStatus: $any($event.target).value })">
         <option value="ok">ok</option>
-        <option value="down">down</option>
+        <option value="down">caída</option>
       </select>
     </label>
   </div>
 
   <div class="actions">
-    <button type="button" (click)="save()">Save rules</button>
-    <button type="button" (click)="reset()">Reset to defaults</button>
+    <button type="button" (click)="save()">Guardar reglas</button>
+    <button type="button" (click)="reset()">Restablecer</button>
   </div>
 
   <p class="verdict" role="alert" [class.allow]="verdict().decision === 'ALLOW'" [class.deny]="verdict().decision === 'DENY'" [class.pause]="verdict().decision === 'PAUSE'">
-    Engine verdict on sample state: {{ verdict().decision }} — {{ verdict().reason }}
+    Veredicto del motor (estado de ejemplo): {{ decisionLabel(verdict().decision) }} — {{ reasonLabel(verdict().reason) }}
   </p>
 </section>
