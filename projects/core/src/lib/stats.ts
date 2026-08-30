@@ -80,12 +80,15 @@ function aggregate(ops: Operation[], kind: PeriodKind): PeriodStat[] {
     .sort((x, y) => y.period.localeCompare(x.period));
 }
 
+export type PairFilter = 'all' | 'USDT' | 'EUR';
+
 /**
  * Aggregate an operation ledger into day / month / quarter buckets.
  * @param ops operation ledger (records with an ISO `timestamp`). Non-arrays are treated as empty.
+ * @param pair when not `'all'`, only operations of that trading pair are aggregated.
  */
-export function computeStats(ops: Operation[]): StatsSummary {
-  const safe = Array.isArray(ops) ? ops : [];
+export function computeStats(ops: Operation[], pair: PairFilter = 'all'): StatsSummary {
+  const safe = (Array.isArray(ops) ? ops : []).filter((o) => pair === 'all' || o.pair === pair);
   return {
     daily: aggregate(safe, 'day'),
     monthly: aggregate(safe, 'month'),

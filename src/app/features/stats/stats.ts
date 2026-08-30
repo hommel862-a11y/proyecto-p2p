@@ -14,8 +14,11 @@ const OPS_KEY = 'p2p.operations';
 export class Stats {
   private readonly storage = inject(StorageService);
   readonly period = signal<PeriodKind>('day');
+  readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>('all');
 
-  private readonly summary = computed(() => computeStats(this.storage.get<Operation[]>(OPS_KEY) ?? []));
+  private readonly summary = computed(() =>
+    computeStats(this.storage.get<Operation[]>(OPS_KEY) ?? [], this.pairFilter()),
+  );
 
   readonly rows = computed<PeriodStat[]>(() => {
     const s = this.summary();
@@ -36,6 +39,10 @@ export class Stats {
 
   setPeriod(p: PeriodKind): void {
     this.period.set(p);
+  }
+
+  setPairFilter(p: 'all' | 'USDT' | 'EUR'): void {
+    this.pairFilter.set(p);
   }
 
   readonly fmtVes = (v: number): string => `${v.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`;

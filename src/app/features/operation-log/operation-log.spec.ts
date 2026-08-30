@@ -10,6 +10,7 @@ function op(over: Partial<Operation> = {}): Operation {
     id: Math.random().toString(36).slice(2),
     timestamp: '2026-01-01T00:00:00.000Z',
     type: 'buy',
+    pair: 'USDT',
     vesAmount: 0,
     usdtAmount: 0,
     price: 0,
@@ -74,6 +75,7 @@ describe('OperationLog', () => {
     const c = f.componentInstance;
     c.form.set({
       type: 'buy',
+      pair: 'USDT',
       vesAmount: 20000,
       usdtAmount: 25,
       price: 800,
@@ -102,6 +104,7 @@ describe('OperationLog', () => {
     const c = f.componentInstance;
     c.form.set({
       type: 'buy',
+      pair: 'USDT',
       vesAmount: 20000,
       usdtAmount: 25,
       price: 800,

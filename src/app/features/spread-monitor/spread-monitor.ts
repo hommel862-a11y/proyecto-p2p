@@ -9,6 +9,8 @@ import {
 import { computeSpread, type AmountUnit, type SpreadResult } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { FORMAT_PIPES } from '../../core/format';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -126,11 +128,30 @@ export class SpreadMonitor {
     }
   }
 
-  /** Notify the user when a Favorable opportunity appears (desktop notification when permitted). */
+  /** Notify the user when a Favorable opportunity appears (native on Android, web Notification on desktop). */
   private notify(msg: string): void {
+    const title = 'P2P Decisor — Spread favorable';
     try {
+      if (Capacitor.isNativePlatform()) {
+        const schedule = () =>
+          LocalNotifications.schedule({
+            notifications: [{ title, body: msg, id: Math.floor(Math.random() * 100000) }],
+          }).catch(() => {});
+        LocalNotifications.checkPermissions()
+          .then((p) => {
+            if (p.display === 'granted') schedule();
+            else
+              LocalNotifications.requestPermissions()
+                .then((r) => {
+                  if (r.display === 'granted') schedule();
+                })
+                .catch(() => {});
+          })
+          .catch(() => {});
+        return;
+      }
       if (typeof Notification !== 'undefined') {
-        const fire = () => new Notification('P2P Decisor — Spread favorable', { body: msg });
+        const fire = () => new Notification(title, { body: msg });
         if (Notification.permission === 'granted') {
           fire();
         } else if (Notification.permission !== 'denied') {
@@ -142,7 +163,7 @@ export class SpreadMonitor {
         }
       }
     } catch {
-      /* plataforma sin Notification (p. ej. webview de Android) */
+      /* plataforma sin notificaciones */
     }
   }
 }

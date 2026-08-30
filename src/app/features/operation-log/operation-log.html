@@ -10,6 +10,13 @@
       </select>
     </label>
     <label>
+      Par
+      <select [value]="form().pair" (change)="patchForm({ pair: $any($event.target).value })">
+        <option value="USDT">USDT/VES</option>
+        <option value="EUR">EUR/VES</option>
+      </select>
+    </label>
+    <label>
       Monto VES
       <input type="number" [value]="form().vesAmount" (input)="patchForm({ vesAmount: +$any($event.target).value })" />
     </label>
@@ -48,7 +55,7 @@
   <table>
     <thead>
       <tr>
-        <th>Hora</th><th>Tipo</th><th>VES</th><th>USDT</th><th>Precio</th><th>Comercio</th><th>Sin errores</th><th></th>
+        <th>Hora</th><th>Tipo</th><th>Par</th><th>VES</th><th>USDT</th><th>Precio</th><th>Comercio</th><th>Sin errores</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -56,6 +63,7 @@
         <tr>
           <td>{{ o.timestamp }}</td>
           <td>{{ o.type === 'buy' ? 'compra' : 'venta' }}</td>
+          <td>{{ o.pair }}</td>
           <td>{{ o.vesAmount | ves }}</td>
           <td>{{ o.usdtAmount | usdt }}</td>
           <td>{{ o.price | num }}</td>

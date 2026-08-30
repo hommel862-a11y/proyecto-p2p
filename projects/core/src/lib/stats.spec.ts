@@ -12,6 +12,7 @@ function op(p: Partial<Operation> & { timestamp: string; type: 'buy' | 'sell' })
     notes: '',
     errorFree: true,
     fees: 0,
+    pair: 'USDT',
     ...p,
   } as Operation;
 }

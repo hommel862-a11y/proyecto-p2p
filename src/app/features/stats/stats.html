@@ -8,6 +8,15 @@
     <button type="button" [class.active]="period() === 'day'" (click)="setPeriod('day')">Día</button>
     <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
     <button type="button" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')">Trimestre</button>
+    <span class="spacer"></span>
+    <label class="inline">
+      Par
+      <select [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
+        <option value="all">Todos</option>
+        <option value="USDT">USDT/VES</option>
+        <option value="EUR">EUR/VES</option>
+      </select>
+    </label>
   </div>
 
   <div class="grid">

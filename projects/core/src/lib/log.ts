@@ -11,6 +11,8 @@ export interface Operation {
   timestamp: string;
   /** buy (spend VES to acquire USDT) or sell (receive VES for USDT). */
   type: 'buy' | 'sell';
+  /** trading pair the operation belongs to. */
+  pair: 'USDT' | 'EUR';
   /** VES spent/received on the VES leg. */
   vesAmount: number;
   /** USDT amount moved on the USDT leg. */

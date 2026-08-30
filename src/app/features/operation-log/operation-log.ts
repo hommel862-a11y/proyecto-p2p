@@ -15,6 +15,7 @@ type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
 const EMPTY_DRAFT: OpDraft = {
   type: 'buy',
+  pair: 'USDT',
   vesAmount: 0,
   usdtAmount: 0,
   price: 0,
@@ -89,9 +90,11 @@ export class OperationLog {
     const parsed = JSON.parse(text);
     const ops = Array.isArray(parsed) ? parsed : parsed?.operations;
     if (!Array.isArray(ops)) throw new Error('el archivo no tiene operaciones');
-    return ops.filter(
-      (o: Partial<Operation>) => o && typeof o === 'object' && 'type' in o && 'timestamp' in o,
-    ) as Operation[];
+    return ops
+      .filter(
+        (o: Partial<Operation>) => o && typeof o === 'object' && 'type' in o && 'timestamp' in o,
+      )
+      .map((o: Partial<Operation>) => ({ ...o, pair: o.pair === 'EUR' ? 'EUR' : 'USDT' })) as Operation[];
   }
 
   /** Download the operation ledger as a JSON backup file. */
