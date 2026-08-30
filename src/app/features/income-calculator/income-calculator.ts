@@ -4,7 +4,7 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import { capitalFromDailyIncome, toBs, DEFAULT_DAYS_PER_YEAR } from '@p2p/core';
+import { capitalFromDailyIncome, toBs, clampNonNegative, DEFAULT_DAYS_PER_YEAR } from '@p2p/core';
 import { FORMAT_PIPES } from '../../core/format';
 
 /**
@@ -24,6 +24,11 @@ export class IncomeCalculator {
   readonly daysPerYear = signal<number>(DEFAULT_DAYS_PER_YEAR);
   /** optional VES/USDT rate for the Bs conversion. */
   readonly rate = signal<number>(800);
+
+  /** Template helper: collapse NaN/empty/negative money entries to 0. */
+  clampMoney(v: number): number {
+    return clampNonNegative(v);
+  }
 
   readonly bands = [8, 10, 15] as const;
   readonly targets = [1, 5, 20] as const;

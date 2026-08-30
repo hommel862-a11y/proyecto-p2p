@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
+  clampAtLeast,
+  clampNonNegative,
   evaluate,
   type Decision,
   type RuleContext,
@@ -35,6 +37,24 @@ const DEFAULT_CONFIG: RiskConfig = {
 };
 
 /**
+ * Clamp/sanitize a config so it can never poison the decision engine.
+ * Non-finite and negative numeric values collapse to sensible floors: counts/thresholds
+ * that must be at least 1 (maxConcurrentOps, maxConsecutiveErrors) use `clampAtLeast`,
+ * money-ish values collapse to >= 0.
+ */
+export function sanitizeConfig(cfg: RiskConfig): RiskConfig {
+  return {
+    ...cfg,
+    minSpread: clampNonNegative(cfg.minSpread),
+    maxConcurrentOps: Math.round(clampAtLeast(cfg.maxConcurrentOps, 1)),
+    maxRiskPerTradePct: clampNonNegative(cfg.maxRiskPerTradePct),
+    dailyLossCapPct: clampNonNegative(cfg.dailyLossCapPct),
+    maxConsecutiveErrors: Math.round(clampAtLeast(cfg.maxConsecutiveErrors, 1)),
+    apiStatus: cfg.apiStatus === 'down' ? 'down' : 'ok',
+  };
+}
+
+/**
  * App-wide risk-rules singleton. Holds the persisted {@link RiskConfig}, merges it into
  * every {@link evaluate} call (so the 6 rules use one config), and exposes a sample state
  * for the config view to demonstrate ALLOW/DENY/PAUSE.
@@ -50,8 +70,10 @@ export class RisksService {
   }
 
   save(cfg: RiskConfig): void {
-    this.storage.set(STORAGE_KEY, cfg);
-    this.config.set(cfg);
+    // Sanitize before persisting so NaN/negative/out-of-range config can't corrupt decisions.
+    const clean = sanitizeConfig(cfg);
+    this.storage.set(STORAGE_KEY, clean);
+    this.config.set(clean);
   }
 
   reset(): void {

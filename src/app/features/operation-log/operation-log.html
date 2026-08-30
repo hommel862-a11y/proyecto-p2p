@@ -1,6 +1,10 @@
 <section class="panel">
   <h2>Registro de Operaciones</h2>
 
+  @if (error()) {
+    <p class="alert" role="alert">{{ error() }}</p>
+  }
+
   <form class="grid" (submit)="$event.preventDefault(); add()">
     <label>
       Tipo
@@ -18,19 +22,19 @@
     </label>
     <label>
       Monto VES
-      <input type="number" [value]="form().vesAmount" (input)="patchForm({ vesAmount: +$any($event.target).value })" />
+      <input type="number" min="0" step="0.01" [value]="form().vesAmount" (input)="patchForm({ vesAmount: clampMoney(+$any($event.target).value) })" />
     </label>
     <label>
       Monto USDT
-      <input type="number" [value]="form().usdtAmount" (input)="patchForm({ usdtAmount: +$any($event.target).value })" />
+      <input type="number" min="0" step="0.000001" [value]="form().usdtAmount" (input)="patchForm({ usdtAmount: clampMoney(+$any($event.target).value) })" />
     </label>
     <label>
       Precio (VES/USDT)
-      <input type="number" [value]="form().price" (input)="patchForm({ price: +$any($event.target).value })" />
+      <input type="number" min="0" step="0.01" [value]="form().price" (input)="patchForm({ price: clampMoney(+$any($event.target).value) })" />
     </label>
     <label>
       Comisiones (VES)
-      <input type="number" [value]="form().fees" (input)="patchForm({ fees: +$any($event.target).value })" />
+      <input type="number" min="0" step="0.01" [value]="form().fees" (input)="patchForm({ fees: clampMoney(+$any($event.target).value) })" />
     </label>
     <label>
       Nota del comercio
@@ -95,5 +99,6 @@
     <button type="button" (click)="downloadBackup()">Exportar respaldo</button>
     <button type="button" (click)="fileInput.click()">Importar respaldo</button>
     <input #fileInput type="file" accept="application/json,.json" hidden (change)="importFile($event)" />
+    <button type="button" (click)="downloadCsv()">Exportar CSV</button>
   </div>
 </section>

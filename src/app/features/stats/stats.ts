@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StorageService } from '../../core/storage';
+import { fmtVes, fmtUsd } from '../../core/format';
 import { computeStats, type Operation, type PeriodKind, type PeriodStat } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -45,7 +46,9 @@ export class Stats {
     this.pairFilter.set(p);
   }
 
-  readonly fmtVes = (v: number): string => `${v.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`;
-  readonly fmtUsd = (v: number): string => `${v.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
+  // Shared es-VE money formatters (byte-identical to the `ves`/`usdt` pipes).
+  readonly fmtVes = fmtVes;
+  readonly fmtUsd = fmtUsd;
+  // Whole-number counts render without forced decimals — es-VE formatting kept identical.
   readonly fmtNum = (v: number): string => v.toLocaleString('es-VE', { maximumFractionDigits: 2 });
 }

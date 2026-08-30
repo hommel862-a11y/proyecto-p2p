@@ -1,7 +1,7 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RiskRules } from './risk-rules';
-import { RisksService, type RiskConfig } from '../../core/rules';
+import { RisksService, sanitizeConfig, type RiskConfig } from '../../core/rules';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
 
@@ -88,5 +88,58 @@ describe('RiskRules', () => {
     const f2 = TestBed.createComponent(RiskRules);
     expect(f2.componentInstance.config().minSpread).toBe(25);
     expect(f2.componentInstance.config().maxConcurrentOps).toBe(5);
+  });
+
+  it('save() sanitizes NaN/negative/out-of-range values (no decision-engine poisoning)', () => {
+    const f = create();
+    const c = f.componentInstance;
+    c.draft.set({
+      ...DEFAULT,
+      minSpread: -5,
+      maxConcurrentOps: Number.NaN,
+      maxRiskPerTradePct: Number.POSITIVE_INFINITY,
+      dailyLossCapPct: -1,
+      maxConsecutiveErrors: 0,
+    });
+    c.save();
+    const cfg = TestBed.inject(RisksService).config();
+    expect(cfg.minSpread).toBe(0);
+    expect(cfg.maxConcurrentOps).toBe(1);
+    expect(cfg.maxRiskPerTradePct).toBe(0);
+    expect(cfg.dailyLossCapPct).toBe(0);
+    expect(cfg.maxConsecutiveErrors).toBe(1);
+    // the live verdict stays finite/typed
+    expect(c.verdict()).toBeDefined();
+  });
+});
+
+describe('sanitizeConfig', () => {
+  it('clamps non-finite and negative numeric fields to sensible floors', () => {
+    const clean = sanitizeConfig({
+      minSpread: Number.NaN,
+      maxConcurrentOps: Number.NEGATIVE_INFINITY,
+      maxRiskPerTradePct: -3,
+      dailyLossCapPct: Number.POSITIVE_INFINITY,
+      maxConsecutiveErrors: 0,
+      apiStatus: 'down',
+    });
+    expect(clean.minSpread).toBe(0);
+    expect(clean.maxConcurrentOps).toBe(1);
+    expect(clean.maxRiskPerTradePct).toBe(0);
+    expect(clean.dailyLossCapPct).toBe(0);
+    expect(clean.maxConsecutiveErrors).toBe(1);
+    expect(clean.apiStatus).toBe('down');
+  });
+
+  it('passes valid config through unchanged and normalizes apiStatus', () => {
+    const clean = sanitizeConfig({ ...DEFAULT });
+    expect(clean).toEqual(DEFAULT);
+    expect(sanitizeConfig({ ...DEFAULT, apiStatus: 'bogus' as RiskConfig['apiStatus'] }).apiStatus).toBe('ok');
+  });
+
+  it('rounds counts to integers', () => {
+    const clean = sanitizeConfig({ ...DEFAULT, maxConcurrentOps: 2.7, maxConsecutiveErrors: 3.2 });
+    expect(clean.maxConcurrentOps).toBe(3);
+    expect(clean.maxConsecutiveErrors).toBe(3);
   });
 });

@@ -17,14 +17,14 @@ await page.waitForLoadState('domcontentloaded');
 // Angular RouterLink renders anchors without an `href` attribute, so target
 // the directive attribute directly rather than relying on the link role.
 await page.locator('a[routerlink="/spread"]').click();
-await page.getByLabel('Buy price (VES/USDT)').fill('800');
-await page.getByLabel('Sell price (VES/USDT)').fill('820');
-await page.getByLabel('Amount').fill('25');
+await page.getByLabel('Precio de compra (VES/USDT)').fill('800');
+await page.getByLabel('Precio de venta (VES/USDT)').fill('820');
+await page.getByLabel('Monto').fill('25');
 
-const gain = page.locator('dd', { hasText: 'Bs' });
+const gain = page.locator('dl.out div', { hasText: 'Ganancia de spread' }).locator('dd');
 await gain.waitFor();
 const text = (await gain.textContent())?.trim();
-assert.strictEqual(text, '500 Bs', `Expected gain 500 Bs, got "${text}"`);
+assert.strictEqual(text, '500,00 Bs', `Expected gain 500,00 Bs, got "${text}"`);
 
 console.log('ELECTRON E2E PASS: spread gain =', text);
 await electronApp.close();

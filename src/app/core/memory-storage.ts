@@ -1,7 +1,8 @@
 /**
- * Minimal in-memory `Storage` implementation for tests and shells that lack a real
- * `localStorage`. Implements the subset of the DOM `Storage` interface used by
- * {@link WebStorageAdapter}. Not part of the app runtime (no production code imports it).
+ * Minimal in-memory `Storage` implementation. Used by tests/shells and as the production
+ * fallback backend when a real `localStorage` is unavailable or throws (sandboxed web views,
+ * `file://` contexts, disabled storage). Implements the subset of the DOM `Storage` interface
+ * used by {@link WebStorageAdapter}.
  */
 export class MemoryStorage implements Storage {
   private readonly map = new Map<string, string>();

@@ -1,6 +1,6 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
-import { OperationLog } from './operation-log';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { OperationLog, buildOperationsCsv, CSV_HEADER } from './operation-log';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
 import { type Operation } from '@p2p/core';
@@ -121,6 +121,69 @@ describe('OperationLog', () => {
     expect(f2.componentInstance.operations().length).toBe(1);
   });
 
+  it('add() never stores NaN/negative money into the ledger', () => {
+    const f = create();
+    const c = f.componentInstance;
+    c.form.set({
+      type: 'buy',
+      pair: 'USDT',
+      vesAmount: Number.NaN,
+      usdtAmount: -25,
+      price: Number.POSITIVE_INFINITY,
+      fees: Number.NEGATIVE_INFINITY,
+      merchantNote: '',
+      notes: '',
+      errorFree: false,
+    });
+    c.add();
+    const saved = c.operations()[0];
+    expect(saved.vesAmount).toBe(0);
+    expect(saved.usdtAmount).toBe(0);
+    expect(saved.price).toBe(0);
+    expect(saved.fees).toBe(0);
+    // no NaN/Infinity leaks into the summary/PnL
+    expect(Number.isFinite(c.summary().pnlVes)).toBe(true);
+    expect(Number.isFinite(c.summary().pnlUsdt)).toBe(true);
+  });
+
+  it('clampMoney template helper collapses invalid money to 0', () => {
+    const f = create();
+    const c = f.componentInstance;
+    expect(c.clampMoney(Number.NaN)).toBe(0);
+    expect(c.clampMoney(-5)).toBe(0);
+    expect(c.clampMoney(1200)).toBe(1200);
+  });
+
+  it('add() on a throwing storage still updates operations and sets the error signal (does not throw)', () => {
+    const throwing: Storage = new MemoryStorage() as Storage;
+    vi.spyOn(throwing, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    TestBed.overrideProvider(P2P_STORAGE, { useValue: throwing });
+    const f = create();
+    const c = f.componentInstance;
+    c.form.set({
+      type: 'buy',
+      pair: 'USDT',
+      vesAmount: 1000,
+      usdtAmount: 1,
+      price: 1000,
+      merchantNote: '',
+      fees: 0,
+      notes: '',
+      errorFree: false,
+    });
+    expect(() => c.add()).not.toThrow();
+    expect(c.operations().length).toBe(1);
+    expect(c.operations()[0].vesAmount).toBe(1000);
+    expect(c.error()).toContain('No se pudo guardar en el dispositivo');
+    // a success path clears the error again
+    c.error.set(null);
+    vi.mocked(throwing.setItem).mockRestore();
+    c.add();
+    expect(c.error()).toBeNull();
+  });
+
   describe('pair filter', () => {
     it('setPairFilter narrows visibleOps to the selected pair', () => {
       const f = create();
@@ -167,5 +230,86 @@ describe('OperationLog', () => {
       expect(f.nativeElement.querySelectorAll('select')).toHaveLength(3);
       expect(f.nativeElement.textContent).toContain('Aún no hay operaciones registradas.');
     });
+  });
+});
+
+describe('buildOperationsCsv (CSV ledger export)', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [OperationLog],
+      providers: [{ provide: P2P_STORAGE, useValue: new MemoryStorage() }],
+    });
+  });
+
+  it('starts with a UTF-8 BOM and emits the es-VE header row', () => {
+    const csv = buildOperationsCsv([]);
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    expect(csv).toContain(CSV_HEADER);
+    expect(csv.split('\r\n')[0].replace('\uFEFF', '')).toBe(
+      'Fecha/Hora;Tipo;Par;Monto VES;Monto USDT;Precio;Comisiones;Sin errores;Comercio;Notas',
+    );
+  });
+
+  it('serializes a full row with ; delimiters and CRLF endings', () => {
+    const csv = buildOperationsCsv([
+      {
+        id: 'x',
+        timestamp: '2026-08-29T10:00:00.000Z',
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 20000,
+        usdtAmount: 25,
+        price: 800,
+        merchantNote: 'mercado X',
+        fees: 5,
+        notes: '',
+        errorFree: true,
+      },
+    ]);
+    const body = csv.replace('\uFEFF', '');
+    const lines = body.split('\r\n');
+    expect(lines).toHaveLength(3); // header + 1 row + trailing empty after final CRLF
+    expect(lines[1]).toBe(
+      '2026-08-29T10:00:00.000Z;compra;USDT;20000;25;800;5;sí;mercado X;',
+    );
+  });
+
+  it('quotes fields containing ; or " and doubles embedded quotes', () => {
+    const csv = buildOperationsCsv([
+      {
+        id: 'x',
+        timestamp: '2026-08-29T10:00:00.000Z',
+        type: 'sell',
+        pair: 'EUR',
+        vesAmount: 0,
+        usdtAmount: 10,
+        price: 1000,
+        merchantNote: 'Hola; "amigo"',
+        fees: 0,
+        notes: 'l\u00ednea 1\nl\u00ednea 2',
+        errorFree: false,
+      },
+    ]);
+    const body = csv.replace('\uFEFF', '');
+    const dataLine = body.split('\r\n')[1];
+    expect(dataLine).toContain('"Hola; ""amigo"""');
+    expect(dataLine).toContain('"l\u00ednea 1\nl\u00ednea 2"');
+    expect(dataLine).toContain('venta;EUR');
+    expect(dataLine).toContain(';no;');
+  });
+
+  it('export reflects the current pair filter (visibleOps)', () => {
+    const f = TestBed.createComponent(OperationLog);
+    const c = f.componentInstance;
+    c.operations.set([
+      op({ id: 'u1', pair: 'USDT', timestamp: 't' }),
+      op({ id: 'e1', pair: 'EUR', timestamp: 't' }),
+      op({ id: 'u2', pair: 'USDT', timestamp: 't' }),
+    ]);
+    c.setPairFilter('EUR');
+    const csv = buildOperationsCsv(c.visibleOps());
+    // EUR rows only — count occurrences of ';EUR;' plus check no USDT rows
+    expect((csv.match(/;EUR;/g) ?? []).length).toBe(1);
+    expect(csv).not.toContain(';USDT;');
   });
 });

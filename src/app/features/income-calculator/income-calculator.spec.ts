@@ -60,4 +60,12 @@ describe('IncomeCalculator', () => {
     expect(c.result()).toBeNull();
     expect(c.capital()).toBe(0);
   });
+
+  it('clampMoney template helper collapses NaN/negative entries to 0', () => {
+    const f = create();
+    const c = f.componentInstance;
+    expect(c.clampMoney(Number.NaN)).toBe(0);
+    expect(c.clampMoney(-10)).toBe(0);
+    expect(c.clampMoney(20)).toBe(20);
+  });
 });

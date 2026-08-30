@@ -102,4 +102,12 @@ describe('SpreadMonitor', () => {
     expect(c.error()).not.toBeNull();
     expect(f.nativeElement.textContent).toContain('número positivo');
   });
+
+  it('clampMoney template helper collapses NaN/negative entries to 0', () => {
+    const f = create();
+    const c = f.componentInstance;
+    expect(c.clampMoney(Number.NaN)).toBe(0);
+    expect(c.clampMoney(-1)).toBe(0);
+    expect(c.clampMoney(820)).toBe(820);
+  });
 });

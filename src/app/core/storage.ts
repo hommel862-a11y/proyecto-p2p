@@ -1,12 +1,24 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { WebStorageAdapter, type StoragePort } from '@p2p/core';
+import { MemoryStorage } from './memory-storage';
 
 /**
  * Injectable browser `Storage` backend. Defaults to `localStorage`; shells or tests may
  * override this token (e.g. with an in-memory `Storage`) without touching persistence logic.
+ *
+ * The factory is defensive: if accessing `globalThis.localStorage` throws (sandboxed web view,
+ * `file://` context, disabled storage, jsdom quirks) it degrades to an in-memory
+ * {@link MemoryStorage} so the app never crashes on injection. Real `localStorage` is used
+ * whenever it is available.
  */
 export const P2P_STORAGE = new InjectionToken<Storage>('P2P_STORAGE', {
-  factory: () => localStorage,
+  factory: () => {
+    try {
+      return globalThis.localStorage;
+    } catch {
+      return new MemoryStorage();
+    }
+  },
 });
 
 /**

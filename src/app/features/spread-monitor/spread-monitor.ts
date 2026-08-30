@@ -6,7 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { computeSpread, type AmountUnit, type SpreadResult } from '@p2p/core';
+import { computeSpread, clampNonNegative, type AmountUnit, type SpreadResult } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { FORMAT_PIPES } from '../../core/format';
 import { Capacitor } from '@capacitor/core';
@@ -40,6 +40,11 @@ export class SpreadMonitor {
   readonly commissionPct = signal<number>(0);
   /** favorable-spread threshold (VES per base unit). */
   readonly threshold = signal<number>(15);
+
+  /** Template helper: collapse NaN/empty/negative money entries to 0. */
+  clampMoney(v: number): number {
+    return clampNonNegative(v);
+  }
 
   readonly result = computed<SpreadResult | null>(() => {
     try {

@@ -8,11 +8,15 @@ test('spread-monitor shows +500 Bs for buy 800 / sell 820 / 25 USDT', async ({ p
   // the directive attribute directly rather than relying on the link role.
   await page.locator('a[routerlink="/spread"]').click();
 
-  await page.getByLabel('Buy price (VES/USDT)').fill('800');
-  await page.getByLabel('Sell price (VES/USDT)').fill('820');
-  await page.getByLabel('Amount').fill('25');
+  // Labels match the Spanish (es-VE) UI. The gain value goes through the
+  // `| ves` pipe (Intl.NumberFormat('es-VE')) → decimal comma: "500,00 Bs".
+  await page.getByLabel('Precio de compra (VES/USDT)').fill('800');
+  await page.getByLabel('Precio de venta (VES/USDT)').fill('820');
+  await page.getByLabel('Monto').fill('25');
   // Defaults: unit = USDT, commission = 0 → gain = (sell - buy) * amount = 20 * 25 = 500 Bs.
 
-  const gain = page.locator('dd', { hasText: 'Bs' });
-  await expect(gain).toHaveText('500 Bs');
+  const gain = page
+    .locator('dl.out div', { hasText: 'Ganancia de spread' })
+    .locator('dd');
+  await expect(gain).toHaveText('500,00 Bs');
 });

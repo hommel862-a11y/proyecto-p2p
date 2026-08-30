@@ -5,19 +5,19 @@
   <div class="grid">
     <label>
       Meta diaria (USD)
-      <input type="number" [value]="targetUsd()" (input)="targetUsd.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="targetUsd()" (input)="targetUsd.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Tasa anual (APR) (%)
-      <input type="number" [value]="aprPct()" (input)="aprPct.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="aprPct()" (input)="aprPct.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Días / año
-      <input type="number" [value]="daysPerYear()" (input)="daysPerYear.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="1" [value]="daysPerYear()" (input)="daysPerYear.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Tasa VES/USDT (opcional)
-      <input type="number" [value]="rate()" (input)="rate.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="rate()" (input)="rate.set(clampMoney(+$any($event.target).value))" />
     </label>
   </div>
 

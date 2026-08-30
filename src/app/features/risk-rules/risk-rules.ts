@@ -6,6 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { RisksService, type RiskConfig } from '../../core/rules';
+import { clampNonNegative, clampAtLeast } from '@p2p/core';
 
 /**
  * C4 — Risk-rules config view. Edits the 6 safety-barrier rules; the live engine verdict
@@ -41,6 +42,14 @@ export class RiskRules {
 
   patch(p: Partial<RiskConfig>): void {
     this.draft.set({ ...this.draft(), ...p });
+  }
+
+  /** Template helpers: sanitize number-input entries before they reach the draft. */
+  clampMoney(v: number): number {
+    return clampNonNegative(v);
+  }
+  clampCount(v: number): number {
+    return Math.round(clampAtLeast(v, 1));
   }
 
   private readonly REASON_LABELS: Record<string, string> = {

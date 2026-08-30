@@ -11,15 +11,15 @@
     </label>
     <label>
       Precio de compra (VES/{{ pair() }})
-      <input type="number" [value]="buyPrice()" (input)="buyPrice.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Precio de venta (VES/{{ pair() }})
-      <input type="number" [value]="sellPrice()" (input)="sellPrice.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="sellPrice()" (input)="sellPrice.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Monto
-      <input type="number" [value]="amount()" (input)="amount.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Unidad
@@ -30,11 +30,11 @@
     </label>
     <label>
       Comisión del vendedor (%)
-      <input type="number" [value]="commissionPct()" (input)="commissionPct.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="commissionPct()" (input)="commissionPct.set(clampMoney(+$any($event.target).value))" />
     </label>
     <label>
       Umbral favorable (VES/{{ pair() }})
-      <input type="number" [value]="threshold()" (input)="threshold.set(+$any($event.target).value)" />
+      <input type="number" min="0" step="0.01" [value]="threshold()" (input)="threshold.set(clampMoney(+$any($event.target).value))" />
     </label>
   </div>
 

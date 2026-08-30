@@ -19,6 +19,10 @@ jobs:
         run: npx ng test p2p --no-watch
       - name: Unit tests (core)
         run: npx ng test core --no-watch
+      - name: Unit tests (electron / secure IPC)
+        run: npm run test:electron
+      - name: Build web bundle (needed by the Playwright static server)
+        run: npm run build
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: E2E (web)
