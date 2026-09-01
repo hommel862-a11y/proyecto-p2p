@@ -1,5 +1,7 @@
 # P2P Decisor — Herramienta de Decisión para Arbitraje P2P en Venezuela
 
+[![CI](https://github.com/hommel862-a11y/proyecto-p2p/actions/workflows/ci.yml/badge.svg)](https://github.com/hommel862-a11y/proyecto-p2p/actions/workflows/ci.yml)
+
 Herramienta de apoyo a la decisión para operaciones de arbitraje P2P en Binance, diseñada para el contexto venezolano. Opera **100% en modo manual**, sin conexión a APIs de exchange — el usuario ingresa las cotizaciones y la herramienta calcula spread, ingresos, riesgo y estadísticas.
 
 ## Características
