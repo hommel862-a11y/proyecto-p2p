@@ -54,3 +54,7 @@ Thumbs.db
 
 # Native shell local tooling caches
 /electron/node_modules/
+
+# Build artifacts & logs (not source)
+cap-sync.log
+*.apk
