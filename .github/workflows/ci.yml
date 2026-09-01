@@ -60,8 +60,8 @@ jobs:
       - name: Add Android platform (not committed — regenerated)
         run: npx cap add android
       - run: npx cap sync android
-      - name: Build debug APK
-        run: npx cap build android
+      - name: Build debug APK (unsigned debug — no keystore in CI)
+        run: cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
