@@ -48,7 +48,10 @@ jobs:
           curl -L https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdtools.zip
           unzip -q cmdtools.zip -d $SDK_ROOT/cmdline-tools
           mv $SDK_ROOT/cmdline-tools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
+          # Both vars must point to the same SDK or Gradle fails (ANDROID_SDK_ROOT is
+          # pre-set by the GitHub runner to a different SDK install).
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root=$SDK_ROOT "platform-tools" "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
