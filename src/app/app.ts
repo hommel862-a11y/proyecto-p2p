@@ -11,7 +11,7 @@ export class App {
   protected readonly title = signal('p2p');
   readonly theme = signal<'dark' | 'light'>(this.initialTheme());
   /** Real app version when running under Electron; falls back to the web build. */
-  readonly version = signal<string>('0.0.0');
+  readonly version = signal<string>('1.0.0');
 
   constructor() {
     try {
@@ -34,7 +34,7 @@ export class App {
       return;
     }
     try {
-      const webVersion = localStorage.getItem('p2p.version') ?? '0.0.0';
+      const webVersion = localStorage.getItem('p2p.version') ?? '1.0.0';
       this.version.set(webVersion);
     } catch {
       /* sin almacenamiento */

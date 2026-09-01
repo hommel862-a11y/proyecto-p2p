@@ -90,12 +90,12 @@ describe('App', () => {
       expect(fixture.nativeElement.textContent).toContain('v1.2.3');
     });
 
-    it('falls back to 0.0.0 when no bridge or storage override exists', () => {
+    it('falls back to 1.0.0 when no bridge or storage override exists', () => {
       delete (globalThis as Record<string, unknown>)['electron'];
       (globalThis as Record<string, unknown>)['localStorage'] = undefined;
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
-      expect(fixture.componentInstance.version()).toBe('0.0.0');
+      expect(fixture.componentInstance.version()).toBe('1.0.0');
     });
   });
 });

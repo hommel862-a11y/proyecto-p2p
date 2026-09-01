@@ -1,6 +1,6 @@
 {
   "name": "p2p",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "P2P Decision-Support Tool (Binance P2P — Venezuela). Angular web app wrapped by Capacitor (Android) and Electron (desktop).",
   "author": "P2P Decision Tool contributors",
   "main": "electron/dist/main/index.js",
