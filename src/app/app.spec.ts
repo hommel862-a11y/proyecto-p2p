@@ -69,4 +69,33 @@ describe('App', () => {
       expect(compiled.textContent).toContain('Modo claro');
     });
   });
+
+  describe('version resolution', () => {
+    it('uses the p2p.version localStorage override when available', () => {
+      const store = new Map<string, string>([['p2p.version', '1.2.3']]);
+      (globalThis as Record<string, unknown>)['localStorage'] = {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => store.clear(),
+        key: (i: number) => [...store.keys()][i] ?? null,
+        get length() {
+          return store.size;
+        },
+      } as Storage;
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      // read is sync for the localStorage path
+      expect(fixture.componentInstance.version()).toBe('1.2.3');
+      expect(fixture.nativeElement.textContent).toContain('v1.2.3');
+    });
+
+    it('falls back to 0.0.0 when no bridge or storage override exists', () => {
+      delete (globalThis as Record<string, unknown>)['electron'];
+      (globalThis as Record<string, unknown>)['localStorage'] = undefined;
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.version()).toBe('0.0.0');
+    });
+  });
 });

@@ -32,6 +32,23 @@ function startStaticServer(): Promise<number> {
       res.end();
       return;
     }
+    /**
+     * Strict Content-Security-Policy for the Electron shell. The app keeps all
+     * scripts/styles in same-origin bundles and never touches remote origins.
+     */
+    const CSP = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join('; ');
+
     fs.readFile(filePath, (err, data) => {
       if (err) {
         fs.readFile(path.join(root, 'index.html'), (e2, html) => {
@@ -39,14 +56,20 @@ function startStaticServer(): Promise<number> {
             res.writeHead(404);
             res.end('Not found');
           } else {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.writeHead(200, {
+              'Content-Type': 'text/html',
+              'Content-Security-Policy': CSP,
+            });
             res.end(html);
           }
         });
         return;
       }
       const ext = path.extname(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] ?? 'application/octet-stream',
+        'Content-Security-Policy': CSP,
+      });
       res.end(data);
     });
   });

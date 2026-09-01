@@ -1,59 +1,147 @@
-# P2p
+# P2P Decisor — Herramienta de Decisión para Arbitraje P2P en Venezuela
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.1.6.
+Herramienta de apoyo a la decisión para operaciones de arbitraje P2P en Binance, diseñada para el contexto venezolano. Opera **100% en modo manual**, sin conexión a APIs de exchange — el usuario ingresa las cotizaciones y la herramienta calcula spread, ingresos, riesgo y estadísticas.
 
-## Development server
+## Características
 
-To start a local development server, run:
+| Módulo | Función |
+|--------|---------|
+| **Monitor de Spread** | Analiza spread de compra→venta USDT/VES, calcula ganancia neta después de comisión, alerta nativa cuando el spread es favorable |
+| **Calculadora de Ingresos** | Convierte un objetivo de ingreso diario en USD a capital requerido, con tabla de disciplina por APR |
+| **Registro de Operaciones** | Ledger CRUD de operaciones buy/sell con PnL, exposición, racha de errores, exportación CSV y respaldo JSON |
+| **Reglas de Riesgo** | 6 barreras de seguridad configurables (spread mínimo, operaciones máximas, límites de pérdida, etc.) con veredicto en vivo |
+| **Estadísticas** | Agregación por día/mes/trimestre (UTC), filtrable por par, con métricas de volumen y fees |
+| **Guía de Uso** | Documentación de cada módulo + consejos de disciplina y rentabilidad |
 
-```bash
-ng serve
+## Arquitectura
+
+```
+┌─────────────────────────────────────────────┐
+│              Deployment Targets             │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
+│  │  Angular  │  │ Capacitor │  │  Electron │ │
+│  │  Web App  │  │ (Android) │  │ (Desktop) │ │
+│  └─────┬────┘  └─────┬────┘  └─────┬─────┘ │
+│        │             │              │        │
+│        └─────────────┼──────────────┘        │
+│                      │                       │
+│              ┌───────┴───────┐               │
+│              │  @p2p/core    │               │
+│              │  (pure logic) │               │
+│              └───────────────┘               │
+└─────────────────────────────────────────────┘
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+### `@p2p/core` — Lógica de Negocio Framework-Agnóstica
 
-## Code scaffolding
+Librería pura, determinista, sin dependencias de Angular/Node/red:
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+- `spread.ts` — Cálculo de spread round-trip USDT/VES con comisión
+- `income.ts` — Conversión de objetivo de ingreso a capital requerido
+- `rules.ts` — Motor de 6 reglas de seguridad (ALLOW/DENY/PAUSE)
+- `storage.ts` — Puerto de persistencia + adaptador WebStorage
+- `log.ts` — Resumen del ledger de operaciones (PnL, exposición, racha)
+- `stats.ts` — Agregación por períodos con filtrado por par
+- `money.ts` — Guardas contra NaN/Infinity/negativos
 
-```bash
-ng generate component component-name
-```
+### Stack
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+- **Angular 22** — Zoneless, signals, standalone components, lazy loading
+- **TypeScript 6** — OnPush change detection, computed signals
+- **Vitest** — Unit tests (99 tests pasando)
+- **Playwright** — E2E (web + Electron)
+- **Capacitor 8** — Android (notificaciones nativas)
+- **Electron 44** — Desktop (contextIsolation, sandbox, IPC estrecho)
+- **SCSS** — Variables CSS con temas dark/light
 
-```bash
-ng generate --help
-```
+## Inicio Rápido
 
-## Building
+### Requisitos
 
-To build the project run:
+- Node.js 22+
+- npm 11+
+- JDK 21 + Android SDK (solo para build Android)
 
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
+### Desarrollo
 
 ```bash
-ng e2e
+# Instalar dependencias
+npm install
+
+# Servidor de desarrollo
+npm start
+# → http://localhost:4200
+
+# Tests unitarios
+npm test                    # Angular app
+npm run test:electron       # Electron shell
+
+# E2E
+npm run e2e                 # Web (Playwright)
+npm run e2e:electron        # Electron (requiere build previo)
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+### Build
 
-## Additional Resources
+```bash
+# Web bundle
+npm run build
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+# Android (requiere SDK)
+npx cap sync android
+npx cap build android
+
+# Electron desktop
+npm run electron:build
+```
+
+### Tests
+
+```bash
+# Todos los tests (app + core + electron)
+npx ng test p2p --no-watch
+npx ng test core --no-watch
+npm run test:electron
+```
+
+## Seguridad
+
+- **Electron:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
+- **IPC:** Solo un canal (`app:get-version`), API fail-closed validada por tests
+- **Persistencia:** localStorage con degradación a MemoryStorage en entornos restringidos
+- **Sin secrets:** No hay claves de API — la herramienta opera en modo manual
+
+## Respaldo de Datos
+
+El registro de operaciones se almacena en `localStorage`. Para evitar pérdida:
+
+1. **Exportar:** Botón "Exportar respaldo" en Registro de Operaciones → descarga JSON
+2. **Importar:** Botón "Importar respaldo" → carga y valida el archivo JSON
+3. **CSV:** Botón "Exportar CSV" → descarga para análisis en Excel/hojas de cálculo
+
+> ⚠️ **Importante:** Al desinstalar la app o limpiar datos del navegador, se pierde el registro. Haz respaldos periódicos.
+
+## Estructura del Proyecto
+
+```
+├── src/app/                    # Angular application
+│   ├── core/                   # Infrastructure (storage, format pipes, rules service)
+│   └── features/               # Feature components (6 módulos)
+├── projects/core/              # @p2p/core — lógica pura framework-agnostic
+├── electron/                   # Electron shell (main, preload, IPC)
+├── e2e/                        # Playwright E2E tests
+├── anty/                       # Prototipos Python (exploración histórica, no integrados)
+└── .github/workflows/ci.yml   # GitHub Actions CI
+```
+
+## CI/CD
+
+GitHub Actions ejecuta automáticamente:
+1. Tests unitarios (app + core + electron)
+2. Build del bundle web
+3. E2E con Playwright
+4. Build del APK Android (debug)
+
+## Licencia
+
+Uso personal — desarrollado como herramienta de apoyo a la decisión, NO como asesor financiero. Las operaciones de arbitraje conllevan riesgo de pérdida.
