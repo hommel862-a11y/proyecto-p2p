@@ -54,6 +54,8 @@ jobs:
       - run: npm ci
       - name: Build web bundle (needed by Capacitor)
         run: npm run build
+      - name: Add Android platform (not committed — regenerated)
+        run: npx cap add android
       - run: npx cap sync android
       - name: Build debug APK
         run: npx cap build android
