@@ -8,6 +8,7 @@ import {
   type RuleVerdict,
 } from '@p2p/core';
 import { StorageService } from './storage';
+import { AuditLoggerService } from './audit-logger.service';
 
 /** The six configurable safety-barrier rules (single source of truth). */
 export interface RiskConfig {
@@ -62,6 +63,7 @@ export function sanitizeConfig(cfg: RiskConfig): RiskConfig {
 @Injectable({ providedIn: 'root' })
 export class RisksService {
   private readonly storage = inject(StorageService);
+  private readonly audit = inject(AuditLoggerService);
 
   readonly config = signal<RiskConfig>(this.load());
 
@@ -74,10 +76,23 @@ export class RisksService {
     const clean = sanitizeConfig(cfg);
     this.storage.set(STORAGE_KEY, clean);
     this.config.set(clean);
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Reglas de riesgo actualizadas',
+      {
+        minSpread: clean.minSpread,
+        maxConcurrentOps: clean.maxConcurrentOps,
+        maxRiskPerTradePct: clean.maxRiskPerTradePct,
+        dailyLossCapPct: clean.dailyLossCapPct,
+        maxConsecutiveErrors: clean.maxConsecutiveErrors,
+      },
+      'info',
+    );
   }
 
   reset(): void {
     this.save({ ...DEFAULT_CONFIG });
+    this.audit.log('CONFIG_CHANGE', 'Reglas de riesgo restablecidas a valores por defecto', undefined, 'warn');
   }
 
   /** Evaluate the current operating state against the 6 rules using the live config. */

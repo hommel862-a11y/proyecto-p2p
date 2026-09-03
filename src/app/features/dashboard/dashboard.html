@@ -1,0 +1,272 @@
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Centro de Control</h2>
+      <p class="panel-subtitle">Resumen operativo en tiempo real · Mercado Venezuela</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       Trading Session Banner — Active workshift monitor
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group session-banner" style="border-left: 4px solid var(--gold); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
+    @if (activeSessionSummary(); as sess) {
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <span class="status-dot" style="width: 12px; height: 12px;"></span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <strong style="font-size: 1.1rem; color: var(--text);">Jornada Operativa Activa</strong>
+            <span class="badge badge-accent">En curso</span>
+          </div>
+          <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
+            Duración: <strong>{{ formatDuration(sess.durationMs) }}</strong> · Ops: <strong>{{ sess.operationsCount }}</strong> · PnL Sesión: <strong [class.positive]="sess.pnlVes >= 0" [class.negative]="sess.pnlVes < 0">{{ fmtVes(sess.pnlVes) }}</strong> · Rotación: <strong>{{ sess.turnoverRatePerHour }} ops/h</strong>
+          </p>
+        </div>
+      </div>
+      <div>
+        <button type="button" class="btn btn-secondary" (click)="openCloseModal()">
+          Cerrar Jornada
+        </button>
+      </div>
+    } @else {
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: var(--muted);"></div>
+        <div>
+          <strong style="font-size: 1.05rem; color: var(--text);">Sin Jornada Activa</strong>
+          <p class="text-muted" style="margin: 2px 0 0; font-size: 0.82rem;">Inicia una sesión de trading para medir tu velocidad de rotación y registrar tu jornada de trabajo.</p>
+        </div>
+      </div>
+      <div>
+        <button type="button" class="btn btn-primary" (click)="startSession()">
+          Iniciar Jornada
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       KPI Cards — Today's performance at a glance
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group">
+    <span class="section-eyebrow">Rendimiento de Hoy</span>
+    <div class="out">
+      <div>
+        <dt>Ganancia Neta (VES)</dt>
+        <dd [class.positive]="dashboard().today.pnlVes > 0"
+            [class.negative]="dashboard().today.pnlVes < 0">
+          {{ fmtVes(dashboard().today.pnlVes) }}
+        </dd>
+      </div>
+      <div>
+        <dt>Ganancia Neta (USDT)</dt>
+        <dd [class.positive]="dashboard().today.pnlUsdt > 0"
+            [class.negative]="dashboard().today.pnlUsdt < 0">
+          {{ fmtUsd(dashboard().today.pnlUsdt) }}
+        </dd>
+      </div>
+      <div>
+        <dt>Operaciones Hoy</dt>
+        <dd>{{ dashboard().today.operations }}</dd>
+      </div>
+      <div>
+        <dt>Meta Diaria</dt>
+        <dd>
+          <span class="dashboard-progress-label">{{ dailyProgress() }}%</span>
+        </dd>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="dashboard-progress-bar">
+      <div class="dashboard-progress-fill"
+           [style.width.%]="dailyProgress()"
+           [class.progress-complete]="dailyProgress() >= 100"
+           [class.progress-mid]="dailyProgress() >= 50 && dailyProgress() < 100"
+           [class.progress-low]="dailyProgress() < 50">
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       Treasury & Banking Limits — Multi-account liquidity
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Tesorería & Cupos Bancarios (Hoy)</span>
+      <span class="font-mono text-muted" style="font-size: 0.82rem;">
+        Liquidez Total Estimada: <strong style="color: var(--gold-strong);">{{ fmtVes(accountsService.treasurySummary().totalBalanceVes) }}</strong>
+      </span>
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+      @for (u of accountsService.usages(); track u.account.id) {
+        <div class="stat-tile out" [class.negative]="u.isOverLimit" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="font-size: 0.95rem; color: var(--text);">{{ u.account.bankName }}</strong>
+              <span class="badge" [class.badge-accent]="!u.isNearLimit && !u.isOverLimit" [class.badge-sell]="u.isOverLimit" [class.badge-buy]="u.isNearLimit" style="font-size: 0.72rem;">
+                {{ u.isOverLimit ? 'Límite alcanzado' : (u.isNearLimit ? 'Cupo crítico' : 'Disponible') }}
+              </span>
+            </div>
+            <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 10px;">
+              Saldo: <strong>{{ fmtVes(u.currentBalanceVes) }}</strong> · Consumo: {{ fmtVes(u.spentTodayVes) }}
+            </p>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span class="text-muted">Cupo restante: {{ fmtVes(u.remainingLimitVes) }}</span>
+              <span class="font-mono" [class.positive]="u.consumedLimitPct < 80" [class.negative]="u.consumedLimitPct >= 80">{{ u.consumedLimitPct }}%</span>
+            </div>
+            <div class="dashboard-progress-bar" style="margin: 0; height: 6px;">
+              <div class="dashboard-progress-fill"
+                   [class.progress-low]="u.consumedLimitPct < 50"
+                   [class.progress-mid]="u.consumedLimitPct >= 50 && u.consumedLimitPct < 80"
+                   [class.progress-complete]="u.consumedLimitPct >= 80"
+                   [style.width.%]="Math.min(100, u.consumedLimitPct)">
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       Weekly Activity — 7-day mini chart
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group">
+    <span class="section-eyebrow">Actividad Últimos 7 Días</span>
+    <div class="dashboard-chart">
+      @for (day of dashboard().week; track day.date) {
+        <div class="dashboard-chart-col">
+          <div class="dashboard-chart-bar-wrap">
+            <div class="dashboard-chart-bar"
+                 [class.bar-positive]="day.pnlVes >= 0"
+                 [class.bar-negative]="day.pnlVes < 0"
+                 [style.height.%]="barHeight(day)">
+            </div>
+          </div>
+          <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
+          <span class="dashboard-chart-ops">{{ day.operations }} ops</span>
+        </div>
+      }
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <!-- ═══════════════════════════════════════════════════
+         Risk Engine Status — Traffic light
+         ═══════════════════════════════════════════════════ -->
+    <div class="section-group">
+      <span class="section-eyebrow">Motor de Riesgo</span>
+      <div class="dashboard-verdict verdict {{ decisionClass(verdict().decision) }}">
+        <span class="dashboard-verdict-dot"></span>
+        <div>
+          <strong>{{ decisionLabel(verdict().decision) }}</strong>
+          <p class="dashboard-verdict-reason">{{ verdict().reason }}</p>
+        </div>
+      </div>
+      <a routerLink="/risk" class="dashboard-link">Configurar reglas →</a>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         Lifetime Stats — Quick summary
+         ═══════════════════════════════════════════════════ -->
+    <div class="section-group">
+      <span class="section-eyebrow">Resumen General</span>
+      <div class="dashboard-stats-mini">
+        <div>
+          <span class="stat-label">Total Operaciones</span>
+          <span class="stat-value">{{ dashboard().totalOps }}</span>
+        </div>
+        <div>
+          <span class="stat-label">Racha Cero Errores</span>
+          <span class="stat-value">
+            <span class="badge badge-accent">{{ dashboard().today.zeroErrorStreak }} ops</span>
+          </span>
+        </div>
+        <div>
+          <span class="stat-label">Exposición Neta</span>
+          <span class="stat-value">{{ fmtUsd(dashboard().today.exposure) }}</span>
+        </div>
+      </div>
+      <a routerLink="/stats" class="dashboard-link">Ver estadísticas →</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       Recent Operations — Last 3
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group">
+    <span class="section-eyebrow">Últimas Operaciones</span>
+    @if (dashboard().recentOps.length === 0) {
+      <p class="text-muted" style="margin: 12px 0;">No hay operaciones registradas aún. <a routerLink="/log">Registrar primera operación →</a></p>
+    } @else {
+      <div class="table-container">
+        <table class="corporate-table" aria-label="Últimas 3 operaciones">
+          <thead>
+            <tr>
+              <th scope="col">Fecha</th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Par</th>
+              <th scope="col" class="text-right">VES</th>
+              <th scope="col" class="text-right">Cripto</th>
+              <th scope="col">Contraparte</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of dashboard().recentOps; track o.id) {
+              <tr>
+                <td class="font-mono text-muted">{{ o.timestamp | slice:0:16 }}</td>
+                <td>
+                  <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
+                    {{ o.type === 'buy' ? 'Compra' : 'Venta' }}
+                  </span>
+                </td>
+                <td><strong>{{ o.pair }}</strong></td>
+                <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
+                <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
+                <td>{{ o.merchantNote || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <a routerLink="/log" class="dashboard-link">Ver registro completo →</a>
+    }
+  </div>
+
+  <!-- Modal de Cierre de Sesión -->
+  @if (showCloseModal()) {
+    <div class="modal-backdrop" (click)="cancelCloseModal()">
+      <div class="modal-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <h3>Cerrar Jornada Operativa</h3>
+        <p>Evalúa el cumplimiento de tu disciplina y agrega observaciones de mercado antes de archivar la sesión.</p>
+
+        <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
+          <label>
+            <span>Calificación de Disciplina</span>
+            <select [value]="closeDisciplineRating()" (change)="closeDisciplineRating.set(+$any($event.target).value)">
+              <option value="5">⭐⭐⭐⭐⭐ 5 - Impecable (Respeté todas las reglas)</option>
+              <option value="4">⭐⭐⭐⭐ 4 - Muy buena (Leve desviación sin riesgo)</option>
+              <option value="3">⭐⭐⭐ 3 - Regular (Operé con algo de prisa)</option>
+              <option value="2">⭐⭐ 2 - Riesgosa (Sobrepasé límites de exposición)</option>
+              <option value="1">⭐ 1 - Indisciplinada (Violé reglas de stop / gestión)</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Notas de Cierre / Observaciones</span>
+            <input type="text" placeholder="Ej: Mucha liquidez en Banesco, spread amplio al mediodía" [value]="closeNotes()" (input)="closeNotes.set($any($event.target).value)" />
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" (click)="cancelCloseModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" (click)="confirmCloseSession()">Cerrar y Archivar</button>
+        </div>
+      </div>
+    </div>
+  }
+</section>
