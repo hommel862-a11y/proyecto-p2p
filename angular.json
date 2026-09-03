@@ -29,7 +29,8 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.scss"]
+            "styles": ["src/styles.scss"],
+            "serviceWorker": "ngsw-config.json"
           },
           "configurations": {
             "production": {
@@ -69,6 +70,13 @@
         },
         "test": {
           "builder": "@angular/build:unit-test"
+        },
+        "service-worker": {
+          "builder": "@angular-devkit/build-angular:service-worker",
+          "options": {
+            "ngswConfigPath": "ngsw-config.json",
+            "outputPath": "dist/p2p/browser"
+          }
         },
         "lint": {
           "builder": "@angular-eslint/builder:lint",
