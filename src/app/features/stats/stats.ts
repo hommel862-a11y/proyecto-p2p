@@ -52,16 +52,10 @@ export class Stats {
     const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     const accounts = this.accountsService.accounts();
     const counterparties = this.crmService.counterparties();
-    return generateComplianceStatement(
-      ops,
-      accounts,
-      counterparties,
-      this.complianceMeta(),
-      {
-        startDate: this.complianceStartDate() || undefined,
-        endDate: this.complianceEndDate() || undefined,
-      },
-    );
+    return generateComplianceStatement(ops, accounts, counterparties, this.complianceMeta(), {
+      startDate: this.complianceStartDate() || undefined,
+      endDate: this.complianceEndDate() || undefined,
+    });
   });
 
   private readonly summary = computed(() =>
@@ -135,4 +129,3 @@ export class Stats {
   // Whole-number counts render without forced decimals — es-VE formatting kept identical.
   readonly fmtNum = (v: number): string => v.toLocaleString('es-VE', { maximumFractionDigits: 2 });
 }
-

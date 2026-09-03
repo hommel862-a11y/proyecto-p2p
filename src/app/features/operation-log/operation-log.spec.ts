@@ -269,9 +269,7 @@ describe('buildOperationsCsv (CSV ledger export)', () => {
     const body = csv.replace('\uFEFF', '');
     const lines = body.split('\r\n');
     expect(lines).toHaveLength(3); // header + 1 row + trailing empty after final CRLF
-    expect(lines[1]).toBe(
-      '2026-08-29T10:00:00.000Z;compra;USDT;20000;25;800;5;sí;mercado X;',
-    );
+    expect(lines[1]).toBe('2026-08-29T10:00:00.000Z;compra;USDT;20000;25;800;5;sí;mercado X;');
   });
 
   it('quotes fields containing ; or " and doubles embedded quotes', () => {

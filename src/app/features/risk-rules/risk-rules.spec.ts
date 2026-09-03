@@ -134,7 +134,9 @@ describe('sanitizeConfig', () => {
   it('passes valid config through unchanged and normalizes apiStatus', () => {
     const clean = sanitizeConfig({ ...DEFAULT });
     expect(clean).toEqual(DEFAULT);
-    expect(sanitizeConfig({ ...DEFAULT, apiStatus: 'bogus' as RiskConfig['apiStatus'] }).apiStatus).toBe('ok');
+    expect(
+      sanitizeConfig({ ...DEFAULT, apiStatus: 'bogus' as RiskConfig['apiStatus'] }).apiStatus,
+    ).toBe('ok');
   });
 
   it('rounds counts to integers', () => {

@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RisksService, type RiskConfig } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
 import { clampNonNegative, clampAtLeast } from '@p2p/core';
@@ -63,7 +57,7 @@ export class RiskRules {
     'max concurrent operations reached': 'máximo de operaciones concurrentes alcanzado',
     'spread below minimum': 'spread por debajo del mínimo',
     'risk per trade exceeded': 'riesgo por operación superado',
-    'ok': 'dentro de límites',
+    ok: 'dentro de límites',
   };
 
   decisionLabel(d: string): string {

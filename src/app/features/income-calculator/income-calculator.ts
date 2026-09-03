@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { capitalFromDailyIncome, toBs, clampNonNegative, DEFAULT_DAYS_PER_YEAR } from '@p2p/core';
 import { FORMAT_PIPES } from '../../core/format';
 

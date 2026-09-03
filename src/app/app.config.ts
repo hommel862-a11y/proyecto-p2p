@@ -15,5 +15,5 @@ export const appConfig: ApplicationConfig = {
     // HashLocationStrategy: la app carga también sobre file:// (útil para empaquetado Electron y APK sin server)
     provideRouter(routes, withHashLocation()),
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
-  ]
+  ],
 };

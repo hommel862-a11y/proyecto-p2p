@@ -11,10 +11,7 @@ describe('AuditLoggerService', () => {
   beforeEach(() => {
     mem = new MemoryStorage();
     TestBed.configureTestingModule({
-      providers: [
-        AuditLoggerService,
-        { provide: P2P_STORAGE, useValue: mem },
-      ],
+      providers: [AuditLoggerService, { provide: P2P_STORAGE, useValue: mem }],
     });
     service = TestBed.inject(AuditLoggerService);
   });

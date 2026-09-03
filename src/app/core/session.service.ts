@@ -51,7 +51,9 @@ export class SessionService {
       ...active,
       endTime: new Date().toISOString(),
       disciplineRating: params?.disciplineRating ?? active.disciplineRating,
-      notes: params?.notes ? `${active.notes ? active.notes + ' | ' : ''}${params.notes}` : active.notes,
+      notes: params?.notes
+        ? `${active.notes ? active.notes + ' | ' : ''}${params.notes}`
+        : active.notes,
     };
 
     const updated = this.sessions().map((s) => (s.id === closed.id ? closed : s));

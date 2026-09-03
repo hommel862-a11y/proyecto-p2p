@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { computeLogSummary, clampNonNegative, type Operation } from '@p2p/core';
 import { CommonModule } from '@angular/common';
 import { StorageService } from '../../core/storage';
@@ -20,6 +14,10 @@ import {
   type Counterparty,
   type AntiTriangulationAssessment,
 } from '@p2p/core';
+import { OperationFormComponent, type OpDraft } from './operation-form.component';
+import { OperationTableComponent } from './operation-table.component';
+import { BackupPanelComponent } from './backup-panel.component';
+import { OperationTimerBannerComponent } from './operation-timer-banner.component';
 
 const OPS_KEY = 'p2p.operations';
 
@@ -57,8 +55,6 @@ export function buildOperationsCsv(ops: readonly Operation[]): string {
   return `\uFEFF${[CSV_HEADER, ...rows].join('\r\n')}\r\n`;
 }
 
-type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
-
 const EMPTY_DRAFT: OpDraft = {
   type: 'buy',
   pair: 'USDT',
@@ -81,7 +77,14 @@ const EMPTY_DRAFT: OpDraft = {
 @Component({
   selector: 'app-operation-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FORMAT_PIPES],
+  imports: [
+    CommonModule,
+    FORMAT_PIPES,
+    OperationFormComponent,
+    OperationTableComponent,
+    BackupPanelComponent,
+    OperationTimerBannerComponent,
+  ],
   templateUrl: './operation-log.html',
 })
 export class OperationLog {
@@ -147,15 +150,6 @@ export class OperationLog {
     }
   }
 
-  formatDuration(ms?: number): string {
-    if (!ms || ms <= 0) return '—';
-    const totalSec = Math.round(ms / 1000);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  }
-
   readonly visibleOps = computed(() => {
     const f = this.pairFilter();
     const ops = this.operations();
@@ -216,7 +210,10 @@ export class OperationLog {
     };
 
     if (this.selectedCounterparty()?.reputation === 'BLOCKED') {
-      this.toast.error('Operación bloqueada: La contraparte está en la lista negra.', 'Seguridad Anti-Fraude');
+      this.toast.error(
+        'Operación bloqueada: La contraparte está en la lista negra.',
+        'Seguridad Anti-Fraude',
+      );
       return;
     }
 
@@ -231,7 +228,13 @@ export class OperationLog {
     this.audit.log(
       'DATA_MUTATION',
       'Operación registrada',
-      { id: newOp.id, type: newOp.type, pair: newOp.pair, vesAmount: newOp.vesAmount, usdtAmount: newOp.usdtAmount },
+      {
+        id: newOp.id,
+        type: newOp.type,
+        pair: newOp.pair,
+        vesAmount: newOp.vesAmount,
+        usdtAmount: newOp.usdtAmount,
+      },
       'info',
     );
   }
@@ -246,16 +249,6 @@ export class OperationLog {
     } else {
       this.patchForm({ counterpartyId: '' });
     }
-  }
-
-  getCounterpartyReputation(id?: string): Counterparty['reputation'] | undefined {
-    if (!id) return undefined;
-    return this.crmService.getById(id)?.reputation;
-  }
-
-  getAccountName(id?: string): string {
-    if (!id) return '—';
-    return this.accountsService.getAccountById(id)?.bankName ?? '—';
   }
 
   requestRemove(id: string): void {
@@ -307,9 +300,7 @@ export class OperationLog {
       throw new Error('El archivo no es un JSON válido.');
     }
 
-    const ops = Array.isArray(parsed)
-      ? parsed
-      : (parsed as { operations?: unknown })?.operations;
+    const ops = Array.isArray(parsed) ? parsed : (parsed as { operations?: unknown })?.operations;
 
     if (!Array.isArray(ops)) {
       throw new Error('El archivo no contiene un arreglo de operaciones válido.');
@@ -413,4 +404,3 @@ export class OperationLog {
     this.form.set({ ...this.form(), ...patch });
   }
 }
-

@@ -30,18 +30,14 @@ export class Dashboard {
   readonly accountsService = inject(AccountsService);
 
   /** Daily income target (USD) — read from income calculator storage if available. */
-  readonly dailyTarget = signal<number>(
-    this.storage.get<number>('p2p.daily-target') ?? 20,
-  );
+  readonly dailyTarget = signal<number>(this.storage.get<number>('p2p.daily-target') ?? 20);
 
   /** State for closing session modal */
   readonly showCloseModal = signal<boolean>(false);
   readonly closeDisciplineRating = signal<number>(5);
   readonly closeNotes = signal<string>('');
 
-  private readonly ops = computed<Operation[]>(
-    () => this.storage.get<Operation[]>(OPS_KEY) ?? [],
-  );
+  private readonly ops = computed<Operation[]>(() => this.storage.get<Operation[]>(OPS_KEY) ?? []);
 
   readonly dashboard = computed(() => computeDashboard(this.ops()));
 
@@ -94,7 +90,10 @@ export class Dashboard {
 
   startSession(): void {
     const s = this.sessionService.startSession({ targetOps: 5 });
-    this.toast.success('Sesión de trading abierta. Las operaciones se vincularán a esta jornada.', 'Sesión Iniciada');
+    this.toast.success(
+      'Sesión de trading abierta. Las operaciones se vincularán a esta jornada.',
+      'Sesión Iniciada',
+    );
   }
 
   openCloseModal(): void {
@@ -113,7 +112,10 @@ export class Dashboard {
     this.showCloseModal.set(false);
     this.closeNotes.set('');
     if (closed) {
-      this.toast.info('Sesión cerrada y registrada en el historial de estadísticas.', 'Sesión Cerrada');
+      this.toast.info(
+        'Sesión cerrada y registrada en el historial de estadísticas.',
+        'Sesión Cerrada',
+      );
     }
   }
 

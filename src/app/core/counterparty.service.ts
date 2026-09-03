@@ -1,11 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { StorageService } from './storage';
 import { AuditLoggerService } from './audit-logger.service';
-import {
-  type Counterparty,
-  type CounterpartyReputation,
-  normalizeName,
-} from '@p2p/core';
+import { type Counterparty, type CounterpartyReputation, normalizeName } from '@p2p/core';
 
 const CRM_STORAGE_KEY = 'p2p.counterparties';
 
@@ -58,7 +54,10 @@ export class CounterpartyService {
     const q = normalizeName(query);
     if (!q) return undefined;
     return this.counterparties().find(
-      (c) => normalizeName(c.alias) === q || normalizeName(c.realName) === q || c.documentId.toLowerCase() === query.toLowerCase().trim(),
+      (c) =>
+        normalizeName(c.alias) === q ||
+        normalizeName(c.realName) === q ||
+        c.documentId.toLowerCase() === query.toLowerCase().trim(),
     );
   }
 
@@ -70,14 +69,24 @@ export class CounterpartyService {
     };
     const next = [...this.counterparties(), created];
     this.save(next);
-    this.audit.log('CONFIG_CHANGE', 'Contraparte agregada al CRM', { id: created.id, alias: created.alias }, 'info');
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Contraparte agregada al CRM',
+      { id: created.id, alias: created.alias },
+      'info',
+    );
     return created;
   }
 
   updateCounterparty(updated: Counterparty): void {
     const next = this.counterparties().map((c) => (c.id === updated.id ? updated : c));
     this.save(next);
-    this.audit.log('CONFIG_CHANGE', 'Contraparte actualizada en el CRM', { id: updated.id, alias: updated.alias }, 'info');
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Contraparte actualizada en el CRM',
+      { id: updated.id, alias: updated.alias },
+      'info',
+    );
   }
 
   deleteCounterparty(id: string): void {

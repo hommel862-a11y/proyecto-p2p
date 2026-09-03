@@ -12,12 +12,7 @@ export class GlobalErrorHandler implements ErrorHandler {
     const stack = error instanceof Error ? error.stack : undefined;
 
     // Log internally for enterprise traceability
-    this.audit.log(
-      'SYSTEM_ERROR',
-      'Excepción no controlada',
-      { message, stack },
-      'error',
-    );
+    this.audit.log('SYSTEM_ERROR', 'Excepción no controlada', { message, stack }, 'error');
 
     // Notify user non-intrusively via Toast
     this.toast.error(

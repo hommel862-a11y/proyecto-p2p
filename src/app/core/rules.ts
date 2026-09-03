@@ -92,7 +92,12 @@ export class RisksService {
 
   reset(): void {
     this.save({ ...DEFAULT_CONFIG });
-    this.audit.log('CONFIG_CHANGE', 'Reglas de riesgo restablecidas a valores por defecto', undefined, 'warn');
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Reglas de riesgo restablecidas a valores por defecto',
+      undefined,
+      'warn',
+    );
   }
 
   /** Evaluate the current operating state against the 6 rules using the live config. */

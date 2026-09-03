@@ -73,9 +73,7 @@ describe('Dashboard', () => {
   });
 
   it('renders recent operations list', () => {
-    seed([
-      op({ id: 'a', merchantNote: 'Super Merchant' }),
-    ]);
+    seed([op({ id: 'a', merchantNote: 'Super Merchant' })]);
     const f = create();
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Super Merchant');

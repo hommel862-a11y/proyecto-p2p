@@ -10,135 +10,16 @@
     <p class="alert" role="alert">{{ error() }}</p>
   }
 
-  <!-- Banner interactivo de Cronómetro de Operación -->
-  <div class="trade-timer-card section-group" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left: 4px solid var(--gold);">
-    <div style="display: flex; align-items: center; gap: 16px;">
-      <div class="trade-timer-pulse" [class.running]="timer.state() === 'running'" [class.paused]="timer.state() === 'paused'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 26px; height: 26px; color: var(--gold);">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-      </div>
-      <div>
-        <span class="section-eyebrow" style="margin: 0 0 4px; padding: 0; border: none;">Cronómetro de Operación</span>
-        <div style="font-family: var(--font-mono); font-size: 1.8rem; font-weight: 700; color: var(--text); line-height: 1;">
-          {{ timer.formattedTime() }}
-        </div>
-      </div>
-    </div>
+  <app-operation-timer-banner />
 
-    <div style="display: flex; gap: 10px; align-items: center;">
-      @if (timer.state() === 'idle') {
-        <button type="button" class="btn btn-primary" (click)="timer.start()">
-          Iniciar Cronómetro
-        </button>
-      } @else if (timer.state() === 'running') {
-        <button type="button" class="btn btn-secondary" (click)="timer.pause()">
-          Pausar
-        </button>
-        <button type="button" class="btn btn-ghost" (click)="timer.reset()">
-          Reiniciar
-        </button>
-      } @else if (timer.state() === 'paused') {
-        <button type="button" class="btn btn-primary" (click)="timer.resume()">
-          Reanudar
-        </button>
-        <button type="button" class="btn btn-ghost" (click)="timer.reset()">
-          Reiniciar
-        </button>
-      }
-    </div>
-  </div>
-
-  <div class="section-group">
-    <span class="section-eyebrow">Nueva Operación</span>
-    <form class="grid ledger-form" (submit)="$event.preventDefault(); add()">
-      <label>
-        <span>Tipo de Operación</span>
-        <select [value]="form().type" (change)="patchForm({ type: $any($event.target).value })">
-          <option value="buy">Compra (VES → Cripto)</option>
-          <option value="sell">Venta (Cripto → VES)</option>
-        </select>
-      </label>
-      <label>
-        <span>Par Comercial</span>
-        <select [value]="form().pair" (change)="patchForm({ pair: $any($event.target).value })">
-          <option value="USDT">USDT/VES</option>
-          <option value="EUR">EUR/VES</option>
-        </select>
-      </label>
-      <label>
-        <span>Monto en VES</span>
-        <input type="number" min="0" step="0.01" [value]="form().vesAmount" (input)="patchForm({ vesAmount: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        <span>Monto en {{ form().pair }}</span>
-        <input type="number" min="0" step="0.000001" [value]="form().usdtAmount" (input)="patchForm({ usdtAmount: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        <span>Precio Pactado (VES/{{ form().pair }})</span>
-        <input type="number" min="0" step="0.01" [value]="form().price" (input)="patchForm({ price: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        <span>Comisiones Pagadas (VES)</span>
-        <input type="number" min="0" step="0.01" [value]="form().fees" (input)="patchForm({ fees: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        <span>Contraparte (Directorio CRM)</span>
-        <select [value]="form().counterpartyId" (change)="selectCounterparty($any($event.target).value)">
-          <option value="">Seleccionar del directorio...</option>
-          @for (cp of crmService.counterparties(); track cp.id) {
-            <option [value]="cp.id">
-              {{ cp.alias }} ({{ cp.realName }}) [{{ cp.reputation }}]
-            </option>
-          }
-        </select>
-      </label>
-      <label>
-        <span>Titular de Pago (Anti-Triangulación)</span>
-        <input type="text" placeholder="Nombre en comprobante bancario" [value]="form().payerName" (input)="patchForm({ payerName: $any($event.target).value })" />
-      </label>
-
-      @if (antiTriangulation().warning; as warn) {
-        <div class="grid-col-span-2"
-             [style.background]="antiTriangulation().riskLevel === 'CRITICAL' ? 'rgba(255, 95, 109, 0.15)' : 'rgba(239, 201, 76, 0.15)'"
-             [style.border-left]="antiTriangulation().riskLevel === 'CRITICAL' ? '4px solid var(--danger)' : '4px solid var(--gold)'"
-             [style.color]="antiTriangulation().riskLevel === 'CRITICAL' ? 'var(--danger)' : 'var(--gold-strong)'"
-             style="padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 8px;" role="alert">
-          <strong>{{ antiTriangulation().riskLevel === 'CRITICAL' ? '🛑 RIESGO CRÍTICO:' : '⚠️ ADVERTENCIA:' }}</strong> {{ warn }}
-        </div>
-      }
-
-      <label class="grid-col-span-2">
-        <span>Notas del Comercio / Referencia</span>
-        <input type="text" placeholder="Ej: Comerciante VIP #12 - Banesco" [value]="form().merchantNote" (input)="patchForm({ merchantNote: $any($event.target).value })" />
-      </label>
-      <label class="grid-col-span-2">
-        <span>Cuenta Bancaria / Riel de Pago</span>
-        <select [value]="form().bankAccountId" (change)="patchForm({ bankAccountId: $any($event.target).value })">
-          <option value="">Sin asignar / Otra cuenta</option>
-          @for (acc of accountsService.accounts(); track acc.id) {
-            <option [value]="acc.id">
-              {{ acc.bankName }} ({{ acc.rail }}) — Límite: {{ acc.dailyLimitVes ? (acc.dailyLimitVes | ves) : 'Ilimitado' }}
-            </option>
-          }
-        </select>
-      </label>
-
-      @if (limitExceededWarning(); as warn) {
-        <div class="grid-col-span-2" style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin-bottom: 8px;" role="alert">
-          ⚠️ {{ warn }}
-        </div>
-      }
-
-      <label class="checkbox-label">
-        <input type="checkbox" [checked]="form().errorFree" (change)="patchForm({ errorFree: $any($event.target).checked })" />
-        <span>Operación ejecutada sin errores (Escalera de disciplina)</span>
-      </label>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Registrar operación</button>
-      </div>
-    </form>
-  </div>
+  <app-operation-form
+    [form]="form()"
+    [selectedAccountUsage]="selectedAccountUsage()"
+    [limitExceededWarning]="limitExceededWarning()"
+    [antiTriangulation]="antiTriangulation()"
+    (formChange)="patchForm($event)"
+    (counterpartySelect)="selectCounterparty($event)"
+    (submitForm)="add()" />
 
   <div class="section-divider"></div>
   <div class="section-group">
@@ -172,107 +53,18 @@
   </div>
 
   <div class="section-divider"></div>
-  <div class="data-section">
-    <span class="section-eyebrow">Historial de Operaciones</span>
-    <div class="table-toolbar">
-      @if (operations().length) {
-        <div class="filter-group">
-          <label class="inline">
-            <span>Filtrar por par:</span>
-            <select [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
-              <option value="all">Todos los pares</option>
-              <option value="USDT">Solo USDT/VES</option>
-              <option value="EUR">Solo EUR/VES</option>
-            </select>
-          </label>
-        </div>
-      }
-    </div>
-
-    <div class="table-container">
-      <table class="corporate-table" aria-label="Registro de operaciones P2P">
-        <thead>
-          <tr>
-            <th scope="col">Fecha / Hora</th>
-            <th scope="col">Tipo</th>
-            <th scope="col">Par</th>
-            <th scope="col" class="text-right">Monto VES</th>
-            <th scope="col" class="text-right">Monto Cripto</th>
-            <th scope="col" class="text-right">Precio</th>
-            <th scope="col">Comercio</th>
-            <th scope="col">Cuenta Bancaria</th>
-            <th scope="col" class="text-center">Duración</th>
-            <th scope="col" class="text-center">Sin errores</th>
-            <th scope="col" class="text-center">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (o of visibleOps(); track o.id) {
-            <tr>
-              <td class="font-mono text-muted">{{ o.timestamp | slice:0:19 | date:'yyyy-MM-dd HH:mm' }}</td>
-              <td>
-                <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
-                  {{ o.type === 'buy' ? 'Compra' : 'Venta' }}
-                </span>
-              </td>
-              <td><strong>{{ o.pair }}</strong></td>
-              <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
-              <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
-              <td class="text-right font-mono">{{ o.price | num }}</td>
-              <td>
-                <span>{{ o.merchantNote || '—' }}</span>
-                @if (getCounterpartyReputation(o.counterpartyId); as rep) {
-                  <span class="badge" [class.badge-accent]="rep === 'TRUSTED' || rep === 'VERIFIED'" [class.badge-sell]="rep === 'BLOCKED'" [class.badge-buy]="rep === 'SUSPICIOUS'" style="font-size: 0.68rem; margin-left: 5px; padding: 2px 6px;">
-                    {{ rep }}
-                  </span>
-                }
-              </td>
-              <td><span class="badge badge-muted" style="font-size: 0.78rem;">{{ getAccountName(o.bankAccountId) }}</span></td>
-              <td class="text-center">
-                <span class="font-mono text-muted" style="font-size: 0.85em;">{{ formatDuration(o.durationMs) }}</span>
-              </td>
-              <td class="text-center">
-                <span class="badge" [class.badge-accent]="o.errorFree" [class.badge-muted]="!o.errorFree">
-                  {{ o.errorFree ? 'Sí' : 'No' }}
-                </span>
-              </td>
-              <td class="text-center">
-                <button type="button" class="btn-icon-danger" (click)="requestRemove(o.id)" title="Eliminar registro" aria-label="Eliminar registro">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                </button>
-              </td>
-            </tr>
-          } @empty {
-            <tr>
-              <td colspan="11" class="empty-state">
-                <p>Aún no hay operaciones registradas.</p>
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <app-operation-table
+    [operations]="operations()"
+    [visibleOps]="visibleOps()"
+    [pairFilter]="pairFilter()"
+    (pairFilterChange)="setPairFilter($event)"
+    (removeRequest)="requestRemove($event)" />
 
   <div class="section-divider"></div>
-  <div class="backup-section">
-    <span class="section-eyebrow">Gestión y Respaldo</span>
-    <div class="backup-actions">
-      <button type="button" class="btn btn-secondary" (click)="downloadBackup()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Exportar respaldo JSON
-      </button>
-      <button type="button" class="btn btn-secondary" (click)="fileInput.click()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Importar respaldo JSON
-      </button>
-      <input #fileInput type="file" accept="application/json,.json" hidden (change)="importFile($event)" />
-      <button type="button" class="btn btn-secondary" (click)="downloadCsv()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        Exportar CSV (Excel)
-      </button>
-    </div>
-  </div>
+  <app-backup-panel
+    (downloadJson)="downloadBackup()"
+    (importFile)="importFile($event)"
+    (downloadCsv)="downloadCsv()" />
 
   <!-- Modal de confirmación para eliminación -->
   @if (pendingDeleteId()) {
@@ -302,4 +94,3 @@
     </div>
   }
 </section>
-

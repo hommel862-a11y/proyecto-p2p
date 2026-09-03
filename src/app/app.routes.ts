@@ -5,8 +5,7 @@ export const routes: Routes = [
   {
     path: 'dashboard',
     title: 'Dashboard',
-    loadComponent: () =>
-      import('./features/dashboard/dashboard').then((m) => m.Dashboard),
+    loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
   },
   {
     path: 'spread',
@@ -29,19 +28,16 @@ export const routes: Routes = [
   {
     path: 'risk',
     title: 'Risk Rules',
-    loadComponent: () =>
-      import('./features/risk-rules/risk-rules').then((m) => m.RiskRules),
+    loadComponent: () => import('./features/risk-rules/risk-rules').then((m) => m.RiskRules),
   },
   {
     path: 'stats',
     title: 'Statistics',
-    loadComponent: () =>
-      import('./features/stats/stats').then((m) => m.Stats),
+    loadComponent: () => import('./features/stats/stats').then((m) => m.Stats),
   },
   {
     path: 'guide',
     title: 'Usage Guide',
-    loadComponent: () =>
-      import('./features/guide/guide').then((m) => m.Guide),
+    loadComponent: () => import('./features/guide/guide').then((m) => m.Guide),
   },
 ];

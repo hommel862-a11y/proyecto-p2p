@@ -97,14 +97,24 @@ export class AccountsService {
     };
     const next = [...this.accounts(), created];
     this.saveAccounts(next);
-    this.audit.log('CONFIG_CHANGE', 'Cuenta bancaria agregada', { id: created.id, name: created.bankName }, 'info');
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Cuenta bancaria agregada',
+      { id: created.id, name: created.bankName },
+      'info',
+    );
     return created;
   }
 
   updateAccount(updated: BankAccount): void {
     const next = this.accounts().map((a) => (a.id === updated.id ? updated : a));
     this.saveAccounts(next);
-    this.audit.log('CONFIG_CHANGE', 'Cuenta bancaria actualizada', { id: updated.id, name: updated.bankName }, 'info');
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Cuenta bancaria actualizada',
+      { id: updated.id, name: updated.bankName },
+      'info',
+    );
   }
 
   deleteAccount(id: string): void {

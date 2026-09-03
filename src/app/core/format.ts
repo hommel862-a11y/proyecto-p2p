@@ -1,7 +1,13 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
-const vesFmt = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const usdFmt = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const vesFmt = new Intl.NumberFormat('es-VE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const usdFmt = new Intl.NumberFormat('es-VE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 const pctFmt = new Intl.NumberFormat('es-VE', {
   style: 'percent',
   minimumFractionDigits: 2,
