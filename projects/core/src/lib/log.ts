@@ -27,6 +27,16 @@ export interface Operation {
   notes: string;
   /** whether the operator tagged this operation as error-free (discipline ladder). */
   errorFree: boolean;
+  /** operation cycle duration in milliseconds (if timed). */
+  durationMs?: number;
+  /** trading session id this operation was executed under (if any). */
+  sessionId?: string;
+  /** bank account id used for local fiat settlement (if assigned). */
+  bankAccountId?: string;
+  /** counterparty CRM identifier (if matched). */
+  counterpartyId?: string;
+  /** bank account holder name observed on the transfer receipt (for anti-triangulation audit). */
+  payerName?: string;
 }
 
 export interface LogSummary {

@@ -23,10 +23,10 @@ const MIME: Record<string, string> = {
  * SPA fallback rewrites unknown routes to index.html.
  */
 function startStaticServer(): Promise<number> {
-  const root = path.join(__dirname, '../../../dist/p2p/browser');
+  const root = path.resolve(__dirname, '../../../dist/p2p/browser');
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const filePath = path.join(root, urlPath === '/' ? 'index.html' : urlPath);
+    const filePath = path.resolve(root, urlPath.replace(/^[/\\]+/, '') || 'index.html');
     if (!filePath.startsWith(root)) {
       res.writeHead(403);
       res.end();
@@ -74,7 +74,7 @@ function startStaticServer(): Promise<number> {
     });
   });
   return new Promise((resolve) => {
-    server.listen(0, () => {
+    server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       resolve(typeof addr === 'object' && addr ? addr.port : 0);
     });
@@ -86,6 +86,8 @@ async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: true,
+    center: true,
     webPreferences: {
       ...SECURE_WEB_PREFERENCES,
       preload: path.join(__dirname, '../preload/index.js'),
@@ -94,6 +96,8 @@ async function createWindow(): Promise<void> {
 
   registerIpcHandlers();
   await mainWindow.loadURL(`http://localhost:${port}/`);
+  mainWindow.show();
+  mainWindow.focus();
 
   mainWindow.on('closed', () => {
     mainWindow = null;

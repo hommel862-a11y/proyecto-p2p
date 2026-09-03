@@ -176,7 +176,7 @@ describe('OperationLog', () => {
     expect(() => c.add()).not.toThrow();
     expect(c.operations().length).toBe(1);
     expect(c.operations()[0].vesAmount).toBe(1000);
-    expect(c.error()).toContain('No se pudo guardar en el dispositivo');
+    expect(c.error()).toContain('No se pudo guardar');
     // a success path clears the error again
     c.error.set(null);
     vi.mocked(throwing.setItem).mockRestore();
@@ -226,8 +226,8 @@ describe('OperationLog', () => {
       c.setPairFilter('EUR');
       f.detectChanges();
       expect(c.visibleOps().length).toBe(0);
-      // 3 selects: Tipo + Par in the form grid + the pair filter (which must remain)
-      expect(f.nativeElement.querySelectorAll('select')).toHaveLength(3);
+      // 5 selects: Tipo + Par + Contraparte CRM + Cuenta Bancaria in the form grid + the pair filter
+      expect(f.nativeElement.querySelectorAll('select')).toHaveLength(5);
       expect(f.nativeElement.textContent).toContain('Aún no hay operaciones registradas.');
     });
   });

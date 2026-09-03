@@ -6,8 +6,20 @@ import {
   signal,
 } from '@angular/core';
 import { computeLogSummary, clampNonNegative, type Operation } from '@p2p/core';
+import { CommonModule } from '@angular/common';
 import { StorageService } from '../../core/storage';
+import { ToastService } from '../../core/toast.service';
+import { AuditLoggerService } from '../../core/audit-logger.service';
+import { TradeTimerService } from '../../core/trade-timer.service';
+import { SessionService } from '../../core/session.service';
+import { AccountsService } from '../../core/accounts.service';
+import { CounterpartyService } from '../../core/counterparty.service';
 import { FORMAT_PIPES } from '../../core/format';
+import {
+  assessCounterpartyRisk,
+  type Counterparty,
+  type AntiTriangulationAssessment,
+} from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
 
@@ -57,6 +69,9 @@ const EMPTY_DRAFT: OpDraft = {
   fees: 0,
   notes: '',
   errorFree: false,
+  bankAccountId: '',
+  counterpartyId: '',
+  payerName: '',
 };
 
 /**
@@ -66,16 +81,80 @@ const EMPTY_DRAFT: OpDraft = {
 @Component({
   selector: 'app-operation-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FORMAT_PIPES],
+  imports: [CommonModule, FORMAT_PIPES],
   templateUrl: './operation-log.html',
 })
 export class OperationLog {
   private readonly storage = inject(StorageService);
+  private readonly toast = inject(ToastService);
+  private readonly audit = inject(AuditLoggerService);
+  readonly timer = inject(TradeTimerService);
+  readonly sessionService = inject(SessionService);
+  readonly accountsService = inject(AccountsService);
+  readonly crmService = inject(CounterpartyService);
 
   readonly operations = signal<Operation[]>(this.load());
   readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>('all');
   /** Non-blocking persistence error message, shown in the template; null when all is well. */
   readonly error = signal<string | null>(null);
+
+  /** Modals confirmation state */
+  readonly pendingDeleteId = signal<string | null>(null);
+  readonly pendingImportOps = signal<Operation[] | null>(null);
+
+  readonly form = signal<OpDraft>({ ...EMPTY_DRAFT });
+
+  readonly selectedAccountUsage = computed(() => {
+    const accId = this.form().bankAccountId;
+    if (!accId) return null;
+    return this.accountsService.usages().find((u) => u.account.id === accId) ?? null;
+  });
+
+  readonly limitExceededWarning = computed(() => {
+    const f = this.form();
+    if (f.type !== 'buy' || !f.bankAccountId) return null;
+    const usage = this.selectedAccountUsage();
+    if (!usage || usage.account.dailyLimitVes === 0) return null;
+    const cost = f.vesAmount + f.fees;
+    if (cost > usage.remainingLimitVes) {
+      return `Atención: Esta compra (${cost.toLocaleString('es-VE')} Bs) supera el cupo diario restante (${usage.remainingLimitVes.toLocaleString('es-VE')} Bs) de ${usage.account.bankName}.`;
+    }
+    return null;
+  });
+
+  readonly selectedCounterparty = computed<Counterparty | null>(() => {
+    const id = this.form().counterpartyId;
+    if (!id) return null;
+    return this.crmService.getById(id) ?? null;
+  });
+
+  readonly antiTriangulation = computed<AntiTriangulationAssessment>(() => {
+    return assessCounterpartyRisk(this.selectedCounterparty(), this.form().payerName);
+  });
+
+  constructor() {
+    const preset = this.timer.consumePendingPreset();
+    if (preset) {
+      this.form.set({
+        ...EMPTY_DRAFT,
+        type: preset.type,
+        pair: preset.pair,
+        price: preset.price,
+        vesAmount: preset.vesAmount,
+        usdtAmount: preset.usdtAmount,
+        merchantNote: preset.merchantNote ?? '',
+      });
+    }
+  }
+
+  formatDuration(ms?: number): string {
+    if (!ms || ms <= 0) return '—';
+    const totalSec = Math.round(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
 
   readonly visibleOps = computed(() => {
     const f = this.pairFilter();
@@ -88,7 +167,6 @@ export class OperationLog {
   setPairFilter(p: 'all' | 'USDT' | 'EUR'): void {
     this.pairFilter.set(p);
   }
-  readonly form = signal<OpDraft>({ ...EMPTY_DRAFT });
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
@@ -110,34 +188,99 @@ export class OperationLog {
       this.error.set(null);
     } catch (e) {
       // Keep the in-memory state so the UI stays consistent for this session; just warn.
-      this.error.set('No se pudo guardar en el dispositivo: ' + (e as Error).message);
+      const msg = 'No se pudo guardar en el almacenamiento local: ' + (e as Error).message;
+      this.error.set(msg);
+      this.toast.error(msg);
     }
   }
 
   add(): void {
     const draft = this.form();
-    const next: Operation[] = [
-      ...this.operations(),
-      {
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        ...draft,
-        // Money sanitation: never persist NaN/negative amounts into the ledger.
-        vesAmount: clampNonNegative(draft.vesAmount),
-        usdtAmount: clampNonNegative(draft.usdtAmount),
-        price: clampNonNegative(draft.price),
-        fees: clampNonNegative(draft.fees),
-      },
-    ];
+    const durationMs = this.timer.state() !== 'idle' ? this.timer.stop() : undefined;
+    const activeSession = this.sessionService.activeSession();
+
+    const newOp: Operation = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      ...draft,
+      // Money sanitation: never persist NaN/negative amounts into the ledger.
+      vesAmount: clampNonNegative(draft.vesAmount),
+      usdtAmount: clampNonNegative(draft.usdtAmount),
+      price: clampNonNegative(draft.price),
+      fees: clampNonNegative(draft.fees),
+      durationMs,
+      sessionId: activeSession?.id,
+      bankAccountId: draft.bankAccountId ? draft.bankAccountId : undefined,
+      counterpartyId: draft.counterpartyId ? draft.counterpartyId : undefined,
+      payerName: draft.payerName?.trim() ? draft.payerName.trim() : undefined,
+    };
+
+    if (this.selectedCounterparty()?.reputation === 'BLOCKED') {
+      this.toast.error('Operación bloqueada: La contraparte está en la lista negra.', 'Seguridad Anti-Fraude');
+      return;
+    }
+
+    const next: Operation[] = [...this.operations(), newOp];
     this.operations.set(next);
     this.persist(next);
     this.form.set({ ...EMPTY_DRAFT });
+
+    this.toast.success(
+      `Operación de ${newOp.type === 'buy' ? 'compra' : 'venta'} (${newOp.pair}) registrada con éxito.`,
+    );
+    this.audit.log(
+      'DATA_MUTATION',
+      'Operación registrada',
+      { id: newOp.id, type: newOp.type, pair: newOp.pair, vesAmount: newOp.vesAmount, usdtAmount: newOp.usdtAmount },
+      'info',
+    );
+  }
+
+  selectCounterparty(id: string): void {
+    const cp = this.crmService.getById(id);
+    if (cp) {
+      this.patchForm({
+        counterpartyId: cp.id,
+        merchantNote: this.form().merchantNote || cp.alias,
+      });
+    } else {
+      this.patchForm({ counterpartyId: '' });
+    }
+  }
+
+  getCounterpartyReputation(id?: string): Counterparty['reputation'] | undefined {
+    if (!id) return undefined;
+    return this.crmService.getById(id)?.reputation;
+  }
+
+  getAccountName(id?: string): string {
+    if (!id) return '—';
+    return this.accountsService.getAccountById(id)?.bankName ?? '—';
+  }
+
+  requestRemove(id: string): void {
+    this.pendingDeleteId.set(id);
+  }
+
+  confirmRemove(): void {
+    const id = this.pendingDeleteId();
+    if (!id) return;
+    this.remove(id);
+    this.pendingDeleteId.set(null);
+  }
+
+  cancelRemove(): void {
+    this.pendingDeleteId.set(null);
   }
 
   remove(id: string): void {
+    const target = this.operations().find((o) => o.id === id);
     const next = this.operations().filter((o) => o.id !== id);
     this.operations.set(next);
     this.persist(next);
+
+    this.toast.info('Operación eliminada del registro.');
+    this.audit.log('DATA_MUTATION', 'Operación eliminada', { id, target }, 'info');
   }
 
   /** Serialize the current ledger to a backup JSON string. */
@@ -147,6 +290,7 @@ export class OperationLog {
         app: 'p2p-decisor',
         version: 1,
         exportedAt: new Date().toISOString(),
+        operationsCount: this.operations().length,
         operations: this.operations(),
       },
       null,
@@ -154,20 +298,53 @@ export class OperationLog {
     );
   }
 
-  /** Parse a backup string into operations, validating shape. Throws on invalid input. */
+  /** Parse a backup string into operations, validating shape strictly. Throws on invalid input. */
   parseBackup(text: string): Operation[] {
-    const parsed = JSON.parse(text);
-    const ops = Array.isArray(parsed) ? parsed : parsed?.operations;
-    if (!Array.isArray(ops)) throw new Error('el archivo no tiene operaciones');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('El archivo no es un JSON válido.');
+    }
+
+    const ops = Array.isArray(parsed)
+      ? parsed
+      : (parsed as { operations?: unknown })?.operations;
+
+    if (!Array.isArray(ops)) {
+      throw new Error('El archivo no contiene un arreglo de operaciones válido.');
+    }
+
     return ops
-      .filter(
-        (o: Partial<Operation>) => o && typeof o === 'object' && 'type' in o && 'timestamp' in o,
-      )
-      .map((o: Partial<Operation>) => ({ ...o, pair: o.pair === 'EUR' ? 'EUR' : 'USDT' })) as Operation[];
+      .filter((o): o is Record<string, unknown> => typeof o === 'object' && o !== null)
+      .map((o) => {
+        const rawType = String(o['type'] || 'buy');
+        const type: 'buy' | 'sell' = rawType === 'sell' ? 'sell' : 'buy';
+        const rawPair = String(o['pair'] || 'USDT');
+        const pair: 'USDT' | 'EUR' = rawPair === 'EUR' ? 'EUR' : 'USDT';
+
+        return {
+          id: typeof o['id'] === 'string' && o['id'] ? o['id'] : crypto.randomUUID(),
+          timestamp:
+            typeof o['timestamp'] === 'string' && o['timestamp']
+              ? o['timestamp']
+              : new Date().toISOString(),
+          type,
+          pair,
+          vesAmount: clampNonNegative(Number(o['vesAmount']) || 0),
+          usdtAmount: clampNonNegative(Number(o['usdtAmount']) || 0),
+          price: clampNonNegative(Number(o['price']) || 0),
+          fees: clampNonNegative(Number(o['fees']) || 0),
+          merchantNote: String(o['merchantNote'] || ''),
+          notes: String(o['notes'] || ''),
+          errorFree: Boolean(o['errorFree']),
+        };
+      });
   }
 
   /** Download the operation ledger as a JSON backup file. */
   downloadBackup(): void {
+    const count = this.operations().length;
     const blob = new Blob([this.serializeBackup()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -175,11 +352,15 @@ export class OperationLog {
     a.download = `p2p-operaciones-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+
+    this.toast.success(`Respaldo JSON exportado (${count} operaciones).`);
+    this.audit.log('DATA_BACKUP', 'Exportación de respaldo JSON', { count }, 'info');
   }
 
   /** Download the currently filtered operations as an Excel-friendly CSV ledger. */
   downloadCsv(): void {
-    const csv = buildOperationsCsv(this.visibleOps());
+    const ops = this.visibleOps();
+    const csv = buildOperationsCsv(ops);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,28 +368,49 @@ export class OperationLog {
     a.download = `p2p-operaciones-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+
+    this.toast.success(`Archivo CSV exportado (${ops.length} filas).`);
+    this.audit.log('DATA_BACKUP', 'Exportación CSV', { count: ops.length }, 'info');
   }
 
-  /** Import operations from a backup file, replacing the current ledger after validation. */
+  /** Read and stage operations from a backup file, asking for user confirmation. */
   importFile(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const clean = this.parseBackup(String(reader.result));
-        this.operations.set(clean);
-        this.storage.set(OPS_KEY, clean);
+        this.pendingImportOps.set(clean);
         input.value = '';
       } catch (e) {
-        alert('No se pudo importar el respaldo: ' + (e as Error).message);
+        this.toast.error('No se pudo importar el respaldo: ' + (e as Error).message);
+        input.value = '';
       }
     };
     reader.readAsText(file);
+  }
+
+  confirmImport(): void {
+    const ops = this.pendingImportOps();
+    if (!ops) return;
+
+    this.operations.set(ops);
+    this.persist(ops);
+    this.pendingImportOps.set(null);
+
+    this.toast.success(`Respaldo restaurado con éxito: ${ops.length} operaciones cargadas.`);
+    this.audit.log('DATA_RESTORE', 'Restauración de respaldo JSON', { count: ops.length }, 'warn');
+  }
+
+  cancelImport(): void {
+    this.pendingImportOps.set(null);
   }
 
   patchForm(patch: Partial<OpDraft>): void {
     this.form.set({ ...this.form(), ...patch });
   }
 }
+

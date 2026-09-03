@@ -6,11 +6,22 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { computeSpread, clampNonNegative, type AmountUnit, type SpreadResult } from '@p2p/core';
+import {
+  computeSpread,
+  calculateBreakEven,
+  clampNonNegative,
+  type AmountUnit,
+  type SpreadResult,
+  type BreakEvenResult,
+} from '@p2p/core';
 import { RisksService } from '../../core/rules';
+import { ToastService } from '../../core/toast.service';
 import { FORMAT_PIPES } from '../../core/format';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+
+import { Router } from '@angular/router';
+import { TradeTimerService, type TradePreset } from '../../core/trade-timer.service';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -24,11 +35,17 @@ import { LocalNotifications } from '@capacitor/local-notifications';
   templateUrl: './spread-monitor.html',
 })
 export class SpreadMonitor {
+  private readonly router = inject(Router);
+  private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
+  private readonly toast = inject(ToastService);
   private readonly nf = new Intl.NumberFormat('es-VE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+  /** Active mode: standard arbitrage scanner or break-even & maker ad pricing */
+  readonly activeMode = signal<'spread' | 'breakeven'>('spread');
 
   readonly buyPrice = signal<number>(800);
   readonly sellPrice = signal<number>(820);
@@ -40,6 +57,33 @@ export class SpreadMonitor {
   readonly commissionPct = signal<number>(0);
   /** favorable-spread threshold (VES per base unit). */
   readonly threshold = signal<number>(15);
+
+  /** Break-Even & Maker Ad specific parameters */
+  readonly buyFeePct = signal<number>(0);
+  readonly sellFeePct = signal<number>(0.2);
+  readonly bankFeesVes = signal<number>(0);
+  readonly targetRoiPct = signal<number>(1.5);
+
+  readonly breakEvenResult = computed<BreakEvenResult>(() => {
+    return calculateBreakEven({
+      buyPrice: this.buyPrice(),
+      amount: this.amount(),
+      buyFeeRate: this.buyFeePct() / 100,
+      sellFeeRate: this.sellFeePct() / 100,
+      fixedBankFeesVes: this.bankFeesVes(),
+      targetRoiPct: this.targetRoiPct(),
+    });
+  });
+
+  applyTargetSellPrice(): void {
+    const target = this.breakEvenResult().targetSellPrice;
+    this.sellPrice.set(target);
+    this.activeMode.set('spread');
+    this.toast.success(
+      `Precio de venta fijado en ${this.nf.format(target)} VES/${this.pair()} para ${this.targetRoiPct()}% ROI.`,
+      'Anuncio Maker Configurado',
+    );
+  }
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
@@ -133,9 +177,34 @@ export class SpreadMonitor {
     }
   }
 
-  /** Notify the user when a Favorable opportunity appears (native on Android, web Notification on desktop). */
+  startDirectTrade(type: 'buy' | 'sell'): void {
+    const res = this.result();
+    if (!res) return;
+
+    const isBuy = type === 'buy';
+    const price = isBuy ? this.buyPrice() : this.sellPrice();
+    const usdtAmount = res.usdtReceived;
+    const vesAmount = isBuy ? res.usdtReceived * price : res.vesReceived;
+
+    const preset: TradePreset = {
+      pair: this.pair(),
+      type,
+      price,
+      usdtAmount: Number(usdtAmount.toFixed(6)),
+      vesAmount: Number(vesAmount.toFixed(2)),
+      merchantNote: `Arbitraje ${this.pair()} (Spread: ${this.nf.format(res.unitSpread)} Bs)`,
+    };
+
+    this.timer.start(preset);
+    this.toast.info('Cronómetro iniciado. Datos precargados en el registro.', 'Trade Despachado');
+    this.router.navigate(['/log']);
+  }
+
+  /** Notify the user when a Favorable opportunity appears (native on Android, web Notification on desktop, and in-app toast). */
   private notify(msg: string): void {
     const title = 'P2P Decisor — Spread favorable';
+    this.toast.success(msg, 'Oportunidad de Arbitraje');
+
     try {
       if (Capacitor.isNativePlatform()) {
         const schedule = () =>

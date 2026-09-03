@@ -15,11 +15,11 @@ describe('App', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should render a nav with 6 feature links', () => {
+  it('should render a nav with 7 feature links', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('nav a')).toHaveLength(6);
+    expect(compiled.querySelectorAll('nav a')).toHaveLength(7);
   });
 
   describe('theme toggle', () => {

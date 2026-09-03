@@ -8,6 +8,7 @@ import type { P2PIpcChannels } from '../../shared/types';
  * and Web Storage — the main process never touches persistence or math.
  */
 export function registerIpcHandlers(): void {
+  ipcMain.removeHandler('app:get-version');
   ipcMain.handle('app:get-version', (_event: IpcMainInvokeEvent): string => {
     return app.getVersion();
   });

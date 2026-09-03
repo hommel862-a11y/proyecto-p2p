@@ -2,53 +2,71 @@
   <h2>Calculadora de Ingresos</h2>
   <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. La base del año es explícitamente de {{ daysPerYear() }} días.</p>
 
-  <div class="grid">
-    <label>
-      Meta diaria (USD)
-      <input type="number" min="0" step="0.01" [value]="targetUsd()" (input)="targetUsd.set(clampMoney(+$any($event.target).value))" />
-    </label>
-    <label>
-      Tasa anual (APR) (%)
-      <input type="number" min="0" step="0.01" [value]="aprPct()" (input)="aprPct.set(clampMoney(+$any($event.target).value))" />
-    </label>
-    <label>
-      Días / año
-      <input type="number" min="0" step="1" [value]="daysPerYear()" (input)="daysPerYear.set(clampMoney(+$any($event.target).value))" />
-    </label>
-    <label>
-      Tasa VES/USDT (opcional)
-      <input type="number" min="0" step="0.01" [value]="rate()" (input)="rate.set(clampMoney(+$any($event.target).value))" />
-    </label>
+  <div class="section-group">
+    <span class="section-eyebrow">Parámetros</span>
+    <div class="grid">
+      <label>
+        Meta diaria (USD)
+        <input type="number" min="0" step="0.01" [value]="targetUsd()" (input)="targetUsd.set(clampMoney(+$any($event.target).value))" />
+      </label>
+      <label>
+        Tasa anual (APR) (%)
+        <input type="number" min="0" step="0.01" [value]="aprPct()" (input)="aprPct.set(clampMoney(+$any($event.target).value))" />
+      </label>
+      <label>
+        Días / año
+        <input type="number" min="0" step="1" [value]="daysPerYear()" (input)="daysPerYear.set(clampMoney(+$any($event.target).value))" />
+      </label>
+      <label>
+        Tasa VES/USDT (opcional)
+        <input type="number" min="0" step="0.01" [value]="rate()" (input)="rate.set(clampMoney(+$any($event.target).value))" />
+      </label>
+    </div>
   </div>
 
   @if (result(); as r) {
-    <dl class="out">
-      <div><dt>Ingreso anual</dt><dd>{{ annual() | usdt }}</dd></div>
-      <div><dt>Capital requerido</dt><dd>{{ capital() | usdt }}</dd></div>
-      <div><dt>Capital en Bs</dt><dd>{{ capitalBs() | ves }}</dd></div>
-    </dl>
+    <div class="section-divider"></div>
+    <span class="section-eyebrow">Resultado</span>
+    <div class="out">
+      <div>
+        <dt>Ingreso anual</dt>
+        <dd class="positive">{{ annual() | usdt }}</dd>
+      </div>
+      <div>
+        <dt>Capital requerido</dt>
+        <dd>{{ capital() | usdt }}</dd>
+      </div>
+      <div>
+        <dt>Capital en Bs</dt>
+        <dd>{{ capitalBs() | ves }}</dd>
+      </div>
+    </div>
   } @else {
     <p class="error" role="alert">Ingresa una meta diaria y un APR positivos.</p>
   }
 
-  <table>
-    <thead>
-      <tr>
-        <th>Meta / día</th>
-        @for (band of bands; track band) {
-          <th>{{ band }}%</th>
-        }
-      </tr>
-    </thead>
-    <tbody>
-      @for (row of table(); track row.target) {
+  <div class="section-divider"></div>
+  <div class="data-section">
+    <span class="section-eyebrow">Tabla Comparativa</span>
+    <table class="corporate-table">
+      <thead>
         <tr>
-          <th>{{ row.target | usdt }}</th>
-          @for (cell of row.cells; track $index) {
-            <td>{{ cell | usdt }}</td>
+          <th>Meta / día</th>
+          @for (band of bands; track band) {
+            <th>{{ band }}%</th>
           }
         </tr>
-      }
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        @for (row of table(); track row.target) {
+          <tr>
+            <th>{{ row.target | usdt }}</th>
+            @for (cell of row.cells; track $index) {
+              <td>{{ cell | usdt }}</td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
 </section>

@@ -21,6 +21,20 @@ describe('computeSpread', () => {
     expect(r.netVesAfterCommission).toBe(20428.25);
   });
 
+  it('Scenario E (EUR base currency): 100 EUR @900/920 -> 100 EUR received, 92000 VES, +2000 Bs', () => {
+    const r = computeSpread(900, 920, 100, 'EUR');
+    expect(r.usdtReceived).toBe(100);
+    expect(r.vesReceived).toBe(92000);
+    expect(r.unitSpread).toBe(20);
+    expect(r.gainVes).toBe(2000);
+    expect(r.netVesAfterCommission).toBe(92000);
+  });
+
+  it('allows commission rates up to 10% (0.10)', () => {
+    const r = computeSpread(800, 820, 25, 'USDT', 0.01);
+    expect(r.netVesAfterCommission).toBe(20500 * 0.99);
+  });
+
   it('rejects zero or negative buy/sell price and amount', () => {
     expect(() => computeSpread(0, 820, 25, 'USDT')).toThrow(/positivo/i);
     expect(() => computeSpread(-5, 820, 25, 'USDT')).toThrow(/positivo/i);
@@ -28,7 +42,8 @@ describe('computeSpread', () => {
     expect(() => computeSpread(800, 820, 0, 'USDT')).toThrow(/positivo/i);
   });
 
-  it('rejects commission rate outside 0..0.35%', () => {
-    expect(() => computeSpread(800, 820, 25, 'USDT', 0.01)).toThrow(/0\.35/);
+  it('rejects commission rate outside 0..10%', () => {
+    expect(() => computeSpread(800, 820, 25, 'USDT', 0.15)).toThrow(/10%/);
+    expect(() => computeSpread(800, 820, 25, 'USDT', -0.01)).toThrow(/10%/);
   });
 });

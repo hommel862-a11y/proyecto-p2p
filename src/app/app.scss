@@ -1,10 +1,24 @@
+/* ============================================================
+   Layout
+   ============================================================ */
+
 .layout { display: flex; min-height: 100vh; }
 
+/* ============================================================
+   Sidebar — refined navy glass, wider
+   ============================================================ */
+
 .sidebar {
-  width: 248px;
-  flex: 0 0 248px;
-  background: linear-gradient(180deg, #0c1428, #0a1124);
-  border-right: 1px solid var(--line);
+  width: 264px;
+  flex: 0 0 264px;
+  background: var(--panel);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  border-right: 1px solid transparent;
+  background-image: linear-gradient(var(--panel), var(--panel)),
+    linear-gradient(180deg, rgba(216, 180, 92, 0.16), rgba(216, 180, 92, 0) 70%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
   padding: 18px 14px;
   display: flex;
   flex-direction: column;
@@ -14,42 +28,115 @@
   height: 100vh;
 }
 
+/* ============================================================
+   Brand — gold diamond mark + gradient text
+   ============================================================ */
+
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px 14px;
+  gap: 12px;
+  padding: 6px 8px 18px;
   font-size: 1.15rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
 }
-.brand .logo {
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #04130c; font-weight: 800;
-}
-.brand b { color: var(--text); }
 
-.nav { display: flex; flex-direction: column; gap: 6px; }
+.brand .logo {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 0 16px var(--glow-gold), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+.brand .logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--grad-gold);
+  opacity: 0.12;
+}
+.brand .logo svg {
+  width: 18px;
+  height: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.brand .brand-text {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  line-height: 1.1;
+}
+.brand .brand-label-p2p {
+  background: var(--grad-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+.brand .brand-label-name {
+  color: var(--text);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 1.2px;
+  opacity: 0.85;
+  margin-top: 1px;
+}
+
+/* ============================================================
+   Nav — refined with gold active indicator
+   ============================================================ */
+
+.nav { display: flex; flex-direction: column; gap: 4px; }
+
 .nav a {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 11px 12px;
-  border-radius: 11px;
+  border-radius: 10px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 0.88rem;
   border: 1px solid transparent;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+  position: relative;
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out), border-color 0.2s var(--ease-out), transform 0.15s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
-.nav a svg { width: 20px; height: 20px; flex: 0 0 20px; }
-.nav a:hover { background: var(--panel); color: var(--text); }
-.nav a.active {
-  background: linear-gradient(180deg, rgba(25, 195, 125, 0.16), rgba(58, 160, 255, 0.10));
+.nav a svg { width: 20px; height: 20px; flex: 0 0 20px; opacity: 0.7; transition: opacity 0.2s var(--ease-out), color 0.2s var(--ease-out), filter 0.2s var(--ease-out); }
+
+.nav a:hover {
+  background: rgba(216, 180, 92, 0.06);
   color: var(--text);
-  border-color: rgba(25, 195, 125, 0.45);
-  box-shadow: inset 3px 0 0 var(--accent);
+  transform: translateX(2px);
+  border-color: rgba(216, 180, 92, 0.12);
 }
+.nav a:hover svg { opacity: 1; }
+
+.nav a.active {
+  background: linear-gradient(135deg, rgba(216, 180, 92, 0.12), rgba(216, 180, 92, 0.04));
+  color: var(--text);
+  border-color: rgba(216, 180, 92, 0.25);
+  box-shadow: inset 3px 0 0 var(--gold), 0 0 14px rgba(216, 180, 92, 0.08);
+  font-weight: 600;
+}
+.nav a.active svg {
+  color: var(--gold);
+  opacity: 1;
+  filter: drop-shadow(0 0 4px var(--glow-gold));
+}
+
+/* ============================================================
+   Sidebar foot
+   ============================================================ */
 
 .sidebar-foot {
   margin-top: auto;
@@ -57,27 +144,144 @@
   font-size: 0.72rem;
   padding: 10px 8px 0;
   border-top: 1px solid var(--line);
+  letter-spacing: 0.2px;
 }
+
+/* ============================================================
+   Main / Content
+   ============================================================ */
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
-.topbar {
+/* ============================================================
+   Header bar — the banker's desk (navy glass + gold accent)
+   ============================================================ */
+
+.header-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-1);
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 24px 32px;
+  background: var(--panel);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 30px -18px rgba(0, 0, 0, 0.6);
+  position: relative;
 }
-.topbar h1 { font-size: 1.05rem; margin: 0; }
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.header-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold) 0%, rgba(216, 180, 92, 0.35) 30%, rgba(216, 180, 92, 0) 100%);
+  opacity: 0.6;
+}
+
+.header-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.header-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--text);
+}
+.header-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(9, 16, 30, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--glow-gold), 0 0 3px var(--gold);
+  animation: statusPulse 2.6s ease-in-out infinite;
+}
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.btn-theme {
+  border-radius: 999px;
+  padding: 8px 16px;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  background: rgba(9, 16, 30, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s var(--ease-out);
+}
+.btn-theme:hover {
+  background: rgba(216, 180, 92, 0.08);
+  border-color: rgba(216, 180, 92, 0.3);
+  box-shadow: 0 0 14px var(--glow-gold);
+}
+.theme-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--gold);
+  filter: drop-shadow(0 0 3px var(--glow-gold));
+}
+
+/* ============================================================
+   Content — elevated panel with gold section marker
+   ============================================================ */
 
 .content {
-  padding: 24px;
-  max-width: 1080px;
+  position: relative;
+  flex: 1;
+  padding: 40px 48px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
+  background: transparent;
+  border-radius: var(--radius-lg);
+  animation: fadeUp 0.35s var(--ease-out);
 }
+.content::before {
+  display: none;
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
 
 @media (max-width: 760px) {
   .layout { flex-direction: column; }
@@ -90,6 +294,11 @@
     flex-wrap: wrap;
     align-items: center;
   }
+  .brand { border-bottom: none; padding-bottom: 8px; margin-bottom: 0; }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .sidebar-foot { display: none; }
+  .header-bar { padding: 20px; flex-direction: column; align-items: flex-start; }
+  .header-right { width: 100%; justify-content: space-between; }
+  .content { padding: 20px; border-radius: var(--radius); }
+  .content::before { left: 20px; }
 }

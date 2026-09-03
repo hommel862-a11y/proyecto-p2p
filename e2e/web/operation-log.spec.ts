@@ -20,10 +20,10 @@ async function addOperation(
   page: import('@playwright/test').Page,
   opts: { ves: string; usdt: string; price: string; note: string },
 ): Promise<void> {
-  await page.getByLabel('Monto VES').fill(opts.ves);
-  await page.getByLabel('Monto USDT').fill(opts.usdt);
-  await page.getByLabel('Precio (VES/USDT)').fill(opts.price);
-  await page.getByLabel('Nota del comercio').fill(opts.note);
+  await page.getByLabel('Monto en VES').fill(opts.ves);
+  await page.getByLabel('Monto en USDT').fill(opts.usdt);
+  await page.getByLabel('Precio Pactado (VES/USDT)').fill(opts.price);
+  await page.getByLabel('Contraparte / Comerciante / Notas').fill(opts.note);
   await page.getByRole('button', { name: 'Registrar operación' }).click();
 }
 
@@ -56,7 +56,7 @@ test('export CSV downloads a file with the es-VE header and the added row', asyn
   // as a download event.
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Exportar CSV' }).click(),
+    page.getByRole('button', { name: 'Exportar CSV (Excel)' }).click(),
   ]);
 
   const stream = await download.createReadStream();
@@ -81,7 +81,7 @@ test('backup / import round-trip restores a deleted operation', async ({ page })
   // Download the JSON backup so we can re-import the exact same payload.
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Exportar respaldo' }).click(),
+    page.getByRole('button', { name: 'Exportar respaldo JSON' }).click(),
   ]);
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -89,17 +89,21 @@ test('backup / import round-trip restores a deleted operation', async ({ page })
   const backupJson = Buffer.concat(chunks).toString('utf8');
   expect(download.suggestedFilename()).toMatch(/^p2p-operaciones-\d{4}-\d{2}-\d{2}\.json$/);
 
-  // Delete the row, then confirm it is gone from the ledger.
-  await row.getByRole('button', { name: 'Eliminar' }).click();
+  // Delete the row, then confirm the confirmation modal, then assert it is gone.
+  await row.getByRole('button', { name: 'Eliminar registro' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Eliminar' }).click();
   await expect(page.locator('tr', { hasText: 'backup e2e' })).toHaveCount(0);
 
   // Re-import via the hidden file input (setInputFiles works on hidden inputs). The
-  // component reads the file with FileReader and replaces the ledger after validation.
+  // component reads the file with FileReader, validates, and STAGES it — then shows a
+  // confirmation modal before replacing the ledger.
   await page.locator('input[type="file"]').setInputFiles({
     name: 'p2p-operaciones.json',
     mimeType: 'application/json',
     buffer: Buffer.from(backupJson, 'utf8'),
   });
+
+  await page.getByRole('dialog').getByRole('button', { name: 'Restaurar e Importar' }).click();
 
   const restored = page.locator('tr', { hasText: 'backup e2e' });
   await expect(restored).toContainText('2.500,00 Bs');

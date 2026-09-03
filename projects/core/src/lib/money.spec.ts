@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampNonNegative, clampAtLeast } from './money';
+import { clampNonNegative, clampAtLeast, roundMoney } from './money';
 
 describe('clampNonNegative', () => {
   it('passes positive values through unchanged', () => {
@@ -47,3 +47,23 @@ describe('clampAtLeast', () => {
     expect(clampAtLeast(Infinity, 1)).toBe(1);
   });
 });
+
+describe('roundMoney', () => {
+  it('rounds numbers correctly to specified decimal places', () => {
+    expect(roundMoney(123.456, 2)).toBe(123.46);
+    expect(roundMoney(123.454, 2)).toBe(123.45);
+    expect(roundMoney(10.5, 0)).toBe(11);
+    expect(roundMoney(10.123456, 4)).toBe(10.1235);
+  });
+
+  it('handles floating point representation artifacts (e.g. 1.005 -> 1.01)', () => {
+    expect(roundMoney(1.005, 2)).toBe(1.01);
+  });
+
+  it('safely handles non-finite values', () => {
+    expect(roundMoney(NaN)).toBe(0);
+    expect(roundMoney(Infinity)).toBe(0);
+    expect(roundMoney(-Infinity)).toBe(0);
+  });
+});
+

@@ -4,54 +4,292 @@
     <p class="note">Rendimiento agrupado de tu registro de operaciones. Los periodos usan la fecha UTC del registro.</p>
   </header>
 
-  <div class="actions">
-    <button type="button" [class.active]="period() === 'day'" (click)="setPeriod('day')">Día</button>
-    <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
-    <button type="button" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')">Trimestre</button>
-    <span class="spacer"></span>
-    <label class="inline">
-      Par
-      <select [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
-        <option value="all">Todos</option>
-        <option value="USDT">USDT/VES</option>
-        <option value="EUR">EUR/VES</option>
-      </select>
-    </label>
+  <div class="section-group">
+    <span class="section-eyebrow">Período & Filtros</span>
+    <div class="actions">
+      <button type="button" [class.active]="period() === 'day'" (click)="setPeriod('day')">Día</button>
+      <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
+      <button type="button" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')">Trimestre</button>
+      <button type="button" [class.active]="period() === 'session'" (click)="setPeriod('session')">Sesiones</button>
+      <span class="spacer"></span>
+      <label class="inline">
+        Par
+        <select [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
+          <option value="all">Todos</option>
+          <option value="USDT">USDT/VES</option>
+          <option value="EUR">EUR/VES</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+      <button type="button" class="btn btn-secondary" (click)="openComplianceModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 6px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Informe de Cumplimiento / Justificación Bancaria (PDF)
+      </button>
+    </div>
   </div>
 
-  <div class="grid">
-    <div class="out"><span>Operaciones</span><strong>{{ fmtNum(totals().operations) }}</strong></div>
-    <div class="out"><span>Ganancia neta (Bs)</span><strong [class.verdict]="totals().pnlVes >= 0" [class.alert]="totals().pnlVes < 0">{{ fmtVes(totals().pnlVes) }}</strong></div>
-    <div class="out"><span>Volumen (USDT)</span><strong>{{ fmtUsd(totals().volumeUsdt) }}</strong></div>
-    <div class="out"><span>Comisiones (Bs)</span><strong>{{ fmtVes(totals().fees) }}</strong></div>
+  <div class="section-divider"></div>
+  <div class="stat-grid">
+    <div class="stat-tile out">
+      <span class="stat-label">Operaciones</span>
+      <span class="stat-value">{{ fmtNum(totals().operations) }}</span>
+    </div>
+    <div class="stat-tile out">
+      <span class="stat-label">Ganancia neta (Bs)</span>
+      <span class="stat-value" [class.verdict]="totals().pnlVes >= 0" [class.alert]="totals().pnlVes < 0" [class.positive]="totals().pnlVes >= 0" [class.negative]="totals().pnlVes < 0">{{ fmtVes(totals().pnlVes) }}</span>
+    </div>
+    <div class="stat-tile out">
+      <span class="stat-label">Volumen (USDT)</span>
+      <span class="stat-value">{{ fmtUsd(totals().volumeUsdt) }}</span>
+    </div>
+    <div class="stat-tile out">
+      <span class="stat-label">Comisiones (Bs)</span>
+      <span class="stat-value">{{ fmtVes(totals().fees) }}</span>
+    </div>
   </div>
 
-  @if (rows().length === 0) {
+  @if (period() === 'session') {
+    <div class="section-divider"></div>
+    <div class="data-section">
+      <span class="section-eyebrow">Historial de Jornadas Operativas</span>
+      @if (sessionSummaries().length === 0) {
+        <p class="note">No se han registrado sesiones de trading aún. Inicia tu primera jornada desde el Centro de Control.</p>
+      } @else {
+        <table class="corporate-table">
+          <thead>
+            <tr>
+              <th>Inicio / Fecha</th>
+              <th>Estado</th>
+              <th>Duración</th>
+              <th>Ops</th>
+              <th>PnL (Bs)</th>
+              <th>PnL (USDT)</th>
+              <th>Rotación</th>
+              <th>Disciplina</th>
+              <th>Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of sessionSummaries(); track s.session.id) {
+              <tr>
+                <td class="font-mono text-muted">{{ s.session.startTime | slice:0:16 }}</td>
+                <td>
+                  <span class="badge" [class.badge-accent]="s.isOpen" [class.badge-muted]="!s.isOpen">
+                    {{ s.isOpen ? 'En curso' : 'Cerrada' }}
+                  </span>
+                </td>
+                <td class="font-mono">{{ formatDuration(s.durationMs) }}</td>
+                <td>{{ s.operationsCount }}</td>
+                <td [class.verdict]="s.pnlVes >= 0" [class.alert]="s.pnlVes < 0">{{ fmtVes(s.pnlVes) }}</td>
+                <td>{{ fmtUsd(s.pnlUsdt) }}</td>
+                <td class="font-mono">{{ s.turnoverRatePerHour }} ops/h</td>
+                <td>{{ formatRating(s.session.disciplineRating) }}</td>
+                <td>{{ s.session.notes || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  } @else if (rows().length === 0) {
     <p class="note">Aún no hay operaciones registradas. Usa «Registro de Operaciones» para empezar a acumular datos.</p>
   } @else {
-    <table>
-      <thead>
-        <tr>
-          <th>{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
-          <th>Ops</th>
-          <th>Ganancia (Bs)</th>
-          <th>Ganancia (USDT)</th>
-          <th>Volumen (USDT)</th>
-          <th>Comisiones (Bs)</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (r of rows(); track r.period) {
+    <div class="section-divider"></div>
+    <div class="data-section">
+      <span class="section-eyebrow">Detalle por Período</span>
+      <table class="corporate-table">
+        <thead>
           <tr>
-            <td>{{ r.period }}</td>
-            <td>{{ fmtNum(r.operations) }}</td>
-            <td [class.verdict]="r.pnlVes >= 0" [class.alert]="r.pnlVes < 0">{{ fmtVes(r.pnlVes) }}</td>
-            <td>{{ fmtUsd(r.pnlUsdt) }}</td>
-            <td>{{ fmtUsd(r.volumeUsdt) }}</td>
-            <td>{{ fmtVes(r.fees) }}</td>
+            <th>{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
+            <th>Ops</th>
+            <th>Ganancia (Bs)</th>
+            <th>Ganancia (USDT)</th>
+            <th>Volumen (USDT)</th>
+            <th>Comisiones (Bs)</th>
           </tr>
-        }
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          @for (r of rows(); track r.period) {
+            <tr>
+              <td>{{ r.period }}</td>
+              <td>{{ fmtNum(r.operations) }}</td>
+              <td [class.verdict]="r.pnlVes >= 0" [class.alert]="r.pnlVes < 0">{{ fmtVes(r.pnlVes) }}</td>
+              <td>{{ fmtUsd(r.pnlUsdt) }}</td>
+              <td>{{ fmtUsd(r.volumeUsdt) }}</td>
+              <td>{{ fmtVes(r.fees) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (showComplianceModal()) {
+    <div class="modal-backdrop" (click)="closeComplianceModal()">
+      <div class="modal-content compliance-modal-content" (click)="$event.stopPropagation()" style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 18px;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem;">Informe de Cumplimiento & Justificación Bancaria</h3>
+            <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">Documento formal para presentar ante entidades bancarias (origen y destino de fondos).</p>
+          </div>
+          <button type="button" class="btn-icon" (click)="closeComplianceModal()">✕</button>
+        </div>
+
+        <!-- Filter / Metadata Editor -->
+        <div class="section-group" style="background: var(--bg-alt); padding: 14px; border-radius: 8px; margin-bottom: 20px;">
+          <span class="section-eyebrow">Datos del Titular & Banco</span>
+          <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            <label>
+              <span>Nombre / Razón Social</span>
+              <input type="text" [value]="complianceMeta().operatorName" (input)="patchComplianceMeta({ operatorName: $any($event.target).value })" />
+            </label>
+            <label>
+              <span>Cédula / RIF</span>
+              <input type="text" [value]="complianceMeta().documentId" (input)="patchComplianceMeta({ documentId: $any($event.target).value })" />
+            </label>
+            <label>
+              <span>Banco Destinatario</span>
+              <input type="text" [value]="complianceMeta().targetBank" (input)="patchComplianceMeta({ targetBank: $any($event.target).value })" />
+            </label>
+            <label>
+              <span>Cuenta Auditada</span>
+              <input type="text" placeholder="Ej: 0134...1234" [value]="complianceMeta().targetAccountNumber || ''" (input)="patchComplianceMeta({ targetAccountNumber: $any($event.target).value })" />
+            </label>
+            <label>
+              <span>Fecha Desde</span>
+              <input type="date" [value]="complianceStartDate()" (input)="complianceStartDate.set($any($event.target).value)" />
+            </label>
+            <label>
+              <span>Fecha Hasta</span>
+              <input type="date" [value]="complianceEndDate()" (input)="complianceEndDate.set($any($event.target).value)" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Printable Document Container -->
+        <div class="printable-statement" style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; color: var(--text);">
+          <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid var(--gold); padding-bottom: 14px;">
+            <span style="font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; color: var(--gold-strong); font-weight: 700;">Extracto de Auditoría y Trazabilidad Operativa</span>
+            <h2 style="margin: 6px 0; font-size: 1.35rem; color: var(--text);">DECLARACIÓN DE ORIGEN Y DESTINO DE FONDOS P2P</h2>
+            <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">
+              Emitido para: <strong>{{ complianceMeta().targetBank }}</strong> · Período: {{ complianceStatement().period.from }} al {{ complianceStatement().period.to }}
+            </p>
+          </div>
+
+          <!-- Parties Info -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 0.85rem; margin-bottom: 18px; padding: 12px; background: var(--bg-alt); border-radius: 6px;">
+            <div>
+              <p style="margin: 3px 0;"><strong>Titular Declarante:</strong> {{ complianceMeta().operatorName }}</p>
+              <p style="margin: 3px 0;"><strong>Identificación:</strong> {{ complianceMeta().documentId }}</p>
+              <p style="margin: 3px 0;"><strong>Actividad Económica:</strong> {{ complianceMeta().economicActivity }}</p>
+            </div>
+            <div>
+              <p style="margin: 3px 0;"><strong>Entidad Bancaria:</strong> {{ complianceMeta().targetBank }}</p>
+              <p style="margin: 3px 0;"><strong>Cuenta / Riel Auditado:</strong> {{ complianceMeta().targetAccountNumber || 'Todas las cuentas vinculadas' }}</p>
+              <p style="margin: 3px 0;"><strong>Fecha de Generación:</strong> {{ complianceStatement().generatedAt | slice:0:10 }}</p>
+            </div>
+          </div>
+
+          <!-- Financial Totals -->
+          <div class="out" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+            <div>
+              <dt>Total Operaciones</dt>
+              <dd class="font-mono">{{ complianceStatement().totalOperations }}</dd>
+            </div>
+            <div>
+              <dt>Total Egresos (Compras)</dt>
+              <dd class="font-mono">{{ fmtVes(complianceStatement().totalVesEgresos) }}</dd>
+            </div>
+            <div>
+              <dt>Total Ingresos (Ventas)</dt>
+              <dd class="font-mono positive">{{ fmtVes(complianceStatement().totalVesIngresos) }}</dd>
+            </div>
+            <div>
+              <dt>Margen Neto Realizado</dt>
+              <dd class="font-mono" [class.positive]="complianceStatement().netMarginVes >= 0" [class.negative]="complianceStatement().netMarginVes < 0">
+                {{ fmtVes(complianceStatement().netMarginVes) }}
+              </dd>
+            </div>
+          </div>
+
+          <!-- Transaction Table -->
+          <div class="table-container" style="margin-bottom: 20px; max-height: 350px; overflow-y: auto;">
+            <table class="corporate-table" style="font-size: 0.8rem;">
+              <thead>
+                <tr>
+                  <th>Fecha / Hora</th>
+                  <th>Tipo</th>
+                  <th class="text-right">Monto VES</th>
+                  <th class="text-right">Cripto</th>
+                  <th class="text-right">Tasa</th>
+                  <th>Contraparte (Titular Legal)</th>
+                  <th>Cuenta Bancaria</th>
+                  <th class="text-center">Veredicto</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (rec of complianceStatement().records; track rec.id) {
+                  <tr>
+                    <td class="font-mono text-muted">{{ rec.date }}</td>
+                    <td>
+                      <span class="badge" [class.badge-buy]="rec.type === 'COMPRA'" [class.badge-sell]="rec.type === 'VENTA'" style="font-size: 0.72rem;">
+                        {{ rec.type }}
+                      </span>
+                    </td>
+                    <td class="font-mono text-right">{{ fmtVes(rec.vesAmount) }}</td>
+                    <td class="font-mono text-right">{{ fmtUsd(rec.cryptoAmount) }} {{ rec.pair }}</td>
+                    <td class="font-mono text-right">{{ rec.price }}</td>
+                    <td>
+                      <strong>{{ rec.counterpartyRealName || rec.counterpartyAlias }}</strong>
+                      @if (rec.counterpartyDocumentId) {
+                        <span class="text-muted" style="font-size: 0.75rem;"> ({{ rec.counterpartyDocumentId }})</span>
+                      }
+                    </td>
+                    <td><span class="badge badge-muted" style="font-size: 0.72rem;">{{ rec.bankAccountName }}</span></td>
+                    <td class="text-center">
+                      <span class="badge badge-accent" style="font-size: 0.7rem;">{{ rec.complianceVerdict }}</span>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="8" class="empty-state">No se encontraron operaciones registradas en el período seleccionado.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Legal Disclaimer & Signatures -->
+          <div style="border-top: 1px solid var(--border); padding-top: 14px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+            <p style="margin: 0 0 16px;">
+              <strong>DECLARACIÓN JURADA:</strong> El presente extracto certifica la trazabilidad y legitimidad de los fondos movilizados a través de las cuentas bancarias indicadas. Todas las operaciones corresponden a intercambios comerciales de activos digitales entre particulares en plataformas P2P, ejecutadas bajo estricta verificación de titularidad y cotejo de contrapartes para la prevención de legitimación de capitales y financiamiento al terrorismo.
+            </p>
+            <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center;">
+              <div style="border-top: 1px solid var(--border); width: 220px; padding-top: 6px;">
+                <strong>{{ complianceMeta().operatorName }}</strong><br />
+                <span>{{ complianceMeta().documentId }}</span><br />
+                <span style="font-size: 0.7rem;">Firma del Operador / Declarante</span>
+              </div>
+              <div style="border-top: 1px solid var(--border); width: 220px; padding-top: 6px;">
+                <strong>Recepción Bancaria / Compliance</strong><br />
+                <span>{{ complianceMeta().targetBank }}</span><br />
+                <span style="font-size: 0.7rem;">Sello / Firma de Recepción</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" (click)="closeComplianceModal()">Cerrar</button>
+          <button type="button" class="btn btn-primary" (click)="printComplianceReport()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Imprimir / Guardar como PDF
+          </button>
+        </div>
+      </div>
+    </div>
   }
 </section>

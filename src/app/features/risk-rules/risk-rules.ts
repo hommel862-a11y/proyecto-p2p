@@ -6,6 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { RisksService, type RiskConfig } from '../../core/rules';
+import { ToastService } from '../../core/toast.service';
 import { clampNonNegative, clampAtLeast } from '@p2p/core';
 
 /**
@@ -19,6 +20,7 @@ import { clampNonNegative, clampAtLeast } from '@p2p/core';
 })
 export class RiskRules {
   private readonly risks = inject(RisksService);
+  private readonly toast = inject(ToastService);
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
@@ -33,11 +35,13 @@ export class RiskRules {
 
   save(): void {
     this.risks.save({ ...this.draft() });
+    this.toast.success('Parámetros de riesgo guardados correctamente.');
   }
 
   reset(): void {
     this.risks.reset();
     this.draft.set({ ...this.risks.config() });
+    this.toast.info('Reglas de riesgo restablecidas a los valores de fábrica.');
   }
 
   patch(p: Partial<RiskConfig>): void {

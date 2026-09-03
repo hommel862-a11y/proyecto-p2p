@@ -43,11 +43,13 @@ export function computeSpread(
   assertPositive('buyPrice', buyPrice);
   assertPositive('sellPrice', sellPrice);
   assertPositive('amount', amount);
-  if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 0.0035) {
-    throw new Error('La comisión debe estar entre 0 y 0.35 (0.35%)');
+  if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 0.1) {
+    throw new Error('La comisión debe estar entre 0% y 10% (0 y 0.10)');
   }
 
-  const usdtReceived = unit === 'USDT' ? amount : amount / buyPrice;
+  // Base assets: USDT or EUR. When unit is VES, divide by buyPrice to get base currency amount.
+  const isBaseCurrency = unit === 'USDT' || unit === 'EUR';
+  const usdtReceived = isBaseCurrency ? amount : amount / buyPrice;
   const vesReceived = usdtReceived * sellPrice;
   const unitSpread = sellPrice - buyPrice;
   const gainVes = usdtReceived * unitSpread;
