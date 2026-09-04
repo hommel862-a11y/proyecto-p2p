@@ -20,6 +20,19 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(version).toBe('9.9.9');
   });
 
+  it('forwards fetchBinanceP2p to the p2p:fetch-binance channel', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({ data: [] });
+    });
+    const res = await api.fetchBinanceP2p({ asset: 'USDT', fiat: 'VES', tradeType: 'BUY' });
+    expect(calls).toEqual([
+      { channel: 'p2p:fetch-binance', args: [{ asset: 'USDT', fiat: 'VES', tradeType: 'BUY' }] },
+    ]);
+    expect(res).toEqual({ data: [] });
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);

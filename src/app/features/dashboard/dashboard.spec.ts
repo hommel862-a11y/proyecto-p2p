@@ -78,4 +78,22 @@ describe('Dashboard', () => {
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Super Merchant');
   });
+
+  it('computes cumulative PnL curve points and toggles between chart tabs', () => {
+    seed([
+      op({ id: '1', type: 'buy', vesAmount: 8000, usdtAmount: 10 }),
+      op({ id: '2', type: 'sell', vesAmount: 8500, usdtAmount: 10 }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.cumulativeChart().points.length).toBeGreaterThan(0);
+    expect(c.selectedChartTab()).toBe('cumulative');
+
+    c.selectedChartTab.set('volume');
+    f.detectChanges();
+    expect(c.selectedChartTab()).toBe('volume');
+    expect(f.nativeElement.textContent).toContain('Volumen Diario (USDT)');
+  });
 });

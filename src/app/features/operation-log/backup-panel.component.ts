@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { AutoBackupService } from '../../core/auto-backup.service';
 
 @Component({
   selector: 'app-backup-panel',
@@ -62,10 +63,67 @@ import { ChangeDetectionStrategy, Component, output } from '@angular/core';
           Exportar CSV (Excel)
         </button>
       </div>
+
+      <!-- Rolling 7-day auto-snapshots -->
+      <div style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px;">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;"
+        >
+          <span
+            style="font-size: 0.76rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;"
+          >
+            Snapshots Automáticos (Últimos 7 días)
+          </span>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            (click)="autoBackup.createSnapshot()"
+            style="font-size: 0.75rem; padding: 4px 10px;"
+          >
+            📸 Snapshot Manual Ahora
+          </button>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          @for (s of autoBackup.snapshots(); track s.date) {
+            <div
+              style="background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;"
+            >
+              <span class="font-mono" style="font-weight: 600; color: var(--gold);">{{
+                s.date
+              }}</span>
+              <span class="text-muted">({{ s.operationsCount }} ops)</span>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="autoBackup.restoreSnapshot(s.date)"
+                title="Restaurar este snapshot"
+                style="font-size: 0.7rem; padding: 2px 6px; color: var(--accent);"
+              >
+                ↺ Restaurar
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                (click)="autoBackup.downloadSnapshot(s.date)"
+                title="Descargar JSON"
+                style="font-size: 0.7rem; padding: 2px 6px;"
+              >
+                ⬇
+              </button>
+            </div>
+          } @empty {
+            <span class="text-muted" style="font-size: 0.75rem;"
+              >Aún no hay snapshots automáticos registrados.</span
+            >
+          }
+        </div>
+      </div>
     </div>
   `,
 })
 export class BackupPanelComponent {
+  readonly autoBackup = inject(AutoBackupService);
   readonly downloadJson = output<void>();
   readonly importFile = output<Event>();
   readonly downloadCsv = output<void>();

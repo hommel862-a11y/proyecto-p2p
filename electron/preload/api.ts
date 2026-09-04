@@ -11,13 +11,15 @@ export type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown
 export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
   return {
     getVersion: () => ipc('app:get-version') as Promise<string>,
+    fetchBinanceP2p: (params) => ipc('p2p:fetch-binance', params) as Promise<unknown>,
   };
 }
 
 // Single source of truth for the exact method names the bridge exposes.
 // Used by both the preload guard and the test to prove the surface is narrow.
-export const EXPOSED_API_KEYS = ['getVersion'] as const;
+export const EXPOSED_API_KEYS = ['getVersion', 'fetchBinanceP2p'] as const;
 
-// The one channel the bridge is permitted to forward. Anything else must be
-// rejected so no @p2p/core math or node built-in ever crosses the boundary.
-export const ALLOWED_CHANNELS = ['app:get-version'] as const;
+// The channels the bridge is permitted to forward. Anything else must be
+// rejected so no arbitrary channel ever crosses the boundary.
+export const ALLOWED_CHANNELS = ['app:get-version', 'p2p:fetch-binance'] as const;
+

@@ -22,6 +22,8 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 
 import { Router } from '@angular/router';
 import { TradeTimerService, type TradePreset } from '../../core/trade-timer.service';
+import { DatePipe } from '@angular/common';
+import { BinanceP2pService } from '../../core/binance-p2p.service';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -31,7 +33,7 @@ import { TradeTimerService, type TradePreset } from '../../core/trade-timer.serv
 @Component({
   selector: 'app-spread-monitor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FORMAT_PIPES],
+  imports: [DatePipe, ...FORMAT_PIPES],
   templateUrl: './spread-monitor.html',
 })
 export class SpreadMonitor {
@@ -39,6 +41,8 @@ export class SpreadMonitor {
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
+  readonly binance = inject(BinanceP2pService);
+
   private readonly nf = new Intl.NumberFormat('es-VE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -83,6 +87,32 @@ export class SpreadMonitor {
       `Precio de venta fijado en ${this.nf.format(target)} VES/${this.pair()} para ${this.targetRoiPct()}% ROI.`,
       'Anuncio Maker Configurado',
     );
+  }
+
+  async syncBinancePrices(): Promise<void> {
+    const depth = await this.binance.fetchMarketDepth(this.pair(), 'VES');
+    if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+      this.buyPrice.set(depth.bestBuyPrice);
+      this.sellPrice.set(depth.bestSellPrice);
+      this.toast.success(
+        `Precios sincronizados con Binance P2P (${this.binance.selectedBank()}): Compra ${depth.bestBuyPrice} Bs / Venta ${depth.bestSellPrice} Bs.`,
+        'Mercado en Vivo',
+      );
+    }
+  }
+
+  applyBinancePrices(): void {
+    const depth = this.binance.marketDepth();
+    if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+      this.buyPrice.set(depth.bestBuyPrice);
+      this.sellPrice.set(depth.bestSellPrice);
+      this.toast.success(
+        `Precios aplicados: Compra ${depth.bestBuyPrice} Bs / Venta ${depth.bestSellPrice} Bs.`,
+        'Precios Actualizados',
+      );
+    } else {
+      void this.syncBinancePrices();
+    }
   }
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
@@ -210,7 +240,9 @@ export class SpreadMonitor {
         const schedule = () =>
           LocalNotifications.schedule({
             notifications: [{ title, body: msg, id: Math.floor(Math.random() * 100000) }],
-          }).catch(() => {});
+          }).catch(() => {
+            /* ignore notification scheduling failure */
+          });
         LocalNotifications.checkPermissions()
           .then((p) => {
             if (p.display === 'granted') schedule();
@@ -219,9 +251,13 @@ export class SpreadMonitor {
                 .then((r) => {
                   if (r.display === 'granted') schedule();
                 })
-                .catch(() => {});
+                .catch(() => {
+                  /* ignore permission request rejection */
+                });
           })
-          .catch(() => {});
+          .catch(() => {
+            /* ignore permission check rejection */
+          });
         return;
       }
       if (typeof Notification !== 'undefined') {
@@ -233,7 +269,9 @@ export class SpreadMonitor {
             .then((p) => {
               if (p === 'granted') fire();
             })
-            .catch(() => {});
+            .catch(() => {
+              /* ignore notification request rejection */
+            });
         }
       }
     } catch {

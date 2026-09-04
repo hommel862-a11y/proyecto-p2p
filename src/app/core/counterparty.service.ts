@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { StorageService } from './storage';
 import { AuditLoggerService } from './audit-logger.service';
-import { type Counterparty, type CounterpartyReputation, normalizeName } from '@p2p/core';
+import { type Counterparty, normalizeName } from '@p2p/core';
 
 const CRM_STORAGE_KEY = 'p2p.counterparties';
 

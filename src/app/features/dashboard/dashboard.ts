@@ -59,6 +59,67 @@ export class Dashboard {
     return max;
   });
 
+  /** Active chart view: cumulative equity curve vs daily volume */
+  readonly selectedChartTab = signal<'cumulative' | 'volume'>('cumulative');
+
+  readonly hoveredPoint = signal<{
+    date: string;
+    label: string;
+    value: string;
+    subvalue?: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  /** Cumulative PnL curve calculation for high-res SVG chart */
+  readonly cumulativeChart = computed(() => {
+    const week = this.dashboard().week;
+    if (week.length === 0) {
+      return { points: [], lineD: '', areaD: '', baselineY: 100, minVal: 0, maxVal: 0 };
+    }
+
+    let cum = 0;
+    const series = week.map((w) => {
+      cum += w.pnlVes;
+      return {
+        date: w.date,
+        shortDate: this.shortDate(w.date),
+        dailyPnl: w.pnlVes,
+        cumulativePnl: cum,
+        volumeUsdt: w.volumeUsdt,
+        operations: w.operations,
+      };
+    });
+
+    const values = series.map((s) => s.cumulativePnl);
+    const minVal = Math.min(0, ...values);
+    const maxVal = Math.max(1, ...values);
+    const range = maxVal - minVal || 1;
+
+    const W = 600;
+    const H = 180;
+    const padX = 40;
+    const padY = 25;
+    const plotW = W - padX * 2;
+    const plotH = H - padY * 2;
+
+    const points = series.map((s, i) => {
+      const x = padX + (plotW / Math.max(series.length - 1, 1)) * i;
+      const normY = (s.cumulativePnl - minVal) / range;
+      const y = padY + plotH * (1 - normY);
+      return { ...s, x, y };
+    });
+
+    const lineD = points.reduce((acc, p, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`, '');
+    const firstP = points[0];
+    const lastP = points[points.length - 1];
+    const baselineNorm = (0 - minVal) / range;
+    const baselineY = padY + plotH * (1 - baselineNorm);
+    const areaD = `${lineD} L ${lastP.x} ${baselineY} L ${firstP.x} ${baselineY} Z`;
+
+    return { points, lineD, areaD, baselineY, minVal, maxVal };
+  });
+
   barHeight(day: DayActivity): number {
     const max = this.weekMax();
     return Math.max(4, Math.round((Math.abs(day.pnlVes) / max) * 100));
@@ -89,7 +150,7 @@ export class Dashboard {
   });
 
   startSession(): void {
-    const s = this.sessionService.startSession({ targetOps: 5 });
+    this.sessionService.startSession({ targetOps: 5 });
     this.toast.success(
       'Sesión de trading abierta. Las operaciones se vincularán a esta jornada.',
       'Sesión Iniciada',

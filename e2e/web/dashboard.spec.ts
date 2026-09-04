@@ -73,8 +73,8 @@ test('last 3 operations table renders rows when operations exist', async ({ page
       vesAmount: 1000 * i,
       usdtAmount: 25 * i,
       price: 40,
-      fee: 0,
-      hasError: false,
+      fees: 0,
+      errorFree: true,
       merchantNote: `dash row ${i}`,
       timestamp: new Date(Date.now() - i * 3600_000).toISOString(),
     });

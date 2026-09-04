@@ -10,6 +10,75 @@
     </button>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════
+       Binance P2P Live Market Radar
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group" style="border: 1px solid var(--gold-border); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(20, 24, 33, 0.95) 100%); padding: 18px 22px; margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="badge badge-accent" style="font-size: 0.75rem; letter-spacing: 0.5px;">BINANCE P2P EN VIVO</span>
+        <span class="text-muted" style="font-size: 0.8rem;">
+          @if (binance.loading()) {
+            <span style="color: var(--gold);">Consultando libro de órdenes...</span>
+          } @else if (binance.lastFetched(); as date) {
+            Actualizado {{ date | date:'HH:mm:ss' }}
+          } @else {
+            Mercado listo para sincronizar
+          }
+        </span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <select [value]="binance.selectedBank()" (change)="binance.setBankFilter($any($event.target).value); syncBinancePrices()" style="font-size: 0.8rem; padding: 4px 8px; width: auto;">
+          <option value="ALL">Todos los Bancos</option>
+          <option value="BANESCO">Solo Banesco</option>
+          <option value="PAGO_MOVIL">Solo Pago Móvil</option>
+          <option value="MERCANTIL">Solo Mercantil</option>
+          <option value="BDV">Solo Banco de Venezuela</option>
+        </select>
+
+        <button type="button" class="btn btn-secondary" [class.active]="binance.autoRefresh()" (click)="binance.toggleAutoRefresh()" title="Auto-actualizar cada 30s" style="font-size: 0.8rem; padding: 6px 12px;">
+          🔄 Auto (30s)
+        </button>
+
+        <button type="button" class="btn btn-primary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.8rem; padding: 6px 14px;">
+          ⚡ Sincronizar Ahora
+        </button>
+      </div>
+    </div>
+
+    @if (binance.marketDepth(); as depth) {
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 10px 0 0;">
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--accent);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Mejor Compra (Ask)</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); color: var(--text);">
+            {{ depth.bestBuyPrice | num }} Bs
+          </div>
+        </div>
+
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--accent-2);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Mejor Venta (Bid)</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); color: var(--text);">
+            {{ depth.bestSellPrice | num }} Bs
+          </div>
+        </div>
+
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--gold);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Spread del Mercado</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono);" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
+            {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.8rem; padding: 10px;">
+            📥 Cargar en el Monitor
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
   @if (activeMode() === 'spread') {
     <div class="section-group">
       <span class="section-eyebrow">Par & Precios</span>

@@ -11,3 +11,4 @@ export * from './lib/breakeven';
 export * from './lib/accounts';
 export * from './lib/counterparty';
 export * from './lib/compliance';
+export * from './lib/binance-p2p';

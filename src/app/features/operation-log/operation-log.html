@@ -68,8 +68,8 @@
 
   <!-- Modal de confirmación para eliminación -->
   @if (pendingDeleteId()) {
-    <div class="modal-backdrop" (click)="cancelRemove()">
-      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-del-title" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && cancelRemove()" (keydown.escape)="cancelRemove()" tabindex="0" role="button" aria-label="Cerrar modal de eliminación">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-del-title">
         <h3 id="modal-del-title">Confirmar eliminación</h3>
         <p>¿Estás seguro de que deseas eliminar este registro de operación? Esta acción no se puede deshacer.</p>
         <div class="modal-actions">
@@ -82,8 +82,8 @@
 
   <!-- Modal de confirmación para restauración de respaldo -->
   @if (pendingImportOps(); as staged) {
-    <div class="modal-backdrop" (click)="cancelImport()">
-      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-imp-title" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && cancelImport()" (keydown.escape)="cancelImport()" tabindex="0" role="button" aria-label="Cerrar modal de importación">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-imp-title">
         <h3 id="modal-imp-title">Restaurar respaldo de operaciones</h3>
         <p>Se han validado <strong>{{ staged.length }} operaciones</strong> en el archivo. Al continuar, se reemplazará el registro de operaciones actual en este dispositivo.</p>
         <div class="modal-actions">

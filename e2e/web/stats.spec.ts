@@ -10,8 +10,8 @@ const SAMPLE_OP = {
   vesAmount: 5000,
   usdtAmount: 12.5,
   price: 400,
-  fee: 0,
-  hasError: false,
+  fees: 0,
+  errorFree: true,
   merchantNote: 'e2e stats test',
   timestamp: new Date().toISOString(),
 };

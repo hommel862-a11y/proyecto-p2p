@@ -136,22 +136,97 @@
        Weekly Activity — 7-day mini chart
        ═══════════════════════════════════════════════════ -->
   <div class="section-group">
-    <span class="section-eyebrow">Actividad Últimos 7 Días</span>
-    <div class="dashboard-chart">
-      @for (day of dashboard().week; track day.date) {
-        <div class="dashboard-chart-col">
-          <div class="dashboard-chart-bar-wrap">
-            <div class="dashboard-chart-bar"
-                 [class.bar-positive]="day.pnlVes >= 0"
-                 [class.bar-negative]="day.pnlVes < 0"
-                 [style.height.%]="barHeight(day)">
-            </div>
-          </div>
-          <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
-          <span class="dashboard-chart-ops">{{ day.operations }} ops</span>
-        </div>
-      }
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Rendimiento Gráfico (Últimos 7 Días)</span>
+      <div class="actions" style="margin: 0; display: flex; gap: 6px;">
+        <button type="button" class="btn btn-secondary" [class.active]="selectedChartTab() === 'cumulative'" (click)="selectedChartTab.set('cumulative')" style="font-size: 0.78rem; padding: 4px 10px;">
+          📈 Curva PnL Acumulado
+        </button>
+        <button type="button" class="btn btn-secondary" [class.active]="selectedChartTab() === 'volume'" (click)="selectedChartTab.set('volume')" style="font-size: 0.78rem; padding: 4px 10px;">
+          📊 Volumen Diario (USDT)
+        </button>
+      </div>
     </div>
+
+    @if (selectedChartTab() === 'cumulative') {
+      <div style="position: relative; width: 100%; min-height: 200px; background: rgba(10, 14, 23, 0.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;">
+        <svg viewBox="0 0 600 180" style="width: 100%; height: auto; overflow: visible; display: block;">
+          <defs>
+            <linearGradient id="pnlGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.38" />
+              <stop offset="100%" stop-color="var(--gold)" stop-opacity="0.0" />
+            </linearGradient>
+            <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#d8b45c" flood-opacity="0.4" />
+            </filter>
+          </defs>
+
+          <!-- Baseline zero line -->
+          <line x1="40" [attr.y1]="cumulativeChart().baselineY" x2="560" [attr.y2]="cumulativeChart().baselineY" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3" />
+
+          <!-- Area fill -->
+          @if (cumulativeChart().areaD) {
+            <path [attr.d]="cumulativeChart().areaD" fill="url(#pnlGrad)" />
+          }
+
+          <!-- Line curve -->
+          @if (cumulativeChart().lineD) {
+            <path [attr.d]="cumulativeChart().lineD" fill="none" stroke="var(--gold)" stroke-width="2.5" filter="url(#goldGlow)" />
+          }
+
+          <!-- Points -->
+          @for (p of cumulativeChart().points; track p.date) {
+            <g>
+              <circle
+                [attr.cx]="p.x"
+                [attr.cy]="p.y"
+                r="4.5"
+                fill="var(--panel-2)"
+                stroke="var(--gold)"
+                stroke-width="2"
+                style="cursor: pointer; transition: r 0.2s ease;"
+                (mouseenter)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
+                (mouseleave)="hoveredPoint.set(null)"
+              />
+              <text [attr.x]="p.x" y="175" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">
+                {{ p.shortDate }}
+              </text>
+            </g>
+          }
+        </svg>
+
+        <!-- Tooltip overlay -->
+        @if (hoveredPoint(); as tip) {
+          <div style="position: absolute; top: 12px; right: 16px; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 6px; padding: 8px 12px; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
+            <div style="font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono);">{{ tip.date }}</div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: var(--gold-strong); font-family: var(--font-mono);">
+              {{ tip.value }}
+            </div>
+            @if (tip.subvalue) {
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">{{ tip.subvalue }}</div>
+            }
+          </div>
+        }
+      </div>
+    } @else {
+      <!-- Daily Volume Bar View -->
+      <div class="dashboard-chart">
+        @for (day of dashboard().week; track day.date) {
+          <div class="dashboard-chart-col">
+            <div class="dashboard-chart-bar-wrap">
+              <div class="dashboard-chart-bar"
+                   [class.bar-positive]="day.pnlVes >= 0"
+                   [class.bar-negative]="day.pnlVes < 0"
+                   [style.height.%]="barHeight(day)"
+                   [title]="day.date + ': ' + fmtVes(day.pnlVes) + ' | ' + fmtUsd(day.volumeUsdt) + ' USDT'">
+              </div>
+            </div>
+            <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
+            <span class="dashboard-chart-ops">{{ fmtUsd(day.volumeUsdt) }}</span>
+          </div>
+        }
+      </div>
+    }
   </div>
 
   <div class="grid" style="grid-template-columns: 1fr 1fr;">
@@ -239,8 +314,8 @@
 
   <!-- Modal de Cierre de Sesión -->
   @if (showCloseModal()) {
-    <div class="modal-backdrop" (click)="cancelCloseModal()">
-      <div class="modal-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && cancelCloseModal()" (keydown.escape)="cancelCloseModal()" tabindex="0" role="button" aria-label="Cerrar modal de sesión">
+      <div class="modal-dialog" role="dialog" aria-modal="true">
         <h3>Cerrar Jornada Operativa</h3>
         <p>Evalúa el cumplimiento de tu disciplina y agrega observaciones de mercado antes de archivar la sesión.</p>
 

@@ -127,8 +127,8 @@
   }
 
   @if (showComplianceModal()) {
-    <div class="modal-backdrop" (click)="closeComplianceModal()">
-      <div class="modal-content compliance-modal-content" (click)="$event.stopPropagation()" style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;">
+    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && closeComplianceModal()" (keydown.escape)="closeComplianceModal()" tabindex="0" role="button" aria-label="Cerrar modal de cumplimiento">
+      <div class="modal-content compliance-modal-content" style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 18px;">
           <div>
             <h3 style="margin: 0; font-size: 1.25rem;">Informe de Cumplimiento & Justificación Bancaria</h3>
