@@ -4,6 +4,7 @@ import {
   computed,
   effect,
   inject,
+  OnInit,
   signal,
 } from '@angular/core';
 import {
@@ -25,6 +26,8 @@ import { TradeTimerService, type TradePreset } from '../../core/trade-timer.serv
 import { DatePipe } from '@angular/common';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 
+import { AccountsService } from '../../core/accounts.service';
+
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
  * feed pure core math; the favorable/unfavorable banner comes from the live risk-rules config.
@@ -35,13 +38,21 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, ...FORMAT_PIPES],
   templateUrl: './spread-monitor.html',
+  styleUrl: './spread-monitor.scss',
 })
-export class SpreadMonitor {
+export class SpreadMonitor implements OnInit {
   private readonly router = inject(Router);
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
   readonly binance = inject(BinanceP2pService);
+  readonly accountsService = inject(AccountsService);
+  protected readonly Math = Math;
+
+  selectBank(bankKey: string): void {
+    this.binance.setBankFilter(bankKey);
+    void this.syncBinancePrices();
+  }
 
   private readonly nf = new Intl.NumberFormat('es-VE', {
     minimumFractionDigits: 2,
@@ -193,6 +204,12 @@ export class SpreadMonitor {
       }
       this.prevKind = kind;
     });
+  }
+
+  ngOnInit(): void {
+    if (!this.binance.marketDepth()) {
+      void this.syncBinancePrices();
+    }
   }
 
   setUnit(value: string): void {

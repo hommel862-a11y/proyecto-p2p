@@ -81,13 +81,44 @@ function startStaticServer(): Promise<number> {
   });
 }
 
+async function checkUrl(url: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const req = http.get(url, { timeout: 1500 }, (res) => {
+      resolve(res.statusCode === 200 || res.statusCode === 304);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 async function createWindow(): Promise<void> {
-  const port = await startStaticServer();
+  let targetUrl = '';
+  try {
+    const isLocalhostUp = await checkUrl('http://localhost:4200/');
+    const isIpUp = !isLocalhostUp && (await checkUrl('http://127.0.0.1:4200/'));
+    if (isLocalhostUp || isIpUp) {
+      targetUrl = 'http://localhost:4200/#/spread';
+    }
+  } catch {
+    // fallback to static server
+  }
+
+  if (!targetUrl) {
+    const port = await startStaticServer();
+    targetUrl = `http://localhost:${port}/#/spread`;
+  }
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
     show: true,
     center: true,
+    title: 'P2P Decisor — Mesa de Operaciones Arbitraje',
     webPreferences: {
       ...SECURE_WEB_PREFERENCES,
       preload: path.join(__dirname, '../preload/index.js'),
@@ -95,9 +126,14 @@ async function createWindow(): Promise<void> {
   });
 
   registerIpcHandlers();
-  await mainWindow.loadURL(`http://localhost:${port}/`);
-  mainWindow.show();
-  mainWindow.focus();
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    mainWindow?.maximize();
+    mainWindow?.focus();
+  });
+
+  void mainWindow.loadURL(targetUrl);
 
   mainWindow.on('closed', () => {
     mainWindow = null;

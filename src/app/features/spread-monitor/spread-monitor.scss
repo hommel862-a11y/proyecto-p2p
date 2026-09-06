@@ -1,0 +1,326 @@
+/* ============================================================
+   Spread Monitor & Arbitrage Trading Desk Styles
+   ============================================================ */
+
+.trading-desk-panel {
+  max-width: 100%;
+}
+
+.trading-desk-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.3fr);
+  gap: 20px;
+  align-items: start;
+  margin-top: 16px;
+
+  @media (max-width: 820px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.desk-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Right Column: Corporate P2P Radar & Bank Styling
+   ══════════════════════════════════════════════════════════════ */
+
+.p2p-radar-card {
+  border: 1px solid var(--gold-border);
+  background: linear-gradient(135deg, rgba(216, 180, 92, 0.06) 0%, rgba(13, 20, 36, 0.95) 100%);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(216, 180, 92, 0.12);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--grad-gold);
+    opacity: 0.8;
+  }
+}
+
+.radar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.radar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.radar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Bank Selection Selector & Pills */
+.bank-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.bank-filter-label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.bank-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+
+  &:hover {
+    transform: translateY(-1px);
+    color: var(--text);
+    border-color: var(--line-strong);
+  }
+
+  .bank-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  &.bank-all {
+    .bank-indicator { background: var(--gold); }
+    &.active {
+      background: rgba(216, 180, 92, 0.16);
+      border-color: var(--gold);
+      color: var(--gold-strong);
+      box-shadow: 0 0 12px var(--glow-gold);
+    }
+  }
+
+  &.bank-banesco {
+    .bank-indicator { background: #00a86b; }
+    &.active {
+      background: rgba(0, 168, 107, 0.16);
+      border-color: #00a86b;
+      color: #34d399;
+      box-shadow: 0 0 12px rgba(0, 168, 107, 0.25);
+    }
+  }
+
+  &.bank-mercantil {
+    .bank-indicator { background: #3b82f6; }
+    &.active {
+      background: rgba(59, 130, 246, 0.16);
+      border-color: #3b82f6;
+      color: #60a5fa;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+    }
+  }
+
+  &.bank-bdv {
+    .bank-indicator { background: #ef4444; }
+    &.active {
+      background: rgba(239, 68, 68, 0.16);
+      border-color: #ef4444;
+      color: #f87171;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+    }
+  }
+
+  &.bank-pm {
+    .bank-indicator { background: #a855f7; }
+    &.active {
+      background: rgba(168, 85, 247, 0.16);
+      border-color: #a855f7;
+      color: #c084fc;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+    }
+  }
+}
+
+/* Market Depth Ticker Grid */
+.depth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.depth-tile {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+  }
+
+  &.depth-ask {
+    border-left: 3px solid #34d399;
+  }
+
+  &.depth-bid {
+    border-left: 3px solid #60a5fa;
+  }
+
+  &.depth-spread {
+    border-left: 3px solid var(--gold);
+  }
+
+  .depth-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .depth-value {
+    font-size: 1.18rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text);
+  }
+}
+
+/* Bank Treasury Cupos Status Card */
+.bank-treasury-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+}
+
+.bank-treasury-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.bank-treasury-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.bank-usage-mini-tile {
+  background: rgba(10, 15, 26, 0.4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+
+  &.bank-alert {
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .bank-tile-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .bank-tile-name {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .bank-tile-limit {
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+}
+
+/* Arbitrage Output Card */
+.arbitrage-result-card {
+  background: var(--panel);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(216, 180, 92, 0.08);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--grad-gold);
+    border-radius: 4px 0 0 4px;
+  }
+}
+
+.profit-highlight-tile {
+  background: linear-gradient(135deg, rgba(216, 180, 92, 0.12) 0%, rgba(78, 240, 165, 0.08) 100%);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+
+  .profit-title {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+    color: var(--gold-strong);
+  }
+
+  .profit-amount {
+    font-size: 1.45rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: #34d399;
+    text-shadow: 0 0 12px rgba(52, 211, 153, 0.3);
+  }
+}

@@ -25,6 +25,7 @@
   --gold: #d8b45c;
   --gold-strong: #f0d48a;
   --gold-deep: #a8832f;
+  --gold-border: rgba(216, 180, 92, 0.35);
   --grad-gold: linear-gradient(135deg, #f5e6bd 0%, #d8b45c 45%, #b08a33 100%);
   --glow-gold: rgba(216, 180, 92, 0.28);
 
@@ -47,6 +48,7 @@
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
+  --radius-full: 999px;
 
   /* ---- Shadows ---- */
   --shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.25);
@@ -98,6 +100,7 @@
   --gold: #a8832f;
   --gold-strong: #c49a3e;
   --gold-deep: #8a6c22;
+  --gold-border: rgba(168, 131, 47, 0.35);
   --grad-gold: linear-gradient(135deg, #e8d5a0 0%, #b8922f 45%, #8a6c22 100%);
   --glow-gold: rgba(168, 131, 47, 0.18);
 
