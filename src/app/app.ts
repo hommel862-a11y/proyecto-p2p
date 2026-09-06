@@ -1,9 +1,11 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { ToastComponent } from './core/toast.component';
+import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
+import { HotkeysService } from './core/hotkeys.service';
 
 @Component({
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastComponent, HotkeysModalComponent],
   selector: 'app-root',
   styleUrl: './app.scss',
   templateUrl: './app.html',
@@ -13,6 +15,7 @@ export class App {
   readonly theme = signal<'dark' | 'light'>(this.initialTheme());
   /** Real app version when running under Electron; falls back to the web build. */
   readonly version = signal<string>('1.0.0');
+  readonly hotkeys = inject(HotkeysService);
 
   constructor() {
     try {

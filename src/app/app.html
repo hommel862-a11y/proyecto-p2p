@@ -63,6 +63,9 @@
           <span class="status-dot"></span>
           <span>Manual · Sin API</span>
         </span>
+        <button type="button" class="btn-ghost" (click)="hotkeys.openModal()" title="Atajos de teclado institucionales (?)">
+          ⌨️ Atajos
+        </button>
         <button type="button" class="btn-ghost btn-theme" (click)="toggleTheme()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="theme-icon">
             @if (theme() === 'dark') {
@@ -80,4 +83,5 @@
     </section>
   </div>
   <app-toast />
+  <app-hotkeys-modal />
 </div>
