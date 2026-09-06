@@ -14,7 +14,14 @@ import { MemoryStorage } from './memory-storage';
 export const P2P_STORAGE = new InjectionToken<Storage>('P2P_STORAGE', {
   factory: () => {
     try {
-      return globalThis.localStorage;
+      if (
+        typeof globalThis.localStorage !== 'undefined' &&
+        typeof globalThis.localStorage?.getItem === 'function' &&
+        typeof globalThis.localStorage?.setItem === 'function'
+      ) {
+        return globalThis.localStorage;
+      }
+      return new MemoryStorage();
     } catch {
       return new MemoryStorage();
     }

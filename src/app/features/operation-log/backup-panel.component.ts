@@ -92,6 +92,13 @@ import { AutoBackupService } from '../../core/auto-backup.service';
               <span class="font-mono" style="font-weight: 600; color: var(--gold);">{{
                 s.date
               }}</span>
+              @if (s.checksumSha256) {
+                <span
+                  title="Integridad SHA-256 Verificada: {{ s.checksumSha256 }}"
+                  style="color: #10b981; font-size: 0.8rem; cursor: help;"
+                  >🛡️</span
+                >
+              }
               <span class="text-muted">({{ s.operationsCount }} ops)</span>
               <button
                 type="button"

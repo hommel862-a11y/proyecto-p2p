@@ -1,15 +1,18 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { StorageService } from './storage';
 import { ToastService } from './toast.service';
+import { AuditLoggerService } from './audit-logger.service';
+import { createChecksummedBackup, verifyBackupIntegrity, type ChecksummedBackup } from '@p2p/core';
 
 export interface SnapshotMeta {
   date: string; // YYYY-MM-DD
   timestamp: string;
   operationsCount: number;
+  checksumSha256?: string;
 }
 
 export interface BackupPayload {
-  version: 1;
+  version: number;
   exportedAt: string;
   operations: unknown[];
   accounts?: unknown[];
@@ -25,6 +28,7 @@ const MAX_SNAPSHOTS = 7;
 export class AutoBackupService {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
+  private readonly audit = inject(AuditLoggerService);
 
   readonly snapshots = signal<SnapshotMeta[]>([]);
 
@@ -40,7 +44,7 @@ export class AutoBackupService {
 
   checkAndAutoSnapshot(): void {
     const today = new Date().toISOString().slice(0, 10);
-    const existing = this.storage.get<BackupPayload>(SNAPSHOT_PREFIX + today);
+    const existing = this.storage.get<unknown>(SNAPSHOT_PREFIX + today);
     if (!existing) {
       this.createSnapshot(today, true);
     }
@@ -53,7 +57,7 @@ export class AutoBackupService {
     const riskRules = this.storage.get<unknown>('p2p.risk-rules') ?? null;
 
     const payload: BackupPayload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       operations: ops,
       accounts,
@@ -61,8 +65,10 @@ export class AutoBackupService {
       riskRules,
     };
 
+    const checksummed = createChecksummedBackup(payload);
+
     try {
-      this.storage.set(SNAPSHOT_PREFIX + dateKey, payload);
+      this.storage.set(SNAPSHOT_PREFIX + dateKey, checksummed);
 
       let list = this.storage.get<SnapshotMeta[]>(INDEX_KEY) ?? [];
       list = list.filter((s) => s.date !== dateKey);
@@ -70,6 +76,7 @@ export class AutoBackupService {
         date: dateKey,
         timestamp: payload.exportedAt,
         operationsCount: ops.length,
+        checksumSha256: checksummed.checksumSha256,
       });
 
       // Prune older snapshots
@@ -84,33 +91,89 @@ export class AutoBackupService {
       this.storage.set(INDEX_KEY, list);
       this.snapshots.set(list);
 
+      this.audit.log(
+        'DATA_BACKUP',
+        `Snapshot ${dateKey} creado con checksum SHA-256`,
+        { operations: ops.length, sha256: checksummed.checksumSha256 },
+        'info',
+      );
+
       if (!silent) {
-        this.toast.success(`Snapshot del día ${dateKey} guardado con éxito.`, 'Auto-Backup');
+        this.toast.success(
+          `Snapshot del día ${dateKey} guardado con verificación criptográfica.`,
+          'Auto-Backup',
+        );
       }
-    } catch {
-      // Storage quota or error
+    } catch (err) {
+      console.error('[AutoBackupService] Error saving snapshot:', err);
     }
   }
 
   restoreSnapshot(dateKey: string): boolean {
-    const data = this.storage.get<BackupPayload>(SNAPSHOT_PREFIX + dateKey);
-    if (!data || !Array.isArray(data.operations)) {
-      this.toast.error('No se pudo restaurar el snapshot seleccionado.', 'Error');
+    const raw = this.storage.get<unknown>(SNAPSHOT_PREFIX + dateKey);
+    if (!raw) {
+      this.toast.error('No se encontró el snapshot seleccionado.', 'Error');
+      return false;
+    }
+
+    let payload: BackupPayload;
+
+    // Check if it's v2 checksummed format
+    if (
+      typeof raw === 'object' &&
+      raw !== null &&
+      'format' in raw &&
+      (raw as { format: string }).format === 'p2p-backup-v2'
+    ) {
+      const checksummed = raw as ChecksummedBackup<BackupPayload>;
+      const integrity = verifyBackupIntegrity(checksummed);
+
+      if (!integrity.isValid) {
+        this.audit.log(
+          'SECURITY_ALERT',
+          `Fallo de integridad en restauración de snapshot ${dateKey}`,
+          { expected: integrity.expectedChecksum, actual: integrity.actualChecksum },
+          'error',
+        );
+        this.toast.error(
+          'ALERTA CRÍTICA: El snapshot falló la verificación de integridad SHA-256. Podría estar corrupto.',
+          'Error de Seguridad',
+        );
+        return false;
+      }
+
+      payload = checksummed.payload;
+    } else {
+      // Legacy v1 snapshot fallback
+      payload = raw as BackupPayload;
+    }
+
+    if (!payload || !Array.isArray(payload.operations)) {
+      this.toast.error('Estructura de snapshot inválida.', 'Error');
       return false;
     }
 
     try {
-      this.storage.set('p2p.operations', data.operations);
-      if (data.accounts) this.storage.set('p2p.accounts', data.accounts);
-      if (data.counterparties) this.storage.set('p2p.counterparties', data.counterparties);
-      if (data.riskRules) this.storage.set('p2p.risk-rules', data.riskRules);
+      this.storage.set('p2p.operations', payload.operations);
+      if (payload.accounts) this.storage.set('p2p.accounts', payload.accounts);
+      if (payload.counterparties) this.storage.set('p2p.counterparties', payload.counterparties);
+      if (payload.riskRules) this.storage.set('p2p.risk-rules', payload.riskRules);
+
+      this.audit.log(
+        'DATA_RESTORE',
+        `Snapshot ${dateKey} restaurado exitosamente`,
+        { operationsCount: payload.operations.length },
+        'info',
+      );
 
       this.toast.success(
-        `Restauradas ${data.operations.length} operaciones del snapshot ${dateKey}.`,
+        `Restauradas ${payload.operations.length} operaciones del snapshot ${dateKey}.`,
         'Restauración Exitosa',
       );
-      // Small reload to re-read all signal state
-      window.location.reload();
+
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.reload();
+      }
       return true;
     } catch (err) {
       this.toast.error((err as Error).message || 'Falla al restaurar', 'Error');
@@ -119,7 +182,7 @@ export class AutoBackupService {
   }
 
   downloadSnapshot(dateKey: string): void {
-    const data = this.storage.get<BackupPayload>(SNAPSHOT_PREFIX + dateKey);
+    const data = this.storage.get<unknown>(SNAPSHOT_PREFIX + dateKey);
     if (!data) return;
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -129,6 +192,6 @@ export class AutoBackupService {
     a.download = `p2p-snapshot-${dateKey}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    this.toast.info(`Descargado snapshot ${dateKey}.`, 'Descarga');
+    this.toast.info(`Descargado snapshot ${dateKey} con checksum criptográfico.`, 'Descarga');
   }
 }

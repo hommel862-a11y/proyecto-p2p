@@ -10,9 +10,21 @@ afterEach(() => {
 
 describe('P2P_STORAGE defensive factory', () => {
   it('uses the real localStorage when it is available', () => {
-    // jsdom exposes a standard localStorage on the global
+    const mockStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    } as unknown as Storage;
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: mockStorage,
+    });
+
     const store = TestBed.inject(P2P_STORAGE);
-    expect(store).toBe(globalThis.localStorage);
+    expect(store).toBe(mockStorage);
   });
 
   it('degrades to an in-memory Storage when localStorage access throws', () => {
