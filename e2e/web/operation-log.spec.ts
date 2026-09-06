@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 // RouterLink renders anchors WITHOUT an `href`, so target the directive attribute.
 async function openLedger(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
-  await page.locator('a[routerlink="/log"]').click();
+  await page.locator('a[routerlink="/log"][routerlinkactive]').click();
 }
 
 // Helper that fills the CRUD form and submits. Labels match the Spanish (es-VE) UI;
@@ -23,7 +23,7 @@ async function addOperation(
   await page.getByLabel('Monto en VES').fill(opts.ves);
   await page.getByLabel('Monto en USDT').fill(opts.usdt);
   await page.getByLabel('Precio Pactado (VES/USDT)').fill(opts.price);
-  await page.getByLabel('Contraparte / Comerciante / Notas').fill(opts.note);
+  await page.getByLabel('Notas del Comercio / Referencia').fill(opts.note);
   await page.getByRole('button', { name: 'Registrar operación' }).click();
 }
 
@@ -43,7 +43,7 @@ test('add operation shows a formatted row and updates the ledger summary', async
 
   // The summary block counts operations and reflects the es-VE formatted money. A lone buy
   // of 1.000 VES with no matching sell yields PnL = sell(0) − buy(1000) − fees(0) = −1000.
-  const summary = page.locator('dl.out');
+  const summary = page.locator('div.out');
   await expect(summary.locator('dd').first()).toHaveText('1');
   await expect(summary.locator('dd').nth(1)).toHaveText('-1.000,00 Bs');
 });

@@ -4,6 +4,7 @@ import {
   computed,
   effect,
   inject,
+  OnInit,
   signal,
 } from '@angular/core';
 import {
@@ -24,6 +25,9 @@ import { Router } from '@angular/router';
 import { TradeTimerService, type TradePreset } from '../../core/trade-timer.service';
 import { DatePipe } from '@angular/common';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { BinanceRepricerService } from '../../core/binance-repricer.service';
+import { HotkeysService } from '../../core/hotkeys.service';
+import { AccountsService } from '../../core/accounts.service';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -35,21 +39,31 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, ...FORMAT_PIPES],
   templateUrl: './spread-monitor.html',
+  styleUrl: './spread-monitor.scss',
 })
-export class SpreadMonitor {
+export class SpreadMonitor implements OnInit {
   private readonly router = inject(Router);
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
+  private readonly hotkeys = inject(HotkeysService);
   readonly binance = inject(BinanceP2pService);
+  readonly repricer = inject(BinanceRepricerService);
+  readonly accountsService = inject(AccountsService);
+  protected readonly Math = Math;
+
+  selectBank(bankKey: string): void {
+    this.binance.setBankFilter(bankKey);
+    void this.syncBinancePrices();
+  }
 
   private readonly nf = new Intl.NumberFormat('es-VE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  /** Active mode: standard arbitrage scanner or break-even & maker ad pricing */
-  readonly activeMode = signal<'spread' | 'breakeven'>('spread');
+  /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, or repricer bot */
+  readonly activeMode = signal<'spread' | 'breakeven' | 'repricer'>('spread');
 
   readonly buyPrice = signal<number>(800);
   readonly sellPrice = signal<number>(820);
@@ -193,6 +207,19 @@ export class SpreadMonitor {
       }
       this.prevKind = kind;
     });
+
+    this.hotkeys.register('SYNC', () => {
+      void this.syncBinancePrices();
+    });
+    this.hotkeys.register('FETCH_MARKET', () => {
+      void this.syncBinancePrices();
+    });
+  }
+
+  ngOnInit(): void {
+    if (!this.binance.marketDepth()) {
+      void this.syncBinancePrices();
+    }
   }
 
   setUnit(value: string): void {

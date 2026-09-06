@@ -16,7 +16,7 @@ test('spread-monitor shows +500 Bs for buy 800 / sell 820 / 25 USDT', async ({ p
   // Defaults: unit = USDT, commission = 0 → gain = (sell - buy) * amount = 20 * 25 = 500 Bs.
 
   const gain = page
-    .locator('dl.out div', { hasText: 'Ganancia de spread' })
+    .locator('div.out div', { hasText: 'Ganancia de spread' })
     .locator('dd');
   await expect(gain).toHaveText('500,00 Bs');
 });

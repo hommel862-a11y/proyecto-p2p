@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
 
 async function goToStats(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
-  await page.locator('a[routerlink="/stats"]').click();
+  await page.locator('a[routerlink="/stats"][routerlinkactive]').click();
 }
 
 test('page loads with Estadísticas header', async ({ page }) => {

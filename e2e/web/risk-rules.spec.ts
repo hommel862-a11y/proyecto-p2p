@@ -2,14 +2,13 @@ import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem('p2p.risk-config');
     localStorage.removeItem('p2p.operations');
   });
 });
 
 async function goToRiskRules(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
-  await page.locator('a[routerlink="/risk"]').click();
+  await page.locator('a[routerlink="/risk"][routerlinkactive]').click();
 }
 
 test('page loads with Reglas de Riesgo header', async ({ page }) => {
@@ -60,7 +59,7 @@ test('changing max concurrent ops and saving persists the change', async ({ page
 
   // Reload the page and verify the saved value persists.
   await page.reload();
-  await page.locator('a[routerlink="/risk"]').click();
+  await page.locator('a[routerlink="/risk"][routerlinkactive]').click();
   await expect(page.getByLabel('Máx. operaciones concurrentes')).toHaveValue('5');
 });
 

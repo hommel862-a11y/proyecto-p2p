@@ -1,68 +1,66 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, feat/p2p-decision-tool-mvp]
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        node-version: [20]
+    
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Unit tests (app)
-        run: npx ng test p2p --no-watch
-      - name: Unit tests (core)
-        run: npx ng test core --no-watch
-      - name: Unit tests (electron / secure IPC)
-        run: npm run test:electron
-      - name: Build web bundle (needed by the Playwright static server)
+          node-version: ${{ matrix.node-version }}
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Lint
+        run: npm run lint
+        
+      - name: Vitest Unit Tests
+        run: npx vitest run --reporter=verbose
+        
+      - name: Playwright E2E Tests
+        run: npx playwright test --reporter=line
+        
+      - name: Build Electron
         run: npm run build
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-      - name: E2E (web)
-        run: npx playwright test
 
-  android:
-    runs-on: ubuntu-latest
+  release:
     needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      
+      - name: Electron Builder
+        run: npm run electron:build
+        
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-java@v5
+          name: electron-installers
+          path: dist/p2p/
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          distribution: temurin
-          java-version: 21
-      - name: Install Android SDK
-        run: |
-          SDK_ROOT=$HOME/android-sdk
-          mkdir -p $SDK_ROOT/cmdline-tools
-          curl -L https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdtools.zip
-          unzip -q cmdtools.zip -d $SDK_ROOT/cmdline-tools
-          mv $SDK_ROOT/cmdline-tools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
-          # Both vars must point to the same SDK or Gradle fails (ANDROID_SDK_ROOT is
-          # pre-set by the GitHub runner to a different SDK install).
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root=$SDK_ROOT "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-      - run: npm ci
-      - name: Build web bundle (needed by Capacitor)
-        run: npm run build
-      - name: Add Android platform (not committed — regenerated)
-        run: npx cap add android
-      - run: npx cap sync android
-      - name: Build debug APK (unsigned debug — no keystore in CI)
-        run: cd android && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          tag_name: v${{ github.run_number }}
+          name: "Release v${{ github.run_number }}"
+          files: |
+            dist/p2p/**/*-setup.exe
+            dist/p2p/**/*.dmg
+            dist/p2p/**/*.AppImage
+          generate_release_notes: true

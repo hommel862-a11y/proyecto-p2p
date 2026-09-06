@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 
 async function goToDashboard(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
-  await page.locator('a[routerlink="/dashboard"]').click();
+  await page.locator('a[routerlink="/dashboard"][routerlinkactive]').click();
 }
 
 test('page loads and shows Centro de Control header', async ({ page }) => {
@@ -103,7 +103,9 @@ test('dashboard links navigate to statistics', async ({ page }) => {
   await goToDashboard(page);
 
   await page.locator('.dashboard-link', { hasText: 'Ver estadísticas' }).click();
-  await expect(page.locator('h1')).toContainText('Estadísticas');
+  // The stats page has its own h1; target the second heading (index 1).
+  const statsHeader = page.locator('h1').nth(1);
+  await expect(statsHeader).toContainText('Estadísticas');
 });
 
 test('dashboard links navigate to operation log', async ({ page }) => {
