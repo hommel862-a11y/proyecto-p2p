@@ -1,331 +1,266 @@
-<section class="panel trading-desk-panel">
-  <div class="panel-header">
-    <div>
-      <h2>Monitor de Spread & Arbitraje</h2>
-      <p class="panel-subtitle">Arbitraje en tiempo real, radar de precios Binance P2P y límites bancarios</p>
-    </div>
+<section class="panel">
+  <h2>Monitor de Spread</h2>
 
-    <div class="actions" style="margin: 0; display: flex; gap: 8px;">
-      <button type="button" [class.active]="activeMode() === 'spread'" (click)="activeMode.set('spread')">
-        Arbitraje Directo
-      </button>
-      <button type="button" [class.active]="activeMode() === 'breakeven'" (click)="activeMode.set('breakeven')">
-        Punto de Equilibrio & Anuncio Maker
-      </button>
-    </div>
+  <div class="actions" style="margin-bottom: 20px; display: flex; gap: 8px;">
+    <button type="button" [class.active]="activeMode() === 'spread'" (click)="activeMode.set('spread')">
+      Arbitraje Directo
+    </button>
+    <button type="button" [class.active]="activeMode() === 'breakeven'" (click)="activeMode.set('breakeven')">
+      Punto de Equilibrio & Anuncio Maker
+    </button>
   </div>
 
-  <div class="trading-desk-layout">
-    <!-- ═══════════════════════════════════════════════════
-         COLUMNA IZQUIERDA: Configuración & Parámetros
-         ═══════════════════════════════════════════════════ -->
-    <div class="desk-column desk-left">
-      @if (activeMode() === 'spread') {
-        <div class="section-group">
-          <span class="section-eyebrow">Par & Precios</span>
-          <div class="grid">
-            <label>
-              Par
-              <select [value]="pair()" (change)="setPair($any($event.target).value)">
-                <option value="USDT">USDT/VES</option>
-                <option value="EUR">EUR/VES</option>
-              </select>
-            </label>
-            <label>
-              Precio de compra (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Precio de venta (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="sellPrice()" (input)="sellPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
-          </div>
-        </div>
-
-        <div class="section-group">
-          <span class="section-eyebrow">Configuración del Trade</span>
-          <div class="grid">
-            <label>
-              Monto
-              <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Unidad
-              <select [value]="unit()" (change)="setUnit($any($event.target).value)">
-                <option [value]="pair()">{{ pair() }}</option>
-                <option value="VES">VES</option>
-              </select>
-            </label>
-            <label>
-              Comisión del vendedor (%)
-              <input type="number" min="0" step="0.01" [value]="commissionPct()" (input)="commissionPct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Umbral favorable (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="threshold()" (input)="threshold.set(clampMoney(+$any($event.target).value))" />
-            </label>
-          </div>
-        </div>
-
-        @if (error(); as err) {
-          <p class="error" role="alert">{{ err }}</p>
-        }
-
-        @if (alert().kind; as kind) {
-          <p class="alert" [class.favorable]="kind === 'favorable'" [class.unfavorable]="kind === 'unfavorable'" role="alert">
-            {{ alert().message }}
-          </p>
-        }
-      } @else {
-        <!-- Modo Break-Even & Sizing -->
-        <div class="section-group">
-          <span class="section-eyebrow">Base de Costo & Volumen</span>
-          <div class="grid">
-            <label>
-              Par
-              <select [value]="pair()" (change)="setPair($any($event.target).value)">
-                <option value="USDT">USDT/VES</option>
-                <option value="EUR">EUR/VES</option>
-              </select>
-            </label>
-            <label>
-              Precio de compra base (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Volumen a vender ({{ pair() }})
-              <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
-            </label>
-          </div>
-        </div>
-
-        <div class="section-group">
-          <span class="section-eyebrow">Comisiones & Objetivo de Rentabilidad</span>
-          <div class="grid">
-            <label>
-              Comisión de Compra (%)
-              <input type="number" min="0" max="10" step="0.01" [value]="buyFeePct()" (input)="buyFeePct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Comisión de Venta (Maker %)
-              <input type="number" min="0" max="10" step="0.01" [value]="sellFeePct()" (input)="sellFeePct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Gastos Bancarios / IGTF Fijo (VES)
-              <input type="number" min="0" step="0.01" [value]="bankFeesVes()" (input)="bankFeesVes.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              ROI Objetivo Deseado (%)
-              <input type="number" min="0" step="0.1" [value]="targetRoiPct()" (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-          </div>
-        </div>
-
-        @if (error(); as err) {
-          <p class="error" role="alert">{{ err }}</p>
-        }
-      }
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════
-         COLUMNA DERECHA: Comercio P2P, Bancos & Arbitraje
-         ═══════════════════════════════════════════════════ -->
-    <div class="desk-column desk-right">
-      <!-- 1. Radar Binance P2P en Vivo -->
-      <div class="p2p-radar-card">
-        <div class="radar-header">
-          <div class="radar-title-group">
-            <span class="badge badge-accent" style="font-size: 0.75rem; letter-spacing: 0.5px;">BINANCE P2P EN VIVO</span>
-            <span class="text-muted" style="font-size: 0.8rem;">
-              @if (binance.loading()) {
-                <span style="color: var(--gold);">Consultando libro de órdenes...</span>
-              } @else if (binance.lastFetched(); as date) {
-                Actualizado {{ date | date:'HH:mm:ss' }}
-              } @else {
-                Mercado listo para sincronizar
-              }
-            </span>
-          </div>
-
-          <div class="radar-actions">
-            <button type="button" class="btn btn-secondary" [class.active]="binance.autoRefresh()" (click)="binance.toggleAutoRefresh()" title="Auto-actualizar cada 30s" style="font-size: 0.78rem; padding: 5px 10px;">
-              🔄 Auto (30s)
-            </button>
-            <button type="button" class="btn btn-primary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.78rem; padding: 5px 12px;">
-              ⚡ Sincronizar
-            </button>
-          </div>
-        </div>
-
-        <!-- Barra de Filtro de Bancos con Colores Corporativos Venezolanos -->
-        <div class="bank-filter-bar">
-          <span class="bank-filter-label">Banco:</span>
-          <button type="button" class="bank-pill bank-all" [class.active]="binance.selectedBank() === 'ALL'" (click)="selectBank('ALL')">
-            <span class="bank-indicator"></span>
-            Todos
-          </button>
-          <button type="button" class="bank-pill bank-banesco" [class.active]="binance.selectedBank() === 'BANESCO'" (click)="selectBank('BANESCO')">
-            <span class="bank-indicator"></span>
-            Banesco
-          </button>
-          <button type="button" class="bank-pill bank-pm" [class.active]="binance.selectedBank() === 'PAGO_MOVIL'" (click)="selectBank('PAGO_MOVIL')">
-            <span class="bank-indicator"></span>
-            Pago Móvil
-          </button>
-          <button type="button" class="bank-pill bank-mercantil" [class.active]="binance.selectedBank() === 'MERCANTIL'" (click)="selectBank('MERCANTIL')">
-            <span class="bank-indicator"></span>
-            Mercantil
-          </button>
-          <button type="button" class="bank-pill bank-bdv" [class.active]="binance.selectedBank() === 'BDV'" (click)="selectBank('BDV')">
-            <span class="bank-indicator"></span>
-            BDV
-          </button>
-        </div>
-
-        @if (binance.marketDepth(); as depth) {
-          <div class="depth-grid">
-            <div class="depth-tile depth-ask">
-              <span class="depth-label">Mejor Compra (Ask)</span>
-              <div class="depth-value">{{ depth.bestBuyPrice | num }} Bs</div>
-            </div>
-
-            <div class="depth-tile depth-bid">
-              <span class="depth-label">Mejor Venta (Bid)</span>
-              <div class="depth-value">{{ depth.bestSellPrice | num }} Bs</div>
-            </div>
-
-            <div class="depth-tile depth-spread">
-              <span class="depth-label">Spread Mercado</span>
-              <div class="depth-value" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
-                {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
-              </div>
-            </div>
-          </div>
-
-          <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 4px; font-weight: 600;">
-            📥 Cargar Precios en el Monitor
-          </button>
-        } @else {
-          <div class="depth-grid">
-            <div class="depth-tile depth-ask">
-              <span class="depth-label">Mejor Compra (Ask)</span>
-              <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
-            </div>
-            <div class="depth-tile depth-bid">
-              <span class="depth-label">Mejor Venta (Bid)</span>
-              <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
-            </div>
-            <div class="depth-tile depth-spread">
-              <span class="depth-label">Spread Mercado</span>
-              <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">--</div>
-            </div>
-          </div>
-
-          <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 4px;">
-            ⚡ Cargar Datos de Mercado
-          </button>
-        }
+  <!-- ═══════════════════════════════════════════════════
+       Binance P2P Live Market Radar
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group" style="border: 1px solid var(--gold-border); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(20, 24, 33, 0.95) 100%); padding: 18px 22px; margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="badge badge-accent" style="font-size: 0.75rem; letter-spacing: 0.5px;">BINANCE P2P EN VIVO</span>
+        <span class="text-muted" style="font-size: 0.8rem;">
+          @if (binance.loading()) {
+            <span style="color: var(--gold);">Consultando libro de órdenes...</span>
+          } @else if (binance.lastFetched(); as date) {
+            Actualizado {{ date | date:'HH:mm:ss' }}
+          } @else {
+            Mercado listo para sincronizar
+          }
+        </span>
       </div>
 
-      <!-- 2. Resultado de Arbitraje o Break-Even -->
-      @if (activeMode() === 'spread') {
-        @if (result(); as r) {
-          <div class="arbitrage-result-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Resultado de Arbitraje</span>
-              <span class="font-mono text-muted" style="font-size: 0.78rem;">Spread: <strong [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} Bs</strong></span>
-            </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <select [value]="binance.selectedBank()" (change)="binance.setBankFilter($any($event.target).value); syncBinancePrices()" style="font-size: 0.8rem; padding: 4px 8px; width: auto;">
+          <option value="ALL">Todos los Bancos</option>
+          <option value="BANESCO">Solo Banesco</option>
+          <option value="PAGO_MOVIL">Solo Pago Móvil</option>
+          <option value="MERCANTIL">Solo Mercantil</option>
+          <option value="BDV">Solo Banco de Venezuela</option>
+        </select>
 
-            <div class="out" style="margin: 8px 0 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
-              <div>
-                <dt>{{ pair() }} recibidos</dt>
-                <dd>{{ usdtReceived() | usdt }}</dd>
-              </div>
-              <div>
-                <dt>VES recibidos</dt>
-                <dd>{{ vesReceived() | ves }}</dd>
-              </div>
-              <div>
-                <dt>Spread unitario</dt>
-                <dd [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
-              </div>
-              <div>
-                <dt>Ganancia de spread</dt>
-                <dd [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
-              </div>
-              <div>
-                <dt>Recibido neto</dt>
-                <dd>{{ netVesAfterCommission() | ves }}</dd>
-              </div>
-              <div>
-                <dt>Ganancia neta</dt>
-                <dd [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
-              </div>
-            </div>
+        <button type="button" class="btn btn-secondary" [class.active]="binance.autoRefresh()" (click)="binance.toggleAutoRefresh()" title="Auto-actualizar cada 30s" style="font-size: 0.8rem; padding: 6px 12px;">
+          🔄 Auto (30s)
+        </button>
 
-            <div class="profit-highlight-tile">
-              <span class="profit-title">Ganancia Neta Liquidada</span>
-              <span class="profit-amount" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">
-                {{ netGainVes() | ves }}
-              </span>
-            </div>
+        <button type="button" class="btn btn-primary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.8rem; padding: 6px 14px;">
+          ⚡ Sincronizar Ahora
+        </button>
+      </div>
+    </div>
 
-            <div class="actions-bar" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
-              <button type="button" class="btn btn-primary" (click)="startDirectTrade('buy')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Iniciar Compra con Cronómetro
-              </button>
-              <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Iniciar Venta con Cronómetro
-              </button>
-            </div>
-          </div>
-        }
-      } @else {
-        <!-- Resultado de Break-Even & Fijación de Anuncio -->
-        <div class="arbitrage-result-card">
-          <span class="section-eyebrow">Análisis de Break-Even & Fijación de Anuncio</span>
-          <div class="out" style="margin: 12px 0 0; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
-            <div>
-              <dt>Costo Total (VES)</dt>
-              <dd>{{ breakEvenResult().totalCostVes | ves }}</dd>
-            </div>
-            <div>
-              <dt>Break-Even Mínimo</dt>
-              <dd class="positive font-mono">{{ breakEvenResult().breakEvenPrice | num }} VES/{{ pair() }}</dd>
-            </div>
-            <div>
-              <dt>Spread Mínimo</dt>
-              <dd class="font-mono">{{ breakEvenResult().breakEvenSpread | num }} VES</dd>
-            </div>
-            <div>
-              <dt>Colchón de Seguridad</dt>
-              <dd class="font-mono">{{ breakEvenResult().safetyMarginVes | num }} VES</dd>
-            </div>
-          </div>
-
-          <div class="profit-highlight-tile">
-            <div>
-              <div class="profit-title">Precio Sugerido Anuncio ({{ targetRoiPct() }}% ROI)</div>
-              <div style="font-size: 0.8rem; color: var(--muted);">Ganancia proyectada: {{ breakEvenResult().projectedNetProfitVes | ves }}</div>
-            </div>
-            <span class="profit-amount">
-              {{ breakEvenResult().targetSellPrice | num }} Bs
-            </span>
-          </div>
-
-          <div class="actions-bar" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-primary" (click)="applyTargetSellPrice()">
-              Fijar Precio de Venta en el Monitor
-            </button>
-            <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Iniciar Venta con Cronómetro
-            </button>
+    @if (binance.marketDepth(); as depth) {
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 10px 0 0;">
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--accent);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Mejor Compra (Ask)</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); color: var(--text);">
+            {{ depth.bestBuyPrice | num }} Bs
           </div>
         </div>
-      }
-    </div>
+
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--accent-2);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Mejor Venta (Bid)</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono); color: var(--text);">
+            {{ depth.bestSellPrice | num }} Bs
+          </div>
+        </div>
+
+        <div style="background: var(--bg-alt); padding: 10px 14px; border-radius: 6px; border-left: 3px solid var(--gold);">
+          <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase;">Spread del Mercado</span>
+          <div style="font-size: 1.15rem; font-weight: 700; font-family: var(--font-mono);" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
+            {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.8rem; padding: 10px;">
+            📥 Cargar en el Monitor
+          </button>
+        </div>
+      </div>
+    }
   </div>
+
+  @if (activeMode() === 'spread') {
+    <div class="section-group">
+      <span class="section-eyebrow">Par & Precios</span>
+      <div class="grid">
+        <label>
+          Par
+          <select [value]="pair()" (change)="setPair($any($event.target).value)">
+            <option value="USDT">USDT/VES</option>
+            <option value="EUR">EUR/VES</option>
+          </select>
+        </label>
+        <label>
+          Precio de compra (VES/{{ pair() }})
+          <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Precio de venta (VES/{{ pair() }})
+          <input type="number" min="0" step="0.01" [value]="sellPrice()" (input)="sellPrice.set(clampMoney(+$any($event.target).value))" />
+        </label>
+      </div>
+    </div>
+
+    <div class="section-group">
+      <span class="section-eyebrow">Configuración del Trade</span>
+      <div class="grid">
+        <label>
+          Monto
+          <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Unidad
+          <select [value]="unit()" (change)="setUnit($any($event.target).value)">
+            <option [value]="pair()">{{ pair() }}</option>
+            <option value="VES">VES</option>
+          </select>
+        </label>
+        <label>
+          Comisión del vendedor (%)
+          <input type="number" min="0" step="0.01" [value]="commissionPct()" (input)="commissionPct.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Umbral favorable (VES/{{ pair() }})
+          <input type="number" min="0" step="0.01" [value]="threshold()" (input)="threshold.set(clampMoney(+$any($event.target).value))" />
+        </label>
+      </div>
+    </div>
+
+    @if (error(); as err) {
+      <p class="error" role="alert">{{ err }}</p>
+    }
+
+    @if (alert().kind; as kind) {
+      <p class="alert" [class.favorable]="kind === 'favorable'" [class.unfavorable]="kind === 'unfavorable'" role="alert">
+        {{ alert().message }}
+      </p>
+    }
+
+    @if (result(); as r) {
+      <div class="section-divider"></div>
+      <span class="section-eyebrow">Resultado de Arbitraje</span>
+      <div class="out">
+        <div>
+          <dt>{{ pair() }} recibidos</dt>
+          <dd>{{ usdtReceived() | usdt }}</dd>
+        </div>
+        <div>
+          <dt>VES recibidos</dt>
+          <dd>{{ vesReceived() | ves }}</dd>
+        </div>
+        <div>
+          <dt>Spread unitario</dt>
+          <dd [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
+        </div>
+        <div>
+          <dt>Ganancia de spread</dt>
+          <dd [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
+        </div>
+        <div>
+          <dt>Recibido neto (tras comisión)</dt>
+          <dd>{{ netVesAfterCommission() | ves }}</dd>
+        </div>
+        <div>
+          <dt>Ganancia neta (tras comisión)</dt>
+          <dd [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
+        </div>
+      </div>
+
+      <div class="actions-bar" style="margin-top: 18px; display: flex; gap: 12px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary" (click)="startDirectTrade('buy')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Iniciar Compra con Cronómetro
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Iniciar Venta con Cronómetro
+        </button>
+      </div>
+    }
+  } @else {
+    <!-- ═══════════════════════════════════════════════════
+         Break-Even & Maker Ad Sizing Calculator View
+         ═══════════════════════════════════════════════════ -->
+    <div class="section-group">
+      <span class="section-eyebrow">Base de Costo & Volumen</span>
+      <div class="grid">
+        <label>
+          Par
+          <select [value]="pair()" (change)="setPair($any($event.target).value)">
+            <option value="USDT">USDT/VES</option>
+            <option value="EUR">EUR/VES</option>
+          </select>
+        </label>
+        <label>
+          Precio de compra base (VES/{{ pair() }})
+          <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Volumen a vender ({{ pair() }})
+          <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
+        </label>
+      </div>
+    </div>
+
+    <div class="section-group">
+      <span class="section-eyebrow">Comisiones & Objetivo de Rentabilidad</span>
+      <div class="grid">
+        <label>
+          Comisión de Compra (%)
+          <input type="number" min="0" max="10" step="0.01" [value]="buyFeePct()" (input)="buyFeePct.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Comisión de Venta (Maker %)
+          <input type="number" min="0" max="10" step="0.01" [value]="sellFeePct()" (input)="sellFeePct.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          Gastos Bancarios / IGTF Fijo (VES)
+          <input type="number" min="0" step="0.01" [value]="bankFeesVes()" (input)="bankFeesVes.set(clampMoney(+$any($event.target).value))" />
+        </label>
+        <label>
+          ROI Objetivo Deseado (%)
+          <input type="number" min="0" step="0.1" [value]="targetRoiPct()" (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))" />
+        </label>
+      </div>
+    </div>
+
+    <div class="section-divider"></div>
+    <span class="section-eyebrow">Análisis de Break-Even & Fijación de Anuncio</span>
+    <div class="out">
+      <div>
+        <dt>Costo Total Invertido (VES)</dt>
+        <dd>{{ breakEvenResult().totalCostVes | ves }}</dd>
+      </div>
+      <div>
+        <dt>Precio Mínimo de Salida (Break-Even)</dt>
+        <dd class="positive font-mono">{{ breakEvenResult().breakEvenPrice | num }} VES/{{ pair() }}</dd>
+      </div>
+      <div>
+        <dt>Spread Mínimo para no perder</dt>
+        <dd class="font-mono">{{ breakEvenResult().breakEvenSpread | num }} VES</dd>
+      </div>
+      <div>
+        <dt>Precio Sugerido para tu Anuncio ({{ targetRoiPct() }}% ROI)</dt>
+        <dd class="positive font-mono" style="font-weight: 800; font-size: 1.4rem;">{{ breakEvenResult().targetSellPrice | num }} VES/{{ pair() }}</dd>
+      </div>
+      <div>
+        <dt>Ganancia Neta Proyectada</dt>
+        <dd class="positive">{{ breakEvenResult().projectedNetProfitVes | ves }}</dd>
+      </div>
+      <div>
+        <dt>Colchón de Seguridad</dt>
+        <dd class="font-mono">{{ breakEvenResult().safetyMarginVes | num }} VES</dd>
+      </div>
+    </div>
+
+    <div class="actions-bar" style="margin-top: 18px; display: flex; gap: 12px; flex-wrap: wrap;">
+      <button type="button" class="btn btn-primary" (click)="applyTargetSellPrice()">
+        Fijar este Precio de Venta en el Monitor
+      </button>
+      <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Iniciar Venta con Cronómetro
+      </button>
+    </div>
+  }
 </section>

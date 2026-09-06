@@ -12,3 +12,6 @@ export * from './lib/accounts';
 export * from './lib/counterparty';
 export * from './lib/compliance';
 export * from './lib/binance-p2p';
+export * from './lib/repricer';
+export * from './lib/bank-reconciliation';
+export * from './lib/backup-encryption';
