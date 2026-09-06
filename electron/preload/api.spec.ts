@@ -33,6 +33,30 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(res).toEqual({ data: [] });
   });
 
+  it('forwards crypto methods to the allow-listed crypto:* channels', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'crypto:is-available') return Promise.resolve(true);
+      if (channel === 'crypto:encrypt') return Promise.resolve('encrypted_base64');
+      if (channel === 'crypto:decrypt') return Promise.resolve('plaintext_secret');
+      return Promise.resolve(null);
+    });
+
+    const isAvail = await api.crypto.isAvailable();
+    const encrypted = await api.crypto.encrypt('my_api_key');
+    const decrypted = await api.crypto.decrypt('encrypted_base64');
+
+    expect(isAvail).toBe(true);
+    expect(encrypted).toBe('encrypted_base64');
+    expect(decrypted).toBe('plaintext_secret');
+    expect(calls).toEqual([
+      { channel: 'crypto:is-available', args: [] },
+      { channel: 'crypto:encrypt', args: ['my_api_key'] },
+      { channel: 'crypto:decrypt', args: ['encrypted_base64'] },
+    ]);
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);

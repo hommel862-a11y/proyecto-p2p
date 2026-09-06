@@ -1,10 +1,11 @@
-import { ipcMain, app, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, safeStorage, type IpcMainInvokeEvent } from 'electron';
 import type { P2PIpcChannels, BinanceSearchParams } from '../../shared/types';
 
 /**
  * Typed, allow-listed IPC handlers.
  * `p2p:fetch-binance` allows the app to query Binance P2P public orderbook
  * bypassing any browser CORS limitations natively and securely.
+ * `crypto:*` handlers leverage OS-native DPAPI / Keychain encryption via safeStorage.
  */
 export function registerIpcHandlers(): void {
   ipcMain.removeHandler('app:get-version');
@@ -46,8 +47,30 @@ export function registerIpcHandlers(): void {
       return await response.json();
     },
   );
-}
 
+  ipcMain.removeHandler('crypto:is-available');
+  ipcMain.handle('crypto:is-available', (): boolean => {
+    return safeStorage.isEncryptionAvailable();
+  });
+
+  ipcMain.removeHandler('crypto:encrypt');
+  ipcMain.handle('crypto:encrypt', (_event: IpcMainInvokeEvent, plaintext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('safeStorage encryption is not available on this platform');
+    }
+    const buffer = safeStorage.encryptString(plaintext);
+    return buffer.toString('base64');
+  });
+
+  ipcMain.removeHandler('crypto:decrypt');
+  ipcMain.handle('crypto:decrypt', (_event: IpcMainInvokeEvent, ciphertext: string): string => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('safeStorage encryption is not available on this platform');
+    }
+    const buffer = Buffer.from(ciphertext, 'base64');
+    return safeStorage.decryptString(buffer);
+  });
+}
 
 // Compile-time guarantee that the handler map matches the channel contract.
 export type RegisteredChannels = keyof P2PIpcChannels;
