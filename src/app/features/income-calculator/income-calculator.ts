@@ -8,12 +8,18 @@ import {
   projectVelocityEarnings,
   planReverseGoal,
   simulateCompoundGrowth,
+  buildTeamAllocationPlan,
+  auditOperatorPerformance,
+  evaluateGoldenSpread,
   type BankCode,
   type P2PRole,
   type ArbitrageCycleResult,
   type VelocityProjection,
   type ReverseGoalResult,
   type CompoundSimulationResult,
+  type OperatorProfile,
+  type TeamAllocationPlan,
+  type OperatorAuditResult,
 } from '@p2p/core';
 import { FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
@@ -21,7 +27,7 @@ import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
 import { DecimalPipe } from '@angular/common';
 
-export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'classic';
+export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic';
 
 /**
  * C2 — Smart P2P Arbitrage & Capital Calculator.
@@ -65,7 +71,30 @@ export class IncomeCalculator {
   readonly compoundReinvestmentRate = signal<number>(50); // 50/50 harvest policy default
   readonly compoundReferenceRate = signal<number>(60.0);
 
-  // --- Mode D: Classic Target/APR Inputs ---
+  // --- Mode D: Team Delegation & Scaling ($1,000/day Desk) ---
+  readonly teamDeskCapital = signal<number>(7000);
+  readonly teamReferenceRate = signal<number>(60.0);
+  readonly teamExpectedSpreadPct = signal<number>(0.85);
+  readonly teamOperators = signal<OperatorProfile[]>([
+    {
+      id: 'op-william',
+      name: 'William (Operador Principal)',
+      assignedCapitalUsdt: 5000,
+      commissionSplitPct: 30, // 30% operator, 70% desk owner
+      targetDailyCycles: 2,
+      active: true,
+    },
+    {
+      id: 'op-junior',
+      name: 'Operador Secundario (Neobancos / Banesco)',
+      assignedCapitalUsdt: 2000,
+      commissionSplitPct: 25,
+      targetDailyCycles: 1.5,
+      active: true,
+    },
+  ]);
+
+  // --- Mode E: Classic Target/APR Inputs ---
   readonly targetUsd = signal<number>(20);
   readonly aprPct = signal<number>(10);
   readonly daysPerYear = signal<number>(DEFAULT_DAYS_PER_YEAR);
@@ -159,7 +188,22 @@ export class IncomeCalculator {
     }
   });
 
-  // --- Computed Mode D: Classic Results ---
+  // --- Computed Mode D: Team Allocation Plan ($1,000/day Desk) ---
+  readonly teamPlan = computed<TeamAllocationPlan | null>(() => {
+    try {
+      if (this.teamDeskCapital() <= 0) return null;
+      return buildTeamAllocationPlan(
+        this.teamDeskCapital(),
+        this.teamOperators(),
+        this.teamReferenceRate(),
+        this.teamExpectedSpreadPct(),
+      );
+    } catch {
+      return null;
+    }
+  });
+
+  // --- Computed Mode E: Classic Results ---
   readonly bands = [8, 10, 15] as const;
   readonly targets = [1, 5, 20] as const;
 

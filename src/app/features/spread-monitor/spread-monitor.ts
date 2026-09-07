@@ -14,12 +14,14 @@ import {
   clampNonNegative,
   computeTriangulationGap,
   buildPortfolioAllocationPlan,
+  evaluateGoldenSpread,
   type AmountUnit,
   type SpreadResult,
   type BreakEvenResult,
   type P2PRole,
   type AccountVelocityStatus,
   type PortfolioAllocationPlan,
+  type GoldenSpreadCheck,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -394,6 +396,16 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly gainVes = computed(() => this.result()?.gainVes ?? 0);
   readonly netVesAfterCommission = computed(() => this.result()?.netVesAfterCommission ?? 0);
   readonly netGainVes = computed(() => this.result()?.netGainVes ?? 0);
+
+  /** Net spread percentage evaluated against the Golden Rule (0.50% min). */
+  readonly goldenSpread = computed<GoldenSpreadCheck | null>(() => {
+    const r = this.result();
+    if (!r || this.buyPrice() <= 0) return null;
+    const baseInvested = this.unit() === 'VES' ? this.amount() : this.amount() * this.buyPrice();
+    if (baseInvested <= 0) return null;
+    const netPct = (r.netGainVes / baseInvested) * 100;
+    return evaluateGoldenSpread(netPct);
+  });
 
   readonly alert = computed<{ kind: 'favorable' | 'unfavorable' | null; message: string }>(() => {
     const r = this.result();

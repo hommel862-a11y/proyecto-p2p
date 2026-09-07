@@ -106,6 +106,50 @@
           <p class="error" role="alert">{{ err }}</p>
         }
 
+        @if (goldenSpread(); as gs) {
+          <div
+            style="margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; border: 1px solid var(--line);"
+            [style.background]="
+              gs.alertLevel === 'GOLDEN_ZONE'
+                ? 'rgba(216, 180, 92, 0.15)'
+                : gs.alertLevel === 'HEALTHY'
+                  ? 'rgba(52, 211, 153, 0.12)'
+                  : gs.alertLevel === 'MARGINAL_CAUTION'
+                    ? 'rgba(245, 158, 11, 0.12)'
+                    : 'rgba(239, 68, 68, 0.18)'
+            "
+            [style.border-color]="
+              gs.alertLevel === 'GOLDEN_ZONE'
+                ? 'var(--gold)'
+                : gs.alertLevel === 'HEALTHY'
+                  ? 'rgba(52, 211, 153, 0.4)'
+                  : gs.alertLevel === 'MARGINAL_CAUTION'
+                    ? 'rgba(245, 158, 11, 0.4)'
+                    : 'rgba(239, 68, 68, 0.5)'
+            "
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong
+                [style.color]="
+                  gs.alertLevel === 'GOLDEN_ZONE'
+                    ? 'var(--gold-strong)'
+                    : gs.alertLevel === 'HEALTHY'
+                      ? '#34d399'
+                      : gs.alertLevel === 'MARGINAL_CAUTION'
+                        ? '#f59e0b'
+                        : '#f87171'
+                "
+              >
+                {{ gs.headline }}
+              </strong>
+              <span class="badge" style="font-size: 0.72rem;">{{ gs.netSpreadPct }}% Neto</span>
+            </div>
+            <p style="margin: 0; font-size: 0.78rem; line-height: 1.35; color: var(--text);">
+              {{ gs.message }}
+            </p>
+          </div>
+        }
+
         @if (alert().kind; as kind) {
           <p class="alert" [class.favorable]="kind === 'favorable'" [class.unfavorable]="kind === 'unfavorable'" role="alert">
             {{ alert().message }}

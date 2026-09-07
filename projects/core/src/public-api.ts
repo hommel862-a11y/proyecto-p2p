@@ -22,3 +22,4 @@ export * from './lib/cotizave';
 export * from './lib/compound-projector';
 export * from './lib/calendar-pnl';
 export * from './lib/capital-allocator';
+export * from './lib/operator-manager';

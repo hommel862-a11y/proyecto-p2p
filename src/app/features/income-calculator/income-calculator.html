@@ -29,6 +29,13 @@
       </button>
       <button
         type="button"
+        [class.active]="activeMode() === 'team'"
+        (click)="activeMode.set('team')"
+      >
+        👥 Escalado & Delegación ($1k/día)
+      </button>
+      <button
+        type="button"
         [class.active]="activeMode() === 'classic'"
         (click)="activeMode.set('classic')"
       >
@@ -447,7 +454,146 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       MODO D: Metas de Capital Anual (Classic Benchmark)
+       MODO D: Escalado & Delegación de Operadores ($1,000/día)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeMode() === 'team') {
+    <div class="sync-bar">
+      <div class="sync-info">
+        👥 <strong>Modelo de Escalado Institucional (Caso William):</strong> Distribución de capital entre cajeros/operadores, auditorías de 10 días y protección estricta de la Regla de Oro (Spread ≥ 0.50%).
+      </div>
+    </div>
+
+    <div class="calc-grid-layout">
+      <!-- Columna Izquierda: Parámetros del Equipo -->
+      <div class="calc-column">
+        <div class="section-group">
+          <span class="section-eyebrow">Capital del Desk & Margen Esperado</span>
+          <div class="grid">
+            <label>
+              Capital Total del Desk (USDT)
+              <input
+                type="number"
+                min="0"
+                step="500"
+                [value]="teamDeskCapital()"
+                (input)="teamDeskCapital.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+            <label>
+              Spread Medio por Vuelta (%)
+              <input
+                type="number"
+                min="0.1"
+                step="0.05"
+                [value]="teamExpectedSpreadPct()"
+                (input)="teamExpectedSpreadPct.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+            <label>
+              Tasa Referencial VES/USDT
+              <input
+                type="number"
+                min="1"
+                step="0.5"
+                [value]="teamReferenceRate()"
+                (input)="teamReferenceRate.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+          </div>
+          <p class="text-muted" style="font-size: 0.78rem; margin-top: 8px;">
+            ⚠️ <strong>Regla de Oro:</strong> Nadie en el equipo debe operar por debajo del <strong>0.50% neto</strong>.
+          </p>
+        </div>
+
+        <div class="section-group">
+          <span class="section-eyebrow">Operadores & Cajeros Asignados</span>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            @for (op of teamOperators(); track op.id) {
+              <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <strong style="color: var(--gold); font-size: 0.9rem;">{{ op.name }}</strong>
+                  <span class="badge badge-accent" style="font-size: 0.72rem;">{{ op.commissionSplitPct }}% Comisión</span>
+                </div>
+                <div style="display: flex; gap: 10px; font-size: 0.8rem; color: var(--text-muted);">
+                  <span>Capital: <strong style="color: #fff;">{{ op.assignedCapitalUsdt | usdt }}</strong></span>
+                  <span>•</span>
+                  <span>Meta: <strong style="color: #fff;">{{ op.targetDailyCycles }} vueltas/día</strong></span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Columna Derecha: Métricas del Desk & Split -->
+      <div class="calc-column">
+        @if (teamPlan(); as plan) {
+          <div class="calc-result-card">
+            <span class="section-eyebrow" style="color: var(--gold-strong);">Métricas del Desk & Retorno del Dueño</span>
+            <div class="primary-metric">
+              <span class="metric-label">Ganancia Neta Diaria Estimada (Desk)</span>
+              <span class="metric-value font-mono" style="color: var(--gold-strong);">
+                {{ plan.totalDailyEstimatedProfitUsdt | usdt }}
+              </span>
+              <span class="metric-hint">Proyección mensual líder: {{ plan.monthlyProjectedDeskProfitUsdt | usdt }}/mes</span>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="cascade-flow">
+              <div class="cascade-step">
+                <span class="step-name">Ganancia Diaria del Dueño del Desk</span>
+                <span class="step-value font-mono positive">+{{ plan.totalDailyOwnerProfitUsdt | usdt }}/día</span>
+              </div>
+              <div class="cascade-step">
+                <span class="step-name">Total Repartido a Operadores</span>
+                <span class="step-value font-mono" style="color: var(--accent-2);">{{ plan.totalDailyOperatorsProfitUsdt | usdt }}/día</span>
+              </div>
+              <div class="cascade-step">
+                <span class="step-name">Capital Operado por el Dueño (Retenido)</span>
+                <span class="step-value font-mono">{{ plan.deskOwnerRetainedCapitalUsdt | usdt }}</span>
+              </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="data-section">
+              <span class="section-eyebrow">Desglose Individual por Operador</span>
+              <table class="corporate-table">
+                <thead>
+                  <tr>
+                    <th>Operador</th>
+                    <th>Capital</th>
+                    <th>Meta Día</th>
+                    <th>Cajero ($)</th>
+                    <th>Desk ($)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (alloc of plan.operatorsAllocations; track alloc.operator.id) {
+                    <tr>
+                      <td>{{ alloc.operator.name }}</td>
+                      <td class="font-mono">{{ alloc.allocatedCapitalUsdt | usdt }}</td>
+                      <td class="font-mono positive">+{{ alloc.targetDailyProfitUsdt | usdt }}</td>
+                      <td class="font-mono" style="color: var(--accent-2);">{{ alloc.operatorDailyTakeUsdt | usdt }}</td>
+                      <td class="font-mono" style="color: var(--gold-strong);">{{ alloc.ownerDailyTakeUsdt | usdt }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div class="note" style="margin-top: 16px; font-size: 0.8rem; border-left: 3px solid var(--gold);">
+              💡 <strong>Protocolo de Auditoría Cada 10 Días:</strong> Revisar rotación de cuentas Banesco, volumen en bolívares movido y confirmar que el spread medio no haya descendido del 0.50% neto.
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       MODO E: Metas de Capital Anual (Classic Benchmark)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'classic') {
     <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. Base de cálculo fijada en {{ daysPerYear() }} días.</p>
