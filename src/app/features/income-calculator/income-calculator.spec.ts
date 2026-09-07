@@ -112,4 +112,26 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
       expect(c.clampMoney(20)).toBe(20);
     });
   });
+
+  describe('Mode D: Team Delegation & 10-Day Operator Audits', () => {
+    it('computes team plan and generates 10-day operator audit results', () => {
+      const f = create();
+      const c = f.componentInstance;
+      c.activeMode.set('team');
+      c.teamDeskCapital.set(7000);
+      c.teamExpectedSpreadPct.set(0.9);
+      f.detectChanges();
+
+      const plan = c.teamPlan();
+      expect(plan).not.toBeNull();
+      expect(plan!.totalDeskCapitalUsdt).toBe(7000);
+      expect(plan!.totalDailyEstimatedProfitUsdt).toBeGreaterThan(0);
+      expect(plan!.operatorsAllocations.length).toBe(2);
+
+      const audits = c.operatorAudits();
+      expect(audits.length).toBe(2);
+      expect(audits[0].operatorId).toBe('op-william');
+      expect(audits[0].periodDays).toBe(10);
+    });
+  });
 });

@@ -583,6 +583,49 @@
               </table>
             </div>
 
+            <!-- 10-Day Operator Performance Audit Diagnostic -->
+            <div class="data-section" style="margin-top: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="section-eyebrow" style="margin: 0;">Auditoría de Rendimiento (Ventana 10 Días)</span>
+                <span class="badge badge-accent" style="font-size: 0.72rem;">Regla de Oro: ≥ 0.50%</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                @for (audit of operatorAudits(); track audit.operatorId) {
+                  <div style="background: rgba(10, 15, 26, 0.45); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                      <span style="font-weight: 700; font-size: 0.86rem; color: var(--text);">
+                        {{ audit.operatorName }}
+                      </span>
+                      <span
+                        class="badge"
+                        [class.badge-accent]="audit.status === 'OPTIMAL' || audit.status === 'ACCEPTABLE'"
+                        [style.background]="audit.status === 'UNDERPERFORMING' ? '#ef4444' : ''"
+                        [style.color]="audit.status === 'UNDERPERFORMING' ? '#fff' : ''"
+                        style="font-size: 0.7rem;"
+                      >
+                        {{ audit.status }}
+                      </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-family: var(--font-mono); margin-bottom: 4px;">
+                      <span class="text-muted">Spread Neto Promedio:</span>
+                      <strong [class.positive]="audit.isMeetingSpreadTarget" [class.negative]="!audit.isMeetingSpreadTarget && audit.totalOperations > 0">
+                        {{ audit.averageNetSpreadPct }}%
+                      </strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-family: var(--font-mono); margin-bottom: 4px;">
+                      <span class="text-muted">Ciclos / Volumen:</span>
+                      <span>{{ audit.completedCycles }} vueltas ({{ audit.totalVolumeUsdt | usdt }})</span>
+                    </div>
+                    @for (rec of audit.recommendations; track rec) {
+                      <div class="text-muted" style="font-size: 0.74rem; margin-top: 4px; line-height: 1.3;">
+                        💡 {{ rec }}
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+
             <div class="note" style="margin-top: 16px; font-size: 0.8rem; border-left: 3px solid var(--gold);">
               💡 <strong>Protocolo de Auditoría Cada 10 Días:</strong> Revisar rotación de cuentas Banesco, volumen en bolívares movido y confirmar que el spread medio no haya descendido del 0.50% neto.
             </div>

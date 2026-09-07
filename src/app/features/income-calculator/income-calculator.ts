@@ -27,6 +27,9 @@ import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
 import { DecimalPipe } from '@angular/common';
 
+import { StorageService } from '../../core/storage';
+import { type Operation } from '@p2p/core';
+
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic';
 
 /**
@@ -46,6 +49,7 @@ export class IncomeCalculator {
   private readonly binance = inject(BinanceP2pService);
   private readonly accounts = inject(AccountsService);
   private readonly toast = inject(ToastService);
+  private readonly storage = inject(StorageService);
 
   readonly activeMode = signal<CalcViewMode>('cycle');
 
@@ -201,6 +205,22 @@ export class IncomeCalculator {
     } catch {
       return null;
     }
+  });
+
+  readonly operatorAudits = computed<OperatorAuditResult[]>(() => {
+    const ops = this.storage.get<Operation[]>('p2p.operations') ?? [];
+    const refRate = this.teamReferenceRate();
+    return this.teamOperators().map((op) => {
+      // Filter ops where merchantNote or notes match operator or audit all desk ops for lead
+      const opOps = ops.filter(
+        (o) =>
+          (o.merchantNote && o.merchantNote.toLowerCase().includes(op.name.toLowerCase())) ||
+          (o.notes && o.notes.toLowerCase().includes(op.name.toLowerCase())),
+      );
+      // Fallback: if no tag match yet, audit against general desk ops to provide live diagnostics
+      const targetOps = opOps.length > 0 ? opOps : (op.id === 'op-william' ? ops.slice(0, 10) : []);
+      return auditOperatorPerformance(op, targetOps, refRate, 10);
+    });
   });
 
   // --- Computed Mode E: Classic Results ---
