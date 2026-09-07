@@ -30,6 +30,7 @@ import { HotkeysService } from '../../core/hotkeys.service';
 import { AccountsService } from '../../core/accounts.service';
 import { MarketHistoryService } from '../../core/market-history.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
+import { SpreadQualityService } from '../../core/spread-quality.service';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -54,6 +55,7 @@ export class SpreadMonitor implements OnInit {
   readonly accountsService = inject(AccountsService);
   readonly marketHistory = inject(MarketHistoryService);
   readonly audioAlerts = inject(AudioAlertsService);
+  readonly spreadQuality = inject(SpreadQualityService);
   protected readonly Math = Math;
 
   selectBank(bankKey: string): void {

@@ -264,7 +264,26 @@
               </div>
             </div>
 
-            <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 4px; font-weight: 600;">
+            @if (spreadQuality.currentMarketQuality(); as sqs) {
+              <div class="sqs-indicator-box" style="margin-top: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 10px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700;">Índice de Calidad (SQS):</span>
+                    <span [style.color]="sqs.verdictColor" style="font-weight: 800; font-size: 0.88rem; font-family: var(--font-mono);">
+                      {{ sqs.score }}/100 — {{ sqs.verdictLabel }}
+                    </span>
+                  </div>
+                  <span style="font-size: 0.74rem; color: var(--gold); font-family: var(--font-mono); font-weight: 600;">
+                    Margen Neto: {{ sqs.netSpreadPct }}%
+                  </span>
+                </div>
+                <p style="margin: 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
+                  💡 {{ sqs.recommendation }}
+                </p>
+              </div>
+            }
+
+            <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 8px; font-weight: 600;">
               📥 Cargar Precios en el Monitor
             </button>
           } @else {

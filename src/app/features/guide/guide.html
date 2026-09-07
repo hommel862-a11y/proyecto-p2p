@@ -1,92 +1,174 @@
 <section class="panel">
   <header>
-    <h1>Guía de uso</h1>
-    <p class="note">Para qué sirve cada cosa y cómo sacarle partido a P2P Decisor.</p>
+    <h1>Guía de uso & Manual Táctico P2P</h1>
+    <p class="note">Para qué sirve cada cosa y cómo sacarle el máximo partido profesional a P2P Decisor.</p>
   </header>
 
+  <!-- 0. ¿Qué es P2P Decisor? -->
   <div class="guide-card">
     <h2>¿Qué es P2P Decisor?</h2>
     <p>
-      Es una <strong>herramienta de apoyo a la decisión</strong> para operar en Binance P2P desde Venezuela. No es un bot:
-      no se conecta a Binance, no opera por ti y no usa tu cuenta. Tú copias los precios que ves en pantalla y la app
-      hace los cálculos para que decidas con números, no de memoria. Todo corre en tu equipo (escritorio o APK) y los
-      datos se guardan solo en este dispositivo.
+      Es una <strong>herramienta de apoyo a la decisión</strong> para operar en Binance P2P desde Venezuela.
+      La herramienta no se conecta a Binance por credenciales privadas de cuenta, no opera por ti y preserva tu soberanía:
+      puedes sincronizar el libro público u operar manualmente.
+      Integra los módulos centrales de trabajo: <strong>Monitor de Spread</strong>, <strong>Calculadora de Ingresos</strong>,
+      <strong>Registro de Operaciones</strong>, <strong>Reglas de Riesgo</strong> y <strong>Estadísticas</strong>.
     </p>
   </div>
 
+  <!-- 1. Spread Quality Score (SQS) -->
   <div class="guide-card">
-    <h2>Cómo empezar</h2>
-    <ol>
-      <li>Abre <strong>Monitor de Spread</strong> y anota los precios de compra y venta actuales para ver si hay oportunidad.</li>
-      <li>Define tu meta en la <strong>Calculadora de Ingresos</strong> para saber qué capital necesitas.</li>
-      <li>Registra cada operación real en <strong>Registro de Operaciones</strong> apenas la cierres.</li>
-      <li>Revisa <strong>Reglas de Riesgo</strong> antes de cada movimiento y <strong>Estadísticas</strong> para medir tu progreso.</li>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+      <span class="badge badge-accent">Nuevo Sistema</span>
+      <h2 style="margin: 0;">1. Índice de Calidad del Spread (Spread Quality Score - SQS)</h2>
+    </div>
+    <p>
+      En Venezuela, un spread nominal positivo (<code>Venta - Compra > 0</code>) <strong>no garantiza ganancia real</strong>.
+      El SQS evalúa de 0 a 100 si la oportunidad absorbe las comisiones y protege tu capital:
+    </p>
+    <ul>
+      <li><strong>Margen Neto (35%)</strong>: Spread limpio tras deducir comisiones de Binance (0.2% Maker) y costos bancarios (0.3% Pago Móvil interbancario).</li>
+      <li><strong>Colchón Anti-Devaluación (25%)</strong>: Ratio frente a la volatilidad cambiaria de las últimas 4 horas. Evita quedar atrapado si el precio se mueve en contra durante los 15 minutos de la orden.</li>
+      <li><strong>Velocidad de Rotación (25%)</strong>: Calificación del canal bancario (Banesco y Pago Móvil puntúan alto por su liquidez inmediata y volumen de compradores).</li>
+      <li><strong>Salud del Cupo Diario (15%)</strong>: Penaliza operar si tus cuentas bancarias están cerca del 80% o 100% de su límite diario establecido por SUDEBAN.</li>
+    </ul>
+
+    <div style="background: rgba(13, 20, 36, 0.85); border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; border: 1px solid var(--gold-border);">
+      <strong style="color: var(--gold); display: block; margin-bottom: 6px;">Semáforo Táctico SQS:</strong>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; font-size: 0.84rem;">
+        <div>🟢 <strong style="color: #10b981;">85 - 100 (Óptimo)</strong>: Ejecución agresiva. Máximo volumen. Posicionamiento Top 1 con bot.</div>
+        <div>🟡 <strong style="color: #f59e0b;">65 - 84 (Saludable)</strong>: Operativa estándar. Mantener posición Top 2/Top 3 con margen de 1.2% - 1.8%.</div>
+        <div>🟠 <strong style="color: #f97316;">45 - 64 (Cauteloso)</strong>: Solo como Maker. Prohibido entrar como Taker. Reducir tamaño de lote.</div>
+        <div>🔴 <strong style="color: #ef4444;">0 - 44 (Tóxico)</strong>: Pausa inmediata. Las comisiones y el riesgo superan la ganancia esperada.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Matriz de Comisiones Bancarias en Venezuela -->
+  <div class="guide-card">
+    <h2>2. Matriz de Comisiones y Fricción Bancaria (Venezuela Retail)</h2>
+    <p>
+      El mayor enemigo del arbitrajista no es el mercado, sino la fricción invisible de las comisiones. Considera estos costos exactos cargados en la calculadora:
+    </p>
+    <table class="corporate-table" style="margin-top: 10px;">
+      <thead>
+        <tr>
+          <th>Banco / Canal</th>
+          <th>Mismo Banco</th>
+          <th>Pago Móvil Interbancario</th>
+          <th>Transferencia Interbancaria</th>
+          <th>Velocidad de Liquidación</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Banesco</strong></td>
+          <td class="positive">0.00%</td>
+          <td class="negative">0.30%</td>
+          <td class="negative">0.30%</td>
+          <td>⚡ Inmediata (Líder en volumen P2P)</td>
+        </tr>
+        <tr>
+          <td><strong>Mercantil</strong></td>
+          <td class="positive">0.00%</td>
+          <td class="negative">0.30%</td>
+          <td class="negative">0.30%</td>
+          <td>⚡ Muy alta liquidez y estabilidad</td>
+        </tr>
+        <tr>
+          <td><strong>Banco de Venezuela (BDV)</strong></td>
+          <td class="positive">0.00%</td>
+          <td class="negative">0.30%</td>
+          <td class="negative">0.30%</td>
+          <td>Alta liquidez (Vulnerable a intermitencias)</td>
+        </tr>
+        <tr>
+          <td><strong>Bancamiga</strong></td>
+          <td class="positive">0.00%</td>
+          <td class="negative">0.30%</td>
+          <td class="negative">0.30%</td>
+          <td>Media / Ágil en divisas y tarjetas</td>
+        </tr>
+        <tr>
+          <td><strong>BBVA Provincial</strong></td>
+          <td class="positive">0.00%</td>
+          <td class="negative">0.30%</td>
+          <td class="negative">0.30%</td>
+          <td>Media / Ideal para operaciones grandes</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 3. Estrategia Maker vs Taker -->
+  <div class="guide-card">
+    <h2>3. Estrategia Maker vs Taker: Cuándo usar cada rol</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px;">
+      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid var(--gold);">
+        <h3 style="margin-top: 0; color: var(--gold); font-size: 1rem;">Estrategia Maker (Crear Anuncio)</h3>
+        <ul style="padding-left: 18px; font-size: 0.84rem; margin: 0;">
+          <li><strong>Comisión:</strong> 0.20% de Binance por orden completada.</li>
+          <li><strong>Ventaja:</strong> Tú fijas el precio en el libro de órdenes y capturas el spread completo.</li>
+          <li><strong>Cuándo usar:</strong> En el 90% de tus operaciones de venta y en mercados laterales o de alta liquidez donde buscas rentabilidad neta superior al 1.2%.</li>
+        </ul>
+      </div>
+
+      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #3b82f6;">
+        <h3 style="margin-top: 0; color: #60a5fa; font-size: 1rem;">Estrategia Taker (Tomar Orden Directa)</h3>
+        <ul style="padding-left: 18px; font-size: 0.84rem; margin: 0;">
+          <li><strong>Comisión:</strong> 0.00% de Binance.</li>
+          <li><strong>Ventaja:</strong> Velocidad inmediata (segundos). Cero riesgo de cambio esperando en el libro.</li>
+          <li><strong>Cuándo usar:</strong> Cuando el mercado se mueve rápido hacia arriba y necesitas convertir bolívares a USDT de inmediato antes de que el dólar suba.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Protocolo de Blindaje Anti-Triangulación -->
+  <div class="guide-card">
+    <h2>4. Protocolo de Blindaje Anti-Triangulación y Antifraude</h2>
+    <p class="alert" style="margin-top: 0;">
+      ⚠️ <strong>Regla de Oro:</strong> NUNCA liberes criptomonedas si el titular de la cuenta bancaria no coincide exactamente con el nombre y cédula verificados en Binance.
+    </p>
+    <ol style="font-size: 0.88rem; line-height: 1.6;">
+      <li><strong>Validación estricta de Cédula:</strong> Al recibir un Pago Móvil o transferencia, verifica en tu banca en línea que la cédula del emisor sea exactamente la registrada en la contraparte de Binance.</li>
+      <li><strong>Terceros no autorizados:</strong> Si el comprador envía desde la cuenta de un familiar ("mi esposa", "mi hermano"), <strong>NO LIBERES</strong>. Solicita amablemente que cancele la orden o devuélvele los fondos de inmediato descontando la comisión bancaria.</li>
+      <li><strong>Conceptos sospechosos:</strong> Exige en los términos de tu anuncio que coloquen solo el número de orden o "Pago de servicio", nunca palabras como "Binance", "USDT", "Cripto" o "Dólares", ya que activan bloqueos automáticos en la banca venezolana.</li>
+      <li><strong>Registro de Contrapartes:</strong> Utiliza el <em>Registro de Operaciones</em> para marcar contrapartes confiables (Whitelist) y alertar si detectas un pagador conflictivo.</li>
     </ol>
   </div>
 
+  <!-- 5. Atajos de Teclado del Escritorio -->
   <div class="guide-card">
-    <h2>Monitor de Spread</h2>
+    <h2>5. Atajos de Teclado Profesionales (Trading Desk)</h2>
     <p>
-      Compara el precio al que compras USDT (en Bs) con el precio al que lo vendes. Si la diferencia supera tu umbral y
-      las comisiones, aparece como <span class="verdict">Favorable</span>; si no, <span class="alert">Desfavorable</span>.
-      Te muestra la ganancia de spread y la <strong>ganancia neta tras comisión</strong>. Úsalo para decidir si vale la pena
-      el arbitraje en ese momento.
+      Para operar con la velocidad de una terminal financiera, utiliza los atajos globales integrados en la aplicación:
     </p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px;">
+      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
+        <kbd>F1</kbd> — Ir al Monitor de Spread
+      </div>
+      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
+        <kbd>F2</kbd> — Sincronizar radar de Binance
+      </div>
+      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
+        <kbd>F3</kbd> — Abrir Calculadora Inteligente
+      </div>
+      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
+        <kbd>F5</kbd> — Abrir Tesorería y Límites
+      </div>
+      <div style="background: rgba(239,68,68,0.1); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid #ef4444;">
+        <kbd>Esc</kbd> — 🚨 <strong>Kill-Switch de Emergencia</strong>
+      </div>
+    </div>
   </div>
 
+  <!-- 6. Respaldo de datos y Privacidad -->
   <div class="guide-card">
-    <h2>Calculadora de Ingresos</h2>
-    <p>
-      Convierte una meta de ingresos en capital necesario. Introduces tu meta diaria en Bs, la tasa anual (APR) que persigues,
-      los días del año y el tipo de cambio. La app te dice el ingreso anual proyectado y el <strong>capital requerido</strong>
-      para girar ese volumen. Es tu brújula de tamaño: no operes más de lo que este cálculo justifica.
-    </p>
-  </div>
-
-  <div class="guide-card">
-    <h2>Registro de Operaciones</h2>
-    <p>
-      Tu bitácora. Anota cada compra/venta con montos, precio, comisión y una nota del contraparte. La app calcula tu
-      <strong>PnL</strong> (ganancia/pérdida), el capital desplegado, la exposición en USDT y tu racha de operaciones sin
-      errores. Esto alimenta las <strong>Estadísticas</strong>. Mantén la disciplina: las rachas importan más que una sola operación grande.
-    </p>
-  </div>
-
-  <div class="guide-card">
-    <h2>Reglas de Riesgo</h2>
-    <p>
-      Fija tus límites (spread mínimo, exposición máxima, racha mínima sin errores). Antes de operar, la app emite un veredicto:
-      <span class="verdict">PERMITIR</span>, <span class="alert">DENEGAR</span> o <span class="alert">PAUSAR</span>, con el motivo.
-      Es tu freno de seguridad: protege el capital. Una regla que salta «Denegar» significa que esa operación rompe tu propio método.
-    </p>
-  </div>
-
-  <div class="guide-card">
-    <h2>Estadísticas</h2>
-    <p>
-      Agrupa tu registro por <strong>día</strong>, <strong>mes</strong> y <strong>trimestre</strong>: operaciones, ganancia neta en Bs y
-      USDT, volumen y comisiones pagadas. Úsalo para ver en qué periodos ganas más, cuánto se llevan las comisiones y si creces de forma sostenida.
-    </p>
-  </div>
-
-  <div class="guide-card">
-    <h2>Consejos para rentabilidad</h2>
-    <ul>
-      <li><strong>Protege el capital primero.</strong> Una regla que te frena evita un golpe que tres operaciones buenas no recuperan.</li>
-      <li><strong>Reduce comisiones.</strong> Aprovecha pares o promociones sin comisión y sube de nivel de merchant cuando puedas; las comisiones son el enemigo silencioso que ves en Estadísticas.</li>
-      <li><strong>Caza el spread, no el volumen ciego.</strong> Opera cuando el Monitor diga Favorable y el tamaño esté dentro de tus Reglas de Riesgo.</li>
-      <li><strong>Reinvierten el capital.</strong> La Calculadora te dice el capital para tu meta; girar ese capital compuesto crece más rápido que sacar las ganancias.</li>
-      <li><strong>Opera en tus mejores horas.</strong> Usa Estadísticas para descubrir qué días/trimestres rinden más y enfoca ahí tu tiempo.</li>
-      <li><strong>Escala con disciplina.</strong> Súbete de tamaño solo después de varias rachas sin errores, no por una ganancia aislada.</li>
-      <li><strong>Respalda tus datos.</strong> Exporta el registro desde el Registro de Operaciones; si cambias de equipo o reinstalas la app, impórtalo para no perder tu historial.</li>
-    </ul>
-  </div>
-
-  <div class="guide-card">
-    <h2>Respaldo de datos</h2>
+    <h2>6. Respaldo de datos y Soberanía</h2>
     <p class="note">
-      Todo se guarda localmente en este dispositivo. Usa la función de respaldo del Registro de Operaciones para exportar e importar
-      tu historial. En el APK, los datos viven en el almacenamiento de la app: al desinstalar se borran.
+      Tus datos nunca se suben a la nube ni a servidores externos. Todo se almacena de forma local y cifrada en tu equipo.
+      Recuerda utilizar la opción de <strong>exportar</strong> y respaldo cifrado periódicamente desde el Registro de Operaciones.
     </p>
   </div>
 </section>
