@@ -1,5 +1,5 @@
 import { ipcMain, app, safeStorage, type IpcMainInvokeEvent } from 'electron';
-import type { P2PIpcChannels, BinanceSearchParams } from '../../shared/types';
+import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest } from '../../shared/types';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -44,6 +44,35 @@ export function registerIpcHandlers(): void {
         throw new Error(`Binance P2P HTTP Error ${response.status}`);
       }
 
+      return await response.json();
+    },
+  );
+
+  ipcMain.removeHandler('p2p:fetch-cotizave');
+  ipcMain.handle(
+    'p2p:fetch-cotizave',
+    async (_event: IpcMainInvokeEvent, req: CotizaveRequest): Promise<unknown> => {
+      if (!req || typeof req.apiKey !== 'string' || req.apiKey.trim().length === 0) {
+        throw new Error('Cotizave API key is required');
+      }
+      if (req.endpoint !== 'rates') {
+        throw new Error('Cotizave endpoint must be "rates"');
+      }
+      const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-API-Key': req.apiKey,
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Cotizave HTTP Error ${response.status}`);
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Cotizave returned non-JSON response');
+      }
       return await response.json();
     },
   );

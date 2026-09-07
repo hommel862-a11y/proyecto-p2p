@@ -10,6 +10,11 @@ export interface BinanceSearchParams {
   rows?: number;
 }
 
+export interface CotizaveRequest {
+  apiKey: string;
+  endpoint: 'rates';
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -17,6 +22,10 @@ export interface P2PIpcChannels {
   };
   'p2p:fetch-binance': {
     request: BinanceSearchParams;
+    response: unknown;
+  };
+  'p2p:fetch-cotizave': {
+    request: CotizaveRequest;
     response: unknown;
   };
   'crypto:is-available': {
@@ -37,6 +46,7 @@ export interface P2PIpcChannels {
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
+  fetchCotizave(req: CotizaveRequest): Promise<unknown>;
   crypto: {
     isAvailable(): Promise<boolean>;
     encrypt(plaintext: string): Promise<string>;

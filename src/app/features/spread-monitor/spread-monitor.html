@@ -76,7 +76,30 @@
               Umbral favorable (VES/{{ pair() }})
               <input type="number" min="0" step="0.01" [value]="threshold()" (input)="threshold.set(clampMoney(+$any($event.target).value))" />
             </label>
+            <label>
+              Rol en Compra
+              <select [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
+                <option value="MAKER">Maker (0.25% comisión)</option>
+                <option value="TAKER">Taker (0% comisión)</option>
+              </select>
+            </label>
+            <label>
+              Rol en Venta
+              <select [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
+                <option value="MAKER">Maker (0.25% comisión)</option>
+                <option value="TAKER">Taker (0% comisión)</option>
+              </select>
+            </label>
+            <label>
+              Umbral mínimo de spread (%)
+              <input type="number" min="0" step="0.05" [value]="minSpreadGuardPct()" (input)="minSpreadGuardPct.set(clampMoney(+$any($event.target).value))" />
+            </label>
           </div>
+          <p class="text-muted" style="margin-top: 8px; font-size: 0.78rem;">
+            Comisión efectiva de roles: <strong class="font-mono" style="color: var(--gold);">{{ effectiveFeeDragPct() }}%</strong>
+            @if (effectiveFeeDragPct() > 0) { (descuento aplicado al spread neto) }
+            @else { (sin fricción: TAKER/TAKER) }
+          </p>
         </div>
 
         @if (error(); as err) {
@@ -130,6 +153,21 @@
               ROI Objetivo Deseado (%)
               <input type="number" min="0" step="0.1" [value]="targetRoiPct()" (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))" />
             </label>
+          </div>
+
+          <div style="margin-top: 14px; padding: 12px 16px; background: rgba(216, 180, 92, 0.08); border-left: 3px solid var(--gold); border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <strong style="color: var(--gold-strong); font-size: 0.84rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                🛡️ Filtro Anti Micro-Órdenes (Protección de Límites Bancarios)
+              </strong>
+              <p class="text-muted" style="font-size: 0.8rem; margin: 4px 0 0;">
+                {{ recommendedMakerLimits().tip }}
+              </p>
+            </div>
+            <div style="display: flex; gap: 10px; font-size: 0.82rem; font-family: monospace;">
+              <span class="badge badge-accent">Mínimo sugerido: {{ recommendedMakerLimits().minTicketVes | ves }}</span>
+              <span class="badge badge-secondary">Máximo: {{ recommendedMakerLimits().maxTicketVes | ves }}</span>
+            </div>
           </div>
         </div>
       } @else {
@@ -264,7 +302,7 @@
               </div>
             </div>
 
-            @if (spreadQuality.currentMarketQuality(); as sqs) {
+            @if (marketQuality(); as sqs) {
               <div class="sqs-indicator-box" style="margin-top: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 10px 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <div style="display: flex; align-items: center; gap: 8px;">
@@ -277,7 +315,18 @@
                     Margen Neto: {{ sqs.netSpreadPct }}%
                   </span>
                 </div>
-                <p style="margin: 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
+                <div class="guard-status-row" [class.guard-ok]="guardStatus() === 'ok'" [class.guard-warn]="guardStatus() === 'warn'" [class.guard-noop]="guardStatus() === 'noop'">
+                  <span class="guard-dot"></span>
+                  <span class="guard-label">
+                    @switch (guardStatus()) {
+                      @case ('ok') { OPERAR }
+                      @case ('warn') { ALERTA }
+                      @case ('noop') { NO OPERAR }
+                    }
+                  </span>
+                  <span class="guard-text">{{ guardText() }}</span>
+                </div>
+                <p style="margin: 8px 0 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
                   💡 {{ sqs.recommendation }}
                 </p>
               </div>
@@ -339,6 +388,151 @@
               </div>
             </div>
           }
+        </div>
+
+        <!-- ═══ Triangulación Multi-Exchange ═══ -->
+        @if (activeMode() !== 'repricer') {
+          <div class="triangulation-card">
+            <div class="triangulation-header">
+              <div class="triangulation-title-group">
+                <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Triangulación Multi-Exchange</span>
+                <span class="badge badge-accent" style="font-size: 0.68rem;">Cotizave</span>
+                @if (triangulationAlert().hasAlert; as alert) {
+                  <span class="badge" style="background: #10b981; color: #fff; font-size: 0.68rem; font-weight: 800;">
+                    OPORTUNIDAD
+                  </span>
+                }
+              </div>
+              <span class="text-muted" style="font-size: 0.74rem;">
+                @if (cotizave.loading()) {
+                  <span style="color: var(--gold);">Sincronizando...</span>
+                } @else if (cotizave.lastFetched(); as date) {
+                  Actualizado {{ date | date:'HH:mm:ss' }}
+                } @else {
+                  Sin datos
+                }
+              </span>
+            </div>
+
+            @if (!cotizave.apiKey()) {
+              <div class="triangulation-empty">
+                <p style="margin: 0 0 10px; font-size: 0.82rem; color: var(--muted);">
+                  Introduce tu API key de Cotizave para activar la triangulación multi-exchange.
+                </p>
+                <p style="margin: 0 0 12px; font-size: 0.75rem; color: var(--muted);">
+                  Obtén tu key en <span class="font-mono" style="color: var(--gold);">cotizave.com/docs</span> — Plan gratis: 1500 req/mes.
+                </p>
+              </div>
+            }
+
+            <div class="triangulation-key-row">
+              <input
+                type="password"
+                class="triangulation-key-input"
+                placeholder="ctz_live_..."
+                [value]="cotizave.apiKey()"
+                (input)="cotizave.setApiKey($any($event.target).value)"
+              />
+              <button type="button" class="btn btn-secondary" (click)="cotizave.fetchRates()" [disabled]="cotizave.loading() || !cotizave.apiKey()" style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;">
+                {{ cotizave.loading() ? '...' : 'Actualizar' }}
+              </button>
+            </div>
+
+            @if (cotizave.error(); as errMsg) {
+              <p class="text-muted" style="margin: 8px 0 0; font-size: 0.78rem; color: #f87171;">{{ errMsg }}</p>
+            }
+
+            @if (triangulationData().length > 0) {
+              <div class="triangulation-threshold-row">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--muted);">
+                  Umbral brecha (VES):
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    class="triangulation-threshold-input"
+                    [value]="triangulationThresholdVes()"
+                    (input)="triangulationThresholdVes.set(+$any($event.target).value)"
+                  />
+                </label>
+              </div>
+
+              <div class="triangulation-table-wrap">
+                <table class="triangulation-table">
+                  <thead>
+                    <tr>
+                      <th>Exchange</th>
+                      <th>Ask</th>
+                      <th>Bid</th>
+                      <th>Gap (VES)</th>
+                      <th>Gap (%)</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of triangulationData(); track row.market) {
+                      @let bestGap = row.gapForward.gapVes !== null && (row.gapReverse.gapVes === null || row.gapForward.gapVes >= row.gapReverse.gapVes) ? row.gapForward : row.gapReverse;
+                      @let bestGapPct = bestGap.gapPct;
+                      @let bestGapVes = bestGap.gapVes;
+                      @let isOpportunity = bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
+                      <tr>
+                        <td>
+                          <span class="font-mono" style="text-transform: capitalize;">{{ row.market }}</span>
+                        </td>
+                        <td class="font-mono">{{ row.ask ? (row.ask | num) : '--' }}</td>
+                        <td class="font-mono">{{ row.bid ? (row.bid | num) : '--' }}</td>
+                        <td class="font-mono" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
+                          {{ bestGapVes !== null ? (bestGapVes | num) : '--' }}
+                        </td>
+                        <td class="font-mono">
+                          {{ bestGapPct !== null ? (bestGapPct | num) + '%' : '--' }}
+                        </td>
+                        <td>
+                          @if (isOpportunity) {
+                            <span class="triangulation-chip triangulation-chip-green">OPORTUNIDAD ≥ {{ triangulationThresholdVes() }} VES</span>
+                          } @else {
+                            <span class="triangulation-chip triangulation-chip-gray">Sin brecha</span>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else if (cotizave.apiKey() && !cotizave.loading() && !cotizave.error()) {
+              <p class="text-muted" style="margin: 10px 0 0; font-size: 0.78rem;">Presiona "Actualizar" para obtener datos de mercados.</p>
+            }
+          </div>
+        }
+
+        <!-- Ventanas Horarias Estratégicas -->
+        <div class="trading-windows-card">
+          <div class="bank-treasury-header">
+            <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Ventanas Horarias</span>
+            <span class="text-muted" style="font-size: 0.74rem;">Calendario estratégico de trading</span>
+          </div>
+          <div class="windows-list">
+            @for (w of tradingWindows; track w.id) {
+              <div class="window-item" [class.window-active]="w.id === activeWindowId()">
+                <div class="window-top">
+                  <div class="window-title-group">
+                    <span class="badge" [class.window-buy]="w.type === 'BUY'" [class.window-sell]="w.type === 'SELL'">
+                      {{ w.type === 'BUY' ? 'COMPRA' : 'VENTA' }}
+                    </span>
+                    <strong class="window-label">{{ w.label }}</strong>
+                    @if (w.id === activeWindowId()) {
+                      <span class="badge window-now">AHORA</span>
+                    }
+                  </div>
+                  <span class="window-time font-mono">{{ w.timeWindow }}</span>
+                </div>
+                <div class="window-meta">
+                  <span class="window-days text-muted">{{ w.dayRange }}</span>
+                  <span class="window-rationale">{{ w.rationale }}</span>
+                </div>
+              </div>
+            }
+          </div>
         </div>
 
         <!-- 2. Resultado de Arbitraje o Break-Even -->
