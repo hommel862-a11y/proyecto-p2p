@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { computeSpread } from './spread';
 
 describe('computeSpread', () => {

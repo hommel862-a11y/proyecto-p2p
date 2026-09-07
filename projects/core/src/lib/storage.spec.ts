@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { WebStorageAdapter } from './storage';
 
 /** Minimal in-memory {@link Storage} implementation so the test does not depend on the

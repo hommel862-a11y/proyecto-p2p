@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { evaluate, DECISION } from './rules';
 
 describe('evaluate (risk-rules safety barrier)', () => {
