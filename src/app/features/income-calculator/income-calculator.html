@@ -509,15 +509,15 @@
           <span class="section-eyebrow">Operadores & Cajeros Asignados</span>
           <div style="display: flex; flex-direction: column; gap: 12px;">
             @for (op of teamOperators(); track op.id) {
-              <div style="background: rgba(13, 20, 36, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;">
+              <div style="background: color-mix(in srgb, var(--panel-2) 70%, transparent); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <strong style="color: var(--gold); font-size: 0.9rem;">{{ op.name }}</strong>
                   <span class="badge badge-accent" style="font-size: 0.72rem;">{{ op.commissionSplitPct }}% Comisión</span>
                 </div>
-                <div style="display: flex; gap: 10px; font-size: 0.8rem; color: var(--text-muted);">
-                  <span>Capital: <strong style="color: #fff;">{{ op.assignedCapitalUsdt | usdt }}</strong></span>
+                <div style="display: flex; gap: 10px; font-size: 0.8rem; color: var(--muted);">
+                  <span>Capital: <strong style="color: var(--text);">{{ op.assignedCapitalUsdt | usdt }}</strong></span>
                   <span>•</span>
-                  <span>Meta: <strong style="color: #fff;">{{ op.targetDailyCycles }} vueltas/día</strong></span>
+                  <span>Meta: <strong style="color: var(--text);">{{ op.targetDailyCycles }} vueltas/día</strong></span>
                 </div>
               </div>
             }

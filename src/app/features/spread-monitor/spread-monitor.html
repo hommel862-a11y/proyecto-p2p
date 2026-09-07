@@ -111,21 +111,21 @@
             style="margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; border: 1px solid var(--line);"
             [style.background]="
               gs.alertLevel === 'GOLDEN_ZONE'
-                ? 'rgba(216, 180, 92, 0.15)'
+                ? 'color-mix(in srgb, var(--gold) 15%, transparent)'
                 : gs.alertLevel === 'HEALTHY'
-                  ? 'rgba(52, 211, 153, 0.12)'
+                  ? 'color-mix(in srgb, var(--accent) 12%, transparent)'
                   : gs.alertLevel === 'MARGINAL_CAUTION'
-                    ? 'rgba(245, 158, 11, 0.12)'
-                    : 'rgba(239, 68, 68, 0.18)'
+                    ? 'color-mix(in srgb, var(--warn) 12%, transparent)'
+                    : 'color-mix(in srgb, var(--danger) 18%, transparent)'
             "
             [style.border-color]="
               gs.alertLevel === 'GOLDEN_ZONE'
                 ? 'var(--gold)'
                 : gs.alertLevel === 'HEALTHY'
-                  ? 'rgba(52, 211, 153, 0.4)'
+                  ? 'color-mix(in srgb, var(--accent) 40%, transparent)'
                   : gs.alertLevel === 'MARGINAL_CAUTION'
-                    ? 'rgba(245, 158, 11, 0.4)'
-                    : 'rgba(239, 68, 68, 0.5)'
+                    ? 'color-mix(in srgb, var(--warn) 40%, transparent)'
+                    : 'color-mix(in srgb, var(--danger) 50%, transparent)'
             "
           >
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -134,10 +134,10 @@
                   gs.alertLevel === 'GOLDEN_ZONE'
                     ? 'var(--gold-strong)'
                     : gs.alertLevel === 'HEALTHY'
-                      ? '#34d399'
+                      ? 'var(--accent)'
                       : gs.alertLevel === 'MARGINAL_CAUTION'
-                        ? '#f59e0b'
-                        : '#f87171'
+                        ? 'var(--warn)'
+                        : 'var(--danger)'
                 "
               >
                 {{ gs.headline }}

@@ -80,6 +80,77 @@
   gap: 20px;
 }
 
+/* Primary metric (hero KPI inside calc-result-card) */
+.primary-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 18px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--gold);
+  margin-bottom: 12px;
+
+  [data-theme="light"] & {
+    background: rgba(0, 0, 0, 0.03);
+  }
+}
+
+.metric-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.metric-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--gold-strong);
+  margin-bottom: 4px;
+}
+
+.metric-hint {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* Cascade flow (step-by-step income distribution) */
+.cascade-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+
+  .cascade-step {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.84rem;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid transparent;
+
+    [data-theme="light"] & {
+      background: rgba(0, 0, 0, 0.03);
+    }
+  }
+
+  .step-name {
+    color: var(--muted);
+  }
+
+  .step-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text);
+  }
+}
+
 /* Card Results & Cascades */
 .calc-result-card {
   border: 1px solid var(--gold-border);
