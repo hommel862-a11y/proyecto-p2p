@@ -16,3 +16,4 @@ export * from './lib/repricer';
 export * from './lib/bank-reconciliation';
 export * from './lib/backup-encryption';
 export * from './lib/spread-history';
+export * from './lib/spread-quality';
