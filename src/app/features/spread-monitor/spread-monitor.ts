@@ -22,6 +22,7 @@ import {
   type AccountVelocityStatus,
   type PortfolioAllocationPlan,
   type GoldenSpreadCheck,
+  type BankCode,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -296,14 +297,44 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     };
   });
 
-  /** Institutional Portfolio Allocation Plan ($10,000 multi-bank split: Banesco 40%, Mercantil 35%, BDV 25%). */
+  /** Manual custom weights overrides for portfolio allocation */
+  readonly manualBankAllocationMode = signal<boolean>(false);
+  readonly customBanescoPct = signal<number>(40);
+  readonly customMercantilPct = signal<number>(35);
+  readonly customBdvPct = signal<number>(25);
+
+  /** Institutional Portfolio Allocation Plan ($10,000 multi-bank split: Banesco 40%, Mercantil 35%, BDV 25% or custom). */
   readonly portfolioAllocationPlan = computed<PortfolioAllocationPlan>(() => {
     const capital = this.amount() >= 1000 ? this.amount() : 10000;
     const price = this.buyPrice() > 0 ? this.buyPrice() : 60.0;
     const hour = this.now().getHours();
     const registered = this.accountsService.accounts();
-    return buildPortfolioAllocationPlan(capital, registered, price, hour);
+
+    const customWeights = this.manualBankAllocationMode()
+      ? {
+          BANESCO: this.customBanescoPct(),
+          MERCANTIL: this.customMercantilPct(),
+          BDV: this.customBdvPct(),
+        }
+      : undefined;
+
+    return buildPortfolioAllocationPlan(capital, registered, price, hour, customWeights);
   });
+
+  setManualBankWeight(bank: BankCode, pct: number): void {
+    const val = Math.max(0, Math.min(100, pct));
+    if (bank === 'BANESCO') this.customBanescoPct.set(val);
+    else if (bank === 'MERCANTIL') this.customMercantilPct.set(val);
+    else if (bank === 'BDV') this.customBdvPct.set(val);
+  }
+
+  resetBankWeightsToDefault(): void {
+    this.customBanescoPct.set(40);
+    this.customMercantilPct.set(35);
+    this.customBdvPct.set(25);
+    this.manualBankAllocationMode.set(false);
+    this.toast.info('Distribución bancaria restablecida a ponderaciones recomendadas (40/35/25).', 'Distribución SUDEBAN');
+  }
 
   applyTargetSellPrice(): void {
     const target = this.breakEvenResult().targetSellPrice;

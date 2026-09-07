@@ -33,73 +33,208 @@
          ═══════════════════════════════════════════════════ -->
     <div class="desk-column desk-left">
       @if (activeMode() === 'spread') {
-        <div class="section-group">
-          <span class="section-eyebrow">Par & Precios</span>
-          <div class="grid">
-            <label>
-              Par
-              <select [value]="pair()" (change)="setPair($any($event.target).value)">
-                <option value="USDT">USDT/VES</option>
-                <option value="EUR">EUR/VES</option>
-              </select>
-            </label>
-            <label>
-              Precio de compra (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Precio de venta (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="sellPrice()" (input)="sellPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">⚡</span>
+              <span class="card-title">Cotización & Precios Base</span>
+            </div>
+            <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
+          </div>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-pair-select">
+                <span>Par de Comercio</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-pair-select" class="terminal-select" [value]="pair()" (change)="setPair($any($event.target).value)">
+                  <option value="USDT">USDT / VES (Tether Dólar)</option>
+                  <option value="EUR">EUR / VES (Euro)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-buy-price">
+                <span>Precio de Compra</span>
+                <span class="terminal-subtext">Costo adquisición</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="spread-buy-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="buyPrice()"
+                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-sell-price">
+                <span>Precio de Venta</span>
+                <span class="terminal-subtext">Salida / Anuncio</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="spread-sell-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input highlight-sell"
+                  [value]="sellPrice()"
+                  (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="section-group">
-          <span class="section-eyebrow">Configuración del Trade</span>
-          <div class="grid">
-            <label>
-              Monto
-              <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Unidad
-              <select [value]="unit()" (change)="setUnit($any($event.target).value)">
-                <option [value]="pair()">{{ pair() }}</option>
-                <option value="VES">VES</option>
-              </select>
-            </label>
-            <label>
-              Comisión del vendedor (%)
-              <input type="number" min="0" step="0.01" [value]="commissionPct()" (input)="commissionPct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Umbral favorable (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="threshold()" (input)="threshold.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Rol en Compra
-              <select [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
-                <option value="MAKER">Maker (0.25% comisión)</option>
-                <option value="TAKER">Taker (0% comisión)</option>
-              </select>
-            </label>
-            <label>
-              Rol en Venta
-              <select [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
-                <option value="MAKER">Maker (0.25% comisión)</option>
-                <option value="TAKER">Taker (0% comisión)</option>
-              </select>
-            </label>
-            <label>
-              Umbral mínimo de spread (%)
-              <input type="number" min="0" step="0.05" [value]="minSpreadGuardPct()" (input)="minSpreadGuardPct.set(clampMoney(+$any($event.target).value))" />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">⚙️</span>
+              <span class="card-title">Parámetros de Ejecución & Fricción</span>
+            </div>
+            <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
+              Fricción: {{ effectiveFeeDragPct() }}%
+            </span>
           </div>
-          <p class="text-muted" style="margin-top: 8px; font-size: 0.78rem;">
-            Comisión efectiva de roles: <strong class="font-mono" style="color: var(--gold);">{{ effectiveFeeDragPct() }}%</strong>
-            @if (effectiveFeeDragPct() > 0) { (descuento aplicado al spread neto) }
-            @else { (sin fricción: TAKER/TAKER) }
-          </p>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-amount">
+                <span>Capital / Volumen</span>
+                <span class="terminal-subtext">Operación actual</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="spread-amount"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  class="terminal-input font-bold"
+                  [value]="amount()"
+                  (input)="amount.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">{{ unit() }}</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-unit-select">
+                <span>Unidad de Medida</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-unit-select" class="terminal-select" [value]="unit()" (change)="setUnit($any($event.target).value)">
+                  <option [value]="pair()">{{ pair() }} (Cripto)</option>
+                  <option value="VES">VES (Bolívares)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-commission">
+                <span>Comisión Adicional (%)</span>
+                <span class="terminal-subtext">Vendedor / Red</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="spread-commission"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="commissionPct()"
+                  (input)="commissionPct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-threshold">
+                <span>Umbral Favorable (VES)</span>
+                <span class="terminal-subtext">Spread mínimo en Bs</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="spread-threshold"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="threshold()"
+                  (input)="threshold.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-buy-role">
+                <span>Rol en Compra</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-buy-role" class="terminal-select" [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio — 0.25% fee)</option>
+                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-sell-role">
+                <span>Rol en Venta</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-sell-role" class="terminal-select" [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio — 0.25% fee)</option>
+                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field full-width">
+              <label class="terminal-label" for="spread-min-guard">
+                <span>Guardia Mínima de Spread Neto (%)</span>
+                <span class="terminal-subtext">Filtro institucional de seguridad</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="spread-min-guard"
+                  type="number"
+                  min="0"
+                  step="0.05"
+                  class="terminal-input"
+                  [value]="minSpreadGuardPct()"
+                  (input)="minSpreadGuardPct.set(clampMoney(+$any($event.target).value))"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="terminal-card-footer">
+            <div class="footer-badge">
+              <span class="status-indicator" [class.active]="effectiveFeeDragPct() > 0"></span>
+              <span>Comisión de roles aplicada: <strong>{{ effectiveFeeDragPct() }}%</strong></span>
+            </div>
+            <span class="text-muted" style="font-size: 0.74rem;">
+              @if (effectiveFeeDragPct() > 0) { Descuento directo sobre margen bruto }
+              @else { Operativa sin comisiones (TAKER/TAKER) }
+            </span>
+          </div>
         </div>
 
         @if (error(); as err) {
@@ -157,46 +292,161 @@
         }
       } @else if (activeMode() === 'breakeven') {
         <!-- Modo Break-Even & Sizing -->
-        <div class="section-group">
-          <span class="section-eyebrow">Base de Costo & Volumen</span>
-          <div class="grid">
-            <label>
-              Par
-              <select [value]="pair()" (change)="setPair($any($event.target).value)">
-                <option value="USDT">USDT/VES</option>
-                <option value="EUR">EUR/VES</option>
-              </select>
-            </label>
-            <label>
-              Precio de compra base (VES/{{ pair() }})
-              <input type="number" min="0" step="0.01" [value]="buyPrice()" (input)="buyPrice.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Volumen a vender ({{ pair() }})
-              <input type="number" min="0" step="0.000001" [value]="amount()" (input)="amount.set(clampMoney(+$any($event.target).value))" />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">🎯</span>
+              <span class="card-title">Base de Costo & Volumen de Venta</span>
+            </div>
+            <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
+          </div>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-pair-select">
+                <span>Par de Comercio</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="be-pair-select" class="terminal-select" [value]="pair()" (change)="setPair($any($event.target).value)">
+                  <option value="USDT">USDT / VES</option>
+                  <option value="EUR">EUR / VES</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-buy-price">
+                <span>Precio de Compra Base</span>
+                <span class="terminal-subtext">Costo de inventario</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="be-buy-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="buyPrice()"
+                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-amount">
+                <span>Volumen a Vender</span>
+                <span class="terminal-subtext">Inventario asignado</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="be-amount"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  class="terminal-input font-bold"
+                  [value]="amount()"
+                  (input)="amount.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">{{ pair() }}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="section-group">
-          <span class="section-eyebrow">Comisiones & Objetivo de Rentabilidad</span>
-          <div class="grid">
-            <label>
-              Comisión de Compra (%)
-              <input type="number" min="0" max="10" step="0.01" [value]="buyFeePct()" (input)="buyFeePct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Comisión de Venta (Maker %)
-              <input type="number" min="0" max="10" step="0.01" [value]="sellFeePct()" (input)="sellFeePct.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              Gastos Bancarios / IGTF Fijo (VES)
-              <input type="number" min="0" step="0.01" [value]="bankFeesVes()" (input)="bankFeesVes.set(clampMoney(+$any($event.target).value))" />
-            </label>
-            <label>
-              ROI Objetivo Deseado (%)
-              <input type="number" min="0" step="0.1" [value]="targetRoiPct()" (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))" />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">📊</span>
+              <span class="card-title">Comisiones, Gastos & ROI Objetivo</span>
+            </div>
+            <span class="badge badge-gold font-mono">Meta: {{ targetRoiPct() }}% ROI</span>
+          </div>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-buy-fee">
+                <span>Comisión de Compra (%)</span>
+                <span class="terminal-subtext">Taker/Maker entrada</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="be-buy-fee"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="buyFeePct()"
+                  (input)="buyFeePct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-sell-fee">
+                <span>Comisión de Venta (Maker %)</span>
+                <span class="terminal-subtext">Tarifa por anuncio</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="be-sell-fee"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="sellFeePct()"
+                  (input)="sellFeePct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.25"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-bank-fees">
+                <span>Gastos Bancarios / IGTF</span>
+                <span class="terminal-subtext">Comisiones fijas</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="be-bank-fees"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="bankFeesVes()"
+                  (input)="bankFeesVes.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="be-target-roi">
+                <span>ROI Objetivo Deseado (%)</span>
+                <span class="terminal-subtext">Ganancia neta esperada</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="be-target-roi"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="terminal-input highlight-gold font-bold"
+                  [value]="targetRoiPct()"
+                  (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="1.0"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
           </div>
 
           <div style="margin-top: 14px; padding: 12px 16px; background: rgba(216, 180, 92, 0.08); border-left: 3px solid var(--gold); border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -215,29 +465,78 @@
           </div>
 
           <!-- Asignación Institucional de Capital Multi-Banco ($10,000 Portfolio Split) -->
-          <div style="margin-top: 14px; padding: 14px 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span class="section-eyebrow" style="margin: 0;">🏛️ Asignación Institucional Multi-Banco ($10k Split)</span>
-              <span class="badge badge-accent font-mono" style="font-size: 0.72rem;">Régimen: {{ portfolioAllocationPlan().limitsRecommendation.regime }}</span>
+          <div class="portfolio-split-container" style="margin-top: 14px; padding: 16px 18px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="card-icon" style="font-size: 1.1rem;">🏛️</span>
+                <span class="section-eyebrow" style="margin: 0; font-size: 0.85rem; color: var(--text);">
+                  Asignación Institucional Multi-Banco ($10k Split)
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge badge-accent font-mono" style="font-size: 0.72rem;">
+                  Régimen: {{ portfolioAllocationPlan().limitsRecommendation.regime }}
+                </span>
+                <button
+                  type="button"
+                  class="btn-ghost"
+                  style="font-size: 0.72rem; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px;"
+                  (click)="manualBankAllocationMode.set(!manualBankAllocationMode())"
+                  [title]="manualBankAllocationMode() ? 'Cambiar a modo automático' : 'Ajustar montos o porcentajes manualmente'"
+                >
+                  {{ manualBankAllocationMode() ? '⚙️ Modo: Manual' : '🤖 Modo: Automático' }}
+                </button>
+                @if (manualBankAllocationMode()) {
+                  <button
+                    type="button"
+                    class="btn-ghost"
+                    style="font-size: 0.72rem; padding: 3px 6px; color: var(--gold);"
+                    (click)="resetBankWeightsToDefault()"
+                    title="Restablecer a 40% Banesco / 35% Mercantil / 25% BDV"
+                  >
+                    ↺ Reset (40/35/25)
+                  </button>
+                }
+              </div>
             </div>
+
             <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 12px;">
-              Distribución táctica para no saturar los algoritmos de SUDEBAN y bancos venezolanos:
+              @if (manualBankAllocationMode()) {
+                <strong>Modo Manual Activo:</strong> Ingresa el porcentaje de capital asignado a cada entidad para recalcular montos en USDT y Bs:
+              } @else {
+                Distribución táctica calculada para no saturar los algoritmos de monitoreo de SUDEBAN y banca venezolana:
+              }
             </p>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px;">
               @for (alloc of portfolioAllocationPlan().allocations; track alloc.bankCode) {
-                <div style="padding: 10px; background: var(--bg-1); border-radius: 6px; border: 1px solid var(--line);">
-                  <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 0.85rem;">
-                    <span>{{ alloc.bankCode }}</span>
-                    <span style="color: var(--gold);">{{ alloc.recommendedPct }}%</span>
+                <div style="padding: 12px; background: var(--bg-1); border-radius: 8px; border: 1px solid var(--line); position: relative;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 0.85rem;">
+                    <span style="color: var(--text);">{{ alloc.bankCode }}</span>
+                    @if (manualBankAllocationMode()) {
+                      <div style="display: flex; align-items: center; gap: 2px;">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          [value]="alloc.recommendedPct"
+                          (input)="setManualBankWeight(alloc.bankCode, +$any($event.target).value)"
+                          style="width: 52px; padding: 2px 4px; font-size: 0.8rem; text-align: right; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 4px; color: var(--gold); font-weight: 700;"
+                        />
+                        <span style="color: var(--gold); font-size: 0.8rem;">%</span>
+                      </div>
+                    } @else {
+                      <span style="color: var(--gold);">{{ alloc.recommendedPct }}%</span>
+                    }
                   </div>
-                  <div class="font-mono" style="font-size: 0.9rem; margin-top: 4px; color: var(--accent);">
+                  <div class="font-mono" style="font-size: 1.05rem; margin-top: 6px; color: var(--accent); font-weight: 700;">
                     {{ alloc.allocatedCapitalUsdt | usdt }}
                   </div>
-                  <div class="font-mono text-muted" style="font-size: 0.74rem;">
+                  <div class="font-mono text-muted" style="font-size: 0.78rem;">
                     ~{{ alloc.allocatedCapitalVes | ves }}
                   </div>
-                  <div class="text-muted" style="font-size: 0.7rem; margin-top: 4px; line-height: 1.2;">
+                  <div class="text-muted" style="font-size: 0.72rem; margin-top: 6px; line-height: 1.25;">
                     {{ alloc.priorityRole }}
                   </div>
                 </div>

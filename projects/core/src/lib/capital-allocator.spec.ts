@@ -31,4 +31,24 @@ describe('buildPortfolioAllocationPlan', () => {
     expect(mercantil?.allocatedCapitalUsdt).toBe(3500);
     expect(bdv?.allocatedCapitalUsdt).toBe(2500);
   });
+
+  it('supports custom manual allocation weights across banks', () => {
+    const plan = buildPortfolioAllocationPlan(5000, [], 60, 10, {
+      BANESCO: 50,
+      MERCANTIL: 30,
+      BDV: 20,
+    });
+    expect(plan.totalCapitalUsdt).toBe(5000);
+
+    const banesco = plan.allocations.find((a) => a.bankCode === 'BANESCO');
+    const mercantil = plan.allocations.find((a) => a.bankCode === 'MERCANTIL');
+    const bdv = plan.allocations.find((a) => a.bankCode === 'BDV');
+
+    expect(banesco?.recommendedPct).toBe(50);
+    expect(banesco?.allocatedCapitalUsdt).toBe(2500);
+    expect(mercantil?.recommendedPct).toBe(30);
+    expect(mercantil?.allocatedCapitalUsdt).toBe(1500);
+    expect(bdv?.recommendedPct).toBe(20);
+    expect(bdv?.allocatedCapitalUsdt).toBe(1000);
+  });
 });

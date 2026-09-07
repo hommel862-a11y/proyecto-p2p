@@ -81,15 +81,17 @@ export function computeDynamicOrderLimits(
 
 /**
  * Distributes capital across Banesco, Mercantil and BDV to prevent quota saturation.
+ * Supports custom weight percentages per bank when provided.
  */
 export function buildPortfolioAllocationPlan(
   totalCapitalUsdt: number,
   registeredAccounts: readonly BankAccount[] = [],
   referenceRateVes: number = 60.0,
   hourOfDay: number = 10,
+  customWeights?: Partial<Record<BankCode, number>>,
 ): PortfolioAllocationPlan {
-  // Institutional target weights for Venezuela P2P
-  const targetWeights: Record<BankCode, { pct: number; role: string }> = {
+  // Institutional target weights for Venezuela P2P (or custom user overrides)
+  const defaultWeights: Record<BankCode, { pct: number; role: string }> = {
     BANESCO: { pct: 40, role: 'Cuenta Ancla (Tickets altos $500-$2,500 y transferencias seguras)' },
     MERCANTIL: { pct: 35, role: 'Flujo Intermedio & TPago confiable con bajas tasas de retención' },
     BDV: { pct: 25, role: 'Captación de liquidez rápida minorista (No pernoctar bolívares)' },
@@ -98,30 +100,34 @@ export function buildPortfolioAllocationPlan(
     OTRO: { pct: 0, role: 'Cuenta auxiliar' },
   };
 
+  const banescoPct = customWeights?.BANESCO != null ? Math.max(0, customWeights.BANESCO) : defaultWeights.BANESCO.pct;
+  const mercantilPct = customWeights?.MERCANTIL != null ? Math.max(0, customWeights.MERCANTIL) : defaultWeights.MERCANTIL.pct;
+  const bdvPct = customWeights?.BDV != null ? Math.max(0, customWeights.BDV) : defaultWeights.BDV.pct;
+
   const allocations: BankAllocationWeight[] = [
     {
       bankCode: 'BANESCO',
-      recommendedPct: targetWeights.BANESCO.pct,
-      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * targetWeights.BANESCO.pct) / 100),
-      allocatedCapitalVes: Math.round(((totalCapitalUsdt * targetWeights.BANESCO.pct) / 100) * referenceRateVes),
+      recommendedPct: banescoPct,
+      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * banescoPct) / 100),
+      allocatedCapitalVes: Math.round(((totalCapitalUsdt * banescoPct) / 100) * referenceRateVes),
       maxRecommendedTickets: 6,
-      priorityRole: targetWeights.BANESCO.role,
+      priorityRole: defaultWeights.BANESCO.role,
     },
     {
       bankCode: 'MERCANTIL',
-      recommendedPct: targetWeights.MERCANTIL.pct,
-      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * targetWeights.MERCANTIL.pct) / 100),
-      allocatedCapitalVes: Math.round(((totalCapitalUsdt * targetWeights.MERCANTIL.pct) / 100) * referenceRateVes),
+      recommendedPct: mercantilPct,
+      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * mercantilPct) / 100),
+      allocatedCapitalVes: Math.round(((totalCapitalUsdt * mercantilPct) / 100) * referenceRateVes),
       maxRecommendedTickets: 6,
-      priorityRole: targetWeights.MERCANTIL.role,
+      priorityRole: defaultWeights.MERCANTIL.role,
     },
     {
       bankCode: 'BDV',
-      recommendedPct: targetWeights.BDV.pct,
-      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * targetWeights.BDV.pct) / 100),
-      allocatedCapitalVes: Math.round(((totalCapitalUsdt * targetWeights.BDV.pct) / 100) * referenceRateVes),
+      recommendedPct: bdvPct,
+      allocatedCapitalUsdt: Math.round((totalCapitalUsdt * bdvPct) / 100),
+      allocatedCapitalVes: Math.round(((totalCapitalUsdt * bdvPct) / 100) * referenceRateVes),
       maxRecommendedTickets: 4,
-      priorityRole: targetWeights.BDV.role,
+      priorityRole: defaultWeights.BDV.role,
     },
   ];
 

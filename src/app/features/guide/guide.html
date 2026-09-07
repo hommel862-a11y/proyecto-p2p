@@ -171,4 +171,42 @@
       Recuerda utilizar la opción de <strong>exportar</strong> y respaldo cifrado periódicamente desde el Registro de Operaciones.
     </p>
   </div>
+
+  <!-- 7. Asignación Institucional Multi-Banco y Cuotas de Capital -->
+  <div class="guide-card">
+    <h2>7. Asignación Institucional Multi-Banco y Prevención de Pitufeo</h2>
+    <p>
+      La gestión de capital en volúmenes institucionales o carteras activas (por ejemplo $10,000 USD) no debe concentrarse en una sola cuenta bancaria. Los sistemas de prevención de legitimación de capitales de la banca venezolana (SUDEBAN) disparan alertas y bloqueos preventivos por <em>pitufeo</em> (acumulación excesiva de micro-operaciones) o por sobrepasar la velocidad transaccional permitida por día.
+    </p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px;">
+      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #10b981;">
+        <h4 style="margin: 0 0 6px; color: #34d399; font-size: 0.95rem;">Banesco (40% del Capital — Cuenta Ancla)</h4>
+        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
+          Diseñado para tickets altos ($500 - $2,500). Es la cuenta con mayor tolerancia para transferencias interbancarias y alto volumen sin bloqueos de Pago Móvil.
+        </p>
+      </div>
+
+      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #3b82f6;">
+        <h4 style="margin: 0 0 6px; color: #60a5fa; font-size: 0.95rem;">Mercantil (35% del Capital — Flujo Intermedio)</h4>
+        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
+          Excelente para TPago y transferencias directas con bajas tasas de retención. Permite liquidar tickets medianos de forma rápida y estable durante el día.
+        </p>
+      </div>
+
+      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #ef4444;">
+        <h4 style="margin: 0 0 6px; color: #f87171; font-size: 0.95rem;">Banco de Venezuela (25% del Capital — Captación)</h4>
+        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
+          Utilizado para captar liquidez minorista rápida vía PagoClave. <strong>Regla estricta:</strong> Nunca pernoctar bolívares en BDV después de las 20:00 hrs.
+        </p>
+      </div>
+    </div>
+
+    <div style="margin-top: 14px; padding: 12px 14px; background: rgba(216, 180, 92, 0.07); border: 1px solid var(--gold-border); border-radius: var(--radius);">
+      <strong style="color: var(--gold-strong); font-size: 0.85rem;">Personalización y Modo Manual en el Monitor:</strong>
+      <p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+        En la pestaña <em>Punto de Equilibrio & Anuncio Maker</em> del Monitor de Spread, puedes alternar entre el <strong>Modo Automático</strong> (algoritmo estándar 40/35/25) y el <strong>Modo Manual</strong>. Al activar el modo manual, puedes ingresar directamente los porcentajes que desees destinar a cada entidad según la disponibilidad de saldo en tus cuentas, recalculando en tiempo real el capital asignado en USDT y en Bolívares (VES).
+      </p>
+    </div>
+  </div>
 </section>
