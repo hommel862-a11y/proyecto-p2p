@@ -1,5 +1,11 @@
-import { computed, inject, Injectable } from '@angular/core';
-import { computeSpreadQualityScore, type SpreadQualityResult, type BankCode } from '@p2p/core';
+import { computed, inject, Injectable, type Signal } from '@angular/core';
+import {
+  computeSpreadQualityScore,
+  type SpreadQualityResult,
+  type SpreadQualityInput,
+  type BankCode,
+  type P2PRole,
+} from '@p2p/core';
 import { BinanceP2pService } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
 
@@ -14,10 +20,8 @@ export class SpreadQualityService {
   private readonly binance = inject(BinanceP2pService);
   private readonly accounts = inject(AccountsService);
 
-  /**
-   * Evaluates market quality in real time based on current Binance depth.
-   */
-  readonly currentMarketQuality = computed<SpreadQualityResult | null>(() => {
+  /** Shared depth/treasury inputs that feed {@link currentMarketQuality}. */
+  private readonly marketQualityInputs = computed<SpreadQualityInput | null>(() => {
     const depth = this.binance.marketDepth();
     if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
       return null;
@@ -39,18 +43,34 @@ export class SpreadQualityService {
     const primaryUsage = treasury.accountsUsage.find((u) => u.account.bankCode === bankCode);
     const accountUsagePct = primaryUsage ? primaryUsage.consumedLimitPct : 20;
 
-    try {
-      return computeSpreadQualityScore({
-        buyPrice: depth.bestBuyPrice,
-        sellPrice: depth.bestSellPrice,
-        bankCode,
-        accountUsagePct,
-        volatility4hPct: 0.45,
-      });
-    } catch {
-      return null;
-    }
+    return {
+      buyPrice: depth.bestBuyPrice,
+      sellPrice: depth.bestSellPrice,
+      bankCode,
+      accountUsagePct,
+      volatility4hPct: 0.45,
+    };
   });
+
+  /**
+   * Evaluates market quality in real time based on current Binance depth.
+   * Accepts optional MAKER/TAKER roles (default TAKER) to reflect what the
+   * trader is actually paying; returns a reactive signal.
+   */
+  currentMarketQuality(
+    buyRole: P2PRole = 'TAKER',
+    sellRole: P2PRole = 'TAKER',
+  ): Signal<SpreadQualityResult | null> {
+    return computed(() => {
+      const base = this.marketQualityInputs();
+      if (!base) return null;
+      try {
+        return computeSpreadQualityScore({ ...base, buyRole, sellRole });
+      } catch {
+        return null;
+      }
+    });
+  }
 
   /**
    * Helper to compute SQS for arbitrary manual prices and parameters.
@@ -60,6 +80,8 @@ export class SpreadQualityService {
     sellPrice: number,
     bankCode: BankCode = 'BANESCO',
     accountUsagePct = 20,
+    buyRole: P2PRole = 'TAKER',
+    sellRole: P2PRole = 'TAKER',
   ): SpreadQualityResult | null {
     if (buyPrice <= 0 || sellPrice <= 0) return null;
     try {
@@ -68,6 +90,8 @@ export class SpreadQualityService {
         sellPrice,
         bankCode,
         accountUsagePct,
+        buyRole,
+        sellRole,
       });
     } catch {
       return null;
