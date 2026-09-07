@@ -12,6 +12,7 @@ import {
   computeSessionSummary,
   type Operation,
   type DayActivity,
+  type AccountVelocityHealth,
 } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -43,6 +44,29 @@ export class Dashboard {
 
   /** Risk engine live verdict from sample state. */
   readonly verdict = computed(() => this.risks.evaluate(this.risks.sampleState()));
+
+  /** Daily transaction velocity per account (SUDEBAN rotation awareness). */
+  readonly accountVelocities = computed(() => this.accountsService.accountVelocities());
+  /** Accounts at or near their daily transaction threshold. */
+  readonly velocityAlerts = computed(() => this.accountsService.velocityAlerts());
+  /** Best account to rotate to today, if any. */
+  readonly rotationRecommendation = computed(() => this.accountsService.rotationRecommendation());
+
+  /** Semáforo background CSS var per velocity health (no hardcoded colors). */
+  readonly velocityHealthVar: Record<AccountVelocityHealth, string> = {
+    OPTIMAL: 'var(--accent)',
+    MODERATE: 'var(--warn)',
+    REST_RECOMMENDED: 'var(--gold)',
+    SATURATED: 'var(--danger)',
+  };
+
+  /** Human-readable label per velocity health. */
+  readonly velocityHealthLabel: Record<AccountVelocityHealth, string> = {
+    OPTIMAL: 'Óptima',
+    MODERATE: 'Moderada',
+    REST_RECOMMENDED: 'Descanso recomendado',
+    SATURATED: 'Saturada',
+  };
 
   /** Progress toward daily target (0–100). */
   readonly dailyProgress = computed(() => {

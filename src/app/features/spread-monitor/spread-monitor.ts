@@ -13,10 +13,13 @@ import {
   calculateBreakEven,
   clampNonNegative,
   computeTriangulationGap,
+  buildPortfolioAllocationPlan,
   type AmountUnit,
   type SpreadResult,
   type BreakEvenResult,
   type P2PRole,
+  type AccountVelocityStatus,
+  type PortfolioAllocationPlan,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -73,6 +76,15 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   protected readonly Math = Math;
 
   readonly triangulationThresholdVes = signal<number>(2);
+
+  /** Per-account velocity status lookup for the treasury card semáforo chips. */
+  readonly velocityByAccount = computed<ReadonlyMap<string, AccountVelocityStatus>>(() => {
+    const map = new Map<string, AccountVelocityStatus>();
+    for (const v of this.accountsService.accountVelocities()) {
+      map.set(v.accountId, v);
+    }
+    return map;
+  });
 
   readonly triangulationData = computed(() => {
     const depth = this.binance.marketDepth();
@@ -280,6 +292,15 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       maxTicketVes,
       tip: `Configura tu anuncio con mínimo ${minTicketVes.toLocaleString('es-VE')} Bs (~$30) para evitar que órdenes pequeñas agoten tus 15 transferencias diarias.`,
     };
+  });
+
+  /** Institutional Portfolio Allocation Plan ($10,000 multi-bank split: Banesco 40%, Mercantil 35%, BDV 25%). */
+  readonly portfolioAllocationPlan = computed<PortfolioAllocationPlan>(() => {
+    const capital = this.amount() >= 1000 ? this.amount() : 10000;
+    const price = this.buyPrice() > 0 ? this.buyPrice() : 60.0;
+    const hour = this.now().getHours();
+    const registered = this.accountsService.accounts();
+    return buildPortfolioAllocationPlan(capital, registered, price, hour);
   });
 
   applyTargetSellPrice(): void {

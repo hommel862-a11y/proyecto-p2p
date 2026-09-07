@@ -9,17 +9,20 @@ import {
   computeStats,
   aggregateSessions,
   generateComplianceStatement,
+  buildCalendarMonthView,
   type Operation,
   type PeriodKind,
   type PeriodStat,
   type SessionSummary,
   type ComplianceReportMetadata,
   type ComplianceStatement,
+  type CalendarMonthView,
+  type CalendarDayStat,
 } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
 
-export type ExtendedPeriodKind = PeriodKind | 'session';
+export type ExtendedPeriodKind = PeriodKind | 'session' | 'calendar';
 
 @Component({
   selector: 'app-stats',
@@ -84,6 +87,53 @@ export class Stats {
     const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     return aggregateSessions(sessions, ops);
   });
+
+  /** Calendar Bitácora state */
+  readonly calendarYear = signal<number>(new Date().getUTCFullYear());
+  readonly calendarMonth = signal<number>(new Date().getUTCMonth() + 1);
+  readonly selectedCalendarDay = signal<CalendarDayStat | null>(null);
+
+  readonly calendarMonthView = computed<CalendarMonthView>(() => {
+    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    return buildCalendarMonthView(ops, this.calendarYear(), this.calendarMonth(), 60.0);
+  });
+
+  readonly selectedDayOps = computed<Operation[]>(() => {
+    const day = this.selectedCalendarDay();
+    if (!day) return [];
+    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    return ops.filter((o) => {
+      const d = new Date(o.timestamp);
+      if (Number.isNaN(d.getTime())) return false;
+      const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      return dateStr === day.date;
+    });
+  });
+
+  prevMonth(): void {
+    if (this.calendarMonth() === 1) {
+      this.calendarMonth.set(12);
+      this.calendarYear.update((y) => y - 1);
+    } else {
+      this.calendarMonth.update((m) => m - 1);
+    }
+    this.selectedCalendarDay.set(null);
+  }
+
+  nextMonth(): void {
+    if (this.calendarMonth() === 12) {
+      this.calendarMonth.set(1);
+      this.calendarYear.update((y) => y + 1);
+    } else {
+      this.calendarMonth.update((m) => m + 1);
+    }
+    this.selectedCalendarDay.set(null);
+  }
+
+  selectDay(day: CalendarDayStat | null): void {
+    if (!day) return;
+    this.selectedCalendarDay.set(day);
+  }
 
   setPeriod(p: ExtendedPeriodKind): void {
     this.period.set(p);

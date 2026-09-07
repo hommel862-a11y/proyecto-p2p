@@ -22,6 +22,13 @@
       </button>
       <button
         type="button"
+        [class.active]="activeMode() === 'compound'"
+        (click)="activeMode.set('compound')"
+      >
+        📈 Proyector Compuesto ($10k)
+      </button>
+      <button
+        type="button"
         [class.active]="activeMode() === 'classic'"
         (click)="activeMode.set('classic')"
       >
@@ -285,7 +292,162 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       MODO C: Metas de Capital Anual (Classic Benchmark)
+       MODO C: Proyector de Crecimiento Compuesto ($10k Multi-Ciclo)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeMode() === 'compound') {
+    <div class="calc-grid-layout">
+      <!-- Columna Izquierda: Parámetros del Simulador -->
+      <div class="calc-column">
+        <div class="section-group">
+          <span class="section-eyebrow">Capital Inicial & Spread por Vuelta</span>
+          <div class="grid">
+            <label>
+              Capital Inicial (USDT)
+              <input
+                type="number"
+                min="100"
+                step="500"
+                [value]="compoundInitialCapital()"
+                (input)="compoundInitialCapital.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+            <label>
+              Spread Neto por Ciclo (%)
+              <input
+                type="number"
+                min="0.1"
+                step="0.05"
+                [value]="compoundNetMarginPct()"
+                (input)="compoundNetMarginPct.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+            <label>
+              Ciclos / Vueltas por Día
+              <input
+                type="number"
+                min="0.5"
+                max="5"
+                step="0.1"
+                [value]="compoundCyclesPerDay()"
+                (input)="compoundCyclesPerDay.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+            <label>
+              Horizonte de Tiempo (Días)
+              <select [value]="compoundOperationalDays()" (change)="compoundOperationalDays.set(+$any($event.target).value)">
+                <option [value]="30">30 días (1 mes)</option>
+                <option [value]="60">60 días (2 meses)</option>
+                <option [value]="90">90 días (1 trimestre profesional)</option>
+                <option [value]="180">180 días (Semestre)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="section-group">
+          <span class="section-eyebrow">Política de Cosecha & Retiros (Gestión de Riesgo)</span>
+          <div class="grid">
+            <label>
+              Distribución de Beneficios
+              <select [value]="compoundReinvestmentRate()" (change)="compoundReinvestmentRate.set(+$any($event.target).value)">
+                <option [value]="100">100% Reinversión (Interés Compuesto Agresivo)</option>
+                <option [value]="50">50% Cosecha a Frío / 50% Capitalización (Institucional)</option>
+                <option [value]="30">70% Cosecha / 30% Capitalización (Conservador)</option>
+                <option [value]="0">0% Reinversión (Retiro Total Diario)</option>
+              </select>
+            </label>
+            <label>
+              Tasa Referencial (VES/USDT)
+              <input
+                type="number"
+                min="1"
+                step="0.5"
+                [value]="compoundReferenceRate()"
+                (input)="compoundReferenceRate.set(clampMoney(+$any($event.target).value))"
+              />
+            </label>
+          </div>
+          <p class="note" style="margin-top: 8px;">
+            💡 <strong>Estrategia de Cosecha (Harvest):</strong> Con $10,000 USD, reinvertir el 100% satura rápidamente las cuentas personales. Retirar el 50% de las ganancias diarias a tu hardware wallet elimina el riesgo devaluatorio y bancario.
+          </p>
+        </div>
+      </div>
+
+      <!-- Columna Derecha: Resumen de Capital & Hitos -->
+      <div class="calc-column">
+        @if (compoundResult(); as comp) {
+          <div class="calc-result-card">
+            <div class="roi-hero-tile">
+              <div>
+                <span class="roi-label">Valor Total del Portafolio</span>
+                <div class="roi-value" [class.negative]="comp.totalReturnPct <= 0">
+                  {{ comp.totalPortfolioValueUsdt | usdt }}
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span class="roi-label">Ganancia Neta Limpia</span>
+                <div class="roi-sub" style="color: var(--accent); font-weight: 700;">
+                  +{{ comp.totalNetProfitUsdt | usdt }} (+{{ comp.totalReturnPct | number:'1.1-1' }}%)
+                </div>
+              </div>
+            </div>
+
+            <div class="stat-grid" style="margin: 16px 0;">
+              <div class="stat-tile out">
+                <span class="stat-label">Capital Operativo Final</span>
+                <span class="stat-value font-mono">{{ comp.finalWorkingCapitalUsdt | usdt }}</span>
+              </div>
+              <div class="stat-tile out">
+                <span class="stat-label">Total Cosechado / Retirado</span>
+                <span class="stat-value font-mono" style="color: var(--gold);">{{ comp.totalHarvestedUsdt | usdt }}</span>
+              </div>
+            </div>
+
+            <!-- Milestone Progress Cards -->
+            <span class="section-eyebrow" style="margin-bottom: 8px;">Hitos de Crecimiento</span>
+            <div class="cascade-list" style="margin-bottom: 16px;">
+              <div class="cascade-item">
+                <span class="item-label">Día 30 (Mes 1)</span>
+                <span class="item-val font-mono">{{ comp.milestones.day30CapitalUsdt | usdt }}</span>
+              </div>
+              <div class="cascade-item">
+                <span class="item-label">Día 60 (Mes 2)</span>
+                <span class="item-val font-mono">{{ comp.milestones.day60CapitalUsdt | usdt }}</span>
+              </div>
+              <div class="cascade-item">
+                <span class="item-label">Día 90 (Fin de Trimestre)</span>
+                <span class="item-val font-mono" style="color: var(--accent); font-weight: 700;">
+                  {{ comp.milestones.day90CapitalUsdt | usdt }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Banking Wall Alert -->
+            @if (comp.bankingWallAlert; as wall) {
+              <div class="warning-box" style="background: rgba(255, 95, 109, 0.12); border: 1px solid var(--danger); padding: 12px; border-radius: 8px;">
+                <div style="font-weight: 700; color: var(--danger); margin-bottom: 4px;">
+                  ⚠️ Muro de Capacidad Bancaria Alcanzado (Día {{ wall.firstDayExceeded }})
+                </div>
+                <div style="font-size: 0.82rem; color: var(--text);">
+                  Al alcanzar {{ wall.capitalAtWallUsdt | usdt }} de capital, el volumen diario requerido (~{{ wall.dailyVolumeAtWallVes | ves }}) superará el límite bancario registrado ({{ wall.dailyBankLimitVes | ves }}).
+                </div>
+                <div style="font-size: 0.78rem; color: var(--muted); margin-top: 6px;">
+                  {{ wall.recommendation }}
+                </div>
+              </div>
+            } @else {
+              <div class="note" style="border-left: 3px solid var(--accent); padding-left: 8px; margin: 0;">
+                ✅ El volumen diario proyectado se mantiene dentro de los límites de tesorería registrados.
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       MODO D: Metas de Capital Anual (Classic Benchmark)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'classic') {
     <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. Base de cálculo fijada en {{ daysPerYear() }} días.</p>

@@ -7,18 +7,21 @@ import {
   computeArbitrageCycle,
   projectVelocityEarnings,
   planReverseGoal,
+  simulateCompoundGrowth,
   type BankCode,
   type P2PRole,
   type ArbitrageCycleResult,
   type VelocityProjection,
   type ReverseGoalResult,
+  type CompoundSimulationResult,
 } from '@p2p/core';
 import { FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
 import { DecimalPipe } from '@angular/common';
 
-export type CalcViewMode = 'cycle' | 'reverse' | 'classic';
+export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'classic';
 
 /**
  * C2 — Smart P2P Arbitrage & Capital Calculator.
@@ -35,6 +38,7 @@ export type CalcViewMode = 'cycle' | 'reverse' | 'classic';
 })
 export class IncomeCalculator {
   private readonly binance = inject(BinanceP2pService);
+  private readonly accounts = inject(AccountsService);
   private readonly toast = inject(ToastService);
 
   readonly activeMode = signal<CalcViewMode>('cycle');
@@ -53,7 +57,15 @@ export class IncomeCalculator {
   readonly targetGoalUsd = signal<number>(25);
   readonly availableCapitalGoal = signal<number>(500);
 
-  // --- Mode C: Classic Target/APR Inputs ---
+  // --- Mode C: Compound Growth Projector Inputs ---
+  readonly compoundInitialCapital = signal<number>(10000);
+  readonly compoundNetMarginPct = signal<number>(0.9);
+  readonly compoundCyclesPerDay = signal<number>(1.5);
+  readonly compoundOperationalDays = signal<number>(90);
+  readonly compoundReinvestmentRate = signal<number>(50); // 50/50 harvest policy default
+  readonly compoundReferenceRate = signal<number>(60.0);
+
+  // --- Mode D: Classic Target/APR Inputs ---
   readonly targetUsd = signal<number>(20);
   readonly aprPct = signal<number>(10);
   readonly daysPerYear = signal<number>(DEFAULT_DAYS_PER_YEAR);
@@ -117,7 +129,37 @@ export class IncomeCalculator {
     }
   });
 
-  // --- Computed Mode C: Classic Results ---
+  // --- Computed Mode C: Compound Growth Projector ---
+  readonly compoundResult = computed<CompoundSimulationResult | null>(() => {
+    try {
+      if (
+        this.compoundInitialCapital() <= 0 ||
+        this.compoundNetMarginPct() <= 0 ||
+        this.compoundCyclesPerDay() <= 0 ||
+        this.compoundOperationalDays() <= 0
+      ) {
+        return null;
+      }
+
+      const treasury = this.accounts.treasurySummary();
+      const totalLimit = treasury.accountsUsage.reduce((acc, u) => acc + u.account.dailyLimitVes, 0);
+      const dailyBankLimitVes = totalLimit > 0 ? totalLimit : undefined;
+
+      return simulateCompoundGrowth({
+        initialCapitalUsdt: this.compoundInitialCapital(),
+        netMarginPctPerCycle: this.compoundNetMarginPct(),
+        cyclesPerDay: this.compoundCyclesPerDay(),
+        operationalDays: this.compoundOperationalDays(),
+        reinvestmentRatePct: this.compoundReinvestmentRate(),
+        dailyBankLimitVes,
+        referenceRateVes: this.compoundReferenceRate(),
+      });
+    } catch {
+      return null;
+    }
+  });
+
+  // --- Computed Mode D: Classic Results ---
   readonly bands = [8, 10, 15] as const;
   readonly targets = [1, 5, 20] as const;
 

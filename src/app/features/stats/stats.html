@@ -11,6 +11,7 @@
       <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
       <button type="button" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')">Trimestre</button>
       <button type="button" [class.active]="period() === 'session'" (click)="setPeriod('session')">Sesiones</button>
+      <button type="button" [class.active]="period() === 'calendar'" (click)="setPeriod('calendar')">📅 Bitácora Calendario</button>
       <span class="spacer"></span>
       <label class="inline">
         Par
@@ -50,7 +51,146 @@
     </div>
   </div>
 
-  @if (period() === 'session') {
+  @if (period() === 'calendar') {
+    <div class="section-divider"></div>
+    <div class="data-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <span class="section-eyebrow">Bitácora Financiera Mensual (Heatmap de Rentabilidad)</span>
+          <h2 style="margin: 4px 0 0; font-size: 1.25rem;">{{ calendarMonthView().monthName }} {{ calendarMonthView().year }}</h2>
+        </div>
+        <div class="actions" style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" (click)="prevMonth()">◀ Mes Anterior</button>
+          <button type="button" class="btn btn-secondary" (click)="nextMonth()">Mes Siguiente ▶</button>
+        </div>
+      </div>
+
+      <!-- Monthly KPI Ribbon -->
+      <div class="stat-grid" style="margin-bottom: 20px;">
+        <div class="stat-tile out">
+          <span class="stat-label">Días Operativos / Efectividad</span>
+          <span class="stat-value">{{ calendarMonthView().activeTradingDays }}d · {{ calendarMonthView().winRatePct | number:'1.0-0' }}% win</span>
+        </div>
+        <div class="stat-tile out">
+          <span class="stat-label">Ganancia Neta Mes</span>
+          <span class="stat-value" [class.positive]="calendarMonthView().totalPnlVes >= 0" [class.negative]="calendarMonthView().totalPnlVes < 0">
+            {{ fmtVes(calendarMonthView().totalPnlVes) }}
+          </span>
+        </div>
+        <div class="stat-tile out">
+          <span class="stat-label">Volumen / Ciclos Totales</span>
+          <span class="stat-value">{{ fmtUsd(calendarMonthView().totalVolumeUsdt) }} ({{ calendarMonthView().totalCycles }} ciclos)</span>
+        </div>
+        <div class="stat-tile out">
+          <span class="stat-label">Comisiones Pagadas</span>
+          <span class="stat-value">{{ fmtVes(calendarMonthView().totalFeesVes) }}</span>
+        </div>
+      </div>
+
+      <!-- Calendar Matrix -->
+      <div class="calendar-grid-container" style="background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 24px;">
+        <div class="calendar-weekdays" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; font-weight: 600; font-size: 0.8rem; color: var(--gold); margin-bottom: 10px;">
+          <div>DOM</div><div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div>
+        </div>
+        <div class="calendar-cells" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+          @for (d of calendarMonthView().days; track $index) {
+            @if (d === null) {
+              <div class="calendar-cell empty" style="min-height: 80px; background: rgba(0,0,0,0.1); border-radius: 6px; border: 1px dashed rgba(255,255,255,0.03);"></div>
+            } @else {
+              <button
+                type="button"
+                class="calendar-cell day"
+                [class.selected]="selectedCalendarDay()?.date === d.date"
+                [class.has-ops]="d.operationsCount > 0"
+                [class.heat-1]="d.heatLevel === 1"
+                [class.heat-2]="d.heatLevel === 2"
+                [class.heat-3]="d.heatLevel === 3"
+                [class.heat-4]="d.heatLevel === 4"
+                [class.loss]="d.hasLoss"
+                (click)="selectDay(d)"
+                [attr.aria-label]="'Día ' + d.dayOfMonth + ': ' + d.operationsCount + ' operaciones'"
+                style="min-height: 85px; padding: 8px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; text-align: left; background: var(--panel);"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                  <span class="day-number font-mono" style="font-size: 0.85rem; font-weight: 700;">{{ d.dayOfMonth }}</span>
+                  @if (d.operationsCount > 0) {
+                    <span class="badge" [class.badge-accent]="!d.hasLoss" [class.badge-danger]="d.hasLoss" style="font-size: 0.65rem; padding: 2px 5px;">
+                      {{ d.completedCycles }} {{ d.completedCycles === 1 ? 'vuelta' : 'vueltas' }}
+                    </span>
+                  }
+                </div>
+
+                @if (d.operationsCount > 0) {
+                  <div style="margin-top: 6px;">
+                    <div class="font-mono" [class.positive]="d.pnlVes >= 0" [class.negative]="d.pnlVes < 0" style="font-size: 0.8rem; font-weight: 700;">
+                      {{ d.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(d.pnlVes) }}
+                    </div>
+                    <div class="text-muted font-mono" style="font-size: 0.7rem;">
+                      {{ fmtUsd(d.volumeUsdt) }}
+                    </div>
+                  </div>
+                } @else {
+                  <div class="text-muted" style="font-size: 0.7rem; text-align: center; margin-top: 10px;">—</div>
+                }
+              </button>
+            }
+          }
+        </div>
+      </div>
+
+      <!-- Selected Day Inspection Panel -->
+      @if (selectedCalendarDay(); as day) {
+        <div class="section-group" style="background: var(--bg-1); border: 1px solid var(--gold-border); padding: 18px; border-radius: var(--radius); margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px;">
+            <div>
+              <span class="section-eyebrow">Auditoría del Día Seleccionado</span>
+              <h3 style="margin: 2px 0 0; font-size: 1.1rem;">Jornada del {{ day.date }}</h3>
+            </div>
+            <div style="text-align: right;">
+              <span class="font-mono" [class.positive]="day.pnlVes >= 0" [class.negative]="day.pnlVes < 0" style="font-size: 1.1rem; font-weight: 700;">
+                PnL: {{ day.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(day.pnlVes) }} (~{{ fmtUsd(day.pnlUsdt) }})
+              </span>
+            </div>
+          </div>
+
+          @if (selectedDayOps().length === 0) {
+            <p class="note">Sin operaciones registradas en este día.</p>
+          } @else {
+            <table class="corporate-table" style="font-size: 0.82rem;">
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Tipo</th>
+                  <th>USDT</th>
+                  <th>Tasa</th>
+                  <th>VES Total</th>
+                  <th>Comisión</th>
+                  <th>Notas</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (op of selectedDayOps(); track op.id) {
+                  <tr>
+                    <td class="font-mono text-muted">{{ op.timestamp | slice:11:16 }}</td>
+                    <td>
+                      <span class="badge" [class.badge-buy]="op.type === 'buy'" [class.badge-sell]="op.type === 'sell'">
+                        {{ op.type === 'buy' ? 'COMPRA' : 'VENTA' }}
+                      </span>
+                    </td>
+                    <td class="font-mono">{{ fmtUsd(op.usdtAmount) }}</td>
+                    <td class="font-mono">{{ op.price | number:'1.2-2' }}</td>
+                    <td class="font-mono">{{ fmtVes(op.vesAmount) }}</td>
+                    <td class="font-mono">{{ fmtVes(op.fees) }}</td>
+                    <td class="text-muted">{{ op.merchantNote || op.notes || '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      }
+    </div>
+  } @else if (period() === 'session') {
     <div class="section-divider"></div>
     <div class="data-section">
       <span class="section-eyebrow">Historial de Jornadas Operativas</span>

@@ -8,6 +8,9 @@ import {
   computeAccountUsage,
   computeTreasurySummary,
   getTodayOperations,
+  computeVelocities,
+  getRotationRecommendation,
+  type AccountVelocityStatus,
   type Operation,
 } from '@p2p/core';
 
@@ -84,6 +87,21 @@ export class AccountsService {
 
   readonly overLimitAccounts = computed<AccountUsage[]>(() => {
     return this.usages().filter((u) => u.isOverLimit);
+  });
+
+  /** Daily transaction velocity per account (SUDEBAN rotation awareness). */
+  readonly accountVelocities = computed<AccountVelocityStatus[]>(() => {
+    return computeVelocities(this.accounts(), this.todayOperations());
+  });
+
+  /** Accounts at or near their daily transaction threshold. */
+  readonly velocityAlerts = computed<AccountVelocityStatus[]>(() => {
+    return this.accountVelocities().filter((v) => v.isNearThreshold || v.isAtThreshold);
+  });
+
+  /** Best account to rotate to, prioritizing velocity health over remaining limit. */
+  readonly rotationRecommendation = computed<BankAccount | null>(() => {
+    return getRotationRecommendation(this.accounts(), this.todayOperations(), undefined);
   });
 
   getAccountById(id: string): BankAccount | undefined {

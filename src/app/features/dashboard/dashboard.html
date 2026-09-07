@@ -133,6 +133,72 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════
+       Account Velocity — SUDEBAN rotation awareness
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Velocidad por Cuenta (Anti-Sudeban)</span>
+      @if (rotationRecommendation(); as rec) {
+        <span class="text-muted" style="font-size: 0.82rem;">
+          Próxima cuenta recomendada: <strong style="color: var(--gold-strong);">{{ rec.bankName }}</strong>
+        </span>
+      }
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+      @for (v of accountVelocities(); track v.accountId) {
+        <div class="stat-tile out" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="font-size: 0.95rem; color: var(--text);">{{ v.bankName }}</strong>
+              <span class="badge" style="font-size: 0.72rem; color: var(--panel); border-color: transparent;"
+                    [style.background]="velocityHealthVar[v.velocityHealth]"
+                    [title]="v.velocityHealth">
+                {{ v.todayTransactionCount }} / {{ v.maxDailyTransactions }}
+              </span>
+            </div>
+            <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 10px;">
+              {{ velocityHealthLabel[v.velocityHealth] }}
+              @if (v.recommendedWaitHours > 0) { · espera ~{{ v.recommendedWaitHours }}h }
+            </p>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span class="text-muted">Transacciones hoy: {{ v.todayTransactionCount }} / {{ v.maxDailyTransactions }}</span>
+              <span class="font-mono" [class.positive]="v.usedPct < 75" [class.negative]="v.usedPct >= 75">{{ v.usedPct }}%</span>
+            </div>
+            <div class="dashboard-progress-bar" style="margin: 0; height: 6px;">
+              <div class="dashboard-progress-fill"
+                   [class.progress-low]="v.usedPct < 40"
+                   [class.progress-mid]="v.usedPct >= 40 && v.usedPct < 75"
+                   [class.progress-complete]="v.usedPct >= 75"
+                   [style.width.%]="Math.min(100, v.usedPct)">
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (velocityAlerts().length > 0) {
+      <div class="alert" style="margin: 14px 0 0; font-size: 0.85rem; background: rgba(245, 184, 76, 0.08);"
+           [style.color]="'var(--warn)'" [style.borderColor]="'rgba(245, 184, 76, 0.35)'">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          @for (a of velocityAlerts(); track a.accountId) {
+            <div [style.color]="a.isAtThreshold ? 'var(--danger)' : 'var(--warn)'">
+              ⚠️ Cuenta <strong>{{ a.bankName }}</strong> al <strong>{{ a.usedPct }}%</strong> del umbral — evita nuevas transferencias hoy.
+            </div>
+          }
+          @if (!rotationRecommendation()) {
+            <div style="color: var(--danger); margin-top: 4px;">Todas las cuentas cerca del límite — reduce operaciones.</div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
        Weekly Activity — 7-day mini chart
        ═══════════════════════════════════════════════════ -->
   <div class="section-group">
