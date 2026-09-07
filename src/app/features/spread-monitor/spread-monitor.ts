@@ -28,6 +28,8 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { BinanceRepricerService } from '../../core/binance-repricer.service';
 import { HotkeysService } from '../../core/hotkeys.service';
 import { AccountsService } from '../../core/accounts.service';
+import { MarketHistoryService } from '../../core/market-history.service';
+import { AudioAlertsService } from '../../core/audio-alerts.service';
 
 /**
  * C1 — Spread monitor. Thin view over {@link computeSpread}: user-entered prices/amount
@@ -50,6 +52,8 @@ export class SpreadMonitor implements OnInit {
   readonly binance = inject(BinanceP2pService);
   readonly repricer = inject(BinanceRepricerService);
   readonly accountsService = inject(AccountsService);
+  readonly marketHistory = inject(MarketHistoryService);
+  readonly audioAlerts = inject(AudioAlertsService);
   protected readonly Math = Math;
 
   selectBank(bankKey: string): void {
@@ -108,6 +112,16 @@ export class SpreadMonitor implements OnInit {
     if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
       this.buyPrice.set(depth.bestBuyPrice);
       this.sellPrice.set(depth.bestSellPrice);
+
+      this.marketHistory.recordSnapshot({
+        pair: this.pair(),
+        bank: this.binance.selectedBank(),
+        bestBuyPrice: depth.bestBuyPrice,
+        bestSellPrice: depth.bestSellPrice,
+        spreadVes: depth.spreadVes,
+        spreadPct: depth.spreadPct,
+      });
+
       this.toast.success(
         `Precios sincronizados con Binance P2P (${this.binance.selectedBank()}): Compra ${depth.bestBuyPrice} Bs / Venta ${depth.bestSellPrice} Bs.`,
         'Mercado en Vivo',
@@ -204,6 +218,7 @@ export class SpreadMonitor implements OnInit {
       const kind = this.alert().kind;
       if (kind === 'favorable' && this.prevKind !== 'favorable') {
         this.notify(this.alert().message);
+        this.audioAlerts.playOpportunityAlert();
       }
       this.prevKind = kind;
     });
@@ -214,6 +229,24 @@ export class SpreadMonitor implements OnInit {
     this.hotkeys.register('FETCH_MARKET', () => {
       void this.syncBinancePrices();
     });
+  }
+
+  getSparklinePoints(): string {
+    const points = this.marketHistory.getFilteredPoints(this.binance.selectedBank());
+    if (points.length < 2) return '';
+    const spreads = points.map((p) => p.spreadVes);
+    const min = Math.min(...spreads);
+    const max = Math.max(...spreads);
+    const range = max - min || 1;
+    const width = 280;
+    const height = 44;
+    return points
+      .map((p, i) => {
+        const x = (i / (points.length - 1)) * width;
+        const y = height - ((p.spreadVes - min) / range) * (height - 10) - 5;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
   }
 
   ngOnInit(): void {
