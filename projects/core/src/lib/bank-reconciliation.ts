@@ -201,7 +201,39 @@ export function parseBankNotification(text: string): ParsedBankNotification {
     return baseResult;
   }
 
-  // 5. Generic Venezuelan Pago Móvil fallback
+  // 5. Banco de Venezuela (BDV / PagoClave / BDVenlínea)
+  if (upper.includes('BDV') || upper.includes('BANCO DE VENEZUELA') || upper.includes('PAGOCLAVE') || upper.includes('BDVENLINEA')) {
+    baseResult.bank = 'BDV';
+    baseResult.bankName = 'Banco de Venezuela';
+
+    const amtMatch = rawText.match(/(?:por|monto|Bs\.?|VES)\s*([0-9.,]+)/i);
+    if (amtMatch) baseResult.amountVes = parseVesAmount(amtMatch[0]);
+
+    const refMatch = rawText.match(/(?:ref(?:erencia)?[:.\s#]*)([0-9]{4,14})/i);
+    if (refMatch) baseResult.reference = refMatch[1];
+
+    baseResult.senderId = extractIdentityDoc(rawText);
+    baseResult.isParsed = baseResult.amountVes > 0;
+    return baseResult;
+  }
+
+  // 6. Banplus (Pago Plus)
+  if (upper.includes('BANPLUS') || upper.includes('PAGOPLUS')) {
+    baseResult.bank = 'BANPLUS';
+    baseResult.bankName = 'Banplus';
+
+    const amtMatch = rawText.match(/(?:por|monto|Bs\.?)\s*([0-9.,]+)/i);
+    if (amtMatch) baseResult.amountVes = parseVesAmount(amtMatch[0]);
+
+    const refMatch = rawText.match(/(?:ref(?:erencia)?[:.\s#]*)([0-9]{4,12})/i);
+    if (refMatch) baseResult.reference = refMatch[1];
+
+    baseResult.senderId = extractIdentityDoc(rawText);
+    baseResult.isParsed = baseResult.amountVes > 0;
+    return baseResult;
+  }
+
+  // 7. Generic Venezuelan Pago Móvil fallback
   const genericAmt = parseVesAmount(rawText);
   const genericRef = rawText.match(/(?:ref(?:erencia)?[:.\s#]*)([0-9]{4,12})/i);
 

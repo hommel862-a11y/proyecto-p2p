@@ -70,6 +70,30 @@ describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
       expect(parsed.senderId).toBe('V22334455');
       expect(parsed.isParsed).toBe(true);
     });
+
+    it('correctly parses Banco de Venezuela (BDV / PagoClave) Notification', () => {
+      const msg = 'BDV informa: Recibiste PagoClave por Bs. 8.500,00 de CI: V16789123 Ref: 9988776655.';
+      const parsed = parseBankNotification(msg);
+
+      expect(parsed.bank).toBe('BDV');
+      expect(parsed.bankName).toBe('Banco de Venezuela');
+      expect(parsed.amountVes).toBe(8500.0);
+      expect(parsed.reference).toBe('9988776655');
+      expect(parsed.senderId).toBe('V16789123');
+      expect(parsed.isParsed).toBe(true);
+    });
+
+    it('correctly parses Banplus (Pago Plus) Notification', () => {
+      const msg = 'Banplus te informa: Abono PagoPlus por Bs. 3.100,00 CI: V15678900 Ref: 445566.';
+      const parsed = parseBankNotification(msg);
+
+      expect(parsed.bank).toBe('BANPLUS');
+      expect(parsed.bankName).toBe('Banplus');
+      expect(parsed.amountVes).toBe(3100.0);
+      expect(parsed.reference).toBe('445566');
+      expect(parsed.senderId).toBe('V15678900');
+      expect(parsed.isParsed).toBe(true);
+    });
   });
 
   describe('verifyReconciliation (Anti-Triangulation)', () => {
