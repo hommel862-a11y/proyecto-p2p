@@ -297,31 +297,122 @@ a { color: var(--accent-2); text-decoration: none; }
 }
 
 /* ============================================================
-   Forms / Inputs
+   Forms / Inputs (Private Wealth Terminal Design)
    ============================================================ */
 
-.field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
-label { color: var(--muted); font-size: 0.85rem; display: flex; flex-direction: column; gap: 8px; font-weight: 500; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+label {
+  color: var(--muted);
+  font-size: 0.84rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  transition: color 0.2s var(--ease-out);
+
+  &:focus-within {
+    color: var(--gold-strong);
+
+    span {
+      color: var(--gold-strong);
+    }
+  }
+
+  span {
+    transition: color 0.2s var(--ease-out);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
 
 input, select {
-  background: var(--input-bg);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(9, 16, 30, 0.95) 0%, rgba(14, 23, 40, 0.98) 100%);
+  border: 1px solid rgba(216, 180, 92, 0.22);
   color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  font-size: 1rem;
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 0.96rem;
   font-family: var(--font-body);
   outline: none;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), background 0.2s var(--ease-out);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all 0.25s var(--ease-out);
+
+  &[type="number"] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+
+  &::placeholder {
+    color: rgba(147, 163, 191, 0.45);
+    font-size: 0.9rem;
+  }
+
+  &:hover {
+    border-color: rgba(216, 180, 92, 0.45);
+    background: linear-gradient(180deg, rgba(12, 20, 36, 0.98) 0%, rgba(18, 29, 50, 1) 100%);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3), 0 0 14px rgba(216, 180, 92, 0.08);
+  }
+
+  &:focus {
+    border-color: var(--gold);
+    background: linear-gradient(180deg, rgba(14, 24, 44, 1) 0%, rgba(19, 31, 56, 1) 100%);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(216, 180, 92, 0.25), 0 8px 24px -4px rgba(0, 0, 0, 0.6);
+  }
 }
-input:hover, select:hover {
-  background: rgba(255, 255, 255, 0.02);
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d8b45c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+
+  option {
+    background: #0d1626;
+    color: var(--text);
+    padding: 10px;
+  }
 }
-input:focus, select:focus {
-  border-color: var(--gold);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 0 3px var(--glow-gold);
-  background: var(--panel);
+
+[data-theme="light"] {
+  input, select {
+    background: #ffffff;
+    border: 1px solid rgba(168, 131, 47, 0.3);
+    color: var(--text);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+
+    &:hover {
+      border-color: var(--gold);
+      background: #fafbfd;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 10px rgba(168, 131, 47, 0.12);
+    }
+
+    &:focus {
+      border-color: var(--gold);
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 3px rgba(168, 131, 47, 0.2);
+    }
+  }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a8832f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+
+    option {
+      background: #ffffff;
+      color: #10141f;
+    }
+  }
 }
 
 /* ============================================================
