@@ -60,14 +60,10 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Ciclo -->
       <div class="calc-column">
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">⚡</span>
-              <span class="card-title">Capital & Spread Operativo</span>
-            </div>
-            <span class="badge badge-accent font-mono">USDT / VES</span>
-          </div>
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="⚡" title="Capital & Spread Operativo">
+            <span uiHeaderActions class="badge badge-accent font-mono">USDT / VES</span>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid">
             <div class="terminal-field full-width">
@@ -130,18 +126,14 @@
               </div>
             </div>
           </div>
-        </div>
+        </app-ui-card>
 
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">🏛️</span>
-              <span class="card-title">Estrategia & Canales Bancarios</span>
-            </div>
-            <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="🏛️" title="Estrategia & Canales Bancarios">
+            <span uiHeaderActions class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
               {{ isInterbank() ? '0.30% Fricción Banco' : '0.00% Mismo Banco' }}
             </span>
-          </div>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid">
             <div class="terminal-field">
@@ -196,7 +188,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </app-ui-card>
       </div>
 
       <!-- Columna Derecha: Cascada de Deducción & Ganancia Neta -->
@@ -273,14 +265,10 @@
   @if (activeMode() === 'reverse') {
     <div class="calc-grid-layout">
       <div class="calc-column">
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">🎯</span>
-              <span class="card-title">Meta Diaria & Capital de Trabajo</span>
-            </div>
-            <span class="badge badge-gold font-mono">Reverso</span>
-          </div>
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="🎯" title="Meta Diaria & Capital de Trabajo">
+            <span uiHeaderActions class="badge badge-gold font-mono">Reverso</span>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
@@ -364,7 +352,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </app-ui-card>
       </div>
 
       <div class="calc-column">
@@ -416,14 +404,10 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Simulador -->
       <div class="calc-column">
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">📈</span>
-              <span class="card-title">Capital Inicial & Margen por Ciclo</span>
-            </div>
-            <span class="badge badge-accent font-mono">$10k Compuesto</span>
-          </div>
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="📈" title="Capital Inicial & Margen por Ciclo">
+            <span uiHeaderActions class="badge badge-accent font-mono">$10k Compuesto</span>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
@@ -502,18 +486,14 @@
               </div>
             </div>
           </div>
-        </div>
+        </app-ui-card>
 
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">🛡️</span>
-              <span class="card-title">Política de Cosecha & Retiros (Harvest)</span>
-            </div>
-            <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="🛡️" title="Política de Cosecha & Retiros (Harvest)">
+            <span uiHeaderActions class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
               {{ compoundReinvestmentRate() }}% Reinversión
             </span>
-          </div>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
@@ -554,7 +534,7 @@
           <p class="note" style="margin-top: 4px; font-size: 0.78rem;">
             💡 <strong>Estrategia de Cosecha (Harvest):</strong> Con $10,000 USD, reinvertir el 100% satura rápidamente las cuentas personales. Retirar el 50% de las ganancias diarias a tu hardware wallet elimina el riesgo devaluatorio y bancario.
           </p>
-        </div>
+        </app-ui-card>
       </div>
 
       <!-- Columna Derecha: Resumen de Capital & Hitos -->
@@ -643,14 +623,10 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Equipo -->
       <div class="calc-column">
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">👥</span>
-              <span class="card-title">Capital del Desk & Margen Esperado</span>
-            </div>
-            <span class="badge badge-accent font-mono">Equipo $1k/día</span>
-          </div>
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="👥" title="Capital del Desk & Margen Esperado">
+            <span uiHeaderActions class="badge badge-accent font-mono">Equipo $1k/día</span>
+          </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-3">
             <div class="terminal-field">
@@ -720,16 +696,12 @@
               <span>Regla de Oro: <strong>Nadie opera por debajo del 0.50% neto</strong></span>
             </div>
           </div>
-        </div>
+        </app-ui-card>
 
-        <div class="terminal-input-card">
-          <div class="terminal-card-header">
-            <div class="card-header-title">
-              <span class="card-icon">💼</span>
-              <span class="card-title">Operadores & Cajeros Asignados</span>
-            </div>
-            <span class="badge font-mono">{{ teamOperators().length }} Cajeros</span>
-          </div>
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="💼" title="Operadores & Cajeros Asignados">
+            <span uiHeaderActions class="badge font-mono">{{ teamOperators().length }} Cajeros</span>
+          </app-ui-panel-header>
 
           <div style="display: flex; flex-direction: column; gap: 12px;">
             @for (op of teamOperators(); track op.id) {
@@ -746,7 +718,7 @@
               </div>
             }
           </div>
-        </div>
+        </app-ui-card>
       </div>
 
       <!-- Columna Derecha: Métricas del Desk & Split -->
@@ -865,14 +837,10 @@
   @if (activeMode() === 'classic') {
     <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. Base de cálculo fijada en {{ daysPerYear() }} días.</p>
 
-    <div class="terminal-input-card">
-      <div class="terminal-card-header">
-        <div class="card-header-title">
-          <span class="card-icon">📊</span>
-          <span class="card-title">Parámetros Clásicos de Capital Anual</span>
-        </div>
-        <span class="badge font-mono">{{ daysPerYear() }} Días Base</span>
-      </div>
+    <app-ui-card variant="terminal">
+      <app-ui-panel-header icon="📊" title="Parámetros Clásicos de Capital Anual">
+        <span uiHeaderActions class="badge font-mono">{{ daysPerYear() }} Días Base</span>
+      </app-ui-panel-header>
 
       <div class="terminal-input-grid grid-4">
         <div class="terminal-field">
@@ -954,7 +922,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </app-ui-card>
 
     @if (result(); as r) {
       <div class="section-divider"></div>

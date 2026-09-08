@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StorageService } from '../../core/storage';
 import { SessionService } from '../../core/session.service';
@@ -10,6 +10,8 @@ import {
   aggregateSessions,
   generateComplianceStatement,
   buildCalendarMonthView,
+  OPS_KEY,
+  formatDuration as sharedFormatDuration,
   type Operation,
   type PeriodKind,
   type PeriodStat,
@@ -19,15 +21,36 @@ import {
   type CalendarMonthView,
   type CalendarDayStat,
 } from '@p2p/core';
-
-const OPS_KEY = 'p2p.operations';
+import { UiCard } from '../../shared/ui/ui-card';
+import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
+import { UiToolbarSegmented } from '../../shared/ui/ui-toolbar-segmented';
+import { UiChip } from '../../shared/ui/ui-chip';
 
 export type ExtendedPeriodKind = PeriodKind | 'session' | 'calendar';
+
+/** Local UI-view key (component-scoped), following the app-wide `p2p.*` storage pattern. */
+const STATS_UI_KEY = 'p2p.stats.ui';
+
+const PERIODS: readonly ExtendedPeriodKind[] = ['day', 'month', 'quarter', 'session', 'calendar'];
+const PAIR_FILTERS: readonly ('all' | 'USDT' | 'EUR')[] = ['all', 'USDT', 'EUR'];
+
+interface StatsUiState {
+  period: ExtendedPeriodKind;
+  pairFilter: 'all' | 'USDT' | 'EUR';
+}
+
+function sanitizeStatsUi(raw: StatsUiState | null): StatsUiState | null {
+  if (!raw) return null;
+  const period = PERIODS.includes(raw.period) ? raw.period : null;
+  const pairFilter = PAIR_FILTERS.includes(raw.pairFilter) ? raw.pairFilter : null;
+  if (!period || !pairFilter) return null;
+  return { period, pairFilter };
+}
 
 @Component({
   selector: 'app-stats',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, UiCard, UiPanelHeader, UiToolbarSegmented, UiChip],
   templateUrl: './stats.html',
 })
 export class Stats {
@@ -36,8 +59,14 @@ export class Stats {
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
 
-  readonly period = signal<ExtendedPeriodKind>('day');
-  readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>('all');
+  private readonly restoredUi: StatsUiState | null = sanitizeStatsUi(this.storage.get<StatsUiState>(STATS_UI_KEY));
+
+  readonly period = signal<ExtendedPeriodKind>(this.restoredUi?.period ?? 'day');
+  readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>(this.restoredUi?.pairFilter ?? 'all');
+
+  private readonly persistEffect = effect(() => {
+    this.storage.set(STATS_UI_KEY, { period: this.period(), pairFilter: this.pairFilter() });
+  });
 
   /** Compliance statement generation state */
   readonly showComplianceModal = signal<boolean>(false);
@@ -144,12 +173,7 @@ export class Stats {
   }
 
   formatDuration(ms: number): string {
-    if (!ms || ms <= 0) return '0m';
-    const totalSec = Math.round(ms / 1000);
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
+    return sharedFormatDuration(ms);
   }
 
   formatRating(stars?: number): string {

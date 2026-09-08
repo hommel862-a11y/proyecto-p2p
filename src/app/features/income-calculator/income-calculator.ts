@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import {
   capitalFromDailyIncome,
   toBs,
-  clampNonNegative,
+  clampMoney as sharedClampMoney,
+  OPS_KEY,
   DEFAULT_DAYS_PER_YEAR,
   computeArbitrageCycle,
   projectVelocityEarnings,
@@ -21,6 +22,8 @@ import {
   type TeamAllocationPlan,
   type OperatorAuditResult,
 } from '@p2p/core';
+import { UiCard } from '../../shared/ui/ui-card';
+import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
 import { FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { AccountsService } from '../../core/accounts.service';
@@ -32,6 +35,27 @@ import { type Operation } from '@p2p/core';
 
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic';
 
+/** Local UI-view key (component-scoped), following the app-wide `p2p.*` storage pattern. */
+const CALC_UI_KEY = 'p2p.income-calculator.ui';
+
+const CALC_MODES: readonly CalcViewMode[] = ['cycle', 'reverse', 'compound', 'team', 'classic'];
+const REINVEST_RATES: readonly number[] = [100, 50, 30, 0];
+
+interface CalcUiState {
+  activeMode: CalcViewMode;
+  compoundReinvestmentRate: number;
+}
+
+function sanitizeCalcUi(raw: CalcUiState | null): CalcUiState | null {
+  if (!raw) return null;
+  const activeMode = CALC_MODES.includes(raw.activeMode) ? raw.activeMode : null;
+  const compoundReinvestmentRate = REINVEST_RATES.includes(raw.compoundReinvestmentRate)
+    ? raw.compoundReinvestmentRate
+    : null;
+  if (!activeMode || compoundReinvestmentRate === null) return null;
+  return { activeMode, compoundReinvestmentRate };
+}
+
 /**
  * C2 — Smart P2P Arbitrage & Capital Calculator.
  * - Mode A: Cycle Arbitrage ROI & Velocity Projections (1, 3, 5, 10 vueltas).
@@ -41,7 +65,7 @@ export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic'
 @Component({
   selector: 'app-income-calculator',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, ...FORMAT_PIPES],
+  imports: [DecimalPipe, UiCard, UiPanelHeader, ...FORMAT_PIPES],
   templateUrl: './income-calculator.html',
   styleUrl: './income-calculator.scss',
 })
@@ -51,7 +75,9 @@ export class IncomeCalculator {
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
 
-  readonly activeMode = signal<CalcViewMode>('cycle');
+  private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(this.storage.get<CalcUiState>(CALC_UI_KEY));
+
+  readonly activeMode = signal<CalcViewMode>(this.restoredUi?.activeMode ?? 'cycle');
 
   // --- Mode A: Cycle Arbitrage Inputs ---
   readonly capitalUsdt = signal<number>(500);
@@ -72,7 +98,7 @@ export class IncomeCalculator {
   readonly compoundNetMarginPct = signal<number>(0.9);
   readonly compoundCyclesPerDay = signal<number>(1.5);
   readonly compoundOperationalDays = signal<number>(90);
-  readonly compoundReinvestmentRate = signal<number>(50); // 50/50 harvest policy default
+  readonly compoundReinvestmentRate = signal<number>(this.restoredUi?.compoundReinvestmentRate ?? 50); // 50/50 harvest policy default
   readonly compoundReferenceRate = signal<number>(60.0);
 
   // --- Mode D: Team Delegation & Scaling ($1,000/day Desk) ---
@@ -104,9 +130,16 @@ export class IncomeCalculator {
   readonly daysPerYear = signal<number>(DEFAULT_DAYS_PER_YEAR);
   readonly rate = signal<number>(800);
 
+  private readonly persistEffect = effect(() => {
+    this.storage.set(CALC_UI_KEY, {
+      activeMode: this.activeMode(),
+      compoundReinvestmentRate: this.compoundReinvestmentRate(),
+    });
+  });
+
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
-    return clampNonNegative(v);
+    return sharedClampMoney(v);
   }
 
   // --- Computed Mode A: Cycle Arbitrage & Velocity ---
@@ -208,7 +241,7 @@ export class IncomeCalculator {
   });
 
   readonly operatorAudits = computed<OperatorAuditResult[]>(() => {
-    const ops = this.storage.get<Operation[]>('p2p.operations') ?? [];
+    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     const refRate = this.teamReferenceRate();
     return this.teamOperators().map((op) => {
       // Filter ops where merchantNote or notes match operator or audit all desk ops for lead
