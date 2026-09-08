@@ -2,14 +2,10 @@
   <h2>Reglas de Riesgo</h2>
   <p class="note">Barrera de seguridad únicamente — nunca predice ni ejecuta automáticamente. Por defecto: spread mínimo 15, máx. operaciones concurrentes 3, riesgo máx. por operación 1%, tope de pérdida diaria 4%.</p>
 
-  <div class="terminal-input-card">
-    <div class="terminal-card-header">
-      <div class="card-header-title">
-        <span class="card-icon">🛡️</span>
-        <span class="card-title">Parámetros de Blindaje & Gestión de Riesgo</span>
-      </div>
-      <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
-    </div>
+  <app-ui-card>
+    <app-ui-panel-header icon="🛡️" title="Parámetros de Blindaje & Gestión de Riesgo">
+      <span uiHeaderActions class="badge badge-accent font-mono">{{ pair() }}/VES</span>
+    </app-ui-panel-header>
 
     <div class="terminal-input-grid grid-3">
       <div class="terminal-field">
@@ -148,7 +144,7 @@
         <button type="button" class="btn btn-secondary" (click)="reset()">↺ Restablecer</button>
       </div>
     </div>
-  </div>
+  </app-ui-card>
 
   <div class="section-divider"></div>
   <div class="verdict-card">

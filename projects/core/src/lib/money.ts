@@ -31,3 +31,13 @@ export function roundMoney(v: number, decimals: number = 2): number {
   return Math.round((v + Number.EPSILON) * factor) / factor;
 }
 
+/**
+ * Sanitize a user-entered monetary value before it reaches the decision engine.
+ * Identical to {@link clampNonNegative}: NaN/±Infinity/negatives collapse to 0,
+ * positives and zero pass through unchanged. Exported as a dedicated alias so
+ * features can share one implementation instead of copy-pasting a local helper.
+ */
+export function clampMoney(v: number): number {
+  return clampNonNegative(v);
+}
+

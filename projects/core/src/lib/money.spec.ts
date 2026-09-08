@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampNonNegative, clampAtLeast, roundMoney } from './money';
+import { clampNonNegative, clampAtLeast, roundMoney, clampMoney } from './money';
 
 describe('clampNonNegative', () => {
   it('passes positive values through unchanged', () => {
@@ -64,6 +64,31 @@ describe('roundMoney', () => {
     expect(roundMoney(NaN)).toBe(0);
     expect(roundMoney(Infinity)).toBe(0);
     expect(roundMoney(-Infinity)).toBe(0);
+  });
+});
+
+describe('clampMoney', () => {
+  it('passes positive and zero values through unchanged', () => {
+    expect(clampMoney(820)).toBe(820);
+    expect(clampMoney(0)).toBe(0);
+    expect(clampMoney(0.5)).toBe(0.5);
+  });
+
+  it('collapses negatives to 0', () => {
+    expect(clampMoney(-1)).toBe(0);
+    expect(clampMoney(-10)).toBe(0);
+  });
+
+  it('collapses NaN and ±Infinity to 0', () => {
+    expect(clampMoney(NaN)).toBe(0);
+    expect(clampMoney(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(clampMoney(Number.NEGATIVE_INFINITY)).toBe(0);
+  });
+
+  it('matches clampNonNegative for all inputs (dedup alias)', () => {
+    for (const v of [NaN, Infinity, -Infinity, -1, 0, 1, 999.999]) {
+      expect(clampMoney(v)).toBe(clampNonNegative(v));
+    }
   });
 });
 

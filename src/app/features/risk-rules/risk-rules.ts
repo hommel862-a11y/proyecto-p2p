@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RisksService, type RiskConfig } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
-import { clampNonNegative, clampAtLeast } from '@p2p/core';
+import { clampAtLeast, clampMoney as sharedClampMoney } from '@p2p/core';
+import { UiCard } from '../../shared/ui/ui-card';
+import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
 
 /**
  * C4 — Risk-rules config view. Edits the 6 safety-barrier rules; the live engine verdict
@@ -10,6 +12,7 @@ import { clampNonNegative, clampAtLeast } from '@p2p/core';
 @Component({
   selector: 'app-risk-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [UiCard, UiPanelHeader],
   templateUrl: './risk-rules.html',
 })
 export class RiskRules {
@@ -44,7 +47,7 @@ export class RiskRules {
 
   /** Template helpers: sanitize number-input entries before they reach the draft. */
   clampMoney(v: number): number {
-    return clampNonNegative(v);
+    return sharedClampMoney(v);
   }
   clampCount(v: number): number {
     return Math.round(clampAtLeast(v, 1));

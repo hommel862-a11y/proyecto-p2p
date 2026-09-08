@@ -5,6 +5,8 @@ export * from './lib/storage';
 export * from './lib/log';
 export * from './lib/stats';
 export * from './lib/money';
+export * from './lib/duration';
+export * from './lib/storage-keys';
 export * from './lib/dashboard';
 export * from './lib/session';
 export * from './lib/breakeven';
