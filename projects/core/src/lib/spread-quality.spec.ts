@@ -32,12 +32,12 @@ describe('Spread Quality & Arbitrage Cascade Domain Logic', () => {
       });
 
       expect(res.capitalVesInvested).toBe(60000);
-      // Binance fee: 0.2% on buy (2 USDT) + 0.2% on sell (998 * 0.002 = 1.996 USDT)
-      expect(res.binanceFeeUsdt).toBeCloseTo(3.996, 3);
-      expect(res.netCryptoUsdt).toBeCloseTo(996.004, 3);
+      // Binance fee: 0.25% on buy (2.5 USDT) + 0.25% on sell (997.5 * 0.0025 = 2.49375 USDT)
+      expect(res.binanceFeeUsdt).toBeCloseTo(4.99375, 3);
+      expect(res.netCryptoUsdt).toBeCloseTo(995.00625, 3);
       // Same bank, no interbank fees
       expect(res.bankFeesVes).toBe(0);
-      expect(res.grossProceedsVes).toBeCloseTo(996.004 * 61.2, 2);
+      expect(res.grossProceedsVes).toBeCloseTo(995.00625 * 61.2, 2);
       expect(res.netGainVes).toBeGreaterThan(0);
       expect(res.roiCyclePct).toBeGreaterThan(0);
       expect(res.spreadNominalPct).toBeCloseTo(2.0, 1);

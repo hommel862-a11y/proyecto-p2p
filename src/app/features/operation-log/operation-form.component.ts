@@ -33,11 +33,12 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FORMAT_PIPES],
   template: `
-    <div class="section-group">
-      <div
-        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"
-      >
-        <span class="section-eyebrow" style="margin: 0;">Nueva Operación</span>
+    <div class="terminal-input-card">
+      <div class="terminal-card-header">
+        <div class="card-header-title">
+          <span class="card-icon">⚡</span>
+          <span class="card-title">Nueva Operación en Libro Mayor</span>
+        </div>
         <div style="display: flex; gap: 8px;">
           <button
             type="button"
@@ -63,7 +64,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- Panel de Ingesta y Conciliación Pasiva -->
       @if (showReconciler()) {
         <div
-          style="background: rgba(10, 15, 26, 0.7); border: 1px solid var(--gold-border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px;"
+          style="background: rgba(10, 15, 26, 0.7); border: 1px solid var(--gold-border); border-radius: var(--radius); padding: 14px; margin-bottom: 8px;"
         >
           <div
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;"
@@ -71,7 +72,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             <span
               style="font-size: 0.8rem; font-weight: 700; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.5px;"
             >
-              Lector Pasivo de Notificaciones (Mercantil, Bancamiga, Banesco, Provincial)
+              Lector Pasivo de Notificaciones (Mercantil, Bancamiga, Banesco, Provincial, BDV, Banplus)
             </span>
             <span class="text-muted" style="font-size: 0.75rem;"
               >Anti-Triangulación en Tiempo Real</span
@@ -118,35 +119,27 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- Despachador Asistido de Pago Móvil (Human-in-the-Loop) -->
       @if (showQrDispatcher() && form().type === 'buy') {
         <div
-          style="background: rgba(10, 15, 26, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 16px;"
+          style="background: rgba(10, 15, 26, 0.7); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: var(--radius); padding: 14px; margin-bottom: 8px;"
         >
           <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;"
           >
             <span
-              style="font-size: 0.8rem; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.5px;"
+              style="font-size: 0.8rem; font-weight: 700; color: #4ef0a5; text-transform: uppercase; letter-spacing: 0.5px;"
             >
-              📲 Despacho Asistido de Pago Móvil (Emisión de Fondos)
+              📲 Despachador QR Pago Móvil
             </span>
-            <span class="badge badge-accent" style="font-size: 0.7rem;">Cero Errores</span>
+            <span class="text-muted" style="font-size: 0.75rem;">Pago sin Digitaciones</span>
           </div>
 
-          <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
-            @if (qrCodeUrl()) {
+          <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            @if (qrCodeUrl(); as svg) {
               <div
-                style="background: #111827; padding: 6px; border-radius: var(--radius); border: 1px solid var(--line);"
-              >
-                <img
-                  [src]="qrCodeUrl()"
-                  alt="QR Pago Móvil"
-                  style="width: 130px; height: 130px; display: block;"
-                />
-              </div>
+                [innerHTML]="svg"
+                style="background: #fff; padding: 8px; border-radius: 6px; display: inline-flex;"
+              ></div>
             }
-
-            <div
-              style="flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 8px;"
-            >
+            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;">
               <div style="font-size: 0.85rem; color: var(--text-muted);">
                 Escanea el código con la app de tu banco o copia los datos al portapapeles con 1
                 clic:
@@ -185,88 +178,183 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
         </div>
       }
 
-      <form class="grid ledger-form" (submit)="$event.preventDefault(); onSubmitForm()">
-        <label>
-          <span>Tipo de Operación</span>
-          <select [value]="form().type" (change)="onFieldChange('type', $any($event.target).value)">
-            <option value="buy">Compra (VES → Cripto)</option>
-            <option value="sell">Venta (Cripto → VES)</option>
-          </select>
-        </label>
-        <label>
-          <span>Par Comercial</span>
-          <select [value]="form().pair" (change)="onFieldChange('pair', $any($event.target).value)">
-            <option value="USDT">USDT/VES</option>
-            <option value="EUR">EUR/VES</option>
-          </select>
-        </label>
-        <label>
-          <span>Monto en VES</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            [value]="form().vesAmount"
-            (input)="onFieldChange('vesAmount', clampMoney(+$any($event.target).value))"
-          />
-        </label>
-        <label>
-          <span>Monto en {{ form().pair }}</span>
-          <input
-            type="number"
-            min="0"
-            step="0.000001"
-            [value]="form().usdtAmount"
-            (input)="onFieldChange('usdtAmount', clampMoney(+$any($event.target).value))"
-          />
-        </label>
-        <label>
-          <span>Precio Pactado (VES/{{ form().pair }})</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            [value]="form().price"
-            (input)="onFieldChange('price', clampMoney(+$any($event.target).value))"
-          />
-        </label>
-        <label>
-          <span>Comisiones Pagadas (VES)</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            [value]="form().fees"
-            (input)="onFieldChange('fees', clampMoney(+$any($event.target).value))"
-          />
-        </label>
-        <label>
-          <span>Contraparte (Directorio CRM)</span>
-          <select
-            [value]="form().counterpartyId"
-            (change)="onCounterpartySelect($any($event.target).value)"
-          >
-            <option value="">Seleccionar del directorio...</option>
-            @for (cp of crmService.counterparties(); track cp.id) {
-              <option [value]="cp.id">
-                {{ cp.alias }} ({{ cp.realName }}) [{{ cp.reputation }}]
-              </option>
-            }
-          </select>
-        </label>
-        <label>
-          <span>Titular de Pago (Anti-Triangulación)</span>
-          <input
-            type="text"
-            placeholder="Nombre o Cédula en comprobante bancario"
-            [value]="form().payerName"
-            (input)="onFieldChange('payerName', $any($event.target).value)"
-          />
-        </label>
+      <form (submit)="$event.preventDefault(); onSubmitForm()">
+        <div class="terminal-input-grid grid-3">
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Tipo de Operación</span>
+            </label>
+            <div class="input-control-wrap">
+              <select class="terminal-select" [value]="form().type" (change)="onFieldChange('type', $any($event.target).value)">
+                <option value="buy">🟢 Compra (VES → Cripto)</option>
+                <option value="sell">🔴 Venta (Cripto → VES)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Par Comercial</span>
+            </label>
+            <div class="input-control-wrap">
+              <select class="terminal-select" [value]="form().pair" (change)="onFieldChange('pair', $any($event.target).value)">
+                <option value="USDT">USDT / VES</option>
+                <option value="EUR">EUR / VES</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Precio Pactado</span>
+              <span class="terminal-subtext">VES por {{ form().pair }}</span>
+            </label>
+            <div class="input-control-wrap">
+              <span class="input-prefix">VES</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="terminal-input font-bold"
+                [value]="form().price"
+                (input)="onFieldChange('price', clampMoney(+$any($event.target).value))"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Monto en VES</span>
+              <span class="terminal-subtext">Bolívares totales</span>
+            </label>
+            <div class="input-control-wrap">
+              <span class="input-prefix">Bs</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="terminal-input"
+                [value]="form().vesAmount"
+                (input)="onFieldChange('vesAmount', clampMoney(+$any($event.target).value))"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Monto en {{ form().pair }}</span>
+              <span class="terminal-subtext">Volumen cripto</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                type="number"
+                min="0"
+                step="0.000001"
+                class="terminal-input highlight-gold font-bold"
+                [value]="form().usdtAmount"
+                (input)="onFieldChange('usdtAmount', clampMoney(+$any($event.target).value))"
+                placeholder="0.00"
+              />
+              <span class="input-suffix">{{ form().pair }}</span>
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Comisiones Pagadas</span>
+              <span class="terminal-subtext">Bancos / Red</span>
+            </label>
+            <div class="input-control-wrap">
+              <span class="input-prefix">Bs</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="terminal-input"
+                [value]="form().fees"
+                (input)="onFieldChange('fees', clampMoney(+$any($event.target).value))"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Contraparte (CRM)</span>
+            </label>
+            <div class="input-control-wrap">
+              <select
+                class="terminal-select"
+                [value]="form().counterpartyId"
+                (change)="onCounterpartySelect($any($event.target).value)"
+              >
+                <option value="">Seleccionar del directorio...</option>
+                @for (cp of crmService.counterparties(); track cp.id) {
+                  <option [value]="cp.id">
+                    {{ cp.alias }} ({{ cp.realName }}) [{{ cp.reputation }}]
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Titular de Pago</span>
+              <span class="terminal-subtext">Anti-Triangulación</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Nombre o Cédula en comprobante"
+                [value]="form().payerName"
+                (input)="onFieldChange('payerName', $any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label">
+              <span>Cuenta Bancaria / Riel</span>
+            </label>
+            <div class="input-control-wrap">
+              <select
+                class="terminal-select"
+                [value]="form().bankAccountId"
+                (change)="onFieldChange('bankAccountId', $any($event.target).value)"
+              >
+                <option value="">Sin asignar / Otra cuenta</option>
+                @for (acc of accountsService.accounts(); track acc.id) {
+                  <option [value]="acc.id">
+                    {{ acc.bankName }} ({{ acc.rail }}) — Límite:
+                    {{ acc.dailyLimitVes ? (acc.dailyLimitVes | ves) : 'Ilimitado' }}
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="terminal-field full-width">
+            <label class="terminal-label">
+              <span>Notas del Comercio / Referencia</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Ej: Comerciante VIP #12 - Ref: 987654"
+                [value]="form().merchantNote"
+                (input)="onFieldChange('merchantNote', $any($event.target).value)"
+              />
+            </div>
+          </div>
+        </div>
 
         @if (antiTriangulation().warning; as warn) {
           <div
-            class="grid-col-span-2"
             [style.background]="
               antiTriangulation().riskLevel === 'CRITICAL'
                 ? 'rgba(255, 95, 109, 0.15)'
@@ -280,7 +368,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             [style.color]="
               antiTriangulation().riskLevel === 'CRITICAL' ? 'var(--danger)' : 'var(--gold-strong)'
             "
-            style="padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 8px;"
+            style="padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin: 12px 0 6px;"
             role="alert"
           >
             <strong>{{
@@ -292,51 +380,27 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
         }
 
-        <label class="grid-col-span-2">
-          <span>Notas del Comercio / Referencia</span>
-          <input
-            type="text"
-            placeholder="Ej: Comerciante VIP #12 - Ref: 987654"
-            [value]="form().merchantNote"
-            (input)="onFieldChange('merchantNote', $any($event.target).value)"
-          />
-        </label>
-        <label class="grid-col-span-2">
-          <span>Cuenta Bancaria / Riel de Pago</span>
-          <select
-            [value]="form().bankAccountId"
-            (change)="onFieldChange('bankAccountId', $any($event.target).value)"
-          >
-            <option value="">Sin asignar / Otra cuenta</option>
-            @for (acc of accountsService.accounts(); track acc.id) {
-              <option [value]="acc.id">
-                {{ acc.bankName }} ({{ acc.rail }}) — Límite:
-                {{ acc.dailyLimitVes ? (acc.dailyLimitVes | ves) : 'Ilimitado' }}
-              </option>
-            }
-          </select>
-        </label>
-
         @if (limitExceededWarning(); as warn) {
           <div
-            class="grid-col-span-2"
-            style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin-bottom: 8px;"
+            style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin: 6px 0;"
             role="alert"
           >
             ⚠️ {{ warn }}
           </div>
         }
 
-        <label class="checkbox-label">
-          <input
-            type="checkbox"
-            [checked]="form().errorFree"
-            (change)="onFieldChange('errorFree', $any($event.target).checked)"
-          />
-          <span>Operación ejecutada sin errores (Escalera de disciplina)</span>
-        </label>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Registrar operación</button>
+        <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 10px;">
+          <label class="checkbox-label" style="margin: 0;">
+            <input
+              type="checkbox"
+              [checked]="form().errorFree"
+              (change)="onFieldChange('errorFree', $any($event.target).checked)"
+            />
+            <span style="font-size: 0.82rem;">Operación ejecutada sin errores (Escalera de disciplina)</span>
+          </label>
+          <div class="form-actions" style="margin: 0;">
+            <button type="submit" class="btn btn-primary">⚡ Registrar Operación</button>
+          </div>
         </div>
       </form>
     </div>

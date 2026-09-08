@@ -60,77 +60,141 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Ciclo -->
       <div class="calc-column">
-        <div class="section-group">
-          <span class="section-eyebrow">Capital & Spread Operativo</span>
-          <div class="grid">
-            <label>
-              Capital a Operar (USDT)
-              <input
-                type="number"
-                min="0"
-                step="10"
-                [value]="capitalUsdt()"
-                (input)="capitalUsdt.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Precio de Compra (VES/USDT)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                [value]="buyPrice()"
-                (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Precio de Venta (VES/USDT)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                [value]="sellPrice()"
-                (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">⚡</span>
+              <span class="card-title">Capital & Spread Operativo</span>
+            </div>
+            <span class="badge badge-accent font-mono">USDT / VES</span>
+          </div>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field full-width">
+              <label class="terminal-label" for="calc-capital-usdt">
+                <span>Capital a Operar</span>
+                <span class="terminal-subtext">Inventario asignado a la vuelta</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-capital-usdt"
+                  type="number"
+                  min="0"
+                  step="10"
+                  class="terminal-input font-bold"
+                  [value]="capitalUsdt()"
+                  (input)="capitalUsdt.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">USDT</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-buy-price">
+                <span>Precio de Compra</span>
+                <span class="terminal-subtext">VES por USDT</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="calc-buy-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="buyPrice()"
+                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-sell-price">
+                <span>Precio de Venta</span>
+                <span class="terminal-subtext">VES por USDT</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="calc-sell-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input highlight-sell"
+                  [value]="sellPrice()"
+                  (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="section-group">
-          <span class="section-eyebrow">Estrategia & Canales Bancarios</span>
-          <div class="grid">
-            <label>
-              Rol en Compra
-              <select [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
-                <option value="MAKER">Maker (Anuncio propio, 0.2% comisión)</option>
-                <option value="TAKER">Taker (Tomar orden directa, 0% comisión)</option>
-              </select>
-            </label>
-            <label>
-              Rol en Venta
-              <select [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
-                <option value="MAKER">Maker (Anuncio propio, 0.2% comisión)</option>
-                <option value="TAKER">Taker (Tomar orden directa, 0% comisión)</option>
-              </select>
-            </label>
-            <label>
-              Banco Emisor (Compra)
-              <select [value]="sourceBank()" (change)="sourceBank.set($any($event.target).value)">
-                <option value="BANESCO">Banesco Banco Universal</option>
-                <option value="MERCANTIL">Mercantil Banco</option>
-                <option value="BDV">Banco de Venezuela (BDV)</option>
-                <option value="BANCAMIGA">Bancamiga</option>
-                <option value="PROVINCIAL">BBVA Provincial</option>
-                <option value="OTRO">Otro Banco</option>
-              </select>
-            </label>
-            <label>
-              Liquidación Interbancaria / Pago Móvil
-              <select [value]="isInterbank() ? 'true' : 'false'" (change)="isInterbank.set($any($event.target).value === 'true')">
-                <option value="false">Mismo Banco (0% comisión)</option>
-                <option value="true">Interbancario / Pago Móvil (0.3% comisión)</option>
-              </select>
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">🏛️</span>
+              <span class="card-title">Estrategia & Canales Bancarios</span>
+            </div>
+            <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
+              {{ isInterbank() ? '0.30% Fricción Banco' : '0.00% Mismo Banco' }}
+            </span>
+          </div>
+
+          <div class="terminal-input-grid">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-buy-role">
+                <span>Rol en Compra</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-buy-role" class="terminal-select" [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio propio — 0.25%)</option>
+                  <option value="TAKER">Taker (Orden directa — 0.00%)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-sell-role">
+                <span>Rol en Venta</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-sell-role" class="terminal-select" [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio propio — 0.25%)</option>
+                  <option value="TAKER">Taker (Orden directa — 0.00%)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-source-bank">
+                <span>Banco Emisor (Compra)</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-source-bank" class="terminal-select" [value]="sourceBank()" (change)="sourceBank.set($any($event.target).value)">
+                  <option value="BANESCO">Banesco Banco Universal</option>
+                  <option value="MERCANTIL">Mercantil Banco</option>
+                  <option value="BDV">Banco de Venezuela (BDV)</option>
+                  <option value="BANCAMIGA">Bancamiga</option>
+                  <option value="PROVINCIAL">BBVA Provincial</option>
+                  <option value="OTRO">Otro Banco</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-interbank">
+                <span>Compensación / Canal</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-interbank" class="terminal-select" [value]="isInterbank() ? 'true' : 'false'" (change)="isInterbank.set($any($event.target).value === 'true')">
+                  <option value="false">Mismo Banco (0% comisión)</option>
+                  <option value="true">Interbancario / Pago Móvil (0.3% comisión)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -209,49 +273,96 @@
   @if (activeMode() === 'reverse') {
     <div class="calc-grid-layout">
       <div class="calc-column">
-        <div class="section-group">
-          <span class="section-eyebrow">Meta y Capital de Trabajo</span>
-          <div class="grid">
-            <label>
-              Meta Diaria Deseada (USD)
-              <input
-                type="number"
-                min="1"
-                step="5"
-                [value]="targetGoalUsd()"
-                (input)="targetGoalUsd.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Capital Disponible (USDT)
-              <input
-                type="number"
-                min="10"
-                step="50"
-                [value]="availableCapitalGoal()"
-                (input)="availableCapitalGoal.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Precio de Compra (VES/USDT)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                [value]="buyPrice()"
-                (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Precio de Venta (VES/USDT)
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                [value]="sellPrice()"
-                (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">🎯</span>
+              <span class="card-title">Meta Diaria & Capital de Trabajo</span>
+            </div>
+            <span class="badge badge-gold font-mono">Reverso</span>
+          </div>
+
+          <div class="terminal-input-grid grid-2">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-target-goal-usd">
+                <span>Meta Diaria Deseada</span>
+                <span class="terminal-subtext">Beneficio neto</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">$</span>
+                <input
+                  id="calc-target-goal-usd"
+                  type="number"
+                  min="1"
+                  step="5"
+                  class="terminal-input highlight-gold font-bold"
+                  [value]="targetGoalUsd()"
+                  (input)="targetGoalUsd.set(clampMoney(+$any($event.target).value))"
+                  placeholder="20.00"
+                />
+                <span class="input-suffix">USD</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-avail-capital">
+                <span>Capital Disponible</span>
+                <span class="terminal-subtext">Inventario asignado</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-avail-capital"
+                  type="number"
+                  min="10"
+                  step="50"
+                  class="terminal-input font-bold"
+                  [value]="availableCapitalGoal()"
+                  (input)="availableCapitalGoal.set(clampMoney(+$any($event.target).value))"
+                  placeholder="1000"
+                />
+                <span class="input-suffix">USDT</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-rev-buy-price">
+                <span>Precio de Compra</span>
+                <span class="terminal-subtext">VES por USDT</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="calc-rev-buy-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input"
+                  [value]="buyPrice()"
+                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-rev-sell-price">
+                <span>Precio de Venta</span>
+                <span class="terminal-subtext">VES por USDT</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">VES</span>
+                <input
+                  id="calc-rev-sell-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="terminal-input highlight-sell"
+                  [value]="sellPrice()"
+                  (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -305,76 +416,142 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Simulador -->
       <div class="calc-column">
-        <div class="section-group">
-          <span class="section-eyebrow">Capital Inicial & Spread por Vuelta</span>
-          <div class="grid">
-            <label>
-              Capital Inicial (USDT)
-              <input
-                type="number"
-                min="100"
-                step="500"
-                [value]="compoundInitialCapital()"
-                (input)="compoundInitialCapital.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Spread Neto por Ciclo (%)
-              <input
-                type="number"
-                min="0.1"
-                step="0.05"
-                [value]="compoundNetMarginPct()"
-                (input)="compoundNetMarginPct.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Ciclos / Vueltas por Día
-              <input
-                type="number"
-                min="0.5"
-                max="5"
-                step="0.1"
-                [value]="compoundCyclesPerDay()"
-                (input)="compoundCyclesPerDay.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Horizonte de Tiempo (Días)
-              <select [value]="compoundOperationalDays()" (change)="compoundOperationalDays.set(+$any($event.target).value)">
-                <option [value]="30">30 días (1 mes)</option>
-                <option [value]="60">60 días (2 meses)</option>
-                <option [value]="90">90 días (1 trimestre profesional)</option>
-                <option [value]="180">180 días (Semestre)</option>
-              </select>
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">📈</span>
+              <span class="card-title">Capital Inicial & Margen por Ciclo</span>
+            </div>
+            <span class="badge badge-accent font-mono">$10k Compuesto</span>
+          </div>
+
+          <div class="terminal-input-grid grid-2">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-init-capital">
+                <span>Capital Inicial</span>
+                <span class="terminal-subtext">Portafolio base</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-comp-init-capital"
+                  type="number"
+                  min="100"
+                  step="500"
+                  class="terminal-input font-bold"
+                  [value]="compoundInitialCapital()"
+                  (input)="compoundInitialCapital.set(clampMoney(+$any($event.target).value))"
+                  placeholder="10000"
+                />
+                <span class="input-suffix">USDT</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-net-margin">
+                <span>Spread Neto / Vuelta</span>
+                <span class="terminal-subtext">Margen limpio esperado</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-comp-net-margin"
+                  type="number"
+                  min="0.1"
+                  step="0.05"
+                  class="terminal-input highlight-gold font-bold"
+                  [value]="compoundNetMarginPct()"
+                  (input)="compoundNetMarginPct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.85"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-cycles-day">
+                <span>Ciclos / Vueltas por Día</span>
+                <span class="terminal-subtext">Velocidad de rotación</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-comp-cycles-day"
+                  type="number"
+                  min="0.5"
+                  max="5"
+                  step="0.1"
+                  class="terminal-input"
+                  [value]="compoundCyclesPerDay()"
+                  (input)="compoundCyclesPerDay.set(clampMoney(+$any($event.target).value))"
+                  placeholder="1.5"
+                />
+                <span class="input-suffix">vueltas</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-horizon">
+                <span>Horizonte Temporal</span>
+                <span class="terminal-subtext">Duración simulación</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-comp-horizon" class="terminal-select" [value]="compoundOperationalDays()" (change)="compoundOperationalDays.set(+$any($event.target).value)">
+                  <option [value]="30">30 días (1 mes)</option>
+                  <option [value]="60">60 días (2 meses)</option>
+                  <option [value]="90">90 días (1 trimestre profesional)</option>
+                  <option [value]="180">180 días (Semestre)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="section-group">
-          <span class="section-eyebrow">Política de Cosecha & Retiros (Gestión de Riesgo)</span>
-          <div class="grid">
-            <label>
-              Distribución de Beneficios
-              <select [value]="compoundReinvestmentRate()" (change)="compoundReinvestmentRate.set(+$any($event.target).value)">
-                <option [value]="100">100% Reinversión (Interés Compuesto Agresivo)</option>
-                <option [value]="50">50% Cosecha a Frío / 50% Capitalización (Institucional)</option>
-                <option [value]="30">70% Cosecha / 30% Capitalización (Conservador)</option>
-                <option [value]="0">0% Reinversión (Retiro Total Diario)</option>
-              </select>
-            </label>
-            <label>
-              Tasa Referencial (VES/USDT)
-              <input
-                type="number"
-                min="1"
-                step="0.5"
-                [value]="compoundReferenceRate()"
-                (input)="compoundReferenceRate.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">🛡️</span>
+              <span class="card-title">Política de Cosecha & Retiros (Harvest)</span>
+            </div>
+            <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
+              {{ compoundReinvestmentRate() }}% Reinversión
+            </span>
           </div>
-          <p class="note" style="margin-top: 8px;">
+
+          <div class="terminal-input-grid grid-2">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-reinvest">
+                <span>Distribución de Beneficios</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-comp-reinvest" class="terminal-select" [value]="compoundReinvestmentRate()" (change)="compoundReinvestmentRate.set(+$any($event.target).value)">
+                  <option [value]="100">100% Reinversión (Interés Compuesto Agresivo)</option>
+                  <option [value]="50">50% Cosecha a Frío / 50% Capitalización (Institucional)</option>
+                  <option [value]="30">70% Cosecha / 30% Capitalización (Conservador)</option>
+                  <option [value]="0">0% Reinversión (Retiro Total Diario)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-comp-rate">
+                <span>Tasa Referencial</span>
+                <span class="terminal-subtext">Conversión a bolívares</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="calc-comp-rate"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  class="terminal-input"
+                  [value]="compoundReferenceRate()"
+                  (input)="compoundReferenceRate.set(clampMoney(+$any($event.target).value))"
+                  placeholder="60.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          <p class="note" style="margin-top: 4px; font-size: 0.78rem;">
             💡 <strong>Estrategia de Cosecha (Harvest):</strong> Con $10,000 USD, reinvertir el 100% satura rápidamente las cuentas personales. Retirar el 50% de las ganancias diarias a tu hardware wallet elimina el riesgo devaluatorio y bancario.
           </p>
         </div>
@@ -466,50 +643,97 @@
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Equipo -->
       <div class="calc-column">
-        <div class="section-group">
-          <span class="section-eyebrow">Capital del Desk & Margen Esperado</span>
-          <div class="grid">
-            <label>
-              Capital Total del Desk (USDT)
-              <input
-                type="number"
-                min="0"
-                step="500"
-                [value]="teamDeskCapital()"
-                (input)="teamDeskCapital.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Spread Medio por Vuelta (%)
-              <input
-                type="number"
-                min="0.1"
-                step="0.05"
-                [value]="teamExpectedSpreadPct()"
-                (input)="teamExpectedSpreadPct.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
-            <label>
-              Tasa Referencial VES/USDT
-              <input
-                type="number"
-                min="1"
-                step="0.5"
-                [value]="teamReferenceRate()"
-                (input)="teamReferenceRate.set(clampMoney(+$any($event.target).value))"
-              />
-            </label>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">👥</span>
+              <span class="card-title">Capital del Desk & Margen Esperado</span>
+            </div>
+            <span class="badge badge-accent font-mono">Equipo $1k/día</span>
           </div>
-          <p class="text-muted" style="font-size: 0.78rem; margin-top: 8px;">
-            ⚠️ <strong>Regla de Oro:</strong> Nadie en el equipo debe operar por debajo del <strong>0.50% neto</strong>.
-          </p>
+
+          <div class="terminal-input-grid grid-3">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-team-capital">
+                <span>Capital del Desk</span>
+                <span class="terminal-subtext">Pool total administrado</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-team-capital"
+                  type="number"
+                  min="0"
+                  step="500"
+                  class="terminal-input font-bold"
+                  [value]="teamDeskCapital()"
+                  (input)="teamDeskCapital.set(clampMoney(+$any($event.target).value))"
+                  placeholder="20000"
+                />
+                <span class="input-suffix">USDT</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-team-spread">
+                <span>Spread por Vuelta</span>
+                <span class="terminal-subtext">Promedio del equipo</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-team-spread"
+                  type="number"
+                  min="0.1"
+                  step="0.05"
+                  class="terminal-input highlight-gold font-bold"
+                  [value]="teamExpectedSpreadPct()"
+                  (input)="teamExpectedSpreadPct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.80"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-team-rate">
+                <span>Tasa Referencial</span>
+                <span class="terminal-subtext">VES por USDT</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="calc-team-rate"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  class="terminal-input"
+                  [value]="teamReferenceRate()"
+                  (input)="teamReferenceRate.set(clampMoney(+$any($event.target).value))"
+                  placeholder="60.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="terminal-card-footer">
+            <div class="footer-badge">
+              <span class="status-indicator active"></span>
+              <span>Regla de Oro: <strong>Nadie opera por debajo del 0.50% neto</strong></span>
+            </div>
+          </div>
         </div>
 
-        <div class="section-group">
-          <span class="section-eyebrow">Operadores & Cajeros Asignados</span>
+        <div class="terminal-input-card">
+          <div class="terminal-card-header">
+            <div class="card-header-title">
+              <span class="card-icon">💼</span>
+              <span class="card-title">Operadores & Cajeros Asignados</span>
+            </div>
+            <span class="badge font-mono">{{ teamOperators().length }} Cajeros</span>
+          </div>
+
           <div style="display: flex; flex-direction: column; gap: 12px;">
             @for (op of teamOperators(); track op.id) {
-              <div style="background: color-mix(in srgb, var(--panel-2) 70%, transparent); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px;">
+              <div style="background: rgba(10, 15, 26, 0.45); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <strong style="color: var(--gold); font-size: 0.9rem;">{{ op.name }}</strong>
                   <span class="badge badge-accent" style="font-size: 0.72rem;">{{ op.commissionSplitPct }}% Comisión</span>
@@ -641,25 +865,94 @@
   @if (activeMode() === 'classic') {
     <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. Base de cálculo fijada en {{ daysPerYear() }} días.</p>
 
-    <div class="section-group">
-      <span class="section-eyebrow">Parámetros Clásicos</span>
-      <div class="grid">
-        <label>
-          Meta diaria (USD)
-          <input type="number" min="0" step="0.01" [value]="targetUsd()" (input)="targetUsd.set(clampMoney(+$any($event.target).value))" />
-        </label>
-        <label>
-          Tasa anual (APR) (%)
-          <input type="number" min="0" step="0.01" [value]="aprPct()" (input)="aprPct.set(clampMoney(+$any($event.target).value))" />
-        </label>
-        <label>
-          Días / año
-          <input type="number" min="0" step="1" [value]="daysPerYear()" (input)="daysPerYear.set(clampMoney(+$any($event.target).value))" />
-        </label>
-        <label>
-          Tasa VES/USDT (opcional)
-          <input type="number" min="0" step="0.01" [value]="rate()" (input)="rate.set(clampMoney(+$any($event.target).value))" />
-        </label>
+    <div class="terminal-input-card">
+      <div class="terminal-card-header">
+        <div class="card-header-title">
+          <span class="card-icon">📊</span>
+          <span class="card-title">Parámetros Clásicos de Capital Anual</span>
+        </div>
+        <span class="badge font-mono">{{ daysPerYear() }} Días Base</span>
+      </div>
+
+      <div class="terminal-input-grid grid-4">
+        <div class="terminal-field">
+          <label class="terminal-label" for="calc-classic-target">
+            <span>Meta Diaria</span>
+            <span class="terminal-subtext">Beneficio esperado</span>
+          </label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">$</span>
+            <input
+              id="calc-classic-target"
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input highlight-gold font-bold"
+              [value]="targetUsd()"
+              (input)="targetUsd.set(clampMoney(+$any($event.target).value))"
+              placeholder="10.00"
+            />
+            <span class="input-suffix">USD</span>
+          </div>
+        </div>
+
+        <div class="terminal-field">
+          <label class="terminal-label" for="calc-classic-apr">
+            <span>Tasa Anual (APR)</span>
+            <span class="terminal-subtext">Rendimiento porcentual</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="calc-classic-apr"
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="aprPct()"
+              (input)="aprPct.set(clampMoney(+$any($event.target).value))"
+              placeholder="12.00"
+            />
+            <span class="input-suffix">%</span>
+          </div>
+        </div>
+
+        <div class="terminal-field">
+          <label class="terminal-label" for="calc-classic-days">
+            <span>Días Operativos / Año</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="calc-classic-days"
+              type="number"
+              min="0"
+              step="1"
+              class="terminal-input"
+              [value]="daysPerYear()"
+              (input)="daysPerYear.set(clampMoney(+$any($event.target).value))"
+              placeholder="365"
+            />
+            <span class="input-suffix">días</span>
+          </div>
+        </div>
+
+        <div class="terminal-field">
+          <label class="terminal-label" for="calc-classic-rate">
+            <span>Tasa VES/USDT (Opcional)</span>
+          </label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">Bs</span>
+            <input
+              id="calc-classic-rate"
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="rate()"
+              (input)="rate.set(clampMoney(+$any($event.target).value))"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
       </div>
     </div>
 

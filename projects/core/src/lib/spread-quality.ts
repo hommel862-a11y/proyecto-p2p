@@ -82,12 +82,12 @@ export interface ArbitrageCycleInput {
   capitalUsdt: number;
   buyPrice: number;             // VES per USDT
   sellPrice: number;            // VES per USDT
-  buyRole: P2PRole;             // MAKER (e.g. 0.2% commission) or TAKER (0%)
+  buyRole: P2PRole;             // MAKER (e.g. 0.25% commission) or TAKER (0%)
   sellRole: P2PRole;            // MAKER or TAKER
   sourceBank: BankCode;         // Bank used when buying/paying
   targetBank: BankCode;         // Bank used when selling/receiving
   isInterbank: boolean;         // Did it clear via interbank Pago Movil / Transfer?
-  makerFeeRate?: number;        // Default 0.002 (0.2%)
+  makerFeeRate?: number;        // Default 0.0025 (0.25%)
 }
 
 export interface ArbitrageCycleResult {
@@ -177,7 +177,7 @@ export function computeArbitrageCycle(input: ArbitrageCycleInput): ArbitrageCycl
     sourceBank,
     targetBank,
     isInterbank,
-    makerFeeRate = 0.002, // 0.2% standard Binance P2P maker fee
+    makerFeeRate = 0.0025, // 0.25% Binance P2P VES maker fee (feb-2026)
   } = input;
 
   if (capitalUsdt <= 0 || buyPrice <= 0 || sellPrice <= 0) {

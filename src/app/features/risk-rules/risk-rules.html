@@ -2,47 +2,151 @@
   <h2>Reglas de Riesgo</h2>
   <p class="note">Barrera de seguridad únicamente — nunca predice ni ejecuta automáticamente. Por defecto: spread mínimo 15, máx. operaciones concurrentes 3, riesgo máx. por operación 1%, tope de pérdida diaria 4%.</p>
 
-  <div class="section-group">
-    <span class="section-eyebrow">Configuración de Reglas</span>
-    <div class="grid">
-      <label>
-        Par de referencia
-        <select [value]="pair()" (change)="setPair($any($event.target).value)">
-          <option value="USDT">USDT/VES</option>
-          <option value="EUR">EUR/VES</option>
-        </select>
-      </label>
-      <label>
-        Spread mínimo (VES/{{ pair() }})
-        <input type="number" min="0" step="0.01" [value]="draft().minSpread" (input)="patch({ minSpread: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        Máx. operaciones concurrentes
-        <input type="number" min="1" step="1" [value]="draft().maxConcurrentOps" (input)="patch({ maxConcurrentOps: clampCount(+$any($event.target).value) })" />
-      </label>
-      <label>
-        Riesgo máx. por operación (%)
-        <input type="number" min="0" step="0.01" [value]="draft().maxRiskPerTradePct" (input)="patch({ maxRiskPerTradePct: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        Tope de pérdida diaria (%)
-        <input type="number" min="0" step="0.01" [value]="draft().dailyLossCapPct" (input)="patch({ dailyLossCapPct: clampMoney(+$any($event.target).value) })" />
-      </label>
-      <label>
-        Máx. errores consecutivos
-        <input type="number" min="1" step="1" [value]="draft().maxConsecutiveErrors" (input)="patch({ maxConsecutiveErrors: clampCount(+$any($event.target).value) })" />
-      </label>
-      <label>
-        Estado de API
-        <select [value]="draft().apiStatus" (change)="patch({ apiStatus: $any($event.target).value })">
-          <option value="ok">ok</option>
-          <option value="down">caída</option>
-        </select>
-      </label>
+  <div class="terminal-input-card">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">🛡️</span>
+        <span class="card-title">Parámetros de Blindaje & Gestión de Riesgo</span>
+      </div>
+      <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
     </div>
-    <div class="actions">
-      <button type="button" (click)="save()">Guardar reglas</button>
-      <button type="button" (click)="reset()">Restablecer</button>
+
+    <div class="terminal-input-grid grid-3">
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-pair-select">
+          <span>Par de Referencia</span>
+        </label>
+        <div class="input-control-wrap">
+          <select id="risk-pair-select" class="terminal-select" [value]="pair()" (change)="setPair($any($event.target).value)">
+            <option value="USDT">USDT / VES</option>
+            <option value="EUR">EUR / VES</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-min-spread">
+          <span>Spread Mínimo Absoluto</span>
+          <span class="terminal-subtext">VES por {{ pair() }}</span>
+        </label>
+        <div class="input-control-wrap">
+          <span class="input-prefix">Bs</span>
+          <input
+            id="risk-min-spread"
+            type="number"
+            min="0"
+            step="0.01"
+            class="terminal-input"
+            [value]="draft().minSpread"
+            (input)="patch({ minSpread: clampMoney(+$any($event.target).value) })"
+            placeholder="15.00"
+          />
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-max-concurrent">
+          <span>Máx. Operaciones Simultáneas</span>
+          <span class="terminal-subtext">Límite de concurrencia</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="risk-max-concurrent"
+            type="number"
+            min="1"
+            step="1"
+            class="terminal-input"
+            [value]="draft().maxConcurrentOps"
+            (input)="patch({ maxConcurrentOps: clampCount(+$any($event.target).value) })"
+            placeholder="3"
+          />
+          <span class="input-suffix">ops</span>
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-max-risk-trade">
+          <span>Riesgo Máx. por Operación</span>
+          <span class="terminal-subtext">Porcentaje del capital</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="risk-max-risk-trade"
+            type="number"
+            min="0"
+            step="0.01"
+            class="terminal-input"
+            [value]="draft().maxRiskPerTradePct"
+            (input)="patch({ maxRiskPerTradePct: clampMoney(+$any($event.target).value) })"
+            placeholder="1.00"
+          />
+          <span class="input-suffix">%</span>
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-loss-cap">
+          <span>Tope de Pérdida Diaria</span>
+          <span class="terminal-subtext">Stop-loss de la jornada</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="risk-loss-cap"
+            type="number"
+            min="0"
+            step="0.01"
+            class="terminal-input"
+            [value]="draft().dailyLossCapPct"
+            (input)="patch({ dailyLossCapPct: clampMoney(+$any($event.target).value) })"
+            placeholder="4.00"
+          />
+          <span class="input-suffix">%</span>
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="risk-max-errors">
+          <span>Máx. Errores Consecutivos</span>
+          <span class="terminal-subtext">Tolerancia de fallas</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="risk-max-errors"
+            type="number"
+            min="1"
+            step="1"
+            class="terminal-input"
+            [value]="draft().maxConsecutiveErrors"
+            (input)="patch({ maxConsecutiveErrors: clampCount(+$any($event.target).value) })"
+            placeholder="2"
+          />
+          <span class="input-suffix">fallas</span>
+        </div>
+      </div>
+
+      <div class="terminal-field full-width">
+        <label class="terminal-label" for="risk-api-status">
+          <span>Estado de Conexión / Gateway API</span>
+          <span class="terminal-subtext">Control manual de salud</span>
+        </label>
+        <div class="input-control-wrap">
+          <select id="risk-api-status" class="terminal-select" [value]="draft().apiStatus" (change)="patch({ apiStatus: $any($event.target).value })">
+            <option value="ok">🟢 OK — Operativa normal permitida</option>
+            <option value="down">🔴 CAÍDA — Pausar operaciones por fallo de conexión</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 6px;">
+      <div class="footer-badge">
+        <span class="status-indicator active"></span>
+        <span>Barrera de seguridad pasiva (0 riesgo de ejecución automática no supervisada)</span>
+      </div>
+      <div class="actions" style="margin: 0; display: flex; gap: 8px;">
+        <button type="button" class="btn btn-primary" (click)="save()">💾 Guardar Reglas</button>
+        <button type="button" class="btn btn-secondary" (click)="reset()">↺ Restablecer</button>
+      </div>
     </div>
   </div>
 
