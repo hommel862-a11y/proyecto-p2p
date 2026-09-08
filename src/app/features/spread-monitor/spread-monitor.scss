@@ -272,6 +272,9 @@
   gap: 10px;
 }
 
+/* Subtle live-refresh accent on the "Actualizado HH:mm:ss" caption while auto-refresh is active. */
+.live-refresh-caption.live{color:var(--accent)}
+
 .radar-actions {
   display: flex;
   align-items: center;

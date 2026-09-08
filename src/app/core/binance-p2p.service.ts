@@ -43,17 +43,19 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
-  startAutoRefresh(intervalMs = 30000): void {
+  startAutoRefresh(intervalMs = 30000, asset = 'USDT'): void {
     this.stopAutoRefresh();
-    void this.fetchMarketDepth();
+    this.autoRefresh.set(true);
+    void this.fetchMarketDepth(asset, 'VES');
     this.refreshTimer = setInterval(() => {
-      if (this.autoRefresh()) {
-        void this.fetchMarketDepth();
+      if (this.autoRefresh() && !this.loading()) {
+        void this.fetchMarketDepth(asset, 'VES');
       }
     }, intervalMs);
   }
 
   stopAutoRefresh(): void {
+    this.autoRefresh.set(false);
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;

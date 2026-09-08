@@ -223,6 +223,25 @@
                 <span class="input-suffix">%</span>
               </div>
             </div>
+
+            <div class="terminal-field full-width">
+              <label class="terminal-label" for="spread-alert-pct">
+                <span>Alerta de Spread de Mercado (%)</span>
+                <span class="terminal-subtext">Avisa cuando el spread en vivo supera este umbral</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="spread-alert-pct"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="terminal-input"
+                  [value]="spreadAlertPct()"
+                  (input)="spreadAlertPct.set(clampMoney(+$any($event.target).value))"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
           </div>
 
           <div class="terminal-card-footer">
@@ -619,7 +638,7 @@
           <div class="radar-header">
             <div class="radar-title-group">
               <span class="badge badge-accent">En Vivo (Binance P2P)</span>
-              <span class="text-muted" style="font-size: 0.78rem;">
+              <span class="text-muted live-refresh-caption" [class.live]="binance.autoRefresh()" style="font-size: 0.78rem;">
                 @if (binance.loading()) {
                   <span style="color: var(--gold);">Sincronizando...</span>
                 } @else if (binance.lastFetched(); as date) {

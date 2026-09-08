@@ -11,7 +11,7 @@ import {
 import {
   computeSpread,
   calculateBreakEven,
-  clampNonNegative,
+  clampMoney as sharedClampMoney,
   computeTriangulationGap,
   buildPortfolioAllocationPlan,
   evaluateGoldenSpread,
@@ -173,6 +173,14 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly sellRole = signal<P2PRole>('TAKER');
   /** minimum net spread (%) required to operate (guard threshold). */
   readonly minSpreadGuardPct = signal<number>(0.6);
+  /** Market spread (%) above which the live P2P opportunity alert fires. */
+  readonly spreadAlertPct = signal<number>(1.2);
+
+  /** Cooldown (ms) per alert signal key so a toast for the same signal never spams. */
+  private readonly alertCooldownMs = 60_000;
+  private readonly alertLastAt = new Map<string, number>();
+  private prevFavorableKind: 'favorable' | 'unfavorable' | null = null;
+  private prevSellBelowBreakEven = false;
 
   /** Effective fee drag on the spread footprint: MAKER legs burn +0.25% each. */
   readonly effectiveFeeDragPct = computed<number>(() => {
@@ -389,7 +397,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
-    return clampNonNegative(v);
+    return sharedClampMoney(v);
   }
 
   readonly result = computed<SpreadResult | null>(() => {
@@ -465,16 +473,94 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     return { kind: null, message: '' };
   });
 
-  private prevKind: 'favorable' | 'unfavorable' | null = null;
+  /** True when a cooldown is still active for `key`. Marks the last fire time. */
+  private signalMayFire(key: string): boolean {
+    const now = Date.now();
+    const last = this.alertLastAt.get(key) ?? 0;
+    if (now - last < this.alertCooldownMs) return false;
+    this.alertLastAt.set(key, now);
+    return true;
+  }
+
+  /** Live market spread (%) from the last Binance P2P fetch, or null when no clean data. */
+  private readonly marketSpreadPct = computed<number | null>(() => {
+    const d = this.binance.marketDepth();
+    if (!d || d.bestBuyPrice <= 0 || d.bestSellPrice <= 0) return null;
+    return d.spreadPct;
+  });
+
+  /** Current market sell price is at/below the maker break-even → selling at a loss. */
+  private readonly sellAtOrBelowBreakEven = computed<boolean>(() => {
+    const d = this.binance.marketDepth();
+    const be = this.breakEvenResult();
+    if (!d || d.bestSellPrice <= 0 || be.breakEvenPrice <= 0) return false;
+    return d.bestSellPrice <= be.breakEvenPrice;
+  });
 
   constructor() {
+    // Alertas ampliadas: spread de mercado, flip de break-even y cupos/velocidad.
+    // Deduplicadas por clave con ventana de cooldown para evitar fatiga de alertas.
     effect(() => {
       const kind = this.alert().kind;
-      if (kind === 'favorable' && this.prevKind !== 'favorable') {
+      if (kind === 'favorable' && this.prevFavorableKind !== 'favorable' && this.signalMayFire('favorable')) {
         this.notify(this.alert().message);
         this.audioAlerts.playOpportunityAlert();
       }
-      this.prevKind = kind;
+      this.prevFavorableKind = kind;
+    });
+
+    effect(() => {
+      const spreadPct = this.marketSpreadPct();
+      if (spreadPct !== null && spreadPct >= this.spreadAlertPct() && this.signalMayFire('spread-threshold')) {
+        this.toast.success(
+          `Spread de mercado en ${spreadPct}% ≥ umbral ${this.spreadAlertPct()}% — oportunidad de arbitraje amplia.`,
+          'Spread Alto',
+        );
+      }
+    });
+
+    effect(() => {
+      const actionableMode = this.activeMode() === 'breakeven' || this.activeMode() === 'repricer';
+      const below = this.sellAtOrBelowBreakEven();
+      if (actionableMode && below && !this.prevSellBelowBreakEven && this.signalMayFire('breakeven-flip')) {
+        const d = this.binance.marketDepth();
+        const be = this.breakEvenResult();
+        this.toast.warn(
+          `El precio de venta de mercado (${d?.bestSellPrice ?? 0} Bs) está en/por debajo del break-even (${be.breakEvenPrice} Bs) — el anuncio sellaría a pérdida.`,
+          'Flip Break-Even',
+        );
+      }
+      this.prevSellBelowBreakEven = below;
+    });
+
+    effect(() => {
+      for (const v of this.accountsService.accountVelocities()) {
+        if (v.usedPct >= 85 && this.signalMayFire(`velocity-${v.accountId}`)) {
+          this.toast.warn(
+            `${v.bankName}: ${v.todayTransactionCount}/${v.maxDailyTransactions} transferencias (${v.usedPct}% del tope diario).`,
+            'Velocidad Bancaria Alta',
+          );
+        }
+      }
+      for (const u of this.accountsService.usages()) {
+        if (u.consumedLimitPct >= 85 && this.signalMayFire(`limit-${u.account.id}`)) {
+          this.toast.warn(
+            `${u.account.bankName}: ${u.consumedLimitPct}% del cupo diario consumido (${u.spentTodayVes} Bs).`,
+            'Cupo Bancario Casi Agotado',
+          );
+        }
+      }
+    });
+
+    // Mantener los precios frescos en vivo (30s) mientras la vista está activa,
+    // respetando el par seleccionado y reiniciando si el usuario lo cambia.
+    effect(() => {
+      const pair = this.pair();
+      if (this.activeMode() !== 'repricer') {
+        this.binance.startAutoRefresh(30_000, pair);
+      } else {
+        this.binance.stopAutoRefresh();
+      }
     });
 
     this.hotkeys.register('SYNC', () => {
@@ -520,6 +606,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       this.nowTimerId = null;
     }
     this.cotizave.stopAutoRefresh();
+    this.binance.stopAutoRefresh();
   }
 
   setUnit(value: string): void {
