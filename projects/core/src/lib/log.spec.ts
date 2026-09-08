@@ -70,4 +70,16 @@ describe('computeLogSummary', () => {
     expect(summary.pnlVes).toBe(0);
     expect(summary.exposure).toBe(0);
   });
+
+  it('treasury assign operations do not disturb PnL, capital, or exposure', () => {
+    const ops: Operation[] = [
+      op({ id: 't', type: 'assign', vesAmount: 50000, usdtAmount: 0, price: 0, fees: 0 }),
+    ];
+    const summary = computeLogSummary(ops);
+    expect(summary.operations).toBe(1);
+    expect(summary.pnlVes).toBe(0);
+    expect(summary.pnlUsdt).toBe(0);
+    expect(summary.exposure).toBe(0);
+    expect(summary.capitalDeployed).toBe(0);
+  });
 });

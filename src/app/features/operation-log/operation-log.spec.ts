@@ -184,6 +184,29 @@ describe('OperationLog', () => {
     expect(c.error()).toBeNull();
   });
 
+  it('addAssign appends a treasury assign operation and persists it through the same ledger', () => {
+    const f = create();
+    const c = f.componentInstance;
+    c.assignDraft.set({ vesAmount: 50000, bankAccountId: 'banesco-pm-1', notes: 'fondo', errorFree: true });
+    c.addAssign();
+    expect(c.operations().length).toBe(1);
+    const saved = c.operations()[0];
+    expect(saved.type).toBe('assign');
+    expect(saved.vesAmount).toBe(50000);
+    expect(saved.bankAccountId).toBe('banesco-pm-1');
+    // a fresh component reading the same storage sees it (same ledger key)
+    const f2 = TestBed.createComponent(OperationLog);
+    expect(f2.componentInstance.operations()).toHaveLength(1);
+  });
+
+  it('addAssign rejects invalid input and does not persist', () => {
+    const f = create();
+    const c = f.componentInstance;
+    c.assignDraft.set({ vesAmount: 0, bankAccountId: '', notes: '', errorFree: true });
+    c.addAssign();
+    expect(c.operations().length).toBe(0);
+  });
+
   describe('pair filter', () => {
     it('setPairFilter narrows visibleOps to the selected pair', () => {
       const f = create();

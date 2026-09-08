@@ -15,7 +15,7 @@ import { AccountsService } from '../../core/accounts.service';
 import { BankNotifierService } from '../../core/bank-notifier.service';
 import { ToastService } from '../../core/toast.service';
 import {
-  clampNonNegative,
+  clampMoney as sharedClampMoney,
   type Operation,
   type AccountUsage,
   type AntiTriangulationAssessment,
@@ -125,7 +125,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;"
           >
             <span
-              style="font-size: 0.8rem; font-weight: 700; color: #4ef0a5; text-transform: uppercase; letter-spacing: 0.5px;"
+              style="font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px;"
             >
               📲 Despachador QR Pago Móvil
             </span>
@@ -135,12 +135,17 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
             @if (qrCodeUrl(); as svg) {
               <div
-                [innerHTML]="svg"
                 style="background: #fff; padding: 8px; border-radius: 6px; display: inline-flex;"
-              ></div>
+              >
+                <img
+                  [src]="svg"
+                  alt="QR Pago Móvil"
+                  style="width: 130px; height: 130px; display: block;"
+                />
+              </div>
             }
             <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;">
-              <div style="font-size: 0.85rem; color: var(--text-muted);">
+              <div style="font-size: 0.85rem; color: var(--muted);">
                 Escanea el código con la app de tu banco o copia los datos al portapapeles con 1
                 clic:
               </div>
@@ -510,7 +515,7 @@ export class OperationFormComponent {
   }
 
   clampMoney(v: number): number {
-    return clampNonNegative(v);
+    return sharedClampMoney(v);
   }
 
   onFieldChange<K extends keyof OpDraft>(field: K, value: OpDraft[K]): void {

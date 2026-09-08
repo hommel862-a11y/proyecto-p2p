@@ -21,6 +21,87 @@
     (counterpartySelect)="selectCounterparty($event)"
     (submitForm)="add()" />
 
+  <div style="display: flex; gap: 8px; margin-top: 10px;">
+    <button
+      type="button"
+      class="btn btn-secondary"
+      style="font-size: 0.82rem; padding: 6px 14px; border-color: var(--accent); color: var(--accent);"
+      (click)="toggleTreasuryAssign()">
+      💰 {{ showTreasuryAssign() ? 'Cancelar Asignación' : 'Asignar a Tesorería' }}
+    </button>
+  </div>
+
+  @if (showTreasuryAssign()) {
+    <div
+      style="background: rgba(10, 15, 26, 0.7); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: var(--radius); padding: 14px; margin-top: 10px;">
+      <div style="font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+        Asignación de Tesorería
+      </div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+        <div style="flex: 1; min-width: 160px;">
+          <label class="terminal-label"><span>Monto VES</span></label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">Bs</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="assignDraft().vesAmount"
+              (input)="assignDraft.set({ ...assignDraft(), vesAmount: clampMoney(+$any($event.target).value) })"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+          <label class="terminal-label"><span>Cuenta Bancaria Destino</span></label>
+          <div class="input-control-wrap">
+            <select
+              class="terminal-select"
+              [value]="assignDraft().bankAccountId"
+              (change)="assignDraft.set({ ...assignDraft(), bankAccountId: $any($event.target).value })">
+              <option value="">Seleccionar cuenta...</option>
+              @for (acc of accountsService.accounts(); track acc.id) {
+                <option [value]="acc.id">
+                  {{ acc.bankName }} ({{ acc.rail }})
+                </option>
+              }
+            </select>
+          </div>
+        </div>
+        <div style="flex: 1; min-width: 180px;">
+          <label class="terminal-label"><span>Notas (opcional)</span></label>
+          <div class="input-control-wrap">
+            <input
+              type="text"
+              class="terminal-input"
+              placeholder="Ej: Fondo para operaciones del día"
+              [value]="assignDraft().notes"
+              (input)="assignDraft.set({ ...assignDraft(), notes: $any($event.target).value })"
+            />
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; padding-bottom: 2px;">
+          <label class="checkbox-label" style="margin: 0; font-size: 0.82rem;">
+            <input
+              type="checkbox"
+              [checked]="assignDraft().errorFree"
+              (change)="assignDraft.set({ ...assignDraft(), errorFree: $any($event.target).checked })"
+            />
+            <span>Sin errores</span>
+          </label>
+          <button
+            type="button"
+            class="btn btn-primary"
+            style="font-size: 0.82rem; padding: 6px 14px;"
+            (click)="addAssign()">
+            💰 Registrar Asignación
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
   <div class="section-divider"></div>
   <div class="section-group">
     <span class="section-eyebrow">Resumen</span>

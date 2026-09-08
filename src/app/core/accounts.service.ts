@@ -63,7 +63,13 @@ export class AccountsService {
 
   readonly accounts = signal<BankAccount[]>(this.loadAccounts());
 
-  private readonly rawOperations = computed<Operation[]>(() => {
+  /** Monotonic bump: invalidates operation-derived computeds after ledger writes. */
+  private readonly ledgerRevision = signal(0);
+
+  readonly rawOperations = computed<Operation[]>(() => {
+    // `ledgerRevision` is intentionally read to make this computed re-evaluate when
+    // the operation ledger is written elsewhere (operation-log persists the same key).
+    void this.ledgerRevision();
     return this.storage.get<Operation[]>(OPS_KEY) ?? [];
   });
 
@@ -162,5 +168,10 @@ export class AccountsService {
     } catch {
       return DEFAULT_ACCOUNTS;
     }
+  }
+
+  /** Re-read the operation ledger so operation-derived signals (treasury, velocity, alerts) refresh. */
+  refreshLedger(): void {
+    this.ledgerRevision.update((n) => n + 1);
   }
 }

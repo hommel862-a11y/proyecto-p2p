@@ -58,8 +58,9 @@ import type { Operation, Counterparty } from '@p2p/core';
                     class="badge"
                     [class.badge-buy]="o.type === 'buy'"
                     [class.badge-sell]="o.type === 'sell'"
+                    [class.badge-accent]="o.type === 'assign'"
                   >
-                    {{ o.type === 'buy' ? 'Compra' : 'Venta' }}
+                    {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Tesorería' }}
                   </span>
                 </td>
                 <td>

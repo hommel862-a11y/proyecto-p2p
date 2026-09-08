@@ -59,4 +59,72 @@ describe('buildCalendarMonthView', () => {
     expect(day5?.pnlVes).toBe(950);
     expect(day5?.heatLevel).toBeGreaterThanOrEqual(3);
   });
+
+  it('excludes assign operations from daily aggregates and counts', () => {
+    const ops: Operation[] = [
+      {
+        id: 'buy-1',
+        type: 'buy',
+        usdtAmount: 500,
+        price: 60.0,
+        vesAmount: 30000,
+        fees: 0,
+        pair: 'USDT',
+        merchantNote: '',
+        notes: '',
+        errorFree: true,
+        timestamp: '2026-09-10T09:00:00.000Z',
+      },
+      {
+        id: 'sell-1',
+        type: 'sell',
+        usdtAmount: 500,
+        price: 61.0,
+        vesAmount: 30500,
+        fees: 30,
+        pair: 'USDT',
+        merchantNote: '',
+        notes: '',
+        errorFree: true,
+        timestamp: '2026-09-10T11:00:00.000Z',
+      },
+      {
+        id: 'assign-1',
+        type: 'assign',
+        usdtAmount: 0,
+        price: 0,
+        vesAmount: 10000,
+        fees: 0,
+        pair: 'USDT',
+        merchantNote: 'Fondeo tesorería',
+        notes: '',
+        errorFree: true,
+        timestamp: '2026-09-10T12:00:00.000Z',
+      },
+    ];
+
+    const view = buildCalendarMonthView(ops, 2026, 9, 60.0);
+
+    const day10 = view.days.find((d) => d?.dayOfMonth === 10);
+    expect(day10).toBeDefined();
+    expect(day10?.operationsCount).toBe(2);
+    expect(day10?.buyCount).toBe(1);
+    expect(day10?.sellCount).toBe(1);
+    expect(day10?.volumeUsdt).toBe(1000);
+    expect(day10?.pnlVes).toBe(470); // (30500-30)-30000 = 470
+    expect(day10?.feesVes).toBe(30);
+
+    const controlOps: Operation[] = [
+      ops[0],
+      ops[1],
+    ];
+    const controlView = buildCalendarMonthView(controlOps, 2026, 9, 60.0);
+    const controlDay10 = controlView.days.find((d) => d?.dayOfMonth === 10);
+    expect(day10?.operationsCount).toBe(controlDay10?.operationsCount);
+    expect(day10?.buyCount).toBe(controlDay10?.buyCount);
+    expect(day10?.sellCount).toBe(controlDay10?.sellCount);
+    expect(day10?.pnlVes).toBe(controlDay10?.pnlVes);
+    expect(day10?.volumeUsdt).toBe(controlDay10?.volumeUsdt);
+    expect(day10?.feesVes).toBe(controlDay10?.feesVes);
+  });
 });

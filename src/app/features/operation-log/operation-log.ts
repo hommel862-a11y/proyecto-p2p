@@ -1,5 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { computeLogSummary, clampNonNegative, type Operation } from '@p2p/core';
+import {
+  computeLogSummary,
+  clampNonNegative,
+  OPS_KEY,
+  clampMoney as sharedClampMoney,
+  type Operation,
+} from '@p2p/core';
 import { CommonModule } from '@angular/common';
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
@@ -19,8 +25,6 @@ import { OperationTableComponent } from './operation-table.component';
 import { BackupPanelComponent } from './backup-panel.component';
 import { OperationTimerBannerComponent } from './operation-timer-banner.component';
 
-const OPS_KEY = 'p2p.operations';
-
 /** CSV header row (es-VE) for the operation-ledger export. */
 export const CSV_HEADER =
   'Fecha/Hora;Tipo;Par;Monto VES;Monto USDT;Precio;Comisiones;Sin errores;Comercio;Notas';
@@ -39,7 +43,7 @@ export function buildOperationsCsv(ops: readonly Operation[]): string {
   const rows = ops.map((o) =>
     [
       o.timestamp,
-      o.type === 'buy' ? 'compra' : 'venta',
+      o.type === 'buy' ? 'compra' : o.type === 'sell' ? 'venta' : 'asignación',
       o.pair,
       o.vesAmount,
       o.usdtAmount,
@@ -107,6 +111,15 @@ export class OperationLog {
 
   readonly form = signal<OpDraft>({ ...EMPTY_DRAFT });
 
+  /** Treasury assignment form state */
+  readonly showTreasuryAssign = signal(false);
+  readonly assignDraft = signal<{ vesAmount: number; bankAccountId: string; notes: string; errorFree: boolean }>({
+    vesAmount: 0,
+    bankAccountId: '',
+    notes: '',
+    errorFree: true,
+  });
+
   readonly selectedAccountUsage = computed(() => {
     const accId = this.form().bankAccountId;
     if (!accId) return null;
@@ -164,7 +177,7 @@ export class OperationLog {
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
-    return clampNonNegative(v);
+    return sharedClampMoney(v);
   }
 
   private load(): Operation[] {
@@ -186,6 +199,8 @@ export class OperationLog {
       this.error.set(msg);
       this.toast.error(msg);
     }
+    // Keep treasury/velocity derivations fresh after any ledger write (add, assign, remove, restore).
+    this.accountsService.refreshLedger();
   }
 
   add(): void {
@@ -237,6 +252,53 @@ export class OperationLog {
       },
       'info',
     );
+  }
+
+  addAssign(): void {
+    const draft = this.assignDraft();
+    if (draft.vesAmount <= 0) {
+      this.toast.error('Ingresa un monto VES válido para la asignación.');
+      return;
+    }
+    if (!draft.bankAccountId) {
+      this.toast.error('Selecciona una cuenta bancaria destino.');
+      return;
+    }
+
+    const newOp: Operation = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      type: 'assign',
+      pair: 'USDT',
+      vesAmount: clampNonNegative(draft.vesAmount),
+      usdtAmount: 0,
+      price: 0,
+      merchantNote: 'Asignación de tesorería',
+      fees: 0,
+      notes: draft.notes,
+      errorFree: draft.errorFree,
+      bankAccountId: draft.bankAccountId,
+    };
+
+    const next: Operation[] = [...this.operations(), newOp];
+    this.operations.set(next);
+    this.persist(next);
+    this.assignDraft.set({ vesAmount: 0, bankAccountId: '', notes: '', errorFree: true });
+    this.showTreasuryAssign.set(false);
+
+    this.toast.success(
+      `Asignación de tesorería (${newOp.vesAmount.toLocaleString('es-VE')} Bs) registrada en ${this.accountsService.getAccountById(newOp.bankAccountId!)?.bankName ?? 'cuenta'}.`,
+    );
+    this.audit.log(
+      'DATA_MUTATION',
+      'Asignación de tesorería',
+      { id: newOp.id, vesAmount: newOp.vesAmount, bankAccountId: newOp.bankAccountId },
+      'info',
+    );
+  }
+
+  toggleTreasuryAssign(): void {
+    this.showTreasuryAssign.update((v) => !v);
   }
 
   selectCounterparty(id: string): void {
@@ -310,7 +372,8 @@ export class OperationLog {
       .filter((o): o is Record<string, unknown> => typeof o === 'object' && o !== null)
       .map((o) => {
         const rawType = String(o['type'] || 'buy');
-        const type: 'buy' | 'sell' = rawType === 'sell' ? 'sell' : 'buy';
+        const type: Operation['type'] =
+          rawType === 'sell' ? 'sell' : rawType === 'assign' ? 'assign' : 'buy';
         const rawPair = String(o['pair'] || 'USDT');
         const pair: 'USDT' | 'EUR' = rawPair === 'EUR' ? 'EUR' : 'USDT';
 

@@ -9,8 +9,8 @@ export interface Operation {
   id: string;
   /** ISO timestamp of when the operation was recorded. */
   timestamp: string;
-  /** buy (spend VES to acquire USDT) or sell (receive VES for USDT). */
-  type: 'buy' | 'sell';
+  /** buy (spend VES to acquire USDT), sell (receive VES for USDT), or assign (treasury allocation). */
+  type: 'buy' | 'sell' | 'assign';
   /** trading pair the operation belongs to. */
   pair: 'USDT' | 'EUR';
   /** VES spent/received on the VES leg. */
@@ -66,6 +66,11 @@ export function computeLogSummary(ops: readonly Operation[]): LogSummary {
   let fees = 0;
 
   for (const o of ops) {
+    if (o.type === 'assign') {
+      // Treasury allocations record fiat deposits; they are not buy/sell trades, so
+      // they must not disturb PnL, capital deployment, or exposure.
+      continue;
+    }
     if (o.type === 'buy') {
       buyVes += o.vesAmount;
       buyUsdt += o.usdtAmount;

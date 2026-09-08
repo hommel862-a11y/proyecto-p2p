@@ -102,6 +102,7 @@ export function buildCalendarMonthView(
     const opDay = d.getUTCDate();
 
     if (opYear === year && opMonth === month) {
+      if (o.type === 'assign') continue;
       const entry = dailyMap.get(opDay);
       if (entry) {
         entry.ops.push(o);
