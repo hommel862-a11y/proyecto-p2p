@@ -50,6 +50,7 @@ export class HotkeysService implements OnDestroy {
   private readonly repricer = inject(BinanceRepricerService);
 
   readonly isCheatSheetOpen = signal<boolean>(false);
+  readonly isPaletteOpen = signal<boolean>(false);
   private readonly listeners = new Map<HotkeyAction, Set<() => void>>();
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -100,6 +101,18 @@ export class HotkeysService implements OnDestroy {
     this.isCheatSheetOpen.update((v) => !v);
   }
 
+  openPalette(): void {
+    this.isPaletteOpen.set(true);
+  }
+
+  closePalette(): void {
+    this.isPaletteOpen.set(false);
+  }
+
+  togglePalette(): void {
+    this.isPaletteOpen.update((v) => !v);
+  }
+
   private initGlobalListener(): void {
     if (typeof window === 'undefined') return;
 
@@ -112,8 +125,21 @@ export class HotkeysService implements OnDestroy {
           target.tagName === 'SELECT' ||
           target.isContentEditable);
 
-      // ESC always triggers kill switch & closes modal, even inside inputs
+      // Ctrl+K / Cmd+K opens palette
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault();
+        this.togglePalette();
+        return;
+      }
+
+      // ESC always closes palette, then modal, then kills bot — even inside inputs
       if (event.key === 'Escape') {
+        if (this.isPaletteOpen()) {
+          this.closePalette();
+          event.preventDefault();
+          return;
+        }
+
         if (this.isCheatSheetOpen()) {
           this.closeModal();
           event.preventDefault();

@@ -98,6 +98,21 @@
 
 .nav { display: flex; flex-direction: column; gap: 4px; }
 
+.nav-section-label {
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.8;
+  padding: 12px 12px 4px;
+  user-select: none;
+}
+.nav-section-label:first-child {
+  padding-top: 2px;
+}
+
 .nav a {
   display: flex;
   align-items: center;
@@ -247,8 +262,7 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: all 0.2s var(--ease-out);
-}
-.btn-theme:hover {
+}.btn-theme:hover {
   background: rgba(216, 180, 92, 0.08);
   border-color: rgba(216, 180, 92, 0.3);
   box-shadow: 0 0 14px var(--glow-gold);
@@ -267,16 +281,51 @@
 .content {
   position: relative;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 84px);
   padding: 40px 48px;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   background: transparent;
   border-radius: var(--radius-lg);
-  animation: fadeUp 0.35s var(--ease-out);
+  contain: paint;
 }
 .content::before {
   display: none;
+}
+
+.btn-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  border: 1px solid var(--line);
+  background: rgba(9, 16, 30, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s var(--ease-out);
+}
+.btn-shortcut:hover {
+  color: var(--gold-strong);
+  border-color: rgba(216, 180, 92, 0.3);
+  box-shadow: 0 0 12px var(--glow-gold);
+  background: rgba(216, 180, 92, 0.08);
+}
+.btn-shortcut .shortcut-icon {
+  width: 15px;
+  height: 15px;
+}
+.btn-shortcut .shortcut-label {
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* ============================================================

@@ -1,11 +1,12 @@
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, DestroyRef } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { ToastComponent } from './core/toast.component';
 import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
+import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
 
 @Component({
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastComponent, HotkeysModalComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastComponent, HotkeysModalComponent, CommandPalette],
   selector: 'app-root',
   styleUrl: './app.scss',
   templateUrl: './app.html',
@@ -16,6 +17,7 @@ export class App {
   /** Real app version when running under Electron; falls back to the web build. */
   readonly version = signal<string>('1.0.0');
   readonly hotkeys = inject(HotkeysService);
+  private readonly destroyRef = inject(DestroyRef);
 
   constructor() {
     try {
@@ -24,6 +26,7 @@ export class App {
       /* sin DOM */
     }
     this.resolveVersion();
+    this.listenThemeToggle();
   }
 
   private resolveVersion(): void {
@@ -66,5 +69,11 @@ export class App {
         /* sin DOM */
       }
     }
+  }
+
+  private listenThemeToggle(): void {
+    const handler = () => this.toggleTheme();
+    window.addEventListener('palette-toggle-theme', handler);
+    this.destroyRef.onDestroy(() => window.removeEventListener('palette-toggle-theme', handler));
   }
 }

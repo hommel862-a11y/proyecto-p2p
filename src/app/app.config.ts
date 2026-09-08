@@ -16,8 +16,14 @@ export const appConfig: ApplicationConfig = {
     provideZonelessChangeDetection(),
     // HashLocationStrategy: la app carga también sobre file:// (útil para empaquetado Electron y APK sin server)
     provideRouter(routes, withHashLocation()),
+    // En Electron, el Service Worker local sobre puerto efímero o file:// causa colapso
+    // y fallos de carga al navegar entre módulos lazy-loaded. Solo se habilita en PWA web.
     provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
+      enabled:
+        !isDevMode() &&
+        typeof window !== 'undefined' &&
+        !(window as unknown as { electron?: unknown }).electron &&
+        !navigator?.userAgent?.toLowerCase().includes('electron'),
       registrationStrategy: 'registerWhenStable:30000',
     }),
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
