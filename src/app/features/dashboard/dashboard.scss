@@ -1,0 +1,108 @@
+/* ============================================================
+   Dashboard / Control Center — actionable-card affordances
+   Scoped to this feature. Reuses global CSS variables only.
+   ============================================================ */
+
+/* Small "Ver →" affordance hint shown on actionable targets */
+.dashboard-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--gold-strong);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease-out);
+}
+
+/* KPI tiles → /stats or /income */
+.dashboard-kpi {
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(216, 180, 92, 0.4);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(216, 180, 92, 0.08);
+    transform: translateY(-2px);
+
+    .dashboard-hint {
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+}
+
+/* Account velocity tiles → /log filtered by bank */
+.dashboard-velocity-tile {
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(216, 180, 92, 0.4);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(216, 180, 92, 0.08);
+    transform: translateY(-2px);
+
+    .dashboard-hint {
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+}
+
+/* 7-day chart bars → /stats day drill */
+.dashboard-chart-click {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+}
+
+.dashboard-chart-col {
+  &:hover .dashboard-hint {
+    opacity: 1;
+  }
+}
+
+/* Risk verdict + recent-op rows get a hover hint and cursor */
+.dashboard-verdict-click {
+  cursor: pointer;
+
+  &:hover .dashboard-hint {
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+}
+
+.dashboard-op-row {
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out);
+
+  &:hover {
+    background: rgba(216, 180, 92, 0.06);
+
+    .dashboard-hint {
+      opacity: 1;
+    }
+  }
+}

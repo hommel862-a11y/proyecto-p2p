@@ -50,29 +50,33 @@
   <div class="section-group">
     <span class="section-eyebrow">Rendimiento de Hoy</span>
     <div class="out">
-      <div>
+      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
         <dt>Ganancia Neta (VES)</dt>
         <dd [class.positive]="dashboard().today.pnlVes > 0"
             [class.negative]="dashboard().today.pnlVes < 0">
           {{ fmtVes(dashboard().today.pnlVes) }}
         </dd>
+        <span class="dashboard-hint">Ver →</span>
       </div>
-      <div>
+      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
         <dt>Ganancia Neta (USDT)</dt>
         <dd [class.positive]="dashboard().today.pnlUsdt > 0"
             [class.negative]="dashboard().today.pnlUsdt < 0">
           {{ fmtUsd(dashboard().today.pnlUsdt) }}
         </dd>
+        <span class="dashboard-hint">Ver →</span>
       </div>
-      <div>
+      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
         <dt>Operaciones Hoy</dt>
         <dd>{{ dashboard().today.operations }}</dd>
+        <span class="dashboard-hint">Ver →</span>
       </div>
-      <div>
+      <div class="dashboard-kpi" (click)="goToIncome()" role="button" tabindex="0" (keydown.enter)="goToIncome()">
         <dt>Meta Diaria</dt>
         <dd>
           <span class="dashboard-progress-label">{{ dailyProgress() }}%</span>
         </dd>
+        <span class="dashboard-hint">Proyección →</span>
       </div>
     </div>
 
@@ -147,7 +151,7 @@
 
     <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
       @for (v of accountVelocities(); track v.accountId) {
-        <div class="stat-tile out" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
+        <div class="stat-tile out dashboard-velocity-tile" (click)="goToBankLog(v.bankName)" role="button" tabindex="0" (keydown.enter)="goToBankLog(v.bankName)" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <strong style="font-size: 0.95rem; color: var(--text);">{{ v.bankName }}</strong>
@@ -176,6 +180,7 @@
                    [style.width.%]="Math.min(100, v.usedPct)">
               </div>
             </div>
+            <span class="dashboard-hint">Ver registro →</span>
           </div>
         </div>
       }
@@ -279,7 +284,7 @@
       <div class="dashboard-chart">
         @for (day of dashboard().week; track day.date) {
           <div class="dashboard-chart-col">
-            <div class="dashboard-chart-bar-wrap">
+            <div class="dashboard-chart-bar-wrap dashboard-chart-click" (click)="goToDay(day.date)" role="button" tabindex="0" (keydown.enter)="goToDay(day.date)">
               <div class="dashboard-chart-bar"
                    [class.bar-positive]="day.pnlVes >= 0"
                    [class.bar-negative]="day.pnlVes < 0"
@@ -289,6 +294,7 @@
             </div>
             <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
             <span class="dashboard-chart-ops">{{ fmtUsd(day.volumeUsdt) }}</span>
+            <span class="dashboard-hint">Drill día →</span>
           </div>
         }
       </div>
@@ -301,11 +307,12 @@
          ═══════════════════════════════════════════════════ -->
     <div class="section-group">
       <span class="section-eyebrow">Motor de Riesgo</span>
-      <div class="dashboard-verdict verdict {{ decisionClass(verdict().decision) }}">
+      <div class="dashboard-verdict verdict {{ decisionClass(verdict().decision) }} dashboard-verdict-click" (click)="goToRisk()" role="button" tabindex="0" (keydown.enter)="goToRisk()">
         <span class="dashboard-verdict-dot"></span>
         <div>
           <strong>{{ decisionLabel(verdict().decision) }}</strong>
           <p class="dashboard-verdict-reason">{{ verdict().reason }}</p>
+          <span class="dashboard-hint">Editar reglas →</span>
         </div>
       </div>
       <a routerLink="/risk" class="dashboard-link">Configurar reglas →</a>
@@ -358,11 +365,11 @@
           </thead>
           <tbody>
             @for (o of dashboard().recentOps; track o.id) {
-              <tr>
+              <tr class="dashboard-op-row" (click)="goToLog()" role="button" tabindex="0" (keydown.enter)="goToLog()" title="Ver registro completo">
                 <td class="font-mono text-muted">{{ o.timestamp | slice:0:16 }}</td>
                 <td>
                   <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
-                    {{ o.type === 'buy' ? 'Compra' : 'Venta' }}
+                    {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Asignación' }}
                   </span>
                 </td>
                 <td><strong>{{ o.pair }}</strong></td>

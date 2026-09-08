@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { StorageService } from '../../core/storage';
 import { RisksService } from '../../core/rules';
 import { SessionService } from '../../core/session.service';
@@ -22,8 +22,10 @@ const OPS_KEY = 'p2p.operations';
   standalone: true,
   imports: [CommonModule, RouterLink, ...FORMAT_PIPES],
   templateUrl: './dashboard.html',
+  styleUrl: './dashboard.scss',
 })
 export class Dashboard {
+  private readonly router = inject(Router);
   private readonly storage = inject(StorageService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
@@ -211,6 +213,41 @@ export class Dashboard {
     const m = Math.floor((totalSec % 3600) / 60);
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
+  }
+
+  /** KPIs → historical performance view. */
+  goToStats(): void {
+    this.router.navigate(['/stats']);
+  }
+
+  /** Daily target / income projection → income calculator. */
+  goToIncome(): void {
+    this.router.navigate(['/income']);
+  }
+
+  /** Session KPIs → live trading terminal. */
+  goToSpread(): void {
+    this.router.navigate(['/spread']);
+  }
+
+  /** Velocity chip → operation log filtered by that bank (forward-compat query param). */
+  goToBankLog(bankKey: string): void {
+    this.router.navigate(['/log'], { queryParams: { bank: bankKey } });
+  }
+
+  /** Chart bar → stats calendar for that day (forward-compat query param). */
+  goToDay(day: string): void {
+    this.router.navigate(['/stats'], { queryParams: { day } });
+  }
+
+  /** Risk verdict → risk rules editor. */
+  goToRisk(): void {
+    this.router.navigate(['/risk']);
+  }
+
+  /** Recent operation row → full operation log. */
+  goToLog(): void {
+    this.router.navigate(['/log']);
   }
 
   readonly fmtVes = fmtVes;
