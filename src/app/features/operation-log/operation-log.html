@@ -12,6 +12,23 @@
 
   <app-operation-timer-banner />
 
+  @if (selectedBank(); as bank) {
+    <div style="display: flex; gap: 8px; margin-top: 10px;">
+      <span
+        style="
+          font-size: 0.78rem;
+          padding: 4px 10px;
+          background: rgba(47, 208, 143, 0.15);
+          border: 1px solid rgba(47, 208, 143, 0.35);
+          border-radius: var(--radius);
+          color: var(--accent);
+        "
+        (click)="clearBankFilter()">
+        Banco {{ bank }} ✕
+      </span>
+    </div>
+  }
+
   <app-operation-form
     [form]="form()"
     [selectedAccountUsage]="selectedAccountUsage()"
@@ -136,7 +153,7 @@
   <div class="section-divider"></div>
   <app-operation-table
     [operations]="operations()"
-    [visibleOps]="visibleOps()"
+    [visibleOps]="displayOperations()"
     [pairFilter]="pairFilter()"
     (pairFilterChange)="setPairFilter($event)"
     (removeRequest)="requestRemove($event)" />

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import {
   computeLogSummary,
   clampNonNegative,
@@ -100,6 +101,10 @@ export class OperationLog {
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
 
+  readonly selectedBank = signal<string | null>(null);
+
+  private readonly router = inject(Router);
+
   readonly operations = signal<Operation[]>(this.load());
   readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>('all');
   /** Non-blocking persistence error message, shown in the template; null when all is well. */
@@ -149,6 +154,12 @@ export class OperationLog {
   });
 
   constructor() {
+    const router = inject(Router);
+    const url = router.parseUrl(router.url);
+    const bankParam = url.queryParams['bank'];
+    if (bankParam) {
+      this.selectedBank.set(bankParam);
+    }
     const preset = this.timer.consumePendingPreset();
     if (preset) {
       this.form.set({
@@ -173,6 +184,28 @@ export class OperationLog {
 
   setPairFilter(p: 'all' | 'USDT' | 'EUR'): void {
     this.pairFilter.set(p);
+  }
+
+  readonly filteredOperations = computed(() => {
+    const bank = this.selectedBank();
+    if (!bank) return this.operations();
+    const ops = this.operations();
+    const matchingAccounts = this.accountsService.accounts().filter(
+      (a) => a.bankName === bank,
+    );
+    const matchingAccountIds = matchingAccounts.map((a) => a.id);
+    return ops.filter((o) => matchingAccountIds.includes(o.bankAccountId ?? ''));
+  });
+
+  readonly displayOperations = computed(() => {
+    const pair = this.pairFilter();
+    const baseOps = this.filteredOperations();
+    return pair === 'all' ? baseOps : baseOps.filter((o) => o.pair === pair);
+  });
+
+  clearBankFilter(): void {
+    this.selectedBank.set(null);
+    this.router.navigate(['/log']);
   }
 
   /** Template helper: collapse NaN/empty/negative money entries to 0. */

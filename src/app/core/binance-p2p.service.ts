@@ -46,10 +46,10 @@ export class BinanceP2pService implements OnDestroy {
   startAutoRefresh(intervalMs = 30000, asset = 'USDT'): void {
     this.stopAutoRefresh();
     this.autoRefresh.set(true);
-    void this.fetchMarketDepth(asset, 'VES');
+    void this.fetchMarketDepth(asset, 'VES', true);
     this.refreshTimer = setInterval(() => {
       if (this.autoRefresh() && !this.loading()) {
-        void this.fetchMarketDepth(asset, 'VES');
+        void this.fetchMarketDepth(asset, 'VES', true);
       }
     }, intervalMs);
   }
@@ -62,7 +62,11 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
-  async fetchMarketDepth(asset = 'USDT', fiat = 'VES'): Promise<BinanceP2pMarketDepth | null> {
+  async fetchMarketDepth(
+    asset = 'USDT',
+    fiat = 'VES',
+    silent = false,
+  ): Promise<BinanceP2pMarketDepth | null> {
     this.loading.set(true);
     this.error.set(null);
 
@@ -120,7 +124,9 @@ export class BinanceP2pService implements OnDestroy {
     } catch (err) {
       const msg = (err as Error).message || 'No se pudo conectar con Binance P2P';
       this.error.set(msg);
-      this.toast.error(msg, 'Error Mercado Binance P2P');
+      if (!silent) {
+        this.toast.error(msg, 'Error Mercado Binance P2P');
+      }
       return null;
     } finally {
       this.loading.set(false);
