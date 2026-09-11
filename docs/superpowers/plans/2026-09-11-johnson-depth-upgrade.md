@@ -809,13 +809,13 @@ Reglas del negocio:
 - Señal (solo si `gapPct != null`): `gapPct >= 2` → `SELL_WINDOW`; `gapPct <= -2` → `BUY_WINDOW`; si `rateMomentumPct > 0.5 && gapPct < 1` → `BUY_WINDOW` (rezago: la tasa subió y el P2P no ajustó); resto `NEUTRAL`.
 - `bcvRate` y `windowMinutes` se reciben por compatibilidad futura (no alteran la señal v1). Si el lint exige uso, agregar `void bcvRate; void windowMinutes;`.
 
-- [ ] **Step 1: Verificación anti-duplicación (D3) — leer `triangular-arbitrage.ts`**
+- [x] **Step 1: Verificación anti-duplicación (D3) — leer `triangular-arbitrage.ts`**
 
 Leer `projects/core/src/lib/triangular-arbitrage.ts` (solo lectura).
 - Si YA expone una función equivalente a "ventana/divergencia P2P vs otra fuente con señal direccional": NO crear `detectRateDivergence`. Documentar en un comentario del módulo cómo usar la función existente y saltar a Step 5 con un commit de documentación/mapping.
 - Si NO la expone (solo gap/arbitraje estático sin momentum): continuar con Step 2.
 
-- [ ] **Step 2: Escribir los tests que fallan**
+- [x] **Step 2: Escribir los tests que fallan**
 
 ```ts
 // projects/core/src/lib/johnson-depth-rate-window.spec.ts
@@ -876,12 +876,12 @@ describe('detectRateDivergence', () => {
 });
 ```
 
-- [ ] **Step 3: Correr el test y verificar que falla**
+- [x] **Step 3: Correr el test y verificar que falla**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth-rate-window.spec.ts`
 Expected: FAIL — módulo no existe.
 
-- [ ] **Step 4: Implementación mínima**
+- [x] **Step 4: Implementación mínima**
 
 ```ts
 // projects/core/src/lib/johnson-depth-rate-window.ts
@@ -937,12 +937,12 @@ export function detectRateDivergence(input: RateDivergenceInput): RateDivergence
 }
 ```
 
-- [ ] **Step 5: Correr el test y verificar que pasa**
+- [x] **Step 5: Correr el test y verificar que pasa**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth-rate-window.spec.ts`
 Expected: 5 PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add projects/core/src/lib/johnson-depth-rate-window.ts projects/core/src/lib/johnson-depth-rate-window.spec.ts
