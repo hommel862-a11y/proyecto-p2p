@@ -959,7 +959,7 @@ git commit -m "feat(johnson-depth): ventana de arbitraje sobre computeTriangulat
 **Interfaces:**
 - Produces: `@p2p/core` expone `johnson-depth` y `johnson-depth-rate-window` (los demás exports ya están, incluidos spread-quality/cotizave/triangular-arbitrage — NO tocarlos).
 
-- [ ] **Step 1: Agregar los exports (al final, después de `receipt-ocr`)**
+- [x] **Step 1: Agregar los exports (al final, después de `receipt-ocr`)**
 
 ```ts
 // projects/core/src/public-api.ts — agregar al final
@@ -967,21 +967,21 @@ export * from './lib/johnson-depth';
 export * from './lib/johnson-depth-rate-window';
 ```
 
-- [ ] **Step 2: Verificar que no hay export duplicado**
+- [x] **Step 2: Verificar que no hay export duplicado**
 
 Buscar en el archivo: los nombres de función exportados por los 2 módulos nuevos no deben aparecer ya en otras líneas de public-api (patrón de error rolldown "Duplicated export" si se duplica). `computeVolumeWeightedPrice`, `detectRateDivergence`, etc. son nombres nuevos → OK.
 
-- [ ] **Step 3: Verificar con la suite del core**
+- [x] **Step 3: Verificar con la suite del core**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth*.spec.ts`
 Expected: PASS (Tasks 1-4 juntas).
 
-- [ ] **Step 4: Verificar el build completo**
+- [x] **Step 4: Verificar el build completo**
 
 Run: `npm run build`
 Expected: EXIT 0 (solo warnings pre-existentes de qrcode/scss aceptables).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add projects/core/src/public-api.ts

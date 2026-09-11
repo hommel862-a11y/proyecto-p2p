@@ -34,3 +34,5 @@ export * from './lib/electron-quick-overlay';
 export * from './lib/triangular-arbitrage';
 export * from './lib/plugin-registry';
 export * from './lib/receipt-ocr';
+export * from './lib/johnson-depth';
+export * from './lib/johnson-depth-rate-window';
