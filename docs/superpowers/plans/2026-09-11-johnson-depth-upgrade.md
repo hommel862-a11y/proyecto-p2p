@@ -310,7 +310,7 @@ git commit -m "feat(johnson-depth): volumen ponderado con filtros anti-manipulac
 
 **Corrección clave:** el plugin original usaba `context` (fuera de scope) y campos inexistentes. Aquí `requirements` es parámetro explícito y la profundidad se mide con volumen real. Ver decisión D1 (complementario a `computeSpreadQualityScore`, sin acoplamiento).
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 ```ts
 // Agregar a projects/core/src/lib/johnson-depth.spec.ts
@@ -395,12 +395,12 @@ describe('determineSignal', () => {
 });
 ```
 
-- [ ] **Step 2: Correr los tests y verificar que fallan**
+- [x] **Step 2: Correr los tests y verificar que fallan**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth.spec.ts`
 Expected: FAIL — funciones no exportadas.
 
-- [ ] **Step 3: Implementación**
+- [x] **Step 3: Implementación**
 
 ```ts
 // Agregar a projects/core/src/lib/johnson-depth.ts
@@ -483,12 +483,12 @@ export function determineSignal(
 }
 ```
 
-- [ ] **Step 4: Correr los tests y verificar que pasan**
+- [x] **Step 4: Correr los tests y verificar que pasan**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth.spec.ts`
 Expected: todos PASS (Task 1 + Task 2).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add projects/core/src/lib/johnson-depth.ts projects/core/src/lib/johnson-depth.spec.ts

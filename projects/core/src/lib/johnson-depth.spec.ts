@@ -80,3 +80,82 @@ describe('computeVolumeWeightedPrice', () => {
     expect(conFiltro.price).toBeCloseTo((500 * 810 + 500 * 820) / 1000, 2);
   });
 });
+
+import {
+  calculateDepthQuality,
+  calculateLiquidityScore,
+  determineSignal,
+  DEFAULT_JOHNSON_REQUIREMENTS,
+} from './johnson-depth';
+
+const REQUIRED = DEFAULT_JOHNSON_REQUIREMENTS;
+
+function makeDepth(bestBuy: number, bestSell: number, buyVolUsdt: number, sellVolUsdt: number) {
+  return {
+    asset: 'USDT',
+    fiat: 'VES',
+    bestBuyPrice: bestBuy,
+    bestSellPrice: bestSell,
+    spreadVes: bestSell - bestBuy,
+    spreadPct: ((bestSell - bestBuy) / bestBuy) * 100,
+    updatedAt: new Date().toISOString(),
+    buyOffers: [
+      { advNo: 'b0', price: bestBuy, merchantName: 'B0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: buyVolUsdt * bestBuy, payMethods: ['Banesco'] },
+    ],
+    sellOffers: [
+      { advNo: 's0', price: bestSell, merchantName: 'S0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: sellVolUsdt * bestSell, payMethods: ['Banesco'] },
+    ],
+  } as const as any;
+}
+
+describe('calculateDepthQuality', () => {
+  it('mercado equilibrado y rentable => score alto', () => {
+    const depth = makeDepth(800, 825, 1000, 1000);
+    expect(calculateDepthQuality(depth, REQUIRED)).toBeGreaterThanOrEqual(80);
+  });
+
+  it('sin precios => score 0', () => {
+    const depth = makeDepth(0, 0, 1000, 1000);
+    expect(calculateDepthQuality(depth, REQUIRED)).toBe(0);
+  });
+
+  it('spread enorme castiga el score', () => {
+    const good = makeDepth(800, 805, 1000, 1000);
+    const bad = makeDepth(800, 900, 1000, 1000);
+    expect(calculateDepthQuality(bad, REQUIRED)).toBeLessThan(calculateDepthQuality(good, REQUIRED));
+  });
+});
+
+describe('calculateLiquidityScore', () => {
+  it('liquidez abundante => 100', () => {
+    const depth = makeDepth(800, 825, 2000, 2000);
+    expect(calculateLiquidityScore(depth, REQUIRED)).toBe(100);
+  });
+
+  it('liquidez nula => 0', () => {
+    const depth = makeDepth(800, 825, 0, 0);
+    expect(calculateLiquidityScore(depth, REQUIRED)).toBe(0);
+  });
+});
+
+describe('determineSignal', () => {
+  it('spread menor al mínimo => AVOID siempre', () => {
+    const depth = makeDepth(800, 800.1, 5000, 5000);
+    expect(determineSignal(depth, 95, 100, REQUIRED)).toBe('AVOID');
+  });
+
+  it('calidad alta + spread sano + liquidez => STRONG_BUY', () => {
+    const depth = makeDepth(800, 825, 2000, 2000);
+    expect(determineSignal(depth, 90, 100, REQUIRED)).toBe('STRONG_BUY');
+  });
+
+  it('calidad media => BUY', () => {
+    const depth = makeDepth(800, 825, 2000, 2000);
+    expect(determineSignal(depth, 65, 100, REQUIRED)).toBe('BUY');
+  });
+
+  it('liquidez insuficiente => AVOID', () => {
+    const depth = makeDepth(800, 825, 0, 0);
+    expect(determineSignal(depth, 90, 0, REQUIRED)).toBe('AVOID');
+  });
+});
