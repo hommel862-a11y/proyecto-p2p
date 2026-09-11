@@ -146,6 +146,77 @@
     </div>
   </app-ui-card>
 
+  <app-ui-card style="margin-top: 1.5rem;">
+    <app-ui-panel-header icon="🤖" title="Telegram Sentinel Bot & Dispatcher">
+      <span uiHeaderActions class="badge badge-warning font-mono">24/7 SENTINEL</span>
+    </app-ui-panel-header>
+
+    <div class="terminal-input-grid grid-3">
+      <div class="terminal-field">
+        <label class="terminal-label" for="telegram-bot-token">
+          <span>Telegram Bot Token</span>
+          <span class="terminal-subtext">Obtenido de @BotFather</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="telegram-bot-token"
+            type="password"
+            class="terminal-input font-mono"
+            [value]="telegramToken()"
+            (input)="telegramToken.set($any($event.target).value)"
+            placeholder="123456789:ABCdefGhIJKlmNoPQRstUVw"
+          />
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="telegram-chat-id">
+          <span>Chat ID / Usuario Autorizado</span>
+          <span class="terminal-subtext">Obtenido de @userinfobot</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="telegram-chat-id"
+            type="text"
+            class="terminal-input font-mono"
+            [value]="telegramChatId()"
+            (input)="telegramChatId.set($any($event.target).value)"
+            placeholder="987654321"
+          />
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="telegram-alerts-enabled">
+          <span>Alertas en Tiempo Real</span>
+          <span class="terminal-subtext">Despacho de Spreads & Riegos</span>
+        </label>
+        <div class="input-control-wrap">
+          <select
+            id="telegram-alerts-enabled"
+            class="terminal-select"
+            [value]="telegramAlertsEnabled() ? 'yes' : 'no'"
+            (change)="telegramAlertsEnabled.set($any($event.target).value === 'yes')"
+          >
+            <option value="yes">🔔 ACTIVADAS — Transmitir eventos</option>
+            <option value="no">🔕 SILENCIADAS — Sólo comandos manuales</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 6px;">
+      <div class="footer-badge">
+        <span class="status-indicator" [class.active]="telegramAlertsEnabled()"></span>
+        <span>Canal cifrado: Soporta comandos remotos /killswitch, /status, /resume y /spreads</span>
+      </div>
+      <div class="actions" style="margin: 0; display: flex; gap: 8px;">
+        <button type="button" class="btn btn-secondary" (click)="sendTestTelegramAlert()">⚡ Probar Alerta</button>
+        <button type="button" class="btn btn-primary" (click)="saveTelegramConfig()">💾 Guardar Telegram</button>
+      </div>
+    </div>
+  </app-ui-card>
+
   <div class="section-divider"></div>
   <div class="verdict-card">
     <span class="section-eyebrow">Veredicto del Motor</span>
