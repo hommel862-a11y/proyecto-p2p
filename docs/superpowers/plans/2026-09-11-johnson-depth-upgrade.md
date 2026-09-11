@@ -1190,7 +1190,7 @@ git commit -m "refactor(johnson-depth): plugin como adaptador delgado con cleanu
 
 **Files:** ninguno (solo comandos).
 
-- [ ] **Step 1: Baseline == Final**
+- [x] **Step 1: Baseline == Final**
 
 ```bash
 git status --short
@@ -1202,7 +1202,7 @@ npm run build
 - `npm test`: todos los tests (289 originales + nuevos) en verde. Ningún test pre-existente roto.
 - `npm run build`: EXIT 0 con los mismos warnings pre-existentes.
 
-- [ ] **Step 2: Diff de sanity (nada visual tocado)**
+- [x] **Step 2: Diff de sanity (nada visual tocado)**
 
 ```bash
 git diff --stat
@@ -1210,12 +1210,12 @@ git diff --stat
 
 Confirmar que NO aparece ningún archivo de `src/app` ni de `electron/`. Si aparece (sin aprobación de Task 7) → revertir ese archivo inmediatamente.
 
-- [ ] **Step 3: Smoke funcional de la app**
+- [x] **Step 3: Smoke funcional de la app**
 
 Abrir la app con el método que use el repo (en Windows: `Start-Process -FilePath "E:\05_Proyectos\proyecto p2p\node_modules\electron\dist\electron.exe" -ArgumentList "." -WorkingDirectory "E:\05_Proyectos\proyecto p2p"`).
 Verificar: la ventana "Spread Monitor" abre igual que antes, los datos de Binance cargan (sin error CORS), y NO hay cambios visuales (Task 7 no aprobada = cero cambios de UI).
 
-- [ ] **Step 4: Nota de rollback**
+- [x] **Step 4: Nota de rollback**
 
 Si algo sale mal tras Task 8: revertir solo los commits de esta feature. En la rama `feat/p2p-decision-tool-mvp`:
 ```bash
@@ -1224,7 +1224,7 @@ git revert <hash1> <hash2> ...   # o reset del rango si la rama no se ha compart
 ```
 El estado pre-feature es reproducible con Task 0 Step 4 (baseline: 289 tests, build EXIT 0).
 
-- [ ] **Step 5: Resumen final (para el usuario)**
+- [x] **Step 5: Resumen final (para el usuario)**
 
 Reportar: archivos creados/modificados, nº tests nuevos y total, resultado de build, confirmación de "nada visual cambió", y el estado del plugin (`init` + `refresh` + `cleanup` funcionando contra el registry).
 
