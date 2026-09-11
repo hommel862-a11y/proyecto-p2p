@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import {
   parseBankReceiptText,
   exportReceiptsToCSV,
+  evaluateFraudRisk,
+  type FraudShieldAuditResult,
   type BankReceiptRecord,
   type Operation,
 } from '@p2p/core';
@@ -32,8 +34,12 @@ export class ReceiptScanner {
 
   readonly manualTextInput = signal<string>('');
   readonly receipts = signal<BankReceiptRecord[]>([]);
+  readonly receiptAudits = signal<Map<string, FraudShieldAuditResult>>(new Map());
+  readonly selectedAudit = signal<FraudShieldAuditResult | null>(null);
 
   readonly expectedCounterparty = signal<string>('');
+  readonly expectedId = signal<string>('');
+  readonly expectedAmount = signal<number | null>(null);
   readonly isDragging = signal<boolean>(false);
 
   /**
@@ -137,7 +143,6 @@ export class ReceiptScanner {
     const currentOps: Operation[] = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     const knownRefs = currentOps
       .map((o: Operation) => {
-        // Extract ref from merchantNote or notes
         const match = (o.notes + ' ' + o.merchantNote).match(
           /(?:ref|comprobante|id|#)[:\s#]*([A-Za-z0-9-]+)/i,
         );
@@ -150,15 +155,83 @@ export class ReceiptScanner {
       expectedCounterpartyName: this.expectedCounterparty().trim() || undefined,
     });
 
+    const audit = evaluateFraudRisk({
+      orderId: `ORD-${Date.now().toString().slice(-6)}`,
+      orderAmount: this.expectedAmount() || parsed.amount,
+      orderCurrency: (parsed.currency as 'VES' | 'COP' | 'USD') || 'VES',
+      advertiserVerifiedName:
+        this.expectedCounterparty().trim() || parsed.payerName || 'Contraparte Binance',
+      advertiserIdDocument: this.expectedId().trim() || undefined,
+      receipt: parsed,
+      knownReferences: knownRefs,
+    });
+
     this.receipts.update((list) => [parsed, ...list]);
+    this.receiptAudits.update((map) => {
+      const next = new Map(map);
+      next.set(parsed.id, audit);
+      return next;
+    });
+  }
+
+  recomputeAudits(): void {
+    const currentOps: Operation[] = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    const knownRefs = currentOps
+      .map((o: Operation) => {
+        const match = (o.notes + ' ' + o.merchantNote).match(
+          /(?:ref|comprobante|id|#)[:\s#]*([A-Za-z0-9-]+)/i,
+        );
+        return match ? match[1] : '';
+      })
+      .filter((r: string) => r.length > 0);
+
+    const audits = new Map<string, FraudShieldAuditResult>();
+    for (const r of this.receipts()) {
+      const audit = evaluateFraudRisk({
+        orderId: `ORD-${r.id.slice(-6)}`,
+        orderAmount: this.expectedAmount() || r.amount,
+        orderCurrency: (r.currency as 'VES' | 'COP' | 'USD') || 'VES',
+        advertiserVerifiedName:
+          this.expectedCounterparty().trim() || r.payerName || 'Contraparte Binance',
+        advertiserIdDocument: this.expectedId().trim() || undefined,
+        receipt: r,
+        knownReferences: knownRefs,
+      });
+      audits.set(r.id, audit);
+    }
+    this.receiptAudits.set(audits);
+  }
+
+  copyDisputeClaim(audit: FraudShieldAuditResult): void {
+    if (!audit.disputeTemplateText) return;
+    navigator.clipboard
+      .writeText(audit.disputeTemplateText)
+      .then(() => {
+        this.toast.success(
+          '📋 Reclamo formal copiado. Listo para pegar en el soporte de Binance/Bybit.',
+        );
+      })
+      .catch(() => {
+        this.toast.error('No se pudo copiar el texto al portapapeles.');
+      });
   }
 
   removeReceipt(id: string): void {
     this.receipts.update((list) => list.filter((r) => r.id !== id));
+    this.receiptAudits.update((map) => {
+      const next = new Map(map);
+      next.delete(id);
+      return next;
+    });
+    if (this.selectedAudit()?.orderId.endsWith(id.slice(-6))) {
+      this.selectedAudit.set(null);
+    }
   }
 
   clearReceipts(): void {
     this.receipts.set([]);
+    this.receiptAudits.set(new Map());
+    this.selectedAudit.set(null);
   }
 
   exportToExcel(): void {

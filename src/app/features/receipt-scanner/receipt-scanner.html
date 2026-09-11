@@ -127,21 +127,21 @@
     </div>
   </div>
 
-  <!-- Anti-Triangulation Reference Bar -->
+  <!-- Anti-Triangulation & Fraud Shield Reference Bar -->
   <div class="terminal-input-card" style="margin-bottom: 24px;">
     <div class="terminal-card-header">
       <div class="card-header-title">
         <span class="card-icon">🛡️</span>
-        <span class="card-title">Cruce de Seguridad Anti-Triangulación</span>
+        <span class="card-title">Escudo Forense Anti-Fraude & Cruce de Identidad</span>
       </div>
-      <span class="badge badge-accent">Auditoría Preventiva</span>
+      <span class="badge badge-accent">Auditoría en Tiempo Real</span>
     </div>
 
-    <div class="terminal-input-grid">
+    <div class="terminal-input-grid grid-3">
       <div class="terminal-field">
         <label class="terminal-label" for="counterparty-check-input">
-          <span>Nombre de la Contraparte Verificada en Binance</span>
-          <span class="terminal-subtext">Compara automáticamente el nombre del pagador para alertar pagos de terceros</span>
+          <span>Titular Verificado en Binance / Bybit</span>
+          <span class="terminal-subtext">Nombre registrado en el exchange</span>
         </label>
         <div class="input-control-wrap">
           <input
@@ -149,13 +149,164 @@
             type="text"
             class="terminal-input"
             [ngModel]="expectedCounterparty()"
-            (ngModelChange)="expectedCounterparty.set($event)"
-            placeholder="Ej. Pedro Pérez (Nombre de la cuenta verificada en Binance)"
+            (ngModelChange)="expectedCounterparty.set($event); recomputeAudits()"
+            placeholder="Ej. Pedro Pérez"
+          />
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="counterparty-id-input">
+          <span>Cédula o RIF de la Orden (Opcional)</span>
+          <span class="terminal-subtext">Cédula del comprador en el exchange</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="counterparty-id-input"
+            type="text"
+            class="terminal-input"
+            [ngModel]="expectedId()"
+            (ngModelChange)="expectedId.set($event); recomputeAudits()"
+            placeholder="Ej. V-18293041"
+          />
+        </div>
+      </div>
+
+      <div class="terminal-field">
+        <label class="terminal-label" for="counterparty-amount-input">
+          <span>Monto Esperado de la Orden (Opcional)</span>
+          <span class="terminal-subtext">Para detectar pagos fraccionados</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="counterparty-amount-input"
+            type="number"
+            class="terminal-input font-mono"
+            [ngModel]="expectedAmount()"
+            (ngModelChange)="expectedAmount.set($event); recomputeAudits()"
+            placeholder="Ej. 5400.00"
           />
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Forensic Audit Drawer / Card Modal -->
+  @if (selectedAudit(); as audit) {
+    <div
+      class="forensic-panel"
+      [class.safe-panel]="audit.riskLevel === 'SAFE'"
+      [class.warning-panel]="audit.riskLevel === 'WARNING'"
+    >
+      <div class="forensic-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.3rem;">
+            @if (audit.riskLevel === 'SAFE') { 🛡️ }
+            @else if (audit.riskLevel === 'WARNING') { ⚠️ }
+            @else { 🚨 }
+          </span>
+          <div>
+            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">
+              Auditoría Forense Anti-Fraude: Orden {{ audit.orderId }}
+            </h4>
+            <span class="text-muted" style="font-size: 0.75rem;">
+              Evaluación de microestructura y cruce de datos contra estafas triangulares
+            </span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+          @if (audit.riskLevel === 'SAFE') {
+            <span class="badge badge-accent">SAFE • AUTO RELEASE OK</span>
+          } @else if (audit.riskLevel === 'WARNING') {
+            <span class="badge font-mono" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">
+              RIESGO {{ audit.overallScore }}/100 • AUDITORÍA REQUERIDA
+            </span>
+          } @else {
+            <span class="badge badge-danger">
+              CRÍTICO {{ audit.overallScore }}/100 • BLOQUEAR Y DISPUTAR
+            </span>
+          }
+          <button
+            type="button"
+            class="btn-ghost"
+            (click)="selectedAudit.set(null)"
+            style="font-size: 0.85rem; padding: 4px 8px;"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <strong style="color: var(--text); font-size: 0.88rem;">{{ audit.summaryHeadline }}</strong>
+      </div>
+
+      <div class="terminal-input-grid grid-3" style="margin-bottom: 14px;">
+        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+          <span class="text-muted" style="font-size: 0.72rem; display: block;">Coincidencia de Titular</span>
+          <strong class="font-mono" style="color: var(--gold); font-size: 0.85rem;">
+            {{ (audit.nameMatch.score * 100).toFixed(0) }}% Similitud
+          </strong>
+          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
+            {{ audit.nameMatch.isMatch ? '✓ Titular directo' : '✕ Posible tercero' }}
+          </span>
+        </div>
+
+        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+          <span class="text-muted" style="font-size: 0.72rem; display: block;">Integridad de Referencia</span>
+          <strong class="font-mono" style="font-size: 0.85rem;" [style.color]="audit.referenceValidation.isValid ? 'var(--accent)' : 'var(--danger)'">
+            {{ audit.referenceValidation.isValid ? '✓ Válida (' + audit.referenceValidation.bank + ')' : '✕ Inválida' }}
+          </strong>
+          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
+            {{ audit.referenceValidation.reference }}
+          </span>
+        </div>
+
+        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+          <span class="text-muted" style="font-size: 0.72rem; display: block;">Diferencia de Monto</span>
+          <strong class="font-mono" style="font-size: 0.85rem;" [style.color]="audit.amountDifference === 0 ? 'var(--accent)' : 'var(--danger)'">
+            {{ audit.amountDifference === 0 ? '0.00 Exacto' : 'Discrepancia: ' + audit.amountDifference.toFixed(2) }}
+          </strong>
+          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
+            Tolerancia estándar
+          </span>
+        </div>
+      </div>
+
+      <!-- Inconsistencies List -->
+      <div>
+        <span class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">
+          Detalle del Diagnóstico Forense:
+        </span>
+        <ul class="audit-detail-list">
+          @for (detail of audit.auditDetails; track detail) {
+            <li>{{ detail }}</li>
+          }
+        </ul>
+      </div>
+
+      <!-- Quick Action Dispute Claim Box -->
+      @if (audit.disputeTemplateText && audit.riskLevel !== 'SAFE') {
+        <div style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 700; color: var(--gold); text-transform: uppercase;">
+              Plantilla Formal de Disputa (Lista para Soporte Binance / Bybit):
+            </span>
+            <button
+              type="button"
+              class="btn-primary"
+              (click)="copyDisputeClaim(audit)"
+              style="font-size: 0.75rem; padding: 4px 12px;"
+            >
+              📋 Copiar Reclamo
+            </button>
+          </div>
+          <div class="dispute-box">{{ audit.disputeTemplateText }}</div>
+        </div>
+      }
+    </div>
+  }
 
   <!-- Parsed Receipts Results Table -->
   <div class="section-group">
@@ -192,13 +343,14 @@
               <th>Pagador / Cédula</th>
               <th>Beneficiario</th>
               <th>Fecha</th>
-              <th>Estado & Seguridad</th>
+              <th>Estado & Seguridad Forense</th>
               <th style="text-align: right;">Acciones</th>
             </tr>
           </thead>
           <tbody>
             @for (rec of receipts(); track rec.id) {
-              <tr [class.alert-row]="rec.antiTriangulationAlert || rec.isDuplicate">
+              @let audit = receiptAudits().get(rec.id);
+              <tr [class.alert-row]="(audit && audit.riskLevel === 'CRITICAL') || rec.antiTriangulationAlert || rec.isDuplicate">
                 <td>
                   <span class="badge font-mono" style="font-size: 0.72rem;">{{ rec.bankDisplayName }}</span>
                 </td>
@@ -226,19 +378,47 @@
                 </td>
                 <td>
                   <div style="display: flex; flex-direction: column; gap: 4px;">
-                    @if (rec.antiTriangulationAlert) {
-                      <span class="badge badge-danger" style="font-size: 0.68rem;">⚠️ ALERTA TERCEROS</span>
-                    }
-                    @if (rec.isDuplicate) {
-                      <span class="badge badge-secondary" style="font-size: 0.68rem;">DUPLICADO</span>
-                    }
-                    @if (!rec.antiTriangulationAlert && !rec.isDuplicate) {
-                      <span class="badge badge-accent" style="font-size: 0.68rem;">OK VERIFICADO</span>
+                    @if (audit) {
+                      @if (audit.riskLevel === 'SAFE') {
+                        <span class="badge badge-accent" style="font-size: 0.68rem;">🛡️ SAFE (0% RIESGO)</span>
+                      } @else if (audit.riskLevel === 'WARNING') {
+                        <span class="badge font-mono" style="font-size: 0.68rem; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">
+                          ⚠️ AUDITORÍA (Riesgo {{ audit.overallScore }}/100)
+                        </span>
+                      } @else {
+                        <span class="badge badge-danger font-mono" style="font-size: 0.68rem;">
+                          🚨 BLOQUEAR (Riesgo {{ audit.overallScore }}/100)
+                        </span>
+                      }
+                      @for (flag of audit.flags; track flag) {
+                        <span class="badge badge-danger" style="font-size: 0.62rem;">{{ flag }}</span>
+                      }
+                    } @else {
+                      @if (rec.antiTriangulationAlert) {
+                        <span class="badge badge-danger" style="font-size: 0.68rem;">⚠️ ALERTA TERCEROS</span>
+                      }
+                      @if (rec.isDuplicate) {
+                        <span class="badge badge-secondary" style="font-size: 0.68rem;">DUPLICADO</span>
+                      }
+                      @if (!rec.antiTriangulationAlert && !rec.isDuplicate) {
+                        <span class="badge badge-accent" style="font-size: 0.68rem;">OK VERIFICADO</span>
+                      }
                     }
                   </div>
                 </td>
                 <td style="text-align: right;">
                   <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                    @if (audit) {
+                      <button
+                        type="button"
+                        class="btn-ghost"
+                        (click)="selectedAudit.set(audit)"
+                        style="font-size: 0.72rem; padding: 4px 8px;"
+                        title="Ver auditoría forense detallada"
+                      >
+                        🔍 Forense
+                      </button>
+                    }
                     <button
                       type="button"
                       class="btn-primary"
