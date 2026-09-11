@@ -733,6 +733,67 @@
               </div>
             }
 
+            @if (johnsonQuality(); as jq) {
+              <div class="johnson-depth-card">
+                <div class="johnson-card-header">
+                  <div class="johnson-title-group">
+                    <span class="johnson-icon" aria-hidden="true">🔬</span>
+                    <span class="johnson-title">Profundidad Johnson (v2)</span>
+                  </div>
+                  <span
+                    class="badge johnson-signal-badge"
+                    [class.signal-strong-buy]="jq.recommendation === 'STRONG_BUY'"
+                    [class.signal-buy]="jq.recommendation === 'BUY'"
+                    [class.signal-caution]="jq.recommendation === 'CAUTION'"
+                    [class.signal-avoid]="jq.recommendation === 'AVOID'"
+                  >
+                    @switch (jq.recommendation) {
+                      @case ('STRONG_BUY') { COMPRA FUERTE }
+                      @case ('BUY') { COMPRAR }
+                      @case ('CAUTION') { PRECAUCIÓN }
+                      @case ('AVOID') { EVITAR }
+                    }
+                  </span>
+                </div>
+
+                <div class="johnson-scores-grid">
+                  <div class="johnson-score-item">
+                    <span class="johnson-score-label">Profundidad</span>
+                    <span class="johnson-score-value font-mono">{{ jq.depthScore }}/100</span>
+                  </div>
+                  <div class="johnson-score-item">
+                    <span class="johnson-score-label">Liquidez</span>
+                    <span class="johnson-score-value font-mono">{{ jq.liquidityScore }}/100</span>
+                  </div>
+                  <div class="johnson-score-item">
+                    <span class="johnson-score-label">Mejor Banco</span>
+                    <span class="johnson-score-value font-mono" style="color: var(--gold); font-weight: 700;">{{ jq.bestBank || 'N/A' }}</span>
+                  </div>
+                </div>
+
+                @if (top3JohnsonBanks().length > 0) {
+                  <div class="johnson-banks-list">
+                    <div class="johnson-banks-header">Top 3 Bancos — Ganancia Neta (500 USDT)</div>
+                    @for (b of top3JohnsonBanks(); track b.bankKey) {
+                      <div class="johnson-bank-row">
+                        <div class="johnson-bank-name">
+                          <span class="bank-bullet" [class.bullet-safe]="b.isSafe"></span>
+                          <span style="font-weight: 700;">{{ b.bankKey }}</span>
+                          @if (b.effectiveFeeDragPct > 0) {
+                            <span class="text-muted" style="font-size: 0.68rem;">(-{{ b.effectiveFeeDragPct }}% fees)</span>
+                          }
+                        </div>
+                        <div class="johnson-bank-metrics font-mono">
+                          <span class="johnson-net-ves" [class.positive]="b.netGainVes > 0">+{{ b.netGainVes | num }} Bs</span>
+                          <span class="johnson-roi" [class.positive]="b.roiCyclePct >= 0.5">({{ b.roiCyclePct }}% ROI)</span>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
             <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 8px; font-weight: 600;">
               📥 Cargar Precios en el Monitor
             </button>

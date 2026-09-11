@@ -23,6 +23,10 @@ import {
   type PortfolioAllocationPlan,
   type GoldenSpreadCheck,
   type BankCode,
+  buildJohnsonMarketQuality,
+  DEFAULT_JOHNSON_REQUIREMENTS,
+  type JohnsonMarketQuality,
+  type JohnsonBankProfit,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -192,6 +196,26 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly marketQuality = computed(() =>
     this.spreadQuality.currentMarketQuality(this.buyRole(), this.sellRole())(),
   );
+
+  /** Johnson Market Depth analysis evaluated directly over the live Binance depth. */
+  readonly johnsonQuality = computed<JohnsonMarketQuality | null>(() => {
+    const depth = this.binance.marketDepth();
+    if (!depth || !depth.bestBuyPrice || !depth.bestSellPrice) return null;
+    const banks = ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL'];
+    return buildJohnsonMarketQuality(depth, banks, DEFAULT_JOHNSON_REQUIREMENTS, {
+      bankCodes: banks,
+      buyRole: this.buyRole(),
+      sellRole: this.sellRole(),
+      isInterbank: false,
+    });
+  });
+
+  /** Top 3 most profitable banks according to Johnson net gain calculation. */
+  readonly top3JohnsonBanks = computed<readonly JohnsonBankProfit[]>(() => {
+    const jq = this.johnsonQuality();
+    if (!jq || !jq.bankProfits) return [];
+    return jq.bankProfits.slice(0, 3);
+  });
 
   /** Trading guard: operar / alerta / no operar per net spread vs threshold. */
   readonly guardStatus = computed<'ok' | 'warn' | 'noop'>(() => {

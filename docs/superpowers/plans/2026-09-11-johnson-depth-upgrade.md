@@ -1178,11 +1178,11 @@ git commit -m "refactor(johnson-depth): plugin como adaptador delgado con cleanu
 - Consumes: `buildJohnsonMarketQuality` de `@p2p/core` directamente (mismo patrón que usa `binance-p2p.service`).
 - Alcance: panel con `depthScore`, `liquidityScore`, `recommendation` (badge de color) y **top 3 de bancos con ganancia neta** (bankKey + netGainVes + roiCyclePct).
 
-- [ ] Step 1: Leer el componente actual y ubicar el punto de inserción sin romper estructura.
-- [ ] Step 2: Conectar en el handler de `fetchMarketDepth`: `this.johnsonQuality.set(buildJohnsonMarketQuality(depth, BANKS, DEFAULT_JOHNSON_REQUIREMENTS))`.
-- [ ] Step 3: Renderizar el panel (español), clase CSS nueva.
-- [ ] Step 4: Verificar `npx ng test --include src/app/features/spread-monitor` y `npm run build`.
-- [ ] Step 5: Commit.
+- [x] Step 1: Leer el componente actual y ubicar el punto de inserción sin romper estructura.
+- [x] Step 2: Conectar en el handler de `fetchMarketDepth`: `this.johnsonQuality.set(buildJohnsonMarketQuality(depth, BANKS, DEFAULT_JOHNSON_REQUIREMENTS))`.
+- [x] Step 3: Renderizar el panel (español), clase CSS nueva.
+- [x] Step 4: Verificar `npx ng test --include src/app/features/spread-monitor` y `npm run build`.
+- [x] Step 5: Commit.
 
 ---
 

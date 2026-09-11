@@ -951,3 +951,181 @@
   0%, 100% { box-shadow: 0 0 6px rgba(216, 180, 92, 0.45); }
   50% { box-shadow: 0 0 16px rgba(216, 180, 92, 0.85); }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Johnson Market Depth Panel (Task 7)
+   ══════════════════════════════════════════════════════════════ */
+
+.johnson-depth-card {
+  margin-top: 10px;
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.75) 0%, rgba(11, 17, 30, 0.9) 100%);
+  border: 1px solid rgba(216, 180, 92, 0.25);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+
+  .johnson-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+
+    .johnson-title-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      .johnson-icon {
+        font-size: 1rem;
+        line-height: 1;
+      }
+
+      .johnson-title {
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text);
+      }
+    }
+  }
+
+  .johnson-signal-badge {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+
+    &.signal-strong-buy {
+      background: rgba(47, 208, 143, 0.2);
+      border: 1px solid #2fd08f;
+      color: #2fd08f;
+    }
+
+    &.signal-buy {
+      background: rgba(90, 167, 255, 0.2);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    &.signal-caution {
+      background: rgba(216, 180, 92, 0.2);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+    }
+
+    &.signal-avoid {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+  }
+
+  .johnson-scores-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 8px 10px;
+
+    .johnson-score-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      text-align: center;
+
+      .johnson-score-label {
+        font-size: 0.68rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+
+      .johnson-score-value {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+    }
+  }
+
+  .johnson-banks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 8px;
+
+    .johnson-banks-header {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 2px;
+    }
+
+    .johnson-bank-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 4px;
+      font-size: 0.78rem;
+
+      .johnson-bank-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .bank-bullet {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #ef4444;
+
+          &.bullet-safe {
+            background: #2fd08f;
+            box-shadow: 0 0 4px rgba(47, 208, 143, 0.5);
+          }
+        }
+      }
+
+      .johnson-bank-metrics {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .johnson-net-ves {
+          font-weight: 700;
+          color: var(--muted);
+
+          &.positive {
+            color: #2fd08f;
+          }
+        }
+
+        .johnson-roi {
+          font-size: 0.72rem;
+          color: var(--muted);
+
+          &.positive {
+            color: var(--gold);
+            font-weight: 600;
+          }
+        }
+      }
+    }
+  }
+}
+
