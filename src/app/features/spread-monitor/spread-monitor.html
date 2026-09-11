@@ -15,6 +15,9 @@
       <button type="button" [class.active]="activeMode() === 'repricer'" (click)="activeMode.set('repricer')">
         🤖 Bot de Anuncios P2P
       </button>
+      <button type="button" [class.active]="activeMode() === 'cross_exchange'" (click)="activeMode.set('cross_exchange')">
+        🌐 Arbitraje Multi-Exchange
+      </button>
       <button
         type="button"
         class="btn-ghost"
@@ -28,7 +31,12 @@
     </div>
   </div>
 
-  <div class="trading-desk-layout">
+  @if (activeMode() === 'cross_exchange') {
+    <div style="margin-top: 14px;">
+      <app-cross-exchange-matrix />
+    </div>
+  } @else {
+    <div class="trading-desk-layout">
     <!-- ═══════════════════════════════════════════════════
          COLUMNA IZQUIERDA: Configuración & Parámetros
          ═══════════════════════════════════════════════════ -->
@@ -1243,4 +1251,5 @@
       }
     </div>
   </div>
+  }
 </section>

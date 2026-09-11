@@ -1,0 +1,300 @@
+<div class="terminal-input-card" style="margin-bottom: 24px;">
+  <div class="terminal-card-header">
+    <div class="card-header-title">
+      <span class="card-icon">🌐</span>
+      <span class="card-title">Matriz de Arbitraje Espacial Multi-Exchange</span>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <span class="badge badge-accent">Binance • Bybit • El Dorado</span>
+      <button
+        type="button"
+        class="btn-ghost"
+        (click)="refreshLiveRates()"
+        style="font-size: 0.75rem; padding: 2px 8px;"
+        title="Sincronizar cotizaciones"
+      >
+        🔄 Sincronizar
+      </button>
+    </div>
+  </div>
+
+  <!-- Controls Grid -->
+  <div class="terminal-input-grid grid-3" style="margin-bottom: 18px;">
+    <div class="terminal-field">
+      <label class="terminal-label" for="cross-capital-input">
+        <span>Capital a Operar (USDT)</span>
+        <span class="terminal-subtext">Volumen por ciclo espacial</span>
+      </label>
+      <div class="input-control-wrap">
+        <input
+          id="cross-capital-input"
+          type="number"
+          class="terminal-input font-mono"
+          [ngModel]="capitalUsdt()"
+          (ngModelChange)="capitalUsdt.set($event)"
+          min="10"
+          step="50"
+        />
+      </div>
+    </div>
+
+    <div class="terminal-field">
+      <label class="terminal-label" for="cross-network-select">
+        <span>Red de Transferencia Cripto</span>
+        <span class="terminal-subtext">Comisión de retiro inter-exchange</span>
+      </label>
+      <div class="input-control-wrap">
+        <select
+          id="cross-network-select"
+          class="terminal-select font-mono"
+          [ngModel]="network()"
+          (ngModelChange)="network.set($event)"
+        >
+          <option value="BEP20">BNB Smart Chain (BEP20) - ~$0.20</option>
+          <option value="TRC20">TRON (TRC20) - ~$1.00</option>
+          <option value="INTERNAL">Transferencia Interna / Cero Comisión - $0.00</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="terminal-field">
+      <label class="terminal-label" for="cross-min-spread-input">
+        <span>Spread Neto Mínimo Deseado (%)</span>
+        <span class="terminal-subtext">Umbral para filtrar oportunidades viables</span>
+      </label>
+      <div class="input-control-wrap">
+        <input
+          id="cross-min-spread-input"
+          type="number"
+          class="terminal-input font-mono"
+          [ngModel]="minSpreadPct()"
+          (ngModelChange)="minSpreadPct.set($event)"
+          step="0.1"
+          min="0.1"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Comparison Table by Exchange -->
+  <div class="terminal-card-header" style="padding-top: 10px; margin-bottom: 8px;">
+    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text);">
+      📊 Puntas de Mercado por Plataforma (USDT / VES)
+    </span>
+  </div>
+
+  <div style="overflow-x: auto; margin-bottom: 20px;">
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>Exchange</th>
+          <th>Mejor Compra (Ask)</th>
+          <th>Mejor Venta (Bid)</th>
+          <th>Spread Plataforma</th>
+          <th>Tarifa Taker / Retiro</th>
+          <th>Estado Conexión</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <span class="badge font-mono" style="background: rgba(243, 186, 47, 0.15); color: #f3ba2f; border: 1px solid rgba(243, 186, 47, 0.4);">
+              BINANCE P2P
+            </span>
+          </td>
+          <td>
+            <strong class="font-mono font-bold" style="color: var(--text);">
+              {{ binanceBuyPrice() | number: '1.2-2' }} VES
+            </strong>
+          </td>
+          <td>
+            <strong class="font-mono font-bold" style="color: var(--gold);">
+              {{ binanceSellPrice() | number: '1.2-2' }} VES
+            </strong>
+          </td>
+          <td>
+            <span class="font-mono" style="font-size: 0.78rem;">
+              {{ calculateSpreadPct(binanceBuyPrice(), binanceSellPrice()) | number: '1.2-2' }}%
+            </span>
+          </td>
+          <td>
+            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.20 BEP20</span>
+          </td>
+          <td>
+            <span class="badge badge-accent" style="font-size: 0.68rem;">EN VIVO (API)</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="badge font-mono" style="background: rgba(255, 126, 0, 0.15); color: #ff7e00; border: 1px solid rgba(255, 126, 0, 0.4);">
+              BYBIT P2P
+            </span>
+          </td>
+          <td>
+            <div class="input-control-wrap" style="max-width: 130px;">
+              <input
+                type="number"
+                class="terminal-input font-mono"
+                style="padding: 3px 6px; font-size: 0.78rem;"
+                [ngModel]="bybitBuyPrice()"
+                (ngModelChange)="bybitBuyPrice.set($event)"
+                step="0.1"
+              />
+            </div>
+          </td>
+          <td>
+            <div class="input-control-wrap" style="max-width: 130px;">
+              <input
+                type="number"
+                class="terminal-input font-mono"
+                style="padding: 3px 6px; font-size: 0.78rem;"
+                [ngModel]="bybitSellPrice()"
+                (ngModelChange)="bybitSellPrice.set($event)"
+                step="0.1"
+              />
+            </div>
+          </td>
+          <td>
+            <span class="font-mono" style="font-size: 0.78rem;">
+              {{ calculateSpreadPct(bybitBuyPrice(), bybitSellPrice()) | number: '1.2-2' }}%
+            </span>
+          </td>
+          <td>
+            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.25 BEP20</span>
+          </td>
+          <td>
+            <span class="badge badge-secondary" style="font-size: 0.68rem;">SINCRONIZADO</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);">
+              EL DORADO P2P
+            </span>
+          </td>
+          <td>
+            <div class="input-control-wrap" style="max-width: 130px;">
+              <input
+                type="number"
+                class="terminal-input font-mono"
+                style="padding: 3px 6px; font-size: 0.78rem;"
+                [ngModel]="elDoradoBuyPrice()"
+                (ngModelChange)="elDoradoBuyPrice.set($event)"
+                step="0.1"
+              />
+            </div>
+          </td>
+          <td>
+            <div class="input-control-wrap" style="max-width: 130px;">
+              <input
+                type="number"
+                class="terminal-input font-mono"
+                style="padding: 3px 6px; font-size: 0.78rem;"
+                [ngModel]="elDoradoSellPrice()"
+                (ngModelChange)="elDoradoSellPrice.set($event)"
+                step="0.1"
+              />
+            </div>
+          </td>
+          <td>
+            <span class="font-mono" style="font-size: 0.78rem;">
+              {{ calculateSpreadPct(elDoradoBuyPrice(), elDoradoSellPrice()) | number: '1.2-2' }}%
+            </span>
+          </td>
+          <td>
+            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.30 BEP20</span>
+          </td>
+          <td>
+            <span class="badge badge-secondary" style="font-size: 0.68rem;">SINCRONIZADO</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Arbitrage Opportunities Ranking -->
+  <div class="terminal-card-header" style="margin-bottom: 8px;">
+    <span style="font-size: 0.85rem; font-weight: 700; color: var(--gold);">
+      ⚡ Rutas de Arbitraje Espacial Detectadas (Ordenadas por Rentabilidad Neta)
+    </span>
+  </div>
+
+  @if (opportunities().length === 0) {
+    <div style="text-align: center; padding: 24px 10px; background: rgba(255, 255, 255, 0.02); border-radius: 6px;">
+      <span class="text-muted" style="font-size: 0.85rem;">
+        No se detectaron brechas de arbitraje neto superiores al {{ minSpreadPct() }}% con las tarifas actuales de red.
+      </span>
+    </div>
+  } @else {
+    <div style="overflow-x: auto;">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th>Ruta Espacial</th>
+            <th>Precio Compra</th>
+            <th>Precio Venta</th>
+            <th>Spread Bruto</th>
+            <th>Comisión Retiro</th>
+            <th>Spread Neto</th>
+            <th>Ganancia Neta</th>
+            <th>Veredicto</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (opp of opportunities(); track opp.buyExchange + opp.sellExchange) {
+            <tr [class.viable-row]="opp.isViable">
+              <td>
+                <div style="display: flex; align-items: center; gap: 6px; font-weight: 700;">
+                  <span class="font-mono">{{ opp.buyExchange }}</span>
+                  <span style="color: var(--gold);">➔</span>
+                  <span class="font-mono">{{ opp.sellExchange }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="font-mono">{{ opp.buyPrice | number: '1.2-2' }}</span>
+              </td>
+              <td>
+                <span class="font-mono">{{ opp.sellPrice | number: '1.2-2' }}</span>
+              </td>
+              <td>
+                <span class="font-mono font-bold">{{ opp.grossSpreadPct | number: '1.2-2' }}%</span>
+              </td>
+              <td>
+                <span class="text-muted font-mono" style="font-size: 0.75rem;">
+                  {{ opp.withdrawalFeeUsdt | currency: 'USD' : 'symbol' : '1.2-2' }}
+                </span>
+              </td>
+              <td>
+                <span
+                  class="font-mono font-bold"
+                  [style.color]="opp.netSpreadPct >= minSpreadPct() ? 'var(--accent)' : 'var(--danger)'"
+                >
+                  {{ opp.netSpreadPct | number: '1.2-2' }}%
+                </span>
+              </td>
+              <td>
+                <div>
+                  <strong class="font-mono" style="color: var(--gold);">
+                    +{{ opp.netProfitUsdt | number: '1.2-2' }} USDT
+                  </strong>
+                  <span class="text-muted font-mono" style="font-size: 0.72rem; display: block;">
+                    +{{ opp.netProfitFiat | number: '1.2-2' }} VES
+                  </span>
+                </div>
+              </td>
+              <td>
+                @if (opp.isViable) {
+                  <span class="badge badge-accent" style="font-size: 0.68rem;">EJECUTABLE</span>
+                } @else {
+                  <span class="badge badge-secondary" style="font-size: 0.68rem;">BAJO MARGEN</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

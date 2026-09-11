@@ -45,6 +45,7 @@ import { MarketHistoryService } from '../../core/market-history.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { SpreadQualityService } from '../../core/spread-quality.service';
 import { CotizaveService } from '../../core/cotizave.service';
+import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 
 interface TradingWindow {
   id: string;
@@ -63,7 +64,7 @@ interface TradingWindow {
 @Component({
   selector: 'app-spread-monitor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, ...FORMAT_PIPES],
+  imports: [DatePipe, ...FORMAT_PIPES, CrossExchangeMatrix],
   templateUrl: './spread-monitor.html',
   styleUrl: './spread-monitor.scss',
 })
@@ -158,8 +159,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     maximumFractionDigits: 2,
   });
 
-  /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, or repricer bot */
-  readonly activeMode = signal<'spread' | 'breakeven' | 'repricer'>('spread');
+  /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, repricer bot, or cross-exchange */
+  readonly activeMode = signal<'spread' | 'breakeven' | 'repricer' | 'cross_exchange'>('spread');
 
   readonly buyPrice = signal<number>(800);
   readonly sellPrice = signal<number>(820);

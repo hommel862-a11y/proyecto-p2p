@@ -1,0 +1,28 @@
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted, #8a99ad);
+    font-weight: 600;
+    font-size: 0.70rem;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.05));
+    color: var(--text, #f1f5f9);
+    vertical-align: middle;
+  }
+
+  tr.viable-row {
+    background: rgba(34, 197, 94, 0.04);
+    border-left: 3px solid var(--accent, #22c55e);
+  }
+}
