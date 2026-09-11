@@ -36,3 +36,4 @@ export * from './lib/plugin-registry';
 export * from './lib/receipt-ocr';
 export * from './lib/johnson-depth';
 export * from './lib/johnson-depth-rate-window';
+export * from './lib/fraud-shield';
