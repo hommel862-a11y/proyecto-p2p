@@ -10,7 +10,7 @@
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
@@ -18,13 +18,13 @@
   background: var(--card-bg, #101828);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
   border-radius: var(--radius, 8px);
-  padding: 14px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 
   .kpi-label {
-    font-size: 0.72rem;
+    font-size: 0.70rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -32,7 +32,7 @@
   }
 
   .kpi-val {
-    font-size: 1.15rem;
+    font-size: 1.10rem;
     font-weight: 700;
     color: var(--text, #f1f5f9);
 
@@ -44,4 +44,65 @@
       color: var(--danger, #ef4444);
     }
   }
+}
+
+.scanner-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: var(--card-bg, #101828);
+}
+
+.scanner-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted, #8a99ad);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.70rem;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  }
+
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.05));
+    color: var(--text, #f1f5f9);
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: rgba(212, 160, 23, 0.04);
+  }
+
+  tr.golden-row {
+    background: rgba(212, 160, 23, 0.07);
+    border-left: 3px solid var(--gold, #d4a017);
+
+    td {
+      font-weight: 600;
+    }
+  }
+}
+
+.badge-golden {
+  background: rgba(212, 160, 23, 0.2);
+  color: var(--gold, #d4a017);
+  border: 1px solid rgba(212, 160, 23, 0.4);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
 }

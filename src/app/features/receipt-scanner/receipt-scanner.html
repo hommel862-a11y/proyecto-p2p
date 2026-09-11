@@ -1,0 +1,268 @@
+<section class="panel">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
+    <div>
+      <h2>Comprobantes Bancarios & Ingestión OCR</h2>
+      <p class="panel-subtitle">
+        Procesamiento 100% local de comprobantes de pago, auditoría anti-triangulación y exportación a Excel
+      </p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button
+        type="button"
+        class="btn-primary"
+        [disabled]="receipts().length === 0"
+        (click)="exportToExcel()"
+        style="display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 8px 16px;"
+      >
+        <span>📥</span>
+        <span>Exportar a Excel (CSV)</span>
+      </button>
+
+      @if (receipts().length > 0) {
+        <button
+          type="button"
+          class="btn-ghost"
+          (click)="clearReceipts()"
+          style="font-size: 0.8rem;"
+        >
+          Limpiar Lista
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Privacy & Offline Banner -->
+  <div class="section-group" style="border-left: 4px solid var(--gold); display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
+    <div style="font-size: 1.3rem; line-height: 1;">🔒</div>
+    <div>
+      <strong style="color: var(--gold); font-size: 0.95rem;">Privacidad & Procesamiento Offline:</strong>
+      <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
+        El motor OCR procesa las imágenes y cédulas directamente en tu máquina local. Ninguna captura ni dato bancario se envía a servidores externos. Puedes presionar <kbd style="background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 4px; font-family: monospace;">Ctrl+V</kbd> en cualquier lugar para pegar una captura del portapapeles.
+      </p>
+    </div>
+  </div>
+
+  <!-- Ingestion Inputs Grid -->
+  <div class="terminal-input-grid grid-2" style="margin-bottom: 24px;">
+    <!-- Drop Zone & File Upload -->
+    <div class="terminal-input-card" style="margin-bottom: 0;">
+      <div class="terminal-card-header">
+        <div class="card-header-title">
+          <span class="card-icon">📸</span>
+          <span class="card-title">Captura o Screenshot (OCR)</span>
+        </div>
+        <span class="badge badge-accent">Ctrl + V</span>
+      </div>
+
+      <button
+        type="button"
+        class="drop-zone"
+        style="width: 100%; font: inherit; text-align: center;"
+        [class.dragging]="isDragging()"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)"
+        (click)="fileInput.click()"
+      >
+        <input
+          #fileInput
+          type="file"
+          accept="image/*"
+          style="display: none;"
+          (change)="onFileInputChange($event)"
+        />
+        <span class="drop-icon">🧾</span>
+        <p class="drop-title">Haz clic o arrastra un comprobante aquí</p>
+        <p class="drop-hint">Soporta capturas de Pago Móvil, BDV, Banesco, Bancolombia, Zinli</p>
+      </button>
+
+      @if (isProcessing()) {
+        <div style="margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
+            <span class="text-muted">{{ progressStatus() }}</span>
+            <span class="font-mono" style="color: var(--gold);">{{ progressPct() }}%</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" [style.width.%]="progressPct()"></div>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Manual Text / SMS Ingestion -->
+    <div class="terminal-input-card" style="margin-bottom: 0;">
+      <div class="terminal-card-header">
+        <div class="card-header-title">
+          <span class="card-icon">💬</span>
+          <span class="card-title">Texto de SMS o Mensaje Bancario</span>
+        </div>
+        <span class="badge">Inmediato</span>
+      </div>
+
+      <div class="terminal-field" style="margin-bottom: 12px;">
+        <label class="terminal-label" for="manual-receipt-text">
+          <span>Pega el texto del recibo o notificación bancaria</span>
+        </label>
+        <textarea
+          id="manual-receipt-text"
+          class="terminal-input"
+          style="height: 100px; font-family: var(--font-mono); font-size: 0.8rem; resize: vertical;"
+          [ngModel]="manualTextInput()"
+          (ngModelChange)="manualTextInput.set($event)"
+          placeholder="Ej: BDV: Pago Móvil exitoso por Bs. 2.450,00 ref 0001234567 a Juan Perez..."
+        ></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button
+          type="button"
+          class="btn-primary"
+          [disabled]="!manualTextInput().trim()"
+          (click)="processManualText()"
+          style="font-size: 0.8rem; padding: 6px 14px;"
+        >
+          Procesar Texto
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Anti-Triangulation Reference Bar -->
+  <div class="terminal-input-card" style="margin-bottom: 24px;">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">🛡️</span>
+        <span class="card-title">Cruce de Seguridad Anti-Triangulación</span>
+      </div>
+      <span class="badge badge-accent">Auditoría Preventiva</span>
+    </div>
+
+    <div class="terminal-input-grid">
+      <div class="terminal-field">
+        <label class="terminal-label" for="counterparty-check-input">
+          <span>Nombre de la Contraparte Verificada en Binance</span>
+          <span class="terminal-subtext">Compara automáticamente el nombre del pagador para alertar pagos de terceros</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="counterparty-check-input"
+            type="text"
+            class="terminal-input"
+            [ngModel]="expectedCounterparty()"
+            (ngModelChange)="expectedCounterparty.set($event)"
+            placeholder="Ej. Pedro Pérez (Nombre de la cuenta verificada en Binance)"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parsed Receipts Results Table -->
+  <div class="section-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">📑</span>
+        <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">
+          Comprobantes Procesados ({{ receipts().length }})
+        </h3>
+      </div>
+      @if (receipts().length > 0) {
+        <span class="text-muted" style="font-size: 0.8rem;">
+          Listo para exportar a hoja de cálculo o registrar en la bitácora
+        </span>
+      }
+    </div>
+
+    @if (receipts().length === 0) {
+      <div class="terminal-input-card" style="text-align: center; padding: 40px 20px;">
+        <span style="font-size: 2rem; display: block; margin-bottom: 8px;">📋</span>
+        <strong style="color: var(--text); font-size: 0.95rem;">No hay comprobantes cargados en esta sesión</strong>
+        <p class="text-muted" style="font-size: 0.82rem; margin: 4px 0 0;">
+          Pega una captura con <kbd style="background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 3px;">Ctrl+V</kbd> o sube una imagen para extraer los datos automáticamente.
+        </p>
+      </div>
+    } @else {
+      <div class="receipt-table-wrap">
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th>Banco</th>
+              <th>Referencia</th>
+              <th>Monto</th>
+              <th>Pagador / Cédula</th>
+              <th>Beneficiario</th>
+              <th>Fecha</th>
+              <th>Estado & Seguridad</th>
+              <th style="text-align: right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (rec of receipts(); track rec.id) {
+              <tr [class.alert-row]="rec.antiTriangulationAlert || rec.isDuplicate">
+                <td>
+                  <span class="badge font-mono" style="font-size: 0.72rem;">{{ rec.bankDisplayName }}</span>
+                </td>
+                <td>
+                  <strong class="font-mono" style="color: var(--text);">{{ rec.reference }}</strong>
+                </td>
+                <td>
+                  <span class="font-mono font-bold" style="color: var(--gold);">
+                    {{ rec.amount | number: '1.2-2' }} {{ rec.currency }}
+                  </span>
+                </td>
+                <td>
+                  <div>
+                    <span style="color: var(--text);">{{ rec.payerName || 'N/A' }}</span>
+                    @if (rec.payerId) {
+                      <span class="text-muted font-mono" style="font-size: 0.75rem; margin-left: 4px;">({{ rec.payerId }})</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <span class="text-muted">{{ rec.beneficiaryName || 'N/A' }}</span>
+                </td>
+                <td>
+                  <span class="text-muted font-mono" style="font-size: 0.75rem;">{{ rec.timestamp }}</span>
+                </td>
+                <td>
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    @if (rec.antiTriangulationAlert) {
+                      <span class="badge badge-danger" style="font-size: 0.68rem;">⚠️ ALERTA TERCEROS</span>
+                    }
+                    @if (rec.isDuplicate) {
+                      <span class="badge badge-secondary" style="font-size: 0.68rem;">DUPLICADO</span>
+                    }
+                    @if (!rec.antiTriangulationAlert && !rec.isDuplicate) {
+                      <span class="badge badge-accent" style="font-size: 0.68rem;">OK VERIFICADO</span>
+                    }
+                  </div>
+                </td>
+                <td style="text-align: right;">
+                  <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                    <button
+                      type="button"
+                      class="btn-primary"
+                      (click)="settleToLedger(rec)"
+                      style="font-size: 0.72rem; padding: 4px 8px;"
+                      title="Asentar en bitácora contable"
+                    >
+                      ⚡ Asentar
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-ghost"
+                      (click)="removeReceipt(rec.id)"
+                      style="font-size: 0.72rem; padding: 4px 8px;"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</section>

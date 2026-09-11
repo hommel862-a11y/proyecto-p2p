@@ -26,6 +26,12 @@ export const routes: Routes = [
       import('./features/triangulation/triangulation').then((m) => m.Triangulation),
   },
   {
+    path: 'receipts',
+    title: 'Comprobantes & OCR',
+    loadComponent: () =>
+      import('./features/receipt-scanner/receipt-scanner').then((m) => m.ReceiptScanner),
+  },
+  {
     path: 'log',
     title: 'Operation Log',
     loadComponent: () =>

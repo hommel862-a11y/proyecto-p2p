@@ -1,8 +1,20 @@
 <section class="panel">
-  <div class="panel-header">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
     <div>
       <h2>Triangulación y Arbitraje Multidivisa</h2>
-      <p class="panel-subtitle">Simulación de ciclos de 3 tramos para arbitraje cross-currency y cross-border</p>
+      <p class="panel-subtitle">Simulación, escaneo multi-ruta y liquidación de ciclos de 3 tramos</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button
+        type="button"
+        class="btn-primary"
+        [disabled]="isSettling() || calculationResult().netProfit <= 0"
+        (click)="settleCycleToLedger()"
+        style="display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 8px 16px;"
+      >
+        <span>⚡</span>
+        <span>{{ isSettling() ? 'Asentando...' : 'Asentar Ciclo en Bitácora (1-Click)' }}</span>
+      </button>
     </div>
   </div>
 
@@ -12,8 +24,94 @@
     <div>
       <strong style="color: var(--gold); font-size: 0.95rem;">Regla de Seguridad & Cumplimiento (Self-Routing):</strong>
       <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
-        Esta herramienta calcula arbitraje financiero <em>únicamente entre cuentas propias del operador</em>. Nunca aceptes pagos de terceros ni triangules fondos de remitentes desconocidos para protegerte de bloqueos bancarios y fraudes.
+        Esta herramienta calcula arbitraje financiero <em>únicamente entre cuentas propias del operador</em>. Nunca aceptes transferencias de terceros ni triangules fondos de remitentes desconocidos para blindar tus cuentas de bloqueos bancarios y fraudes.
       </p>
+    </div>
+  </div>
+
+  <!-- Radar Scanner Matrix (All Presets Comparison) -->
+  <div class="section-group" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">📡</span>
+        <h3 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text);">
+          Radar Scanner de Rutas Arbitrables
+        </h3>
+      </div>
+      <span class="text-muted" style="font-size: 0.78rem;">
+        Monitoreo simultáneo de retornos, velocidad por hora y breakeven
+      </span>
+    </div>
+
+    <div class="scanner-table-wrap">
+      <table class="scanner-table">
+        <thead>
+          <tr>
+            <th>Ruta</th>
+            <th>Divisa Base</th>
+            <th>Retorno Neto (ROI)</th>
+            <th>Velocidad (%/h)</th>
+            <th>Breakeven T3</th>
+            <th>Duración Est.</th>
+            <th>Riesgo</th>
+            <th style="text-align: right;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (route of scannedRoutes(); track route.routeId) {
+            <tr [class.golden-row]="route.routeId === goldenRouteId()">
+              <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <strong style="color: var(--text);">{{ route.routeName }}</strong>
+                  @if (route.routeId === goldenRouteId()) {
+                    <span class="badge-golden">⭐ RUTA ÓPTIMA</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <span class="badge font-mono" style="font-size: 0.72rem;">{{ route.initialCurrency }}</span>
+              </td>
+              <td>
+                <span class="font-mono font-bold" [class.positive]="route.roiPct > 0" [class.negative]="route.roiPct <= 0">
+                  {{ route.roiPct > 0 ? '+' : '' }}{{ route.roiPct | number: '1.2-2' }}%
+                </span>
+              </td>
+              <td>
+                <span class="font-mono font-bold" [class.positive]="route.hourlyRoiPct > 0" [class.negative]="route.hourlyRoiPct <= 0">
+                  {{ route.hourlyRoiPct > 0 ? '+' : '' }}{{ route.hourlyRoiPct | number: '1.2-2' }}%/h
+                </span>
+              </td>
+              <td>
+                <span class="font-mono text-muted">{{ route.breakevenPriceLeg3 | number: '1.2-4' }}</span>
+              </td>
+              <td>
+                <span class="text-muted">{{ route.totalDurationMinutes }} min</span>
+              </td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge-accent]="route.riskLevel === 'LOW'"
+                  [class.badge-secondary]="route.riskLevel === 'MEDIUM'"
+                  [class.badge-danger]="route.riskLevel === 'HIGH' || route.riskLevel === 'CRITICAL'"
+                >
+                  {{ route.riskLevel }}
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <button
+                  type="button"
+                  class="btn-ghost"
+                  [class.active]="route.routeId === selectedPresetId()"
+                  (click)="onSelectPreset(route.routeId)"
+                  style="font-size: 0.75rem; padding: 4px 10px;"
+                >
+                  {{ route.routeId === selectedPresetId() ? 'Activa' : 'Cargar' }}
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -21,7 +119,7 @@
   <div class="section-group" style="margin-bottom: 20px;">
     <div class="terminal-card-toolbar">
       <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="text-muted" style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Ruta Seleccionada:</span>
+        <span class="text-muted" style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Ruta Activa:</span>
       </div>
       <div class="toolbar-segmented" role="group" aria-label="Rutas de Triangulación">
         @for (preset of presets; track preset.id) {
@@ -32,6 +130,9 @@
             (click)="onSelectPreset(preset.id)"
           >
             {{ preset.name }}
+            @if (preset.id === goldenRouteId()) {
+              <span style="color: var(--gold); margin-left: 4px;">★</span>
+            }
           </button>
         }
       </div>
@@ -70,23 +171,54 @@
     </div>
 
     <div class="kpi-card">
+      <span class="kpi-label">Velocidad Capital</span>
+      <span class="kpi-val font-mono" [class.positive]="calculationResult().hourlyRoiPct > 0" [class.negative]="calculationResult().hourlyRoiPct <= 0">
+        {{ calculationResult().hourlyRoiPct > 0 ? '+' : '' }}{{ calculationResult().hourlyRoiPct | number: '1.2-2' }}%/h
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Breakeven Tramo 3</span>
+      <span class="kpi-val font-mono" style="color: var(--text);">
+        {{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }}
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Margen Slippage</span>
+      <span class="kpi-val font-mono" [class.positive]="calculationResult().slippageTolerancePct > 0" [class.negative]="calculationResult().slippageTolerancePct <= 0">
+        {{ calculationResult().slippageTolerancePct > 0 ? '+' : '' }}{{ calculationResult().slippageTolerancePct | number: '1.2-2' }}%
+      </span>
+    </div>
+
+    <div class="kpi-card">
       <span class="kpi-label">Riesgo Cambiario</span>
       <span class="kpi-val">
-        <span class="badge" [class.badge-accent]="calculationResult().riskLevel === 'LOW'" [class.badge-secondary]="calculationResult().riskLevel === 'MEDIUM'" [class.badge-danger]="calculationResult().riskLevel === 'HIGH' || calculationResult().riskLevel === 'CRITICAL'">
+        <span
+          class="badge"
+          [class.badge-accent]="calculationResult().riskLevel === 'LOW'"
+          [class.badge-secondary]="calculationResult().riskLevel === 'MEDIUM'"
+          [class.badge-danger]="calculationResult().riskLevel === 'HIGH' || calculationResult().riskLevel === 'CRITICAL'"
+        >
           {{ calculationResult().riskLevel }}
         </span>
       </span>
     </div>
   </div>
 
-  <!-- Initial Capital Input -->
+  <!-- Initial Capital Input & Settlement Feedback -->
   <div class="terminal-input-card" style="margin-bottom: 24px;">
     <div class="terminal-card-header">
       <div class="card-header-title">
         <span class="card-icon">⚡</span>
         <span class="card-title">Parámetros del Ciclo Triangular</span>
       </div>
-      <span class="badge badge-accent font-mono">{{ activePreset().initialCurrency }}</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        @if (lastSettledId()) {
+          <span class="badge badge-accent">Ciclo #{{ lastSettledId() }} asentado</span>
+        }
+        <span class="badge badge-accent font-mono">{{ activePreset().initialCurrency }}</span>
+      </div>
     </div>
 
     <div class="terminal-input-grid">
@@ -114,7 +246,7 @@
   <!-- Risk Warnings if any -->
   @if (calculationResult().riskReasons.length > 0) {
     <div class="section-group" style="border-left: 4px solid var(--warn); background: rgba(185, 121, 26, 0.08); margin-bottom: 24px;">
-      <strong style="color: var(--warn); font-size: 0.9rem;">⚠️ Observaciones de Riesgo y Liquidez:</strong>
+      <strong style="color: var(--warn); font-size: 0.9rem;">⚠️ Observaciones de Riesgo y Fricción Operativa:</strong>
       <ul style="margin: 8px 0 0 20px; padding: 0; font-size: 0.85rem; color: var(--muted);">
         @for (reason of calculationResult().riskReasons; track reason) {
           <li>{{ reason }}</li>
@@ -125,9 +257,14 @@
 
   <!-- 3-Leg Interactive Breakdown -->
   <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-      <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">Desglose Operativo por Tramo</h3>
-      <span class="text-muted" style="font-size: 0.8rem;">Ajuste interactivo de cotización y comisión</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+      <div>
+        <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">Desglose Operativo por Tramo</h3>
+        <span class="text-muted" style="font-size: 0.8rem;">Ajuste interactivo de cotización, comisión de plataforma y fricción bancaria</span>
+      </div>
+      <div style="font-size: 0.8rem; color: var(--gold);">
+        Ciclo completo: {{ calculationResult().totalDurationMinutes }} min ({{ calculationResult().projectedTurnoverHours | number: '1.2-2' }}h)
+      </div>
     </div>
 
     <div class="terminal-input-grid grid-3">
@@ -162,7 +299,7 @@
 
           <div class="terminal-field">
             <label class="terminal-label" for="leg1-fee-input">
-              <span>Comisión (%)</span>
+              <span>Comisión Plataforma (%)</span>
             </label>
             <div class="input-control-wrap">
               <input
@@ -175,6 +312,23 @@
               />
             </div>
           </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg1-banking-input">
+              <span>Fricción Bancaria (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg1-banking-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg1BankingFee()"
+                (ngModelChange)="leg1BankingFee.set($event)"
+                placeholder="Ej. 0.40 para 4x1000"
+              />
+            </div>
+          </div>
         </div>
 
         <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
@@ -183,8 +337,10 @@
             <span class="font-mono">{{ calculationResult().steps[0].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].fromCurrency }}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Comisión:</span>
-            <span class="font-mono text-muted">{{ calculationResult().steps[0].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[0].toCurrency }}</span>
+            <span class="text-muted">Comisiones:</span>
+            <span class="font-mono text-muted">
+              {{ calculationResult().steps[0].percentageFeeAmount + calculationResult().steps[0].bankingFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[0].toCurrency }}
+            </span>
           </div>
           <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
             <span style="color: var(--text);">Resultado Tramo 1:</span>
@@ -224,7 +380,7 @@
 
           <div class="terminal-field">
             <label class="terminal-label" for="leg2-fee-input">
-              <span>Comisión (%)</span>
+              <span>Comisión Plataforma (%)</span>
             </label>
             <div class="input-control-wrap">
               <input
@@ -237,6 +393,23 @@
               />
             </div>
           </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg2-banking-input">
+              <span>Fricción Bancaria (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg2-banking-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg2BankingFee()"
+                (ngModelChange)="leg2BankingFee.set($event)"
+                placeholder="Ej. 0.40 para 4x1000"
+              />
+            </div>
+          </div>
         </div>
 
         <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
@@ -245,8 +418,10 @@
             <span class="font-mono">{{ calculationResult().steps[1].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].fromCurrency }}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Comisión:</span>
-            <span class="font-mono text-muted">{{ calculationResult().steps[1].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[1].toCurrency }}</span>
+            <span class="text-muted">Comisiones:</span>
+            <span class="font-mono text-muted">
+              {{ calculationResult().steps[1].percentageFeeAmount + calculationResult().steps[1].bankingFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[1].toCurrency }}
+            </span>
           </div>
           <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
             <span style="color: var(--text);">Resultado Tramo 2:</span>
@@ -286,7 +461,7 @@
 
           <div class="terminal-field">
             <label class="terminal-label" for="leg3-fee-input">
-              <span>Comisión (%)</span>
+              <span>Comisión Plataforma (%)</span>
             </label>
             <div class="input-control-wrap">
               <input
@@ -299,6 +474,23 @@
               />
             </div>
           </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg3-banking-input">
+              <span>Fricción Bancaria (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg3-banking-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg3BankingFee()"
+                (ngModelChange)="leg3BankingFee.set($event)"
+                placeholder="Ej. 0.40 para 4x1000"
+              />
+            </div>
+          </div>
         </div>
 
         <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
@@ -307,8 +499,14 @@
             <span class="font-mono">{{ calculationResult().steps[2].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[2].fromCurrency }}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Comisión:</span>
-            <span class="font-mono text-muted">{{ calculationResult().steps[2].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[2].toCurrency }}</span>
+            <span class="text-muted">Breakeven Mínimo:</span>
+            <span class="font-mono text-muted">{{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Margen Slippage:</span>
+            <span class="font-mono" [class.positive]="calculationResult().slippageTolerancePct > 0" [class.negative]="calculationResult().slippageTolerancePct <= 0">
+              {{ calculationResult().slippageTolerancePct | number: '1.2-2' }}%
+            </span>
           </div>
           <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
             <span style="color: var(--text);">Retorno Final:</span>

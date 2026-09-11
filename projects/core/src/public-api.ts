@@ -33,3 +33,4 @@ export * from './lib/ledger-exporter';
 export * from './lib/electron-quick-overlay';
 export * from './lib/triangular-arbitrage';
 export * from './lib/plugin-registry';
+export * from './lib/receipt-ocr';

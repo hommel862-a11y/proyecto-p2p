@@ -119,6 +119,54 @@ describe('Triangular Arbitrage Domain Engine', () => {
       expect(typeof result.roiPct).toBe('number');
       expect(typeof result.isProfitable).toBe('boolean');
       expect(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).toContain(result.riskLevel);
+      expect(result.projectedTurnoverHours).toBeGreaterThan(0);
+      expect(typeof result.hourlyRoiPct).toBe('number');
+      expect(result.breakevenPriceLeg3).toBeGreaterThan(0);
+      expect(typeof result.slippageTolerancePct).toBe('number');
+    });
+
+    it('calculates breakeven price and slippage tolerance accurately', () => {
+      const preset = DEFAULT_TRIANGULAR_PRESETS[0];
+      const result = calculateTriangularArbitrage(
+        preset.id,
+        preset.name,
+        10000,
+        preset.legs,
+      );
+
+      expect(result.breakevenPriceLeg3).toBeGreaterThan(0);
+      if (result.isProfitable) {
+        expect(result.slippageTolerancePct).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it('applies banking friction fees (percentage and fixed) to reduce net output', () => {
+      const legWithoutBanking: ExchangeLeg = {
+        id: 'leg-nobank',
+        fromCurrency: 'USDT',
+        toCurrency: 'COP',
+        operationType: 'SELL_CRYPTO',
+        platform: 'Binance P2P',
+        paymentMethod: 'Bancolombia',
+        price: 4000,
+        isDivision: false,
+        feePct: 0.5,
+        fixedFee: 0,
+        fixedFeeCurrency: 'COP',
+        estimatedDurationMinutes: 15,
+      };
+
+      const legWithBanking: ExchangeLeg = {
+        ...legWithoutBanking,
+        bankingFeePct: 0.4, // 4x1000 GMF
+        bankingFixedFee: 2000,
+      };
+
+      const simNoBank = simulateLeg(100, legWithoutBanking);
+      const simWithBank = simulateLeg(100, legWithBanking);
+
+      expect(simWithBank.bankingFeeAmount).toBeGreaterThan(0);
+      expect(simWithBank.outputAmount).toBeLessThan(simNoBank.outputAmount);
     });
 
     it('preserves default preset structure integrity', () => {

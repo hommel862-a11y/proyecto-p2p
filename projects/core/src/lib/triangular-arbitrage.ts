@@ -44,6 +44,11 @@ export interface ExchangeLeg {
   fixedFee: number; // e.g., 1.00 USDT or 50 VES
   fixedFeeCurrency: string;
   estimatedDurationMinutes: number;
+  /**
+   * Optional banking friction fees (e.g., 4x1000 GMF in Colombia = 0.4%, interbank wire tariffs)
+   */
+  bankingFeePct?: number;
+  bankingFixedFee?: number;
 }
 
 export interface StepSimulation {
@@ -56,6 +61,7 @@ export interface StepSimulation {
   price: number;
   percentageFeeAmount: number;
   fixedFeeAmount: number;
+  bankingFeeAmount: number;
   outputAmount: number;
   effectiveRate: number;
 }
@@ -72,6 +78,10 @@ export interface TriangularArbitrageResult {
   roiPct: number;
   isProfitable: boolean;
   totalDurationMinutes: number;
+  projectedTurnoverHours: number;
+  hourlyRoiPct: number;
+  breakevenPriceLeg3: number;
+  slippageTolerancePct: number;
   riskLevel: TriangularRiskLevel;
   riskReasons: string[];
   steps: [StepSimulation, StepSimulation, StepSimulation];
@@ -101,6 +111,7 @@ export function simulateLeg(amount: number, leg: ExchangeLeg): StepSimulation {
       price: leg.price,
       percentageFeeAmount: 0,
       fixedFeeAmount: 0,
+      bankingFeeAmount: 0,
       outputAmount: 0,
       effectiveRate: 0,
     };
@@ -109,8 +120,21 @@ export function simulateLeg(amount: number, leg: ExchangeLeg): StepSimulation {
   // 1. Convert base
   const grossConverted = leg.isDivision ? amount / leg.price : amount * leg.price;
 
-  // 2. Compute fee
+  // 2. Compute platform percentage fee
   const percentageFee = grossConverted * (Math.max(0, leg.feePct) / 100);
+
+  // 3. Compute banking friction fee (e.g. 4x1000 GMF = 0.4% or wire tariffs)
+  const bankingFeePctAmount = grossConverted * (Math.max(0, leg.bankingFeePct ?? 0) / 100);
+  const bankingFixedFeeAmount = leg.bankingFixedFee
+    ? leg.fixedFeeCurrency === leg.toCurrency
+      ? leg.bankingFixedFee
+      : leg.isDivision
+        ? leg.bankingFixedFee / leg.price
+        : leg.bankingFixedFee * leg.price
+    : 0;
+  const totalBankingFee = bankingFeePctAmount + Math.max(0, bankingFixedFeeAmount);
+
+  // 4. Fixed platform fee
   const fixedFee =
     leg.fixedFeeCurrency === leg.toCurrency
       ? leg.fixedFee
@@ -118,7 +142,7 @@ export function simulateLeg(amount: number, leg: ExchangeLeg): StepSimulation {
         ? leg.fixedFee / leg.price
         : leg.fixedFee * leg.price;
 
-  const totalFeeInOutput = percentageFee + Math.max(0, fixedFee);
+  const totalFeeInOutput = percentageFee + Math.max(0, fixedFee) + totalBankingFee;
   const netOutput = Math.max(0, grossConverted - totalFeeInOutput);
 
   return {
@@ -131,6 +155,7 @@ export function simulateLeg(amount: number, leg: ExchangeLeg): StepSimulation {
     price: roundMoney(leg.price, 4),
     percentageFeeAmount: roundMoney(percentageFee, 4),
     fixedFeeAmount: roundMoney(fixedFee, 4),
+    bankingFeeAmount: roundMoney(totalBankingFee, 4),
     outputAmount: roundMoney(netOutput, 4),
     effectiveRate: roundMoney(netOutput / amount, 6),
   };
@@ -209,6 +234,37 @@ export function calculateTriangularArbitrage(
     currenciesInvolved,
   );
 
+  // -------------------------------------------------------------
+  // Breakeven price calculation for Leg 3:
+  // Target: find leg3 price where finalAmount equals initialAmount
+  // -------------------------------------------------------------
+  const leg3 = legs[2];
+  const totalFeePctLeg3 = Math.max(0, leg3.feePct) + Math.max(0, leg3.bankingFeePct ?? 0);
+  const feeFactorLeg3 = Math.max(0.000001, 1 - totalFeePctLeg3 / 100);
+  const totalFixedFeeLeg3 = leg3.fixedFee + (leg3.bankingFixedFee ?? 0);
+
+  let breakevenPriceLeg3 = 0;
+  let slippageTolerancePct = 0;
+
+  if (step2.outputAmount > 0 && initialAmount > 0) {
+    const targetGross = initialAmount + totalFixedFeeLeg3;
+    if (leg3.isDivision) {
+      breakevenPriceLeg3 = roundMoney((step2.outputAmount * feeFactorLeg3) / targetGross, 4);
+      if (leg3.price > 0 && breakevenPriceLeg3 >= leg3.price) {
+        slippageTolerancePct = roundMoney(((breakevenPriceLeg3 - leg3.price) / leg3.price) * 100, 2);
+      }
+    } else {
+      breakevenPriceLeg3 = roundMoney(targetGross / (step2.outputAmount * feeFactorLeg3), 4);
+      if (leg3.price > 0 && leg3.price >= breakevenPriceLeg3) {
+        slippageTolerancePct = roundMoney(((leg3.price - breakevenPriceLeg3) / leg3.price) * 100, 2);
+      }
+    }
+  }
+
+  const projectedTurnoverHours = roundMoney(totalDurationMinutes / 60, 2);
+  const hourlyRoiPct =
+    projectedTurnoverHours > 0 ? roundMoney(roiPct / projectedTurnoverHours, 2) : 0;
+
   return {
     routeId,
     routeName,
@@ -219,6 +275,10 @@ export function calculateTriangularArbitrage(
     roiPct,
     isProfitable: netProfit > 0,
     totalDurationMinutes,
+    projectedTurnoverHours,
+    hourlyRoiPct,
+    breakevenPriceLeg3,
+    slippageTolerancePct,
     riskLevel,
     riskReasons,
     steps: [step1, step2, step3],
@@ -262,6 +322,7 @@ export const DEFAULT_TRIANGULAR_PRESETS: TriangularRoutePreset[] = [
         feePct: 0.35,
         fixedFee: 0,
         fixedFeeCurrency: 'COP',
+        bankingFeePct: 0.4, // 4x1000 GMF Colombia
         estimatedDurationMinutes: 15,
       },
       {
@@ -298,6 +359,7 @@ export const DEFAULT_TRIANGULAR_PRESETS: TriangularRoutePreset[] = [
         feePct: 0.35,
         fixedFee: 0,
         fixedFeeCurrency: 'USD',
+        bankingFixedFee: 1.0, // Retiro / transferencia Zinli
         estimatedDurationMinutes: 15,
       },
       {
