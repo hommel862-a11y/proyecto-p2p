@@ -18,6 +18,74 @@ export interface VerificationResult {
   error?: string;
 }
 
+export interface EncryptedBackupEnvelope {
+  format: 'p2p-encrypted-v1';
+  version: number;
+  algorithm: 'AES-256-GCM';
+  salt: string;
+  iv: string;
+  ciphertext: string;
+  createdAt: string;
+}
+
+async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await (globalThis.crypto as Crypto).subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits', 'deriveKey'],
+  );
+  return (globalThis.crypto as Crypto).subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: 600000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+export async function encryptBackupAES256(
+  password: string,
+  payload: string,
+): Promise<EncryptedBackupEnvelope> {
+  const encoder = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt);
+  const ciphertext = await (globalThis.crypto as Crypto).subtle.encrypt(
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+    key,
+    encoder.encode(payload),
+  );
+  return {
+    format: 'p2p-encrypted-v1',
+    version: 1,
+    algorithm: 'AES-256-GCM',
+    salt: btoa(String.fromCharCode(...new Uint8Array(salt))),
+    iv: btoa(String.fromCharCode(...new Uint8Array(iv))),
+    ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function decryptBackupAES256(
+  password: string,
+  envelope: EncryptedBackupEnvelope,
+): Promise<string> {
+  const salt = Uint8Array.from(atob(envelope.salt), (c) => c.charCodeAt(0));
+  const iv = Uint8Array.from(atob(envelope.iv), (c) => c.charCodeAt(0));
+  const ciphertext = Uint8Array.from(atob(envelope.ciphertext), (c) => c.charCodeAt(0));
+  const key = await deriveKey(password, salt);
+  const decrypted = await (globalThis.crypto as Crypto).subtle.decrypt(
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+    key,
+    ciphertext,
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
 /**
  * Deterministic JSON serialization with sorted keys to ensure reproducible hashes.
  */

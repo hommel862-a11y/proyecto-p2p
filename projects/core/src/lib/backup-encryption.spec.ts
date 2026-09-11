@@ -4,7 +4,10 @@ import {
   computeSha256,
   createChecksummedBackup,
   verifyBackupIntegrity,
+  encryptBackupAES256,
+  decryptBackupAES256,
   type ChecksummedBackup,
+  type EncryptedBackupEnvelope,
 } from './backup-encryption';
 
 describe('backup-encryption', () => {
@@ -65,5 +68,40 @@ describe('backup-encryption', () => {
     const result = verifyBackupIntegrity(invalid);
     expect(result.isValid).toBe(false);
     expect(result.error).toContain('Formato de backup desconocido');
+  });
+
+  describe('AES-256-GCM encryption/decryption', () => {
+    const PASSWORD = 'test-secret-password-2026';
+    const payload = JSON.stringify({ operations: [{ id: 'op-1', amount: 500 }] });
+
+    it('encrypts and decrypts a backup payload round-trip', async () => {
+      const envelope = await encryptBackupAES256(PASSWORD, payload);
+      expect(envelope.format).toBe('p2p-encrypted-v1');
+      expect(envelope.algorithm).toBe('AES-256-GCM');
+      expect(envelope.salt).toBeTruthy();
+      expect(envelope.iv).toBeTruthy();
+      expect(envelope.ciphertext).toBeTruthy();
+      expect(envelope.ciphertext).not.toBe(payload);
+
+      const decrypted = await decryptBackupAES256(PASSWORD, envelope);
+      expect(decrypted).toBe(payload);
+    });
+
+    it('different passwords produce different ciphertexts', async () => {
+      const envelope1 = await encryptBackupAES256('password-a', payload);
+      const envelope2 = await encryptBackupAES256('password-b', payload);
+      expect(envelope1.ciphertext).not.toBe(envelope2.ciphertext);
+    });
+
+    it('decrypting with wrong password throws', async () => {
+      const envelope = await encryptBackupAES256(PASSWORD, payload);
+      await expect(decryptBackupAES256('wrong-password', envelope)).rejects.toThrow();
+    });
+
+    it('tampered ciphertext throws on decryption', async () => {
+      const envelope = await encryptBackupAES256(PASSWORD, payload);
+      const tampered = { ...envelope, ciphertext: envelope.ciphertext + 'X' } as EncryptedBackupEnvelope;
+      await expect(decryptBackupAES256(PASSWORD, tampered)).rejects.toThrow();
+    });
   });
 });

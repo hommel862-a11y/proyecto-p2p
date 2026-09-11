@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { StorageService } from '../../core/storage';
 import { SessionService } from '../../core/session.service';
 import { AccountsService } from '../../core/accounts.service';
@@ -59,12 +60,42 @@ export class Stats {
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
 
-  private readonly restoredUi: StatsUiState | null = sanitizeStatsUi(this.storage.get<StatsUiState>(STATS_UI_KEY));
+  firstRender = true;
+  dayAppliedFromParam = false;
+  dayParamDate = '';
+
+  private readonly restoredUi: StatsUiState | null = sanitizeStatsUi(
+    this.storage.get<StatsUiState>(STATS_UI_KEY),
+  );
 
   readonly period = signal<ExtendedPeriodKind>(this.restoredUi?.period ?? 'day');
   readonly pairFilter = signal<'all' | 'USDT' | 'EUR'>(this.restoredUi?.pairFilter ?? 'all');
 
+  constructor() {
+    const router = inject(Router);
+    const url = router.parseUrl(router.url);
+    const dayParam = url.queryParams['day'];
+    if (dayParam) {
+      const parts = dayParam.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const day = parseInt(parts[2], 10);
+        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+          this.calendarYear.set(year);
+          this.calendarMonth.set(month);
+          this.dayAppliedFromParam = true;
+          this.dayParamDate = dayParam;
+        }
+      }
+    }
+  }
+
   private readonly persistEffect = effect(() => {
+    if (this.firstRender) {
+      this.firstRender = false;
+      return;
+    }
     this.storage.set(STATS_UI_KEY, { period: this.period(), pairFilter: this.pairFilter() });
   });
 
@@ -170,6 +201,12 @@ export class Stats {
 
   setPairFilter(p: 'all' | 'USDT' | 'EUR'): void {
     this.pairFilter.set(p);
+  }
+
+  clearDayFilter(): void {
+    this.selectedCalendarDay.set(null);
+    this.calendarYear.set(new Date().getUTCFullYear());
+    this.calendarMonth.set(new Date().getUTCMonth() + 1);
   }
 
   formatDuration(ms: number): string {

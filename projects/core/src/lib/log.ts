@@ -37,6 +37,10 @@ export interface Operation {
   counterpartyId?: string;
   /** bank account holder name observed on the transfer receipt (for anti-triangulation audit). */
   payerName?: string;
+  /** active operator who recorded this operation (shift turn). */
+  operatorId?: string;
+  /** display name of the active operator. */
+  operatorName?: string;
 }
 
 export interface LogSummary {
@@ -52,6 +56,29 @@ export interface LogSummary {
   exposure: number;
   /** trailing count of consecutive error-free operations. */
   zeroErrorStreak: number;
+}
+
+/**
+ * Filter operations by active operator ID.
+ * When `operatorId` is undefined, returns all operations unchanged.
+ */
+export function filterOpsByOperator(
+  ops: readonly Operation[],
+  operatorId?: string,
+): Operation[] {
+  if (!operatorId) return [...ops];
+  return ops.filter((o) => o.operatorId === operatorId);
+}
+
+/**
+ * Compute a per-operator summary: count and PnL filtered by operator.
+ */
+export function computeOperatorSummary(
+  ops: readonly Operation[],
+  operatorId?: string,
+): LogSummary {
+  const filtered = filterOpsByOperator(ops, operatorId);
+  return computeLogSummary(filtered);
 }
 
 /**

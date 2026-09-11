@@ -13,10 +13,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     <div class="terminal-card-header">
       <div class="card-header-title">
         @if (icon(); as i) {
-          <span class="card-icon">{{ i }}</span>
+          <span class="card-icon" aria-hidden="true">{{ i }}</span>
         }
         @if (title(); as t) {
-          <span class="card-title">{{ t }}</span>
+          <h3 class="card-title">{{ t }}</h3>
         }
         <ng-content select="[uiHeaderContent]" />
       </div>

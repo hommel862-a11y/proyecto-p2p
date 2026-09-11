@@ -187,7 +187,12 @@ describe('OperationLog', () => {
   it('addAssign appends a treasury assign operation and persists it through the same ledger', () => {
     const f = create();
     const c = f.componentInstance;
-    c.assignDraft.set({ vesAmount: 50000, bankAccountId: 'banesco-pm-1', notes: 'fondo', errorFree: true });
+    c.assignDraft.set({
+      vesAmount: 50000,
+      bankAccountId: 'banesco-pm-1',
+      notes: 'fondo',
+      errorFree: true,
+    });
     c.addAssign();
     expect(c.operations().length).toBe(1);
     const saved = c.operations()[0];

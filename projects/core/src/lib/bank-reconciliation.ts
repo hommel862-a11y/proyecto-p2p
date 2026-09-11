@@ -6,6 +6,7 @@
  */
 
 import { roundMoney } from './money';
+import type { Operation } from './log';
 
 export type BankIdentifier =
   | 'MERCANTIL'
@@ -246,6 +247,41 @@ export function parseBankNotification(text: string): ParsedBankNotification {
   }
 
   return baseResult;
+}
+
+/**
+ * Auto-matches a parsed bank notification against pending operations.
+ * Uses amount tolerance and reference similarity to find the best match.
+ * Returns the matched operation or null if no confident match exists.
+ */
+export function matchNotificationToOperations(
+  notification: ParsedBankNotification,
+  pendingOps: readonly Operation[],
+  amountToleranceVes = 5.0,
+): Operation | null {
+  if (!notification.isParsed || notification.amountVes <= 0) return null;
+
+  const sorted = [...pendingOps].sort((a, b) => {
+    const diffA = Math.abs(a.vesAmount - notification.amountVes);
+    const diffB = Math.abs(b.vesAmount - notification.amountVes);
+    return diffA - diffB;
+  });
+
+  for (const op of sorted) {
+    const amountDiff = Math.abs(op.vesAmount - notification.amountVes);
+    if (amountDiff <= amountToleranceVes) {
+      // Also check reference match if both have references
+      if (notification.reference && op.notes?.includes(notification.reference)) {
+        return op;
+      }
+      // Fall back to amount-only match if it's a close enough match
+      if (amountDiff <= 1.0) {
+        return op;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

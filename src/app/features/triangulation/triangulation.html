@@ -1,0 +1,321 @@
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Triangulación y Arbitraje Multidivisa</h2>
+      <p class="panel-subtitle">Simulación de ciclos de 3 tramos para arbitraje cross-currency y cross-border</p>
+    </div>
+  </div>
+
+  <!-- Compliance Banner -->
+  <div class="section-group" style="border-left: 4px solid var(--gold); display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
+    <div style="font-size: 1.3rem; line-height: 1;">🛡️</div>
+    <div>
+      <strong style="color: var(--gold); font-size: 0.95rem;">Regla de Seguridad & Cumplimiento (Self-Routing):</strong>
+      <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
+        Esta herramienta calcula arbitraje financiero <em>únicamente entre cuentas propias del operador</em>. Nunca aceptes pagos de terceros ni triangules fondos de remitentes desconocidos para protegerte de bloqueos bancarios y fraudes.
+      </p>
+    </div>
+  </div>
+
+  <!-- Route Preset Selector -->
+  <div class="section-group" style="margin-bottom: 20px;">
+    <div class="terminal-card-toolbar">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="text-muted" style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Ruta Seleccionada:</span>
+      </div>
+      <div class="toolbar-segmented" role="group" aria-label="Rutas de Triangulación">
+        @for (preset of presets; track preset.id) {
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="preset.id === selectedPresetId()"
+            (click)="onSelectPreset(preset.id)"
+          >
+            {{ preset.name }}
+          </button>
+        }
+      </div>
+    </div>
+    <p class="text-muted" style="margin: 8px 0 0; font-size: 0.82rem;">
+      {{ activePreset().description }}
+    </p>
+  </div>
+
+  <!-- KPI Overview -->
+  <div class="kpi-grid" style="margin-bottom: 24px;">
+    <div class="kpi-card">
+      <span class="kpi-label">Capital Inicial</span>
+      <span class="kpi-val font-mono">{{ initialAmount() | number: '1.2-2' }} {{ activePreset().initialCurrency }}</span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Capital Final</span>
+      <span class="kpi-val font-mono" style="color: var(--gold);">
+        {{ calculationResult().finalAmount | number: '1.2-2' }} {{ activePreset().initialCurrency }}
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Ganancia Neta (PnL)</span>
+      <span class="kpi-val font-mono" [class.positive]="calculationResult().netProfit > 0" [class.negative]="calculationResult().netProfit <= 0">
+        {{ calculationResult().netProfit > 0 ? '+' : '' }}{{ calculationResult().netProfit | number: '1.2-2' }} {{ activePreset().initialCurrency }}
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Retorno Neto (ROI)</span>
+      <span class="kpi-val font-mono" [class.positive]="calculationResult().roiPct > 0" [class.negative]="calculationResult().roiPct <= 0">
+        {{ calculationResult().roiPct > 0 ? '+' : '' }}{{ calculationResult().roiPct | number: '1.2-2' }}%
+      </span>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-label">Riesgo Cambiario</span>
+      <span class="kpi-val">
+        <span class="badge" [class.badge-accent]="calculationResult().riskLevel === 'LOW'" [class.badge-secondary]="calculationResult().riskLevel === 'MEDIUM'" [class.badge-danger]="calculationResult().riskLevel === 'HIGH' || calculationResult().riskLevel === 'CRITICAL'">
+          {{ calculationResult().riskLevel }}
+        </span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Initial Capital Input -->
+  <div class="terminal-input-card" style="margin-bottom: 24px;">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">⚡</span>
+        <span class="card-title">Parámetros del Ciclo Triangular</span>
+      </div>
+      <span class="badge badge-accent font-mono">{{ activePreset().initialCurrency }}</span>
+    </div>
+
+    <div class="terminal-input-grid">
+      <div class="terminal-field">
+        <label class="terminal-label" for="initial-amount-input">
+          <span>Capital Inicial a Invertir</span>
+          <span class="terminal-subtext">Monto asignado al primer tramo</span>
+        </label>
+        <div class="input-control-wrap">
+          <input
+            id="initial-amount-input"
+            type="number"
+            min="1"
+            step="any"
+            class="terminal-input font-bold"
+            [ngModel]="initialAmount()"
+            (ngModelChange)="initialAmount.set($event)"
+            placeholder="Monto a invertir"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risk Warnings if any -->
+  @if (calculationResult().riskReasons.length > 0) {
+    <div class="section-group" style="border-left: 4px solid var(--warn); background: rgba(185, 121, 26, 0.08); margin-bottom: 24px;">
+      <strong style="color: var(--warn); font-size: 0.9rem;">⚠️ Observaciones de Riesgo y Liquidez:</strong>
+      <ul style="margin: 8px 0 0 20px; padding: 0; font-size: 0.85rem; color: var(--muted);">
+        @for (reason of calculationResult().riskReasons; track reason) {
+          <li>{{ reason }}</li>
+        }
+      </ul>
+    </div>
+  }
+
+  <!-- 3-Leg Interactive Breakdown -->
+  <div class="section-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">Desglose Operativo por Tramo</h3>
+      <span class="text-muted" style="font-size: 0.8rem;">Ajuste interactivo de cotización y comisión</span>
+    </div>
+
+    <div class="terminal-input-grid grid-3">
+      <!-- Tramo 1 -->
+      <div class="terminal-input-card" style="margin-bottom: 0;">
+        <div class="terminal-card-header">
+          <div class="card-header-title">
+            <span class="card-icon">1️⃣</span>
+            <span class="card-title">Tramo 1: {{ calculationResult().steps[0].fromCurrency }} ➔ {{ calculationResult().steps[0].toCurrency }}</span>
+          </div>
+          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[0].platform }}</span>
+        </div>
+
+        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[0].paymentMethod }}</p>
+
+        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg1-price-input">
+              <span>Precio / Cotización</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg1-price-input"
+                type="number"
+                step="any"
+                class="terminal-input font-bold"
+                [ngModel]="leg1Price()"
+                (ngModelChange)="leg1Price.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg1-fee-input">
+              <span>Comisión (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg1-fee-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg1Fee()"
+                (ngModelChange)="leg1Fee.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Entrada:</span>
+            <span class="font-mono">{{ calculationResult().steps[0].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].fromCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Comisión:</span>
+            <span class="font-mono text-muted">{{ calculationResult().steps[0].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[0].toCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
+            <span style="color: var(--text);">Resultado Tramo 1:</span>
+            <span class="font-mono positive">{{ calculationResult().steps[0].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].toCurrency }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tramo 2 -->
+      <div class="terminal-input-card" style="margin-bottom: 0;">
+        <div class="terminal-card-header">
+          <div class="card-header-title">
+            <span class="card-icon">2️⃣</span>
+            <span class="card-title">Tramo 2: {{ calculationResult().steps[1].fromCurrency }} ➔ {{ calculationResult().steps[1].toCurrency }}</span>
+          </div>
+          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[1].platform }}</span>
+        </div>
+
+        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[1].paymentMethod }}</p>
+
+        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg2-price-input">
+              <span>Precio / Cotización</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg2-price-input"
+                type="number"
+                step="any"
+                class="terminal-input font-bold"
+                [ngModel]="leg2Price()"
+                (ngModelChange)="leg2Price.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg2-fee-input">
+              <span>Comisión (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg2-fee-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg2Fee()"
+                (ngModelChange)="leg2Fee.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Entrada:</span>
+            <span class="font-mono">{{ calculationResult().steps[1].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].fromCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Comisión:</span>
+            <span class="font-mono text-muted">{{ calculationResult().steps[1].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[1].toCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
+            <span style="color: var(--text);">Resultado Tramo 2:</span>
+            <span class="font-mono positive">{{ calculationResult().steps[1].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].toCurrency }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tramo 3 -->
+      <div class="terminal-input-card" style="margin-bottom: 0;">
+        <div class="terminal-card-header">
+          <div class="card-header-title">
+            <span class="card-icon">3️⃣</span>
+            <span class="card-title">Tramo 3: {{ calculationResult().steps[2].fromCurrency }} ➔ {{ calculationResult().steps[2].toCurrency }}</span>
+          </div>
+          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[2].platform }}</span>
+        </div>
+
+        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[2].paymentMethod }}</p>
+
+        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg3-price-input">
+              <span>Precio / Cotización</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg3-price-input"
+                type="number"
+                step="any"
+                class="terminal-input font-bold"
+                [ngModel]="leg3Price()"
+                (ngModelChange)="leg3Price.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="leg3-fee-input">
+              <span>Comisión (%)</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="leg3-fee-input"
+                type="number"
+                step="0.01"
+                class="terminal-input"
+                [ngModel]="leg3Fee()"
+                (ngModelChange)="leg3Fee.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Entrada:</span>
+            <span class="font-mono">{{ calculationResult().steps[2].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[2].fromCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Comisión:</span>
+            <span class="font-mono text-muted">{{ calculationResult().steps[2].percentageFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[2].toCurrency }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
+            <span style="color: var(--text);">Retorno Final:</span>
+            <span class="font-mono" style="color: var(--gold);">{{ calculationResult().steps[2].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[2].toCurrency }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

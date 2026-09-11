@@ -72,7 +72,8 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             <span
               style="font-size: 0.8rem; font-weight: 700; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.5px;"
             >
-              Lector Pasivo de Notificaciones (Mercantil, Bancamiga, Banesco, Provincial, BDV, Banplus)
+              Lector Pasivo de Notificaciones (Mercantil, Bancamiga, Banesco, Provincial, BDV,
+              Banplus)
             </span>
             <span class="text-muted" style="font-size: 0.75rem;"
               >Anti-Triangulación en Tiempo Real</span
@@ -144,7 +145,9 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                 />
               </div>
             }
-            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;">
+            <div
+              style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;"
+            >
               <div style="font-size: 0.85rem; color: var(--muted);">
                 Escanea el código con la app de tu banco o copia los datos al portapapeles con 1
                 clic:
@@ -186,11 +189,16 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <form (submit)="$event.preventDefault(); onSubmitForm()">
         <div class="terminal-input-grid grid-3">
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-type">
               <span>Tipo de Operación</span>
             </label>
             <div class="input-control-wrap">
-              <select class="terminal-select" [value]="form().type" (change)="onFieldChange('type', $any($event.target).value)">
+              <select
+                id="op-field-type"
+                class="terminal-select"
+                [value]="form().type"
+                (change)="onFieldChange('type', $any($event.target).value)"
+              >
                 <option value="buy">🟢 Compra (VES → Cripto)</option>
                 <option value="sell">🔴 Venta (Cripto → VES)</option>
               </select>
@@ -198,11 +206,16 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-pair">
               <span>Par Comercial</span>
             </label>
             <div class="input-control-wrap">
-              <select class="terminal-select" [value]="form().pair" (change)="onFieldChange('pair', $any($event.target).value)">
+              <select
+                id="op-field-pair"
+                class="terminal-select"
+                [value]="form().pair"
+                (change)="onFieldChange('pair', $any($event.target).value)"
+              >
                 <option value="USDT">USDT / VES</option>
                 <option value="EUR">EUR / VES</option>
               </select>
@@ -210,13 +223,14 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-price">
               <span>Precio Pactado</span>
               <span class="terminal-subtext">VES por {{ form().pair }}</span>
             </label>
             <div class="input-control-wrap">
-              <span class="input-prefix">VES</span>
+              <span class="input-prefix" aria-hidden="true">VES</span>
               <input
+                id="op-field-price"
                 type="number"
                 min="0"
                 step="0.01"
@@ -229,13 +243,14 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-ves">
               <span>Monto en VES</span>
               <span class="terminal-subtext">Bolívares totales</span>
             </label>
             <div class="input-control-wrap">
-              <span class="input-prefix">Bs</span>
+              <span class="input-prefix" aria-hidden="true">Bs</span>
               <input
+                id="op-field-ves"
                 type="number"
                 min="0"
                 step="0.01"
@@ -243,17 +258,20 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                 [value]="form().vesAmount"
                 (input)="onFieldChange('vesAmount', clampMoney(+$any($event.target).value))"
                 placeholder="0.00"
+                [attr.aria-invalid]="limitExceededWarning() ? 'true' : null"
+                [attr.aria-describedby]="limitExceededWarning() ? 'op-limit-warning' : null"
               />
             </div>
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-crypto">
               <span>Monto en {{ form().pair }}</span>
               <span class="terminal-subtext">Volumen cripto</span>
             </label>
             <div class="input-control-wrap">
               <input
+                id="op-field-crypto"
                 type="number"
                 min="0"
                 step="0.000001"
@@ -262,18 +280,19 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                 (input)="onFieldChange('usdtAmount', clampMoney(+$any($event.target).value))"
                 placeholder="0.00"
               />
-              <span class="input-suffix">{{ form().pair }}</span>
+              <span class="input-suffix" aria-hidden="true">{{ form().pair }}</span>
             </div>
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-fees">
               <span>Comisiones Pagadas</span>
               <span class="terminal-subtext">Bancos / Red</span>
             </label>
             <div class="input-control-wrap">
-              <span class="input-prefix">Bs</span>
+              <span class="input-prefix" aria-hidden="true">Bs</span>
               <input
+                id="op-field-fees"
                 type="number"
                 min="0"
                 step="0.01"
@@ -286,11 +305,12 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-counterparty">
               <span>Contraparte (CRM)</span>
             </label>
             <div class="input-control-wrap">
               <select
+                id="op-field-counterparty"
                 class="terminal-select"
                 [value]="form().counterpartyId"
                 (change)="onCounterpartySelect($any($event.target).value)"
@@ -306,30 +326,38 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-payer">
               <span>Titular de Pago</span>
               <span class="terminal-subtext">Anti-Triangulación</span>
             </label>
             <div class="input-control-wrap">
               <input
+                id="op-field-payer"
                 type="text"
                 class="terminal-input"
                 placeholder="Nombre o Cédula en comprobante"
                 [value]="form().payerName"
                 (input)="onFieldChange('payerName', $any($event.target).value)"
+                [attr.aria-invalid]="antiTriangulation().warning ? 'true' : null"
+                [attr.aria-describedby]="
+                  antiTriangulation().warning ? 'op-triangulation-warning' : null
+                "
               />
             </div>
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-bank">
               <span>Cuenta Bancaria / Riel</span>
             </label>
             <div class="input-control-wrap">
               <select
+                id="op-field-bank"
                 class="terminal-select"
                 [value]="form().bankAccountId"
                 (change)="onFieldChange('bankAccountId', $any($event.target).value)"
+                [attr.aria-invalid]="limitExceededWarning() ? 'true' : null"
+                [attr.aria-describedby]="limitExceededWarning() ? 'op-limit-warning' : null"
               >
                 <option value="">Sin asignar / Otra cuenta</option>
                 @for (acc of accountsService.accounts(); track acc.id) {
@@ -343,11 +371,12 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field full-width">
-            <label class="terminal-label">
+            <label class="terminal-label" for="op-field-note">
               <span>Notas del Comercio / Referencia</span>
             </label>
             <div class="input-control-wrap">
               <input
+                id="op-field-note"
                 type="text"
                 class="terminal-input"
                 placeholder="Ej: Comerciante VIP #12 - Ref: 987654"
@@ -360,6 +389,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (antiTriangulation().warning; as warn) {
           <div
+            id="op-triangulation-warning"
             [style.background]="
               antiTriangulation().riskLevel === 'CRITICAL'
                 ? 'rgba(255, 95, 109, 0.15)'
@@ -387,6 +417,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (limitExceededWarning(); as warn) {
           <div
+            id="op-limit-warning"
             style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin: 6px 0;"
             role="alert"
           >
@@ -401,7 +432,9 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               [checked]="form().errorFree"
               (change)="onFieldChange('errorFree', $any($event.target).checked)"
             />
-            <span style="font-size: 0.82rem;">Operación ejecutada sin errores (Escalera de disciplina)</span>
+            <span style="font-size: 0.82rem;"
+              >Operación ejecutada sin errores (Escalera de disciplina)</span
+            >
           </label>
           <div class="form-actions" style="margin: 0;">
             <button type="submit" class="btn btn-primary">⚡ Registrar Operación</button>

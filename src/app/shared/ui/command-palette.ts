@@ -11,7 +11,8 @@ import {
 import { Router } from '@angular/router';
 import { HotkeysService } from '../../core/hotkeys.service';
 
-type IconId = 'dashboard' | 'spread' | 'income' | 'log' | 'risk' | 'stats' | 'guide' | 'theme' | 'hotkeys';
+type IconId =
+  'dashboard' | 'spread' | 'income' | 'log' | 'risk' | 'stats' | 'guide' | 'theme' | 'hotkeys';
 
 export interface PaletteCommand {
   id: string;
@@ -30,14 +31,24 @@ export interface PaletteCommand {
       <div
         class="palette-backdrop"
         (click)="$event.target === $event.currentTarget && close()"
+        (keydown.escape)="close()"
         role="dialog"
         aria-modal="true"
         aria-label="Paleta de comandos"
       >
         <div class="palette-panel">
           <div class="palette-input-wrap">
-            <svg class="palette-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            <svg
+              class="palette-search-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
               #searchInput
@@ -73,28 +84,119 @@ export interface PaletteCommand {
                     <span class="palette-item-icon">
                       @switch (cmd.icon) {
                         @case ('dashboard') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <rect x="3" y="3" width="7" height="7" />
+                            <rect x="14" y="3" width="7" height="7" />
+                            <rect x="3" y="14" width="7" height="7" />
+                            <rect x="14" y="14" width="7" height="7" />
+                          </svg>
                         }
                         @case ('spread') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <polyline points="3 12 7 12 10 20 14 4 17 12 21 12" />
+                          </svg>
                         }
                         @case ('income') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <rect x="5" y="3" width="14" height="18" rx="2" />
+                            <line x1="8" y1="7" x2="16" y2="7" />
+                            <line x1="8" y1="11" x2="16" y2="11" />
+                            <line x1="8" y1="15" x2="16" y2="15" />
+                          </svg>
                         }
                         @case ('log') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <line x1="8" y1="6" x2="20" y2="6" />
+                            <line x1="8" y1="12" x2="20" y2="12" />
+                            <line x1="8" y1="18" x2="20" y2="18" />
+                            <circle cx="4" cy="6" r="1" />
+                            <circle cx="4" cy="12" r="1" />
+                            <circle cx="4" cy="18" r="1" />
+                          </svg>
                         }
                         @case ('risk') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6z" />
+                          </svg>
                         }
                         @case ('stats') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <line x1="4" y1="20" x2="20" y2="20" />
+                            <rect x="5" y="11" width="3" height="7" />
+                            <rect x="10.5" y="6" width="3" height="12" />
+                            <rect x="16" y="13" width="3" height="5" />
+                          </svg>
                         }
                         @case ('guide') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><polyline points="15 4 15 9 20 9"/><line x1="8" y1="13" x2="13" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path
+                              d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
+                            />
+                            <polyline points="15 4 15 9 20 9" />
+                            <line x1="8" y1="13" x2="13" y2="13" />
+                            <line x1="8" y1="17" x2="13" y2="17" />
+                          </svg>
                         }
                         @case ('theme') {
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                          </svg>
                         }
                         @case ('hotkeys') {
                           <span class="palette-icon-emoji">⌨️</span>
@@ -115,7 +217,9 @@ export interface PaletteCommand {
     }
   `,
   styles: `
-    :host { display: contents; }
+    :host {
+      display: contents;
+    }
 
     .palette-backdrop {
       position: fixed;
@@ -137,7 +241,9 @@ export interface PaletteCommand {
       border-radius: var(--radius-lg);
       width: 100%;
       max-width: 520px;
-      box-shadow: var(--shadow-lg), 0 0 40px rgba(216, 180, 92, 0.10);
+      box-shadow:
+        var(--shadow-lg),
+        0 0 40px rgba(216, 180, 92, 0.1);
       overflow: hidden;
       animation: paletteSlideIn 0.18s var(--ease-out);
     }
@@ -217,7 +323,9 @@ export interface PaletteCommand {
       font-size: 0.88rem;
       cursor: pointer;
       text-align: left;
-      transition: background 0.12s var(--ease-out), border-color 0.12s var(--ease-out);
+      transition:
+        background 0.12s var(--ease-out),
+        border-color 0.12s var(--ease-out);
     }
 
     .palette-item:hover,
@@ -273,12 +381,22 @@ export interface PaletteCommand {
     }
 
     @keyframes paletteFadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
     }
     @keyframes paletteSlideIn {
-      from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+      from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
   `,
 })
@@ -306,7 +424,7 @@ export class CommandPalette {
   });
 
   protected readonly filteredGroups = computed(() => {
-    const groups = new Map<string, Array<{ _idx: number } & PaletteCommand>>();
+    const groups = new Map<string, ({ _idx: number } & PaletteCommand)[]>();
     for (const item of this.flatFiltered()) {
       const key = item.group as string;
       const g = groups.get(key) ?? [];
@@ -323,7 +441,9 @@ export class CommandPalette {
       queueMicrotask(() => {
         try {
           this.searchInput().nativeElement.focus();
-        } catch { /* noop */ }
+        } catch {
+          /* noop */
+        }
       });
     }
   });
@@ -368,7 +488,9 @@ export class CommandPalette {
     queueMicrotask(() => {
       try {
         document.querySelector('.palette-item.active')?.scrollIntoView({ block: 'nearest' });
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
     });
   }
 
@@ -407,6 +529,14 @@ export class CommandPalette {
         hint: '/income',
         group: 'PLANIFICACIÓN',
         action: () => this.router.navigate(['/income']),
+      },
+      {
+        id: 'nav-triangulation',
+        label: 'Triangulación Multidivisa',
+        icon: 'income',
+        hint: '/triangulation',
+        group: 'PLANIFICACIÓN',
+        action: () => this.router.navigate(['/triangulation']),
       },
       {
         id: 'nav-stats',

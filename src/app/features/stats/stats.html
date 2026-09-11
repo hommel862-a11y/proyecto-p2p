@@ -23,14 +23,66 @@
 
       <div class="terminal-field" style="min-width: 180px; margin: 0;">
         <div class="input-control-wrap">
-          <span class="input-prefix">PAR</span>
-          <select class="terminal-select" [value]="pairFilter()" (change)="setPairFilter($any($event.target).value)">
+          <span class="input-prefix" aria-hidden="true">PAR</span>
+          <select
+            id="stats-pair-filter"
+            class="terminal-select"
+            [value]="pairFilter()"
+            (change)="setPairFilter($any($event.target).value)"
+            aria-label="Filtrar estadísticas por par comercial"
+          >
             <option value="all">Todos los Pares</option>
             <option value="USDT">USDT / VES</option>
             <option value="EUR">EUR / VES</option>
           </select>
         </div>
       </div>
+
+      @if (dayAppliedFromParam) {
+        <div class="terminal-field" style="min-width: 180px; margin: 0; margin-top: 4px;">
+          <div class="input-control-wrap">
+            <span class="input-prefix" aria-hidden="true">DÍA</span>
+            <button
+              type="button"
+              style="
+                font-size: 0.78rem;
+                padding: 4px 10px;
+                background: rgba(47, 208, 143, 0.15);
+                border: 1px solid rgba(47, 208, 143, 0.35);
+                border-radius: var(--radius);
+                color: var(--accent);
+                cursor: pointer;
+                white-space: nowrap;
+                "
+                (click)="clearDayFilter()"
+                aria-label="Limpiar filtro de día">
+                Día: {{ dayParamDate }} ✕
+            </button>
+          </div>
+        </div>
+      } @else if (selectedCalendarDay(); as day) {
+        <div class="terminal-field" style="min-width: 180px; margin: 0; margin-top: 4px;">
+          <div class="input-control-wrap">
+            <span class="input-prefix" aria-hidden="true">DÍA</span>
+            <button
+              type="button"
+              style="
+                font-size: 0.78rem;
+                padding: 4px 10px;
+                background: rgba(47, 208, 143, 0.15);
+                border: 1px solid rgba(47, 208, 143, 0.35);
+                border-radius: var(--radius);
+                color: var(--accent);
+                cursor: pointer;
+                white-space: nowrap;
+                "
+                (click)="clearDayFilter()"
+                aria-label="Limpiar filtro de día">
+                Día: {{ day.date }} ✕
+            </button>
+          </div>
+        </div>
+      }
     </div>
   </app-ui-card>
 
@@ -159,16 +211,16 @@
           @if (selectedDayOps().length === 0) {
             <p class="note">Sin operaciones registradas en este día.</p>
           } @else {
-            <table class="corporate-table" style="font-size: 0.82rem;">
+            <table class="corporate-table" style="font-size: 0.82rem;" aria-label="Auditoría detallada de operaciones del día">
               <thead>
                 <tr>
-                  <th>Hora</th>
-                  <th>Tipo</th>
-                  <th>USDT</th>
-                  <th>Tasa</th>
-                  <th>VES Total</th>
-                  <th>Comisión</th>
-                  <th>Notas</th>
+                  <th scope="col">Hora</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">USDT</th>
+                  <th scope="col">Tasa</th>
+                  <th scope="col">VES Total</th>
+                  <th scope="col">Comisión</th>
+                  <th scope="col">Notas</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,18 +252,18 @@
       @if (sessionSummaries().length === 0) {
         <p class="note">No se han registrado sesiones de trading aún. Inicia tu primera jornada desde el Centro de Control.</p>
       } @else {
-        <table class="corporate-table">
+        <table class="corporate-table" aria-label="Historial de jornadas operativas registradas">
           <thead>
             <tr>
-              <th>Inicio / Fecha</th>
-              <th>Estado</th>
-              <th>Duración</th>
-              <th>Ops</th>
-              <th>PnL (Bs)</th>
-              <th>PnL (USDT)</th>
-              <th>Rotación</th>
-              <th>Disciplina</th>
-              <th>Observaciones</th>
+              <th scope="col">Inicio / Fecha</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Duración</th>
+              <th scope="col">Ops</th>
+              <th scope="col">PnL (Bs)</th>
+              <th scope="col">PnL (USDT)</th>
+              <th scope="col">Rotación</th>
+              <th scope="col">Disciplina</th>
+              <th scope="col">Observaciones</th>
             </tr>
           </thead>
           <tbody>
@@ -242,15 +294,15 @@
     <div class="section-divider"></div>
     <div class="data-section">
       <span class="section-eyebrow">Detalle por Período</span>
-      <table class="corporate-table">
+      <table class="corporate-table" aria-label="Rendimiento agrupado por período">
         <thead>
           <tr>
-            <th>{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
-            <th>Ops</th>
-            <th>Ganancia (Bs)</th>
-            <th>Ganancia (USDT)</th>
-            <th>Volumen (USDT)</th>
-            <th>Comisiones (Bs)</th>
+            <th scope="col">{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
+            <th scope="col">Ops</th>
+            <th scope="col">Ganancia (Bs)</th>
+            <th scope="col">Ganancia (USDT)</th>
+            <th scope="col">Volumen (USDT)</th>
+            <th scope="col">Comisiones (Bs)</th>
           </tr>
         </thead>
         <tbody>
@@ -270,14 +322,23 @@
   }
 
   @if (showComplianceModal()) {
-    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && closeComplianceModal()" (keydown.escape)="closeComplianceModal()" tabindex="0" role="button" aria-label="Cerrar modal de cumplimiento">
-      <div class="modal-content compliance-modal-content" style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;">
+    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && closeComplianceModal()" (keydown.escape)="closeComplianceModal()" aria-label="Cerrar modal">
+      <div
+        class="modal-content compliance-modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compliance-modal-heading"
+        tabindex="-1"
+        style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;"
+      >
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 18px;">
           <div>
-            <h3 style="margin: 0; font-size: 1.25rem;">Informe de Cumplimiento & Justificación Bancaria</h3>
+            <h3 id="compliance-modal-heading" style="margin: 0; font-size: 1.25rem;">Informe de Cumplimiento & Justificación Bancaria</h3>
             <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">Documento formal para presentar ante entidades bancarias (origen y destino de fondos).</p>
           </div>
-          <button type="button" class="btn-icon" (click)="closeComplianceModal()">✕</button>
+          <button type="button" class="btn-icon" (click)="closeComplianceModal()" aria-label="Cerrar modal de justificación bancaria">
+            <span aria-hidden="true">✕</span>
+          </button>
         </div>
 
         <!-- Filter / Metadata Editor -->
@@ -287,56 +348,56 @@
           </app-ui-panel-header>
           <div class="terminal-input-grid grid-3">
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-operator-name">
                 <span>Nombre / Razón Social</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="text" [value]="complianceMeta().operatorName" (input)="patchComplianceMeta({ operatorName: $any($event.target).value })" />
+                <input id="compliance-operator-name" class="terminal-input" type="text" [value]="complianceMeta().operatorName" (input)="patchComplianceMeta({ operatorName: $any($event.target).value })" />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-document-id">
                 <span>Cédula / RIF</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="text" [value]="complianceMeta().documentId" (input)="patchComplianceMeta({ documentId: $any($event.target).value })" />
+                <input id="compliance-document-id" class="terminal-input" type="text" [value]="complianceMeta().documentId" (input)="patchComplianceMeta({ documentId: $any($event.target).value })" />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-target-bank">
                 <span>Banco Destinatario</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="text" [value]="complianceMeta().targetBank" (input)="patchComplianceMeta({ targetBank: $any($event.target).value })" />
+                <input id="compliance-target-bank" class="terminal-input" type="text" [value]="complianceMeta().targetBank" (input)="patchComplianceMeta({ targetBank: $any($event.target).value })" />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-target-account">
                 <span>Cuenta Auditada</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="text" placeholder="Ej: 0134...1234" [value]="complianceMeta().targetAccountNumber || ''" (input)="patchComplianceMeta({ targetAccountNumber: $any($event.target).value })" />
+                <input id="compliance-target-account" class="terminal-input" type="text" placeholder="Ej: 0134...1234" [value]="complianceMeta().targetAccountNumber || ''" (input)="patchComplianceMeta({ targetAccountNumber: $any($event.target).value })" />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-start-date">
                 <span>Fecha Desde</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="date" [value]="complianceStartDate()" (input)="complianceStartDate.set($any($event.target).value)" />
+                <input id="compliance-start-date" class="terminal-input" type="date" [value]="complianceStartDate()" (input)="complianceStartDate.set($any($event.target).value)" />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label">
+              <label class="terminal-label" for="compliance-end-date">
                 <span>Fecha Hasta</span>
               </label>
               <div class="input-control-wrap">
-                <input class="terminal-input" type="date" [value]="complianceEndDate()" (input)="complianceEndDate.set($any($event.target).value)" />
+                <input id="compliance-end-date" class="terminal-input" type="date" [value]="complianceEndDate()" (input)="complianceEndDate.set($any($event.target).value)" />
               </div>
             </div>
           </div>
@@ -390,17 +451,17 @@
 
           <!-- Transaction Table -->
           <div class="table-container" style="margin-bottom: 20px; max-height: 350px; overflow-y: auto;">
-            <table class="corporate-table" style="font-size: 0.8rem;">
+            <table class="corporate-table" style="font-size: 0.8rem;" aria-label="Extracto de operaciones comerciales para justificación bancaria">
               <thead>
                 <tr>
-                  <th>Fecha / Hora</th>
-                  <th>Tipo</th>
-                  <th class="text-right">Monto VES</th>
-                  <th class="text-right">Cripto</th>
-                  <th class="text-right">Tasa</th>
-                  <th>Contraparte (Titular Legal)</th>
-                  <th>Cuenta Bancaria</th>
-                  <th class="text-center">Veredicto</th>
+                  <th scope="col">Fecha / Hora</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col" class="text-right">Monto VES</th>
+                  <th scope="col" class="text-right">Cripto</th>
+                  <th scope="col" class="text-right">Tasa</th>
+                  <th scope="col">Contraparte (Titular Legal)</th>
+                  <th scope="col">Cuenta Bancaria</th>
+                  <th scope="col" class="text-center">Veredicto</th>
                 </tr>
               </thead>
               <tbody>

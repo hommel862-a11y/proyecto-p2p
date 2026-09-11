@@ -107,8 +107,18 @@ import type { Operation, Counterparty } from '@p2p/core';
                     type="button"
                     class="btn-icon-danger"
                     (click)="removeRequest.emit(o.id)"
-                    title="Eliminar registro"
-                    aria-label="Eliminar registro"
+                    [title]="
+                      'Eliminar registro de ' +
+                      (o.type === 'buy' ? 'compra' : 'venta') +
+                      ' por ' +
+                      (o.vesAmount | ves)
+                    "
+                    [attr.aria-label]="
+                      'Eliminar operación del ' +
+                      (o.timestamp | slice: 0 : 10) +
+                      ' por ' +
+                      (o.vesAmount | ves)
+                    "
                   >
                     <svg
                       viewBox="0 0 24 24"

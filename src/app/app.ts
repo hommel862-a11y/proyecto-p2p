@@ -6,7 +6,14 @@ import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
 
 @Component({
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ToastComponent, HotkeysModalComponent, CommandPalette],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    ToastComponent,
+    HotkeysModalComponent,
+    CommandPalette,
+  ],
   selector: 'app-root',
   styleUrl: './app.scss',
   templateUrl: './app.html',

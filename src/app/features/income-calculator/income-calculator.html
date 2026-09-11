@@ -229,20 +229,20 @@
             </div>
 
             <span class="section-eyebrow" style="margin-bottom: 8px;">Proyección de Rendimiento por Velocidad</span>
-            <table class="velocity-table">
+            <table class="velocity-table" aria-label="Proyección de rendimiento por velocidad operativa">
               <thead>
                 <tr>
-                  <th>Rotación</th>
-                  <th>Ganancia Día</th>
-                  <th>Semanal</th>
-                  <th>Mensual</th>
-                  <th>Volumen Banco</th>
+                  <th scope="col">Rotación</th>
+                  <th scope="col">Ganancia Día</th>
+                  <th scope="col">Semanal</th>
+                  <th scope="col">Mensual</th>
+                  <th scope="col">Volumen Banco</th>
                 </tr>
               </thead>
               <tbody>
                 @for (p of velocityProjections(); track p.cyclesPerDay) {
                   <tr>
-                    <td><span class="speed-tag">{{ p.cyclesPerDay }} {{ p.cyclesPerDay === 1 ? 'vuelta' : 'vueltas' }}</span></td>
+                    <th scope="row" style="font-weight: normal; text-align: left;"><span class="speed-tag">{{ p.cyclesPerDay }} {{ p.cyclesPerDay === 1 ? 'vuelta' : 'vueltas' }}</span></th>
                     <td class="positive">+{{ p.dailyGainUsd | usdt }}</td>
                     <td class="positive">+{{ p.weeklyGainUsd | usdt }}</td>
                     <td class="positive" style="font-weight: 700;">+{{ p.monthlyGainUsd | usdt }}</td>
@@ -755,20 +755,20 @@
 
             <div class="data-section">
               <span class="section-eyebrow">Desglose Individual por Operador</span>
-              <table class="corporate-table">
+              <table class="corporate-table" aria-label="Desglose de capital y rentabilidad por operador">
                 <thead>
                   <tr>
-                    <th>Operador</th>
-                    <th>Capital</th>
-                    <th>Meta Día</th>
-                    <th>Cajero ($)</th>
-                    <th>Desk ($)</th>
+                    <th scope="col">Operador</th>
+                    <th scope="col">Capital</th>
+                    <th scope="col">Meta Día</th>
+                    <th scope="col">Cajero ($)</th>
+                    <th scope="col">Desk ($)</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (alloc of plan.operatorsAllocations; track alloc.operator.id) {
                     <tr>
-                      <td>{{ alloc.operator.name }}</td>
+                      <th scope="row" style="font-weight: 500; text-align: left;">{{ alloc.operator.name }}</th>
                       <td class="font-mono">{{ alloc.allocatedCapitalUsdt | usdt }}</td>
                       <td class="font-mono positive">+{{ alloc.targetDailyProfitUsdt | usdt }}</td>
                       <td class="font-mono" style="color: var(--accent-2);">{{ alloc.operatorDailyTakeUsdt | usdt }}</td>
@@ -948,19 +948,19 @@
     <div class="section-divider"></div>
     <div class="data-section">
       <span class="section-eyebrow">Tabla Comparativa de Disciplina</span>
-      <table class="corporate-table">
+      <table class="corporate-table" aria-label="Tabla comparativa de disciplina y metas de capital">
         <thead>
           <tr>
-            <th>Meta / día</th>
+            <th scope="col">Meta / día</th>
             @for (band of bands; track band) {
-              <th>{{ band }}%</th>
+              <th scope="col">{{ band }}%</th>
             }
           </tr>
         </thead>
         <tbody>
           @for (row of table(); track row.target) {
             <tr>
-              <th>{{ row.target | usdt }}</th>
+              <th scope="row">{{ row.target | usdt }}</th>
               @for (cell of row.cells; track $index) {
                 <td>{{ cell | usdt }}</td>
               }

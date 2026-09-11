@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeLogSummary, type Operation } from './log';
+import { computeLogSummary, filterOpsByOperator, computeOperatorSummary, type Operation } from './log';
 
 function op(over: Partial<Operation> = {}): Operation {
   return {
@@ -14,7 +14,27 @@ function op(over: Partial<Operation> = {}): Operation {
     fees: 0,
     notes: '',
     errorFree: false,
+    operatorId: 'op-alpha',
+    operatorName: 'Ana López',
     ...over,
+  };
+}
+
+function opWithOperator(operatorId: string, operatorName: string): Operation {
+  return {
+    id: 'op-' + operatorId,
+    timestamp: '2026-01-01T00:00:00.000Z',
+    type: 'buy',
+    pair: 'USDT',
+    vesAmount: 1000,
+    usdtAmount: 1.25,
+    price: 800,
+    merchantNote: '',
+    fees: 0,
+    notes: '',
+    errorFree: true,
+    operatorId,
+    operatorName,
   };
 }
 
@@ -81,5 +101,45 @@ describe('computeLogSummary', () => {
     expect(summary.pnlUsdt).toBe(0);
     expect(summary.exposure).toBe(0);
     expect(summary.capitalDeployed).toBe(0);
+  });
+});
+
+describe('filterOpsByOperator and computeOperatorSummary', () => {
+  const alphaOps: Operation[] = [
+    opWithOperator('op-alpha', 'Ana López'),
+    opWithOperator('op-alpha', 'Ana López'),
+  ];
+  const betaOps: Operation[] = [
+    opWithOperator('op-beta', 'Carlos Pérez'),
+  ];
+  const allOps: Operation[] = [...alphaOps, ...betaOps];
+
+  it('returns all ops when operatorId is undefined', () => {
+    const filtered = filterOpsByOperator(allOps);
+    expect(filtered).toHaveLength(3);
+  });
+
+  it('filters ops by operatorId', () => {
+    const filtered = filterOpsByOperator(allOps, 'op-alpha');
+    expect(filtered).toHaveLength(2);
+    expect(filtered.every((o) => o.operatorId === 'op-alpha')).toBe(true);
+  });
+
+  it('returns empty array when operatorId has no matching ops', () => {
+    const filtered = filterOpsByOperator(allOps, 'op-gamma');
+    expect(filtered).toHaveLength(0);
+  });
+
+  it('computeOperatorSummary returns PnL for a specific operator', () => {
+    // alpha: buy 1000 VES each x 2 -> total buy = 2000
+    const summary = computeOperatorSummary(allOps, 'op-alpha');
+    expect(summary.operations).toBe(2);
+    expect(summary.capitalDeployed).toBe(2000);
+  });
+
+  it('computeOperatorSummary returns all when operatorId is undefined', () => {
+    const summary = computeOperatorSummary(allOps);
+    expect(summary.operations).toBe(3);
+    expect(summary.capitalDeployed).toBe(3000); // 3 buys @ 1000 VES each
   });
 });

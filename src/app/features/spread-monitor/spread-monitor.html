@@ -20,9 +20,10 @@
         class="btn-ghost"
         (click)="audioAlerts.toggleMute()"
         [title]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
+        [attr.aria-label]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
         style="font-size: 1.1rem; padding: 4px 10px; line-height: 1;"
       >
-        {{ audioAlerts.isMuted() ? '🔇' : '🔔' }}
+        <span aria-hidden="true">{{ audioAlerts.isMuted() ? '🔇' : '🔔' }}</span>
       </button>
     </div>
   </div>
@@ -541,9 +542,10 @@
                           step="1"
                           [value]="alloc.recommendedPct"
                           (input)="setManualBankWeight(alloc.bankCode, +$any($event.target).value)"
+                          [attr.aria-label]="'Porcentaje de capital asignado a ' + alloc.bankCode"
                           style="width: 52px; padding: 2px 4px; font-size: 0.8rem; text-align: right; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 4px; color: var(--gold); font-weight: 700;"
                         />
-                        <span style="color: var(--gold); font-size: 0.8rem;">%</span>
+                        <span style="color: var(--gold); font-size: 0.8rem;" aria-hidden="true">%</span>
                       </div>
                     } @else {
                       <span style="color: var(--gold);">{{ alloc.recommendedPct }}%</span>
@@ -829,6 +831,7 @@
                 type="password"
                 class="triangulation-key-input"
                 placeholder="ctz_live_..."
+                aria-label="Clave de API de Cotizave"
                 [value]="cotizave.apiKey()"
                 (input)="cotizave.setApiKey($any($event.target).value)"
               />

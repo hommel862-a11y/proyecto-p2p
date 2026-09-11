@@ -118,7 +118,12 @@ export class OperationLog {
 
   /** Treasury assignment form state */
   readonly showTreasuryAssign = signal(false);
-  readonly assignDraft = signal<{ vesAmount: number; bankAccountId: string; notes: string; errorFree: boolean }>({
+  readonly assignDraft = signal<{
+    vesAmount: number;
+    bankAccountId: string;
+    notes: string;
+    errorFree: boolean;
+  }>({
     vesAmount: 0,
     bankAccountId: '',
     notes: '',
@@ -190,9 +195,7 @@ export class OperationLog {
     const bank = this.selectedBank();
     if (!bank) return this.operations();
     const ops = this.operations();
-    const matchingAccounts = this.accountsService.accounts().filter(
-      (a) => a.bankName === bank,
-    );
+    const matchingAccounts = this.accountsService.accounts().filter((a) => a.bankName === bank);
     const matchingAccountIds = matchingAccounts.map((a) => a.id);
     return ops.filter((o) => matchingAccountIds.includes(o.bankAccountId ?? ''));
   });

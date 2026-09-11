@@ -14,7 +14,8 @@
 
   @if (selectedBank(); as bank) {
     <div style="display: flex; gap: 8px; margin-top: 10px;">
-      <span
+      <button
+        type="button"
         style="
           font-size: 0.78rem;
           padding: 4px 10px;
@@ -22,10 +23,12 @@
           border: 1px solid rgba(47, 208, 143, 0.35);
           border-radius: var(--radius);
           color: var(--accent);
+          cursor: pointer;
         "
-        (click)="clearBankFilter()">
+        (click)="clearBankFilter()"
+        aria-label="Limpiar filtro de banco">
         Banco {{ bank }} ✕
-      </span>
+      </button>
     </div>
   }
 
@@ -56,10 +59,11 @@
       </div>
       <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
         <div style="flex: 1; min-width: 160px;">
-          <label class="terminal-label"><span>Monto VES</span></label>
+          <label class="terminal-label" for="assign-monto-ves"><span>Monto VES</span></label>
           <div class="input-control-wrap">
             <span class="input-prefix">Bs</span>
             <input
+              id="assign-monto-ves"
               type="number"
               min="0"
               step="0.01"
@@ -71,9 +75,10 @@
           </div>
         </div>
         <div style="flex: 1; min-width: 200px;">
-          <label class="terminal-label"><span>Cuenta Bancaria Destino</span></label>
+          <label class="terminal-label" for="assign-cuenta-destino"><span>Cuenta Bancaria Destino</span></label>
           <div class="input-control-wrap">
             <select
+              id="assign-cuenta-destino"
               class="terminal-select"
               [value]="assignDraft().bankAccountId"
               (change)="assignDraft.set({ ...assignDraft(), bankAccountId: $any($event.target).value })">
@@ -87,9 +92,10 @@
           </div>
         </div>
         <div style="flex: 1; min-width: 180px;">
-          <label class="terminal-label"><span>Notas (opcional)</span></label>
+          <label class="terminal-label" for="assign-notas"><span>Notas (opcional)</span></label>
           <div class="input-control-wrap">
             <input
+              id="assign-notas"
               type="text"
               class="terminal-input"
               placeholder="Ej: Fondo para operaciones del día"

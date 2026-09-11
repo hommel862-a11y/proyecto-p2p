@@ -20,6 +20,12 @@ export const routes: Routes = [
       import('./features/income-calculator/income-calculator').then((m) => m.IncomeCalculator),
   },
   {
+    path: 'triangulation',
+    title: 'Triangulación Multidivisa',
+    loadComponent: () =>
+      import('./features/triangulation/triangulation').then((m) => m.Triangulation),
+  },
+  {
     path: 'log',
     title: 'Operation Log',
     loadComponent: () =>

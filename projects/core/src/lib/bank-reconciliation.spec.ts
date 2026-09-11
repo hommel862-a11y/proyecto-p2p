@@ -4,8 +4,10 @@ import {
   parseVesAmount,
   parseBankNotification,
   verifyReconciliation,
+  matchNotificationToOperations,
   type ExpectedTradePayment,
 } from './bank-reconciliation';
+import type { Operation } from './log';
 
 describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
   describe('normalizeIdentityDoc', () => {
@@ -138,6 +140,62 @@ describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
       expect(res.status).toBe('AMOUNT_MISMATCH');
       expect(res.isSafeToRelease).toBe(false);
       expect(res.amountDifferenceVes).toBe(450.0);
+    });
+  });
+
+  describe('matchNotificationToOperations (Quick Reconciliation)', () => {
+    const pendingOps: Operation[] = [
+      {
+        id: 'OP-001',
+        timestamp: '2026-09-08T10:00:00.000Z',
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 2450,
+        usdtAmount: 25,
+        price: 98,
+        merchantNote: 'Ref: 987654',
+        fees: 0,
+        notes: 'Ref: 987654',
+        errorFree: true,
+      },
+      {
+        id: 'OP-002',
+        timestamp: '2026-09-08T11:00:00.000Z',
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 5000,
+        usdtAmount: 50,
+        price: 100,
+        merchantNote: '',
+        fees: 0,
+        notes: '',
+        errorFree: true,
+      },
+    ];
+
+    it('matches notification to pending operation by amount and reference', () => {
+      const notification = parseBankNotification(
+        'MERCANTIL: Recibiste un Pago Movil por Bs. 2.450,00 de CI: V18450123 con Ref: 987654.',
+      );
+      const matched = matchNotificationToOperations(notification, pendingOps);
+      expect(matched).not.toBeNull();
+      expect(matched?.id).toBe('OP-001');
+    });
+
+    it('returns null when no amount match exists', () => {
+      const notification = parseBankNotification(
+        'MERCANTIL: Recibiste un Pago Movil por Bs. 10000,00 de CI: V18450123 con Ref: 000000.',
+      );
+      const matched = matchNotificationToOperations(notification, pendingOps);
+      expect(matched).toBeNull();
+    });
+
+    it('returns null when no pending ops exist', () => {
+      const notification = parseBankNotification(
+        'MERCANTIL: Recibiste un Pago Movil por Bs. 2.450,00 de CI: V18450123.',
+      );
+      const matched = matchNotificationToOperations(notification, []);
+      expect(matched).toBeNull();
     });
   });
 });

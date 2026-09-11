@@ -341,7 +341,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     this.customMercantilPct.set(35);
     this.customBdvPct.set(25);
     this.manualBankAllocationMode.set(false);
-    this.toast.info('Distribución bancaria restablecida a ponderaciones recomendadas (40/35/25).', 'Distribución SUDEBAN');
+    this.toast.info(
+      'Distribución bancaria restablecida a ponderaciones recomendadas (40/35/25).',
+      'Distribución SUDEBAN',
+    );
   }
 
   applyTargetSellPrice(): void {
@@ -502,7 +505,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     // Deduplicadas por clave con ventana de cooldown para evitar fatiga de alertas.
     effect(() => {
       const kind = this.alert().kind;
-      if (kind === 'favorable' && this.prevFavorableKind !== 'favorable' && this.signalMayFire('favorable')) {
+      if (
+        kind === 'favorable' &&
+        this.prevFavorableKind !== 'favorable' &&
+        this.signalMayFire('favorable')
+      ) {
         this.notify(this.alert().message);
         this.audioAlerts.playOpportunityAlert();
       }
@@ -511,7 +518,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
     effect(() => {
       const spreadPct = this.marketSpreadPct();
-      if (spreadPct !== null && spreadPct >= this.spreadAlertPct() && this.signalMayFire('spread-threshold')) {
+      if (
+        spreadPct !== null &&
+        spreadPct >= this.spreadAlertPct() &&
+        this.signalMayFire('spread-threshold')
+      ) {
         this.toast.success(
           `Spread de mercado en ${spreadPct}% ≥ umbral ${this.spreadAlertPct()}% — oportunidad de arbitraje amplia.`,
           'Spread Alto',
@@ -522,7 +533,12 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     effect(() => {
       const actionableMode = this.activeMode() === 'breakeven' || this.activeMode() === 'repricer';
       const below = this.sellAtOrBelowBreakEven();
-      if (actionableMode && below && !this.prevSellBelowBreakEven && this.signalMayFire('breakeven-flip')) {
+      if (
+        actionableMode &&
+        below &&
+        !this.prevSellBelowBreakEven &&
+        this.signalMayFire('breakeven-flip')
+      ) {
         const d = this.binance.marketDepth();
         const be = this.breakEvenResult();
         this.toast.warn(

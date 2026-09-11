@@ -387,27 +387,27 @@
 
   <!-- Modal de Cierre de Sesión -->
   @if (showCloseModal()) {
-    <div class="modal-backdrop" (click)="$event.target === $event.currentTarget && cancelCloseModal()" (keydown.escape)="cancelCloseModal()" tabindex="0" role="button" aria-label="Cerrar modal de sesión">
-      <div class="modal-dialog" role="dialog" aria-modal="true">
-        <h3>Cerrar Jornada Operativa</h3>
+    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelCloseModal()" (keydown.escape)="cancelCloseModal()" aria-label="Cerrar modal">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="close-modal-title" tabindex="-1">
+        <h3 id="close-modal-title">Cerrar Jornada Operativa</h3>
         <p>Evalúa el cumplimiento de tu disciplina y agrega observaciones de mercado antes de archivar la sesión.</p>
 
         <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
-          <label>
+          <label for="close-session-discipline">
             <span>Calificación de Disciplina</span>
-            <select [value]="closeDisciplineRating()" (change)="closeDisciplineRating.set(+$any($event.target).value)">
-              <option value="5">⭐⭐⭐⭐⭐ 5 - Impecable (Respeté todas las reglas)</option>
-              <option value="4">⭐⭐⭐⭐ 4 - Muy buena (Leve desviación sin riesgo)</option>
-              <option value="3">⭐⭐⭐ 3 - Regular (Operé con algo de prisa)</option>
-              <option value="2">⭐⭐ 2 - Riesgosa (Sobrepasé límites de exposición)</option>
-              <option value="1">⭐ 1 - Indisciplinada (Violé reglas de stop / gestión)</option>
-            </select>
           </label>
+          <select id="close-session-discipline" [value]="closeDisciplineRating()" (change)="closeDisciplineRating.set(+$any($event.target).value)">
+            <option value="5">⭐⭐⭐⭐⭐ 5 - Impecable (Respeté todas las reglas)</option>
+            <option value="4">⭐⭐⭐⭐ 4 - Muy buena (Leve desviación sin riesgo)</option>
+            <option value="3">⭐⭐⭐ 3 - Regular (Operé con algo de prisa)</option>
+            <option value="2">⭐⭐ 2 - Riesgosa (Sobrepasé límites de exposición)</option>
+            <option value="1">⭐ 1 - Indisciplinada (Violé reglas de stop / gestión)</option>
+          </select>
 
-          <label>
+          <label for="close-session-notes">
             <span>Notas de Cierre / Observaciones</span>
-            <input type="text" placeholder="Ej: Mucha liquidez en Banesco, spread amplio al mediodía" [value]="closeNotes()" (input)="closeNotes.set($any($event.target).value)" />
           </label>
+          <input id="close-session-notes" type="text" placeholder="Ej: Mucha liquidez en Banesco, spread amplio al mediodía" [value]="closeNotes()" (input)="closeNotes.set($any($event.target).value)" />
         </div>
 
         <div class="modal-actions">

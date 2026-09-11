@@ -10,22 +10,30 @@ import { HotkeysService, HOTKEYS_CATALOG } from '../../core/hotkeys.service';
     @if (hotkeys.isCheatSheetOpen()) {
       <div
         class="hotkeys-backdrop"
+        role="button"
+        tabindex="0"
         (click)="$event.target === $event.currentTarget && close()"
         (keydown.escape)="close()"
-        tabindex="0"
-        role="button"
         aria-label="Cerrar modal de atajos"
       >
-        <div class="hotkeys-dialog" role="dialog" aria-modal="true">
+        <div
+          class="hotkeys-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hotkeys-dialog-heading"
+          tabindex="-1"
+        >
           <div class="dialog-header">
             <div class="header-title">
-              <span class="icon">⌨️</span>
+              <span class="icon" aria-hidden="true">⌨️</span>
               <div>
-                <h3>Atajos Rápidos de Terminal</h3>
+                <h3 id="hotkeys-dialog-heading">Atajos Rápidos de Terminal</h3>
                 <p>Comandos de teclado para operaciones institucionales de alta velocidad</p>
               </div>
             </div>
-            <button class="btn-close" (click)="close()" aria-label="Cerrar modal">&times;</button>
+            <button class="btn-close" (click)="close()" aria-label="Cerrar modal de atajos">
+              &times;
+            </button>
           </div>
 
           <div class="dialog-body">

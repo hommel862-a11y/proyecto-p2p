@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   capitalFromDailyIncome,
   toBs,
@@ -11,7 +18,6 @@ import {
   simulateCompoundGrowth,
   buildTeamAllocationPlan,
   auditOperatorPerformance,
-  evaluateGoldenSpread,
   type BankCode,
   type P2PRole,
   type ArbitrageCycleResult,
@@ -75,7 +81,9 @@ export class IncomeCalculator {
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
 
-  private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(this.storage.get<CalcUiState>(CALC_UI_KEY));
+  private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(
+    this.storage.get<CalcUiState>(CALC_UI_KEY),
+  );
 
   readonly activeMode = signal<CalcViewMode>(this.restoredUi?.activeMode ?? 'cycle');
 
@@ -98,7 +106,9 @@ export class IncomeCalculator {
   readonly compoundNetMarginPct = signal<number>(0.9);
   readonly compoundCyclesPerDay = signal<number>(1.5);
   readonly compoundOperationalDays = signal<number>(90);
-  readonly compoundReinvestmentRate = signal<number>(this.restoredUi?.compoundReinvestmentRate ?? 50); // 50/50 harvest policy default
+  readonly compoundReinvestmentRate = signal<number>(
+    this.restoredUi?.compoundReinvestmentRate ?? 50,
+  ); // 50/50 harvest policy default
   readonly compoundReferenceRate = signal<number>(60.0);
 
   // --- Mode D: Team Delegation & Scaling ($1,000/day Desk) ---
@@ -208,7 +218,10 @@ export class IncomeCalculator {
       }
 
       const treasury = this.accounts.treasurySummary();
-      const totalLimit = treasury.accountsUsage.reduce((acc, u) => acc + u.account.dailyLimitVes, 0);
+      const totalLimit = treasury.accountsUsage.reduce(
+        (acc, u) => acc + u.account.dailyLimitVes,
+        0,
+      );
       const dailyBankLimitVes = totalLimit > 0 ? totalLimit : undefined;
 
       return simulateCompoundGrowth({
@@ -251,7 +264,7 @@ export class IncomeCalculator {
           (o.notes && o.notes.toLowerCase().includes(op.name.toLowerCase())),
       );
       // Fallback: if no tag match yet, audit against general desk ops to provide live diagnostics
-      const targetOps = opOps.length > 0 ? opOps : (op.id === 'op-william' ? ops.slice(0, 10) : []);
+      const targetOps = opOps.length > 0 ? opOps : op.id === 'op-william' ? ops.slice(0, 10) : [];
       return auditOperatorPerformance(op, targetOps, refRate, 10);
     });
   });

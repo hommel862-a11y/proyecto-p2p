@@ -68,44 +68,85 @@ export class AutoBackupService {
     const checksummed = createChecksummedBackup(payload);
 
     try {
-      this.storage.set(SNAPSHOT_PREFIX + dateKey, checksummed);
+      this.persistSnapshot(dateKey, checksummed, payload, ops, silent);
+    } catch (err) {
+      const isQuota =
+        err instanceof Error &&
+        (err.name === 'QuotaExceededError' ||
+          err.message.toLowerCase().includes('quota') ||
+          err.message.includes('QuotaExceeded'));
 
-      let list = this.storage.get<SnapshotMeta[]>(INDEX_KEY) ?? [];
-      list = list.filter((s) => s.date !== dateKey);
-      list.unshift({
-        date: dateKey,
-        timestamp: payload.exportedAt,
-        operationsCount: ops.length,
-        checksumSha256: checksummed.checksumSha256,
-      });
-
-      // Prune older snapshots
-      if (list.length > MAX_SNAPSHOTS) {
-        const toRemove = list.slice(MAX_SNAPSHOTS);
-        for (const item of toRemove) {
-          this.storage.remove(SNAPSHOT_PREFIX + item.date);
+      if (isQuota) {
+        const pruned = this.pruneOldestSnapshots();
+        if (pruned) {
+          try {
+            this.persistSnapshot(dateKey, checksummed, payload, ops, silent);
+            return;
+          } catch (retryErr) {
+            console.error('[AutoBackupService] Retry after prune failed:', retryErr);
+          }
         }
-        list = list.slice(0, MAX_SNAPSHOTS);
       }
+      console.error('[AutoBackupService] Error saving snapshot:', err);
+    }
+  }
 
+  private pruneOldestSnapshots(): boolean {
+    const list = this.storage.get<SnapshotMeta[]>(INDEX_KEY) ?? [];
+    if (list.length === 0) return false;
+    // Remove the oldest snapshot from storage
+    const oldest = list.pop();
+    if (oldest) {
+      this.storage.remove(SNAPSHOT_PREFIX + oldest.date);
       this.storage.set(INDEX_KEY, list);
       this.snapshots.set(list);
+      return true;
+    }
+    return false;
+  }
 
-      this.audit.log(
-        'DATA_BACKUP',
-        `Snapshot ${dateKey} creado con checksum SHA-256`,
-        { operations: ops.length, sha256: checksummed.checksumSha256 },
-        'info',
-      );
+  private persistSnapshot(
+    dateKey: string,
+    checksummed: ChecksummedBackup<BackupPayload>,
+    payload: BackupPayload,
+    ops: unknown[],
+    silent: boolean,
+  ): void {
+    this.storage.set(SNAPSHOT_PREFIX + dateKey, checksummed);
 
-      if (!silent) {
-        this.toast.success(
-          `Snapshot del día ${dateKey} guardado con verificación criptográfica.`,
-          'Auto-Backup',
-        );
+    let list = this.storage.get<SnapshotMeta[]>(INDEX_KEY) ?? [];
+    list = list.filter((s) => s.date !== dateKey);
+    list.unshift({
+      date: dateKey,
+      timestamp: payload.exportedAt,
+      operationsCount: ops.length,
+      checksumSha256: checksummed.checksumSha256,
+    });
+
+    // Prune older snapshots
+    if (list.length > MAX_SNAPSHOTS) {
+      const toRemove = list.slice(MAX_SNAPSHOTS);
+      for (const item of toRemove) {
+        this.storage.remove(SNAPSHOT_PREFIX + item.date);
       }
-    } catch (err) {
-      console.error('[AutoBackupService] Error saving snapshot:', err);
+      list = list.slice(0, MAX_SNAPSHOTS);
+    }
+
+    this.storage.set(INDEX_KEY, list);
+    this.snapshots.set(list);
+
+    this.audit.log(
+      'DATA_BACKUP',
+      `Snapshot ${dateKey} creado con checksum SHA-256`,
+      { operations: ops.length, sha256: checksummed.checksumSha256 },
+      'info',
+    );
+
+    if (!silent) {
+      this.toast.success(
+        `Snapshot del día ${dateKey} guardado con verificación criptográfica.`,
+        'Auto-Backup',
+      );
     }
   }
 
