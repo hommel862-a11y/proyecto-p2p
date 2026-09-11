@@ -38,3 +38,4 @@ export * from './lib/johnson-depth';
 export * from './lib/johnson-depth-rate-window';
 export * from './lib/fraud-shield';
 export * from './lib/multi-exchange-p2p';
+export * from './lib/telegram-sentinel';
