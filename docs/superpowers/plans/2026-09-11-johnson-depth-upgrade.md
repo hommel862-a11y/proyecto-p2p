@@ -519,7 +519,7 @@ git commit -m "feat(johnson-depth): scoring de calidad, liquidez y señal contra
 - `grossProfitVes = (sellPrice - buyPrice) * fillableUsdt`; `roiCyclePct`, `netGainVes`, `binanceFeeUsdt`, `bankFeesVes`, `effectiveFeeDragPct` vienen del ciclo.
 - `isSafe = roiCyclePct >= MINIMUM_VIABLE_NET_SPREAD_PCT` (0.50, constante existente).
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 ```ts
 // Agregar a projects/core/src/lib/johnson-depth.spec.ts
@@ -615,12 +615,12 @@ describe('buildJohnsonMarketQuality', () => {
 });
 ```
 
-- [ ] **Step 2: Correr los tests y verificar que fallan**
+- [x] **Step 2: Correr los tests y verificar que fallan**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth.spec.ts`
 Expected: FAIL — `computeBankProfits`/`buildJohnsonMarketQuality` no exportadas.
 
-- [ ] **Step 3: Implementación**
+- [x] **Step 3: Implementación**
 
 ```ts
 // Agregar encabezados a projects/core/src/lib/johnson-depth.ts
@@ -775,12 +775,12 @@ export function buildJohnsonMarketQuality(
 }
 ```
 
-- [ ] **Step 4: Correr los tests y verificar que pasan**
+- [x] **Step 4: Correr los tests y verificar que pasan**
 
 Run: `npx ng test --include projects/core/src/lib/johnson-depth.spec.ts`
 Expected: todos PASS (Tasks 1-3).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add projects/core/src/lib/johnson-depth.ts projects/core/src/lib/johnson-depth.spec.ts

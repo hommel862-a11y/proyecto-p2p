@@ -4,10 +4,18 @@
  * SOLO este archivo y su spec se crean en esta Task; el resto de funciones llegan en Tasks 2-3.
  */
 import {
+  BINANCE_PAY_METHODS,
   type BinanceOfferSummary,
   type BinanceP2pMarketDepth,
 } from './binance-p2p';
 import { roundMoney } from './money';
+import {
+  computeArbitrageCycle,
+  VENEZUELAN_BANK_FEES,
+  type P2PRole,
+} from './spread-quality';
+import { type BankCode } from './accounts';
+import { MINIMUM_VIABLE_NET_SPREAD_PCT } from './operator-manager';
 
 export interface JohnsonDepthOptions {
   /** Ofertas con precio fuera de [mediana / factor, mediana * factor] se ignoran (anti-manipulación). Default 3. */
@@ -161,3 +169,146 @@ export function determineSignal(
   if (qualityScore >= 40) return 'CAUTION';
   return 'AVOID';
 }
+
+export interface JohnsonBankProfit {
+  bankKey: string;
+  bankName: string;
+  bankCode: BankCode;
+  buyPriceVes: number;
+  sellPriceVes: number;
+  fillableUsdt: number;
+  grossProfitVes: number;      // (sell - buy) * fillable — bruto, sin fees
+  binanceFeeUsdt: number;
+  bankFeesVes: number;
+  netGainVes: number;          // ganancia neta tras fees
+  netGainUsd: number;
+  roiCyclePct: number;         // sobre capital invertido
+  effectiveFeeDragPct: number; // % del spread nominal perdido en fees
+  isSafe: boolean;             // roiCyclePct >= MINIMUM_VIABLE_NET_SPREAD_PCT
+}
+
+export interface JohnsonBankConfig {
+  bankCodes: readonly string[];
+  buyRole: P2PRole;
+  sellRole: P2PRole;
+  isInterbank: boolean;
+}
+
+export const DEFAULT_JOHNSON_BANK_CONFIG: JohnsonBankConfig = {
+  bankCodes: ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL', 'OTRO'],
+  buyRole: 'TAKER',
+  sellRole: 'TAKER',
+  isInterbank: false,
+};
+
+export function computeBankProfits(
+  depth: BinanceP2pMarketDepth,
+  bankKeys: readonly string[],
+  req: JohnsonDepthRequirements,
+  config: JohnsonBankConfig = DEFAULT_JOHNSON_BANK_CONFIG,
+): JohnsonBankProfit[] {
+  const results: JohnsonBankProfit[] = [];
+
+  for (const bankKey of bankKeys) {
+    const bankName = BINANCE_PAY_METHODS[bankKey] ?? '';
+    const filter = (o: BinanceOfferSummary) => (bankName ? o.payMethods.includes(bankName) : true);
+
+    const buyList = depth.buyOffers.filter(filter);
+    const sellList = depth.sellOffers.filter(filter);
+
+    const buy = computeVolumeWeightedPrice(buyList, 'BUY', req.targetUsdt);
+    const sell = computeVolumeWeightedPrice(sellList, 'SELL', req.targetUsdt);
+
+    const fillableUsdt = Math.min(buy.fillableUsdt, sell.fillableUsdt);
+    const grossProfitVes = (sell.price - buy.price) * fillableUsdt;
+
+    // Guarda obligatoria: computeArbitrageCycle lanza excepción con inputs <= 0
+    if (fillableUsdt <= 0 || buy.price <= 0 || sell.price <= 0) {
+      results.push({
+        bankKey,
+        bankName: bankName || bankKey,
+        bankCode: (bankKey in VENEZUELAN_BANK_FEES ? bankKey : 'OTRO') as BankCode,
+        buyPriceVes: buy.price,
+        sellPriceVes: sell.price,
+        fillableUsdt,
+        grossProfitVes: roundMoney(grossProfitVes, 2),
+        binanceFeeUsdt: 0,
+        bankFeesVes: 0,
+        netGainVes: 0,
+        netGainUsd: 0,
+        roiCyclePct: 0,
+        effectiveFeeDragPct: 0,
+        isSafe: false,
+      });
+      continue;
+    }
+
+    const bankCode = (bankKey in VENEZUELAN_BANK_FEES ? bankKey : 'OTRO') as BankCode;
+    const cycle = computeArbitrageCycle({
+      capitalUsdt: fillableUsdt,
+      buyPrice: buy.price,
+      sellPrice: sell.price,
+      buyRole: config.buyRole,
+      sellRole: config.sellRole,
+      sourceBank: bankCode,
+      targetBank: bankCode,
+      isInterbank: config.isInterbank,
+    });
+
+    results.push({
+      bankKey,
+      bankName: bankName || bankCode,
+      bankCode,
+      buyPriceVes: buy.price,
+      sellPriceVes: sell.price,
+      fillableUsdt,
+      grossProfitVes: roundMoney(grossProfitVes, 2),
+      binanceFeeUsdt: roundMoney(cycle.binanceFeeUsdt, 4),
+      bankFeesVes: roundMoney(cycle.bankFeesVes, 2),
+      netGainVes: roundMoney(cycle.netGainVes, 2),
+      netGainUsd: roundMoney(cycle.netGainUsd, 2),
+      roiCyclePct: roundMoney(Math.max(0, cycle.roiCyclePct), 2),
+      effectiveFeeDragPct: roundMoney(cycle.effectiveFeeDragPct, 2),
+      isSafe: cycle.roiCyclePct >= MINIMUM_VIABLE_NET_SPREAD_PCT,
+    });
+  }
+
+  return results.sort((a, b) => b.netGainVes - a.netGainVes);
+}
+
+export interface JohnsonMarketQuality {
+  depthScore: number;
+  liquidityScore: number;
+  spreadVes: number;
+  spreadPct: number;
+  recommendation: 'STRONG_BUY' | 'BUY' | 'CAUTION' | 'AVOID';
+  bestBank: string | null;
+  bankProfits: JohnsonBankProfit[];
+  timestamp: number;
+}
+
+export function buildJohnsonMarketQuality(
+  depth: BinanceP2pMarketDepth,
+  bankKeys: readonly string[],
+  req: JohnsonDepthRequirements,
+  config: JohnsonBankConfig = DEFAULT_JOHNSON_BANK_CONFIG,
+): JohnsonMarketQuality {
+  const depthScore = calculateDepthQuality(depth, req);
+  const liquidityScore = calculateLiquidityScore(depth, req);
+  const bankProfits = computeBankProfits(depth, bankKeys, req, config);
+  const recommendation = determineSignal(depth, depthScore, liquidityScore, req);
+  const bestBank = bankProfits.length > 0 && bankProfits[0].netGainVes > 0 ? bankProfits[0].bankKey : null;
+  const spreadPct = depth.bestBuyPrice > 0 ? ((depth.spreadVes ?? 0) / depth.bestBuyPrice) * 100 : 0;
+
+  return {
+    depthScore,
+    liquidityScore,
+    spreadVes: roundMoney(depth.spreadVes ?? 0, 2),
+    spreadPct: roundMoney(spreadPct, 2),
+    recommendation,
+    bestBank,
+    bankProfits,
+    timestamp: Date.now(),
+  };
+}
+
