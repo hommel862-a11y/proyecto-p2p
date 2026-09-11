@@ -1005,7 +1005,7 @@ Comportamiento de errores consecutivos (`maxConsecutiveErrors`):
 - Contador > `maxConsecutiveErrors` → publica quality degradada (recomendación `AVOID`, scores 0) vía `setMarketQuality` y continúa contando.
 - `refresh` con depth válido → resetea contador y `lastError`.
 
-- [ ] **Step 1: Reescribir el plugin**
+- [x] **Step 1: Reescribir el plugin**
 
 ```ts
 // plugins/johnson-depth/plugin.ts
@@ -1144,7 +1144,7 @@ export async function cleanup(): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Verificar que compila (tipos correctos contra `@p2p/core`)**
+- [x] **Step 2: Verificar que compila (tipos correctos contra `@p2p/core`)**
 
 Según Task 0 Step 3:
 - Si `plugins/` está incluido en el tsconfig de la app → `npx tsc --noEmit -p tsconfig.app.json` (o el comando de typecheck del repo).
@@ -1152,11 +1152,11 @@ Según Task 0 Step 3:
   `npx tsc --noEmit --target es2022 --moduleResolution node --skipLibCheck projects/core/src/public-api.ts plugins/johnson-depth/plugin.ts`
 - Si el repo NO compila `plugins/` en absoluto y Antigravity no puede corregirlo sin tocar configs → preguntar al usuario; NO modificar tsconfigs sin aprobación.
 
-- [ ] **Step 3: Revisión del contrato contra el registry**
+- [x] **Step 3: Revisión del contrato contra el registry**
 
 Leer `projects/core/src/lib/plugin-registry.ts` y confirmar que `loadPlugin` (buscar el `init({ storage, rules, marketDepth, setMarketQuality, registerCustomMetric })`) convive con nuestro contexto tolerante y con `cleanup` exportado. No modificar el registry.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add plugins/johnson-depth/plugin.ts

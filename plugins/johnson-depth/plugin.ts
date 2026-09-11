@@ -1,195 +1,135 @@
 /**
- * Plugin Johnson Depth Tools
- * Un plugin de ejemplo para el system de integración cada 2 horas
- * Proporciona análisis avanzado de profundidad de mercado con scoring
+ * Plugin Johnson Market Depth — adaptador delgado sobre el motor @p2p/core.
  *
- * Este plugin forma parte del sistema Plugin Registry implementado en Paso 1.
- * Se carga dinámicamente vía PluginAutoLoaderService cada 2 horas.
+ * Toda la lógica vive en projects/core/src/lib/johnson-depth.ts.
+ * Este archivo solo conecta el motor con el integrador (Spread Monitor o
+ * PluginRegistryImpl). No contiene fórmulas.
+ *
+ * Diferencias vs el v1 roto:
+ * - Ya NO usa `context.marketDepth.subscribe()` (el registry pasa un objeto
+ *   placeholder no-Signal). El integrador llama `refresh(depth)` con cada snapshot real.
+ * - Implementa `cleanup()` porque PluginRegistryImpl.unloadPlugin() lo invoca.
+ * - Implementa `maxConsecutiveErrors` (gobernanza real, no decorativa).
  */
+import {
+  buildJohnsonMarketQuality,
+  DEFAULT_JOHNSON_REQUIREMENTS,
+  computeVolumeWeightedPrice,
+  type JohnsonDepthRequirements,
+  type JohnsonMarketQuality,
+  type JohnsonBankConfig,
+  type JohnsonBankProfit,
+} from '../../projects/core/src/public-api';
+import type { BinanceP2pMarketDepth } from '../../projects/core/src/public-api';
 
-// Metadato requerido por el Plugin Registry
 export const pluginMetadata = {
   id: 'johnson-depth',
   name: 'Johnson Market Depth',
-  version: '1.0.0',
-  description: 'Herramientas avanzadas de profundidad de mercado con scoring de calidad y señales de operación',
+  version: '2.0.0',
+  description:
+    'Motor de calidad de profundidad: scoring, ganancia neta por banco y señal de operación.',
   entryPoint: './plugin.ts',
   requirements: {
-    minSpread: 0.3,      // Spread mínimo en VES para activar señales
-    minLiquidityUsdt: 500, // Liquidez mínima en USDT por precio nivel
-    maxConsecutiveErrors: 2, // Máximo errores consecutivos antes de pause
+    minSpread: DEFAULT_JOHNSON_REQUIREMENTS.minSpread,
+    minLiquidityUsdt: DEFAULT_JOHNSON_REQUIREMENTS.minLiquidityUsdt,
+    maxConsecutiveErrors: DEFAULT_JOHNSON_REQUIREMENTS.maxConsecutiveErrors,
   },
 };
 
-/**
- * Función init: Se ejecuta cuando el Plugin Registry carga este módulo
- * @param context - Contexto del sistema P2P Decisor
- */
-export async function init(context: {
-  /** Adaptador de storage localStorage / MemoryStorage */
-  storage: {
-    get: (key: string) => any | null;
-    set: (key: string, value: any) => void;
-    remove: (key: string) => void;
-    exportAll: () => string;
-    importAll: (json: string) => void;
+export interface JohnsonPluginContext {
+  storage?: {
+    get?: (key: string) => unknown;
+    set?: (key: string, value: unknown) => void;
   };
-  /** Contexto actual del motor de reglas */
-  rules: {
-    evaluate: (ctx: any) => any;
-    ALLOW: string;
-    DENY: string;
-    PAUSE: string;
-    RULE_RESON: {
-      MIN_SPREAD: string;
-      CONSECUTIVE_ERRORS: string;
-      OK: string;
-    };
+  marketDepth?: { depth?: BinanceP2pMarketDepth | null };
+  setMarketQuality?: (quality: JohnsonMarketQuality) => void;
+  registerCustomMetric?: (name: string, value: unknown) => void;
+  requirements?: Partial<JohnsonDepthRequirements>;
+}
+
+/** Bancos válidos (claves de BankCode con tabla de fees; D4). PAGO_MOVIL/ALL quedan fuera. */
+export const BANK_KEYS: readonly string[] = ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL'];
+/** Filtros anti-fake recomendados (ver Task 1). */
+export const PLUGIN_OPTIONS = { minFinishRatePct: 90, maxPriceDeviationFactor: 3 } as const;
+
+export { computeVolumeWeightedPrice, type JohnsonBankProfit };
+
+let latestQuality: JohnsonMarketQuality | null = null;
+let lastError: string | null = null;
+let consecutiveErrors = 0;
+
+export function getLatestQuality(): JohnsonMarketQuality | null {
+  return latestQuality;
+}
+
+export function getLastError(): string | null {
+  return lastError;
+}
+
+export function refresh(
+  depth: BinanceP2pMarketDepth | null | undefined,
+  ctx: JohnsonPluginContext = {},
+): JohnsonMarketQuality | null {
+  const req: JohnsonDepthRequirements = {
+    ...DEFAULT_JOHNSON_REQUIREMENTS,
+    ...(ctx.requirements ?? {}),
   };
-  /** Señal actual de marketDepth del servicio Binance P2P */
-  marketDepth: any;
-  /** Función para establecer quality de mercado */
-  setMarketQuality: (quality: any) => void;
-  /** Para registrar métricas personalizadas en el reglas motor */
-  registerCustomMetric: (name: string, value: any) => void;
-}) => {
-  console.log('[johnson-depth] Plugin init() ejecutándose...');
+  const bankConfig: JohnsonBankConfig = {
+    bankCodes: BANK_KEYS,
+    buyRole: 'TAKER',
+    sellRole: 'TAKER',
+    isInterbank: false,
+  };
 
-  // 1. Suscribirse a cambios del marketDepth existente
-  context.marketDepth.subscribe((depth: any) => {
-    if (!depth) return;
+  if (!depth || !depth.bestBuyPrice || !depth.bestSellPrice) {
+    consecutiveErrors += 1;
+    lastError = `depth inválido o vacío (error consecutivo ${consecutiveErrors})`;
+    if (consecutiveErrors > req.maxConsecutiveErrors) {
+      const degraded: JohnsonMarketQuality = {
+        depthScore: 0,
+        liquidityScore: 0,
+        spreadVes: 0,
+        spreadPct: 0,
+        recommendation: 'AVOID',
+        bestBank: null,
+        bankProfits: [],
+        timestamp: Date.now(),
+      };
+      latestQuality = degraded;
+      ctx.setMarketQuality?.(degraded);
+    }
+    return null;
+  }
 
-    // 2. Calcular scoring de calidad de profundidad
-    const qualityScore = calculateDepthQuality(depth);
+  consecutiveErrors = 0;
+  lastError = null;
 
-    // 3. Determinar señal de operación
-    const signal = determineSignal(depth, qualityScore);
+  const quality = buildJohnsonMarketQuality(depth, BANK_KEYS, req, bankConfig);
+  latestQuality = quality;
 
-    // 4. Establecer quality de mercado para la UI/spread-monitor
-    context.setMarketQuality({
-      spreadVes: depth.spreadVes || 0,
-      spreadUsdt: depth.spreadUsdt || 0,
-      depthScore: qualityScore,
-      liquidityScore: calculateLiquidityScore(depth),
-      recommendation: signal,
-      timestamp: Date.now(),
-    });
+  ctx.setMarketQuality?.(quality);
+  ctx.registerCustomMetric?.('johnsonDepthScore', quality.depthScore);
+  ctx.registerCustomMetric?.('johnsonSignal', quality.recommendation);
+  ctx.registerCustomMetric?.('johnsonBestBank', quality.bestBank ?? '');
 
-    // 5. Registrar métrica personalizada para el motor de reglas
-    context.registerCustomMetric('johnsonDepthScore', qualityScore);
-    context.registerCustomMetric('johnsonSignal', signal);
-  });
-
-  // 6. Exponer nuevo evento en el componente spread-monitor
-  // (esto será conectado en el HTML del spread-monitor)
-  // window.dispatchEvent(new CustomEvent('johnson-depth-signal', {
-  //   detail: { score: qualityScore, signal }
-  // }));
-
-  console.log('[johnson-depth] Plugin init() completado - profundidad monitorizada');
-};
-
-/**
- * calculateDepthQuality: Evalúa la calidad del market depth
- * @param depth - Objeto marketDepth con buy/sell volumes
- * @returns number score 0-100 (mayor es mejor)
- */
-function calculateDepthQuality(depth: any): number {
-  if (!depth.bestBuyPrice || !depth.bestSellPrice) return 0;
-
-  // Factores:
-  // 1. Ratio de volumen buy/sell (50% weight)
-  const volumeRatio = depth.buyVolumeAtPrice
-    ? Math.min(depth.buyVolumeAtPrice / (depth.sellVolumeAtPrice || 1), 1) * 100
-    : 50;
-
-  // 2. Profundidad relativa al spread (30% weight)
-  const spreadDepthRatio = depth.spreadVes
-    ? Math.max(0, 100 - Math.abs(depth.spreadVes) * 10) // spread alto = score bajo
-    : 50;
-
-  // 3. Precio dentro de rango viable (20% weight)
-  const priceInRange = depth.bestBuyPrice > 0 && depth.bestSellPrice > 0 ? 100 : 0;
-
-  // Promedio ponderado
-  const quality = (volumeRatio * 0.5) + (spreadDepthRatio * 0.3) + (priceInRange * 0.2);
-  return Math.round(Math.max(0, Math.min(100, quality)));
+  return quality;
 }
 
-/**
- * calculateLiquidityScore: Evalúa si hay suficiente liquidez
- * @param depth - marketDepth object
- * @returns number 0-100
- */
-function calculateLiquidityScore(depth: any): number {
-  const minLiquidity = context.requirements?.minLiquidityUsdt || 500;
-  const avgVolume = (depth.buyVolumeAtPrice?.reduce((a: number, b: number) => a + b, 0) || 0 +
-                    depth.sellVolumeAtPrice?.reduce((a: number, b: number) => a + b, 0) || 0) / 2;
-
-  if (avgVolume >= minLiquidity * 2) return 100;
-  if (avgVolume >= minLiquidity) return 75;
-  if (avgVolume >= minLiquidity / 2) return 50;
-  if (avgVolume > 0) return 25;
-  return 0;
+export async function init(context: JohnsonPluginContext = {}): Promise<void> {
+  console.log('[johnson-depth] init() ejecutándose (adaptador v2)');
+  try {
+    const initial = context.marketDepth?.depth;
+    if (initial) refresh(initial, context);
+  } catch (err) {
+    console.warn('[johnson-depth] init() sin depth inicial; listo para refresh() manual:', err);
+  }
+  console.log('[johnson-depth] init() completado — usar refresh(depth) para nuevas lecturas');
 }
 
-/**
- * determineSignal: Decide la señal de operación basada en profundidad y quality
- * @param depth - marketDepth object
- * @param qualityScore - score 0-100 de calculateDepthQuality
- * @returns 'STRONG_BUY' | 'BUY' | 'CAUTION' | 'AVOID'
- */
-function determineSignal(depth: any, qualityScore: number): 'STRONG_BUY' | 'BUY' | 'CAUTION' | 'AVOID' {
-  const minSpread = context.requirements?.minSpread || 0.3;
-
-  // Si el spread es muy bajo, evitar siempre
-  if (depth.spreadVes && depth.spreadVes < minSpread) {
-    return 'AVOID';
-  }
-
-  // Si quality score es alto y spread es favorable
-  if (qualityScore >= 80 && depth.spreadVes && depth.spreadVes >= minSpread) {
-    return 'STRONG_BUY';
-  }
-
-  if (qualityScore >= 60 && depth.spreadVes && depth.spreadVes >= minSpread) {
-    return 'BUY';
-  }
-
-  if (qualityScore >= 40) {
-    return 'CAUTION';
-  }
-
-  return 'AVOID';
+/** Cajón de salida — obligatorio para desinstalación limpia (PluginRegistryImpl.unloadPlugin). */
+export async function cleanup(): Promise<void> {
+  latestQuality = null;
+  lastError = null;
+  consecutiveErrors = 0;
+  console.log('[johnson-depth] cleanup() ejecutado — estado reseteado');
 }
-
-/* ============================= EJEMPLO DE USO EN SPREAD-MONITOR =============================
-// En spread-monitor.component.ts, después de importar el plugin:
-
-/*
-import { pluginMetadata, init } from '@p2p/core'; // Ahora posible por export public-api
-
-// En ngOnInit:
-init({
-  storage: { /* adaptadores * / },
-  rules: { /* contexto rules * / },
-  marketDepth: this.binance.marketDepth(), // signal existente
-  setMarketQuality: (q) => this.marketQuality.set(q),
-  registerCustomMetric: (name, value) => {
-    // almacenar en localStorage o servicio de stats
-    console.log(`[johnson-depth] Métrica: ${name} = ${value}`);
-  },
-});
-
-// En spread-monitor.html, agregar al final:
-<div *ngIf="marketQuality()" class="johnson-depth-panel">
-  <h4>Análisis Johnson</h4>
-  <p>Score de profundidad: {{ marketQuality().depthScore }}</p>
-  <p>Liquidez: {{ marketQuality().liquidityScore }}</p>
-  <p>Recomendación: {{ marketQuality().recommendation | uppercase }}</p>
-</div>
-*/
-
-/* ========================================================================== */
-/* FIN DEL PLUGIN JOHSON DEPTH TOOLS */
-/*===========================================================================*/
