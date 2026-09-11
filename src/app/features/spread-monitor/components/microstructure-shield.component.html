@@ -1,0 +1,168 @@
+<div class="microstructure-container">
+  <!-- Controles y Filtros Superiores -->
+  <div class="terminal-input-card">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">🔍</span>
+        <span class="card-title">Auditor Forense de Microestructura & Spoofing P2P</span>
+      </div>
+      <div class="header-actions" style="display: flex; gap: 8px; align-items: center;">
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedSide() === 'SELL'"
+          [class.btn-secondary]="selectedSide() !== 'SELL'"
+          (click)="selectedSide.set('SELL')"
+          style="font-size: 0.78rem; padding: 4px 12px;"
+        >
+          Libro Venta (Bid)
+        </button>
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedSide() === 'BUY'"
+          [class.btn-secondary]="selectedSide() !== 'BUY'"
+          (click)="selectedSide.set('BUY')"
+          style="font-size: 0.78rem; padding: 4px 12px;"
+        >
+          Libro Compra (Ask)
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="forceScan()" style="font-size: 0.78rem; padding: 4px 12px;">
+          ⚡ Escanear Ahora
+        </button>
+      </div>
+    </div>
+
+    <!-- KPIs de Riesgo Institucional -->
+    <div class="kpi-row" style="margin-top: 14px;">
+      <div class="micro-card">
+        <div class="kpi-title">Riesgo de Manipulación</div>
+        <div class="kpi-value font-mono" style="display: flex; align-items: center; gap: 8px;">
+          <span>{{ spoofReport().manipulationRiskScore }} / 100</span>
+          <span class="badge" [ngClass]="getRiskLevel(spoofReport().manipulationRiskScore).class" style="font-size: 0.68rem;">
+            {{ getRiskLevel(spoofReport().manipulationRiskScore).label }}
+          </span>
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Anuncios Cebo (Spoofing)</div>
+        <div class="kpi-value font-mono" [style.color]="spoofReport().spoofBaitCount > 0 ? '#ef4444' : 'var(--text)'">
+          {{ spoofReport().spoofBaitCount }} <span style="font-size: 0.8rem; font-weight: normal; color: var(--muted);">detectados</span>
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Liquidez Fantasma Purgada</div>
+        <div class="kpi-value font-mono" style="color: #c084fc;">
+          {{ spoofReport().phantomLiquidityVes | number:'1.0-0' }} <span style="font-size: 0.8rem; font-weight: normal; color: var(--muted);">VES</span>
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Órdenes Monitoreadas</div>
+        <div class="kpi-value font-mono">
+          {{ spoofReport().totalTracked }} <span style="font-size: 0.8rem; font-weight: normal; color: var(--muted);">anuncios</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparador: Profundidad Visible vs Purgada -->
+  <div class="terminal-input-card">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">🛡️</span>
+        <span class="card-title">Profundidad Johnson Sanitizada vs Espejismo de Mercado</span>
+      </div>
+      <span class="badge font-mono" [class.badge-danger]="sanitizedDepth().manipulationDetected" [class.badge-success]="!sanitizedDepth().manipulationDetected">
+        {{ sanitizedDepth().manipulationDetected ? '⚠️ MANIPULACIÓN FILTRADA' : '✅ LIBRO LIMPIO' }}
+      </span>
+    </div>
+
+    <div class="kpi-row" style="margin-top: 14px;">
+      <div class="micro-card">
+        <div class="kpi-title">Ofertas Analizadas</div>
+        <div class="kpi-value font-mono">
+          {{ sanitizedDepth().sanitizedOffersCount }} <span style="font-size: 0.8rem; color: var(--muted);">/ {{ sanitizedDepth().rawOffersCount }} brutas</span>
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Anuncios Tóxicos Purgados</div>
+        <div class="kpi-value font-mono" [style.color]="sanitizedDepth().purgedSpoofCount > 0 ? '#ef4444' : 'var(--text)'">
+          {{ sanitizedDepth().purgedSpoofCount }}
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Precio Promedio Ponderado Real</div>
+        <div class="kpi-value font-mono text-accent">
+          {{ sanitizedDepth().sanitizedPrice | number:'1.2-2' }} <span style="font-size: 0.8rem; color: var(--muted);">VES</span>
+        </div>
+      </div>
+
+      <div class="micro-card">
+        <div class="kpi-title">Capacidad Ejecutable Real</div>
+        <div class="kpi-value font-mono">
+          {{ sanitizedDepth().fillableUsdt | number:'1.2-2' }} <span style="font-size: 0.8rem; color: var(--muted);">USDT</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auditoría Detallada de Anuncios -->
+  <div class="terminal-input-card">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">📋</span>
+        <span class="card-title">Auditoría Individual de Anuncios y Tiempos de Persistencia</span>
+      </div>
+    </div>
+
+    <div style="overflow-x: auto; margin-top: 10px;">
+      <table class="micro-table">
+        <thead>
+          <tr>
+            <th>Comerciante / ID</th>
+            <th>Precio</th>
+            <th>Volumen Máx.</th>
+            <th>Persistencia</th>
+            <th>Clasificación</th>
+            <th>Diagnóstico Institucional</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (classifiedOrders().length === 0) {
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--muted); padding: 24px;">
+                No hay órdenes registradas para el lado seleccionado. Presiona "Escanear Ahora" para sincronizar el libro.
+              </td>
+            </tr>
+          }
+          @for (order of classifiedOrders(); track order.advNo) {
+            <tr [class.toxic-row]="order.category === 'SPOOF_BAIT'" [class.phantom-row]="order.category === 'PHANTOM_LIQUIDITY'">
+              <td>
+                <div style="font-weight: 600;">{{ order.merchantName }}</div>
+                <div style="font-size: 0.70rem; color: var(--muted); font-family: var(--font-mono);">{{ order.advNo }}</div>
+              </td>
+              <td class="font-mono font-bold">{{ order.price | number:'1.2-2' }} Bs</td>
+              <td class="font-mono">{{ order.maxVes | number:'1.0-0' }} VES</td>
+              <td class="font-mono">
+                <span class="badge badge-accent" style="font-size: 0.72rem;">{{ order.lifespanSeconds }}s</span>
+              </td>
+              <td>
+                <span class="badge" [ngClass]="getCategoryBadge(order.category).class" style="font-size: 0.70rem;">
+                  {{ getCategoryBadge(order.category).label }}
+                </span>
+              </td>
+              <td style="font-size: 0.78rem; color: var(--text-muted);">
+                {{ order.reason }}
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

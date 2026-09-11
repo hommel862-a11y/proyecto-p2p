@@ -18,6 +18,9 @@
       <button type="button" [class.active]="activeMode() === 'cross_exchange'" (click)="activeMode.set('cross_exchange')">
         🌐 Arbitraje Multi-Exchange
       </button>
+      <button type="button" [class.active]="activeMode() === 'microstructure'" (click)="activeMode.set('microstructure')">
+        🔍 Microestructura & Spoofing
+      </button>
       <button
         type="button"
         class="btn-ghost"
@@ -34,6 +37,10 @@
   @if (activeMode() === 'cross_exchange') {
     <div style="margin-top: 14px;">
       <app-cross-exchange-matrix />
+    </div>
+  } @else if (activeMode() === 'microstructure') {
+    <div style="margin-top: 14px;">
+      <app-microstructure-shield />
     </div>
   } @else {
     <div class="trading-desk-layout">
