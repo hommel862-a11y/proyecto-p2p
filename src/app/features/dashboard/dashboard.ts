@@ -7,12 +7,16 @@ import { SessionService } from '../../core/session.service';
 import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
 import { fmtVes, fmtUsd, FORMAT_PIPES } from '../../core/format';
+import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { CotizaveService } from '../../core/cotizave.service';
 import {
   computeDashboard,
   computeSessionSummary,
+  getBcvMarketIntelligence,
   type Operation,
   type DayActivity,
   type AccountVelocityHealth,
+  type BcvMarketIntelligence,
 } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -31,6 +35,19 @@ export class Dashboard {
   private readonly toast = inject(ToastService);
   readonly sessionService = inject(SessionService);
   readonly accountsService = inject(AccountsService);
+  readonly binanceService = inject(BinanceP2pService);
+  readonly cotizaveService = inject(CotizaveService);
+
+  readonly manualBcvRate = signal<number>(685.0);
+  readonly manualParallelRate = signal<number>(815.0);
+
+  readonly bcvIntelligence = computed<BcvMarketIntelligence>(() => {
+    const depth = this.binanceService.marketDepth();
+    const rates = this.cotizaveService.ratesByMarket();
+    const parallel = depth?.bestBuyPrice || rates['binance']?.ask || this.manualParallelRate();
+    const bcv = rates['bcv']?.mid || rates['oficial']?.mid || this.manualBcvRate();
+    return getBcvMarketIntelligence(parallel, bcv);
+  });
 
   /** Daily income target (USD) — read from income calculator storage if available. */
   readonly dailyTarget = signal<number>(this.storage.get<number>('p2p.daily-target') ?? 20);
@@ -248,6 +265,32 @@ export class Dashboard {
   /** Recent operation row → full operation log. */
   goToLog(): void {
     this.router.navigate(['/log']);
+  }
+
+  bcvZoneBadge(zone: string): { label: string; class: string } {
+    switch (zone) {
+      case 'CRITICAL_DISPERSION':
+        return { label: 'DISPERSIÓN CRÍTICA (>35%)', class: 'badge-danger' };
+      case 'ELEVATED':
+        return { label: 'BRECHA ELEVADA (25-35%)', class: 'badge-warning' };
+      case 'COMPRESSED':
+        return { label: 'BRECHA COMPRIMIDA (<10%)', class: 'badge-accent' };
+      default:
+        return { label: 'RANGO NORMAL (10-25%)', class: 'badge-accent' };
+    }
+  }
+
+  bcvPhaseBadge(phase: string): { label: string; class: string } {
+    switch (phase) {
+      case 'INTERVENTION_ACTIVE':
+        return { label: '🔴 INYECCIÓN ACTIVA EN BANCA', class: 'badge-danger' };
+      case 'PRE_INTERVENTION_COMPRESSION':
+        return { label: '🟡 PRE-INTERVENCIÓN (ESPERA)', class: 'badge-warning' };
+      case 'POST_INTERVENTION_REBOUND':
+        return { label: '🟢 VENTANA DE REBOTE (48H)', class: 'badge-success' };
+      default:
+        return { label: '⚪ ACUMULACIÓN TRANQUILA', class: 'badge-accent' };
+    }
   }
 
   readonly fmtVes = fmtVes;

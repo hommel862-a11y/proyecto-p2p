@@ -161,7 +161,9 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   });
 
   /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, repricer bot, cross-exchange, or microstructure */
-  readonly activeMode = signal<'spread' | 'breakeven' | 'repricer' | 'cross_exchange' | 'microstructure'>('spread');
+  readonly activeMode = signal<
+    'spread' | 'breakeven' | 'repricer' | 'cross_exchange' | 'microstructure'
+  >('spread');
 
   readonly buyPrice = signal<number>(800);
   readonly sellPrice = signal<number>(820);

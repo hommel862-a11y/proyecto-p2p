@@ -301,6 +301,66 @@
     }
   </div>
 
+  <!-- ═══════════════════════════════════════════════════
+       BCV Intervention Cycle & Macro Treasury Intelligence
+       ═══════════════════════════════════════════════════ -->
+  <div class="section-group" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.3rem;">🏛️</span>
+        <div>
+          <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">
+            Ciclo de Intervención Cambiaria BCV & Tesorería
+          </h3>
+          <span class="text-muted" style="font-size: 0.76rem;">
+            Semanario de inyecciones a la banca, brecha Paralelo/Oficial y directiva de inventario
+          </span>
+        </div>
+      </div>
+      <span class="badge" [ngClass]="bcvZoneBadge(bcvIntelligence().gap.zone).class" style="font-size: 0.72rem;">
+        {{ bcvZoneBadge(bcvIntelligence().gap.zone).label }}
+      </span>
+    </div>
+
+    <div class="out" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px;">
+      <div>
+        <dt>Brecha Paralelo vs BCV</dt>
+        <dd class="font-mono font-bold" [style.color]="bcvIntelligence().gap.gapPct > 25 ? '#ef4444' : 'var(--gold)'">
+          +{{ bcvIntelligence().gap.gapPct }}% (+{{ bcvIntelligence().gap.gapVes | num }} Bs)
+        </dd>
+        <div style="font-size: 0.74rem; color: var(--muted); margin-top: 4px;">
+          Paralelo: {{ bcvIntelligence().gap.parallelRate | num }} Bs · BCV: {{ bcvIntelligence().gap.bcvRate | num }} Bs
+        </div>
+      </div>
+
+      <div>
+        <dt>Fase del Ciclo Cambiario</dt>
+        <dd style="margin-top: 4px;">
+          <span class="badge" [ngClass]="bcvPhaseBadge(bcvIntelligence().window.phase).class" style="font-size: 0.72rem;">
+            {{ bcvPhaseBadge(bcvIntelligence().window.phase).label }}
+          </span>
+        </dd>
+        <div style="font-size: 0.74rem; color: var(--muted); margin-top: 4px;">
+          Próxima: {{ bcvIntelligence().window.nextExpectedIntervention }} ({{ bcvIntelligence().window.probabilityPct }}% prob.)
+        </div>
+      </div>
+
+      <div>
+        <dt>Directiva de Tesorería</dt>
+        <dd class="positive font-mono" style="font-size: 0.88rem; font-weight: 700; margin-top: 4px;">
+          {{ bcvIntelligence().recommendation.actionLabel }}
+        </dd>
+        <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
+          Timing: {{ bcvIntelligence().recommendation.timingNotice }}
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 10px 14px; background: rgba(0,0,0,0.35); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.82rem; color: var(--text-muted);">
+      <strong style="color: var(--gold);">Macro-Directiva:</strong> {{ bcvIntelligence().recommendation.rationale }}
+    </div>
+  </div>
+
   <div class="grid" style="grid-template-columns: 1fr 1fr;">
     <!-- ═══════════════════════════════════════════════════
          Risk Engine Status — Traffic light
