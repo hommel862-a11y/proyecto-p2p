@@ -6,8 +6,7 @@ import { StorageService } from '../../core/storage';
 import { clampAtLeast, clampMoney as sharedClampMoney, formatSpreadAlertMessage } from '@p2p/core';
 import { UiCard } from '../../shared/ui/ui-card';
 import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
-
-const TELEGRAM_KEY = 'p2p.telegram_config';
+import { TelegramWorkerService } from '../../core/telegram-worker.service';
 
 export interface TelegramConfig {
   botToken: string;
@@ -28,20 +27,18 @@ export class RiskRules {
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
+  readonly telegramWorker = inject(TelegramWorkerService);
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
 
   // Telegram Sentinel credentials
-  private readonly savedTelegram = this.storage.get<TelegramConfig>(TELEGRAM_KEY) || {
-    botToken: '',
-    chatId: '',
-    alertsEnabled: true,
-  };
+  private readonly savedTelegram = this.telegramWorker.getConfig();
 
   readonly telegramToken = signal<string>(this.savedTelegram.botToken);
   readonly telegramChatId = signal<string>(this.savedTelegram.chatId);
   readonly telegramAlertsEnabled = signal<boolean>(this.savedTelegram.alertsEnabled);
+  readonly telegramPollingEnabled = signal<boolean>(this.savedTelegram.pollingEnabled ?? false);
 
   /** trading pair context for the spread threshold label (USDT/VES or EUR/VES). */
   readonly pair = signal<'USDT' | 'EUR'>('USDT');
@@ -57,13 +54,24 @@ export class RiskRules {
   }
 
   saveTelegramConfig(): void {
-    const config: TelegramConfig = {
+    const config = {
       botToken: this.telegramToken().trim(),
       chatId: this.telegramChatId().trim(),
       alertsEnabled: this.telegramAlertsEnabled(),
+      pollingEnabled: this.telegramPollingEnabled(),
     };
-    this.storage.set(TELEGRAM_KEY, config);
-    this.toast.success('Configuración de Telegram Sentinel guardada con éxito.');
+    this.telegramWorker.saveConfig(config);
+    this.toast.success('Configuración de Telegram Sentinel 2.0 guardada con éxito.');
+  }
+
+  togglePolling(): void {
+    const next = !this.telegramPollingEnabled();
+    this.telegramPollingEnabled.set(next);
+    if (next) {
+      this.telegramWorker.startPolling();
+    } else {
+      this.telegramWorker.stopPolling();
+    }
   }
 
   async sendTestTelegramAlert(): Promise<void> {

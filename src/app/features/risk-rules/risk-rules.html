@@ -187,28 +187,73 @@
       </div>
 
       <div class="terminal-field">
-        <label class="terminal-label" for="telegram-alerts-enabled">
-          <span>Alertas en Tiempo Real</span>
-          <span class="terminal-subtext">Despacho de Spreads & Riegos</span>
+        <label class="terminal-label" for="telegram-polling-enabled">
+          <span>Worker 24/7 (Long-Polling)</span>
+          <span class="terminal-subtext">Recepción de comandos y fotos</span>
         </label>
         <div class="input-control-wrap">
           <select
-            id="telegram-alerts-enabled"
+            id="telegram-polling-enabled"
             class="terminal-select"
-            [value]="telegramAlertsEnabled() ? 'yes' : 'no'"
-            (change)="telegramAlertsEnabled.set($any($event.target).value === 'yes')"
+            [value]="telegramPollingEnabled() ? 'yes' : 'no'"
+            (change)="telegramPollingEnabled.set($any($event.target).value === 'yes'); togglePolling()"
           >
-            <option value="yes">🔔 ACTIVADAS — Transmitir eventos</option>
-            <option value="no">🔕 SILENCIADAS — Sólo comandos manuales</option>
+            <option value="yes">🟢 EN LÍNEA — Escuchar comandos & OCR</option>
+            <option value="no">⚪ DESCONECTADO — Modo pasivo</option>
           </select>
         </div>
       </div>
     </div>
 
+    <!-- Consola de Comandos Remotos y Auditorías Telegram -->
+    <div style="margin-top: 14px; background: rgba(10, 15, 26, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.04em;">
+          📡 Consola de Comandos y Fotos Recibidas en Vivo
+        </span>
+        <span class="badge" [class.badge-accent]="telegramWorker.isPolling()" style="font-size: 0.68rem;">
+          {{ telegramWorker.isPolling() ? '● POLLING ACTIVO' : '○ INACTIVO' }}
+        </span>
+      </div>
+
+      @if (telegramWorker.recentLogs().length === 0) {
+        <div style="font-size: 0.78rem; color: var(--muted); padding: 12px 0; text-align: center;">
+          El bot está esperando mensajes desde tu Telegram. Envía <code>/status</code>, <code>/bcv</code>, <code>/bancos</code> o una foto de un comprobante bancario para probarlo.
+        </div>
+      } @else {
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--line); color: var(--muted); text-align: left;">
+              <th style="padding: 4px 6px;">Hora</th>
+              <th style="padding: 4px 6px;">Mensaje / Foto</th>
+              <th style="padding: 4px 6px;">Acción</th>
+              <th style="padding: 4px 6px;">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (log of telegramWorker.recentLogs(); track log.time + $index) {
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                <td style="padding: 4px 6px; font-family: var(--font-mono); color: var(--muted);">{{ log.time }}</td>
+                <td style="padding: 4px 6px; font-weight: 600;">{{ log.command }}</td>
+                <td style="padding: 4px 6px;">
+                  <span class="badge badge-accent" style="font-size: 0.65rem;">{{ log.action }}</span>
+                </td>
+                <td style="padding: 4px 6px;">
+                  <span class="badge" [style.color]="log.status === 'SUCCESS' ? '#4ade80' : '#ef4444'" style="font-size: 0.65rem;">
+                    {{ log.status }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
     <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 6px;">
       <div class="footer-badge">
-        <span class="status-indicator" [class.active]="telegramAlertsEnabled()"></span>
-        <span>Canal cifrado: Soporta comandos remotos /killswitch, /status, /resume y /spreads</span>
+        <span class="status-indicator" [class.active]="telegramWorker.isPolling()"></span>
+        <span>Soporta: 📸 Auditoría OCR por Foto, /bcv, /bancos, /spreads, /status y /killswitch remoto</span>
       </div>
       <div class="actions" style="margin: 0; display: flex; gap: 8px;">
         <button type="button" class="btn btn-secondary" (click)="sendTestTelegramAlert()">⚡ Probar Alerta</button>

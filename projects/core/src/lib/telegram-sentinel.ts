@@ -23,6 +23,20 @@ export interface TelegramInboundUpdate {
     chat: { id: number; type: string };
     text?: string;
     date: number;
+    photo?: Array<{
+      file_id: string;
+      file_unique_id: string;
+      width: number;
+      height: number;
+      file_size?: number;
+    }>;
+    document?: {
+      file_id: string;
+      file_name?: string;
+      mime_type?: string;
+      file_size?: number;
+    };
+    caption?: string;
   };
   callback_query?: {
     id: string;
@@ -32,13 +46,22 @@ export interface TelegramInboundUpdate {
   };
 }
 
-export type SentinelAction = 'KILLSWITCH' | 'RESUME' | 'STATUS' | 'SPREADS' | 'DISPUTE_ORDER';
+export type SentinelAction =
+  | 'KILLSWITCH'
+  | 'RESUME'
+  | 'STATUS'
+  | 'SPREADS'
+  | 'BCV'
+  | 'BANCOS'
+  | 'DISPUTE_ORDER'
+  | 'AUDIT_RECEIPT';
 
 export interface DispatchResult {
   authorized: boolean;
   command?: string;
   action?: SentinelAction;
   orderId?: string;
+  fileId?: string;
   responseMarkdown: string;
 }
 
@@ -130,7 +153,106 @@ export function buildRepricerControlKeyboard(): TelegramInlineKeyboardMarkup {
 }
 
 /**
- * Dispatches and authenticates incoming Telegram messages or callback queries.
+ * Formats instantaneous forensic receipt audit results.
+ */
+export function formatReceiptAuditTelegramMessage(audit: {
+  receiptNumber?: string;
+  bank?: string;
+  amountVes?: number;
+  extractedName?: string;
+  counterpartyName?: string;
+  nameSimilarityPct: number;
+  score: number;
+  level: 'SAFE' | 'WARNING' | 'CRITICAL';
+  recommendation: string;
+}): string {
+  const icon = audit.level === 'SAFE' ? '🟢' : audit.level === 'WARNING' ? '🟡' : '🔴';
+  const scoreStr = `${audit.score}/100`;
+  const amountStr = audit.amountVes
+    ? `${audit.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })} VES`
+    : 'No detectado';
+
+  return `🛡️ *AUDITORÍA FORENSE INSTANTÁNEA* 🛡️
+━━━━━━━━━━━━━━━━━━━━
+📊 *Veredicto:* ${icon} *${escapeMarkdownV2(audit.level)}* \\(Score: \`${escapeMarkdownV2(scoreStr)}\`\\)
+🏦 *Banco:* \`${escapeMarkdownV2(audit.bank || 'No identificado')}\`
+🔢 *Referencia:* \`${escapeMarkdownV2(audit.receiptNumber || 'Sin número')}\`
+💵 *Monto:* \`${escapeMarkdownV2(amountStr)}\`
+
+👤 *Titular en Comprobante:* \`${escapeMarkdownV2(audit.extractedName || 'No detectado')}\`
+👥 *Contraparte P2P:* \`${escapeMarkdownV2(audit.counterpartyName || 'No provisto')}\`
+🎯 *Similitud de Identidad:* \`${escapeMarkdownV2(audit.nameSimilarityPct.toFixed(1))}%\`
+━━━━━━━━━━━━━━━━━━━━
+💡 *Recomendación:* _${escapeMarkdownV2(audit.recommendation)}_`;
+}
+
+/**
+ * Formats macro BCV intervention and gap analysis.
+ */
+export function formatBcvIntelligenceTelegramMessage(intel: {
+  parallelRate: number;
+  bcvRate: number;
+  gapPct: number;
+  gapVes: number;
+  zone: string;
+  phase: string;
+  nextExpectedIntervention: string;
+  probabilityPct: number;
+  actionLabel: string;
+  timingNotice: string;
+}): string {
+  const zoneIcon = intel.zone === 'CRITICAL_DISPERSION' ? '🔴' : intel.zone === 'ELEVATED' ? '🟡' : '🟢';
+  return `🏛️ *INTELIGENCIA CAMBIARIA BCV* 🏛️
+━━━━━━━━━━━━━━━━━━━━
+📈 *Tasa Paralelo:* \`${escapeMarkdownV2(intel.parallelRate.toFixed(2))} Bs\`
+🏛️ *Tasa Oficial BCV:* \`${escapeMarkdownV2(intel.bcvRate.toFixed(2))} Bs\`
+⚡ *Brecha:* ${zoneIcon} *+${escapeMarkdownV2(intel.gapPct.toFixed(2))}%* \\(\`${escapeMarkdownV2(intel.gapVes.toFixed(2))} Bs\`\\)
+📊 *Zona:* \`${escapeMarkdownV2(intel.zone)}\`
+
+⏱️ *Fase del Ciclo:* \`${escapeMarkdownV2(intel.phase)}\`
+📅 *Próxima Inyección:* \`${escapeMarkdownV2(intel.nextExpectedIntervention)}\` \\(${intel.probabilityPct}% prob\\)
+━━━━━━━━━━━━━━━━━━━━
+🎯 *Directiva de Tesorería:*
+👉 *${escapeMarkdownV2(intel.actionLabel)}*
+⏳ _Timing: ${escapeMarkdownV2(intel.timingNotice)}_`;
+}
+
+/**
+ * Formats bank account usage limits and SUDEBAN alerts.
+ */
+export function formatBankLimitsTelegramMessage(
+  accounts: Array<{
+    bankName: string;
+    spentTodayVes: number;
+    dailyLimitVes: number;
+    consumedPct: number;
+    txCount: number;
+    maxTx: number;
+    isOverLimit: boolean;
+  }>,
+): string {
+  const rows = accounts
+    .map((acc) => {
+      const status = acc.isOverLimit
+        ? '🚨 SATURADA'
+        : acc.consumedPct >= 80
+          ? '⚠️ LÍMITE PRÓXIMO'
+          : '✅ OPERATIVA';
+      return `🏦 *${escapeMarkdownV2(acc.bankName)}:* ${status}
+  • Consumo: \`${escapeMarkdownV2(acc.spentTodayVes.toLocaleString('es-VE'))} / ${escapeMarkdownV2(acc.dailyLimitVes.toLocaleString('es-VE'))} Bs\` \\(${acc.consumedPct}%\\)
+  • Transferencias: \`${acc.txCount} / ${acc.maxTx} tx\``;
+    })
+    .join('\n\n');
+
+  return `📊 *ESTADO DE CUPOS BANCARIOS \\(SUDEBAN\\)*
+━━━━━━━━━━━━━━━━━━━━
+${rows}
+━━━━━━━━━━━━━━━━━━━━
+_P2P Decision Tool • Monitoreo de Rotación_`;
+}
+
+/**
+ * Dispatches and authenticates incoming Telegram messages, photos, or callback queries.
  */
 export function dispatchTelegramUpdate(
   update: TelegramInboundUpdate,
@@ -141,7 +263,7 @@ export function dispatchTelegramUpdate(
   // 1. Message Handling
   if (update.message) {
     const fromId = update.message.from.id;
-    const text = (update.message.text || '').trim();
+    const text = (update.message.text || update.message.caption || '').trim();
 
     if (fromId !== authId) {
       return {
@@ -152,6 +274,27 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    // A. Photo or Document (Forensic Receipt Audit)
+    if (update.message.photo && update.message.photo.length > 0) {
+      const bestPhoto = update.message.photo[update.message.photo.length - 1];
+      return {
+        authorized: true,
+        action: 'AUDIT_RECEIPT',
+        fileId: bestPhoto.file_id,
+        responseMarkdown: `🔍 *COMPROBANTE BANCARIO RECIBIDO*\n\nIniciando extracción OCR y validación cruzada con el Escudo Anti\\-Fraude\\.\\.\\.`,
+      };
+    }
+
+    if (update.message.document) {
+      return {
+        authorized: true,
+        action: 'AUDIT_RECEIPT',
+        fileId: update.message.document.file_id,
+        responseMarkdown: `🔍 *DOCUMENTO DE PAGO RECIBIDO*\n\nIniciando extracción OCR y validación cruzada con el Escudo Anti\\-Fraude\\.\\.\\.`,
+      };
+    }
+
+    // B. Text Commands
     if (text.startsWith('/killswitch')) {
       return {
         authorized: true,
@@ -188,11 +331,29 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (text.startsWith('/bcv')) {
+      return {
+        authorized: true,
+        command: '/bcv',
+        action: 'BCV',
+        responseMarkdown: `🏛️ *CONSULTANDO CICLO CAMBIARIO BCV*\\.\\.\\.`,
+      };
+    }
+
+    if (text.startsWith('/bancos')) {
+      return {
+        authorized: true,
+        command: '/bancos',
+        action: 'BANCOS',
+        responseMarkdown: `🏦 *CONSULTANDO CUPOS BANCARIOS SUDEBAN*\\.\\.\\.`,
+      };
+    }
+
     return {
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando desconocido: ${text}. Usa /status, /spreads o /killswitch.`,
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /killswitch, /resume o envía una foto de un comprobante bancario.`,
       ),
     };
   }

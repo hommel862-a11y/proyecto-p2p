@@ -3,6 +3,9 @@ import {
   escapeMarkdownV2,
   formatSpreadAlertMessage,
   formatFraudAlertMessage,
+  formatReceiptAuditTelegramMessage,
+  formatBcvIntelligenceTelegramMessage,
+  formatBankLimitsTelegramMessage,
   buildFraudAlertKeyboard,
   buildRepricerControlKeyboard,
   dispatchTelegramUpdate,
@@ -143,6 +146,118 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(res.action).toBe('DISPUTE_ORDER');
       expect(res.orderId).toBe('ORD-5501');
       expect(res.responseMarkdown).toContain('ORD\\-5501');
+    });
+
+    it('procesa foto de comprobante bancario entrante para auditoría forense', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 5,
+        message: {
+          message_id: 15,
+          from: { id: AUTH_CHAT_ID },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          photo: [
+            { file_id: 'thumb_id', file_unique_id: 'u1', width: 100, height: 100 },
+            { file_id: 'highres_id', file_unique_id: 'u2', width: 800, height: 1200 },
+          ],
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.action).toBe('AUDIT_RECEIPT');
+      expect(res.fileId).toBe('highres_id');
+      expect(res.responseMarkdown).toContain('COMPROBANTE BANCARIO RECIBIDO');
+    });
+
+    it('procesa comandos /bcv y /bancos', () => {
+      const updateBcv: TelegramInboundUpdate = {
+        update_id: 6,
+        message: {
+          message_id: 16,
+          from: { id: AUTH_CHAT_ID },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text: '/bcv',
+          date: Date.now(),
+        },
+      };
+      const resBcv = dispatchTelegramUpdate(updateBcv, AUTH_CHAT_ID);
+      expect(resBcv.authorized).toBe(true);
+      expect(resBcv.action).toBe('BCV');
+
+      const updateBancos: TelegramInboundUpdate = {
+        update_id: 7,
+        message: {
+          message_id: 17,
+          from: { id: AUTH_CHAT_ID },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text: '/bancos',
+          date: Date.now(),
+        },
+      };
+      const resBancos = dispatchTelegramUpdate(updateBancos, AUTH_CHAT_ID);
+      expect(resBancos.authorized).toBe(true);
+      expect(resBancos.action).toBe('BANCOS');
+    });
+  });
+
+  describe('Nuevos Formateadores Pro (Auditoría Forense, BCV & Bancos)', () => {
+    it('formatea reporte forense instantáneo de comprobante bancario', () => {
+      const msg = formatReceiptAuditTelegramMessage({
+        receiptNumber: '08927461',
+        bank: 'Banesco',
+        amountVes: 15420.5,
+        extractedName: 'Carlos Alberto Perez Gomez',
+        counterpartyName: 'Carlos Perez',
+        nameSimilarityPct: 98.5,
+        score: 95,
+        level: 'SAFE',
+        recommendation: 'Liberar Criptoactivo de inmediato',
+      });
+
+      expect(msg).toContain('AUDITORÍA FORENSE INSTANTÁNEA');
+      expect(msg).toContain('Banesco');
+      expect(msg).toContain('08927461');
+      expect(msg).toContain('98\\.5%');
+      expect(msg).toContain('SAFE');
+    });
+
+    it('formatea reporte de macro-inteligencia BCV', () => {
+      const msg = formatBcvIntelligenceTelegramMessage({
+        parallelRate: 815.0,
+        bcvRate: 685.0,
+        gapPct: 18.98,
+        gapVes: 130.0,
+        zone: 'NORMAL',
+        phase: 'PRE_INTERVENTION_COMPRESSION',
+        nextExpectedIntervention: 'Lunes 09:30 AM VET',
+        probabilityPct: 85,
+        actionLabel: 'VENDER USDT EN MÁXIMOS',
+        timingNotice: 'Antes de las 9:30 AM',
+      });
+
+      expect(msg).toContain('INTELIGENCIA CAMBIARIA BCV');
+      expect(msg).toContain('815\\.00 Bs');
+      expect(msg).toContain('685\\.00 Bs');
+      expect(msg).toContain('VENDER USDT EN MÁXIMOS');
+    });
+
+    it('formatea estado y límites de cupos bancarios', () => {
+      const msg = formatBankLimitsTelegramMessage([
+        {
+          bankName: 'Banesco',
+          spentTodayVes: 250000,
+          dailyLimitVes: 300000,
+          consumedPct: 83,
+          txCount: 12,
+          maxTx: 20,
+          isOverLimit: false,
+        },
+      ]);
+
+      expect(msg).toContain('CUPOS BANCARIOS');
+      expect(msg).toContain('Banesco');
+      expect(msg).toContain('LÍMITE PRÓXIMO');
     });
   });
 });
