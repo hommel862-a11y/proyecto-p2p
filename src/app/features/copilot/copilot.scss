@@ -413,10 +413,141 @@
     }
   }
 
+  /* 3-Step Visual Execution Roadmap */
+  .strategy-steps {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+
+    .step-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #38bdf8;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+
+      .step-num {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(56, 189, 248, 0.2);
+        border: 1px solid #38bdf8;
+        color: #38bdf8;
+        font-size: 0.68rem;
+        font-weight: 800;
+        margin-top: 1px;
+      }
+
+      .step-content {
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: #cbd5e1;
+
+        strong {
+          color: #f1f5f9;
+        }
+      }
+    }
+  }
+
+  /* Financial Breakdown Accordion */
+  .breakdown-section {
+    margin-bottom: 12px;
+
+    .btn-breakdown {
+      background: none;
+      border: 1px dashed rgba(216, 180, 92, 0.4);
+      color: #d8b45c;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(216, 180, 92, 0.1);
+      }
+    }
+
+    .breakdown-details {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-top: 6px;
+
+      .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        padding: 3px 0;
+        color: #94a3b8;
+
+        &.fee {
+          color: #f87171;
+        }
+
+        &.net {
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          margin-top: 4px;
+          padding-top: 4px;
+          color: #f8fafc;
+          font-weight: 700;
+
+          .highlight {
+            color: #4ade80;
+            font-size: 0.85rem;
+          }
+        }
+      }
+    }
+  }
+
   .card-rationale {
     font-size: 0.8rem;
     color: #cbd5e1;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 6px 10px;
+    border-radius: 6px;
+  }
+
+  .security-guarantee {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 6px;
+    padding: 6px 10px;
     margin-bottom: 12px;
+    line-height: 1.35;
+
+    strong {
+      color: #4ade80;
+    }
+
+    em {
+      color: #cbd5e1;
+    }
   }
 
   .card-footer {

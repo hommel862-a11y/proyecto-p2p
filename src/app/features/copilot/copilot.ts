@@ -42,6 +42,21 @@ export class Copilot implements OnInit, OnDestroy {
   plans = signal<StrategyPlanCard[]>([]);
   learnings = signal<Array<{ id?: number; topicKey: string; category: string; insight: string; confidenceScore: number }>>([]);
   actionSuccessNotice = signal<string | null>(null);
+  expandedBreakdownPlanIds = signal<Set<string>>(new Set());
+
+  toggleBreakdown(planId: string): void {
+    const current = new Set(this.expandedBreakdownPlanIds());
+    if (current.has(planId)) {
+      current.delete(planId);
+    } else {
+      current.add(planId);
+    }
+    this.expandedBreakdownPlanIds.set(current);
+  }
+
+  isBreakdownOpen(planId: string): boolean {
+    return this.expandedBreakdownPlanIds().has(planId);
+  }
 
   connectionStatus = signal<{ connected: boolean; model: string; message: string }>({
     connected: false,

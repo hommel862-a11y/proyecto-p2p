@@ -146,7 +146,7 @@
                       <span class="value">+{{ msg.plan.expectedNetSpreadPct }}%</span>
                     </div>
                     <div class="metric success">
-                      <span class="label">Ganancia Est.</span>
+                      <span class="label">Ganancia Neta</span>
                       <span class="value">+${{ msg.plan.expectedProfitUsdt }} USDT</span>
                     </div>
                     <div class="metric">
@@ -157,9 +157,63 @@
                     </div>
                   </div>
 
+                  <!-- 3-STEP VISUAL EXECUTION ROADMAP -->
+                  <div class="strategy-steps">
+                    <div class="step-title">🧭 PLAN DE ACCIÓN PASO A PASO:</div>
+                    <div class="step-item">
+                      <span class="step-num">1</span>
+                      <div class="step-content">
+                        <strong>Entrada (Maker Compra):</strong> Abrir orden de compra en Binance P2P por ${{ msg.plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <span class="step-num">2</span>
+                      <div class="step-content">
+                        <strong>Verificación & Custodia:</strong> Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.
+                      </div>
+                    </div>
+                    <div class="step-item">
+                      <span class="step-num">3</span>
+                      <div class="step-content">
+                        <strong>Salida & Ganancia (Maker Venta):</strong> Publicar anuncio de venta con markup optimizado para capturar el +{{ msg.plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ msg.plan.expectedProfitUsdt }} USDT).
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- FINANCIAL BREAKDOWN ACCORDION -->
+                  <div class="breakdown-section">
+                    <button class="btn-breakdown" (click)="toggleBreakdown(msg.plan.id)">
+                      {{ isBreakdownOpen(msg.plan.id) ? '▲ Ocultar Desglose Financiero' : '🔍 Ver Desglose Financiero y Comisiones' }}
+                    </button>
+                    @if (isBreakdownOpen(msg.plan.id)) {
+                      <div class="breakdown-details">
+                        <div class="breakdown-row">
+                          <span>Spread Bruto de Mercado:</span>
+                          <strong>+{{ (msg.plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
+                        </div>
+                        <div class="breakdown-row fee">
+                          <span>Comisión de Comercio Binance (Maker):</span>
+                          <strong>-0.35%</strong>
+                        </div>
+                        <div class="breakdown-row fee">
+                          <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
+                          <strong>0.00% (Sin IGTF)</strong>
+                        </div>
+                        <div class="breakdown-row net">
+                          <span>Margen Neto Limpio en Mano:</span>
+                          <strong class="highlight">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
+                        </div>
+                      </div>
+                    }
+                  </div>
+
                   <p class="card-rationale">
-                    <strong>Fundamento:</strong> {{ msg.plan.rationale }}
+                    <strong>Fundamento Algorítmico:</strong> {{ msg.plan.rationale }}
                   </p>
+
+                  <div class="security-guarantee">
+                    🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
+                  </div>
 
                   <div class="card-footer">
                     @if (msg.plan.assignedOperatorName) {
@@ -173,7 +227,7 @@
                         ▶ EJECUTAR ESTRATEGIA (PLAY)
                       </button>
                     } @else {
-                      <span class="badge-approved">✓ APROBADA Y DELEGADA</span>
+                      <span class="badge-approved">✓ APROBADA Y ENVIADA A MESA</span>
                     }
                   </div>
                 </div>
