@@ -1,0 +1,687 @@
+{
+  "profiles": [
+    {
+      "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p\\Local Storage\\leveldb",
+      "exists": true,
+      "files": 5,
+      "errors": 0,
+      "decodeFailures": 1,
+      "keysFound": 12
+    },
+    {
+      "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb",
+      "exists": true,
+      "files": 1,
+      "errors": 0,
+      "decodeFailures": 0,
+      "keysFound": 7
+    }
+  ],
+  "marketHistory": [
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 962.6,
+      "spreadVes": 1.6,
+      "spreadPct": 0.17,
+      "timestamp": "2026-09-10T17:54:41.528Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 960,
+      "bestSellPrice": 963,
+      "spreadVes": 3,
+      "spreadPct": 0.31,
+      "timestamp": "2026-09-10T20:04:21.210Z"
+    },
+    {
+      "origin": "http://localhost:53447",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 962,
+      "bestSellPrice": 962,
+      "spreadVes": 0,
+      "spreadPct": 0,
+      "timestamp": "2026-09-10T21:48:21.562Z"
+    },
+    {
+      "origin": "http://localhost:53447",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 960,
+      "bestSellPrice": 962,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-10T21:51:36.486Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 961.7,
+      "spreadVes": 0.7,
+      "spreadPct": 0.07,
+      "timestamp": "2026-09-11T00:28:59.164Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961.8,
+      "bestSellPrice": 964,
+      "spreadVes": 2.2,
+      "spreadPct": 0.23,
+      "timestamp": "2026-09-11T01:41:41.991Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961.8,
+      "bestSellPrice": 964,
+      "spreadVes": 2.2,
+      "spreadPct": 0.23,
+      "timestamp": "2026-09-11T01:42:19.951Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 960,
+      "bestSellPrice": 962.01,
+      "spreadVes": 2.01,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-11T03:37:53.355Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 960,
+      "bestSellPrice": 962.01,
+      "spreadVes": 2.01,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-11T03:38:43.102Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961.1,
+      "bestSellPrice": 962.01,
+      "spreadVes": 0.91,
+      "spreadPct": 0.09,
+      "timestamp": "2026-09-11T03:57:29.544Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 962.01,
+      "spreadVes": 1.01,
+      "spreadPct": 0.11,
+      "timestamp": "2026-09-11T03:57:47.977Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 962.01,
+      "spreadVes": 1.01,
+      "spreadPct": 0.11,
+      "timestamp": "2026-09-11T03:58:00.225Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 964,
+      "spreadVes": 3,
+      "spreadPct": 0.31,
+      "timestamp": "2026-09-11T04:01:01.634Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 961,
+      "bestSellPrice": 962.01,
+      "spreadVes": 1.01,
+      "spreadPct": 0.11,
+      "timestamp": "2026-09-11T08:13:20.171Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956,
+      "bestSellPrice": 960.17,
+      "spreadVes": 4.17,
+      "spreadPct": 0.44,
+      "timestamp": "2026-09-11T16:53:36.602Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956,
+      "bestSellPrice": 960.17,
+      "spreadVes": 4.17,
+      "spreadPct": 0.44,
+      "timestamp": "2026-09-11T16:53:40.821Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 955,
+      "bestSellPrice": 956.4,
+      "spreadVes": 1.4,
+      "spreadPct": 0.15,
+      "timestamp": "2026-09-11T18:41:25.498Z"
+    },
+    {
+      "origin": "http://localhost:61832",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 957,
+      "spreadVes": 0,
+      "spreadPct": 0,
+      "timestamp": "2026-09-11T20:39:03.400Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958,
+      "bestSellPrice": 960,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-11T21:32:18.575Z"
+    },
+    {
+      "origin": "http://localhost:59050",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957.5,
+      "bestSellPrice": 957.8,
+      "spreadVes": 0.3,
+      "spreadPct": 0.03,
+      "timestamp": "2026-09-12T20:08:03.998Z"
+    },
+    {
+      "origin": "http://localhost:60140",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957.9,
+      "bestSellPrice": 958,
+      "spreadVes": 0.1,
+      "spreadPct": 0.01,
+      "timestamp": "2026-09-12T20:43:33.216Z"
+    },
+    {
+      "origin": "http://localhost:61904",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956.8,
+      "bestSellPrice": 958,
+      "spreadVes": 1.2,
+      "spreadPct": 0.13,
+      "timestamp": "2026-09-12T21:38:41.175Z"
+    },
+    {
+      "origin": "http://localhost:62998",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 951,
+      "bestSellPrice": 956.11,
+      "spreadVes": 5.11,
+      "spreadPct": 0.54,
+      "timestamp": "2026-09-12T22:03:38.822Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956,
+      "bestSellPrice": 957,
+      "spreadVes": 1,
+      "spreadPct": 0.1,
+      "timestamp": "2026-09-13T00:02:38.695Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 959,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-13T00:30:58.499Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 955,
+      "bestSellPrice": 957.33,
+      "spreadVes": 2.33,
+      "spreadPct": 0.24,
+      "timestamp": "2026-09-13T01:10:04.927Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 955,
+      "bestSellPrice": 957,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-13T01:32:46.351Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 957,
+      "spreadVes": 0,
+      "spreadPct": 0,
+      "timestamp": "2026-09-13T01:37:24.424Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 957,
+      "spreadVes": 0,
+      "spreadPct": 0,
+      "timestamp": "2026-09-13T01:37:30.437Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 957,
+      "spreadVes": 0,
+      "spreadPct": 0,
+      "timestamp": "2026-09-13T01:37:40.995Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 959,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-13T01:41:57.297Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 959.71,
+      "bestSellPrice": 958.2,
+      "spreadVes": -1.51,
+      "spreadPct": -0.16,
+      "timestamp": "2026-09-13T04:08:16.921Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 959.71,
+      "bestSellPrice": 958.2,
+      "spreadVes": -1.51,
+      "spreadPct": -0.16,
+      "timestamp": "2026-09-13T04:09:06.920Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 965.5,
+      "spreadVes": 8.5,
+      "spreadPct": 0.89,
+      "timestamp": "2026-09-13T14:01:24.810Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957.7,
+      "bestSellPrice": 960,
+      "spreadVes": 2.3,
+      "spreadPct": 0.24,
+      "timestamp": "2026-09-13T14:27:10.536Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 959,
+      "spreadVes": 2,
+      "spreadPct": 0.21,
+      "timestamp": "2026-09-13T14:38:29.118Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956.81,
+      "bestSellPrice": 958.42,
+      "spreadVes": 1.61,
+      "spreadPct": 0.17,
+      "timestamp": "2026-09-13T14:48:03.930Z"
+    },
+    {
+      "origin": "http://localhost:51857",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956,
+      "bestSellPrice": 958.42,
+      "spreadVes": 2.42,
+      "spreadPct": 0.25,
+      "timestamp": "2026-09-13T14:55:18.012Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 956,
+      "bestSellPrice": 958.42,
+      "spreadVes": 2.42,
+      "spreadPct": 0.25,
+      "timestamp": "2026-09-13T15:01:52.760Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957,
+      "bestSellPrice": 957.75,
+      "spreadVes": 0.75,
+      "spreadPct": 0.08,
+      "timestamp": "2026-09-13T15:06:03.389Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957.9,
+      "bestSellPrice": 959,
+      "spreadVes": 1.1,
+      "spreadPct": 0.11,
+      "timestamp": "2026-09-13T15:34:31.124Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 957.9,
+      "bestSellPrice": 959,
+      "spreadVes": 1.1,
+      "spreadPct": 0.11,
+      "timestamp": "2026-09-13T15:37:02.206Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958,
+      "bestSellPrice": 959,
+      "spreadVes": 1,
+      "spreadPct": 0.1,
+      "timestamp": "2026-09-13T15:54:12.450Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958,
+      "bestSellPrice": 961,
+      "spreadVes": 3,
+      "spreadPct": 0.31,
+      "timestamp": "2026-09-13T16:53:28.135Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958,
+      "bestSellPrice": 961,
+      "spreadVes": 3,
+      "spreadPct": 0.31,
+      "timestamp": "2026-09-13T16:58:35.472Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 959.5,
+      "bestSellPrice": 963,
+      "spreadVes": 3.5,
+      "spreadPct": 0.36,
+      "timestamp": "2026-09-13T18:59:14.528Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 959,
+      "bestSellPrice": 963,
+      "spreadVes": 4,
+      "spreadPct": 0.42,
+      "timestamp": "2026-09-13T19:07:36.523Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958,
+      "bestSellPrice": 963,
+      "spreadVes": 5,
+      "spreadPct": 0.52,
+      "timestamp": "2026-09-13T19:07:55.152Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 958.58,
+      "bestSellPrice": 960.1,
+      "spreadVes": 1.52,
+      "spreadPct": 0.16,
+      "timestamp": "2026-09-13T20:58:50.828Z"
+    },
+    {
+      "origin": "http://localhost:4200",
+      "pair": "USDT",
+      "bank": "ALL",
+      "bestBuyPrice": 959.5,
+      "bestSellPrice": 960.05,
+      "spreadVes": 0.55,
+      "spreadPct": 0.06,
+      "timestamp": "2026-09-13T21:01:55.417Z"
+    }
+  ],
+  "operations": [
+    {
+      "origin": "http://localhost:51857",
+      "id": "b7ab6387-1d2d-4894-b341-4d8f296c8c7b",
+      "timestamp": "2026-09-13T01:58:16.792Z",
+      "type": "assign",
+      "pair": "USDT",
+      "vesAmount": 0,
+      "usdtAmount": 1000,
+      "price": 0.985,
+      "merchantNote": "Ciclo #271E6986: Binance P2P (Zinli / Wally)",
+      "fees": 4.45,
+      "notes": "[Triangulación USDT ➔ USD (Zinli/Wally) ➔ VES ➔ USDT (Dólar Digital)] Tramo 1/3: USDT ➔ USD | PnL Ciclo: +1.39 USDT (ROI 0.14%)",
+      "errorFree": true,
+      "durationMs": 60000
+    },
+    {
+      "origin": "http://localhost:51857",
+      "id": "ce31fa01-d20e-432c-a963-969874fac201",
+      "timestamp": "2026-09-13T01:58:16.792Z",
+      "type": "assign",
+      "pair": "USDT",
+      "vesAmount": 82201.68,
+      "usdtAmount": 82201.68,
+      "price": 84,
+      "merchantNote": "Ciclo #271E6986: P2P / Remesa Local (Pago Móvil)",
+      "fees": 164.73,
+      "notes": "[Triangulación USDT ➔ USD (Zinli/Wally) ➔ VES ➔ USDT (Dólar Digital)] Tramo 2/3: USD ➔ VES | PnL Ciclo: +1.39 USDT (ROI 0.14%)",
+      "errorFree": true,
+      "durationMs": 60000
+    },
+    {
+      "origin": "http://localhost:51857",
+      "id": "6c5fe566-55ec-4c86-9378-680996adbb73",
+      "timestamp": "2026-09-13T01:58:16.792Z",
+      "type": "buy",
+      "pair": "USDT",
+      "vesAmount": 82201.68,
+      "usdtAmount": 1001.39,
+      "price": 81.8,
+      "merchantNote": "Ciclo #271E6986: Binance P2P (Banesco / Provincial)",
+      "fees": 3.52,
+      "notes": "[Triangulación USDT ➔ USD (Zinli/Wally) ➔ VES ➔ USDT (Dólar Digital)] Tramo 3/3: VES ➔ USDT | PnL Ciclo: +1.39 USDT (ROI 0.14%)",
+      "errorFree": true,
+      "durationMs": 60000
+    }
+  ],
+  "stats": {
+    "snapshotTotal": 50,
+    "operationTotal": 3,
+    "sessions": [
+      {
+        "origin": "http://localhost:4200",
+        "points": 31,
+        "from": "2026-09-10T17:54:41.528Z",
+        "to": "2026-09-13T21:01:55.417Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:53447",
+        "points": 2,
+        "from": "2026-09-10T21:48:21.562Z",
+        "to": "2026-09-10T21:51:36.486Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:61832",
+        "points": 1,
+        "from": "2026-09-11T20:39:03.400Z",
+        "to": "2026-09-11T20:39:03.400Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:59050",
+        "points": 1,
+        "from": "2026-09-12T20:08:03.998Z",
+        "to": "2026-09-12T20:08:03.998Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:60140",
+        "points": 1,
+        "from": "2026-09-12T20:43:33.216Z",
+        "to": "2026-09-12T20:43:33.216Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:61904",
+        "points": 1,
+        "from": "2026-09-12T21:38:41.175Z",
+        "to": "2026-09-12T21:38:41.175Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:62998",
+        "points": 1,
+        "from": "2026-09-12T22:03:38.822Z",
+        "to": "2026-09-12T22:03:38.822Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:51857",
+        "points": 12,
+        "from": "2026-09-13T00:02:38.695Z",
+        "to": "2026-09-13T14:55:18.012Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      }
+    ],
+    "byOrigin": {
+      "http://localhost:4200": 31,
+      "http://localhost:53447": 2,
+      "http://localhost:61832": 1,
+      "http://localhost:59050": 1,
+      "http://localhost:60140": 1,
+      "http://localhost:61904": 1,
+      "http://localhost:62998": 1,
+      "http://localhost:51857": 12
+    },
+    "byDay": {
+      "2026-09-10": 4,
+      "2026-09-11": 15,
+      "2026-09-12": 4,
+      "2026-09-13": 27
+    }
+  }
+}

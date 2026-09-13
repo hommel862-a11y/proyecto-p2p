@@ -1,0 +1,232 @@
+{
+  "metadata": {
+    "generatedAt": "2026-09-13T21:13:50.346Z",
+    "script": "scripts/backtest.cjs",
+    "enginesMirrored": [
+      "projects/core/src/lib/spread.ts -> computeSpread",
+      "projects/core/src/lib/spread-quality.ts -> computeArbitrageCycle (MAKER/MAKER 0.25%)",
+      "projects/core/src/lib/triangular-arbitrage.ts -> calculateTriangularArbitrage"
+    ],
+    "commissionUsed": {
+      "makerRate": 0.0025,
+      "source": "projects/core/src/lib/spread-quality.ts:180"
+    },
+    "dataSourcesReal": [
+      "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p\\Local Storage\\leveldb",
+      "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb"
+    ]
+  },
+  "data": {
+    "snapshots": 50,
+    "operations": 3,
+    "sessions": 8,
+    "sessionsDetail": [
+      {
+        "origin": "http://localhost:4200",
+        "points": 31,
+        "from": "2026-09-10T17:54:41.528Z",
+        "to": "2026-09-13T21:01:55.417Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:53447",
+        "points": 2,
+        "from": "2026-09-10T21:48:21.562Z",
+        "to": "2026-09-10T21:51:36.486Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:61832",
+        "points": 1,
+        "from": "2026-09-11T20:39:03.400Z",
+        "to": "2026-09-11T20:39:03.400Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:59050",
+        "points": 1,
+        "from": "2026-09-12T20:08:03.998Z",
+        "to": "2026-09-12T20:08:03.998Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:60140",
+        "points": 1,
+        "from": "2026-09-12T20:43:33.216Z",
+        "to": "2026-09-12T20:43:33.216Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:61904",
+        "points": 1,
+        "from": "2026-09-12T21:38:41.175Z",
+        "to": "2026-09-12T21:38:41.175Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:62998",
+        "points": 1,
+        "from": "2026-09-12T22:03:38.822Z",
+        "to": "2026-09-12T22:03:38.822Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      },
+      {
+        "origin": "http://localhost:51857",
+        "points": 12,
+        "from": "2026-09-13T00:02:38.695Z",
+        "to": "2026-09-13T14:55:18.012Z",
+        "banks": [
+          "ALL"
+        ],
+        "pairs": [
+          "USDT"
+        ]
+      }
+    ],
+    "byDay": {
+      "2026-09-10": 4,
+      "2026-09-11": 15,
+      "2026-09-12": 4,
+      "2026-09-13": 27
+    },
+    "decodeFailuresLdb": 1,
+    "files": [
+      {
+        "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p\\Local Storage\\leveldb",
+        "exists": true,
+        "files": 5,
+        "errors": 0
+      },
+      {
+        "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb",
+        "exists": true,
+        "files": 1,
+        "errors": 0
+      }
+    ]
+  },
+  "spreadEngine": {
+    "pointsEvaluated": 50,
+    "aciertoTeoricoPct": 86,
+    "aciertoNetoPct": 6,
+    "deviation": {
+      "spreadVesMean": 0,
+      "spreadVesAbsMean": 0,
+      "spreadPctMean": 0.000048,
+      "spreadPctAbsMean": 0.002406
+    },
+    "netSpreadVesPerUnit": {
+      "mean": -2.9703,
+      "median": -2.99,
+      "min": -6.295,
+      "max": 3.6785
+    },
+    "profitableAfterFeesCount": 3,
+    "coverageNote": "Contraste realizado vs teórico (round trips USDT compra->venta): 0 pares en el ledger. No hay operaciones de round trip USDT reales para contrastar acierto realizado. El único acierto contrastable es el ciclo triangular (ver triangularEngine)."
+  },
+  "triangularEngine": {
+    "cyclesFound": 1,
+    "cycles": [
+      {
+        "cycleId": "Ciclo #271E6986",
+        "legs": 3,
+        "simulated": {
+          "netProfitUsdt": 1.3933,
+          "roiPct": 0.14,
+          "finalUsdt": 1001.39,
+          "steps": [
+            980.55,
+            82201.68,
+            1001.39
+          ]
+        },
+        "recorded": {
+          "netProfitUsdt": 1.39,
+          "roiPct": 0.14,
+          "finalUsdt": 1001.39,
+          "ops": [
+            {
+              "type": "assign",
+              "price": 0.985,
+              "usdtAmount": 1000,
+              "vesAmount": 0,
+              "fees": 4.45
+            },
+            {
+              "type": "assign",
+              "price": 84,
+              "usdtAmount": 82201.68,
+              "vesAmount": 82201.68,
+              "fees": 164.73
+            },
+            {
+              "type": "buy",
+              "price": 81.8,
+              "usdtAmount": 1001.39,
+              "vesAmount": 82201.68,
+              "fees": 3.52
+            }
+          ]
+        },
+        "deviationProfitUsdt": 0.0033,
+        "deviationRoiPct": 0,
+        "acierto": 1,
+        "matchExactInBanda": true
+      }
+    ],
+    "asserted": {
+      "predictedProfitUsdt": 1.3933,
+      "predictedRoiPct": 0.14
+    }
+  },
+  "johnsonDepthEngine": {
+    "engine": "johnson-depth.computeVolumeWeightedPrice",
+    "coverage": 0,
+    "note": "Cobertura insuficiente: la app no persiste el order book Binance (solo best buy/best sell por par/bank en p2p.market-history). Motor no ejecutable con datos históricos reales."
+  },
+  "coverage": {
+    "snapshotsUsed": 50,
+    "sessionsValidated": 8,
+    "realVsSynthetic": "Datos 100% reales extraídos del localStorage de 2 perfiles (%APPDATA%\\p2p\\Local Storage\\leveldb, %APPDATA%\\p2p-decisor-desktop\\Local Storage\\leveldb): snapshots y ledger; sin datos sintéticos inyectados.",
+    "limit": "Cobertura limitada a 2026-09-10..13 (50 snapshots, 1 ciclo(s), 3 ops). Ficheros .ldb antiguos (7-9 sep) sin formato decodificable en esta corrida; descartados honestamente y contados."
+  },
+  "run": {
+    "durationMs": 15,
+    "command": "node scripts/backtest.cjs --out \"docs/backtesting\""
+  }
+}
