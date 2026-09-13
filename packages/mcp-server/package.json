@@ -5,10 +5,13 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "p2p-mcp-server": "./dist/index.js"
+  },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "build:watch": "tsc -p tsconfig.json --watch",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "start": "node dist/index.js",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",

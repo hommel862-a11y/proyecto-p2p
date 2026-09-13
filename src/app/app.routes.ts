@@ -58,4 +58,9 @@ export const routes: Routes = [
     title: 'Usage Guide',
     loadComponent: () => import('./features/guide/guide').then((m) => m.Guide),
   },
+  {
+    path: 'mcp',
+    title: 'Centro de Servidores MCP',
+    loadComponent: () => import('./features/mcp-hub/mcp-hub').then((m) => m.McpHub),
+  },
 ];

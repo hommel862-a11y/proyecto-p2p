@@ -1,0 +1,323 @@
+<div class="mcp-hub-container">
+  <!-- Header Bar -->
+  <header class="hub-header">
+    <div class="header-main">
+      <div class="header-badges">
+        <span class="badge-status online">
+          <span class="status-dot pulse"></span>
+          {{ mcp.onlineCount() }} de {{ mcp.servers().length }} Servidores Activos
+        </span>
+        <span class="badge-transport">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          Transporte: {{ mcp.activeTransport() | uppercase }}
+        </span>
+        <span class="badge-tools">
+          ⚡ {{ mcp.totalToolsCount() }} Herramientas Disponibles
+        </span>
+      </div>
+      <h2>Centro de Control MCP</h2>
+      <p class="subtitle">
+        Supervisión de procesos MCP locales, orquestación de agentes de IA y catálogo financiero de P2P Decisor.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn-refresh" (click)="refresh()" [disabled]="mcp.isLoading()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" [class.spinning]="mcp.isLoading()">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Actualizar
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="hub-nav" aria-label="Secciones del Centro MCP">
+    <button type="button" class="tab-btn" [class.active]="activeTab() === 'servers'" (click)="setTab('servers')">
+      <span>🖥️ Servidores en Ejecución</span>
+      <span class="tab-count">{{ mcp.servers().length }}</span>
+    </button>
+    <button type="button" class="tab-btn" [class.active]="activeTab() === 'tools'" (click)="setTab('tools')">
+      <span>🛠️ Catálogo de Tools (Playground)</span>
+      <span class="tab-count">{{ allTools().length }}</span>
+    </button>
+    <button type="button" class="tab-btn" [class.active]="activeTab() === 'config'" (click)="setTab('config')">
+      <span>🔌 Clientes IA (1-Click)</span>
+    </button>
+    <button type="button" class="tab-btn" [class.active]="activeTab() === 'audit'" (click)="setTab('audit')">
+      <span>📜 Auditoría SHA-256</span>
+      <span class="tab-count">{{ mcp.recentAuditLogs().length }}</span>
+    </button>
+  </nav>
+
+  @if (copySuccess()) {
+    <div class="copy-alert">
+      <span>✓</span> {{ copySuccess() }}
+    </div>
+  }
+
+  <!-- TAB 1: Servidores en Ejecución -->
+  @if (activeTab() === 'servers') {
+    <section class="tab-section">
+      <!-- Filter Chips -->
+      <div class="category-filters">
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'all'" (click)="setCategory('all')">
+          Todos ({{ mcp.servers().length }})
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'master'" (click)="setCategory('master')">
+          Gateway Maestro
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'tasas'" (click)="setCategory('tasas')">
+          Tasas Venezuela 🇻🇪
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'mercado'" (click)="setCategory('mercado')">
+          Mercado Cripto 📈
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'portafolio'" (click)="setCategory('portafolio')">
+          Portafolio & Riesgo 🛡️
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'ledger'" (click)="setCategory('ledger')">
+          Ledger Analytics 📊
+        </button>
+      </div>
+
+      <!-- Server Cards Grid -->
+      <div class="servers-grid">
+        @for (srv of filteredServers(); track srv.id) {
+          <article class="server-card" [class.is-online]="srv.status === 'ONLINE'">
+            <div class="card-header">
+              <div class="title-wrap">
+                <span class="status-indicator"></span>
+                <h3>{{ srv.name }}</h3>
+              </div>
+              <span class="category-tag">{{ srv.category | uppercase }}</span>
+            </div>
+
+            <div class="card-meta">
+              <div class="meta-item">
+                <span class="meta-label">Transporte:</span>
+                <span class="meta-val font-mono">{{ srv.transport }}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Uptime:</span>
+                <span class="meta-val font-mono">{{ srv.uptimeSeconds }}s</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Herramientas:</span>
+                <span class="meta-val font-mono highlight">{{ srv.toolCount }}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Recursos:</span>
+                <span class="meta-val font-mono">{{ srv.resourceCount }}</span>
+              </div>
+            </div>
+
+            <!-- Tool chips preview -->
+            <div class="card-tools">
+              <span class="section-title">Herramientas expuestas:</span>
+              <div class="chips-wrap">
+                @for (tool of srv.tools; track tool.name) {
+                  <span class="tool-pill" (click)="setTab('tools'); selectTool(tool)" title="{{ tool.description }}">
+                    <code>{{ tool.name }}</code>
+                  </span>
+                }
+              </div>
+            </div>
+
+            <!-- Resources preview -->
+            @if (srv.resources.length > 0) {
+              <div class="card-resources">
+                <span class="section-title">Recursos en tiempo real:</span>
+                <ul class="resource-list">
+                  @for (res of srv.resources; track res.uri) {
+                    <li>
+                      <span class="res-uri">{{ res.uri }}</span>
+                      <span class="res-desc">{{ res.name }}</span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+          </article>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- TAB 2: Catálogo de Herramientas & Playground -->
+  @if (activeTab() === 'tools') {
+    <section class="tab-section playground-layout">
+      <!-- Left sidebar: Tools list -->
+      <aside class="tools-sidebar">
+        <h3 class="pane-title">Herramientas Registradas ({{ allTools().length }})</h3>
+        <div class="tools-scroll">
+          @for (tool of allTools(); track tool.name) {
+            <div
+              class="tool-item"
+              [class.active]="selectedTool()?.name === tool.name"
+              (click)="selectTool(tool)"
+            >
+              <div class="tool-item-header">
+                <code class="tool-code">{{ tool.name }}</code>
+                <span class="server-badge">{{ tool.serverId }}</span>
+              </div>
+              <p class="tool-summary">{{ tool.description }}</p>
+            </div>
+          }
+        </div>
+      </aside>
+
+      <!-- Right panel: Interactive test runner -->
+      <div class="tool-inspector">
+        @if (selectedTool(); as tool) {
+          <div class="inspector-card">
+            <div class="inspector-header">
+              <div>
+                <span class="badge-interactive">Playground Interactivo</span>
+                <h3><code>{{ tool.name }}</code></h3>
+                <p class="tool-desc">{{ tool.description }}</p>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="tool-args" class="input-label">Argumentos de Entrada (JSON estricto según esquema Zod):</label>
+              <textarea
+                id="tool-args"
+                class="args-textarea font-mono"
+                [ngModel]="toolArgsJson()"
+                (ngModelChange)="toolArgsJson.set($event)"
+                rows="6"
+              ></textarea>
+            </div>
+
+            <div class="action-bar">
+              <button
+                type="button"
+                class="btn-execute"
+                (click)="runToolTest()"
+                [disabled]="isExecuting()"
+              >
+                @if (isExecuting()) {
+                  <span class="spinner"></span> Ejecutando...
+                } @else {
+                  <span>⚡ Probar Herramienta (Sandbox)</span>
+                }
+              </button>
+            </div>
+
+            @if (testExecutionResult(); as res) {
+              <div class="result-box" [class.success]="res.success" [class.error]="!res.success">
+                <div class="result-header">
+                  <span class="status-pill">{{ res.success ? 'EJECUCIÓN EXITOSA' : 'ERROR DE EJECUCIÓN' }}</span>
+                  @if (res.executionTimeMs) {
+                    <span class="exec-time">⏱️ {{ res.executionTimeMs }} ms</span>
+                  }
+                </div>
+                <pre class="result-json font-mono">{{ res | json }}</pre>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            <p>Selecciona una herramienta del panel izquierdo para inspeccionar su esquema y ejecutar pruebas en vivo.</p>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- TAB 3: Configuración 1-Click para Clientes IA -->
+  @if (activeTab() === 'config') {
+    <section class="tab-section config-section">
+      <div class="config-grid">
+        <!-- Antigravity Config -->
+        <article class="config-card">
+          <div class="config-header">
+            <h3>Google Antigravity IDE</h3>
+            <span class="path-hint"><code>~/.gemini/config/mcp_config.json</code></span>
+          </div>
+          <p>Configuración nativa registrada en el hub de servidores MCP del IDE.</p>
+          <pre class="code-block font-mono">{{ mcp.generateConfigSnippet('antigravity') }}</pre>
+          <button type="button" class="btn-copy" (click)="copyConfig('antigravity')">
+            Copiar Configuración Antigravity
+          </button>
+        </article>
+
+        <!-- Claude Desktop Config -->
+        <article class="config-card">
+          <div class="config-header">
+            <h3>Claude Desktop</h3>
+            <span class="path-hint"><code>claude_desktop_config.json</code></span>
+          </div>
+          <p>Permite a Claude interactuar con tu libro de órdenes, ledger y reglas de riesgo.</p>
+          <pre class="code-block font-mono">{{ mcp.generateConfigSnippet('claude') }}</pre>
+          <button type="button" class="btn-copy" (click)="copyConfig('claude')">
+            Copiar Configuración Claude Desktop
+          </button>
+        </article>
+
+        <!-- CLI Terminal Stdio -->
+        <article class="config-card">
+          <div class="config-header">
+            <h3>Ejecución Directa por Terminal</h3>
+            <span class="path-hint"><code>CLI / Stdio Standalone</code></span>
+          </div>
+          <p>Comando para invocar el servidor hermético directamente desde la consola o n8n.</p>
+          <pre class="code-block font-mono">{{ mcp.generateConfigSnippet('cli') }}</pre>
+          <button type="button" class="btn-copy" (click)="copyConfig('cli')">
+            Copiar Comando CLI
+          </button>
+        </article>
+      </div>
+    </section>
+  }
+
+  <!-- TAB 4: Auditoría Criptográfica SHA-256 -->
+  @if (activeTab() === 'audit') {
+    <section class="tab-section audit-section">
+      <div class="audit-summary-bar">
+        <div class="stat-pill">
+          <span class="stat-num">{{ mcp.totalCallsServed() }}</span>
+          <span class="stat-lbl">Llamadas Totales</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-num">SHA-256</span>
+          <span class="stat-lbl">Trazabilidad Criptográfica</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-num">0</span>
+          <span class="stat-lbl">Claves Expuestas (Zero-Leak)</span>
+        </div>
+      </div>
+
+      <div class="audit-table-wrap">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Herramienta</th>
+              <th>Hash Entrada (SHA-256)</th>
+              <th>Hash Salida (SHA-256)</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (log of mcp.recentAuditLogs(); track log.timestamp) {
+              <tr>
+                <td class="font-mono text-muted">{{ log.timestamp | date:'HH:mm:ss dd/MM' }}</td>
+                <td><code class="tool-badge">{{ log.toolName }}</code></td>
+                <td><code class="hash-badge">{{ log.inputHash }}</code></td>
+                <td><code class="hash-badge">{{ log.outputHash }}</code></td>
+                <td>
+                  <span class="badge-result" [class.success]="log.success" [class.error]="!log.success">
+                    {{ log.success ? 'EXITOSA' : 'FALLIDA' }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+</div>
