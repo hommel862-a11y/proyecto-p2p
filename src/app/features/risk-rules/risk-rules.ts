@@ -14,6 +14,11 @@ export interface TelegramConfig {
   alertsEnabled: boolean;
 }
 
+/** Telegram chat ids are signed integers (usually 9-10 digits). Phone numbers never work. */
+function isValidChatId(chatId: string): boolean {
+  return /^-?\d{5,12}$/.test(chatId.trim());
+}
+
 /**
  * C4 — Risk-rules config view. Edits the safety-barrier rules and Telegram Sentinel bot credentials.
  */
@@ -54,9 +59,14 @@ export class RiskRules {
   }
 
   saveTelegramConfig(): void {
+    const chatId = this.telegramChatId().trim();
+    if (!isValidChatId(chatId)) {
+      this.toast.warn('El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.');
+      return;
+    }
     const config = {
       botToken: this.telegramToken().trim(),
-      chatId: this.telegramChatId().trim(),
+      chatId,
       alertsEnabled: this.telegramAlertsEnabled(),
       pollingEnabled: this.telegramPollingEnabled(),
     };
@@ -83,6 +93,11 @@ export class RiskRules {
       return;
     }
 
+    if (!isValidChatId(chatId)) {
+      this.toast.warn('El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.');
+      return;
+    }
+
     const testMsg = formatSpreadAlertMessage({
       pair: `${this.pair()}/VES`,
       buyPrice: 800.0,
@@ -105,7 +120,18 @@ export class RiskRules {
       if (res.ok) {
         this.toast.success('¡Alerta de prueba enviada a tu Telegram con éxito!');
       } else {
-        this.toast.error('Telegram rechazó la petición. Verifica el Token y Chat ID.');
+        let detail = '';
+        try {
+          const body = (await res.json()) as { description?: string };
+          detail = body?.description ?? '';
+        } catch {
+          // ignore unparseable response body
+        }
+        this.toast.error(
+          detail
+            ? `Telegram rechazó la petición (${detail}).`
+            : 'Telegram rechazó la petición. Verifica el Token y Chat ID.',
+        );
       }
     } catch {
       this.toast.info('Alerta simulada (sin conexión a internet o bloqueada por CORS).');

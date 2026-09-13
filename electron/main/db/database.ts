@@ -506,6 +506,26 @@ export class P2PDatabaseService {
     }));
   }
 
+  /**
+   * Reads a key-value configuration item from SQLite.
+   */
+  getConfigValue(key: string): string | null {
+    const stmt = this.db.prepare('SELECT value FROM app_config_kv WHERE key = ?');
+    const row = stmt.get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  /**
+   * Writes a key-value configuration item to SQLite.
+   */
+  setConfigValue(key: string, value: string): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO app_config_kv (key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `);
+    stmt.run(key, value, Date.now());
+  }
+
   close(): void {
     this.db.close();
   }

@@ -1,0 +1,287 @@
+<div class="copilot-container">
+  <header class="copilot-header">
+    <div class="title-area">
+      <div class="bot-badge" [class.online]="connectionStatus().connected" [class.offline]="!connectionStatus().connected">
+        <span class="status-dot"></span>
+        <span class="badge-text">{{ connectionStatus().connected ? ('CONECTADO: ' + connectionStatus().model) : connectionStatus().message }}</span>
+      </div>
+      <h2>Copiloto Estratega P2P</h2>
+      <p class="subtitle">Planificación en tiempo real, arbitraje triangular y memoria persistente de mercado.</p>
+    </div>
+
+    <div class="tab-nav">
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab() === 'chat'" 
+        (click)="activeTab.set('chat')">
+        💬 Chat Estratega
+      </button>
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab() === 'plans'" 
+        (click)="activeTab.set('plans')">
+        📋 Planes ({{ plans().length }})
+      </button>
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab() === 'memory'" 
+        (click)="activeTab.set('memory')">
+        🧠 Memoria ({{ learnings().length }})
+      </button>
+      <button 
+        class="tab-btn" 
+        [class.active]="activeTab() === 'config'" 
+        (click)="activeTab.set('config')">
+        ⚙ Conexión Gemini
+      </button>
+    </div>
+  </header>
+
+  @if (actionSuccessNotice()) {
+    <div class="notice-banner success">
+      <span>{{ actionSuccessNotice() }}</span>
+    </div>
+  }
+
+  <!-- TAB: CHAT -->
+  @if (activeTab() === 'chat') {
+    <div class="chat-layout">
+      <!-- Quick Prompts Toolbar -->
+      <div class="quick-prompts">
+        <span class="quick-label">Sugerencias rápidas:</span>
+        <button class="quick-pill" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
+          ⚡ Buscar Triangulación
+        </button>
+        <button class="quick-pill" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
+          🏦 Alerta BCV & Brecha
+        </button>
+        <button class="quick-pill" (click)="quickPrompt('operadores')" [disabled]="isLoading()">
+          👥 Asignar Capital a Operadores
+        </button>
+      </div>
+
+      <!-- Messages Stream -->
+      <div class="messages-viewport">
+        @for (msg of messages(); track $index) {
+          <div class="message-row" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
+            <div class="avatar">
+              @if (msg.role === 'user') {
+                <span>TÚ</span>
+              } @else {
+                <span>🤖</span>
+              }
+            </div>
+            <div class="message-bubble">
+              <div class="message-content">{{ msg.content }}</div>
+
+              <!-- Interactive Strategy Card inside Chat -->
+              @if (msg.plan) {
+                <div class="strategy-card">
+                  <div class="card-header">
+                    <span class="card-tag">PLAN DE ACCIÓN RECOMENDADO</span>
+                    <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
+                      {{ msg.plan.status }}
+                    </span>
+                  </div>
+                  <h4 class="card-title">{{ msg.plan.title }}</h4>
+                  <div class="card-route">
+                    <strong>Ruta:</strong> {{ msg.plan.route }}
+                  </div>
+
+                  <div class="metrics-grid">
+                    <div class="metric">
+                      <span class="label">Capital Req.</span>
+                      <span class="value">${{ msg.plan.capitalRequiredUsdt }} USDT</span>
+                    </div>
+                    <div class="metric highlight">
+                      <span class="label">Spread Neto</span>
+                      <span class="value">+{{ msg.plan.expectedNetSpreadPct }}%</span>
+                    </div>
+                    <div class="metric success">
+                      <span class="label">Ganancia Est.</span>
+                      <span class="value">+${{ msg.plan.expectedProfitUsdt }} USDT</span>
+                    </div>
+                    <div class="metric">
+                      <span class="label">Nivel de Riesgo</span>
+                      <span class="value badge-risk" [class.low]="msg.plan.riskLevel === 'LOW'">
+                        {{ msg.plan.riskLevel }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p class="card-rationale">
+                    <strong>Fundamento:</strong> {{ msg.plan.rationale }}
+                  </p>
+
+                  <div class="card-footer">
+                    @if (msg.plan.assignedOperatorName) {
+                      <span class="operator-badge">👤 Asignado a: {{ msg.plan.assignedOperatorName }}</span>
+                    }
+                    
+                    @if (msg.plan.status === 'PROPOSED') {
+                      <button 
+                        class="btn-play" 
+                        (click)="executePlan(msg.plan)">
+                        ▶ EJECUTAR ESTRATEGIA (PLAY)
+                      </button>
+                    } @else {
+                      <span class="badge-approved">✓ APROBADA Y DELEGADA</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (isLoading()) {
+          <div class="message-row assistant loading-row">
+            <div class="avatar">🤖</div>
+            <div class="message-bubble loading-bubble">
+              <span class="typing-indicator">Consultando herramientas del Core y analizando liquidez...</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- Input Bar -->
+      <div class="input-container">
+        <form (ngSubmit)="sendPrompt()" class="input-form">
+          <input
+            type="text"
+            placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos..."
+            [ngModel]="inputPrompt()"
+            (ngModelChange)="inputPrompt.set($event)"
+            name="userPrompt"
+            [disabled]="isLoading()"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn-send" [disabled]="!inputPrompt().trim() || isLoading()">
+            <span>ENVIAR</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- TAB: PLANS LIST -->
+  @if (activeTab() === 'plans') {
+    <div class="plans-layout">
+      <h3>Historial de Planes de Estrategia Generados</h3>
+      <p class="section-desc">Todos los planes formulados por la IA quedan auditados en SQLite con sus métricas y estado.</p>
+
+      @if (plans().length === 0) {
+        <div class="empty-state">No hay planes generados todavía. Pedile al estratega en el chat que formule uno.</div>
+      } @else {
+        <div class="plans-grid">
+          @for (p of plans(); track p.id) {
+            <div class="strategy-card panel-card">
+              <div class="card-header">
+                <span class="card-id">{{ p.id }}</span>
+                <span class="card-status" [class.approved]="p.status === 'APPROVED'">{{ p.status }}</span>
+              </div>
+              <h4 class="card-title">{{ p.title }}</h4>
+              <p class="card-route">{{ p.route }}</p>
+              
+              <div class="metrics-grid compact">
+                <div class="metric">
+                  <span class="label">Capital</span>
+                  <span class="value">${{ p.capitalRequiredUsdt }}</span>
+                </div>
+                <div class="metric highlight">
+                  <span class="label">Spread</span>
+                  <span class="value">+{{ p.expectedNetSpreadPct }}%</span>
+                </div>
+                <div class="metric success">
+                  <span class="label">Ganancia</span>
+                  <span class="value">+${{ p.expectedProfitUsdt }}</span>
+                </div>
+              </div>
+
+              <div class="card-footer">
+                @if (p.status === 'PROPOSED') {
+                  <button class="btn-play small" (click)="executePlan(p)">
+                    ▶ PLAY
+                  </button>
+                } @else {
+                  <span class="badge-approved small">✓ EN PROCESO</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB: MEMORY & LEARNINGS -->
+  @if (activeTab() === 'memory') {
+    <div class="memory-layout">
+      <h3>Memoria Empírica y Aprendizajes de Mercado</h3>
+      <p class="section-desc">Patrones, horarios y resultados que el agente ha registrado persistentemente en la base de datos.</p>
+
+      @if (learnings().length === 0) {
+        <div class="empty-state">Sin observaciones registradas aún. A medida que operes y formules planes, la IA irá memorizando lecciones.</div>
+      } @else {
+        <div class="learnings-list">
+          @for (l of learnings(); track l.id) {
+            <div class="learning-item">
+              <div class="learning-top">
+                <span class="learning-category">{{ l.category }}</span>
+                <span class="learning-conf">Confianza: {{ (l.confidenceScore * 100).toFixed(0) }}%</span>
+              </div>
+              <p class="learning-insight">{{ l.insight }}</p>
+              <span class="learning-topic">Clave: {{ l.topicKey }}</span>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB: CONFIGURATION -->
+  @if (activeTab() === 'config') {
+    <div class="config-layout">
+      <h3>Configuración de Conexión de Inteligencia Artificial</h3>
+      <p class="section-desc">Gestioná la credencial y el estado del orquestador de Google Gemini para planificación autónoma.</p>
+
+      <div class="config-card">
+        <div class="config-status-row">
+          <div class="status-indicator-box" [class.connected]="connectionStatus().connected">
+            <span class="indicator-bulb"></span>
+            <div>
+              <strong>Estado del Modelo:</strong>
+              <div class="status-desc">{{ connectionStatus().message }}</div>
+            </div>
+          </div>
+          <button 
+            class="btn-test" 
+            (click)="testConnectionAction()" 
+            [disabled]="isTestingConnection()">
+            {{ isTestingConnection() ? 'Probando...' : '🔄 Probar Conexión' }}
+          </button>
+        </div>
+
+        <div class="config-field">
+          <label for="geminiKey">Gemini API Key (Almacenamiento Seguro en SQLite):</label>
+          <div class="input-with-action">
+            <input 
+              id="geminiKey"
+              type="password" 
+              placeholder="Ingresá tu API Key de Gemini (ej. AIzaSy... o variable de entorno)" 
+              [ngModel]="apiKeyInput()" 
+              (ngModelChange)="apiKeyInput.set($event)"
+            />
+            <button class="btn-save-key" (click)="saveApiKey()" [disabled]="!apiKeyInput().trim()">
+              Guardar Key
+            </button>
+          </div>
+          <small class="field-hint">
+            Si la variable de entorno <code>GEMINI_API_KEY</code> ya está configurada en tu sistema, la aplicación la detecta automáticamente sin necesidad de ingresarla manualmente.
+          </small>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+

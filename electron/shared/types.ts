@@ -62,6 +62,12 @@ export interface FsmOrderContext {
   updatedAt: number;
 }
 
+export interface ScreenPipeSource {
+  id: string;
+  name: string;
+  thumbnailDataUrl: string;
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -111,6 +117,73 @@ export interface P2PIpcChannels {
     request: void;
     response: { isTriggered: boolean; timestamp?: number; reason?: string; source?: string };
   };
+  'copilot:send-message': {
+    request: { prompt: string; history?: CopilotChatMessage[] };
+    response: CopilotResponse;
+  };
+  'copilot:execute-plan': {
+    request: { planId: string };
+    response: { success: boolean; error?: string };
+  };
+  'copilot:get-plans': {
+    request: { limit?: number };
+    response: StrategyPlanCard[];
+  };
+  'copilot:get-learnings': {
+    request: { category?: string; limit?: number };
+    response: Array<{
+      id?: number;
+      topicKey: string;
+      category: string;
+      insight: string;
+      confidenceScore: number;
+      sampleCount: number;
+      createdAt: number;
+    }>;
+  };
+  'copilot:set-api-key': {
+    request: { apiKey: string };
+    response: boolean;
+  };
+  'copilot:test-connection': {
+    request: void;
+    response: { success: boolean; model: string; message: string };
+  };
+  'p2p:screen-pipe-sources': {
+    request: void;
+    response: ScreenPipeSource[];
+  };
+  'p2p:screen-pipe-capture': {
+    request: { sourceId?: string } | void;
+    response: { dataUrl: string; timestampMs: number } | null;
+  };
+}
+
+export interface CopilotChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: number;
+  plan?: StrategyPlanCard;
+}
+
+export interface StrategyPlanCard {
+  id: string;
+  title: string;
+  route: string;
+  capitalRequiredUsdt: number;
+  expectedNetSpreadPct: number;
+  expectedProfitUsdt: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  assignedOperatorName?: string;
+  rationale: string;
+  status: 'PROPOSED' | 'APPROVED' | 'EXECUTED' | 'CANCELLED' | 'REJECTED';
+}
+
+export interface CopilotResponse {
+  reply: string;
+  suggestedPlan?: StrategyPlanCard;
+  skillsExecuted?: string[];
+  learningsGenerated?: string[];
 }
 
 // The narrow, typed surface the preload exposes on `window.electron`.
@@ -132,6 +205,18 @@ export interface ElectronAPI {
   killswitch: {
     trigger(params?: { reason?: string; source?: string }): Promise<boolean>;
     getStatus(): Promise<{ isTriggered: boolean; timestamp?: number; reason?: string; source?: string }>;
+  };
+  copilot: {
+    sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
+    executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
+    getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
+    getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
+    setApiKey(params: { apiKey: string }): Promise<boolean>;
+    testConnection(): Promise<{ success: boolean; model: string; message: string }>;
+  };
+  screenPipe: {
+    getSources(): Promise<ScreenPipeSource[]>;
+    capture(sourceId?: string): Promise<{ dataUrl: string; timestampMs: number } | null>;
   };
 }
 

@@ -51,7 +51,22 @@
           <span class="card-icon">📸</span>
           <span class="card-title">Captura o Screenshot (OCR)</span>
         </div>
-        <span class="badge badge-accent">Ctrl + V</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          @if (hasScreenPipe()) {
+            <button
+              type="button"
+              class="btn-primary"
+              style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; padding: 4px 10px; font-weight: 700;"
+              [disabled]="isProcessing()"
+              (click)="captureWithScreenPipe()"
+              title="Capturar pantalla en vivo con Screen Pipe nativo de Electron"
+            >
+              <span>⚡</span>
+              <span>Screen Pipe</span>
+            </button>
+          }
+          <span class="badge badge-accent">Ctrl + V</span>
+        </div>
       </div>
 
       <button
@@ -289,18 +304,48 @@
       <!-- Quick Action Dispute Claim Box -->
       @if (audit.disputeTemplateText && audit.riskLevel !== 'SAFE') {
         <div style="margin-top: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <span style="font-size: 0.75rem; font-weight: 700; color: var(--gold); text-transform: uppercase;">
-              Plantilla Formal de Disputa (Lista para Soporte Binance / Bybit):
+              Copiloto de Disputas & Arbitraje P2P:
             </span>
-            <button
-              type="button"
-              class="btn-primary"
-              (click)="copyDisputeClaim(audit)"
-              style="font-size: 0.75rem; padding: 4px 12px;"
-            >
-              📋 Copiar Reclamo
-            </button>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button
+                type="button"
+                class="btn-primary"
+                (click)="copyDossierEs(audit)"
+                style="font-size: 0.72rem; padding: 4px 10px;"
+                title="Copiar expediente formal en español para soporte"
+              >
+                ⚖️ Expediente ES
+              </button>
+              <button
+                type="button"
+                class="btn-secondary"
+                (click)="copyDossierEn(audit)"
+                style="font-size: 0.72rem; padding: 4px 10px;"
+                title="Copy formal arbitration appeal dossier in English"
+              >
+                🌐 Dossier EN
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                (click)="copyChatWarning(audit)"
+                style="font-size: 0.72rem; padding: 4px 10px;"
+                title="Copiar advertencia de titularidad para el chat de Binance"
+              >
+                💬 Chat Contraparte
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                (click)="copyRefundInstructions(audit)"
+                style="font-size: 0.72rem; padding: 4px 10px;"
+                title="Copiar instrucciones para devolución bancaria y cancelación mutua"
+              >
+                💸 Devolución
+              </button>
+            </div>
           </div>
           <div class="dispute-box">{{ audit.disputeTemplateText }}</div>
         </div>

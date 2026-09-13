@@ -5,9 +5,11 @@ import {
   parseBankReceiptText,
   exportReceiptsToCSV,
   evaluateFraudRisk,
+  buildDisputeDossier,
   type FraudShieldAuditResult,
   type BankReceiptRecord,
   type Operation,
+  type DisputeDossier,
 } from '@p2p/core';
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
@@ -41,6 +43,10 @@ export class ReceiptScanner {
   readonly expectedId = signal<string>('');
   readonly expectedAmount = signal<number | null>(null);
   readonly isDragging = signal<boolean>(false);
+  readonly hasScreenPipe = signal<boolean>(
+    typeof window !== 'undefined' &&
+      !!(window as unknown as { electron?: { screenPipe?: unknown } }).electron?.screenPipe,
+  );
 
   /**
    * Listen for clipboard paste (Ctrl+V) across the window.
@@ -127,6 +133,62 @@ export class ReceiptScanner {
     }
   }
 
+  async captureWithScreenPipe(): Promise<void> {
+    const electron = (
+      window as unknown as {
+        electron?: {
+          screenPipe?: {
+            capture: (sourceId?: string) => Promise<{ dataUrl: string; timestampMs: number } | null>;
+          };
+        };
+      }
+    ).electron;
+
+    if (!electron?.screenPipe) {
+      this.toast.warn('La captura Screen Pipe solo está disponible en el ejecutable de escritorio Electron.');
+      return;
+    }
+
+    this.isProcessing.set(true);
+    this.progressPct.set(15);
+    this.progressStatus.set('Capturando pantalla en tiempo real (Screen Pipe)...');
+
+    try {
+      const captureResult = await electron.screenPipe.capture();
+      if (!captureResult?.dataUrl) {
+        this.toast.error('No se pudo capturar la pantalla. Verifica los permisos.');
+        return;
+      }
+
+      this.progressPct.set(35);
+      this.progressStatus.set('Procesando OCR local de alta resolución...');
+
+      const result = await Tesseract.recognize(captureResult.dataUrl, 'spa+eng', {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            this.progressPct.set(35 + Math.round((m.progress || 0) * 65));
+            this.progressStatus.set(`Extrayendo texto del comprobante: ${this.progressPct()}%`);
+          }
+        },
+      });
+
+      const extractedText = result.data.text;
+      if (!extractedText || extractedText.trim().length === 0) {
+        this.toast.error('No se detectó texto legible en la captura de pantalla.');
+        return;
+      }
+
+      this.ingestReceiptText(extractedText);
+      this.toast.success('⚡ Comprobante capturado e indexado vía Screen Pipe.');
+    } catch {
+      this.toast.error('Error al ejecutar el flujo Screen Pipe.');
+    } finally {
+      this.isProcessing.set(false);
+      this.progressPct.set(0);
+      this.progressStatus.set('');
+    }
+  }
+
   processManualText(): void {
     const text = this.manualTextInput().trim();
     if (!text) {
@@ -202,6 +264,27 @@ export class ReceiptScanner {
     this.receiptAudits.set(audits);
   }
 
+  getDossierForAudit(audit: FraudShieldAuditResult): DisputeDossier | null {
+    const rec = this.receipts().find((r) => audit.orderId.endsWith(r.id.slice(-6)));
+    if (!rec) return null;
+    return buildDisputeDossier({
+      orderId: audit.orderId,
+      orderAmountFiat: rec.amount,
+      orderAmountCrypto: 0,
+      fiatCurrency: rec.currency || 'VES',
+      cryptoAsset: 'USDT',
+      counterpartyBinanceName: audit.nameMatch.normalizedB || 'Contraparte',
+      counterpartyBinanceIdDoc: rec.payerId || undefined,
+      bankPayerName: rec.payerName || undefined,
+      bankPayerIdDoc: rec.payerId || undefined,
+      bankName: rec.bankDisplayName,
+      bankReference: rec.reference,
+      bankPaymentTimestamp: rec.timestamp ? new Date(rec.timestamp).getTime() : Date.now(),
+      orderCreatedTimestamp: Date.now() - 300000,
+      fraudAudit: audit,
+    });
+  }
+
   copyDisputeClaim(audit: FraudShieldAuditResult): void {
     if (!audit.disputeTemplateText) return;
     navigator.clipboard
@@ -214,6 +297,43 @@ export class ReceiptScanner {
       .catch(() => {
         this.toast.error('No se pudo copiar el texto al portapapeles.');
       });
+  }
+
+  copyDossierEs(audit: FraudShieldAuditResult): void {
+    const dossier = this.getDossierForAudit(audit);
+    const text = dossier ? dossier.appealTextEs : audit.disputeTemplateText;
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => this.toast.success('📋 Expediente formal de arbitraje (Español) copiado.'))
+      .catch(() => this.toast.error('Error al copiar al portapapeles.'));
+  }
+
+  copyDossierEn(audit: FraudShieldAuditResult): void {
+    const dossier = this.getDossierForAudit(audit);
+    if (!dossier) return;
+    navigator.clipboard
+      .writeText(dossier.appealTextEn)
+      .then(() => this.toast.success('📋 Formal Arbitration Appeal Dossier (English) copied.'))
+      .catch(() => this.toast.error('Error copying to clipboard.'));
+  }
+
+  copyChatWarning(audit: FraudShieldAuditResult): void {
+    const dossier = this.getDossierForAudit(audit);
+    if (!dossier) return;
+    navigator.clipboard
+      .writeText(dossier.chatResponses.thirdPartyWarning)
+      .then(() => this.toast.success('💬 Mensaje de advertencia para el chat copiado.'))
+      .catch(() => this.toast.error('Error al copiar al portapapeles.'));
+  }
+
+  copyRefundInstructions(audit: FraudShieldAuditResult): void {
+    const dossier = this.getDossierForAudit(audit);
+    if (!dossier) return;
+    navigator.clipboard
+      .writeText(dossier.chatResponses.refundInstructions)
+      .then(() => this.toast.success('💸 Instrucciones de devolución y cancelación copiadas.'))
+      .catch(() => this.toast.error('Error al copiar al portapapeles.'));
   }
 
   removeReceipt(id: string): void {

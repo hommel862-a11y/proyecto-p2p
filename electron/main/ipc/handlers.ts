@@ -1,6 +1,7 @@
-import { ipcMain, app, net, safeStorage, type IpcMainInvokeEvent } from 'electron';
-import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest } from '../../shared/types';
+import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
+import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
+import { GeminiOrchestrator } from '../gemini-orchestrator';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -161,6 +162,96 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('p2p:killswitch-status', () => {
     return { ...killswitchState };
   });
+
+  ipcMain.removeHandler('p2p:screen-pipe-sources');
+  ipcMain.handle('p2p:screen-pipe-sources', async (): Promise<ScreenPipeSource[]> => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['window', 'screen'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: false,
+      });
+      return sources.map((s) => ({
+        id: s.id,
+        name: s.name,
+        thumbnailDataUrl: s.thumbnail.toDataURL(),
+      }));
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.removeHandler('p2p:screen-pipe-capture');
+  ipcMain.handle(
+    'p2p:screen-pipe-capture',
+    async (
+      _event: IpcMainInvokeEvent,
+      options?: { sourceId?: string },
+    ): Promise<{ dataUrl: string; timestampMs: number } | null> => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['window', 'screen'],
+          thumbnailSize: { width: 1920, height: 1080 },
+        });
+        const target = options?.sourceId ? sources.find((s) => s.id === options.sourceId) : sources[0];
+        if (!target) return null;
+        return {
+          dataUrl: target.thumbnail.toDataURL(),
+          timestampMs: Date.now(),
+        };
+      } catch {
+        return null;
+      }
+    },
+  );
+
+  const orchestrator = getOrchestrator();
+
+  ipcMain.removeHandler('copilot:send-message');
+  ipcMain.handle(
+    'copilot:send-message',
+    async (_event: IpcMainInvokeEvent, params: { prompt: string; history?: any[] }) => {
+      return orchestrator.sendMessage(params);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:execute-plan');
+  ipcMain.handle(
+    'copilot:execute-plan',
+    (_event: IpcMainInvokeEvent, params: { planId: string }) => {
+      return orchestrator.executePlan(params.planId);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-plans');
+  ipcMain.handle(
+    'copilot:get-plans',
+    (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
+      return orchestrator.getPlans(params?.limit);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-learnings');
+  ipcMain.handle(
+    'copilot:get-learnings',
+    (_event: IpcMainInvokeEvent, params?: { category?: string; limit?: number }) => {
+      return orchestrator.getLearnings(params?.category, params?.limit);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:set-api-key');
+  ipcMain.handle(
+    'copilot:set-api-key',
+    (_event: IpcMainInvokeEvent, params: { apiKey: string }) => {
+      orchestrator.setApiKey(params.apiKey);
+      return true;
+    },
+  );
+
+  ipcMain.removeHandler('copilot:test-connection');
+  ipcMain.handle('copilot:test-connection', async () => {
+    return orchestrator.testConnection();
+  });
 }
 
 let dbInstance: P2PDatabaseService | null = null;
@@ -170,6 +261,15 @@ export function getDbService(): P2PDatabaseService {
   }
   return dbInstance;
 }
+
+let orchestratorInstance: GeminiOrchestrator | null = null;
+export function getOrchestrator(): GeminiOrchestrator {
+  if (!orchestratorInstance) {
+    orchestratorInstance = new GeminiOrchestrator(getDbService());
+  }
+  return orchestratorInstance;
+}
+
 
 export interface KillswitchState {
   isTriggered: boolean;

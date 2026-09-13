@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { SECURE_WEB_PREFERENCES } from './window-config';
 import { registerIpcHandlers, triggerKillswitch } from './ipc/handlers';
+import { bootstrapMcpServer } from './mcp-bootstrap';
 
 app.setName('p2p-decisor');
 try {
@@ -173,7 +174,10 @@ async function createWindow(): Promise<void> {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await bootstrapMcpServer();
+  await createWindow();
+});
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();

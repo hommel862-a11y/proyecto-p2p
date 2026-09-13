@@ -295,10 +295,10 @@ export function dispatchTelegramUpdate(
     }
 
     // B. Text Commands
-    if (text.startsWith('/killswitch')) {
+    if (text.startsWith('/killswitch') || text.startsWith('/pausar')) {
       return {
         authorized: true,
-        command: '/killswitch',
+        command: text.startsWith('/pausar') ? '/pausar' : '/killswitch',
         action: 'KILLSWITCH',
         responseMarkdown: `🚨 *KILLSWITCH ACTIVADO* 🚨\n\nTodos los bots y procesos de repricing han sido detenidos de emergencia\\.`,
       };

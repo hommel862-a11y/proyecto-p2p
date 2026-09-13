@@ -41,3 +41,10 @@ export * from './lib/multi-exchange-p2p';
 export * from './lib/telegram-sentinel';
 export * from './lib/orderbook-microstructure';
 export * from './lib/bcv-intervention-predictor';
+export * from './lib/fsm';
+export * from './lib/dispute-copilot';
+export * from './lib/volatility-forecaster';
+export * from './lib/delta-neutral-hedge';
+export * from './lib/agent-skills';
+export * from './lib/zk-market-mesh';
+

@@ -36,12 +36,34 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
           source?: string;
         }>,
     },
+    copilot: {
+      sendMessage: (params) => ipc('copilot:send-message', params) as Promise<any>,
+      executePlan: (params) => ipc('copilot:execute-plan', params) as Promise<any>,
+      getPlans: (params) => ipc('copilot:get-plans', params) as Promise<any>,
+      getLearnings: (params) => ipc('copilot:get-learnings', params) as Promise<any>,
+      setApiKey: (params) => ipc('copilot:set-api-key', params) as Promise<any>,
+      testConnection: () => ipc('copilot:test-connection') as Promise<any>,
+    },
+    screenPipe: {
+      getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
+      capture: (sourceId?: string) =>
+        ipc('p2p:screen-pipe-capture', { sourceId }) as Promise<any>,
+    },
   };
 }
 
 // Single source of truth for the exact method names the bridge exposes.
 // Used by both the preload guard and the test to prove the surface is narrow.
-export const EXPOSED_API_KEYS = ['getVersion', 'fetchBinanceP2p', 'fetchCotizave', 'crypto', 'db', 'killswitch'] as const;
+export const EXPOSED_API_KEYS = [
+  'getVersion',
+  'fetchBinanceP2p',
+  'fetchCotizave',
+  'crypto',
+  'db',
+  'killswitch',
+  'copilot',
+  'screenPipe',
+] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
 // rejected so no arbitrary channel ever crosses the boundary.
@@ -58,5 +80,14 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-record-bank-event',
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',
+  'copilot:send-message',
+  'copilot:execute-plan',
+  'copilot:get-plans',
+  'copilot:get-learnings',
+  'copilot:set-api-key',
+  'copilot:test-connection',
+  'p2p:screen-pipe-sources',
+  'p2p:screen-pipe-capture',
 ] as const;
+
 

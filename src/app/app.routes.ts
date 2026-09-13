@@ -26,6 +26,12 @@ export const routes: Routes = [
       import('./features/triangulation/triangulation').then((m) => m.Triangulation),
   },
   {
+    path: 'copilot',
+    title: 'Copiloto Estratega IA',
+    loadComponent: () => import('./features/copilot/copilot').then((m) => m.Copilot),
+  },
+
+  {
     path: 'receipts',
     title: 'Comprobantes & OCR',
     loadComponent: () =>

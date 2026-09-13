@@ -113,6 +113,25 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(res.responseMarkdown).toContain('KILLSWITCH ACTIVADO');
     });
 
+    it('ejecuta comando /pausar como alias prioritario de killswitch', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 25,
+        message: {
+          message_id: 115,
+          from: { id: AUTH_CHAT_ID },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text: '/pausar',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.action).toBe('KILLSWITCH');
+      expect(res.command).toBe('/pausar');
+      expect(res.responseMarkdown).toContain('KILLSWITCH ACTIVADO');
+    });
+
     it('ejecuta comando /status y devuelve estado del terminal', () => {
       const update: TelegramInboundUpdate = {
         update_id: 3,

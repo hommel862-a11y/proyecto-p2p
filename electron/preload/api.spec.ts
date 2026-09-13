@@ -75,8 +75,47 @@ describe('Electron preload bridge (secure IPC)', () => {
     ]);
   });
 
+  it('forwards copilot methods to copilot:* IPC channels', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'copilot:send-message') return Promise.resolve({ reply: 'ok' });
+      if (channel === 'copilot:execute-plan') return Promise.resolve({ success: true });
+      return Promise.resolve([]);
+    });
+
+    await api.copilot.sendMessage({ prompt: 'analizar mercado' });
+    await api.copilot.executePlan({ planId: 'PLAN-123' });
+
+    expect(calls).toEqual([
+      { channel: 'copilot:send-message', args: [{ prompt: 'analizar mercado' }] },
+      { channel: 'copilot:execute-plan', args: [{ planId: 'PLAN-123' }] },
+    ]);
+  });
+
+  it('forwards screenPipe methods to p2p:screen-pipe-* channels', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:screen-pipe-sources') return Promise.resolve([{ id: 'src-1', name: 'Screen 1' }]);
+      if (channel === 'p2p:screen-pipe-capture') return Promise.resolve({ dataUrl: 'data:...', timestampMs: 12345 });
+      return Promise.resolve(null);
+    });
+
+    const sources = await api.screenPipe.getSources();
+    const capture = await api.screenPipe.capture('src-1');
+
+    expect(sources).toEqual([{ id: 'src-1', name: 'Screen 1' }]);
+    expect(capture).toEqual({ dataUrl: 'data:...', timestampMs: 12345 });
+    expect(calls).toEqual([
+      { channel: 'p2p:screen-pipe-sources', args: [] },
+      { channel: 'p2p:screen-pipe-capture', args: [{ sourceId: 'src-1' }] },
+    ]);
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);
   });
 });
+
