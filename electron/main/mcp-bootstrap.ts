@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { McpStatusDto, McpServerRuntimeInfo, McpAuditLogDto } from '../shared/types';
+import { refreshFinancialSkillMarketData } from './gemini-skills';
 
 export interface McpBootstrapStatus {
   enabled: boolean;
@@ -156,6 +157,12 @@ export async function bootstrapMcpServer(): Promise<McpBootstrapStatus> {
       mcpStatus.started = Boolean(activeServerInstance);
       mcpStatus.startTime = Date.now();
       console.log('🚀 [MCP Bootstrap] P2P MCP Server successfully initialized inside Electron.');
+      // Alimenta el caché de datos en vivo que consumen los skills financieros
+      // síncronos de gemini-skills (misma fuente Binance C2C del server embebido).
+      // Fire-and-forget: nunca bloquea ni revienta el arranque.
+      void refreshFinancialSkillMarketData()
+        .then((r) => console.log(`📡 [MCP Bootstrap] ${r.message}`))
+        .catch(() => undefined);
     } else {
       throw new Error('createP2PMcpServer not found in bundle');
     }
