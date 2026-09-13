@@ -1,0 +1,9 @@
+# Checklist Pre-Operación Institucional (v1)
+
+Antes de autorizar o colocar una orden superior a $1,000 USDT en el libro P2P, ejecutá este protocolo:
+
+1. **Chequeo de Riesgo**: Invocá `evaluate_trade_risk` con el monto propuesto.
+2. **Impacto en Límites**: Invocá `simulate_trade_impact` para validar que no exceda el límite diario.
+3. **Filtro ZK Anti-Fraude**: Si disponés de la cédula o teléfono de la contraparte, ejecutá `consult_zk_market_mesh`.
+4. **Ciclo BCV**: Revisá `forecast_volatility_window` para predecir si el spread se comprimirá en los próximos 120 minutos.
+5. Emite veredicto: **APROBADO PARA EJECUCIÓN** o **RECHAZADO POR RIESGO**.
