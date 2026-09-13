@@ -58,6 +58,15 @@
         <button class="quick-pill" (click)="quickPrompt('operadores')" [disabled]="isLoading()">
           👥 Asignar Capital a Operadores
         </button>
+        <button class="quick-pill" (click)="quickPrompt('cobertura')" [disabled]="isLoading()">
+          🛡 Cobertura Delta-Neutral
+        </button>
+        <button class="quick-pill" (click)="quickPrompt('volatilidad')" [disabled]="isLoading()">
+          📈 Volatilidad & Spread 2H
+        </button>
+        <button class="quick-pill" (click)="quickPrompt('disputa')" [disabled]="isLoading()">
+          ⚖ Expediente Disputa
+        </button>
       </div>
 
       <!-- Messages Stream -->

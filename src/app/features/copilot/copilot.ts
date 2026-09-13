@@ -218,6 +218,12 @@ export class Copilot implements OnInit {
       this.sendPrompt('¿Cuál es la brecha cambiaria actual con el BCV y qué directiva de tesorería recomendás?');
     } else if (type === 'operadores') {
       this.sendPrompt('Diseñá un plan de asignación de capital para 2 operadores con $5,000 de capital total.');
+    } else if (type === 'cobertura') {
+      this.sendPrompt('Audita la exposición actual en VES y proponé una cobertura delta-neutral con derivados para mitigar devaluación.');
+    } else if (type === 'volatilidad') {
+      this.sendPrompt('Pronosticá la volatilidad y deriva del spread para las próximas 2 horas y sugerí ajustes de markup de compra y venta.');
+    } else if (type === 'disputa') {
+      this.sendPrompt('Generá un expediente arbitral formal para una orden con sospecha de pago de terceros no autorizados.');
     }
   }
 }

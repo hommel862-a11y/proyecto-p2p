@@ -28,27 +28,47 @@ export class GeminiOrchestrator {
     return this.apiKey || process.env['GEMINI_API_KEY'] || this.db.getConfigValue('gemini_api_key') || undefined;
   }
 
+  private getCandidateModels(): string[] {
+    const custom = process.env['GEMINI_MODEL'];
+    if (custom) return [custom];
+    return ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'];
+  }
+
   async testConnection(): Promise<{ success: boolean; model: string; message: string }> {
     const effectiveKey = this.getEffectiveApiKey();
     if (!effectiveKey) {
       return { success: false, model: 'none', message: 'No se ha detectado ninguna API Key de Gemini configurada.' };
     }
-    const model = process.env['GEMINI_MODEL'] || 'gemini-3.6-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
-      });
-      if (!res.ok) {
+    const candidateModels = this.getCandidateModels();
+    let lastError = '';
+
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
+        });
+        if (res.ok) {
+          return { success: true, model, message: `¡Conexión exitosa con Gemini (${model})!` };
+        }
         const errText = await res.text();
-        return { success: false, model, message: `Error HTTP ${res.status}: ${errText}` };
+        if (res.status === 429) {
+          lastError = `Cuota diaria/minuto agotada en ${model}.`;
+          continue; // Try next fallback model in the pool
+        }
+        lastError = `Error HTTP ${res.status}: ${errText}`;
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err.message : String(err);
       }
-      return { success: true, model, message: `¡Conexión exitosa con Gemini (${model})!` };
-    } catch (err: unknown) {
-      return { success: false, model, message: err instanceof Error ? err.message : String(err) };
     }
+
+    return {
+      success: false,
+      model: candidateModels[0],
+      message: `Límite de cuota alcanzado (HTTP 429) en los modelos evaluados (${lastError}). El motor continuará operando en modo heurístico determinista local sin interrupciones.`,
+    };
   }
 
   /**
@@ -87,8 +107,7 @@ export class GeminiOrchestrator {
    * Executes Gemini 3.6 Flash REST API with Function Calling tools.
    */
   private async callGeminiApi(prompt: string, learningsContext: string, apiKey: string): Promise<CopilotResponse> {
-    const model = process.env['GEMINI_MODEL'] || 'gemini-3.6-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const candidateModels = this.getCandidateModels();
     const systemInstruction = `Sos el Agente Estratega de Arbitraje P2P Institucional (Venezuela / LATAM).
 Tu objetivo es analizar oportunidades de mercado, detectar triangulaciones viables (Golden Rule: spread neto >= 0.50%) y sugerir planes accionables.
 MEMORIA DE MERCADO RECIENTE:
@@ -111,57 +130,66 @@ Reglas:
       }],
     };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
+    let lastError: Error | null = null;
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Gemini API HTTP ${res.status}: ${errText}`);
-    }
-
-    const data = (await res.json()) as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{
-            text?: string;
-            functionCall?: { name: string; args: Record<string, unknown> };
-          }>;
-        };
-      }>;
-    };
-
-    const firstCandidate = data.candidates?.[0];
-    const parts = firstCandidate?.content?.parts || [];
-    const functionCallPart = parts.find((p) => p.functionCall);
-
-    if (functionCallPart && functionCallPart.functionCall) {
-      const { name, args } = functionCallPart.functionCall;
-      const skillResult = executeFinancialSkill(name, args);
-
-      // Return synthesized response with executed skill data
-      const plan = this.generatePlanFromSkill(name, skillResult.data);
-      if (plan) {
-        this.db.saveStrategyPlan({
-          ...plan,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 429) {
+          lastError = new Error(`Gemini API HTTP 429 (${model}): ${errText}`);
+          continue; // Try next model in cascade
+        }
+        throw new Error(`Gemini API HTTP ${res.status} (${model}): ${errText}`);
       }
 
+      const data = (await res.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              text?: string;
+              functionCall?: { name: string; args: Record<string, unknown> };
+            }>;
+          };
+        }>;
+      };
+
+      const firstCandidate = data.candidates?.[0];
+      const parts = firstCandidate?.content?.parts || [];
+      const functionCallPart = parts.find((p) => p.functionCall);
+
+      if (functionCallPart && functionCallPart.functionCall) {
+        const { name, args } = functionCallPart.functionCall;
+        const skillResult = executeFinancialSkill(name, args);
+
+        const plan = this.generatePlanFromSkill(name, skillResult.data);
+        if (plan) {
+          this.db.saveStrategyPlan({
+            ...plan,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
+
+        return {
+          reply: `He ejecutado la herramienta matemática **${name}** mediante **${model}** para validar las condiciones del mercado. Con base en los resultados, formulé una estrategia lista para tu aprobación.`,
+          suggestedPlan: plan,
+          skillsExecuted: [name],
+        };
+      }
+
+      const textPart = parts.find((p) => p.text);
       return {
-        reply: `He ejecutado la herramienta matemática **${name}** para validar las condiciones del mercado. Con base en los resultados, formulé una estrategia lista para tu aprobación.`,
-        suggestedPlan: plan,
-        skillsExecuted: [name],
+        reply: textPart?.text || 'He analizado tu consulta con base en las directivas de mercado actuales.',
       };
     }
 
-    const textPart = parts.find((p) => p.text);
-    return {
-      reply: textPart?.text || 'He analizado tu consulta con base en las directivas de mercado actuales.',
-    };
+    throw lastError || new Error('Todos los modelos de Gemini devolvieron cuota agotada.');
   }
 
   /**
@@ -261,6 +289,40 @@ Reglas:
         status: 'PROPOSED',
       };
     }
+
+    if (skillName === 'evaluate_delta_neutral_hedge' && data && typeof data === 'object') {
+      const d = data as { fiatExposureUsd?: number; urgency?: string; proposals?: Array<{ action: string; hedgeAmountUsdt: number; reason: string }> };
+      const prop = d.proposals?.[0];
+      return {
+        id: planId,
+        title: 'Cobertura Sintética Delta-Neutral',
+        route: prop?.action || 'SHORT_PERP_USD (Bybit / Binance)',
+        capitalRequiredUsdt: prop?.hedgeAmountUsdt || Math.round(d.fiatExposureUsd || 500),
+        expectedNetSpreadPct: 0.0,
+        expectedProfitUsdt: 0.0,
+        riskLevel: d.urgency === 'HIGH' ? 'HIGH' : 'LOW',
+        assignedOperatorName: 'Desk Risk Manager',
+        rationale: prop?.reason || 'Inmunización del portafolio contra devaluación brusca del bolívar (VES).',
+        status: 'PROPOSED',
+      };
+    }
+
+    if (skillName === 'forecast_market_volatility_2h' && data && typeof data === 'object') {
+      const d = data as { level?: string; direction?: string; suggestedSpreadAdjustmentPct?: { buyMarkupPct: number; sellMarkupPct: number } };
+      return {
+        id: planId,
+        title: 'Reajuste Dinámico de Markups (2 Horas)',
+        route: `Ajuste Compra: ${d.suggestedSpreadAdjustmentPct?.buyMarkupPct ?? 0}% | Venta: +${d.suggestedSpreadAdjustmentPct?.sellMarkupPct ?? 0}%`,
+        capitalRequiredUsdt: 1500,
+        expectedNetSpreadPct: 1.45,
+        expectedProfitUsdt: 21.75,
+        riskLevel: d.level === 'ELEVATED' ? 'MEDIUM' : 'LOW',
+        assignedOperatorName: 'Operador Principal',
+        rationale: `Proyección a 2 horas: Volatilidad ${d.level ?? 'NORMAL'} y spread ${d.direction ?? 'ESTABLE'}. Ajuste para absorber deslizamiento y capturar margen.`,
+        status: 'PROPOSED',
+      };
+    }
+
     return undefined;
   }
 

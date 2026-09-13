@@ -5,14 +5,18 @@ import {
 } from './agent-skills';
 
 describe('Agent Skills & Function Calling Declarations', () => {
-  it('should expose the 5 standard financial skills schemas for Gemini', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(5);
+  it('should expose the 9 standard financial skills schemas for Gemini', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(9);
     const names = GEMINI_FINANCIAL_SKILLS.map((s) => s.name);
     expect(names).toContain('scan_triangular_arbitrage');
     expect(names).toContain('predict_bcv_market_intelligence');
     expect(names).toContain('inspect_orderbook_liquidity');
     expect(names).toContain('evaluate_golden_spread');
     expect(names).toContain('build_operator_allocation_plan');
+    expect(names).toContain('evaluate_delta_neutral_hedge');
+    expect(names).toContain('forecast_market_volatility_2h');
+    expect(names).toContain('audit_zk_mesh_threat');
+    expect(names).toContain('generate_dispute_dossier');
 
     // All should have parameters of type OBJECT with properties
     for (const skill of GEMINI_FINANCIAL_SKILLS) {
@@ -20,6 +24,65 @@ describe('Agent Skills & Function Calling Declarations', () => {
       expect(Object.keys(skill.parameters.properties).length).toBeGreaterThan(0);
       expect(skill.parameters.required.length).toBeGreaterThan(0);
     }
+  });
+
+  it('should execute evaluate_delta_neutral_hedge deterministically', () => {
+    const res = executeFinancialSkill('evaluate_delta_neutral_hedge', {
+      vesBalance: 200000,
+      usdtBalance: 1000,
+      currentParallelRate: 80.0,
+      vesMaxHoldingTimeMinutes: 45,
+      maxAllowedFiatDeltaRatio: 0.15,
+    });
+    expect(res.success).toBe(true);
+    const data = res.data as { metrics: { urgency: string; netDeltaRatio: number }; proposals: unknown[] };
+    expect(data.metrics).toBeDefined();
+    expect(data.metrics.urgency).not.toBe('NONE');
+    expect(data.proposals.length).toBeGreaterThan(0);
+  });
+
+  it('should execute forecast_market_volatility_2h deterministically', () => {
+    const res = executeFinancialSkill('forecast_market_volatility_2h', {
+      currentSpreadPct: 1.5,
+      recentTicks: [
+        { timestampMs: 1000000, buyPrice: 80, sellPrice: 81.2 },
+        { timestampMs: 1003600, buyPrice: 80.5, sellPrice: 82.0 },
+      ],
+      parallelRate: 82.0,
+      bcvRate: 70.0,
+    });
+    expect(res.success).toBe(true);
+    const data = res.data as { volatilityIndex: number; level: string; direction: string };
+    expect(data.volatilityIndex).toBeGreaterThanOrEqual(0);
+    expect(data.level).toBeDefined();
+  });
+
+  it('should execute audit_zk_mesh_threat deterministically', () => {
+    const res = executeFinancialSkill('audit_zk_mesh_threat', {
+      identifier: 'V-12345678',
+    });
+    expect(res.success).toBe(true);
+    const data = res.data as { blindHash: string; riskStatus: string };
+    expect(data.blindHash).toBeDefined();
+    expect(data.blindHash.length).toBe(64); // SHA-256
+    expect(data.riskStatus).toBe('CLEAN');
+  });
+
+  it('should execute generate_dispute_dossier deterministically', () => {
+    const res = executeFinancialSkill('generate_dispute_dossier', {
+      orderId: 'BNB-998877',
+      orderAmountFiat: 85000,
+      orderAmountCrypto: 1000,
+      counterpartyBinanceName: 'Carlos Trader',
+      bankPayerName: 'Maria Perez',
+      bankName: 'Banesco',
+      bankReference: '0098765432',
+    });
+    expect(res.success).toBe(true);
+    const data = res.data as { appealTextEs: string; appealTextEn: string; timeline: unknown[] };
+    expect(data.appealTextEs).toContain('BNB-998877');
+    expect(data.appealTextEn).toContain('BNB-998877');
+    expect(data.timeline.length).toBeGreaterThan(0);
   });
 
   it('should execute evaluate_golden_spread deterministically', () => {
