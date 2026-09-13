@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  type OnInit,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RisksService, type RiskConfig } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -28,7 +35,7 @@ function isValidChatId(chatId: string): boolean {
   imports: [FormsModule, UiCard, UiPanelHeader],
   templateUrl: './risk-rules.html',
 })
-export class RiskRules {
+export class RiskRules implements OnInit {
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
@@ -37,13 +44,20 @@ export class RiskRules {
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
 
-  // Telegram Sentinel credentials
-  private readonly savedTelegram = this.telegramWorker.getConfig();
+  // Telegram Sentinel credentials (hydrated asynchronously from secure storage).
+  readonly telegramToken = signal<string>('');
+  readonly telegramChatId = signal<string>('');
+  readonly telegramAlertsEnabled = signal<boolean>(true);
+  readonly telegramPollingEnabled = signal<boolean>(false);
 
-  readonly telegramToken = signal<string>(this.savedTelegram.botToken);
-  readonly telegramChatId = signal<string>(this.savedTelegram.chatId);
-  readonly telegramAlertsEnabled = signal<boolean>(this.savedTelegram.alertsEnabled);
-  readonly telegramPollingEnabled = signal<boolean>(this.savedTelegram.pollingEnabled ?? false);
+  ngOnInit(): void {
+    void this.telegramWorker.getConfig().then((cfg) => {
+      this.telegramToken.set(cfg.botToken);
+      this.telegramChatId.set(cfg.chatId);
+      this.telegramAlertsEnabled.set(cfg.alertsEnabled);
+      this.telegramPollingEnabled.set(cfg.pollingEnabled ?? false);
+    });
+  }
 
   /** trading pair context for the spread threshold label (USDT/VES or EUR/VES). */
   readonly pair = signal<'USDT' | 'EUR'>('USDT');
@@ -61,7 +75,9 @@ export class RiskRules {
   saveTelegramConfig(): void {
     const chatId = this.telegramChatId().trim();
     if (!isValidChatId(chatId)) {
-      this.toast.warn('El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.');
+      this.toast.warn(
+        'El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.',
+      );
       return;
     }
     const config = {
@@ -70,7 +86,7 @@ export class RiskRules {
       alertsEnabled: this.telegramAlertsEnabled(),
       pollingEnabled: this.telegramPollingEnabled(),
     };
-    this.telegramWorker.saveConfig(config);
+    void this.telegramWorker.saveConfig(config);
     this.toast.success('Configuración de Telegram Sentinel 2.0 guardada con éxito.');
   }
 
@@ -94,7 +110,9 @@ export class RiskRules {
     }
 
     if (!isValidChatId(chatId)) {
-      this.toast.warn('El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.');
+      this.toast.warn(
+        'El Chat ID debe ser un número (ej. 987654321). Un teléfono como +58... no funciona.',
+      );
       return;
     }
 

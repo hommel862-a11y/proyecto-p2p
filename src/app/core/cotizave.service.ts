@@ -1,14 +1,14 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
-import { StorageService } from './storage';
+import { CredentialStoreService } from './credential-store.service';
 import { normalizeCotizaveRates, buildCotizaveHeaders, type CotizaveRate } from '@p2p/core';
 
 @Injectable({ providedIn: 'root' })
 export class CotizaveService implements OnDestroy {
   private readonly toast = inject(ToastService);
-  private readonly storage = inject(StorageService);
+  private readonly credentials = inject(CredentialStoreService);
 
-  readonly apiKey = signal<string>(this.storage.get<string>('p2p.cotizave.apiKey') ?? '');
+  readonly apiKey = signal<string>('');
   readonly ratesByMarket = signal<Record<string, CotizaveRate>>({});
   readonly loading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
@@ -18,19 +18,24 @@ export class CotizaveService implements OnDestroy {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    const key = this.apiKey();
-    if (key) {
-      this.toast.info('API key Cotizave cargada desde almacenamiento.', 'Cotizave');
-    }
+    void this.hydrate();
   }
 
   ngOnDestroy(): void {
     this.stopAutoRefresh();
   }
 
+  private async hydrate(): Promise<void> {
+    const key = await this.credentials.getCotizaveApiKey();
+    if (key) {
+      this.apiKey.set(key);
+      this.toast.info('API key Cotizave cargada desde almacenamiento seguro.', 'Cotizave');
+    }
+  }
+
   setApiKey(key: string): void {
     this.apiKey.set(key);
-    this.storage.set('p2p.cotizave.apiKey', key);
+    void this.credentials.setCotizaveApiKey(key).catch(() => undefined);
     if (key) {
       this.toast.success('API key Cotizave guardada. Puedes sincronizar rates.', 'Cotizave');
     } else {

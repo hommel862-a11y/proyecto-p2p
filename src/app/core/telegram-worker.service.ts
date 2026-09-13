@@ -1,10 +1,10 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
-import { StorageService } from './storage';
 import { ToastService } from './toast.service';
 import { BinanceP2pService } from './binance-p2p.service';
 import { BinanceRepricerService } from './binance-repricer.service';
 import { AccountsService } from './accounts.service';
 import { CotizaveService } from './cotizave.service';
+import { CredentialStoreService } from './credential-store.service';
 import {
   dispatchTelegramUpdate,
   formatReceiptAuditTelegramMessage,
@@ -34,17 +34,23 @@ export interface TelegramLogEntry {
   details?: string;
 }
 
-const TELEGRAM_KEY = 'p2p.telegram_config';
+const TELEGRAM_DEFAULTS: TelegramConfig = {
+  botToken: '',
+  chatId: '',
+  alertsEnabled: true,
+  pollingEnabled: false,
+};
 
 @Injectable({ providedIn: 'root' })
 export class TelegramWorkerService implements OnDestroy {
-  private readonly storage = inject(StorageService);
+  private readonly credentials = inject(CredentialStoreService);
   private readonly toast = inject(ToastService);
   private readonly binance = inject(BinanceP2pService);
   private readonly repricer = inject(BinanceRepricerService);
   private readonly accounts = inject(AccountsService);
   private readonly cotizave = inject(CotizaveService);
 
+  readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
   readonly lastHeartbeat = signal<Date | null>(null);
   readonly recentLogs = signal<TelegramLogEntry[]>([]);
@@ -53,29 +59,32 @@ export class TelegramWorkerService implements OnDestroy {
   private currentOffset = 0;
 
   constructor() {
-    const config = this.getConfig();
-    if (config.botToken && config.chatId && config.pollingEnabled) {
-      this.startPolling();
-    }
+    void this.hydrateAndStart();
   }
 
   ngOnDestroy(): void {
     this.stopPolling();
   }
 
-  getConfig(): TelegramConfig {
-    return (
-      this.storage.get<TelegramConfig>(TELEGRAM_KEY) || {
-        botToken: '',
-        chatId: '',
-        alertsEnabled: true,
-        pollingEnabled: false,
-      }
-    );
+  async getConfig(): Promise<TelegramConfig> {
+    const cfg = await this.credentials.getTelegramConfig();
+    if (!cfg) return { ...TELEGRAM_DEFAULTS };
+    return {
+      botToken: cfg.token ?? '',
+      chatId: cfg.chatId ?? '',
+      alertsEnabled: cfg.alertsEnabled ?? true,
+      pollingEnabled: cfg.pollingEnabled ?? false,
+    };
   }
 
-  saveConfig(config: TelegramConfig): void {
-    this.storage.set(TELEGRAM_KEY, config);
+  async saveConfig(config: TelegramConfig): Promise<void> {
+    await this.credentials.setTelegramConfig({
+      token: config.botToken,
+      chatId: config.chatId,
+      alertsEnabled: config.alertsEnabled,
+      pollingEnabled: config.pollingEnabled,
+    });
+    this.config.set({ ...config });
     if (config.pollingEnabled && !this.isPolling()) {
       this.startPolling();
     } else if (!config.pollingEnabled && this.isPolling()) {
@@ -84,8 +93,8 @@ export class TelegramWorkerService implements OnDestroy {
   }
 
   startPolling(): void {
-    const config = this.getConfig();
-    if (!config.botToken || !config.chatId) {
+    const { botToken, chatId } = this.config();
+    if (!botToken || !chatId) {
       this.toast.warn('Configura el Token y Chat ID para activar el Worker de Telegram.');
       return;
     }
@@ -94,7 +103,7 @@ export class TelegramWorkerService implements OnDestroy {
 
     this.isPolling.set(true);
     this.abortController = new AbortController();
-    void this.pollLoop(config.botToken, config.chatId);
+    void this.pollLoop(botToken, chatId);
     this.toast.success('Telegram Sentinel 2.0 (Worker 24/7) conectado en segundo plano.');
   }
 
@@ -106,6 +115,22 @@ export class TelegramWorkerService implements OnDestroy {
       this.abortController = null;
     }
     this.toast.info('Worker de Telegram Sentinel pausado.');
+  }
+
+  private async hydrateAndStart(): Promise<void> {
+    const cfg = await this.credentials.getTelegramConfig();
+    if (cfg) {
+      this.config.set({
+        botToken: cfg.token ?? '',
+        chatId: cfg.chatId ?? '',
+        alertsEnabled: cfg.alertsEnabled ?? true,
+        pollingEnabled: cfg.pollingEnabled ?? false,
+      });
+    }
+    const { botToken, chatId, pollingEnabled } = this.config();
+    if (botToken && chatId && pollingEnabled) {
+      this.startPolling();
+    }
   }
 
   private async pollLoop(token: string, authorizedChatId: string): Promise<void> {
