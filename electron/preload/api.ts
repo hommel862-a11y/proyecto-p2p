@@ -43,6 +43,8 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       getLearnings: (params) => ipc('copilot:get-learnings', params) as Promise<any>,
       setApiKey: (params) => ipc('copilot:set-api-key', params) as Promise<any>,
       testConnection: () => ipc('copilot:test-connection') as Promise<any>,
+      getWatcherStatus: () => ipc('copilot:get-watcher-status') as Promise<any>,
+      setWatcherConfig: (params) => ipc('copilot:set-watcher-config', params) as Promise<any>,
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
@@ -92,6 +94,8 @@ export const ALLOWED_CHANNELS = [
   'copilot:get-learnings',
   'copilot:set-api-key',
   'copilot:test-connection',
+  'copilot:get-watcher-status',
+  'copilot:set-watcher-config',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',

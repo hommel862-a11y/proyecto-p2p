@@ -3,6 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { CopilotChatMessage, StrategyPlanCard, CopilotResponse } from '@p2p/core';
 
+export interface AlphaWatcherStatusDto {
+  enabled: boolean;
+  pollIntervalSeconds: number;
+  minNetSpreadPct: number;
+  scanCount: number;
+  lastOpportunity: { time: number; netSpreadPct: number; route: string } | null;
+}
+
 interface ElectronCopilotBridge {
   sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
   executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
@@ -10,6 +18,8 @@ interface ElectronCopilotBridge {
   getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
   setApiKey(params: { apiKey: string }): Promise<boolean>;
   testConnection(): Promise<{ success: boolean; model: string; message: string }>;
+  getWatcherStatus(): Promise<AlphaWatcherStatusDto>;
+  setWatcherConfig(params: Partial<{ enabled: boolean; minNetSpreadPct: number; pollIntervalSeconds: number }>): Promise<boolean>;
 }
 
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
@@ -82,6 +92,39 @@ export class Copilot implements OnInit, OnDestroy {
     avgCycleVelocityMinutes: 14,
     killSwitchActive: false,
   });
+
+  // Centinela Autónomo (Alpha Watcher) state
+  watcherStatus = signal<AlphaWatcherStatusDto>({
+    enabled: true,
+    pollIntervalSeconds: 30,
+    minNetSpreadPct: 1.15,
+    scanCount: 0,
+    lastOpportunity: null,
+  });
+
+  async toggleWatcher(): Promise<void> {
+    const copilot = getElectronCopilot();
+    const current = this.watcherStatus();
+    const newEnabled = !current.enabled;
+    this.watcherStatus.update((s) => ({ ...s, enabled: newEnabled }));
+    if (copilot) {
+      await copilot.setWatcherConfig({ enabled: newEnabled });
+    }
+    this.actionSuccessNotice.set(
+      newEnabled ? '🟢 CENTINELA AUTÓNOMO ACTIVADO: Escaneando libro cada 30s.' : '⏸ CENTINELA PAUSADO: Monitoreo en segundo plano detenido.'
+    );
+    setTimeout(() => this.actionSuccessNotice.set(null), 4000);
+  }
+
+  async setWatcherMinSpread(threshold: number): Promise<void> {
+    const copilot = getElectronCopilot();
+    this.watcherStatus.update((s) => ({ ...s, minNetSpreadPct: threshold }));
+    if (copilot) {
+      await copilot.setWatcherConfig({ minNetSpreadPct: threshold });
+    }
+    this.actionSuccessNotice.set(`🎯 Umbral de Centinela ajustado a spread neto >= ${threshold}%`);
+    setTimeout(() => this.actionSuccessNotice.set(null), 3000);
+  }
 
   triggerKillSwitch(): void {
     const current = this.treasuryMetrics();
@@ -167,6 +210,12 @@ export class Copilot implements OnInit, OnDestroy {
         this.plans.set(plans);
         const rawLearnings = await copilot.getLearnings({ limit: 50 });
         this.learnings.set(rawLearnings as any);
+        if (copilot.getWatcherStatus) {
+          const watcher = await copilot.getWatcherStatus();
+          if (watcher) {
+            this.watcherStatus.set(watcher);
+          }
+        }
       } catch (err) {
         console.warn('Error loading copilot data from Electron IPC:', err);
       }

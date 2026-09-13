@@ -149,6 +149,14 @@ export interface P2PIpcChannels {
     request: void;
     response: { success: boolean; model: string; message: string };
   };
+  'copilot:get-watcher-status': {
+    request: void;
+    response: AlphaWatcherStatus;
+  };
+  'copilot:set-watcher-config': {
+    request: Partial<AlphaWatcherConfigDto>;
+    response: boolean;
+  };
   'p2p:screen-pipe-sources': {
     request: void;
     response: ScreenPipeSource[];
@@ -216,6 +224,23 @@ export interface StrategyPlanCard {
   status: 'PROPOSED' | 'APPROVED' | 'EXECUTED' | 'CANCELLED' | 'REJECTED';
 }
 
+export interface AlphaWatcherConfigDto {
+  pollIntervalSeconds: number;
+  minNetSpreadPct: number;
+  asset: string;
+  fiat: string;
+  payTypes: string[];
+  enabled: boolean;
+}
+
+export interface AlphaWatcherStatus {
+  enabled: boolean;
+  pollIntervalSeconds: number;
+  minNetSpreadPct: number;
+  scanCount: number;
+  lastOpportunity: { time: number; netSpreadPct: number; route: string } | null;
+}
+
 export interface CopilotResponse {
   reply: string;
   suggestedPlan?: StrategyPlanCard;
@@ -250,6 +275,8 @@ export interface ElectronAPI {
     getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
     setApiKey(params: { apiKey: string }): Promise<boolean>;
     testConnection(): Promise<{ success: boolean; model: string; message: string }>;
+    getWatcherStatus(): Promise<AlphaWatcherStatus>;
+    setWatcherConfig(params: Partial<AlphaWatcherConfigDto>): Promise<boolean>;
     onAlphaOpportunity?(callback: (data: { plan: StrategyPlanCard; detectedAt: number }) => void): () => void;
   };
   screenPipe: {

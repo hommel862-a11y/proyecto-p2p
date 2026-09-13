@@ -31,10 +31,34 @@ export class AlphaWatcher {
     enabled: true,
   };
 
+  private scanCount = 0;
+  private lastOpportunity: { time: number; netSpreadPct: number; route: string } | null = null;
+
   constructor(
     private db: P2PDatabaseService,
     private getMainWindow: () => BrowserWindow | null,
   ) {}
+
+  getStatus(): { enabled: boolean; pollIntervalSeconds: number; minNetSpreadPct: number; scanCount: number; lastOpportunity: unknown } {
+    return {
+      enabled: this.isRunning(),
+      pollIntervalSeconds: this.config.pollIntervalSeconds,
+      minNetSpreadPct: this.config.minNetSpreadPct,
+      scanCount: this.scanCount,
+      lastOpportunity: this.lastOpportunity,
+    };
+  }
+
+  setConfig(newConfig: Partial<AlphaWatcherConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    if (newConfig.enabled !== undefined) {
+      if (newConfig.enabled) {
+        this.start();
+      } else {
+        this.stop();
+      }
+    }
+  }
 
   start(): void {
     if (this.timer) return;
@@ -42,7 +66,6 @@ export class AlphaWatcher {
     this.timer = setInterval(() => {
       void this.runScanCycle();
     }, this.config.pollIntervalSeconds * 1000);
-    // Run an immediate initial scan after 5 seconds
     setTimeout(() => {
       void this.runScanCycle();
     }, 5000);
@@ -63,6 +86,7 @@ export class AlphaWatcher {
   async runScanCycle(): Promise<void> {
     if (this.isPolling || !this.config.enabled) return;
     this.isPolling = true;
+    this.scanCount++;
 
     try {
       // 1. Fetch top BUY and SELL offers from Binance P2P
@@ -99,6 +123,12 @@ export class AlphaWatcher {
           status: 'PROPOSED',
           createdAt: Date.now(),
           updatedAt: Date.now(),
+        };
+
+        this.lastOpportunity = {
+          time: Date.now(),
+          netSpreadPct,
+          route: plan.route,
         };
 
         // Persist to SQLite

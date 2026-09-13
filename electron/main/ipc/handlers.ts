@@ -1,8 +1,9 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
-import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource } from '../../shared/types';
+import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource, AlphaWatcherConfigDto } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
+import { AlphaWatcher } from '../alpha-watcher';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -254,6 +255,22 @@ export function registerIpcHandlers(): void {
     return orchestrator.testConnection();
   });
 
+  ipcMain.removeHandler('copilot:get-watcher-status');
+  ipcMain.handle('copilot:get-watcher-status', async () => {
+    const watcher = getAlphaWatcher();
+    return watcher.getStatus();
+  });
+
+  ipcMain.removeHandler('copilot:set-watcher-config');
+  ipcMain.handle(
+    'copilot:set-watcher-config',
+    async (_event: IpcMainInvokeEvent, params: Partial<AlphaWatcherConfigDto>) => {
+      const watcher = getAlphaWatcher();
+      watcher.setConfig(params);
+      return true;
+    },
+  );
+
   ipcMain.removeHandler('p2p:mcp-status');
   ipcMain.handle('p2p:mcp-status', async () => {
     return getMcpFullStatus();
@@ -282,6 +299,18 @@ export function getOrchestrator(): GeminiOrchestrator {
     orchestratorInstance = new GeminiOrchestrator(getDbService());
   }
   return orchestratorInstance;
+}
+
+let alphaWatcherInstance: AlphaWatcher | null = null;
+export function setAlphaWatcher(watcher: AlphaWatcher): void {
+  alphaWatcherInstance = watcher;
+}
+
+export function getAlphaWatcher(): AlphaWatcher {
+  if (!alphaWatcherInstance) {
+    alphaWatcherInstance = new AlphaWatcher(getDbService(), () => null);
+  }
+  return alphaWatcherInstance;
 }
 
 

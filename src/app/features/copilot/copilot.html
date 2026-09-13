@@ -66,6 +66,42 @@
       <span class="hud-value">{{ treasuryMetrics().avgCycleVelocityMinutes }} min / ciclo</span>
     </div>
 
+    <div class="hud-stat watcher-panel">
+      <div class="watcher-header">
+        <span class="hud-label">CENTINELA AUTÓNOMO</span>
+        <span class="watcher-scans">{{ watcherStatus().scanCount }} scans</span>
+      </div>
+      <div class="watcher-controls">
+        <button 
+          class="watcher-toggle-btn" 
+          [class.active]="watcherStatus().enabled" 
+          (click)="toggleWatcher()">
+          {{ watcherStatus().enabled ? '🟢 ACTIVO' : '⏸ PAUSA' }}
+        </button>
+        <div class="threshold-selector">
+          <span class="threshold-label">Min:</span>
+          <button 
+            class="threshold-chip" 
+            [class.selected]="watcherStatus().minNetSpreadPct === 1.0"
+            (click)="setWatcherMinSpread(1.0)">
+            1.0%
+          </button>
+          <button 
+            class="threshold-chip" 
+            [class.selected]="watcherStatus().minNetSpreadPct === 1.15"
+            (click)="setWatcherMinSpread(1.15)">
+            1.15%
+          </button>
+          <button 
+            class="threshold-chip" 
+            [class.selected]="watcherStatus().minNetSpreadPct === 1.5"
+            (click)="setWatcherMinSpread(1.5)">
+            1.5%
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="hud-actions">
       <button 
         class="killswitch-btn" 
