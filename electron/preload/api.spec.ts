@@ -113,6 +113,30 @@ describe('Electron preload bridge (secure IPC)', () => {
     ]);
   });
 
+  it('forwards mcp methods to p2p:mcp-* channels', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:mcp-status') {
+        return Promise.resolve({ servers: [], recentAuditLogs: [], totalCallsServed: 0, activeTransport: 'stdio' });
+      }
+      if (channel === 'p2p:mcp-test-tool') {
+        return Promise.resolve({ success: true, executionTimeMs: 12 });
+      }
+      return Promise.resolve(null);
+    });
+
+    const status = await api.mcp.getStatus();
+    const testResult = await api.mcp.testTool('calculate_spread', { buyPrice: 100, sellPrice: 101 });
+
+    expect(status.activeTransport).toBe('stdio');
+    expect(testResult.success).toBe(true);
+    expect(calls).toEqual([
+      { channel: 'p2p:mcp-status', args: [] },
+      { channel: 'p2p:mcp-test-tool', args: [{ toolName: 'calculate_spread', args: { buyPrice: 100, sellPrice: 101 } }] },
+    ]);
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);

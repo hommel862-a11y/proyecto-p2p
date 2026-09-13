@@ -2,6 +2,7 @@ import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEven
 import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
+import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -252,6 +253,19 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('copilot:test-connection', async () => {
     return orchestrator.testConnection();
   });
+
+  ipcMain.removeHandler('p2p:mcp-status');
+  ipcMain.handle('p2p:mcp-status', async () => {
+    return getMcpFullStatus();
+  });
+
+  ipcMain.removeHandler('p2p:mcp-test-tool');
+  ipcMain.handle(
+    'p2p:mcp-test-tool',
+    async (_event: IpcMainInvokeEvent, params: { toolName: string; args: unknown }) => {
+      return executeMcpToolTest(params.toolName, params.args);
+    },
+  );
 }
 
 let dbInstance: P2PDatabaseService | null = null;

@@ -3,8 +3,9 @@ import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
 import { SECURE_WEB_PREFERENCES } from './window-config';
-import { registerIpcHandlers, triggerKillswitch } from './ipc/handlers';
+import { registerIpcHandlers, triggerKillswitch, getDbService } from './ipc/handlers';
 import { bootstrapMcpServer } from './mcp-bootstrap';
+import { AlphaWatcher } from './alpha-watcher';
 
 app.setName('p2p-decisor');
 try {
@@ -174,9 +175,15 @@ async function createWindow(): Promise<void> {
   });
 }
 
+let alphaWatcher: AlphaWatcher | null = null;
+
 app.whenReady().then(async () => {
   await bootstrapMcpServer();
   await createWindow();
+
+  // Start Autonomous Continuous Alpha Watcher
+  alphaWatcher = new AlphaWatcher(getDbService(), () => mainWindow);
+  alphaWatcher.start();
 });
 
 app.on('will-quit', () => {

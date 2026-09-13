@@ -49,6 +49,11 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       capture: (sourceId?: string) =>
         ipc('p2p:screen-pipe-capture', { sourceId }) as Promise<any>,
     },
+    mcp: {
+      getStatus: () => ipc('p2p:mcp-status') as Promise<any>,
+      testTool: (toolName: string, args: unknown) =>
+        ipc('p2p:mcp-test-tool', { toolName, args }) as Promise<any>,
+    },
   };
 }
 
@@ -63,6 +68,7 @@ export const EXPOSED_API_KEYS = [
   'killswitch',
   'copilot',
   'screenPipe',
+  'mcp',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -88,6 +94,8 @@ export const ALLOWED_CHANNELS = [
   'copilot:test-connection',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
+  'p2p:mcp-status',
+  'p2p:mcp-test-tool',
 ] as const;
 
 

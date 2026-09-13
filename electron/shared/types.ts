@@ -157,6 +157,43 @@ export interface P2PIpcChannels {
     request: { sourceId?: string } | void;
     response: { dataUrl: string; timestampMs: number } | null;
   };
+  'p2p:mcp-status': {
+    request: void;
+    response: McpStatusDto;
+  };
+  'p2p:mcp-test-tool': {
+    request: { toolName: string; args: unknown };
+    response: { success: boolean; result?: unknown; error?: string; executionTimeMs: number };
+  };
+}
+
+export interface McpServerRuntimeInfo {
+  id: string;
+  name: string;
+  category: 'tasas' | 'mercado' | 'portafolio' | 'ledger' | 'master';
+  status: 'ONLINE' | 'OFFLINE' | 'STANDBY' | 'ERROR';
+  transport: 'stdio' | 'sse';
+  toolCount: number;
+  resourceCount: number;
+  uptimeSeconds: number;
+  tools: Array<{ name: string; description: string }>;
+  resources: Array<{ uri: string; name: string }>;
+}
+
+export interface McpAuditLogDto {
+  timestamp: string;
+  toolName: string;
+  inputHash: string;
+  outputHash: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface McpStatusDto {
+  servers: McpServerRuntimeInfo[];
+  recentAuditLogs: McpAuditLogDto[];
+  totalCallsServed: number;
+  activeTransport: string;
 }
 
 export interface CopilotChatMessage {
@@ -213,10 +250,15 @@ export interface ElectronAPI {
     getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
     setApiKey(params: { apiKey: string }): Promise<boolean>;
     testConnection(): Promise<{ success: boolean; model: string; message: string }>;
+    onAlphaOpportunity?(callback: (data: { plan: StrategyPlanCard; detectedAt: number }) => void): () => void;
   };
   screenPipe: {
     getSources(): Promise<ScreenPipeSource[]>;
     capture(sourceId?: string): Promise<{ dataUrl: string; timestampMs: number } | null>;
+  };
+  mcp: {
+    getStatus(): Promise<McpStatusDto>;
+    testTool(toolName: string, args: unknown): Promise<{ success: boolean; result?: unknown; error?: string; executionTimeMs: number }>;
   };
 }
 

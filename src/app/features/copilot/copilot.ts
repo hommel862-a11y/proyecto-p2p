@@ -1,4 +1,4 @@
-import { Component, signal, OnInit } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { CopilotChatMessage, StrategyPlanCard, CopilotResponse } from '@p2p/core';
@@ -26,7 +26,7 @@ function getElectronCopilot(): ElectronCopilotBridge | undefined {
   templateUrl: './copilot.html',
   styleUrls: ['./copilot.scss'],
 })
-export class Copilot implements OnInit {
+export class Copilot implements OnInit, OnDestroy {
   messages = signal<CopilotChatMessage[]>([
     {
       role: 'assistant',
@@ -80,9 +80,22 @@ export class Copilot implements OnInit {
     setTimeout(() => this.actionSuccessNotice.set(null), 5000);
   }
 
+  private autoRefreshTimer: any = null;
+
   async ngOnInit(): Promise<void> {
     await this.refreshData();
     await this.checkConnection();
+
+    // Periodic auto-sync with Alpha Watcher plans and learnings
+    this.autoRefreshTimer = setInterval(async () => {
+      await this.refreshData();
+    }, 15000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.autoRefreshTimer) {
+      clearInterval(this.autoRefreshTimer);
+    }
   }
 
   async checkConnection(): Promise<void> {
