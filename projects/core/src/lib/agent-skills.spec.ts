@@ -5,8 +5,8 @@ import {
 } from './agent-skills';
 
 describe('Agent Skills & Function Calling Declarations', () => {
-  it('should expose the 9 standard financial skills schemas for Gemini', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(9);
+  it('should expose the 10 standard financial skills schemas for Gemini', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(10);
     const names = GEMINI_FINANCIAL_SKILLS.map((s) => s.name);
     expect(names).toContain('scan_triangular_arbitrage');
     expect(names).toContain('predict_bcv_market_intelligence');
@@ -17,6 +17,7 @@ describe('Agent Skills & Function Calling Declarations', () => {
     expect(names).toContain('forecast_market_volatility_2h');
     expect(names).toContain('audit_zk_mesh_threat');
     expect(names).toContain('generate_dispute_dossier');
+    expect(names).toContain('simulate_trade_impact');
 
     // All should have parameters of type OBJECT with properties
     for (const skill of GEMINI_FINANCIAL_SKILLS) {
@@ -130,6 +131,27 @@ describe('Agent Skills & Function Calling Declarations', () => {
     const data = res.data as { totalDeskCapitalUsdt: number; operatorsAllocations: unknown[] };
     expect(data.totalDeskCapitalUsdt).toBe(5000);
     expect(data.operatorsAllocations.length).toBe(1);
+  });
+
+  it('should execute simulate_trade_impact deterministically', () => {
+    const res = executeFinancialSkill('simulate_trade_impact', {
+      targetAmountUsdt: 600,
+      side: 'BUY',
+      availableOffers: [
+        {
+          advNo: 'ADV-1',
+          price: 84.0,
+          surplusAmount: 1000,
+          merchantName: 'TraderPro',
+          merchantFinishRate: 99,
+        },
+      ],
+    });
+    expect(res.success).toBe(true);
+    const data = res.data as { isFullyFillable: boolean; totalFilledUsdt: number; bestQuotedPrice: number };
+    expect(data.isFullyFillable).toBe(true);
+    expect(data.totalFilledUsdt).toBe(600);
+    expect(data.bestQuotedPrice).toBe(84.0);
   });
 
   it('should return error gracefully for unknown skill or missing parameters', () => {

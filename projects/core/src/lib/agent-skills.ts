@@ -31,6 +31,10 @@ import {
   buildDisputeDossier,
   type DisputeDossierParams,
 } from './dispute-copilot';
+import {
+  simulateTradeImpact,
+  type TradeImpactInput,
+} from './trade-impact-simulator';
 
 export interface AgentSkillParameterSchema {
   type: 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
@@ -290,6 +294,33 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
       required: ['orderId', 'orderAmountFiat', 'orderAmountCrypto', 'counterpartyBinanceName', 'bankPayerName', 'bankName', 'bankReference'],
     },
   },
+  {
+    name: 'simulate_trade_impact',
+    description: 'Simula el llenado real de una orden P2P a través de múltiples niveles del libro: calcula precio VWAP, deslizamiento en bps y probabilidad de llenado según la reputación del comerciante.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        targetAmountUsdt: {
+          type: 'NUMBER',
+          description: 'Volumen objetivo en USDT que se desea comprar o vender.',
+        },
+        side: {
+          type: 'STRING',
+          description: 'Lado de la operación: BUY (comprar cripto con fiat) o SELL (vender cripto por fiat).',
+          enum: ['BUY', 'SELL'],
+        },
+        availableOffers: {
+          type: 'ARRAY',
+          description: 'Lista de anuncios del libro P2P con precios, montos disponibles y tasas de finalización.',
+          items: {
+            type: 'OBJECT',
+            description: 'Anuncio P2P.',
+          },
+        },
+      },
+      required: ['targetAmountUsdt', 'side', 'availableOffers'],
+    },
+  },
 ];
 
 /**
@@ -535,6 +566,25 @@ export function executeFinancialSkill(skillName: string, args: Record<string, un
           success: true,
           skillName,
           data: dossier,
+          executedAt: now,
+        };
+      }
+
+      case 'simulate_trade_impact': {
+        const targetAmountUsdt = Number(args['targetAmountUsdt'] || 0);
+        const side = (args['side'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+        const availableOffers = (args['availableOffers'] || []) as any[];
+
+        const result = simulateTradeImpact({
+          targetAmountUsdt,
+          side,
+          availableOffers,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
           executedAt: now,
         };
       }

@@ -12,8 +12,12 @@ import {
   executeFinancialSkill,
 } from './gemini-skills';
 
+const QUOTA_ENGINE_NOTE =
+  '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
+
 export class GeminiOrchestrator {
   private apiKey?: string;
+  private quotaCooldownUntil = 0;
 
   constructor(private db: P2PDatabaseService, apiKey?: string) {
     this.apiKey = apiKey || process.env['GEMINI_API_KEY'] || undefined;
@@ -34,6 +38,25 @@ export class GeminiOrchestrator {
     return ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'];
   }
 
+  private extractRetryDelayMs(errText: string): number {
+    try {
+      const body = JSON.parse(errText) as {
+        error?: { details?: Array<{ retryDelay?: string }> };
+      };
+      const retryDelay = body.error?.details?.find((d) => d.retryDelay)?.retryDelay;
+      if (!retryDelay) return 0;
+      const match = /(\d+(?:\.\d+)?)s/.exec(retryDelay);
+      return match ? Math.ceil(parseFloat(match[1]) * 1000) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private isQuotaError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    return err.message.includes('HTTP 429') || err.message.includes('cuota agotada');
+  }
+
   async testConnection(): Promise<{ success: boolean; model: string; message: string }> {
     const effectiveKey = this.getEffectiveApiKey();
     if (!effectiveKey) {
@@ -41,6 +64,7 @@ export class GeminiOrchestrator {
     }
     const candidateModels = this.getCandidateModels();
     let lastError = '';
+    let quotaExhausted = false;
 
     for (const model of candidateModels) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
@@ -55,13 +79,22 @@ export class GeminiOrchestrator {
         }
         const errText = await res.text();
         if (res.status === 429) {
-          lastError = `Cuota diaria/minuto agotada en ${model}.`;
+          quotaExhausted = true;
           continue; // Try next fallback model in the pool
         }
         lastError = `Error HTTP ${res.status}: ${errText}`;
       } catch (err: unknown) {
         lastError = err instanceof Error ? err.message : String(err);
       }
+    }
+
+    if (quotaExhausted) {
+      return {
+        success: false,
+        model: candidateModels[0],
+        message:
+          'Cuota diaria de Gemini agotada (free tier: 20 peticiones/día por modelo). El motor continuará en modo heurístico local. Para más capacidad, configurá una API Key con plan de pago en Configuración, o reintentá mañana.',
+      };
     }
 
     return {
@@ -92,10 +125,17 @@ export class GeminiOrchestrator {
     // 2. Determine execution path (Gemini API with tools or Deterministic Heuristic Engine)
     const effectiveKey = this.getEffectiveApiKey();
     if (effectiveKey) {
+      if (Date.now() < this.quotaCooldownUntil) {
+        return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
+      }
       try {
         return await this.callGeminiApi(prompt, learningsContext, effectiveKey);
       } catch (err: unknown) {
         // Fallback gracefully to core deterministic engine if network or quota issue arises
+        if (this.isQuotaError(err)) {
+          console.warn('[GeminiOrchestrator] Quota 429 en Gemini; continuando con motor local.');
+          return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
+        }
         console.warn('[GeminiOrchestrator] Fallback to deterministic core engine:', err);
       }
     }
@@ -142,6 +182,11 @@ Reglas:
       if (!res.ok) {
         const errText = await res.text();
         if (res.status === 429) {
+          const retryMs = this.extractRetryDelayMs(errText);
+          const target = Date.now() + Math.max(60_000, Math.min(retryMs, 3_600_000));
+          if (target > this.quotaCooldownUntil) {
+            this.quotaCooldownUntil = target;
+          }
           lastError = new Error(`Gemini API HTTP 429 (${model}): ${errText}`);
           continue; // Try next model in cascade
         }
@@ -199,6 +244,7 @@ Reglas:
   private runDeterministicStrategist(
     lowerPrompt: string,
     recentLearnings: MarketLearningRecord[],
+    engineNote?: string,
   ): CopilotResponse {
     const executedSkills: string[] = [];
     const learningsGenerated: string[] = [];
@@ -260,9 +306,10 @@ Reglas:
       : '';
 
     const reply = `He analizado la microestructura del mercado P2P y las condiciones cambiarias en tiempo real.${bcvSummary}${memoryHint}\n\nDiseñé un plan de orquestación optimizado con rotación de capital institucional. Podés revisar los parámetros en la ficha inferior y presionar **EJECUTAR** cuando quieras despacharlo al operador.`;
+    const finalReply = engineNote ? `${reply}${engineNote}` : reply;
 
     return {
-      reply,
+      reply: finalReply,
       suggestedPlan: plan,
       skillsExecuted: executedSkills,
       learningsGenerated,
@@ -319,6 +366,22 @@ Reglas:
         riskLevel: d.level === 'ELEVATED' ? 'MEDIUM' : 'LOW',
         assignedOperatorName: 'Operador Principal',
         rationale: `Proyección a 2 horas: Volatilidad ${d.level ?? 'NORMAL'} y spread ${d.direction ?? 'ESTABLE'}. Ajuste para absorber deslizamiento y capturar margen.`,
+        status: 'PROPOSED',
+      };
+    }
+
+    if (skillName === 'simulate_trade_impact' && data && typeof data === 'object') {
+      const d = data as { targetAmountUsdt?: number; effectiveVwapPrice?: number; slippageBps?: number; liquidityHealth?: string };
+      return {
+        id: planId,
+        title: 'Ejecución Optimizada por VWAP & Anti-Slippage',
+        route: `Llenado VWAP @ ${d.effectiveVwapPrice ?? 88.5} (Slippage: ${d.slippageBps ?? 0} bps)`,
+        capitalRequiredUsdt: d.targetAmountUsdt ?? 1000,
+        expectedNetSpreadPct: 1.15,
+        expectedProfitUsdt: ((d.targetAmountUsdt ?? 1000) * 1.15) / 100,
+        riskLevel: d.liquidityHealth === 'HIGH_LIQUIDITY' ? 'LOW' : 'MEDIUM',
+        assignedOperatorName: 'Operador Principal',
+        rationale: `Simulación de impacto exitosa. Salud de liquidez: ${d.liquidityHealth ?? 'ACCEPTABLE'} con deslizamiento controlado.`,
         status: 'PROPOSED',
       };
     }

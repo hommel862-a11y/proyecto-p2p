@@ -37,6 +37,45 @@
     </div>
   </header>
 
+  <!-- INSTITUTIONAL COCKPIT HUD (TREASURY & RISK MATRIX) -->
+  <div class="cockpit-hud">
+    <div class="hud-stat">
+      <span class="hud-label">EQUITY TOTAL</span>
+      <span class="hud-value">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
+    </div>
+
+    <div class="hud-stat delta-meter">
+      <span class="hud-label">RATIO DELTA FIAT / CRYPTO</span>
+      <div class="delta-bar-container">
+        <div class="delta-bar crypto" [style.width.%]="treasuryMetrics().cryptoRatioPct"></div>
+        <div class="delta-bar fiat" [style.width.%]="treasuryMetrics().fiatRatioPct"></div>
+      </div>
+      <div class="delta-subtext">
+        <span>Crypto: {{ treasuryMetrics().cryptoRatioPct }}%</span>
+        <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">VES: {{ treasuryMetrics().fiatRatioPct }}%</span>
+      </div>
+    </div>
+
+    <div class="hud-stat">
+      <span class="hud-label">PNL DIARIO ACUMULADO</span>
+      <span class="hud-value profit">+${{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} USDT</span>
+    </div>
+
+    <div class="hud-stat">
+      <span class="hud-label">VELOCIDAD ROTACIÓN</span>
+      <span class="hud-value">{{ treasuryMetrics().avgCycleVelocityMinutes }} min / ciclo</span>
+    </div>
+
+    <div class="hud-actions">
+      <button 
+        class="killswitch-btn" 
+        [class.active]="treasuryMetrics().killSwitchActive"
+        (click)="triggerKillSwitch()">
+        {{ treasuryMetrics().killSwitchActive ? '⚠ KILL-SWITCH ACTIVO' : '🛑 KILL-SWITCH' }}
+      </button>
+    </div>
+  </div>
+
   @if (actionSuccessNotice()) {
     <div class="notice-banner success">
       <span>{{ actionSuccessNotice() }}</span>

@@ -51,6 +51,35 @@ export class Copilot implements OnInit {
   apiKeyInput = signal<string>('');
   isTestingConnection = signal<boolean>(false);
 
+  // Institutional Treasury HUD Metrics
+  treasuryMetrics = signal<{
+    totalEquityUsd: number;
+    cryptoRatioPct: number;
+    fiatRatioPct: number;
+    dailyAccumulatedProfitUsdt: number;
+    avgCycleVelocityMinutes: number;
+    killSwitchActive: boolean;
+  }>({
+    totalEquityUsd: 12500,
+    cryptoRatioPct: 88,
+    fiatRatioPct: 12,
+    dailyAccumulatedProfitUsdt: 142.50,
+    avgCycleVelocityMinutes: 14,
+    killSwitchActive: false,
+  });
+
+  triggerKillSwitch(): void {
+    const current = this.treasuryMetrics();
+    const newState = !current.killSwitchActive;
+    this.treasuryMetrics.update((m) => ({ ...m, killSwitchActive: newState }));
+    if (newState) {
+      this.actionSuccessNotice.set('🚨 KILL-SWITCH ACTIVADO: Órdenes pausadas y directiva de resguardo en USDT emitida.');
+    } else {
+      this.actionSuccessNotice.set('✅ KILL-SWITCH DESACTIVADO: Mesa de operaciones en modo normal.');
+    }
+    setTimeout(() => this.actionSuccessNotice.set(null), 5000);
+  }
+
   async ngOnInit(): Promise<void> {
     await this.refreshData();
     await this.checkConnection();

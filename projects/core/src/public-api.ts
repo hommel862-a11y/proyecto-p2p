@@ -45,6 +45,6 @@ export * from './lib/fsm';
 export * from './lib/dispute-copilot';
 export * from './lib/volatility-forecaster';
 export * from './lib/delta-neutral-hedge';
+export * from './lib/trade-impact-simulator';
 export * from './lib/agent-skills';
 export * from './lib/zk-market-mesh';
-
