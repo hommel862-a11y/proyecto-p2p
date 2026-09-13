@@ -25,7 +25,9 @@
     "e2e:electron": "node e2e/electron/e2e.mjs",
     "mcp:build": "npm run build --prefix packages/mcp-server",
     "mcp:dev": "node packages/mcp-server/dist/index.js",
-    "mcp:test": "npm test --prefix packages/mcp-server"
+    "mcp:test": "npm test --prefix packages/mcp-server",
+    "sync:vendor": "node scripts/sync-vendor-core.cjs",
+    "check:vendor": "node scripts/sync-vendor-core.cjs --check"
   },
   "private": true,
   "engines": {
