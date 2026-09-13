@@ -18,12 +18,30 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       encrypt: (plaintext: string) => ipc('crypto:encrypt', plaintext) as Promise<string>,
       decrypt: (ciphertext: string) => ipc('crypto:decrypt', ciphertext) as Promise<string>,
     },
+    db: {
+      saveOrder: (order: unknown) => ipc('p2p:db-save-order', order) as Promise<boolean>,
+      getOrder: (orderId: string) => ipc('p2p:db-get-order', orderId) as Promise<unknown>,
+      listActiveOrders: () => ipc('p2p:db-list-active-orders') as Promise<unknown[]>,
+      recordBankEvent: (event: unknown) =>
+        ipc('p2p:db-record-bank-event', event) as Promise<{ isDuplicate: boolean; eventId: number }>,
+    },
+    killswitch: {
+      trigger: (params?: { reason?: string; source?: string }) =>
+        ipc('p2p:killswitch-trigger', params ?? {}) as Promise<boolean>,
+      getStatus: () =>
+        ipc('p2p:killswitch-status') as Promise<{
+          isTriggered: boolean;
+          timestamp?: number;
+          reason?: string;
+          source?: string;
+        }>,
+    },
   };
 }
 
 // Single source of truth for the exact method names the bridge exposes.
 // Used by both the preload guard and the test to prove the surface is narrow.
-export const EXPOSED_API_KEYS = ['getVersion', 'fetchBinanceP2p', 'fetchCotizave', 'crypto'] as const;
+export const EXPOSED_API_KEYS = ['getVersion', 'fetchBinanceP2p', 'fetchCotizave', 'crypto', 'db', 'killswitch'] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
 // rejected so no arbitrary channel ever crosses the boundary.
@@ -34,5 +52,11 @@ export const ALLOWED_CHANNELS = [
   'crypto:is-available',
   'crypto:encrypt',
   'crypto:decrypt',
+  'p2p:db-save-order',
+  'p2p:db-get-order',
+  'p2p:db-list-active-orders',
+  'p2p:db-record-bank-event',
+  'p2p:killswitch-trigger',
+  'p2p:killswitch-status',
 ] as const;
 

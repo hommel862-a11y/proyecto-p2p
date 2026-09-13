@@ -4,6 +4,7 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "ignoreDeprecations": "6.0",
+    "rootDir": ".",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
@@ -11,5 +12,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["main/**/*", "preload/**/*", "shared/**/*"]
+  "include": ["main/**/*", "shared/**/*"],
+  "exclude": ["**/*.spec.ts"]
 }

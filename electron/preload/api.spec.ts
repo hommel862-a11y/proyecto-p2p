@@ -57,6 +57,24 @@ describe('Electron preload bridge (secure IPC)', () => {
     ]);
   });
 
+  it('forwards db and killswitch methods to their respective IPC channels', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:db-save-order') return Promise.resolve(true);
+      if (channel === 'p2p:killswitch-trigger') return Promise.resolve(true);
+      return Promise.resolve(null);
+    });
+
+    await api.db.saveOrder({ orderId: 'ORD-1' });
+    await api.killswitch.trigger({ reason: 'Emergencia' });
+
+    expect(calls).toEqual([
+      { channel: 'p2p:db-save-order', args: [{ orderId: 'ORD-1' }] },
+      { channel: 'p2p:killswitch-trigger', args: [{ reason: 'Emergencia' }] },
+    ]);
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);

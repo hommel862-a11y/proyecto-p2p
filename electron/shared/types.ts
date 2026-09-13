@@ -15,6 +15,53 @@ export interface CotizaveRequest {
   endpoint: 'rates';
 }
 
+export type P2POrderState =
+  | 'ORDER_DETECTED'
+  | 'PAYMENT_PENDING'
+  | 'BANK_EVENT_RECEIVED'
+  | 'IDENTITY_VERIFIED'
+  | 'SUSPECTED_TRIANGULATION'
+  | 'AWAITING_RELEASE'
+  | 'COMPLETED'
+  | 'DISPUTED'
+  | 'CANCELLED';
+
+export interface InboundBankDetails {
+  bank: string;
+  reference: string;
+  payerName?: string;
+  payerIdDoc?: string;
+  amountFiat: number;
+  timestamp: number;
+}
+
+export interface FsmAuditRecord {
+  fromState: P2POrderState;
+  toState: P2POrderState;
+  event: string;
+  timestamp: number;
+  reason?: string;
+}
+
+export interface FsmOrderContext {
+  orderId: string;
+  side: 'BUY' | 'SELL';
+  asset: string;
+  fiat: string;
+  amountCrypto: number;
+  amountFiat: number;
+  price: number;
+  counterpartyName: string;
+  counterpartyIdDoc?: string;
+  currentState: P2POrderState;
+  bankPayment?: InboundBankDetails;
+  fraudScore?: number;
+  flags: string[];
+  history: FsmAuditRecord[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -40,6 +87,30 @@ export interface P2PIpcChannels {
     request: string;
     response: string;
   };
+  'p2p:db-save-order': {
+    request: unknown;
+    response: boolean;
+  };
+  'p2p:db-get-order': {
+    request: string;
+    response: unknown;
+  };
+  'p2p:db-list-active-orders': {
+    request: void;
+    response: unknown[];
+  };
+  'p2p:db-record-bank-event': {
+    request: unknown;
+    response: { isDuplicate: boolean; eventId: number };
+  };
+  'p2p:killswitch-trigger': {
+    request: { reason?: string; source?: string };
+    response: boolean;
+  };
+  'p2p:killswitch-status': {
+    request: void;
+    response: { isTriggered: boolean; timestamp?: number; reason?: string; source?: string };
+  };
 }
 
 // The narrow, typed surface the preload exposes on `window.electron`.
@@ -51,6 +122,16 @@ export interface ElectronAPI {
     isAvailable(): Promise<boolean>;
     encrypt(plaintext: string): Promise<string>;
     decrypt(ciphertext: string): Promise<string>;
+  };
+  db: {
+    saveOrder(order: unknown): Promise<boolean>;
+    getOrder(orderId: string): Promise<unknown>;
+    listActiveOrders(): Promise<unknown[]>;
+    recordBankEvent(event: unknown): Promise<{ isDuplicate: boolean; eventId: number }>;
+  };
+  killswitch: {
+    trigger(params?: { reason?: string; source?: string }): Promise<boolean>;
+    getStatus(): Promise<{ isTriggered: boolean; timestamp?: number; reason?: string; source?: string }>;
   };
 }
 

@@ -1,5 +1,6 @@
-import { ipcMain, app, safeStorage, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, app, net, safeStorage, type IpcMainInvokeEvent } from 'electron';
 import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest } from '../../shared/types';
+import { P2PDatabaseService } from '../db/database';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -18,9 +19,9 @@ export function registerIpcHandlers(): void {
     'p2p:fetch-binance',
     async (_event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
       try {
-        const response = await fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+        const response = await net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
           method: 'POST',
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(15000),
           headers: {
             'Content-Type': 'application/json',
             'User-Agent':
@@ -69,9 +70,9 @@ export function registerIpcHandlers(): void {
       }
       try {
         const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
-        const response = await fetch(url, {
+        const response = await net.fetch(url, {
           method: 'GET',
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(15000),
           headers: {
             'X-API-Key': req.apiKey,
             Accept: 'application/json',
@@ -117,6 +118,76 @@ export function registerIpcHandlers(): void {
     const buffer = Buffer.from(ciphertext, 'base64');
     return safeStorage.decryptString(buffer);
   });
+
+  const db = getDbService();
+
+  ipcMain.removeHandler('p2p:db-save-order');
+  ipcMain.handle('p2p:db-save-order', (_event: IpcMainInvokeEvent, order: unknown): boolean => {
+    try {
+      db.saveOrder(order as any);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.removeHandler('p2p:db-get-order');
+  ipcMain.handle('p2p:db-get-order', (_event: IpcMainInvokeEvent, orderId: string): unknown => {
+    return db.getOrder(orderId);
+  });
+
+  ipcMain.removeHandler('p2p:db-list-active-orders');
+  ipcMain.handle('p2p:db-list-active-orders', (): unknown[] => {
+    return db.listActiveOrders();
+  });
+
+  ipcMain.removeHandler('p2p:db-record-bank-event');
+  ipcMain.handle(
+    'p2p:db-record-bank-event',
+    (_event: IpcMainInvokeEvent, event: unknown): { isDuplicate: boolean; eventId: number } => {
+      return db.recordInboundBankEvent(event as any);
+    },
+  );
+
+  ipcMain.removeHandler('p2p:killswitch-trigger');
+  ipcMain.handle(
+    'p2p:killswitch-trigger',
+    (_event: IpcMainInvokeEvent, params: { reason?: string; source?: string }): boolean => {
+      return triggerKillswitch(params?.reason, params?.source);
+    },
+  );
+
+  ipcMain.removeHandler('p2p:killswitch-status');
+  ipcMain.handle('p2p:killswitch-status', () => {
+    return { ...killswitchState };
+  });
+}
+
+let dbInstance: P2PDatabaseService | null = null;
+export function getDbService(): P2PDatabaseService {
+  if (!dbInstance) {
+    dbInstance = new P2PDatabaseService();
+  }
+  return dbInstance;
+}
+
+export interface KillswitchState {
+  isTriggered: boolean;
+  timestamp?: number;
+  reason?: string;
+  source?: string;
+}
+
+export const killswitchState: KillswitchState = {
+  isTriggered: false,
+};
+
+export function triggerKillswitch(reason = 'Emergencia', source = 'IPC'): boolean {
+  killswitchState.isTriggered = true;
+  killswitchState.timestamp = Date.now();
+  killswitchState.reason = reason;
+  killswitchState.source = source;
+  return true;
 }
 
 // Compile-time guarantee that the handler map matches the channel contract.

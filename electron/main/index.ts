@@ -1,9 +1,18 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, globalShortcut } from 'electron';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
 import { SECURE_WEB_PREFERENCES } from './window-config';
-import { registerIpcHandlers } from './ipc/handlers';
+import { registerIpcHandlers, triggerKillswitch } from './ipc/handlers';
+
+app.setName('p2p-decisor');
+try {
+  const customUserData = path.join(app.getPath('appData'), 'p2p-decisor-desktop');
+  app.setPath('userData', customUserData);
+} catch {
+  // Ignore fallback
+}
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -38,11 +47,12 @@ function startStaticServer(): Promise<number> {
      */
     const CSP = [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com data: blob:",
+      "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -73,8 +83,17 @@ function startStaticServer(): Promise<number> {
       res.end(data);
     });
   });
+  // Fixed port keeps the renderer origin stable so localStorage (e.g. Telegram
+  // config) persists across relaunches. Falls back to ephemeral if occupied.
+  const PREFERRED_STATIC_PORT = 51857;
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    server.once('error', () => {
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server.address();
+        resolve(typeof addr === 'object' && addr ? addr.port : 0);
+      });
+    });
+    server.listen(PREFERRED_STATIC_PORT, '127.0.0.1', () => {
       const addr = server.address();
       resolve(typeof addr === 'object' && addr ? addr.port : 0);
     });
@@ -131,6 +150,20 @@ async function createWindow(): Promise<void> {
     mainWindow?.show();
     mainWindow?.maximize();
     mainWindow?.focus();
+
+    // Register Dual Kill-Switch Global OS Hotkey (Ctrl+Alt+Shift+K)
+    globalShortcut.register('CommandOrControl+Alt+Shift+K', () => {
+      triggerKillswitch('Emergencia: Atajo global de SO accionado', 'OS_GLOBAL_HOTKEY');
+      mainWindow?.webContents.send('p2p:killswitch-triggered', {
+        timestamp: Date.now(),
+        source: 'OS_GLOBAL_HOTKEY',
+        reason: 'Atajo global de teclado (Ctrl+Alt+Shift+K)',
+      });
+      if (mainWindow && !mainWindow.isFocused()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
   });
 
   void mainWindow.loadURL(targetUrl);
@@ -141,6 +174,10 @@ async function createWindow(): Promise<void> {
 }
 
 app.whenReady().then(createWindow);
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
