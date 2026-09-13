@@ -1,0 +1,18 @@
+# Dependencies
+/node_modules/
+
+# Build output (tsc)
+/dist/
+*.tsbuildinfo
+
+# Tests
+/coverage/
+/test-results.json
+
+# Logs
+*.log
+
+# Local environment
+.env
+.env.*
+!.env.example

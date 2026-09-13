@@ -1,0 +1,161 @@
+# Trading Journey — Gentle AI Bench Configuration
+# Define journeys para validar el agente P2P en escenarios reales
+#
+# Referencia: gentle-ai bench journeys
+# Docs: https://gentlemanprogramming.github.io/gentle-ai/docs/bench/
+
+journeys:
+  - id: trading-journey-001
+    name: "Arbitraje VES/USDT exitoso"
+    description: "Ejecuta un ciclo completo: precio → evaluación riesgo → simular → registrar"
+    steps:
+      - name: "Fetch precio Binance"
+        tool: "electron_ipc_invoke"
+        args:
+          channel: "p2p:fetch-binance"
+          args:
+            - asset: "USDT"
+              fiat: "VES"
+              tradeType: "SELL"
+              payTypes: []
+              rows: 5
+        expect:
+          field: "data"
+          exists: true
+
+      - name: "Evaluar riesgo del trade"
+        tool: "evaluate_trade_risk"
+        args:
+          tradeAmountUsdt: 200
+          fiatCurrency: "VES"
+          counterpartyScore: 85
+          currentCapitalUsdt: 5000
+        expect:
+          field: "decision"
+          equals: "ALLOW"
+
+      - name: "Simular impacto"
+        tool: "simulate_trade_impact"
+        args:
+          proposedTradeAmountUsdt: 200
+          currentExposureUsdt: 300
+          maxDailyExposureLimitUsdt: 2000
+          consecutiveLosses: 0
+        expect:
+          field: "verdict"
+          equals: "SAFE_TO_EXECUTE"
+
+      - name: "Registrar operación (sin confirmación)"
+        tool: "add_operation_entry"
+        args:
+          side: "sell"
+          vesAmount: 176000
+          usdtAmount: 200
+          price: 880
+          humanConfirm: false
+        expect:
+          field: "requiresHumanConfirmation"
+          equals: true
+
+  - id: trading-journey-002
+    name: "Kill-switch ante volatilidad extrema"
+    description: "Detecta spread anómalo → activa kill-switch → verifica bloqueo"
+    steps:
+      - name: "Evaluar spread histórico"
+        tool: "calculate_spread"
+        args:
+          buyPrice: 85
+          sellPrice: 120
+          makerFeePct: 0
+          takerFeePct: 0.1
+        expect:
+          field: "isGoldenSpread"
+          equals: true
+
+      - name: "Forecast de volatilidad BCV"
+        tool: "forecast_volatility_window"
+        args:
+          parallelRate: 100
+          bcvRate: 72
+          currentSpreadPct: 40
+          askDepthUsdt: 2000
+          bidDepthUsdt: 15000
+        expect:
+          field: "spreadDynamic"
+          equals: "EXPANSION_LIKELY"
+
+      - name: "Trigger kill-switch"
+        tool: "trigger_killswitch"
+        args:
+          reason: "Brecha BCV-paralelo >40%: intervención inminente"
+          source: "AI_AGENT"
+          humanConfirm: false
+        expect:
+          field: "requiresHumanConfirmation"
+          equals: true
+
+  - id: trading-journey-003
+    name: "Auditoría diaria y exportación"
+    description: "Recopila datos de riesgo, PnL y genera reporte"
+    steps:
+      - name: "Estado de riesgo live"
+        resource: "p2p://risk/live-status"
+        expect:
+          field: "source"
+          equals: "p2p_risk_engine"
+
+      - name: "Resumen PnL"
+        resource: "p2p://ledger/pnl"
+        expect:
+          field: "source"
+          equals: "pnl_engine"
+
+      - name: "Prompt de auditoría"
+        prompt: "daily-p2p-audit"
+        expect:
+          field: "messages"
+          exists: true
+
+  - id: trading-journey-004
+    name: "Protección de privacidad con ZK Mesh"
+    description: "Verifica identificador en blacklist federada sin exponer datos"
+    steps:
+      - name: "Consultar hash ciego"
+        tool: "consult_zk_market_mesh"
+        args:
+          rawIdentifier: "V-18293041"
+        expect:
+          field: "privacyGuaranteed"
+          equals: true
+
+      - name: "Verificar que blanco = sin match"
+        tool: "consult_zk_market_mesh"
+        args:
+          rawIdentifier: "V-99999999"
+        expect:
+          field: "isFlagged"
+          equals: false
+
+  - id: trading-journey-005
+    name: "Cobertura Delta Neutral"
+    description: "Calcula hedge sintético para proteger capital VES de devaluación"
+    steps:
+      - name: "Calcular hedge necesario"
+        tool: "calculate_delta_neutral_hedge"
+        args:
+          vesBalance: 442500
+          usdtReferencePrice: 88.5
+          targetHedgePct: 100
+        expect:
+          field: "requiredShortHedgeUsdt"
+          equals: 5000
+
+      - name: "Verificar proyección de pérdida sin hedge"
+        tool: "calculate_delta_neutral_hedge"
+        args:
+          vesBalance: 88500
+          usdtReferencePrice: 88.5
+          targetHedgePct: 0
+        expect:
+          field: "projectedLossIfUnhedged5PctUsd"
+          equals: 50

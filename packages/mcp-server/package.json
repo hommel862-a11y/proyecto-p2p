@@ -1,0 +1,51 @@
+{
+  "name": "@p2p/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for P2P Decisor — Tools, Resources & Prompts for AI agents operating on VES/USDT arbitrage engine",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "p2p",
+    "arbitrage",
+    "trading",
+    "venezuela",
+    "ves",
+    "usdt",
+    "binance",
+    "ai-agents"
+  ],
+  "author": "P2P Decisor Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "@vitest/ui": "^2.1.0",
+    "eslint": "^9.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20.18.0 <26.0.0"
+  },
+  "packageManager": "npm@11.19.0"
+}
