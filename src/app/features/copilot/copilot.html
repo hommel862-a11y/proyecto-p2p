@@ -66,6 +66,28 @@
       <span class="hud-value">{{ treasuryMetrics().avgCycleVelocityMinutes }} min / ciclo</span>
     </div>
 
+    <!-- BCV Macro Sentinel & Gap Analysis -->
+    <div class="hud-stat bcv-sentinel-panel">
+      <div class="bcv-header">
+        <span class="hud-label">BRECHA BCV / PARALELO</span>
+        <span class="gap-badge" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
+          +{{ bcvIntelligence().gap.gapPct }}%
+        </span>
+      </div>
+      <div class="bcv-details">
+        <span class="rates-line">BCV: {{ bcvIntelligence().gap.bcvRate }} | Par: {{ bcvIntelligence().gap.parallelRate }}</span>
+        <div class="intervention-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
+          @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
+            🚨 INTERVENCIÓN EN CURSO (09-13 VET)
+          } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
+            ⏳ PRE-INTERVENCIÓN ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
+          } @else {
+            🟢 MERCADO LIBRE ESTÁNDAR
+          }
+        </div>
+      </div>
+    </div>
+
     <div class="hud-stat watcher-panel">
       <div class="watcher-header">
         <span class="hud-label">CENTINELA AUTÓNOMO</span>
@@ -417,6 +439,65 @@
           <small class="field-hint">
             Si la variable de entorno <code>GEMINI_API_KEY</code> ya está configurada en tu sistema, la aplicación la detecta automáticamente sin necesidad de ingresarla manualmente.
           </small>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ACTION LAUNCHER MODAL / QUICK EXECUTION DRAWER -->
+  @if (selectedActionPlan(); as plan) {
+    <div class="action-launcher-backdrop" (click)="closeActionLauncher()">
+      <div class="action-launcher-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="title-wrap">
+            <span class="bolt-icon">⚡</span>
+            <h3>Lanzador Rápido de Orden P2P</h3>
+          </div>
+          <button class="close-btn" (click)="closeActionLauncher()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="plan-summary-badge">
+            <span class="plan-id">{{ plan.id }}</span>
+            <span class="plan-status">{{ plan.status }}</span>
+          </div>
+
+          <h4 class="plan-headline">{{ plan.title }}</h4>
+          <p class="plan-route-line"><strong>Ruta:</strong> {{ plan.route }}</p>
+
+          <div class="action-metrics-grid">
+            <div class="metric-card">
+              <span class="m-label">CAPITAL REQUERIDO</span>
+              <span class="m-val">${{ plan.capitalRequiredUsdt }} USDT</span>
+            </div>
+            <div class="metric-card profit">
+              <span class="m-label">SPREAD NETO ESPERADO</span>
+              <span class="m-val">+{{ plan.expectedNetSpreadPct }}%</span>
+            </div>
+            <div class="metric-card profit">
+              <span class="m-label">BENEFICIO ESTIMADO</span>
+              <span class="m-val">+${{ plan.expectedProfitUsdt }} USDT</span>
+            </div>
+          </div>
+
+          <div class="execution-instructions">
+            <strong>Instrucción Táctica:</strong>
+            <p>{{ plan.rationale }}</p>
+          </div>
+
+          <div class="quick-actions-toolbar">
+            <button class="btn-copy-ticket" (click)="copyTicketToClipboard(plan)">
+              {{ ticketCopiedNotice() ? '✓ ¡Ticket Copiado al Portapapeles!' : '📋 Copiar Ticket de Orden' }}
+            </button>
+            <button class="btn-open-binance" (click)="openBinanceP2pPortal()">
+              🚀 Abrir Binance P2P (Filtro Listo)
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <span class="security-note">🛡 <em>Custodia segura activa: Ningún fondo se libera sin confirmación bancaria humana.</em></span>
+          <button class="btn-done" (click)="closeActionLauncher()">Entendido / Cerrar</button>
         </div>
       </div>
     </div>

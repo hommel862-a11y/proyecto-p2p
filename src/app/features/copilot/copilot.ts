@@ -1,7 +1,13 @@
-import { Component, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import type { CopilotChatMessage, StrategyPlanCard, CopilotResponse } from '@p2p/core';
+import {
+  type CopilotChatMessage,
+  type StrategyPlanCard,
+  type CopilotResponse,
+  getBcvMarketIntelligence,
+  type BcvMarketIntelligence,
+} from '@p2p/core';
 
 export interface AlphaWatcherStatusDto {
   enabled: boolean;
@@ -124,6 +130,53 @@ export class Copilot implements OnInit, OnDestroy {
     }
     this.actionSuccessNotice.set(`🎯 Umbral de Centinela ajustado a spread neto >= ${threshold}%`);
     setTimeout(() => this.actionSuccessNotice.set(null), 3000);
+  }
+
+  // BCV Macro Intelligence & Gap Monitor
+  bcvRates = signal<{ bcv: number; parallel: number }>({
+    bcv: 64.80,
+    parallel: 78.40,
+  });
+
+  bcvIntelligence = computed<BcvMarketIntelligence>(() => {
+    const { bcv, parallel } = this.bcvRates();
+    return getBcvMarketIntelligence(parallel, bcv);
+  });
+
+  // Action Launcher (Play modal & quick ticket)
+  selectedActionPlan = signal<StrategyPlanCard | null>(null);
+  ticketCopiedNotice = signal<boolean>(false);
+
+  openActionLauncher(plan: StrategyPlanCard): void {
+    this.selectedActionPlan.set(plan);
+  }
+
+  closeActionLauncher(): void {
+    this.selectedActionPlan.set(null);
+  }
+
+  copyTicketToClipboard(plan: StrategyPlanCard): void {
+    const lines = [
+      `⚡ ORDEN P2P: ${plan.title}`,
+      `• Ruta: ${plan.route}`,
+      `• Ticket: $${plan.capitalRequiredUsdt} USDT`,
+      `• Spread Esperado: +${plan.expectedNetSpreadPct}%`,
+      `• Beneficio Estimado: +$${plan.expectedProfitUsdt} USDT`,
+      `• Directiva: ${plan.rationale}`,
+    ].join('\n');
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(lines);
+      this.ticketCopiedNotice.set(true);
+      setTimeout(() => this.ticketCopiedNotice.set(false), 2500);
+    }
+  }
+
+  openBinanceP2pPortal(): void {
+    const url = 'https://p2p.binance.com/es/trade/all-payments/USDT?fiat=VES';
+    if (typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    }
   }
 
   triggerKillSwitch(): void {
@@ -299,8 +352,6 @@ export class Copilot implements OnInit, OnDestroy {
   }
 
   async executePlan(plan: StrategyPlanCard): Promise<void> {
-    if (plan.status === 'APPROVED' || plan.status === 'EXECUTED') return;
-
     const copilot = getElectronCopilot();
     if (copilot) {
       const res = await copilot.executePlan({ planId: plan.id });
@@ -315,6 +366,9 @@ export class Copilot implements OnInit, OnDestroy {
       this.actionSuccessNotice.set(`¡Estrategia ${plan.id} APROBADA en modo simulación web!`);
       setTimeout(() => this.actionSuccessNotice.set(null), 4000);
     }
+    // Launch Quick Action Drawer and auto-copy ticket
+    this.openActionLauncher(plan);
+    this.copyTicketToClipboard(plan);
   }
 
   quickPrompt(type: string): void {
