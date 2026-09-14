@@ -95,3 +95,25 @@ CREATE TABLE IF NOT EXISTS market_learnings (
 CREATE INDEX IF NOT EXISTS idx_learnings_topic ON market_learnings(topic_key);
 CREATE INDEX IF NOT EXISTS idx_learnings_category ON market_learnings(category);
 
+-- Engram Persistent Long-Term Memory Protocol
+CREATE TABLE IF NOT EXISTS engram_observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic_key TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'discovery' CHECK (type IN ('discovery', 'decision', 'architecture', 'pattern', 'bugfix', 'preference')),
+  scope TEXT NOT NULL DEFAULT 'project',
+  what TEXT NOT NULL,
+  why TEXT NOT NULL,
+  where_affected TEXT NOT NULL,
+  learned TEXT NOT NULL,
+  confidence_score REAL NOT NULL DEFAULT 1.0,
+  sample_count INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'needs_review')),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_engram_topic ON engram_observations(topic_key);
+CREATE INDEX IF NOT EXISTS idx_engram_type ON engram_observations(type);
+CREATE INDEX IF NOT EXISTS idx_engram_status ON engram_observations(status);
+CREATE INDEX IF NOT EXISTS idx_engram_updated ON engram_observations(updated_at DESC);
+

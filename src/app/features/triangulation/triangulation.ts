@@ -12,6 +12,10 @@ import {
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { AccountsService } from '../../core/accounts.service';
+import {
+  TriangulationIntelligenceService,
+  type McpTacticalReport,
+} from '../../core/triangulation-intelligence.service';
 
 const OPS_KEY = 'p2p.operations';
 
@@ -26,6 +30,7 @@ export class Triangulation {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
   private readonly accountsService = inject(AccountsService);
+  readonly intelligence = inject(TriangulationIntelligenceService);
 
   readonly presets = DEFAULT_TRIANGULAR_PRESETS;
   readonly selectedPresetId = signal<string>(this.presets[0].id);
@@ -33,6 +38,11 @@ export class Triangulation {
   readonly initialAmount = signal<number>(10000);
   readonly isSettling = signal<boolean>(false);
   readonly lastSettledId = signal<string | null>(null);
+
+  // Flight Plan (Checklist de ejecución de 3 tramos)
+  readonly step1Done = signal<boolean>(false);
+  readonly step2Done = signal<boolean>(false);
+  readonly step3Done = signal<boolean>(false);
 
   // Editable legs based on the active preset
   readonly activePreset = computed<TriangularRoutePreset>(() => {
@@ -70,39 +80,15 @@ export class Triangulation {
     const routes = this.scannedRoutes();
     if (!routes || routes.length === 0) return this.presets[0].id;
 
-    // Filter profitable routes first
     const profitable = routes.filter((r) => r.isProfitable);
     if (profitable.length > 0) {
       const best = [...profitable].sort((a, b) => b.hourlyRoiPct - a.hourlyRoiPct)[0];
       return best.routeId;
     }
 
-    // Otherwise route with highest net ROI
     const highest = [...routes].sort((a, b) => b.roiPct - a.roiPct)[0];
     return highest.routeId;
   });
-
-  onSelectPreset(presetId: string): void {
-    this.selectedPresetId.set(presetId);
-    const p = this.activePreset();
-    this.leg1Price.set(p.legs[0].price);
-    this.leg1Fee.set(p.legs[0].feePct);
-    this.leg1BankingFee.set(p.legs[0].bankingFeePct ?? 0);
-
-    this.leg2Price.set(p.legs[1].price);
-    this.leg2Fee.set(p.legs[1].feePct);
-    this.leg2BankingFee.set(p.legs[1].bankingFeePct ?? 0);
-
-    this.leg3Price.set(p.legs[2].price);
-    this.leg3Fee.set(p.legs[2].feePct);
-    this.leg3BankingFee.set(p.legs[2].bankingFeePct ?? 0);
-
-    if (p.initialCurrency === 'USDT') {
-      this.initialAmount.set(1000);
-    } else {
-      this.initialAmount.set(50000);
-    }
-  }
 
   readonly calculationResult = computed<TriangularArbitrageResult>(() => {
     const p = this.activePreset();
@@ -134,6 +120,110 @@ export class Triangulation {
       leg3,
     ]);
   });
+
+  /**
+   * MCP Strategic Tactical Assessment
+   */
+  readonly tacticalReport = computed<McpTacticalReport>(() => {
+    return this.intelligence.generateTacticalReport(this.calculationResult());
+  });
+
+  /**
+   * Identifies the primary friction or bottleneck leg in the cycle.
+   */
+  readonly bottleneckInfo = computed<{ legNumber: number; reason: string }>(() => {
+    const res = this.calculationResult();
+    const fees = res.steps.map((s, idx) => ({
+      legNumber: idx + 1,
+      totalFee: s.percentageFeeAmount + s.fixedFeeAmount + s.bankingFeeAmount,
+    }));
+    const worstFee = [...fees].sort((a, b) => b.totalFee - a.totalFee)[0];
+    return {
+      legNumber: worstFee.legNumber,
+      reason: `Mayor consumo de comisiones y fricción bancaria en el Tramo ${worstFee.legNumber}.`,
+    };
+  });
+
+  readonly flightPlanProgressPct = computed<number>(() => {
+    let count = 0;
+    if (this.step1Done()) count++;
+    if (this.step2Done()) count++;
+    if (this.step3Done()) count++;
+    return Math.round((count / 3) * 100);
+  });
+
+  onSelectPreset(presetId: string): void {
+    this.selectedPresetId.set(presetId);
+    const p = this.activePreset();
+    this.leg1Price.set(p.legs[0].price);
+    this.leg1Fee.set(p.legs[0].feePct);
+    this.leg1BankingFee.set(p.legs[0].bankingFeePct ?? 0);
+
+    this.leg2Price.set(p.legs[1].price);
+    this.leg2Fee.set(p.legs[1].feePct);
+    this.leg2BankingFee.set(p.legs[1].bankingFeePct ?? 0);
+
+    this.leg3Price.set(p.legs[2].price);
+    this.leg3Fee.set(p.legs[2].feePct);
+    this.leg3BankingFee.set(p.legs[2].bankingFeePct ?? 0);
+
+    if (p.initialCurrency === 'USDT') {
+      this.initialAmount.set(1000);
+    } else {
+      this.initialAmount.set(50000);
+    }
+
+    this.resetFlightPlan();
+  }
+
+  setQuickAmount(amount: number): void {
+    this.initialAmount.set(amount);
+  }
+
+  toggleStep(step: 1 | 2 | 3): void {
+    if (step === 1) this.step1Done.update((v) => !v);
+    if (step === 2) this.step2Done.update((v) => !v);
+    if (step === 3) this.step3Done.update((v) => !v);
+  }
+
+  resetFlightPlan(): void {
+    this.step1Done.set(false);
+    this.step2Done.set(false);
+    this.step3Done.set(false);
+  }
+
+  async syncRatesWithMcp(): Promise<void> {
+    const p = this.activePreset();
+    const legs: [ExchangeLeg, ExchangeLeg, ExchangeLeg] = [
+      { ...p.legs[0], price: this.leg1Price(), feePct: this.leg1Fee(), bankingFeePct: this.leg1BankingFee() },
+      { ...p.legs[1], price: this.leg2Price(), feePct: this.leg2Fee(), bankingFeePct: this.leg2BankingFee() },
+      { ...p.legs[2], price: this.leg3Price(), feePct: this.leg3Fee(), bankingFeePct: this.leg3BankingFee() },
+    ];
+
+    const updated = await this.intelligence.syncLiveRates(legs);
+    if (updated) {
+      this.leg1Price.set(updated[0].price);
+      this.leg2Price.set(updated[1].price);
+      this.leg3Price.set(updated[2].price);
+    }
+  }
+
+  copyCycleSummary(): void {
+    const res = this.calculationResult();
+    const report = this.tacticalReport();
+    const text = `🚀 [PLAN DE VUELO - TRIANGULACIÓN P2P]
+Ruta: ${res.routeName} (${res.initialCurrency})
+Monto Inicial: ${res.initialAmount.toLocaleString()} ${res.initialCurrency}
+Monto Final: ${res.finalAmount.toLocaleString()} ${res.initialCurrency}
+Retorno Neto: ${res.netProfit > 0 ? '+' : ''}${res.netProfit.toFixed(2)} ${res.initialCurrency} (ROI: ${res.roiPct.toFixed(2)}% | ${res.hourlyRoiPct.toFixed(2)}%/h)
+Duración Estimada: ${res.totalDurationMinutes} min | Breakeven T3: ${res.breakevenPriceLeg3.toFixed(4)}
+Riesgo: ${res.riskLevel} (${res.riskReasons.join('; ')})
+BCV Status: ${report.bcvRisk.message}
+Hedge: ${report.hedgeAdvice.needed ? report.hedgeAdvice.reason : 'No requerido'}`;
+
+    void navigator.clipboard.writeText(text);
+    this.toast.info('Resumen copiado al portapapeles.', 'Plan de Vuelo');
+  }
 
   /**
    * 1-Click Settle to Ledger: Records the 3 executed legs directly into the Operation Log
@@ -199,6 +289,9 @@ export class Triangulation {
       this.toast.success(
         `⚡ Ciclo #${cycleTag} asentado en Bitácora (+${res.netProfit.toFixed(2)} ${res.initialCurrency} PnL).`,
       );
+      this.step1Done.set(true);
+      this.step2Done.set(true);
+      this.step3Done.set(true);
     } catch {
       this.toast.error('Error al asentar el ciclo en la bitácora contable.');
     } finally {

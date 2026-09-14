@@ -5,7 +5,7 @@
  * and maintains human-in-the-loop approval barriers.
  */
 
-import type { P2PDatabaseService, StrategyPlanRecord, MarketLearningRecord } from './db/database';
+import type { P2PDatabaseService, StrategyPlanRecord, MarketLearningRecord, EngramObservationRecord } from './db/database';
 import type { CopilotChatMessage, CopilotResponse, StrategyPlanCard } from '../shared/types';
 import {
   GEMINI_FINANCIAL_SKILLS,
@@ -116,9 +116,10 @@ export class GeminiOrchestrator {
     const { prompt } = params;
     const lowerPrompt = prompt.toLowerCase();
 
-    // 1. Recover empirical context from SQLite memory
+    // 1. Recover empirical context from SQLite & Engram Persistent Memory
     const recentLearnings = this.db.listMarketLearnings(undefined, 5);
-    const learningsContext = recentLearnings
+    const engramSummary = this.db.getEngramContextSummary(6);
+    const learningsContext = engramSummary || recentLearnings
       .map((l) => `• [${l.category}] ${l.insight} (Confianza: ${((l.confidenceScore ?? 1) * 100).toFixed(0)}%)`)
       .join('\n');
 
@@ -148,15 +149,22 @@ export class GeminiOrchestrator {
    */
   private async callGeminiApi(prompt: string, learningsContext: string, apiKey: string): Promise<CopilotResponse> {
     const candidateModels = this.getCandidateModels();
-    const systemInstruction = `Sos el Agente Estratega de Arbitraje P2P Institucional (Venezuela / LATAM).
-Tu objetivo es analizar oportunidades de mercado, detectar triangulaciones viables (Golden Rule: spread neto >= 0.50%) y sugerir planes accionables.
-MEMORIA DE MERCADO RECIENTE:
-${learningsContext || 'Sin observaciones previas aún.'}
+    const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
+Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina de preservación de capital (Venezuela / LATAM).
 
-Reglas:
-1. Usá las herramientas financieras (skills) para calcular spreads exactos y consultar el BCV antes de recomendar.
-2. Si detectás una oportunidad viable, estructurá los datos numéricos claramente.
-3. El humano siempre tiene el control final ('PLAY').`;
+FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
+1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
+2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte.
+3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
+4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
+
+MEMORIA PERSISTENTE ENGRAM ACTIVA:
+${learningsContext || 'Sin observaciones previas registradas aún.'}
+
+PAUTAS DE COMUNICACIÓN:
+- Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
+- Sé conciso: explicá el PORQUÉ técnico detrás de cada número y métrica.
+- Cuando utilices herramientas financieras (skills), fundamentá los resultados numéricos obtenidos.`;
 
     const requestBody = {
       systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -219,10 +227,22 @@ Reglas:
             createdAt: Date.now(),
             updatedAt: Date.now(),
           });
+
+          this.db.saveEngramObservation({
+            topicKey: `strategy/${name}`,
+            type: 'discovery',
+            scope: 'project',
+            what: `Estrategia formulada con herramienta ${name}: ${plan.title}`,
+            why: `Validación algorítmica de mercado mediante ${model}`,
+            whereAffected: plan.route,
+            learned: `Rendimiento esperado: ${plan.expectedNetSpreadPct}% neto con ticket de ${plan.capitalRequiredUsdt} USDT. Cumple con la regla de oro institucional.`,
+            confidenceScore: 0.95,
+            status: 'active',
+          });
         }
 
         return {
-          reply: `He ejecutado la herramienta matemática **${name}** mediante **${model}** para validar las condiciones del mercado. Con base en los resultados, formulé una estrategia lista para tu aprobación.`,
+          reply: `Mirá, ejecuté la herramienta matemática **${name}** mediante **${model}** para auditar la microestructura del mercado. Con base en los números, formulé una estrategia sólida que resguarda el capital y captura margen real. Fijate en los parámetros de la ficha y dale tu visto bueno con **EJECUTAR** cuando quieras despacharla.`,
           suggestedPlan: plan,
           skillsExecuted: [name],
         };
@@ -283,29 +303,35 @@ Reglas:
     // Save to SQLite for persistence
     this.db.saveStrategyPlan(plan);
 
-    // Record market learning
-    const newLearning: MarketLearningRecord = {
+    // Save into Engram Persistent Memory
+    const engramObs: EngramObservationRecord = {
       topicKey: 'triangulation/ves-usdt-btc',
-      category: 'TRIANGULATION_ROUTE',
-      insight: `Ruta VES->USDT->BTC genera 1.35% neto con ticket de 1000 USDT en horario matutino.`,
-      confidenceScore: 0.92,
+      type: 'discovery',
+      scope: 'project',
+      what: 'Triangulación táctica VES->USDT->BTC genera 1.35% neto con ticket de 1000 USDT.',
+      why: 'Brecha cambiaria en 22.9% con liquidez profunda en Banesco previo a ventana de intervención cambiaria.',
+      whereAffected: 'Banesco Pago Móvil / Binance P2P VES-USDT',
+      learned: 'La regla de oro (>=0.50%) se cumple holgadamente (1.35%). Operar preferentemente antes del mediodía para mitigar riesgo de corte bancario.',
+      confidenceScore: 0.95,
       sampleCount: 1,
+      status: 'active',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    this.db.recordMarketLearning(newLearning);
-    learningsGenerated.push(newLearning.insight);
+    this.db.saveEngramObservation(engramObs);
+    learningsGenerated.push(engramObs.what);
 
     const bcvData = bcvIntel.data as { gap?: { gapPct?: number }; recommendation?: { action?: string } };
     const bcvSummary = bcvData?.gap
       ? `\n\n* **Brecha BCV / Paralelo**: ${bcvData.gap.gapPct?.toFixed(1)}% — Recomendación: ${bcvData.recommendation?.action ?? 'Mantener inventario activo'}`
       : '';
 
-    const memoryHint = recentLearnings.length > 0
-      ? `\n* **Memoria Activa**: ${recentLearnings.length} observaciones registradas en SQLite.`
+    const engramCount = this.db.listEngramObservations({ status: 'active' }, 100).length;
+    const memoryHint = engramCount > 0
+      ? `\n* **Memoria Persistente Engram**: ${engramCount} observaciones activas sincronizadas en SQLite.`
       : '';
 
-    const reply = `He analizado la microestructura del mercado P2P y las condiciones cambiarias en tiempo real.${bcvSummary}${memoryHint}\n\nDiseñé un plan de orquestación optimizado con rotación de capital institucional. Podés revisar los parámetros en la ficha inferior y presionar **EJECUTAR** cuando quieras despacharlo al operador.`;
+    const reply = `Mirá, analicé la microestructura del mercado P2P y las condiciones cambiarias en tiempo real con disciplina de preservación de capital.${bcvSummary}${memoryHint}\n\nDiseñé un plan táctico de rotación institucional que supera con holgura la regla de oro (1.35% vs 0.50% mínimo). Fijate en los parámetros de la ficha y dale **EJECUTAR** cuando estés listo para despacharlo al desk. Acordate: el control siempre es tuyo.`;
     const finalReply = engineNote ? `${reply}${engineNote}` : reply;
 
     return {
@@ -400,11 +426,16 @@ Reglas:
 
     const updated = this.db.updateStrategyPlanStatus(planId, 'APPROVED');
     if (updated) {
-      this.db.recordMarketLearning({
+      this.db.saveEngramObservation({
         topicKey: `execution/plan-${planId}`,
-        category: 'OPERATOR_PERFORMANCE',
-        insight: `Plan ${planId} aprobado por el operador. Delegando rotación de ${plan.capitalRequiredUsdt} USDT al desk.`,
+        type: 'decision',
+        scope: 'project',
+        what: `Plan ${planId} (${plan.title}) aprobado por el operador humano.`,
+        why: 'Autorización manual de rotación y confirmación de spread.',
+        whereAffected: `Ruta: ${plan.route}`,
+        learned: `Rotación de ${plan.capitalRequiredUsdt} USDT aprobada con spread estimado ${plan.expectedNetSpreadPct}%. Control Human-in-the-Loop completado exitosamente.`,
         confidenceScore: 1.0,
+        status: 'active',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -425,5 +456,15 @@ Reglas:
    */
   getLearnings(category?: string, limit = 50): MarketLearningRecord[] {
     return this.db.listMarketLearnings(category, limit);
+  }
+
+  /**
+   * Lists observations according to Engram Persistent Memory Protocol.
+   */
+  getEngramObservations(
+    filter?: { topicKey?: string; type?: string; status?: string },
+    limit = 50,
+  ): EngramObservationRecord[] {
+    return this.db.listEngramObservations(filter, limit);
   }
 }

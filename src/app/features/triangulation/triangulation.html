@@ -1,75 +1,140 @@
-<section class="panel">
-  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
-    <div>
-      <h2>Triangulación y Arbitraje Multidivisa</h2>
-      <p class="panel-subtitle">Simulación, escaneo multi-ruta y liquidación de ciclos de 3 tramos</p>
+<section class="panel triangulation-container">
+  <!-- Tactical Top Bar -->
+  <div class="panel-header tactical-header">
+    <div class="header-titles">
+      <div class="title-with-badge">
+        <h2>Triangulación y Arbitraje Institucional</h2>
+        <span class="badge-mcp">MCP INTELLIGENCE ACTIVE</span>
+      </div>
+      <p class="panel-subtitle">
+        Simulación de rutas de 3 tramos, plan de vuelo operativo y mitigación de riesgo cambiario
+      </p>
     </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
+
+    <!-- Quick Action Controls -->
+    <div class="header-actions">
+      <!-- Sync Market Live Button -->
       <button
         type="button"
-        class="btn-primary"
+        class="btn-secondary btn-sync"
+        [disabled]="intelligence.isSyncingMarket()"
+        (click)="syncRatesWithMcp()"
+        title="Consultar libros Binance P2P y tasas de mercado vía MCP"
+      >
+        <svg
+          class="sync-icon"
+          [class.spinning]="intelligence.isSyncingMarket()"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M23 4v6h-6M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        <span>{{ intelligence.isSyncingMarket() ? 'Sincronizando...' : 'Sincronizar Tasas MCP' }}</span>
+      </button>
+
+      <!-- Copy Flight Plan Button -->
+      <button
+        type="button"
+        class="btn-secondary"
+        (click)="copyCycleSummary()"
+        title="Copiar resumen del ciclo al portapapeles"
+      >
+        <span>📋 Plan de Vuelo</span>
+      </button>
+
+      <!-- 1-Click Settle Button -->
+      <button
+        type="button"
+        class="btn-primary btn-settle"
         [disabled]="isSettling() || calculationResult().netProfit <= 0"
         (click)="settleCycleToLedger()"
-        style="display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 8px 16px;"
       >
         <span>⚡</span>
-        <span>{{ isSettling() ? 'Asentando...' : 'Asentar Ciclo en Bitácora (1-Click)' }}</span>
+        <span>{{ isSettling() ? 'Asentando...' : 'Asentar en Bitácora (1-Click)' }}</span>
       </button>
     </div>
   </div>
 
-  <!-- Compliance Banner -->
-  <div class="section-group" style="border-left: 4px solid var(--gold); display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-    <div style="font-size: 1.3rem; line-height: 1;">🛡️</div>
-    <div>
-      <strong style="color: var(--gold); font-size: 0.95rem;">Regla de Seguridad & Cumplimiento (Self-Routing):</strong>
-      <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
-        Esta herramienta calcula arbitraje financiero <em>únicamente entre cuentas propias del operador</em>. Nunca aceptes transferencias de terceros ni triangules fondos de remitentes desconocidos para blindar tus cuentas de bloqueos bancarios y fraudes.
-      </p>
+  <!-- Telemetry Bar (BCV, MCP Gateway, Self-Routing Shield) -->
+  <div class="telemetry-bar">
+    <!-- BCV Status -->
+    <div
+      class="telemetry-chip"
+      [class.chip-warn]="tacticalReport().bcvRisk.inWindow"
+      [class.chip-ok]="!tacticalReport().bcvRisk.inWindow"
+    >
+      <span class="chip-dot"></span>
+      <span class="chip-title">BCV Risk:</span>
+      <span class="chip-val">{{ tacticalReport().bcvRisk.inWindow ? 'VENTANA CRÍTICA (' + tacticalReport().bcvRisk.probabilityPct + '%)' : 'Régimen Normal' }}</span>
     </div>
+
+    <!-- Delta Hedge Advice -->
+    @if (tacticalReport().hedgeAdvice.needed) {
+      <div class="telemetry-chip chip-hedge">
+        <span class="chip-title">🛡️ Cobertura Delta:</span>
+        <span class="chip-val">Shorter {{ tacticalReport().hedgeAdvice.shortUsdtAmount | number: '1.2-2' }} USDT</span>
+      </div>
+    }
+
+    <!-- Compliance Self-Routing Reminder -->
+    <div class="telemetry-chip chip-compliance">
+      <span class="chip-title">⚖️ Self-Routing:</span>
+      <span class="chip-val">Solo cuentas propias del operador</span>
+    </div>
+
+    @if (intelligence.lastSyncTimestamp()) {
+      <div class="telemetry-chip chip-sync-time">
+        <span class="chip-title">Última Sinc:</span>
+        <span class="chip-val font-mono">{{ intelligence.lastSyncTimestamp() }}</span>
+      </div>
+    }
   </div>
 
-  <!-- Radar Scanner Matrix (All Presets Comparison) -->
-  <div class="section-group" style="margin-bottom: 24px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 1.1rem;">📡</span>
-        <h3 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text);">
-          Radar Scanner de Rutas Arbitrables
-        </h3>
+  <!-- Section: Radar Scanner Matrix -->
+  <div class="glass-section-card scanner-card">
+    <div class="section-title-row">
+      <div class="title-group">
+        <span class="section-icon">📡</span>
+        <div>
+          <h3>Radar Scanner de Rutas Arbitrables</h3>
+          <p class="section-desc">Monitoreo simultáneo de retornos, velocidad de rotación y precios de equilibrio</p>
+        </div>
       </div>
-      <span class="text-muted" style="font-size: 0.78rem;">
-        Monitoreo simultáneo de retornos, velocidad por hora y breakeven
-      </span>
+      <div class="scanner-meta">
+        <span class="badge-accent font-mono">{{ scannedRoutes().length }} Rutas Monitorizadas</span>
+      </div>
     </div>
 
     <div class="scanner-table-wrap">
       <table class="scanner-table">
         <thead>
           <tr>
-            <th>Ruta</th>
-            <th>Divisa Base</th>
+            <th>Ruta Estratégica</th>
+            <th>Base</th>
             <th>Retorno Neto (ROI)</th>
             <th>Velocidad (%/h)</th>
-            <th>Breakeven T3</th>
-            <th>Duración Est.</th>
+            <th>Breakeven Tramo 3</th>
+            <th>Duración</th>
             <th>Riesgo</th>
             <th style="text-align: right;">Acción</th>
           </tr>
         </thead>
         <tbody>
           @for (route of scannedRoutes(); track route.routeId) {
-            <tr [class.golden-row]="route.routeId === goldenRouteId()">
+            <tr [class.golden-row]="route.routeId === goldenRouteId()" [class.selected-row]="route.routeId === selectedPresetId()">
               <td>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="color: var(--text);">{{ route.routeName }}</strong>
+                <div class="route-name-cell">
+                  <strong>{{ route.routeName }}</strong>
                   @if (route.routeId === goldenRouteId()) {
                     <span class="badge-golden">⭐ RUTA ÓPTIMA</span>
                   }
                 </div>
               </td>
               <td>
-                <span class="badge font-mono" style="font-size: 0.72rem;">{{ route.initialCurrency }}</span>
+                <span class="badge font-mono">{{ route.initialCurrency }}</span>
               </td>
               <td>
                 <span class="font-mono font-bold" [class.positive]="route.roiPct > 0" [class.negative]="route.roiPct <= 0">
@@ -100,12 +165,12 @@
               <td style="text-align: right;">
                 <button
                   type="button"
-                  class="btn-ghost"
-                  [class.active]="route.routeId === selectedPresetId()"
+                  class="btn-sm"
+                  [class.btn-primary]="route.routeId === selectedPresetId()"
+                  [class.btn-secondary]="route.routeId !== selectedPresetId()"
                   (click)="onSelectPreset(route.routeId)"
-                  style="font-size: 0.75rem; padding: 4px 10px;"
                 >
-                  {{ route.routeId === selectedPresetId() ? 'Activa' : 'Cargar' }}
+                  {{ route.routeId === selectedPresetId() ? 'Seleccionada' : 'Cargar en Vuelo' }}
                 </button>
               </td>
             </tr>
@@ -115,403 +180,360 @@
     </div>
   </div>
 
-  <!-- Route Preset Selector -->
-  <div class="section-group" style="margin-bottom: 20px;">
-    <div class="terminal-card-toolbar">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="text-muted" style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Ruta Activa:</span>
+  <!-- Main Grid: Flight Flow & Tactical Intelligence HUD -->
+  <div class="triangulation-grid">
+    <!-- Visual Corridor Flow (Node Canvas) -->
+    <div class="glass-section-card corridor-flow-card">
+      <div class="section-title-row">
+        <div class="title-group">
+          <span class="section-icon">🔄</span>
+          <div>
+            <h3>Corredor de Conversión (Flujo de 3 Tramos)</h3>
+            <p class="section-desc">{{ activePreset().name }} — Capital en Tránsito y Nodos de Cambio</p>
+          </div>
+        </div>
+
+        <!-- Quick Capital Buttons -->
+        <div class="capital-selector">
+          <span class="label">Capital Inicial:</span>
+          @if (activePreset().initialCurrency === 'USDT') {
+            <div class="quick-chips">
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 500" (click)="setQuickAmount(500)">500</button>
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 1000" (click)="setQuickAmount(1000)">1,000</button>
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 2500" (click)="setQuickAmount(2500)">2,500</button>
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 5000" (click)="setQuickAmount(5000)">5,000</button>
+            </div>
+          } @else {
+            <div class="quick-chips">
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 25000" (click)="setQuickAmount(25000)">25k</button>
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 50000" (click)="setQuickAmount(50000)">50k</button>
+              <button type="button" class="btn-chip" [class.active]="initialAmount() === 100000" (click)="setQuickAmount(100000)">100k</button>
+            </div>
+          }
+          <div class="input-inline">
+            <input
+              type="number"
+              class="form-control font-mono capital-input"
+              [(ngModel)]="initialAmount"
+              min="1"
+            />
+            <span class="currency-tag">{{ activePreset().initialCurrency }}</span>
+          </div>
+        </div>
       </div>
-      <div class="toolbar-segmented" role="group" aria-label="Rutas de Triangulación">
-        @for (preset of presets; track preset.id) {
-          <button
-            type="button"
-            class="btn-ghost"
-            [class.active]="preset.id === selectedPresetId()"
-            (click)="onSelectPreset(preset.id)"
-          >
-            {{ preset.name }}
-            @if (preset.id === goldenRouteId()) {
-              <span style="color: var(--gold); margin-left: 4px;">★</span>
-            }
-          </button>
-        }
+
+      <!-- Node Flow Layout -->
+      <div class="nodes-flow-container">
+        <!-- Node 0: Initial Capital -->
+        <div class="flow-node initial-node">
+          <div class="node-header">
+            <span class="node-tag">INICIO</span>
+            <span class="node-badge">{{ calculationResult().initialCurrency }}</span>
+          </div>
+          <div class="node-amount font-mono">
+            {{ calculationResult().initialAmount | number: '1.2-2' }}
+          </div>
+          <div class="node-sub text-muted">Capital Base Operador</div>
+        </div>
+
+        <!-- Leg 1 Connector -->
+        <div class="flow-connector" [class.step-done]="step1Done()">
+          <div class="connector-line"></div>
+          <div class="connector-pill">
+            <span class="step-num">T1</span>
+            <span class="step-details">{{ calculationResult().steps[0].platform }}</span>
+            <span class="step-rate font-mono">@ {{ calculationResult().steps[0].price | number: '1.2-4' }}</span>
+          </div>
+        </div>
+
+        <!-- Node 1: Intermediate 1 -->
+        <div class="flow-node intermediate-node">
+          <div class="node-header">
+            <span class="node-tag">NODO 1</span>
+            <span class="node-badge">{{ calculationResult().steps[0].toCurrency }}</span>
+          </div>
+          <div class="node-amount font-mono">
+            {{ calculationResult().steps[0].outputAmount | number: '1.2-2' }}
+          </div>
+          <div class="node-sub text-muted">Comisión: -{{ calculationResult().steps[0].percentageFeeAmount | number: '1.2-2' }}</div>
+        </div>
+
+        <!-- Leg 2 Connector -->
+        <div class="flow-connector" [class.step-done]="step2Done()">
+          <div class="connector-line"></div>
+          <div class="connector-pill">
+            <span class="step-num">T2</span>
+            <span class="step-details">{{ calculationResult().steps[1].platform }}</span>
+            <span class="step-rate font-mono">@ {{ calculationResult().steps[1].price | number: '1.2-4' }}</span>
+          </div>
+        </div>
+
+        <!-- Node 2: Intermediate 2 -->
+        <div class="flow-node intermediate-node">
+          <div class="node-header">
+            <span class="node-tag">NODO 2</span>
+            <span class="node-badge">{{ calculationResult().steps[1].toCurrency }}</span>
+          </div>
+          <div class="node-amount font-mono">
+            {{ calculationResult().steps[1].outputAmount | number: '1.2-2' }}
+          </div>
+          <div class="node-sub text-muted">Fricción: -{{ calculationResult().steps[1].percentageFeeAmount + calculationResult().steps[1].bankingFeeAmount | number: '1.2-2' }}</div>
+        </div>
+
+        <!-- Leg 3 Connector -->
+        <div class="flow-connector" [class.step-done]="step3Done()">
+          <div class="connector-line"></div>
+          <div class="connector-pill">
+            <span class="step-num">T3</span>
+            <span class="step-details">{{ calculationResult().steps[2].platform }}</span>
+            <span class="step-rate font-mono">@ {{ calculationResult().steps[2].price | number: '1.2-4' }}</span>
+          </div>
+        </div>
+
+        <!-- Node 3: Final Return -->
+        <div class="flow-node final-node" [class.profitable]="calculationResult().isProfitable" [class.loss]="!calculationResult().isProfitable">
+          <div class="node-header">
+            <span class="node-tag">RETORNO</span>
+            <span class="node-badge">{{ calculationResult().initialCurrency }}</span>
+          </div>
+          <div class="node-amount font-mono">
+            {{ calculationResult().finalAmount | number: '1.2-2' }}
+          </div>
+          <div class="node-pnl font-mono font-bold" [class.positive]="calculationResult().netProfit > 0" [class.negative]="calculationResult().netProfit <= 0">
+            {{ calculationResult().netProfit > 0 ? '+' : '' }}{{ calculationResult().netProfit | number: '1.2-2' }} ({{ calculationResult().roiPct | number: '1.2-2' }}%)
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Execution Flight Plan (Checklist) -->
+      <div class="flight-plan-box">
+        <div class="flight-plan-header">
+          <div class="plan-title">
+            <span>✈️ Plan de Vuelo Operativo</span>
+            <span class="flight-progress font-mono">{{ flightPlanProgressPct() }}% Completado</span>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" (click)="resetFlightPlan()">Reiniciar Vuelo</button>
+        </div>
+
+        <div class="flight-steps-grid">
+          <!-- Step 1 -->
+          <div class="flight-step-card" [class.done]="step1Done()" (click)="toggleStep(1)">
+            <div class="step-checkbox">
+              <span class="check-icon">{{ step1Done() ? '✓' : '1' }}</span>
+            </div>
+            <div class="step-content">
+              <strong>Tramo 1: {{ calculationResult().steps[0].fromCurrency }} ➔ {{ calculationResult().steps[0].toCurrency }}</strong>
+              <p>{{ calculationResult().steps[0].platform }} ({{ calculationResult().steps[0].paymentMethod }})</p>
+              <span class="step-target font-mono">Fondeo: {{ calculationResult().steps[0].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].fromCurrency }}</span>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="flight-step-card" [class.done]="step2Done()" (click)="toggleStep(2)">
+            <div class="step-checkbox">
+              <span class="check-icon">{{ step2Done() ? '✓' : '2' }}</span>
+            </div>
+            <div class="step-content">
+              <strong>Tramo 2: {{ calculationResult().steps[1].fromCurrency }} ➔ {{ calculationResult().steps[1].toCurrency }}</strong>
+              <p>{{ calculationResult().steps[1].platform }} ({{ calculationResult().steps[1].paymentMethod }})</p>
+              <span class="step-target font-mono">Transferir: {{ calculationResult().steps[1].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].fromCurrency }}</span>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="flight-step-card" [class.done]="step3Done()" (click)="toggleStep(3)">
+            <div class="step-checkbox">
+              <span class="check-icon">{{ step3Done() ? '✓' : '3' }}</span>
+            </div>
+            <div class="step-content">
+              <strong>Tramo 3: {{ calculationResult().steps[2].fromCurrency }} ➔ {{ calculationResult().steps[2].toCurrency }}</strong>
+              <p>{{ calculationResult().steps[2].platform }} ({{ calculationResult().steps[2].paymentMethod }})</p>
+              <span class="step-target font-mono">Repatriar: {{ calculationResult().steps[2].outputAmount | number: '1.2-2' }} {{ calculationResult().initialCurrency }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <p class="text-muted" style="margin: 8px 0 0; font-size: 0.82rem;">
-      {{ activePreset().description }}
-    </p>
+
+    <!-- Tactical Intelligence & Risk HUD -->
+    <div class="glass-section-card hud-card">
+      <div class="section-title-row">
+        <div class="title-group">
+          <span class="section-icon">🛡️</span>
+          <div>
+            <h3>Asistente Táctico MCP</h3>
+            <p class="section-desc">Evaluación de microestructura, timing y mitigación</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Execution Verdict Pill -->
+      <div class="verdict-banner" [class.verdict-allowed]="tacticalReport().executionAllowed" [class.verdict-blocked]="!tacticalReport().executionAllowed">
+        <div class="verdict-icon">
+          {{ tacticalReport().executionAllowed ? '🟢' : '🔴' }}
+        </div>
+        <div class="verdict-details">
+          <strong>{{ tacticalReport().executionAllowed ? 'EJECUCIÓN TÁCTICA AUTORIZADA' : 'EJECUCIÓN CONDICIONADA / ALTO RIESGO' }}</strong>
+          <p>{{ tacticalReport().optimalTimingNote }}</p>
+        </div>
+      </div>
+
+      <!-- Strategic Metrics Grid -->
+      <div class="strategic-kpi-grid">
+        <div class="kpi-mini-box">
+          <span class="kpi-mini-label">ROI NETO CICLO</span>
+          <span class="kpi-mini-val font-mono font-bold" [class.positive]="calculationResult().roiPct > 0" [class.negative]="calculationResult().roiPct <= 0">
+            {{ calculationResult().roiPct > 0 ? '+' : '' }}{{ calculationResult().roiPct | number: '1.2-2' }}%
+          </span>
+          <span class="kpi-mini-sub">{{ calculationResult().hourlyRoiPct | number: '1.2-2' }}%/hora</span>
+        </div>
+
+        <div class="kpi-mini-box">
+          <span class="kpi-mini-label">GANANCIA NETA</span>
+          <span class="kpi-mini-val font-mono font-bold" [class.positive]="calculationResult().netProfit > 0" [class.negative]="calculationResult().netProfit <= 0">
+            {{ calculationResult().netProfit > 0 ? '+' : '' }}{{ calculationResult().netProfit | number: '1.2-2' }}
+          </span>
+          <span class="kpi-mini-sub">{{ calculationResult().initialCurrency }}</span>
+        </div>
+
+        <div class="kpi-mini-box">
+          <span class="kpi-mini-label">BREAKEVEN T3</span>
+          <span class="kpi-mini-val font-mono font-bold">
+            {{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }}
+          </span>
+          <span class="kpi-mini-sub">Precio límite salida</span>
+        </div>
+
+        <div class="kpi-mini-box">
+          <span class="kpi-mini-label">DURACIÓN TOTAL</span>
+          <span class="kpi-mini-val font-mono font-bold">
+            {{ calculationResult().totalDurationMinutes }} min
+          </span>
+          <span class="kpi-mini-sub">Exposición en tránsito</span>
+        </div>
+      </div>
+
+      <!-- Friction / Bottleneck Alert -->
+      <div class="bottleneck-card">
+        <div class="bottleneck-header">
+          <span>⚠️ Cuello de Botella Detectado:</span>
+          <span class="badge badge-secondary font-mono">Tramo {{ bottleneckInfo().legNumber }}</span>
+        </div>
+        <p>{{ bottleneckInfo().reason }}</p>
+      </div>
+
+      <!-- Delta-Neutral Hedge Box -->
+      @if (tacticalReport().hedgeAdvice.needed) {
+        <div class="hedge-advisory-box">
+          <div class="hedge-header">
+            <span>🛡️ Cobertura Corta Recomendada (Delta-Neutral)</span>
+            <span class="badge badge-accent font-mono">{{ tacticalReport().hedgeAdvice.hedgeRatioPct }}% Hedge</span>
+          </div>
+          <p>{{ tacticalReport().hedgeAdvice.reason }}</p>
+          <div class="hedge-stats">
+            <div>
+              <span class="text-muted">Short en Futuros:</span>
+              <strong class="font-mono"> {{ tacticalReport().hedgeAdvice.shortUsdtAmount | number: '1.2-2' }} USDT</strong>
+            </div>
+            <div>
+              <span class="text-muted">Riesgo Cubierto:</span>
+              <strong class="font-mono"> {{ tacticalReport().hedgeAdvice.fiatExposureAmount | number: '1.2-2' }} {{ tacticalReport().hedgeAdvice.fiatCurrency }}</strong>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Risk Factors List -->
+      <div class="risk-factors-list">
+        <span class="risk-title">Factores de Riesgo Monitoreados:</span>
+        <ul>
+          @for (reason of calculationResult().riskReasons; track reason) {
+            <li>{{ reason }}</li>
+          }
+          @if (calculationResult().riskReasons.length === 0) {
+            <li class="clean-risk">✓ Todos los parámetros se encuentran dentro de los rangos seguros institucionales.</li>
+          }
+        </ul>
+      </div>
+    </div>
   </div>
 
-  <!-- KPI Overview -->
-  <div class="kpi-grid" style="margin-bottom: 24px;">
-    <div class="kpi-card">
-      <span class="kpi-label">Capital Inicial</span>
-      <span class="kpi-val font-mono">{{ initialAmount() | number: '1.2-2' }} {{ activePreset().initialCurrency }}</span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Capital Final</span>
-      <span class="kpi-val font-mono" style="color: var(--gold);">
-        {{ calculationResult().finalAmount | number: '1.2-2' }} {{ activePreset().initialCurrency }}
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Ganancia Neta (PnL)</span>
-      <span class="kpi-val font-mono" [class.positive]="calculationResult().netProfit > 0" [class.negative]="calculationResult().netProfit <= 0">
-        {{ calculationResult().netProfit > 0 ? '+' : '' }}{{ calculationResult().netProfit | number: '1.2-2' }} {{ activePreset().initialCurrency }}
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Retorno Neto (ROI)</span>
-      <span class="kpi-val font-mono" [class.positive]="calculationResult().roiPct > 0" [class.negative]="calculationResult().roiPct <= 0">
-        {{ calculationResult().roiPct > 0 ? '+' : '' }}{{ calculationResult().roiPct | number: '1.2-2' }}%
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Velocidad Capital</span>
-      <span class="kpi-val font-mono" [class.positive]="calculationResult().hourlyRoiPct > 0" [class.negative]="calculationResult().hourlyRoiPct <= 0">
-        {{ calculationResult().hourlyRoiPct > 0 ? '+' : '' }}{{ calculationResult().hourlyRoiPct | number: '1.2-2' }}%/h
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Breakeven Tramo 3</span>
-      <span class="kpi-val font-mono" style="color: var(--text);">
-        {{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }}
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Margen Slippage</span>
-      <span class="kpi-val font-mono" [class.positive]="calculationResult().slippageTolerancePct > 0" [class.negative]="calculationResult().slippageTolerancePct <= 0">
-        {{ calculationResult().slippageTolerancePct > 0 ? '+' : '' }}{{ calculationResult().slippageTolerancePct | number: '1.2-2' }}%
-      </span>
-    </div>
-
-    <div class="kpi-card">
-      <span class="kpi-label">Riesgo Cambiario</span>
-      <span class="kpi-val">
-        <span
-          class="badge"
-          [class.badge-accent]="calculationResult().riskLevel === 'LOW'"
-          [class.badge-secondary]="calculationResult().riskLevel === 'MEDIUM'"
-          [class.badge-danger]="calculationResult().riskLevel === 'HIGH' || calculationResult().riskLevel === 'CRITICAL'"
-        >
-          {{ calculationResult().riskLevel }}
-        </span>
-      </span>
-    </div>
-  </div>
-
-  <!-- Initial Capital Input & Settlement Feedback -->
-  <div class="terminal-input-card" style="margin-bottom: 24px;">
-    <div class="terminal-card-header">
-      <div class="card-header-title">
-        <span class="card-icon">⚡</span>
-        <span class="card-title">Parámetros del Ciclo Triangular</span>
-      </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        @if (lastSettledId()) {
-          <span class="badge badge-accent">Ciclo #{{ lastSettledId() }} asentado</span>
-        }
-        <span class="badge badge-accent font-mono">{{ activePreset().initialCurrency }}</span>
-      </div>
-    </div>
-
-    <div class="terminal-input-grid">
-      <div class="terminal-field">
-        <label class="terminal-label" for="initial-amount-input">
-          <span>Capital Inicial a Invertir</span>
-          <span class="terminal-subtext">Monto asignado al primer tramo</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="initial-amount-input"
-            type="number"
-            min="1"
-            step="any"
-            class="terminal-input font-bold"
-            [ngModel]="initialAmount()"
-            (ngModelChange)="initialAmount.set($event)"
-            placeholder="Monto a invertir"
-          />
+  <!-- What-If Live Parameter Tuning (3 Squircles) -->
+  <div class="glass-section-card params-card">
+    <div class="section-title-row">
+      <div class="title-group">
+        <span class="section-icon">⚙️</span>
+        <div>
+          <h3>Consola de Calibración de Parámetros (What-If)</h3>
+          <p class="section-desc">Ajustá las cotizaciones y comisiones de cada tramo para simular slippage o spreads en vivo</p>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Risk Warnings if any -->
-  @if (calculationResult().riskReasons.length > 0) {
-    <div class="section-group" style="border-left: 4px solid var(--warn); background: rgba(185, 121, 26, 0.08); margin-bottom: 24px;">
-      <strong style="color: var(--warn); font-size: 0.9rem;">⚠️ Observaciones de Riesgo y Fricción Operativa:</strong>
-      <ul style="margin: 8px 0 0 20px; padding: 0; font-size: 0.85rem; color: var(--muted);">
-        @for (reason of calculationResult().riskReasons; track reason) {
-          <li>{{ reason }}</li>
-        }
-      </ul>
-    </div>
-  }
-
-  <!-- 3-Leg Interactive Breakdown -->
-  <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-      <div>
-        <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">Desglose Operativo por Tramo</h3>
-        <span class="text-muted" style="font-size: 0.8rem;">Ajuste interactivo de cotización, comisión de plataforma y fricción bancaria</span>
-      </div>
-      <div style="font-size: 0.8rem; color: var(--gold);">
-        Ciclo completo: {{ calculationResult().totalDurationMinutes }} min ({{ calculationResult().projectedTurnoverHours | number: '1.2-2' }}h)
-      </div>
-    </div>
-
-    <div class="terminal-input-grid grid-3">
-      <!-- Tramo 1 -->
-      <div class="terminal-input-card" style="margin-bottom: 0;">
-        <div class="terminal-card-header">
-          <div class="card-header-title">
-            <span class="card-icon">1️⃣</span>
-            <span class="card-title">Tramo 1: {{ calculationResult().steps[0].fromCurrency }} ➔ {{ calculationResult().steps[0].toCurrency }}</span>
-          </div>
-          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[0].platform }}</span>
+    <div class="legs-params-grid">
+      <!-- Leg 1 Param -->
+      <div class="leg-param-card">
+        <div class="param-card-header">
+          <span class="leg-num">TRAMO 1</span>
+          <strong>{{ calculationResult().steps[0].fromCurrency }} ➔ {{ calculationResult().steps[0].toCurrency }}</strong>
         </div>
-
-        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[0].paymentMethod }}</p>
-
-        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg1-price-input">
-              <span>Precio / Cotización</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg1-price-input"
-                type="number"
-                step="any"
-                class="terminal-input font-bold"
-                [ngModel]="leg1Price()"
-                (ngModelChange)="leg1Price.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg1-fee-input">
-              <span>Comisión Plataforma (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg1-fee-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg1Fee()"
-                (ngModelChange)="leg1Fee.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg1-banking-input">
-              <span>Fricción Bancaria (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg1-banking-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg1BankingFee()"
-                (ngModelChange)="leg1BankingFee.set($event)"
-                placeholder="Ej. 0.40 para 4x1000"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Entrada:</span>
-            <span class="font-mono">{{ calculationResult().steps[0].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].fromCurrency }}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Comisiones:</span>
-            <span class="font-mono text-muted">
-              {{ calculationResult().steps[0].percentageFeeAmount + calculationResult().steps[0].bankingFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[0].toCurrency }}
-            </span>
-          </div>
-          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
-            <span style="color: var(--text);">Resultado Tramo 1:</span>
-            <span class="font-mono positive">{{ calculationResult().steps[0].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].toCurrency }}</span>
-          </div>
+        <div class="param-fields">
+          <label>
+            <span>Tasa de Cambio:</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg1Price" step="0.0001" />
+          </label>
+          <label>
+            <span>Comisión Plataforma (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg1Fee" step="0.05" />
+          </label>
+          <label>
+            <span>Comisión Bancaria / GMF (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg1BankingFee" step="0.05" />
+          </label>
         </div>
       </div>
 
-      <!-- Tramo 2 -->
-      <div class="terminal-input-card" style="margin-bottom: 0;">
-        <div class="terminal-card-header">
-          <div class="card-header-title">
-            <span class="card-icon">2️⃣</span>
-            <span class="card-title">Tramo 2: {{ calculationResult().steps[1].fromCurrency }} ➔ {{ calculationResult().steps[1].toCurrency }}</span>
-          </div>
-          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[1].platform }}</span>
+      <!-- Leg 2 Param -->
+      <div class="leg-param-card">
+        <div class="param-card-header">
+          <span class="leg-num">TRAMO 2</span>
+          <strong>{{ calculationResult().steps[1].fromCurrency }} ➔ {{ calculationResult().steps[1].toCurrency }}</strong>
         </div>
-
-        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[1].paymentMethod }}</p>
-
-        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg2-price-input">
-              <span>Precio / Cotización</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg2-price-input"
-                type="number"
-                step="any"
-                class="terminal-input font-bold"
-                [ngModel]="leg2Price()"
-                (ngModelChange)="leg2Price.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg2-fee-input">
-              <span>Comisión Plataforma (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg2-fee-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg2Fee()"
-                (ngModelChange)="leg2Fee.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg2-banking-input">
-              <span>Fricción Bancaria (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg2-banking-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg2BankingFee()"
-                (ngModelChange)="leg2BankingFee.set($event)"
-                placeholder="Ej. 0.40 para 4x1000"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Entrada:</span>
-            <span class="font-mono">{{ calculationResult().steps[1].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].fromCurrency }}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Comisiones:</span>
-            <span class="font-mono text-muted">
-              {{ calculationResult().steps[1].percentageFeeAmount + calculationResult().steps[1].bankingFeeAmount | number: '1.2-4' }} {{ calculationResult().steps[1].toCurrency }}
-            </span>
-          </div>
-          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
-            <span style="color: var(--text);">Resultado Tramo 2:</span>
-            <span class="font-mono positive">{{ calculationResult().steps[1].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].toCurrency }}</span>
-          </div>
+        <div class="param-fields">
+          <label>
+            <span>Tasa de Cambio:</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg2Price" step="0.0001" />
+          </label>
+          <label>
+            <span>Comisión Plataforma (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg2Fee" step="0.05" />
+          </label>
+          <label>
+            <span>Comisión Bancaria / GMF (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg2BankingFee" step="0.05" />
+          </label>
         </div>
       </div>
 
-      <!-- Tramo 3 -->
-      <div class="terminal-input-card" style="margin-bottom: 0;">
-        <div class="terminal-card-header">
-          <div class="card-header-title">
-            <span class="card-icon">3️⃣</span>
-            <span class="card-title">Tramo 3: {{ calculationResult().steps[2].fromCurrency }} ➔ {{ calculationResult().steps[2].toCurrency }}</span>
-          </div>
-          <span class="badge font-mono" style="font-size: 0.72rem;">{{ calculationResult().steps[2].platform }}</span>
+      <!-- Leg 3 Param -->
+      <div class="leg-param-card">
+        <div class="param-card-header">
+          <span class="leg-num">TRAMO 3</span>
+          <strong>{{ calculationResult().steps[2].fromCurrency }} ➔ {{ calculationResult().steps[2].toCurrency }}</strong>
         </div>
-
-        <p class="text-muted" style="margin: 0; font-size: 0.78rem;">Método: {{ calculationResult().steps[2].paymentMethod }}</p>
-
-        <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg3-price-input">
-              <span>Precio / Cotización</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg3-price-input"
-                type="number"
-                step="any"
-                class="terminal-input font-bold"
-                [ngModel]="leg3Price()"
-                (ngModelChange)="leg3Price.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg3-fee-input">
-              <span>Comisión Plataforma (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg3-fee-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg3Fee()"
-                (ngModelChange)="leg3Fee.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="leg3-banking-input">
-              <span>Fricción Bancaria (%)</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="leg3-banking-input"
-                type="number"
-                step="0.01"
-                class="terminal-input"
-                [ngModel]="leg3BankingFee()"
-                (ngModelChange)="leg3BankingFee.set($event)"
-                placeholder="Ej. 0.40 para 4x1000"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style="border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Entrada:</span>
-            <span class="font-mono">{{ calculationResult().steps[2].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[2].fromCurrency }}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Breakeven Mínimo:</span>
-            <span class="font-mono text-muted">{{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Margen Slippage:</span>
-            <span class="font-mono" [class.positive]="calculationResult().slippageTolerancePct > 0" [class.negative]="calculationResult().slippageTolerancePct <= 0">
-              {{ calculationResult().slippageTolerancePct | number: '1.2-2' }}%
-            </span>
-          </div>
-          <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 4px; font-weight: 700;">
-            <span style="color: var(--text);">Retorno Final:</span>
-            <span class="font-mono" style="color: var(--gold);">{{ calculationResult().steps[2].outputAmount | number: '1.2-2' }} {{ calculationResult().steps[2].toCurrency }}</span>
-          </div>
+        <div class="param-fields">
+          <label>
+            <span>Tasa de Cambio:</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg3Price" step="0.0001" />
+          </label>
+          <label>
+            <span>Comisión Plataforma (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg3Fee" step="0.05" />
+          </label>
+          <label>
+            <span>Comisión Bancaria / GMF (%):</span>
+            <input type="number" class="form-control font-mono" [(ngModel)]="leg3BankingFee" step="0.05" />
+          </label>
         </div>
       </div>
     </div>

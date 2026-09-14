@@ -48,6 +48,22 @@ export interface MarketLearningRecord {
   updatedAt?: number;
 }
 
+export interface EngramObservationRecord {
+  id?: number;
+  topicKey: string;
+  type: 'discovery' | 'decision' | 'architecture' | 'pattern' | 'bugfix' | 'preference';
+  scope?: 'project' | 'personal';
+  what: string;
+  why: string;
+  whereAffected: string;
+  learned: string;
+  confidenceScore?: number;
+  sampleCount?: number;
+  status?: 'active' | 'needs_review';
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export class P2PDatabaseService {
   private db: DatabaseSync;
 
@@ -153,6 +169,21 @@ export class P2PDatabaseService {
           confidence_score REAL NOT NULL DEFAULT 1.0,
           sample_count INTEGER NOT NULL DEFAULT 1,
           data_payload_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS engram_observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          topic_key TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'discovery',
+          scope TEXT NOT NULL DEFAULT 'project',
+          what TEXT NOT NULL,
+          why TEXT NOT NULL,
+          where_affected TEXT NOT NULL,
+          learned TEXT NOT NULL,
+          confidence_score REAL NOT NULL DEFAULT 1.0,
+          sample_count INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'active',
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
@@ -471,8 +502,29 @@ export class P2PDatabaseService {
       learning.updatedAt ?? now,
     );
 
-    const lastId = this.db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number };
-    return lastId.id;
+    const lastId = (this.db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number }).id;
+
+    // Mirror into Engram Persistent Memory protocol
+    try {
+      this.saveEngramObservation({
+        topicKey: learning.topicKey,
+        type: 'discovery',
+        scope: 'project',
+        what: learning.insight,
+        why: `Observación de mercado categorizada como ${learning.category}`,
+        whereAffected: learning.topicKey,
+        learned: learning.insight,
+        confidenceScore: learning.confidenceScore,
+        sampleCount: learning.sampleCount,
+        status: 'active',
+        createdAt: learning.createdAt ?? now,
+        updatedAt: learning.updatedAt ?? now,
+      });
+    } catch {
+      // Non-fatal if mirror fails
+    }
+
+    return lastId;
   }
 
   /**
@@ -504,6 +556,107 @@ export class P2PDatabaseService {
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     }));
+  }
+
+  /**
+   * Persists an Engram memory observation to SQLite following the mandatory Engram Protocol.
+   */
+  saveEngramObservation(obs: EngramObservationRecord): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO engram_observations (
+        topic_key, type, scope, what, why, where_affected, learned,
+        confidence_score, sample_count, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const now = Date.now();
+    stmt.run(
+      obs.topicKey,
+      obs.type,
+      obs.scope ?? 'project',
+      obs.what,
+      obs.why,
+      obs.whereAffected,
+      obs.learned,
+      obs.confidenceScore ?? 1.0,
+      obs.sampleCount ?? 1,
+      obs.status ?? 'active',
+      obs.createdAt ?? now,
+      obs.updatedAt ?? now,
+    );
+
+    const lastId = this.db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number };
+    return lastId.id;
+  }
+
+  /**
+   * Retrieves Engram memory observations with optional filters.
+   */
+  listEngramObservations(
+    filter?: { topicKey?: string; type?: string; status?: string },
+    limit = 50,
+  ): EngramObservationRecord[] {
+    let query = 'SELECT * FROM engram_observations';
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (filter?.topicKey) {
+      conditions.push('topic_key = ?');
+      params.push(filter.topicKey);
+    }
+    if (filter?.type) {
+      conditions.push('type = ?');
+      params.push(filter.type);
+    }
+    if (filter?.status) {
+      conditions.push('status = ?');
+      params.push(filter.status);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    query += ' ORDER BY updated_at DESC LIMIT ?';
+    params.push(limit);
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: Number(row['id']),
+      topicKey: row['topic_key'] as string,
+      type: row['type'] as EngramObservationRecord['type'],
+      scope: (row['scope'] as EngramObservationRecord['scope']) ?? 'project',
+      what: row['what'] as string,
+      why: row['why'] as string,
+      whereAffected: row['where_affected'] as string,
+      learned: row['learned'] as string,
+      confidenceScore: Number(row['confidence_score']),
+      sampleCount: Number(row['sample_count']),
+      status: (row['status'] as EngramObservationRecord['status']) ?? 'active',
+      createdAt: Number(row['created_at']),
+      updatedAt: Number(row['updated_at']),
+    }));
+  }
+
+  /**
+   * Formats active Engram observations as a structured markdown memory block for AI context.
+   */
+  getEngramContextSummary(limit = 5): string {
+    const observations = this.listEngramObservations({ status: 'active' }, limit);
+    if (observations.length === 0) {
+      return '';
+    }
+
+    return observations
+      .map((obs) => {
+        return `[ENGRAM MEMORY | topic: ${obs.topicKey} | type: ${obs.type} | conf: ${((obs.confidenceScore ?? 1) * 100).toFixed(0)}%]\n` +
+          `• What: ${obs.what}\n` +
+          `• Why: ${obs.why}\n` +
+          `• Where: ${obs.whereAffected}\n` +
+          `• Learned: ${obs.learned}`;
+      })
+      .join('\n\n');
   }
 
   /**

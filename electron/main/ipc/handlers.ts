@@ -241,6 +241,14 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:get-engram-observations');
+  ipcMain.handle(
+    'copilot:get-engram-observations',
+    (_event: IpcMainInvokeEvent, params?: { filter?: { topicKey?: string; type?: string; status?: string }; limit?: number }) => {
+      return orchestrator.getEngramObservations(params?.filter, params?.limit);
+    },
+  );
+
   ipcMain.removeHandler('copilot:set-api-key');
   ipcMain.handle(
     'copilot:set-api-key',
