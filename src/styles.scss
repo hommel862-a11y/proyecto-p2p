@@ -132,6 +132,74 @@
   --section-hover-border: rgba(168, 131, 47, 0.2);
 }
 
+/* ---- Apple Pro theme: Human Interface Guidelines (OLED Midnight & Liquid Glass) ---- */
+[data-theme="apple-dark"] {
+  /* ---- OLED True Black background scale ---- */
+  --bg-0: #000000;
+  --bg-1: #050508;
+
+  /* ---- Surfaces (HIG Elevated System Grays / Liquid Glass) ---- */
+  --panel: #111116;
+  --panel-2: #16161f;
+
+  /* ---- Apple Hairline borders (0.5px - 1px retina borders) ---- */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---- Apple Dynamic Label Hierarchy ---- */
+  --text: #ffffff;
+  --muted: rgba(235, 235, 245, 0.60);
+
+  /* ---- Apple Pro Accent & System Tints ---- */
+  --gold: #ffd60a;
+  --gold-strong: #ffe247;
+  --gold-deep: #d4a700;
+  --gold-border: rgba(255, 214, 10, 0.35);
+  --grad-gold: linear-gradient(135deg, #fff275 0%, #ffd60a 45%, #cc9900 100%);
+  --glow-gold: rgba(255, 214, 10, 0.22);
+
+  /* Apple System Semantic Accent Colors */
+  --accent: #30d158; /* Apple System Green (Profit) */
+  --accent-hover: #28b84d;
+  --accent-2: #0a84ff; /* Apple System Blue (Action) */
+  --accent-2-hover: #0071e3;
+  --danger: #ff453a; /* Apple System Red (Risk/Killswitch) */
+  --danger-hover: #d73a31;
+  --warn: #ff9f0a; /* Apple System Orange */
+
+  /* ---- Input / Row (OLED Elevado) ---- */
+  --input-bg: #14141a;
+  --row-bg: #111116;
+  --row-hover: #1a1a23;
+  --scroll: rgba(255, 255, 255, 0.18);
+
+  /* ---- Apple Squircle Radii (Curvatura continua HIG) ---- */
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-lg: 18px;
+
+  /* ---- Apple Liquid Glass & Depth Shadows ---- */
+  --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-lg: 0 20px 50px -10px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+
+  --glow-accent: rgba(48, 209, 88, 0.22);
+  --glow-accent-2: rgba(10, 132, 255, 0.22);
+  --glow-danger: rgba(255, 69, 58, 0.22);
+  --glow-warn: rgba(255, 159, 10, 0.22);
+
+  --blur-panel: 24px;
+
+  /* ---- Apple Typography with optical tracking ---- */
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", "Inter", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* ---- Section Architecture (Apple Glass Tint) ---- */
+  --section-bg: rgba(255, 255, 255, 0.025);
+  --section-border: rgba(255, 255, 255, 0.07);
+  --section-hover-border: rgba(255, 214, 10, 0.25);
+}
+
 /* ============================================================
    Base
    ============================================================ */
@@ -178,10 +246,23 @@ body::before {
   background-attachment: fixed;
 }
 
+[data-theme="apple-dark"] body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(10, 132, 255, 0.05), transparent 50%),
+    radial-gradient(1000px 500px at 85% 105%, rgba(255, 214, 10, 0.035), transparent 50%),
+    #000000;
+  background-attachment: fixed;
+  letter-spacing: -0.012em;
+}
+
 [data-theme="light"] body::before {
   background:
     radial-gradient(800px 500px at 30% 20%, rgba(216, 180, 92, 0.04), transparent 70%),
     radial-gradient(700px 450px at 70% 70%, rgba(43, 125, 224, 0.03), transparent 70%);
+}
+
+[data-theme="apple-dark"] body::before {
+  opacity: 0.25;
 }
 
 h1, h2, h3 { font-weight: 700; letter-spacing: 0.4px; margin: 0 0 0.4em; }
@@ -209,6 +290,11 @@ a { color: var(--accent-2); text-decoration: none; }
   background: rgba(168, 131, 47, 0.22);
 }
 
+[data-theme="apple-dark"] ::selection {
+  background: rgba(10, 132, 255, 0.35);
+  color: #ffffff;
+}
+
 /* ---- Scrollbars ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -224,6 +310,15 @@ a { color: var(--accent-2); text-decoration: none; }
 }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(168, 131, 47, 0.35);
+}
+
+[data-theme="apple-dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: none;
+}
+[data-theme="apple-dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* ============================================================
@@ -1111,6 +1206,40 @@ button:active, .btn:active {
 
   .terminal-card-footer {
     border-top-color: var(--line);
+  }
+}
+
+/* ---- Terminal cards: Apple Pro OLED midnight surface ---- */
+[data-theme="apple-dark"] {
+  .terminal-input-card {
+    background: #111116;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    }
+  }
+
+  .terminal-card-header {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .input-prefix,
+  .input-suffix {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .terminal-card-footer {
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .terminal-select option {
+    background: #111116;
+    color: #ffffff;
   }
 }
 

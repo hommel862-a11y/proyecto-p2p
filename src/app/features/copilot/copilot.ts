@@ -1,4 +1,4 @@
-import { Component, signal, OnInit, OnDestroy, computed } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, computed, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -43,6 +43,23 @@ function getElectronCopilot(): ElectronCopilotBridge | undefined {
   styleUrls: ['./copilot.scss'],
 })
 export class Copilot implements OnInit, OnDestroy {
+  @ViewChild('messagesViewport') messagesViewportRef?: ElementRef<HTMLDivElement>;
+
+  sidebarCollapsed = signal<boolean>(false);
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed.update((v) => !v);
+  }
+
+  scrollToBottom(): void {
+    setTimeout(() => {
+      if (this.messagesViewportRef?.nativeElement) {
+        const el = this.messagesViewportRef.nativeElement;
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }
+    }, 60);
+  }
+
   messages = signal<CopilotChatMessage[]>([
     {
       role: 'assistant',
@@ -284,6 +301,7 @@ export class Copilot implements OnInit, OnDestroy {
       ...msgs,
       { role: 'user', content: promptToSend, timestamp: Date.now() },
     ]);
+    this.scrollToBottom();
 
     this.isLoading.set(true);
 
@@ -304,6 +322,7 @@ export class Copilot implements OnInit, OnDestroy {
             timestamp: Date.now(),
           },
         ]);
+        this.scrollToBottom();
 
         if (response.suggestedPlan) {
           this.plans.update((p) => [response.suggestedPlan!, ...p.filter((x) => x.id !== response.suggestedPlan!.id)]);
@@ -334,6 +353,7 @@ export class Copilot implements OnInit, OnDestroy {
             },
           ]);
           this.plans.update((p) => [fallbackPlan, ...p]);
+          this.scrollToBottom();
         }, 800);
       }
     } catch (err: unknown) {
@@ -345,6 +365,7 @@ export class Copilot implements OnInit, OnDestroy {
           timestamp: Date.now(),
         },
       ]);
+      this.scrollToBottom();
     } finally {
       this.isLoading.set(false);
       await this.refreshData();

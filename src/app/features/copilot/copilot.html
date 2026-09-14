@@ -9,124 +9,87 @@
       <p class="subtitle">Planificación en tiempo real, arbitraje triangular y memoria persistente de mercado.</p>
     </div>
 
-    <div class="tab-nav">
-      <button 
-        class="tab-btn" 
-        [class.active]="activeTab() === 'chat'" 
-        (click)="activeTab.set('chat')">
-        💬 Chat Estratega
-      </button>
-      <button 
-        class="tab-btn" 
-        [class.active]="activeTab() === 'plans'" 
-        (click)="activeTab.set('plans')">
-        📋 Planes ({{ plans().length }})
-      </button>
-      <button 
-        class="tab-btn" 
-        [class.active]="activeTab() === 'memory'" 
-        (click)="activeTab.set('memory')">
-        🧠 Memoria ({{ learnings().length }})
-      </button>
-      <button 
-        class="tab-btn" 
-        [class.active]="activeTab() === 'config'" 
-        (click)="activeTab.set('config')">
-        ⚙ Conexión Gemini
-      </button>
+    <div class="header-right-controls">
+      @if (activeTab() === 'chat') {
+        <button 
+          class="zen-toggle-btn" 
+          [class.active]="!sidebarCollapsed()"
+          (click)="toggleSidebar()"
+          [title]="sidebarCollapsed() ? 'Mostrar panel lateral de controles y métricas' : 'Ocultar panel lateral (Modo Zen de Lectura)'">
+          {{ sidebarCollapsed() ? '📊 Mostrar Controles' : '✕ Ocultar Controles' }}
+        </button>
+      }
+
+      <div class="tab-nav">
+        <button 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'chat'" 
+          (click)="activeTab.set('chat')">
+          💬 Chat Estratega
+        </button>
+        <button 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'plans'" 
+          (click)="activeTab.set('plans')">
+          📋 Planes ({{ plans().length }})
+        </button>
+        <button 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'memory'" 
+          (click)="activeTab.set('memory')">
+          🧠 Memoria ({{ learnings().length }})
+        </button>
+        <button 
+          class="tab-btn" 
+          [class.active]="activeTab() === 'config'" 
+          (click)="activeTab.set('config')">
+          ⚙ Conexión Gemini
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- INSTITUTIONAL COCKPIT HUD (TREASURY & RISK MATRIX) -->
-  <div class="cockpit-hud">
-    <div class="hud-stat">
-      <span class="hud-label">EQUITY TOTAL</span>
-      <span class="hud-value">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
+  <!-- COMPACT TOP TICKER (INSTITUTIONAL METRICS) -->
+  <div class="ticker-bar">
+    <div class="ticker-item">
+      <span class="t-label">EQUITY:</span>
+      <span class="t-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
     </div>
-
-    <div class="hud-stat delta-meter">
-      <span class="hud-label">RATIO DELTA FIAT / CRYPTO</span>
-      <div class="delta-bar-container">
-        <div class="delta-bar crypto" [style.width.%]="treasuryMetrics().cryptoRatioPct"></div>
-        <div class="delta-bar fiat" [style.width.%]="treasuryMetrics().fiatRatioPct"></div>
-      </div>
-      <div class="delta-subtext">
-        <span>Crypto: {{ treasuryMetrics().cryptoRatioPct }}%</span>
-        <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">VES: {{ treasuryMetrics().fiatRatioPct }}%</span>
-      </div>
+    <div class="ticker-sep">|</div>
+    <div class="ticker-item">
+      <span class="t-label">PNL HOY:</span>
+      <span class="t-val profit">+${{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} USDT</span>
     </div>
-
-    <div class="hud-stat">
-      <span class="hud-label">PNL DIARIO ACUMULADO</span>
-      <span class="hud-value profit">+${{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} USDT</span>
+    <div class="ticker-sep">|</div>
+    <div class="ticker-item">
+      <span class="t-label">BRECHA BCV:</span>
+      <span class="t-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
+        +{{ bcvIntelligence().gap.gapPct }}%
+      </span>
+      <span class="t-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
     </div>
-
-    <div class="hud-stat">
-      <span class="hud-label">VELOCIDAD ROTACIÓN</span>
-      <span class="hud-value">{{ treasuryMetrics().avgCycleVelocityMinutes }} min / ciclo</span>
+    <div class="ticker-sep">|</div>
+    <div class="ticker-item">
+      <span class="t-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
+        @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
+          🚨 INTERVENCIÓN BCV ACTIVA
+        } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
+          ⏳ PRE-INTERVENCIÓN ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
+        } @else {
+          🟢 MERCADO LIBRE
+        }
+      </span>
     </div>
-
-    <!-- BCV Macro Sentinel & Gap Analysis -->
-    <div class="hud-stat bcv-sentinel-panel">
-      <div class="bcv-header">
-        <span class="hud-label">BRECHA BCV / PARALELO</span>
-        <span class="gap-badge" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
-          +{{ bcvIntelligence().gap.gapPct }}%
-        </span>
-      </div>
-      <div class="bcv-details">
-        <span class="rates-line">BCV: {{ bcvIntelligence().gap.bcvRate }} | Par: {{ bcvIntelligence().gap.parallelRate }}</span>
-        <div class="intervention-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
-          @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
-            🚨 INTERVENCIÓN EN CURSO (09-13 VET)
-          } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
-            ⏳ PRE-INTERVENCIÓN ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
-          } @else {
-            🟢 MERCADO LIBRE ESTÁNDAR
-          }
-        </div>
-      </div>
+    <div class="ticker-sep">|</div>
+    <div class="ticker-item">
+      <span class="t-status" [class.on]="watcherStatus().enabled">
+        {{ watcherStatus().enabled ? '🟢 Centinela ON (' + watcherStatus().scanCount + ')' : '⏸ Centinela PAUSA' }}
+      </span>
     </div>
-
-    <div class="hud-stat watcher-panel">
-      <div class="watcher-header">
-        <span class="hud-label">CENTINELA AUTÓNOMO</span>
-        <span class="watcher-scans">{{ watcherStatus().scanCount }} scans</span>
-      </div>
-      <div class="watcher-controls">
-        <button 
-          class="watcher-toggle-btn" 
-          [class.active]="watcherStatus().enabled" 
-          (click)="toggleWatcher()">
-          {{ watcherStatus().enabled ? '🟢 ACTIVO' : '⏸ PAUSA' }}
-        </button>
-        <div class="threshold-selector">
-          <span class="threshold-label">Min:</span>
-          <button 
-            class="threshold-chip" 
-            [class.selected]="watcherStatus().minNetSpreadPct === 1.0"
-            (click)="setWatcherMinSpread(1.0)">
-            1.0%
-          </button>
-          <button 
-            class="threshold-chip" 
-            [class.selected]="watcherStatus().minNetSpreadPct === 1.15"
-            (click)="setWatcherMinSpread(1.15)">
-            1.15%
-          </button>
-          <button 
-            class="threshold-chip" 
-            [class.selected]="watcherStatus().minNetSpreadPct === 1.5"
-            (click)="setWatcherMinSpread(1.5)">
-            1.5%
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="hud-actions">
+    <div class="ticker-spacer"></div>
+    <div class="ticker-actions">
       <button 
-        class="killswitch-btn" 
+        class="killswitch-pill" 
         [class.active]="treasuryMetrics().killSwitchActive"
         (click)="triggerKillSwitch()">
         {{ treasuryMetrics().killSwitchActive ? '⚠ KILL-SWITCH ACTIVO' : '🛑 KILL-SWITCH' }}
@@ -142,185 +105,274 @@
 
   <!-- TAB: CHAT -->
   @if (activeTab() === 'chat') {
-    <div class="chat-layout">
-      <!-- Quick Prompts Toolbar -->
-      <div class="quick-prompts">
-        <span class="quick-label">Sugerencias rápidas:</span>
-        <button class="quick-pill" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
-          ⚡ Buscar Triangulación
-        </button>
-        <button class="quick-pill" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
-          🏦 Alerta BCV & Brecha
-        </button>
-        <button class="quick-pill" (click)="quickPrompt('operadores')" [disabled]="isLoading()">
-          👥 Asignar Capital a Operadores
-        </button>
-        <button class="quick-pill" (click)="quickPrompt('cobertura')" [disabled]="isLoading()">
-          🛡 Cobertura Delta-Neutral
-        </button>
-        <button class="quick-pill" (click)="quickPrompt('volatilidad')" [disabled]="isLoading()">
-          📈 Volatilidad & Spread 2H
-        </button>
-        <button class="quick-pill" (click)="quickPrompt('disputa')" [disabled]="isLoading()">
-          ⚖ Expediente Disputa
-        </button>
-      </div>
-
-      <!-- Messages Stream -->
-      <div class="messages-viewport">
-        @for (msg of messages(); track $index) {
-          <div class="message-row" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
-            <div class="avatar">
-              @if (msg.role === 'user') {
-                <span>TÚ</span>
-              } @else {
-                <span>🤖</span>
-              }
+    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed()">
+      <!-- SIDEBAR CONTROLS (COLUMNA IZQUIERDA 280px) -->
+      @if (!sidebarCollapsed()) {
+        <aside class="copilot-sidebar">
+          <!-- Centinela Card -->
+          <div class="sidebar-box">
+            <div class="box-header">
+              <span class="box-title">🤖 CENTINELA AUTÓNOMO</span>
+              <span class="box-badge">{{ watcherStatus().scanCount }} scans</span>
             </div>
-            <div class="message-bubble">
-              <div class="message-content">{{ msg.content }}</div>
+            <div class="watcher-controls-row">
+              <button 
+                class="btn-watcher-toggle" 
+                [class.active]="watcherStatus().enabled" 
+                (click)="toggleWatcher()">
+                {{ watcherStatus().enabled ? '🟢 ACTIVO' : '⏸ PAUSA' }}
+              </button>
+              <div class="chips-group">
+                <span class="chips-label">Min:</span>
+                <button 
+                  class="chip-btn" 
+                  [class.selected]="watcherStatus().minNetSpreadPct === 1.0"
+                  (click)="setWatcherMinSpread(1.0)">
+                  1.0%
+                </button>
+                <button 
+                  class="chip-btn" 
+                  [class.selected]="watcherStatus().minNetSpreadPct === 1.15"
+                  (click)="setWatcherMinSpread(1.15)">
+                  1.15%
+                </button>
+                <button 
+                  class="chip-btn" 
+                  [class.selected]="watcherStatus().minNetSpreadPct === 1.5"
+                  (click)="setWatcherMinSpread(1.5)">
+                  1.5%
+                </button>
+              </div>
+            </div>
+          </div>
 
-              <!-- Interactive Strategy Card inside Chat -->
-              @if (msg.plan) {
-                <div class="strategy-card">
-                  <div class="card-header">
-                    <span class="card-tag">PLAN DE ACCIÓN RECOMENDADO</span>
-                    <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
-                      {{ msg.plan.status }}
-                    </span>
-                  </div>
-                  <h4 class="card-title">{{ msg.plan.title }}</h4>
-                  <div class="card-route">
-                    <strong>Ruta:</strong> {{ msg.plan.route }}
-                  </div>
+          <!-- Ratio Delta Fiat/Crypto Card -->
+          <div class="sidebar-box">
+            <div class="box-header">
+              <span class="box-title">⚖ RATIO FIAT / CRYPTO</span>
+              <span class="box-badge">{{ treasuryMetrics().avgCycleVelocityMinutes }}m/ciclo</span>
+            </div>
+            <div class="delta-bar-container">
+              <div class="delta-bar crypto" [style.width.%]="treasuryMetrics().cryptoRatioPct"></div>
+              <div class="delta-bar fiat" [style.width.%]="treasuryMetrics().fiatRatioPct"></div>
+            </div>
+            <div class="delta-subtext">
+              <span>Crypto: {{ treasuryMetrics().cryptoRatioPct }}%</span>
+              <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">VES: {{ treasuryMetrics().fiatRatioPct }}%</span>
+            </div>
+          </div>
 
-                  <div class="metrics-grid">
-                    <div class="metric">
-                      <span class="label">Capital Req.</span>
-                      <span class="value">${{ msg.plan.capitalRequiredUsdt }} USDT</span>
-                    </div>
-                    <div class="metric highlight">
-                      <span class="label">Spread Neto</span>
-                      <span class="value">+{{ msg.plan.expectedNetSpreadPct }}%</span>
-                    </div>
-                    <div class="metric success">
-                      <span class="label">Ganancia Neta</span>
-                      <span class="value">+${{ msg.plan.expectedProfitUsdt }} USDT</span>
-                    </div>
-                    <div class="metric">
-                      <span class="label">Nivel de Riesgo</span>
-                      <span class="value badge-risk" [class.low]="msg.plan.riskLevel === 'LOW'">
-                        {{ msg.plan.riskLevel }}
+          <!-- Quick Prompts Categorized Card -->
+          <div class="sidebar-box quick-prompts-box">
+            <div class="box-header">
+              <span class="box-title">⚡ ACCIONES RÁPIDAS</span>
+            </div>
+            <div class="quick-prompts-list">
+              <button class="quick-action-row" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
+                <span class="icon">⚡</span>
+                <div class="text-block">
+                  <strong>Triangulación Táctica</strong>
+                  <small>Buscar rutas VES/USDT/Crypto</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
+                <span class="icon">🏦</span>
+                <div class="text-block">
+                  <strong>Alerta & Brecha BCV</strong>
+                  <small>Consultar compresión y ventana</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('operadores')" [disabled]="isLoading()">
+                <span class="icon">👥</span>
+                <div class="text-block">
+                  <strong>Asignación de Capital</strong>
+                  <small>Repartir cupos y turnos</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('cobertura')" [disabled]="isLoading()">
+                <span class="icon">🛡</span>
+                <div class="text-block">
+                  <strong>Cobertura Delta-Neutral</strong>
+                  <small>Mitigar devaluación de VES</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('volatilidad')" [disabled]="isLoading()">
+                <span class="icon">📈</span>
+                <div class="text-block">
+                  <strong>Volatilidad 2H</strong>
+                  <small>Pronóstico de spread dinámico</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('disputa')" [disabled]="isLoading()">
+                <span class="icon">⚖</span>
+                <div class="text-block">
+                  <strong>Expediente Disputa</strong>
+                  <small>Generar acta probatoria OCR</small>
+                </div>
+              </button>
+            </div>
+          </div>
+        </aside>
+      }
+
+      <!-- CHAT CANVAS (COLUMNA DERECHA FLEX 1) -->
+      <main class="copilot-chat-canvas">
+        <!-- Messages Stream Viewport -->
+        <div class="messages-viewport" #messagesViewport>
+          @for (msg of messages(); track $index) {
+            <div class="message-row" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
+              <div class="avatar">
+                @if (msg.role === 'user') {
+                  <span>TÚ</span>
+                } @else {
+                  <span>🤖</span>
+                }
+              </div>
+              <div class="message-bubble">
+                <div class="message-content">{{ msg.content }}</div>
+
+                <!-- Interactive Strategy Card inside Chat -->
+                @if (msg.plan) {
+                  <div class="strategy-card">
+                    <div class="card-header">
+                      <span class="card-tag">PLAN DE ACCIÓN RECOMENDADO</span>
+                      <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
+                        {{ msg.plan.status }}
                       </span>
                     </div>
-                  </div>
+                    <h4 class="card-title">{{ msg.plan.title }}</h4>
+                    <div class="card-route">
+                      <strong>Ruta:</strong> {{ msg.plan.route }}
+                    </div>
 
-                  <!-- 3-STEP VISUAL EXECUTION ROADMAP -->
-                  <div class="strategy-steps">
-                    <div class="step-title">🧭 PLAN DE ACCIÓN PASO A PASO:</div>
-                    <div class="step-item">
-                      <span class="step-num">1</span>
-                      <div class="step-content">
-                        <strong>Entrada (Maker Compra):</strong> Abrir orden de compra en Binance P2P por ${{ msg.plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.
+                    <div class="metrics-grid">
+                      <div class="metric">
+                        <span class="label">Capital Req.</span>
+                        <span class="value">${{ msg.plan.capitalRequiredUsdt }} USDT</span>
+                      </div>
+                      <div class="metric highlight">
+                        <span class="label">Spread Neto</span>
+                        <span class="value">+{{ msg.plan.expectedNetSpreadPct }}%</span>
+                      </div>
+                      <div class="metric success">
+                        <span class="label">Ganancia Neta</span>
+                        <span class="value">+${{ msg.plan.expectedProfitUsdt }} USDT</span>
+                      </div>
+                      <div class="metric">
+                        <span class="label">Nivel de Riesgo</span>
+                        <span class="value badge-risk" [class.low]="msg.plan.riskLevel === 'LOW'">
+                          {{ msg.plan.riskLevel }}
+                        </span>
                       </div>
                     </div>
-                    <div class="step-item">
-                      <span class="step-num">2</span>
-                      <div class="step-content">
-                        <strong>Verificación & Custodia:</strong> Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.
+
+                    <!-- 3-STEP VISUAL EXECUTION ROADMAP -->
+                    <div class="strategy-steps">
+                      <div class="step-title">🧭 PLAN DE ACCIÓN PASO A PASO:</div>
+                      <div class="step-item">
+                        <span class="step-num">1</span>
+                        <div class="step-content">
+                          <strong>Entrada (Maker Compra):</strong> Abrir orden de compra en Binance P2P por ${{ msg.plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <span class="step-num">2</span>
+                        <div class="step-content">
+                          <strong>Verificación & Custodia:</strong> Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.
+                        </div>
+                      </div>
+                      <div class="step-item">
+                        <span class="step-num">3</span>
+                        <div class="step-content">
+                          <strong>Salida & Ganancia (Maker Venta):</strong> Publicar anuncio de venta con markup optimizado para capturar el +{{ msg.plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ msg.plan.expectedProfitUsdt }} USDT).
+                        </div>
                       </div>
                     </div>
-                    <div class="step-item">
-                      <span class="step-num">3</span>
-                      <div class="step-content">
-                        <strong>Salida & Ganancia (Maker Venta):</strong> Publicar anuncio de venta con markup optimizado para capturar el +{{ msg.plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ msg.plan.expectedProfitUsdt }} USDT).
-                      </div>
-                    </div>
-                  </div>
 
-                  <!-- FINANCIAL BREAKDOWN ACCORDION -->
-                  <div class="breakdown-section">
-                    <button class="btn-breakdown" (click)="toggleBreakdown(msg.plan.id)">
-                      {{ isBreakdownOpen(msg.plan.id) ? '▲ Ocultar Desglose Financiero' : '🔍 Ver Desglose Financiero y Comisiones' }}
-                    </button>
-                    @if (isBreakdownOpen(msg.plan.id)) {
-                      <div class="breakdown-details">
-                        <div class="breakdown-row">
-                          <span>Spread Bruto de Mercado:</span>
-                          <strong>+{{ (msg.plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
-                        </div>
-                        <div class="breakdown-row fee">
-                          <span>Comisión de Comercio Binance (Maker):</span>
-                          <strong>-0.35%</strong>
-                        </div>
-                        <div class="breakdown-row fee">
-                          <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
-                          <strong>0.00% (Sin IGTF)</strong>
-                        </div>
-                        <div class="breakdown-row net">
-                          <span>Margen Neto Limpio en Mano:</span>
-                          <strong class="highlight">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
-                        </div>
-                      </div>
-                    }
-                  </div>
-
-                  <p class="card-rationale">
-                    <strong>Fundamento Algorítmico:</strong> {{ msg.plan.rationale }}
-                  </p>
-
-                  <div class="security-guarantee">
-                    🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
-                  </div>
-
-                  <div class="card-footer">
-                    @if (msg.plan.assignedOperatorName) {
-                      <span class="operator-badge">👤 Asignado a: {{ msg.plan.assignedOperatorName }}</span>
-                    }
-                    
-                    @if (msg.plan.status === 'PROPOSED') {
-                      <button 
-                        class="btn-play" 
-                        (click)="executePlan(msg.plan)">
-                        ▶ EJECUTAR ESTRATEGIA (PLAY)
+                    <!-- FINANCIAL BREAKDOWN ACCORDION -->
+                    <div class="breakdown-section">
+                      <button class="btn-breakdown" (click)="toggleBreakdown(msg.plan.id)">
+                        {{ isBreakdownOpen(msg.plan.id) ? '▲ Ocultar Desglose Financiero' : '🔍 Ver Desglose Financiero y Comisiones' }}
                       </button>
-                    } @else {
-                      <span class="badge-approved">✓ APROBADA Y ENVIADA A MESA</span>
-                    }
+                      @if (isBreakdownOpen(msg.plan.id)) {
+                        <div class="breakdown-details">
+                          <div class="breakdown-row">
+                            <span>Spread Bruto de Mercado:</span>
+                            <strong>+{{ (msg.plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
+                          </div>
+                          <div class="breakdown-row fee">
+                            <span>Comisión de Comercio Binance (Maker):</span>
+                            <strong>-0.35%</strong>
+                          </div>
+                          <div class="breakdown-row fee">
+                            <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
+                            <strong>0.00% (Sin IGTF)</strong>
+                          </div>
+                          <div class="breakdown-row net">
+                            <span>Margen Neto Limpio en Mano:</span>
+                            <strong class="highlight">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
+                          </div>
+                        </div>
+                      }
+                    </div>
+
+                    <p class="card-rationale">
+                      <strong>Fundamento Algorítmico:</strong> {{ msg.plan.rationale }}
+                    </p>
+
+                    <div class="security-guarantee">
+                      🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
+                    </div>
+
+                    <div class="card-footer">
+                      @if (msg.plan.assignedOperatorName) {
+                        <span class="operator-badge">👤 Asignado a: {{ msg.plan.assignedOperatorName }}</span>
+                      }
+                      
+                      @if (msg.plan.status === 'PROPOSED') {
+                        <button 
+                          class="btn-play" 
+                          (click)="executePlan(msg.plan)">
+                          ▶ EJECUTAR ESTRATEGIA (PLAY)
+                        </button>
+                      } @else {
+                        <span class="badge-approved">✓ APROBADA Y ENVIADA A MESA</span>
+                      }
+                    </div>
                   </div>
-                </div>
-              }
+                }
+              </div>
             </div>
-          </div>
-        }
+          }
 
-        @if (isLoading()) {
-          <div class="message-row assistant loading-row">
-            <div class="avatar">🤖</div>
-            <div class="message-bubble loading-bubble">
-              <span class="typing-indicator">Consultando herramientas del Core y analizando liquidez...</span>
+          @if (isLoading()) {
+            <div class="message-row assistant loading-row">
+              <div class="avatar">🤖</div>
+              <div class="message-bubble loading-bubble">
+                <span class="typing-indicator">Consultando herramientas del Core y analizando liquidez...</span>
+              </div>
             </div>
-          </div>
-        }
-      </div>
+          }
+        </div>
 
-      <!-- Input Bar -->
-      <div class="input-container">
-        <form (ngSubmit)="sendPrompt()" class="input-form">
-          <input
-            type="text"
-            placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos..."
-            [ngModel]="inputPrompt()"
-            (ngModelChange)="inputPrompt.set($event)"
-            name="userPrompt"
-            [disabled]="isLoading()"
-            autocomplete="off"
-          />
-          <button type="submit" class="btn-send" [disabled]="!inputPrompt().trim() || isLoading()">
-            <span>ENVIAR</span>
-          </button>
-        </form>
-      </div>
+        <!-- Input Bar -->
+        <div class="input-container">
+          <form (ngSubmit)="sendPrompt()" class="input-form">
+            <input
+              type="text"
+              placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos... (Enter para enviar)"
+              [ngModel]="inputPrompt()"
+              (ngModelChange)="inputPrompt.set($event)"
+              name="userPrompt"
+              [disabled]="isLoading()"
+              autocomplete="off"
+            />
+            <button type="submit" class="btn-send" [disabled]="!inputPrompt().trim() || isLoading()">
+              <span>ENVIAR</span>
+            </button>
+          </form>
+        </div>
+      </main>
     </div>
   }
 

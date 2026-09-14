@@ -43,30 +43,45 @@ describe('App', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
 
-    it('toggleTheme() flips the theme and persists the choice', () => {
+    it('toggleTheme() flips through the 3 themes and persists the choice', () => {
       const fixture = TestBed.createComponent(App);
       const c = fixture.componentInstance;
       fixture.detectChanges();
+
+      // dark -> apple-dark
+      c.toggleTheme();
+      expect(c.theme()).toBe('apple-dark');
+      expect(localStorage.getItem('p2p.theme')).toBe('apple-dark');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('apple-dark');
+
+      // apple-dark -> light
       c.toggleTheme();
       expect(c.theme()).toBe('light');
       expect(localStorage.getItem('p2p.theme')).toBe('light');
       expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+      // light -> dark
       c.toggleTheme();
       expect(c.theme()).toBe('dark');
       expect(localStorage.getItem('p2p.theme')).toBe('dark');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
 
-    it('initialTheme() honors a stored light preference', () => {
+    it('initialTheme() honors a stored apple-dark or light preference', () => {
+      localStorage.setItem('p2p.theme', 'apple-dark');
+      let fixture = TestBed.createComponent(App);
+      expect(fixture.componentInstance.theme()).toBe('apple-dark');
+
       localStorage.setItem('p2p.theme', 'light');
-      const fixture = TestBed.createComponent(App);
+      fixture = TestBed.createComponent(App);
       expect(fixture.componentInstance.theme()).toBe('light');
     });
 
-    it('renders the toggle button with the correct Spanish label', () => {
+    it('renders the toggle button with the current theme label', () => {
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Modo claro');
+      expect(compiled.textContent).toContain('Modo oscuro');
     });
   });
 

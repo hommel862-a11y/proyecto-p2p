@@ -1,9 +1,11 @@
-import { Component, signal, inject, DestroyRef } from '@angular/core';
+import { Component, signal, computed, inject, DestroyRef } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { ToastComponent } from './core/toast.component';
 import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
 import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
+
+export type AppTheme = 'dark' | 'apple-dark' | 'light';
 
 @Component({
   imports: [
@@ -20,7 +22,18 @@ import { HotkeysService } from './core/hotkeys.service';
 })
 export class App {
   protected readonly title = signal('p2p');
-  readonly theme = signal<'dark' | 'light'>(this.initialTheme());
+  readonly theme = signal<AppTheme>(this.initialTheme());
+  readonly themeLabel = computed<string>(() => {
+    switch (this.theme()) {
+      case 'apple-dark':
+        return 'Apple Pro';
+      case 'light':
+        return 'Modo claro';
+      case 'dark':
+      default:
+        return 'Modo oscuro';
+    }
+  });
   /** Real app version when running under Electron; falls back to the web build. */
   readonly version = signal<string>('1.0.0');
   readonly hotkeys = inject(HotkeysService);
@@ -55,16 +68,21 @@ export class App {
     }
   }
 
-  private initialTheme(): 'dark' | 'light' {
+  private initialTheme(): AppTheme {
     try {
-      return localStorage.getItem('p2p.theme') === 'light' ? 'light' : 'dark';
+      const stored = localStorage.getItem('p2p.theme');
+      if (stored === 'apple-dark' || stored === 'light' || stored === 'dark') {
+        return stored;
+      }
+      return 'dark';
     } catch {
       return 'dark';
     }
   }
 
   toggleTheme(): void {
-    const next = this.theme() === 'dark' ? 'light' : 'dark';
+    const current = this.theme();
+    const next: AppTheme = current === 'dark' ? 'apple-dark' : current === 'apple-dark' ? 'light' : 'dark';
     this.theme.set(next);
     try {
       localStorage.setItem('p2p.theme', next);

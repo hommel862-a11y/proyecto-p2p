@@ -1,22 +1,22 @@
 .copilot-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 80px);
-  max-width: 1200px;
+  height: calc(100vh - 75px);
+  max-width: 1560px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   box-sizing: border-box;
 }
 
 .copilot-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 1rem;
-  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
 
   .bot-badge {
     display: inline-flex;
@@ -29,7 +29,7 @@
     font-size: 0.7rem;
     font-weight: 700;
     color: #f5e6bd;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
 
     .status-dot {
       width: 6px;
@@ -42,207 +42,273 @@
 
   h2 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     color: #f1f5f9;
   }
 
   .subtitle {
     margin: 2px 0 0 0;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: #94a3b8;
   }
 
-  .tab-nav {
+  .header-right-controls {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
 
-    .tab-btn {
+    .zen-toggle-btn {
       background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       color: #cbd5e1;
-      padding: 6px 14px;
+      padding: 6px 12px;
       border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
       cursor: pointer;
-      font-size: 0.85rem;
       transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
 
       &:hover {
         background: rgba(255, 255, 255, 0.1);
+        color: #f8fafc;
+        border-color: rgba(216, 180, 92, 0.3);
       }
 
       &.active {
-        background: rgba(216, 180, 92, 0.2);
-        border-color: #d8b45c;
+        background: rgba(216, 180, 92, 0.15);
+        border-color: rgba(216, 180, 92, 0.4);
         color: #fef08a;
-        font-weight: 600;
+      }
+    }
+
+    .tab-nav {
+      display: flex;
+      gap: 8px;
+
+      .tab-btn {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #cbd5e1;
+        padding: 6px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        &.active {
+          background: rgba(216, 180, 92, 0.2);
+          border-color: #d8b45c;
+          color: #fef08a;
+          font-weight: 600;
+        }
       }
     }
   }
 }
 
-/* Institutional Cockpit HUD */
-.cockpit-hud {
+/* Compact Top Ticker (Institutional Metrics) */
+.ticker-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: rgba(15, 23, 42, 0.7);
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 0.75rem 1.25rem;
-  margin-bottom: 1rem;
-  gap: 1.25rem;
-  flex-wrap: wrap;
+  border-radius: 8px;
+  padding: 5px 12px;
+  min-height: 36px;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+  overflow-x: auto;
 
-  .hud-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+  .ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    white-space: nowrap;
 
-    .hud-label {
-      font-size: 0.65rem;
+    .t-label {
       font-weight: 700;
-      color: #94a3b8;
+      color: #64748b;
       letter-spacing: 0.05em;
+      font-size: 0.65rem;
     }
 
-    .hud-value {
-      font-size: 0.95rem;
+    .t-val {
       font-weight: 700;
       color: #f8fafc;
 
       &.profit {
         color: #4ade80;
       }
-    }
-  }
 
-  .delta-meter {
-    min-width: 180px;
-
-    .delta-bar-container {
-      display: flex;
-      height: 6px;
-      border-radius: 3px;
-      overflow: hidden;
-      background: rgba(255, 255, 255, 0.1);
-      margin: 2px 0;
-
-      .delta-bar.crypto {
-        background: #38bdf8;
-      }
-
-      .delta-bar.fiat {
-        background: #f59e0b;
-      }
-    }
-
-    .delta-subtext {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.65rem;
-      color: #94a3b8;
-
-      span.warning {
-        color: #ef4444;
-        font-weight: 700;
-      }
-    }
-  }
-
-  .bcv-sentinel-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.25);
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-
-    .bcv-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-
-      .gap-badge {
-        font-size: 0.68rem;
-        font-weight: 800;
-        padding: 1px 6px;
-        border-radius: 4px;
-        background: rgba(34, 197, 94, 0.2);
-        color: #4ade80;
-        border: 1px solid rgba(34, 197, 94, 0.4);
-
-        &.warning {
-          background: rgba(245, 158, 11, 0.2);
-          color: #fbbf24;
-          border-color: rgba(245, 158, 11, 0.4);
-        }
-
-        &.danger {
-          background: rgba(239, 68, 68, 0.2);
-          color: #f87171;
-          border-color: rgba(239, 68, 68, 0.4);
-        }
-      }
-    }
-
-    .bcv-details {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-
-      .rates-line {
-        font-size: 0.62rem;
-        color: #94a3b8;
-        font-family: monospace;
-      }
-
-      .intervention-pill {
-        font-size: 0.62rem;
-        font-weight: 700;
+      &.gap {
         color: #38bdf8;
 
-        &.active-window {
-          color: #f43f5e;
-          animation: pulse 1.5s infinite;
-        }
+        &.warning { color: #fbbf24; }
+        &.danger { color: #f87171; }
+      }
+    }
+
+    .t-sub {
+      color: #64748b;
+      font-size: 0.65rem;
+      font-family: monospace;
+    }
+
+    .t-pill {
+      font-weight: 700;
+      font-size: 0.68rem;
+      color: #38bdf8;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+
+      &.active-window {
+        color: #f43f5e;
+        background: rgba(244, 63, 94, 0.15);
+        border-color: rgba(244, 63, 94, 0.3);
+        animation: pulse-kill 1.5s infinite;
+      }
+    }
+
+    .t-status {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #94a3b8;
+
+      &.on {
+        color: #4ade80;
       }
     }
   }
 
-  .watcher-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 4px 8px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+  .ticker-sep {
+    color: rgba(255, 255, 255, 0.12);
+    font-size: 0.8rem;
+  }
 
-    .watcher-header {
+  .ticker-spacer {
+    flex: 1;
+  }
+
+  .ticker-actions {
+    .killswitch-pill {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid #ef4444;
+      color: #fca5a5;
+      font-weight: 700;
+      font-size: 0.7rem;
+      padding: 3px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.3);
+      }
+
+      &.active {
+        background: #ef4444;
+        color: #ffffff;
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+        animation: pulse-kill 1.5s infinite;
+      }
+    }
+  }
+}
+
+@keyframes pulse-kill {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.notice-banner {
+  padding: 6px 14px;
+  border-radius: 6px;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+
+  &.success {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+  }
+}
+
+/* 2-Column Workbench Layout */
+.copilot-workbench {
+  display: flex;
+  gap: 0.85rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+
+  &.sidebar-hidden {
+    .copilot-sidebar {
+      display: none;
+    }
+  }
+}
+
+.copilot-sidebar {
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-y: auto;
+  padding-right: 4px;
+  flex-shrink: 0;
+
+  .sidebar-box {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 9px 12px;
+
+    .box-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 8px;
+      margin-bottom: 6px;
 
-      .watcher-scans {
-        font-size: 0.62rem;
+      .box-title {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #94a3b8;
+        letter-spacing: 0.05em;
+      }
+
+      .box-badge {
+        font-size: 0.65rem;
         color: #64748b;
         font-family: monospace;
       }
     }
 
-    .watcher-controls {
+    .watcher-controls-row {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
 
-      .watcher-toggle-btn {
+      .btn-watcher-toggle {
         font-size: 0.7rem;
         font-weight: 700;
         padding: 3px 8px;
-        border-radius: 4px;
+        border-radius: 5px;
         border: 1px solid rgba(255, 255, 255, 0.15);
         background: rgba(255, 255, 255, 0.05);
         color: #94a3b8;
@@ -255,27 +321,25 @@
           color: #4ade80;
         }
 
-        &:hover {
-          filter: brightness(1.2);
-        }
+        &:hover { filter: brightness(1.2); }
       }
 
-      .threshold-selector {
+      .chips-group {
         display: flex;
         align-items: center;
         gap: 3px;
 
-        .threshold-label {
+        .chips-label {
           font-size: 0.65rem;
           color: #64748b;
           font-weight: 600;
         }
 
-        .threshold-chip {
+        .chip-btn {
           font-size: 0.65rem;
-          padding: 2px 5px;
-          border-radius: 3px;
-          background: rgba(255, 255, 255, 0.06);
+          padding: 2px 6px;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.05);
           border: 1px solid transparent;
           color: #cbd5e1;
           cursor: pointer;
@@ -294,92 +358,124 @@
         }
       }
     }
+
+    .delta-bar-container {
+      display: flex;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 4px 0;
+
+      .delta-bar.crypto { background: #38bdf8; }
+      .delta-bar.fiat { background: #f59e0b; }
+    }
+
+    .delta-subtext {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.65rem;
+      color: #94a3b8;
+
+      span.warning {
+        color: #ef4444;
+        font-weight: 700;
+      }
+    }
   }
 
-  .hud-actions {
-    .killswitch-btn {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid #ef4444;
-      color: #fca5a5;
-      font-weight: 700;
-      font-size: 0.75rem;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s ease;
+  .quick-prompts-box {
+    flex: 1;
 
-      &:hover {
-        background: rgba(239, 68, 68, 0.3);
-      }
+    .quick-prompts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
 
-      &.active {
-        background: #ef4444;
-        color: #ffffff;
-        box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
-        animation: pulse-kill 1.5s infinite;
+      .quick-action-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 6px;
+        padding: 6px 9px;
+        color: #cbd5e1;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        transition: all 0.18s ease;
+
+        .icon {
+          font-size: 1rem;
+          flex-shrink: 0;
+        }
+
+        .text-block {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          overflow: hidden;
+
+          strong {
+            font-size: 0.74rem;
+            color: #e2e8f0;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+          }
+
+          small {
+            font-size: 0.62rem;
+            color: #64748b;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+          }
+        }
+
+        &:hover:not(:disabled) {
+          background: rgba(216, 180, 92, 0.12);
+          border-color: rgba(216, 180, 92, 0.35);
+          transform: translateX(2px);
+
+          strong {
+            color: #fef08a;
+          }
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
       }
     }
   }
 }
 
-@keyframes pulse-kill {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.03); }
-  100% { transform: scale(1); }
-}
-
-.notice-banner {
-  padding: 8px 16px;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-
-  &.success {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.4);
-    color: #4ade80;
-  }
-}
-
-/* Chat Layout */
-.chat-layout {
+/* Chat Canvas (Full-Height Reading Area) */
+.copilot-chat-canvas {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
 }
 
-.quick-prompts {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0.75rem;
-  overflow-x: auto;
-  padding-bottom: 4px;
-
-  .quick-label {
-    font-size: 0.75rem;
-    color: #64748b;
-    white-space: nowrap;
+@media (max-width: 960px) {
+  .copilot-workbench {
+    flex-direction: column;
   }
-
-  .quick-pill {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #cbd5e1;
-    padding: 4px 10px;
-    border-radius: 14px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-
-    &:hover:not(:disabled) {
-      background: rgba(216, 180, 92, 0.15);
-      border-color: rgba(216, 180, 92, 0.4);
-      color: #fef08a;
-    }
+  .copilot-sidebar {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    max-height: 220px;
   }
 }
 
@@ -1239,6 +1335,131 @@
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/* ============================================================
+   Apple Design System (HIG) Enhancements for Copilot
+   ============================================================ */
+[data-theme="apple-dark"] {
+  .copilot-container {
+    font-family: var(--font-body);
+  }
+
+  .ticker-bar {
+    background: rgba(18, 18, 24, 0.75);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .copilot-sidebar {
+    .sidebar-box {
+      background: #111116;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .quick-action-row {
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.035);
+
+      &:hover:not(:disabled) {
+        background: rgba(255, 214, 10, 0.12);
+        border-color: rgba(255, 214, 10, 0.35);
+      }
+    }
+  }
+
+  .copilot-chat-canvas {
+    background: #08080c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  }
+
+  /* iMessage / macOS Pro Chat Bubbles */
+  .message-row {
+    &.user {
+      .avatar {
+        background: #0a84ff;
+        box-shadow: 0 2px 8px rgba(10, 132, 255, 0.4);
+      }
+
+      .message-bubble {
+        background: #0a84ff;
+        color: #ffffff;
+        border: none;
+        border-radius: 16px;
+        border-bottom-right-radius: 4px;
+        box-shadow: 0 2px 10px rgba(10, 132, 255, 0.3);
+      }
+    }
+
+    &.assistant {
+      .avatar {
+        background: rgba(255, 214, 10, 0.18);
+        border: 1px solid rgba(255, 214, 10, 0.4);
+        color: #ffd60a;
+      }
+
+      .message-bubble {
+        background: #16161f;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        border-bottom-left-radius: 4px;
+        color: #f1f5f9;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      }
+    }
+  }
+
+  .strategy-card {
+    background: #111117;
+    border: 1px solid rgba(255, 214, 10, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+
+    .metrics-grid .metric {
+      background: #16161f;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+    }
+
+    .btn-play {
+      background: linear-gradient(180deg, #ffd60a 0%, #e6b800 100%);
+      color: #000000;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(255, 214, 10, 0.3);
+    }
+  }
+
+  .input-container .input-form {
+    background: #121218;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+
+    input {
+      color: #ffffff;
+      &::placeholder {
+        color: rgba(235, 235, 245, 0.4);
+      }
+    }
+
+    .btn-send {
+      background: #0a84ff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(10, 132, 255, 0.35);
+
+      &:hover:not(:disabled) {
+        background: #0071e3;
+      }
+    }
   }
 }
 
