@@ -35,7 +35,16 @@ async function waitForServer(maxSeconds = MAX_WAIT_SECONDS) {
   return false;
 }
 
+function buildElectronArtifacts() {
+  const { execSync } = require('node:child_process');
+  console.log('[electron:dev] Compilando TypeScript de Electron...');
+  execSync('npx tsc -p electron/tsconfig.json', { stdio: 'inherit' });
+  console.log('[electron:dev] Empaquetando preload bundle...');
+  execSync('node electron/build-preload.cjs', { stdio: 'inherit' });
+}
+
 function launchElectron() {
+  buildElectronArtifacts();
   console.log('[electron:dev] Lanzando Electron...');
   const electronProc = spawn('npx', ['electron', '.'], {
     stdio: 'inherit',
