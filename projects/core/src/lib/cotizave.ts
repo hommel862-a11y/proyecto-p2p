@@ -31,7 +31,19 @@ const KNOWN_MARKET_ALIASES: Record<string, string> = {
   mexc_p2p: 'mexc',
   bingx_p2p: 'bingx',
   saldo: 'saldo',
+  // "reference" is the official/BCV anchor rate the API serves as the
+  // market's reference; consumers query it as the official BCV rate.
+  reference: 'oficial',
+  eur_reference: 'eur_reference',
+  parallel: 'parallel',
 };
+
+/**
+ * Types that carry a usable quote. The API marks different anchors with
+ * `type` (p2p, reference, parallel, official); rejecting non-p2p types made
+ * the BCV anchor disappear and /bcv always answer "no data".
+ */
+const ALLOWED_QUOTE_TYPES = new Set(['p2p', 'reference', 'parallel', 'official']);
 
 function normalizeMarketKey(raw: string): string | null {
   const lower = raw.toLowerCase().trim().replace(/[-\s]+/g, '_');
@@ -86,7 +98,7 @@ export function normalizeCotizaveRates(payload: unknown): Record<string, Cotizav
     if (!market) continue;
 
     const type = String(r['type'] ?? '').toLowerCase();
-    if (type && type !== 'p2p') continue;
+    if (type && !ALLOWED_QUOTE_TYPES.has(type)) continue;
 
     const ask = toNum(r['ask']);
     const bid = toNum(r['bid']);

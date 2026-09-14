@@ -41,10 +41,30 @@ describe('cotizave core', () => {
       expect(result['bitget']).toBeDefined();
     });
 
-    it('ignores non-p2p entries', () => {
+    it('ignores non-quote entries but keeps official anchors', () => {
       const result = normalizeCotizaveRates(examplePayload);
+      // fiat/forex carries no usable p2p quote for this product
       expect(result['forex']).toBeUndefined();
-      expect(result['bcv']).toBeUndefined();
+      // official BCV anchor is now accepted
+      expect(result['bcv']).toBeDefined();
+      expect(result['bcv'].ask).toBe(36.0);
+    });
+
+    it('maps the real Cotizave reference/parallel payload', () => {
+      const payload = {
+        rates: [
+          { market: 'reference', type: 'reference', base: 'USD', mid: 832.4883, updated_at: '2026-09-11T04:00:00Z' },
+          { market: 'parallel', type: 'parallel', base: 'USD', mid: 952.405674, updated_at: '2026-09-13T21:01:44.648Z' },
+          { market: 'binance', type: 'p2p', ask: 962.795, bid: 962.28, mid: 962.5375 },
+        ],
+      };
+      const result = normalizeCotizaveRates(payload);
+      expect(result['oficial']).toBeDefined();
+      expect(result['oficial'].mid).toBe(832.4883);
+      expect(result['parallel']).toBeDefined();
+      expect(result['parallel'].mid).toBe(952.405674);
+      expect(result['binance']).toBeDefined();
+      expect(result['binance'].ask).toBe(962.795);
     });
 
     it('handles unknown/null payload gracefully', () => {
