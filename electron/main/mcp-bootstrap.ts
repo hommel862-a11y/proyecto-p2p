@@ -103,14 +103,14 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'get_consolidated_liquidity', description: 'Balance en bancos (Banesco, Pago Móvil, Zelle, Binance Pay).' },
-      { name: 'evaluate_bank_concentration', description: 'Alerta de sobreexposición (> 70% en un solo canal financiero).' },
-      { name: 'calculate_inflation_adjusted_roi', description: 'Rendimiento financiero neto ajustado por devaluación.' },
-      { name: 'structure_delta_neutral_hedge', description: 'Estructuración de coberturas cortas para inventarios fiat.' },
+      { name: 'stress_test_portfolio', description: 'Simula escenarios de devaluación y caída de solvencia.' },
+      { name: 'rebalance_capital_allocation', description: 'Distribución óptima de capital entre operadores y prevención de pitufeo.' },
+      { name: 'audit_counterparty_exposure', description: 'Audita concentración por contraparte y patrones de triangulación.' },
+      { name: 'project_compound_runway', description: 'Proyección de crecimiento con interés compuesto y límites bancarios.' },
     ],
     resources: [
-      { uri: 'p2p://portfolio/balances', name: 'Saldos Consolidados por Banco' },
-      { uri: 'p2p://portfolio/concentration-report', name: 'Matriz de Concentración' },
+      { uri: 'p2p://portfolio/stress-scenarios', name: 'Escenarios de Stress Testing' },
+      { uri: 'p2p://portfolio/allocation', name: 'Distribución de Capital' },
     ],
   },
   {
@@ -119,18 +119,16 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     category: 'ledger',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 4,
+    toolCount: 2,
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'query_ledger_analytics', description: 'Consultas analíticas en lenguaje natural sobre el historial contable.' },
-      { name: 'audit_cancellation_hotspots', description: 'Análisis de patrones en órdenes canceladas o disputadas.' },
-      { name: 'calculate_commission_drag', description: 'Impacto acumulado de comisiones de exchange y bancos en el PnL.' },
-      { name: 'export_audit_dossier', description: 'Dossier forense conciliado para justificación bancaria.' },
+      { name: 'trigger_killswitch', description: 'Detiene inmediatamente todas las operaciones (Human-in-the-Loop).' },
+      { name: 'add_operation_entry', description: 'Asienta una nueva operación en el Ledger contable (Human-in-the-Loop).' },
     ],
     resources: [
-      { uri: 'p2p://ledger/kpi-summary', name: 'Métricas Mensuales Acumuladas' },
-      { uri: 'p2p://ledger/disputes', name: 'Historial de Resoluciones de Disputas' },
+      { uri: 'p2p://ledger/recent', name: 'Últimas Operaciones del Ledger' },
+      { uri: 'p2p://risk/live-status', name: 'Estado del Kill-Switch y Modo Seguro' },
     ],
   },
 ];
@@ -207,33 +205,37 @@ export async function executeMcpToolTest(
   mcpStatus.totalCalls += 1;
 
   try {
-    // Sandbox execution of registered tools
+    process.env['MCP_EMBEDDED_IMPORT'] = 'true';
     const mcpDistPath = path.resolve(__dirname, '../../../packages/mcp-server/dist/index.js');
     const fileUrl = new URL(`file:///${mcpDistPath.replace(/\\/g, '/')}`).href;
     const importEsm = new Function('specifier', 'return import(specifier)');
     const mcpModule = await importEsm(fileUrl);
 
-    const server = mcpModule.createP2PMcpServer();
+    const tools: Array<{ name: string; inputSchema: { parse: (input: unknown) => unknown }; execute: (input: unknown) => unknown }> =
+      mcpModule.ALL_MCP_TOOLS || [];
+
+    const matchedTool = tools.find((t) => t.name === toolName);
+    if (!matchedTool) {
+      throw new Error(`Herramienta "${toolName}" no encontrada en el catálogo MCP compilado.`);
+    }
+
+    // Validate with real Zod schema and execute pure domain engine
+    const validatedArgs = matchedTool.inputSchema.parse(args);
+    const realResult = await Promise.resolve(matchedTool.execute(validatedArgs));
     const elapsed = Date.now() - start;
 
     const logEntry: McpAuditLogDto = {
       timestamp: new Date().toISOString(),
       toolName,
       inputHash: Buffer.from(JSON.stringify(args || {})).toString('base64').substring(0, 16),
-      outputHash: Buffer.from(JSON.stringify({ status: 'success' })).toString('base64').substring(0, 16),
+      outputHash: Buffer.from(JSON.stringify(realResult || {})).toString('base64').substring(0, 16),
       success: true,
     };
     inMemoryAuditLogs.push(logEntry);
 
     return {
       success: true,
-      result: {
-        toolName,
-        status: 'OK',
-        simulated: true,
-        args,
-        message: `Herramienta ${toolName} ejecutada satisfactoriamente en entorno sandbox MCP.`,
-      },
+      result: realResult,
       executionTimeMs: elapsed,
     };
   } catch (err: unknown) {
