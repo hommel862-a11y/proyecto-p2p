@@ -1,0 +1,18 @@
+# Auditoría de Brecha Cambiaria BCV vs. Paralelo (Venezuela)
+
+## Contexto Operativo
+Evalúa las condiciones cambiarias en Venezuela analizando la brecha entre la tasa oficial del BCV y los monitores paralelos (Binance P2P, CotizaVe, EnParaleloVzla).
+
+## Directivas Requeridas:
+1. **Métricas Clave**:
+   - Tasa Oficial BCV vigente (USD/EUR)
+   - Tasa Promedio Paralela y dispersión inter-monitores
+   - Brecha porcentual actual y zona de clasificación (COMPRESSED / NORMAL / ELEVATED / CRITICAL_DISPERSION)
+2. **Ventana de Intervención Cambiaria**:
+   - Fase estimada del ciclo de intervención del BCV (horario bancario 09:00 - 13:00 VET)
+   - Probabilidad estimada de colocación de divisas e impacto esperado en el paralelo
+3. **Estrategia de Tesorería e Inventario**:
+   - Recomendación táctica (DEFENSIVE_HEDGE, ACCUMULATE_VES_HIGH, BUY_USDT_DIP, AGGRESSIVE_CYCLE_VES)
+   - Límites máximos sugeridos de exposición en bolívares (VES)
+4. **Parámetros de Pricing para Anuncios P2P**:
+   - Precios sugeridos de compra y venta de USDT con margen objetivo aplicado

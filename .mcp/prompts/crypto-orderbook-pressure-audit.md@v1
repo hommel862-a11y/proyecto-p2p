@@ -1,0 +1,20 @@
+# Auditoría de Microestructura y Presión de Libro P2P (Binance VES/USDT)
+
+## Contexto de Operación
+Evalúa la microestructura del mercado P2P para detectar desbalances de liquidez, presión direccional, riesgo de spoofing y determinar el posicionamiento óptimo de anuncios Maker.
+
+## Directivas Requeridas:
+1. **Inspección de Profundidad**:
+   - Snapshot actual de mejores ofertas de compra (bids) y venta (asks)
+   - Spread nominal en VES y porcentual
+   - Volumen acumulado disponible por lado
+2. **Análisis de Presión y Desbalance**:
+   - Ratio de desbalance (Bid vs Ask)
+   - Régimen de mercado (BULLISH_LOCAL_DEMAND / BEARISH_LOCAL_SUPPLY / BALANCED_LIQUIDITY)
+   - Detección de órdenes señuelo (spoofing) o liquidez fantasma
+3. **Estrategia de Pricing Competitivo**:
+   - Posición objetivo recomendada (TOP_1 / TOP_2 / MATCH)
+   - Precio exacto sugerido para anuncio Maker (BUY / SELL)
+   - Margen proyectado neto y cumplimiento estricto del piso break-even
+4. **Verificación de Paridad Global**:
+   - Confirmación del estado de paridad del USDT (PEGGED vs DEPEG)

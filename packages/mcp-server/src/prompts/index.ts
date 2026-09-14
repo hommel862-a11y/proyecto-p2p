@@ -138,7 +138,80 @@ Formato: Markdown estructurado, listo para copiar a Notion/Obsidian.`,
 - [ ] Actualizar trustScore de contraparte
 - [ ] Documentar lección en memoria`,
   },
+  {
+    name: 'bcv-gap-arbitrage-audit',
+    description: 'Auditoría macroeconómica y cambiaria de brecha BCV vs Paralelo para arbitraje institucional en Venezuela',
+    content: `# Auditoría de Brecha Cambiaria BCV vs. Paralelo (Venezuela)
+
+## Contexto Operativo
+Evalúa las condiciones cambiarias en Venezuela analizando la brecha entre la tasa oficial del BCV y los monitores paralelos (Binance P2P, CotizaVe, EnParaleloVzla).
+
+## Directivas Requeridas:
+1. **Métricas Clave**:
+   - Tasa Oficial BCV vigente (USD/EUR)
+   - Tasa Promedio Paralela y dispersión inter-monitores
+   - Brecha porcentual actual y zona de clasificación (COMPRESSED / NORMAL / ELEVATED / CRITICAL_DISPERSION)
+2. **Ventana de Intervención Cambiaria**:
+   - Fase estimada del ciclo de intervención del BCV (horario bancario 09:00 - 13:00 VET)
+   - Probabilidad estimada de colocación de divisas e impacto esperado en el paralelo
+3. **Estrategia de Tesorería e Inventario**:
+   - Recomendación táctica (DEFENSIVE_HEDGE, ACCUMULATE_VES_HIGH, BUY_USDT_DIP, AGGRESSIVE_CYCLE_VES)
+   - Límites máximos sugeridos de exposición en bolívares (VES)
+4. **Parámetros de Pricing para Anuncios P2P**:
+   - Precios sugeridos de compra y venta de USDT con margen objetivo aplicado`,
+  },
+  {
+    name: 'crypto-orderbook-pressure-audit',
+    description: 'Auditoría de microestructura, desbalance de órdenes y pricing competitivo para el libro P2P de Binance',
+    content: `# Auditoría de Microestructura y Presión de Libro P2P (Binance VES/USDT)
+
+## Contexto de Operación
+Evalúa la microestructura del mercado P2P para detectar desbalances de liquidez, presión direccional, riesgo de spoofing y determinar el posicionamiento óptimo de anuncios Maker.
+
+## Directivas Requeridas:
+1. **Inspección de Profundidad**:
+   - Snapshot actual de mejores ofertas de compra (bids) y venta (asks)
+   - Spread nominal en VES y porcentual
+   - Volumen acumulado disponible por lado
+2. **Análisis de Presión y Desbalance**:
+   - Ratio de desbalance (Bid vs Ask)
+   - Régimen de mercado (BULLISH_LOCAL_DEMAND / BEARISH_LOCAL_SUPPLY / BALANCED_LIQUIDITY)
+   - Detección de órdenes señuelo (spoofing) o liquidez fantasma
+3. **Estrategia de Pricing Competitivo**:
+   - Posición objetivo recomendada (TOP_1 / TOP_2 / MATCH)
+   - Precio exacto sugerido para anuncio Maker (BUY / SELL)
+   - Margen proyectado neto y cumplimiento estricto del piso break-even
+4. **Verificación de Paridad Global**:
+   - Confirmación del estado de paridad del USDT (PEGGED vs DEPEG)`,
+  },
+  {
+    name: 'portfolio-risk-rebalance-audit',
+    description: 'Auditoría integral de gestión de portafolio, pruebas de estrés cambiario, asignación bancaria y crecimiento compuesto',
+    content: `# Auditoría de Gestión de Portafolio y Riesgo Cambiario (Venezuela P2P)
+
+## Contexto Operativo
+Evalúa la salud financiera del inventario de capital, la exposición ante saltos devaluatorios del bolívar, la concentración de contrapartes y la capacidad bancaria instalada.
+
+## Directivas Requeridas:
+1. **Prueba de Estrés Cambiario**:
+   - Capital expuesto en bolívares (VES) y porcentaje sobre el patrimonio total
+   - Simulación de pérdidas ante devaluación del 5%, 10% y 20%
+   - Tamaño requerido de cobertura corta Delta-Neutral en futuros/spot
+2. **Rebalanceo de Custodia y Bancos**:
+   - Distribución porcentual entre Binance P2P, Banesco, Mercantil y fondos de reserva
+   - Ajuste de tickets dinámicos (anti-pitufeo) según el horario y régimen de mercado
+3. **Auditoría de Contrapartes y Triangulación**:
+   - Concentración máxima por contraparte individual (límite institucional < 20%)
+   - Identificación de discrepancias de titularidad bancaria vs KYC
+4. **Proyección de Crecimiento Compuesto y Runway**:
+   - Estimación de capital final a 30, 60 y 90 días
+   - Detección del "muro de capacidad bancaria" (día en que el volumen diario supera el límite bancario)
+   - Cobertura de costos fijos mensuales`,
+  },
 ];
+
+
+
 
 // ─── Registro en servidor (compatibilidad) ─────────────────────────────────────
 

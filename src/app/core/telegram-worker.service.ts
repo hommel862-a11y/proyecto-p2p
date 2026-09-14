@@ -14,6 +14,7 @@ import {
   evaluateFraudRisk,
   getBcvMarketIntelligence,
   escapeMarkdownV2,
+  type BinanceP2pMarketDepth,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
 } from '@p2p/core';
@@ -40,6 +41,8 @@ const TELEGRAM_DEFAULTS: TelegramConfig = {
   alertsEnabled: true,
   pollingEnabled: false,
 };
+
+const TELEGRAM_OFFSET_STORAGE_KEY = 'p2p_telegram_offset';
 
 @Injectable({ providedIn: 'root' })
 export class TelegramWorkerService implements OnDestroy {
@@ -127,10 +130,50 @@ export class TelegramWorkerService implements OnDestroy {
         pollingEnabled: cfg.pollingEnabled ?? false,
       });
     }
+    this.restoreOffset();
     const { botToken, chatId, pollingEnabled } = this.config();
     if (botToken && chatId && pollingEnabled) {
       this.startPolling();
     }
+  }
+
+  private restoreOffset(): void {
+    try {
+      const saved = localStorage.getItem(TELEGRAM_OFFSET_STORAGE_KEY);
+      if (saved && /^\d+$/.test(saved)) {
+        this.currentOffset = Math.max(0, Number(saved));
+      }
+    } catch {
+      // localStorage no disponible
+    }
+  }
+
+  private persistOffset(): void {
+    try {
+      localStorage.setItem(TELEGRAM_OFFSET_STORAGE_KEY, String(this.currentOffset));
+    } catch {
+      // localStorage no disponible
+    }
+  }
+
+  /**
+   * Fetches a live Binance P2P depth (bypassing cache) with a safe timeout.
+   * Returns null if the refresh fails or times out — the caller decides to fall back to cache.
+   */
+  private async getFreshMarketDepth(): Promise<BinanceP2pMarketDepth | null> {
+    try {
+      return await Promise.race([
+        this.binance.fetchMarketDepth('USDT', 'VES', true),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+    } catch {
+      return null;
+    }
+  }
+
+  private formatFetchTime(d: Date | null | undefined): string {
+    if (!d) return '—';
+    return new Date(d).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
   }
 
   private async pollLoop(token: string, authorizedChatId: string): Promise<void> {
@@ -154,6 +197,7 @@ export class TelegramWorkerService implements OnDestroy {
             this.currentOffset = Math.max(this.currentOffset, update.update_id + 1);
             await this.processIncomingUpdate(update, token, authorizedChatId);
           }
+          this.persistOffset();
         }
       } catch (_err: unknown) {
         if (this.abortController?.signal.aborted) {
@@ -218,24 +262,34 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'STATUS': {
-        const depth = this.binance.marketDepth();
+        const freshDepth = await this.getFreshMarketDepth();
+        const depth = freshDepth ?? this.binance.marketDepth();
         const repricerState = this.repricer.isActive() ? '🟢 ACTIVO' : '⏸ DETENIDO';
-        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Libro Binance: *${depth ? 'SINCRONIZADO' : 'PENDIENTE'}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\``;
+        const libroState = depth
+          ? freshDepth
+            ? 'SINCRONIZADO'
+            : '⚠️ SINCRONIZADO (stale)'
+          : 'PENDIENTE';
+        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\``;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
         break;
       }
 
       case 'SPREADS': {
-        const depth = this.binance.marketDepth();
+        const freshDepth = await this.getFreshMarketDepth();
+        const depth = freshDepth ?? this.binance.marketDepth();
         if (depth) {
-          const msg = `📈 *PUNTAS EN VIVO \\(BINANCE P2P\\)*\n━━━━━━━━━━━━━━━━━━━━\n💵 Compra: \`${depth.bestBuyPrice.toFixed(2)} Bs\`\n💰 Venta: \`${depth.bestSellPrice.toFixed(2)} Bs\`\n⚡ Spread: \`+${depth.spreadPct.toFixed(2)}%\` \\(\`${depth.spreadVes.toFixed(2)} Bs\`\\)`;
+          const tiempoLine = freshDepth
+            ? `🕐 Actualizado: \`${this.formatFetchTime(this.binance.lastFetched())}\` (hora local)`
+            : `🕐 Datos de las \`${this.formatFetchTime(this.binance.lastFetched())}\` — pueden estar desactualizados`;
+          const msg = `📈 *PUNTAS EN VIVO \\(BINANCE P2P\\)*\n━━━━━━━━━━━━━━━━━━━━\n💵 Compra: \`${depth.bestBuyPrice.toFixed(2)} Bs\`\n💰 Venta: \`${depth.bestSellPrice.toFixed(2)} Bs\`\n⚡ Spread: \`+${depth.spreadPct.toFixed(2)}%\` \\(\`${depth.spreadVes.toFixed(2)} Bs\`\\)\n${tiempoLine}`;
           await this.sendTelegramMessage(token, chatId, msg);
         } else {
           await this.sendTelegramMessage(
             token,
             chatId,
-            `⚠️ *Libro en sincronización*, actualiza el panel en unos segundos.`,
+            `⚠️ *Libro en sincronización*, actualiza el panel en unos segundos\\.`,
           );
         }
         this.addLog({ time: timeStr, command: '/spreads', action: 'SPREADS', status: 'SUCCESS' });
@@ -243,24 +297,39 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'BCV': {
-        const depth = this.binance.marketDepth();
+        const [depth, _rates] = await Promise.all([
+          this.getFreshMarketDepth(),
+          this.cotizave.fetchRates().catch(() => undefined),
+        ]);
         const rates = this.cotizave.ratesByMarket();
-        const parallel = depth?.bestBuyPrice || rates['binance']?.ask || 815.0;
-        const bcv = rates['bcv']?.mid || rates['oficial']?.mid || 685.0;
+        const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
+        const bcv = rates['bcv']?.mid || rates['oficial']?.mid;
+
+        if (!parallel || !bcv) {
+          await this.sendTelegramMessage(
+            token,
+            chatId,
+            `⚠️ *Datos de mercado no disponibles ahora mismo* — abre el panel de spreads o verifica la API key de Cotizave e inténtalo de nuevo\\.`,
+          );
+          this.addLog({ time: timeStr, command: '/bcv', action: 'BCV', status: 'SUCCESS' });
+          break;
+        }
+
         const intel = getBcvMarketIntelligence(parallel, bcv);
 
-        const msg = formatBcvIntelligenceTelegramMessage({
-          parallelRate: intel.gap.parallelRate,
-          bcvRate: intel.gap.bcvRate,
-          gapPct: intel.gap.gapPct,
-          gapVes: intel.gap.gapVes,
-          zone: intel.gap.zone,
-          phase: intel.window.phase,
-          nextExpectedIntervention: intel.window.nextExpectedIntervention,
-          probabilityPct: intel.window.probabilityPct,
-          actionLabel: intel.recommendation.actionLabel,
-          timingNotice: intel.recommendation.timingNotice,
-        });
+        const msg =
+          formatBcvIntelligenceTelegramMessage({
+            parallelRate: intel.gap.parallelRate,
+            bcvRate: intel.gap.bcvRate,
+            gapPct: intel.gap.gapPct,
+            gapVes: intel.gap.gapVes,
+            zone: intel.gap.zone,
+            phase: intel.window.phase,
+            nextExpectedIntervention: intel.window.nextExpectedIntervention,
+            probabilityPct: intel.window.probabilityPct,
+            actionLabel: intel.recommendation.actionLabel,
+            timingNotice: intel.recommendation.timingNotice,
+          }) + `\n🕐 Actualizado: \`${this.formatFetchTime(this.binance.lastFetched())}\``;
 
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/bcv', action: 'BCV', status: 'SUCCESS' });

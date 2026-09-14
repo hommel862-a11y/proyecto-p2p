@@ -1,16 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { McpHub } from './mcp-hub';
 import { McpService, FALLBACK_MCP_SERVERS } from '../../core/mcp.service';
 
 describe('McpHub Component', () => {
+  let fixture: ComponentFixture<McpHub>;
   let component: McpHub;
   let service: McpService;
 
-  beforeEach(() => {
-    service = new McpService();
-    // Instantiate component directly
-    component = new McpHub();
-    (component as any).mcp = service;
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [McpHub],
+      providers: [McpService],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(McpHub);
+    component = fixture.componentInstance;
+    service = TestBed.inject(McpService);
+    fixture.detectChanges();
   });
 
   it('should initialize with servers tab active by default', () => {

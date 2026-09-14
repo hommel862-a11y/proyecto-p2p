@@ -14,6 +14,7 @@ import { clampAtLeast, clampMoney as sharedClampMoney, formatSpreadAlertMessage 
 import { UiCard } from '../../shared/ui/ui-card';
 import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
+import { BinanceP2pService } from '../../core/binance-p2p.service';
 
 export interface TelegramConfig {
   botToken: string;
@@ -40,6 +41,7 @@ export class RiskRules implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
   readonly telegramWorker = inject(TelegramWorkerService);
+  private readonly binance = inject(BinanceP2pService);
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
@@ -91,9 +93,10 @@ export class RiskRules implements OnInit {
   }
 
   togglePolling(): void {
-    const next = !this.telegramPollingEnabled();
-    this.telegramPollingEnabled.set(next);
-    if (next) {
+    // The select handler already set telegramPollingEnabled to the chosen
+    // value — act on it, never negate it (negating left the worker INACTIVO
+    // no matter what the user selected).
+    if (this.telegramPollingEnabled()) {
       this.telegramWorker.startPolling();
     } else {
       this.telegramWorker.stopPolling();
@@ -116,11 +119,21 @@ export class RiskRules implements OnInit {
       return;
     }
 
+    // Live market data for the test alert — never ship hardcoded prices that
+    // look like stale alerts (market moves, hardcoded values mislead).
+    const depth = await this.binance.fetchMarketDepth('USDT', 'VES', true);
+    if (!depth) {
+      this.toast.warn(
+        'No hay datos de mercado ahora: la alerta de prueba no se envió. Revisa conexión o abre el panel de spreads.',
+      );
+      return;
+    }
+
     const testMsg = formatSpreadAlertMessage({
       pair: `${this.pair()}/VES`,
-      buyPrice: 800.0,
-      sellPrice: 825.0,
-      netSpreadPct: 3.12,
+      buyPrice: depth.bestBuyPrice,
+      sellPrice: depth.bestSellPrice,
+      netSpreadPct: depth.spreadPct,
       bank: 'Banesco (Prueba Sentinel)',
     });
 

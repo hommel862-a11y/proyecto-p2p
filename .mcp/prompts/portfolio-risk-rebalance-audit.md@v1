@@ -1,0 +1,20 @@
+# Auditoría de Gestión de Portafolio y Riesgo Cambiario (Venezuela P2P)
+
+## Contexto Operativo
+Evalúa la salud financiera del inventario de capital, la exposición ante saltos devaluatorios del bolívar, la concentración de contrapartes y la capacidad bancaria instalada.
+
+## Directivas Requeridas:
+1. **Prueba de Estrés Cambiario**:
+   - Capital expuesto en bolívares (VES) y porcentaje sobre el patrimonio total
+   - Simulación de pérdidas ante devaluación del 5%, 10% y 20%
+   - Tamaño requerido de cobertura corta Delta-Neutral en futuros/spot
+2. **Rebalanceo de Custodia y Bancos**:
+   - Distribución porcentual entre Binance P2P, Banesco, Mercantil y fondos de reserva
+   - Ajuste de tickets dinámicos (anti-pitufeo) según el horario y régimen de mercado
+3. **Auditoría de Contrapartes y Triangulación**:
+   - Concentración máxima por contraparte individual (límite institucional < 20%)
+   - Identificación de discrepancias de titularidad bancaria vs KYC
+4. **Proyección de Crecimiento Compuesto y Runway**:
+   - Estimación de capital final a 30, 60 y 90 días
+   - Detección del "muro de capacidad bancaria" (día en que el volumen diario supera el límite bancario)
+   - Cobertura de costos fijos mensuales
