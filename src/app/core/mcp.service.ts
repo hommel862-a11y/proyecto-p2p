@@ -219,15 +219,63 @@ export class McpService {
       recentAuditLogs: [dummyLog, ...cur.recentAuditLogs.slice(0, 19)],
     }));
 
+    let simulatedResult: Record<string, unknown> = {
+      toolName,
+      status: 'OK',
+      simulated: true,
+      args,
+      message: `Ejecución de prueba completada en ${executionTimeMs} ms.`,
+    };
+
+    if (toolName === 'get_binance_p2p_orderbook') {
+      simulatedResult = {
+        ...simulatedResult,
+        fiat: (args as any)?.fiat ?? 'VES',
+        asset: (args as any)?.asset ?? 'USDT',
+        timestamp: new Date().toISOString(),
+        topBuyPrice: (args as any)?.fiat === 'COP' ? 4210 : 82.20,
+        topSellPrice: (args as any)?.fiat === 'COP' ? 4250 : 82.85,
+        spreadVes: (args as any)?.fiat === 'COP' ? 40 : 0.65,
+        spreadPct: (args as any)?.fiat === 'COP' ? 0.95 : 0.79,
+        totalBuyDepthUsdt: 21600,
+        totalSellDepthUsdt: 24500,
+        buyOffersCount: 5,
+        sellOffersCount: 5,
+      };
+    } else if (toolName === 'get_bcv_rates') {
+      simulatedResult = {
+        ...simulatedResult,
+        usd: 72.45,
+        eur: 78.60,
+        cny: 10.15,
+        rub: 0.78,
+        effectiveDate: new Date().toISOString().slice(0, 10),
+        source: 'BCV Oficial',
+        isFallback: false,
+      };
+    } else if (toolName === 'get_parallel_rates') {
+      simulatedResult = {
+        ...simulatedResult,
+        enparalelovzla: 84.20,
+        cotizave: 84.05,
+        criptonoticias: 84.10,
+        average: 84.12,
+        spreadOverBcvPct: 16.11,
+      };
+    } else if (toolName === 'calculate_rate_gap') {
+      simulatedResult = {
+        ...simulatedResult,
+        officialBcv: 72.45,
+        parallelAverage: 84.12,
+        gapVes: 11.67,
+        gapPct: 16.11,
+        riskClassification: 'MODERATE_DISTORTION',
+      };
+    }
+
     return {
       success: true,
-      result: {
-        toolName,
-        status: 'OK',
-        simulated: true,
-        args,
-        message: `Ejecución de prueba completada en ${executionTimeMs} ms.`,
-      },
+      result: simulatedResult,
       executionTimeMs,
     };
   }

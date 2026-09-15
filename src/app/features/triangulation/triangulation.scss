@@ -102,8 +102,41 @@
   box-shadow: 0 4px 12px rgba(255, 214, 10, 0.2);
 }
 
+.btn-auto-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  transition: all 0.2s ease;
+
+  &.active {
+    background: rgba(48, 209, 88, 0.15);
+    border-color: rgba(48, 209, 88, 0.4);
+    color: #30d158;
+  }
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted, #888);
+
+  &.pulsing {
+    background: #30d158;
+    box-shadow: 0 0 6px rgba(48, 209, 88, 0.8);
+    animation: livePulse 1.8s infinite;
+  }
+}
+
+@keyframes livePulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+
 /* -------------------------------------------------------------
-   Telemetry Bar
+   Telemetry Bar & Live Price Ticker
 ------------------------------------------------------------- */
 .telemetry-bar {
   display: flex;
@@ -140,6 +173,33 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
+  }
+
+  &.chip-price {
+    background: rgba(10, 132, 255, 0.05);
+    border-color: rgba(10, 132, 255, 0.18);
+
+    .chip-dot-live {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #0a84ff;
+      box-shadow: 0 0 6px rgba(10, 132, 255, 0.8);
+    }
+
+    .gap-pill {
+      font-size: 0.68rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255, 159, 10, 0.15);
+      color: #ff9f0a;
+      font-weight: 700;
+    }
+
+    .cross-rate {
+      font-size: 0.70rem;
+      color: var(--muted, rgba(235, 235, 245, 0.5));
+    }
   }
 
   &.chip-ok .chip-dot {

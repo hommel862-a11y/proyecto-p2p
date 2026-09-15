@@ -13,6 +13,18 @@
 
     <!-- Quick Action Controls -->
     <div class="header-actions">
+      <!-- Auto-Sync Toggle Button -->
+      <button
+        type="button"
+        class="btn-secondary btn-auto-sync"
+        [class.active]="autoSync()"
+        (click)="toggleAutoSync()"
+        [title]="autoSync() ? 'Auto-sincronización activa (cada 30s)' : 'Activar sincronización periódica de precios vía MCP'"
+      >
+        <span class="live-dot" [class.pulsing]="autoSync()"></span>
+        <span>{{ autoSync() ? 'Auto-Sync 30s' : 'Auto-Sync' }}</span>
+      </button>
+
       <!-- Sync Market Live Button -->
       <button
         type="button"
@@ -58,8 +70,37 @@
     </div>
   </div>
 
-  <!-- Telemetry Bar (BCV, MCP Gateway, Self-Routing Shield) -->
+  <!-- Telemetry Bar & Live MCP Prices Ticker -->
   <div class="telemetry-bar">
+    <!-- Live Binance P2P Rate -->
+    <div class="telemetry-chip chip-price">
+      <span class="chip-dot-live"></span>
+      <span class="chip-title">Binance P2P VES:</span>
+      <span class="chip-val font-mono">
+        {{ intelligence.liveRates().binanceVesSell | number: '1.2-2' }} / {{ intelligence.liveRates().binanceVesBuy | number: '1.2-2' }}
+      </span>
+    </div>
+
+    <!-- Parallel Rate -->
+    <div class="telemetry-chip chip-price">
+      <span class="chip-title">Paralelo:</span>
+      <span class="chip-val font-mono">{{ intelligence.liveRates().parallelAvg | number: '1.2-2' }} VES</span>
+    </div>
+
+    <!-- BCV Official Rate & Gap -->
+    <div class="telemetry-chip chip-price">
+      <span class="chip-title">BCV:</span>
+      <span class="chip-val font-mono">{{ intelligence.liveRates().bcvUsd | number: '1.2-2' }} VES</span>
+      <span class="gap-pill font-mono">+{{ intelligence.liveRates().rateGapPct | number: '1.1-1' }}%</span>
+    </div>
+
+    <!-- COP Rates -->
+    <div class="telemetry-chip chip-price">
+      <span class="chip-title">COP/USDT:</span>
+      <span class="chip-val font-mono">{{ intelligence.liveRates().copPerUsdt | number: '1.0-0' }}</span>
+      <span class="cross-rate font-mono">({{ intelligence.liveRates().copPerVes | number: '1.2-2' }} COP/VES)</span>
+    </div>
+
     <!-- BCV Status -->
     <div
       class="telemetry-chip"
@@ -74,7 +115,7 @@
     <!-- Delta Hedge Advice -->
     @if (tacticalReport().hedgeAdvice.needed) {
       <div class="telemetry-chip chip-hedge">
-        <span class="chip-title">🛡️ Cobertura Delta:</span>
+        <span class="chip-title">🛡️ Cobertura:</span>
         <span class="chip-val">Shorter {{ tacticalReport().hedgeAdvice.shortUsdtAmount | number: '1.2-2' }} USDT</span>
       </div>
     }
@@ -82,12 +123,12 @@
     <!-- Compliance Self-Routing Reminder -->
     <div class="telemetry-chip chip-compliance">
       <span class="chip-title">⚖️ Self-Routing:</span>
-      <span class="chip-val">Solo cuentas propias del operador</span>
+      <span class="chip-val">Cuentas propias</span>
     </div>
 
     @if (intelligence.lastSyncTimestamp()) {
       <div class="telemetry-chip chip-sync-time">
-        <span class="chip-title">Última Sinc:</span>
+        <span class="chip-title">Sincronizado:</span>
         <span class="chip-val font-mono">{{ intelligence.lastSyncTimestamp() }}</span>
       </div>
     }
@@ -468,6 +509,14 @@
           <p class="section-desc">Ajustá las cotizaciones y comisiones de cada tramo para simular slippage o spreads en vivo</p>
         </div>
       </div>
+      <button
+        type="button"
+        class="btn-secondary btn-sm"
+        (click)="applyLivePricesToCurrentRoute()"
+        title="Restablecer cotizaciones de los 3 tramos a los precios en vivo de MCP"
+      >
+        ⚡ Restablecer a Precios MCP
+      </button>
     </div>
 
     <div class="legs-params-grid">

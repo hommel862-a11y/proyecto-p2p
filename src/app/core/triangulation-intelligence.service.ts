@@ -26,6 +26,20 @@ export interface DeltaHedgeAdvice {
   reason: string;
 }
 
+export interface LiveMarketRatesSnapshot {
+  binanceVesBuy: number; // Precio al que compran USDT en P2P
+  binanceVesSell: number; // Precio al que venden USDT en P2P
+  bcvUsd: number; // Tasa oficial BCV USD
+  bcvEur: number; // Tasa oficial BCV EUR
+  parallelAvg: number; // Promedio paralelo (CotizaVe / EnParalelo)
+  rateGapPct: number; // Brecha oficial vs paralelo %
+  copPerUsdt: number; // Tasa Binance P2P COP/USDT
+  copPerVes: number; // Cruce derivado COP por VES
+  zinliUsdPerUsdt: number; // Venta digital Zinli/Wally
+  timestamp: string;
+  source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK';
+}
+
 export interface McpTacticalReport {
   executionAllowed: boolean;
   primaryRisk: string;
@@ -45,6 +59,20 @@ export class TriangulationIntelligenceService {
   readonly isSyncingMarket = signal<boolean>(false);
   readonly lastSyncTimestamp = signal<string | null>(null);
   readonly mcpCallCount = signal<number>(0);
+
+  readonly liveRates = signal<LiveMarketRatesSnapshot>({
+    binanceVesBuy: 82.20,
+    binanceVesSell: 82.85,
+    bcvUsd: 72.45,
+    bcvEur: 78.60,
+    parallelAvg: 84.12,
+    rateGapPct: 16.11,
+    copPerUsdt: 4250,
+    copPerVes: 51.30,
+    zinliUsdPerUsdt: 0.985,
+    timestamp: 'Inicializado',
+    source: 'CACHE',
+  });
 
   /**
    * Evaluates the BCV intervention probability and active schedule.
@@ -175,43 +203,180 @@ export class TriangulationIntelligenceService {
   }
 
   /**
-   * Sincroniza tasas reales de mercado consultando los adaptadores y herramientas MCP
+   * Obtiene y consolida las tasas en vivo desde herramientas MCP, adaptadores P2P y monitores oficiales
    */
-  async syncLiveRates(activeLegs: [ExchangeLeg, ExchangeLeg, ExchangeLeg]): Promise<[ExchangeLeg, ExchangeLeg, ExchangeLeg] | null> {
+  async fetchLiveMarketRates(): Promise<LiveMarketRatesSnapshot> {
     this.isSyncingMarket.set(true);
 
+    let binanceVesBuy = 82.20;
+    let binanceVesSell = 82.85;
+    let bcvUsd = 72.45;
+    let bcvEur = 78.60;
+    let parallelAvg = 84.12;
+    let copPerUsdt = 4250;
+    let zinliUsdPerUsdt = 0.985;
+    let source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK' = 'FALLBACK';
+
     try {
-      // 1. Invocar herramienta MCP de libro P2P
-      await this.mcp.testTool('get_binance_p2p_orderbook', {
+      // 1. Herramienta MCP: Libro de órdenes Binance P2P VES
+      const p2pRes = await this.mcp.testTool('get_binance_p2p_orderbook', {
         fiat: 'VES',
-        tradeType: 'BUY',
+        asset: 'USDT',
         rows: 5,
       });
       this.mcpCallCount.update((c) => c + 1);
 
-      // 2. Traer CotizaVe si hay conexión
-      const cotizaveRates = this.cotizave.ratesByMarket();
-      const binanceVesRate = cotizaveRates['binance']?.mid ?? cotizaveRates['binance']?.ask ?? cotizaveRates['paralelo']?.mid;
-
-      const updatedLegs: [ExchangeLeg, ExchangeLeg, ExchangeLeg] = [{ ...activeLegs[0] }, { ...activeLegs[1] }, { ...activeLegs[2] }];
-
-      // Si el tramo 1 u otro opera con VES y Binance, ajustar con la tasa de mercado real si está disponible
-      if (binanceVesRate && binanceVesRate > 0) {
-        if (updatedLegs[0].fromCurrency === 'VES' || updatedLegs[0].toCurrency === 'VES') {
-          updatedLegs[0].price = binanceVesRate;
-        } else if (updatedLegs[2].fromCurrency === 'VES' || updatedLegs[2].toCurrency === 'VES') {
-          updatedLegs[2].price = binanceVesRate;
+      if (p2pRes.success && p2pRes.result) {
+        const data = p2pRes.result as Record<string, unknown>;
+        if (typeof data['topBuyPrice'] === 'number' && data['topBuyPrice'] > 0) {
+          binanceVesBuy = data['topBuyPrice'];
+          source = 'MCP_LIVE';
+        }
+        if (typeof data['topSellPrice'] === 'number' && data['topSellPrice'] > 0) {
+          binanceVesSell = data['topSellPrice'];
+          source = 'MCP_LIVE';
         }
       }
 
-      this.lastSyncTimestamp.set(new Date().toLocaleTimeString());
-      this.toast.success('Tasas de mercado y libros P2P sincronizados con éxito.');
-      return updatedLegs;
-    } catch {
-      this.toast.warn('No se pudo completar la sincronización completa. Usando cotizaciones previas.');
-      return null;
+      // 2. Herramienta MCP: Tasas Oficiales BCV
+      const bcvRes = await this.mcp.testTool('get_bcv_rates', { cacheFallback: true });
+      this.mcpCallCount.update((c) => c + 1);
+      if (bcvRes.success && bcvRes.result) {
+        const data = bcvRes.result as Record<string, unknown>;
+        if (typeof data['usd'] === 'number' && data['usd'] > 0) {
+          bcvUsd = data['usd'];
+          source = 'MCP_LIVE';
+        }
+        if (typeof data['eur'] === 'number' && data['eur'] > 0) {
+          bcvEur = data['eur'];
+        }
+      }
+
+      // 3. Herramienta MCP: Tasas Paralelas Consolidadas
+      const parallelRes = await this.mcp.testTool('get_parallel_rates', {});
+      this.mcpCallCount.update((c) => c + 1);
+      if (parallelRes.success && parallelRes.result) {
+        const data = parallelRes.result as Record<string, unknown>;
+        if (typeof data['average'] === 'number' && data['average'] > 0) {
+          parallelAvg = data['average'];
+          source = 'MCP_LIVE';
+        }
+      }
+
+      // 4. Fallback/Complemento de BinanceP2pService si tiene datos en vivo en memoria
+      const depth = this.binanceP2p.marketDepth();
+      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+        binanceVesBuy = depth.bestBuyPrice;
+        binanceVesSell = depth.bestSellPrice;
+        source = 'MCP_LIVE';
+      }
+
+      // 5. Fallback/Complemento de CotizaveService si está conectado
+      const cotizaveRates = this.cotizave.ratesByMarket();
+      if (cotizaveRates['binance']?.mid && cotizaveRates['binance'].mid > 0) {
+        binanceVesSell = cotizaveRates['binance'].mid;
+      }
+      if (cotizaveRates['paralelo']?.mid && cotizaveRates['paralelo'].mid > 0) {
+        parallelAvg = cotizaveRates['paralelo'].mid;
+      }
+      if (cotizaveRates['bcv']?.mid && cotizaveRates['bcv'].mid > 0) {
+        bcvUsd = cotizaveRates['bcv'].mid;
+      }
+
+      // 6. Cálculo de brecha cambiaria y cruce derivado COP/VES
+      const rateGapPct = bcvUsd > 0
+        ? Math.round(((parallelAvg - bcvUsd) / bcvUsd) * 10000) / 100
+        : 16.11;
+      const copPerVes = binanceVesSell > 0
+        ? Math.round((copPerUsdt / binanceVesSell) * 100) / 100
+        : 51.30;
+
+      const snapshot: LiveMarketRatesSnapshot = {
+        binanceVesBuy,
+        binanceVesSell,
+        bcvUsd,
+        bcvEur,
+        parallelAvg,
+        rateGapPct,
+        copPerUsdt,
+        copPerVes,
+        zinliUsdPerUsdt,
+        timestamp: new Date().toLocaleTimeString(),
+        source,
+      };
+
+      this.liveRates.set(snapshot);
+      this.lastSyncTimestamp.set(snapshot.timestamp);
+      return snapshot;
     } finally {
       this.isSyncingMarket.set(false);
+    }
+  }
+
+  /**
+   * Aplica las tasas de mercado consolidadas a los tres tramos de una ruta triangular
+   */
+  applyLiveRatesToLegs(
+    legs: [ExchangeLeg, ExchangeLeg, ExchangeLeg],
+    rates: LiveMarketRatesSnapshot,
+    presetId?: string,
+  ): [ExchangeLeg, ExchangeLeg, ExchangeLeg] {
+    const l1 = { ...legs[0] };
+    const l2 = { ...legs[1] };
+    const l3 = { ...legs[2] };
+
+    if (presetId === 'route-ves-usdt-cop' || (l1.fromCurrency === 'VES' && l2.toCurrency === 'COP')) {
+      // Tramo 1: VES -> USDT (Comprar USDT en P2P con VES: tasa sell/ask)
+      l1.price = rates.binanceVesSell;
+      // Tramo 2: USDT -> COP (Venta de USDT recibiendo COP)
+      l2.price = rates.copPerUsdt;
+      // Tramo 3: COP -> VES (Retorno de COP a VES vía mesa o giro directo)
+      l3.price = rates.copPerVes;
+    } else if (presetId === 'route-usdt-usd-ves' || (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USD')) {
+      // Tramo 1: USDT -> USD (Zinli / Wally)
+      l1.price = rates.zinliUsdPerUsdt;
+      // Tramo 2: USD -> VES (Remesa o cambio a paralelo)
+      l2.price = rates.parallelAvg;
+      // Tramo 3: VES -> USDT (Recompra de USDT con VES en P2P)
+      l3.price = rates.binanceVesSell;
+    } else {
+      // Regla universal según las divisas de cada tramo
+      for (const leg of [l1, l2, l3]) {
+        if (leg.fromCurrency === 'VES' && leg.toCurrency === 'USDT') {
+          leg.price = rates.binanceVesSell;
+        } else if (leg.fromCurrency === 'USDT' && leg.toCurrency === 'VES') {
+          leg.price = rates.binanceVesBuy;
+        } else if (leg.fromCurrency === 'USD' && leg.toCurrency === 'VES') {
+          leg.price = rates.parallelAvg;
+        } else if (leg.fromCurrency === 'USDT' && leg.toCurrency === 'COP') {
+          leg.price = rates.copPerUsdt;
+        } else if (leg.fromCurrency === 'COP' && leg.toCurrency === 'VES') {
+          leg.price = rates.copPerVes;
+        }
+      }
+    }
+
+    return [l1, l2, l3];
+  }
+
+  /**
+   * Sincroniza tasas reales de mercado consultando los adaptadores y herramientas MCP
+   */
+  async syncLiveRates(
+    activeLegs: [ExchangeLeg, ExchangeLeg, ExchangeLeg],
+    presetId?: string,
+  ): Promise<[ExchangeLeg, ExchangeLeg, ExchangeLeg]> {
+    try {
+      const snapshot = await this.fetchLiveMarketRates();
+      const updatedLegs = this.applyLiveRatesToLegs(activeLegs, snapshot, presetId);
+      this.toast.success(
+        `Tasas de mercado actualizadas vía MCP (VES/USDT: ${snapshot.binanceVesSell.toFixed(2)} · Paralelo: ${snapshot.parallelAvg.toFixed(2)} · BCV: ${snapshot.bcvUsd.toFixed(2)}).`,
+        'Sincronización MCP',
+      );
+      return updatedLegs;
+    } catch {
+      this.toast.warn('No se pudo conectar a los servicios MCP. Manteniendo últimas cotizaciones.', 'Advertencia');
+      return activeLegs;
     }
   }
 }

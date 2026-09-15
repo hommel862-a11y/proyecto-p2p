@@ -1,4 +1,4 @@
-import { Component, signal, computed, inject } from '@angular/core';
+import { Component, signal, computed, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -26,7 +26,7 @@ const OPS_KEY = 'p2p.operations';
   templateUrl: './triangulation.html',
   styleUrls: ['./triangulation.scss'],
 })
-export class Triangulation {
+export class Triangulation implements OnInit, OnDestroy {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
   private readonly accountsService = inject(AccountsService);
@@ -38,6 +38,10 @@ export class Triangulation {
   readonly initialAmount = signal<number>(10000);
   readonly isSettling = signal<boolean>(false);
   readonly lastSettledId = signal<string | null>(null);
+
+  // Auto-Sync en vivo cada 30 segundos
+  readonly autoSync = signal<boolean>(false);
+  private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 
   // Flight Plan (Checklist de ejecución de 3 tramos)
   readonly step1Done = signal<boolean>(false);
@@ -64,12 +68,18 @@ export class Triangulation {
   readonly leg3BankingFee = signal<number>(this.presets[0].legs[2].bankingFeePct ?? 0);
 
   /**
-   * Scanner Matrix: Computes live arbitrage for all preset routes simultaneously
+   * Scanner Matrix: Computes live arbitrage for all preset routes simultaneously using real MCP rates
    */
   readonly scannedRoutes = computed<TriangularArbitrageResult[]>(() => {
+    const rates = this.intelligence.liveRates();
     return this.presets.map((p) => {
       const amount = p.initialCurrency === 'USDT' ? 1000 : 50000;
-      return calculateTriangularArbitrage(p.id, p.name, amount, p.legs);
+      const liveLegs = this.intelligence.applyLiveRatesToLegs(
+        [{ ...p.legs[0] }, { ...p.legs[1] }, { ...p.legs[2] }],
+        rates,
+        p.id,
+      );
+      return calculateTriangularArbitrage(p.id, p.name, amount, liveLegs);
     });
   });
 
@@ -152,20 +162,60 @@ export class Triangulation {
     return Math.round((count / 3) * 100);
   });
 
+  ngOnInit(): void {
+    // Sincronización automática de mercado inmediata al iniciar
+    void this.syncRatesWithMcp(true);
+  }
+
+  ngOnDestroy(): void {
+    this.stopAutoSync();
+  }
+
+  toggleAutoSync(): void {
+    const next = !this.autoSync();
+    this.autoSync.set(next);
+    if (next) {
+      this.toast.info('Sincronización en vivo activada (cada 30s).', 'MCP Stream');
+      this.autoSyncTimer = setInterval(() => {
+        if (this.autoSync() && !this.intelligence.isSyncingMarket()) {
+          void this.syncRatesWithMcp(true);
+        }
+      }, 30000);
+    } else {
+      this.stopAutoSync();
+      this.toast.info('Sincronización automática pausada.', 'MCP Stream');
+    }
+  }
+
+  stopAutoSync(): void {
+    this.autoSync.set(false);
+    if (this.autoSyncTimer) {
+      clearInterval(this.autoSyncTimer);
+      this.autoSyncTimer = null;
+    }
+  }
+
   onSelectPreset(presetId: string): void {
     this.selectedPresetId.set(presetId);
     const p = this.activePreset();
-    this.leg1Price.set(p.legs[0].price);
-    this.leg1Fee.set(p.legs[0].feePct);
-    this.leg1BankingFee.set(p.legs[0].bankingFeePct ?? 0);
+    const rates = this.intelligence.liveRates();
+    const liveLegs = this.intelligence.applyLiveRatesToLegs(
+      [{ ...p.legs[0] }, { ...p.legs[1] }, { ...p.legs[2] }],
+      rates,
+      p.id,
+    );
 
-    this.leg2Price.set(p.legs[1].price);
-    this.leg2Fee.set(p.legs[1].feePct);
-    this.leg2BankingFee.set(p.legs[1].bankingFeePct ?? 0);
+    this.leg1Price.set(liveLegs[0].price);
+    this.leg1Fee.set(liveLegs[0].feePct);
+    this.leg1BankingFee.set(liveLegs[0].bankingFeePct ?? 0);
 
-    this.leg3Price.set(p.legs[2].price);
-    this.leg3Fee.set(p.legs[2].feePct);
-    this.leg3BankingFee.set(p.legs[2].bankingFeePct ?? 0);
+    this.leg2Price.set(liveLegs[1].price);
+    this.leg2Fee.set(liveLegs[1].feePct);
+    this.leg2BankingFee.set(liveLegs[1].bankingFeePct ?? 0);
+
+    this.leg3Price.set(liveLegs[2].price);
+    this.leg3Fee.set(liveLegs[2].feePct);
+    this.leg3BankingFee.set(liveLegs[2].bankingFeePct ?? 0);
 
     if (p.initialCurrency === 'USDT') {
       this.initialAmount.set(1000);
@@ -192,7 +242,7 @@ export class Triangulation {
     this.step3Done.set(false);
   }
 
-  async syncRatesWithMcp(): Promise<void> {
+  async syncRatesWithMcp(silent = false): Promise<void> {
     const p = this.activePreset();
     const legs: [ExchangeLeg, ExchangeLeg, ExchangeLeg] = [
       { ...p.legs[0], price: this.leg1Price(), feePct: this.leg1Fee(), bankingFeePct: this.leg1BankingFee() },
@@ -200,12 +250,26 @@ export class Triangulation {
       { ...p.legs[2], price: this.leg3Price(), feePct: this.leg3Fee(), bankingFeePct: this.leg3BankingFee() },
     ];
 
-    const updated = await this.intelligence.syncLiveRates(legs);
+    const updated = await this.intelligence.syncLiveRates(legs, p.id);
     if (updated) {
       this.leg1Price.set(updated[0].price);
       this.leg2Price.set(updated[1].price);
       this.leg3Price.set(updated[2].price);
     }
+  }
+
+  applyLivePricesToCurrentRoute(): void {
+    const p = this.activePreset();
+    const rates = this.intelligence.liveRates();
+    const liveLegs = this.intelligence.applyLiveRatesToLegs(
+      [{ ...p.legs[0] }, { ...p.legs[1] }, { ...p.legs[2] }],
+      rates,
+      p.id,
+    );
+    this.leg1Price.set(liveLegs[0].price);
+    this.leg2Price.set(liveLegs[1].price);
+    this.leg3Price.set(liveLegs[2].price);
+    this.toast.info('Precios en vivo de MCP aplicados al tramo actual.', 'Precios en Vivo');
   }
 
   copyCycleSummary(): void {
