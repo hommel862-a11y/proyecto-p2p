@@ -49,6 +49,7 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       runSwarmAnalysis: (params) => ipc('copilot:run-swarm-analysis', params) as Promise<any>,
       getSwarmHealth: () => ipc('copilot:get-swarm-health') as Promise<any>,
       auditDisputeProof: (params) => ipc('copilot:audit-dispute-proof', params) as Promise<any>,
+      triggerProactiveEval: (params) => ipc('copilot:trigger-proactive-eval', params) as Promise<any>,
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
@@ -104,6 +105,7 @@ export const ALLOWED_CHANNELS = [
   'copilot:run-swarm-analysis',
   'copilot:get-swarm-health',
   'copilot:audit-dispute-proof',
+  'copilot:trigger-proactive-eval',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',

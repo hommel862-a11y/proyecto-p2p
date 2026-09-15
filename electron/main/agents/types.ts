@@ -3,7 +3,7 @@
  * Defines roles, proposals, verdicts, and governance mechanisms.
  */
 
-import type { StrategyPlanCard } from '../shared/types';
+import type { StrategyPlanCard } from '../../shared/types';
 import type { EngramObservationRecord } from '../db/database';
 
 export type AgentRole = 'SENTINEL' | 'STRATEGIST' | 'RISK_GATEKEEPER' | 'DISPUTE_AUDITOR';

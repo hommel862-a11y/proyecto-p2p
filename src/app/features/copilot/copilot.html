@@ -121,6 +121,27 @@
     </div>
   </div>
 
+  <!-- PROACTIVE EVENT ALERTS (EVENT-DRIVEN IA) -->
+  @if (activeAlerts().length > 0) {
+    <div class="proactive-alerts-container">
+      @for (alert of activeAlerts(); track alert.id) {
+        <div class="proactive-alert-card" [class.critical]="alert.severity === 'CRITICAL'" [class.warning]="alert.severity === 'WARNING'">
+          <div class="alert-icon">
+            {{ alert.severity === 'CRITICAL' ? '🚨' : '⚠️' }}
+          </div>
+          <div class="alert-body">
+            <div class="alert-title">{{ alert.title }}</div>
+            <div class="alert-msg">{{ alert.message }}</div>
+            @if (alert.recommendedAction) {
+              <div class="alert-action"><strong>Directiva:</strong> {{ alert.recommendedAction }}</div>
+            }
+          </div>
+          <button class="btn-dismiss-alert" (click)="dismissAlert(alert.id)" title="Descartar alerta">✕</button>
+        </div>
+      }
+    </div>
+  }
+
   @if (actionSuccessNotice()) {
     <div class="notice-banner success">
       <span>{{ actionSuccessNotice() }}</span>

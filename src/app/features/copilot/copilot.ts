@@ -59,6 +59,22 @@ interface ElectronCopilotBridge {
     executionSummary: string;
   }>;
   getSwarmHealth?(): Promise<AgentHealthStatusDto[]>;
+  triggerProactiveEval?(params?: { parallelRate?: number; bcvRate?: number; spotUsdt?: number }): Promise<{
+    macroAlert: ProactiveEventAlertDto | null;
+    depegAlert: ProactiveEventAlertDto | null;
+  }>;
+}
+
+export interface ProactiveEventAlertDto {
+  id: string;
+  type: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+  timestamp: number;
+  recommendedAction?: string;
+  autoKillswitch?: boolean;
 }
 
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
@@ -204,6 +220,11 @@ export class Copilot implements OnInit, OnDestroy {
     },
   ]);
   isSwarmAnalyzing = signal<boolean>(false);
+  activeAlerts = signal<ProactiveEventAlertDto[]>([]);
+
+  dismissAlert(alertId: string): void {
+    this.activeAlerts.update((list) => list.filter((a) => a.id !== alertId));
+  }
 
   apiKeyInput = signal<string>('');
   isTestingConnection = signal<boolean>(false);
@@ -405,6 +426,19 @@ export class Copilot implements OnInit, OnDestroy {
           const health = await copilot.getSwarmHealth();
           if (health && health.length > 0) {
             this.swarmHealth.set(health);
+          }
+        }
+        if (copilot.triggerProactiveEval) {
+          const evalRes = await copilot.triggerProactiveEval({
+            parallelRate: this.bcvRates().parallel,
+            bcvRate: this.bcvRates().bcv,
+            spotUsdt: 1.000,
+          });
+          const newAlerts: ProactiveEventAlertDto[] = [];
+          if (evalRes.macroAlert) newAlerts.push(evalRes.macroAlert);
+          if (evalRes.depegAlert) newAlerts.push(evalRes.depegAlert);
+          if (newAlerts.length > 0) {
+            this.activeAlerts.set(newAlerts);
           }
         }
       } catch (err) {

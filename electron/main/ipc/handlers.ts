@@ -304,6 +304,26 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:trigger-proactive-eval');
+  ipcMain.handle(
+    'copilot:trigger-proactive-eval',
+    async (_event: IpcMainInvokeEvent, params?: { parallelRate?: number; bcvRate?: number; spotUsdt?: number }) => {
+      const watcher = getAlphaWatcher();
+      const engine = watcher.getProactiveEngine();
+      const parallel = params?.parallelRate ?? 78.50;
+      const bcv = params?.bcvRate ?? 65.50;
+      const spot = params?.spotUsdt ?? 1.000;
+
+      const macroAlert = engine.evaluateBcvMacroEvent(parallel, bcv);
+      const depegAlert = engine.evaluateUsdtDepegEvent(spot);
+
+      return {
+        macroAlert,
+        depegAlert,
+      };
+    },
+  );
+
   ipcMain.removeHandler('p2p:mcp-status');
   ipcMain.handle('p2p:mcp-status', async () => {
     return getMcpFullStatus();

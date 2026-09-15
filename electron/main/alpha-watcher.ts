@@ -9,6 +9,7 @@
 import { net, BrowserWindow, Notification } from 'electron';
 import type { P2PDatabaseService, StrategyPlanRecord } from './db/database';
 import type { StrategyPlanCard } from '../shared/types';
+import { ProactiveEventEngine } from './agents/proactive-event-engine';
 
 export interface AlphaWatcherConfig {
   pollIntervalSeconds: number;
@@ -22,6 +23,7 @@ export interface AlphaWatcherConfig {
 export class AlphaWatcher {
   private timer: NodeJS.Timeout | null = null;
   private isPolling = false;
+  private proactiveEngine: ProactiveEventEngine;
   private config: AlphaWatcherConfig = {
     pollIntervalSeconds: 30,
     minNetSpreadPct: 1.15,
@@ -37,7 +39,18 @@ export class AlphaWatcher {
   constructor(
     private db: P2PDatabaseService,
     private getMainWindow: () => BrowserWindow | null,
-  ) {}
+  ) {
+    this.proactiveEngine = new ProactiveEventEngine(this.db, (channel, payload) => {
+      const win = this.getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(channel, payload);
+      }
+    });
+  }
+
+  getProactiveEngine(): ProactiveEventEngine {
+    return this.proactiveEngine;
+  }
 
   getStatus(): { enabled: boolean; pollIntervalSeconds: number; minNetSpreadPct: number; scanCount: number; lastOpportunity: unknown } {
     return {
@@ -161,6 +174,16 @@ export class AlphaWatcher {
           }).show();
         }
       }
+
+      // 2. Proactive Macro Evaluation (BCV Window & Extreme Gap)
+      // Uses approximate benchmark for BCV rate vs P2P parallel price
+      if (bestBuy && bestBuy > 0) {
+        const estimatedBcvRate = 65.50; // Reference anchor
+        this.proactiveEngine.evaluateBcvMacroEvent(bestBuy, estimatedBcvRate);
+      }
+
+      // 3. Proactive Depeg Monitoring (USDT vs USD)
+      this.proactiveEngine.evaluateUsdtDepegEvent(1.000);
     } catch {
       // Quiet fail on network glitch to avoid noisy polling crashes
     } finally {

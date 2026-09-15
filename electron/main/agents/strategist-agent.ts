@@ -5,7 +5,7 @@
  */
 
 import type { StrategistProposal, SentinelSignal, AgentHealthStatus } from './types';
-import type { StrategyPlanCard } from '../shared/types';
+import type { StrategyPlanCard } from '../../shared/types';
 import { executeFinancialSkill } from '../gemini-skills';
 
 export class StrategistAgent {

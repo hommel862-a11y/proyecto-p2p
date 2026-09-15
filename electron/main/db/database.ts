@@ -598,7 +598,7 @@ export class P2PDatabaseService {
   ): EngramObservationRecord[] {
     let query = 'SELECT * FROM engram_observations';
     const conditions: string[] = [];
-    const params: unknown[] = [];
+    const params: (string | number)[] = [];
 
     if (filter?.topicKey) {
       conditions.push('topic_key = ?');
