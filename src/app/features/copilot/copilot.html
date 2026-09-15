@@ -97,6 +97,30 @@
     </div>
   </div>
 
+  <!-- MULTI-AGENT SWARM TELEMETRY & CONTROL BAR -->
+  <div class="swarm-telemetry-bar">
+    <div class="swarm-identity">
+      <span class="swarm-title">⚡ ENJAMBRE 4-AGENTES:</span>
+    </div>
+    <div class="swarm-agents-list">
+      @for (agent of swarmHealth(); track agent.role) {
+        <div class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'">
+          <span class="agent-dot"></span>
+          <span class="agent-name">{{ agent.name }}</span>
+          <span class="agent-ops">({{ agent.opsProcessed }} ops)</span>
+        </div>
+      }
+    </div>
+    <div class="swarm-actions">
+      <button 
+        class="btn-trigger-swarm" 
+        [disabled]="isSwarmAnalyzing()" 
+        (click)="triggerSwarmAnalysis()">
+        {{ isSwarmAnalyzing() ? '⏳ Auditando Mesa...' : '⚡ Ejecutar Auditoría Swarm' }}
+      </button>
+    </div>
+  </div>
+
   @if (actionSuccessNotice()) {
     <div class="notice-banner success">
       <span>{{ actionSuccessNotice() }}</span>

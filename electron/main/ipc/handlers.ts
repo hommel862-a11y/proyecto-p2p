@@ -2,6 +2,7 @@ import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEven
 import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource, AlphaWatcherConfigDto } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
+import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 
@@ -279,6 +280,30 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:run-swarm-analysis');
+  ipcMain.handle(
+    'copilot:run-swarm-analysis',
+    async (_event: IpcMainInvokeEvent, params?: any) => {
+      const swarm = getAgentSwarm();
+      return swarm.runAnalysisPipeline(params);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-swarm-health');
+  ipcMain.handle('copilot:get-swarm-health', async () => {
+    const swarm = getAgentSwarm();
+    return swarm.getSwarmHealth();
+  });
+
+  ipcMain.removeHandler('copilot:audit-dispute-proof');
+  ipcMain.handle(
+    'copilot:audit-dispute-proof',
+    async (_event: IpcMainInvokeEvent, params: any) => {
+      const swarm = getAgentSwarm();
+      return swarm.auditPaymentProof(params);
+    },
+  );
+
   ipcMain.removeHandler('p2p:mcp-status');
   ipcMain.handle('p2p:mcp-status', async () => {
     return getMcpFullStatus();
@@ -319,6 +344,14 @@ export function getAlphaWatcher(): AlphaWatcher {
     alphaWatcherInstance = new AlphaWatcher(getDbService(), () => null);
   }
   return alphaWatcherInstance;
+}
+
+let agentSwarmInstance: AgentSwarmOrchestrator | null = null;
+export function getAgentSwarm(): AgentSwarmOrchestrator {
+  if (!agentSwarmInstance) {
+    agentSwarmInstance = new AgentSwarmOrchestrator(getDbService());
+  }
+  return agentSwarmInstance;
 }
 
 

@@ -32,6 +32,15 @@ export interface EngramObservationDto {
   updatedAt?: number;
 }
 
+export interface AgentHealthStatusDto {
+  role: string;
+  name: string;
+  status: 'ONLINE' | 'STANDBY' | 'BUSY' | 'DEGRADED';
+  lastActiveTime: number;
+  opsProcessed: number;
+  description: string;
+}
+
 interface ElectronCopilotBridge {
   sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
   executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
@@ -42,6 +51,14 @@ interface ElectronCopilotBridge {
   testConnection(): Promise<{ success: boolean; model: string; message: string }>;
   getWatcherStatus(): Promise<AlphaWatcherStatusDto>;
   setWatcherConfig(params: Partial<{ enabled: boolean; minNetSpreadPct: number; pollIntervalSeconds: number }>): Promise<boolean>;
+  runSwarmAnalysis?(): Promise<{
+    riskVerdict: { status: string; riskScore: number; recommendedAction: string; vetoReason?: string };
+    sentinelSignal: { netSpreadPct: number };
+    strategistProposal?: { rationale: string };
+    suggestedPlan?: StrategyPlanCard;
+    executionSummary: string;
+  }>;
+  getSwarmHealth?(): Promise<AgentHealthStatusDto[]>;
 }
 
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
@@ -150,6 +167,44 @@ export class Copilot implements OnInit, OnDestroy {
     model: 'gemini-3.6-flash',
     message: 'Verificando conexión...',
   });
+
+  // Institutional Multi-Agent Swarm (4-Agent Desk Swarm)
+  swarmHealth = signal<AgentHealthStatusDto[]>([
+    {
+      role: 'SENTINEL',
+      name: 'Alpha Sentinel',
+      status: 'ONLINE',
+      lastActiveTime: 0,
+      opsProcessed: 0,
+      description: 'Monitoreo 24/7 de microestructura, orderbook L2 y brecha BCV.',
+    },
+    {
+      role: 'STRATEGIST',
+      name: 'Gentleman AI (Estratega)',
+      status: 'ONLINE',
+      lastActiveTime: 0,
+      opsProcessed: 0,
+      description: 'Modelado de arbitraje triangular, VWAP y slippage tolerado.',
+    },
+    {
+      role: 'RISK_GATEKEEPER',
+      name: 'Risk Gatekeeper',
+      status: 'ONLINE',
+      lastActiveTime: 0,
+      opsProcessed: 0,
+      description: 'Veto unilateral ante spread <0.50%, límites bancarios o contrapartes.',
+    },
+    {
+      role: 'DISPUTE_AUDITOR',
+      name: 'Dispute & Proof Auditor',
+      status: 'STANDBY',
+      lastActiveTime: 0,
+      opsProcessed: 0,
+      description: 'Auditoría forense de comprobantes OCR y expedientes de mediación.',
+    },
+  ]);
+  isSwarmAnalyzing = signal<boolean>(false);
+
   apiKeyInput = signal<string>('');
   isTestingConnection = signal<boolean>(false);
 
@@ -346,9 +401,71 @@ export class Copilot implements OnInit, OnDestroy {
             this.watcherStatus.set(watcher);
           }
         }
+        if (copilot.getSwarmHealth) {
+          const health = await copilot.getSwarmHealth();
+          if (health && health.length > 0) {
+            this.swarmHealth.set(health);
+          }
+        }
       } catch (err) {
         console.warn('Error loading copilot data from Electron IPC:', err);
       }
+    }
+  }
+
+  async triggerSwarmAnalysis(): Promise<void> {
+    if (this.isSwarmAnalyzing()) return;
+    this.isSwarmAnalyzing.set(true);
+
+    try {
+      const copilot = getElectronCopilot();
+      if (copilot?.runSwarmAnalysis) {
+        const result = await copilot.runSwarmAnalysis();
+        const statusBadge = result.riskVerdict.status === 'VETOED' ? '⛔ VETADO POR RIESGO' : '🛡 APROBADO POR RIESGO';
+        const vetoReason = result.riskVerdict.vetoReason ? ` (Motivo: ${result.riskVerdict.vetoReason})` : '';
+        const rationale = result.strategistProposal?.rationale ?? 'Sin propuesta viable';
+
+        const lines = [
+          '### ⚡ Análisis del Enjambre Multi-Agente Completado',
+          `**Estado de Auditoría:** \`${statusBadge}\` (Score de Riesgo: ${result.riskVerdict.riskScore}/100)`,
+          '',
+          `• **Centinela:** Spread neto preliminar de ${result.sentinelSignal.netSpreadPct}%`,
+          `• **Estratega (Gentleman AI):** ${rationale}`,
+          `• **Risk Gatekeeper:** ${result.riskVerdict.recommendedAction}${vetoReason}`,
+          '',
+          `*${result.executionSummary}*`,
+        ];
+
+        this.messages.update((msgs) => [
+          ...msgs,
+          {
+            role: 'assistant',
+            content: lines.join('\n'),
+            plan: result.suggestedPlan,
+            timestamp: Date.now(),
+          },
+        ]);
+        this.scrollToBottom();
+
+        if (result.suggestedPlan) {
+          const newPlan = result.suggestedPlan;
+          this.plans.update((p) => [newPlan, ...p.filter((x) => x.id !== newPlan.id)]);
+        }
+
+        this.actionSuccessNotice.set(`Enjambre de 4 Agentes ejecutado: ${result.riskVerdict.status}`);
+        setTimeout(() => this.actionSuccessNotice.set(null), 4000);
+      } else {
+        this.actionSuccessNotice.set('⚡ Auditoría de Enjambre completada en modo simulación.');
+        setTimeout(() => this.actionSuccessNotice.set(null), 3000);
+      }
+    } catch (err: unknown) {
+      console.error('Error running swarm analysis:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      this.actionSuccessNotice.set(`Error en Swarm: ${msg}`);
+      setTimeout(() => this.actionSuccessNotice.set(null), 4000);
+    } finally {
+      this.isSwarmAnalyzing.set(false);
+      await this.refreshData();
     }
   }
 

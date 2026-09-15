@@ -1665,3 +1665,118 @@
   }
 }
 
+/* Multi-Agent Swarm Telemetry & Control Bar */
+.swarm-telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(216, 180, 92, 0.25);
+  border-radius: 8px;
+  padding: 6px 14px;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+  overflow-x: auto;
+
+  .swarm-identity {
+    .swarm-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #d8b45c;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+  }
+
+  .swarm-agents-list {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+
+    .agent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      white-space: nowrap;
+
+      .agent-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #94a3b8;
+      }
+
+      .agent-name {
+        font-weight: 600;
+      }
+
+      .agent-ops {
+        font-size: 0.65rem;
+        color: #64748b;
+        font-family: monospace;
+      }
+
+      &.online {
+        border-color: rgba(74, 222, 128, 0.3);
+        background: rgba(74, 222, 128, 0.08);
+        color: #f1f5f9;
+
+        .agent-dot {
+          background: #4ade80;
+          box-shadow: 0 0 6px #4ade80;
+        }
+      }
+
+      &.standby {
+        border-color: rgba(251, 191, 36, 0.3);
+        background: rgba(251, 191, 36, 0.08);
+        color: #f1f5f9;
+
+        .agent-dot {
+          background: #fbbf24;
+          box-shadow: 0 0 6px #fbbf24;
+        }
+      }
+    }
+  }
+
+  .swarm-actions {
+    margin-left: auto;
+
+    .btn-trigger-swarm {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, rgba(216, 180, 92, 0.25), rgba(216, 180, 92, 0.1));
+      border: 1px solid #d8b45c;
+      color: #fef08a;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+
+      &:hover:not(:disabled) {
+        background: rgba(216, 180, 92, 0.4);
+        box-shadow: 0 0 10px rgba(216, 180, 92, 0.3);
+        transform: translateY(-1px);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+
