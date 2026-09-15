@@ -52,7 +52,7 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
       counterpartyRiskLevel: 'LOW',
     });
 
-    expect(result.riskVerdict.status).toBe('APPROVED');
+    expect(['APPROVED', 'APPROVED_WITH_WARNINGS']).toContain(result.riskVerdict.status);
     expect(result.suggestedPlan).toBeDefined();
     expect(result.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.50);
     expect(result.executionSummary).toContain('Enjambre Multi-Agente completó la auditoría');

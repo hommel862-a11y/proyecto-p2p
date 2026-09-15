@@ -88,12 +88,14 @@ describe('Electron preload bridge (secure IPC)', () => {
     await api.copilot.executePlan({ planId: 'PLAN-123' });
     await api.copilot.getWatcherStatus();
     await api.copilot.setWatcherConfig({ enabled: false, minNetSpreadPct: 1.5 });
+    await (api.copilot as any).runMonteCarlo({ offers: [], config: {} });
 
     expect(calls).toEqual([
       { channel: 'copilot:send-message', args: [{ prompt: 'analizar mercado' }] },
       { channel: 'copilot:execute-plan', args: [{ planId: 'PLAN-123' }] },
       { channel: 'copilot:get-watcher-status', args: [] },
       { channel: 'copilot:set-watcher-config', args: [{ enabled: false, minNetSpreadPct: 1.5 }] },
+      { channel: 'copilot:run-monte-carlo', args: [{ offers: [], config: {} }] },
     ]);
   });
 

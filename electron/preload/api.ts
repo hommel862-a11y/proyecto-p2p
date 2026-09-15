@@ -53,6 +53,7 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       assessCounterparty: (params) => ipc('copilot:assess-counterparty', params) as Promise<any>,
       recordCounterpartyTrade: (params) => ipc('copilot:record-counterparty-trade', params) as Promise<any>,
       listCounterparties: (params) => ipc('copilot:list-counterparties', params) as Promise<any>,
+      runMonteCarlo: (params) => ipc('copilot:run-monte-carlo', params) as Promise<any>,
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
@@ -112,6 +113,7 @@ export const ALLOWED_CHANNELS = [
   'copilot:assess-counterparty',
   'copilot:record-counterparty-trade',
   'copilot:list-counterparties',
+  'copilot:run-monte-carlo',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',

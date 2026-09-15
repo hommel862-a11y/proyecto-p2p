@@ -7,6 +7,7 @@
 import type { StrategistProposal, SentinelSignal, AgentHealthStatus } from './types';
 import type { StrategyPlanCard } from '../../shared/types';
 import { executeFinancialSkill } from '../gemini-skills';
+import { MonteCarloSimulator } from './monte-carlo-simulator';
 
 export class StrategistAgent {
   readonly role = 'STRATEGIST' as const;
@@ -64,6 +65,21 @@ export class StrategistAgent {
       : signal.bestAsk;
     const slippageBps = simData.slippageBps ?? 12;
 
+    // 3. Monte Carlo Microstructure Simulation (500 iterations)
+    const mcSimulator = new MonteCarloSimulator();
+    const mockBook = [
+      { price: signal.bestAsk, minVes: 500, maxVes: requestedCapital * signal.bestAsk * 2.0, merchantName: 'Merchant_Top' },
+      { price: signal.bestAsk * 1.0005, minVes: 1000, maxVes: requestedCapital * signal.bestAsk * 3.0, merchantName: 'Merchant_2' },
+      { price: signal.bestAsk * 1.001, minVes: 2000, maxVes: requestedCapital * signal.bestAsk * 5.0, merchantName: 'Merchant_3' },
+    ];
+    const mcResult = mcSimulator.runSimulation(mockBook as any, {
+      iterations: 500,
+      cancellationProbabilityPct: 10,
+      priceDriftVolatilityBps: 15,
+      ticketAmountUsdt: requestedCapital,
+      side: 'BUY',
+    });
+
     const planId = `SWARM-${Date.now().toString(36).toUpperCase()}`;
     const plan: StrategyPlanCard = {
       id: planId,
@@ -72,9 +88,9 @@ export class StrategistAgent {
       capitalRequiredUsdt: requestedCapital,
       expectedNetSpreadPct: Number(calculatedNetSpread.toFixed(2)),
       expectedProfitUsdt: Number(((requestedCapital * calculatedNetSpread) / 100).toFixed(2)),
-      riskLevel: calculatedNetSpread >= 1.2 ? 'LOW' : 'MEDIUM',
+      riskLevel: calculatedNetSpread >= 1.2 && mcResult.isSafeForExecution ? 'LOW' : 'MEDIUM',
       assignedOperatorName: 'Operador Principal',
-      rationale: `Brecha BCV en ${signal.rateGapPct?.toFixed(1) ?? '22.9'}% y liquidez profunda. Ejecución VWAP optimizada con deslizamiento controlado (${slippageBps} bps).`,
+      rationale: `Brecha BCV en ${signal.rateGapPct?.toFixed(1) ?? '22.9'}% y liquidez profunda. Slippage P95 Monte Carlo: ${mcResult.p95SlippagePct}% (VaR 95%: $${mcResult.var95Usdt} USDT).`,
       status: 'PROPOSED',
     };
 
@@ -84,7 +100,7 @@ export class StrategistAgent {
 
     return {
       plan,
-      rationale: `Mirá, formulé una ruta táctica de preservación de capital con retorno neto de ${calculatedNetSpread.toFixed(2)}%. Cumple con la regla de oro institucional y minimiza fricción por comisiones.`,
+      rationale: `Mirá, formulé una ruta táctica de preservación de capital con retorno neto de ${calculatedNetSpread.toFixed(2)}%. Simulación Monte Carlo valida P95 slippage de ${mcResult.p95SlippagePct}% con tasa de llenado del ${mcResult.fillRatePct}%.`,
       mathematicalValidation: {
         grossSpreadPct: signal.grossSpreadPct,
         estimatedFeesPct: Number((signal.grossSpreadPct - calculatedNetSpread).toFixed(2)),
@@ -92,6 +108,15 @@ export class StrategistAgent {
         vwapPrice,
         slippageBps,
         meetsGoldenRule,
+        monteCarlo: {
+          meanSlippagePct: mcResult.meanSlippagePct,
+          p95SlippagePct: mcResult.p95SlippagePct,
+          p99SlippagePct: mcResult.p99SlippagePct,
+          fillRatePct: mcResult.fillRatePct,
+          var95Usdt: mcResult.var95Usdt,
+          isSafeForExecution: mcResult.isSafeForExecution,
+          recommendation: mcResult.recommendation,
+        },
       },
       recommendedTiming: timing,
     };

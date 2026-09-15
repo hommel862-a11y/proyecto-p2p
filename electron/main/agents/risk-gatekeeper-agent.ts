@@ -64,6 +64,31 @@ export class RiskGatekeeperAgent {
       };
     }
 
+    // Rule 1.1: Monte Carlo Tail Risk & P95 Slippage Check
+    const mc = proposal.mathematicalValidation.monteCarlo;
+    if (mc) {
+      if (mc.p95SlippagePct > 0.60) {
+        return {
+          status: 'VETOED',
+          riskScore: 92,
+          vetoReason: `VETO POR RIESGO (MICROESTRUCTURA MONTE CARLO): El deslizamiento en cola P95 proyectado (${mc.p95SlippagePct}%) destruye el margen neto. Alta probabilidad de cancelaciones súbitas y slippage en los libros.`,
+          warnings: [`P95 Slippage Crítico: ${mc.p95SlippagePct}%`, `VaR 95%: $${mc.var95Usdt} USDT`],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: false,
+            antiPitufeoViolation: false,
+          },
+          recommendedAction: 'Reducir el tamaño del ticket a la mitad o suspender órdenes taker hasta que la profundidad del libro mejore.',
+          evaluatedAt: Date.now(),
+        };
+      } else if (mc.p95SlippagePct > 0.30 || mc.fillRatePct < 85) {
+        riskScore += 20;
+        warnings.push(`Riesgo de cola Monte Carlo P95 (${mc.p95SlippagePct}%): Tasa de llenado proyectada en ${mc.fillRatePct}%. VaR 95%: $${mc.var95Usdt} USDT.`);
+      }
+    }
+
     // Rule 2: Daily Banking & Custody Exposure Limit
     const projectedTotalVolume = dailyVolume + proposal.plan.capitalRequiredUsdt;
     const dailyBankLimitExceeded = projectedTotalVolume > dailyLimit;

@@ -45,6 +45,15 @@ export interface StrategistProposal {
     vwapPrice?: number;
     slippageBps?: number;
     meetsGoldenRule: boolean;
+    monteCarlo?: {
+      meanSlippagePct: number;
+      p95SlippagePct: number;
+      p99SlippagePct: number;
+      fillRatePct: number;
+      var95Usdt: number;
+      isSafeForExecution: boolean;
+      recommendation: string;
+    };
   };
   recommendedTiming: string;
 }

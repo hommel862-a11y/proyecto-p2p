@@ -3,6 +3,7 @@ import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSo
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
+import { MonteCarloSimulator, type MonteCarloSimulationConfig } from '../agents/monte-carlo-simulator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 
@@ -356,6 +357,24 @@ export function registerIpcHandlers(): void {
     async (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
       const swarm = getAgentSwarm();
       return swarm.getCounterpartyGraph().listProfiles(params?.limit ?? 50);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:run-monte-carlo');
+  ipcMain.handle(
+    'copilot:run-monte-carlo',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { offers: any[]; config: MonteCarloSimulationConfig },
+    ) => {
+      const sim = new MonteCarloSimulator();
+      return sim.runSimulation(params?.offers ?? [], params?.config ?? {
+        iterations: 500,
+        cancellationProbabilityPct: 15,
+        priceDriftVolatilityBps: 30,
+        ticketAmountUsdt: 1000,
+        side: 'BUY',
+      });
     },
   );
 
