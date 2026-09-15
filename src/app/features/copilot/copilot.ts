@@ -63,6 +63,41 @@ interface ElectronCopilotBridge {
     macroAlert: ProactiveEventAlertDto | null;
     depegAlert: ProactiveEventAlertDto | null;
   }>;
+  assessCounterparty?(params: { alias: string; realName: string; documentId?: string; bankPayerName?: string }): Promise<{
+    isSafe: boolean;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    warning?: string;
+    isThirdPartyPayment: boolean;
+    riskScore: number;
+    reputation: string;
+    profile: CounterpartyProfileDto | null;
+  }>;
+  recordCounterpartyTrade?(params: {
+    alias: string;
+    realName: string;
+    documentId: string;
+    volumeUsdt: number;
+    bankPayerName: string;
+    hadTriangulationAttempt: boolean;
+  }): Promise<{ success: boolean }>;
+  listCounterparties?(params?: { limit?: number }): Promise<CounterpartyProfileDto[]>;
+}
+
+export interface CounterpartyProfileDto {
+  id: string;
+  alias: string;
+  realName: string;
+  documentId: string;
+  phone?: string;
+  reputation: 'TRUSTED' | 'VERIFIED' | 'NORMAL' | 'SUSPICIOUS' | 'BLOCKED';
+  riskScore: number;
+  successfulTradesCount: number;
+  triangulationIncidentsCount: number;
+  totalVolumeUsdt: number;
+  notes?: string;
+  lastTradeTimestamp?: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ProactiveEventAlertDto {
@@ -120,8 +155,42 @@ export class Copilot implements OnInit, OnDestroy {
 
   inputPrompt = signal<string>('');
   isLoading = signal<boolean>(false);
-  activeTab = signal<'chat' | 'plans' | 'memory' | 'config'>('chat');
+  activeTab = signal<'chat' | 'plans' | 'memory' | 'counterparties' | 'config'>('chat');
   plans = signal<StrategyPlanCard[]>([]);
+  counterparties = signal<CounterpartyProfileDto[]>([
+    {
+      id: 'CP-1',
+      alias: 'BanescoFast_P2P',
+      realName: 'Carlos Eduardo Mendoza',
+      documentId: 'V-19842103',
+      phone: '0414-2394102',
+      reputation: 'TRUSTED',
+      riskScore: 5,
+      successfulTradesCount: 48,
+      triangulationIncidentsCount: 0,
+      totalVolumeUsdt: 58400,
+      notes: 'Comerciante verificado. Pago Móvil inmediato sin terceros.',
+      lastTradeTimestamp: Date.now() - 3600000,
+      createdAt: Date.now() - 86400000 * 30,
+      updatedAt: Date.now() - 3600000,
+    },
+    {
+      id: 'CP-2',
+      alias: 'Perez_Exchanger',
+      realName: 'José Gregorio Pérez',
+      documentId: 'V-23114502',
+      phone: '0424-9182341',
+      reputation: 'SUSPICIOUS',
+      riskScore: 80,
+      successfulTradesCount: 3,
+      triangulationIncidentsCount: 1,
+      totalVolumeUsdt: 1200,
+      notes: 'Intentó pagar desde cuenta de un familiar ("María Pérez"). Retención preventiva aplicada.',
+      lastTradeTimestamp: Date.now() - 7200000,
+      createdAt: Date.now() - 86400000 * 5,
+      updatedAt: Date.now() - 7200000,
+    },
+  ]);
   learnings = signal<Array<{ id?: number; topicKey: string; category: string; insight: string; confidenceScore: number }>>([]);
   engramObservations = signal<EngramObservationDto[]>([
     {
@@ -439,6 +508,12 @@ export class Copilot implements OnInit, OnDestroy {
           if (evalRes.depegAlert) newAlerts.push(evalRes.depegAlert);
           if (newAlerts.length > 0) {
             this.activeAlerts.set(newAlerts);
+          }
+        }
+        if (copilot.listCounterparties) {
+          const profiles = await copilot.listCounterparties({ limit: 50 });
+          if (profiles && profiles.length > 0) {
+            this.counterparties.set(profiles);
           }
         }
       } catch (err) {

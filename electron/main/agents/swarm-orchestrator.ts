@@ -9,6 +9,7 @@ import { SentinelAgent } from './sentinel-agent';
 import { StrategistAgent } from './strategist-agent';
 import { RiskGatekeeperAgent } from './risk-gatekeeper-agent';
 import { DisputeAuditorAgent, type DisputeDossierResult } from './dispute-auditor-agent';
+import { CounterpartyReputationGraph, type CounterpartyProfileRecord } from './counterparty-graph';
 import type {
   SwarmAnalysisResult,
   AgentHealthStatus,
@@ -22,12 +23,18 @@ export class AgentSwarmOrchestrator {
   private strategist: StrategistAgent;
   private riskGatekeeper: RiskGatekeeperAgent;
   private disputeAuditor: DisputeAuditorAgent;
+  private counterpartyGraph: CounterpartyReputationGraph;
 
   constructor(private db: P2PDatabaseService) {
     this.sentinel = new SentinelAgent();
     this.strategist = new StrategistAgent();
     this.riskGatekeeper = new RiskGatekeeperAgent();
     this.disputeAuditor = new DisputeAuditorAgent();
+    this.counterpartyGraph = new CounterpartyReputationGraph(this.db);
+  }
+
+  getCounterpartyGraph(): CounterpartyReputationGraph {
+    return this.counterpartyGraph;
   }
 
   /**
@@ -57,6 +64,9 @@ export class AgentSwarmOrchestrator {
     bestAsk?: number;
     bcvRate?: number;
     parallelRate?: number;
+    counterpartyAlias?: string;
+    counterpartyRealName?: string;
+    counterpartyDoc?: string;
     counterpartyRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
     isBcvInterventionWindowActive?: boolean;
   }): Promise<SwarmAnalysisResult> {
@@ -72,18 +82,33 @@ export class AgentSwarmOrchestrator {
       parallelRate: params?.parallelRate,
     });
 
-    // 2. Strategist Stage (Gentleman AI)
+    // 2. Counterparty Reputation & Anti-Triangulation check (if alias/name provided)
+    let evaluatedRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = params?.counterpartyRiskLevel ?? 'LOW';
+    if (params?.counterpartyAlias && params?.counterpartyRealName) {
+      const cpartyEval = this.counterpartyGraph.assessRisk({
+        alias: params.counterpartyAlias,
+        realName: params.counterpartyRealName,
+        documentId: params.counterpartyDoc,
+      });
+      if (cpartyEval.riskLevel === 'CRITICAL' || cpartyEval.riskLevel === 'HIGH') {
+        evaluatedRiskLevel = 'HIGH';
+      } else if (cpartyEval.riskLevel === 'MEDIUM') {
+        evaluatedRiskLevel = 'MEDIUM';
+      }
+    }
+
+    // 3. Strategist Stage (Gentleman AI)
     const strategistProposal: StrategistProposal = this.strategist.formulateProposal(sentinelSignal, capital);
 
-    // 3. Risk Gatekeeper Stage (Unilateral Veto Power)
+    // 4. Risk Gatekeeper Stage (Unilateral Veto Power)
     const riskVerdict: RiskVerdict = this.riskGatekeeper.evaluateProposal(strategistProposal, {
       dailyVolumeProcessedUsdt: 4500,
       dailyLimitUsdt: 15000,
-      counterpartyRiskLevel: params?.counterpartyRiskLevel ?? 'LOW',
+      counterpartyRiskLevel: evaluatedRiskLevel,
       isBcvInterventionWindowActive: params?.isBcvInterventionWindowActive ?? false,
     });
 
-    // 4. Persistence & Governance
+    // 5. Persistence & Governance
     let engramObs: EngramObservationRecord | undefined;
     let executionSummary = '';
 

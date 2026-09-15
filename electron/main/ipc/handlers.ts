@@ -324,6 +324,41 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:assess-counterparty');
+  ipcMain.handle(
+    'copilot:assess-counterparty',
+    async (_event: IpcMainInvokeEvent, params: { alias: string; realName: string; documentId?: string; bankPayerName?: string }) => {
+      const swarm = getAgentSwarm();
+      return swarm.getCounterpartyGraph().assessRisk(params);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:record-counterparty-trade');
+  ipcMain.handle(
+    'copilot:record-counterparty-trade',
+    async (_event: IpcMainInvokeEvent, params: {
+      alias: string;
+      realName: string;
+      documentId: string;
+      volumeUsdt: number;
+      bankPayerName: string;
+      hadTriangulationAttempt: boolean;
+    }) => {
+      const swarm = getAgentSwarm();
+      swarm.getCounterpartyGraph().recordTrade(params);
+      return { success: true };
+    },
+  );
+
+  ipcMain.removeHandler('copilot:list-counterparties');
+  ipcMain.handle(
+    'copilot:list-counterparties',
+    async (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
+      const swarm = getAgentSwarm();
+      return swarm.getCounterpartyGraph().listProfiles(params?.limit ?? 50);
+    },
+  );
+
   ipcMain.removeHandler('p2p:mcp-status');
   ipcMain.handle('p2p:mcp-status', async () => {
     return getMcpFullStatus();

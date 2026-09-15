@@ -1864,5 +1864,169 @@
   }
 }
 
+/* Counterparties CRM & Reputation Graph Layout */
+.counterparties-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  padding-right: 4px;
+
+  .counterparties-header-row {
+    h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      color: #f1f5f9;
+    }
+  }
+
+  .counterparties-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 12px;
+  }
+
+  .cparty-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: rgba(216, 180, 92, 0.3);
+      transform: translateY(-1px);
+    }
+
+    &.trusted {
+      border-color: rgba(74, 222, 128, 0.3);
+    }
+
+    &.suspicious {
+      border-color: rgba(251, 191, 36, 0.4);
+      background: rgba(245, 158, 11, 0.04);
+    }
+
+    &.blocked {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.06);
+    }
+
+    .cparty-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+
+      .cparty-identity {
+        display: flex;
+        flex-direction: column;
+
+        .cparty-alias {
+          font-weight: 700;
+          font-size: 0.95rem;
+          color: #f8fafc;
+        }
+
+        .cparty-name {
+          font-size: 0.75rem;
+          color: #94a3b8;
+        }
+      }
+
+      .cparty-badges {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+
+        .reputation-badge {
+          font-size: 0.68rem;
+          font-weight: 800;
+          padding: 2px 6px;
+          border-radius: 4px;
+          letter-spacing: 0.04em;
+
+          &.rep-trusted {
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+          }
+
+          &.rep-verified, &.rep-normal {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+          }
+
+          &.rep-suspicious {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, 0.3);
+          }
+
+          &.rep-blocked {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid #ef4444;
+          }
+        }
+
+        .risk-score-badge {
+          font-size: 0.65rem;
+          font-family: monospace;
+          color: #94a3b8;
+
+          &.safe { color: #4ade80; }
+          &.danger { color: #f87171; font-weight: 700; }
+        }
+      }
+    }
+
+    .cparty-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding: 6px 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
+
+      .metric-item {
+        display: flex;
+        flex-direction: column;
+
+        .m-label {
+          font-size: 0.62rem;
+          color: #64748b;
+          font-weight: 600;
+        }
+
+        .m-val {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #e2e8f0;
+
+          &.danger {
+            color: #f87171;
+          }
+        }
+      }
+    }
+
+    .cparty-notes-box {
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 3px solid #d8b45c;
+      border-radius: 0 4px 4px 0;
+    }
+  }
+}
+
+
 
 

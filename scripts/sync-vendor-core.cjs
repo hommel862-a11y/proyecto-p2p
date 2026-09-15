@@ -54,6 +54,7 @@ const VENDOR_NAMES = [
   'dispute-copilot',
   'trade-impact-simulator',
   'spread-quality',
+  'counterparty',
 ];
 
 // ---------------------------------------------------------------------------

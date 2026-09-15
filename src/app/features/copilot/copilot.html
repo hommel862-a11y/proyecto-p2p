@@ -41,6 +41,12 @@
         </button>
         <button 
           class="tab-btn" 
+          [class.active]="activeTab() === 'counterparties'" 
+          (click)="activeTab.set('counterparties')">
+          👥 Contrapartes CRM ({{ counterparties().length }})
+        </button>
+        <button 
+          class="tab-btn" 
           [class.active]="activeTab() === 'config'" 
           (click)="activeTab.set('config')">
           ⚙ Conexión Gemini
@@ -552,6 +558,64 @@
                   <div class="learned-text">{{ obs.learned }}</div>
                 </div>
               </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TAB: COUNTERPARTIES CRM & REPUTATION GRAPH -->
+  @if (activeTab() === 'counterparties') {
+    <div class="counterparties-layout">
+      <div class="counterparties-header-row">
+        <div>
+          <h3>Grafo de Reputación de Contrapartes & Anti-Triangulación</h3>
+          <p class="section-desc">
+            Perfilado conductual continuo de comerciantes P2P. Audita historial de titularidad bancaria, volumen acumulado y bloqueo unilateral ante intentos de pago de terceros.
+          </p>
+        </div>
+      </div>
+
+      @if (counterparties().length === 0) {
+        <div class="empty-state">No hay contrapartes registradas todavía. Se agregan automáticamente al completar intercambios.</div>
+      } @else {
+        <div class="counterparties-grid">
+          @for (cparty of counterparties(); track cparty.id) {
+            <div class="cparty-card" [class.trusted]="cparty.reputation === 'TRUSTED'" [class.suspicious]="cparty.reputation === 'SUSPICIOUS'" [class.blocked]="cparty.reputation === 'BLOCKED'">
+              <div class="cparty-header">
+                <div class="cparty-identity">
+                  <span class="cparty-alias">{{ cparty.alias }}</span>
+                  <span class="cparty-name">{{ cparty.realName }} ({{ cparty.documentId }})</span>
+                </div>
+                <div class="cparty-badges">
+                  <span class="reputation-badge rep-{{ cparty.reputation.toLowerCase() }}">{{ cparty.reputation }}</span>
+                  <span class="risk-score-badge" [class.danger]="cparty.riskScore >= 75" [class.safe]="cparty.riskScore <= 15">
+                    Score: {{ cparty.riskScore }}/100
+                  </span>
+                </div>
+              </div>
+
+              <div class="cparty-metrics-row">
+                <div class="metric-item">
+                  <span class="m-label">Órdenes Exitosas:</span>
+                  <span class="m-val">{{ cparty.successfulTradesCount }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="m-label">Incidentes Triangulación:</span>
+                  <span class="m-val" [class.danger]="cparty.triangulationIncidentsCount > 0">{{ cparty.triangulationIncidentsCount }}</span>
+                </div>
+                <div class="metric-item">
+                  <span class="m-label">Volumen Operado:</span>
+                  <span class="m-val">${{ cparty.totalVolumeUsdt.toLocaleString() }} USDT</span>
+                </div>
+              </div>
+
+              @if (cparty.notes) {
+                <div class="cparty-notes-box">
+                  <strong>Observación Conductual:</strong> {{ cparty.notes }}
+                </div>
+              }
             </div>
           }
         </div>
