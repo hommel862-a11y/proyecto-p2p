@@ -177,5 +177,34 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     expect(learnings[0].confidenceScore).toBe(0.95);
     expect(learnings[0].dataPayload).toEqual({ avgDeltaPct: 1.2, dayOfWeek: 2 });
   });
+
+  it('should persist, retrieve and format Engram observations according to the protocol', () => {
+    const obsId = dbService.saveEngramObservation({
+      topicKey: 'triangulation/routes',
+      type: 'discovery',
+      scope: 'project',
+      what: 'Triangulación VES->USDT->BTC genera 1.35% neto',
+      why: 'Brecha cambiaria 22.9% favorable previa a intervención BCV',
+      whereAffected: 'Banesco Pago Móvil',
+      learned: 'Operar preferentemente antes de las 11:30 AM para evitar congestión de cámara',
+      confidenceScore: 0.95,
+      sampleCount: 3,
+      status: 'active',
+    });
+
+    expect(obsId).toBeGreaterThan(0);
+
+    const observations = dbService.listEngramObservations({ topicKey: 'triangulation/routes' });
+    expect(observations.length).toBe(1);
+    expect(observations[0].type).toBe('discovery');
+    expect(observations[0].what).toBe('Triangulación VES->USDT->BTC genera 1.35% neto');
+    expect(observations[0].learned).toContain('11:30 AM');
+    expect(observations[0].confidenceScore).toBe(0.95);
+
+    const summary = dbService.getEngramContextSummary(5);
+    expect(summary).toContain('[ENGRAM MEMORY | topic: triangulation/routes');
+    expect(summary).toContain('• What: Triangulación VES->USDT->BTC genera 1.35% neto');
+    expect(summary).toContain('• Learned: Operar preferentemente antes de las 11:30 AM');
+  });
 });
 

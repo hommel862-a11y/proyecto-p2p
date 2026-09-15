@@ -37,7 +37,7 @@
           class="tab-btn" 
           [class.active]="activeTab() === 'memory'" 
           (click)="activeTab.set('memory')">
-          🧠 Memoria ({{ learnings().length }})
+          🧠 Memoria Engram ({{ engramObservations().length }})
         </button>
         <button 
           class="tab-btn" 
@@ -426,24 +426,87 @@
     </div>
   }
 
-  <!-- TAB: MEMORY & LEARNINGS -->
+  <!-- TAB: MEMORY & LEARNINGS (ENGRAM PROTOCOL) -->
   @if (activeTab() === 'memory') {
     <div class="memory-layout">
-      <h3>Memoria Empírica y Aprendizajes de Mercado</h3>
-      <p class="section-desc">Patrones, horarios y resultados que el agente ha registrado persistentemente en la base de datos.</p>
+      <div class="memory-header-row">
+        <div>
+          <h3>Memoria Persistente Engram & Microestructura</h3>
+          <p class="section-desc">
+            Protocolo canónico de retención a largo plazo sincronizado en SQLite WAL. Estructura cada aprendizaje en <strong>What</strong>, <strong>Why</strong>, <strong>Where</strong> y <strong>Learned</strong> para blindar las operaciones del desk.
+          </p>
+        </div>
+        <div class="engram-filter-bar">
+          <button 
+            class="filter-pill" 
+            [class.active]="engramFilterType() === 'ALL'" 
+            (click)="engramFilterType.set('ALL')">
+            Todos ({{ engramObservations().length }})
+          </button>
+          <button 
+            class="filter-pill" 
+            [class.active]="engramFilterType() === 'DISCOVERY'" 
+            (click)="engramFilterType.set('DISCOVERY')">
+            🔍 Discovery
+          </button>
+          <button 
+            class="filter-pill" 
+            [class.active]="engramFilterType() === 'DECISION'" 
+            (click)="engramFilterType.set('DECISION')">
+            ⚡ Decision
+          </button>
+          <button 
+            class="filter-pill" 
+            [class.active]="engramFilterType() === 'PATTERN'" 
+            (click)="engramFilterType.set('PATTERN')">
+            📊 Pattern
+          </button>
+        </div>
+      </div>
 
-      @if (learnings().length === 0) {
-        <div class="empty-state">Sin observaciones registradas aún. A medida que operes y formules planes, la IA irá memorizando lecciones.</div>
+      @if (filteredEngramObservations().length === 0) {
+        <div class="empty-state">
+          Sin observaciones registradas para este filtro. A medida que Gentleman AI formule estrategias y el operador valide ejecuciones, las observaciones se persistirán aquí automáticamente bajo el protocolo Engram.
+        </div>
       } @else {
-        <div class="learnings-list">
-          @for (l of learnings(); track l.id) {
-            <div class="learning-item">
-              <div class="learning-top">
-                <span class="learning-category">{{ l.category }}</span>
-                <span class="learning-conf">Confianza: {{ (l.confidenceScore * 100).toFixed(0) }}%</span>
+        <div class="engram-grid">
+          @for (obs of filteredEngramObservations(); track obs.id || obs.topicKey) {
+            <div class="engram-card" [class.needs-review]="obs.status === 'needs_review'">
+              <div class="engram-card-header">
+                <div class="header-left">
+                  <span class="engram-type-badge type-{{ obs.type.toLowerCase() }}">
+                    {{ obs.type | uppercase }}
+                  </span>
+                  <span class="engram-topic-key"><code>{{ obs.topicKey }}</code></span>
+                </div>
+                <div class="header-right">
+                  <span class="engram-status-badge status-{{ obs.status || 'active' }}">
+                    {{ obs.status === 'needs_review' ? '⚠️ Por Revisar' : '✓ Activo' }}
+                  </span>
+                  <span class="engram-conf">
+                    Confianza: {{ ((obs.confidenceScore || 1) * 100).toFixed(0) }}%
+                  </span>
+                </div>
               </div>
-              <p class="learning-insight">{{ l.insight }}</p>
-              <span class="learning-topic">Clave: {{ l.topicKey }}</span>
+
+              <div class="engram-card-body">
+                <div class="engram-field">
+                  <span class="field-label">What:</span>
+                  <span class="field-content">{{ obs.what }}</span>
+                </div>
+                <div class="engram-field">
+                  <span class="field-label">Why:</span>
+                  <span class="field-content text-muted">{{ obs.why }}</span>
+                </div>
+                <div class="engram-field">
+                  <span class="field-label">Where:</span>
+                  <span class="field-content text-code">{{ obs.whereAffected }}</span>
+                </div>
+                <div class="engram-learned-box">
+                  <div class="learned-label">💡 Learned (Lección Operativa):</div>
+                  <div class="learned-text">{{ obs.learned }}</div>
+                </div>
+              </div>
             </div>
           }
         </div>

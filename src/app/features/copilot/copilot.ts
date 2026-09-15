@@ -17,11 +17,27 @@ export interface AlphaWatcherStatusDto {
   lastOpportunity: { time: number; netSpreadPct: number; route: string } | null;
 }
 
+export interface EngramObservationDto {
+  id?: number;
+  topicKey: string;
+  type: 'discovery' | 'decision' | 'architecture' | 'pattern' | 'bugfix' | 'preference';
+  scope?: string;
+  what: string;
+  why: string;
+  whereAffected: string;
+  learned: string;
+  confidenceScore: number;
+  status: 'active' | 'needs_review';
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 interface ElectronCopilotBridge {
   sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
   executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
   getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
   getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
+  getEngramObservations?(params?: { filter?: { topicKey?: string; type?: string; status?: string }; limit?: number }): Promise<EngramObservationDto[]>;
   setApiKey(params: { apiKey: string }): Promise<boolean>;
   testConnection(): Promise<{ success: boolean; model: string; message: string }>;
   getWatcherStatus(): Promise<AlphaWatcherStatusDto>;
@@ -64,7 +80,7 @@ export class Copilot implements OnInit, OnDestroy {
     {
       role: 'assistant',
       content:
-        '¡Hola! Soy tu **Agente Estratega P2P**. Estoy monitoreando en tiempo real las directivas de tesorería del BCV, spreads triangulares y la liquidez de los libros. ¿Qué estrategia o par querés que analicemos hoy?',
+        '¡Hola! Soy **Gentleman AI**, tu Senior Architect y Copiloto P2P. Estoy auditando en tiempo real las directivas de tesorería del BCV, spreads triangulares y la microestructura de los libros bajo rigurosa disciplina institucional. Acordate: los fundamentos y la preservación de capital van antes que la velocidad. ¿Qué par o estrategia querés que analicemos?',
       timestamp: Date.now(),
     },
   ]);
@@ -74,6 +90,44 @@ export class Copilot implements OnInit, OnDestroy {
   activeTab = signal<'chat' | 'plans' | 'memory' | 'config'>('chat');
   plans = signal<StrategyPlanCard[]>([]);
   learnings = signal<Array<{ id?: number; topicKey: string; category: string; insight: string; confidenceScore: number }>>([]);
+  engramObservations = signal<EngramObservationDto[]>([
+    {
+      id: 1,
+      topicKey: 'triangulation/ves-usdt-btc',
+      type: 'discovery',
+      scope: 'project',
+      what: 'Triangulación táctica VES->USDT->BTC genera 1.35% neto con ticket de 1000 USDT.',
+      why: 'Brecha cambiaria en 22.9% con liquidez profunda en Banesco previo a ventana de intervención cambiaria.',
+      whereAffected: 'Banesco Pago Móvil / Binance P2P VES-USDT',
+      learned: 'La regla de oro (>=0.50%) se cumple holgadamente (1.35%). Operar preferentemente antes del mediodía.',
+      confidenceScore: 0.95,
+      status: 'active',
+      createdAt: Date.now() - 3600000,
+      updatedAt: Date.now() - 3600000,
+    },
+    {
+      id: 2,
+      topicKey: 'risk/bcv-intervention-window',
+      type: 'pattern',
+      scope: 'project',
+      what: 'Ventana de inyección de divisas BCV activa entre 10:00 y 11:30 AM.',
+      why: 'Presión a la baja en la tasa paralela genera contracción transitoria de spreads.',
+      whereAffected: 'Mesa de cambio y libros P2P VES',
+      learned: 'Asegurar inventario en USDT antes de las 10:00 AM y esperar estabilización del mediodía.',
+      confidenceScore: 0.92,
+      status: 'active',
+      createdAt: Date.now() - 7200000,
+      updatedAt: Date.now() - 7200000,
+    },
+  ]);
+  engramFilterType = signal<string>('ALL');
+
+  filteredEngramObservations = computed(() => {
+    const filter = this.engramFilterType();
+    const list = this.engramObservations();
+    if (filter === 'ALL') return list;
+    return list.filter((item) => item.type.toUpperCase() === filter.toUpperCase());
+  });
   actionSuccessNotice = signal<string | null>(null);
   expandedBreakdownPlanIds = signal<Set<string>>(new Set());
 
@@ -280,6 +334,12 @@ export class Copilot implements OnInit, OnDestroy {
         this.plans.set(plans);
         const rawLearnings = await copilot.getLearnings({ limit: 50 });
         this.learnings.set(rawLearnings as any);
+        if (copilot.getEngramObservations) {
+          const obs = await copilot.getEngramObservations({ limit: 50 });
+          if (obs && obs.length > 0) {
+            this.engramObservations.set(obs);
+          }
+        }
         if (copilot.getWatcherStatus) {
           const watcher = await copilot.getWatcherStatus();
           if (watcher) {

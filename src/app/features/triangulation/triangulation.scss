@@ -1,12 +1,22 @@
 :host {
   display: block;
+  width: 100%;
+}
+
+:host-context(.content) {
+  max-width: 1440px;
+  width: 100%;
 }
 
 .triangulation-container {
+  max-width: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 20px;
   padding-bottom: 32px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* -------------------------------------------------------------
@@ -169,6 +179,9 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .section-title-row {
@@ -281,12 +294,22 @@
 ------------------------------------------------------------- */
 .triangulation-grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 20px;
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
 
-  @media (max-width: 1100px) {
-    grid-template-columns: 1fr;
+  @media (max-width: 1240px) {
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.corridor-flow-card {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* -------------------------------------------------------------
@@ -352,11 +375,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 24px 16px;
+  padding: 20px 14px;
   background: var(--bg-1, #050508);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.06));
   border-radius: 14px;
   overflow-x: auto;
+  width: 100%;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 999px;
+  }
 }
 
 .flow-node {
@@ -603,10 +638,31 @@
 }
 
 /* -------------------------------------------------------------
-   Tactical Intelligence & Risk HUD
+   Tactical Intelligence & Risk HUD (MCP Tactical Assistant)
 ------------------------------------------------------------- */
 .hud-card {
   gap: 14px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  .section-title-row {
+    min-width: 0;
+
+    .title-group {
+      min-width: 0;
+      flex: 1;
+
+      h3 {
+        word-break: break-word;
+      }
+
+      .section-desc {
+        word-break: break-word;
+      }
+    }
+  }
 }
 
 .verdict-banner {
@@ -617,26 +673,34 @@
   border-radius: 12px;
   background: var(--panel-2, #16161f);
   border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  min-width: 0;
+  box-sizing: border-box;
 
   .verdict-icon {
     font-size: 1.3rem;
     line-height: 1;
+    flex-shrink: 0;
   }
 
   .verdict-details {
     display: flex;
     flex-direction: column;
     gap: 3px;
+    min-width: 0;
+    flex: 1;
 
     strong {
       font-size: 0.82rem;
       letter-spacing: 0.3px;
+      word-break: break-word;
     }
 
     p {
       margin: 0;
       font-size: 0.74rem;
       color: var(--muted, rgba(235, 235, 245, 0.7));
+      line-height: 1.4;
+      word-break: break-word;
     }
   }
 
@@ -661,8 +725,10 @@
 
 .strategic-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
 
   .kpi-mini-box {
     background: var(--panel-2, #16161f);
@@ -672,22 +738,34 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
 
     .kpi-mini-label {
       font-size: 0.65rem;
       font-weight: 700;
       color: var(--muted, rgba(235, 235, 245, 0.5));
       letter-spacing: 0.5px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
 
     .kpi-mini-val {
-      font-size: 1.15rem;
+      font-size: 1.05rem;
       color: var(--text, #ffffff);
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
 
     .kpi-mini-sub {
       font-size: 0.68rem;
       color: var(--muted, rgba(235, 235, 245, 0.6));
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
   }
 }
@@ -700,6 +778,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  box-sizing: border-box;
 
   .bottleneck-header {
     display: flex;
@@ -708,12 +788,16 @@
     font-size: 0.74rem;
     font-weight: 700;
     color: #ff9f0a;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   p {
     margin: 0;
     font-size: 0.72rem;
     color: var(--text, #ffffff);
+    word-break: break-word;
+    line-height: 1.4;
   }
 }
 
@@ -725,6 +809,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  box-sizing: border-box;
 
   .hedge-header {
     display: flex;
@@ -733,20 +819,31 @@
     font-size: 0.74rem;
     font-weight: 700;
     color: #0a84ff;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   p {
     margin: 0;
     font-size: 0.72rem;
     color: var(--text, #ffffff);
+    word-break: break-word;
+    line-height: 1.4;
   }
 
   .hedge-stats {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
+    gap: 8px 14px;
     font-size: 0.72rem;
     padding-top: 4px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
+    min-width: 0;
+
+    div {
+      min-width: 0;
+    }
   }
 }
 
@@ -754,6 +851,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  box-sizing: border-box;
 
   .risk-title {
     font-size: 0.72rem;
@@ -765,7 +864,7 @@
 
   ul {
     margin: 0;
-    padding-left: 16px;
+    padding-left: 18px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -773,11 +872,13 @@
     li {
       font-size: 0.72rem;
       color: var(--muted, rgba(235, 235, 245, 0.8));
+      word-break: break-word;
+      line-height: 1.35;
 
       &.clean-risk {
         color: #30d158;
         list-style: none;
-        margin-left: -16px;
+        margin-left: -18px;
         font-weight: 600;
       }
     }

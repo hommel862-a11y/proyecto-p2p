@@ -914,6 +914,208 @@
     gap: 1rem;
   }
 
+  .memory-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 1rem;
+
+    .engram-filter-bar {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+
+      .filter-pill {
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:hover {
+          color: #f1f5f9;
+          border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        &.active {
+          background: rgba(216, 180, 92, 0.2);
+          border-color: #d8b45c;
+          color: #facc15;
+        }
+      }
+    }
+  }
+
+  .engram-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+
+    .engram-card {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-left: 3px solid #38bdf8;
+      border-radius: 8px;
+      padding: 14px;
+      transition: border-color 0.2s;
+
+      &:hover {
+        border-color: rgba(255, 255, 255, 0.18);
+      }
+
+      &.needs-review {
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.05);
+      }
+
+      .engram-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+
+          .engram-type-badge {
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.4px;
+
+            &.type-discovery {
+              background: rgba(56, 189, 248, 0.15);
+              color: #38bdf8;
+              border: 1px solid rgba(56, 189, 248, 0.3);
+            }
+
+            &.type-decision {
+              background: rgba(34, 197, 94, 0.15);
+              color: #4ade80;
+              border: 1px solid rgba(34, 197, 94, 0.3);
+            }
+
+            &.type-pattern {
+              background: rgba(168, 85, 247, 0.15);
+              color: #c084fc;
+              border: 1px solid rgba(168, 85, 247, 0.3);
+            }
+
+            &.type-architecture {
+              background: rgba(234, 179, 8, 0.15);
+              color: #facc15;
+              border: 1px solid rgba(234, 179, 8, 0.3);
+            }
+          }
+
+          .engram-topic-key code {
+            font-size: 0.76rem;
+            color: #cbd5e1;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+          }
+        }
+
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+
+          .engram-status-badge {
+            font-size: 0.68rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+
+            &.status-active {
+              background: rgba(34, 197, 94, 0.1);
+              color: #4ade80;
+            }
+
+            &.status-needs_review {
+              background: rgba(245, 158, 11, 0.15);
+              color: #fbbf24;
+            }
+          }
+
+          .engram-conf {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            font-weight: 600;
+          }
+        }
+      }
+
+      .engram-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+
+        .engram-field {
+          display: flex;
+          gap: 8px;
+          font-size: 0.85rem;
+          line-height: 1.4;
+
+          .field-label {
+            font-weight: 700;
+            color: #94a3b8;
+            min-width: 45px;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+          }
+
+          .field-content {
+            color: #f1f5f9;
+
+            &.text-muted {
+              color: #94a3b8;
+            }
+
+            &.text-code {
+              font-family: monospace;
+              color: #e2e8f0;
+            }
+          }
+        }
+
+        .engram-learned-box {
+          margin-top: 6px;
+          padding: 8px 12px;
+          background: rgba(56, 189, 248, 0.06);
+          border: 1px solid rgba(56, 189, 248, 0.2);
+          border-radius: 6px;
+
+          .learned-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 2px;
+          }
+
+          .learned-text {
+            font-size: 0.84rem;
+            color: #e2e8f0;
+            line-height: 1.4;
+          }
+        }
+      }
+    }
+  }
+
   .learnings-list {
     display: flex;
     flex-direction: column;
