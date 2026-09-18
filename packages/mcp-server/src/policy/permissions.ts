@@ -22,7 +22,10 @@ export class RateLimiter {
 }
 
 export class HumanConfirmationManager {
-  private readonly pendingTokens = new Map<string, { action: string; payloadHash: string; expiresAt: number }>();
+  private readonly pendingTokens = new Map<
+    string,
+    { action: string; payloadHash: string; expiresAt: number }
+  >();
 
   /**
    * Generates a 2-minute ephemeral confirmation challenge token.

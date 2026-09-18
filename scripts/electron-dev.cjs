@@ -37,10 +37,21 @@ async function waitForServer(maxSeconds = MAX_WAIT_SECONDS) {
 
 function buildElectronArtifacts() {
   const { execSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const path = require('node:path');
   console.log('[electron:dev] Compilando TypeScript de Electron...');
   execSync('npx tsc -p electron/tsconfig.json', { stdio: 'inherit' });
   console.log('[electron:dev] Empaquetando preload bundle...');
   execSync('node electron/build-preload.cjs', { stdio: 'inherit' });
+
+  // Guarantee schema.sql is copied to dist/main/db
+  const srcSchema = path.resolve(__dirname, '../electron/main/db/schema.sql');
+  const destSchema = path.resolve(__dirname, '../electron/dist/main/db/schema.sql');
+  if (fs.existsSync(srcSchema)) {
+    fs.mkdirSync(path.dirname(destSchema), { recursive: true });
+    fs.copyFileSync(srcSchema, destSchema);
+    console.log('[electron:dev] schema.sql sincronizado en electron/dist/main/db/schema.sql');
+  }
 }
 
 function launchElectron() {

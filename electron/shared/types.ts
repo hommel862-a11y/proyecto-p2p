@@ -178,7 +178,18 @@ export interface P2PIpcChannels {
 export interface McpServerRuntimeInfo {
   id: string;
   name: string;
-  category: 'tasas' | 'mercado' | 'portafolio' | 'ledger' | 'master';
+  category:
+    | 'tasas'
+    | 'mercado'
+    | 'portafolio'
+    | 'ledger'
+    | 'master'
+    | 'cloud'
+    | 'seguridad'
+    | 'compliance'
+    | 'bancos'
+    | 'legal'
+    | 'operaciones';
   status: 'ONLINE' | 'OFFLINE' | 'STANDBY' | 'ERROR';
   transport: 'stdio' | 'sse';
   toolCount: number;

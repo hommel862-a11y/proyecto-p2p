@@ -57,4 +57,25 @@ describe('McpHub Component', () => {
     expect(JSON.parse(antigravityCfg).mcpServers['p2p-decisor']).toBeDefined();
     expect(JSON.parse(claudeCfg).mcpServers['p2p-decisor']).toBeDefined();
   });
+
+  it('should test new high-impact tools in sandbox cleanly', async () => {
+    component.selectTool({ name: 'screen_wallet_address', description: 'AML check' });
+    await component.runToolTest();
+    expect(component.testExecutionResult()?.success).toBe(true);
+    expect((component.testExecutionResult()?.result as any)?.riskLevel).toBe('LOW_RISK');
+
+    component.selectTool({ name: 'fetch_cross_exchange_spread', description: 'Arbitrage' });
+    await component.runToolTest();
+    expect(component.testExecutionResult()?.success).toBe(true);
+    expect(
+      (component.testExecutionResult()?.result as any)?.crossArbitrageOpportunity,
+    ).toBeDefined();
+
+    component.selectTool({ name: 'compile_dispute_dossier', description: 'Dossier' });
+    await component.runToolTest();
+    expect(component.testExecutionResult()?.success).toBe(true);
+    expect((component.testExecutionResult()?.result as any)?.dossierStatus).toBe(
+      'DOSSIER_COMPILED_READY_FOR_SUBMISSION',
+    );
+  });
 });

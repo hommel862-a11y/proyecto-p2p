@@ -3,7 +3,8 @@ import { GetParallelRatesInputSchema, type GetParallelRatesInput } from '../sche
 
 export const getParallelRatesTool = {
   name: 'get_parallel_rates',
-  description: 'Obtiene cotizaciones paralelas del dólar en Venezuela consolidadas desde múltiples monitores (Binance P2P, CotizaVe, EnParaleloVzla, CriptoNoticias).',
+  description:
+    'Obtiene cotizaciones paralelas del dólar en Venezuela consolidadas desde múltiples monitores (Binance P2P, CotizaVe, EnParaleloVzla, CriptoNoticias).',
   inputSchema: GetParallelRatesInputSchema,
   execute: (input: GetParallelRatesInput) => {
     const feed = getParallelRatesFeed(input.includeSources);

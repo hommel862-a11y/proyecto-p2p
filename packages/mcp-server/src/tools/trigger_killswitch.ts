@@ -13,7 +13,8 @@ export function resetKillswitchForTesting(): void {
 
 export const triggerKillswitchTool = {
   name: 'trigger_killswitch',
-  description: 'Detiene inmediatamente todas las operaciones y alertas del sistema. Requiere confirmación humana obligatoria.',
+  description:
+    'Detiene inmediatamente todas las operaciones y alertas del sistema. Requiere confirmación humana obligatoria.',
   inputSchema: TriggerKillswitchInputSchema,
   execute: (input: TriggerKillswitchInput) => {
     if (!input.humanConfirm) {
@@ -26,7 +27,8 @@ export const triggerKillswitchTool = {
         triggered: false,
         requiresHumanConfirmation: true,
         challengeToken,
-        message: 'Acción crítica protegida. Para confirmar la activación del Kill-Switch, reenvía la llamada con humanConfirm: true y el challengeToken provisto.',
+        message:
+          'Acción crítica protegida. Para confirmar la activación del Kill-Switch, reenvía la llamada con humanConfirm: true y el challengeToken provisto.',
       };
     }
 

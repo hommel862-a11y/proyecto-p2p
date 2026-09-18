@@ -1,4 +1,12 @@
-import { Component, signal, OnInit, OnDestroy, computed, ViewChild, ElementRef } from '@angular/core';
+import {
+  Component,
+  signal,
+  OnInit,
+  OnDestroy,
+  computed,
+  ViewChild,
+  ElementRef,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -41,29 +49,66 @@ export interface AgentHealthStatusDto {
   description: string;
 }
 
+export interface MarketLearningRecord {
+  id?: number;
+  topicKey: string;
+  category:
+    | 'SPREAD_CYCLE'
+    | 'BCV_IMPACT'
+    | 'OPERATOR_PERFORMANCE'
+    | 'COUNTERPARTY_BEHAVIOR'
+    | 'TRIANGULATION_ROUTE'
+    | string;
+  insight: string;
+  confidenceScore?: number;
+  sampleCount?: number;
+  dataPayload?: unknown;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 interface ElectronCopilotBridge {
   sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
   executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
   getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
-  getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
-  getEngramObservations?(params?: { filter?: { topicKey?: string; type?: string; status?: string }; limit?: number }): Promise<EngramObservationDto[]>;
+  getLearnings(params?: { category?: string; limit?: number }): Promise<MarketLearningRecord[]>;
+  getEngramObservations?(params?: {
+    filter?: { topicKey?: string; type?: string; status?: string };
+    limit?: number;
+  }): Promise<EngramObservationDto[]>;
   setApiKey(params: { apiKey: string }): Promise<boolean>;
   testConnection(): Promise<{ success: boolean; model: string; message: string }>;
   getWatcherStatus(): Promise<AlphaWatcherStatusDto>;
-  setWatcherConfig(params: Partial<{ enabled: boolean; minNetSpreadPct: number; pollIntervalSeconds: number }>): Promise<boolean>;
+  setWatcherConfig(
+    params: Partial<{ enabled: boolean; minNetSpreadPct: number; pollIntervalSeconds: number }>,
+  ): Promise<boolean>;
   runSwarmAnalysis?(): Promise<{
-    riskVerdict: { status: string; riskScore: number; recommendedAction: string; vetoReason?: string };
+    riskVerdict: {
+      status: string;
+      riskScore: number;
+      recommendedAction: string;
+      vetoReason?: string;
+    };
     sentinelSignal: { netSpreadPct: number };
     strategistProposal?: { rationale: string };
     suggestedPlan?: StrategyPlanCard;
     executionSummary: string;
   }>;
   getSwarmHealth?(): Promise<AgentHealthStatusDto[]>;
-  triggerProactiveEval?(params?: { parallelRate?: number; bcvRate?: number; spotUsdt?: number }): Promise<{
+  triggerProactiveEval?(params?: {
+    parallelRate?: number;
+    bcvRate?: number;
+    spotUsdt?: number;
+  }): Promise<{
     macroAlert: ProactiveEventAlertDto | null;
     depegAlert: ProactiveEventAlertDto | null;
   }>;
-  assessCounterparty?(params: { alias: string; realName: string; documentId?: string; bankPayerName?: string }): Promise<{
+  assessCounterparty?(params: {
+    alias: string;
+    realName: string;
+    documentId?: string;
+    bankPayerName?: string;
+  }): Promise<{
     isSafe: boolean;
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     warning?: string;
@@ -114,7 +159,8 @@ export interface ProactiveEventAlertDto {
 
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
   if (typeof window !== 'undefined') {
-    return (window as unknown as { electron?: { copilot?: ElectronCopilotBridge } }).electron?.copilot;
+    return (window as unknown as { electron?: { copilot?: ElectronCopilotBridge } }).electron
+      ?.copilot;
   }
   return undefined;
 }
@@ -185,13 +231,14 @@ export class Copilot implements OnInit, OnDestroy {
       successfulTradesCount: 3,
       triangulationIncidentsCount: 1,
       totalVolumeUsdt: 1200,
-      notes: 'Intentó pagar desde cuenta de un familiar ("María Pérez"). Retención preventiva aplicada.',
+      notes:
+        'Intentó pagar desde cuenta de un familiar ("María Pérez"). Retención preventiva aplicada.',
       lastTradeTimestamp: Date.now() - 7200000,
       createdAt: Date.now() - 86400000 * 5,
       updatedAt: Date.now() - 7200000,
     },
   ]);
-  learnings = signal<Array<{ id?: number; topicKey: string; category: string; insight: string; confidenceScore: number }>>([]);
+  learnings = signal<MarketLearningRecord[]>([]);
   engramObservations = signal<EngramObservationDto[]>([
     {
       id: 1,
@@ -201,7 +248,8 @@ export class Copilot implements OnInit, OnDestroy {
       what: 'Triangulación táctica VES->USDT->BTC genera 1.35% neto con ticket de 1000 USDT.',
       why: 'Brecha cambiaria en 22.9% con liquidez profunda en Banesco previo a ventana de intervención cambiaria.',
       whereAffected: 'Banesco Pago Móvil / Binance P2P VES-USDT',
-      learned: 'La regla de oro (>=0.50%) se cumple holgadamente (1.35%). Operar preferentemente antes del mediodía.',
+      learned:
+        'La regla de oro (>=0.50%) se cumple holgadamente (1.35%). Operar preferentemente antes del mediodía.',
       confidenceScore: 0.95,
       status: 'active',
       createdAt: Date.now() - 3600000,
@@ -215,7 +263,8 @@ export class Copilot implements OnInit, OnDestroy {
       what: 'Ventana de inyección de divisas BCV activa entre 10:00 y 11:30 AM.',
       why: 'Presión a la baja en la tasa paralela genera contracción transitoria de spreads.',
       whereAffected: 'Mesa de cambio y libros P2P VES',
-      learned: 'Asegurar inventario en USDT antes de las 10:00 AM y esperar estabilización del mediodía.',
+      learned:
+        'Asegurar inventario en USDT antes de las 10:00 AM y esperar estabilización del mediodía.',
       confidenceScore: 0.92,
       status: 'active',
       createdAt: Date.now() - 7200000,
@@ -310,7 +359,7 @@ export class Copilot implements OnInit, OnDestroy {
     totalEquityUsd: 12500,
     cryptoRatioPct: 88,
     fiatRatioPct: 12,
-    dailyAccumulatedProfitUsdt: 142.50,
+    dailyAccumulatedProfitUsdt: 142.5,
     avgCycleVelocityMinutes: 14,
     killSwitchActive: false,
   });
@@ -333,7 +382,9 @@ export class Copilot implements OnInit, OnDestroy {
       await copilot.setWatcherConfig({ enabled: newEnabled });
     }
     this.actionSuccessNotice.set(
-      newEnabled ? '🟢 CENTINELA AUTÓNOMO ACTIVADO: Escaneando libro cada 30s.' : '⏸ CENTINELA PAUSADO: Monitoreo en segundo plano detenido.'
+      newEnabled
+        ? '🟢 CENTINELA AUTÓNOMO ACTIVADO: Escaneando libro cada 30s.'
+        : '⏸ CENTINELA PAUSADO: Monitoreo en segundo plano detenido.',
     );
     setTimeout(() => this.actionSuccessNotice.set(null), 4000);
   }
@@ -350,8 +401,8 @@ export class Copilot implements OnInit, OnDestroy {
 
   // BCV Macro Intelligence & Gap Monitor
   bcvRates = signal<{ bcv: number; parallel: number }>({
-    bcv: 64.80,
-    parallel: 78.40,
+    bcv: 64.8,
+    parallel: 78.4,
   });
 
   bcvIntelligence = computed<BcvMarketIntelligence>(() => {
@@ -400,14 +451,18 @@ export class Copilot implements OnInit, OnDestroy {
     const newState = !current.killSwitchActive;
     this.treasuryMetrics.update((m) => ({ ...m, killSwitchActive: newState }));
     if (newState) {
-      this.actionSuccessNotice.set('🚨 KILL-SWITCH ACTIVADO: Órdenes pausadas y directiva de resguardo en USDT emitida.');
+      this.actionSuccessNotice.set(
+        '🚨 KILL-SWITCH ACTIVADO: Órdenes pausadas y directiva de resguardo en USDT emitida.',
+      );
     } else {
-      this.actionSuccessNotice.set('✅ KILL-SWITCH DESACTIVADO: Mesa de operaciones en modo normal.');
+      this.actionSuccessNotice.set(
+        '✅ KILL-SWITCH DESACTIVADO: Mesa de operaciones en modo normal.',
+      );
     }
     setTimeout(() => this.actionSuccessNotice.set(null), 5000);
   }
 
-  private autoRefreshTimer: any = null;
+  private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
     await this.refreshData();
@@ -478,7 +533,7 @@ export class Copilot implements OnInit, OnDestroy {
         const plans = await copilot.getPlans({ limit: 20 });
         this.plans.set(plans);
         const rawLearnings = await copilot.getLearnings({ limit: 50 });
-        this.learnings.set(rawLearnings as any);
+        this.learnings.set(rawLearnings);
         if (copilot.getEngramObservations) {
           const obs = await copilot.getEngramObservations({ limit: 50 });
           if (obs && obs.length > 0) {
@@ -501,7 +556,7 @@ export class Copilot implements OnInit, OnDestroy {
           const evalRes = await copilot.triggerProactiveEval({
             parallelRate: this.bcvRates().parallel,
             bcvRate: this.bcvRates().bcv,
-            spotUsdt: 1.000,
+            spotUsdt: 1.0,
           });
           const newAlerts: ProactiveEventAlertDto[] = [];
           if (evalRes.macroAlert) newAlerts.push(evalRes.macroAlert);
@@ -530,8 +585,11 @@ export class Copilot implements OnInit, OnDestroy {
       const copilot = getElectronCopilot();
       if (copilot?.runSwarmAnalysis) {
         const result = await copilot.runSwarmAnalysis();
-        const statusBadge = result.riskVerdict.status === 'VETOED' ? '⛔ VETADO POR RIESGO' : '🛡 APROBADO POR RIESGO';
-        const vetoReason = result.riskVerdict.vetoReason ? ` (Motivo: ${result.riskVerdict.vetoReason})` : '';
+        const statusBadge =
+          result.riskVerdict.status === 'VETOED' ? '⛔ VETADO POR RIESGO' : '🛡 APROBADO POR RIESGO';
+        const vetoReason = result.riskVerdict.vetoReason
+          ? ` (Motivo: ${result.riskVerdict.vetoReason})`
+          : '';
         const rationale = result.strategistProposal?.rationale ?? 'Sin propuesta viable';
 
         const lines = [
@@ -561,7 +619,9 @@ export class Copilot implements OnInit, OnDestroy {
           this.plans.update((p) => [newPlan, ...p.filter((x) => x.id !== newPlan.id)]);
         }
 
-        this.actionSuccessNotice.set(`Enjambre de 4 Agentes ejecutado: ${result.riskVerdict.status}`);
+        this.actionSuccessNotice.set(
+          `Enjambre de 4 Agentes ejecutado: ${result.riskVerdict.status}`,
+        );
         setTimeout(() => this.actionSuccessNotice.set(null), 4000);
       } else {
         this.actionSuccessNotice.set('⚡ Auditoría de Enjambre completada en modo simulación.');
@@ -611,7 +671,10 @@ export class Copilot implements OnInit, OnDestroy {
         this.scrollToBottom();
 
         if (response.suggestedPlan) {
-          this.plans.update((p) => [response.suggestedPlan!, ...p.filter((x) => x.id !== response.suggestedPlan!.id)]);
+          this.plans.update((p) => [
+            response.suggestedPlan!,
+            ...p.filter((x) => x.id !== response.suggestedPlan!.id),
+          ]);
         }
       } else {
         // Fallback demo for standalone web browser mode
@@ -625,7 +688,8 @@ export class Copilot implements OnInit, OnDestroy {
             expectedProfitUsdt: 14.5,
             riskLevel: 'LOW',
             assignedOperatorName: 'Operador Principal',
-            rationale: 'Spread neto 1.45% validado por la regla de oro (>0.50%) con libro de órdenes sanitizado.',
+            rationale:
+              'Spread neto 1.45% validado por la regla de oro (>0.50%) con libro de órdenes sanitizado.',
             status: 'PROPOSED',
           };
           this.messages.update((msgs) => [
@@ -664,7 +728,9 @@ export class Copilot implements OnInit, OnDestroy {
       const res = await copilot.executePlan({ planId: plan.id });
       if (res.success) {
         plan.status = 'APPROVED';
-        this.actionSuccessNotice.set(`¡Estrategia ${plan.id} APROBADA y delegada al operador con éxito!`);
+        this.actionSuccessNotice.set(
+          `¡Estrategia ${plan.id} APROBADA y delegada al operador con éxito!`,
+        );
         setTimeout(() => this.actionSuccessNotice.set(null), 4000);
         await this.refreshData();
       }
@@ -679,18 +745,42 @@ export class Copilot implements OnInit, OnDestroy {
   }
 
   quickPrompt(type: string): void {
-    if (type === 'triangulacion') {
-      this.sendPrompt('Analizá oportunidades de arbitraje triangular entre VES, USDT y divisas alternativas.');
+    if (type === 'explicar_triangulacion') {
+      this.sendPrompt(
+        'Explicame en detalle cómo funciona la triangulación financiera en el mercado P2P venezolano (fiat VES -> USDT -> divisa alternativa -> VES), cuáles son los cuellos de botella de liquidez bancaria y qué precauciones matemáticas debemos tomar según la regla de oro.',
+      );
+    } else if (type === 'resumen_ejecutivo') {
+      this.sendPrompt(
+        'Generá un resumen ejecutivo de la sesión actual de trading: estado del capital, directiva de tesorería, spreads capturados, y recomendaciones prioritarias para el operador.',
+      );
+    } else if (type === 'riesgo_bcv') {
+      this.sendPrompt(
+        '¿Cuál es el riesgo actual de intervención del BCV en mesas de cambio, cómo afecta la brecha cambiaria al inventario en bolívares y cuál es la estrategia de salida rápida?',
+      );
+    } else if (type === 'triangulacion') {
+      this.sendPrompt(
+        'Analizá oportunidades de arbitraje triangular entre VES, USDT y divisas alternativas.',
+      );
     } else if (type === 'bcv') {
-      this.sendPrompt('¿Cuál es la brecha cambiaria actual con el BCV y qué directiva de tesorería recomendás?');
+      this.sendPrompt(
+        '¿Cuál es la brecha cambiaria actual con el BCV y qué directiva de tesorería recomendás?',
+      );
     } else if (type === 'operadores') {
-      this.sendPrompt('Diseñá un plan de asignación de capital para 2 operadores con $5,000 de capital total.');
+      this.sendPrompt(
+        'Diseñá un plan de asignación de capital para 2 operadores con $5,000 de capital total.',
+      );
     } else if (type === 'cobertura') {
-      this.sendPrompt('Audita la exposición actual en VES y proponé una cobertura delta-neutral con derivados para mitigar devaluación.');
+      this.sendPrompt(
+        'Audita la exposición actual en VES y proponé una cobertura delta-neutral con derivados para mitigar devaluación.',
+      );
     } else if (type === 'volatilidad') {
-      this.sendPrompt('Pronosticá la volatilidad y deriva del spread para las próximas 2 horas y sugerí ajustes de markup de compra y venta.');
+      this.sendPrompt(
+        'Pronosticá la volatilidad y deriva del spread para las próximas 2 horas y sugerí ajustes de markup de compra y venta.',
+      );
     } else if (type === 'disputa') {
-      this.sendPrompt('Generá un expediente arbitral formal para una orden con sospecha de pago de terceros no autorizados.');
+      this.sendPrompt(
+        'Generá un expediente arbitral formal para una orden con sospecha de pago de terceros no autorizados.',
+      );
     }
   }
 }

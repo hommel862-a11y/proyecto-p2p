@@ -1,454 +1,657 @@
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Centro de Control</h2>
-      <p class="panel-subtitle">Resumen operativo en tiempo real · Mercado Venezuela</p>
+<section class="apple-desk-panel">
+  <!-- ═══════════════════════════════════════════════════
+       1. Apple Pro Main Header & Dynamic Island
+       ═══════════════════════════════════════════════════ -->
+  <header class="apple-main-header">
+    <div class="apple-title-group">
+      <div class="apple-title-badge-row">
+        <h2 class="apple-desk-title">Centro de Control</h2>
+        <span class="apple-pro-badge">Apple Pro Edition</span>
+      </div>
+      <p class="apple-desk-subtitle">Terminal ejecutivo de tesorería, enjambre de agentes y arbitraje institucional P2P</p>
     </div>
-  </div>
 
-  <!-- ═══════════════════════════════════════════════════
-       Trading Session Banner — Active workshift monitor
-       ═══════════════════════════════════════════════════ -->
-  <div class="section-group session-banner" style="border-left: 4px solid var(--gold); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
-    @if (activeSessionSummary(); as sess) {
-      <div style="display: flex; align-items: center; gap: 16px;">
-        <span class="status-dot" style="width: 12px; height: 12px;"></span>
-        <div>
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <strong style="font-size: 1.1rem; color: var(--text);">Jornada Operativa Activa</strong>
-            <span class="badge badge-accent">En curso</span>
+    <!-- Dynamic Island Workshift Widget -->
+    <div class="apple-dynamic-island" [class.island-active]="activeSessionSummary() !== null">
+      @if (activeSessionSummary(); as sess) {
+        <div class="island-left">
+          <span class="island-pulse-dot"></span>
+          <div class="island-info">
+            <div class="island-status-row">
+              <strong class="island-status-title">Jornada Activa</strong>
+              <span class="apple-pill-mini live">En Curso</span>
+            </div>
+            <div class="island-metrics font-mono">
+              <span>⏱️ {{ formatDuration(sess.durationMs) }}</span>
+              <span class="island-sep">·</span>
+              <span>⚡ {{ sess.operationsCount }} ops</span>
+              <span class="island-sep">·</span>
+              <span [class.positive]="sess.pnlVes >= 0" [class.negative]="sess.pnlVes < 0">
+                {{ fmtVes(sess.pnlVes) }}
+              </span>
+              <span class="island-sep">·</span>
+              <span class="text-muted">{{ sess.turnoverRatePerHour }} ops/h</span>
+            </div>
           </div>
-          <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
-            Duración: <strong>{{ formatDuration(sess.durationMs) }}</strong> · Ops: <strong>{{ sess.operationsCount }}</strong> · PnL Sesión: <strong [class.positive]="sess.pnlVes >= 0" [class.negative]="sess.pnlVes < 0">{{ fmtVes(sess.pnlVes) }}</strong> · Rotación: <strong>{{ sess.turnoverRatePerHour }} ops/h</strong>
-          </p>
         </div>
-      </div>
-      <div>
-        <button type="button" class="btn btn-secondary" (click)="openCloseModal()">
-          Cerrar Jornada
-        </button>
-      </div>
-    } @else {
-      <div style="display: flex; align-items: center; gap: 14px;">
-        <div style="width: 10px; height: 10px; border-radius: 50%; background: var(--muted);"></div>
-        <div>
-          <strong style="font-size: 1.05rem; color: var(--text);">Sin Jornada Activa</strong>
-          <p class="text-muted" style="margin: 2px 0 0; font-size: 0.82rem;">Inicia una sesión de trading para medir tu velocidad de rotación y registrar tu jornada de trabajo.</p>
+        <div class="island-actions">
+          <button type="button" class="apple-pill-btn apple-btn-danger" (click)="openCloseModal()">
+            Cerrar Jornada
+          </button>
         </div>
-      </div>
-      <div>
-        <button type="button" class="btn btn-primary" (click)="startSession()">
-          Iniciar Jornada
-        </button>
-      </div>
-    }
-  </div>
+      } @else {
+        <div class="island-left">
+          <span class="island-idle-dot"></span>
+          <div class="island-info">
+            <div class="island-status-row">
+              <strong class="island-status-title">Sin Jornada Activa</strong>
+              <span class="apple-pill-mini muted">En Espera</span>
+            </div>
+            <div class="island-metrics text-muted">
+              <span>Registra tu sesión de hoy para medir rotación y disciplina de trading</span>
+            </div>
+          </div>
+        </div>
+        <div class="island-actions">
+          <button type="button" class="apple-pill-btn apple-btn-primary" (click)="startSession()">
+            ▶ Iniciar Jornada
+          </button>
+        </div>
+      }
+    </div>
+  </header>
 
   <!-- ═══════════════════════════════════════════════════
-       KPI Cards — Today's performance at a glance
+       2. Apple Segmented Filter Bar
        ═══════════════════════════════════════════════════ -->
-  <div class="section-group">
-    <span class="section-eyebrow">Rendimiento de Hoy</span>
-    <div class="out">
-      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
-        <dt>Ganancia Neta (VES)</dt>
-        <dd [class.positive]="dashboard().today.pnlVes > 0"
-            [class.negative]="dashboard().today.pnlVes < 0">
+  <nav class="apple-segmented-bar" aria-label="Filtro de módulos del Centro de Control">
+    <button
+      type="button"
+      class="apple-segmented-tab"
+      [class.active]="activeTab() === 'all'"
+      (click)="activeTab.set('all')"
+    >
+      <span class="tab-icon">🌐</span>
+      <span>Vista General</span>
+    </button>
+    <button
+      type="button"
+      class="apple-segmented-tab"
+      [class.active]="activeTab() === 'treasury'"
+      (click)="activeTab.set('treasury')"
+    >
+      <span class="tab-icon">🏛️</span>
+      <span>Tesorería & Bancos</span>
+      <span class="tab-count">{{ unifiedAccounts().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="apple-segmented-tab"
+      [class.active]="activeTab() === 'agents'"
+      (click)="activeTab.set('agents')"
+    >
+      <span class="tab-icon">🤖</span>
+      <span>Agentes & Riesgo</span>
+      <span class="tab-count">4</span>
+    </button>
+    <button
+      type="button"
+      class="apple-segmented-tab"
+      [class.active]="activeTab() === 'performance'"
+      (click)="activeTab.set('performance')"
+    >
+      <span class="tab-icon">📈</span>
+      <span>Desempeño Semanal</span>
+    </button>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════
+       3. Apple Bento KPI Cards — Today's Performance
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'performance') {
+    <section class="apple-bento-kpi-grid">
+      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+        <div class="apple-kpi-header">
+          <span class="apple-kpi-title">Ganancia Neta (VES)</span>
+          <span class="apple-kpi-icon">🇻🇪</span>
+        </div>
+        <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlVes > 0" [class.negative]="dashboard().today.pnlVes < 0">
           {{ fmtVes(dashboard().today.pnlVes) }}
-        </dd>
-        <span class="dashboard-hint">Ver →</span>
+        </div>
+        <div class="apple-kpi-footer">
+          <span class="apple-kpi-subtext">Resultado consolidado hoy</span>
+          <span class="apple-kpi-link">Ver historial →</span>
+        </div>
       </div>
-      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
-        <dt>Ganancia Neta (USDT)</dt>
-        <dd [class.positive]="dashboard().today.pnlUsdt > 0"
-            [class.negative]="dashboard().today.pnlUsdt < 0">
+
+      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+        <div class="apple-kpi-header">
+          <span class="apple-kpi-title">Ganancia Neta (USDT)</span>
+          <span class="apple-kpi-icon">₮</span>
+        </div>
+        <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlUsdt > 0" [class.negative]="dashboard().today.pnlUsdt < 0">
           {{ fmtUsd(dashboard().today.pnlUsdt) }}
-        </dd>
-        <span class="dashboard-hint">Ver →</span>
-      </div>
-      <div class="dashboard-kpi" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
-        <dt>Operaciones Hoy</dt>
-        <dd>{{ dashboard().today.operations }}</dd>
-        <span class="dashboard-hint">Ver →</span>
-      </div>
-      <div class="dashboard-kpi" (click)="goToIncome()" role="button" tabindex="0" (keydown.enter)="goToIncome()">
-        <dt>Meta Diaria</dt>
-        <dd>
-          <span class="dashboard-progress-label">{{ dailyProgress() }}%</span>
-        </dd>
-        <span class="dashboard-hint">Proyección →</span>
-      </div>
-    </div>
-
-    <!-- Progress bar -->
-    <div class="dashboard-progress-bar">
-      <div class="dashboard-progress-fill"
-           [style.width.%]="dailyProgress()"
-           [class.progress-complete]="dailyProgress() >= 100"
-           [class.progress-mid]="dailyProgress() >= 50 && dailyProgress() < 100"
-           [class.progress-low]="dailyProgress() < 50">
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════
-       Treasury & Banking Limits — Multi-account liquidity
-       ═══════════════════════════════════════════════════ -->
-  <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Tesorería & Cupos Bancarios (Hoy)</span>
-      <span class="font-mono text-muted" style="font-size: 0.82rem;">
-        Liquidez Total Estimada: <strong style="color: var(--gold-strong);">{{ fmtVes(accountsService.treasurySummary().totalBalanceVes) }}</strong>
-      </span>
-    </div>
-
-    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
-      @for (u of accountsService.usages(); track u.account.id) {
-        <div class="stat-tile out" [class.negative]="u.isOverLimit" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <strong style="font-size: 0.95rem; color: var(--text);">{{ u.account.bankName }}</strong>
-              <span class="badge" [class.badge-accent]="!u.isNearLimit && !u.isOverLimit" [class.badge-sell]="u.isOverLimit" [class.badge-buy]="u.isNearLimit" style="font-size: 0.72rem;">
-                {{ u.isOverLimit ? 'Límite alcanzado' : (u.isNearLimit ? 'Cupo crítico' : 'Disponible') }}
-              </span>
-            </div>
-            <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 10px;">
-              Saldo: <strong>{{ fmtVes(u.currentBalanceVes) }}</strong> · Consumo: {{ fmtVes(u.spentTodayVes) }}
-            </p>
-          </div>
-
-          <div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-              <span class="text-muted">Cupo restante: {{ fmtVes(u.remainingLimitVes) }}</span>
-              <span class="font-mono" [class.positive]="u.consumedLimitPct < 80" [class.negative]="u.consumedLimitPct >= 80">{{ u.consumedLimitPct }}%</span>
-            </div>
-            <div class="dashboard-progress-bar" style="margin: 0; height: 6px;">
-              <div class="dashboard-progress-fill"
-                   [class.progress-low]="u.consumedLimitPct < 50"
-                   [class.progress-mid]="u.consumedLimitPct >= 50 && u.consumedLimitPct < 80"
-                   [class.progress-complete]="u.consumedLimitPct >= 80"
-                   [style.width.%]="Math.min(100, u.consumedLimitPct)">
-              </div>
-            </div>
-          </div>
         </div>
-      }
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════
-       Account Velocity — SUDEBAN rotation awareness
-       ═══════════════════════════════════════════════════ -->
-  <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Velocidad por Cuenta (Anti-Sudeban)</span>
-      @if (rotationRecommendation(); as rec) {
-        <span class="text-muted" style="font-size: 0.82rem;">
-          Próxima cuenta recomendada: <strong style="color: var(--gold-strong);">{{ rec.bankName }}</strong>
-        </span>
-      }
-    </div>
-
-    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
-      @for (v of accountVelocities(); track v.accountId) {
-        <div class="stat-tile out dashboard-velocity-tile" (click)="goToBankLog(v.bankName)" role="button" tabindex="0" (keydown.enter)="goToBankLog(v.bankName)" style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 16px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <strong style="font-size: 0.95rem; color: var(--text);">{{ v.bankName }}</strong>
-              <span class="badge" style="font-size: 0.72rem; color: var(--panel); border-color: transparent;"
-                    [style.background]="velocityHealthVar[v.velocityHealth]"
-                    [title]="v.velocityHealth">
-                {{ v.todayTransactionCount }} / {{ v.maxDailyTransactions }}
-              </span>
-            </div>
-            <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 10px;">
-              {{ velocityHealthLabel[v.velocityHealth] }}
-              @if (v.recommendedWaitHours > 0) { · espera ~{{ v.recommendedWaitHours }}h }
-            </p>
-          </div>
-
-          <div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-              <span class="text-muted">Transacciones hoy: {{ v.todayTransactionCount }} / {{ v.maxDailyTransactions }}</span>
-              <span class="font-mono" [class.positive]="v.usedPct < 75" [class.negative]="v.usedPct >= 75">{{ v.usedPct }}%</span>
-            </div>
-            <div class="dashboard-progress-bar" style="margin: 0; height: 6px;">
-              <div class="dashboard-progress-fill"
-                   [class.progress-low]="v.usedPct < 40"
-                   [class.progress-mid]="v.usedPct >= 40 && v.usedPct < 75"
-                   [class.progress-complete]="v.usedPct >= 75"
-                   [style.width.%]="Math.min(100, v.usedPct)">
-              </div>
-            </div>
-            <span class="dashboard-hint">Ver registro →</span>
-          </div>
-        </div>
-      }
-    </div>
-
-    @if (velocityAlerts().length > 0) {
-      <div class="alert" style="margin: 14px 0 0; font-size: 0.85rem; background: rgba(245, 184, 76, 0.08);"
-           [style.color]="'var(--warn)'" [style.borderColor]="'rgba(245, 184, 76, 0.35)'">
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          @for (a of velocityAlerts(); track a.accountId) {
-            <div [style.color]="a.isAtThreshold ? 'var(--danger)' : 'var(--warn)'">
-              ⚠️ Cuenta <strong>{{ a.bankName }}</strong> al <strong>{{ a.usedPct }}%</strong> del umbral — evita nuevas transferencias hoy.
-            </div>
-          }
-          @if (!rotationRecommendation()) {
-            <div style="color: var(--danger); margin-top: 4px;">Todas las cuentas cerca del límite — reduce operaciones.</div>
-          }
+        <div class="apple-kpi-footer">
+          <span class="apple-kpi-subtext">En divisa dura de arbitraje</span>
+          <span class="apple-kpi-link">Ver métricas →</span>
         </div>
       </div>
-    }
-  </div>
+
+      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+        <div class="apple-kpi-header">
+          <span class="apple-kpi-title">Operaciones Hoy</span>
+          <span class="apple-kpi-icon">⚡</span>
+        </div>
+        <div class="apple-kpi-val font-mono">
+          {{ dashboard().today.operations }} <span class="apple-kpi-unit">órdenes</span>
+        </div>
+        <div class="apple-kpi-footer">
+          <span class="apple-pill-mini" [class.live]="dashboard().today.zeroErrorStreak > 0">
+            🛡️ {{ dashboard().today.zeroErrorStreak }} sin incidentes
+          </span>
+          <span class="apple-kpi-link">Libro →</span>
+        </div>
+      </div>
+
+      <div class="apple-kpi-card apple-card-progress" (click)="goToIncome()" role="button" tabindex="0" (keydown.enter)="goToIncome()">
+        <div class="apple-kpi-header">
+          <span class="apple-kpi-title">Meta Diaria de Ingresos</span>
+          <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
+        </div>
+        <div class="apple-kpi-val font-mono" style="color: var(--gold-strong);">
+          {{ dailyProgress() }}%
+        </div>
+        <div class="apple-track-bar">
+          <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
+        </div>
+        <div class="apple-kpi-footer">
+          <span class="apple-kpi-subtext">Avance hacia el objetivo</span>
+          <span class="apple-kpi-link">Calculadora →</span>
+        </div>
+      </div>
+    </section>
+  }
 
   <!-- ═══════════════════════════════════════════════════
-       Weekly Activity — 7-day mini chart
+       4. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid
        ═══════════════════════════════════════════════════ -->
-  <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
-      <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Rendimiento Gráfico (Últimos 7 Días)</span>
-      <div class="actions" style="margin: 0; display: flex; gap: 6px;">
-        <button type="button" class="btn btn-secondary" [class.active]="selectedChartTab() === 'cumulative'" (click)="selectedChartTab.set('cumulative')" style="font-size: 0.78rem; padding: 4px 10px;">
-          📈 Curva PnL Acumulado
-        </button>
-        <button type="button" class="btn btn-secondary" [class.active]="selectedChartTab() === 'volume'" (click)="selectedChartTab.set('volume')" style="font-size: 0.78rem; padding: 4px 10px;">
-          📊 Volumen Diario (USDT)
-        </button>
-      </div>
-    </div>
-
-    @if (selectedChartTab() === 'cumulative') {
-      <div style="position: relative; width: 100%; min-height: 200px; background: rgba(10, 14, 23, 0.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;">
-        <svg viewBox="0 0 600 180" style="width: 100%; height: auto; overflow: visible; display: block;">
-          <defs>
-            <linearGradient id="pnlGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.38" />
-              <stop offset="100%" stop-color="var(--gold)" stop-opacity="0.0" />
-            </linearGradient>
-            <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#d8b45c" flood-opacity="0.4" />
-            </filter>
-          </defs>
-
-          <!-- Baseline zero line -->
-          <line x1="40" [attr.y1]="cumulativeChart().baselineY" x2="560" [attr.y2]="cumulativeChart().baselineY" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3" />
-
-          <!-- Area fill -->
-          @if (cumulativeChart().areaD) {
-            <path [attr.d]="cumulativeChart().areaD" fill="url(#pnlGrad)" />
-          }
-
-          <!-- Line curve -->
-          @if (cumulativeChart().lineD) {
-            <path [attr.d]="cumulativeChart().lineD" fill="none" stroke="var(--gold)" stroke-width="2.5" filter="url(#goldGlow)" />
-          }
-
-          <!-- Points -->
-          @for (p of cumulativeChart().points; track p.date) {
-            <g>
-              <circle
-                [attr.cx]="p.x"
-                [attr.cy]="p.y"
-                r="4.5"
-                fill="var(--panel-2)"
-                stroke="var(--gold)"
-                stroke-width="2"
-                style="cursor: pointer; transition: r 0.2s ease;"
-                (mouseenter)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
-                (mouseleave)="hoveredPoint.set(null)"
-              />
-              <text [attr.x]="p.x" y="175" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">
-                {{ p.shortDate }}
-              </text>
-            </g>
-          }
-        </svg>
-
-        <!-- Tooltip overlay -->
-        @if (hoveredPoint(); as tip) {
-          <div style="position: absolute; top: 12px; right: 16px; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 6px; padding: 8px 12px; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.4);">
-            <div style="font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono);">{{ tip.date }}</div>
-            <div style="font-size: 0.95rem; font-weight: 700; color: var(--gold-strong); font-family: var(--font-mono);">
-              {{ tip.value }}
-            </div>
-            @if (tip.subvalue) {
-              <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">{{ tip.subvalue }}</div>
-            }
+  @if (activeTab() === 'all' || activeTab() === 'treasury') {
+    <section class="apple-card-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">🏛️</span>
+          <div>
+            <h3 class="apple-section-title">Tesorería & Rotación Anti-SUDEBAN</h3>
+            <p class="apple-section-subtitle">Supervisión integrada de liquidez, cupo diario consumido y límites de velocidad bancaria</p>
           </div>
-        }
-      </div>
-    } @else {
-      <!-- Daily Volume Bar View -->
-      <div class="dashboard-chart">
-        @for (day of dashboard().week; track day.date) {
-          <div class="dashboard-chart-col">
-            <div class="dashboard-chart-bar-wrap dashboard-chart-click" (click)="goToDay(day.date)" role="button" tabindex="0" (keydown.enter)="goToDay(day.date)">
-              <div class="dashboard-chart-bar"
-                   [class.bar-positive]="day.pnlVes >= 0"
-                   [class.bar-negative]="day.pnlVes < 0"
-                   [style.height.%]="barHeight(day)"
-                   [title]="day.date + ': ' + fmtVes(day.pnlVes) + ' | ' + fmtUsd(day.volumeUsdt) + ' USDT'">
-              </div>
-            </div>
-            <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
-            <span class="dashboard-chart-ops">{{ fmtUsd(day.volumeUsdt) }}</span>
-            <span class="dashboard-hint">Drill día →</span>
-          </div>
-        }
-      </div>
-    }
-  </div>
+        </div>
 
-  <!-- ═══════════════════════════════════════════════════
-       BCV Intervention Cycle & Macro Treasury Intelligence
-       ═══════════════════════════════════════════════════ -->
-  <div class="section-group" style="margin-bottom: 24px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 1.3rem;">🏛️</span>
-        <div>
-          <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">
-            Ciclo de Intervención Cambiaria BCV & Tesorería
-          </h3>
-          <span class="text-muted" style="font-size: 0.76rem;">
-            Semanario de inyecciones a la banca, brecha Paralelo/Oficial y directiva de inventario
+        <div class="apple-section-actions">
+          <span class="apple-treasury-pill font-mono">
+            Liquidez Total: <strong style="color: var(--gold-strong);">{{ fmtVes(accountsService.treasurySummary().totalBalanceVes) }}</strong>
           </span>
         </div>
       </div>
-      <span class="badge" [ngClass]="bcvZoneBadge(bcvIntelligence().gap.zone).class" style="font-size: 0.72rem;">
-        {{ bcvZoneBadge(bcvIntelligence().gap.zone).label }}
-      </span>
-    </div>
 
-    <div class="out" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px;">
-      <div>
-        <dt>Brecha Paralelo vs BCV</dt>
-        <dd class="font-mono font-bold" [style.color]="bcvIntelligence().gap.gapPct > 25 ? '#ef4444' : 'var(--gold)'">
-          +{{ bcvIntelligence().gap.gapPct }}% (+{{ bcvIntelligence().gap.gapVes | num }} Bs)
-        </dd>
-        <div style="font-size: 0.74rem; color: var(--muted); margin-top: 4px;">
-          Paralelo: {{ bcvIntelligence().gap.parallelRate | num }} Bs · BCV: {{ bcvIntelligence().gap.bcvRate | num }} Bs
-        </div>
-      </div>
+      <div class="apple-bank-grid">
+        @for (b of unifiedAccounts(); track b.id) {
+          <div
+            class="apple-bank-card"
+            [class.card-alert]="b.isOverLimit"
+            [class.card-near]="b.isNearLimit"
+            [class.card-recommended]="b.isRecommended"
+            (click)="goToBankLog(b.bankName)"
+            role="button"
+            tabindex="0"
+            (keydown.enter)="goToBankLog(b.bankName)"
+          >
+            <!-- Bank Card Header -->
+            <div class="apple-bank-card-top">
+              <div class="apple-bank-id-group">
+                <span class="bank-avatar-badge">{{ b.bankName | slice:0:2 | uppercase }}</span>
+                <div>
+                  <strong class="apple-bank-name">{{ b.bankName }}</strong>
+                  <div class="apple-bank-sub font-mono">Saldo: {{ fmtVes(b.currentBalanceVes) }}</div>
+                </div>
+              </div>
 
-      <div>
-        <dt>Fase del Ciclo Cambiario</dt>
-        <dd style="margin-top: 4px;">
-          <span class="badge" [ngClass]="bcvPhaseBadge(bcvIntelligence().window.phase).class" style="font-size: 0.72rem;">
-            {{ bcvPhaseBadge(bcvIntelligence().window.phase).label }}
-          </span>
-        </dd>
-        <div style="font-size: 0.74rem; color: var(--muted); margin-top: 4px;">
-          Próxima: {{ bcvIntelligence().window.nextExpectedIntervention }} ({{ bcvIntelligence().window.probabilityPct }}% prob.)
-        </div>
-      </div>
-
-      <div>
-        <dt>Directiva de Tesorería</dt>
-        <dd class="positive font-mono" style="font-size: 0.88rem; font-weight: 700; margin-top: 4px;">
-          {{ bcvIntelligence().recommendation.actionLabel }}
-        </dd>
-        <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
-          Timing: {{ bcvIntelligence().recommendation.timingNotice }}
-        </div>
-      </div>
-    </div>
-
-    <div style="padding: 10px 14px; background: rgba(0,0,0,0.35); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.82rem; color: var(--text-muted);">
-      <strong style="color: var(--gold);">Macro-Directiva:</strong> {{ bcvIntelligence().recommendation.rationale }}
-    </div>
-  </div>
-
-  <div class="grid" style="grid-template-columns: 1fr 1fr;">
-    <!-- ═══════════════════════════════════════════════════
-         Risk Engine Status — Traffic light
-         ═══════════════════════════════════════════════════ -->
-    <div class="section-group">
-      <span class="section-eyebrow">Motor de Riesgo</span>
-      <div class="dashboard-verdict verdict {{ decisionClass(verdict().decision) }} dashboard-verdict-click" (click)="goToRisk()" role="button" tabindex="0" (keydown.enter)="goToRisk()">
-        <span class="dashboard-verdict-dot"></span>
-        <div>
-          <strong>{{ decisionLabel(verdict().decision) }}</strong>
-          <p class="dashboard-verdict-reason">{{ verdict().reason }}</p>
-          <span class="dashboard-hint">Editar reglas →</span>
-        </div>
-      </div>
-      <a routerLink="/risk" class="dashboard-link">Configurar reglas →</a>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════
-         Lifetime Stats — Quick summary
-         ═══════════════════════════════════════════════════ -->
-    <div class="section-group">
-      <span class="section-eyebrow">Resumen General</span>
-      <div class="dashboard-stats-mini">
-        <div>
-          <span class="stat-label">Total Operaciones</span>
-          <span class="stat-value">{{ dashboard().totalOps }}</span>
-        </div>
-        <div>
-          <span class="stat-label">Racha Cero Errores</span>
-          <span class="stat-value">
-            <span class="badge badge-accent">{{ dashboard().today.zeroErrorStreak }} ops</span>
-          </span>
-        </div>
-        <div>
-          <span class="stat-label">Exposición Neta</span>
-          <span class="stat-value">{{ fmtUsd(dashboard().today.exposure) }}</span>
-        </div>
-      </div>
-      <a routerLink="/stats" class="dashboard-link">Ver estadísticas →</a>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════
-       Recent Operations — Last 3
-       ═══════════════════════════════════════════════════ -->
-  <div class="section-group">
-    <span class="section-eyebrow">Últimas Operaciones</span>
-    @if (dashboard().recentOps.length === 0) {
-      <p class="text-muted" style="margin: 12px 0;">No hay operaciones registradas aún. <a routerLink="/log">Registrar primera operación →</a></p>
-    } @else {
-      <div class="table-container">
-        <table class="corporate-table" aria-label="Últimas 3 operaciones">
-          <thead>
-            <tr>
-              <th scope="col">Fecha</th>
-              <th scope="col">Tipo</th>
-              <th scope="col">Par</th>
-              <th scope="col" class="text-right">VES</th>
-              <th scope="col" class="text-right">Cripto</th>
-              <th scope="col">Contraparte</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (o of dashboard().recentOps; track o.id) {
-              <tr class="dashboard-op-row" (click)="goToLog()" role="button" tabindex="0" (keydown.enter)="goToLog()" title="Ver registro completo">
-                <td class="font-mono text-muted">{{ o.timestamp | slice:0:16 }}</td>
-                <td>
-                  <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
-                    {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Asignación' }}
+              <div class="apple-bank-badges">
+                @if (b.isRecommended) {
+                  <span class="apple-pill-mini recommended" title="Cuenta con mayor holgura de cupo y velocidad">
+                    ⭐ Recomendada
                   </span>
-                </td>
-                <td><strong>{{ o.pair }}</strong></td>
-                <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
-                <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
-                <td>{{ o.merchantNote || '—' }}</td>
-              </tr>
-            }
-          </tbody>
-        </table>
+                }
+                <span class="apple-pill-mini" [class.badge-danger]="b.isOverLimit" [class.badge-warning]="b.isNearLimit" [class.badge-accent]="!b.isOverLimit && !b.isNearLimit">
+                  {{ b.isOverLimit ? 'Límite Superado' : (b.isNearLimit ? 'Cupo Crítico' : 'Disponible') }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Daily Limit Progress -->
+            <div class="apple-bank-limit-row">
+              <div class="limit-labels">
+                <span class="text-muted">Consumo diario: {{ fmtVes(b.spentTodayVes) }}</span>
+                <span class="font-mono font-bold" [class.positive]="b.consumedLimitPct < 80" [class.negative]="b.consumedLimitPct >= 80">
+                  {{ b.consumedLimitPct }}%
+                </span>
+              </div>
+              <div class="apple-track-bar">
+                <div
+                  class="apple-track-fill"
+                  [class.fill-danger]="b.consumedLimitPct >= 80"
+                  [class.fill-warning]="b.consumedLimitPct >= 50 && b.consumedLimitPct < 80"
+                  [style.width.%]="Math.min(100, b.consumedLimitPct)"
+                ></div>
+              </div>
+              <div class="limit-sub-row font-mono text-muted">
+                <span>Restante: {{ fmtVes(b.remainingLimitVes) }}</span>
+                <span>Cupo: {{ fmtVes(b.dailyLimitVes) }}</span>
+              </div>
+            </div>
+
+            <!-- Anti-SUDEBAN Velocity Capsule -->
+            <div class="apple-bank-velocity-capsule">
+              <div class="velocity-status-row">
+                <div class="velocity-metric">
+                  <span class="bullet-dot" [style.background]="velocityHealthVar[b.velocityHealth]"></span>
+                  <span class="velocity-label">Velocidad SUDEBAN:</span>
+                  <strong class="velocity-state">{{ velocityHealthLabel[b.velocityHealth] }}</strong>
+                </div>
+                <span class="velocity-tx-counter font-mono">
+                  {{ b.todayTransactionCount }} / {{ b.maxDailyTransactions }} tx
+                </span>
+              </div>
+
+              @if (b.recommendedWaitHours > 0) {
+                <div class="velocity-wait-note">
+                  ⏳ Enfriamiento sugerido: ~{{ b.recommendedWaitHours }}h antes de nuevas transferencias
+                </div>
+              }
+            </div>
+
+            <span class="apple-card-action-hint">Ver transacciones de {{ b.bankName }} →</span>
+          </div>
+        }
       </div>
-      <a routerLink="/log" class="dashboard-link">Ver registro completo →</a>
-    }
-  </div>
+
+      <!-- SUDEBAN Global Warnings -->
+      @if (velocityAlerts().length > 0) {
+        <div class="apple-alert-banner">
+          <span class="alert-icon">⚠️</span>
+          <div class="alert-text">
+            <strong>Alerta de Saturación Transaccional:</strong>
+            @for (a of velocityAlerts(); track a.accountId) {
+              <span class="alert-item">
+                La cuenta <strong>{{ a.bankName }}</strong> ha consumido el <strong>{{ a.usedPct }}%</strong> de sus transferencias diarias seguras.
+              </span>
+            }
+          </div>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       5. Multi-Agent Swarm Suite (Institutional AI)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'agents') {
+    <section class="apple-card-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">🧠</span>
+          <div>
+            <h3 class="apple-section-title">Enjambre de Agentes de IA (Swarm Suite)</h3>
+            <p class="apple-section-subtitle">Arquitectura multi-agente para monitoreo continuo, optimización de rutas y poder de veto institucional</p>
+          </div>
+        </div>
+
+        <div class="apple-section-actions">
+          <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="runSwarmHealthCheck()">
+            ⚡ Ejecutar Diagnóstico Swarm
+          </button>
+        </div>
+      </div>
+
+      <div class="apple-agents-grid">
+        @for (agent of swarmAgents(); track agent.name) {
+          <div class="apple-agent-tile">
+            <div class="agent-tile-top">
+              <div class="agent-id-box">
+                <span class="agent-icon">{{ agent.icon }}</span>
+                <div>
+                  <h4 class="agent-name">{{ agent.name }}</h4>
+                  <span class="agent-role">{{ agent.role }}</span>
+                </div>
+              </div>
+              <div class="agent-status-badge">
+                <span class="agent-pulse-dot" [class.pulse-online]="agent.status === 'ONLINE'"></span>
+                <span class="agent-status-text font-mono">{{ agent.status }}</span>
+              </div>
+            </div>
+
+            <p class="agent-description">{{ agent.description }}</p>
+
+            <div class="agent-tile-footer font-mono">
+              <div class="agent-metric-item">
+                <span class="agent-metric-label">Decisiones:</span>
+                <span class="agent-metric-val">{{ agent.decisionsCount }}</span>
+              </div>
+              <div class="agent-metric-item">
+                <span class="agent-metric-label">Latencia:</span>
+                <span class="agent-metric-val">{{ agent.lastPingMs }}ms</span>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       6. Macro & Regulatory BCV Intelligence (MCP Decisor)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'agents') {
+    <section class="apple-card-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">📊</span>
+          <div>
+            <h3 class="apple-section-title">Inteligencia Macro & Regulatoria BCV</h3>
+            <p class="apple-section-subtitle">Herramientas MCP conectadas: Brecha Paralelo/Oficial, directivas de inyección y régimen de volatilidad</p>
+          </div>
+        </div>
+
+        <div class="apple-section-actions">
+          <button type="button" class="apple-pill-btn apple-btn-gold" (click)="syncMcpIntelligence()" [disabled]="mcpSyncing()">
+            @if (mcpSyncing()) {
+              <span class="spin-icon">⏳</span> Sincronizando...
+            } @else {
+              🔄 Sincronizar MCP
+            }
+          </button>
+          <span class="apple-pill-mini" [ngClass]="bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).class">
+            {{ bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).label }}
+          </span>
+        </div>
+      </div>
+
+      <div class="apple-macro-grid">
+        <!-- Brecha Cambiaria -->
+        <div class="apple-macro-tile">
+          <div class="macro-tile-header">
+            <span class="macro-tile-title">Brecha Paralelo vs BCV</span>
+            <span class="apple-pill-mini muted font-mono">calculate_rate_gap</span>
+          </div>
+          <div class="macro-tile-metric font-mono font-bold" [style.color]="(mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) > 25 ? '#ef4444' : 'var(--gold)'">
+            +{{ mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct }}% (+{{ mcpRateGap()?.gapVes ?? bcvIntelligence().gap.gapVes | num }} Bs)
+          </div>
+          <div class="macro-tile-subtext text-muted">
+            Paralelo: {{ mcpRateGap()?.parallelRate ?? bcvIntelligence().gap.parallelRate | num }} Bs · BCV: {{ mcpRateGap()?.bcvRate ?? bcvIntelligence().gap.bcvRate | num }} Bs
+            @if (mcpBcvRates()?.date) {
+              <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
+            }
+          </div>
+        </div>
+
+        <!-- Fase de Intervención -->
+        <div class="apple-macro-tile">
+          <div class="macro-tile-header">
+            <span class="macro-tile-title">Fase del Ciclo Cambiario</span>
+            <span class="apple-pill-mini muted font-mono">check_bcv_intervention</span>
+          </div>
+          <div class="macro-tile-badge-box">
+            <span class="badge" [ngClass]="bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).class">
+              {{ bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).label }}
+            </span>
+          </div>
+          <div class="macro-tile-subtext text-muted">
+            Próxima: {{ mcpBcvIntervention()?.nextExpectedIntervention || bcvIntelligence().window.nextExpectedIntervention }} ({{ mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct }}% prob.)
+          </div>
+        </div>
+
+        <!-- Pronóstico de Volatilidad -->
+        <div class="apple-macro-tile">
+          <div class="macro-tile-header">
+            <span class="macro-tile-title">Pronóstico de Volatilidad</span>
+            <span class="apple-pill-mini muted font-mono">forecast_volatility</span>
+          </div>
+          @if (mcpVolatilityForecast(); as f) {
+            <div class="macro-tile-metric font-mono">
+              Spread Esperado: <strong style="color: var(--gold-strong);">{{ f.expectedSpreadMin }}% – {{ f.expectedSpreadMax }}%</strong>
+            </div>
+            <div class="macro-tile-subtext text-muted">
+              Régimen: <strong [class.positive]="f.marketRegime === 'STABLE'" [class.negative]="f.marketRegime === 'EXPANSIVE'">{{ f.marketRegime }}</strong> · Score: {{ f.volatilityScore }}/100
+            </div>
+          } @else {
+            <div class="macro-tile-metric font-mono text-muted">Calculando régimen...</div>
+            <div class="macro-tile-subtext text-muted">Ventana estándar de 2 a 4 horas</div>
+          }
+        </div>
+      </div>
+
+      <!-- Macro Rationale Callout -->
+      <div class="apple-macro-callout">
+        <strong style="color: var(--gold);">Directiva Táctica:</strong>
+        <span>{{ mcpBcvIntervention()?.directive || bcvIntelligence().recommendation.actionLabel }} — {{ mcpBcvIntervention()?.rationale || bcvIntelligence().recommendation.rationale }}</span>
+      </div>
+    </section>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       7. Motor de Riesgo & Resumen Operativo
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'agents') {
+    <div class="apple-grid-two-col">
+      <!-- Motor de Riesgo -->
+      <div class="apple-subcard apple-risk-subcard" (click)="goToRisk()" role="button" tabindex="0" (keydown.enter)="goToRisk()">
+        <div class="apple-subcard-header">
+          <div class="subcard-title-group">
+            <span class="subcard-icon">⚖️</span>
+            <h4 class="subcard-title">Motor de Riesgo Dinámico</h4>
+          </div>
+          <span class="apple-kpi-link">Configurar →</span>
+        </div>
+
+        <div class="apple-risk-verdict-box {{ decisionClass(verdict().decision) }}">
+          <span class="verdict-dot"></span>
+          <div>
+            <strong class="verdict-label font-mono">{{ decisionLabel(verdict().decision) }}</strong>
+            <p class="verdict-reason">{{ verdict().reason }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resumen General -->
+      <div class="apple-subcard" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+        <div class="apple-subcard-header">
+          <div class="subcard-title-group">
+            <span class="subcard-icon">📋</span>
+            <h4 class="subcard-title">Resumen Histórico</h4>
+          </div>
+          <span class="apple-kpi-link">Estadísticas →</span>
+        </div>
+
+        <div class="apple-stats-mini-grid font-mono">
+          <div class="stats-mini-item">
+            <span class="stats-mini-label">Total Operaciones</span>
+            <span class="stats-mini-val">{{ dashboard().totalOps }}</span>
+          </div>
+          <div class="stats-mini-item">
+            <span class="stats-mini-label">Racha Sin Errores</span>
+            <span class="stats-mini-val positive">{{ dashboard().today.zeroErrorStreak }} ops</span>
+          </div>
+          <div class="stats-mini-item">
+            <span class="stats-mini-label">Exposición Neta</span>
+            <span class="stats-mini-val">{{ fmtUsd(dashboard().today.exposure) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       8. Weekly Performance Chart & Recent Operations
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'performance') {
+    <section class="apple-card-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">📈</span>
+          <div>
+            <h3 class="apple-section-title">Rendimiento Gráfico (Últimos 7 Días)</h3>
+            <p class="apple-section-subtitle">Curva de equidad acumulada y volumen transaccional diario</p>
+          </div>
+        </div>
+
+        <div class="apple-section-actions">
+          <div class="apple-chart-switcher">
+            <button type="button" class="switcher-btn" [class.active]="selectedChartTab() === 'cumulative'" (click)="selectedChartTab.set('cumulative')">
+              📈 PnL Acumulado
+            </button>
+            <button type="button" class="switcher-btn" [class.active]="selectedChartTab() === 'volume'" (click)="selectedChartTab.set('volume')">
+              📊 Volumen Diario (USDT)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      @if (selectedChartTab() === 'cumulative') {
+        <div class="apple-chart-container">
+          <svg viewBox="0 0 600 180" class="apple-svg-chart">
+            <defs>
+              <linearGradient id="pnlGradApple" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.38" />
+                <stop offset="100%" stop-color="var(--gold)" stop-opacity="0.0" />
+              </linearGradient>
+              <filter id="goldGlowApple" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#d8b45c" flood-opacity="0.4" />
+              </filter>
+            </defs>
+
+            <!-- Baseline zero line -->
+            <line x1="40" [attr.y1]="cumulativeChart().baselineY" x2="560" [attr.y2]="cumulativeChart().baselineY" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3" />
+
+            <!-- Area fill -->
+            @if (cumulativeChart().areaD) {
+              <path [attr.d]="cumulativeChart().areaD" fill="url(#pnlGradApple)" />
+            }
+
+            <!-- Line curve -->
+            @if (cumulativeChart().lineD) {
+              <path [attr.d]="cumulativeChart().lineD" fill="none" stroke="var(--gold)" stroke-width="2.5" filter="url(#goldGlowApple)" />
+            }
+
+            <!-- Points -->
+            @for (p of cumulativeChart().points; track p.date) {
+              <g>
+                <circle
+                  [attr.cx]="p.x"
+                  [attr.cy]="p.y"
+                  r="4.5"
+                  fill="var(--panel-2)"
+                  stroke="var(--gold)"
+                  stroke-width="2"
+                  class="chart-point"
+                  (mouseenter)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
+                  (mouseleave)="hoveredPoint.set(null)"
+                />
+                <text [attr.x]="p.x" y="175" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">
+                  {{ p.shortDate }}
+                </text>
+              </g>
+            }
+          </svg>
+
+          <!-- Tooltip overlay -->
+          @if (hoveredPoint(); as tip) {
+            <div class="apple-chart-tooltip font-mono">
+              <div class="tooltip-date">{{ tip.date }}</div>
+              <div class="tooltip-value">{{ tip.value }}</div>
+              @if (tip.subvalue) {
+                <div class="tooltip-subvalue">{{ tip.subvalue }}</div>
+              }
+            </div>
+          }
+        </div>
+      } @else {
+        <!-- Daily Volume Bar View -->
+        <div class="dashboard-chart apple-chart-container">
+          @for (day of dashboard().week; track day.date) {
+            <div class="dashboard-chart-col">
+              <div class="dashboard-chart-bar-wrap dashboard-chart-click" (click)="goToDay(day.date)" role="button" tabindex="0" (keydown.enter)="goToDay(day.date)">
+                <div class="dashboard-chart-bar"
+                     [class.bar-positive]="day.pnlVes >= 0"
+                     [class.bar-negative]="day.pnlVes < 0"
+                     [style.height.%]="barHeight(day)"
+                     [title]="day.date + ': ' + fmtVes(day.pnlVes) + ' | ' + fmtUsd(day.volumeUsdt) + ' USDT'">
+                </div>
+              </div>
+              <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
+              <span class="dashboard-chart-ops font-mono">{{ fmtUsd(day.volumeUsdt) }}</span>
+              <span class="dashboard-hint">Drill día →</span>
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Recent Operations Table -->
+    <section class="apple-card-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">📑</span>
+          <div>
+            <h3 class="apple-section-title">Últimas Operaciones Ejecutadas</h3>
+            <p class="apple-section-subtitle">Bitácora reciente de compras y ventas liquidadas</p>
+          </div>
+        </div>
+        <div class="apple-section-actions">
+          <a routerLink="/log" class="apple-pill-btn apple-btn-secondary">Ver Registro Completo →</a>
+        </div>
+      </div>
+
+      @if (dashboard().recentOps.length === 0) {
+        <p class="text-muted" style="margin: 12px 0;">No hay operaciones registradas aún. <a routerLink="/log">Registrar primera operación →</a></p>
+      } @else {
+        <div class="table-container">
+          <table class="corporate-table apple-table" aria-label="Últimas 3 operaciones">
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Par</th>
+                <th scope="col" class="text-right">VES</th>
+                <th scope="col" class="text-right">Cripto</th>
+                <th scope="col">Contraparte</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (o of dashboard().recentOps; track o.id) {
+                <tr class="dashboard-op-row" (click)="goToLog()" role="button" tabindex="0" (keydown.enter)="goToLog()" title="Ver registro completo">
+                  <td class="font-mono text-muted">{{ o.timestamp | slice:0:16 }}</td>
+                  <td>
+                    <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
+                      {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Asignación' }}
+                    </span>
+                  </td>
+                  <td><strong>{{ o.pair }}</strong></td>
+                  <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
+                  <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
+                  <td>{{ o.merchantNote || '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
 
   <!-- Modal de Cierre de Sesión -->
   @if (showCloseModal()) {
     <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelCloseModal()" (keydown.escape)="cancelCloseModal()" aria-label="Cerrar modal">
-      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="close-modal-title" tabindex="-1">
+      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="close-modal-title" tabindex="-1">
         <h3 id="close-modal-title">Cerrar Jornada Operativa</h3>
         <p>Evalúa el cumplimiento de tu disciplina y agrega observaciones de mercado antes de archivar la sesión.</p>
 

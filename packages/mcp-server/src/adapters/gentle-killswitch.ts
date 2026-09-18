@@ -64,7 +64,9 @@ export async function getKillSwitchStatus(): Promise<KillSwitchState> {
         return { ...localKillSwitchState };
       }
     }
-  } catch {}
+  } catch {
+    // Ignore error reading Electron state file
+  }
 
   return { status: 'INACTIVE' };
 }
@@ -120,7 +122,9 @@ export async function activateKillSwitch(
       channel: 'p2p:killswitch-trigger',
       args: [{ reason, source }],
     });
-  } catch {}
+  } catch {
+    // Silently continue if Electron IPC is not available
+  }
 
   return {
     success: true,

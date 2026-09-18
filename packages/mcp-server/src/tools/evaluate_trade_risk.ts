@@ -3,14 +3,15 @@ import { EvaluateTradeRiskInputSchema, type EvaluateTradeRiskInput } from '../sc
 
 export const evaluateTradeRiskTool = {
   name: 'evaluate_trade_risk',
-  description: 'Evalúa una propuesta de trade contra el motor determinista de 6 reglas de riesgo de P2P Decisor.',
+  description:
+    'Evalúa una propuesta de trade contra el motor determinista de 6 reglas de riesgo de P2P Decisor.',
   inputSchema: EvaluateTradeRiskInputSchema,
   execute: (input: EvaluateTradeRiskInput) => {
     const tradeRiskPct = (input.tradeAmountUsdt / input.currentCapitalUsdt) * 100;
 
     const ctx: RuleContext = {
       currentSpread: 1.25,
-      minSpread: 0.50,
+      minSpread: 0.5,
       openOps: 1,
       tradeRiskPct,
       dailyLossPct: 0,

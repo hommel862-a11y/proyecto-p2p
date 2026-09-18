@@ -189,3 +189,162 @@ export function authorizeHedgeProposal(
     },
   };
 }
+
+// ─── Phase 1: Convexity/Gamma Risk, Funding Arbitrage & Kelly Allocation ───────
+
+export interface ConvexityRiskInput {
+  spotParallelRate: number;
+  vesHoldingAmount: number;
+  expectedDevaluationJumpPct: number; // Salto proyectado (ej. 15% o 30%)
+  timeHorizonDays: number;
+}
+
+export interface ConvexityRiskResult {
+  linearLossUsdt: number;
+  acceleratedGammaLossUsdt: number;
+  convexityDragPct: number;
+  riskSeverity: 'LINEAR_MANAGEABLE' | 'ACCELERATING_GAMMA_RISK' | 'EXPONENTIAL_COLLAPSE';
+  actionableDirective: string;
+}
+
+/**
+ * Modela el riesgo de convexidad y aceleración Gamma de pérdidas patrimoniales
+ * ante rupturas no lineales del tipo de cambio paralelo (curva hiperbólica 1/x).
+ */
+export function calculateConvexityAndGammaRisk(input: ConvexityRiskInput): ConvexityRiskResult {
+  const { spotParallelRate, vesHoldingAmount, expectedDevaluationJumpPct, timeHorizonDays } = input;
+  const initialUsdtValue = spotParallelRate > 0 ? vesHoldingAmount / spotParallelRate : 0;
+
+  const jumpedRate = spotParallelRate * (1 + expectedDevaluationJumpPct / 100);
+  const postJumpUsdtValue = jumpedRate > 0 ? vesHoldingAmount / jumpedRate : 0;
+  const actualLossUsdt = Math.round((initialUsdtValue - postJumpUsdtValue) * 100) / 100;
+
+  // Pérdida lineal simplificada de primer orden (Delta aproximado)
+  const linearApproximationLoss = Math.round((initialUsdtValue * (expectedDevaluationJumpPct / 100)) * 100) / 100;
+  const nonLinearGammaDrag = Math.round(Math.abs(actualLossUsdt - linearApproximationLoss) * 100) / 100;
+  const convexityDragPct = initialUsdtValue > 0 ? Math.round((actualLossUsdt / initialUsdtValue) * 10000) / 100 : 0;
+
+  let riskSeverity: ConvexityRiskResult['riskSeverity'] = 'LINEAR_MANAGEABLE';
+  if (convexityDragPct >= 20.0 || expectedDevaluationJumpPct >= 25.0) {
+    riskSeverity = 'EXPONENTIAL_COLLAPSE';
+  } else if (convexityDragPct >= 8.0) {
+    riskSeverity = 'ACCELERATING_GAMMA_RISK';
+  }
+
+  return {
+    linearLossUsdt: actualLossUsdt,
+    acceleratedGammaLossUsdt: nonLinearGammaDrag,
+    convexityDragPct,
+    riskSeverity,
+    actionableDirective: riskSeverity === 'EXPONENTIAL_COLLAPSE'
+      ? `EMERGENCIA: Devaluación proyectada de ${expectedDevaluationJumpPct}%. Convexidad destructiva (-${convexityDragPct}%). Liquidar VES a mercado inmediatamente o abrir cobertura corta 100%.`
+      : `Riesgo moderado. Drawdown estimado de -$${actualLossUsdt} USDT. Cobertura pasiva sugerida.`,
+  };
+}
+
+export interface FundingRateArbitrageInput {
+  collateralUsdt: number;
+  currentFundingRate8hPct: number; // ej. 0.01% por cada 8h
+  annualizedBorrowRateUsdtPct?: number; // ej. 4.5% anual
+  holdingPeriodDays: number;
+}
+
+export interface FundingRateArbitrageResult {
+  dailyYieldPct: number;
+  annualizedApyPct: number;
+  projectedFundingIncomeUsdt: number;
+  netYieldAfterBorrowCostUsdt: number;
+  isFundingAttractive: boolean;
+  recommendation: string;
+}
+
+/**
+ * Modela la viabilidad del arbitraje de Funding Rate en perpetuos (Cash-and-Carry)
+ * para generar rendimiento pasivo sobre colateral en USDT que respalda la tesorería P2P.
+ */
+export function modelPerpetualFundingArbitrage(input: FundingRateArbitrageInput): FundingRateArbitrageResult {
+  const { collateralUsdt, currentFundingRate8hPct, annualizedBorrowRateUsdtPct = 4.5, holdingPeriodDays } = input;
+
+  const dailyYieldPct = Math.round((currentFundingRate8hPct * 3) * 1000) / 1000;
+  const grossAnnualizedApyPct = Math.round((dailyYieldPct * 365) * 100) / 100;
+  const dailyBorrowCostPct = annualizedBorrowRateUsdtPct / 365;
+
+  const totalFundingIncome = collateralUsdt * (dailyYieldPct / 100) * holdingPeriodDays;
+  const totalBorrowCost = collateralUsdt * (dailyBorrowCostPct / 100) * holdingPeriodDays;
+  const netProfit = Math.round((totalFundingIncome - totalBorrowCost) * 100) / 100;
+
+  const isFundingAttractive = (grossAnnualizedApyPct - annualizedBorrowRateUsdtPct) >= 5.0 && currentFundingRate8hPct > 0;
+
+  return {
+    dailyYieldPct,
+    annualizedApyPct: grossAnnualizedApyPct,
+    projectedFundingIncomeUsdt: Math.round(totalFundingIncome * 100) / 100,
+    netYieldAfterBorrowCostUsdt: netProfit,
+    isFundingAttractive,
+    recommendation: isFundingAttractive
+      ? `Tasa de financiamiento atractiva (${grossAnnualizedApyPct}% APY bruto). Cobro neto proyectado: +$${netProfit} USDT en ${holdingPeriodDays} días.`
+      : `Funding comprimido o neutro (${grossAnnualizedApyPct}% APY). No justifica el riesgo de apalancamiento sintético.`,
+  };
+}
+
+export interface KellyAllocationInput {
+  totalCapitalUsdt: number;
+  winRatePct: number; // Tasa de acierto histórica (ej. 75%)
+  averageProfitPerWinUsdt: number;
+  averageLossPerLossUsdt: number;
+  fractionalSafetyMultiplier?: number; // Criterio de Kelly fraccional (default 0.33 para half/quarter Kelly)
+  maxBankConcentrationPct?: number; // Límite por entidad bancaria (default 25%)
+}
+
+export interface KellyAllocationResult {
+  fullKellyFractionPct: number;
+  recommendedFractionPct: number;
+  optimalTicketSizeUsdt: number;
+  maximumDrawdownRiskPct: number;
+  allocationByBankUsdt: { bankName: string; maxAllocationUsdt: number }[];
+  strategicRationale: string;
+}
+
+/**
+ * Optimiza la asignación de capital y tamaño de ticket mediante el Criterio Fraccional de Kelly,
+ * maximizando la tasa de crecimiento geométrico y blindando contra la probabilidad de ruina.
+ */
+export function optimizeCapitalAllocationKelly(input: KellyAllocationInput): KellyAllocationResult {
+  const {
+    totalCapitalUsdt,
+    winRatePct,
+    averageProfitPerWinUsdt,
+    averageLossPerLossUsdt,
+    fractionalSafetyMultiplier = 0.33,
+    maxBankConcentrationPct = 25,
+  } = input;
+
+  const p = Math.max(0.01, Math.min(0.99, winRatePct / 100));
+  const q = 1 - p;
+  const b = averageLossPerLossUsdt > 0 ? averageProfitPerWinUsdt / averageLossPerLossUsdt : 1;
+
+  // Kelly formula: f* = (b * p - q) / b
+  const rawKelly = ((b * p) - q) / b;
+  const fullKellyFractionPct = Math.round(Math.max(0, rawKelly) * 10000) / 100;
+  const recommendedFractionPct = Math.round((fullKellyFractionPct * fractionalSafetyMultiplier) * 100) / 100;
+
+  const optimalTicketSizeUsdt = Math.round((totalCapitalUsdt * (recommendedFractionPct / 100)) * 100) / 100;
+  const maxBankCap = Math.round((totalCapitalUsdt * (maxBankConcentrationPct / 100)) * 100) / 100;
+
+  const bankDistribution = [
+    { bankName: 'Banesco Banco Universal', maxAllocationUsdt: maxBankCap },
+    { bankName: 'Banco Mercantil', maxAllocationUsdt: maxBankCap },
+    { bankName: 'Banco de Venezuela (BDV)', maxAllocationUsdt: maxBankCap },
+    { bankName: 'Bancamiga / Provincial', maxAllocationUsdt: maxBankCap },
+  ];
+
+  return {
+    fullKellyFractionPct,
+    recommendedFractionPct,
+    optimalTicketSizeUsdt: Math.max(100, optimalTicketSizeUsdt),
+    maximumDrawdownRiskPct: Math.round((recommendedFractionPct * 1.5) * 10) / 10,
+    allocationByBankUsdt: bankDistribution,
+    strategicRationale: `Kelly Óptimo Fraccional (${(fractionalSafetyMultiplier * 100).toFixed(0)}%): Asignar hasta ${recommendedFractionPct}% por ciclo ($${optimalTicketSizeUsdt} USDT). Límite por banco: $${maxBankCap} USDT.`,
+  };
+}
+

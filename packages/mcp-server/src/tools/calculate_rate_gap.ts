@@ -3,7 +3,8 @@ import { CalculateRateGapInputSchema, type CalculateRateGapInput } from '../sche
 
 export const calculateRateGapTool = {
   name: 'calculate_rate_gap',
-  description: 'Calcula la brecha cambiaria porcentual entre la tasa paralela y la tasa oficial BCV, evaluando zona de riesgo y alerta de distorsión institucional.',
+  description:
+    'Calcula la brecha cambiaria porcentual entre la tasa paralela y la tasa oficial BCV, evaluando zona de riesgo y alerta de distorsión institucional.',
   inputSchema: CalculateRateGapInputSchema,
   execute: (input: CalculateRateGapInput) => {
     const gap = calculateBcvGap(input.parallelRate, input.bcvRate);

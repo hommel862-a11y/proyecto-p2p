@@ -17,7 +17,11 @@ async function ipcCall(channel: string, args: unknown): Promise<Record<string, u
       channel,
       args: [args],
     });
-    return (result?.data as Record<string, unknown>) ?? { error: result?.error ?? `${channel} unavailable` };
+    return (
+      (result?.data as Record<string, unknown>) ?? {
+        error: result?.error ?? `${channel} unavailable`,
+      }
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'IPC bridge error' };
   }
@@ -38,7 +42,11 @@ export const binanceOrderbookResource: MarketResource = {
     tradeType: 'SELL',
     timestamp: Date.now(),
     offers: await ipcCall('p2p:fetch-binance', {
-      asset: 'USDT', fiat: 'VES', tradeType: 'SELL', payTypes: [], rows: 20,
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'SELL',
+      payTypes: [],
+      rows: 20,
     }),
   }),
 };
@@ -76,7 +84,10 @@ export const spreadHistoryResource: MarketResource = {
     window: '1d',
     timestamp: Date.now(),
     history: await ipcCall('p2p:spread-history', {
-      asset: 'USDT', fiat: 'VES', window: '1d', limit: 200,
+      asset: 'USDT',
+      fiat: 'VES',
+      window: '1d',
+      limit: 200,
     }),
   }),
 };
@@ -93,7 +104,8 @@ export const bcvHistoryResource: MarketResource = {
     source: 'bcv_predictor',
     timestamp: Date.now(),
     data: await ipcCall('p2p:bcv-history', {
-      days: 30, includePrediction: true,
+      days: 30,
+      includePrediction: true,
     }),
   }),
 };
@@ -113,7 +125,9 @@ export const bankLiquidityResource: MarketResource = {
     windowHours: 24,
     timestamp: Date.now(),
     liquidity: await ipcCall('p2p:bank-liquidity', {
-      asset: 'USDT', fiat: 'VES', windowHours: 24,
+      asset: 'USDT',
+      fiat: 'VES',
+      windowHours: 24,
     }),
   }),
 };

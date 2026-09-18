@@ -5,7 +5,7 @@
 
 import { createP2PMcpServer } from './server.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
 
 const SSE_PORT = Number(process.env.MCP_SSE_PORT ?? 51858);
 const ENABLE_SSE = process.env.MCP_ENABLE_SSE === 'true';
@@ -21,12 +21,16 @@ async function main() {
 
   // ─── Transporte SSE opcional (para Inspector / clientes HTTP) ───
   if (ENABLE_SSE) {
-    const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const httpServer = createServer(async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-      if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
 
       if (req.url === '/sse' && req.method === 'GET') {
         const transport = new SSEServerTransport('/messages', res);
@@ -61,8 +65,15 @@ async function main() {
   }
 }
 
-// Allow running directly: tsx src/index.ts
-main().catch((err) => {
-  console.error('[MCP] Fatal error:', err);
-  process.exit(1);
-});
+export { createP2PMcpServer } from './server.js';
+export { ALL_MCP_TOOLS } from './tools/index.js';
+export { ALL_MCP_RESOURCES } from './resources/index.js';
+export { ALL_MCP_PROMPTS } from './prompts/index.js';
+
+// Allow running directly: tsx src/index.ts (unless imported embedded inside Electron)
+if (process.env['MCP_EMBEDDED_IMPORT'] !== 'true') {
+  main().catch((err) => {
+    console.error('[MCP] Fatal error:', err);
+    process.exit(1);
+  });
+}

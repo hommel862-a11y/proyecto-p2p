@@ -3,7 +3,8 @@ import { DetectUsdtDepegInputSchema, type DetectUsdtDepegInput } from '../schema
 
 export const detectUsdtDepegTool = {
   name: 'detect_usdt_depeg',
-  description: 'Monitorea la paridad global de USDT respecto al USD fiat ($1.000), alertando sobre despegues por descuento o prima y riesgos de desconfianza sistémica.',
+  description:
+    'Monitorea la paridad global de USDT respecto al USD fiat ($1.000), alertando sobre despegues por descuento o prima y riesgos de desconfianza sistémica.',
   inputSchema: DetectUsdtDepegInputSchema,
   execute: (input: DetectUsdtDepegInput) => {
     const evalResult = detectUsdtDepegParity(input.spotUsdtPrice, input.thresholdPct);
@@ -17,7 +18,8 @@ export const detectUsdtDepegTool = {
       arbitrageOpportunity: evalResult.arbitrageOpportunity,
       riskSeverity: evalResult.riskSeverity,
       recommendation: evalResult.recommendation,
-      isEmergencyActionRequired: evalResult.riskSeverity === 'CRITICAL' || evalResult.riskSeverity === 'HIGH',
+      isEmergencyActionRequired:
+        evalResult.riskSeverity === 'CRITICAL' || evalResult.riskSeverity === 'HIGH',
     };
   },
 };

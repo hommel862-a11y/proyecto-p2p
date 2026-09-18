@@ -242,12 +242,27 @@ export class Triangulation implements OnInit, OnDestroy {
     this.step3Done.set(false);
   }
 
-  async syncRatesWithMcp(silent = false): Promise<void> {
+  async syncRatesWithMcp(_silent = false): Promise<void> {
     const p = this.activePreset();
     const legs: [ExchangeLeg, ExchangeLeg, ExchangeLeg] = [
-      { ...p.legs[0], price: this.leg1Price(), feePct: this.leg1Fee(), bankingFeePct: this.leg1BankingFee() },
-      { ...p.legs[1], price: this.leg2Price(), feePct: this.leg2Fee(), bankingFeePct: this.leg2BankingFee() },
-      { ...p.legs[2], price: this.leg3Price(), feePct: this.leg3Fee(), bankingFeePct: this.leg3BankingFee() },
+      {
+        ...p.legs[0],
+        price: this.leg1Price(),
+        feePct: this.leg1Fee(),
+        bankingFeePct: this.leg1BankingFee(),
+      },
+      {
+        ...p.legs[1],
+        price: this.leg2Price(),
+        feePct: this.leg2Fee(),
+        bankingFeePct: this.leg2BankingFee(),
+      },
+      {
+        ...p.legs[2],
+        price: this.leg3Price(),
+        feePct: this.leg3Fee(),
+        bankingFeePct: this.leg3BankingFee(),
+      },
     ];
 
     const updated = await this.intelligence.syncLiveRates(legs, p.id);

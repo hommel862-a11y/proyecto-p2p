@@ -1,9 +1,13 @@
 import { computePortfolioRebalance } from '../core/index.js';
-import { RebalanceCapitalAllocationInputSchema, type RebalanceCapitalAllocationInput } from '../schemas/index.js';
+import {
+  RebalanceCapitalAllocationInputSchema,
+  type RebalanceCapitalAllocationInput,
+} from '../schemas/index.js';
 
 export const rebalanceCapitalAllocationTool = {
   name: 'rebalance_capital_allocation',
-  description: 'Calcula la distribución óptima de capital entre cuentas bancarias (Banesco, Mercantil, BDV) y exchanges, estructurando reglas anti-pitufeo y órdenes de rebalanceo.',
+  description:
+    'Calcula la distribución óptima de capital entre cuentas bancarias (Banesco, Mercantil, BDV) y exchanges, estructurando reglas anti-pitufeo y órdenes de rebalanceo.',
   inputSchema: RebalanceCapitalAllocationInputSchema,
   execute: (input: RebalanceCapitalAllocationInput) => {
     const plan = computePortfolioRebalance({

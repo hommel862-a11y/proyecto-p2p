@@ -111,7 +111,7 @@ export const GetBinanceP2POrderbookInputSchema = z.object({
 export type GetBinanceP2POrderbookInput = z.infer<typeof GetBinanceP2POrderbookInputSchema>;
 
 export const DetectUsdtDepegInputSchema = z.object({
-  spotUsdtPrice: z.number().positive().default(1.000),
+  spotUsdtPrice: z.number().positive().default(1.0),
   thresholdPct: z.number().positive().max(5.0).default(0.2),
 });
 export type DetectUsdtDepegInput = z.infer<typeof DetectUsdtDepegInputSchema>;
@@ -124,7 +124,9 @@ export const RecommendCompetitivePricingInputSchema = z.object({
   breakEvenPrice: z.number().positive().optional(),
   currentMarketMid: z.number().positive().optional(),
 });
-export type RecommendCompetitivePricingInput = z.infer<typeof RecommendCompetitivePricingInputSchema>;
+export type RecommendCompetitivePricingInput = z.infer<
+  typeof RecommendCompetitivePricingInputSchema
+>;
 
 export const AnalyzeOrderbookPressureInputSchema = z.object({
   fiat: z.string().default('VES'),
@@ -172,5 +174,120 @@ export const ProjectCompoundRunwayInputSchema = z.object({
 });
 export type ProjectCompoundRunwayInput = z.infer<typeof ProjectCompoundRunwayInputSchema>;
 
+// --- Phase 5: Google Workspace Integration (p2p-google-workspace) ---
 
+export const GdriveBackupReceiptInputSchema = z.object({
+  tradeId: z.string().min(1, 'tradeId es requerido'),
+  counterparty: z.string().default('Contraparte Desconocida'),
+  imageData: z.string().min(4, 'imageData (base64 o contenido) es requerido'),
+  fileName: z.string().optional(),
+  mimeType: z
+    .enum(['image/png', 'image/jpeg', 'image/webp', 'application/pdf'])
+    .default('image/png'),
+  folderId: z.string().optional(),
+  amountVes: z.number().optional(),
+  amountUsdt: z.number().optional(),
+  bank: z.string().optional(),
+  timestamp: z.string().optional(),
+});
+export type GdriveBackupReceiptInput = z.infer<typeof GdriveBackupReceiptInputSchema>;
+
+export const GsheetsSyncTradeInputSchema = z.object({
+  spreadsheetId: z.string().optional().default('1p2p_Ledger_Master_Spreadsheet'),
+  sheetName: z.string().default('Operaciones P2P'),
+  trade: z.object({
+    id: z.string().min(1),
+    timestamp: z.string().optional(),
+    side: z.enum(['BUY', 'SELL']),
+    bank: z.string().default('Pago Móvil'),
+    rate: z.number().positive(),
+    vesAmount: z.number().positive(),
+    usdtAmount: z.number().positive(),
+    grossSpreadPct: z.number().optional().default(0),
+    netProfitUsdt: z.number().optional().default(0),
+    counterparty: z.string().default('Anónimo'),
+    referenceNumber: z.string().optional().default('N/A'),
+    status: z.enum(['COMPLETED', 'DISPUTED', 'CANCELLED']).default('COMPLETED'),
+  }),
+});
+export type GsheetsSyncTradeInput = z.infer<typeof GsheetsSyncTradeInputSchema>;
+
+export const GdriveSyncDbBackupInputSchema = z.object({
+  backupType: z.enum(['ledger_json', 'sqlite_dump', 'audit_snapshot']).default('ledger_json'),
+  dataPayload: z.string().min(2, 'dataPayload no puede estar vacío'),
+  folderId: z.string().optional(),
+  encrypt: z.boolean().default(false),
+});
+export type GdriveSyncDbBackupInput = z.infer<typeof GdriveSyncDbBackupInputSchema>;
+
+// ─── Institutional 10 MCP Servers: New High-Impact Schemas ───
+
+export const ScreenWalletAddressInputSchema = z.object({
+  address: z.string().min(10, 'Dirección de billetera inválida'),
+  network: z.enum(['TRC20', 'ERC20', 'BEP20', 'POLYGON', 'SOL']).default('TRC20'),
+  expectedAmountUsdt: z.number().positive().optional(),
+});
+export type ScreenWalletAddressInput = z.infer<typeof ScreenWalletAddressInputSchema>;
+
+export const InspectTxTaintInputSchema = z.object({
+  txHash: z.string().min(16, 'Hash de transacción inválido'),
+  chain: z.enum(['TRON', 'ETHEREUM', 'BSC', 'POLYGON']).default('TRON'),
+});
+export type InspectTxTaintInput = z.infer<typeof InspectTxTaintInputSchema>;
+
+export const FetchCrossExchangeSpreadInputSchema = z.object({
+  fiat: z.enum(['VES', 'COP', 'USD']).default('VES'),
+  asset: z.enum(['USDT', 'BTC']).default('USDT'),
+  paymentMethod: z.string().default('Pago Movil'),
+  minMerchantTrades: z.number().min(0).default(50),
+});
+export type FetchCrossExchangeSpreadInput = z.infer<typeof FetchCrossExchangeSpreadInputSchema>;
+
+export const VerifyInboundTransferInputSchema = z.object({
+  referenceNumber: z.string().min(4, 'Número de referencia bancaria requerido'),
+  amountVes: z.number().positive('El monto en VES debe ser positivo'),
+  bankCode: z.string().default('0102'),
+  senderPhone: z.string().optional(),
+  senderCedula: z.string().optional(),
+});
+export type VerifyInboundTransferInput = z.infer<typeof VerifyInboundTransferInputSchema>;
+
+export const CompileDisputeDossierInputSchema = z.object({
+  orderId: z.string().min(3, 'Order ID requerido'),
+  disputeReason: z.enum(['THIRD_PARTY_PAYMENT', 'UNRELEASED_CRYPTO', 'FAKE_RECEIPT', 'INCORRECT_AMOUNT']),
+  bankReference: z.string().optional(),
+  amountUsdt: z.number().positive(),
+  amountVes: z.number().positive(),
+  counterpartyNick: z.string(),
+  chatLogSummary: z.string().optional(),
+});
+export type CompileDisputeDossierInput = z.infer<typeof CompileDisputeDossierInputSchema>;
+
+export const EvaluateAccountSaturationInputSchema = z.object({
+  bankId: z.string().min(1, 'bankId requerido'),
+  currentDailyVes: z.number().min(0),
+  dailyLimitVes: z.number().positive(),
+  hourlyTransactionCount: z.number().min(0).default(0),
+  incomingAmountVes: z.number().min(0).optional(),
+});
+export type EvaluateAccountSaturationInput = z.infer<typeof EvaluateAccountSaturationInputSchema>;
+
+export const DispatchOrderInstructionsInputSchema = z.object({
+  orderId: z.string().min(3),
+  channel: z.enum(['TELEGRAM', 'WHATSAPP', 'BINANCE_CHAT']).default('TELEGRAM'),
+  recipientContact: z.string().min(5),
+  bankName: z.string(),
+  accountHolder: z.string(),
+  accountNumberOrPhone: z.string(),
+  amountVes: z.number().positive(),
+  termsNote: z.string().optional(),
+});
+export type DispatchOrderInstructionsInput = z.infer<typeof DispatchOrderInstructionsInputSchema>;
+
+export const LookupCounterpartyReputationInputSchema = z.object({
+  documentId: z.string().min(4, 'Cédula o RIF requerido'),
+  phoneNumber: z.string().optional(),
+  bankAccountNumber: z.string().optional(),
+});
+export type LookupCounterpartyReputationInput = z.infer<typeof LookupCounterpartyReputationInputSchema>;
 

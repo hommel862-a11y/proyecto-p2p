@@ -189,6 +189,49 @@ export class P2PDatabaseService {
         );
       `);
     }
+
+    // Explicit migration guard: guarantee critical tables and indexes exist on any pre-existing database
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS engram_observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        topic_key TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'discovery' CHECK (type IN ('discovery', 'decision', 'architecture', 'pattern', 'bugfix', 'preference')),
+        scope TEXT NOT NULL DEFAULT 'project',
+        what TEXT NOT NULL,
+        why TEXT NOT NULL,
+        where_affected TEXT NOT NULL,
+        learned TEXT NOT NULL,
+        confidence_score REAL NOT NULL DEFAULT 1.0,
+        sample_count INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'needs_review')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_engram_topic ON engram_observations(topic_key);
+      CREATE INDEX IF NOT EXISTS idx_engram_type ON engram_observations(type);
+      CREATE INDEX IF NOT EXISTS idx_engram_status ON engram_observations(status);
+      CREATE INDEX IF NOT EXISTS idx_engram_updated ON engram_observations(updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS counterparty_profiles (
+        id TEXT PRIMARY KEY,
+        alias TEXT NOT NULL,
+        real_name TEXT NOT NULL,
+        document_id TEXT,
+        phone TEXT,
+        reputation TEXT NOT NULL DEFAULT 'NORMAL' CHECK (reputation IN ('TRUSTED', 'VERIFIED', 'NORMAL', 'SUSPICIOUS', 'BLOCKED')),
+        risk_score REAL NOT NULL DEFAULT 0.0,
+        successful_trades_count INTEGER NOT NULL DEFAULT 0,
+        triangulation_incidents_count INTEGER NOT NULL DEFAULT 0,
+        total_volume_usdt REAL NOT NULL DEFAULT 0.0,
+        notes TEXT,
+        last_trade_timestamp INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cparty_alias ON counterparty_profiles(alias);
+      CREATE INDEX IF NOT EXISTS idx_cparty_doc ON counterparty_profiles(document_id);
+      CREATE INDEX IF NOT EXISTS idx_cparty_rep ON counterparty_profiles(reputation);
+    `);
   }
 
   /**

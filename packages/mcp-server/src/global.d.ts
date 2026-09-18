@@ -3,7 +3,10 @@
  */
 
 interface McpToolCaller {
-  callTool: (name: string, args: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  callTool: (
+    name: string,
+    args: unknown,
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
 }
 
 declare global {

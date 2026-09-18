@@ -19,7 +19,7 @@ beforeEach(() => {
 
 // Helper to mock successful tool calls
 export function mockToolSuccess<T>(toolName: string, data: T) {
-  mockMcpCallTool.mockImplementation(async (name: string, args: unknown) => {
+  mockMcpCallTool.mockImplementation(async (name: string, _args: unknown) => {
     if (name === toolName) {
       return { success: true, data };
     }

@@ -150,21 +150,24 @@ export class GeminiOrchestrator {
   private async callGeminiApi(prompt: string, learningsContext: string, apiKey: string): Promise<CopilotResponse> {
     const candidateModels = this.getCandidateModels();
     const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
-Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina de preservación de capital (Venezuela / LATAM).
+Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
 
 FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
 1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
-2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte.
+2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte enfáticamente.
 3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
 4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
+5. EXPLICACIONES ANALÍTICAS PROFUNDAS Y DETALLADAS:
+   - Cuando el operador consulte cómo o por qué se trianguló de cierta forma, explicá la lógica paso a paso: precios de entrada y salida, tasas cruzadas, costos de comisiones maker/taker y mitigación de slippage.
+   - Cuando se te pida un resumen de mercado, sesión o auditoría, estructurá la respuesta con encabezados claros, tablas comparativas en Markdown si corresponde, viñetas de riesgo y directivas ejecutivas concretas.
+   - Si se detecta un riesgo (ej. depeg de USDT, brecha BCV > 20%, o contraparte sospechosa), explicá con rigor técnico la causa raíz y la maniobra de protección recomendada.
 
 MEMORIA PERSISTENTE ENGRAM ACTIVA:
 ${learningsContext || 'Sin observaciones previas registradas aún.'}
 
 PAUTAS DE COMUNICACIÓN:
 - Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
-- Sé conciso: explicá el PORQUÉ técnico detrás de cada número y métrica.
-- Cuando utilices herramientas financieras (skills), fundamentá los resultados numéricos obtenidos.`;
+- Sé riguroso y transparente: mostrá siempre el desglose numérico detrás de cada decisión.`;
 
     const requestBody = {
       systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -241,8 +244,60 @@ PAUTAS DE COMUNICACIÓN:
           });
         }
 
+        // ─── Turn 2: Re-inject function output to Gemini for a deep explanation ───
+        let detailedExplanation = '';
+        try {
+          const secondTurnBody = {
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [
+              { role: 'user', parts: [{ text: prompt }] },
+              { role: 'model', parts: [{ functionCall: { name, args } }] },
+              {
+                role: 'tool',
+                parts: [
+                  {
+                    functionResponse: {
+                      name,
+                      response: {
+                        name,
+                        content: skillResult.data,
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          };
+
+          const secondTurnRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(secondTurnBody),
+          });
+
+          if (secondTurnRes.ok) {
+            const secondTurnData = (await secondTurnRes.json()) as {
+              candidates?: Array<{
+                content?: {
+                  parts?: Array<{ text?: string }>;
+                };
+              }>;
+            };
+            const textResponse = secondTurnData.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text;
+            if (textResponse && textResponse.trim().length > 0) {
+              detailedExplanation = textResponse.trim();
+            }
+          }
+        } catch (turnErr) {
+          console.warn('[GeminiOrchestrator] Multi-turn synthesis fallback:', turnErr);
+        }
+
+        if (!detailedExplanation) {
+          detailedExplanation = `Mirá, ejecuté la herramienta matemática **${name}** mediante **${model}** para auditar la microestructura del mercado. Con base en los números, formulé una estrategia sólida que resguarda el capital y captura margen real. Fijate en los parámetros de la ficha y dale tu visto bueno con **EJECUTAR** cuando quieras despacharla.`;
+        }
+
         return {
-          reply: `Mirá, ejecuté la herramienta matemática **${name}** mediante **${model}** para auditar la microestructura del mercado. Con base en los números, formulé una estrategia sólida que resguarda el capital y captura margen real. Fijate en los parámetros de la ficha y dale tu visto bueno con **EJECUTAR** cuando quieras despacharla.`,
+          reply: detailedExplanation,
           suggestedPlan: plan,
           skillsExecuted: [name],
         };

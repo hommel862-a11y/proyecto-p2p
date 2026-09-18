@@ -6,7 +6,8 @@ const mcpZkMesh = new ZkMarketMesh('mcp-node-local');
 
 export const consultZkMarketMeshTool = {
   name: 'consult_zk_market_mesh',
-  description: 'Verifica si una cédula, teléfono o cuenta bancaria está fichada en la lista negra federada usando hashes ciegos (Zero-Knowledge). Protege 100% la privacidad.',
+  description:
+    'Verifica si una cédula, teléfono o cuenta bancaria está fichada en la lista negra federada usando hashes ciegos (Zero-Knowledge). Protege 100% la privacidad.',
   inputSchema: ConsultZkMarketMeshInputSchema,
   execute: (input: ConsultZkMarketMeshInput) => {
     const salt = input.saltDomain || DEFAULT_ZK_SALT_DOMAIN;

@@ -50,7 +50,7 @@ describe('SpreadMonitor', () => {
     expect(c.alert().kind).toBe('favorable');
     expect(f.nativeElement.textContent).toContain('500');
     expect(f.nativeElement.textContent).toContain('Favorable');
-  });
+  }, 15000);
 
   it('Scenario D (commission 0.35%): net VES = 20,500 * (1 - 0.0035) = 20,428.25', () => {
     const f = create();

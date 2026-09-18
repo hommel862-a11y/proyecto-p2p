@@ -358,7 +358,7 @@
 
         <div class="flight-steps-grid">
           <!-- Step 1 -->
-          <div class="flight-step-card" [class.done]="step1Done()" (click)="toggleStep(1)">
+          <button type="button" class="flight-step-card" [class.done]="step1Done()" (click)="toggleStep(1)">
             <div class="step-checkbox">
               <span class="check-icon">{{ step1Done() ? '✓' : '1' }}</span>
             </div>
@@ -367,10 +367,10 @@
               <p>{{ calculationResult().steps[0].platform }} ({{ calculationResult().steps[0].paymentMethod }})</p>
               <span class="step-target font-mono">Fondeo: {{ calculationResult().steps[0].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[0].fromCurrency }}</span>
             </div>
-          </div>
+          </button>
 
           <!-- Step 2 -->
-          <div class="flight-step-card" [class.done]="step2Done()" (click)="toggleStep(2)">
+          <button type="button" class="flight-step-card" [class.done]="step2Done()" (click)="toggleStep(2)">
             <div class="step-checkbox">
               <span class="check-icon">{{ step2Done() ? '✓' : '2' }}</span>
             </div>
@@ -379,10 +379,10 @@
               <p>{{ calculationResult().steps[1].platform }} ({{ calculationResult().steps[1].paymentMethod }})</p>
               <span class="step-target font-mono">Transferir: {{ calculationResult().steps[1].inputAmount | number: '1.2-2' }} {{ calculationResult().steps[1].fromCurrency }}</span>
             </div>
-          </div>
+          </button>
 
           <!-- Step 3 -->
-          <div class="flight-step-card" [class.done]="step3Done()" (click)="toggleStep(3)">
+          <button type="button" class="flight-step-card" [class.done]="step3Done()" (click)="toggleStep(3)">
             <div class="step-checkbox">
               <span class="check-icon">{{ step3Done() ? '✓' : '3' }}</span>
             </div>
@@ -391,7 +391,7 @@
               <p>{{ calculationResult().steps[2].platform }} ({{ calculationResult().steps[2].paymentMethod }})</p>
               <span class="step-target font-mono">Repatriar: {{ calculationResult().steps[2].outputAmount | number: '1.2-2' }} {{ calculationResult().initialCurrency }}</span>
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>

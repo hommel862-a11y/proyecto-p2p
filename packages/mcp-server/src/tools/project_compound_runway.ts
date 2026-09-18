@@ -1,9 +1,13 @@
 import { simulateCompoundGrowthRunway } from '../core/index.js';
-import { ProjectCompoundRunwayInputSchema, type ProjectCompoundRunwayInput } from '../schemas/index.js';
+import {
+  ProjectCompoundRunwayInputSchema,
+  type ProjectCompoundRunwayInput,
+} from '../schemas/index.js';
 
 export const projectCompoundRunwayTool = {
   name: 'project_compound_runway',
-  description: 'Proyecta el crecimiento compuesto del capital P2P, hitos a 30/60/90 días, cobertura de gastos operativos y detecta el "muro de capacidad bancaria" diaria.',
+  description:
+    'Proyecta el crecimiento compuesto del capital P2P, hitos a 30/60/90 días, cobertura de gastos operativos y detecta el "muro de capacidad bancaria" diaria.',
   inputSchema: ProjectCompoundRunwayInputSchema,
   execute: (input: ProjectCompoundRunwayInput) => {
     const sim = simulateCompoundGrowthRunway({

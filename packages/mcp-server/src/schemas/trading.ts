@@ -117,10 +117,14 @@ export const SimulatedImpactResultSchema = z.object({
   wouldTrigger: z.array(RiskViolationSchema).default([]),
   maxSafeSize: z.number().nonnegative(),
   aprImpact: z.number(),
-  recommendedRebalance: z.array(z.object({
-    action: z.enum(['REDUCE', 'INCREASE', 'SWITCH_BANK', 'HEDGE']),
-    details: z.string(),
-  })).default([]),
+  recommendedRebalance: z
+    .array(
+      z.object({
+        action: z.enum(['REDUCE', 'INCREASE', 'SWITCH_BANK', 'HEDGE']),
+        details: z.string(),
+      }),
+    )
+    .default([]),
 });
 
 export const BankRouteSchema = z.object({
@@ -164,12 +168,16 @@ export const AnomalyDetectionInputSchema = z.object({
 export const AnomalyDetectionResultSchema = z.object({
   anomalyScore: z.number().min(0).max(1),
   type: AnomalyTypeSchema,
-  evidence: z.array(z.object({
-    timestamp: z.number(),
-    pattern: z.string(),
-    confidence: z.number().min(0).max(1),
-    details: z.record(z.string(), z.unknown()).optional(),
-  })).default([]),
+  evidence: z
+    .array(
+      z.object({
+        timestamp: z.number(),
+        pattern: z.string(),
+        confidence: z.number().min(0).max(1),
+        details: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .default([]),
   recommendation: z.enum(['avoid', 'proceed_with_caution', 'safe']),
 });
 
@@ -181,11 +189,15 @@ export const RegulationImpactInputSchema = z.object({
 export const RegulationImpactResultSchema = z.object({
   newExposure: z.record(z.string(), z.number()),
   wouldTrigger: z.array(RiskViolationSchema).default([]),
-  recommendedRebalance: z.array(z.object({
-    action: z.enum(['REDUCE', 'INCREASE', 'SWITCH_BANK', 'HEDGE', 'HOLD']),
-    details: z.string(),
-    priority: z.number().int().positive(),
-  })).default([]),
+  recommendedRebalance: z
+    .array(
+      z.object({
+        action: z.enum(['REDUCE', 'INCREASE', 'SWITCH_BANK', 'HEDGE', 'HOLD']),
+        details: z.string(),
+        priority: z.number().int().positive(),
+      }),
+    )
+    .default([]),
   estimatedPnL: z.number(),
   timeToRecovery: z.number().positive().optional(), // horas
 });
@@ -206,34 +218,50 @@ export const BankEventSchema = z.object({
 export const ReconciliationResultSchema = z.object({
   matched: z.number().int().nonnegative(),
   unmatched: z.array(BankEventSchema).default([]),
-  duplicates: z.array(z.object({
-    eventId: z.string(),
-    duplicateId: z.string(),
-    similarity: z.number().min(0).max(1),
-  })).default([]),
-  suggestedActions: z.array(z.object({
-    action: z.enum(['MANUAL_REVIEW', 'AUTO_MATCH', 'REQUEST_RECEIPT', 'ESCALATE']),
-    eventId: z.string(),
-    reason: z.string(),
-  })).default([]),
+  duplicates: z
+    .array(
+      z.object({
+        eventId: z.string(),
+        duplicateId: z.string(),
+        similarity: z.number().min(0).max(1),
+      }),
+    )
+    .default([]),
+  suggestedActions: z
+    .array(
+      z.object({
+        action: z.enum(['MANUAL_REVIEW', 'AUTO_MATCH', 'REQUEST_RECEIPT', 'ESCALATE']),
+        eventId: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
 });
 
 export const DisputeEvidencePacketSchema = z.object({
   orderId: z.string(),
   orderData: z.record(z.string(), z.unknown()),
   bankEvents: z.array(BankEventSchema).default([]),
-  chatLogs: z.array(z.object({
-    timestamp: z.number(),
-    sender: z.string(),
-    message: z.string(),
-    platform: z.enum(['binance_chat', 'telegram', 'whatsapp', 'email']),
-  })).default([]),
-  receipts: z.array(z.object({
-    type: z.enum(['bank_transfer', 'binance_receipt', 'screenshot', 'photo']),
-    url: z.string().url(),
-    hash: z.string(),
-    timestamp: z.number(),
-  })).default([]),
+  chatLogs: z
+    .array(
+      z.object({
+        timestamp: z.number(),
+        sender: z.string(),
+        message: z.string(),
+        platform: z.enum(['binance_chat', 'telegram', 'whatsapp', 'email']),
+      }),
+    )
+    .default([]),
+  receipts: z
+    .array(
+      z.object({
+        type: z.enum(['bank_transfer', 'binance_receipt', 'screenshot', 'photo']),
+        url: z.string().url(),
+        hash: z.string(),
+        timestamp: z.number(),
+      }),
+    )
+    .default([]),
   fraudScore: z.number().min(0).max(1),
   riskFlags: z.array(z.string()).default([]),
   recommendedAction: z.enum(['OPEN_DISPUTE', 'ESCALATE', 'WAIT', 'CLOSE']),

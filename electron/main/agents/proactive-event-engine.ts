@@ -68,7 +68,28 @@ export class ProactiveEventEngine {
     const gapPct = intel.gap.gapPct;
     const phase = intel.window.phase;
 
-    // 1. Critical BCV intervention active alert
+    // 1. Extreme Gap Dispersion (>=28% is CRITICAL)
+    if (gapPct >= 28) {
+      const key = `BCV_GAP_CRITICAL`;
+      if (this.shouldTrigger(key)) {
+        const alert: ProactiveEventAlert = {
+          id: `EVT-${Date.now().toString(36).toUpperCase()}`,
+          type: 'BCV_GAP_ANOMALY',
+          severity: 'CRITICAL',
+          title: '⚠️ BRECHA CAMBIARIA CRÍTICA (>28%)',
+          message: `La brecha entre el paralelo (${parallelRate}) y el BCV (${bcvRate}) alcanzó ${gapPct}%. Dispersión extrema.`,
+          data: { gapPct, bcvRate, parallelRate },
+          timestamp: Date.now(),
+          recommendedAction: 'Reducir saldo operativo en moneda fiat a menos del 10% del capital total.',
+        };
+
+        this.persistAndBroadcast(alert, 'macro/gap-dispersion', `Brecha cambiaria en nivel crítico (${gapPct}%).`);
+        return alert;
+      }
+      return null;
+    }
+
+    // 2. Critical BCV intervention active alert
     if (phase === 'INTERVENTION_ACTIVE') {
       const key = `BCV_WINDOW_${phase}`;
       if (this.shouldTrigger(key)) {
@@ -87,9 +108,10 @@ export class ProactiveEventEngine {
         this.persistAndBroadcast(alert, 'bcv/intervention-active', 'Ventana de inyección de divisas BCV en curso.');
         return alert;
       }
+      return null;
     }
 
-    // 2. Pre-intervention compression warning
+    // 3. Pre-intervention compression warning
     if (phase === 'PRE_INTERVENTION_COMPRESSION') {
       const key = `BCV_PRE_COMPRESSION`;
       if (this.shouldTrigger(key)) {
@@ -107,26 +129,7 @@ export class ProactiveEventEngine {
         this.persistAndBroadcast(alert, 'bcv/pre-intervention', 'Fase pre-intervención BCV detectada.');
         return alert;
       }
-    }
-
-    // 3. Extreme Gap Dispersion (>28%)
-    if (gapPct >= 28) {
-      const key = `BCV_GAP_CRITICAL`;
-      if (this.shouldTrigger(key)) {
-        const alert: ProactiveEventAlert = {
-          id: `EVT-${Date.now().toString(36).toUpperCase()}`,
-          type: 'BCV_GAP_ANOMALY',
-          severity: 'CRITICAL',
-          title: '⚠️ BRECHA CAMBIARIA CRÍTICA (>28%)',
-          message: `La brecha entre el paralelo (${parallelRate}) y el BCV (${bcvRate}) alcanzó ${gapPct}%. Dispersión extrema.`,
-          data: { gapPct, bcvRate, parallelRate },
-          timestamp: Date.now(),
-          recommendedAction: 'Reducir saldo operativo en moneda fiat a menos del 10% del capital total.',
-        };
-
-        this.persistAndBroadcast(alert, 'macro/gap-dispersion', `Brecha cambiaria en nivel crítico (${gapPct}%).`);
-        return alert;
-      }
+      return null;
     }
 
     return null;

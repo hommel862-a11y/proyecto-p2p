@@ -1,9 +1,13 @@
 import { analyzeMicrostructurePressure } from '../core/index.js';
-import { AnalyzeOrderbookPressureInputSchema, type AnalyzeOrderbookPressureInput } from '../schemas/index.js';
+import {
+  AnalyzeOrderbookPressureInputSchema,
+  type AnalyzeOrderbookPressureInput,
+} from '../schemas/index.js';
 
 export const analyzeOrderbookPressureTool = {
   name: 'analyze_orderbook_pressure',
-  description: 'Evalúa la microestructura del libro de órdenes P2P, calculando el ratio de desbalance entre oferta y demanda, velocidad de presión y riesgo de liquidez fantasma/spoofing.',
+  description:
+    'Evalúa la microestructura del libro de órdenes P2P, calculando el ratio de desbalance entre oferta y demanda, velocidad de presión y riesgo de liquidez fantasma/spoofing.',
   inputSchema: AnalyzeOrderbookPressureInputSchema,
   execute: (input: AnalyzeOrderbookPressureInput) => {
     const analysis = analyzeMicrostructurePressure(

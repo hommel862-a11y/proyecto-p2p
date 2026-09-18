@@ -105,4 +105,59 @@ describe('Predictor del Ciclo de Intervención Cambiaria BCV', () => {
       expect(intel.timestamp).toBeDefined();
     });
   });
+
+  describe('Phase 1: Liquidity Drain, Dollarization Velocity & Nash Repricing', () => {
+    it('forecastCentralBankLiquidityDrain identifies tight liquidity on tax day and high injection', async () => {
+      const { forecastCentralBankLiquidityDrain } = await import('./bcv-intervention-predictor');
+      const res = forecastCentralBankLiquidityDrain({
+        dayOfMonth: 15, // Quincena fiscal
+        dayOfWeek: 1, // Lunes
+        estimatedSeniatCollectionActive: true,
+        weeklyBcvInjectionMillionsUsd: 65,
+      });
+
+      expect(res.interbankLiquidityLevel).toBe('TIGHT_LIQUIDITY_DRAIN');
+      expect(res.p2pDemandImpact).toBe('COMPRESSED_BUY_PRESSURE');
+      expect(res.projectedParallelTrend48h).toBe('SIDEWAYS_DIP');
+      expect(res.strategicGuidance).toContain('recaudación tributaria');
+    });
+
+    it('monitorFiatFlightAndDollarizationVelocity detects hyper-velocity repudiation when holding time drops', async () => {
+      const { monitorFiatFlightAndDollarizationVelocity } = await import('./bcv-intervention-predictor');
+      const res = monitorFiatFlightAndDollarizationVelocity({
+        averageVesHoldingMinutes: 15,
+        merchantUsdtAcceptancePct: 85,
+        monthlyInflationEstimatePct: 40,
+      });
+
+      expect(res.moneyVelocityIndex).toBeGreaterThan(3.0);
+      expect(res.flightRegime).toBe('HYPER_VELOCITY_REPUDIATION');
+      expect(res.expectedHoldingTimeSafetyThresholdMinutes).toBe(15);
+      expect(res.recommendation).toContain('HUIDA AGUDA');
+    });
+
+    it('simulateGameTheoryNashRepricing proposes cooperative step to avoid price war', async () => {
+      const { simulateGameTheoryNashRepricing } = await import('./bcv-intervention-predictor');
+      const res = simulateGameTheoryNashRepricing({
+        myCurrentPrice: 85.0,
+        targetSide: 'BUY',
+        topCompetitors: [
+          {
+            merchantName: 'CambiosTop1',
+            price: 85.02,
+            maxLimitVes: 50000,
+            isVerifiedMerchant: true,
+          },
+        ],
+        minimumSpreadAllowedPct: 0.8,
+        stepVes: 0.01,
+      });
+
+      expect(res.suggestedNashPrice).toBe(85.03);
+      expect(res.expectedCompetitorResponse).toBe('WILL_COOPERATE_STEP');
+      expect(res.nashEquilibriumStatus).toBe('STABLE_NASH_EQUILIBRIUM');
+      expect(res.strategicDirective).toContain('Equilibrio de Nash');
+    });
+  });
 });
+

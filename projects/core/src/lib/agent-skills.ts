@@ -35,6 +35,38 @@ import {
   simulateTradeImpact,
   type TradeImpactInput,
 } from './trade-impact-simulator';
+import {
+  computeAvellanedaStoikovQuotes,
+  calculateVpinMetric,
+  computeOrderSlicingPlan,
+  calculateMakerFillProbabilityMarkov,
+  type AvellanedaStoikovInput,
+  type VpinAnalysisInput,
+  type InstitutionalSlicingInput,
+  type MarkovFillProbabilityInput,
+} from './orderbook-microstructure';
+import {
+  analyzeFxCorridorEfficiency,
+  calculateCrossExchangeBasisSpread,
+  type FxCorridorQuote,
+  type PlatformPricePoint,
+} from './triangular-arbitrage';
+import {
+  calculateConvexityAndGammaRisk,
+  modelPerpetualFundingArbitrage,
+  optimizeCapitalAllocationKelly,
+  type ConvexityRiskInput,
+  type FundingRateArbitrageInput,
+  type KellyAllocationInput,
+} from './delta-neutral-hedge';
+import {
+  forecastCentralBankLiquidityDrain,
+  monitorFiatFlightAndDollarizationVelocity,
+  simulateGameTheoryNashRepricing,
+  type CentralBankLiquidityDrainInput,
+  type FiatDollarizationVelocityInput,
+  type NashRepricingInput,
+} from './bcv-intervention-predictor';
 
 export interface AgentSkillParameterSchema {
   type: 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
@@ -321,6 +353,184 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
       required: ['targetAmountUsdt', 'side', 'availableOffers'],
     },
   },
+  {
+    name: 'calculate_optimal_spread_avellaneda',
+    description: 'Calcula el precio de reserva y cotizaciones óptimas de compra/venta bajo el modelo cuantitativo de Avellaneda-Stoikov basado en inventario y volatilidad.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        midPrice: { type: 'NUMBER', description: 'Precio medio actual del mercado.' },
+        currentInventoryUsdt: { type: 'NUMBER', description: 'Inventario actual en USDT.' },
+        targetInventoryUsdt: { type: 'NUMBER', description: 'Inventario objetivo en USDT.' },
+        volatilityDaily: { type: 'NUMBER', description: 'Volatilidad diaria estimada en decimal (ej. 0.02 = 2%).' },
+        timeRemainingFraction: { type: 'NUMBER', description: 'Fracción de horizonte restante (0 a 1.0).' },
+      },
+      required: ['midPrice', 'currentInventoryUsdt', 'targetInventoryUsdt', 'volatilityDaily'],
+    },
+  },
+  {
+    name: 'estimate_adverse_selection_vpin',
+    description: 'Estima la probabilidad de toxicidad de flujo informado mediante la métrica VPIN (Volume-Synchronized Probability of Toxicity) para proteger el spread.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        buckets: {
+          type: 'ARRAY',
+          description: 'Lista de buckets de volumen con buyVolume, sellVolume y totalVolume.',
+          items: { type: 'OBJECT', description: 'Bucket de volumen VPIN.' },
+        },
+        toxicityThreshold: { type: 'NUMBER', description: 'Umbral de toxicidad (default 0.25).' },
+      },
+      required: ['buckets'],
+    },
+  },
+  {
+    name: 'compute_optimal_order_slicing_twap_vwap',
+    description: 'Divide un bloque institucional grande en micro-lotes TWAP/VWAP para minimizar el impacto de mercado y prevenir front-running.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        totalAmountUsdt: { type: 'NUMBER', description: 'Volumen institucional total a ejecutar.' },
+        executionDurationMinutes: { type: 'NUMBER', description: 'Duración total de ejecución en minutos.' },
+        estimatedMarketVolumePerHourUsdt: { type: 'NUMBER', description: 'Volumen horario estimado del mercado.' },
+        currentMidPrice: { type: 'NUMBER', description: 'Precio medio actual.' },
+        algorithm: { type: 'STRING', enum: ['TWAP', 'VWAP'], description: 'Algoritmo de ponderación temporal.' },
+      },
+      required: ['totalAmountUsdt', 'executionDurationMinutes', 'estimatedMarketVolumePerHourUsdt', 'currentMidPrice', 'algorithm'],
+    },
+  },
+  {
+    name: 'calculate_maker_fill_probability_markov',
+    description: 'Calcula la probabilidad estocástica de llenado de una orden Maker y tiempo estimado de espera mediante procesos markovianos.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        queuePositionIndex: { type: 'INTEGER', description: 'Posición en la cola (0 = punta).' },
+        queueAheadVolumeUsdt: { type: 'NUMBER', description: 'Volumen por delante en el libro.' },
+        recentFillVelocityPerMinuteUsdt: { type: 'NUMBER', description: 'Velocidad de absorción del mercado en USDT/min.' },
+        targetHorizonMinutes: { type: 'NUMBER', description: 'Horizonte temporal evaluado en minutos.' },
+      },
+      required: ['queuePositionIndex', 'queueAheadVolumeUsdt', 'recentFillVelocityPerMinuteUsdt'],
+    },
+  },
+  {
+    name: 'analyze_fx_corridor_efficiency',
+    description: 'Compara y ranquea la eficiencia de múltiples corredores de remesas internacionales (USDT/VES, USDT/COP, etc.) deduciendo fricción bancaria y latencia.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        baseAmountUsdt: { type: 'NUMBER', description: 'Monto base a convertir en USDT.' },
+        corridors: {
+          type: 'ARRAY',
+          description: 'Lista de corredores con cotizaciones, fricción y tiempos de liquidación.',
+          items: { type: 'OBJECT', description: 'Corredor FX.' },
+        },
+      },
+      required: ['baseAmountUsdt', 'corridors'],
+    },
+  },
+  {
+    name: 'calculate_cross_exchange_basis_spread',
+    description: 'Detecta oportunidades de arbitraje espacial de base entre distintas plataformas P2P (Binance, Bybit, El Dorado).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        capitalUsdt: { type: 'NUMBER', description: 'Capital disponible para arbitraje en USDT.' },
+        platforms: {
+          type: 'ARRAY',
+          description: 'Puntos de precio por plataforma con bid, ask y comisiones.',
+          items: { type: 'OBJECT', description: 'Precios de plataforma.' },
+        },
+      },
+      required: ['capitalUsdt', 'platforms'],
+    },
+  },
+  {
+    name: 'calculate_convexity_and_gamma_risk',
+    description: 'Modela la pérdida patrimonial acelerada por riesgo de convexidad y efecto Gamma ante saltos devaluatorios no lineales del tipo de cambio.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        spotParallelRate: { type: 'NUMBER', description: 'Tasa paralela actual.' },
+        vesHoldingAmount: { type: 'NUMBER', description: 'Monto de bolívares en cartera.' },
+        expectedDevaluationJumpPct: { type: 'NUMBER', description: 'Salto devaluatorio proyectado en porcentaje.' },
+        timeHorizonDays: { type: 'NUMBER', description: 'Días de exposición proyectados.' },
+      },
+      required: ['spotParallelRate', 'vesHoldingAmount', 'expectedDevaluationJumpPct', 'timeHorizonDays'],
+    },
+  },
+  {
+    name: 'model_perpetual_funding_arbitrage',
+    description: 'Calcula el rendimiento APY del arbitraje de Funding Rate en derivados perpetuos (Cash-and-Carry) para subsidiar tesorería.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        collateralUsdt: { type: 'NUMBER', description: 'Colateral en USDT disponible.' },
+        currentFundingRate8hPct: { type: 'NUMBER', description: 'Tasa de financiamiento por 8h en porcentaje.' },
+        holdingPeriodDays: { type: 'NUMBER', description: 'Días estimados de mantenimiento de posición.' },
+      },
+      required: ['collateralUsdt', 'currentFundingRate8hPct', 'holdingPeriodDays'],
+    },
+  },
+  {
+    name: 'optimize_capital_allocation_kelly',
+    description: 'Optimiza el tamaño del ticket y distribución por entidad bancaria mediante el Criterio Fraccional de Kelly.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        totalCapitalUsdt: { type: 'NUMBER', description: 'Capital total de la tesorería en USDT.' },
+        winRatePct: { type: 'NUMBER', description: 'Tasa de acierto histórica en operaciones P2P.' },
+        averageProfitPerWinUsdt: { type: 'NUMBER', description: 'Ganancia promedio por trade ganador.' },
+        averageLossPerLossUsdt: { type: 'NUMBER', description: 'Pérdida promedio por trade adverso.' },
+      },
+      required: ['totalCapitalUsdt', 'winRatePct', 'averageProfitPerWinUsdt', 'averageLossPerLossUsdt'],
+    },
+  },
+  {
+    name: 'forecast_central_bank_liquidity_drain',
+    description: 'Modela el impacto macro del drenaje de liquidez interbancaria (recaudación fiscal SENIAT y subastas BCV) sobre la demanda P2P.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        dayOfMonth: { type: 'INTEGER', description: 'Día del mes (1 a 31).' },
+        dayOfWeek: { type: 'INTEGER', description: 'Día de la semana (0=Dom, 1=Lun).' },
+        estimatedSeniatCollectionActive: { type: 'BOOLEAN', description: 'Indica si hay recaudación especial activa.' },
+        weeklyBcvInjectionMillionsUsd: { type: 'NUMBER', description: 'Monto de la inyección semanal del BCV en millones USD.' },
+      },
+      required: ['dayOfMonth', 'dayOfWeek', 'estimatedSeniatCollectionActive', 'weeklyBcvInjectionMillionsUsd'],
+    },
+  },
+  {
+    name: 'monitor_fiat_flight_and_dollarization_velocity',
+    description: 'Mide la velocidad de repudio de la moneda local (MV=PY) y determina el umbral máximo seguro de tenencia de saldos en VES.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        averageVesHoldingMinutes: { type: 'NUMBER', description: 'Tiempo promedio que los comercios retienen bolívares.' },
+        merchantUsdtAcceptancePct: { type: 'NUMBER', description: 'Porcentaje de penetración de USDT.' },
+        monthlyInflationEstimatePct: { type: 'NUMBER', description: 'Inflación mensual estimada en porcentaje.' },
+      },
+      required: ['averageVesHoldingMinutes', 'merchantUsdtAcceptancePct', 'monthlyInflationEstimatePct'],
+    },
+  },
+  {
+    name: 'simulate_game_theory_nash_repricing',
+    description: 'Simula el Equilibrio de Nash entre los creadores de mercado líderes para fijar un precio Maker sin desatar guerras de subcotización.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        myCurrentPrice: { type: 'NUMBER', description: 'Precio actual del operador.' },
+        targetSide: { type: 'STRING', enum: ['BUY', 'SELL'], description: 'Lado del libro.' },
+        topCompetitors: {
+          type: 'ARRAY',
+          description: 'Lista de competidores inmediatos en punta.',
+          items: { type: 'OBJECT', description: 'Perfil de competidor.' },
+        },
+        minimumSpreadAllowedPct: { type: 'NUMBER', description: 'Margen mínimo neto tolerado.' },
+      },
+      required: ['myCurrentPrice', 'targetSide', 'topCompetitors', 'minimumSpreadAllowedPct'],
+    },
+  },
 ];
 
 /**
@@ -579,6 +789,240 @@ export function executeFinancialSkill(skillName: string, args: Record<string, un
           targetAmountUsdt,
           side,
           availableOffers,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'calculate_optimal_spread_avellaneda': {
+        const midPrice = Number(args['midPrice'] || 85.0);
+        const currentInventoryUsdt = Number(args['currentInventoryUsdt'] || 5000);
+        const targetInventoryUsdt = Number(args['targetInventoryUsdt'] || 5000);
+        const volatilityDaily = Number(args['volatilityDaily'] || 0.02);
+        const timeRemainingFraction = Number(args['timeRemainingFraction'] ?? 1.0);
+
+        const result = computeAvellanedaStoikovQuotes({
+          midPrice,
+          currentInventoryUsdt,
+          targetInventoryUsdt,
+          volatilityDaily,
+          timeRemainingFraction,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'estimate_adverse_selection_vpin': {
+        const buckets = (args['buckets'] || []) as any[];
+        const toxicityThreshold = Number(args['toxicityThreshold'] || 0.25);
+
+        const result = calculateVpinMetric({
+          buckets,
+          toxicityThreshold,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'compute_optimal_order_slicing_twap_vwap': {
+        const totalAmountUsdt = Number(args['totalAmountUsdt'] || 5000);
+        const executionDurationMinutes = Number(args['executionDurationMinutes'] || 60);
+        const estimatedMarketVolumePerHourUsdt = Number(args['estimatedMarketVolumePerHourUsdt'] || 50000);
+        const currentMidPrice = Number(args['currentMidPrice'] || 85.0);
+        const algorithm = (args['algorithm'] === 'VWAP' ? 'VWAP' : 'TWAP') as 'TWAP' | 'VWAP';
+
+        const result = computeOrderSlicingPlan({
+          totalAmountUsdt,
+          executionDurationMinutes,
+          estimatedMarketVolumePerHourUsdt,
+          currentMidPrice,
+          algorithm,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'calculate_maker_fill_probability_markov': {
+        const queuePositionIndex = Number(args['queuePositionIndex'] || 0);
+        const queueAheadVolumeUsdt = Number(args['queueAheadVolumeUsdt'] || 0);
+        const recentFillVelocityPerMinuteUsdt = Number(args['recentFillVelocityPerMinuteUsdt'] || 100);
+        const targetHorizonMinutes = Number(args['targetHorizonMinutes'] || 15);
+
+        const result = calculateMakerFillProbabilityMarkov({
+          queuePositionIndex,
+          queueAheadVolumeUsdt,
+          recentFillVelocityPerMinuteUsdt,
+          targetHorizonMinutes,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'analyze_fx_corridor_efficiency': {
+        const baseAmountUsdt = Number(args['baseAmountUsdt'] || 1000);
+        const corridors = (args['corridors'] || []) as any[];
+
+        const result = analyzeFxCorridorEfficiency(baseAmountUsdt, corridors);
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'calculate_cross_exchange_basis_spread': {
+        const capitalUsdt = Number(args['capitalUsdt'] || 1000);
+        const platforms = (args['platforms'] || []) as any[];
+
+        const result = calculateCrossExchangeBasisSpread(capitalUsdt, platforms);
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'calculate_convexity_and_gamma_risk': {
+        const spotParallelRate = Number(args['spotParallelRate'] || 85.0);
+        const vesHoldingAmount = Number(args['vesHoldingAmount'] || 100000);
+        const expectedDevaluationJumpPct = Number(args['expectedDevaluationJumpPct'] || 15);
+        const timeHorizonDays = Number(args['timeHorizonDays'] || 1);
+
+        const result = calculateConvexityAndGammaRisk({
+          spotParallelRate,
+          vesHoldingAmount,
+          expectedDevaluationJumpPct,
+          timeHorizonDays,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'model_perpetual_funding_arbitrage': {
+        const collateralUsdt = Number(args['collateralUsdt'] || 5000);
+        const currentFundingRate8hPct = Number(args['currentFundingRate8hPct'] || 0.01);
+        const holdingPeriodDays = Number(args['holdingPeriodDays'] || 7);
+
+        const result = modelPerpetualFundingArbitrage({
+          collateralUsdt,
+          currentFundingRate8hPct,
+          holdingPeriodDays,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'optimize_capital_allocation_kelly': {
+        const totalCapitalUsdt = Number(args['totalCapitalUsdt'] || 10000);
+        const winRatePct = Number(args['winRatePct'] || 75);
+        const averageProfitPerWinUsdt = Number(args['averageProfitPerWinUsdt'] || 40);
+        const averageLossPerLossUsdt = Number(args['averageLossPerLossUsdt'] || 15);
+
+        const result = optimizeCapitalAllocationKelly({
+          totalCapitalUsdt,
+          winRatePct,
+          averageProfitPerWinUsdt,
+          averageLossPerLossUsdt,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'forecast_central_bank_liquidity_drain': {
+        const dayOfMonth = Number(args['dayOfMonth'] || new Date().getDate());
+        const dayOfWeek = Number(args['dayOfWeek'] ?? new Date().getDay());
+        const estimatedSeniatCollectionActive = Boolean(args['estimatedSeniatCollectionActive']);
+        const weeklyBcvInjectionMillionsUsd = Number(args['weeklyBcvInjectionMillionsUsd'] || 40);
+
+        const result = forecastCentralBankLiquidityDrain({
+          dayOfMonth,
+          dayOfWeek,
+          estimatedSeniatCollectionActive,
+          weeklyBcvInjectionMillionsUsd,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'monitor_fiat_flight_and_dollarization_velocity': {
+        const averageVesHoldingMinutes = Number(args['averageVesHoldingMinutes'] || 30);
+        const merchantUsdtAcceptancePct = Number(args['merchantUsdtAcceptancePct'] || 80);
+        const monthlyInflationEstimatePct = Number(args['monthlyInflationEstimatePct'] || 35);
+
+        const result = monitorFiatFlightAndDollarizationVelocity({
+          averageVesHoldingMinutes,
+          merchantUsdtAcceptancePct,
+          monthlyInflationEstimatePct,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'simulate_game_theory_nash_repricing': {
+        const myCurrentPrice = Number(args['myCurrentPrice'] || 85.0);
+        const targetSide = (args['targetSide'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+        const topCompetitors = (args['topCompetitors'] || []) as any[];
+        const minimumSpreadAllowedPct = Number(args['minimumSpreadAllowedPct'] || 0.8);
+
+        const result = simulateGameTheoryNashRepricing({
+          myCurrentPrice,
+          targetSide,
+          topCompetitors,
+          minimumSpreadAllowedPct,
         });
 
         return {

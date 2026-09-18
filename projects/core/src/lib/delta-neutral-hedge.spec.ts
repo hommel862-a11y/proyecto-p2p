@@ -71,4 +71,54 @@ describe('Delta-Neutral Hedge Engine (Human-in-the-Loop)', () => {
     expect(validAuth.success).toBe(true);
     expect(validAuth.updatedProposal.state).toBe('APPROVED_BY_OPERATOR');
   });
+
+  describe('Phase 1: Convexity, Funding Arbitrage & Kelly Allocation', () => {
+    it('calculateConvexityAndGammaRisk flags exponential collapse on severe devaluation jump', async () => {
+      const { calculateConvexityAndGammaRisk } = await import('./delta-neutral-hedge');
+      const res = calculateConvexityAndGammaRisk({
+        spotParallelRate: 80.0,
+        vesHoldingAmount: 400000, // $5,000 USDT inicial
+        expectedDevaluationJumpPct: 30, // 30% jump
+        timeHorizonDays: 3,
+      });
+
+      expect(res.linearLossUsdt).toBeGreaterThan(1100);
+      expect(res.acceleratedGammaLossUsdt).toBeGreaterThan(0);
+      expect(res.riskSeverity).toBe('EXPONENTIAL_COLLAPSE');
+      expect(res.actionableDirective).toContain('EMERGENCIA');
+    });
+
+    it('modelPerpetualFundingArbitrage computes positive APY and income on attractive funding', async () => {
+      const { modelPerpetualFundingArbitrage } = await import('./delta-neutral-hedge');
+      const res = modelPerpetualFundingArbitrage({
+        collateralUsdt: 10000,
+        currentFundingRate8hPct: 0.02, // 0.06% diario = 21.9% anual
+        annualizedBorrowRateUsdtPct: 5.0,
+        holdingPeriodDays: 14,
+      });
+
+      expect(res.annualizedApyPct).toBeGreaterThan(20);
+      expect(res.isFundingAttractive).toBe(true);
+      expect(res.netYieldAfterBorrowCostUsdt).toBeGreaterThan(0);
+    });
+
+    it('optimizeCapitalAllocationKelly calculates optimal ticket and bank allocations', async () => {
+      const { optimizeCapitalAllocationKelly } = await import('./delta-neutral-hedge');
+      const res = optimizeCapitalAllocationKelly({
+        totalCapitalUsdt: 12000,
+        winRatePct: 80,
+        averageProfitPerWinUsdt: 50,
+        averageLossPerLossUsdt: 20,
+        fractionalSafetyMultiplier: 0.33,
+        maxBankConcentrationPct: 25,
+      });
+
+      expect(res.fullKellyFractionPct).toBeGreaterThan(60);
+      expect(res.recommendedFractionPct).toBeGreaterThan(15);
+      expect(res.optimalTicketSizeUsdt).toBeGreaterThan(1000);
+      expect(res.allocationByBankUsdt.length).toBe(4);
+      expect(res.allocationByBankUsdt[0].maxAllocationUsdt).toBe(3000);
+    });
+  });
 });
+

@@ -3,7 +3,8 @@ import { CalculateSpreadInputSchema, type CalculateSpreadInput } from '../schema
 
 export const calculateSpreadTool = {
   name: 'calculate_spread',
-  description: 'Calcula el spread bruto, comisiones deducibles y spread neto porcentual para una operación P2P.',
+  description:
+    'Calcula el spread bruto, comisiones deducibles y spread neto porcentual para una operación P2P.',
   inputSchema: CalculateSpreadInputSchema,
   execute: (input: CalculateSpreadInput) => {
     const totalCommissionRate = ((input.makerFeePct || 0) + (input.takerFeePct || 0)) / 100;
@@ -17,8 +18,8 @@ export const calculateSpreadTool = {
 
     const unitSpread = spread.unitSpread;
     const grossSpreadPercent = (unitSpread / input.buyPrice) * 100;
-    const netSpreadPercent = ((spread.netGainVes / (input.buyPrice * 100)) * 100);
-    const isGolden = netSpreadPercent >= 0.50;
+    const netSpreadPercent = (spread.netGainVes / (input.buyPrice * 100)) * 100;
+    const isGolden = netSpreadPercent >= 0.5;
 
     return {
       unitSpread: Number(unitSpread.toFixed(4)),

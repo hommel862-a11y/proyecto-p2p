@@ -45,6 +45,7 @@ import { MarketHistoryService } from '../../core/market-history.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { SpreadQualityService } from '../../core/spread-quality.service';
 import { CotizaveService } from '../../core/cotizave.service';
+import { McpService } from '../../core/mcp.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 import { MicrostructureShield } from './components/microstructure-shield.component';
 
@@ -82,7 +83,74 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly audioAlerts = inject(AudioAlertsService);
   readonly spreadQuality = inject(SpreadQualityService);
   readonly cotizave = inject(CotizaveService);
+  readonly mcp = inject(McpService);
   protected readonly Math = Math;
+
+  private mcpSyncTimerId: number | null = null;
+  readonly mcpSyncing = signal<boolean>(false);
+  readonly mcpLastSynced = signal<Date | null>(null);
+  readonly analyticsSubTab = signal<'microstructure' | 'triangulation' | 'treasury'>(
+    'microstructure',
+  );
+  readonly selectedAutofillMargin = signal<number>(1.2);
+
+  /** MCP Tool: detect_usdt_depeg state */
+  readonly mcpDepeg = signal<{
+    spotUsdtPrice: number;
+    parityDeviationPct: number;
+    isDepegged: boolean;
+    riskSeverity: string;
+    status: string;
+  }>({
+    spotUsdtPrice: 0.9994,
+    parityDeviationPct: 0.06,
+    isDepegged: false,
+    riskSeverity: 'LOW',
+    status: 'PEGGED_NORMAL',
+  });
+
+  /** MCP Tool: analyze_orderbook_pressure state */
+  readonly mcpPressure = signal<{
+    orderbookImbalanceRatio: number;
+    dominantSide: string;
+    pressureVelocity: string;
+    actionableInsight: string;
+    marketRegime: string;
+  }>({
+    orderbookImbalanceRatio: 0.52,
+    dominantSide: 'BALANCED',
+    pressureVelocity: 'NEUTRAL',
+    actionableInsight: 'Libro de órdenes equilibrado.',
+    marketRegime: 'BALANCED_LIQUIDITY',
+  });
+
+  /** MCP Tool: recommend_competitive_pricing state */
+  readonly mcpPricingRecommendation = signal<{
+    buySuggested: number;
+    sellSuggested: number;
+    marginVes: number;
+    advice: string;
+  } | null>(null);
+
+  /** MCP Tool: calculate_spread formal calculation & Golden Spread badge */
+  readonly mcpSpreadVerdict = computed(() => {
+    const buy = this.buyPrice();
+    const sell = this.sellPrice();
+    const drag = this.effectiveFeeDragPct();
+    if (buy <= 0 || sell <= 0) return null;
+    const unitSpread = sell - buy;
+    const totalFeeRate = drag / 100;
+    const spread = computeSpread(buy, sell, 100, 'USDT', totalFeeRate);
+    const netSpreadPercent = (spread.netGainVes / (buy * 100)) * 100;
+    const isGolden = netSpreadPercent >= 0.5;
+    return {
+      unitSpread: Number(unitSpread.toFixed(4)),
+      netGainVes: Number(spread.netGainVes.toFixed(2)),
+      netSpreadPercent: Number(netSpreadPercent.toFixed(2)),
+      isGoldenSpread: isGolden,
+      recommendation: isGolden ? 'VIABLE_INSTITUCIONAL' : 'SPREAD_SUB_OPTIMAL',
+    };
+  });
 
   readonly triangulationThresholdVes = signal<number>(2);
 
@@ -99,18 +167,6 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     const depth = this.binance.marketDepth();
     const rates = this.cotizave.ratesByMarket();
     if (!depth || Object.keys(rates).length === 0) return [];
-
-    // Binance P2P orientation:
-    // depth.bestBuyPrice  = lowest seller ask  → price user PAYS to buy USDT on Binance
-    // depth.bestSellPrice = highest buyer bid   → price user RECEIVES when selling USDT on Binance
-    //
-    // For "comprar en Binance, vender en otro exchange":
-    //   binance.bid  = depth.bestBuyPrice  (what user pays on Binance)
-    //   other.ask    = other buyer's bid    (what user receives on other exchange)
-    //
-    // For "comprar en otro, vender en Binance":
-    //   binance.ask  = depth.bestSellPrice (what user receives when selling on Binance)
-    //   other.bid    = other seller's ask   (what user pays on other exchange)
 
     return Object.entries(rates)
       .filter(([market]) => market !== 'binance')
@@ -152,7 +208,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   selectBank(bankKey: string): void {
     this.binance.setBankFilter(bankKey);
-    void this.syncBinancePrices();
+    void this.binance.fetchMarketDepth(this.pair(), 'VES');
+    void this.syncMcpIntelligence();
   }
 
   private readonly nf = new Intl.NumberFormat('es-VE', {
@@ -298,6 +355,104 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     return null;
   });
 
+  async syncMcpIntelligence(): Promise<void> {
+    this.mcpSyncing.set(true);
+    try {
+      const depegRes = await this.mcp.detectUsdtDepeg({ spotUsdtPrice: 0.9994, thresholdPct: 0.2 });
+      if (depegRes.success && depegRes.result) {
+        this.mcpDepeg.set(depegRes.result as ReturnType<typeof this.mcpDepeg>);
+      }
+
+      const depth = this.binance.marketDepth();
+      const bidDepth =
+        depth?.buyOffers?.reduce((sum, o) => sum + o.maxVes / (o.price || 1), 0) || 18000;
+      const askDepth =
+        depth?.sellOffers?.reduce((sum, o) => sum + o.maxVes / (o.price || 1), 0) || 14000;
+      const pressureRes = await this.mcp.analyzeOrderbookPressure({
+        fiat: this.pair() === 'EUR' ? 'EUR' : 'VES',
+        bidDepthUsdt: bidDepth,
+        askDepthUsdt: askDepth,
+        includeSpoofCheck: true,
+      });
+      if (pressureRes.success && pressureRes.result) {
+        this.mcpPressure.set(pressureRes.result as ReturnType<typeof this.mcpPressure>);
+      }
+
+      const bestBuy = depth?.bestBuyPrice || this.buyPrice();
+      const bestSell = depth?.bestSellPrice || this.sellPrice();
+      const mid = (bestBuy + bestSell) / 2;
+      const buyRec = await this.mcp.recommendCompetitivePricing({
+        side: 'BUY',
+        strategy: 'TOP_1',
+        stepVes: 0.05,
+        targetMarginPct: this.selectedAutofillMargin(),
+        breakEvenPrice: bestBuy * 0.98,
+        currentMarketMid: mid,
+      });
+      const sellRec = await this.mcp.recommendCompetitivePricing({
+        side: 'SELL',
+        strategy: 'TOP_1',
+        stepVes: 0.05,
+        targetMarginPct: this.selectedAutofillMargin(),
+        breakEvenPrice: bestBuy * 1.005,
+        currentMarketMid: mid,
+      });
+
+      if (buyRec.success && sellRec.success) {
+        const buyData = buyRec.result as { suggestedPrice?: number } | undefined;
+        const sellData = sellRec.result as
+          { suggestedPrice?: number; marginVes?: number; advice?: string } | undefined;
+        this.mcpPricingRecommendation.set({
+          buySuggested: buyData?.suggestedPrice ?? bestBuy,
+          sellSuggested: sellData?.suggestedPrice ?? bestSell,
+          marginVes: sellData?.marginVes ?? 0,
+          advice: sellData?.advice ?? '',
+        });
+      }
+      this.mcpLastSynced.set(new Date());
+    } catch {
+      // Non-blocking
+    } finally {
+      this.mcpSyncing.set(false);
+    }
+  }
+
+  applyMcpPrice(side: 'BUY' | 'SELL'): void {
+    const rec = this.mcpPricingRecommendation();
+    if (!rec) return;
+    if (side === 'BUY') {
+      this.buyPrice.set(rec.buySuggested);
+      this.toast.success(`Precio de compra actualizado a ${rec.buySuggested} VES vía MCP.`);
+    } else {
+      this.sellPrice.set(rec.sellSuggested);
+      this.toast.success(`Precio de venta actualizado a ${rec.sellSuggested} VES vía MCP.`);
+    }
+  }
+
+  async applyAutofillMargined(side: 'BUY' | 'SELL', marginPct = 1.2): Promise<void> {
+    const depth = this.binance.marketDepth();
+    const fallback = depth
+      ? (depth.bestBuyPrice + depth.bestSellPrice) / 2
+      : (this.buyPrice() + this.sellPrice()) / 2;
+    const res = await this.mcp.autofillTradeReference({
+      side,
+      targetMarginPct: marginPct,
+      fallbackRate: fallback,
+    });
+    if (res.success && res.result) {
+      const price = (res.result as { suggestedPrice?: number }).suggestedPrice;
+      if (price) {
+        if (side === 'BUY') {
+          this.buyPrice.set(price);
+          this.toast.success(`Autofill Compra MCP: ${price} VES (Margen ${marginPct}%)`);
+        } else {
+          this.sellPrice.set(price);
+          this.toast.success(`Autofill Venta MCP: ${price} VES (Margen ${marginPct}%)`);
+        }
+      }
+    }
+  }
+
   /** Break-Even & Maker Ad specific parameters */
   readonly buyFeePct = signal<number>(0);
   readonly sellFeePct = signal<number>(0.2);
@@ -395,6 +550,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     if (marketDepth && marketDepth.bestBuyPrice > 0 && marketDepth.bestSellPrice > 0) {
       this.buyPrice.set(marketDepth.bestBuyPrice);
       this.sellPrice.set(marketDepth.bestSellPrice);
+      void this.syncMcpIntelligence();
 
       this.marketHistory.recordSnapshot({
         pair: this.pair(),
@@ -638,7 +794,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     this.nowTimerId = window.setInterval(() => this.now.set(new Date()), 60_000);
     if (!this.binance.marketDepth()) {
       void this.syncBinancePrices();
+    } else {
+      void this.syncMcpIntelligence();
     }
+    this.mcpSyncTimerId = window.setInterval(() => void this.syncMcpIntelligence(), 30_000);
     if (this.cotizave.apiKey() && this.activeMode() !== 'repricer') {
       this.cotizave.startAutoRefresh();
     }
@@ -648,6 +807,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     if (this.nowTimerId !== null) {
       window.clearInterval(this.nowTimerId);
       this.nowTimerId = null;
+    }
+    if (this.mcpSyncTimerId !== null) {
+      window.clearInterval(this.mcpSyncTimerId);
+      this.mcpSyncTimerId = null;
     }
     this.cotizave.stopAutoRefresh();
     this.binance.stopAutoRefresh();

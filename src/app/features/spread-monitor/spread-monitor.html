@@ -1,36 +1,96 @@
 <section class="panel trading-desk-panel">
-  <div class="panel-header">
-    <div>
-      <h2>Monitor de Spread & Arbitraje</h2>
-      <p class="panel-subtitle">Arbitraje en tiempo real, radar de precios Binance P2P y límites bancarios</p>
+  <div class="desk-main-header">
+    <div class="desk-title-group">
+      <div class="desk-title-row">
+        <span class="desk-title-icon">⚡</span>
+        <h2>Monitor de Spread & Arbitraje</h2>
+        <span class="badge badge-accent font-mono">TRADING DESK PRO</span>
+      </div>
+      <p class="panel-subtitle">Arbitraje institucional en tiempo real, radar de microestructura Binance P2P y control de riesgo cambiario</p>
     </div>
 
-    <div class="actions" style="margin: 0; display: flex; gap: 8px; flex-wrap: wrap;">
-      <button type="button" [class.active]="activeMode() === 'spread'" (click)="activeMode.set('spread')">
-        Arbitraje Directo
-      </button>
-      <button type="button" [class.active]="activeMode() === 'breakeven'" (click)="activeMode.set('breakeven')">
-        Punto de Equilibrio & Anuncio Maker
-      </button>
-      <button type="button" [class.active]="activeMode() === 'repricer'" (click)="activeMode.set('repricer')">
-        🤖 Bot de Anuncios P2P
-      </button>
-      <button type="button" [class.active]="activeMode() === 'cross_exchange'" (click)="activeMode.set('cross_exchange')">
-        🌐 Arbitraje Multi-Exchange
-      </button>
-      <button type="button" [class.active]="activeMode() === 'microstructure'" (click)="activeMode.set('microstructure')">
-        🔍 Microestructura & Spoofing
-      </button>
-      <button
-        type="button"
-        class="btn-ghost"
-        (click)="audioAlerts.toggleMute()"
-        [title]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
-        [attr.aria-label]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
-        style="font-size: 1.1rem; padding: 4px 10px; line-height: 1;"
-      >
-        <span aria-hidden="true">{{ audioAlerts.isMuted() ? '🔇' : '🔔' }}</span>
-      </button>
+    <!-- Segmented Navigation Controls & Global Actions -->
+    <div class="desk-header-actions">
+      <div class="segmented-control-bar" role="tablist" aria-label="Modo de Operación">
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'spread'"
+          (click)="activeMode.set('spread')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'spread'"
+        >
+          <span class="tab-icon">⚡</span>
+          <span class="tab-text">Arbitraje Directo</span>
+        </button>
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'breakeven'"
+          (click)="activeMode.set('breakeven')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'breakeven'"
+        >
+          <span class="tab-icon">🎯</span>
+          <span class="tab-text">Punto Equilibrio</span>
+        </button>
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'repricer'"
+          (click)="activeMode.set('repricer')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'repricer'"
+        >
+          <span class="tab-icon">🤖</span>
+          <span class="tab-text">Bot Repricer</span>
+        </button>
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'cross_exchange'"
+          (click)="activeMode.set('cross_exchange')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'cross_exchange'"
+        >
+          <span class="tab-icon">🌐</span>
+          <span class="tab-text">Multi-Exchange</span>
+        </button>
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'microstructure'"
+          (click)="activeMode.set('microstructure')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'microstructure'"
+        >
+          <span class="tab-icon">🔍</span>
+          <span class="tab-text">Microestructura</span>
+        </button>
+      </div>
+
+      <div class="desk-quick-buttons">
+        <button
+          type="button"
+          class="btn-mcp-sync"
+          [class.loading]="mcpSyncing()"
+          (click)="syncMcpIntelligence()"
+          [title]="mcpLastSynced() ? 'Última sync MCP: ' + (mcpLastSynced() | date:'HH:mm:ss') : 'Sincronizar Inteligencia MCP'"
+        >
+          <span class="sync-icon" [class.spin]="mcpSyncing()">🔄</span>
+          <span class="sync-label">{{ mcpSyncing() ? 'Sincronizando...' : 'Sync MCP' }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="btn-ghost-audio"
+          (click)="audioAlerts.toggleMute()"
+          [title]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
+          [attr.aria-label]="audioAlerts.isMuted() ? 'Activar alertas de sonido' : 'Silenciar alertas de sonido'"
+        >
+          <span aria-hidden="true">{{ audioAlerts.isMuted() ? '🔇' : '🔔' }}</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -43,6 +103,120 @@
       <app-microstructure-shield />
     </div>
   } @else {
+    <!-- ═══════════════════════════════════════════════════
+         MCP INTELLIGENCE HUD (Centro de Comando & Telemetría)
+         ═══════════════════════════════════════════════════ -->
+    <div class="mcp-hud-console" role="region" aria-label="Centro de Comando MCP">
+      <div class="mcp-hud-top-bar">
+        <div class="mcp-hud-title">
+          <span class="hud-pulse-dot"></span>
+          <span class="hud-title-text">MCP INTELLIGENCE SUITE — TELEMETRÍA EN VIVO</span>
+        </div>
+        <div class="mcp-hud-meta">
+          <span class="mcp-badge-live font-mono">PROTOCOL V1.30</span>
+          @if (mcpLastSynced(); as dt) {
+            <span class="mcp-timestamp font-mono">Sync: {{ dt | date:'HH:mm:ss' }}</span>
+          }
+        </div>
+      </div>
+
+      <div class="mcp-hud-grid">
+        <!-- Widget 1: Centinela USDT Depeg -->
+        <div class="mcp-hud-card hud-depeg" [class.hud-alert]="mcpDepeg().isDepegged">
+          <div class="hud-card-header">
+            <span class="hud-card-label">USDT Parity Sentinel</span>
+            <span class="badge" [class.badge-danger]="mcpDepeg().isDepegged" [class.badge-success]="!mcpDepeg().isDepegged">
+              {{ mcpDepeg().isDepegged ? '⚠️ DEPEG' : 'PEGGED OK' }}
+            </span>
+          </div>
+          <div class="hud-card-body">
+            <div class="hud-big-metric font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</div>
+            <div class="hud-sub-metric font-mono" [class.text-danger]="mcpDepeg().isDepegged" [class.text-muted]="!mcpDepeg().isDepegged">
+              Desvío: {{ mcpDepeg().parityDeviationPct > 0 ? '+' : '' }}{{ mcpDepeg().parityDeviationPct }}%
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 2: Presión del Libro de Órdenes -->
+        <div class="mcp-hud-card hud-pressure">
+          <div class="hud-card-header">
+            <span class="hud-card-label">Presión Libro Binance</span>
+            <span class="badge" [class.badge-accent]="mcpPressure().dominantSide === 'BUY_PRESSURE'" [class.badge-warning]="mcpPressure().dominantSide === 'SELL_PRESSURE'">
+              {{ mcpPressure().dominantSide === 'BUY_PRESSURE' ? '📈 Demanda' : mcpPressure().dominantSide === 'SELL_PRESSURE' ? '📉 Oferta' : '⚖️ Balance' }}
+            </span>
+          </div>
+          <div class="hud-card-body">
+            <div class="hud-big-metric font-mono">{{ (mcpPressure().orderbookImbalanceRatio * 100).toFixed(0) }}% Bids</div>
+            <div class="hud-progress-track">
+              <div class="hud-progress-fill" [style.width.%]="mcpPressure().orderbookImbalanceRatio * 100"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 3: Precios Óptimos Top 1 -->
+        <div class="mcp-hud-card hud-pricing">
+          <div class="hud-card-header">
+            <span class="hud-card-label">Cotización Óptima Top 1</span>
+            @if (mcpPricingRecommendation(); as rec) {
+              <span class="badge badge-gold font-mono">+{{ rec.marginVes | num }} Bs</span>
+            }
+          </div>
+          <div class="hud-card-body">
+            @if (mcpPricingRecommendation(); as rec) {
+              <div class="hud-pricing-row">
+                <div class="hud-price-col">
+                  <span class="price-type text-success font-mono">C: {{ rec.buySuggested }}</span>
+                  <button type="button" class="btn-micro" (click)="applyMcpPrice('BUY')" title="Fijar precio de compra sugerido por MCP">Aplicar C</button>
+                </div>
+                <div class="hud-price-col">
+                  <span class="price-type text-accent font-mono">V: {{ rec.sellSuggested }}</span>
+                  <button type="button" class="btn-micro" (click)="applyMcpPrice('SELL')" title="Fijar precio de venta sugerido por MCP">Aplicar V</button>
+                </div>
+              </div>
+            } @else {
+              <div class="hud-sub-metric text-muted">Sincronizando precios...</div>
+            }
+          </div>
+        </div>
+
+        <!-- Widget 4: Autofill Inteligente & Golden Spread -->
+        <div class="mcp-hud-card hud-autofill">
+          <div class="hud-card-header">
+            <span class="hud-card-label">Autofill Margen & Golden Rule</span>
+            @if (mcpSpreadVerdict(); as v) {
+              <span class="badge font-mono" [class.badge-gold]="v.isGoldenSpread" [class.badge-secondary]="!v.isGoldenSpread">
+                {{ v.isGoldenSpread ? '⭐ GOLDEN' : 'ESTÁNDAR' }}
+              </span>
+            }
+          </div>
+          <div class="hud-card-body">
+            <div class="hud-autofill-actions">
+              <div class="margin-chips">
+                @for (m of [1.0, 1.2, 1.5, 2.0]; track m) {
+                  <button
+                    type="button"
+                    class="margin-chip"
+                    [class.active]="selectedAutofillMargin() === m"
+                    (click)="selectedAutofillMargin.set(m)"
+                  >
+                    {{ m }}%
+                  </button>
+                }
+              </div>
+              <div class="autofill-btn-row">
+                <button type="button" class="btn-mcp-autofill" (click)="applyAutofillMargined('BUY', selectedAutofillMargin())" title="Autocompletar precio de compra">
+                  🎯 Cargar C
+                </button>
+                <button type="button" class="btn-mcp-autofill" (click)="applyAutofillMargined('SELL', selectedAutofillMargin())" title="Autocompletar precio de venta">
+                  🎯 Cargar V
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="trading-desk-layout">
     <!-- ═══════════════════════════════════════════════════
          COLUMNA IZQUIERDA: Configuración & Parámetros
@@ -650,370 +824,7 @@
          ═══════════════════════════════════════════════════ -->
     <div class="desk-column desk-right">
       @if (activeMode() !== 'repricer') {
-        <!-- 1. Radar de Mercado P2P en Vivo (Binance) -->
-        <div class="p2p-radar-card">
-          <div class="radar-header">
-            <div class="radar-title-group">
-              <span class="badge badge-accent">En Vivo (Binance P2P)</span>
-              <span class="text-muted live-refresh-caption" [class.live]="binance.autoRefresh()" style="font-size: 0.78rem;">
-                @if (binance.loading()) {
-                  <span style="color: var(--gold);">Sincronizando...</span>
-                } @else if (binance.lastFetched(); as date) {
-                  Actualizado {{ date | date:'HH:mm:ss' }}
-                } @else {
-                  Mercado en espera
-                }
-              </span>
-            </div>
-
-            <div class="radar-actions">
-              <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.76rem; padding: 4px 10px;" title="Actualizar mercado (F2)">
-                ⚡ Actualizar (F2)
-              </button>
-            </div>
-          </div>
-
-          <!-- Selector de Bancos (Pills con Indicador Luminoso) -->
-          <div class="bank-filter-bar">
-            <span class="bank-filter-label">Banco:</span>
-            <button type="button" class="bank-pill bank-all" [class.active]="binance.selectedBank() === 'ALL'" (click)="selectBank('ALL')">
-              <span class="bank-indicator"></span>
-              Todos
-            </button>
-            <button type="button" class="bank-pill bank-banesco" [class.active]="binance.selectedBank() === 'BANESCO'" (click)="selectBank('BANESCO')">
-              <span class="bank-indicator"></span>
-              Banesco
-            </button>
-            <button type="button" class="bank-pill bank-pm" [class.active]="binance.selectedBank() === 'PAGO_MOVIL'" (click)="selectBank('PAGO_MOVIL')">
-              <span class="bank-indicator"></span>
-              Pago Móvil
-            </button>
-            <button type="button" class="bank-pill bank-mercantil" [class.active]="binance.selectedBank() === 'MERCANTIL'" (click)="selectBank('MERCANTIL')">
-              <span class="bank-indicator"></span>
-              Mercantil
-            </button>
-            <button type="button" class="bank-pill bank-bdv" [class.active]="binance.selectedBank() === 'BDV'" (click)="selectBank('BDV')">
-              <span class="bank-indicator"></span>
-              BDV
-            </button>
-          </div>
-
-          @if (binance.marketDepth(); as depth) {
-            <div class="depth-grid">
-              <div class="depth-tile depth-ask">
-                <span class="depth-label">Mejor Compra (Ask)</span>
-                <div class="depth-value">{{ depth.bestBuyPrice | num }} Bs</div>
-              </div>
-
-              <div class="depth-tile depth-bid">
-                <span class="depth-label">Mejor Venta (Bid)</span>
-                <div class="depth-value">{{ depth.bestSellPrice | num }} Bs</div>
-              </div>
-
-              <div class="depth-tile depth-spread">
-                <span class="depth-label">Spread Mercado</span>
-                <div class="depth-value" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
-                  {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
-                </div>
-              </div>
-            </div>
-
-            @if (marketQuality(); as sqs) {
-              <div class="sqs-indicator-box" style="margin-top: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 10px 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700;">Índice de Calidad (SQS):</span>
-                    <span [style.color]="sqs.verdictColor" style="font-weight: 800; font-size: 0.88rem; font-family: var(--font-mono);">
-                      {{ sqs.score }}/100 — {{ sqs.verdictLabel }}
-                    </span>
-                  </div>
-                  <span style="font-size: 0.74rem; color: var(--gold); font-family: var(--font-mono); font-weight: 600;">
-                    Margen Neto: {{ sqs.netSpreadPct }}%
-                  </span>
-                </div>
-                <div class="guard-status-row" [class.guard-ok]="guardStatus() === 'ok'" [class.guard-warn]="guardStatus() === 'warn'" [class.guard-noop]="guardStatus() === 'noop'">
-                  <span class="guard-dot"></span>
-                  <span class="guard-label">
-                    @switch (guardStatus()) {
-                      @case ('ok') { OPERAR }
-                      @case ('warn') { ALERTA }
-                      @case ('noop') { NO OPERAR }
-                    }
-                  </span>
-                  <span class="guard-text">{{ guardText() }}</span>
-                </div>
-                <p style="margin: 8px 0 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
-                  💡 {{ sqs.recommendation }}
-                </p>
-              </div>
-            }
-
-            @if (johnsonQuality(); as jq) {
-              <div class="johnson-depth-card">
-                <div class="johnson-card-header">
-                  <div class="johnson-title-group">
-                    <span class="johnson-icon" aria-hidden="true">🔬</span>
-                    <span class="johnson-title">Profundidad Johnson (v2)</span>
-                  </div>
-                  <span
-                    class="badge johnson-signal-badge"
-                    [class.signal-strong-buy]="jq.recommendation === 'STRONG_BUY'"
-                    [class.signal-buy]="jq.recommendation === 'BUY'"
-                    [class.signal-caution]="jq.recommendation === 'CAUTION'"
-                    [class.signal-avoid]="jq.recommendation === 'AVOID'"
-                  >
-                    @switch (jq.recommendation) {
-                      @case ('STRONG_BUY') { COMPRA FUERTE }
-                      @case ('BUY') { COMPRAR }
-                      @case ('CAUTION') { PRECAUCIÓN }
-                      @case ('AVOID') { EVITAR }
-                    }
-                  </span>
-                </div>
-
-                <div class="johnson-scores-grid">
-                  <div class="johnson-score-item">
-                    <span class="johnson-score-label">Profundidad</span>
-                    <span class="johnson-score-value font-mono">{{ jq.depthScore }}/100</span>
-                  </div>
-                  <div class="johnson-score-item">
-                    <span class="johnson-score-label">Liquidez</span>
-                    <span class="johnson-score-value font-mono">{{ jq.liquidityScore }}/100</span>
-                  </div>
-                  <div class="johnson-score-item">
-                    <span class="johnson-score-label">Mejor Banco</span>
-                    <span class="johnson-score-value font-mono" style="color: var(--gold); font-weight: 700;">{{ jq.bestBank || 'N/A' }}</span>
-                  </div>
-                </div>
-
-                @if (top3JohnsonBanks().length > 0) {
-                  <div class="johnson-banks-list">
-                    <div class="johnson-banks-header">Top 3 Bancos — Ganancia Neta (500 USDT)</div>
-                    @for (b of top3JohnsonBanks(); track b.bankKey) {
-                      <div class="johnson-bank-row">
-                        <div class="johnson-bank-name">
-                          <span class="bank-bullet" [class.bullet-safe]="b.isSafe"></span>
-                          <span style="font-weight: 700;">{{ b.bankKey }}</span>
-                          @if (b.effectiveFeeDragPct > 0) {
-                            <span class="text-muted" style="font-size: 0.68rem;">(-{{ b.effectiveFeeDragPct }}% fees)</span>
-                          }
-                        </div>
-                        <div class="johnson-bank-metrics font-mono">
-                          <span class="johnson-net-ves" [class.positive]="b.netGainVes > 0">+{{ b.netGainVes | num }} Bs</span>
-                          <span class="johnson-roi" [class.positive]="b.roiCyclePct >= 0.5">({{ b.roiCyclePct }}% ROI)</span>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
-            }
-
-            <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 8px; font-weight: 600;">
-              📥 Cargar Precios en el Monitor
-            </button>
-          } @else {
-            <div class="depth-grid">
-              <div class="depth-tile depth-ask">
-                <span class="depth-label">Mejor Compra (Ask)</span>
-                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
-              </div>
-              <div class="depth-tile depth-bid">
-                <span class="depth-label">Mejor Venta (Bid)</span>
-                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
-              </div>
-              <div class="depth-tile depth-spread">
-                <span class="depth-label">Spread Mercado</span>
-                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">--</div>
-              </div>
-            </div>
-
-            <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 4px;">
-              ⚡ Cargar Datos de Mercado
-            </button>
-          }
-
-          <!-- Mini-gráfico de Tendencia del Spread -->
-          @if (getSparklinePoints(); as points) {
-            <div class="sparkline-container" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
-                  Evolución Intra-Día ({{ binance.selectedBank() }})
-                </span>
-                <span class="badge" [class.badge-accent]="marketHistory.stats().trend === 'EXPANDING'" [style.color]="marketHistory.stats().trend === 'COMPRESSING' ? '#ef4444' : ''" style="font-size: 0.7rem;">
-                  @if (marketHistory.stats().trend === 'EXPANDING') { 📈 Expandiéndose }
-                  @else if (marketHistory.stats().trend === 'COMPRESSING') { 📉 Comprimiéndose }
-                  @else { ⚖️ Estable }
-                </span>
-              </div>
-              <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; justify-content: center;">
-                <svg viewBox="0 0 280 44" style="width: 100%; height: 44px; overflow: visible;">
-                  <polyline
-                    fill="none"
-                    stroke="var(--gold)"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    [attr.points]="points"
-                  />
-                </svg>
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); margin-top: 4px; font-family: var(--font-mono);">
-                <span>Mín: {{ marketHistory.stats().minSpreadVes | num }} Bs</span>
-                <span>Media: {{ marketHistory.stats().averageSpreadVes | num }} Bs</span>
-                <span>Máx: {{ marketHistory.stats().maxSpreadVes | num }} Bs</span>
-              </div>
-            </div>
-          }
-        </div>
-
-        <!-- ═══ Triangulación Multi-Exchange ═══ -->
-        @if (activeMode() !== 'repricer') {
-          <div class="triangulation-card">
-            <div class="triangulation-header">
-              <div class="triangulation-title-group">
-                <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Triangulación Multi-Exchange</span>
-                <span class="badge badge-accent" style="font-size: 0.68rem;">Cotizave</span>
-                @if (triangulationAlert().hasAlert; as alert) {
-                  <span class="badge" style="background: #10b981; color: #fff; font-size: 0.68rem; font-weight: 800;">
-                    OPORTUNIDAD
-                  </span>
-                }
-              </div>
-              <span class="text-muted" style="font-size: 0.74rem;">
-                @if (cotizave.loading()) {
-                  <span style="color: var(--gold);">Sincronizando...</span>
-                } @else if (cotizave.lastFetched(); as date) {
-                  Actualizado {{ date | date:'HH:mm:ss' }}
-                } @else {
-                  Sin datos
-                }
-              </span>
-            </div>
-
-            @if (!cotizave.apiKey()) {
-              <div class="triangulation-empty">
-                <p style="margin: 0 0 10px; font-size: 0.82rem; color: var(--muted);">
-                  Introduce tu API key de Cotizave para activar la triangulación multi-exchange.
-                </p>
-                <p style="margin: 0 0 12px; font-size: 0.75rem; color: var(--muted);">
-                  Obtén tu key en <span class="font-mono" style="color: var(--gold);">cotizave.com/docs</span> — Plan gratis: 1500 req/mes.
-                </p>
-              </div>
-            }
-
-            <div class="triangulation-key-row">
-              <input
-                type="password"
-                class="triangulation-key-input"
-                placeholder="ctz_live_..."
-                aria-label="Clave de API de Cotizave"
-                [value]="cotizave.apiKey()"
-                (input)="cotizave.setApiKey($any($event.target).value)"
-              />
-              <button type="button" class="btn btn-secondary" (click)="cotizave.fetchRates()" [disabled]="cotizave.loading() || !cotizave.apiKey()" style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;">
-                {{ cotizave.loading() ? '...' : 'Actualizar' }}
-              </button>
-            </div>
-
-            @if (cotizave.error(); as errMsg) {
-              <p class="text-muted" style="margin: 8px 0 0; font-size: 0.78rem; color: #f87171;">{{ errMsg }}</p>
-            }
-
-            @if (triangulationData().length > 0) {
-              <div class="triangulation-threshold-row">
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--muted);">
-                  Umbral brecha (VES):
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    class="triangulation-threshold-input"
-                    [value]="triangulationThresholdVes()"
-                    (input)="triangulationThresholdVes.set(+$any($event.target).value)"
-                  />
-                </label>
-              </div>
-
-              <div class="triangulation-table-wrap">
-                <table class="triangulation-table">
-                  <thead>
-                    <tr>
-                      <th>Exchange</th>
-                      <th>Ask</th>
-                      <th>Bid</th>
-                      <th>Gap (VES)</th>
-                      <th>Gap (%)</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (row of triangulationData(); track row.market) {
-                      @let bestGap = row.gapForward.gapVes !== null && (row.gapReverse.gapVes === null || row.gapForward.gapVes >= row.gapReverse.gapVes) ? row.gapForward : row.gapReverse;
-                      @let bestGapPct = bestGap.gapPct;
-                      @let bestGapVes = bestGap.gapVes;
-                      @let isOpportunity = bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
-                      <tr>
-                        <td>
-                          <span class="font-mono" style="text-transform: capitalize;">{{ row.market }}</span>
-                        </td>
-                        <td class="font-mono">{{ row.ask ? (row.ask | num) : '--' }}</td>
-                        <td class="font-mono">{{ row.bid ? (row.bid | num) : '--' }}</td>
-                        <td class="font-mono" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
-                          {{ bestGapVes !== null ? (bestGapVes | num) : '--' }}
-                        </td>
-                        <td class="font-mono">
-                          {{ bestGapPct !== null ? (bestGapPct | num) + '%' : '--' }}
-                        </td>
-                        <td>
-                          @if (isOpportunity) {
-                            <span class="triangulation-chip triangulation-chip-green">OPORTUNIDAD ≥ {{ triangulationThresholdVes() }} VES</span>
-                          } @else {
-                            <span class="triangulation-chip triangulation-chip-gray">Sin brecha</span>
-                          }
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            } @else if (cotizave.apiKey() && !cotizave.loading() && !cotizave.error()) {
-              <p class="text-muted" style="margin: 10px 0 0; font-size: 0.78rem;">Presiona "Actualizar" para obtener datos de mercados.</p>
-            }
-          </div>
-        }
-
-        <!-- Ventanas Horarias Estratégicas -->
-        <div class="trading-windows-card">
-          <div class="bank-treasury-header">
-            <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Ventanas Horarias</span>
-            <span class="text-muted" style="font-size: 0.74rem;">Calendario estratégico de trading</span>
-          </div>
-          <div class="windows-list">
-            @for (w of tradingWindows; track w.id) {
-              <div class="window-item" [class.window-active]="w.id === activeWindowId()">
-                <div class="window-top">
-                  <div class="window-title-group">
-                    <span class="badge" [class.window-buy]="w.type === 'BUY'" [class.window-sell]="w.type === 'SELL'">
-                      {{ w.type === 'BUY' ? 'COMPRA' : 'VENTA' }}
-                    </span>
-                    <strong class="window-label">{{ w.label }}</strong>
-                    @if (w.id === activeWindowId()) {
-                      <span class="badge window-now">AHORA</span>
-                    }
-                  </div>
-                  <span class="window-time font-mono">{{ w.timeWindow }}</span>
-                </div>
-                <div class="window-meta">
-                  <span class="window-days text-muted">{{ w.dayRange }}</span>
-                  <span class="window-rationale">{{ w.rationale }}</span>
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-
-        <!-- 2. Resultado de Arbitraje o Break-Even -->
+        <!-- 1. RESULTADO DE ARBITRAJE / BREAK-EVEN (PRIORITARIO - AL TOPE) -->
         @if (activeMode() === 'spread') {
           @if (result(); as r) {
             <div class="arbitrage-result-card">
@@ -1113,39 +924,437 @@
           </div>
         }
 
-        <!-- 3. Control Diario de Cupos Bancarios -->
-        <div class="bank-treasury-card">
-          <div class="bank-treasury-header">
-            <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Control de Cupos Bancarios</span>
-            <span class="text-muted" style="font-size: 0.74rem;">Consumo diario</span>
+        <!-- 2. RADAR DE MERCADO P2P EN VIVO (BINANCE TICKER) -->
+        <div class="p2p-radar-card">
+          <div class="radar-header">
+            <div class="radar-title-group">
+              <span class="badge badge-accent">En Vivo (Binance P2P)</span>
+              <span class="text-muted live-refresh-caption" [class.live]="binance.autoRefresh()" style="font-size: 0.78rem;">
+                @if (binance.loading()) {
+                  <span style="color: var(--gold);">Sincronizando...</span>
+                } @else if (binance.lastFetched(); as date) {
+                  Actualizado {{ date | date:'HH:mm:ss' }}
+                } @else {
+                  Mercado en espera
+                }
+              </span>
+            </div>
+
+            <div class="radar-actions">
+              <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.76rem; padding: 4px 10px;" title="Actualizar mercado (F2)">
+                ⚡ Actualizar (F2)
+              </button>
+            </div>
           </div>
 
-          <div class="bank-treasury-grid">
-            @for (u of accountsService.usages(); track u.account.id) {
-              <div class="bank-usage-mini-tile" [class.bank-alert]="u.isOverLimit">
-                <div class="bank-tile-top">
-                  <span class="bank-tile-name">{{ u.account.bankName }}</span>
-                  <span style="display: flex; align-items: center; gap: 6px;">
-                    @if (velocityByAccount().get(u.account.id); as v) {
-                      @if (v.velocityHealth === 'REST_RECOMMENDED' || v.velocityHealth === 'SATURATED') {
-                        <span class="badge" style="font-size: 0.65rem; color: var(--panel); border-color: transparent; padding: 2px 7px;"
-                              [style.background]="v.velocityHealth === 'SATURATED' ? 'var(--danger)' : 'var(--gold)'"
-                              [title]="v.velocityHealth + ' — evita nuevas transferencias hoy'">
-                          {{ v.todayTransactionCount }}/{{ v.maxDailyTransactions }} tx
-                        </span>
-                      }
-                    }
-                    <span class="badge" [class.badge-accent]="!u.isOverLimit" [style.background]="u.isOverLimit ? '#ef4444' : ''" [style.color]="u.isOverLimit ? '#fff' : ''">
-                      {{ u.consumedLimitPct }}%
+          <!-- Selector de Bancos (Pills con Indicador Luminoso) -->
+          <div class="bank-filter-bar">
+            <span class="bank-filter-label">Banco:</span>
+            <button type="button" class="bank-pill bank-all" [class.active]="binance.selectedBank() === 'ALL'" (click)="selectBank('ALL')">
+              <span class="bank-indicator"></span>
+              Todos
+            </button>
+            <button type="button" class="bank-pill bank-banesco" [class.active]="binance.selectedBank() === 'BANESCO'" (click)="selectBank('BANESCO')">
+              <span class="bank-indicator"></span>
+              Banesco
+            </button>
+            <button type="button" class="bank-pill bank-pm" [class.active]="binance.selectedBank() === 'PAGO_MOVIL'" (click)="selectBank('PAGO_MOVIL')">
+              <span class="bank-indicator"></span>
+              Pago Móvil
+            </button>
+            <button type="button" class="bank-pill bank-mercantil" [class.active]="binance.selectedBank() === 'MERCANTIL'" (click)="selectBank('MERCANTIL')">
+              <span class="bank-indicator"></span>
+              Mercantil
+            </button>
+            <button type="button" class="bank-pill bank-bdv" [class.active]="binance.selectedBank() === 'BDV'" (click)="selectBank('BDV')">
+              <span class="bank-indicator"></span>
+              BDV
+            </button>
+          </div>
+
+          @if (binance.marketDepth(); as depth) {
+            <div class="depth-grid">
+              <div class="depth-tile depth-ask">
+                <span class="depth-label">Mejor Compra (Ask)</span>
+                <div class="depth-value">{{ depth.bestBuyPrice | num }} Bs</div>
+              </div>
+
+              <div class="depth-tile depth-bid">
+                <span class="depth-label">Mejor Venta (Bid)</span>
+                <div class="depth-value">{{ depth.bestSellPrice | num }} Bs</div>
+              </div>
+
+              <div class="depth-tile depth-spread">
+                <span class="depth-label">Spread Mercado</span>
+                <div class="depth-value" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
+                  {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 8px; font-weight: 600;">
+              📥 Cargar Precios en el Monitor
+            </button>
+          } @else {
+            <div class="depth-grid">
+              <div class="depth-tile depth-ask">
+                <span class="depth-label">Mejor Compra (Ask)</span>
+                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
+              </div>
+              <div class="depth-tile depth-bid">
+                <span class="depth-label">Mejor Venta (Bid)</span>
+                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">Sincronizando...</div>
+              </div>
+              <div class="depth-tile depth-spread">
+                <span class="depth-label">Spread Mercado</span>
+                <div class="depth-value" style="color: var(--muted); font-size: 0.95rem;">--</div>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 4px;">
+              ⚡ Cargar Datos de Mercado
+            </button>
+          }
+        </div>
+
+        <!-- 3. SUBCONSOLE ANALÍTICA (SUB-TABS: MICROESTRUCTURA, TRIANGULACIÓN, TESORERÍA) -->
+        <div class="analytics-subconsole">
+          <div class="analytics-subnav">
+            <button
+              type="button"
+              class="subnav-btn"
+              [class.active]="analyticsSubTab() === 'microstructure'"
+              (click)="analyticsSubTab.set('microstructure')"
+            >
+              🔬 Microestructura & SQS
+            </button>
+            <button
+              type="button"
+              class="subnav-btn"
+              [class.active]="analyticsSubTab() === 'triangulation'"
+              (click)="analyticsSubTab.set('triangulation')"
+            >
+              🌐 Triangulación Cotizave
+              @if (triangulationAlert().hasAlert) {
+                <span class="subnav-indicator-dot"></span>
+              }
+            </button>
+            <button
+              type="button"
+              class="subnav-btn"
+              [class.active]="analyticsSubTab() === 'treasury'"
+              (click)="analyticsSubTab.set('treasury')"
+            >
+              🏛️ Tesorería & Ventanas
+            </button>
+          </div>
+
+          <div class="subnav-content">
+            @if (analyticsSubTab() === 'microstructure') {
+              @if (marketQuality(); as sqs) {
+                <div class="sqs-indicator-box" style="margin-bottom: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 12px 14px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700;">Índice de Calidad (SQS):</span>
+                      <span [style.color]="sqs.verdictColor" style="font-weight: 800; font-size: 0.88rem; font-family: var(--font-mono);">
+                        {{ sqs.score }}/100 — {{ sqs.verdictLabel }}
+                      </span>
+                    </div>
+                    <span style="font-size: 0.74rem; color: var(--gold); font-family: var(--font-mono); font-weight: 600;">
+                      Margen Neto: {{ sqs.netSpreadPct }}%
                     </span>
+                  </div>
+                  <div class="guard-status-row" [class.guard-ok]="guardStatus() === 'ok'" [class.guard-warn]="guardStatus() === 'warn'" [class.guard-noop]="guardStatus() === 'noop'">
+                    <span class="guard-dot"></span>
+                    <span class="guard-label">
+                      @switch (guardStatus()) {
+                        @case ('ok') { OPERAR }
+                        @case ('warn') { ALERTA }
+                        @case ('noop') { NO OPERAR }
+                      }
+                    </span>
+                    <span class="guard-text">{{ guardText() }}</span>
+                  </div>
+                  <p style="margin: 8px 0 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
+                    💡 {{ sqs.recommendation }}
+                  </p>
+                </div>
+              }
+
+              @if (johnsonQuality(); as jq) {
+                <div class="johnson-depth-card">
+                  <div class="johnson-card-header">
+                    <div class="johnson-title-group">
+                      <span class="johnson-icon" aria-hidden="true">🔬</span>
+                      <span class="johnson-title">Profundidad Johnson (v2)</span>
+                    </div>
+                    <span
+                      class="badge johnson-signal-badge"
+                      [class.signal-strong-buy]="jq.recommendation === 'STRONG_BUY'"
+                      [class.signal-buy]="jq.recommendation === 'BUY'"
+                      [class.signal-caution]="jq.recommendation === 'CAUTION'"
+                      [class.signal-avoid]="jq.recommendation === 'AVOID'"
+                    >
+                      @switch (jq.recommendation) {
+                        @case ('STRONG_BUY') { COMPRA FUERTE }
+                        @case ('BUY') { COMPRAR }
+                        @case ('CAUTION') { PRECAUCIÓN }
+                        @case ('AVOID') { EVITAR }
+                      }
+                    </span>
+                  </div>
+
+                  <div class="johnson-scores-grid">
+                    <div class="johnson-score-item">
+                      <span class="johnson-score-label">Profundidad</span>
+                      <span class="johnson-score-value font-mono">{{ jq.depthScore }}/100</span>
+                    </div>
+                    <div class="johnson-score-item">
+                      <span class="johnson-score-label">Liquidez</span>
+                      <span class="johnson-score-value font-mono">{{ jq.liquidityScore }}/100</span>
+                    </div>
+                    <div class="johnson-score-item">
+                      <span class="johnson-score-label">Mejor Banco</span>
+                      <span class="johnson-score-value font-mono" style="color: var(--gold); font-weight: 700;">{{ jq.bestBank || 'N/A' }}</span>
+                    </div>
+                  </div>
+
+                  @if (top3JohnsonBanks().length > 0) {
+                    <div class="johnson-banks-list">
+                      <div class="johnson-banks-header">Top 3 Bancos — Ganancia Neta (500 USDT)</div>
+                      @for (b of top3JohnsonBanks(); track b.bankKey) {
+                        <div class="johnson-bank-row">
+                          <div class="johnson-bank-name">
+                            <span class="bank-bullet" [class.bullet-safe]="b.isSafe"></span>
+                            <span style="font-weight: 700;">{{ b.bankKey }}</span>
+                            @if (b.effectiveFeeDragPct > 0) {
+                              <span class="text-muted" style="font-size: 0.68rem;">(-{{ b.effectiveFeeDragPct }}% fees)</span>
+                            }
+                          </div>
+                          <div class="johnson-bank-metrics font-mono">
+                            <span class="johnson-net-ves" [class.positive]="b.netGainVes > 0">+{{ b.netGainVes | num }} Bs</span>
+                            <span class="johnson-roi" [class.positive]="b.roiCyclePct >= 0.5">({{ b.roiCyclePct }}% ROI)</span>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Mini-gráfico de Tendencia del Spread -->
+              @if (getSparklinePoints(); as points) {
+                <div class="sparkline-container" style="margin-top: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-md);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">
+                      Evolución Intra-Día ({{ binance.selectedBank() }})
+                    </span>
+                    <span class="badge" [class.badge-accent]="marketHistory.stats().trend === 'EXPANDING'" [style.color]="marketHistory.stats().trend === 'COMPRESSING' ? '#ef4444' : ''" style="font-size: 0.7rem;">
+                      @if (marketHistory.stats().trend === 'EXPANDING') { 📈 Expandiéndose }
+                      @else if (marketHistory.stats().trend === 'COMPRESSING') { 📉 Comprimiéndose }
+                      @else { ⚖️ Estable }
+                    </span>
+                  </div>
+                  <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 280 44" style="width: 100%; height: 44px; overflow: visible;">
+                      <polyline
+                        fill="none"
+                        stroke="var(--gold)"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        [attr.points]="points"
+                      />
+                    </svg>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); margin-top: 4px; font-family: var(--font-mono);">
+                    <span>Mín: {{ marketHistory.stats().minSpreadVes | num }} Bs</span>
+                    <span>Media: {{ marketHistory.stats().averageSpreadVes | num }} Bs</span>
+                    <span>Máx: {{ marketHistory.stats().maxSpreadVes | num }} Bs</span>
+                  </div>
+                </div>
+              }
+            } @else if (analyticsSubTab() === 'triangulation') {
+              <!-- ═══ Triangulación Multi-Exchange ═══ -->
+              <div class="triangulation-card">
+                <div class="triangulation-header">
+                  <div class="triangulation-title-group">
+                    <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Triangulación Multi-Exchange</span>
+                    <span class="badge badge-accent" style="font-size: 0.68rem;">Cotizave</span>
+                    @if (triangulationAlert().hasAlert; as alert) {
+                      <span class="badge" style="background: #10b981; color: #fff; font-size: 0.68rem; font-weight: 800;">
+                        OPORTUNIDAD
+                      </span>
+                    }
+                  </div>
+                  <span class="text-muted" style="font-size: 0.74rem;">
+                    @if (cotizave.loading()) {
+                      <span style="color: var(--gold);">Sincronizando...</span>
+                    } @else if (cotizave.lastFetched(); as date) {
+                      Actualizado {{ date | date:'HH:mm:ss' }}
+                    } @else {
+                      Sin datos
+                    }
                   </span>
                 </div>
-                <div class="progress-bar-wrap" style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin: 4px 0;">
-                  <div class="progress-bar-fill" [style.width.%]="Math.min(u.consumedLimitPct, 100)" [style.background]="u.isOverLimit ? '#ef4444' : 'var(--accent)'" style="height: 100%; transition: width 0.3s ease;"></div>
+
+                @if (!cotizave.apiKey()) {
+                  <div class="triangulation-empty">
+                    <p style="margin: 0 0 10px; font-size: 0.82rem; color: var(--muted);">
+                      Introduce tu API key de Cotizave para activar la triangulación multi-exchange.
+                    </p>
+                    <p style="margin: 0 0 12px; font-size: 0.75rem; color: var(--muted);">
+                      Obtén tu key en <span class="font-mono" style="color: var(--gold);">cotizave.com/docs</span> — Plan gratis: 1500 req/mes.
+                    </p>
+                  </div>
+                }
+
+                <div class="triangulation-key-row">
+                  <input
+                    type="password"
+                    class="triangulation-key-input"
+                    placeholder="ctz_live_..."
+                    aria-label="Clave de API de Cotizave"
+                    [value]="cotizave.apiKey()"
+                    (input)="cotizave.setApiKey($any($event.target).value)"
+                  />
+                  <button type="button" class="btn btn-secondary" (click)="cotizave.fetchRates()" [disabled]="cotizave.loading() || !cotizave.apiKey()" style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;">
+                    {{ cotizave.loading() ? '...' : 'Actualizar' }}
+                  </button>
                 </div>
-                <div class="bank-tile-limit">
-                  <span>{{ u.spentTodayVes | num }} Bs</span>
-                  <span style="color: var(--muted);">/ {{ u.account.dailyLimitVes | num }} Bs</span>
+
+                @if (cotizave.error(); as errMsg) {
+                  <p class="text-muted" style="margin: 8px 0 0; font-size: 0.78rem; color: #f87171;">{{ errMsg }}</p>
+                }
+
+                @if (triangulationData().length > 0) {
+                  <div class="triangulation-threshold-row">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--muted);">
+                      Umbral brecha (VES):
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        class="triangulation-threshold-input"
+                        [value]="triangulationThresholdVes()"
+                        (input)="triangulationThresholdVes.set(+$any($event.target).value)"
+                      />
+                    </label>
+                  </div>
+
+                  <div class="triangulation-table-wrap">
+                    <table class="triangulation-table">
+                      <thead>
+                        <tr>
+                          <th>Exchange</th>
+                          <th>Ask</th>
+                          <th>Bid</th>
+                          <th>Gap (VES)</th>
+                          <th>Gap (%)</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (row of triangulationData(); track row.market) {
+                          @let bestGap = row.gapForward.gapVes !== null && (row.gapReverse.gapVes === null || row.gapForward.gapVes >= row.gapReverse.gapVes) ? row.gapForward : row.gapReverse;
+                          @let bestGapPct = bestGap.gapPct;
+                          @let bestGapVes = bestGap.gapVes;
+                          @let isOpportunity = bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
+                          <tr>
+                            <td>
+                              <span class="font-mono" style="text-transform: capitalize;">{{ row.market }}</span>
+                            </td>
+                            <td class="font-mono">{{ row.ask ? (row.ask | num) : '--' }}</td>
+                            <td class="font-mono">{{ row.bid ? (row.bid | num) : '--' }}</td>
+                            <td class="font-mono" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
+                              {{ bestGapVes !== null ? (bestGapVes | num) : '--' }}
+                            </td>
+                            <td class="font-mono">
+                              {{ bestGapPct !== null ? (bestGapPct | num) + '%' : '--' }}
+                            </td>
+                            <td>
+                              @if (isOpportunity) {
+                                <span class="triangulation-chip triangulation-chip-green">OPORTUNIDAD ≥ {{ triangulationThresholdVes() }} VES</span>
+                              } @else {
+                                <span class="triangulation-chip triangulation-chip-gray">Sin brecha</span>
+                              }
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                } @else if (cotizave.apiKey() && !cotizave.loading() && !cotizave.error()) {
+                  <p class="text-muted" style="margin: 10px 0 0; font-size: 0.78rem;">Presiona "Actualizar" para obtener datos de mercados.</p>
+                }
+              </div>
+            } @else if (analyticsSubTab() === 'treasury') {
+              <!-- 3. Control Diario de Cupos Bancarios -->
+              <div class="bank-treasury-card" style="margin-bottom: 12px;">
+                <div class="bank-treasury-header">
+                  <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Control de Cupos Bancarios</span>
+                  <span class="text-muted" style="font-size: 0.74rem;">Consumo diario</span>
+                </div>
+
+                <div class="bank-treasury-grid">
+                  @for (u of accountsService.usages(); track u.account.id) {
+                    <div class="bank-usage-mini-tile" [class.bank-alert]="u.isOverLimit">
+                      <div class="bank-tile-top">
+                        <span class="bank-tile-name">{{ u.account.bankName }}</span>
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                          @if (velocityByAccount().get(u.account.id); as v) {
+                            @if (v.velocityHealth === 'REST_RECOMMENDED' || v.velocityHealth === 'SATURATED') {
+                              <span class="badge" style="font-size: 0.65rem; color: var(--panel); border-color: transparent; padding: 2px 7px;"
+                                    [style.background]="v.velocityHealth === 'SATURATED' ? 'var(--danger)' : 'var(--gold)'"
+                                    [title]="v.velocityHealth + ' — evita nuevas transferencias hoy'">
+                                {{ v.todayTransactionCount }}/{{ v.maxDailyTransactions }} tx
+                              </span>
+                            }
+                          }
+                          <span class="badge" [class.badge-accent]="!u.isOverLimit" [style.background]="u.isOverLimit ? '#ef4444' : ''" [style.color]="u.isOverLimit ? '#fff' : ''">
+                            {{ u.consumedLimitPct }}%
+                          </span>
+                        </span>
+                      </div>
+                      <div class="progress-bar-wrap" style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin: 4px 0;">
+                        <div class="progress-bar-fill" [style.width.%]="Math.min(u.consumedLimitPct, 100)" [style.background]="u.isOverLimit ? '#ef4444' : 'var(--accent)'" style="height: 100%; transition: width 0.3s ease;"></div>
+                      </div>
+                      <div class="bank-tile-limit">
+                        <span>{{ u.spentTodayVes | num }} Bs</span>
+                        <span style="color: var(--muted);">/ {{ u.account.dailyLimitVes | num }} Bs</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Ventanas Horarias Estratégicas -->
+              <div class="trading-windows-card">
+                <div class="bank-treasury-header">
+                  <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Ventanas Horarias</span>
+                  <span class="text-muted" style="font-size: 0.74rem;">Calendario estratégico de trading</span>
+                </div>
+                <div class="windows-list">
+                  @for (w of tradingWindows; track w.id) {
+                    <div class="window-item" [class.window-active]="w.id === activeWindowId()">
+                      <div class="window-top">
+                        <div class="window-title-group">
+                          <span class="badge" [class.window-buy]="w.type === 'BUY'" [class.window-sell]="w.type === 'SELL'">
+                            {{ w.type === 'BUY' ? 'COMPRA' : 'VENTA' }}
+                          </span>
+                          <strong class="window-label">{{ w.label }}</strong>
+                          @if (w.id === activeWindowId()) {
+                            <span class="badge window-now">AHORA</span>
+                          }
+                        </div>
+                        <span class="window-time font-mono">{{ w.timeWindow }}</span>
+                      </div>
+                      <div class="window-meta">
+                        <span class="window-days text-muted">{{ w.dayRange }}</span>
+                        <span class="window-rationale">{{ w.rationale }}</span>
+                      </div>
+                    </div>
+                  }
                 </div>
               </div>
             }

@@ -1,9 +1,13 @@
 import { auditHistoricalCounterpartyRisk } from '../core/index.js';
-import { AuditCounterpartyExposureInputSchema, type AuditCounterpartyExposureInput } from '../schemas/index.js';
+import {
+  AuditCounterpartyExposureInputSchema,
+  type AuditCounterpartyExposureInput,
+} from '../schemas/index.js';
 
 export const auditCounterpartyExposureTool = {
   name: 'audit_counterparty_exposure',
-  description: 'Audita la concentración de volumen por contrapartes individuales y alerta sobre discrepancias de titularidad (anti-triangulación) y antecedentes de disputas.',
+  description:
+    'Audita la concentración de volumen por contrapartes individuales y alerta sobre discrepancias de titularidad (anti-triangulación) y antecedentes de disputas.',
   inputSchema: AuditCounterpartyExposureInputSchema,
   execute: (input: AuditCounterpartyExposureInput) => {
     const result = auditHistoricalCounterpartyRisk({

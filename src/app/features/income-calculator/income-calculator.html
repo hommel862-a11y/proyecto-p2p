@@ -41,6 +41,13 @@
       >
         📊 Metas de Capital Anual
       </button>
+      <button
+        type="button"
+        [class.active]="activeMode() === 'mcp-portfolio'"
+        (click)="activeMode.set('mcp-portfolio')"
+      >
+        🏛️ Suite Institucional MCP
+      </button>
     </div>
   </div>
 
@@ -968,6 +975,137 @@
           }
         </tbody>
       </table>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       MODO F: Suite Institucional MCP (Runway, Rebalance, Impact)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeMode() === 'mcp-portfolio') {
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 1rem;">
+      <!-- Tool 1: project_compound_runway -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🚀" title="Pista de Crecimiento Compuesto (Runway)">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: project_compound_runway</span>
+        </app-ui-panel-header>
+
+        <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 12px;">
+          Calcula la aceleración geométrica de tu capital proyectando reinversión, cosechas y el muro de cupos bancarios.
+        </p>
+
+        <button type="button" class="btn btn-primary" (click)="runMcpCompoundRunway()" [disabled]="mcpIncomeLoading()" style="width: 100%; margin-bottom: 12px;">
+          {{ mcpIncomeLoading() ? 'Calculando...' : '📈 Simular Pista Compuesta Institucional' }}
+        </button>
+
+        @if (mcpRunwayResult(); as rw) {
+          <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.82rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="text-muted">Horizonte Operativo:</span>
+              <strong class="font-mono">{{ rw.operationalDays || compoundOperationalDays() }} días</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="text-muted">Capital Proyectado:</span>
+              <strong class="font-mono" style="color: var(--accent);">{{ (rw.finalCapitalUsdt || rw.projectedCapitalUsdt || 0) | usdt }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="text-muted">Cosecha Total Extraída:</span>
+              <strong class="font-mono" style="color: var(--gold-strong);">{{ (rw.harvestedProfitUsdt || rw.totalHarvestedUsdt || 0) | usdt }}</strong>
+            </div>
+            @if (rw.bankingCapacityWallDay) {
+              <div style="margin-top: 8px; padding: 6px 8px; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #f87171; font-size: 0.74rem;">
+                ⚠️ <strong>Muro Bancario Alcanzado:</strong> Día {{ rw.bankingCapacityWallDay }}. Requiere aperturar nuevas cuentas o incorporar operadores.
+              </div>
+            }
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 2: rebalance_capital_allocation -->
+      <app-ui-card>
+        <app-ui-panel-header icon="⚖️" title="Rebalanceo de Capital Multi-Bancario">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: rebalance_capital</span>
+        </app-ui-panel-header>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="reb-capital">Capital Total (USDT)</label>
+            <input id="reb-capital" type="number" class="terminal-input font-mono" [value]="rebalanceCapitalUsdt()" (input)="rebalanceCapitalUsdt.set(+$any($event.target).value)" />
+          </div>
+          <div class="terminal-field">
+            <label class="terminal-label" for="reb-mode">Perfil de Riesgo</label>
+            <select id="reb-mode" class="terminal-select" [value]="rebalanceRiskMode()" (change)="rebalanceRiskMode.set($any($event.target).value)">
+              <option value="CONSERVATIVE">Conservador</option>
+              <option value="BALANCED">Equilibrado</option>
+              <option value="AGGRESSIVE">Agresivo</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary" (click)="runMcpRebalance()" [disabled]="mcpIncomeLoading()" style="width: 100%; margin-bottom: 12px;">
+          {{ mcpIncomeLoading() ? 'Rebalanceando...' : '🔄 Optimizar Distribución de Capital' }}
+        </button>
+
+        @if (mcpRebalanceResult(); as reb) {
+          <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.82rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="text-muted">Horario de Optimización:</span>
+              <span class="badge badge-accent" style="font-size: 0.68rem;">{{ reb.timeWindow || 'HORA PICO BANCARIA' }}</span>
+            </div>
+            @if (reb.allocations) {
+              <div style="margin-top: 8px;">
+                <span class="text-muted" style="display: block; margin-bottom: 4px;">Distribución Sugerida:</span>
+                @for (a of reb.allocations; track a.bankCode || a.name) {
+                  <div style="display: flex; justify-content: space-between; font-size: 0.76rem; padding: 2px 0;">
+                    <span>{{ a.bankCode || a.name }}:</span>
+                    <strong class="font-mono">{{ (a.assignedUsdt || 0) | usdt }} ({{ a.allocationPct }}%)</strong>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 3: simulate_trade_impact -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🌊" title="Impacto en Libro & Simulación de Slippage">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: simulate_impact</span>
+        </app-ui-panel-header>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="imp-size">Monto Orden (USDT)</label>
+            <input id="imp-size" type="number" class="terminal-input font-mono" [value]="impactTradeSizeUsdt()" (input)="impactTradeSizeUsdt.set(+$any($event.target).value)" />
+          </div>
+          <div class="terminal-field">
+            <label class="terminal-label" for="imp-limit">Límite Diario (USDT)</label>
+            <input id="imp-limit" type="number" class="terminal-input font-mono" [value]="impactExposureLimitUsdt()" (input)="impactExposureLimitUsdt.set(+$any($event.target).value)" />
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary" (click)="runMcpSimulateTradeImpact()" [disabled]="mcpIncomeLoading()" style="width: 100%; margin-bottom: 12px;">
+          {{ mcpIncomeLoading() ? 'Simulando...' : '📊 Simular Absorción de Mercado' }}
+        </button>
+
+        @if (mcpTradeImpactResult(); as imp) {
+          <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #38bdf8; font-size: 0.82rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span class="text-muted">Factibilidad:</span>
+              <span class="badge" [class.badge-accent]="imp.allowed !== false" [class.badge-danger]="imp.allowed === false" style="font-size: 0.7rem;">
+                {{ imp.allowed !== false ? 'VIABLE' : 'EXCEDE LÍMITE' }}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Slippage Estimado:</span>
+              <strong class="font-mono">{{ imp.estimatedSlippagePct ?? 0.08 }}%</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">Nueva Exposición Neta:</span>
+              <strong class="font-mono">{{ imp.resultingExposureUsdt || (impactTradeSizeUsdt() + impactCurrentExposureUsdt()) | usdt }}</strong>
+            </div>
+          </div>
+        }
+      </app-ui-card>
     </div>
   }
 </section>

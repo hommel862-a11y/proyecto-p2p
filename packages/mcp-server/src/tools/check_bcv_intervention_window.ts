@@ -1,9 +1,13 @@
 import { predictBcvIntervention } from '../core/index.js';
-import { CheckBcvInterventionWindowInputSchema, type CheckBcvInterventionWindowInput } from '../schemas/index.js';
+import {
+  CheckBcvInterventionWindowInputSchema,
+  type CheckBcvInterventionWindowInput,
+} from '../schemas/index.js';
 
 export const checkBcvInterventionWindowTool = {
   name: 'check_bcv_intervention_window',
-  description: 'Verifica la fase actual del ciclo de intervención cambiaria del BCV (09:00 - 13:00 VET) y estima probabilidad de inyección de divisas en la banca.',
+  description:
+    'Verifica la fase actual del ciclo de intervención cambiaria del BCV (09:00 - 13:00 VET) y estima probabilidad de inyección de divisas en la banca.',
   inputSchema: CheckBcvInterventionWindowInputSchema,
   execute: (input: CheckBcvInterventionWindowInput) => {
     const evalDate = input.testTimestamp ? new Date(input.testTimestamp) : new Date();

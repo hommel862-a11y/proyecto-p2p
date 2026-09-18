@@ -1,9 +1,13 @@
 import { getBinanceP2POrderbookSnapshot } from '../core/index.js';
-import { GetBinanceP2POrderbookInputSchema, type GetBinanceP2POrderbookInput } from '../schemas/index.js';
+import {
+  GetBinanceP2POrderbookInputSchema,
+  type GetBinanceP2POrderbookInput,
+} from '../schemas/index.js';
 
 export const getBinanceP2POrderbookTool = {
   name: 'get_binance_p2p_orderbook',
-  description: 'Obtiene el libro de órdenes P2P en vivo de Binance para el par seleccionado (VES/USDT), desglosando ofertas de compra (bids), venta (asks), spread y profundidad acumulada.',
+  description:
+    'Obtiene el libro de órdenes P2P en vivo de Binance para el par seleccionado (VES/USDT), desglosando ofertas de compra (bids), venta (asks), spread y profundidad acumulada.',
   inputSchema: GetBinanceP2POrderbookInputSchema,
   execute: (input: GetBinanceP2POrderbookInput) => {
     const depth = getBinanceP2POrderbookSnapshot(input.fiat, input.asset, input.rows);

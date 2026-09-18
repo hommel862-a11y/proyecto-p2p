@@ -1,9 +1,13 @@
 import { computeCompetitivePriceRecommendation } from '../core/index.js';
-import { RecommendCompetitivePricingInputSchema, type RecommendCompetitivePricingInput } from '../schemas/index.js';
+import {
+  RecommendCompetitivePricingInputSchema,
+  type RecommendCompetitivePricingInput,
+} from '../schemas/index.js';
 
 export const recommendCompetitivePricingTool = {
   name: 'recommend_competitive_pricing',
-  description: 'Calcula el precio competitivo óptimo para posicionar un anuncio Maker en el Top 1, Top 2 o Top 3 del libro de órdenes de Binance P2P respetando pisos break-even.',
+  description:
+    'Calcula el precio competitivo óptimo para posicionar un anuncio Maker en el Top 1, Top 2 o Top 3 del libro de órdenes de Binance P2P respetando pisos break-even.',
   inputSchema: RecommendCompetitivePricingInputSchema,
   execute: (input: RecommendCompetitivePricingInput) => {
     const rec = computeCompetitivePriceRecommendation({

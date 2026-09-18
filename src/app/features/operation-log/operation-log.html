@@ -1,8 +1,13 @@
 <section class="panel">
-  <div class="panel-header">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
     <div>
       <h2>Registro de Operaciones</h2>
       <p class="panel-subtitle">Libro mayor local y seguimiento de rendimiento (PnL / Exposición / Disciplina)</p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span class="badge badge-accent font-mono" style="font-size: 0.7rem;">
+        {{ mcpLedgerSynced() ? '🔒 MCP: add_operation_entry (AUDITADO)' : '⏳ MCP: PENDIENTE' }}
+      </span>
     </div>
   </div>
 
@@ -168,7 +173,9 @@
   <app-backup-panel
     (downloadJson)="downloadBackup()"
     (importFile)="importFile($event)"
-    (downloadCsv)="downloadCsv()" />
+    (downloadCsv)="downloadCsv()"
+    (syncGoogleSheets)="syncAllToGoogleSheets()"
+    (backupGoogleDrive)="backupLedgerToGoogleDrive()" />
 
   <!-- Modal de confirmación para eliminación -->
   @if (pendingDeleteId()) {

@@ -1,9 +1,13 @@
 import { getBcvMarketIntelligence } from '../core/index.js';
-import { ForecastVolatilityWindowInputSchema, type ForecastVolatilityWindowInput } from '../schemas/index.js';
+import {
+  ForecastVolatilityWindowInputSchema,
+  type ForecastVolatilityWindowInput,
+} from '../schemas/index.js';
 
 export const forecastVolatilityWindowTool = {
   name: 'forecast_volatility_window',
-  description: 'Predice la dinámica de spread a 2 horas cruzando la presión del libro de órdenes y los ciclos de intervención cambiaria del BCV.',
+  description:
+    'Predice la dinámica de spread a 2 horas cruzando la presión del libro de órdenes y los ciclos de intervención cambiaria del BCV.',
   inputSchema: ForecastVolatilityWindowInputSchema,
   execute: (input: ForecastVolatilityWindowInput) => {
     const bcvIntel = getBcvMarketIntelligence(input.parallelRate, input.bcvRate);

@@ -262,6 +262,147 @@
     </div>
   </app-ui-card>
 
+  <!-- ═══════════════════════════════════════════════════
+       MCP Institutional Risk & Security Suite (4 Tools)
+       ═══════════════════════════════════════════════════ -->
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 1.5rem;">
+    <!-- Tool 1: evaluate_trade_risk -->
+    <app-ui-card>
+      <app-ui-panel-header icon="🛡️" title="Evaluación Pre-Flight de Trade">
+        <span uiHeaderActions class="badge badge-accent font-mono">MCP: evaluate_trade_risk</span>
+      </app-ui-panel-header>
+
+      <div class="terminal-field" style="margin-bottom: 12px;">
+        <label class="terminal-label" for="preflight-amount">Monto Propuesto (USDT)</label>
+        <div class="input-control-wrap">
+          <input id="preflight-amount" type="number" class="terminal-input font-mono" [value]="preflightTradeAmountUsdt()" (input)="preflightTradeAmountUsdt.set(+$any($event.target).value)" />
+          <span class="input-suffix">USDT</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-secondary btn-sm" (click)="evaluatePreflightRisk()" [disabled]="mcpPreflightEvaluating()" style="width: 100%; margin-bottom: 12px;">
+        {{ mcpPreflightEvaluating() ? 'Evaluando...' : '🔍 Ejecutar Pre-Flight Check' }}
+      </button>
+
+      @if (mcpPreflightResult(); as res) {
+        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.8rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <strong>Veredicto:</strong>
+            <span class="badge" [class.badge-accent]="res.verdict === 'ALLOW'" [class.badge-warning]="res.verdict === 'PAUSE'" [class.badge-danger]="res.verdict === 'DENY'">
+              {{ res.verdict }}
+            </span>
+          </div>
+          <div><span class="text-muted">Motivo:</span> {{ res.reason }}</div>
+          @if (res.ruleChecks) {
+            <div style="margin-top: 6px; font-size: 0.72rem; color: var(--text-muted);">
+              Reglas verificadas: {{ res.ruleChecks.length || 6 }} controles institucionales.
+            </div>
+          }
+        </div>
+      }
+    </app-ui-card>
+
+    <!-- Tool 2: calculate_delta_neutral_hedge -->
+    <app-ui-card>
+      <app-ui-panel-header icon="⚖️" title="Cobertura Delta Neutral (VES)">
+        <span uiHeaderActions class="badge badge-accent font-mono">MCP: delta_neutral_hedge</span>
+      </app-ui-panel-header>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+        <div class="terminal-field">
+          <label class="terminal-label" for="hedge-ves">Saldo Ocioso VES</label>
+          <input id="hedge-ves" type="number" class="terminal-input font-mono" [value]="hedgeVesBalance()" (input)="hedgeVesBalance.set(+$any($event.target).value)" />
+        </div>
+        <div class="terminal-field">
+          <label class="terminal-label" for="hedge-ref">Tasa USDT</label>
+          <input id="hedge-ref" type="number" class="terminal-input font-mono" [value]="hedgeUsdtRefPrice()" (input)="hedgeUsdtRefPrice.set(+$any($event.target).value)" />
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-secondary btn-sm" (click)="calculateDeltaHedge()" [disabled]="mcpHedgeCalculating()" style="width: 100%; margin-bottom: 12px;">
+        {{ mcpHedgeCalculating() ? 'Calculando...' : '⚡ Calcular Cobertura Corta' }}
+      </button>
+
+      @if (mcpHedgeResult(); as h) {
+        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.8rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Short Hedge Requerido:</span>
+            <strong class="font-mono" style="color: var(--gold-strong);">{{ h.shortHedgeUsdt || h.requiredShortUsdt }} USDT</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Instrumento Sugerido:</span>
+            <span>{{ h.recommendedInstrument || 'USDT-M Perpetual / Short Spot' }}</span>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-muted);">
+            Inmuniza el saldo en bolívares ante devaluación del tipo de cambio.
+          </div>
+        </div>
+      }
+    </app-ui-card>
+
+    <!-- Tool 3: consult_zk_market_mesh -->
+    <app-ui-card>
+      <app-ui-panel-header icon="🔒" title="Consulta Privada ZK Market Mesh">
+        <span uiHeaderActions class="badge badge-accent font-mono">MCP: zk_mesh</span>
+      </app-ui-panel-header>
+
+      <div class="terminal-field" style="margin-bottom: 10px;">
+        <label class="terminal-label" for="zk-query">ID / Teléfono / Alias de Contraparte</label>
+        <input id="zk-query" type="text" class="terminal-input font-mono" [value]="zkCounterpartyQuery()" (input)="zkCounterpartyQuery.set($any($event.target).value)" placeholder="Ej. V-12345678 o @trader_alias" />
+      </div>
+
+      <button type="button" class="btn btn-secondary btn-sm" (click)="queryZkMarketMesh()" [disabled]="mcpZkLoading()" style="width: 100%; margin-bottom: 12px;">
+        {{ mcpZkLoading() ? 'Consultando Malla ZK...' : '🕵️ Verificar Blind Hash' }}
+      </button>
+
+      @if (mcpZkResult(); as zk) {
+        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #38bdf8; font-size: 0.8rem;">
+          <div style="margin-bottom: 4px; font-size: 0.72rem; word-break: break-all;" class="font-mono text-muted">
+            Blind Hash: {{ zk.blindHash }}
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Score Reputación:</span>
+            <strong class="font-mono" [style.color]="(zk.riskScore ?? 95) > 50 ? '#ef4444' : '#4ade80'">{{ zk.riskScore ?? 95 }}/100</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Recomendación:</span>
+            <span class="badge badge-accent" style="font-size: 0.65rem;">{{ zk.recommendation || 'VERIFICADO_LIMPIO' }}</span>
+          </div>
+        </div>
+      }
+    </app-ui-card>
+
+    <!-- Tool 4: trigger_killswitch -->
+    <app-ui-card>
+      <app-ui-panel-header icon="🚨" title="Killswitch Institucional de Emergencia">
+        <span uiHeaderActions class="badge badge-danger font-mono">MCP: killswitch</span>
+      </app-ui-panel-header>
+
+      @if (!killswitchActive()) {
+        <div class="terminal-field" style="margin-bottom: 8px;">
+          <label class="terminal-label" for="ks-reason">Motivo de Parada</label>
+          <input id="ks-reason" type="text" class="terminal-input" [value]="killswitchReason()" (input)="killswitchReason.set($any($event.target).value)" />
+        </div>
+        <div class="terminal-field" style="margin-bottom: 12px;">
+          <label class="terminal-label" for="ks-challenge">Escribe "CONFIRMAR-FREEZE" para desbloquear</label>
+          <input id="ks-challenge" type="text" class="terminal-input font-mono" [value]="killswitchChallenge()" (input)="killswitchChallenge.set($any($event.target).value)" placeholder="CONFIRMAR-FREEZE" />
+        </div>
+
+        <button type="button" class="btn btn-danger btn-sm" (click)="activateKillswitch()" [disabled]="mcpKillswitchLoading() || killswitchChallenge() !== 'CONFIRMAR-FREEZE'" style="width: 100%;">
+          {{ mcpKillswitchLoading() ? 'Activando...' : '🛑 ACTIVAR KILLSWITCH INMEDIATO' }}
+        </button>
+      } @else {
+        <div style="padding: 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius); text-align: center;">
+          <strong style="color: #ef4444; font-size: 0.95rem; display: block; margin-bottom: 6px;">CIRCUITO DE SEGURIDAD ACTIVADO</strong>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px;">Todas las operaciones están bloqueadas y la API está en modo CAÍDA.</p>
+          <button type="button" class="btn btn-secondary btn-sm" (click)="resetKillswitch()">
+            Restablecer Operatividad
+          </button>
+        </div>
+      }
+    </app-ui-card>
+  </div>
+
   <div class="section-divider"></div>
   <div class="verdict-card">
     <span class="section-eyebrow">Veredicto del Motor</span>

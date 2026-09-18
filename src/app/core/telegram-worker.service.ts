@@ -199,7 +199,7 @@ export class TelegramWorkerService implements OnDestroy {
           }
           this.persistOffset();
         }
-      } catch (_err: unknown) {
+      } catch {
         if (this.abortController?.signal.aborted) {
           break;
         }
@@ -297,7 +297,7 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'BCV': {
-        const [depth, _rates] = await Promise.all([
+        const [depth] = await Promise.all([
           this.getFreshMarketDepth(),
           this.cotizave.fetchRates().catch(() => undefined),
         ]);
@@ -428,7 +428,7 @@ export class TelegramWorkerService implements OnDestroy {
       });
 
       await this.sendTelegramMessage(token, chatId, msg);
-    } catch (_err: unknown) {
+    } catch {
       const errorMsg = `⚠️ *ERROR AL AUDITAR COMPROBANTE*: No se pudo extraer el texto o conectar con la imagen\\.`;
       await this.sendTelegramMessage(token, chatId, errorMsg);
     }

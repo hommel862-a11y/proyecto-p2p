@@ -2,12 +2,15 @@ import { SimulateTradeImpactInputSchema, type SimulateTradeImpactInput } from '.
 
 export const simulateTradeImpactTool = {
   name: 'simulate_trade_impact',
-  description: 'Simula el impacto de una orden en la exposición acumulada y alerta si violaría límites diarios.',
+  description:
+    'Simula el impacto de una orden en la exposición acumulada y alerta si violaría límites diarios.',
   inputSchema: SimulateTradeImpactInputSchema,
   execute: (input: SimulateTradeImpactInput) => {
     const projectedExposure = input.currentExposureUsdt + input.proposedTradeAmountUsdt;
     const limitExceeded = projectedExposure > input.maxDailyExposureLimitUsdt;
-    const exposureUtilizationPct = Number(((projectedExposure / input.maxDailyExposureLimitUsdt) * 100).toFixed(1));
+    const exposureUtilizationPct = Number(
+      ((projectedExposure / input.maxDailyExposureLimitUsdt) * 100).toFixed(1),
+    );
 
     const wouldTrigger: string[] = [];
     if (limitExceeded) {
@@ -17,7 +20,10 @@ export const simulateTradeImpactTool = {
       wouldTrigger.push('MAX_CONSECUTIVE_LOSSES_TRIGGERED');
     }
 
-    const maxSafeRemainingUsdt = Math.max(0, input.maxDailyExposureLimitUsdt - input.currentExposureUsdt);
+    const maxSafeRemainingUsdt = Math.max(
+      0,
+      input.maxDailyExposureLimitUsdt - input.currentExposureUsdt,
+    );
 
     return {
       currentExposureUsdt: input.currentExposureUsdt,

@@ -17,7 +17,7 @@ export function createP2PMcpServer(): McpServer {
       tool.name,
       tool.description,
       tool.inputSchema.shape,
-      async (args: any, extra: any) => {
+      async (args: any, _extra: any) => {
         // Enforce rate limiting per tool (e.g. max 60 calls/min)
         if (!rateLimiter.checkLimit(tool.name, 60)) {
           return {
@@ -80,22 +80,18 @@ export function createP2PMcpServer(): McpServer {
 
   // 2. Register Resources
   for (const res of ALL_MCP_RESOURCES) {
-    server.resource(
-      res.name,
-      res.uri,
-      async () => {
-        const data = await res.read();
-        return {
-          contents: [
-            {
-              uri: res.uri,
-              mimeType: res.mimeType,
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
-        };
-      },
-    );
+    server.resource(res.name, res.uri, async () => {
+      const data = await res.read();
+      return {
+        contents: [
+          {
+            uri: res.uri,
+            mimeType: res.mimeType,
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    });
   }
 
   // 3. Register Prompts

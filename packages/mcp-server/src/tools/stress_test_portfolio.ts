@@ -3,7 +3,8 @@ import { StressTestPortfolioInputSchema, type StressTestPortfolioInput } from '.
 
 export const stressTestPortfolioTool = {
   name: 'stress_test_portfolio',
-  description: 'Evalúa la resiliencia del capital P2P ante devaluaciones del bolívar o saltos del paralelo (5%, 10%, 20%), calculando drawdowns proyectados y cobertura Delta-Neutral necesaria.',
+  description:
+    'Evalúa la resiliencia del capital P2P ante devaluaciones del bolívar o saltos del paralelo (5%, 10%, 20%), calculando drawdowns proyectados y cobertura Delta-Neutral necesaria.',
   inputSchema: StressTestPortfolioInputSchema,
   execute: (input: StressTestPortfolioInput) => {
     const result = runPortfolioStressTest({

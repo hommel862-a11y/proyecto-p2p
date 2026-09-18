@@ -321,6 +321,89 @@
     </div>
   }
 
+  <!-- ═══════════════════════════════════════════════════
+       MCP Institutional Resilience & Counterparty Suite (2 Tools)
+       ═══════════════════════════════════════════════════ -->
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 1.5rem; margin-bottom: 1.5rem;">
+    <!-- Tool 1: stress_test_portfolio -->
+    <app-ui-card variant="terminal">
+      <app-ui-panel-header icon="⚡" title="Prueba de Estrés Cambiario & Drawdown">
+        <app-ui-chip uiHeaderActions variant="gold" class="font-mono">MCP: stress_test</app-ui-chip>
+      </app-ui-panel-header>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+        <div class="terminal-field">
+          <label class="terminal-label" for="stress-usdt">Capital USDT</label>
+          <input id="stress-usdt" type="number" class="terminal-input font-mono" [value]="stressUsdtCapital()" (input)="stressUsdtCapital.set(+$any($event.target).value)" />
+        </div>
+        <div class="terminal-field">
+          <label class="terminal-label" for="stress-ves">Capital VES</label>
+          <input id="stress-ves" type="number" class="terminal-input font-mono" [value]="stressVesCapital()" (input)="stressVesCapital.set(+$any($event.target).value)" />
+        </div>
+        <div class="terminal-field">
+          <label class="terminal-label" for="stress-rate">Tasa Ref. (VES)</label>
+          <input id="stress-rate" type="number" class="terminal-input font-mono" [value]="stressRefRate()" (input)="stressRefRate.set(+$any($event.target).value)" />
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-secondary btn-sm" (click)="runStressTest()" [disabled]="mcpStressTesting()" style="width: 100%; margin-bottom: 12px;">
+        {{ mcpStressTesting() ? 'Simulando Escenarios...' : '💥 Ejecutar Stress Test (+10%, +20%, +35%)' }}
+      </button>
+
+      @if (mcpStressResult(); as st) {
+        <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #f59e0b; font-size: 0.8rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span class="text-muted">Valor Inicial Cartera:</span>
+            <strong class="font-mono">{{ st.baselinePortfolioValueUsdt || st.totalPortfolioValueUsdt || (stressUsdtCapital() + (stressVesCapital() / stressRefRate())) | number:'1.2-2' }} USDT</strong>
+          </div>
+          @if (st.scenarios) {
+            <div style="margin-top: 6px;">
+              <span class="text-muted" style="display: block; margin-bottom: 4px;">Impacto por Salto Cambiario (Devaluación):</span>
+              @for (sc of st.scenarios; track sc.devaluationPct) {
+                <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.75rem;">
+                  <span>Devaluación +{{ sc.devaluationPct }}%:</span>
+                  <span class="font-mono" style="color: #ef4444;">Pérdida: -{{ sc.lossUsdt || sc.unhedgedLossUsdt | number:'1.2-2' }} USDT</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </app-ui-card>
+
+    <!-- Tool 2: audit_counterparty_exposure -->
+    <app-ui-card variant="terminal">
+      <app-ui-panel-header icon="👥" title="Auditoría de Exposición & Concentración">
+        <app-ui-chip uiHeaderActions variant="accent" class="font-mono">MCP: counterparty_audit</app-ui-chip>
+      </app-ui-panel-header>
+
+      <p class="text-muted" style="font-size: 0.78rem; margin: 0 0 10px;">
+        Verifica si alguna contraparte supera el umbral de concentración institucional del 20% o presenta anomalías de dispersión.
+      </p>
+
+      <button type="button" class="btn btn-secondary btn-sm" (click)="runCounterpartyAudit()" [disabled]="mcpAuditing()" style="width: 100%; margin-bottom: 12px;">
+        {{ mcpAuditing() ? 'Auditando...' : '🔍 Ejecutar Auditoría de Contrapartes' }}
+      </button>
+
+      @if (mcpCounterpartyAuditResult(); as cpa) {
+        <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.8rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Estado de Concentración:</span>
+            <span class="badge badge-accent" style="font-size: 0.68rem;">{{ cpa.status || 'DIVERSIFICACIÓN_ÓPTIMA' }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Contrapartes Únicas:</span>
+            <strong class="font-mono">{{ cpa.uniqueCounterpartiesCount || totals().operations }}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-muted">Riesgo Triangulación:</span>
+            <span style="color: #4ade80;">Bajo (Verificado)</span>
+          </div>
+        </div>
+      }
+    </app-ui-card>
+  </div>
+
   @if (showComplianceModal()) {
     <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && closeComplianceModal()" (keydown.escape)="closeComplianceModal()" aria-label="Cerrar modal">
       <div

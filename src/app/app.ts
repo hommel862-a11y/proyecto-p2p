@@ -82,7 +82,8 @@ export class App {
 
   toggleTheme(): void {
     const current = this.theme();
-    const next: AppTheme = current === 'dark' ? 'apple-dark' : current === 'apple-dark' ? 'light' : 'dark';
+    const next: AppTheme =
+      current === 'dark' ? 'apple-dark' : current === 'apple-dark' ? 'light' : 'dark';
     this.theme.set(next);
     try {
       localStorage.setItem('p2p.theme', next);

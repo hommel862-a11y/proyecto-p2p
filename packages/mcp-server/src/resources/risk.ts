@@ -17,7 +17,11 @@ async function ipcCall(channel: string, args: unknown): Promise<Record<string, u
       channel,
       args: [args],
     });
-    return (result?.data as Record<string, unknown>) ?? { error: result?.error ?? `${channel} unavailable` };
+    return (
+      (result?.data as Record<string, unknown>) ?? {
+        error: result?.error ?? `${channel} unavailable`,
+      }
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'IPC bridge error' };
   }
@@ -89,12 +93,14 @@ export const counterpartyResource: RiskResource = {
   name: 'counterparty-profile',
   uri: 'p2p://risk/counterparty/{id}',
   title: 'Counterparty Risk Profile',
-  description: 'Perfil de riesgo de una contraparte específica: historial, dispute rate, trust score',
+  description:
+    'Perfil de riesgo de una contraparte específica: historial, dispute rate, trust score',
   mimeType: 'application/json',
   read: async () => ({
     source: 'p2p_risk_engine',
     timestamp: Date.now(),
-    message: 'Este recurso requiere un ID de contraparte. Use la tool evaluate_trade_risk con counterpartyScore.',
+    message:
+      'Este recurso requiere un ID de contraparte. Use la tool evaluate_trade_risk con counterpartyScore.',
   }),
 };
 

@@ -138,14 +138,18 @@ export class ReceiptScanner {
       window as unknown as {
         electron?: {
           screenPipe?: {
-            capture: (sourceId?: string) => Promise<{ dataUrl: string; timestampMs: number } | null>;
+            capture: (
+              sourceId?: string,
+            ) => Promise<{ dataUrl: string; timestampMs: number } | null>;
           };
         };
       }
     ).electron;
 
     if (!electron?.screenPipe) {
-      this.toast.warn('La captura Screen Pipe solo está disponible en el ejecutable de escritorio Electron.');
+      this.toast.warn(
+        'La captura Screen Pipe solo está disponible en el ejecutable de escritorio Electron.',
+      );
       return;
     }
 

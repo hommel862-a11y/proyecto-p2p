@@ -35,7 +35,8 @@ export const addOperationEntryTool = {
         recorded: false,
         requiresHumanConfirmation: true,
         challengeToken,
-        message: 'Acción de escritura en Ledger protegida. Reenvía con humanConfirm: true y el challengeToken.',
+        message:
+          'Acción de escritura en Ledger protegida. Reenvía con humanConfirm: true y el challengeToken.',
       };
     }
 

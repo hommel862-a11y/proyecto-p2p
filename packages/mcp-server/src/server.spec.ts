@@ -210,7 +210,7 @@ describe('P2P MCP Server Suite', () => {
     it('calculate_rate_gap accurately identifies gap and risk zones', () => {
       // Normal gap (~15%)
       const normal = calculateRateGapTool.execute({
-        parallelRate: 78.70,
+        parallelRate: 78.7,
         bcvRate: 68.45,
       });
       expect(normal.gapPct).toBeCloseTo(14.97, 1);
@@ -255,7 +255,7 @@ describe('P2P MCP Server Suite', () => {
       });
 
       expect(buyOrder.side).toBe('BUY');
-      expect(buyOrder.suggestedPrice).toBe(78.80); // 80 * (1 - 0.015)
+      expect(buyOrder.suggestedPrice).toBe(78.8); // 80 * (1 - 0.015)
       expect(buyOrder.suggestedPrice).toBeLessThan(buyOrder.referenceMidRate);
 
       const sellOrder = autofillTradeReferenceTool.execute({
@@ -265,7 +265,7 @@ describe('P2P MCP Server Suite', () => {
       });
 
       expect(sellOrder.side).toBe('SELL');
-      expect(sellOrder.suggestedPrice).toBe(81.20); // 80 * (1 + 0.015)
+      expect(sellOrder.suggestedPrice).toBe(81.2); // 80 * (1 + 0.015)
       expect(sellOrder.suggestedPrice).toBeGreaterThan(sellOrder.referenceMidRate);
     });
   });
@@ -307,7 +307,7 @@ describe('P2P MCP Server Suite', () => {
 
     it('detect_usdt_depeg monitors parity deviations and alerts on critical depegs', () => {
       // Normal pegged state ($1.000)
-      const normal = detectUsdtDepegTool.execute({ spotUsdtPrice: 1.000, thresholdPct: 0.2 });
+      const normal = detectUsdtDepegTool.execute({ spotUsdtPrice: 1.0, thresholdPct: 0.2 });
       expect(normal.status).toBe('PEGGED');
       expect(normal.isDepegged).toBe(false);
       expect(normal.riskSeverity).toBe('NONE');
@@ -351,9 +351,9 @@ describe('P2P MCP Server Suite', () => {
         side: 'SELL',
         strategy: 'TOP_1',
         stepVes: 0.01,
-        breakEvenPrice: 80.00,
+        breakEvenPrice: 80.0,
       });
-      expect(constrainedSell.suggestedPrice).toBe(80.00);
+      expect(constrainedSell.suggestedPrice).toBe(80.0);
       expect(constrainedSell.isWithinSafeBoundaries).toBe(false);
       expect(constrainedSell.advice).toContain('ADVERTENCIA');
     });
@@ -393,7 +393,7 @@ describe('P2P MCP Server Suite', () => {
       const spotResource = cryptoResources.find((r) => r.uri === 'p2p://market/spot/volatility');
       expect(spotResource).toBeDefined();
       const spotData = (await spotResource?.read()) as any;
-      expect(spotData.spotUsdtPrice).toBe(1.000);
+      expect(spotData.spotUsdtPrice).toBe(1.0);
       expect(spotData.status).toBe('PEGGED');
     });
   });
@@ -466,7 +466,9 @@ describe('P2P MCP Server Suite', () => {
 
   describe('Phase 4 Resources: Portfolio Endpoints', () => {
     it('portfolioResources expose stress scenarios and allocation distribution', async () => {
-      const stressResource = portfolioResources.find((r) => r.uri === 'p2p://portfolio/stress-scenarios');
+      const stressResource = portfolioResources.find(
+        (r) => r.uri === 'p2p://portfolio/stress-scenarios',
+      );
       expect(stressResource).toBeDefined();
       const stressData = (await stressResource?.read()) as any;
       expect(stressData.scenarios.length).toBe(3);
@@ -480,5 +482,3 @@ describe('P2P MCP Server Suite', () => {
     });
   });
 });
-
-

@@ -22,6 +22,19 @@ import { stressTestPortfolioTool } from './stress_test_portfolio.js';
 import { rebalanceCapitalAllocationTool } from './rebalance_capital_allocation.js';
 import { auditCounterpartyExposureTool } from './audit_counterparty_exposure.js';
 import { projectCompoundRunwayTool } from './project_compound_runway.js';
+// Phase 5: Google Workspace Integration (p2p-google-workspace)
+import { gdriveBackupReceiptTool } from './gdrive_backup_receipt.js';
+import { gsheetsSyncTradeTool } from './gsheets_sync_trade.js';
+import { gdriveSyncDbBackupTool } from './gdrive_sync_db_backup.js';
+// Institutional 10 MCP Servers: New High-Impact Tools
+import { screenWalletAddressTool } from './screen_wallet_address.js';
+import { inspectTxTaintTool } from './inspect_tx_taint.js';
+import { fetchCrossExchangeSpreadTool } from './fetch_cross_exchange_spread.js';
+import { verifyInboundTransferTool } from './verify_inbound_transfer.js';
+import { compileDisputeDossierTool } from './compile_dispute_dossier.js';
+import { evaluateAccountSaturationTool } from './evaluate_account_saturation.js';
+import { dispatchOrderInstructionsTool } from './dispatch_order_instructions.js';
+import { lookupCounterpartyReputationTool } from './lookup_counterparty_reputation.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -48,6 +61,19 @@ export const ALL_MCP_TOOLS = [
   rebalanceCapitalAllocationTool,
   auditCounterpartyExposureTool,
   projectCompoundRunwayTool,
+  // Phase 5: Google Workspace
+  gdriveBackupReceiptTool,
+  gsheetsSyncTradeTool,
+  gdriveSyncDbBackupTool,
+  // Institutional 10 MCP Servers
+  screenWalletAddressTool,
+  inspectTxTaintTool,
+  fetchCrossExchangeSpreadTool,
+  verifyInboundTransferTool,
+  compileDisputeDossierTool,
+  evaluateAccountSaturationTool,
+  dispatchOrderInstructionsTool,
+  lookupCounterpartyReputationTool,
 ];
 
 export {
@@ -75,7 +101,18 @@ export {
   rebalanceCapitalAllocationTool,
   auditCounterpartyExposureTool,
   projectCompoundRunwayTool,
+  // Phase 5: Google Workspace
+  gdriveBackupReceiptTool,
+  gsheetsSyncTradeTool,
+  gdriveSyncDbBackupTool,
+  // Institutional 10 MCP Servers
+  screenWalletAddressTool,
+  inspectTxTaintTool,
+  fetchCrossExchangeSpreadTool,
+  verifyInboundTransferTool,
+  compileDisputeDossierTool,
+  evaluateAccountSaturationTool,
+  dispatchOrderInstructionsTool,
+  lookupCounterpartyReputationTool,
 };
-
-
 

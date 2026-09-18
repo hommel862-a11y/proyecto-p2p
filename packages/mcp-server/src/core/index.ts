@@ -14,8 +14,8 @@ export function computeSha256(data: string): string {
 // ─── Spread Engine ────────────────────────────────────────────────────────────
 
 export interface SpreadResult {
-  unitSpread: number;   // Diferencia bruta en VES por 1 USDT (sell - buy)
-  netGainVes: number;   // Ganancia neta en VES para el ticket dado
+  unitSpread: number; // Diferencia bruta en VES por 1 USDT (sell - buy)
+  netGainVes: number; // Ganancia neta en VES para el ticket dado
 }
 
 /**
@@ -172,11 +172,7 @@ export class ZkMarketMesh {
   /**
    * Añade un identificador fichado (solo-hash, nunca el original).
    */
-  addFlaggedIdentifier(
-    rawIdentifier: string,
-    saltDomain: string,
-    threat: ThreatRecord,
-  ): void {
+  addFlaggedIdentifier(rawIdentifier: string, saltDomain: string, threat: ThreatRecord): void {
     const hash = generateBlindHash(rawIdentifier, saltDomain);
     this.flagged.set(hash, threat);
   }
@@ -189,7 +185,7 @@ export class ZkMarketMesh {
     const threat = this.flagged.get(hash) ?? null;
 
     if (threat) {
-      const confidence = Math.min(0.95, 0.5 + (threat.confirmations * 0.15));
+      const confidence = Math.min(0.95, 0.5 + threat.confirmations * 0.15);
       return {
         isMatch: true,
         confidenceScore: Number(confidence.toFixed(2)),
@@ -256,7 +252,11 @@ export interface BcvMarketIntelligence {
 /**
  * Convierte una fecha a hora oficial de Venezuela (VET: UTC-4 estricto).
  */
-export function getVenezuelaTimeParts(date: Date = new Date()): { day: number; hour: number; minute: number } {
+export function getVenezuelaTimeParts(date: Date = new Date()): {
+  day: number;
+  hour: number;
+  minute: number;
+} {
   const utc = date.getTime() + date.getTimezoneOffset() * 60000;
   const vetDate = new Date(utc - 4 * 3600000);
   return {
@@ -289,16 +289,19 @@ export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAn
 
   if (gapPct < 10) {
     zone = 'COMPRESSED';
-    description = 'Brecha comprimida (<10%). Fuerte control cambiario o post-inyección masiva de divisas.';
+    description =
+      'Brecha comprimida (<10%). Fuerte control cambiario o post-inyección masiva de divisas.';
   } else if (gapPct <= 25) {
     zone = 'NORMAL';
     description = 'Brecha dentro del rango estructural histórico (10% - 25%). Operativa estándar.';
   } else if (gapPct <= 35) {
     zone = 'ELEVATED';
-    description = 'Brecha elevada (25% - 35%). Alta presión en paralelo; alta probabilidad de inyección BCV correctiva.';
+    description =
+      'Brecha elevada (25% - 35%). Alta presión en paralelo; alta probabilidad de inyección BCV correctiva.';
   } else {
     zone = 'CRITICAL_DISPERSION';
-    description = 'Dispersión crítica (>35%). Riesgo cambiario severo; inminente ajuste de tasa oficial o intervención urgente.';
+    description =
+      'Dispersión crítica (>35%). Riesgo cambiario severo; inminente ajuste de tasa oficial o intervención urgente.';
   }
 
   return {
@@ -319,10 +322,10 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
   const isInterventionDay = day === 1 || day === 4; // Lunes principal, Jueves refuerzo
 
   let phase: InterventionPhase;
-  let probabilityPct = 50;
-  let nextExpectedIntervention = 'Próximo Lunes 09:30 AM VET';
-  let hoursUntilIntervention = 0;
-  let rationale = '';
+  let probabilityPct: number;
+  let nextExpectedIntervention: string;
+  let hoursUntilIntervention: number;
+  let rationale: string;
 
   if (isInterventionDay && hour >= 9 && hour <= 13) {
     phase = 'INTERVENTION_ACTIVE';
@@ -330,24 +333,33 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
     nextExpectedIntervention = 'En curso actualmente';
     hoursUntilIntervention = 0;
     rationale = `Inyección de divisas en curso en la banca comercial (${day === 1 ? 'Lunes principal' : 'Jueves de refuerzo'}). Contención artificial de tasas.`;
-  } else if ((day === 0 && hour >= 16) || (day === 1 && hour < 9) || (day === 3 && hour >= 18) || (day === 4 && hour < 9)) {
+  } else if (
+    (day === 0 && hour >= 16) ||
+    (day === 1 && hour < 9) ||
+    (day === 3 && hour >= 18) ||
+    (day === 4 && hour < 9)
+  ) {
     phase = 'PRE_INTERVENTION_COMPRESSION';
     probabilityPct = 80;
-    nextExpectedIntervention = day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
+    nextExpectedIntervention =
+      day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
     hoursUntilIntervention = day === 1 || day === 4 ? Math.max(1, 9 - hour) : 12;
-    rationale = 'Ventana pre-intervención. Expectativa de colocación bancaria de divisas en las próximas horas.';
+    rationale =
+      'Ventana pre-intervención. Expectativa de colocación bancaria de divisas en las próximas horas.';
   } else if ((isInterventionDay && hour > 13) || day === 2 || day === 5) {
     phase = 'POST_INTERVENTION_REBOUND';
     probabilityPct = 75;
     nextExpectedIntervention = day <= 2 ? 'Jueves 09:30 AM VET' : 'Próximo Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 2 ? 40 : day === 5 ? 65 : 20;
-    rationale = 'Ventana post-intervención. Las divisas de la subasta son absorbidas y el spread suele rebotar al alza.';
+    rationale =
+      'Ventana post-intervención. Las divisas de la subasta son absorbidas y el spread suele rebotar al alza.';
   } else {
     phase = 'QUIET_ACCUMULATION';
     probabilityPct = 40;
     nextExpectedIntervention = day === 3 ? 'Jueves 09:30 AM VET' : 'Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 3 ? 18 : 36;
-    rationale = 'Mercado fuera de subastas bancarias oficiales. Cotizaciones operan por oferta y demanda pura.';
+    rationale =
+      'Mercado fuera de subastas bancarias oficiales. Cotizaciones operan por oferta y demanda pura.';
   }
 
   return {
@@ -378,15 +390,22 @@ export function getBcvMarketIntelligence(
       action: 'DEFENSIVE_HEDGE',
       rationale: `Dispersión crítica (${gap.gapPct}%). Riesgo cambiario inminente. Blindaje 100% USDT.`,
     };
-  } else if (window.phase === 'PRE_INTERVENTION_COMPRESSION' && (gap.zone === 'ELEVATED' || gap.gapPct >= 22)) {
+  } else if (
+    window.phase === 'PRE_INTERVENTION_COMPRESSION' &&
+    (gap.zone === 'ELEVATED' || gap.gapPct >= 22)
+  ) {
     recommendation = {
       action: 'EXPAND_SPREAD',
       rationale: `Brecha caliente (${gap.gapPct}%) previa a subasta. Maximizar captura en puntas altas.`,
     };
-  } else if (window.phase === 'INTERVENTION_ACTIVE' || window.phase === 'POST_INTERVENTION_REBOUND') {
+  } else if (
+    window.phase === 'INTERVENTION_ACTIVE' ||
+    window.phase === 'POST_INTERVENTION_REBOUND'
+  ) {
     recommendation = {
       action: 'BUY_USDT_DIP',
-      rationale: 'Freno artificial por inyección de divisas. Oportunidad para acumular USDT antes del rebote.',
+      rationale:
+        'Freno artificial por inyección de divisas. Oportunidad para acumular USDT antes del rebote.',
     };
   } else {
     recommendation = {
@@ -426,7 +445,7 @@ export function getOfficialBcvRates(cacheFallback = true): OfficialBcvRates {
   // Tasas oficiales calibradas
   return {
     usd: 68.45,
-    eur: 74.20,
+    eur: 74.2,
     cny: 9.42,
     rub: 0.76,
     effectiveDate,
@@ -463,10 +482,10 @@ export function getParallelRatesFeed(requestedSources?: string[]): ParallelRates
   const now = new Date().toISOString();
 
   const baselineData: Record<string, { ask: number; bid: number }> = {
-    binance_p2p: { ask: 79.80, bid: 78.90 },
-    criptonoticias: { ask: 80.20, bid: 79.10 },
-    enparalelovzla: { ask: 80.50, bid: 79.40 },
-    cotizave: { ask: 79.70, bid: 78.80 },
+    binance_p2p: { ask: 79.8, bid: 78.9 },
+    criptonoticias: { ask: 80.2, bid: 79.1 },
+    enparalelovzla: { ask: 80.5, bid: 79.4 },
+    cotizave: { ask: 79.7, bid: 78.8 },
   };
 
   const sources: Record<string, ParallelRateEntry> = {};
@@ -497,15 +516,15 @@ export function getParallelRatesFeed(requestedSources?: string[]): ParallelRates
     bids.push(val.bid);
   }
 
-  const averageMid = mids.length > 0
-    ? Math.round((mids.reduce((a, b) => a + b, 0) / mids.length) * 100) / 100
-    : 79.50;
+  const averageMid =
+    mids.length > 0
+      ? Math.round((mids.reduce((a, b) => a + b, 0) / mids.length) * 100) / 100
+      : 79.5;
 
-  const highestAsk = asks.length > 0 ? Math.max(...asks) : 80.50;
-  const lowestBid = bids.length > 0 ? Math.min(...bids) : 78.80;
-  const dispersionPct = averageMid > 0
-    ? Math.round(((highestAsk - lowestBid) / averageMid) * 10000) / 100
-    : 0;
+  const highestAsk = asks.length > 0 ? Math.max(...asks) : 80.5;
+  const lowestBid = bids.length > 0 ? Math.min(...bids) : 78.8;
+  const dispersionPct =
+    averageMid > 0 ? Math.round(((highestAsk - lowestBid) / averageMid) * 10000) / 100 : 0;
 
   return {
     timestamp: now,
@@ -605,28 +624,118 @@ export function getBinanceP2POrderbookSnapshot(
   // Buy offers (Makers que compran USDT / los takers les venden)
   // Ordenados de mayor a menor precio
   const baseBuyOffers: BinanceP2POffer[] = [
-    { advNo: 'ADV-BUY-001', merchantName: 'OroVerde_Express', price: 79.20, availableCrypto: 4500, minFiat: 1000, maxFiat: 350000, monthFinishRate: 99.4, monthOrderCount: 1420 },
-    { advNo: 'ADV-BUY-002', merchantName: 'CaracasExchange', price: 79.15, availableCrypto: 3200, minFiat: 2500, maxFiat: 250000, monthFinishRate: 98.8, monthOrderCount: 890 },
-    { advNo: 'ADV-BUY-003', merchantName: 'BolivarDigital_Pro', price: 79.10, availableCrypto: 6100, minFiat: 1500, maxFiat: 480000, monthFinishRate: 99.1, monthOrderCount: 2150 },
-    { advNo: 'ADV-BUY-004', merchantName: 'VzlaFastPay', price: 79.05, availableCrypto: 2800, minFiat: 500, maxFiat: 220000, monthFinishRate: 97.9, monthOrderCount: 640 },
-    { advNo: 'ADV-BUY-005', merchantName: 'SolidoP2P', price: 79.00, availableCrypto: 5000, minFiat: 3000, maxFiat: 395000, monthFinishRate: 99.5, monthOrderCount: 3100 },
+    {
+      advNo: 'ADV-BUY-001',
+      merchantName: 'OroVerde_Express',
+      price: 79.2,
+      availableCrypto: 4500,
+      minFiat: 1000,
+      maxFiat: 350000,
+      monthFinishRate: 99.4,
+      monthOrderCount: 1420,
+    },
+    {
+      advNo: 'ADV-BUY-002',
+      merchantName: 'CaracasExchange',
+      price: 79.15,
+      availableCrypto: 3200,
+      minFiat: 2500,
+      maxFiat: 250000,
+      monthFinishRate: 98.8,
+      monthOrderCount: 890,
+    },
+    {
+      advNo: 'ADV-BUY-003',
+      merchantName: 'BolivarDigital_Pro',
+      price: 79.1,
+      availableCrypto: 6100,
+      minFiat: 1500,
+      maxFiat: 480000,
+      monthFinishRate: 99.1,
+      monthOrderCount: 2150,
+    },
+    {
+      advNo: 'ADV-BUY-004',
+      merchantName: 'VzlaFastPay',
+      price: 79.05,
+      availableCrypto: 2800,
+      minFiat: 500,
+      maxFiat: 220000,
+      monthFinishRate: 97.9,
+      monthOrderCount: 640,
+    },
+    {
+      advNo: 'ADV-BUY-005',
+      merchantName: 'SolidoP2P',
+      price: 79.0,
+      availableCrypto: 5000,
+      minFiat: 3000,
+      maxFiat: 395000,
+      monthFinishRate: 99.5,
+      monthOrderCount: 3100,
+    },
   ];
 
   // Sell offers (Makers que venden USDT / los takers les compran)
   // Ordenados de menor a mayor precio
   const baseSellOffers: BinanceP2POffer[] = [
-    { advNo: 'ADV-SELL-001', merchantName: 'CriptoMaracaibo', price: 79.80, availableCrypto: 5200, minFiat: 1000, maxFiat: 410000, monthFinishRate: 99.6, monthOrderCount: 1850 },
-    { advNo: 'ADV-SELL-002', merchantName: 'TepuyTrader', price: 79.85, availableCrypto: 3800, minFiat: 2000, maxFiat: 300000, monthFinishRate: 98.9, monthOrderCount: 970 },
-    { advNo: 'ADV-SELL-003', merchantName: 'AndesLiquidity', price: 79.90, availableCrypto: 7100, minFiat: 1500, maxFiat: 560000, monthFinishRate: 99.2, monthOrderCount: 2400 },
-    { advNo: 'ADV-SELL-004', merchantName: 'DeltaCapital_Vzla', price: 79.95, availableCrypto: 2900, minFiat: 1000, maxFiat: 230000, monthFinishRate: 97.8, monthOrderCount: 580 },
-    { advNo: 'ADV-SELL-005', merchantName: 'FinanzasGuayana', price: 80.00, availableCrypto: 4500, minFiat: 4000, maxFiat: 360000, monthFinishRate: 99.4, monthOrderCount: 1620 },
+    {
+      advNo: 'ADV-SELL-001',
+      merchantName: 'CriptoMaracaibo',
+      price: 79.8,
+      availableCrypto: 5200,
+      minFiat: 1000,
+      maxFiat: 410000,
+      monthFinishRate: 99.6,
+      monthOrderCount: 1850,
+    },
+    {
+      advNo: 'ADV-SELL-002',
+      merchantName: 'TepuyTrader',
+      price: 79.85,
+      availableCrypto: 3800,
+      minFiat: 2000,
+      maxFiat: 300000,
+      monthFinishRate: 98.9,
+      monthOrderCount: 970,
+    },
+    {
+      advNo: 'ADV-SELL-003',
+      merchantName: 'AndesLiquidity',
+      price: 79.9,
+      availableCrypto: 7100,
+      minFiat: 1500,
+      maxFiat: 560000,
+      monthFinishRate: 99.2,
+      monthOrderCount: 2400,
+    },
+    {
+      advNo: 'ADV-SELL-004',
+      merchantName: 'DeltaCapital_Vzla',
+      price: 79.95,
+      availableCrypto: 2900,
+      minFiat: 1000,
+      maxFiat: 230000,
+      monthFinishRate: 97.8,
+      monthOrderCount: 580,
+    },
+    {
+      advNo: 'ADV-SELL-005',
+      merchantName: 'FinanzasGuayana',
+      price: 80.0,
+      availableCrypto: 4500,
+      minFiat: 4000,
+      maxFiat: 360000,
+      monthFinishRate: 99.4,
+      monthOrderCount: 1620,
+    },
   ];
 
   const buyOffers = baseBuyOffers.slice(0, rows);
   const sellOffers = baseSellOffers.slice(0, rows);
 
-  const topBuyPrice = buyOffers[0]?.price ?? 79.20;
-  const topSellPrice = sellOffers[0]?.price ?? 79.80;
+  const topBuyPrice = buyOffers[0]?.price ?? 79.2;
+  const topSellPrice = sellOffers[0]?.price ?? 79.8;
   const spreadVes = Math.round((topSellPrice - topBuyPrice) * 100) / 100;
   const spreadPct = Math.round(((topSellPrice - topBuyPrice) / topBuyPrice) * 10000) / 100;
 
@@ -665,7 +774,7 @@ export interface UsdtDepegEvaluation {
  * Evalúa si el precio spot global de USDT se ha despegado de la paridad 1:1 con el USD.
  */
 export function detectUsdtDepegParity(
-  spotUsdtPrice = 1.000,
+  spotUsdtPrice = 1.0,
   thresholdPct = 0.2,
 ): UsdtDepegEvaluation {
   const deviation = ((spotUsdtPrice - 1.0) / 1.0) * 100;
@@ -675,7 +784,8 @@ export function detectUsdtDepegParity(
   let status: UsdtDepegStatus = 'PEGGED';
   let isDepegged = false;
   let riskSeverity: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'NONE';
-  let recommendation = 'USDT operando dentro de paridad normal ($1.000 ± 0.2%). Sin riesgo cambiario global.';
+  let recommendation =
+    'USDT operando dentro de paridad normal ($1.000 ± 0.2%). Sin riesgo cambiario global.';
   let arbitrageOpportunity = false;
 
   if (parityDeviationPct < -thresholdPct) {
@@ -741,8 +851,8 @@ export function computeCompetitivePriceRecommendation(input: {
   const targetMarginPct = input.targetMarginPct ?? 1.0;
 
   const orderbook = getBinanceP2POrderbookSnapshot('VES', 'USDT', 5);
-  let competitorPrice = 0;
-  let suggestedPrice = 0;
+  let competitorPrice: number;
+  let suggestedPrice: number;
   let isWithinSafeBoundaries = true;
 
   if (input.side === 'BUY') {
@@ -753,10 +863,9 @@ export function computeCompetitivePriceRecommendation(input: {
     if (strategy === 'TOP_2' && topOffers.length >= 2) targetIndex = 1;
     if (strategy === 'TOP_3' && topOffers.length >= 3) targetIndex = 2;
 
-    competitorPrice = topOffers[targetIndex]?.price ?? 79.20;
-    suggestedPrice = strategy === 'MATCH'
-      ? competitorPrice
-      : Math.round((competitorPrice + stepVes) * 100) / 100;
+    competitorPrice = topOffers[targetIndex]?.price ?? 79.2;
+    suggestedPrice =
+      strategy === 'MATCH' ? competitorPrice : Math.round((competitorPrice + stepVes) * 100) / 100;
 
     // Límite de seguridad: no sobrepagar por encima de techo si se definió
     if (input.breakEvenPrice && suggestedPrice > input.breakEvenPrice) {
@@ -771,10 +880,9 @@ export function computeCompetitivePriceRecommendation(input: {
     if (strategy === 'TOP_2' && topOffers.length >= 2) targetIndex = 1;
     if (strategy === 'TOP_3' && topOffers.length >= 3) targetIndex = 2;
 
-    competitorPrice = topOffers[targetIndex]?.price ?? 79.80;
-    suggestedPrice = strategy === 'MATCH'
-      ? competitorPrice
-      : Math.round((competitorPrice - stepVes) * 100) / 100;
+    competitorPrice = topOffers[targetIndex]?.price ?? 79.8;
+    suggestedPrice =
+      strategy === 'MATCH' ? competitorPrice : Math.round((competitorPrice - stepVes) * 100) / 100;
 
     // Límite de seguridad: nunca vender por debajo del precio de coste (break-even floor)
     if (input.breakEvenPrice && suggestedPrice < input.breakEvenPrice) {
@@ -783,7 +891,7 @@ export function computeCompetitivePriceRecommendation(input: {
     }
   }
 
-  const mid = input.currentMarketMid ?? ((orderbook.topBuyPrice + orderbook.topSellPrice) / 2);
+  const mid = input.currentMarketMid ?? (orderbook.topBuyPrice + orderbook.topSellPrice) / 2;
   const marginVes = Math.round(Math.abs(suggestedPrice - mid) * 100) / 100;
 
   let advice = `${strategy} en lado ${input.side}: fijar anuncio en ${suggestedPrice.toFixed(2)} VES (competidor clave en ${competitorPrice.toFixed(2)} VES).`;
@@ -851,17 +959,19 @@ export function analyzeMicrostructurePressure(
     }
   }
 
-  let actionableInsight = '';
+  let actionableInsight: string;
   if (dominantSide === 'BUY_PRESSURE') {
     actionableInsight = `Fuerte presión compradora (${(ratio * 100).toFixed(1)}% bids). Demanda de USDT sólida; los precios tenderán a subir. Subir anuncios de venta con mayor margen.`;
   } else if (dominantSide === 'SELL_PRESSURE') {
     actionableInsight = `Fuerte presión vendedora (${((1 - ratio) * 100).toFixed(1)}% asks). Exceso de oferta de USDT; riesgo de compresión de precios. Acelerar liquidación de inventario.`;
   } else {
-    actionableInsight = 'Libro de órdenes equilibrado. Flujo bidireccional estable. Rotación continua sin sesgo unidireccional.';
+    actionableInsight =
+      'Libro de órdenes equilibrado. Flujo bidireccional estable. Rotación continua sin sesgo unidireccional.';
   }
 
   if (phantomLiquidityDetected) {
-    actionableInsight += ' ⚠️ ALERTA: Detectada posible liquidez fantasma/spoofing. No ajustar precios agresivamente sobre órdenes de punta extrema.';
+    actionableInsight +=
+      ' ⚠️ ALERTA: Detectada posible liquidez fantasma/spoofing. No ajustar precios agresivamente sobre órdenes de punta extrema.';
   }
 
   return {
@@ -915,19 +1025,22 @@ export function runPortfolioStressTest(input: {
 
   const vesExposureUsdt = Math.round((input.vesCapital / referenceRate) * 100) / 100;
   const baselinePortfolioValueUsdt = Math.round((input.usdtCapital + vesExposureUsdt) * 100) / 100;
-  const vesExposurePct = baselinePortfolioValueUsdt > 0
-    ? Math.round((vesExposureUsdt / baselinePortfolioValueUsdt) * 10000) / 100
-    : 0;
+  const vesExposurePct =
+    baselinePortfolioValueUsdt > 0
+      ? Math.round((vesExposureUsdt / baselinePortfolioValueUsdt) * 10000) / 100
+      : 0;
 
   const unhedgedVesAmount = input.vesCapital * (1 - hedgedPct / 100);
 
   const scenarios: StressScenarioResult[] = scenariosPct.map((d) => {
     const newRate = Math.round(referenceRate * (1 + d / 100) * 100) / 100;
-    const lossUsdt = Math.round(((unhedgedVesAmount / referenceRate) - (unhedgedVesAmount / newRate)) * 100) / 100;
+    const lossUsdt =
+      Math.round((unhedgedVesAmount / referenceRate - unhedgedVesAmount / newRate) * 100) / 100;
     const postStressValue = Math.round((baselinePortfolioValueUsdt - lossUsdt) * 100) / 100;
-    const drawdownPct = baselinePortfolioValueUsdt > 0
-      ? Math.round((lossUsdt / baselinePortfolioValueUsdt) * 10000) / 100
-      : 0;
+    const drawdownPct =
+      baselinePortfolioValueUsdt > 0
+        ? Math.round((lossUsdt / baselinePortfolioValueUsdt) * 10000) / 100
+        : 0;
 
     let solvencyStatus: 'HEALTHY' | 'ELEVATED_DRAWDOWN' | 'CRITICAL_EQUITY_RISK' = 'HEALTHY';
     if (drawdownPct >= 8.0) {
@@ -953,7 +1066,8 @@ export function runPortfolioStressTest(input: {
   if (worstScenario && worstScenario.portfolioDrawdownPct > 5.0) {
     institutionalSummary += `ALERTA: Devaluación del ${worstScenario.devaluationPct}% causaría pérdida de $${worstScenario.lossUsdt} USDT (${worstScenario.portfolioDrawdownPct}% del portafolio). Requiere cobertura corta Delta-Neutral.`;
   } else {
-    institutionalSummary += 'Portafolio con resiliencia cambiaria aceptable bajo los escenarios evaluados.';
+    institutionalSummary +=
+      'Portafolio con resiliencia cambiaria aceptable bajo los escenarios evaluados.';
   }
 
   return {
@@ -991,7 +1105,7 @@ export interface PortfolioRebalancePlan {
     antiPitufeoRule: string;
     regime: string;
   };
-  rebalanceOrders: Array<{ from: string; to: string; amountUsdt: number; reason: string }>;
+  rebalanceOrders: { from: string; to: string; amountUsdt: number; reason: string }[];
   advisoryNotice: string;
 }
 
@@ -1037,7 +1151,8 @@ export function computePortfolioRebalance(input: {
       allocatedCapitalUsdt: Math.round(capital * (p2pPct / 100)),
       allocatedCapitalVes: Math.round(capital * (p2pPct / 100) * rate),
       maxDailyVolumeVes: Math.round(capital * (p2pPct / 100) * rate * 3),
-      roleDescription: 'Capital operativo de rotación rápida para anuncios Maker y toma de liquidez',
+      roleDescription:
+        'Capital operativo de rotación rápida para anuncios Maker y toma de liquidez',
     },
     {
       custodian: 'Banesco Banco Universal',
@@ -1073,23 +1188,27 @@ export function computePortfolioRebalance(input: {
       allocatedCapitalUsdt: Math.round(capital * (reservePct / 100)),
       allocatedCapitalVes: Math.round(capital * (reservePct / 100) * rate),
       maxDailyVolumeVes: 0,
-      roleDescription: 'Fondo de contingencia protegido fuera de plataformas de intercambio activas',
+      roleDescription:
+        'Fondo de contingencia protegido fuera de plataformas de intercambio activas',
     },
   ];
 
   // Dynamic ticket sizing
-  let minTicketUsdt = 100;
-  let maxTicketUsdt = Math.min(2500, Math.max(400, capital * 0.20));
-  let antiPitufeoRule = 'Fraccionar órdenes para mantener tickets entre $100 y $800 USDT para evitar congelamientos preventivos.';
+  const minTicketUsdt = 100;
+  let maxTicketUsdt = Math.min(2500, Math.max(400, capital * 0.2));
+  let antiPitufeoRule =
+    'Fraccionar órdenes para mantener tickets entre $100 y $800 USDT para evitar congelamientos preventivos.';
   let regime = 'MORNING_LIQUIDITY';
 
   if (hour >= 12 && hour <= 15) {
     regime = 'MIDDAY_VOLATILITY';
     maxTicketUsdt = Math.min(1200, capital * 0.12);
-    antiPitufeoRule = 'Ventana de volatilidad mediodía: reducir tamaño máximo de ticket para rotar rápido.';
+    antiPitufeoRule =
+      'Ventana de volatilidad mediodía: reducir tamaño máximo de ticket para rotar rápido.';
   } else if (hour > 18) {
     regime = 'NIGHT_SAME_BANK';
-    antiPitufeoRule = 'Horario nocturno: operar solo transferencias mismo banco sin retenciones interbancarias.';
+    antiPitufeoRule =
+      'Horario nocturno: operar solo transferencias mismo banco sin retenciones interbancarias.';
   }
 
   const minTicketVes = Math.round(minTicketUsdt * rate);
@@ -1130,12 +1249,12 @@ export interface CounterpartyAuditResult {
     topCounterpartySharePct: number;
     exceedsSafeLimit: boolean;
   };
-  flaggedCounterparties: Array<{
+  flaggedCounterparties: {
     alias: string;
     reason: string;
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
     volumeUsdt: number;
-  }>;
+  }[];
   complianceVerdict: 'APPROVED_FOR_TRADING' | 'REQUIRES_DIVERSIFICATION' | 'BLOCKED_FRAUD_RISK';
   recommendations: string[];
 }
@@ -1166,18 +1285,19 @@ export function auditHistoricalCounterpartyRisk(input: {
   const topSharePct = Math.round((topTrader.volumeUsdt / totalVolume) * 10000) / 100;
   const exceedsSafeLimit = topSharePct > maxConcentrationPct;
 
-  const flaggedCounterparties: Array<{
+  const flaggedCounterparties: {
     alias: string;
     reason: string;
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
     volumeUsdt: number;
-  }> = [];
+  }[] = [];
 
   for (const t of mockTrades) {
     if (t.titularMismatch) {
       flaggedCounterparties.push({
         alias: t.alias,
-        reason: 'Alerta de triangulación: nombre del titular de la cuenta bancaria no coincide con el KYC en Binance.',
+        reason:
+          'Alerta de triangulación: nombre del titular de la cuenta bancaria no coincide con el KYC en Binance.',
         riskLevel: 'HIGH',
         volumeUsdt: t.volumeUsdt,
       });
@@ -1196,7 +1316,9 @@ export function auditHistoricalCounterpartyRisk(input: {
   if (exceedsSafeLimit) counterpartyRiskScore += 25;
   if (flaggedCounterparties.some((f) => f.riskLevel === 'HIGH')) counterpartyRiskScore += 35;
 
-  let complianceVerdict: 'APPROVED_FOR_TRADING' | 'REQUIRES_DIVERSIFICATION' | 'BLOCKED_FRAUD_RISK' = 'APPROVED_FOR_TRADING';
+  let complianceVerdict:
+    'APPROVED_FOR_TRADING' | 'REQUIRES_DIVERSIFICATION' | 'BLOCKED_FRAUD_RISK' =
+    'APPROVED_FOR_TRADING';
   if (counterpartyRiskScore >= 70) {
     complianceVerdict = 'BLOCKED_FRAUD_RISK';
   } else if (counterpartyRiskScore >= 40 || exceedsSafeLimit) {
@@ -1298,10 +1420,12 @@ export function simulateCompoundGrowthRunway(input: {
 
   const projectedFinalCapitalUsdt = Math.round(currentCapital);
   const totalNetProfitUsdt = Math.round(projectedFinalCapitalUsdt - capital);
-  const totalReturnPct = Math.round(((projectedFinalCapitalUsdt - capital) / capital) * 10000) / 100;
+  const totalReturnPct =
+    Math.round(((projectedFinalCapitalUsdt - capital) / capital) * 10000) / 100;
 
   const monthlyNetGain = (totalNetProfitUsdt / days) * 30;
-  const monthlyRunwayCoverageMonths = expenses > 0 ? Math.round((monthlyNetGain / expenses) * 10) / 10 : 999;
+  const monthlyRunwayCoverageMonths =
+    expenses > 0 ? Math.round((monthlyNetGain / expenses) * 10) / 10 : 999;
 
   return {
     initialCapitalUsdt: capital,

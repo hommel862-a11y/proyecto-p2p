@@ -3,7 +3,8 @@ import { GetBcvRatesInputSchema, type GetBcvRatesInput } from '../schemas/index.
 
 export const getBcvRatesTool = {
   name: 'get_bcv_rates',
-  description: 'Consulta las tasas oficiales del Banco Central de Venezuela (USD, EUR, CNY, RUB) y fecha valor vigente.',
+  description:
+    'Consulta las tasas oficiales del Banco Central de Venezuela (USD, EUR, CNY, RUB) y fecha valor vigente.',
   inputSchema: GetBcvRatesInputSchema,
   execute: (input: GetBcvRatesInput) => {
     const rates = getOfficialBcvRates(input.cacheFallback);

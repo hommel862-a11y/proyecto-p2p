@@ -177,4 +177,67 @@ describe('Triangular Arbitrage Domain Engine', () => {
       }
     });
   });
+
+  describe('Phase 1: Global Corridors & Spatial Basis Arbitrage', () => {
+    it('analyzeFxCorridorEfficiency ranks corridors by net yield after friction', async () => {
+      const { analyzeFxCorridorEfficiency } = await import('./triangular-arbitrage');
+      const result = analyzeFxCorridorEfficiency(1000, [
+        {
+          corridorId: 'USDT-COP',
+          sourceCurrency: 'USDT',
+          targetCurrency: 'COP',
+          spotCrossRate: 4200,
+          officialParityRate: 4100,
+          bankingFrictionPct: 0.4,
+          transferLatencyMinutes: 10,
+          makerFeePct: 0.1,
+        },
+        {
+          corridorId: 'USDT-VES',
+          sourceCurrency: 'USDT',
+          targetCurrency: 'VES',
+          spotCrossRate: 85,
+          officialParityRate: 75,
+          bankingFrictionPct: 0.2,
+          transferLatencyMinutes: 15,
+          makerFeePct: 0.1,
+        },
+      ]);
+
+      expect(result.rankedCorridors.length).toBe(2);
+      expect(result.recommendedCorridorId).toBe('USDT-VES');
+      expect(result.arbitrageSpreadBetweenBestAndWorstPct).toBeGreaterThan(0);
+      expect(result.rankedCorridors[0].viabilityStatus).toBe('OPTIMAL_CORRIDOR');
+    });
+
+    it('calculateCrossExchangeBasisSpread detects profitable spatial basis across P2P platforms', async () => {
+      const { calculateCrossExchangeBasisSpread } = await import('./triangular-arbitrage');
+      const result = calculateCrossExchangeBasisSpread(2000, [
+        {
+          platformName: 'ElDorado',
+          fiatCurrency: 'VES',
+          bestBidPrice: 83.0,
+          bestAskPrice: 83.5, // Barato para comprar
+          availableDepthUsdt: 5000,
+          internalTransferFeeUsdt: 1.0,
+        },
+        {
+          platformName: 'Binance',
+          fiatCurrency: 'VES',
+          bestBidPrice: 85.0, // Caro para vender
+          bestAskPrice: 85.5,
+          availableDepthUsdt: 10000,
+          internalTransferFeeUsdt: 0,
+        },
+      ]);
+
+      expect(result.buyPlatform).toBe('ElDorado');
+      expect(result.sellPlatform).toBe('Binance');
+      expect(result.grossSpreadPct).toBeGreaterThan(1.5);
+      expect(result.netSpreadPct).toBeGreaterThan(0.5);
+      expect(result.isExecutable).toBe(true);
+      expect(result.netProfitUsdt).toBeGreaterThan(0);
+    });
+  });
 });
+

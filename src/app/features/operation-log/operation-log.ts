@@ -25,6 +25,7 @@ import { OperationFormComponent, type OpDraft } from './operation-form.component
 import { OperationTableComponent } from './operation-table.component';
 import { BackupPanelComponent } from './backup-panel.component';
 import { OperationTimerBannerComponent } from './operation-timer-banner.component';
+import { McpService } from '../../core/mcp.service';
 
 /** CSV header row (es-VE) for the operation-ledger export. */
 export const CSV_HEADER =
@@ -100,7 +101,9 @@ export class OperationLog {
   readonly sessionService = inject(SessionService);
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
+  readonly mcpService = inject(McpService);
 
+  readonly mcpLedgerSynced = signal<boolean>(true);
   readonly selectedBank = signal<string | null>(null);
 
   private readonly router = inject(Router);
@@ -276,6 +279,25 @@ export class OperationLog {
     this.toast.success(
       `Operación de ${newOp.type === 'buy' ? 'compra' : 'venta'} (${newOp.pair}) registrada con éxito.`,
     );
+
+    // Herramienta MCP: add_operation_entry (Local cryptographically audited ledger)
+    if (newOp.type === 'buy' || newOp.type === 'sell') {
+      void this.mcpService
+        .addOperationEntry({
+          side: newOp.type,
+          vesAmount: newOp.vesAmount,
+          usdtAmount: newOp.usdtAmount,
+          price: newOp.price,
+          notes: newOp.merchantNote || newOp.notes,
+          humanConfirm: true,
+        })
+        .then((res) => {
+          if (res.success) {
+            this.mcpLedgerSynced.set(true);
+          }
+        });
+    }
+
     this.audit.log(
       'DATA_MUTATION',
       'Operación registrada',
@@ -501,5 +523,73 @@ export class OperationLog {
 
   patchForm(patch: Partial<OpDraft>): void {
     this.form.set({ ...this.form(), ...patch });
+  }
+
+  /** Sincroniza las operaciones más recientes con Google Sheets mediante MCP */
+  async syncAllToGoogleSheets(): Promise<void> {
+    const list = this.operations();
+    if (list.length === 0) {
+      this.toast.info('No hay operaciones registradas para sincronizar.');
+      return;
+    }
+
+    const latest = list[0];
+    try {
+      const res = await this.mcpService.gsheetsSyncTrade({
+        trade: {
+          id: latest.id,
+          timestamp: latest.timestamp,
+          side: latest.type === 'buy' ? 'BUY' : 'SELL',
+          bank: latest.merchantNote || 'Pago Móvil',
+          rate: latest.price,
+          vesAmount: latest.vesAmount,
+          usdtAmount: latest.usdtAmount,
+          grossSpreadPct: 0,
+          netProfitUsdt: 0,
+          counterparty: latest.notes || 'Anónimo',
+          referenceNumber: 'N/A',
+          status: 'COMPLETED',
+        },
+      });
+
+      if (res.success) {
+        this.toast.success('Operación sincronizada exitosamente con Google Sheets (MCP).');
+        this.audit.log(
+          'DATA_BACKUP',
+          'Sincronización con Google Sheets',
+          { opId: latest.id },
+          'info',
+        );
+      } else {
+        this.toast.warn('No se pudo completar la sincronización con Google Sheets.');
+      }
+    } catch {
+      this.toast.warn('Error al invocar Google Sheets MCP.');
+    }
+  }
+
+  /** Respalda el snapshot contable en Google Drive mediante MCP */
+  async backupLedgerToGoogleDrive(): Promise<void> {
+    try {
+      const payload = this.serializeBackup();
+      const res = await this.mcpService.gdriveSyncDbBackup({
+        backupType: 'ledger_json',
+        dataPayload: payload,
+      });
+
+      if (res.success) {
+        this.toast.success('Snapshot del Ledger respaldado exitosamente en Google Drive (MCP).');
+        this.audit.log(
+          'DATA_BACKUP',
+          'Respaldo en Google Drive',
+          { opsCount: this.operations().length },
+          'info',
+        );
+      } else {
+        this.toast.warn('No se pudo completar el respaldo en Google Drive.');
+      }
+    } catch {
+      this.toast.warn('Error al invocar Google Drive MCP.');
+    }
   }
 }

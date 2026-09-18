@@ -61,14 +61,14 @@ export class TriangulationIntelligenceService {
   readonly mcpCallCount = signal<number>(0);
 
   readonly liveRates = signal<LiveMarketRatesSnapshot>({
-    binanceVesBuy: 82.20,
+    binanceVesBuy: 82.2,
     binanceVesSell: 82.85,
     bcvUsd: 72.45,
-    bcvEur: 78.60,
+    bcvEur: 78.6,
     parallelAvg: 84.12,
     rateGapPct: 16.11,
     copPerUsdt: 4250,
-    copPerVes: 51.30,
+    copPerVes: 51.3,
     zinliUsdPerUsdt: 0.985,
     timestamp: 'Inicializado',
     source: 'CACHE',
@@ -121,13 +121,18 @@ export class TriangulationIntelligenceService {
         fiatExposureAmount: 0,
         fiatCurrency: 'VES',
         hedgeRatioPct: 0,
-        reason: 'El tiempo de rotación es inferior al umbral crítico o no involucra moneda de alta devaluación.',
+        reason:
+          'El tiempo de rotación es inferior al umbral crítico o no involucra moneda de alta devaluación.',
       };
     }
 
     // Step with VES exposure
     const vesStep = result.steps.find((s) => s.fromCurrency === 'VES' || s.toCurrency === 'VES');
-    const vesAmount = vesStep ? (vesStep.fromCurrency === 'VES' ? vesStep.inputAmount : vesStep.outputAmount) : 0;
+    const vesAmount = vesStep
+      ? vesStep.fromCurrency === 'VES'
+        ? vesStep.inputAmount
+        : vesStep.outputAmount
+      : 0;
     const currentRate = vesStep && vesStep.price > 0 ? vesStep.price : 80;
 
     try {
@@ -179,22 +184,29 @@ export class TriangulationIntelligenceService {
     const bcv = this.bcvStatus();
     const hedge = this.computeHedgeAdvice(result);
 
-    const isBlocked = result.riskLevel === 'CRITICAL' || (bcv.inWindow && result.totalDurationMinutes > 60);
+    const isBlocked =
+      result.riskLevel === 'CRITICAL' || (bcv.inWindow && result.totalDurationMinutes > 60);
 
     let optimalTimingNote = 'Condiciones favorables para rotación de capital inmediata.';
     if (bcv.inWindow) {
-      optimalTimingNote = 'Precaución: El BCV suele inyectar oferta bancaria en esta franja. Reducir montos de tramo 1.';
+      optimalTimingNote =
+        'Precaución: El BCV suele inyectar oferta bancaria en esta franja. Reducir montos de tramo 1.';
     } else if (result.roiPct > 2.5) {
-      optimalTimingNote = 'Oportunidad de alto rendimiento detectada: acelerar la ejecución en el tramo con mayor liquidez.';
+      optimalTimingNote =
+        'Oportunidad de alto rendimiento detectada: acelerar la ejecución en el tramo con mayor liquidez.';
     }
 
     // Available liquidity from Binance P2P cache
     const depth = this.binanceP2p.marketDepth();
-    const orderbookLiquidityUsdt = depth && depth.buyOffers.length > 0 ? depth.buyOffers.reduce((acc, o) => acc + (o.maxVes / Math.max(1, o.price)), 0) : 15000;
+    const orderbookLiquidityUsdt =
+      depth && depth.buyOffers.length > 0
+        ? depth.buyOffers.reduce((acc, o) => acc + o.maxVes / Math.max(1, o.price), 0)
+        : 15000;
 
     return {
       executionAllowed: !isBlocked,
-      primaryRisk: result.riskReasons[0] ?? 'Riesgo operativo estándar dentro de los límites de capital.',
+      primaryRisk:
+        result.riskReasons[0] ?? 'Riesgo operativo estándar dentro de los límites de capital.',
       bcvRisk: bcv,
       hedgeAdvice: hedge,
       optimalTimingNote,
@@ -208,13 +220,13 @@ export class TriangulationIntelligenceService {
   async fetchLiveMarketRates(): Promise<LiveMarketRatesSnapshot> {
     this.isSyncingMarket.set(true);
 
-    let binanceVesBuy = 82.20;
+    let binanceVesBuy = 82.2;
     let binanceVesSell = 82.85;
     let bcvUsd = 72.45;
-    let bcvEur = 78.60;
+    let bcvEur = 78.6;
     let parallelAvg = 84.12;
-    let copPerUsdt = 4250;
-    let zinliUsdPerUsdt = 0.985;
+    const copPerUsdt = 4250;
+    const zinliUsdPerUsdt = 0.985;
     let source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK' = 'FALLBACK';
 
     try {
@@ -284,12 +296,10 @@ export class TriangulationIntelligenceService {
       }
 
       // 6. Cálculo de brecha cambiaria y cruce derivado COP/VES
-      const rateGapPct = bcvUsd > 0
-        ? Math.round(((parallelAvg - bcvUsd) / bcvUsd) * 10000) / 100
-        : 16.11;
-      const copPerVes = binanceVesSell > 0
-        ? Math.round((copPerUsdt / binanceVesSell) * 100) / 100
-        : 51.30;
+      const rateGapPct =
+        bcvUsd > 0 ? Math.round(((parallelAvg - bcvUsd) / bcvUsd) * 10000) / 100 : 16.11;
+      const copPerVes =
+        binanceVesSell > 0 ? Math.round((copPerUsdt / binanceVesSell) * 100) / 100 : 51.3;
 
       const snapshot: LiveMarketRatesSnapshot = {
         binanceVesBuy,
@@ -325,14 +335,20 @@ export class TriangulationIntelligenceService {
     const l2 = { ...legs[1] };
     const l3 = { ...legs[2] };
 
-    if (presetId === 'route-ves-usdt-cop' || (l1.fromCurrency === 'VES' && l2.toCurrency === 'COP')) {
+    if (
+      presetId === 'route-ves-usdt-cop' ||
+      (l1.fromCurrency === 'VES' && l2.toCurrency === 'COP')
+    ) {
       // Tramo 1: VES -> USDT (Comprar USDT en P2P con VES: tasa sell/ask)
       l1.price = rates.binanceVesSell;
       // Tramo 2: USDT -> COP (Venta de USDT recibiendo COP)
       l2.price = rates.copPerUsdt;
       // Tramo 3: COP -> VES (Retorno de COP a VES vía mesa o giro directo)
       l3.price = rates.copPerVes;
-    } else if (presetId === 'route-usdt-usd-ves' || (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USD')) {
+    } else if (
+      presetId === 'route-usdt-usd-ves' ||
+      (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USD')
+    ) {
       // Tramo 1: USDT -> USD (Zinli / Wally)
       l1.price = rates.zinliUsdPerUsdt;
       // Tramo 2: USD -> VES (Remesa o cambio a paralelo)
@@ -375,7 +391,10 @@ export class TriangulationIntelligenceService {
       );
       return updatedLegs;
     } catch {
-      this.toast.warn('No se pudo conectar a los servicios MCP. Manteniendo últimas cotizaciones.', 'Advertencia');
+      this.toast.warn(
+        'No se pudo conectar a los servicios MCP. Manteniendo últimas cotizaciones.',
+        'Advertencia',
+      );
       return activeLegs;
     }
   }

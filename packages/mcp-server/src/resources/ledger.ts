@@ -17,7 +17,11 @@ async function ipcCall(channel: string, args: unknown): Promise<Record<string, u
       channel,
       args: [args],
     });
-    return (result?.data as Record<string, unknown>) ?? { error: result?.error ?? `${channel} unavailable` };
+    return (
+      (result?.data as Record<string, unknown>) ?? {
+        error: result?.error ?? `${channel} unavailable`,
+      }
+    );
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'IPC bridge error' };
   }

@@ -79,6 +79,24 @@
         <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'ledger'" (click)="setCategory('ledger')">
           Ledger Analytics 📊
         </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'cloud'" (click)="setCategory('cloud')">
+          Google Workspace ☁️
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'seguridad'" (click)="setCategory('seguridad')">
+          Seguridad & AML 🔍
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'bancos'" (click)="setCategory('bancos')">
+          Bancos & Webhook 🏦
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'legal'" (click)="setCategory('legal')">
+          Legal & Disputas ⚖️
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'compliance'" (click)="setCategory('compliance')">
+          SUDEBAN Radar 🛡️
+        </button>
+        <button type="button" class="filter-chip" [class.active]="selectedCategory() === 'operaciones'" (click)="setCategory('operaciones')">
+          Concierge OTC 💬
+        </button>
       </div>
 
       <!-- Server Cards Grid -->
@@ -117,9 +135,9 @@
               <span class="section-title">Herramientas expuestas:</span>
               <div class="chips-wrap">
                 @for (tool of srv.tools; track tool.name) {
-                  <span class="tool-pill" (click)="setTab('tools'); selectTool(tool)" title="{{ tool.description }}">
+                  <button type="button" class="tool-pill" (click)="setTab('tools'); selectTool(tool)" title="{{ tool.description }}">
                     <code>{{ tool.name }}</code>
-                  </span>
+                  </button>
                 }
               </div>
             </div>
@@ -152,7 +170,8 @@
         <h3 class="pane-title">Herramientas Registradas ({{ allTools().length }})</h3>
         <div class="tools-scroll">
           @for (tool of allTools(); track tool.name) {
-            <div
+            <button
+              type="button"
               class="tool-item"
               [class.active]="selectedTool()?.name === tool.name"
               (click)="selectTool(tool)"
@@ -162,7 +181,7 @@
                 <span class="server-badge">{{ tool.serverId }}</span>
               </div>
               <p class="tool-summary">{{ tool.description }}</p>
-            </div>
+            </button>
           }
         </div>
       </aside>

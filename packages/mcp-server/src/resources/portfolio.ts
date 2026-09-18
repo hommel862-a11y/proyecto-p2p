@@ -16,7 +16,8 @@ export const portfolioResources: McpResource[] = [
   {
     uri: 'p2p://portfolio/stress-scenarios',
     name: 'Escenarios de Estrés Cambiario (Drawdown VES)',
-    description: 'Simulación matricial de pérdidas proyectadas y drawdowns ante devaluaciones del 5%, 10% y 20% del bolívar',
+    description:
+      'Simulación matricial de pérdidas proyectadas y drawdowns ante devaluaciones del 5%, 10% y 20% del bolívar',
     mimeType: 'application/json',
     read: () => {
       const stress = runPortfolioStressTest({
@@ -41,7 +42,8 @@ export const portfolioResources: McpResource[] = [
   {
     uri: 'p2p://portfolio/allocation',
     name: 'Distribución de Capital por Custodio y Banco',
-    description: 'Asignación porcentual recomendada entre Binance P2P, Banesco, Mercantil y fondos de reserva institucional',
+    description:
+      'Asignación porcentual recomendada entre Binance P2P, Banesco, Mercantil y fondos de reserva institucional',
     mimeType: 'application/json',
     read: () => {
       const plan = computePortfolioRebalance({

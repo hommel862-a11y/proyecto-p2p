@@ -16,7 +16,8 @@ export const cryptoResources: McpResource[] = [
   {
     uri: 'p2p://market/binance-p2p/depth',
     name: 'Profundidad del Libro P2P (Binance)',
-    description: 'Snapshot estructurado del libro de órdenes VES/USDT con volumen acumulado, top bids, top asks y spread neto',
+    description:
+      'Snapshot estructurado del libro de órdenes VES/USDT con volumen acumulado, top bids, top asks y spread neto',
     mimeType: 'application/json',
     read: () => {
       const depth = getBinanceP2POrderbookSnapshot('VES', 'USDT', 10);
@@ -37,10 +38,11 @@ export const cryptoResources: McpResource[] = [
   {
     uri: 'p2p://market/spot/volatility',
     name: 'Volatilidad Spot y Paridad USDT',
-    description: 'Estado de paridad del USDT contra USD fiat, alertas de despegue y volatilidad spot global',
+    description:
+      'Estado de paridad del USDT contra USD fiat, alertas de despegue y volatilidad spot global',
     mimeType: 'application/json',
     read: () => {
-      const parity = detectUsdtDepegParity(1.000, 0.2);
+      const parity = detectUsdtDepegParity(1.0, 0.2);
       return {
         timestamp: new Date().toISOString(),
         spotUsdtPrice: parity.spotUsdtPrice,

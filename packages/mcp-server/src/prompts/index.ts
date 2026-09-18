@@ -140,7 +140,8 @@ Formato: Markdown estructurado, listo para copiar a Notion/Obsidian.`,
   },
   {
     name: 'bcv-gap-arbitrage-audit',
-    description: 'Auditoría macroeconómica y cambiaria de brecha BCV vs Paralelo para arbitraje institucional en Venezuela',
+    description:
+      'Auditoría macroeconómica y cambiaria de brecha BCV vs Paralelo para arbitraje institucional en Venezuela',
     content: `# Auditoría de Brecha Cambiaria BCV vs. Paralelo (Venezuela)
 
 ## Contexto Operativo
@@ -162,7 +163,8 @@ Evalúa las condiciones cambiarias en Venezuela analizando la brecha entre la ta
   },
   {
     name: 'crypto-orderbook-pressure-audit',
-    description: 'Auditoría de microestructura, desbalance de órdenes y pricing competitivo para el libro P2P de Binance',
+    description:
+      'Auditoría de microestructura, desbalance de órdenes y pricing competitivo para el libro P2P de Binance',
     content: `# Auditoría de Microestructura y Presión de Libro P2P (Binance VES/USDT)
 
 ## Contexto de Operación
@@ -186,7 +188,8 @@ Evalúa la microestructura del mercado P2P para detectar desbalances de liquidez
   },
   {
     name: 'portfolio-risk-rebalance-audit',
-    description: 'Auditoría integral de gestión de portafolio, pruebas de estrés cambiario, asignación bancaria y crecimiento compuesto',
+    description:
+      'Auditoría integral de gestión de portafolio, pruebas de estrés cambiario, asignación bancaria y crecimiento compuesto',
     content: `# Auditoría de Gestión de Portafolio y Riesgo Cambiario (Venezuela P2P)
 
 ## Contexto Operativo
@@ -209,9 +212,6 @@ Evalúa la salud financiera del inventario de capital, la exposición ante salto
    - Cobertura de costos fijos mensuales`,
   },
 ];
-
-
-
 
 // ─── Registro en servidor (compatibilidad) ─────────────────────────────────────
 

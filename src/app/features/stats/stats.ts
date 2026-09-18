@@ -26,6 +26,7 @@ import { UiCard } from '../../shared/ui/ui-card';
 import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
 import { UiToolbarSegmented } from '../../shared/ui/ui-toolbar-segmented';
 import { UiChip } from '../../shared/ui/ui-chip';
+import { McpService } from '../../core/mcp.service';
 
 export type ExtendedPeriodKind = PeriodKind | 'session' | 'calendar';
 
@@ -59,6 +60,29 @@ export class Stats {
   private readonly sessionService = inject(SessionService);
   readonly accountsService = inject(AccountsService);
   readonly crmService = inject(CounterpartyService);
+  readonly mcpService = inject(McpService);
+
+  // MCP Tool: stress_test_portfolio
+  readonly mcpStressResult = signal<{
+    baselinePortfolioValueUsdt?: number;
+    totalPortfolioValueUsdt?: number;
+    scenarios?: {
+      devaluationPct?: number;
+      lossUsdt?: number;
+      unhedgedLossUsdt?: number;
+    }[];
+  } | null>(null);
+  readonly mcpStressTesting = signal<boolean>(false);
+  readonly stressUsdtCapital = signal<number>(2500);
+  readonly stressVesCapital = signal<number>(150000);
+  readonly stressRefRate = signal<number>(800);
+
+  // MCP Tool: audit_counterparty_exposure
+  readonly mcpCounterpartyAuditResult = signal<{
+    status?: string;
+    uniqueCounterpartiesCount?: number;
+  } | null>(null);
+  readonly mcpAuditing = signal<boolean>(false);
 
   firstRender = true;
   dayAppliedFromParam = false;
@@ -232,6 +256,45 @@ export class Stats {
 
   printComplianceReport(): void {
     window.print();
+  }
+
+  async runStressTest(): Promise<void> {
+    this.mcpStressTesting.set(true);
+    try {
+      const res = await this.mcpService.stressTestPortfolio({
+        usdtCapital: this.stressUsdtCapital(),
+        vesCapital: this.stressVesCapital(),
+        referenceRate: this.stressRefRate(),
+        devaluationScenariosPct: [10, 20, 35],
+      });
+      if (res.success && res.result) {
+        this.mcpStressResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpStressResult>>,
+        );
+      }
+    } catch (err) {
+      console.error('[Stats] Error executing stress test:', err);
+    } finally {
+      this.mcpStressTesting.set(false);
+    }
+  }
+
+  async runCounterpartyAudit(): Promise<void> {
+    this.mcpAuditing.set(true);
+    try {
+      const res = await this.mcpService.auditCounterpartyExposure({
+        maxConcentrationPct: 20,
+      });
+      if (res.success && res.result) {
+        this.mcpCounterpartyAuditResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpCounterpartyAuditResult>>,
+        );
+      }
+    } catch (err) {
+      console.error('[Stats] Error auditing counterparties:', err);
+    } finally {
+      this.mcpAuditing.set(false);
+    }
   }
 
   // Shared es-VE money formatters (byte-identical to the `ves`/`usdt` pipes).

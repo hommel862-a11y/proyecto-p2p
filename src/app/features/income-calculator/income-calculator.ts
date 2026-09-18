@@ -38,13 +38,21 @@ import { DecimalPipe } from '@angular/common';
 
 import { StorageService } from '../../core/storage';
 import { type Operation } from '@p2p/core';
+import { McpService } from '../../core/mcp.service';
 
-export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic';
+export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic' | 'mcp-portfolio';
 
 /** Local UI-view key (component-scoped), following the app-wide `p2p.*` storage pattern. */
 const CALC_UI_KEY = 'p2p.income-calculator.ui';
 
-const CALC_MODES: readonly CalcViewMode[] = ['cycle', 'reverse', 'compound', 'team', 'classic'];
+const CALC_MODES: readonly CalcViewMode[] = [
+  'cycle',
+  'reverse',
+  'compound',
+  'team',
+  'classic',
+  'mcp-portfolio',
+];
 const REINVEST_RATES: readonly number[] = [100, 50, 30, 0];
 
 interface CalcUiState {
@@ -306,6 +314,112 @@ export class IncomeCalculator {
       }),
     })),
   );
+
+  // ─── MCP Suite (3 Tools): Runway, Rebalance, Trade Impact ───
+  readonly mcpService = inject(McpService);
+  readonly mcpRunwayResult = signal<{
+    operationalDays?: number;
+    finalCapitalUsdt?: number;
+    projectedCapitalUsdt?: number;
+    harvestedProfitUsdt?: number;
+    totalHarvestedUsdt?: number;
+    bankingCapacityWallDay?: number;
+  } | null>(null);
+  readonly mcpRebalanceResult = signal<{
+    timeWindow?: string;
+    allocations?: {
+      bankCode?: string;
+      name?: string;
+      assignedUsdt?: number;
+      allocationPct?: number;
+    }[];
+  } | null>(null);
+  readonly mcpTradeImpactResult = signal<{
+    allowed?: boolean;
+    estimatedSlippagePct?: number;
+    resultingExposureUsdt?: number;
+  } | null>(null);
+  readonly mcpIncomeLoading = signal<boolean>(false);
+
+  readonly rebalanceCapitalUsdt = signal<number>(5000);
+  readonly rebalanceRiskMode = signal<'CONSERVATIVE' | 'AGGRESSIVE' | 'BALANCED'>('BALANCED');
+  readonly impactTradeSizeUsdt = signal<number>(500);
+  readonly impactCurrentExposureUsdt = signal<number>(1000);
+  readonly impactExposureLimitUsdt = signal<number>(3000);
+
+  async runMcpCompoundRunway(): Promise<void> {
+    this.mcpIncomeLoading.set(true);
+    try {
+      const res = await this.mcpService.projectCompoundRunway({
+        initialCapitalUsdt: this.compoundInitialCapital(),
+        netMarginPctPerCycle: this.compoundNetMarginPct(),
+        cyclesPerDay: this.compoundCyclesPerDay(),
+        operationalDays: this.compoundOperationalDays(),
+        reinvestmentRatePct: this.compoundReinvestmentRate(),
+      });
+      if (res.success && res.result) {
+        this.mcpRunwayResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpRunwayResult>>,
+        );
+        this.toast.success('Proyección de pista compuesta MCP calculada.');
+      } else {
+        this.toast.error(res.error || 'Error al proyectar pista compuesta');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Fallo en projectCompoundRunway';
+      this.toast.error(msg);
+    } finally {
+      this.mcpIncomeLoading.set(false);
+    }
+  }
+
+  async runMcpRebalance(): Promise<void> {
+    this.mcpIncomeLoading.set(true);
+    try {
+      const res = await this.mcpService.rebalanceCapitalAllocation({
+        totalCapitalUsdt: this.rebalanceCapitalUsdt(),
+        riskMode: this.rebalanceRiskMode(),
+        hourOfDay: new Date().getHours(),
+      });
+      if (res.success && res.result) {
+        this.mcpRebalanceResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpRebalanceResult>>,
+        );
+        this.toast.success('Rebalanceo de capital multi-bancario MCP completado.');
+      } else {
+        this.toast.error(res.error || 'Error al rebalancear capital');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Fallo en rebalanceCapitalAllocation';
+      this.toast.error(msg);
+    } finally {
+      this.mcpIncomeLoading.set(false);
+    }
+  }
+
+  async runMcpSimulateTradeImpact(): Promise<void> {
+    this.mcpIncomeLoading.set(true);
+    try {
+      const res = await this.mcpService.simulateTradeImpact({
+        proposedTradeAmountUsdt: this.impactTradeSizeUsdt(),
+        currentExposureUsdt: this.impactCurrentExposureUsdt(),
+        maxDailyExposureLimitUsdt: this.impactExposureLimitUsdt(),
+      });
+      if (res.success && res.result) {
+        this.mcpTradeImpactResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpTradeImpactResult>>,
+        );
+        this.toast.info('Simulación de absorción y slippage completada.');
+      } else {
+        this.toast.error(res.error || 'Error al simular impacto');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Fallo en simulateTradeImpact';
+      this.toast.error(msg);
+    } finally {
+      this.mcpIncomeLoading.set(false);
+    }
+  }
 
   /**
    * Helper: sync current live prices from Binance P2P depth if available.

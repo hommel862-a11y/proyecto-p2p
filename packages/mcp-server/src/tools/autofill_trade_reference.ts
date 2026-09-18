@@ -1,16 +1,16 @@
 import { computeAutofillTradePrice } from '../core/index.js';
-import { AutofillTradeReferenceInputSchema, type AutofillTradeReferenceInput } from '../schemas/index.js';
+import {
+  AutofillTradeReferenceInputSchema,
+  type AutofillTradeReferenceInput,
+} from '../schemas/index.js';
 
 export const autofillTradeReferenceTool = {
   name: 'autofill_trade_reference',
-  description: 'Calcula el precio de referencia sugerido y optimizado para una nueva orden P2P (BUY/SELL) en función del punto medio del mercado y margen objetivo.',
+  description:
+    'Calcula el precio de referencia sugerido y optimizado para una nueva orden P2P (BUY/SELL) en función del punto medio del mercado y margen objetivo.',
   inputSchema: AutofillTradeReferenceInputSchema,
   execute: (input: AutofillTradeReferenceInput) => {
-    const result = computeAutofillTradePrice(
-      input.side,
-      input.targetMarginPct,
-      input.fallbackRate,
-    );
+    const result = computeAutofillTradePrice(input.side, input.targetMarginPct, input.fallbackRate);
 
     return {
       side: result.side,

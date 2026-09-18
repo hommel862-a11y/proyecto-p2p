@@ -6,6 +6,7 @@ import {
   signal,
   type OnInit,
 } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RisksService, type RiskConfig } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -15,6 +16,7 @@ import { UiCard } from '../../shared/ui/ui-card';
 import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { McpService } from '../../core/mcp.service';
 
 export interface TelegramConfig {
   botToken: string;
@@ -33,7 +35,7 @@ function isValidChatId(chatId: string): boolean {
 @Component({
   selector: 'app-risk-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, UiCard, UiPanelHeader],
+  imports: [CommonModule, FormsModule, UiCard, UiPanelHeader],
   templateUrl: './risk-rules.html',
 })
 export class RiskRules implements OnInit {
@@ -42,9 +44,46 @@ export class RiskRules implements OnInit {
   private readonly storage = inject(StorageService);
   readonly telegramWorker = inject(TelegramWorkerService);
   private readonly binance = inject(BinanceP2pService);
+  readonly mcpService = inject(McpService);
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
+
+  // MCP Tool: evaluate_trade_risk
+  readonly preflightTradeAmountUsdt = signal<number>(100);
+  readonly preflightNetSpreadPct = signal<number>(1.25);
+  readonly mcpPreflightResult = signal<{
+    verdict?: string;
+    reason?: string;
+    ruleChecks?: unknown[];
+  } | null>(null);
+  readonly mcpPreflightEvaluating = signal<boolean>(false);
+
+  // MCP Tool: calculate_delta_neutral_hedge
+  readonly hedgeVesBalance = signal<number>(50000);
+  readonly hedgeUsdtRefPrice = signal<number>(800);
+  readonly hedgeTargetPct = signal<number>(100);
+  readonly mcpHedgeResult = signal<{
+    shortHedgeUsdt?: number;
+    requiredShortUsdt?: number;
+    recommendedInstrument?: string;
+  } | null>(null);
+  readonly mcpHedgeCalculating = signal<boolean>(false);
+
+  // MCP Tool: consult_zk_market_mesh
+  readonly zkCounterpartyQuery = signal<string>('');
+  readonly mcpZkResult = signal<{
+    blindHash?: string;
+    riskScore?: number;
+    recommendation?: string;
+  } | null>(null);
+  readonly mcpZkLoading = signal<boolean>(false);
+
+  // MCP Tool: trigger_killswitch
+  readonly killswitchChallenge = signal<string>('');
+  readonly killswitchReason = signal<string>('Parada de emergencia de tesorería');
+  readonly killswitchActive = signal<boolean>(false);
+  readonly mcpKillswitchLoading = signal<boolean>(false);
 
   // Telegram Sentinel credentials (hydrated asynchronously from secure storage).
   readonly telegramToken = signal<string>('');
@@ -199,6 +238,112 @@ export class RiskRules implements OnInit {
 
   decisionLabel(d: string): string {
     return d === 'ALLOW' ? 'PERMITIR' : d === 'DENY' ? 'DENEGAR' : 'PAUSAR';
+  }
+
+  async evaluatePreflightRisk(): Promise<void> {
+    this.mcpPreflightEvaluating.set(true);
+    try {
+      const res = await this.mcpService.evaluateTradeRisk({
+        tradeAmountUsdt: this.preflightTradeAmountUsdt(),
+        currentCapitalUsdt: 5000,
+        counterpartyScore: 98,
+        fiatCurrency: 'VES',
+      });
+      if (res.success && res.result) {
+        this.mcpPreflightResult.set(
+          res.result as NonNullable<ReturnType<typeof this.mcpPreflightResult>>,
+        );
+        this.toast.info('Evaluación pre-flight MCP completada con éxito.');
+      } else {
+        this.toast.error(res.error || 'Error al evaluar riesgo pre-flight');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error inesperado en evaluateTradeRisk';
+      this.toast.error(msg);
+    } finally {
+      this.mcpPreflightEvaluating.set(false);
+    }
+  }
+
+  async calculateDeltaHedge(): Promise<void> {
+    this.mcpHedgeCalculating.set(true);
+    try {
+      const res = await this.mcpService.calculateDeltaNeutralHedge({
+        vesBalance: this.hedgeVesBalance(),
+        usdtReferencePrice: this.hedgeUsdtRefPrice(),
+        targetHedgePct: this.hedgeTargetPct(),
+      });
+      if (res.success && res.result) {
+        this.mcpHedgeResult.set(res.result as NonNullable<ReturnType<typeof this.mcpHedgeResult>>);
+        this.toast.info('Cálculo de cobertura delta neutral completado.');
+      } else {
+        this.toast.error(res.error || 'Error al calcular cobertura');
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Error inesperado en calculateDeltaNeutralHedge';
+      this.toast.error(msg);
+    } finally {
+      this.mcpHedgeCalculating.set(false);
+    }
+  }
+
+  async queryZkMarketMesh(): Promise<void> {
+    const raw = this.zkCounterpartyQuery().trim();
+    if (!raw) {
+      this.toast.warn('Ingresa un identificador o alias de contraparte.');
+      return;
+    }
+    this.mcpZkLoading.set(true);
+    try {
+      const res = await this.mcpService.consultZkMarketMesh({ rawIdentifier: raw });
+      if (res.success && res.result) {
+        this.mcpZkResult.set(res.result as NonNullable<ReturnType<typeof this.mcpZkResult>>);
+        this.toast.success('Consulta ZK Market Mesh resuelta sin divulgar identidad.');
+      } else {
+        this.toast.error(res.error || 'Fallo en consulta ZK');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error en consultZkMarketMesh';
+      this.toast.error(msg);
+    } finally {
+      this.mcpZkLoading.set(false);
+    }
+  }
+
+  async activateKillswitch(): Promise<void> {
+    const phrase = this.killswitchChallenge().trim();
+    if (phrase !== 'CONFIRMAR-FREEZE') {
+      this.toast.warn('Debes escribir exactamente "CONFIRMAR-FREEZE" para activar el killswitch.');
+      return;
+    }
+    this.mcpKillswitchLoading.set(true);
+    try {
+      const res = await this.mcpService.triggerKillswitch({
+        reason: this.killswitchReason().trim() || 'Parada de emergencia',
+        source: 'RiskRulesUI',
+        humanConfirm: true,
+      });
+      if (res.success && res.result) {
+        this.killswitchActive.set(true);
+        this.patch({ apiStatus: 'down' });
+        this.toast.error('🚨 KILLSWITCH ACTIVADO: Gateway en modo seguro y operaciones pausadas.');
+      } else {
+        this.toast.error(res.error || 'No se pudo activar el killswitch');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al invocar triggerKillswitch';
+      this.toast.error(msg);
+    } finally {
+      this.mcpKillswitchLoading.set(false);
+    }
+  }
+
+  resetKillswitch(): void {
+    this.killswitchActive.set(false);
+    this.killswitchChallenge.set('');
+    this.patch({ apiStatus: 'ok' });
+    this.toast.info('Killswitch desactivado. Gateway restablecido a estado OK.');
   }
 
   reasonLabel(r: string): string {

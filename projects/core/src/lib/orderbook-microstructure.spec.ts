@@ -192,4 +192,75 @@ describe('Orderbook Microstructure: Detección de Spoofing & Liquidez Fantasma',
       expect(report.classifiedOrders.length).toBe(0);
     });
   });
+
+  describe('Phase 1: Modelos Cuantitativos de Microestructura y Market Making', () => {
+    it('Avellaneda-Stoikov: calcula el precio de reserva con skew de inventario positivo (vender excedente)', async () => {
+      const { computeAvellanedaStoikovQuotes } = await import('./orderbook-microstructure');
+      const res = computeAvellanedaStoikovQuotes({
+        midPrice: 85.0,
+        currentInventoryUsdt: 8000,
+        targetInventoryUsdt: 5000, // Exceso de 3000 USDT (+60%)
+        volatilityDaily: 0.02,
+        timeRemainingFraction: 1.0,
+        riskAversionGamma: 0.1,
+      });
+
+      expect(res.inventorySkewUsdt).toBe(3000);
+      expect(res.reservationPrice).toBeLessThan(85.0); // Con exceso de USDT, baja el precio de reserva para incentivar ventas
+      expect(res.optimalBidPrice).toBeLessThan(res.reservationPrice);
+      expect(res.optimalAskPrice).toBeGreaterThan(res.reservationPrice);
+      expect(res.recommendedAction).toBe('SKEW_SELL');
+    });
+
+    it('VPIN: detecta toxicidad extrema y calcula multiplicador de spread defensivo', async () => {
+      const { calculateVpinMetric } = await import('./orderbook-microstructure');
+      // 5 buckets fuertemente desbalanceados (todos compras agresivas de informados)
+      const buckets = [
+        { buyVolume: 9000, sellVolume: 1000, totalVolume: 10000 },
+        { buyVolume: 8500, sellVolume: 1500, totalVolume: 10000 },
+        { buyVolume: 9200, sellVolume: 800, totalVolume: 10000 },
+        { buyVolume: 8800, sellVolume: 1200, totalVolume: 10000 },
+      ];
+
+      const res = calculateVpinMetric({ buckets, toxicityThreshold: 0.25 });
+      expect(res.vpinScore).toBeGreaterThan(0.45);
+      expect(res.toxicityClassification).toBe('EXTREME_ADVERSE_SELECTION');
+      expect(res.recommendedProtectiveSpreadMultiplier).toBeGreaterThanOrEqual(2.0);
+      expect(res.warningNotice).toBeDefined();
+    });
+
+    it('TWAP/VWAP Slicing: fragmenta un ticket institucional de 10,000 USDT en bloques seguros', async () => {
+      const { computeOrderSlicingPlan } = await import('./orderbook-microstructure');
+      const res = computeOrderSlicingPlan({
+        totalAmountUsdt: 10000,
+        executionDurationMinutes: 60,
+        estimatedMarketVolumePerHourUsdt: 80000,
+        currentMidPrice: 85.0,
+        algorithm: 'TWAP',
+      });
+
+      expect(res.totalSlices).toBeGreaterThanOrEqual(4);
+      expect(res.slices.length).toBe(res.totalSlices);
+      const totalSlicesUsdt = res.slices.reduce((acc, s) => acc + s.sliceAmountUsdt, 0);
+      expect(Math.round(totalSlicesUsdt)).toBe(10000);
+      expect(res.expectedMarketImpactPct).toBeLessThan(1.0);
+    });
+
+    it('Markov Fill Probability: calcula alta probabilidad de llenado para orden en la punta', async () => {
+      const { calculateMakerFillProbabilityMarkov } = await import('./orderbook-microstructure');
+      const res = calculateMakerFillProbabilityMarkov({
+        queuePositionIndex: 0,
+        queueAheadVolumeUsdt: 500,
+        recentFillVelocityPerMinuteUsdt: 200,
+        orderCancellationRatePct: 20,
+        targetHorizonMinutes: 15,
+      });
+
+      expect(res.queuePosition).toBe(1);
+      expect(res.urgencyState).toBe('INSTANT_FILL_PROBABLE');
+      expect(res.fillProbabilityInHorizonPct).toBeGreaterThan(80);
+      expect(res.recommendedPricingAdjustment).toBe(0);
+    });
+  });
 });
+

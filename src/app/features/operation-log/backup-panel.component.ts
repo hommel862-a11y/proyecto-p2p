@@ -62,6 +62,22 @@ import { AutoBackupService } from '../../core/auto-backup.service';
           </svg>
           Exportar CSV (Excel)
         </button>
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="syncGoogleSheets.emit()"
+          title="Sincroniza operaciones con Google Sheets vía MCP"
+        >
+          ☁️ Google Sheets
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="backupGoogleDrive.emit()"
+          title="Respalda snapshot contable en Google Drive vía MCP"
+        >
+          💾 Google Drive
+        </button>
       </div>
 
       <!-- Rolling 7-day auto-snapshots -->
@@ -134,4 +150,6 @@ export class BackupPanelComponent {
   readonly downloadJson = output<void>();
   readonly importFile = output<Event>();
   readonly downloadCsv = output<void>();
+  readonly syncGoogleSheets = output<void>();
+  readonly backupGoogleDrive = output<void>();
 }

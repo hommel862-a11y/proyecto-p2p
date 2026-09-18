@@ -1,127 +1,1140 @@
 /* ============================================================
-   Dashboard / Control Center — actionable-card affordances
-   Scoped to this feature. Reuses global CSS variables only.
+   Apple Pro Design System: Centro de Control (Dashboard)
+   Executive desk, frosted glassmorphism & institutional micro-interactions
    ============================================================ */
 
-/* Small "Ver →" affordance hint shown on actionable targets */
-.dashboard-hint {
-  display: block;
-  margin-top: 6px;
-  font-size: 0.72rem;
+.apple-desk-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   1. Apple Pro Main Header & Dynamic Island
+   ══════════════════════════════════════════════════════════════ */
+.apple-main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.92) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+
+  .apple-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .apple-title-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .apple-desk-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: var(--text);
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      .apple-pro-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        font-size: 0.68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-radius: 999px;
+        background: rgba(216, 180, 92, 0.15);
+        border: 1px solid rgba(216, 180, 92, 0.35);
+        color: var(--gold-strong);
+      }
+    }
+
+    .apple-desk-subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0;
+    }
+  }
+}
+
+/* Dynamic Island Workshift Widget */
+.apple-dynamic-island {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  background: rgba(5, 8, 15, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.island-active {
+    border-color: rgba(47, 208, 143, 0.35);
+    background: linear-gradient(90deg, rgba(47, 208, 143, 0.06) 0%, rgba(5, 8, 15, 0.8) 100%);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(47, 208, 143, 0.15);
+  }
+
+  .island-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .island-pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2fd08f;
+      box-shadow: 0 0 10px #2fd08f;
+      animation: islandPulse 2s infinite ease-in-out;
+    }
+
+    .island-idle-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .island-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .island-status-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .island-status-title {
+          font-size: 0.84rem;
+          color: var(--text);
+          font-weight: 700;
+        }
+      }
+
+      .island-metrics {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.76rem;
+
+        .island-sep {
+          color: rgba(255, 255, 255, 0.2);
+        }
+      }
+    }
+  }
+
+  .island-actions {
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Pills & Mini Badges */
+.apple-pill-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 0.68rem;
   font-weight: 700;
-  color: var(--gold-strong);
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  opacity: 0;
-  transition: opacity 0.2s var(--ease-out);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+
+  &.live {
+    background: rgba(47, 208, 143, 0.15);
+    border-color: rgba(47, 208, 143, 0.35);
+    color: #2fd08f;
+  }
+
+  &.muted {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--muted);
+  }
+
+  &.gold {
+    background: rgba(216, 180, 92, 0.15);
+    border-color: rgba(216, 180, 92, 0.35);
+    color: var(--gold-strong);
+  }
+
+  &.recommended {
+    background: linear-gradient(135deg, rgba(216, 180, 92, 0.25) 0%, rgba(216, 180, 92, 0.1) 100%);
+    border-color: var(--gold);
+    color: var(--gold-strong);
+    box-shadow: 0 0 10px rgba(216, 180, 92, 0.2);
+  }
+
+  &.badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #f87171;
+  }
+
+  &.badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+  }
+
+  &.badge-accent {
+    background: rgba(47, 208, 143, 0.15);
+    border-color: rgba(47, 208, 143, 0.35);
+    color: #2fd08f;
+  }
 }
 
-
-.badge-danger {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.badge-warning {
-  background: rgba(234, 179, 8, 0.15);
-  color: #facc15;
-  border: 1px solid rgba(234, 179, 8, 0.3);
-}
-
-.badge-success {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-/* KPI tiles → /stats or /income */
-.dashboard-kpi {
+.apple-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s var(--ease-out);
+  text-decoration: none;
+
+  &.apple-btn-primary {
+    background: linear-gradient(135deg, #f5e6bd 0%, #d8b45c 100%);
+    color: #05080f;
+    box-shadow: 0 2px 10px rgba(216, 180, 92, 0.3);
+
+    &:hover {
+      box-shadow: 0 4px 16px rgba(216, 180, 92, 0.45);
+      transform: translateY(-1px);
+    }
+  }
+
+  &.apple-btn-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+
+  &.apple-btn-gold {
+    background: rgba(216, 180, 92, 0.12);
+    border-color: rgba(216, 180, 92, 0.35);
+    color: var(--gold);
+
+    &:hover:not(:disabled) {
+      background: rgba(216, 180, 92, 0.22);
+      border-color: var(--gold);
+      box-shadow: 0 0 12px var(--glow-gold);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  &.apple-btn-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #f87171;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.25);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   2. Apple Segmented Control Bar
+   ══════════════════════════════════════════════════════════════ */
+.apple-segmented-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow-x: auto;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+
+  .apple-segmented-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+
+    &:hover:not(.active) {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    &.active {
+      color: var(--text);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      font-weight: 700;
+    }
+
+    .tab-icon {
+      font-size: 0.95rem;
+    }
+
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 6px;
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+    }
+
+    &.active .tab-count {
+      background: rgba(216, 180, 92, 0.25);
+      color: var(--gold);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   3. Apple Bento KPI Cards
+   ══════════════════════════════════════════════════════════════ */
+.apple-bento-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.apple-kpi-card {
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(11, 17, 30, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    border-color: rgba(216, 180, 92, 0.35);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(216, 180, 92, 0.1);
+    transform: translateY(-2px);
+
+    .apple-kpi-link {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .apple-kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .apple-kpi-title {
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    .apple-kpi-icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+  }
+
+  .apple-kpi-val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1.15;
+    color: var(--text);
+
+    &.positive {
+      color: #2fd08f;
+    }
+
+    &.negative {
+      color: #ef4444;
+    }
+
+    .apple-kpi-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+  }
+
+  .apple-kpi-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.74rem;
+
+    .apple-kpi-subtext {
+      color: var(--text-muted);
+    }
+
+    .apple-kpi-link {
+      font-weight: 700;
+      color: var(--gold);
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: all 0.2s ease;
+    }
+  }
+}
+
+/* Progress Track Bar */
+.apple-track-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+
+  .apple-track-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #d8b45c 0%, #f0d48a 100%);
+    border-radius: 999px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &.fill-danger {
+      background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+    }
+
+    &.fill-warning {
+      background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   4. Apple Card Section & Unified Multi-Bank Treasury Grid
+   ══════════════════════════════════════════════════════════════ */
+.apple-card-section {
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+
+  .apple-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+
+    .apple-section-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .apple-section-icon {
+        font-size: 1.4rem;
+        line-height: 1;
+      }
+
+      .apple-section-title {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--text);
+        margin: 0;
+      }
+
+      .apple-section-subtitle {
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin: 2px 0 0;
+      }
+    }
+
+    .apple-section-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+
+      .apple-treasury-pill {
+        padding: 5px 12px;
+        font-size: 0.78rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: var(--text);
+      }
+    }
+  }
+}
+
+.apple-bank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.apple-bank-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 
   &:hover {
     border-color: rgba(216, 180, 92, 0.4);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(216, 180, 92, 0.08);
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     transform: translateY(-2px);
 
-    .dashboard-hint {
+    .apple-card-action-hint {
       opacity: 1;
     }
   }
 
-  &:focus-visible {
-    outline: 2px solid var(--gold);
-    outline-offset: 2px;
+  &.card-recommended {
+    border-color: rgba(216, 180, 92, 0.45);
+    background: linear-gradient(180deg, rgba(216, 180, 92, 0.05) 0%, rgba(0, 0, 0, 0.4) 100%);
+    box-shadow: 0 0 16px rgba(216, 180, 92, 0.1);
   }
-}
 
-/* Account velocity tiles → /log filtered by bank */
-.dashboard-velocity-tile {
-  cursor: pointer;
-  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  &.card-alert {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.04);
+  }
 
-  &:hover {
-    border-color: rgba(216, 180, 92, 0.4);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(216, 180, 92, 0.08);
-    transform: translateY(-2px);
+  .apple-bank-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
 
-    .dashboard-hint {
-      opacity: 1;
+    .apple-bank-id-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .bank-avatar-badge {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 0.8rem;
+        color: var(--gold-strong);
+      }
+
+      .apple-bank-name {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .apple-bank-sub {
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+    }
+
+    .apple-bank-badges {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
     }
   }
 
-  &:focus-visible {
-    outline: 2px solid var(--gold);
-    outline-offset: 2px;
-  }
-}
+  .apple-bank-limit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 
-/* 7-day chart bars → /stats day drill */
-.dashboard-chart-click {
-  cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+    .limit-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+    }
 
-  &:hover {
-    transform: translateY(-2px);
-    filter: brightness(1.2);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--gold);
-    outline-offset: 2px;
-  }
-}
-
-.dashboard-chart-col {
-  &:hover .dashboard-hint {
-    opacity: 1;
-  }
-}
-
-/* Risk verdict + recent-op rows get a hover hint and cursor */
-.dashboard-verdict-click {
-  cursor: pointer;
-
-  &:hover .dashboard-hint {
-    opacity: 1;
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--gold);
-    outline-offset: 2px;
-  }
-}
-
-.dashboard-op-row {
-  cursor: pointer;
-  transition: background 0.2s var(--ease-out);
-
-  &:hover {
-    background: rgba(216, 180, 92, 0.06);
-
-    .dashboard-hint {
-      opacity: 1;
+    .limit-sub-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
     }
   }
+
+  .apple-bank-velocity-capsule {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .velocity-status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .velocity-metric {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .bullet-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+        }
+
+        .velocity-label {
+          font-size: 0.72rem;
+          color: var(--muted);
+        }
+
+        .velocity-state {
+          font-size: 0.75rem;
+          color: var(--text);
+        }
+      }
+
+      .velocity-tx-counter {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+    }
+
+    .velocity-wait-note {
+      font-size: 0.7rem;
+      color: var(--warn);
+    }
+  }
+
+  .apple-card-action-hint {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--gold);
+    text-align: right;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+}
+
+.apple-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 12px;
+  color: var(--warn);
+  font-size: 0.82rem;
+
+  .alert-icon {
+    font-size: 1.1rem;
+  }
+
+  .alert-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   5. Multi-Agent Swarm Suite Grid
+   ══════════════════════════════════════════════════════════════ */
+.apple-agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.apple-agent-tile {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .agent-tile-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+
+    .agent-id-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .agent-icon {
+        font-size: 1.4rem;
+        line-height: 1;
+      }
+
+      .agent-name {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+      }
+
+      .agent-role {
+        font-size: 0.72rem;
+        color: var(--gold);
+      }
+    }
+
+    .agent-status-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(47, 208, 143, 0.12);
+      border: 1px solid rgba(47, 208, 143, 0.25);
+
+      .agent-pulse-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #2fd08f;
+      }
+
+      .pulse-online {
+        animation: islandPulse 2s infinite ease-in-out;
+      }
+
+      .agent-status-text {
+        font-size: 0.65rem;
+        font-weight: 800;
+        color: #2fd08f;
+      }
+    }
+  }
+
+  .agent-description {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  .agent-tile-footer {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.72rem;
+
+    .agent-metric-item {
+      display: flex;
+      gap: 4px;
+
+      .agent-metric-label {
+        color: var(--muted);
+      }
+
+      .agent-metric-val {
+        font-weight: 700;
+        color: var(--text);
+      }
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   6. Macro & Regulatory BCV Intelligence
+   ══════════════════════════════════════════════════════════════ */
+.apple-macro-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.apple-macro-tile {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+
+  .macro-tile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .macro-tile-title {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+  }
+
+  .macro-tile-metric {
+    font-size: 1.15rem;
+    color: var(--text);
+  }
+
+  .macro-tile-subtext {
+    font-size: 0.74rem;
+    line-height: 1.3;
+
+    .macro-sub-date {
+      display: block;
+      color: var(--gold);
+      margin-top: 2px;
+    }
+  }
+}
+
+.apple-macro-callout {
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border-left: 3px solid var(--gold);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   7. Motor de Riesgo & Resumen Operativo (2-Col Grid)
+   ══════════════════════════════════════════════════════════════ */
+.apple-grid-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  @media (max-width: 800px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.apple-subcard {
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: rgba(216, 180, 92, 0.35);
+    transform: translateY(-2px);
+  }
+
+  .apple-subcard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .subcard-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .subcard-icon {
+        font-size: 1.1rem;
+      }
+
+      .subcard-title {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+      }
+    }
+
+    .apple-kpi-link {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+  }
+}
+
+.apple-risk-verdict-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+  border: 1px solid var(--line);
+
+  .verdict-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 4px;
+  }
+
+  &.allow {
+    border-color: rgba(47, 208, 143, 0.3);
+    .verdict-dot { background: #2fd08f; box-shadow: 0 0 8px #2fd08f; }
+    .verdict-label { color: #2fd08f; }
+  }
+
+  &.deny {
+    border-color: rgba(239, 68, 68, 0.3);
+    .verdict-dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .verdict-label { color: #ef4444; }
+  }
+
+  &.pause {
+    border-color: rgba(245, 158, 11, 0.3);
+    .verdict-dot { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+    .verdict-label { color: #f59e0b; }
+  }
+
+  .verdict-label {
+    font-size: 0.95rem;
+    font-weight: 800;
+  }
+
+  .verdict-reason {
+    font-size: 0.76rem;
+    color: var(--muted);
+    margin: 3px 0 0;
+  }
+}
+
+.apple-stats-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+
+  .stats-mini-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+
+    .stats-mini-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    .stats-mini-val {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--text);
+
+      &.positive {
+        color: #2fd08f;
+      }
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   8. Chart & Recent Operations Table
+   ══════════════════════════════════════════════════════════════ */
+.apple-chart-switcher {
+  display: flex;
+  gap: 6px;
+
+  .switcher-btn {
+    padding: 5px 12px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover:not(.active) {
+      color: var(--text);
+    }
+
+    &.active {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      font-weight: 700;
+    }
+  }
+}
+
+.apple-chart-container {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 14px 16px;
+  position: relative;
+  min-height: 200px;
+}
+
+.apple-svg-chart {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  display: block;
+}
+
+.chart-point {
+  cursor: pointer;
+  transition: r 0.2s ease;
+
+  &:hover {
+    r: 6.5;
+  }
+}
+
+.apple-chart-tooltip {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  background: rgba(13, 22, 38, 0.95);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 8px 12px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  .tooltip-date {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .tooltip-value {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--gold-strong);
+  }
+
+  .tooltip-subvalue {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+}
+
+.apple-table {
+  border-collapse: separate;
+  border-spacing: 0 4px;
+
+  tr {
+    transition: background 0.15s ease;
+  }
+
+  tbody tr {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+
+    &:hover {
+      background: rgba(216, 180, 92, 0.08);
+    }
+  }
+}
+
+/* Modal Dialog */
+.apple-modal-dialog {
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.98) 0%, rgba(9, 14, 24, 0.99) 100%);
+  border: 1px solid rgba(216, 180, 92, 0.35);
+  border-radius: 20px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
+}
+
+/* Animations */
+@keyframes islandPulse {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

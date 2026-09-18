@@ -1,8 +1,12 @@
-import { CalculateDeltaNeutralHedgeInputSchema, type CalculateDeltaNeutralHedgeInput } from '../schemas/index.js';
+import {
+  CalculateDeltaNeutralHedgeInputSchema,
+  type CalculateDeltaNeutralHedgeInput,
+} from '../schemas/index.js';
 
 export const calculateDeltaNeutralHedgeTool = {
   name: 'calculate_delta_neutral_hedge',
-  description: 'Calcula la posición corta sintética necesaria para congelar el valor USD del capital retenido en bolívares (VES).',
+  description:
+    'Calcula la posición corta sintética necesaria para congelar el valor USD del capital retenido en bolívares (VES).',
   inputSchema: CalculateDeltaNeutralHedgeInputSchema,
   execute: (input: CalculateDeltaNeutralHedgeInput) => {
     const usdtValueEquivalent = input.vesBalance / input.usdtReferencePrice;
@@ -19,7 +23,8 @@ export const calculateDeltaNeutralHedgeTool = {
       requiredShortHedgeUsdt: Number(requiredHedgeUsdt.toFixed(2)),
       projectedLossIfUnhedged5PctUsd: Number(unhedgedLoss5PctUsd.toFixed(2)),
       recommendedInstrument: 'Perpetual Futures 1x Short o Aave Variable Debt',
-      humanInTheLoopNotice: 'Requiere confirmación explícita del operador antes de abrir posición en protocolo de derivados.',
+      humanInTheLoopNotice:
+        'Requiere confirmación explícita del operador antes de abrir posición en protocolo de derivados.',
     };
   },
 };

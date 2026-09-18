@@ -10,10 +10,10 @@
  */
 
 export type ReviewGateVerdict =
-  | 'ALLOW'       // Receipt aprobado, entregar bajo policy
-  | 'BLOCKED'     // Hay un bloqueo que requiere acción humana
-  | 'UNMANAGED'   // RDD desactivado, entregar bajo policy normal
-  | 'UNKNOWN';    // No se pudo determinar (error, timeout)
+  | 'ALLOW' // Receipt aprobado, entregar bajo policy
+  | 'BLOCKED' // Hay un bloqueo que requiere acción humana
+  | 'UNMANAGED' // RDD desactivado, entregar bajo policy normal
+  | 'UNKNOWN'; // No se pudo determinar (error, timeout)
 
 export interface ReviewGateResult {
   verdict: ReviewGateVerdict;

@@ -219,6 +219,20 @@
               <span class="box-title">⚡ ACCIONES RÁPIDAS</span>
             </div>
             <div class="quick-prompts-list">
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('explicar_triangulacion')" [disabled]="isLoading()">
+                <span class="icon">🎓</span>
+                <div class="text-block">
+                  <strong>Explicar Triangulación</strong>
+                  <small>Clase magistral de arbitraje & riesgos</small>
+                </div>
+              </button>
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('resumen_ejecutivo')" [disabled]="isLoading()">
+                <span class="icon">📊</span>
+                <div class="text-block">
+                  <strong>Resumen Ejecutivo</strong>
+                  <small>Balance de sesión & directivas de mesa</small>
+                </div>
+              </button>
               <button class="quick-action-row" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
                 <span class="icon">⚡</span>
                 <div class="text-block">
@@ -226,10 +240,17 @@
                   <small>Buscar rutas VES/USDT/Crypto</small>
                 </div>
               </button>
-              <button class="quick-action-row" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
+              <button class="quick-action-row" (click)="quickPrompt('riesgo_bcv')" [disabled]="isLoading()">
                 <span class="icon">🏦</span>
                 <div class="text-block">
-                  <strong>Alerta & Brecha BCV</strong>
+                  <strong>Riesgo & Salida BCV</strong>
+                  <small>Escape ante intervención cambiaria</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
+                <span class="icon">🔍</span>
+                <div class="text-block">
+                  <strong>Auditoría Brecha BCV</strong>
                   <small>Consultar compresión y ventana</small>
                 </div>
               </button>
@@ -674,8 +695,14 @@
 
   <!-- ACTION LAUNCHER MODAL / QUICK EXECUTION DRAWER -->
   @if (selectedActionPlan(); as plan) {
-    <div class="action-launcher-backdrop" (click)="closeActionLauncher()">
-      <div class="action-launcher-modal" (click)="$event.stopPropagation()">
+    <div
+      class="action-launcher-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && closeActionLauncher()"
+      (keydown.escape)="closeActionLauncher()"
+      aria-label="Cerrar lanzador de orden">
+      <div class="action-launcher-modal">
         <div class="modal-header">
           <div class="title-wrap">
             <span class="bolt-icon">⚡</span>
