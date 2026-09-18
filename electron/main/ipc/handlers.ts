@@ -1,5 +1,6 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
-import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, ScreenPipeSource, AlphaWatcherConfigDto } from '../../shared/types';
+import { createHmac } from 'crypto';
+import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, BybitP2pFetchRequest, ElDoradoQuoteRequest, ScreenPipeSource, AlphaWatcherConfigDto } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
@@ -95,6 +96,117 @@ export function registerIpcHandlers(): void {
         const message = err instanceof Error ? err.message : String(err);
         if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
           throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)');
+        }
+        throw new Error(message);
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:fetch-bybit-p2p');
+  ipcMain.handle(
+    'p2p:fetch-bybit-p2p',
+    async (_event: IpcMainInvokeEvent, req: BybitP2pFetchRequest): Promise<unknown> => {
+      if (
+        !req ||
+        typeof req.apiKey !== 'string' ||
+        req.apiKey.trim().length === 0 ||
+        typeof req.apiSecret !== 'string' ||
+        req.apiSecret.trim().length === 0
+      ) {
+        throw new Error('Bybit P2P API key and secret are required');
+      }
+      if (req.side !== 0 && req.side !== 1) {
+        throw new Error('Bybit P2P side must be 0 (BUY) or 1 (SELL)');
+      }
+
+      const tokenId = req.tokenId ?? 'USDT';
+      const currencyId = req.currencyId ?? 'VES';
+      const page = req.page ?? 1;
+      const size = req.size ?? 5;
+      const body = JSON.stringify({ tokenId, currencyId, side: req.side, page, size });
+      const timestamp = Date.now().toString();
+      const recvWindow = '20000';
+      const sign = createHmac('sha256', req.apiSecret.trim())
+        .update(`${timestamp}${req.apiKey.trim()}${recvWindow}${body}`)
+        .digest('hex');
+
+      try {
+        const response = await net.fetch('https://api.bybit.com/v5/p2p/item/online', {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            'X-BAPI-API-KEY': req.apiKey.trim(),
+            'X-BAPI-TIMESTAMP': timestamp,
+            'X-BAPI-RECV-WINDOW': recvWindow,
+            'X-BAPI-SIGN': sign,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body,
+        });
+        if (!response.ok) {
+          throw new Error(`Bybit P2P HTTP Error ${response.status}`);
+        }
+        return await response.json();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
+          throw new Error('Servidor Bybit P2P no accesible (sin conexión o timeout)');
+        }
+        throw new Error(message);
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:fetch-eldorado-quote');
+  ipcMain.handle(
+    'p2p:fetch-eldorado-quote',
+    async (_event: IpcMainInvokeEvent, req: ElDoradoQuoteRequest): Promise<unknown> => {
+      if (
+        !req ||
+        typeof req.clientId !== 'string' ||
+        req.clientId.trim().length === 0 ||
+        typeof req.referralId !== 'string' ||
+        req.referralId.trim().length === 0
+      ) {
+        throw new Error('El Dorado clientId and referralId are required');
+      }
+      if (req.direction !== 'buy' && req.direction !== 'sell') {
+        throw new Error('El Dorado direction must be "buy" or "sell"');
+      }
+
+      const headers: Record<string, string> = {
+        'X-Client-ID': req.clientId.trim(),
+        'X-Referral-ID': req.referralId.trim(),
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (req.apiKey && req.apiKey.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${req.apiKey.trim()}`;
+      }
+
+      const body = {
+        crypto: req.asset ?? 'USDT',
+        legalTender: req.fiat ?? 'USD',
+        ...(typeof req.amount === 'number' && req.amount > 0 ? { amount: req.amount } : {}),
+        ...(req.paymentMethod && req.paymentMethod.trim().length > 0 ? { payment_method: req.paymentMethod.trim() } : {}),
+      };
+
+      try {
+        const response = await net.fetch(`https://api.eldorado.io/api/quote/${req.direction}`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+          headers,
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          throw new Error(`El Dorado HTTP Error ${response.status}`);
+        }
+        return await response.json();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
+          throw new Error('Servidor El Dorado no accesible (sin conexión o timeout)');
         }
         throw new Error(message);
       }

@@ -4,6 +4,8 @@ import { SecureVaultService } from './secure-vault.service';
 
 const VAULT_TELEGRAM = 'p2p.secure.telegram';
 const VAULT_COTIZAVE = 'p2p.secure.cotizave';
+const VAULT_BYBIT = 'p2p.secure.bybit';
+const VAULT_ELDORADO = 'p2p.secure.eldorado';
 
 const LEGACY_TELEGRAM = 'p2p.telegram_config';
 const LEGACY_COTIZAVE = 'p2p.cotizave.apiKey';
@@ -13,6 +15,17 @@ export interface TelegramConfigPayload {
   chatId: string;
   alertsEnabled: boolean;
   pollingEnabled?: boolean;
+}
+
+export interface BybitCredentials {
+  apiKey: string;
+  apiSecret: string;
+}
+
+export interface ElDoradoCredentials {
+  clientId: string;
+  referralId: string;
+  apiKey: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -95,6 +108,42 @@ export class CredentialStoreService {
   async setCotizaveApiKey(key: string): Promise<void> {
     await this.migrateOnce();
     await this.vault.storeSecret(VAULT_COTIZAVE, key);
+  }
+
+  async getBybitCredentials(): Promise<BybitCredentials | null> {
+    await this.migrateOnce();
+    const json = await this.vault.getSecret(VAULT_BYBIT);
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json) as BybitCredentials;
+      if (!parsed.apiKey || !parsed.apiSecret) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async setBybitCredentials(cfg: BybitCredentials): Promise<void> {
+    await this.migrateOnce();
+    await this.vault.storeSecret(VAULT_BYBIT, JSON.stringify(cfg));
+  }
+
+  async getElDoradoCredentials(): Promise<ElDoradoCredentials | null> {
+    await this.migrateOnce();
+    const json = await this.vault.getSecret(VAULT_ELDORADO);
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json) as ElDoradoCredentials;
+      if (!parsed.clientId || !parsed.referralId) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async setElDoradoCredentials(cfg: ElDoradoCredentials): Promise<void> {
+    await this.migrateOnce();
+    await this.vault.storeSecret(VAULT_ELDORADO, JSON.stringify(cfg));
   }
 }
 

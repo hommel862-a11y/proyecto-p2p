@@ -33,6 +33,44 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(res).toEqual({ data: [] });
   });
 
+  it('forwards fetchBybitP2p to the p2p:fetch-bybit-p2p channel', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({ result: { items: [] } });
+    });
+    const res = await api.fetchBybitP2p({
+      apiKey: 'key',
+      apiSecret: 'secret',
+      tokenId: 'USDT',
+      currencyId: 'VES',
+      side: 1,
+    });
+    expect(calls).toEqual([
+      {
+        channel: 'p2p:fetch-bybit-p2p',
+        args: [{ apiKey: 'key', apiSecret: 'secret', tokenId: 'USDT', currencyId: 'VES', side: 1 }],
+      },
+    ]);
+    expect((res as { result: { items: unknown[] } }).result.items).toEqual([]);
+  });
+
+  it('forwards fetchElDoradoQuote to the p2p:fetch-eldorado-quote channel', async () => {
+    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({ quote: { rate: 4380 } });
+    });
+    const res = await api.fetchElDoradoQuote({ clientId: 'client', referralId: 'ref', direction: 'buy' });
+    expect(calls).toEqual([
+      {
+        channel: 'p2p:fetch-eldorado-quote',
+        args: [{ clientId: 'client', referralId: 'ref', direction: 'buy' }],
+      },
+    ]);
+    expect((res as { quote: { rate: number } }).quote.rate).toBe(4380);
+  });
+
   it('forwards crypto methods to the allow-listed crypto:* channels', async () => {
     const calls: Array<{ channel: string; args: unknown[] }> = [];
     const api = createP2PApi((channel, ...args) => {

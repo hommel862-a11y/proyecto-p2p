@@ -18,6 +18,108 @@
     </div>
   </div>
 
+  <!-- Credentials Config (Bybit + El Dorado) -->
+  <div class="terminal-input-grid grid-2" style="margin-bottom: 18px; padding: 12px 0 4px;">
+    <div class="terminal-field">
+      <label class="terminal-label">
+        <span>Bybit P2P — Credenciales</span>
+        <span class="terminal-subtext" title="{{ bybit.statusText() }}">{{ bybit.statusText() }}</span>
+      </label>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <input
+          type="password"
+          class="terminal-input font-mono"
+          style="flex: 1 1 140px;"
+          placeholder="API Key"
+          [ngModel]="bybitApiKeyInput()"
+          (ngModelChange)="bybitApiKeyInput.set($event)"
+          autocomplete="new-password"
+        />
+        <input
+          type="password"
+          class="terminal-input font-mono"
+          style="flex: 1 1 140px;"
+          placeholder="API Secret"
+          [ngModel]="bybitApiSecretInput()"
+          (ngModelChange)="bybitApiSecretInput.set($event)"
+          autocomplete="new-password"
+        />
+        <button
+          type="button"
+          class="btn-ghost"
+          (click)="saveBybitCredentials()"
+          style="font-size: 0.72rem;"
+        >
+          Guardar
+        </button>
+        @if (bybit.configured()) {
+          <button
+            type="button"
+            class="btn-ghost"
+            (click)="clearBybitCredentials()"
+            style="font-size: 0.72rem;"
+          >
+            Quitar
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="terminal-field">
+      <label class="terminal-label">
+        <span>El Dorado — Cuenta API</span>
+        <span class="terminal-subtext" title="{{ elDorado.statusText() }}">{{ elDorado.statusText() }}</span>
+      </label>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <input
+          type="password"
+          class="terminal-input font-mono"
+          style="flex: 1 1 120px;"
+          placeholder="Client ID"
+          [ngModel]="eldoradoClientIdInput()"
+          (ngModelChange)="eldoradoClientIdInput.set($event)"
+          autocomplete="new-password"
+        />
+        <input
+          type="password"
+          class="terminal-input font-mono"
+          style="flex: 1 1 120px;"
+          placeholder="Referral ID"
+          [ngModel]="eldoradoReferralIdInput()"
+          (ngModelChange)="eldoradoReferralIdInput.set($event)"
+          autocomplete="new-password"
+        />
+        <input
+          type="password"
+          class="terminal-input font-mono"
+          style="flex: 1 1 120px;"
+          placeholder="API Key (opcional)"
+          [ngModel]="eldoradoApiKeyInput()"
+          (ngModelChange)="eldoradoApiKeyInput.set($event)"
+          autocomplete="new-password"
+        />
+        <button
+          type="button"
+          class="btn-ghost"
+          (click)="saveElDoradoCredentials()"
+          style="font-size: 0.72rem;"
+        >
+          Guardar
+        </button>
+        @if (elDorado.configured()) {
+          <button
+            type="button"
+            class="btn-ghost"
+            (click)="clearElDoradoCredentials()"
+            style="font-size: 0.72rem;"
+          >
+            Quitar
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+
   <!-- Controls Grid -->
   <div class="terminal-input-grid grid-3" style="margin-bottom: 18px;">
     <div class="terminal-field">
@@ -138,7 +240,7 @@
                 class="terminal-input font-mono"
                 style="padding: 3px 6px; font-size: 0.78rem;"
                 [ngModel]="bybitBuyPrice()"
-                (ngModelChange)="bybitBuyPrice.set($event)"
+                (ngModelChange)="setBybitBuyPrice($event)"
                 step="0.1"
               />
             </div>
@@ -150,7 +252,7 @@
                 class="terminal-input font-mono"
                 style="padding: 3px 6px; font-size: 0.78rem;"
                 [ngModel]="bybitSellPrice()"
-                (ngModelChange)="bybitSellPrice.set($event)"
+                (ngModelChange)="setBybitSellPrice($event)"
                 step="0.1"
               />
             </div>
@@ -164,7 +266,11 @@
             <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.25 BEP20</span>
           </td>
           <td>
-            <span class="badge badge-secondary" style="font-size: 0.68rem;">SINCRONIZADO</span>
+            @if (bybit.mode() === 'live') {
+              <span class="badge badge-accent" style="font-size: 0.68rem;" title="{{ bybit.statusText() }}">EN VIVO</span>
+            } @else {
+              <span class="badge badge-secondary" style="font-size: 0.68rem;" title="{{ bybit.statusText() }}">DEMO</span>
+            }
           </td>
         </tr>
 
@@ -181,7 +287,7 @@
                 class="terminal-input font-mono"
                 style="padding: 3px 6px; font-size: 0.78rem;"
                 [ngModel]="elDoradoBuyPrice()"
-                (ngModelChange)="elDoradoBuyPrice.set($event)"
+                (ngModelChange)="setElDoradoBuyPrice($event)"
                 step="0.1"
               />
             </div>
@@ -193,7 +299,7 @@
                 class="terminal-input font-mono"
                 style="padding: 3px 6px; font-size: 0.78rem;"
                 [ngModel]="elDoradoSellPrice()"
-                (ngModelChange)="elDoradoSellPrice.set($event)"
+                (ngModelChange)="setElDoradoSellPrice($event)"
                 step="0.1"
               />
             </div>
@@ -207,7 +313,11 @@
             <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.30 BEP20</span>
           </td>
           <td>
-            <span class="badge badge-secondary" style="font-size: 0.68rem;">SINCRONIZADO</span>
+            @if (elDorado.mode() === 'live') {
+              <span class="badge badge-accent" style="font-size: 0.68rem;" title="{{ elDorado.statusText() }}">EN VIVO</span>
+            } @else {
+              <span class="badge badge-secondary" style="font-size: 0.68rem;" title="{{ elDorado.statusText() }}">DEMO</span>
+            }
           </td>
         </tr>
       </tbody>

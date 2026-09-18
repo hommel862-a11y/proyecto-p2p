@@ -37,8 +37,8 @@ describe('Institutional 10 MCP Servers Tool Suite', () => {
     expect(cleanTx.taintPercentage).toBeLessThan(5);
   });
 
-  it('fetch_cross_exchange_spread identifies cross-exchange arbitrage opportunities', () => {
-    const res = fetchCrossExchangeSpreadTool.execute({
+  it('fetch_cross_exchange_spread identifies cross-exchange arbitrage opportunities', async () => {
+    const res = await fetchCrossExchangeSpreadTool.execute({
       fiat: 'VES',
       asset: 'USDT',
       paymentMethod: 'Pago Movil',

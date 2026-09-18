@@ -15,6 +15,28 @@ export interface CotizaveRequest {
   endpoint: 'rates';
 }
 
+export interface BybitP2pFetchRequest {
+  apiKey: string;
+  apiSecret: string;
+  tokenId?: string;
+  currencyId?: string;
+  /** 0 = BUY ads (bids), 1 = SELL ads (asks). */
+  side: 0 | 1;
+  page?: number;
+  size?: number;
+}
+
+export interface ElDoradoQuoteRequest {
+  clientId: string;
+  referralId: string;
+  apiKey?: string;
+  direction: 'buy' | 'sell';
+  asset?: string;
+  fiat?: string;
+  amount?: number;
+  paymentMethod?: string;
+}
+
 export type P2POrderState =
   | 'ORDER_DETECTED'
   | 'PAYMENT_PENDING'
@@ -79,6 +101,14 @@ export interface P2PIpcChannels {
   };
   'p2p:fetch-cotizave': {
     request: CotizaveRequest;
+    response: unknown;
+  };
+  'p2p:fetch-bybit-p2p': {
+    request: BybitP2pFetchRequest;
+    response: unknown;
+  };
+  'p2p:fetch-eldorado-quote': {
+    request: ElDoradoQuoteRequest;
     response: unknown;
   };
   'crypto:is-available': {
@@ -264,6 +294,8 @@ export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
   fetchCotizave(req: CotizaveRequest): Promise<unknown>;
+  fetchBybitP2p(req: BybitP2pFetchRequest): Promise<unknown>;
+  fetchElDoradoQuote(req: ElDoradoQuoteRequest): Promise<unknown>;
   crypto: {
     isAvailable(): Promise<boolean>;
     encrypt(plaintext: string): Promise<string>;

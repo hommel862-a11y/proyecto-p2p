@@ -12,6 +12,8 @@ import {
   type CrossExchangeArbitrageOpportunity,
 } from '@p2p/core';
 import { BinanceP2pService } from '../../../core/binance-p2p.service';
+import { BybitP2pService } from '../../../core/bybit-p2p.service';
+import { ElDoradoService } from '../../../core/eldorado.service';
 import { ToastService } from '../../../core/toast.service';
 
 @Component({
@@ -24,6 +26,8 @@ import { ToastService } from '../../../core/toast.service';
 export class CrossExchangeMatrix {
   private readonly binanceService = inject(BinanceP2pService);
   private readonly toast = inject(ToastService);
+  readonly bybit = inject(BybitP2pService);
+  readonly elDorado = inject(ElDoradoService);
 
   readonly capitalUsdt = signal<number>(500);
   readonly network = signal<TransferNetwork>('BEP20');
@@ -38,11 +42,18 @@ export class CrossExchangeMatrix {
     return this.binanceService.marketDepth()?.bestSellPrice || 815.0;
   });
 
-  readonly bybitBuyPrice = signal<number>(808.5);
-  readonly bybitSellPrice = signal<number>(813.0);
+  readonly bybitBuyPrice = computed<number>(() => this.bybit.buyPrice());
+  readonly bybitSellPrice = computed<number>(() => this.bybit.sellPrice());
 
-  readonly elDoradoBuyPrice = signal<number>(805.0);
-  readonly elDoradoSellPrice = signal<number>(811.5);
+  readonly elDoradoBuyPrice = computed<number>(() => this.elDorado.buyPrice());
+  readonly elDoradoSellPrice = computed<number>(() => this.elDorado.sellPrice());
+
+  // Config form state (secrets never read back into the DOM).
+  readonly bybitApiKeyInput = signal<string>('');
+  readonly bybitApiSecretInput = signal<string>('');
+  readonly eldoradoClientIdInput = signal<string>('');
+  readonly eldoradoReferralIdInput = signal<string>('');
+  readonly eldoradoApiKeyInput = signal<string>('');
 
   readonly books = computed<Record<ExchangeName, UnifiedP2pBook>>(() => {
     const timestamp = new Date().toISOString();
@@ -79,16 +90,18 @@ export class CrossExchangeMatrix {
         fiatCurrency: 'VES',
         cryptoCurrency: 'USDT',
         sellOffers: [
-          normalizeBybitOrder(
-            { price: this.bybitBuyPrice(), lastQuantity: cap, nickName: 'Bybit Pro' },
-            'SELL',
-          ),
+          this.bybit.bestSellOffer() ??
+            normalizeBybitOrder(
+              { price: this.bybitBuyPrice(), lastQuantity: cap, nickName: 'Bybit Pro' },
+              'SELL',
+            ),
         ],
         buyOffers: [
-          normalizeBybitOrder(
-            { price: this.bybitSellPrice(), lastQuantity: cap, nickName: 'Bybit Buyer' },
-            'BUY',
-          ),
+          this.bybit.bestBuyOffer() ??
+            normalizeBybitOrder(
+              { price: this.bybitSellPrice(), lastQuantity: cap, nickName: 'Bybit Buyer' },
+              'BUY',
+            ),
         ],
       },
       ELDORADO: {
@@ -96,16 +109,18 @@ export class CrossExchangeMatrix {
         fiatCurrency: 'VES',
         cryptoCurrency: 'USDT',
         sellOffers: [
-          normalizeElDoradoOrder(
-            { rate: this.elDoradoBuyPrice(), available_balance: cap, username: 'ElDorado Trader' },
-            'SELL',
-          ),
+          this.elDorado.lastQuoteSell() ??
+            normalizeElDoradoOrder(
+              { rate: this.elDoradoBuyPrice(), available_balance: cap, username: 'ElDorado Trader' },
+              'SELL',
+            ),
         ],
         buyOffers: [
-          normalizeElDoradoOrder(
-            { rate: this.elDoradoSellPrice(), available_balance: cap, username: 'ElDorado Buyer' },
-            'BUY',
-          ),
+          this.elDorado.lastQuoteBuy() ??
+            normalizeElDoradoOrder(
+              { rate: this.elDoradoSellPrice(), available_balance: cap, username: 'ElDorado Buyer' },
+              'BUY',
+            ),
         ],
       },
     };
@@ -123,8 +138,51 @@ export class CrossExchangeMatrix {
     return ((sellPrice - buyPrice) / buyPrice) * 100;
   }
 
+  setBybitBuyPrice(v: number): void {
+    this.bybit.setDemoPrices(v, this.bybit.sellPrice());
+  }
+
+  setBybitSellPrice(v: number): void {
+    this.bybit.setDemoPrices(this.bybit.buyPrice(), v);
+  }
+
+  setElDoradoBuyPrice(v: number): void {
+    this.elDorado.setDemoPrices(v, this.elDorado.sellPrice());
+  }
+
+  setElDoradoSellPrice(v: number): void {
+    this.elDorado.setDemoPrices(this.elDorado.buyPrice(), v);
+  }
+
+  saveBybitCredentials(): void {
+    void this.bybit.saveCredentials(this.bybitApiKeyInput(), this.bybitApiSecretInput());
+  }
+
+  clearBybitCredentials(): void {
+    this.bybitApiKeyInput.set('');
+    this.bybitApiSecretInput.set('');
+    void this.bybit.clearCredentials();
+  }
+
+  saveElDoradoCredentials(): void {
+    void this.elDorado.saveCredentials(
+      this.eldoradoClientIdInput(),
+      this.eldoradoReferralIdInput(),
+      this.eldoradoApiKeyInput(),
+    );
+  }
+
+  clearElDoradoCredentials(): void {
+    this.eldoradoClientIdInput.set('');
+    this.eldoradoReferralIdInput.set('');
+    this.eldoradoApiKeyInput.set('');
+    void this.elDorado.clearCredentials();
+  }
+
   refreshLiveRates(): void {
     void this.binanceService.fetchMarketDepth('USDT', 'VES', true);
-    this.toast.success('Puntas de Binance P2P sincronizadas en tiempo real.');
+    void this.bybit.refresh('USDT', 'VES');
+    void this.elDorado.refresh('USDT', 'VES');
+    this.toast.success('Sincronizando puntas Binance, Bybit y El Dorado…');
   }
 }
