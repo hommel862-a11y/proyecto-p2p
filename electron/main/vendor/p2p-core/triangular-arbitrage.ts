@@ -393,3 +393,179 @@ export const DEFAULT_TRIANGULAR_PRESETS: TriangularRoutePreset[] = [
     ],
   },
 ];
+
+// ─── Phase 1: Global Remittance Corridors & Spatial Basis Arbitrage ────────────
+
+export interface FxCorridorQuote {
+  corridorId: string; // ej. 'USDT-COP', 'USDT-VES', 'USDT-EUR', 'USDT-BRL'
+  sourceCurrency: string;
+  targetCurrency: string;
+  spotCrossRate: number;
+  officialParityRate: number;
+  bankingFrictionPct: number;
+  transferLatencyMinutes: number;
+  makerFeePct: number;
+}
+
+export interface FxCorridorRanking {
+  corridorId: string;
+  sourceCurrency: string;
+  targetCurrency: string;
+  netYieldPct: number;
+  effectiveFrictionPct: number;
+  speedRating: 'ULTRA_FAST' | 'MODERATE' | 'SLOW_SETTLEMENT';
+  viabilityStatus: 'OPTIMAL_CORRIDOR' | 'ACCEPTABLE' | 'SUB_OPTIMAL' | 'UNECONOMIC';
+}
+
+export interface FxCorridorComparisonResult {
+  baseAmountUsdt: number;
+  rankedCorridors: FxCorridorRanking[];
+  recommendedCorridorId: string;
+  arbitrageSpreadBetweenBestAndWorstPct: number;
+  synthesis: string;
+}
+
+/**
+ * Analiza y ranquea la eficiencia de múltiples corredores cambiarios internacionales
+ * comparando rendimiento neto, fricción bancaria (GMF/Wire/Tasas) y latencia de liquidación.
+ */
+export function analyzeFxCorridorEfficiency(
+  baseAmountUsdt: number,
+  corridors: FxCorridorQuote[],
+): FxCorridorComparisonResult {
+  if (!corridors || corridors.length === 0) {
+    return {
+      baseAmountUsdt,
+      rankedCorridors: [],
+      recommendedCorridorId: 'NONE',
+      arbitrageSpreadBetweenBestAndWorstPct: 0,
+      synthesis: 'No se proporcionaron corredores cambiarios para evaluar.',
+    };
+  }
+
+  const evaluated: FxCorridorRanking[] = corridors.map((c) => {
+    const rawGapPct = c.officialParityRate > 0
+      ? ((c.spotCrossRate - c.officialParityRate) / c.officialParityRate) * 100
+      : 0;
+    const totalFriction = c.bankingFrictionPct + c.makerFeePct;
+    const netYieldPct = Math.round((rawGapPct - totalFriction) * 100) / 100;
+
+    let speedRating: FxCorridorRanking['speedRating'] = 'MODERATE';
+    if (c.transferLatencyMinutes <= 15) speedRating = 'ULTRA_FAST';
+    else if (c.transferLatencyMinutes > 60) speedRating = 'SLOW_SETTLEMENT';
+
+    let viabilityStatus: FxCorridorRanking['viabilityStatus'] = 'ACCEPTABLE';
+    if (netYieldPct >= 1.5) viabilityStatus = 'OPTIMAL_CORRIDOR';
+    else if (netYieldPct < 0.2) viabilityStatus = 'UNECONOMIC';
+    else if (netYieldPct < 0.6) viabilityStatus = 'SUB_OPTIMAL';
+
+    return {
+      corridorId: c.corridorId,
+      sourceCurrency: c.sourceCurrency,
+      targetCurrency: c.targetCurrency,
+      netYieldPct,
+      effectiveFrictionPct: Math.round(totalFriction * 100) / 100,
+      speedRating,
+      viabilityStatus,
+    };
+  });
+
+  evaluated.sort((a, b) => b.netYieldPct - a.netYieldPct);
+  const best = evaluated[0];
+  const worst = evaluated[evaluated.length - 1];
+  const spreadDiff = Math.round((best.netYieldPct - worst.netYieldPct) * 100) / 100;
+
+  return {
+    baseAmountUsdt,
+    rankedCorridors: evaluated,
+    recommendedCorridorId: best.corridorId,
+    arbitrageSpreadBetweenBestAndWorstPct: spreadDiff,
+    synthesis: `Mejor corredor: ${best.corridorId} con ${best.netYieldPct}% neto. Discrepancia espacial de ${spreadDiff}% frente a la ruta menos eficiente.`,
+  };
+}
+
+export interface PlatformPricePoint {
+  platformName: string; // ej. 'Binance', 'Bybit', 'KuCoin', 'ElDorado'
+  fiatCurrency: string;
+  bestBidPrice: number;
+  bestAskPrice: number;
+  availableDepthUsdt: number;
+  internalTransferFeeUsdt: number;
+}
+
+export interface CrossExchangeSpatialBasisResult {
+  fiatCurrency: string;
+  buyPlatform: string;
+  buyPrice: number;
+  sellPlatform: string;
+  sellPrice: number;
+  grossSpreadPct: number;
+  netSpreadPct: number;
+  netProfitUsdt: number;
+  isExecutable: boolean;
+  actionableStep: string;
+}
+
+/**
+ * Detecta arbitraje espacial de base entre distintas plataformas P2P
+ * (ej. Comprar en El Dorado y vender en Binance P2P con retiro interno).
+ */
+export function calculateCrossExchangeBasisSpread(
+  capitalUsdt: number,
+  platforms: PlatformPricePoint[],
+): CrossExchangeSpatialBasisResult {
+  if (!platforms || platforms.length < 2) {
+    return {
+      fiatCurrency: 'UNKNOWN',
+      buyPlatform: 'NONE',
+      buyPrice: 0,
+      sellPlatform: 'NONE',
+      sellPrice: 0,
+      grossSpreadPct: 0,
+      netSpreadPct: 0,
+      netProfitUsdt: 0,
+      isExecutable: false,
+      actionableStep: 'Se requieren al menos 2 plataformas con precios válidos.',
+    };
+  }
+
+  let minAskPlatform = platforms[0];
+  let maxBidPlatform = platforms[0];
+
+  for (const p of platforms) {
+    if (p.bestAskPrice > 0 && p.bestAskPrice < minAskPlatform.bestAskPrice) {
+      minAskPlatform = p;
+    }
+    if (p.bestBidPrice > maxBidPlatform.bestBidPrice) {
+      maxBidPlatform = p;
+    }
+  }
+
+  const buyPrice = minAskPlatform.bestAskPrice;
+  const sellPrice = maxBidPlatform.bestBidPrice;
+  const fiat = minAskPlatform.fiatCurrency;
+
+  const grossSpreadPct = buyPrice > 0 ? Math.round(((sellPrice - buyPrice) / buyPrice) * 10000) / 100 : 0;
+  const totalFeesUsdt = minAskPlatform.internalTransferFeeUsdt + (capitalUsdt * 0.002); // 0.2% estimado P2P fees
+  const grossProfitUsdt = capitalUsdt * (grossSpreadPct / 100);
+  const netProfitUsdt = Math.round((grossProfitUsdt - totalFeesUsdt) * 100) / 100;
+  const netSpreadPct = capitalUsdt > 0 ? Math.round((netProfitUsdt / capitalUsdt) * 10000) / 100 : 0;
+
+  const isExecutable = netSpreadPct >= 0.50 && minAskPlatform.platformName !== maxBidPlatform.platformName;
+
+  return {
+    fiatCurrency: fiat,
+    buyPlatform: minAskPlatform.platformName,
+    buyPrice,
+    sellPlatform: maxBidPlatform.platformName,
+    sellPrice,
+    grossSpreadPct,
+    netSpreadPct,
+    netProfitUsdt,
+    isExecutable,
+    actionableStep: isExecutable
+      ? `Comprar en ${minAskPlatform.platformName} a ${buyPrice} ${fiat} y vender en ${maxBidPlatform.platformName} a ${sellPrice} ${fiat}. Retorno neto: +$${netProfitUsdt} USDT (${netSpreadPct}%).`
+      : `Spread insuficiente (${netSpreadPct}% neto). No supera el umbral de viabilidad institucional (0.50%).`,
+  };
+}
+

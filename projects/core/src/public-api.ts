@@ -48,3 +48,5 @@ export * from './lib/delta-neutral-hedge';
 export * from './lib/trade-impact-simulator';
 export * from './lib/agent-skills';
 export * from './lib/zk-market-mesh';
+export * from './lib/binance-earn-vault';
+export * from './lib/operations-workflow';

@@ -35,6 +35,13 @@ import { compileDisputeDossierTool } from './compile_dispute_dossier.js';
 import { evaluateAccountSaturationTool } from './evaluate_account_saturation.js';
 import { dispatchOrderInstructionsTool } from './dispatch_order_instructions.js';
 import { lookupCounterpartyReputationTool } from './lookup_counterparty_reputation.js';
+// Compliance, Multichannel & Proof Reader Tools
+import { checkBankOperationalStatusTool } from './check_bank_operational_status.js';
+import { checkCounterpartyBlacklistTool } from './check_counterparty_blacklist.js';
+import { registerBlacklistedEntityTool } from './register_blacklisted_entity.js';
+import { sendMultichannelAlertTool } from './send_multichannel_alert.js';
+import { processRemoteSentinelCommandTool } from './process_remote_sentinel_command.js';
+import { auditPaymentProofOcrTool } from './audit_payment_proof_ocr.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -74,6 +81,13 @@ export const ALL_MCP_TOOLS = [
   evaluateAccountSaturationTool,
   dispatchOrderInstructionsTool,
   lookupCounterpartyReputationTool,
+  // Compliance, Multichannel & Proof Reader
+  checkBankOperationalStatusTool,
+  checkCounterpartyBlacklistTool,
+  registerBlacklistedEntityTool,
+  sendMultichannelAlertTool,
+  processRemoteSentinelCommandTool,
+  auditPaymentProofOcrTool,
 ];
 
 export {
@@ -114,5 +128,12 @@ export {
   evaluateAccountSaturationTool,
   dispatchOrderInstructionsTool,
   lookupCounterpartyReputationTool,
+  // Compliance, Multichannel & Proof Reader
+  checkBankOperationalStatusTool,
+  checkCounterpartyBlacklistTool,
+  registerBlacklistedEntityTool,
+  sendMultichannelAlertTool,
+  processRemoteSentinelCommandTool,
+  auditPaymentProofOcrTool,
 };
 

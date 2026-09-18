@@ -244,3 +244,180 @@ export function getBcvMarketIntelligence(
     timestamp: now.toISOString(),
   };
 }
+
+// ─── Phase 1: Macro Liquidity Drain, Dollarization Velocity & Nash Repricing ───
+
+export interface CentralBankLiquidityDrainInput {
+  dayOfMonth: number;
+  dayOfWeek: number; // 0=Dom, 1=Lun, ..., 6=Sab
+  estimatedSeniatCollectionActive: boolean; // Quincenas o cierre de mes fiscal
+  weeklyBcvInjectionMillionsUsd: number;
+}
+
+export interface CentralBankLiquidityDrainResult {
+  interbankLiquidityLevel: 'TIGHT_LIQUIDITY_DRAIN' | 'MODERATE' | 'SURPLUS_BOLIVARES';
+  p2pDemandImpact: 'COMPRESSED_BUY_PRESSURE' | 'BALANCED_TURNOVER' | 'HIGH_INFLATION_SURGE';
+  projectedParallelTrend48h: 'SIDEWAYS_DIP' | 'STABLE_EXPANSION' | 'BULLISH_BREAKOUT';
+  strategicGuidance: string;
+}
+
+/**
+ * Modela el impacto macro del drenaje de liquidez interbancaria por recaudación fiscal (SENIAT: ISLR/IVA)
+ * y subastas del BCV sobre la disponibilidad de bolívares en el sistema P2P.
+ */
+export function forecastCentralBankLiquidityDrain(
+  input: CentralBankLiquidityDrainInput,
+): CentralBankLiquidityDrainResult {
+  const { dayOfMonth, dayOfWeek, estimatedSeniatCollectionActive, weeklyBcvInjectionMillionsUsd } = input;
+
+  // Drenaje máximo: Quincenas fiscales (15, 30/31) y días de subasta bancaria (Lunes/Jueves) con inyección > 50M
+  const isTaxDrainWindow = estimatedSeniatCollectionActive || dayOfMonth === 15 || dayOfMonth >= 28;
+  const isHeavyIntervention = weeklyBcvInjectionMillionsUsd >= 50;
+
+  if (isTaxDrainWindow && isHeavyIntervention) {
+    return {
+      interbankLiquidityLevel: 'TIGHT_LIQUIDITY_DRAIN',
+      p2pDemandImpact: 'COMPRESSED_BUY_PRESSURE',
+      projectedParallelTrend48h: 'SIDEWAYS_DIP',
+      strategicGuidance: 'Drenaje agresivo de liquidez en bolívares por recaudación tributaria (SENIAT) + subasta BCV masiva. La demanda de USDT se enfriará temporalmente. Evitar comprar en puntas máximas; esperar retroceso.',
+    };
+  }
+
+  if (weeklyBcvInjectionMillionsUsd < 25 && !isTaxDrainWindow) {
+    return {
+      interbankLiquidityLevel: 'SURPLUS_BOLIVARES',
+      p2pDemandImpact: 'HIGH_INFLATION_SURGE',
+      projectedParallelTrend48h: 'BULLISH_BREAKOUT',
+      strategicGuidance: 'Exceso de liquidez en cuenta corriente interbancaria con baja intervención del BCV. Aceleración inminente del tipo de cambio paralelo. Mantener inventario en USDT y no retrasar ventas.',
+    };
+  }
+
+  return {
+    interbankLiquidityLevel: 'MODERATE',
+    p2pDemandImpact: 'BALANCED_TURNOVER',
+    projectedParallelTrend48h: 'STABLE_EXPANSION',
+    strategicGuidance: 'Condiciones de liquidez equilibradas. Rotación continua con spread regular.',
+  };
+}
+
+export interface FiatDollarizationVelocityInput {
+  averageVesHoldingMinutes: number; // Tiempo promedio que los comerciantes retienen VES
+  merchantUsdtAcceptancePct: number; // % de comercios que prefieren USDT
+  monthlyInflationEstimatePct: number;
+}
+
+export interface FiatDollarizationVelocityResult {
+  moneyVelocityIndex: number; // 1.0 = baseline normal, > 2.5 = huida extrema de moneda
+  flightRegime: 'ORDERLY_DOLLARIZATION' | 'ACCELERATED_FLIGHT' | 'HYPER_VELOCITY_REPUDIATION';
+  expectedHoldingTimeSafetyThresholdMinutes: number;
+  recommendation: string;
+}
+
+/**
+ * Mide el ritmo de repudio de la moneda local frente a USDT evaluando la teoría cuantitativa
+ * de velocidad del dinero (MV = PY) aplicada a la tesorería de arbitraje.
+ */
+export function monitorFiatFlightAndDollarizationVelocity(
+  input: FiatDollarizationVelocityInput,
+): FiatDollarizationVelocityResult {
+  const { averageVesHoldingMinutes, merchantUsdtAcceptancePct, monthlyInflationEstimatePct } = input;
+
+  // Cuanto menor es el tiempo de retención y mayor la inflación, mayor es la velocidad de repudio
+  const holdingRatio = Math.max(1, averageVesHoldingMinutes) / 60; // en horas
+  const velocityRaw = (monthlyInflationEstimatePct / 10) / Math.max(0.2, holdingRatio);
+  const moneyVelocityIndex = Math.round(velocityRaw * 100) / 100;
+
+  let flightRegime: FiatDollarizationVelocityResult['flightRegime'] = 'ORDERLY_DOLLARIZATION';
+  let safetyMinutes = 45;
+
+  if (moneyVelocityIndex >= 4.0 || averageVesHoldingMinutes <= 20) {
+    flightRegime = 'HYPER_VELOCITY_REPUDIATION';
+    safetyMinutes = 15;
+  } else if (moneyVelocityIndex >= 2.0 || averageVesHoldingMinutes <= 60) {
+    flightRegime = 'ACCELERATED_FLIGHT';
+    safetyMinutes = 30;
+  }
+
+  return {
+    moneyVelocityIndex,
+    flightRegime,
+    expectedHoldingTimeSafetyThresholdMinutes: safetyMinutes,
+    recommendation: flightRegime === 'HYPER_VELOCITY_REPUDIATION'
+      ? `HUIDA AGUDA DE MONEDA: Los saldos en VES no deben mantenerse más de ${safetyMinutes} minutos ociosos. Salir a USDT inmediatamente.`
+      : `Dolarización transaccional activa. Umbral máximo de tenencia segura en bolívares: ${safetyMinutes} minutos.`,
+  };
+}
+
+export interface CompetitorAdProfile {
+  merchantName: string;
+  price: number;
+  maxLimitVes: number;
+  isVerifiedMerchant: boolean;
+}
+
+export interface NashRepricingInput {
+  myCurrentPrice: number;
+  targetSide: 'BUY' | 'SELL';
+  topCompetitors: CompetitorAdProfile[];
+  minimumSpreadAllowedPct: number;
+  stepVes?: number;
+}
+
+export interface NashRepricingResult {
+  suggestedNashPrice: number;
+  expectedCompetitorResponse: 'WILL_COOPERATE_STEP' | 'PRICE_WAR_TRIGGERED' | 'UNDERCUT_DEFENSE';
+  payoffNetSpreadPct: number;
+  nashEquilibriumStatus: 'STABLE_NASH_EQUILIBRIUM' | 'FRAGILE_COOPERATION' | 'DESTRUCTIVE_WAR_ZONE';
+  strategicDirective: string;
+}
+
+/**
+ * Simula el Equilibrio de Nash entre los creadores de mercado dominantes del libro P2P
+ * para evitar guerras destructivas de precios (undercutting wars) maximizando el spread conjunto.
+ */
+export function simulateGameTheoryNashRepricing(input: NashRepricingInput): NashRepricingResult {
+  const { myCurrentPrice, targetSide, topCompetitors, minimumSpreadAllowedPct, stepVes = 0.01 } = input;
+
+  if (!topCompetitors || topCompetitors.length === 0) {
+    return {
+      suggestedNashPrice: myCurrentPrice,
+      expectedCompetitorResponse: 'WILL_COOPERATE_STEP',
+      payoffNetSpreadPct: 1.2,
+      nashEquilibriumStatus: 'STABLE_NASH_EQUILIBRIUM',
+      strategicDirective: 'Libro despejado sin competencia directa en punta. Mantener margen máximo.',
+    };
+  }
+
+  const bestCompetitor = topCompetitors[0];
+  const priceDistance = Math.abs(myCurrentPrice - bestCompetitor.price);
+
+  let suggestedNashPrice = myCurrentPrice;
+  let expectedResponse: NashRepricingResult['expectedCompetitorResponse'] = 'WILL_COOPERATE_STEP';
+  let equilibriumStatus: NashRepricingResult['nashEquilibriumStatus'] = 'STABLE_NASH_EQUILIBRIUM';
+
+  // Si intentamos saltar más de 0.05 VES por delante, provocamos guerra destructiva
+  if (targetSide === 'BUY') {
+    if (priceDistance < 0.03) {
+      // Cooperación tácita: colocarse a 0.01 de ventaja
+      suggestedNashPrice = Math.round((bestCompetitor.price + stepVes) * 100) / 100;
+      expectedResponse = 'WILL_COOPERATE_STEP';
+      equilibriumStatus = 'STABLE_NASH_EQUILIBRIUM';
+    } else {
+      suggestedNashPrice = Math.round((bestCompetitor.price + 0.01) * 100) / 100;
+      expectedResponse = 'PRICE_WAR_TRIGGERED';
+      equilibriumStatus = 'FRAGILE_COOPERATION';
+    }
+  } else {
+    // SELL: colocarse justo por debajo para liderar venta
+    suggestedNashPrice = Math.round((bestCompetitor.price - stepVes) * 100) / 100;
+  }
+
+  return {
+    suggestedNashPrice,
+    expectedCompetitorResponse: expectedResponse,
+    payoffNetSpreadPct: Math.max(minimumSpreadAllowedPct, 0.85),
+    nashEquilibriumStatus: equilibriumStatus,
+    strategicDirective: `Equilibrio de Nash: Fijar cotización a ${suggestedNashPrice} VES (+${stepVes} vs ${bestCompetitor.merchantName}). Evita subcotización agresiva que destruiría el margen de ambos.`,
+  };
+}
+

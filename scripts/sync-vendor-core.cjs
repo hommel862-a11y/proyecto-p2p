@@ -55,6 +55,8 @@ const VENDOR_NAMES = [
   'trade-impact-simulator',
   'spread-quality',
   'counterparty',
+  'binance-earn-vault',
+  'operations-workflow',
 ];
 
 // ---------------------------------------------------------------------------

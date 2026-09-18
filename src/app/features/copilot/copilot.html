@@ -35,6 +35,12 @@
         </button>
         <button 
           class="tab-btn" 
+          [class.active]="activeTab() === 'earn'" 
+          (click)="activeTab.set('earn')">
+          💎 Tesorería & Earn (10 Skills)
+        </button>
+        <button 
+          class="tab-btn" 
           [class.active]="activeTab() === 'memory'" 
           (click)="activeTab.set('memory')">
           🧠 Memoria Engram ({{ engramObservations().length }})
@@ -238,6 +244,48 @@
                 <div class="text-block">
                   <strong>Triangulación Táctica</strong>
                   <small>Buscar rutas VES/USDT/Crypto</small>
+                </div>
+              </button>
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('microestructura')" [disabled]="isLoading()">
+                <span class="icon">📐</span>
+                <div class="text-block">
+                  <strong>Avellaneda-Stoikov & VPIN</strong>
+                  <small>Cotizaciones óptimas & toxicidad L2</small>
+                </div>
+              </button>
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('seguridad_bancos')" [disabled]="isLoading()">
+                <span class="icon">🏛️</span>
+                <div class="text-block">
+                  <strong>Status Bancario & Blacklist</strong>
+                  <small>Banesco/BDV/Mercantil/Pago Móvil</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('cross_exchange')" [disabled]="isLoading()">
+                <span class="icon">🌐</span>
+                <div class="text-block">
+                  <strong>Cross-Exchange Espacial</strong>
+                  <small>Binance P2P vs El Dorado / Bybit</small>
+                </div>
+              </button>
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('earn_hurdle')" [disabled]="isLoading()">
+                <span class="icon">⚖️</span>
+                <div class="text-block">
+                  <strong>Hurdle Rate: P2P vs Earn</strong>
+                  <small>¿Conviene operar o parquear?</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('earn_idle')" [disabled]="isLoading()">
+                <span class="icon">💎</span>
+                <div class="text-block">
+                  <strong>Simple Earn Flexible (D+0)</strong>
+                  <small>Optimizar yield en reposo</small>
+                </div>
+              </button>
+              <button class="quick-action-row" (click)="quickPrompt('earn_ladder')" [disabled]="isLoading()">
+                <span class="icon">🪜</span>
+                <div class="text-block">
+                  <strong>Escalera de Liquidez</strong>
+                  <small>Buffer D+0 vs Locked 30d</small>
                 </div>
               </button>
               <button class="quick-action-row" (click)="quickPrompt('riesgo_bcv')" [disabled]="isLoading()">
@@ -645,6 +693,205 @@
           }
         </div>
       }
+    </div>
+  }
+
+  <!-- TAB: BINANCE EARN & TESORERÍA PASIVA (10 SKILLS CUANTITATIVAS) -->
+  @if (activeTab() === 'earn') {
+    <div class="plans-layout earn-vault-layout">
+      <div class="plans-header">
+        <div>
+          <h3>💎 Binance Earn & Optimización de Tesorería Pasiva (10 Skills)</h3>
+          <p class="section-desc">
+            Modelos de carry, costo de oportunidad y tasa de corte (Hurdle Rate) para maximizar el rendimiento del capital ocioso sin comprometer la liquidez de la mesa P2P.
+          </p>
+        </div>
+        <div class="earn-quick-actions">
+          <button class="btn-new-plan" (click)="askEarnRecommendation('hurdle_rate')">
+            ⚖️ Consultar Hurdle Rate con el CSO
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Simulator Parameter Inputs -->
+      <div class="earn-controls-card">
+        <h4 class="earn-card-title">⚙️ Parámetros de Tesorería y Mercado en Vivo</h4>
+        <div class="earn-inputs-grid">
+          <div class="earn-input-group">
+            <label for="earnCap">Capital Total Disponible (USDT):</label>
+            <input
+              id="earnCap"
+              type="number"
+              min="100"
+              step="500"
+              [ngModel]="earnCapitalUsdt()"
+              (ngModelChange)="earnCapitalUsdt.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="earnT1">APR Tier 1 (Flexible &le; $500):</label>
+            <input
+              id="earnT1"
+              type="number"
+              min="0"
+              step="0.5"
+              [ngModel]="earnT1AprPct()"
+              (ngModelChange)="earnT1AprPct.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="earnT2">APR Tier 2 (Excedentes):</label>
+            <input
+              id="earnT2"
+              type="number"
+              min="0"
+              step="0.1"
+              [ngModel]="earnT2AprPct()"
+              (ngModelChange)="earnT2AprPct.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="earnHurdle">Spread P2P Bruto Observado (%):</label>
+            <input
+              id="earnHurdle"
+              type="number"
+              min="0"
+              step="0.1"
+              [ngModel]="earnHurdleGrossSpreadPct()"
+              (ngModelChange)="earnHurdleGrossSpreadPct.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="earnHours">Ciclo de Rotación P2P (Horas):</label>
+            <input
+              id="earnHours"
+              type="number"
+              min="0.5"
+              step="0.5"
+              [ngModel]="earnTradeCycleHours()"
+              (ngModelChange)="earnTradeCycleHours.set($event)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Advanced Cards Grid -->
+      <div class="earn-cards-grid">
+        <!-- Card 1: Simple Earn Optimizer -->
+        <div class="earn-result-card">
+          <div class="card-top-header">
+            <span class="earn-badge">SIMPLE EARN FLEXIBLE (D+0)</span>
+            <span class="earn-rate-pill">{{ earnSimpleResult().effectiveBlendedAprPct }}% APR Efectivo</span>
+          </div>
+          <h4 class="card-main-title">Optimización de Capital Inactivo</h4>
+          <p class="card-sub-desc">
+            Asignación algorítmica entre el tramo subvencionado Tier 1 ($500 USDT) y el tramo base Tier 2 para exprimir el carry diario.
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">Asignado Tier 1 ({{ earnT1AprPct() }}% APR):</span>
+              <span class="value highlight">${{ earnSimpleResult().tier1Allocated }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Asignado Tier 2 ({{ earnT2AprPct() }}% APR):</span>
+              <span class="value">${{ earnSimpleResult().tier2Allocated }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Yield Proyectado Mensual:</span>
+              <span class="value profit">+${{ earnSimpleResult().monthlyYieldUsdt }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Costo de Oportunidad Ocioso:</span>
+              <span class="value warning">${{ (earnSimpleResult().opportunityCostPerHourUsdt * 24).toFixed(3) }} USDT/día</span>
+            </div>
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askEarnRecommendation('simple_earn')">
+              💬 Formular Estrategia en Chat
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Hurdle Rate P2P vs Earn -->
+        <div class="earn-result-card" [class.hurdle-pass]="earnHurdleResult().isP2pProfitableOverEarn" [class.hurdle-fail]="!earnHurdleResult().isP2pProfitableOverEarn">
+          <div class="card-top-header">
+            <span class="earn-badge">TASA DE CORTE (HURDLE RATE)</span>
+            <span class="verdict-tag" [class.operate]="earnHurdleResult().verdict === 'OPERATE_P2P'" [class.park]="earnHurdleResult().verdict === 'PARK_IN_EARN'">
+              {{ earnHurdleResult().verdict }}
+            </span>
+          </div>
+          <h4 class="card-main-title">Arbitraje P2P vs Rendimiento Libre de Riesgo</h4>
+          <p class="card-sub-desc">
+            {{ earnHurdleResult().reasoning }}
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">Spread Neto P2P por Ciclo:</span>
+              <span class="value" [class.profit]="earnHurdleResult().netP2pCycleReturnPct > 0" [class.danger]="earnHurdleResult().netP2pCycleReturnPct <= 0">
+                {{ earnHurdleResult().netP2pCycleReturnPct }}%
+              </span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Hurdle Rate de Cobertura:</span>
+              <span class="value highlight">{{ earnHurdleResult().hurdleSpreadPct }}%</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Retorno Horario P2P:</span>
+              <span class="value">{{ earnHurdleResult().hourlyP2pReturnPct }}%/hora</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Rendimiento Horario Earn:</span>
+              <span class="value">{{ earnHurdleResult().hourlyEarnYieldPct }}%/hora</span>
+            </div>
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askEarnRecommendation('hurdle_rate')">
+              ⚖️ Evaluar con el Comité de Riesgo
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: Liquidity Laddering -->
+        <div class="earn-result-card">
+          <div class="card-top-header">
+            <span class="earn-badge">LIQUIDITY LADDERING</span>
+            <span class="earn-rate-pill">{{ earnLadderResult().blendedPortfolioAprPct }}% APR Global</span>
+          </div>
+          <h4 class="card-main-title">Escalera de Liquidez Estructurada</h4>
+          <p class="card-sub-desc">
+            Protección de liquidez operativa con buffer D+0 para absorber órdenes de compra P2P y colocación escalonada a 30d/60d.
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">Buffer Flexible Inmediato (D+0):</span>
+              <span class="value highlight">${{ earnLadderResult().flexibleBufferUsdt }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Tramo Bloqueado 30 Días:</span>
+              <span class="value">${{ earnLadderResult().locked30dUsdt }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Tramo Bloqueado 60 Días:</span>
+              <span class="value">${{ earnLadderResult().locked60dUsdt }} USDT</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Ratio de Cobertura de Liquidez:</span>
+              <span class="value profit">{{ earnLadderResult().liquidityCoverageRatio }}x volumen diario</span>
+            </div>
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askEarnRecommendation('ladder')">
+              🪜 Desplegar Escalera en Chat
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   }
 

@@ -41,6 +41,10 @@
       <span>🛠️ Catálogo de Tools (Playground)</span>
       <span class="tab-count">{{ allTools().length }}</span>
     </button>
+    <button type="button" class="tab-btn" [class.active]="activeTab() === 'intelligence'" (click)="setTab('intelligence')">
+      <span>🧠 Copiloto Financiero (18 Skills)</span>
+      <span class="tab-count">Nivel Pro</span>
+    </button>
     <button type="button" class="tab-btn" [class.active]="activeTab() === 'config'" (click)="setTab('config')">
       <span>🔌 Clientes IA (1-Click)</span>
     </button>
@@ -239,6 +243,87 @@
         } @else {
           <div class="empty-state">
             <p>Selecciona una herramienta del panel izquierdo para inspeccionar su esquema y ejecutar pruebas en vivo.</p>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- TAB: Copiloto Financiero Institucional (18 Skills Cuantitativas) -->
+  @if (activeTab() === 'intelligence') {
+    <section class="tab-section intelligence-section">
+      <div class="intel-hero-card" style="background: linear-gradient(135deg, rgba(24,24,27,0.95), rgba(39,39,42,0.85)); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+          <div>
+            <span style="display: inline-block; font-size: 0.75rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Desk Cuantitativo & Motor de Estrategias</span>
+            <h3 style="margin: 0; font-size: 1.4rem; color: #fff;">Copiloto de Inteligencia Financiera Global</h3>
+            <p style="margin: 6px 0 0; color: #a1a1aa; font-size: 0.9rem;">
+              Razonamiento estratégico en tiempo real respaldado por 18 skills cuantitativas: Avellaneda-Stoikov, VPIN, Slicing TWAP/VWAP, Arbitraje Espacial, Cobertura Gamma y Criterio de Kelly.
+            </p>
+          </div>
+          <span style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.4); color: #f59e0b; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; font-family: monospace;">
+            18 SKILLS ACTIVAS
+          </span>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label for="copilot-input" style="display: block; font-size: 0.82rem; font-weight: 600; color: #d4d4d8; margin-bottom: 6px;">
+            Consulta Estratégica al Chief Strategy Officer (CSO):
+          </label>
+          <div style="display: flex; gap: 10px;">
+            <input
+              id="copilot-input"
+              type="text"
+              class="font-mono"
+              style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #3f3f46; color: #f4f4f5; padding: 10px 14px; border-radius: 8px; font-size: 0.88rem;"
+              [ngModel]="copilotPrompt()"
+              (ngModelChange)="copilotPrompt.set($event)"
+            />
+            <button
+              type="button"
+              (click)="runCopilotStrategy()"
+              [disabled]="copilotExecuting()"
+              style="background: #f59e0b; color: #000; font-weight: 700; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;"
+            >
+              {{ copilotExecuting() ? 'Procesando Memos...' : '⚡ Formular Estrategia' }}
+            </button>
+          </div>
+        </div>
+
+        @if (copilotMemoResult(); as memo) {
+          <div style="background: rgba(0,0,0,0.6); border: 1px solid rgba(245,158,11,0.25); border-radius: 10px; padding: 20px; margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; margin-bottom: 16px;">
+              <div>
+                <span style="color: #a1a1aa; font-size: 0.75rem;">Régimen de Mercado Detectado</span>
+                <div style="color: #38bdf8; font-weight: 700; font-size: 1.05rem;">{{ memo.marketRegime }}</div>
+              </div>
+              <span style="color: #71717a; font-size: 0.8rem; font-family: monospace;">{{ memo.timestamp }}</span>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <h4 style="color: #f59e0b; margin: 0 0 8px; font-size: 0.95rem;">📋 Vector Táctico de Ejecución</h4>
+              <ul style="margin: 0; padding-left: 20px; color: #e4e4e7; font-size: 0.88rem; line-height: 1.6;">
+                @for (step of memo.actionPlan; track step) {
+                  <li>{{ step }}</li>
+                }
+              </ul>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <h4 style="color: #a1a1aa; margin: 0 0 8px; font-size: 0.85rem; text-transform: uppercase;">📊 Matriz de Métricas Cuantitativas</h4>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                @for (entry of memo.riskMetrics | keyvalue; track entry.key) {
+                  <div style="background: rgba(255,255,255,0.04); padding: 10px; border-radius: 6px;">
+                    <span style="display: block; color: #71717a; font-size: 0.72rem;">{{ entry.key }}</span>
+                    <strong style="color: #fff; font-size: 0.88rem; font-family: monospace;">{{ entry.value }}</strong>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div style="padding: 12px; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; color: #38bdf8; font-weight: 600; font-size: 0.88rem;">
+              🎯 {{ memo.directive }}
+            </div>
           </div>
         }
       </div>

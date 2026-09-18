@@ -291,3 +291,65 @@ export const LookupCounterpartyReputationInputSchema = z.object({
 });
 export type LookupCounterpartyReputationInput = z.infer<typeof LookupCounterpartyReputationInputSchema>;
 
+// ─── Compliance, Multichannel & Proof Reader Schemas ───
+
+export const CheckBankOperationalStatusInputSchema = z.object({
+  bankCodes: z.array(z.string()).optional(),
+  includePaymentNetworks: z.boolean().default(true),
+});
+export type CheckBankOperationalStatusInput = z.infer<typeof CheckBankOperationalStatusInputSchema>;
+
+export const CheckCounterpartyBlacklistInputSchema = z.object({
+  cedula: z.string().optional(),
+  phone: z.string().optional(),
+  accountNumber: z.string().optional(),
+  alias: z.string().optional(),
+});
+export type CheckCounterpartyBlacklistInput = z.infer<typeof CheckCounterpartyBlacklistInputSchema>;
+
+export const RegisterBlacklistedEntityInputSchema = z.object({
+  identifierType: z.enum(['CEDULA', 'PHONE', 'ACCOUNT_NUMBER', 'BINANCE_ALIAS']),
+  identifierValue: z.string().min(3, 'El valor del identificador debe tener al menos 3 caracteres'),
+  counterpartyName: z.string().optional(),
+  fraudCategory: z.enum(['TRIANGULATION_SCAM', 'THIRD_PARTY_PAYER', 'CHARGEBACK_ATTEMPT', 'IDENTITY_THEFT', 'OTHER']),
+  incidentNotes: z.string().optional(),
+  riskLevel: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']).default('CRITICAL'),
+  humanConfirm: z.boolean({ message: 'humanConfirm es requerido (Human-in-the-loop)' }),
+  confirmToken: z.string().optional(),
+});
+export type RegisterBlacklistedEntityInput = z.infer<typeof RegisterBlacklistedEntityInputSchema>;
+
+export const SendMultichannelAlertInputSchema = z.object({
+  channel: z.enum(['TELEGRAM', 'WHATSAPP', 'PUSH', 'ALL']).default('TELEGRAM'),
+  priority: z.enum(['INFO', 'ALERT', 'CRITICAL_ACTION']).default('ALERT'),
+  title: z.string().min(3),
+  messageMarkdown: z.string().min(5),
+  actionButtons: z
+    .array(
+      z.object({
+        label: z.string(),
+        callbackAction: z.string(),
+      }),
+    )
+    .optional(),
+  orderId: z.string().optional(),
+});
+export type SendMultichannelAlertInput = z.infer<typeof SendMultichannelAlertInputSchema>;
+
+export const ProcessRemoteSentinelCommandInputSchema = z.object({
+  rawText: z.string().min(3, 'Comando de texto no puede estar vacío'),
+  senderId: z.string().default('ADMIN'),
+  channel: z.enum(['TELEGRAM', 'WHATSAPP', 'VOICE_TRANSCRIPTION']).default('TELEGRAM'),
+  humanConfirm: z.boolean().default(true),
+});
+export type ProcessRemoteSentinelCommandInput = z.infer<typeof ProcessRemoteSentinelCommandInputSchema>;
+
+export const AuditPaymentProofOcrInputSchema = z.object({
+  ocrRawText: z.string().min(5, 'Texto OCR requerido'),
+  expectedAmountVes: z.number().positive('Monto esperado debe ser positivo'),
+  expectedBank: z.string().optional(),
+  expectedPayerName: z.string().optional(),
+  expectedPayerIdDoc: z.string().optional(),
+  orderId: z.string().min(2),
+});
+export type AuditPaymentProofOcrInput = z.infer<typeof AuditPaymentProofOcrInputSchema>;

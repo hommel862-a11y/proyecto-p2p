@@ -64,6 +64,17 @@ export interface EngramObservationRecord {
   updatedAt?: number;
 }
 
+export interface BlacklistEntryRecord {
+  id?: number;
+  identifierType: 'CEDULA' | 'PHONE' | 'ACCOUNT_NUMBER' | 'BINANCE_ALIAS';
+  identifierValue: string;
+  counterpartyName?: string;
+  fraudCategory: 'TRIANGULATION_SCAM' | 'THIRD_PARTY_PAYER' | 'CHARGEBACK_ATTEMPT' | 'IDENTITY_THEFT' | 'OTHER';
+  incidentNotes?: string;
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  reportedAt: number;
+}
+
 export class P2PDatabaseService {
   private db: DatabaseSync;
 
@@ -231,6 +242,19 @@ export class P2PDatabaseService {
       CREATE INDEX IF NOT EXISTS idx_cparty_alias ON counterparty_profiles(alias);
       CREATE INDEX IF NOT EXISTS idx_cparty_doc ON counterparty_profiles(document_id);
       CREATE INDEX IF NOT EXISTS idx_cparty_rep ON counterparty_profiles(reputation);
+
+      CREATE TABLE IF NOT EXISTS counterparty_blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        identifier_type TEXT NOT NULL CHECK (identifier_type IN ('CEDULA', 'PHONE', 'ACCOUNT_NUMBER', 'BINANCE_ALIAS')),
+        identifier_value TEXT NOT NULL,
+        counterparty_name TEXT,
+        fraud_category TEXT NOT NULL CHECK (fraud_category IN ('TRIANGULATION_SCAM', 'THIRD_PARTY_PAYER', 'CHARGEBACK_ATTEMPT', 'IDENTITY_THEFT', 'OTHER')),
+        incident_notes TEXT,
+        risk_level TEXT NOT NULL DEFAULT 'CRITICAL' CHECK (risk_level IN ('CRITICAL', 'HIGH', 'MEDIUM')),
+        reported_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_bl_type_val ON counterparty_blacklist(identifier_type, identifier_value);
+      CREATE INDEX IF NOT EXISTS idx_bl_val ON counterparty_blacklist(identifier_value);
     `);
   }
 
@@ -720,6 +744,95 @@ export class P2PDatabaseService {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `);
     stmt.run(key, value, Date.now());
+  }
+
+  /**
+   * Adds an entry to the local SQLite counterparty blacklist.
+   */
+  addBlacklistEntry(entry: BlacklistEntryRecord): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO counterparty_blacklist (
+        identifier_type, identifier_value, counterparty_name,
+        fraud_category, incident_notes, risk_level, reported_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const res = stmt.run(
+      entry.identifierType,
+      entry.identifierValue.trim(),
+      entry.counterpartyName ?? null,
+      entry.fraudCategory,
+      entry.incidentNotes ?? null,
+      entry.riskLevel ?? 'CRITICAL',
+      entry.reportedAt || Date.now()
+    );
+    return Number(res.lastInsertRowid);
+  }
+
+  /**
+   * Searches for any matches in the local counterparty blacklist by cédula, phone, account number, or alias.
+   */
+  findBlacklistMatches(query: {
+    cedula?: string;
+    phone?: string;
+    accountNumber?: string;
+    alias?: string;
+  }): BlacklistEntryRecord[] {
+    const conditions: string[] = [];
+    const params: string[] = [];
+
+    if (query.cedula?.trim()) {
+      conditions.push("(identifier_type = 'CEDULA' AND identifier_value = ?)");
+      params.push(query.cedula.trim());
+    }
+    if (query.phone?.trim()) {
+      conditions.push("(identifier_type = 'PHONE' AND identifier_value = ?)");
+      params.push(query.phone.trim());
+    }
+    if (query.accountNumber?.trim()) {
+      conditions.push("(identifier_type = 'ACCOUNT_NUMBER' AND identifier_value = ?)");
+      params.push(query.accountNumber.trim());
+    }
+    if (query.alias?.trim()) {
+      conditions.push("(identifier_type = 'BINANCE_ALIAS' AND LOWER(identifier_value) = LOWER(?))");
+      params.push(query.alias.trim());
+    }
+
+    if (conditions.length === 0) {
+      return [];
+    }
+
+    const sql = `SELECT * FROM counterparty_blacklist WHERE ${conditions.join(' OR ')} ORDER BY reported_at DESC`;
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: Number(row['id']),
+      identifierType: row['identifier_type'] as BlacklistEntryRecord['identifierType'],
+      identifierValue: row['identifier_value'] as string,
+      counterpartyName: (row['counterparty_name'] as string) ?? undefined,
+      fraudCategory: row['fraud_category'] as BlacklistEntryRecord['fraudCategory'],
+      incidentNotes: (row['incident_notes'] as string) ?? undefined,
+      riskLevel: row['risk_level'] as BlacklistEntryRecord['riskLevel'],
+      reportedAt: Number(row['reported_at']),
+    }));
+  }
+
+  /**
+   * Lists recent blacklist records with an optional limit.
+   */
+  listBlacklistEntries(limit = 50): BlacklistEntryRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM counterparty_blacklist ORDER BY reported_at DESC LIMIT ?');
+    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: Number(row['id']),
+      identifierType: row['identifier_type'] as BlacklistEntryRecord['identifierType'],
+      identifierValue: row['identifier_value'] as string,
+      counterpartyName: (row['counterparty_name'] as string) ?? undefined,
+      fraudCategory: row['fraud_category'] as BlacklistEntryRecord['fraudCategory'],
+      incidentNotes: (row['incident_notes'] as string) ?? undefined,
+      riskLevel: row['risk_level'] as BlacklistEntryRecord['riskLevel'],
+      reportedAt: Number(row['reported_at']),
+    }));
   }
 
   close(): void {

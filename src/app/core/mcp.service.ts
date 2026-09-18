@@ -75,7 +75,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'seguridad',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 2,
+    toolCount: 4,
     resourceCount: 2,
     uptimeSeconds: 3600,
     tools: [
@@ -87,6 +87,16 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
         name: 'inspect_tx_taint',
         description:
           'Inspecciona el grado de contaminación y saltos a mixers en hashes blockchain.',
+      },
+      {
+        name: 'check_counterparty_blacklist',
+        description:
+          'Consulta listas negras locales SQLite por cédula, teléfono o cuenta ante estafas de triangulación.',
+      },
+      {
+        name: 'register_blacklisted_entity',
+        description:
+          'Registra entidades sospechosas o fraudulentas en la lista negra local (Human-in-the-Loop).',
       },
     ],
     resources: [
@@ -136,7 +146,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'bancos',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 1,
+    toolCount: 3,
     resourceCount: 2,
     uptimeSeconds: 3600,
     tools: [
@@ -144,6 +154,16 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
         name: 'verify_inbound_transfer',
         description:
           'Concilia instantáneamente transferencias o PagoMóvil verificando referencia y monto.',
+      },
+      {
+        name: 'check_bank_operational_status',
+        description:
+          'Monitorea en tiempo real fallas bancarias locales y emite órdenes de PAUSA preventiva.',
+      },
+      {
+        name: 'audit_payment_proof_ocr',
+        description:
+          'Audita comprobantes de pago mediante OCR y verifica titularidad y monto exacto contra la orden.',
       },
     ],
     resources: [
@@ -238,7 +258,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'operaciones',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 1,
+    toolCount: 3,
     resourceCount: 2,
     uptimeSeconds: 3600,
     tools: [
@@ -246,6 +266,15 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
         name: 'dispatch_order_instructions',
         description:
           'Despacha coordenadas bancarias e instrucciones seguras vía Telegram o WhatsApp.',
+      },
+      {
+        name: 'send_multichannel_alert',
+        description: 'Despacha alertas proactivas a Telegram/WhatsApp con botones interactivos.',
+      },
+      {
+        name: 'process_remote_sentinel_command',
+        description:
+          'Procesa instrucciones de texto o voz asentando compras/ventas directamente en el Ledger.',
       },
     ],
     resources: [
@@ -1140,6 +1169,150 @@ export class McpService {
         recommendation: 'PROCEED_WITH_TRADE',
         consultedAt: new Date().toISOString(),
       };
+    } else if (toolName === 'check_bank_operational_status') {
+      simulatedResult = {
+        ...simulatedResult,
+        networkStatus: 'ALL_SYSTEMS_OPERATIONAL',
+        pauseTradingDirective: false,
+        affectedBanks: [],
+        averageSettlementLatencyMinutes: 0.9,
+        bankDetails: [
+          {
+            bankCode: '0102',
+            bankName: 'Banco de Venezuela (BDV)',
+            status: 'OPERATIONAL',
+            settlementLatencyMinutes: 1.2,
+          },
+          {
+            bankCode: '0134',
+            bankName: 'Banesco Banco Universal',
+            status: 'OPERATIONAL',
+            settlementLatencyMinutes: 0.8,
+          },
+          {
+            bankCode: '0105',
+            bankName: 'Mercantil Banco',
+            status: 'OPERATIONAL',
+            settlementLatencyMinutes: 0.9,
+          },
+          {
+            bankCode: 'PAGO_MOVIL',
+            bankName: 'Suiche Pago Móvil Interbancario',
+            status: 'OPERATIONAL',
+            settlementLatencyMinutes: 0.5,
+          },
+        ],
+        operationalAdvice:
+          'Todos los canales bancarios y Pago Móvil operan con óptima liquidez y acreditación inmediata.',
+        timestamp: new Date().toISOString(),
+      };
+    } else if (toolName === 'check_counterparty_blacklist') {
+      const ced = String((args as any)?.cedula ?? '');
+      const isBlacklisted = ced.includes('28999888');
+      simulatedResult = {
+        ...simulatedResult,
+        isFlagged: isBlacklisted,
+        riskLevel: isBlacklisted ? 'CRITICAL' : 'CLEAN',
+        decision: isBlacklisted ? 'IMMEDIATE_BLOCK_TRANSACTION' : 'CLEAN_TO_PROCEED',
+        totalMatchesFound: isBlacklisted ? 1 : 0,
+        matchedRecords: isBlacklisted
+          ? [
+              {
+                matchedOn: 'CEDULA',
+                identifier: 'V-28999888',
+                suspectName: 'Pedro Fraude',
+                category: 'TRIANGULATION_SCAM',
+                notes: 'Reportado por estafa de triangulación.',
+                reportedAt: '2026-08-15T10:00:00Z',
+              },
+            ]
+          : [],
+        actionRequired: isBlacklisted
+          ? 'ALERTA ROJA: Detener de inmediato el envío de Pago Móvil. Coincidencia en lista negra.'
+          : 'Contraparte limpia de coincidencias en la lista negra interna.',
+        auditTimestamp: new Date().toISOString(),
+      };
+    } else if (toolName === 'register_blacklisted_entity') {
+      const hConf = Boolean((args as any)?.humanConfirm);
+      if (!hConf) {
+        simulatedResult = {
+          ...simulatedResult,
+          status: 'CHALLENGE_REQUIRED',
+          message: 'Se requiere confirmación humana explícita (humanConfirm: true).',
+          challengeToken: `CHL-BL-${Date.now()}`,
+        };
+      } else {
+        simulatedResult = {
+          ...simulatedResult,
+          status: 'REGISTERED_SUCCESSFULLY',
+          blacklistEntryId: `BL-${Date.now()}-REC`,
+          identifierType: (args as any)?.identifierType ?? 'CEDULA',
+          identifierValue: (args as any)?.identifierValue ?? 'V-11223344',
+          counterpartyName: (args as any)?.counterpartyName ?? 'Desconocido',
+          fraudCategory: (args as any)?.fraudCategory ?? 'TRIANGULATION_SCAM',
+          registeredAt: new Date().toISOString(),
+          actionSummary: 'Entidad blindada en la base de datos local para bloqueo automático.',
+        };
+      }
+    } else if (toolName === 'send_multichannel_alert') {
+      simulatedResult = {
+        ...simulatedResult,
+        alertId: `ALT-${Date.now()}`,
+        channel: (args as any)?.channel ?? 'TELEGRAM',
+        priority: (args as any)?.priority ?? 'ALERT',
+        deliveryStatus: 'DISPATCHED_TO_QUEUE',
+        deliveredAt: new Date().toISOString(),
+        renderedPayloadPreview: `⚡ *${(args as any)?.title ?? 'ALERTA'}*\n${(args as any)?.messageMarkdown ?? ''}`,
+        summary: 'Alerta enviada exitosamente por el canal configurado.',
+      };
+    } else if (toolName === 'process_remote_sentinel_command') {
+      const raw = String(
+        (args as any)?.rawText ?? 'Registra compra de 500 USDT a 41.50 en Banesco',
+      );
+      simulatedResult = {
+        ...simulatedResult,
+        commandType: 'LEDGER_TRANSACTION',
+        action: 'ADD_OPERATION_ENTRY',
+        status: 'PROCESSED_AND_SETTLED',
+        ledgerImpact: true,
+        transactionDetail: {
+          ledgerId: `LEDGER-REMOTE-${Date.now()}`,
+          side: raw.toLowerCase().includes('venta') ? 'sell' : 'buy',
+          usdtAmount: 500,
+          ratePrice: 41.5,
+          vesTotal: 20750,
+          bank: 'Banesco',
+          recordedAt: new Date().toISOString(),
+        },
+        summary: 'Operación remota registrada y asentada en el Ledger.',
+        rawText: raw,
+      };
+    } else if (toolName === 'audit_payment_proof_ocr') {
+      const ocr = String((args as any)?.ocrRawText ?? '');
+      const expAmt = Number((args as any)?.expectedAmountVes ?? 12500);
+      const isMatch = ocr.includes('12500') || ocr.includes('12.500');
+      simulatedResult = {
+        ...simulatedResult,
+        orderId: (args as any)?.orderId ?? 'ORD-P2P-101',
+        verdict: isMatch ? 'MATCH_VERIFIED_SAFE_TO_RELEASE' : 'MANUAL_AUDIT_REQUIRED',
+        isSafeToRelease: isMatch,
+        extractedData: {
+          reference: '884920',
+          amountVes: expAmt,
+          bank: 'BANESCO',
+          payerCedula: 'V20123456',
+        },
+        expectedData: {
+          amountVes: expAmt,
+          bank: (args as any)?.expectedBank ?? 'BANESCO',
+          payerIdDoc: (args as any)?.expectedPayerIdDoc ?? 'V20123456',
+        },
+        discrepancies: isMatch ? [] : ['Monto no coincide con la orden activa.'],
+        actionAdvice: isMatch
+          ? 'VERIFICACIÓN EXITOSA: Seguro para liberar los USDT en Binance.'
+          : 'NO LIBERAR CRIPTO: Revisar comprobante manualmente.',
+        auditTimestamp: new Date().toISOString(),
+      };
     }
 
     return {
@@ -1427,6 +1600,73 @@ export class McpService {
     bankAccountNumber?: string;
   }) {
     return this.testTool('lookup_counterparty_reputation', input);
+  }
+
+  // ─── Compliance, Multichannel & Proof Reader: Typed Wrappers ───────
+
+  async checkBankOperationalStatus(input?: {
+    bankCodes?: string[];
+    includePaymentNetworks?: boolean;
+  }) {
+    return this.testTool('check_bank_operational_status', input ?? {});
+  }
+
+  async checkCounterpartyBlacklist(input: {
+    cedula?: string;
+    phone?: string;
+    accountNumber?: string;
+    alias?: string;
+  }) {
+    return this.testTool('check_counterparty_blacklist', input);
+  }
+
+  async registerBlacklistedEntity(input: {
+    identifierType: 'CEDULA' | 'PHONE' | 'ACCOUNT_NUMBER' | 'BINANCE_ALIAS';
+    identifierValue: string;
+    counterpartyName?: string;
+    fraudCategory:
+      | 'TRIANGULATION_SCAM'
+      | 'THIRD_PARTY_PAYER'
+      | 'CHARGEBACK_ATTEMPT'
+      | 'IDENTITY_THEFT'
+      | 'OTHER';
+    incidentNotes?: string;
+    riskLevel?: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+    humanConfirm: boolean;
+    confirmToken?: string;
+  }) {
+    return this.testTool('register_blacklisted_entity', input);
+  }
+
+  async sendMultichannelAlert(input: {
+    channel?: 'TELEGRAM' | 'WHATSAPP' | 'PUSH' | 'ALL';
+    priority?: 'INFO' | 'ALERT' | 'CRITICAL_ACTION';
+    title: string;
+    messageMarkdown: string;
+    actionButtons?: { label: string; callbackAction: string }[];
+    orderId?: string;
+  }) {
+    return this.testTool('send_multichannel_alert', input);
+  }
+
+  async processRemoteSentinelCommand(input: {
+    rawText: string;
+    senderId?: string;
+    channel?: 'TELEGRAM' | 'WHATSAPP' | 'VOICE_TRANSCRIPTION';
+    humanConfirm?: boolean;
+  }) {
+    return this.testTool('process_remote_sentinel_command', input);
+  }
+
+  async auditPaymentProofOcr(input: {
+    ocrRawText: string;
+    expectedAmountVes: number;
+    expectedBank?: string;
+    expectedPayerName?: string;
+    expectedPayerIdDoc?: string;
+    orderId: string;
+  }) {
+    return this.testTool('audit_payment_proof_ocr', input);
   }
 
   generateConfigSnippet(client: 'antigravity' | 'claude' | 'cli'): string {

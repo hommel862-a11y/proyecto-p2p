@@ -403,7 +403,7 @@ export function getDbService(): P2PDatabaseService {
 let orchestratorInstance: GeminiOrchestrator | null = null;
 export function getOrchestrator(): GeminiOrchestrator {
   if (!orchestratorInstance) {
-    orchestratorInstance = new GeminiOrchestrator(getDbService());
+    orchestratorInstance = new GeminiOrchestrator(getDbService(), undefined, getAgentSwarm());
   }
   return orchestratorInstance;
 }

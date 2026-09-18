@@ -57,12 +57,14 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     category: 'seguridad',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 2,
+    toolCount: 4,
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
       { name: 'screen_wallet_address', description: 'Evalúa el riesgo AML on-chain de una dirección cripto (TRC20, ERC20, BEP20).' },
       { name: 'inspect_tx_taint', description: 'Inspecciona el grado de contaminación y saltos a mixers en hashes blockchain.' },
+      { name: 'check_counterparty_blacklist', description: 'Consulta listas negras locales SQLite por cédula, teléfono o cuenta ante estafas de triangulación.' },
+      { name: 'register_blacklisted_entity', description: 'Registra entidades sospechosas o fraudulentas en la lista negra local (Human-in-the-Loop).' },
     ],
     resources: [
       { uri: 'p2p://aml/sanctions-db', name: 'Base de Billeteras y Direcciones Sancionadas' },
@@ -96,11 +98,13 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     category: 'bancos',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 1,
+    toolCount: 3,
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
       { name: 'verify_inbound_transfer', description: 'Concilia instantáneamente transferencias o PagoMóvil verificando referencia y monto.' },
+      { name: 'check_bank_operational_status', description: 'Monitorea en tiempo real fallas bancarias locales y emite órdenes de PAUSA preventiva.' },
+      { name: 'audit_payment_proof_ocr', description: 'Audita comprobantes de pago mediante OCR y verifica titularidad y monto exacto contra la orden.' },
     ],
     resources: [
       { uri: 'p2p://banking/clearing-feed', name: 'Cámara de Compensación y Pagos Entrantes' },
@@ -168,11 +172,13 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     category: 'operaciones',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 1,
+    toolCount: 3,
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
       { name: 'dispatch_order_instructions', description: 'Despacha coordenadas bancarias e instrucciones seguras vía Telegram o WhatsApp.' },
+      { name: 'send_multichannel_alert', description: 'Despacha alertas proactivas a Telegram/WhatsApp con botones interactivos.' },
+      { name: 'process_remote_sentinel_command', description: 'Procesa instrucciones de texto o voz asentando compras/ventas directamente en el Ledger.' },
     ],
     resources: [
       { uri: 'p2p://omnichannel/active-chats', name: 'Sesiones de Chat con Contrapartes VIP' },

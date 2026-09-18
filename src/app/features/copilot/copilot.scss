@@ -1323,3 +1323,213 @@
     }
   }
 }
+
+/* ==========================================================================
+   Binance Earn & Passive Treasury Vault Styling
+   ========================================================================== */
+.earn-vault-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  .earn-controls-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 0.5px solid var(--line-strong, rgba(255, 255, 255, 0.12));
+    border-radius: 14px;
+    padding: 1.1rem;
+
+    .earn-card-title {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+      color: var(--gold, #ffd60a);
+      font-weight: 700;
+    }
+
+    .earn-inputs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+
+      .earn-input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        label {
+          font-size: 0.72rem;
+          color: var(--muted, #94a3b8);
+          font-weight: 600;
+        }
+
+        input {
+          background: #0d0d12;
+          border: 0.5px solid var(--line, rgba(255, 255, 255, 0.15));
+          border-radius: 8px;
+          padding: 8px 10px;
+          color: #ffffff;
+          font-size: 0.85rem;
+          font-weight: 700;
+          outline: none;
+          transition: border-color 0.2s ease;
+
+          &:focus {
+            border-color: var(--gold, #ffd60a);
+          }
+        }
+      }
+    }
+  }
+
+  .earn-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 1.25rem;
+
+    .earn-result-card {
+      background: #101015;
+      border: 0.5px solid var(--line, rgba(255, 255, 255, 0.1));
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+
+      &:hover {
+        border-color: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
+      }
+
+      &.hurdle-pass {
+        border-left: 3px solid var(--accent, #30d158);
+      }
+
+      &.hurdle-fail {
+        border-left: 3px solid var(--gold, #ffd60a);
+      }
+
+      .card-top-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+
+        .earn-badge {
+          font-size: 0.68rem;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          color: var(--muted, #94a3b8);
+        }
+
+        .earn-rate-pill {
+          font-size: 0.75rem;
+          font-weight: 800;
+          color: var(--accent, #30d158);
+          background: rgba(48, 209, 88, 0.1);
+          padding: 3px 8px;
+          border-radius: 6px;
+          border: 0.5px solid rgba(48, 209, 88, 0.3);
+        }
+
+        .verdict-tag {
+          font-size: 0.72rem;
+          font-weight: 800;
+          padding: 3px 8px;
+          border-radius: 6px;
+
+          &.operate {
+            color: #ffffff;
+            background: rgba(48, 209, 88, 0.25);
+            border: 0.5px solid var(--accent, #30d158);
+          }
+
+          &.park {
+            color: #000000;
+            background: var(--gold, #ffd60a);
+            border: 0.5px solid #e6b800;
+          }
+        }
+      }
+
+      .card-main-title {
+        margin: 0 0 6px;
+        font-size: 1rem;
+        color: #ffffff;
+        font-weight: 700;
+      }
+
+      .card-sub-desc {
+        font-size: 0.78rem;
+        color: var(--muted, #94a3b8);
+        line-height: 1.4;
+        margin: 0 0 14px;
+        min-height: 2.8em;
+      }
+
+      .earn-metrics-table {
+        background: rgba(0, 0, 0, 0.3);
+        border: 0.5px solid var(--line, rgba(255, 255, 255, 0.06));
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+
+        .metric-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.78rem;
+
+          .label {
+            color: var(--muted, #94a3b8);
+          }
+
+          .value {
+            font-weight: 700;
+            color: #ffffff;
+
+            &.highlight {
+              color: var(--gold, #ffd60a);
+            }
+
+            &.profit {
+              color: var(--accent, #30d158);
+            }
+
+            &.warning {
+              color: #ff9f0a;
+            }
+
+            &.danger {
+              color: var(--danger, #ff453a);
+            }
+          }
+        }
+      }
+
+      .card-footer-actions {
+        .btn-ask-cso {
+          width: 100%;
+          background: rgba(255, 255, 255, 0.06);
+          border: 0.5px solid var(--line, rgba(255, 255, 255, 0.15));
+          color: #ffffff;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+
+          &:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: var(--gold, #ffd60a);
+            color: var(--gold, #ffd60a);
+          }
+        }
+      }
+    }
+  }
+}

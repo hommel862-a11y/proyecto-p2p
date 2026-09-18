@@ -110,6 +110,30 @@ export class RiskGatekeeperAgent {
       };
     }
 
+    // Rule 2.1: Bank Network Health & Outage Protection (check_bank_operational_status)
+    const bankAudit = executeFinancialSkill('check_bank_operational_status', {});
+    const bankData = bankAudit.data as { pauseTradingDirective?: boolean; networkStatus?: string; affectedBanks?: string[] };
+    if (bankData?.pauseTradingDirective) {
+      return {
+        status: 'VETOED',
+        riskScore: 98,
+        vetoReason: `VETO POR SEGURIDAD BANCARIA: Interrupción o mantenimiento crítico detectado en la red bancaria (${bankData.affectedBanks?.join(', ') || 'Bancos Locales'}). Riesgo severo de fondos atrapados en tránsito.`,
+        warnings: ['Directiva de pausa preventiva activada por el monitor bancario.'],
+        auditedParameters: {
+          meetsGoldenRule: true,
+          counterpartyRiskLevel: counterpartyRisk,
+          bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+          dailyBankLimitExceeded: false,
+          antiPitufeoViolation: false,
+        },
+        recommendedAction: 'Suspender operaciones de salida en el banco afectado hasta confirmación de estabilidad de SUDEBAN/Cámara.',
+        evaluatedAt: Date.now(),
+      };
+    } else if (bankData?.networkStatus === 'CAUTION_DEGRADED') {
+      riskScore += 15;
+      warnings.push(`Retrasos intermitentes reportados en la cámara de compensación bancaria (${bankData.affectedBanks?.join(', ') || 'Banca'}).`);
+    }
+
     // Rule 3: Counterparty Risk
     if (counterpartyRisk === 'HIGH') {
       return {

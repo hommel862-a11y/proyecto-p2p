@@ -69,6 +69,26 @@ export class SentinelAgent {
     const rateGapPct = bcvData.gap?.gapPct ?? (((parallelRate - bcvRate) / bcvRate) * 100);
     const notes: string[] = [];
 
+    // 3. Check Venezuelan banking network operational status
+    const bankRes = executeFinancialSkill('check_bank_operational_status', {
+      bankCodes: ['0102', '0134', '0105', '0108', '0172', 'PAGO_MOVIL'],
+    });
+    const bankData = bankRes.data as {
+      networkStatus?: string;
+      averageSettlementLatencyMinutes?: number;
+      pauseTradingDirective?: boolean;
+    };
+
+    // 4. Evaluate order flow toxicity (VPIN)
+    const vpinRes = executeFinancialSkill('calculate_vpin_toxicity', {
+      basketVolumeUsdt: 1000,
+      totalBuckets: 20,
+    });
+    const vpinData = vpinRes.data as {
+      vpinMetric?: number;
+      toxicityZone?: string;
+    };
+
     if (netSpreadPct >= 0.50) {
       notes.push(`Regla de oro alcanzada: spread neto de ${netSpreadPct.toFixed(2)}% supera el umbral de 0.50%.`);
     } else {
@@ -77,6 +97,14 @@ export class SentinelAgent {
 
     if (rateGapPct > 20) {
       notes.push(`Brecha BCV/Paralelo elevada (${rateGapPct.toFixed(1)}%). Alta demanda de cobertura en dólares.`);
+    }
+
+    if (bankData?.networkStatus) {
+      notes.push(`Cámara Bancaria: ${bankData.networkStatus} (Latencia promedio: ${bankData.averageSettlementLatencyMinutes ?? 1.0} min).`);
+    }
+
+    if (vpinData?.toxicityZone) {
+      notes.push(`Toxicidad de flujo (VPIN): ${vpinData.toxicityZone} (${((vpinData.vpinMetric ?? 0.15) * 100).toFixed(1)}%).`);
     }
 
     return {

@@ -53,6 +53,9 @@ const VENDORED_CORE_FILES = [
   'dispute-copilot',
   'trade-impact-simulator',
   'spread-quality',
+  'counterparty',
+  'binance-earn-vault',
+  'operations-workflow',
 ];
 
 function mkOffer(price: number, maxVes: number, advNo: string, merchantName = 'Mercante Test'): BinanceOfferSummary {
@@ -78,8 +81,8 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     clearFinancialSkillMarketData();
   });
 
-  it('registro público intacto: 8 skills y firma de dispatcher estable', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(8);
+  it('registro público intacto: 33 skills y firma de dispatcher estable', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(33);
     expect(executeFinancialSkill).toBeTypeOf('function');
   });
 
@@ -340,6 +343,33 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['expectedSpreadDriftBps']).toBe(expected.expectedSpreadDriftBps);
     expect((d['suggestedSpreadAdjustmentPct'] as { buyMarkupPct: number }).buyMarkupPct)
       .toBe(expected.suggestedSpreadAdjustmentPct.buyMarkupPct);
+  });
+
+  it('ejecuta optimize_idle_capital_simple_earn y calculate_earn_yield_vs_p2p_hurdle_rate en Electron', () => {
+    const earnRes = dataOf(
+      executeFinancialSkill('optimize_idle_capital_simple_earn', {
+        capitalUsdt: 4000,
+        tier1LimitUsdt: 500,
+        tier1AprPct: 10.0,
+        tier2AprPct: 2.5,
+      }),
+    );
+    expect(earnRes['tier1Allocated']).toBe(500);
+    expect(earnRes['tier2Allocated']).toBe(3500);
+    expect(earnRes['effectiveBlendedAprPct']).toBeGreaterThan(2.5);
+
+    const hurdleRes = dataOf(
+      executeFinancialSkill('calculate_earn_yield_vs_p2p_hurdle_rate', {
+        grossP2pSpreadPct: 1.6,
+        platformFeePct: 0.1,
+        bankingRiskPremiumPct: 0.2,
+        fxDevaluationRiskPct: 0.3,
+        averageTradeCycleHours: 2,
+        simpleEarnAprPct: 4.0,
+      }),
+    );
+    expect(hurdleRes['verdict']).toBe('OPERATE_P2P');
+    expect(hurdleRes['isP2pProfitableOverEarn']).toBe(true);
   });
 
   it('integridad: los motores embebidos son byte-idénticos a projects/core/src/lib', () => {

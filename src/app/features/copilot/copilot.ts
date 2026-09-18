@@ -15,6 +15,12 @@ import {
   type CopilotResponse,
   getBcvMarketIntelligence,
   type BcvMarketIntelligence,
+  optimizeIdleCapitalSimpleEarn,
+  calculateEarnYieldVsP2pHurdleRate,
+  optimizeLockedVsFlexibleLiquidityLadder,
+  type SimpleEarnOptimizationResult,
+  type EarnHurdleRateResult,
+  type LiquidityLadderResult,
 } from '@p2p/core';
 
 export interface AlphaWatcherStatusDto {
@@ -201,7 +207,64 @@ export class Copilot implements OnInit, OnDestroy {
 
   inputPrompt = signal<string>('');
   isLoading = signal<boolean>(false);
-  activeTab = signal<'chat' | 'plans' | 'memory' | 'counterparties' | 'config'>('chat');
+  activeTab = signal<'chat' | 'plans' | 'earn' | 'memory' | 'counterparties' | 'config'>('chat');
+
+  // ---------------------------------------------------------------------------
+  // Binance Earn & Passive Treasury Reactive State (10 Quantitative Skills)
+  // ---------------------------------------------------------------------------
+  earnCapitalUsdt = signal<number>(5000);
+  earnT1AprPct = signal<number>(10.0);
+  earnT2AprPct = signal<number>(2.5);
+  earnHurdleGrossSpreadPct = signal<number>(1.6);
+  earnTradeCycleHours = signal<number>(2);
+
+  earnSimpleResult = computed<SimpleEarnOptimizationResult>(() => {
+    return optimizeIdleCapitalSimpleEarn({
+      capitalUsdt: this.earnCapitalUsdt(),
+      tier1LimitUsdt: 500,
+      tier1AprPct: this.earnT1AprPct(),
+      tier2AprPct: this.earnT2AprPct(),
+      holdingDays: 30,
+    });
+  });
+
+  earnHurdleResult = computed<EarnHurdleRateResult>(() => {
+    return calculateEarnYieldVsP2pHurdleRate({
+      grossP2pSpreadPct: this.earnHurdleGrossSpreadPct(),
+      platformFeePct: 0.1,
+      bankingRiskPremiumPct: 0.2,
+      fxDevaluationRiskPct: 0.3,
+      averageTradeCycleHours: this.earnTradeCycleHours(),
+      simpleEarnAprPct: this.earnSimpleResult().effectiveBlendedAprPct,
+    });
+  });
+
+  earnLadderResult = computed<LiquidityLadderResult>(() => {
+    return optimizeLockedVsFlexibleLiquidityLadder({
+      totalTreasuryUsdt: this.earnCapitalUsdt(),
+      dailyP2pVolumeUsdt: this.earnCapitalUsdt() * 0.4,
+      p2pTurnoverDays: 1,
+      flexibleAprPct: this.earnSimpleResult().effectiveBlendedAprPct,
+      locked30dAprPct: 5.5,
+      locked60dAprPct: 8.0,
+      safetyBufferPct: 30,
+    });
+  });
+
+  askEarnRecommendation(topic: string): void {
+    let prompt = '';
+    const cap = this.earnCapitalUsdt();
+    if (topic === 'simple_earn') {
+      prompt = `Tengo $${cap} USDT disponibles en tesorería. ¿Cómo optimizo la colocación entre el tramo Tier 1 y Tier 2 de Binance Simple Earn Flexible para maximizar el yield sin bloquear liquidez de órdenes P2P?`;
+    } else if (topic === 'hurdle_rate') {
+      prompt = `Con un spread P2P de ${this.earnHurdleGrossSpreadPct()}% y un ciclo de ${this.earnTradeCycleHours()} horas, ¿supera la Hurdle Rate de Binance Simple Earn (${this.earnSimpleResult().effectiveBlendedAprPct}% APR) o conviene estacionar fondos?`;
+    } else if (topic === 'ladder') {
+      prompt = `Diseñá una escalera de liquidez (Liquidity Laddering) para $${cap} USDT que mantenga un buffer D+0 para rotar en Banesco y asigne el excedente a locked 30d/60d con mayor APR.`;
+    }
+    this.activeTab.set('chat');
+    this.sendPrompt(prompt);
+  }
+
   plans = signal<StrategyPlanCard[]>([]);
   counterparties = signal<CounterpartyProfileDto[]>([
     {
@@ -760,6 +823,30 @@ export class Copilot implements OnInit, OnDestroy {
     } else if (type === 'triangulacion') {
       this.sendPrompt(
         'Analizá oportunidades de arbitraje triangular entre VES, USDT y divisas alternativas.',
+      );
+    } else if (type === 'microestructura') {
+      this.sendPrompt(
+        'Calibrá las cotizaciones de compra y venta según el modelo cuantitativo de Avellaneda-Stoikov, evaluá la toxicidad VPIN del libro y diseñá un plan de slicing TWAP/VWAP.',
+      );
+    } else if (type === 'seguridad_bancos') {
+      this.sendPrompt(
+        'Audita el estado operativo en tiempo real de la red bancaria (Banesco, Mercantil, BDV, Pago Móvil), cotejá listas negras de fraude y verificá directivas de pausa.',
+      );
+    } else if (type === 'cross_exchange') {
+      this.sendPrompt(
+        'Calculá el arbitraje espacial de bases cross-exchange entre Binance P2P y El Dorado P2P, deduciendo comisiones de retiro y tiempos de compensación.',
+      );
+    } else if (type === 'earn_idle') {
+      this.sendPrompt(
+        'Tengo capital ocioso en la cuenta. ¿Cómo lo optimizo en Binance Simple Earn Flexible aprovechando los tramos de APR sin inmovilizar liquidez para las órdenes P2P entrantes?',
+      );
+    } else if (type === 'earn_hurdle') {
+      this.sendPrompt(
+        '¿Cuál es la tasa de corte (Hurdle Rate) hoy entre el rendimiento neto de hacer arbitraje P2P y la tasa libre de riesgo de Binance Simple Earn? ¿Conviene operar o parquear fondos?',
+      );
+    } else if (type === 'earn_ladder') {
+      this.sendPrompt(
+        'Diseñá una escalera de liquidez estructurada (Liquidity Laddering) dividiendo el capital entre Simple Earn Flexible D+0 para atender compras P2P y tramos locked a 30/60 días.',
       );
     } else if (type === 'bcv') {
       this.sendPrompt(
