@@ -6,7 +6,7 @@ import {
 
 describe('Agent Skills & Function Calling Declarations', () => {
   it('should expose the financial skills schemas for Gemini', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(32);
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(42);
     const names = GEMINI_FINANCIAL_SKILLS.map((s) => s.name);
     expect(names).toContain('scan_triangular_arbitrage');
     expect(names).toContain('predict_bcv_market_intelligence');
@@ -41,6 +41,17 @@ describe('Agent Skills & Function Calling Declarations', () => {
     expect(names).toContain('forecast_flexible_earn_tier_saturation');
     expect(names).toContain('calculate_auto_invest_dca_spread_funnel');
     expect(names).toContain('simulate_earn_instant_redemption_latency');
+    // 10 Operations Workflow skills
+    expect(names).toContain('qualify_direct_lead_and_close');
+    expect(names).toContain('generate_social_traffic_funnel');
+    expect(names).toContain('benchmark_competitor_market_intelligence');
+    expect(names).toContain('orchestrate_workspace_sync');
+    expect(names).toContain('execute_desktop_rpa_reconciliation');
+    expect(names).toContain('monitor_service_health_and_fallback');
+    expect(names).toContain('triage_incident_and_escalate');
+    expect(names).toContain('audit_sop_compliance_enforcement');
+    expect(names).toContain('sync_google_sheets_live_ledger');
+    expect(names).toContain('forecast_cash_flow_and_reconciliation');
 
     // All should have parameters of type OBJECT with properties
     for (const skill of GEMINI_FINANCIAL_SKILLS) {
@@ -317,6 +328,48 @@ describe('Agent Skills & Function Calling Declarations', () => {
       expect(data.flexibleBufferUsdt).toBeGreaterThan(5000);
       expect(data.blendedPortfolioAprPct).toBeGreaterThan(2.5);
     });
+
+    it('executes qualify_direct_lead_and_close via dispatcher', () => {
+      const res = executeFinancialSkill('qualify_direct_lead_and_close', {
+        leadChannel: 'WHATSAPP',
+        estimatedWeeklyVolumeUsdt: 5000,
+        paymentMethodPreferred: 'Banesco',
+        isKycVerified: true,
+        primaryConcern: 'SPEED',
+        currentParallelRate: 85.0,
+      });
+      expect(res.success).toBe(true);
+      const data = res.data as any;
+      expect(data.leadTier).toBe('VIP_COMMERCIAL');
+      expect(data.actionProtocol).toBe('ONBOARD_IMMEDIATELY');
+    });
+
+    it('executes triage_incident_and_escalate via dispatcher', () => {
+      const res = executeFinancialSkill('triage_incident_and_escalate', {
+        incidentType: 'BANK_ACCOUNT_HOLD',
+        amountAtRiskUsdt: 3500,
+        orderId: 'ORD-CRISIS-1',
+      });
+      expect(res.success).toBe(true);
+      const data = res.data as any;
+      expect(data.severityLevel).toBe('P1_CRITICAL');
+      expect(data.requiresHumanHandoff).toBe(true);
+    });
+
+    it('executes audit_sop_compliance_enforcement via dispatcher', () => {
+      const res = executeFinancialSkill('audit_sop_compliance_enforcement', {
+        orderId: 'ORD-SOP-99',
+        accountHolderMatchesDocument: true,
+        bankBalanceConfirmedInAvailableFunds: true,
+        responseTimeMinutes: 4,
+        fundsReleasedBeforeBankVerification: false,
+      });
+      expect(res.success).toBe(true);
+      const data = res.data as any;
+      expect(data.isCompliant).toBe(true);
+      expect(data.disciplinaryAction).toBe('NONE');
+    });
   });
 });
+
 
