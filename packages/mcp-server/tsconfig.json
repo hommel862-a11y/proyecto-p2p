@@ -19,8 +19,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "noEmit": false,
-    "ignoreDeprecations": "6.0",
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "@p2p/mcp-server/*": ["src/*"]

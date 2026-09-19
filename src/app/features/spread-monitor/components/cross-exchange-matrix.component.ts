@@ -111,14 +111,22 @@ export class CrossExchangeMatrix {
         sellOffers: [
           this.elDorado.lastQuoteSell() ??
             normalizeElDoradoOrder(
-              { rate: this.elDoradoBuyPrice(), available_balance: cap, username: 'ElDorado Trader' },
+              {
+                rate: this.elDoradoBuyPrice(),
+                available_balance: cap,
+                username: 'ElDorado Trader',
+              },
               'SELL',
             ),
         ],
         buyOffers: [
           this.elDorado.lastQuoteBuy() ??
             normalizeElDoradoOrder(
-              { rate: this.elDoradoSellPrice(), available_balance: cap, username: 'ElDorado Buyer' },
+              {
+                rate: this.elDoradoSellPrice(),
+                available_balance: cap,
+                username: 'ElDorado Buyer',
+              },
               'BUY',
             ),
         ],

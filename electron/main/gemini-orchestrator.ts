@@ -12,6 +12,10 @@ import {
   executeFinancialSkill,
 } from './gemini-skills';
 import type { AgentSwarmOrchestrator } from './agents/swarm-orchestrator';
+import {
+  WebhookDispatcher,
+  type PlanDispatchSummary,
+} from './services/webhook-dispatcher';
 
 const QUOTA_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
@@ -19,13 +23,16 @@ const QUOTA_ENGINE_NOTE =
 export class GeminiOrchestrator {
   private apiKey?: string;
   private quotaCooldownUntil = 0;
+  private webhookDispatcher: WebhookDispatcher;
 
   constructor(
     private db: P2PDatabaseService,
     apiKey?: string,
     private swarm?: AgentSwarmOrchestrator,
+    webhookDispatcher?: WebhookDispatcher,
   ) {
     this.apiKey = apiKey || process.env['GEMINI_API_KEY'] || undefined;
+    this.webhookDispatcher = webhookDispatcher || new WebhookDispatcher();
   }
 
   setSwarmOrchestrator(swarm: AgentSwarmOrchestrator): void {
@@ -173,6 +180,10 @@ FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
 6. TESORERÍA & BINANCE EARN (Costo de Oportunidad Cero):
    - El capital P2P no debe quedar ocioso entre órdenes, fines de semana o pausas operativas. Utilizá activamente las herramientas de Binance Simple Earn Flexible (D+0), Launchpool, Dual Investment y Liquidity Laddering.
    - Calculá la Hurdle Rate: si el spread neto del P2P rinde menos que la tasa libre de riesgo de Simple Earn o el riesgo devaluatorio es inminente, instruí al operador a estacionar el capital en Simple Earn Flexible o Launchpool para generar carry pasivo seguro.
+7. OPERACIONES, GOBERNANZA SOP & CONCILIACIÓN CONTINUA:
+   - Toda operación debe cumplir estrictamente con los Protocolos Operativos Estándar (SOP): verificación de identidad 1:1 entre cuenta bancaria y Binance, comprobación rigurosa de fondos disponibles (nunca diferidos) y resolución en menos de 15 minutos.
+   - En caso de anomalías (retenciones bancarias, pagos de terceros, comprobantes adulterados), aplicá triaje de incidencias (P1 a P4) con aislamiento preventivo inmediato y protocolo de contingencia.
+   - Apoyate en las herramientas de conciliación RPA bancaria y sincronización contable con Google Sheets / Excel para garantizar discrepancia cero en tesorería y proyectar runway de capital.
 
 MEMORIA PERSISTENTE ENGRAM ACTIVA:
 ${learningsContext || 'Sin observaciones previas registradas aún.'}
@@ -345,6 +356,7 @@ PAUTAS DE COMUNICACIÓN:
     const isEarnVaults = lowerPrompt.includes('earn') || lowerPrompt.includes('vault') || lowerPrompt.includes('launchpool') || lowerPrompt.includes('parking') || lowerPrompt.includes('ocioso') || lowerPrompt.includes('hurdle') || lowerPrompt.includes('dual') || lowerPrompt.includes('dca') || lowerPrompt.includes('redemption');
     const isSecurityBank = lowerPrompt.includes('banco') || lowerPrompt.includes('estatus') || lowerPrompt.includes('caida') || lowerPrompt.includes('mantenimiento') || lowerPrompt.includes('pago movil') || lowerPrompt.includes('blacklist') || lowerPrompt.includes('lista negra') || lowerPrompt.includes('fraude') || lowerPrompt.includes('estafa') || lowerPrompt.includes('ocr') || lowerPrompt.includes('comprobante') || lowerPrompt.includes('disputa');
     const isExecutiveSummary = lowerPrompt.includes('resumen') || lowerPrompt.includes('ejecutivo') || lowerPrompt.includes('sesion') || lowerPrompt.includes('enjambre') || lowerPrompt.includes('swarm') || lowerPrompt.includes('diagnostico');
+    const isOperationsSop = lowerPrompt.includes('sop') || lowerPrompt.includes('incidencia') || lowerPrompt.includes('triaje') || lowerPrompt.includes('rpa') || lowerPrompt.includes('lead') || lowerPrompt.includes('funnel') || lowerPrompt.includes('sheets') || lowerPrompt.includes('conciliaci') || lowerPrompt.includes('contab') || lowerPrompt.includes('prospecto') || lowerPrompt.includes('competidor') || lowerPrompt.includes('benchmark') || lowerPrompt.includes('operacion');
 
     let reply = '';
     let plan: StrategyPlanRecord | undefined;
@@ -773,7 +785,88 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CASO 9: TRIANGULACIÓN FINANCIERA INSTITUCIONAL (DEFAULT & PREFERIDO)
+    // CASO 9: GOBERNANZA SOP, CONCILIACIÓN RPA & TRIAJE OPERATIVO
+    // ─────────────────────────────────────────────────────────────────────────
+    else if (isOperationsSop) {
+      const sopRes = executeFinancialSkill('audit_sop_compliance_enforcement', {
+        orderId: 'ORD-LIVE-AUDIT',
+        accountHolderMatchesDocument: true,
+        bankBalanceConfirmedInAvailableFunds: true,
+        responseTimeMinutes: 4,
+        fundsReleasedBeforeBankVerification: false,
+      });
+      executedSkills.push('audit_sop_compliance_enforcement');
+
+      const triageRes = executeFinancialSkill('triage_incident_and_escalate', {
+        incidentType: 'BANK_ACCOUNT_HOLD',
+        amountAtRiskUsdt: 1200,
+        orderId: 'ORD-LIVE-AUDIT',
+      });
+      executedSkills.push('triage_incident_and_escalate');
+
+      const sheetRes = executeFinancialSkill('sync_google_sheets_live_ledger', {
+        tradeDate: new Date().toISOString().split('T')[0],
+        orderId: 'ORD-LIVE-AUDIT',
+        counterpartyAlias: 'VerifiedMerchant',
+        tradeType: 'SELL',
+        cryptoAmountUsdt: 1000,
+        fiatAmountVes: 85000,
+        exchangeRate: 85.0,
+        platformFeeUsdt: 1.0,
+        bankTransferFeeVes: 25.0,
+      });
+      executedSkills.push('sync_google_sheets_live_ledger');
+
+      const cashFlowRes = executeFinancialSkill('forecast_cash_flow_and_reconciliation', {
+        fiatBankBalancesTotalUsdtEquiv: 1500,
+        cryptoExchangeBalancesUsdt: 4500,
+        pendingUnsettledOrdersUsdt: 800,
+        dailyProjectedVolumeUsdt: 3000,
+        averageOperationalExpensesDailyUsdt: 35,
+      });
+      executedSkills.push('forecast_cash_flow_and_reconciliation');
+
+      const sData = sopRes.data as { isCompliant?: boolean; complianceScore?: number; summary?: string; disciplinaryAction?: string };
+      const tData = triageRes.data as { severityLevel?: string; maxResolutionSlaMinutes?: number; requiresHumanHandoff?: boolean; isolationProtocol?: string; recommendedRemediationSteps?: string[] };
+      const lData = sheetRes.data as { calculatedGrossProfitUsdt?: number; calculatedNetMarginPct?: number; formulaNetSpreadPct?: string };
+      const cfData = cashFlowRes.data as { totalConsolidatedTreasuryUsdt?: number; runwayOperationalDays?: number; treasuryHealthVerdict?: string };
+
+      reply = `Mirá, formulé la auditoría de gobernanza operativa, triaje de incidentes y estado de conciliación de la mesa P2P.\n\n` +
+        `### 📋 Auditoría de Cumplimiento SOP (Protocolos Operativos Estándar)\n` +
+        `* **Índice de Cumplimiento**: \`${sData.complianceScore ?? 100}%\` (${sData.isCompliant ? '✅ Conforme a Norma' : '⚠️ Desviación Detectada'})\n` +
+        `* **Dictamen Disciplinario**: \`${sData.disciplinaryAction ?? 'NONE'}\`\n` +
+        `* **Resumen de Auditoría**: ${sData.summary ?? 'Verificación de titularidad 1:1 y confirmación de saldo disponible aprobadas.'}\n\n` +
+        `### 🚨 Matriz de Triaje & Escalación de Incidentes\n` +
+        `* **Nivel de Severidad**: \`${tData.severityLevel ?? 'P1_CRITICAL'}\` | **SLA Máximo**: ${tData.maxResolutionSlaMinutes ?? 10} minutos\n` +
+        `* **Intervención Humana Requerida**: ${tData.requiresHumanHandoff ? '⚠️ SÍ (Requiere validación del CSO)' : 'Automático'}\n` +
+        `* **Protocolo de Aislamiento**: ${tData.isolationProtocol ?? 'Pausar anuncios vinculados a cuentas bajo revisión y activar contingencia.'}\n` +
+        `* **Pasos de Mitigación**: ${(tData.recommendedRemediationSteps || []).slice(0, 2).join(' | ')}\n\n` +
+        `### 📊 Conciliación Contable & Runway de Tesorería\n` +
+        `* **Margen Neto Contable en Planilla**: \`+${lData.calculatedNetMarginPct?.toFixed(2) ?? '1.40'}%\` ($${lData.calculatedGrossProfitUsdt?.toFixed(2) ?? '14.00'} USDT)\n` +
+        `* **Tesorería Consolidada**: $${cfData.totalConsolidatedTreasuryUsdt?.toFixed(0) ?? '6800'} USDT\n` +
+        `* **Runway Operativo**: \`${cfData.runwayOperationalDays?.toFixed(1) ?? '194'} días\` (Diagnóstico: ${cfData.treasuryHealthVerdict ?? 'EXCELLENT_LIQUIDITY'})\n\n` +
+        `El sistema operativo garantiza cero discrepancia contable y estricta protección contra cuentas retenidas o pagos no autorizados.`;
+
+      plan = {
+        id: planId,
+        title: 'Gobernanza SOP, Conciliación RPA & Triaje Operativo',
+        route: 'Auditoría Forense SOP ➔ Conciliación RPA de Extractos ➔ Sync Google Sheets Ledger',
+        asset: 'USDT',
+        fiat: 'VES',
+        capitalRequiredUsdt: 1200,
+        expectedNetSpreadPct: 1.40,
+        expectedProfitUsdt: 16.8,
+        riskLevel: 'LOW',
+        assignedOperatorName: 'Compliance & Operations Lead',
+        rationale: 'Cumplimiento 100% de verificación documental y concordancia bancaria, conciliación automatizada y sincronización contable.',
+        status: 'PROPOSED',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CASO 10: TRIANGULACIÓN FINANCIERA INSTITUCIONAL (DEFAULT & PREFERIDO)
     // ─────────────────────────────────────────────────────────────────────────
     else {
       const triangleRes = executeFinancialSkill('scan_triangular_arbitrage', {
@@ -1100,19 +1193,82 @@ PAUTAS DE COMUNICACIÓN:
       };
     }
 
+    if (skillName === 'triage_incident_and_escalate' && data && typeof data === 'object') {
+      const d = data as { severityLevel?: string; maxResolutionSlaMinutes?: number; requiresHumanHandoff?: boolean; isolationProtocol?: string };
+      return {
+        id: planId,
+        title: `Protocolo de Triaje Operativo (${d.severityLevel ?? 'P1_CRITICAL'})`,
+        route: `Aislamiento Preventivo de Canales Bancarios | SLA: ${d.maxResolutionSlaMinutes ?? 10}m`,
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.25,
+        expectedProfitUsdt: 12.5,
+        riskLevel: d.severityLevel === 'P1_CRITICAL' ? 'HIGH' : 'MEDIUM',
+        assignedOperatorName: 'Chief Security & Operations Officer',
+        rationale: d.isolationProtocol || 'Protocolo de contención de crisis operativa y remediación supervisada.',
+        status: 'PROPOSED',
+      };
+    }
+
+    if (skillName === 'audit_sop_compliance_enforcement' && data && typeof data === 'object') {
+      const d = data as { isCompliant?: boolean; complianceScore?: number; summary?: string; disciplinaryAction?: string };
+      return {
+        id: planId,
+        title: 'Auditoría Forense de Gobernanza SOP',
+        route: `Verificación Titular 1:1 & Saldo Disponible (${d.complianceScore ?? 100}%)`,
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.35,
+        expectedProfitUsdt: 13.5,
+        riskLevel: 'LOW',
+        assignedOperatorName: 'Compliance Officer',
+        rationale: d.summary || 'Auditoría formal de apego a Protocolos Operativos Estándar para prevención de fraudes.',
+        status: 'PROPOSED',
+      };
+    }
+
+    if (skillName === 'sync_google_sheets_live_ledger' && data && typeof data === 'object') {
+      const d = data as { calculatedGrossProfitUsdt?: number; calculatedNetMarginPct?: number };
+      return {
+        id: planId,
+        title: 'Sincronización Contable en Google Sheets Ledger',
+        route: 'Exportación Atómica de Operaciones a Hoja de Balance en Vivo',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: d.calculatedNetMarginPct ?? 1.4,
+        expectedProfitUsdt: d.calculatedGrossProfitUsdt ?? 14.0,
+        riskLevel: 'LOW',
+        assignedOperatorName: 'Desk Operations Lead',
+        rationale: 'Registro de auditoría transaccional con fórmulas dinámicas para conciliación de caja.',
+        status: 'PROPOSED',
+      };
+    }
+
     return undefined;
   }
 
+  getWebhookDispatcher(): WebhookDispatcher {
+    return this.webhookDispatcher;
+  }
+
+  setWebhookDispatcher(dispatcher: WebhookDispatcher): void {
+    this.webhookDispatcher = dispatcher;
+  }
+
   /**
-   * Approves a strategy plan and shifts its state in SQLite.
+   * Approves a strategy plan and shifts its state in SQLite,
+   * triggering multi-channel webhook dispatches to Telegram Sentinel and Google Sheets Ledger.
    */
-  executePlan(planId: string): { success: boolean; error?: string } {
+  async executePlan(planId: string): Promise<{
+    success: boolean;
+    error?: string;
+    dispatchSummary?: PlanDispatchSummary;
+  }> {
     const plan = this.db.getStrategyPlan(planId);
     if (!plan) {
       return { success: false, error: `El plan ${planId} no existe en la base de datos.` };
     }
 
     const updated = this.db.updateStrategyPlanStatus(planId, 'APPROVED');
+    let dispatchSummary: PlanDispatchSummary | undefined;
+
     if (updated) {
       this.db.saveEngramObservation({
         topicKey: `execution/plan-${planId}`,
@@ -1127,9 +1283,16 @@ PAUTAS DE COMUNICACIÓN:
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+
+      // Dispatch to external webhooks (Telegram Sentinel, Google Sheets Ledger, Generic Webhooks)
+      try {
+        dispatchSummary = await this.webhookDispatcher.dispatchPlanExecution(plan);
+      } catch (dispatchErr) {
+        console.warn(`[GeminiOrchestrator] Webhook dispatch warning for plan ${planId}:`, dispatchErr);
+      }
     }
 
-    return { success: updated };
+    return { success: updated, dispatchSummary };
   }
 
   /**

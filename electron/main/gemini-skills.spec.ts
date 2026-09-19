@@ -81,8 +81,8 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     clearFinancialSkillMarketData();
   });
 
-  it('registro público intacto: 33 skills y firma de dispatcher estable', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(33);
+  it('registro público intacto: 43 skills y firma de dispatcher estable', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(43);
     expect(executeFinancialSkill).toBeTypeOf('function');
   });
 
@@ -370,6 +370,59 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     );
     expect(hurdleRes['verdict']).toBe('OPERATE_P2P');
     expect(hurdleRes['isP2pProfitableOverEarn']).toBe(true);
+  });
+
+  it('ejecuta habilidades operativas y gobernanza SOP con precisión determinista', () => {
+    const leadRes = dataOf(
+      executeFinancialSkill('qualify_direct_lead_and_close', {
+        leadChannel: 'WHATSAPP',
+        estimatedWeeklyVolumeUsdt: 6000,
+        paymentMethodPreferred: 'Banesco',
+        isKycVerified: true,
+        primaryConcern: 'SPEED',
+        currentParallelRate: 85.0,
+      }),
+    );
+    expect(leadRes['leadTier']).toBe('VIP_COMMERCIAL');
+    expect(leadRes['actionProtocol']).toBe('ONBOARD_IMMEDIATELY');
+
+    const triageRes = dataOf(
+      executeFinancialSkill('triage_incident_and_escalate', {
+        incidentType: 'BANK_ACCOUNT_HOLD',
+        amountAtRiskUsdt: 5000,
+        orderId: 'ORD-CRISIS-100',
+      }),
+    );
+    expect(triageRes['severityLevel']).toBe('P1_CRITICAL');
+    expect(triageRes['requiresHumanHandoff']).toBe(true);
+
+    const sopRes = dataOf(
+      executeFinancialSkill('audit_sop_compliance_enforcement', {
+        orderId: 'ORD-SOP-1',
+        accountHolderMatchesDocument: true,
+        bankBalanceConfirmedInAvailableFunds: true,
+        responseTimeMinutes: 3,
+        fundsReleasedBeforeBankVerification: false,
+      }),
+    );
+    expect(sopRes['isCompliant']).toBe(true);
+    expect(sopRes['complianceScore']).toBe(100);
+
+    const sheetRes = dataOf(
+      executeFinancialSkill('sync_google_sheets_live_ledger', {
+        tradeDate: '2026-09-18',
+        orderId: 'ORD-GSHEET-1',
+        counterpartyAlias: 'VipBuyer',
+        tradeType: 'SELL',
+        cryptoAmountUsdt: 1000,
+        fiatAmountVes: 85000,
+        exchangeRate: 85.0,
+        platformFeeUsdt: 1.0,
+        bankTransferFeeVes: 25.0,
+      }),
+    );
+    expect(sheetRes['rowValues']).toBeDefined();
+    expect(sheetRes['calculatedGrossProfitUsdt']).toBeGreaterThan(0);
   });
 
   it('integridad: los motores embebidos son byte-idénticos a projects/core/src/lib', () => {

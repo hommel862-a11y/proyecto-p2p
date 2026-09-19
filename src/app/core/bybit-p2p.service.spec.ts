@@ -21,9 +21,8 @@ function installElectronBridge(fetchBybitP2p: (req: { side: 0 | 1 }) => Promise<
       encrypt: vi.fn(async (plain: string) => btoa(plain)),
       decrypt: vi.fn(async (cipher: string) => atob(cipher)),
     },
-    fetchBybitP2p: vi.fn(
-      (req: { side: 0 | 1 }) =>
-        fetchBybitP2p(req).then((res) => Promise.resolve(res)),
+    fetchBybitP2p: vi.fn((req: { side: 0 | 1 }) =>
+      fetchBybitP2p(req).then((res) => Promise.resolve(res)),
     ),
   };
 }
@@ -68,8 +67,22 @@ describe('BybitP2pService', () => {
         return {
           result: {
             items: [
-              { id: 'a1', nickName: 'Merc1', price: '810', lastQuantity: 12, recentOrderNum: 100, recentExecuteRate: 99.5 },
-              { id: 'a0', nickName: 'Merc2', price: '808', lastQuantity: 9, recentOrderNum: 50, recentExecuteRate: 98 },
+              {
+                id: 'a1',
+                nickName: 'Merc1',
+                price: '810',
+                lastQuantity: 12,
+                recentOrderNum: 100,
+                recentExecuteRate: 99.5,
+              },
+              {
+                id: 'a0',
+                nickName: 'Merc2',
+                price: '808',
+                lastQuantity: 9,
+                recentOrderNum: 50,
+                recentExecuteRate: 98,
+              },
               { id: 'a2', nickName: 'Merc3', price: '0', lastQuantity: 0 },
             ],
           },

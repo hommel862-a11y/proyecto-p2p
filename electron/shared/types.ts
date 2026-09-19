@@ -313,7 +313,7 @@ export interface ElectronAPI {
   };
   copilot: {
     sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
-    executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
+    executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string; dispatchSummary?: any }>;
     getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
     getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
     setApiKey(params: { apiKey: string }): Promise<boolean>;

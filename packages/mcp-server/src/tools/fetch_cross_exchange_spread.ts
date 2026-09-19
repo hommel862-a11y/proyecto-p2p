@@ -186,8 +186,8 @@ export const fetchCrossExchangeSpreadTool = {
     }
 
     // Find cross-arbitrage: lowest buy anywhere vs highest sell anywhere
-    const lowestBuy = [...exchangeQuotes].sort((a, b) => a.buyRate - b.buyRate)[0];
-    const highestSell = [...exchangeQuotes].sort((a, b) => b.sellRate - a.sellRate)[0];
+    const lowestBuy = [...exchangeQuotes].sort((a, b) => a.buyRate - b.buyRate)[0]!;
+    const highestSell = [...exchangeQuotes].sort((a, b) => b.sellRate - a.sellRate)[0]!;
 
     const crossSpreadVes = round2(highestSell.sellRate - lowestBuy.buyRate);
     const crossSpreadPct = Number(((crossSpreadVes / lowestBuy.buyRate) * 100).toFixed(2));

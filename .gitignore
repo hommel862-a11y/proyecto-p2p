@@ -61,3 +61,5 @@ cap-sync.log
 electron-launch.log
 *.tsbuildinfo
 *.apk
+/electron/scratch/
+.engram/

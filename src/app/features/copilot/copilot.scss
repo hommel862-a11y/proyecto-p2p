@@ -1530,6 +1530,59 @@
           }
         }
       }
+
+      &.alert-border {
+        border-color: rgba(255, 69, 58, 0.4);
+      }
     }
   }
+
+  .sop-checkbox-row {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      cursor: pointer;
+
+      input[type="checkbox"] {
+        accent-color: var(--gold, #ffd60a);
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+      }
+
+      &.alert-check {
+        color: #fca5a5;
+
+        input[type="checkbox"] {
+          accent-color: var(--danger, #ff453a);
+        }
+      }
+    }
+  }
+
+  .sop-summary-box, .sop-protocol-box {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.76rem;
+    line-height: 1.4;
+    background: rgba(0, 0, 0, 0.25);
+    border: 0.5px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+  }
+
+  .sop-protocol-box {
+    border-left: 3px solid var(--danger, #ff453a);
+  }
 }
+

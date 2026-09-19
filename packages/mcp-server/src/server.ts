@@ -1,18 +1,30 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ALL_MCP_TOOLS } from './tools/index.js';
+import { ALL_MCP_TOOLS, MCP_TOOLS_BY_SERVER } from './tools/index.js';
 import { ALL_MCP_RESOURCES } from './resources/index.js';
 import { ALL_MCP_PROMPTS } from './prompts/index.js';
 import { auditService } from './policy/audit.js';
 import { rateLimiter } from './policy/permissions.js';
 
-export function createP2PMcpServer(): McpServer {
+export interface CreateMcpServerOptions {
+  serverId?: string;
+  name?: string;
+}
+
+export function createP2PMcpServer(options?: CreateMcpServerOptions): McpServer {
+  const serverName =
+    options?.name ?? (options?.serverId ? `p2p-${options.serverId}` : 'p2p-mcp-server');
   const server = new McpServer({
-    name: 'p2p-mcp-server',
+    name: serverName,
     version: '1.0.0',
   });
 
+  const toolsToRegister =
+    options?.serverId && MCP_TOOLS_BY_SERVER[options.serverId]
+      ? MCP_TOOLS_BY_SERVER[options.serverId]
+      : ALL_MCP_TOOLS;
+
   // 1. Register Tools with Zod schema validation & audit trail
-  for (const tool of ALL_MCP_TOOLS) {
+  for (const tool of toolsToRegister) {
     server.tool(
       tool.name,
       tool.description,

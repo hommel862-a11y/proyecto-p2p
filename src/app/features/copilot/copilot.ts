@@ -21,6 +21,16 @@ import {
   type SimpleEarnOptimizationResult,
   type EarnHurdleRateResult,
   type LiquidityLadderResult,
+  auditSopComplianceEnforcement,
+  triageIncidentAndEscalate,
+  qualifyDirectLeadAndClose,
+  monitorServiceHealthAndFallback,
+  forecastCashFlowAndReconciliation,
+  type SopAuditResult,
+  type IncidentTriageResult,
+  type DirectLeadQualificationResult,
+  type ServiceHealthResult,
+  type CashFlowForecastResult,
 } from '@p2p/core';
 
 export interface AlphaWatcherStatusDto {
@@ -207,7 +217,9 @@ export class Copilot implements OnInit, OnDestroy {
 
   inputPrompt = signal<string>('');
   isLoading = signal<boolean>(false);
-  activeTab = signal<'chat' | 'plans' | 'earn' | 'memory' | 'counterparties' | 'config'>('chat');
+  activeTab = signal<
+    'chat' | 'plans' | 'earn' | 'operations' | 'memory' | 'counterparties' | 'config'
+  >('chat');
 
   // ---------------------------------------------------------------------------
   // Binance Earn & Passive Treasury Reactive State (10 Quantitative Skills)
@@ -260,6 +272,90 @@ export class Copilot implements OnInit, OnDestroy {
       prompt = `Con un spread P2P de ${this.earnHurdleGrossSpreadPct()}% y un ciclo de ${this.earnTradeCycleHours()} horas, ¿supera la Hurdle Rate de Binance Simple Earn (${this.earnSimpleResult().effectiveBlendedAprPct}% APR) o conviene estacionar fondos?`;
     } else if (topic === 'ladder') {
       prompt = `Diseñá una escalera de liquidez (Liquidity Laddering) para $${cap} USDT que mantenga un buffer D+0 para rotar en Banesco y asigne el excedente a locked 30d/60d con mayor APR.`;
+    }
+    this.activeTab.set('chat');
+    this.sendPrompt(prompt);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Operations Workflow, SOP Governance & Live Ledger (10 Quantitative Skills)
+  // ---------------------------------------------------------------------------
+  sopOrderId = signal<string>('ORD-SOP-LIVE');
+  sopHolderMatches = signal<boolean>(true);
+  sopBalanceConfirmed = signal<boolean>(true);
+  sopResponseMinutes = signal<number>(4);
+  sopFundsReleasedEarly = signal<boolean>(false);
+
+  triageIncidentType = signal<
+    'BANK_ACCOUNT_HOLD' | 'THIRD_PARTY_PAYMENT' | 'PARTIAL_PAYMENT_FRAUD' | 'APP_LATENCY_DELAY'
+  >('BANK_ACCOUNT_HOLD');
+  triageAmountUsdt = signal<number>(1500);
+
+  leadChannel = signal<'WHATSAPP' | 'TELEGRAM' | 'INSTAGRAM_DM'>('WHATSAPP');
+  leadWeeklyVolume = signal<number>(5000);
+  leadKyc = signal<boolean>(true);
+
+  wsLatencyMs = signal<number>(120);
+  bankUptimePct = signal<number>(99.5);
+
+  sopAuditResult = computed<SopAuditResult>(() => {
+    return auditSopComplianceEnforcement({
+      orderId: this.sopOrderId(),
+      accountHolderMatchesDocument: this.sopHolderMatches(),
+      bankBalanceConfirmedInAvailableFunds: this.sopBalanceConfirmed(),
+      responseTimeMinutes: this.sopResponseMinutes(),
+      fundsReleasedBeforeBankVerification: this.sopFundsReleasedEarly(),
+    });
+  });
+
+  triageResult = computed<IncidentTriageResult>(() => {
+    return triageIncidentAndEscalate({
+      incidentType: this.triageIncidentType(),
+      amountAtRiskUsdt: this.triageAmountUsdt(),
+      orderId: this.sopOrderId(),
+    });
+  });
+
+  leadQualificationResult = computed<DirectLeadQualificationResult>(() => {
+    return qualifyDirectLeadAndClose({
+      leadChannel: this.leadChannel(),
+      estimatedWeeklyVolumeUsdt: this.leadWeeklyVolume(),
+      paymentMethodPreferred: 'Pago Móvil / Banesco',
+      isKycVerified: this.leadKyc(),
+      primaryConcern: 'SPEED',
+      currentParallelRate: 85.0,
+    });
+  });
+
+  serviceHealthResult = computed<ServiceHealthResult>(() => {
+    return monitorServiceHealthAndFallback({
+      webSocketLatencyMs: this.wsLatencyMs(),
+      bankApiUptimePct: this.bankUptimePct(),
+      dbQueryResponseTimeMs: 15,
+      unresolvedErrorsCount: 0,
+    });
+  });
+
+  cashFlowResult = computed<CashFlowForecastResult>(() => {
+    return forecastCashFlowAndReconciliation({
+      fiatBankBalancesTotalUsdtEquiv: 1500,
+      cryptoExchangeBalancesUsdt: 5000,
+      pendingUnsettledOrdersUsdt: 500,
+      dailyProjectedVolumeUsdt: 2500,
+      averageOperationalExpensesDailyUsdt: 30,
+    });
+  });
+
+  askOperationsRecommendation(topic: string): void {
+    let prompt = '';
+    if (topic === 'sop_audit') {
+      prompt = `Audita el cumplimiento SOP de la orden ${this.sopOrderId()}: titular verificado (${this.sopHolderMatches()}), fondos en disponible (${this.sopBalanceConfirmed()}), tiempo de atención ${this.sopResponseMinutes()} min. ¿Hay riesgo de sanción o desvío de protocolo?`;
+    } else if (topic === 'incident_triage') {
+      prompt = `Activa el triaje de incidencia para ${this.triageIncidentType()} con $${this.triageAmountUsdt()} USDT en riesgo. ¿Cuál es el SLA máximo, el protocolo de aislamiento y las acciones de remediación?`;
+    } else if (topic === 'lead_closing') {
+      prompt = `Califica un prospecto comercial que ingresa por ${this.leadChannel()} con volumen estimado de $${this.leadWeeklyVolume()} USDT/semana (KYC: ${this.leadKyc() ? 'Sí' : 'No'}). Generá la cotización institucional y el guión de cierre.`;
+    } else if (topic === 'ledger_reconciliation') {
+      prompt = `Generá el reporte de conciliación contable y sincronización con Google Sheets para la sesión actual, incluyendo proyección de runway de tesorería y validación de comisiones bancarias.`;
     }
     this.activeTab.set('chat');
     this.sendPrompt(prompt);

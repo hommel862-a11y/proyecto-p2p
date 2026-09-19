@@ -90,6 +90,67 @@ export const ALL_MCP_TOOLS = [
   auditPaymentProofOcrTool,
 ];
 
+export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
+  'p2p-decisor': [
+    calculateSpreadTool,
+    evaluateTradeRiskTool,
+    simulateTradeImpactTool,
+    consultZkMarketMeshTool,
+    forecastVolatilityWindowTool,
+    calculateDeltaNeutralHedgeTool,
+    triggerKillswitchTool,
+    addOperationEntryTool,
+  ],
+  'p2p-aml-forensics': [
+    screenWalletAddressTool,
+    inspectTxTaintTool,
+    checkCounterpartyBlacklistTool,
+    registerBlacklistedEntityTool,
+  ],
+  'p2p-multi-exchange': [
+    getBinanceP2POrderbookTool,
+    fetchCrossExchangeSpreadTool,
+    detectUsdtDepegTool,
+    recommendCompetitivePricingTool,
+    analyzeOrderbookPressureTool,
+  ],
+  'p2p-bank-sentinel': [
+    verifyInboundTransferTool,
+    checkBankOperationalStatusTool,
+    auditPaymentProofOcrTool,
+  ],
+  'p2p-dispute-dossier': [compileDisputeDossierTool],
+  'p2p-sudeban-radar': [evaluateAccountSaturationTool],
+  'p2p-portfolio-risk': [
+    calculateDeltaNeutralHedgeTool,
+    stressTestPortfolioTool,
+    rebalanceCapitalAllocationTool,
+    auditCounterpartyExposureTool,
+    projectCompoundRunwayTool,
+  ],
+  'p2p-omnichannel': [
+    dispatchOrderInstructionsTool,
+    sendMultichannelAlertTool,
+    processRemoteSentinelCommandTool,
+  ],
+  'p2p-macro-predictor': [
+    getBcvRatesTool,
+    getParallelRatesTool,
+    calculateRateGapTool,
+    checkBcvInterventionWindowTool,
+    autofillTradeReferenceTool,
+  ],
+  'p2p-google-workspace': [
+    gdriveBackupReceiptTool,
+    gsheetsSyncTradeTool,
+    gdriveSyncDbBackupTool,
+  ],
+  'p2p-counterparty-mesh': [
+    consultZkMarketMeshTool,
+    lookupCounterpartyReputationTool,
+  ],
+};
+
 export {
   calculateSpreadTool,
   evaluateTradeRiskTool,

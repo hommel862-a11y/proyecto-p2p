@@ -46,8 +46,8 @@ export const processRemoteSentinelCommandTool = {
     const numberMatches = raw.match(/(\d+(?:[.,]\d+)?)/g);
 
     if (sideMatch && numberMatches && numberMatches.length >= 2) {
-      const volumeUsdt = parseFloat(numberMatches[0].replace(',', '.'));
-      const ratePrice = parseFloat(numberMatches[1].replace(',', '.'));
+      const volumeUsdt = parseFloat(numberMatches[0]!.replace(',', '.'));
+      const ratePrice = parseFloat(numberMatches[1]!.replace(',', '.'));
       const amountVes = Number((volumeUsdt * ratePrice).toFixed(2));
 
       // Extract bank if mentioned

@@ -41,7 +41,7 @@ export const auditPaymentProofOcrTool = {
     const amountMatches = text.match(/(?:bs\.?|ves|monto)[:\s]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))/i) ||
       text.match(/([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))\s*(?:bs|ves)/i);
 
-    if (amountMatches) {
+    if (amountMatches && amountMatches[1]) {
       const rawNum = amountMatches[1];
       if (rawNum.includes('.') && rawNum.includes(',')) {
         // e.g. 1.500,00 -> Latin format
@@ -54,7 +54,7 @@ export const auditPaymentProofOcrTool = {
     } else {
       // Fallback: look for decimal numbers
       const anyNum = text.match(/\b([0-9]+[.,][0-9]{2})\b/);
-      if (anyNum) {
+      if (anyNum && anyNum[1]) {
         extractedAmount = parseFloat(anyNum[1].replace(',', '.'));
       }
     }
@@ -62,7 +62,7 @@ export const auditPaymentProofOcrTool = {
     // 4. Extract Cédula / Document ID
     const cedulaMatch = text.match(/\b([VEJPvejp][-\s]?[0-9]{6,9})\b/) ||
       text.match(/(?:c[eé]dula|rif|identificaci[oó]n)[:\s]*([0-9]{6,9})/i);
-    const extractedCedula = cedulaMatch ? cedulaMatch[1].replace(/[-\s]/g, '').toUpperCase() : null;
+    const extractedCedula = cedulaMatch && cedulaMatch[1] ? cedulaMatch[1].replace(/[-\s]/g, '').toUpperCase() : null;
 
     // 5. Cross-Verification against Expected Order Data
     const discrepancies: string[] = [];

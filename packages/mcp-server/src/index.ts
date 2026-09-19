@@ -11,13 +11,16 @@ const SSE_PORT = Number(process.env.MCP_SSE_PORT ?? 51858);
 const ENABLE_SSE = process.env.MCP_ENABLE_SSE === 'true';
 
 async function main() {
-  const server = createP2PMcpServer();
+  const serverId =
+    process.env.MCP_SERVER_ID ||
+    process.argv.find((a) => a.startsWith('--server='))?.split('=')[1];
+  const server = createP2PMcpServer({ serverId });
 
   // ─── Transporte stdio (siempre activo, es el canal principal) ───
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
   const stdioTransport = new StdioServerTransport();
   await server.connect(stdioTransport);
-  console.error('[MCP] p2p-decisor connected via stdio');
+  console.error(`[MCP] ${serverId ?? 'p2p-decisor (master)'} connected via stdio`);
 
   // ─── Transporte SSE opcional (para Inspector / clientes HTTP) ───
   if (ENABLE_SSE) {

@@ -65,7 +65,9 @@ export class BybitP2pService {
     if (creds?.apiKey && creds.apiSecret) {
       this.configured.set(true);
       this.mode.set('live');
-      this.statusText.set('Credenciales Bybit configuradas. Sincroniza para obtener puntas en vivo.');
+      this.statusText.set(
+        'Credenciales Bybit configuradas. Sincroniza para obtener puntas en vivo.',
+      );
     }
   }
 

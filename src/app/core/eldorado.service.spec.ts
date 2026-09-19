@@ -19,11 +19,9 @@ function installElDoradoBridge(
   fetchQuote: (req: { direction: 'buy' | 'sell' }) => Promise<unknown>,
 ): void {
   installCryptoOnly();
-  ((
-    window as unknown as Record<string, unknown>
-  )['electron'] as Record<string, unknown>)['fetchElDoradoQuote'] = vi.fn(
-    (req: { direction: 'buy' | 'sell' }) => Promise.resolve(fetchQuote(req)),
-  );
+  ((window as unknown as Record<string, unknown>)['electron'] as Record<string, unknown>)[
+    'fetchElDoradoQuote'
+  ] = vi.fn((req: { direction: 'buy' | 'sell' }) => Promise.resolve(fetchQuote(req)));
 }
 
 function quote(rate: number, direction: 'buy' | 'sell') {

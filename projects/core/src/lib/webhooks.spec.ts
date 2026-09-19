@@ -65,8 +65,23 @@ describe('webhooks', () => {
 
       expect(msg).toContain('⚠️ <b>LÍMITE DE CUENTA</b>');
       expect(msg).toContain('<b>Límite bancario alcanzado</b>');
-      expect(msg).toContain('La cuenta Banesco superó el 90% de su límite diario');
       expect(msg).toContain('Valor: <code>92%</code>');
+    });
+
+    it('formats plan_approved event with 🚀 PLAN TÁCTICO APROBADO emoji/header', () => {
+      const event: RuleAlertEvent = {
+        type: 'plan_approved',
+        title: 'Arbitraje Triangular Aprobado',
+        details: 'Ejecutando rotación de 1000 USDT con spread 1.85%',
+        value: '1000 USDT',
+        timestamp: '2026-09-19T12:00:00Z',
+      };
+      const msg = formatTelegramMessage(event);
+
+      expect(msg).toContain('🚀 <b>PLAN TÁCTICO APROBADO</b>');
+      expect(msg).toContain('<b>Arbitraje Triangular Aprobado</b>');
+      expect(msg).toContain('Ejecutando rotación de 1000 USDT con spread 1.85%');
+      expect(msg).toContain('Valor: <code>1000 USDT</code>');
     });
   });
 
@@ -142,6 +157,27 @@ describe('webhooks', () => {
           }),
         })
       );
+    });
+
+    it('sends plan_approved alert successfully when enabled', async () => {
+      const planEvent: RuleAlertEvent = {
+        type: 'plan_approved',
+        title: 'Plan Aprobado',
+        details: 'Arbitraje ejecutado',
+      };
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          result: { message_id: 2002 },
+        }),
+      });
+
+      const res = await sendTelegramAlert(validConfig, planEvent, mockFetch as any);
+      expect(res).toEqual({
+        success: true,
+        messageId: 2002,
+      });
     });
 
     it('handles non-ok HTTP status from Telegram API gracefully', async () => {

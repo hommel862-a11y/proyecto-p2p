@@ -57,6 +57,7 @@ const VENDOR_NAMES = [
   'counterparty',
   'binance-earn-vault',
   'operations-workflow',
+  'webhooks',
 ];
 
 // ---------------------------------------------------------------------------

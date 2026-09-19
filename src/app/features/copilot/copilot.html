@@ -41,6 +41,12 @@
         </button>
         <button 
           class="tab-btn" 
+          [class.active]="activeTab() === 'operations'" 
+          (click)="activeTab.set('operations')">
+          🛡️ Operaciones & SOP (10 Skills)
+        </button>
+        <button 
+          class="tab-btn" 
           [class.active]="activeTab() === 'memory'" 
           (click)="activeTab.set('memory')">
           🧠 Memoria Engram ({{ engramObservations().length }})
@@ -888,6 +894,246 @@
           <div class="card-footer-actions">
             <button class="btn-ask-cso" (click)="askEarnRecommendation('ladder')">
               🪜 Desplegar Escalera en Chat
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- TAB: OPERATIONS, SOP GOVERNANCE & LIVE LEDGER (10 SKILLS) -->
+  @if (activeTab() === 'operations') {
+    <div class="plans-layout earn-vault-layout operations-layout">
+      <div class="plans-header">
+        <div>
+          <h3>🛡️ Operaciones, Gobernanza SOP & Conciliación Contable (10 Skills)</h3>
+          <p class="section-desc">
+            Protocolos operativos estándar, triaje de incidentes bancarios (P1-P4), conciliación RPA de extractos, calificación de leads y sincronización contable con Google Sheets.
+          </p>
+        </div>
+        <div class="earn-quick-actions">
+          <button class="btn-new-plan" (click)="askOperationsRecommendation('incident_triage')">
+            🚨 Activar Triaje con el CSO
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Operations Simulator & Parameters -->
+      <div class="earn-controls-card">
+        <h4 class="earn-card-title">⚙️ Parámetros Operativos & Auditoría de Órdenes en Tiempo Real</h4>
+        <div class="earn-inputs-grid">
+          <div class="earn-input-group">
+            <label for="sopOrder">ID de Orden:</label>
+            <input
+              id="sopOrder"
+              type="text"
+              [ngModel]="sopOrderId()"
+              (ngModelChange)="sopOrderId.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="sopResponse">Tiempo de Respuesta (minutos):</label>
+            <input
+              id="sopResponse"
+              type="number"
+              min="1"
+              max="60"
+              [ngModel]="sopResponseMinutes()"
+              (ngModelChange)="sopResponseMinutes.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="triageIncident">Incidencia / Crisis:</label>
+            <select
+              id="triageIncident"
+              [ngModel]="triageIncidentType()"
+              (ngModelChange)="triageIncidentType.set($event)">
+              <option value="BANK_ACCOUNT_HOLD">Retención de Cuenta Bancaria (P1)</option>
+              <option value="THIRD_PARTY_PAYMENT">Pago de Tercero no Autorizado (P2)</option>
+              <option value="PARTIAL_PAYMENT_FRAUD">Pago Parcial Incompleto (P2)</option>
+              <option value="APP_LATENCY_DELAY">Latencia de Conexión / App (P4)</option>
+            </select>
+          </div>
+          <div class="earn-input-group">
+            <label for="triageRisk">Monto en Riesgo (USDT):</label>
+            <input
+              id="triageRisk"
+              type="number"
+              min="10"
+              step="100"
+              [ngModel]="triageAmountUsdt()"
+              (ngModelChange)="triageAmountUsdt.set($event)"
+            />
+          </div>
+          <div class="earn-input-group">
+            <label for="leadChannelSelect">Canal de Lead Directo:</label>
+            <select
+              id="leadChannelSelect"
+              [ngModel]="leadChannel()"
+              (ngModelChange)="leadChannel.set($event)">
+              <option value="WHATSAPP">WhatsApp Business</option>
+              <option value="TELEGRAM">Telegram Comercial</option>
+              <option value="INSTAGRAM_DM">Instagram DM</option>
+            </select>
+          </div>
+          <div class="earn-input-group">
+            <label for="leadVol">Volumen Semanal Lead (USDT):</label>
+            <input
+              id="leadVol"
+              type="number"
+              min="100"
+              step="500"
+              [ngModel]="leadWeeklyVolume()"
+              (ngModelChange)="leadWeeklyVolume.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="sop-checkbox-row">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              [checked]="sopHolderMatches()"
+              (change)="sopHolderMatches.set(!sopHolderMatches())"
+            />
+            <span>Titular bancario coincide con documento verificado en Binance</span>
+          </label>
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              [checked]="sopBalanceConfirmed()"
+              (change)="sopBalanceConfirmed.set(!sopBalanceConfirmed())"
+            />
+            <span>Fondos confirmados en saldo disponible líquido (no diferido)</span>
+          </label>
+          <label class="checkbox-label alert-check">
+            <input
+              type="checkbox"
+              [checked]="sopFundsReleasedEarly()"
+              (change)="sopFundsReleasedEarly.set(!sopFundsReleasedEarly())"
+            />
+            <span>Fondos liberados antes de verificar en portal bancario</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Institutional Analytics Results (3 Grid Cards) -->
+      <div class="earn-results-grid">
+        <!-- Card 1: SOP Compliance Audit -->
+        <div class="earn-result-card" [class.alert-border]="!sopAuditResult().isCompliant">
+          <div class="card-top-header">
+            <span class="earn-badge" [class.danger]="!sopAuditResult().isCompliant">SOP COMPLIANCE</span>
+            <span class="earn-rate-pill" [class.safe]="sopAuditResult().isCompliant" [class.danger]="!sopAuditResult().isCompliant">
+              {{ sopAuditResult().complianceScore }}% Cumplimiento
+            </span>
+          </div>
+          <h4 class="card-main-title">Auditoría Forense de Protocolo SOP</h4>
+          <p class="card-sub-desc">
+            Verificación obligatoria de protocolos operativos estándar de la mesa de arbitraje institucional.
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">Estado de Conformidad:</span>
+              <span class="value" [class.profit]="sopAuditResult().isCompliant" [class.danger]="!sopAuditResult().isCompliant">
+                {{ sopAuditResult().isCompliant ? '✓ CONFORME A NORMA' : '⚠️ DESVIACIÓN DETECTADA' }}
+              </span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Acción Disciplinaria:</span>
+              <span class="value highlight">{{ sopAuditResult().disciplinaryAction }}</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Infracciones Detectadas:</span>
+              <span class="value" [class.danger]="sopAuditResult().violationsDetected.length > 0">
+                {{ sopAuditResult().violationsDetected.length }} infracciones
+              </span>
+            </div>
+          </div>
+
+          <div class="sop-summary-box">
+            {{ sopAuditResult().summary }}
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askOperationsRecommendation('sop_audit')">
+              📋 Auditar en Chat con Gentleman AI
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Incident Triage & SLA Matrix -->
+        <div class="earn-result-card">
+          <div class="card-top-header">
+            <span class="earn-badge danger">INCIDENT TRIAGE</span>
+            <span class="earn-rate-pill danger">{{ triageResult().severityLevel }}</span>
+          </div>
+          <h4 class="card-main-title">Matriz de Severidad & Escalación</h4>
+          <p class="card-sub-desc">
+            Clasificación automática de riesgo operativo, SLA de resolución y aislamiento preventivo.
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">SLA Máximo de Resolución:</span>
+              <span class="value highlight">{{ triageResult().maxResolutionSlaMinutes }} minutos</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Intervención Humana (CSO):</span>
+              <span class="value" [class.danger]="triageResult().requiresHumanHandoff">
+                {{ triageResult().requiresHumanHandoff ? '⚠️ REQUERIDA (OBLIGATORIA)' : '✓ NO REQUERIDA' }}
+              </span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Capital Total en Riesgo:</span>
+              <span class="value danger">${{ triageAmountUsdt() }} USDT</span>
+            </div>
+          </div>
+
+          <div class="sop-protocol-box">
+            <strong>Protocolo Activo:</strong> {{ triageResult().isolationProtocol }}
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askOperationsRecommendation('incident_triage')">
+              🚨 Escalar Incidente al CSO
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: Lead CRM & Treasury Runway -->
+        <div class="earn-result-card">
+          <div class="card-top-header">
+            <span class="earn-badge">CRM & RUNWAY</span>
+            <span class="earn-rate-pill">{{ leadQualificationResult().leadTier }}</span>
+          </div>
+          <h4 class="card-main-title">Lead Qualification & Conciliación</h4>
+          <p class="card-sub-desc">
+            Calificación de prospectos comerciales de WhatsApp/Telegram y proyección de runway de tesorería.
+          </p>
+
+          <div class="earn-metrics-table">
+            <div class="metric-row">
+              <span class="label">Protocolo de Cierre Comercial:</span>
+              <span class="value highlight">{{ leadQualificationResult().actionProtocol }}</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Margen Neto Cotizado:</span>
+              <span class="value profit">+{{ (leadQualificationResult().recommendedNetMarginBps / 100).toFixed(2) }}%</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Runway de Tesorería:</span>
+              <span class="value profit">{{ cashFlowResult().runwayOperationalDays }} días de operación</span>
+            </div>
+            <div class="metric-row">
+              <span class="label">Salud del Sistema:</span>
+              <span class="value safe">{{ serviceHealthResult().healthScore }}/100 ({{ serviceHealthResult().systemStatus }})</span>
+            </div>
+          </div>
+
+          <div class="card-footer-actions">
+            <button class="btn-ask-cso" (click)="askOperationsRecommendation('lead_closing')">
+              🤝 Diseñar Propuesta Comercial
             </button>
           </div>
         </div>
