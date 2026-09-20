@@ -4,19 +4,31 @@ import { Guide } from './guide';
 
 describe('Guide', () => {
   let fixture: ComponentFixture<Guide>;
+  let component: Guide;
 
   beforeEach(() => {
     TestBed.configureTestingModule({ imports: [Guide] });
     fixture = TestBed.createComponent(Guide);
+    component = fixture.componentInstance;
     fixture.detectChanges();
   });
 
-  it('renders the usage-guide module', () => {
+  it('renders the usage-guide module and intro tab by default', () => {
     expect(fixture.nativeElement.textContent).toContain('Guía de uso');
     expect(fixture.nativeElement.textContent).toContain('¿Qué es P2P Decisor?');
+    expect(component.activeTab()).toBe('intro');
   });
 
-  it('documents each feature module', () => {
+  it('explains the manual/no-API nature of the tool in intro', () => {
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('no se conecta a Binance');
+    expect(text).toContain('no opera por ti');
+  });
+
+  it('navigates to tools tab and documents each feature module', () => {
+    component.setTab('tools');
+    fixture.detectChanges();
+
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Monitor de Spread');
     expect(text).toContain('Calculadora de Ingresos');
@@ -25,15 +37,44 @@ describe('Guide', () => {
     expect(text).toContain('Estadísticas');
   });
 
-  it('explains the manual/no-API nature of the tool', () => {
+  it('navigates to swarm tab and explains AI agents', () => {
+    component.setTab('swarm');
+    fixture.detectChanges();
+
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('no se conecta a Binance');
-    expect(text).toContain('no opera por ti');
+    expect(text).toContain('Agente Centinela');
+    expect(text).toContain('Agente Estratega');
+    expect(text).toContain('Oficial de Riesgo');
+    expect(text).toContain('Auditor de Disputas');
   });
 
-  it('includes backup guidance', () => {
+  it('navigates to mcp tab and explains MCP architecture', () => {
+    component.setTab('mcp');
+    fixture.detectChanges();
+
     const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Model Context Protocol');
+    expect(text).toContain('p2p-decisor');
+  });
+
+  it('navigates to security tab and details anti-triangulation, SUDEBAN rules and backup guidance', () => {
+    component.setTab('security');
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Blindaje y Seguridad Bancaria');
+    expect(text).toContain('TRIANGULACIÓN');
+    expect(text).toContain('SUDEBAN');
     expect(text).toContain('Respaldo de datos');
     expect(text).toContain('exportar');
+  });
+
+  it('navigates to workflow tab and displays tactical checklist', () => {
+    component.setTab('workflow');
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Checklist Operativo Paso a Paso');
+    expect(text).toContain('La Rutina del Trader');
   });
 });

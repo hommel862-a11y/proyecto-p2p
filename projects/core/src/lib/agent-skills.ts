@@ -101,6 +101,13 @@ import {
   syncGoogleSheetsLiveLedger,
   forecastCashFlowAndReconciliation,
 } from './operations-workflow';
+import {
+  analyzeHourlyRiskDistribution,
+  auditTradingDisciplineAndSpreadCompliance,
+  generateForensicDossier,
+  type ForensicAuditEvent,
+  type ForensicOperationRecord,
+} from './audit-analytics';
 
 export interface AgentSkillParameterSchema {
   type: 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
@@ -880,6 +887,45 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
         averageOperationalExpensesDailyUsdt: { type: 'NUMBER', description: 'Gasto operativo diario promedio.' },
       },
       required: ['fiatBankBalancesTotalUsdtEquiv', 'cryptoExchangeBalancesUsdt', 'pendingUnsettledOrdersUsdt', 'dailyProjectedVolumeUsdt', 'averageOperationalExpensesDailyUsdt'],
+    },
+  },
+  {
+    name: 'audit_and_risk_analytics',
+    description: 'Interroga el registro forense en SQLite para auditar disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        timeframeDays: {
+          type: 'NUMBER',
+          description: 'Ventana de días hacia atrás a auditar (por defecto 7 días).',
+        },
+        minSpreadThresholdPct: {
+          type: 'NUMBER',
+          description: 'Umbral mínimo de spread neto exigido por la Regla de Oro (por defecto 0.50%).',
+        },
+        focusArea: {
+          type: 'STRING',
+          enum: ['ALL', 'RISK_HOURS', 'SPREAD_COMPLIANCE'],
+          description: 'Área de enfoque del análisis forense.',
+        },
+        sampleEvents: {
+          type: 'ARRAY',
+          description: 'Eventos de auditoría opcionales para análisis directo.',
+          items: {
+            type: 'OBJECT',
+            description: 'Evento con timestamp, severidad y acción.',
+          },
+        },
+        sampleOperations: {
+          type: 'ARRAY',
+          description: 'Operaciones comerciales opcionales para auditar cumplimiento de spread.',
+          items: {
+            type: 'OBJECT',
+            description: 'Operación con timestamp, netSpreadPct o cryptoAmount.',
+          },
+        },
+      },
+      required: ['timeframeDays', 'minSpreadThresholdPct'],
     },
   },
 ];
@@ -1854,6 +1900,29 @@ export function executeFinancialSkill(skillName: string, args: Record<string, un
           success: true,
           skillName,
           data: result,
+          executedAt: now,
+        };
+      }
+
+      case 'audit_and_risk_analytics': {
+        const timeframeDays = Number(args['timeframeDays'] || 7);
+        const minSpreadThresholdPct = Number(args['minSpreadThresholdPct'] || 0.50);
+        const focusArea = String(args['focusArea'] || 'ALL');
+        const sampleEvents = (args['sampleEvents'] as ForensicAuditEvent[]) || [];
+        const sampleOperations = (args['sampleOperations'] as ForensicOperationRecord[]) || [];
+
+        const riskDist = analyzeHourlyRiskDistribution(sampleEvents);
+        const discipline = auditTradingDisciplineAndSpreadCompliance(sampleOperations, minSpreadThresholdPct);
+        const dossier = generateForensicDossier(riskDist, discipline);
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            timeframeDays,
+            focusArea,
+            dossier,
+          },
           executedAt: now,
         };
       }

@@ -6,8 +6,9 @@ import {
 
 describe('Agent Skills & Function Calling Declarations', () => {
   it('should expose the financial skills schemas for Gemini', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(42);
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(43);
     const names = GEMINI_FINANCIAL_SKILLS.map((s) => s.name);
+    expect(names).toContain('audit_and_risk_analytics');
     expect(names).toContain('scan_triangular_arbitrage');
     expect(names).toContain('predict_bcv_market_intelligence');
     expect(names).toContain('inspect_orderbook_liquidity');
@@ -368,6 +369,27 @@ describe('Agent Skills & Function Calling Declarations', () => {
       const data = res.data as any;
       expect(data.isCompliant).toBe(true);
       expect(data.disciplinaryAction).toBe('NONE');
+    });
+
+    it('executes audit_and_risk_analytics via dispatcher', () => {
+      const res = executeFinancialSkill('audit_and_risk_analytics', {
+        timeframeDays: 7,
+        minSpreadThresholdPct: 0.50,
+        sampleEvents: [
+          { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'SECURITY_ALERT' },
+        ],
+        sampleOperations: [
+          { timestamp: '2026-09-19T10:00:00Z', netSpreadPct: 1.15, cryptoAmount: 500 },
+          { timestamp: '2026-09-19T12:00:00Z', netSpreadPct: 0.85, cryptoAmount: 1200 },
+        ],
+      });
+      expect(res.success).toBe(true);
+      const data = res.data as any;
+      expect(data.timeframeDays).toBe(7);
+      expect(data.dossier).toBeDefined();
+      expect(data.dossier.operatorStanding).toBe('DISCIPLINED');
+      expect(data.dossier.goldenRuleComplianceScore).toBe(100);
+      expect(data.dossier.disciplineAudit.compliantOperationsCount).toBe(2);
     });
   });
 });

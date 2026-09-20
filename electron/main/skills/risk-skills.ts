@@ -24,6 +24,13 @@ import {
   type ThreatMatchResult,
 } from '../vendor/p2p-core/zk-market-mesh';
 import {
+  analyzeHourlyRiskDistribution,
+  auditTradingDisciplineAndSpreadCompliance,
+  generateForensicDossier,
+  type ForensicAuditEvent,
+  type ForensicOperationRecord,
+} from '../vendor/p2p-core/audit-analytics';
+import {
   GOLDEN_SPREAD_MIN_PCT,
   recordVolatilityTick,
   getVolatilityTicks,
@@ -32,6 +39,45 @@ import {
 } from './market-state';
 
 export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
+  {
+    name: 'audit_and_risk_analytics',
+    description: 'Interroga el registro forense en SQLite para auditar disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        timeframeDays: {
+          type: 'NUMBER',
+          description: 'Ventana de días hacia atrás a auditar (por defecto 7 días).',
+        },
+        minSpreadThresholdPct: {
+          type: 'NUMBER',
+          description: 'Umbral mínimo de spread neto exigido por la Regla de Oro (por defecto 0.50%).',
+        },
+        focusArea: {
+          type: 'STRING',
+          enum: ['ALL', 'RISK_HOURS', 'SPREAD_COMPLIANCE'],
+          description: 'Área de enfoque del análisis forense.',
+        },
+        sampleEvents: {
+          type: 'ARRAY',
+          description: 'Eventos de auditoría opcionales para análisis directo.',
+          items: {
+            type: 'OBJECT',
+            description: 'Evento con timestamp, severidad y acción.',
+          },
+        },
+        sampleOperations: {
+          type: 'ARRAY',
+          description: 'Operaciones comerciales opcionales para auditar cumplimiento de spread.',
+          items: {
+            type: 'OBJECT',
+            description: 'Operación con timestamp, netSpreadPct o cryptoAmount.',
+          },
+        },
+      },
+      required: ['timeframeDays', 'minSpreadThresholdPct'],
+    },
+  },
   {
     name: 'evaluate_golden_spread',
     description: 'Compara un spread neto contra la Regla de Oro institucional (umbral mínimo recomendado de 0.50%).',
@@ -467,6 +513,29 @@ export function dispatchRiskSkill(
           counterpartyName: matched ? matchedName : 'Verificado / Limpio',
           incidentNotes: matched ? matchReason : 'Sin antecedentes en la base de datos de riesgo y listas negras.',
           action: matched ? 'CANCEL_TRADE_AND_REPORT' : 'PROCEED_WITH_STANDARD_CHECKS',
+        },
+        executedAt: now,
+      };
+    }
+
+    case 'audit_and_risk_analytics': {
+      const timeframeDays = Number(args['timeframeDays'] || 7);
+      const minSpreadThresholdPct = Number(args['minSpreadThresholdPct'] || 0.50);
+      const focusArea = String(args['focusArea'] || 'ALL');
+      const sampleEvents = (args['sampleEvents'] as ForensicAuditEvent[]) || [];
+      const sampleOperations = (args['sampleOperations'] as ForensicOperationRecord[]) || [];
+
+      const riskDist = analyzeHourlyRiskDistribution(sampleEvents);
+      const discipline = auditTradingDisciplineAndSpreadCompliance(sampleOperations, minSpreadThresholdPct);
+      const dossier = generateForensicDossier(riskDist, discipline);
+
+      return {
+        success: true,
+        skillName,
+        data: {
+          timeframeDays,
+          focusArea,
+          dossier,
         },
         executedAt: now,
       };

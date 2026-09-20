@@ -58,6 +58,7 @@ const VENDOR_NAMES = [
   'binance-earn-vault',
   'operations-workflow',
   'webhooks',
+  'audit-analytics',
 ];
 
 // ---------------------------------------------------------------------------
