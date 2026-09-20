@@ -266,6 +266,58 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('p2p:db-save-audit-log');
+  ipcMain.handle(
+    'p2p:db-save-audit-log',
+    (_event: IpcMainInvokeEvent, record: any): boolean => {
+      try {
+        return db.recordAuditLog(record);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-save-audit-log:', err);
+        return false;
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-list-audit-logs');
+  ipcMain.handle(
+    'p2p:db-list-audit-logs',
+    (_event: IpcMainInvokeEvent, params?: { limit?: number; category?: string }): unknown[] => {
+      try {
+        return db.listAuditLogs(params?.limit, params?.category);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-list-audit-logs:', err);
+        return [];
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-save-operation-record');
+  ipcMain.handle(
+    'p2p:db-save-operation-record',
+    (_event: IpcMainInvokeEvent, record: any): boolean => {
+      try {
+        return db.saveOperationRecord(record);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-save-operation-record:', err);
+        return false;
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-list-operation-records');
+  ipcMain.handle(
+    'p2p:db-list-operation-records',
+    (_event: IpcMainInvokeEvent, params?: { limit?: number }): unknown[] => {
+      try {
+        return db.listOperationRecords(params?.limit);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-list-operation-records:', err);
+        return [];
+      }
+    },
+  );
+
   ipcMain.removeHandler('p2p:killswitch-trigger');
   ipcMain.handle(
     'p2p:killswitch-trigger',

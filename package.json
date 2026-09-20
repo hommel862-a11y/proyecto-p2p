@@ -26,8 +26,12 @@
     "mcp:build": "npm run build --prefix packages/mcp-server",
     "mcp:dev": "node packages/mcp-server/dist/index.js",
     "mcp:test": "npm test --prefix packages/mcp-server",
+    "mcp:server:macro": "node packages/mcp-server/dist/index.js --server=p2p-macro-predictor",
+    "mcp:server:risk": "node packages/mcp-server/dist/index.js --server=p2p-portfolio-risk",
+    "mcp:server:arbitrage": "node packages/mcp-server/dist/index.js --server=p2p-arbitrage-engine",
     "sync:vendor": "node scripts/sync-vendor-core.cjs",
-    "check:vendor": "node scripts/sync-vendor-core.cjs --check"
+    "check:vendor": "node scripts/sync-vendor-core.cjs --check",
+    "validate:all": "npm run check:vendor && npm run mcp:test && npm run test:electron && npx tsc --noEmit"
   },
   "private": true,
   "engines": {

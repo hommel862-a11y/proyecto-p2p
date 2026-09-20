@@ -1,212 +1,680 @@
-<section class="panel">
-  <header>
-    <h1>Guía de uso & Manual Táctico P2P</h1>
-    <p class="note">Para qué sirve cada cosa y cómo sacarle el máximo partido profesional a P2P Decisor.</p>
+<div class="academy-container">
+  <!-- Cabecera Hero de la Academia -->
+  <header class="academy-hero">
+    <div class="hero-tagline">Campus Financiero &middot; Arbitraje Institucional</div>
+    <h1>Guía de uso & <span>Manual Táctico P2P</span></h1>
+    <p>
+      Bienvenido a la academia integral de <strong>P2P Decisor</strong>. Aquí aprenderás desde los conceptos elementales
+      del comercio persona a persona hasta la gestión cuantitativa de riesgo con nuestro Enjambre de Agentes IA y herramientas MCP.
+    </p>
   </header>
 
-  <!-- 0. ¿Qué es P2P Decisor? -->
-  <div class="guide-card">
-    <h2>¿Qué es P2P Decisor?</h2>
-    <p>
-      Es una <strong>herramienta de apoyo a la decisión</strong> para operar en Binance P2P desde Venezuela.
-      La herramienta no se conecta a Binance por credenciales privadas de cuenta, no opera por ti y preserva tu soberanía:
-      puedes sincronizar el libro público u operar manualmente.
-      Integra los módulos centrales de trabajo: <strong>Monitor de Spread</strong>, <strong>Calculadora de Ingresos</strong>,
-      <strong>Registro de Operaciones</strong>, <strong>Reglas de Riesgo</strong> y <strong>Estadísticas</strong>.
-    </p>
-  </div>
+  <!-- Menú Interactivo de Pestañas -->
+  <nav class="guide-nav-bar" aria-label="Navegación de temas de la guía">
+    @for (tab of tabs; track tab.id) {
+      <button
+        type="button"
+        class="nav-pill"
+        [class.active]="activeTab() === tab.id"
+        (click)="setTab(tab.id)"
+      >
+        <span class="nav-icon">{{ tab.icon }}</span>
+        <span>{{ tab.label }}</span>
+        @if (tab.badge) {
+          <span class="nav-badge">{{ tab.badge }}</span>
+        }
+      </button>
+    }
+  </nav>
 
-  <!-- 1. Spread Quality Score (SQS) -->
-  <div class="guide-card">
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-      <span class="badge badge-accent">Nuevo Sistema</span>
-      <h2 style="margin: 0;">1. Índice de Calidad del Spread (Spread Quality Score - SQS)</h2>
-    </div>
-    <p>
-      En Venezuela, un spread nominal positivo (<code>Venta - Compra > 0</code>) <strong>no garantiza ganancia real</strong>.
-      El SQS evalúa de 0 a 100 si la oportunidad absorbe las comisiones y protege tu capital:
-    </p>
-    <ul>
-      <li><strong>Margen Neto (35%)</strong>: Spread limpio tras deducir comisiones de Binance (0.25% Maker) y costos bancarios (0.3% Pago Móvil interbancario).</li>
-      <li><strong>Colchón Anti-Devaluación (25%)</strong>: Ratio frente a la volatilidad cambiaria de las últimas 4 horas. Evita quedar atrapado si el precio se mueve en contra durante los 15 minutos de la orden.</li>
-      <li><strong>Velocidad de Rotación (25%)</strong>: Calificación del canal bancario (Banesco y Pago Móvil puntúan alto por su liquidez inmediata y volumen de compradores).</li>
-      <li><strong>Salud del Cupo Diario (15%)</strong>: Penaliza operar si tus cuentas bancarias están cerca del 80% o 100% de su límite diario establecido por SUDEBAN.</li>
-    </ul>
-
-    <div style="background: rgba(13, 20, 36, 0.85); border-radius: var(--radius-md); padding: 12px 16px; margin-top: 12px; border: 1px solid var(--gold-border);">
-      <strong style="color: var(--gold); display: block; margin-bottom: 6px;">Semáforo Táctico SQS:</strong>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; font-size: 0.84rem;">
-        <div>🟢 <strong style="color: #10b981;">85 - 100 (Óptimo)</strong>: Ejecución agresiva. Máximo volumen. Posicionamiento Top 1 con bot.</div>
-        <div>🟡 <strong style="color: #f59e0b;">65 - 84 (Saludable)</strong>: Operativa estándar. Mantener posición Top 2/Top 3 con margen de 1.2% - 1.8%.</div>
-        <div>🟠 <strong style="color: #f97316;">45 - 64 (Cauteloso)</strong>: Solo como Maker. Prohibido entrar como Taker. Reducir tamaño de lote.</div>
-        <div>🔴 <strong style="color: #ef4444;">0 - 44 (Tóxico)</strong>: Pausa inmediata. Las comisiones y el riesgo superan la ganancia esperada.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 2. Matriz de Comisiones Bancarias en Venezuela -->
-  <div class="guide-card">
-    <h2>2. Matriz de Comisiones y Fricción Bancaria (Venezuela Retail)</h2>
-    <p>
-      El mayor enemigo del arbitrajista no es el mercado, sino la fricción invisible de las comisiones. Considera estos costos exactos cargados en la calculadora:
-    </p>
-    <table class="corporate-table" style="margin-top: 10px;">
-      <thead>
-        <tr>
-          <th>Banco / Canal</th>
-          <th>Mismo Banco</th>
-          <th>Pago Móvil Interbancario</th>
-          <th>Transferencia Interbancaria</th>
-          <th>Velocidad de Liquidación</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Banesco</strong></td>
-          <td class="positive">0.00%</td>
-          <td class="negative">0.30%</td>
-          <td class="negative">0.30%</td>
-          <td>⚡ Inmediata (Líder en volumen P2P)</td>
-        </tr>
-        <tr>
-          <td><strong>Mercantil</strong></td>
-          <td class="positive">0.00%</td>
-          <td class="negative">0.30%</td>
-          <td class="negative">0.30%</td>
-          <td>⚡ Muy alta liquidez y estabilidad</td>
-        </tr>
-        <tr>
-          <td><strong>Banco de Venezuela (BDV)</strong></td>
-          <td class="positive">0.00%</td>
-          <td class="negative">0.30%</td>
-          <td class="negative">0.30%</td>
-          <td>Alta liquidez (Vulnerable a intermitencias)</td>
-        </tr>
-        <tr>
-          <td><strong>Bancamiga</strong></td>
-          <td class="positive">0.00%</td>
-          <td class="negative">0.30%</td>
-          <td class="negative">0.30%</td>
-          <td>Media / Ágil en divisas y tarjetas</td>
-        </tr>
-        <tr>
-          <td><strong>BBVA Provincial</strong></td>
-          <td class="positive">0.00%</td>
-          <td class="negative">0.30%</td>
-          <td class="negative">0.30%</td>
-          <td>Media / Ideal para operaciones grandes</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- 3. Estrategia Maker vs Taker -->
-  <div class="guide-card">
-    <h2>3. Estrategia Maker vs Taker: Cuándo usar cada rol</h2>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px;">
-      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid var(--gold);">
-        <h3 style="margin-top: 0; color: var(--gold); font-size: 1rem;">Estrategia Maker (Crear Anuncio)</h3>
-        <ul style="padding-left: 18px; font-size: 0.84rem; margin: 0;">
-          <li><strong>Comisión:</strong> 0.25% de Binance por orden completada.</li>
-          <li><strong>Ventaja:</strong> Tú fijas el precio en el libro de órdenes y capturas el spread completo.</li>
-          <li><strong>Cuándo usar:</strong> En el 90% de tus operaciones de venta y en mercados laterales o de alta liquidez donde buscas rentabilidad neta superior al 1.2%.</li>
-        </ul>
+  <!-- ========================================================================= -->
+  <!-- 1. P2P DESDE CERO (Para Principiantes)                                    -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'intro') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">📚</div>
+          <h2>¿Qué es P2P Decisor?</h2>
+        </div>
+        <span class="badge badge-accent">Fundamentos</span>
       </div>
 
-      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #3b82f6;">
-        <h3 style="margin-top: 0; color: #60a5fa; font-size: 1rem;">Estrategia Taker (Tomar Orden Directa)</h3>
-        <ul style="padding-left: 18px; font-size: 0.84rem; margin: 0;">
-          <li><strong>Comisión:</strong> 0.00% de Binance.</li>
-          <li><strong>Ventaja:</strong> Velocidad inmediata (segundos). Cero riesgo de cambio esperando en el libro.</li>
-          <li><strong>Cuándo usar:</strong> Cuando el mercado se mueve rápido hacia arriba y necesitas convertir bolívares a USDT de inmediato antes de que el dólar suba.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
+      <p>
+        Es una <strong>herramienta de apoyo a la decisión</strong> diseñada para operar de forma profesional y segura en Binance P2P dentro del contexto financiero venezolano.
+      </p>
 
-  <!-- 4. Protocolo de Blindaje Anti-Triangulación -->
-  <div class="guide-card">
-    <h2>4. Protocolo de Blindaje Anti-Triangulación y Antifraude</h2>
-    <p class="alert" style="margin-top: 0;">
-      ⚠️ <strong>Regla de Oro:</strong> NUNCA liberes criptomonedas si el titular de la cuenta bancaria no coincide exactamente con el nombre y cédula verificados en Binance.
-    </p>
-    <ol style="font-size: 0.88rem; line-height: 1.6;">
-      <li><strong>Validación estricta de Cédula:</strong> Al recibir un Pago Móvil o transferencia, verifica en tu banca en línea que la cédula del emisor sea exactamente la registrada en la contraparte de Binance.</li>
-      <li><strong>Terceros no autorizados:</strong> Si el comprador envía desde la cuenta de un familiar ("mi esposa", "mi hermano"), <strong>NO LIBERES</strong>. Solicita amablemente que cancele la orden o devuélvele los fondos de inmediato descontando la comisión bancaria.</li>
-      <li><strong>Conceptos sospechosos:</strong> Exige en los términos de tu anuncio que coloquen solo el número de orden o "Pago de servicio", nunca palabras como "Binance", "USDT", "Cripto" o "Dólares", ya que activan bloqueos automáticos en la banca venezolana.</li>
-      <li><strong>Registro de Contrapartes:</strong> Utiliza el <em>Registro de Operaciones</em> para marcar contrapartes confiables (Whitelist) y alertar si detectas un pagador conflictivo.</li>
-    </ol>
-  </div>
+      <div class="alert-box info">
+        🛡️ <strong>Soberanía y Privacidad Absoluta:</strong> Esta plataforma <strong>no se conecta a Binance</strong> mediante credenciales privadas de cuenta y <strong>no opera por ti</strong>. Toda tu información se mantiene 100% local en tu dispositivo, dándote a ti el control total de cada centavo.
+      </div>
 
-  <!-- 5. Atajos de Teclado del Escritorio -->
-  <div class="guide-card">
-    <h2>5. Atajos de Teclado Profesionales (Trading Desk)</h2>
-    <p>
-      Para operar con la velocidad de una terminal financiera, utiliza los atajos globales integrados en la aplicación:
-    </p>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px;">
-      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
-        <kbd>F1</kbd> — Ir al Monitor de Spread
-      </div>
-      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
-        <kbd>F2</kbd> — Sincronizar radar de Binance
-      </div>
-      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
-        <kbd>F3</kbd> — Abrir Calculadora Inteligente
-      </div>
-      <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.08);">
-        <kbd>F5</kbd> — Abrir Tesorería y Límites
-      </div>
-      <div style="background: rgba(239,68,68,0.1); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid #ef4444;">
-        <kbd>Esc</kbd> — 🚨 <strong>Kill-Switch de Emergencia</strong>
-      </div>
-    </div>
-  </div>
-
-  <!-- 6. Respaldo de datos y Privacidad -->
-  <div class="guide-card">
-    <h2>6. Respaldo de datos y Soberanía</h2>
-    <p class="note">
-      Tus datos nunca se suben a la nube ni a servidores externos. Todo se almacena de forma local y cifrada en tu equipo.
-      Recuerda utilizar la opción de <strong>exportar</strong> y respaldo cifrado periódicamente desde el Registro de Operaciones.
-    </p>
-  </div>
-
-  <!-- 7. Asignación Institucional Multi-Banco y Cuotas de Capital -->
-  <div class="guide-card">
-    <h2>7. Asignación Institucional Multi-Banco y Prevención de Pitufeo</h2>
-    <p>
-      La gestión de capital en volúmenes institucionales o carteras activas (por ejemplo $10,000 USD) no debe concentrarse en una sola cuenta bancaria. Los sistemas de prevención de legitimación de capitales de la banca venezolana (SUDEBAN) disparan alertas y bloqueos preventivos por <em>pitufeo</em> (acumulación excesiva de micro-operaciones) o por sobrepasar la velocidad transaccional permitida por día.
-    </p>
-
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px;">
-      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #10b981;">
-        <h4 style="margin: 0 0 6px; color: #34d399; font-size: 0.95rem;">Banesco (40% del Capital — Cuenta Ancla)</h4>
-        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
-          Diseñado para tickets altos ($500 - $2,500). Es la cuenta con mayor tolerancia para transferencias interbancarias y alto volumen sin bloqueos de Pago Móvil.
+      <!-- Analogía del Profesor -->
+      <div class="prof-analogy">
+        <div class="analogy-title">
+          <span>👨‍🏫</span> La Analogía del Profesor: El Comerciante de Divisas Digital
+        </div>
+        <p>
+          Imaginá el P2P como una tienda en la esquina de tu barrio. La gente entra porque necesita cambiar bolívares por dólares para proteger sus ahorros de la inflación, o porque recibieron una remesa en dólares y necesitan bolívares para hacer las compras en el supermercado.
+          Tu rol como comerciante P2P es proveer esa liquidez: <em>comprar dólares a quien necesita vender rápido y vender dólares a quien necesita comprar</em>.
+          La diferencia entre el precio al que compras y el precio al que vendes se llama <strong>Spread</strong>, y de ahí proviene tu beneficio legítimo.
         </p>
       </div>
 
-      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #3b82f6;">
-        <h4 style="margin: 0 0 6px; color: #60a5fa; font-size: 0.95rem;">Mercantil (35% del Capital — Flujo Intermedio)</h4>
-        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
-          Excelente para TPago y transferencias directas con bajas tasas de retención. Permite liquidar tickets medianos de forma rápida y estable durante el día.
-        </p>
+      <h3 style="color: var(--gold-strong); margin-top: 24px;">La Fórmula Sagrada: Spread Bruto vs. Spread Neto</h3>
+      <p>
+        Uno de los errores más comunes de los principiantes es pensar que si compran a 88.00 y venden a 89.00, ganaron un bolívar por dólar. ¡Falso! En el mundo real existen comisiones que se comen tu ganancia:
+      </p>
+
+      <div style="background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); padding: 14px; border: 1px solid var(--line); font-family: var(--font-mono); font-size: 0.85rem; color: #a5f3fc; margin-bottom: 16px;">
+        Spread Bruto (%) = ((Precio Venta - Precio Compra) / Precio Compra) &times; 100<br>
+        Spread Neto Real (%) = Spread Bruto - Comisiones de Binance (0.25%) - Fricción Bancaria (0.30% Pago Móvil)
       </div>
 
-      <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 3px solid #ef4444;">
-        <h4 style="margin: 0 0 6px; color: #f87171; font-size: 0.95rem;">Banco de Venezuela (25% del Capital — Captación)</h4>
-        <p style="font-size: 0.82rem; margin: 0; color: var(--muted); line-height: 1.4;">
-          Utilizado para captar liquidez minorista rápida vía PagoClave. <strong>Regla estricta:</strong> Nunca pernoctar bolívares en BDV después de las 20:00 hrs.
-        </p>
+      <!-- Comparativa Maker vs Taker -->
+      <h3 style="color: var(--text); margin-top: 20px;">Estrategia Maker vs. Taker: ¿Cuál es la diferencia?</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 10px;">
+        <div style="background: rgba(216, 180, 92, 0.05); padding: 16px; border-radius: var(--radius-md); border-left: 4px solid var(--gold);">
+          <h4 style="margin: 0 0 6px; color: var(--gold-strong);">Rol Maker (Creador de Mercado)</h4>
+          <p style="font-size: 0.86rem; color: var(--muted); margin: 0 0 8px;">Publicas tu propio anuncio en el libro de órdenes y esperas a que otros usuarios vengan a comprarte o venderte.</p>
+          <ul style="padding-left: 18px; font-size: 0.82rem; margin: 0; color: #cbd5e1;">
+            <li><strong>Ventaja:</strong> Tú fijas el precio y capturas el margen completo.</li>
+            <li><strong>Costo:</strong> Paga 0.25% de comisión de Binance por orden finalizada.</li>
+            <li><strong>Recomendación:</strong> Usar en el 90% de tus operaciones de venta.</li>
+          </ul>
+        </div>
+
+        <div style="background: rgba(90, 167, 255, 0.05); padding: 16px; border-radius: var(--radius-md); border-left: 4px solid var(--accent-2);">
+          <h4 style="margin: 0 0 6px; color: #93c5fd);">Rol Taker (Tomador de Mercado)</h4>
+          <p style="font-size: 0.86rem; color: var(--muted); margin: 0 0 8px;">Entras a los anuncios ya publicados por otros y presionas "Comprar" o "Vender" de inmediato.</p>
+          <ul style="padding-left: 18px; font-size: 0.82rem; margin: 0; color: #cbd5e1;">
+            <li><strong>Ventaja:</strong> Ejecución instantánea en segundos. Cero espera.</li>
+            <li><strong>Costo:</strong> 0.00% de comisión de Binance.</li>
+            <li><strong>Recomendación:</strong> Usar cuando el mercado sube velozmente y necesitas recomprar USDT ya mismo.</li>
+          </ul>
+        </div>
       </div>
     </div>
+  }
 
-    <div style="margin-top: 14px; padding: 12px 14px; background: rgba(216, 180, 92, 0.07); border: 1px solid var(--gold-border); border-radius: var(--radius);">
-      <strong style="color: var(--gold-strong); font-size: 0.85rem;">Personalización y Modo Manual en el Monitor:</strong>
-      <p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
-        En la pestaña <em>Punto de Equilibrio & Anuncio Maker</em> del Monitor de Spread, puedes alternar entre el <strong>Modo Automático</strong> (algoritmo estándar 40/35/25) y el <strong>Modo Manual</strong>. Al activar el modo manual, puedes ingresar directamente los porcentajes que desees destinar a cada entidad según la disponibilidad de saldo en tus cuentas, recalculando en tiempo real el capital asignado en USDT y en Bolívares (VES).
+  <!-- ========================================================================= -->
+  <!-- 2. CATÁLOGO DE HERRAMIENTAS                                               -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'tools') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">🛠️</div>
+          <h2>Catálogo de Herramientas del Desk</h2>
+        </div>
+        <span class="badge badge-accent">10 Módulos Integrados</span>
+      </div>
+
+      <p>
+        Cada módulo de P2P Decisor fue construido con un propósito específico de ingeniería financiera. A continuación se detalla para qué sirve cada componente del sistema:
+      </p>
+
+      <div class="tools-grid">
+        <!-- 1. Dashboard -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">📊</div>
+            <div>
+              <h3>Dashboard</h3>
+              <span class="badge" style="font-size: 0.7rem;">Control Maestro</span>
+            </div>
+          </div>
+          <p>Visión panorámica de tu mesa de dinero: estado del Kill-Switch de emergencia, nivel de exposición en moneda local y accesos rápidos a operaciones.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Claridad situacional en 3 segundos</span>
+          </div>
+        </div>
+
+        <!-- 2. Monitor de Spread -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">📈</div>
+            <div>
+              <h3>Monitor de Spread</h3>
+              <span class="badge badge-accent" style="font-size: 0.7rem;">Motor Cuantitativo</span>
+            </div>
+          </div>
+          <p>Radar en tiempo real que inspecciona los libros de compra y venta de Binance. Calcula el Spread Quality Score (SQS), punto de equilibrio y márgenes netos reales.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Precios competitivos sin arriesgar margen</span>
+          </div>
+        </div>
+
+        <!-- 3. Calculadora de Ingresos -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">🧮</div>
+            <div>
+              <h3>Calculadora de Ingresos</h3>
+              <span class="badge" style="font-size: 0.7rem;">Planificación</span>
+            </div>
+          </div>
+          <p>Convierte tu meta diaria de ganancia en dólares al capital requerido y rotaciones necesarias por día, proyectando tu rendimiento APR y disciplina operativa.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Elimina las expectativas irreales</span>
+          </div>
+        </div>
+
+        <!-- 4. Registro de Operaciones -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">📑</div>
+            <div>
+              <h3>Registro de Operaciones</h3>
+              <span class="badge" style="font-size: 0.7rem;">Ledger Financiero</span>
+            </div>
+          </div>
+          <p>Libro mayor completo de compras y ventas con cálculo automático de PnL, comisiones deducidas, historial de contrapartes y auditoría contable.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Cero descuadres al final del mes</span>
+          </div>
+        </div>
+
+        <!-- 5. Reglas de Riesgo -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">⚖️</div>
+            <div>
+              <h3>Reglas de Riesgo</h3>
+              <span class="badge" style="font-size: 0.7rem;">Barreras de Seguridad</span>
+            </div>
+          </div>
+          <p>6 políticas institucionales inquebrantables que emiten veredictos ALLOW, DENY o PAUSE: spread mínimo, límite de pérdida diaria, rachas adversas y exposición máxima.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Protege tu dinero de la impulsividad</span>
+          </div>
+        </div>
+
+        <!-- 6. Triangulación Cotizave -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">🔄</div>
+            <div>
+              <h3>Triangulación</h3>
+              <span class="badge" style="font-size: 0.7rem;">Arbitraje Multimoneda</span>
+            </div>
+          </div>
+          <p>Compara tasas de cambio oficiales y paralelas conectando con Cotizave para identificar oportunidades de arbitraje entre diferentes plazas de cambio.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Detecta ineficiencias de mercado</span>
+          </div>
+        </div>
+
+        <!-- 7. Estadísticas -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">📉</div>
+            <div>
+              <h3>Estadísticas</h3>
+              <span class="badge" style="font-size: 0.7rem;">Analítica de Datos</span>
+            </div>
+          </div>
+          <p>Agregación métrica por días, meses o trimestres en horario UTC. Permite evaluar volumen transaccionado, total de comisiones pagadas y tasa de acierto.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Mejora continua basada en números reales</span>
+          </div>
+        </div>
+
+        <!-- 8. Escáner de Recibos OCR -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">🔍</div>
+            <div>
+              <h3>Escáner de Recibos</h3>
+              <span class="badge badge-accent" style="font-size: 0.7rem;">Escudo Antifraude</span>
+            </div>
+          </div>
+          <p>Peritaje forense mediante OCR (Tesseract.js) que lee capturas de Pago Móvil y transferencias, cotejando número de referencia, montos y nombre del pagador.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Inmunidad ante comprobantes falsificados</span>
+          </div>
+        </div>
+
+        <!-- 9. Copiloto IA de Escritorio -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">🤖</div>
+            <div>
+              <h3>Copilot Financiero</h3>
+              <span class="badge badge-accent" style="font-size: 0.7rem;">Inteligencia Artificial</span>
+            </div>
+          </div>
+          <p>Asistente conversacional especializado en arbitraje P2P integrado en el shell de escritorio. Genera planes tácticos SOP y persiste aprendizajes en SQLite.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Consultoría senior en tu propia mesa</span>
+          </div>
+        </div>
+
+        <!-- 10. Centro MCP -->
+        <div class="tool-item-card">
+          <div class="tool-top">
+            <div class="tool-icon">🔌</div>
+            <div>
+              <h3>Centro MCP</h3>
+              <span class="badge" style="font-size: 0.7rem;">Suite de Conectores</span>
+            </div>
+          </div>
+          <p>Punto de inspección y control de los 10 servidores MCP institucionales, permitiendo ejecutar diagnósticos y auditar herramientas especializadas.</p>
+          <div class="tool-footer">
+            <span class="key-benefit">Beneficio: Interoperabilidad con agentes y LLMs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================================= -->
+  <!-- 3. ENJAMBRE MULTI-AGENTE (SWARM AI)                                      -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'swarm') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">🤖</div>
+          <h2>El Enjambre Multi-Agente (Swarm AI)</h2>
+        </div>
+        <span class="badge badge-accent">Gobernanza Colegiada</span>
+      </div>
+
+      <p>
+        Para evitar decisiones sesgadas o errores humanos por fatiga, P2P Decisor implementa una <strong>arquitectura de 4 agentes autónomos</strong> con separación estricta de poderes y derecho a veto:
+      </p>
+
+      <div class="swarm-grid">
+        <!-- Sentinel Agent -->
+        <div class="agent-dossier-card sentinel">
+          <div class="agent-header">
+            <div class="agent-avatar">🛡️</div>
+            <span class="role-badge">Vigía 24/7</span>
+          </div>
+          <h3>Agente Centinela</h3>
+          <span class="agent-quote">"Monitoreo incansable de la microestructura a costo cero de tokens."</span>
+          <p>
+            Vigila en tiempo real los libros de órdenes, la brecha cambiaria oficial del BCV y la latencia de acreditación en la banca venezolana antes de que comiences a operar.
+          </p>
+          <div class="agent-skills-list">
+            <span class="list-title">Servidores & Habilidades:</span>
+            <ul>
+              <li><code>p2p-macro-predictor</code>: Tasas BCV y brecha.</li>
+              <li><code>p2p-sudeban-radar</code>: Estado de Pago Móvil.</li>
+              <li><code>p2p-multi-exchange</code>: Libros en vivo y VPIN.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Strategist Agent -->
+        <div class="agent-dossier-card strategist">
+          <div class="agent-header">
+            <div class="agent-avatar">🧠</div>
+            <span class="role-badge">Estratega Cuántico</span>
+          </div>
+          <h3>Agente Estratega</h3>
+          <span class="agent-quote">"Concepts > Code: Preservación de capital y optimización de rutas."</span>
+          <p>
+            Modela rutas de arbitraje triangular (VES &rarr; USDT &rarr; BTC &rarr; VES), calcula el precio medio ponderado por volumen (VWAP) y ejecuta 500 simulaciones Monte Carlo para proyectar el deslizamiento en cola (P95).
+          </p>
+          <div class="agent-skills-list">
+            <span class="list-title">Servidores & Habilidades:</span>
+            <ul>
+              <li><code>p2p-arbitrage-engine</code>: Triangulación y base.</li>
+              <li><code>p2p-orderbook-depth</code>: Modelo Avellaneda-Stoikov.</li>
+              <li><code>p2p-capital-compounder</code>: Simple Earn y bóvedas.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Risk Gatekeeper -->
+        <div class="agent-dossier-card risk">
+          <div class="agent-header">
+            <div class="agent-avatar">🛑</div>
+            <span class="role-badge">Veto Innegociable</span>
+          </div>
+          <h3>Oficial de Riesgo</h3>
+          <span class="agent-quote">"Poder de veto unilateral para blindar el patrimonio."</span>
+          <p>
+            Guardián estricto de la política institucional. Aplica la <strong>Regla de Oro (margen neto &ge; 0.50%)</strong>. Si una propuesta viola los límites de SUDEBAN, o si la contraparte está marcada por triangulación, <strong>veta la orden de inmediato</strong>.
+          </p>
+          <div class="agent-skills-list">
+            <span class="list-title">Servidores & Habilidades:</span>
+            <ul>
+              <li><code>p2p-counterparty-intel</code>: Malla ZK antifraude.</li>
+              <li><code>p2p-portfolio-risk</code>: Delta neutral y Kelly.</li>
+              <li><code>p2p-aml-forensics</code>: Blacklists de cédulas/teléfonos.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Dispute Auditor -->
+        <div class="agent-dossier-card dispute">
+          <div class="agent-header">
+            <div class="agent-avatar">🔍</div>
+            <span class="role-badge">Perito Forense</span>
+          </div>
+          <h3>Auditor de Disputas</h3>
+          <span class="agent-quote">"Pruebas técnicas irrefutables con sellado criptográfico."</span>
+          <p>
+            Interviene cuando surge una discordancia de pago. Analiza los metadatos de la captura bancaria con OCR y construye un expediente formal con hash SHA-256 en español e inglés para ganar apelaciones en Binance.
+          </p>
+          <div class="agent-skills-list">
+            <span class="list-title">Servidores & Habilidades:</span>
+            <ul>
+              <li><code>p2p-dispute-sentinel</code>: Expediente arbitral.</li>
+              <li><code>p2p-evidence-vault</code>: OCR y anti-triangulación.</li>
+              <li><code>p2p-google-workspace</code>: Sincronización de pruebas.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================================= -->
+  <!-- 4. SERVIDORES MCP (MODEL CONTEXT PROTOCOL)                                -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'mcp') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">🔌</div>
+          <h2>Catálogo de Servidores MCP (10 Dominios)</h2>
+        </div>
+        <span class="badge badge-accent">37 Tools Especializadas</span>
+      </div>
+
+      <div class="prof-analogy">
+        <div class="analogy-title">
+          <span>👨‍🏫</span> La Analogía del Profesor: ¿Qué es el protocolo MCP?
+        </div>
+        <p>
+          Imaginá que la Inteligencia Artificial es un médico brillante, pero está dentro de una habitación cerrada sin instrumentos. El protocolo <strong>MCP (Model Context Protocol)</strong> es como dotar a ese médico de un estetoscopio, un tensiómetro y una balanza de precisión: son herramientas estándar que le permiten leer datos reales del mercado, calcular fórmulas exactas y operar de forma determinista sin alucinar números.
+        </p>
+      </div>
+
+      <p>
+        Nuestra suite divide las 37 herramientas analíticas en <strong>10 dominios temáticos independientes</strong>:
+      </p>
+
+      <table class="corporate-table">
+        <thead>
+          <tr>
+            <th>Servidor MCP</th>
+            <th>Dominio</th>
+            <th>Herramientas Principales</th>
+            <th>Impacto Operativo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>p2p-decisor</code></td>
+            <td>Motor de Spread & Core</td>
+            <td><code>calculate_spread</code>, <code>evaluate_trade_risk</code>, <code>trigger_killswitch</code></td>
+            <td>Cálculo neto de márgenes y parada de emergencia.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-macro-predictor</code></td>
+            <td>Inteligencia BCV</td>
+            <td><code>get_bcv_rates</code>, <code>calculate_rate_gap</code>, <code>check_bcv_intervention_window</code></td>
+            <td>Anticipa devaluaciones y días de subasta bancaria.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-arbitrage-engine</code></td>
+            <td>Rutas de Arbitraje</td>
+            <td><code>scan_triangular_arbitrage</code>, <code>fetch_cross_exchange_spread</code></td>
+            <td>Explota discrepancias entre exchanges y monedas.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-orderbook-depth</code></td>
+            <td>Microestructura</td>
+            <td><code>get_binance_p2p_orderbook</code>, <code>recommend_competitive_pricing</code></td>
+            <td>Calcula profundidad en USDT y precios óptimos Maker.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-capital-compounder</code></td>
+            <td>Tesorería & Yield</td>
+            <td><code>optimize_idle_capital_simple_earn</code>, <code>project_compound_runway</code></td>
+            <td>Rentabiliza capital inactivo en Binance Earn.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-sudeban-radar</code></td>
+            <td>Límites Bancarios</td>
+            <td><code>evaluate_account_saturation</code>, <code>check_bank_operational_status</code></td>
+            <td>Monitorea techos de Pago Móvil para evitar bloqueos.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-counterparty-intel</code></td>
+            <td>Malla ZK Antifraude</td>
+            <td><code>consult_zk_market_mesh</code>, <code>lookup_counterparty_reputation</code></td>
+            <td>Verifica antecedentes de contrapartes con hashes ciegos.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-dispute-sentinel</code></td>
+            <td>Gestión de Disputas</td>
+            <td><code>compile_dispute_dossier</code>, <code>audit_payment_proof_ocr</code></td>
+            <td>Arma expedientes formales con hash criptográfico.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-aml-forensics</code></td>
+            <td>Seguridad On-Chain</td>
+            <td><code>screen_wallet_address</code>, <code>inspect_tx_taint</code>, <code>check_counterparty_blacklist</code></td>
+            <td>Evita recibir fondos con contaminación o listas negras.</td>
+          </tr>
+          <tr>
+            <td><code>p2p-google-workspace</code></td>
+            <td>Sincronización Cloud</td>
+            <td><code>gdrive_backup_receipt</code>, <code>gsheets_sync_trade</code>, <code>gdrive_sync_db_backup</code></td>
+            <td>Respaldo transparente en Google Drive y Sheets.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <!-- ========================================================================= -->
+  <!-- 5. BLINDAJE BANCARIO & SUDEBAN                                            -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'security') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">🛡️</div>
+          <h2>Protocolo de Blindaje y Seguridad Bancaria en Venezuela</h2>
+        </div>
+        <span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171;">Crítico</span>
+      </div>
+
+      <!-- Alerta Estafa de Triangulación -->
+      <div class="alert-box danger">
+        🚨 <strong>LA ESTAFA DE TRIANGULACIÓN (CÓMO FUNCIONA Y CÓMO BLINDARTE):</strong><br>
+        Un estafador abre una orden para comprarte USDT en Binance, pero en lugar de pagarte él, le vende un producto ficticio (ej. un teléfono o repuesto) a una víctima inocente en Facebook o WhatsApp y le da TU cuenta bancaria para que transfiera. Tú ves el dinero en tu banco, liberas los USDT al estafador, y horas después la víctima te denuncia por estafa ante el banco o el CICPC, bloqueando tu cuenta bancaria.<br><br>
+        <strong>REGLA DE ORO INNEGOCIABLE:</strong> Nunca, bajo ninguna circunstancia, liberes criptomonedas si el titular de la cuenta bancaria emisora no coincide exactamente (letra por letra y cédula por cédula) con el nombre verificado en Binance. Si paga un tercero ("mi esposa", "mi socio"), <strong>NO LIBERES</strong> y abre disputa.
+      </div>
+
+      <h3 style="color: var(--gold-strong); margin-top: 24px;">Distribución Multi-Banco 40/35/25 (Prevención de Pitufeo)</h3>
+      <p>
+        Para carteras activas (ej. $10,000 USD), concentrar todo el dinero en una sola cuenta bancaria dispara alertas en los algoritmos de SUDEBAN por exceso de velocidad transaccional o <em>pitufeo</em>. Recomendamos diversificar según nuestra matriz:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px;">
+        <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 4px solid #10b981;">
+          <h4 style="margin: 0 0 6px; color: #34d399;">Banesco (40% — Cuenta Ancla)</h4>
+          <p style="font-size: 0.84rem; margin: 0; color: var(--muted); line-height: 1.4;">
+            Máxima tolerancia a volumen transaccional. Ideal para tickets institucionales medianos y altos ($500 - $2,500).
+          </p>
+        </div>
+
+        <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 4px solid #3b82f6;">
+          <h4 style="margin: 0 0 6px; color: #60a5fa;">Mercantil (35% — Flujo Intermedio)</h4>
+          <p style="font-size: 0.84rem; margin: 0; color: var(--muted); line-height: 1.4;">
+            Excelente estabilidad en TPago y transferencias directas. Muy baja tasa de incidencias o fondos retenidos.
+          </p>
+        </div>
+
+        <div style="background: rgba(255, 255, 255, 0.02); padding: 14px; border-radius: var(--radius-md); border-left: 4px solid #ef4444;">
+          <h4 style="margin: 0 0 6px; color: #f87171;">Banco de Venezuela (25% — Captación)</h4>
+          <p style="font-size: 0.84rem; margin: 0; color: var(--muted); line-height: 1.4;">
+            Captación masiva minorista por PagoClave. <strong>Regla estricta:</strong> Nunca pernoctar bolívares en BDV después de las 20:00 hrs.
+          </p>
+        </div>
+      </div>
+
+      <!-- Matriz de Comisiones Bancarias -->
+      <h3 style="color: var(--text); margin-top: 24px;">Matriz Real de Comisiones Bancarias (Venezuela)</h3>
+      <table class="corporate-table">
+        <thead>
+          <tr>
+            <th>Entidad Bancaria</th>
+            <th>Mismo Banco</th>
+            <th>Pago Móvil Interbancario</th>
+            <th>Transferencia Interbancaria</th>
+            <th>Velocidad de Acreditación</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Banesco</strong></td>
+            <td class="positive">0.00%</td>
+            <td class="negative">0.30%</td>
+            <td class="negative">0.30%</td>
+            <td>⚡ Inmediata (Líder en volumen P2P)</td>
+          </tr>
+          <tr>
+            <td><strong>Mercantil</strong></td>
+            <td class="positive">0.00%</td>
+            <td class="negative">0.30%</td>
+            <td class="negative">0.30%</td>
+            <td>⚡ Muy alta liquidez y estabilidad</td>
+          </tr>
+          <tr>
+            <td><strong>Banco de Venezuela (BDV)</strong></td>
+            <td class="positive">0.00%</td>
+            <td class="negative">0.30%</td>
+            <td class="negative">0.30%</td>
+            <td>Alta liquidez (vulnerable a intermitencias)</td>
+          </tr>
+          <tr>
+            <td><strong>Bancamiga</strong></td>
+            <td class="positive">0.00%</td>
+            <td class="negative">0.30%</td>
+            <td class="negative">0.30%</td>
+            <td>Ágil en divisas y tarjetas internacionales</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Atajos de Teclado -->
+      <h3 style="color: var(--text); margin-top: 24px;">Atajos de Teclado del Escritorio (Terminal Financiera)</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">
+        <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);">
+          <kbd>F1</kbd> &mdash; Ir al Monitor de Spread
+        </div>
+        <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);">
+          <kbd>F2</kbd> &mdash; Sincronizar radar de Binance
+        </div>
+        <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);">
+          <kbd>F3</kbd> &mdash; Abrir Calculadora Inteligente
+        </div>
+        <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);">
+          <kbd>F5</kbd> &mdash; Abrir Tesorería y Límites
+        </div>
+        <div style="background: rgba(239,68,68,0.15); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #ef4444;">
+          <kbd>Esc</kbd> &mdash; 🚨 <strong>Kill-Switch de Emergencia</strong>
+        </div>
+      </div>
+
+      <!-- Respaldo de datos -->
+      <h3 style="color: var(--gold-strong); margin-top: 24px;">Respaldo de datos y Soberanía Local</h3>
+      <p class="note">
+        Tus datos nunca se suben a servidores de terceros ni a la nube sin tu consentimiento explícito. Todo tu historial de operaciones y parámetros de riesgo se guardan en tu equipo. Utiliza la opción de <strong>exportar</strong> periódicamente desde el Registro de Operaciones para guardar un respaldo JSON seguro en un pendrive o unidad externa.
       </p>
     </div>
-  </div>
-</section>
+  }
+
+  <!-- ========================================================================= -->
+  <!-- 6. CHECKLIST PASO A PASO (OPERATIVA DIARIA)                               -->
+  <!-- ========================================================================= -->
+  @if (activeTab() === 'workflow') {
+    <div class="academy-card">
+      <div class="card-header">
+        <div class="title-group">
+          <div class="badge-icon">🎯</div>
+          <h2>Checklist Operativo Paso a Paso (La Rutina del Trader)</h2>
+        </div>
+        <span class="badge badge-accent">Procedimiento SOP</span>
+      </div>
+
+      <p>
+        El arbitraje rentable no es cuestión de suerte, sino de disciplina militar. Sigue esta rutina diaria de 4 fases para garantizar que cada sesión sea rentable y segura:
+      </p>
+
+      <div class="timeline-workflow">
+        <!-- Paso 1 -->
+        <div class="timeline-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Apertura de Sesión & Análisis Macro</h3>
+            <p>
+              Antes de colocar una sola orden en Binance, inspecciona la brecha entre el dólar BCV oficial y el mercado paralelo en el Monitor. Si la brecha supera el 20% o si estamos en día de inyección bancaria (lunes o jueves en la mañana), el precio del dólar fluctuará con fuerza.
+            </p>
+            <div class="step-actions">
+              <span class="action-chip">🔍 Consultar Brecha BCV</span>
+              <span class="action-chip">🏦 Verificar Latencia Bancaria</span>
+              <span class="action-chip">🟢 Comprobar Kill-Switch Activo</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 2 -->
+        <div class="timeline-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Fijación de Precios & Filtro de la Regla de Oro</h3>
+            <p>
+              Abre el <strong>Monitor de Spread</strong>. Ingresa el precio de compra y el de venta que planeas publicar en Binance. Verifica que el <strong>Spread Neto</strong> sea igual o mayor a <strong>0.50%</strong>. Si el margen neto da menos de 0.50%, el Oficial de Riesgo vetará la operación porque cualquier imprevisto te generará pérdida.
+            </p>
+            <div class="step-actions">
+              <span class="action-chip">📐 Calcular SQS (&gt; 65 pts)</span>
+              <span class="action-chip">🛡️ Validar Regla de Oro (&ge; 0.50%)</span>
+              <span class="action-chip">📢 Publicar Anuncio Maker en Binance</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 3 -->
+        <div class="timeline-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Atención de Órdenes & Escaneo con OCR</h3>
+            <p>
+              Cuando un comprador tome tu anuncio y marque la orden como "Pagado", no te fíes de la captura enviada por el chat de Binance. Ingresa a tu banca en línea, verifica que el dinero esté acreditado en saldo <strong>disponible</strong> y pasa el comprobante por el <strong>Escáner de Recibos</strong> para validar la concordancia de la cédula y el número de referencia.
+            </p>
+            <div class="step-actions">
+              <span class="action-chip">⚠️ Cotejar Titular Bancario == Binance</span>
+              <span class="action-chip">📱 Verificar Saldo Disponible en App</span>
+              <span class="action-chip">🔓 Liberar Criptomonedas</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 4 -->
+        <div class="timeline-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Cierre de Sesión, Reconciliación & Respaldo</h3>
+            <p>
+              Registra cada operación completada en el <strong>Registro de Operaciones</strong>. Revisa que tu saldo físico en cuentas bancarias cuadre al centavo con el PnL calculado por el software. Antes de apagar tu terminal, haz clic en <strong>exportar</strong> respaldo para archivar tu base de datos de manera segura.
+            </p>
+            <div class="step-actions">
+              <span class="action-chip">📝 Asentar Registro de Operaciones</span>
+              <span class="action-chip">📊 Revisar Estadísticas Diarias</span>
+              <span class="action-chip">💾 Exportar Respaldo Local</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div>

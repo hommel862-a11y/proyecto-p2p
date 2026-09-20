@@ -6,11 +6,15 @@
  */
 
 import type { RiskVerdict, StrategistProposal, AgentHealthStatus } from './types';
+import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
 
 export class RiskGatekeeperAgent {
   readonly role = 'RISK_GATEKEEPER' as const;
   readonly name = 'Risk Gatekeeper (Oficial de Riesgo)';
+  readonly assignedMcpDomains = AGENT_MCP_DOMAINS['RISK_GATEKEEPER'];
+  readonly assignedSkills = AGENT_ASSIGNED_SKILLS['RISK_GATEKEEPER'];
+
   private opsProcessed = 0;
   private lastActive = Date.now();
 
@@ -22,7 +26,43 @@ export class RiskGatekeeperAgent {
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
       description: 'Gobernanza institucional de riesgo con poder de veto unilateral. Audita límites bancarios, anti-pitufeo y timing.',
+      assignedMcpDomains: this.assignedMcpDomains,
+      assignedSkills: this.assignedSkills,
     };
+  }
+
+  /**
+   * Audits an identifier against ZK Threat Mesh and Blacklist registries.
+   */
+  auditCounterpartySafety(params: {
+    identifier?: string;
+    cedula?: string;
+    phone?: string;
+    accountNumber?: string;
+    binanceAlias?: string;
+  }): { isClean: boolean; reason?: string } {
+    if (params.identifier) {
+      const zkRes = executeFinancialSkill('audit_zk_mesh_threat', {
+        identifier: params.identifier,
+      });
+      const zkData = zkRes.data as { threatFound?: boolean; riskStatus?: string } | undefined;
+      if (zkData?.threatFound || zkData?.riskStatus === 'FLAGGED') {
+        return { isClean: false, reason: 'Identificador marcado en Malla ZK Antifraude' };
+      }
+    }
+
+    const blRes = executeFinancialSkill('check_counterparty_blacklist', {
+      cedula: params.cedula,
+      phone: params.phone,
+      accountNumber: params.accountNumber,
+      binanceAlias: params.binanceAlias,
+    });
+    const blData = blRes.data as { isBlacklisted?: boolean; incidentNotes?: string } | undefined;
+    if (blData?.isBlacklisted) {
+      return { isClean: false, reason: blData.incidentNotes ?? 'Entidad en lista negra institucional' };
+    }
+
+    return { isClean: true };
   }
 
   /**

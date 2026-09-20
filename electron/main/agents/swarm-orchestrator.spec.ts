@@ -29,7 +29,7 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
     }
   });
 
-  it('should report health for all 4 specialized agents', () => {
+  it('should report health for all 4 specialized agents with assigned MCP domains and skills', () => {
     const health = swarm.getSwarmHealth();
     expect(health.length).toBe(4);
     const roles = health.map((h) => h.role);
@@ -37,7 +37,11 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
     expect(roles).toContain('STRATEGIST');
     expect(roles).toContain('RISK_GATEKEEPER');
     expect(roles).toContain('DISPUTE_AUDITOR');
-    health.forEach((h) => expect(h.status).toBe('ONLINE'));
+    health.forEach((h) => {
+      expect(h.status).toBe('ONLINE');
+      expect(h.assignedMcpDomains?.length).toBeGreaterThanOrEqual(2);
+      expect(h.assignedSkills?.length).toBeGreaterThanOrEqual(4);
+    });
   });
 
   it('should approve viable trades, generate plan and record Engram memory', async () => {

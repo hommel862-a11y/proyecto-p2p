@@ -5,11 +5,15 @@
  */
 
 import type { SentinelSignal, AgentHealthStatus } from './types';
+import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
 
 export class SentinelAgent {
   readonly role = 'SENTINEL' as const;
   readonly name = 'Centinela Microestructura';
+  readonly assignedMcpDomains = AGENT_MCP_DOMAINS['SENTINEL'];
+  readonly assignedSkills = AGENT_ASSIGNED_SKILLS['SENTINEL'];
+
   private opsProcessed = 0;
   private lastActive = Date.now();
 
@@ -21,6 +25,37 @@ export class SentinelAgent {
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
       description: 'Monitoreo 24/7 de libros P2P, brecha cambiaria BCV y paridades cripto sin costo de tokens.',
+      assignedMcpDomains: this.assignedMcpDomains,
+      assignedSkills: this.assignedSkills,
+    };
+  }
+
+  /**
+   * Runs an integrated diagnostic across all assigned MCP domains and skills.
+   */
+  runMarketDiagnostic(): {
+    bankingNetworkOperational: boolean;
+    bcvInterventionRisk: string;
+    flowToxicityRisk: string;
+  } {
+    const bankRes = executeFinancialSkill('check_bank_operational_status', {});
+    const bankData = bankRes.data as { networkStatus?: string; pauseTradingDirective?: boolean } | undefined;
+
+    const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
+      parallelRate: 88.5,
+      bcvRate: 72.0,
+    });
+    const bcvData = bcvRes.data as { cycle?: { currentZone?: string } } | undefined;
+
+    const vpinRes = executeFinancialSkill('estimate_adverse_selection_vpin', {
+      buckets: [],
+    });
+    const vpinData = vpinRes.data as { toxicityZone?: string } | undefined;
+
+    return {
+      bankingNetworkOperational: !bankData?.pauseTradingDirective,
+      bcvInterventionRisk: bcvData?.cycle?.currentZone ?? 'NORMAL',
+      flowToxicityRisk: vpinData?.toxicityZone ?? 'LOW',
     };
   }
 
@@ -50,10 +85,9 @@ export class SentinelAgent {
     const estimatedFeesPct = 0.40; // 0.1% taker + 0.3% bank transfer
     const netSpreadPct = grossSpreadPct - estimatedFeesPct;
 
-    const goldenRes = executeFinancialSkill('evaluate_golden_spread', {
+    executeFinancialSkill('evaluate_golden_spread', {
       netSpreadPct,
     });
-    const goldenData = goldenRes.data as { isGolden?: boolean };
 
     // 2. Query BCV gap & market cycle
     const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
@@ -80,9 +114,8 @@ export class SentinelAgent {
     };
 
     // 4. Evaluate order flow toxicity (VPIN)
-    const vpinRes = executeFinancialSkill('calculate_vpin_toxicity', {
-      basketVolumeUsdt: 1000,
-      totalBuckets: 20,
+    const vpinRes = executeFinancialSkill('estimate_adverse_selection_vpin', {
+      buckets: [],
     });
     const vpinData = vpinRes.data as {
       vpinMetric?: number;

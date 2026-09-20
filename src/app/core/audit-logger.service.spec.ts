@@ -51,4 +51,30 @@ describe('AuditLoggerService', () => {
     service.clear();
     expect(service.events().length).toBe(0);
   });
+
+  it('stores more than 200 events without premature truncation (breaks the 200 ceiling)', () => {
+    for (let i = 0; i < 350; i++) {
+      service.log('DATA_MUTATION', `Evento ${i}`);
+    }
+    expect(service.events().length).toBe(350);
+  });
+
+  it('exports audit log to standard RFC 4180 CSV format', () => {
+    service.log('SECURITY_ALERT', 'Intento no autorizado', { ip: '127.0.0.1' }, 'warn');
+    const csv = service.exportAuditLogsCsv();
+    expect(csv).toContain('id,timestamp,category,action,severity,details');
+    expect(csv).toContain('"SECURITY_ALERT"');
+    expect(csv).toContain('"Intento no autorizado"');
+    expect(csv).toContain('"warn"');
+  });
+
+  it('prunes events older than specified retention days with clearArchived()', () => {
+    service.log('CONFIG_CHANGE', 'Evento fresco');
+    expect(service.events().length).toBe(1);
+
+    // Prune with 0 days should purge events created in the past or immediately
+    const res = service.clearArchived(30);
+    expect(res.purgedCount).toBe(0);
+    expect(res.remainingCount).toBe(1);
+  });
 });

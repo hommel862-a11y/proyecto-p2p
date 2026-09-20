@@ -306,6 +306,31 @@ export interface ElectronAPI {
     getOrder(orderId: string): Promise<unknown>;
     listActiveOrders(): Promise<unknown[]>;
     recordBankEvent(event: unknown): Promise<{ isDuplicate: boolean; eventId: number }>;
+    saveAuditLog(record: {
+      id: string;
+      timestamp: string;
+      category: string;
+      action: string;
+      details?: string;
+      severity: string;
+      createdAt: number;
+    }): Promise<boolean>;
+    listAuditLogs(params?: { limit?: number; category?: string }): Promise<unknown[]>;
+    saveOperationRecord(record: {
+      id: string;
+      timestamp: string;
+      side: string;
+      fiatAmount: number;
+      cryptoAmount: number;
+      price: number;
+      bank: string;
+      reference?: string;
+      counterparty?: string;
+      status: string;
+      rawJson: string;
+      createdAt: number;
+    }): Promise<boolean>;
+    listOperationRecords(params?: { limit?: number }): Promise<unknown[]>;
   };
   killswitch: {
     trigger(params?: { reason?: string; source?: string }): Promise<boolean>;

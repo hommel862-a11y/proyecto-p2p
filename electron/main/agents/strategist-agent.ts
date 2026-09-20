@@ -5,6 +5,7 @@
  */
 
 import type { StrategistProposal, SentinelSignal, AgentHealthStatus } from './types';
+import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import type { StrategyPlanCard } from '../../shared/types';
 import { executeFinancialSkill } from '../gemini-skills';
 import { MonteCarloSimulator } from './monte-carlo-simulator';
@@ -12,6 +13,9 @@ import { MonteCarloSimulator } from './monte-carlo-simulator';
 export class StrategistAgent {
   readonly role = 'STRATEGIST' as const;
   readonly name = 'Gentleman AI (Senior Strategist)';
+  readonly assignedMcpDomains = AGENT_MCP_DOMAINS['STRATEGIST'];
+  readonly assignedSkills = AGENT_ASSIGNED_SKILLS['STRATEGIST'];
+
   private opsProcessed = 0;
   private lastActive = Date.now();
 
@@ -23,6 +27,29 @@ export class StrategistAgent {
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
       description: 'Modelado cuantitativo de rutas triangulares, microestructura VWAP y optimización de márgenes institucionales.',
+      assignedMcpDomains: this.assignedMcpDomains,
+      assignedSkills: this.assignedSkills,
+    };
+  }
+
+  /**
+   * Evaluates corridor routing efficiency across assigned MCP domains.
+   */
+  evaluateRoutingEfficiency(capitalUsdt = 1000): {
+    triangularViable: boolean;
+    crossBasisSpreadPct: number;
+    recommendedVenue: string;
+  } {
+    const triRes = executeFinancialSkill('scan_triangular_arbitrage', {
+      initialAmount: capitalUsdt,
+      initialCurrency: 'USDT',
+    });
+    const triData = triRes.data as { isProfitable?: boolean; netSpreadPct?: number } | undefined;
+
+    return {
+      triangularViable: Boolean(triData?.isProfitable),
+      crossBasisSpreadPct: triData?.netSpreadPct ?? 0,
+      recommendedVenue: 'Binance P2P (Banesco / Pago Móvil)',
     };
   }
 
@@ -34,16 +61,10 @@ export class StrategistAgent {
     this.lastActive = Date.now();
 
     // 1. Run Triangular Arbitrage Scanner
-    const triangleRes = executeFinancialSkill('scan_triangular_arbitrage', {
+    executeFinancialSkill('scan_triangular_arbitrage', {
       initialAmount: requestedCapital,
       initialCurrency: 'USDT',
     });
-
-    const triangleData = triangleRes.data as {
-      netSpreadPct?: number;
-      profitInitialCurrency?: number;
-      isProfitable?: boolean;
-    };
 
     const calculatedNetSpread = signal.netSpreadPct;
     const meetsGoldenRule = calculatedNetSpread >= 0.50;
@@ -60,10 +81,10 @@ export class StrategistAgent {
       liquidityHealth?: string;
     };
 
-    const vwapPrice = simData.effectiveVwapPrice && simData.effectiveVwapPrice > 0
+    const vwapPrice = simData?.effectiveVwapPrice && simData.effectiveVwapPrice > 0
       ? simData.effectiveVwapPrice
       : signal.bestAsk;
-    const slippageBps = simData.slippageBps ?? 12;
+    const slippageBps = simData?.slippageBps ?? 12;
 
     // 3. Monte Carlo Microstructure Simulation (500 iterations)
     const mcSimulator = new MonteCarloSimulator();
@@ -100,11 +121,11 @@ export class StrategistAgent {
 
     return {
       plan,
-      rationale: `Mirá, formulé una ruta táctica de preservación de capital con retorno neto de ${calculatedNetSpread.toFixed(2)}%. Simulación Monte Carlo valida P95 slippage de ${mcResult.p95SlippagePct}% con tasa de llenado del ${mcResult.fillRatePct}%.`,
+      rationale: plan.rationale,
       mathematicalValidation: {
         grossSpreadPct: signal.grossSpreadPct,
-        estimatedFeesPct: Number((signal.grossSpreadPct - calculatedNetSpread).toFixed(2)),
-        netSpreadPct: Number(calculatedNetSpread.toFixed(2)),
+        estimatedFeesPct: 0.40,
+        netSpreadPct: calculatedNetSpread,
         vwapPrice,
         slippageBps,
         meetsGoldenRule,

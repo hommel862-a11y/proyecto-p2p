@@ -5,6 +5,7 @@
  */
 
 import type { AgentHealthStatus } from './types';
+import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
 
 export interface DisputeDossierResult {
@@ -18,6 +19,9 @@ export interface DisputeDossierResult {
 export class DisputeAuditorAgent {
   readonly role = 'DISPUTE_AUDITOR' as const;
   readonly name = 'Auditor de Disputas & OCR';
+  readonly assignedMcpDomains = AGENT_MCP_DOMAINS['DISPUTE_AUDITOR'];
+  readonly assignedSkills = AGENT_ASSIGNED_SKILLS['DISPUTE_AUDITOR'];
+
   private opsProcessed = 0;
   private lastActive = Date.now();
 
@@ -29,6 +33,29 @@ export class DisputeAuditorAgent {
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
       description: 'Auditoría forense de comprobantes bancarios, deduplicación de pagos y armado de dossieres de apelación.',
+      assignedMcpDomains: this.assignedMcpDomains,
+      assignedSkills: this.assignedSkills,
+    };
+  }
+
+  /**
+   * Verifies that all required forensic fields are present for dispute mediation.
+   */
+  verifyEvidenceCompleteness(params: {
+    orderId: string;
+    receiptAmount?: number;
+    reference?: string;
+    bankName?: string;
+  }): { isComplete: boolean; missingFields: string[] } {
+    const missing: string[] = [];
+    if (!params.orderId) missing.push('orderId');
+    if (params.receiptAmount === undefined || params.receiptAmount <= 0) missing.push('receiptAmount');
+    if (!params.reference || params.reference.trim().length === 0) missing.push('reference');
+    if (!params.bankName || params.bankName.trim().length === 0) missing.push('bankName');
+
+    return {
+      isComplete: missing.length === 0,
+      missingFields: missing,
     };
   }
 

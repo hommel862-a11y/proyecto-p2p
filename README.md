@@ -164,8 +164,9 @@ Números verificados con corridas reales (cierre de trabajo sobre la bóveda de 
 | -------------------------- | ----------------------------------------------------------------- | ----------------------------- |
 | Aplicación Angular (`p2p`) | **109/110** — 20 archivos                                         | `npx ng test p2p --no-watch`  |
 | `@p2p/core`                | **426/426** — 49 archivos                                         | `npx ng test core --no-watch` |
-| Electron shell             | **15/15** — 3 archivos                                            | `npm run test:electron`       |
-| MCP server                 | **10/10** — 1 archivo                                             | `npm run mcp:test`            |
+| Electron shell             | **64/64** — 10 archivos (100%)                                    | `npm run test:electron`       |
+| MCP server suite           | **51/51** — 4 archivos (100%)                                     | `npm run mcp:test`            |
+| Motores Vendored Core      | **23/23** — SHA-256 byte a byte                                   | `npm run check:vendor`        |
 | Bóveda de credenciales     | **6/6** — `credential-store.service.spec.ts` (incluidos en `p2p`) | `npx ng test p2p`             |
 | E2E Web                    | 6 specs Playwright (requieren build + servidor)                   | `npm run e2e`                 |
 | E2E Electron               | 1 script (`e2e/electron/e2e.mjs`, requiere build previo)          | `npm run e2e:electron`        |
@@ -185,17 +186,21 @@ El registro de operaciones se almacena en `localStorage`. Para evitar pérdida:
 ## Estructura del Proyecto
 
 ```
-├── src/app/                    # Angular application
+├── src/app/                    # Angular application (Signals, Standalone, Zoneless)
 │   ├── core/                   # Infraestructura (storage, bóveda de credenciales,
-│   │                           #  vault cifrado, Telegram worker, Cotizave, toast…)
+│   │                           #  vault cifrado, mcp.service desacoplado, Telegram worker…)
+│   │   └── mcp/                # Catálogo modular mcp-catalog.ts y emulación mcp-fallbacks.ts
 │   └── features/               # Feature components (10 vistas)
-├── projects/core/              # @p2p/core — lógica pura framework-agnostic
-├── packages/mcp-server/        # MCP server (stdio/SSE) — 8 tools, 17 resources, 5 prompts
+├── projects/core/              # @p2p/core — lógica pura framework-agnostic (23 motores)
+├── packages/mcp-server/        # MCP server suite — 37 tools en 10 servidores temáticos
+│   └── src/tools/              # Clasificación por dominio y arranque individual vía --server
 ├── electron/                   # Electron shell (main, preload, IPC, SQLite, vault DPAPI)
+│   └── main/
+│       ├── agents/             # Swarm de 4 Agentes: Sentinel, Strategist, Risk Gatekeeper, Dispute Auditor
+│       ├── skills/             # 43 habilidades modulares (Macro, Trading, Risk, Earn, Operations)
+│       └── vendor/             # Motores puros byte-idénticos para cumplir con rootDir de Electron
 ├── e2e/                        # Playwright E2E (web + Electron)
-├── .mcp/                       # Recursos compartidos del ecosistema MCP (.mcp.json en raíz)
-├── anty/                       # Prototipos Python (exploración histórica, no integrados)
-├── returno/                    # Prototipo estático HTML/CSS (exploración histórica, no integrado)
+├── legacy/                     # Prototipos Python históricos y documentos exploratorios archivados
 └── .github/workflows/ci.yml   # GitHub Actions CI
 ```
 

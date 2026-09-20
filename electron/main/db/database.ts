@@ -75,6 +75,31 @@ export interface BlacklistEntryRecord {
   reportedAt: number;
 }
 
+export interface AuditEventRecord {
+  id: string;
+  timestamp: string;
+  category: string;
+  action: string;
+  details?: string;
+  severity: string;
+  createdAt: number;
+}
+
+export interface OperationRecord {
+  id: string;
+  timestamp: string;
+  side: string;
+  fiatAmount: number;
+  cryptoAmount: number;
+  price: number;
+  bank: string;
+  reference?: string;
+  counterparty?: string;
+  status: string;
+  rawJson: string;
+  createdAt: number;
+}
+
 export class P2PDatabaseService {
   private db: DatabaseSync;
 
@@ -255,6 +280,34 @@ export class P2PDatabaseService {
       );
       CREATE INDEX IF NOT EXISTS idx_bl_type_val ON counterparty_blacklist(identifier_type, identifier_value);
       CREATE INDEX IF NOT EXISTS idx_bl_val ON counterparty_blacklist(identifier_value);
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        category TEXT NOT NULL,
+        action TEXT NOT NULL,
+        details TEXT,
+        severity TEXT NOT NULL DEFAULT 'info',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_category ON audit_logs(category);
+
+      CREATE TABLE IF NOT EXISTS operation_records (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        side TEXT NOT NULL,
+        fiat_amount REAL NOT NULL,
+        crypto_amount REAL NOT NULL,
+        price REAL NOT NULL,
+        bank TEXT NOT NULL,
+        reference TEXT,
+        counterparty TEXT,
+        status TEXT NOT NULL,
+        raw_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_op_records_time ON operation_records(created_at DESC);
     `);
   }
 
@@ -832,6 +885,100 @@ export class P2PDatabaseService {
       incidentNotes: (row['incident_notes'] as string) ?? undefined,
       riskLevel: row['risk_level'] as BlacklistEntryRecord['riskLevel'],
       reportedAt: Number(row['reported_at']),
+    }));
+  }
+
+  /**
+   * Persists an audit log event into SQLite for permanent institutional traceability.
+   */
+  recordAuditLog(event: AuditEventRecord): boolean {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO audit_logs (id, timestamp, category, action, details, severity, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      event.id,
+      event.timestamp,
+      event.category,
+      event.action,
+      event.details ?? null,
+      event.severity || 'info',
+      event.createdAt || Date.now(),
+    );
+    return true;
+  }
+
+  /**
+   * Lists audit logs ordered by creation time descending with optional category filter.
+   */
+  listAuditLogs(limit = 100, category?: string): AuditEventRecord[] {
+    let sql = 'SELECT * FROM audit_logs';
+    const params: (string | number)[] = [];
+    if (category) {
+      sql += ' WHERE category = ?';
+      params.push(category);
+    }
+    sql += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r['id']),
+      timestamp: String(r['timestamp']),
+      category: String(r['category']),
+      action: String(r['action']),
+      details: r['details'] ? String(r['details']) : undefined,
+      severity: String(r['severity']),
+      createdAt: Number(r['created_at']),
+    }));
+  }
+
+  /**
+   * Saves an operation record into the SQLite relational ledger.
+   */
+  saveOperationRecord(op: OperationRecord): boolean {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO operation_records (
+        id, timestamp, side, fiat_amount, crypto_amount, price, bank, reference, counterparty, status, raw_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      op.id,
+      op.timestamp,
+      op.side,
+      op.fiatAmount,
+      op.cryptoAmount,
+      op.price,
+      op.bank,
+      op.reference ?? null,
+      op.counterparty ?? null,
+      op.status,
+      op.rawJson,
+      op.createdAt || Date.now(),
+    );
+    return true;
+  }
+
+  /**
+   * Lists operation records from SQLite relational ledger.
+   */
+  listOperationRecords(limit = 50): OperationRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM operation_records ORDER BY created_at DESC LIMIT ?');
+    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r['id']),
+      timestamp: String(r['timestamp']),
+      side: String(r['side']),
+      fiatAmount: Number(r['fiat_amount']),
+      cryptoAmount: Number(r['crypto_amount']),
+      price: Number(r['price']),
+      bank: String(r['bank']),
+      reference: r['reference'] ? String(r['reference']) : undefined,
+      counterparty: r['counterparty'] ? String(r['counterparty']) : undefined,
+      status: String(r['status']),
+      rawJson: String(r['raw_json']),
+      createdAt: Number(r['created_at']),
     }));
   }
 

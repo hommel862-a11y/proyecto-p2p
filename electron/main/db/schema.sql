@@ -117,3 +117,36 @@ CREATE INDEX IF NOT EXISTS idx_engram_type ON engram_observations(type);
 CREATE INDEX IF NOT EXISTS idx_engram_status ON engram_observations(status);
 CREATE INDEX IF NOT EXISTS idx_engram_updated ON engram_observations(updated_at DESC);
 
+-- Institutional Audit Log (Unlimited Retention)
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  category TEXT NOT NULL,
+  action TEXT NOT NULL,
+  details TEXT,
+  severity TEXT NOT NULL DEFAULT 'info',
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_category ON audit_logs(category);
+
+-- Operation Records (Relational Ledger)
+CREATE TABLE IF NOT EXISTS operation_records (
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  side TEXT NOT NULL,
+  fiat_amount REAL NOT NULL,
+  crypto_amount REAL NOT NULL,
+  price REAL NOT NULL,
+  bank TEXT NOT NULL,
+  reference TEXT,
+  counterparty TEXT,
+  status TEXT NOT NULL,
+  raw_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_op_records_time ON operation_records(created_at DESC);
+
+

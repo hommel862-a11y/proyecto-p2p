@@ -206,5 +206,61 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     expect(summary).toContain('• What: Triangulación VES->USDT->BTC genera 1.35% neto');
     expect(summary).toContain('• Learned: Operar preferentemente antes de las 11:30 AM');
   });
+
+  it('should persist and list institutional audit logs with filtering', () => {
+    const success1 = dbService.recordAuditLog({
+      id: 'AUD-001',
+      timestamp: '2026-09-19T12:00:00Z',
+      category: 'SECURITY_ALERT',
+      action: 'Bloqueo preventivo de cuenta',
+      details: JSON.stringify({ ip: '10.0.0.1', risk: 'HIGH' }),
+      severity: 'warn',
+      createdAt: 1700000001000,
+    });
+    expect(success1).toBe(true);
+
+    const success2 = dbService.recordAuditLog({
+      id: 'AUD-002',
+      timestamp: '2026-09-19T12:05:00Z',
+      category: 'CONFIG_CHANGE',
+      action: 'Modificación de spread mínimo',
+      severity: 'info',
+      createdAt: 1700000002000,
+    });
+    expect(success2).toBe(true);
+
+    const allLogs = dbService.listAuditLogs(10);
+    expect(allLogs.length).toBe(2);
+    expect(allLogs[0].id).toBe('AUD-002'); // Order by created_at DESC
+
+    const filtered = dbService.listAuditLogs(10, 'SECURITY_ALERT');
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].action).toBe('Bloqueo preventivo de cuenta');
+  });
+
+  it('should persist and retrieve operation ledger records', () => {
+    const saved = dbService.saveOperationRecord({
+      id: 'OP-1001',
+      timestamp: '2026-09-19T13:00:00Z',
+      side: 'BUY',
+      fiatAmount: 50000,
+      cryptoAmount: 750,
+      price: 66.67,
+      bank: 'Banesco',
+      reference: 'REF-778899',
+      counterparty: 'Inversiones C.A.',
+      status: 'COMPLETED',
+      rawJson: JSON.stringify({ orderId: 'OP-1001', internalFee: 0.1 }),
+      createdAt: Date.now(),
+    });
+    expect(saved).toBe(true);
+
+    const records = dbService.listOperationRecords(10);
+    expect(records.length).toBe(1);
+    expect(records[0].id).toBe('OP-1001');
+    expect(records[0].fiatAmount).toBe(50000);
+    expect(records[0].cryptoAmount).toBe(750);
+    expect(records[0].bank).toBe('Banesco');
+  });
 });
 

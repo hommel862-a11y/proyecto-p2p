@@ -26,6 +26,12 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       listActiveOrders: () => ipc('p2p:db-list-active-orders') as Promise<unknown[]>,
       recordBankEvent: (event: unknown) =>
         ipc('p2p:db-record-bank-event', event) as Promise<{ isDuplicate: boolean; eventId: number }>,
+      saveAuditLog: (record: any) => ipc('p2p:db-save-audit-log', record) as Promise<boolean>,
+      listAuditLogs: (params?: any) => ipc('p2p:db-list-audit-logs', params) as Promise<unknown[]>,
+      saveOperationRecord: (record: any) =>
+        ipc('p2p:db-save-operation-record', record) as Promise<boolean>,
+      listOperationRecords: (params?: any) =>
+        ipc('p2p:db-list-operation-records', params) as Promise<unknown[]>,
     },
     killswitch: {
       trigger: (params?: { reason?: string; source?: string }) =>
