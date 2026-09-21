@@ -161,6 +161,85 @@ export class GeminiOrchestrator {
   }
 
   /**
+   * Transcribes voice audio using Gemini multimodal capabilities.
+   * Enables microphone dictation in Electron where Google Speech API keys are absent.
+   */
+  async transcribeAudio(params: {
+    audioBase64: string;
+    mimeType: string;
+  }): Promise<{ text: string; error?: string }> {
+    const effectiveKey = this.getEffectiveApiKey();
+    if (!effectiveKey) {
+      return {
+        text: '',
+        error: 'Para transcribir audio en Electron, por favor configurá tu API Key de Gemini en la pestaña de Configuración.',
+      };
+    }
+
+    const candidateModels = [
+      ...this.getCandidateModels(),
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ];
+    const cleanMime = params.mimeType.split(';')[0] || 'audio/webm';
+    let lastError = '';
+
+    const requestBody = {
+      systemInstruction: {
+        parts: [
+          {
+            text: 'Sos un transcriptor de audio para una mesa de operaciones P2P y arbitraje financiero en Venezuela. Tu tarea es transcribir exactamente y con máxima fidelidad lo que dice el operador en español. Normalizá correctamente términos como USDT, VES, BCV, Banesco, Pago Móvil, Binance, Spread y Kill-Switch. Devolvé ÚNICAMENTE el texto transcripto, sin comillas, sin introducciones y sin comentarios adicionales.',
+          },
+        ],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: 'Transcribe este mensaje de voz del operador:' },
+            {
+              inlineData: {
+                mimeType: cleanMime,
+                data: params.audioBase64,
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as {
+            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          };
+          const transcript = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          return { text: transcript };
+        }
+
+        const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const errMsg = errJson?.error?.message || `HTTP ${res.status}`;
+        lastError = errMsg;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastError = msg;
+        console.warn(`[GeminiOrchestrator] Transcribe error on model ${model}:`, err);
+      }
+    }
+
+    return { text: '', error: `No se pudo transcribir el audio: ${lastError || 'modelos no disponibles'}` };
+  }
+
+  /**
    * Executes Gemini 3.6 Flash REST API with Function Calling tools.
    */
   private async callGeminiApi(prompt: string, learningsContext: string, apiKey: string): Promise<CopilotResponse> {
@@ -356,6 +435,21 @@ PAUTAS DE COMUNICACIÓN:
     const isEarnVaults = lowerPrompt.includes('earn') || lowerPrompt.includes('vault') || lowerPrompt.includes('launchpool') || lowerPrompt.includes('parking') || lowerPrompt.includes('ocioso') || lowerPrompt.includes('hurdle') || lowerPrompt.includes('dual') || lowerPrompt.includes('dca') || lowerPrompt.includes('redemption');
     const isSecurityBank = lowerPrompt.includes('banco') || lowerPrompt.includes('estatus') || lowerPrompt.includes('caida') || lowerPrompt.includes('mantenimiento') || lowerPrompt.includes('pago movil') || lowerPrompt.includes('blacklist') || lowerPrompt.includes('lista negra') || lowerPrompt.includes('fraude') || lowerPrompt.includes('estafa') || lowerPrompt.includes('ocr') || lowerPrompt.includes('comprobante') || lowerPrompt.includes('disputa');
     const isExecutiveSummary = lowerPrompt.includes('resumen') || lowerPrompt.includes('ejecutivo') || lowerPrompt.includes('sesion') || lowerPrompt.includes('enjambre') || lowerPrompt.includes('swarm') || lowerPrompt.includes('diagnostico');
+    const isForensicAudit =
+      !lowerPrompt.includes('sop') &&
+      (lowerPrompt.includes('horario') ||
+        lowerPrompt.includes('alertas de riesgo') ||
+        lowerPrompt.includes('alertas esta semana') ||
+        lowerPrompt.includes('disciplina') ||
+        lowerPrompt.includes('respeté el spread') ||
+        lowerPrompt.includes('respete el spread') ||
+        lowerPrompt.includes('spread mínimo') ||
+        lowerPrompt.includes('spread minimo') ||
+        lowerPrompt.includes('cumplimiento de spread') ||
+        lowerPrompt.includes('auditoría forense') ||
+        lowerPrompt.includes('auditoria forense') ||
+        lowerPrompt.includes('tilt') ||
+        lowerPrompt.includes('forense'));
     const isOperationsSop = lowerPrompt.includes('sop') || lowerPrompt.includes('incidencia') || lowerPrompt.includes('triaje') || lowerPrompt.includes('rpa') || lowerPrompt.includes('lead') || lowerPrompt.includes('funnel') || lowerPrompt.includes('sheets') || lowerPrompt.includes('conciliaci') || lowerPrompt.includes('contab') || lowerPrompt.includes('prospecto') || lowerPrompt.includes('competidor') || lowerPrompt.includes('benchmark') || lowerPrompt.includes('operacion');
 
     let reply = '';
@@ -785,7 +879,110 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CASO 9: GOBERNANZA SOP, CONCILIACIÓN RPA & TRIAJE OPERATIVO
+    // CASO 9: INTERROGADOR FORENSE DEL LIBRO MAYOR & RIESGO OPERATIVO (audit_and_risk_analytics)
+    // ─────────────────────────────────────────────────────────────────────────
+    else if (isForensicAudit) {
+      // Fetch real history from SQLite relational ledger
+      const rawLogs = this.db ? this.db.listAuditLogs(500) : [];
+      const rawOps = this.db ? this.db.listOperationRecords(100) : [];
+
+      const auditRes = executeFinancialSkill('audit_and_risk_analytics', {
+        timeframeDays: 7,
+        minSpreadThresholdPct: 0.50,
+        focusArea: 'ALL',
+        sampleEvents: rawLogs.map((l) => ({
+          timestamp: l.timestamp,
+          severity: l.severity,
+          action: l.action,
+          category: l.category,
+          createdAt: l.createdAt,
+        })),
+        sampleOperations: rawOps.map((o) => ({
+          id: o.id,
+          timestamp: o.timestamp,
+          side: o.side,
+          fiatAmount: o.fiatAmount,
+          cryptoAmount: o.cryptoAmount,
+          price: o.price,
+          bank: o.bank,
+          rawJson: o.rawJson,
+          createdAt: o.createdAt,
+        })),
+      });
+      executedSkills.push('audit_and_risk_analytics');
+
+      const data = auditRes.data as {
+        dossier?: {
+          operatorStanding?: string;
+          goldenRuleComplianceScore?: number;
+          hourlyRisk?: {
+            totalEventsAnalyzed?: number;
+            peakRiskHour?: number;
+            peakRiskWindow?: string;
+            peakRiskScore?: number;
+            totalCriticalIncidents?: number;
+            criticalIncidentRatePct?: number;
+            highRiskHours?: number[];
+            recommendation?: string;
+          };
+          disciplineAudit?: {
+            totalOperationsAnalyzed?: number;
+            compliantOperationsCount?: number;
+            nonCompliantOperationsCount?: number;
+            complianceRatePct?: number;
+            volumeWeightedAverageSpreadPct?: number;
+            tiltDetected?: boolean;
+            tiltSeverity?: string;
+            tiltConsecutiveViolations?: number;
+            estimatedSacrificedProfitUsdt?: number;
+            summary?: string;
+          };
+          criticalFindings?: string[];
+          preventiveDirectives?: string[];
+          executiveVerdict?: string;
+        };
+      };
+
+      const dossier = data?.dossier;
+      const hRisk = dossier?.hourlyRisk;
+      const dAudit = dossier?.disciplineAudit;
+
+      reply = `Mirá, realicé la **Auditoría Forense del Libro Mayor** interrogando directamente tus registros en SQLite (${hRisk?.totalEventsAnalyzed ?? rawLogs.length} eventos de auditoría y ${dAudit?.totalOperationsAnalyzed ?? rawOps.length} operaciones comerciales analizadas).\n\n` +
+        `### 🕒 Distribución Horaria de Riesgo & Alertas\n` +
+        `* **Ventana Horaria Crítica**: \`${hRisk?.peakRiskWindow ?? '11:00 - 12:00'}\` (Puntaje de riesgo: ${hRisk?.peakRiskScore ?? 0} con ${hRisk?.totalCriticalIncidents ?? 0} incidentes/alertas).\n` +
+        `* **Tasa de Incidentes Críticos**: \`${hRisk?.criticalIncidentRatePct ?? 0}%\` sobre el total de eventos.\n` +
+        `* **Diagnóstico de Horarios**: ${hRisk?.recommendation ?? 'Distribución horaria estable sin concentración anómala.'}\n\n` +
+        `### 🎯 Disciplina Operativa & Regla de Oro (Spread >= 0.50%)\n` +
+        `* **Tasa de Cumplimiento**: \`${dAudit?.complianceRatePct ?? 100}%\` de operaciones con spread neto >= 0.50% (${dAudit?.compliantOperationsCount ?? 0} conformes / ${dAudit?.nonCompliantOperationsCount ?? 0} desvíos).\n` +
+        `* **Spread Promedio Ponderado (VWAS)**: \`+${dAudit?.volumeWeightedAverageSpreadPct ?? 1.25}%\` neto.\n` +
+        `* **Detector de Tilt / Emocional**: ${dAudit?.tiltDetected ? `⚠️ ¡DETECTADO! Severidad: \`${dAudit?.tiltSeverity}\` (Racha de ${dAudit?.tiltConsecutiveViolations} desvíos consecutivos). Lucro cesante estimado: $${dAudit?.estimatedSacrificedProfitUsdt} USDT.` : '✅ Control emocional óptimo, sin rachas de tilt.'}\n\n` +
+        `### 🏛️ Veredicto Forense Institucional\n` +
+        `* **Calificación**: \`${dossier?.operatorStanding ?? 'DISCIPLINED'}\` (Puntaje Regla de Oro: ${dossier?.goldenRuleComplianceScore ?? 100}/100).\n` +
+        `* **Dictamen Ejecutivo**: ${dossier?.executiveVerdict ?? 'Operador disciplinado bajo estándares institucionales.'}\n\n` +
+        `### 🛡️ Directivas Preventivas Sugeridas\n` +
+        (dossier?.preventiveDirectives || ['Mantener la disciplina actual y no negociar spreads inferiores al 0.50%.']).map((dir) => `* ${dir}`).join('\n') + `\n\n` +
+        `A continuación te genero la ficha táctica de mitigación para blindar la mesa en los horarios de riesgo.`;
+
+      plan = {
+        id: planId,
+        title: `Plan de Mitigación Forense (${dossier?.operatorStanding ?? 'DISCIPLINED'})`,
+        route: `Blindaje en ventana ${hRisk?.peakRiskWindow ?? '11:00 - 12:00'} ➔ Forzar spread mínimo >= 0.50% en órdenes Maker`,
+        asset: 'USDT',
+        fiat: 'VES',
+        capitalRequiredUsdt: 1500,
+        expectedNetSpreadPct: Math.max(0.50, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25),
+        expectedProfitUsdt: Number(((1500 * Math.max(0.50, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25)) / 100).toFixed(2)),
+        riskLevel: dossier?.operatorStanding === 'CRITICAL_TILT_RISK' ? 'HIGH' : dossier?.operatorStanding === 'MODERATE_DEVIATION' ? 'MEDIUM' : 'LOW',
+        assignedOperatorName: 'Forensic Audit & Risk Officer',
+        rationale: dossier?.executiveVerdict ?? 'Protocolo forense de disciplina y control de horarios críticos.',
+        status: 'PROPOSED',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CASO 10: GOBERNANZA SOP, CONCILIACIÓN RPA & TRIAJE OPERATIVO
     // ─────────────────────────────────────────────────────────────────────────
     else if (isOperationsSop) {
       const sopRes = executeFinancialSkill('audit_sop_compliance_enforcement', {
@@ -866,7 +1063,7 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CASO 10: TRIANGULACIÓN FINANCIERA INSTITUCIONAL (DEFAULT & PREFERIDO)
+    // CASO 11: TRIANGULACIÓN FINANCIERA INSTITUCIONAL (DEFAULT & PREFERIDO)
     // ─────────────────────────────────────────────────────────────────────────
     else {
       const triangleRes = executeFinancialSkill('scan_triangular_arbitrage', {

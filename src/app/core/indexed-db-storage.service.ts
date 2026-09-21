@@ -1,5 +1,4 @@
-import { Injectable, inject } from '@angular/core';
-import { StorageService } from './storage';
+import { Injectable } from '@angular/core';
 
 export const IDB_DATABASE_NAME = 'p2p_web_storage';
 export const IDB_STORE_NAME = 'key_value_store';
@@ -37,7 +36,10 @@ export class IndexedDbStorageService {
         this.isReady = true;
       }
     } catch (err) {
-      console.warn('[IndexedDbStorage] Initialization warning, relying on memory/localStorage:', err);
+      console.warn(
+        '[IndexedDbStorage] Initialization warning, relying on memory/localStorage:',
+        err,
+      );
     }
   }
 

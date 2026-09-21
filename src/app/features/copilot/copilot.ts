@@ -6,9 +6,12 @@ import {
   computed,
   ViewChild,
   ElementRef,
+  inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speech.service';
+import { StorageService } from '../../core/storage';
 import {
   type CopilotChatMessage,
   type StrategyPlanCard,
@@ -85,6 +88,10 @@ export interface MarketLearningRecord {
 
 interface ElectronCopilotBridge {
   sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
+  transcribeAudio?(params: {
+    audioBase64: string;
+    mimeType: string;
+  }): Promise<{ text: string; error?: string }>;
   executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string }>;
   getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
   getLearnings(params?: { category?: string; limit?: number }): Promise<MarketLearningRecord[]>;
@@ -191,10 +198,168 @@ function getElectronCopilot(): ElectronCopilotBridge | undefined {
 export class Copilot implements OnInit, OnDestroy {
   @ViewChild('messagesViewport') messagesViewportRef?: ElementRef<HTMLDivElement>;
 
+  readonly voiceService = inject(VoiceSpeechService);
+  private readonly storage = inject(StorageService);
+
   sidebarCollapsed = signal<boolean>(false);
 
   toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
+  }
+
+  async toggleVoiceDictation(): Promise<void> {
+    if (this.voiceService.isListening()) {
+      this.voiceService.stopListening();
+      return;
+    }
+
+    // Direct hardware MediaRecorder capture for 100% reliable local recording without Google Speech network errors
+    await this.voiceService.startMediaRecording(async (audio) => {
+      await this.processRecordedAudio(audio);
+    });
+  }
+
+  private async processRecordedAudio(audio: { base64: string; mimeType: string }): Promise<void> {
+    if (!audio.base64) return;
+    this.actionSuccessNotice.set('⏳ Transcribiendo mensaje de voz con Gemini Flash...');
+
+    try {
+      const copilot = getElectronCopilot();
+      let res: { text: string; error?: string };
+
+      if (copilot?.transcribeAudio) {
+        try {
+          res = await copilot.transcribeAudio({
+            audioBase64: audio.base64,
+            mimeType: audio.mimeType,
+          });
+        } catch (ipcErr: unknown) {
+          const ipcMsg = ipcErr instanceof Error ? ipcErr.message : String(ipcErr);
+          if (ipcMsg.includes('not allow-listed')) {
+            console.warn(
+              '[Copilot] IPC bridge channel not allow-listed in current cached window. Seamlessly using direct Gemini web transcription.',
+            );
+            res = await this.transcribeAudioWeb(audio);
+          } else {
+            throw ipcErr;
+          }
+        }
+      } else {
+        res = await this.transcribeAudioWeb(audio);
+      }
+
+      if (res.text) {
+        const normalized = normalizeVoicePrompt(res.text);
+        const current = this.inputPrompt().trim();
+        this.inputPrompt.set(current ? `${current} ${normalized}` : normalized);
+        this.actionSuccessNotice.set('✓ Audio transcripto exitosamente.');
+        setTimeout(() => this.actionSuccessNotice.set(null), 2500);
+
+        if (this.voiceService.autoSendOnSilence()) {
+          void this.sendPrompt();
+        }
+      } else if (res.error) {
+        this.voiceService.lastError.set(res.error);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.voiceService.lastError.set(`Error al transcribir audio: ${msg}`);
+    }
+  }
+
+  private async transcribeAudioWeb(audio: {
+    base64: string;
+    mimeType: string;
+  }): Promise<{ text: string; error?: string }> {
+    const apiKey = this.storage.get<string>('p2p.gemini.apiKey') || this.apiKeyInput().trim();
+    if (!apiKey) {
+      return {
+        text: '',
+        error:
+          'Para transcribir audio por voz, configurá tu API Key de Gemini en la pestaña "Conexión Gemini".',
+      };
+    }
+
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const cleanMime = audio.mimeType.split(';')[0] || 'audio/webm';
+
+    const requestBody = {
+      systemInstruction: {
+        parts: [
+          {
+            text: 'Sos un transcriptor de audio para una mesa de operaciones P2P y arbitraje financiero en Venezuela. Tu tarea es transcribir exactamente y con máxima fidelidad lo que dice el operador en español. Normalizá correctamente términos como USDT, VES, BCV, Banesco, Pago Móvil, Binance, Spread y Kill-Switch. Devolvé ÚNICAMENTE el texto transcripto, sin comillas, sin introducciones y sin comentarios adicionales.',
+          },
+        ],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: 'Transcribe este mensaje de voz del operador:' },
+            {
+              inlineData: {
+                mimeType: cleanMime,
+                data: audio.base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 250,
+      },
+    };
+
+    let lastErrorDetail = '';
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as {
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
+          };
+          const transcript = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          return { text: transcript };
+        }
+
+        const errJson = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        const errMsg = errJson?.error?.message || `HTTP ${res.status}`;
+        lastErrorDetail = errMsg;
+
+        if (res.status === 400 && errMsg.includes('API key not valid')) {
+          return {
+            text: '',
+            error:
+              'API Key inválida: Verificá que la clave de Gemini esté bien copiada en la pestaña "Conexión Gemini".',
+          };
+        }
+        if (res.status === 403) {
+          return {
+            text: '',
+            error: `Permiso denegado por Google (${errMsg}). Verificá tu API Key.`,
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastErrorDetail = msg;
+        console.warn(`[transcribeAudioWeb] Error on model ${model}:`, err);
+      }
+    }
+
+    return {
+      text: '',
+      error: `Error al transcribir con Gemini: ${lastErrorDetail || 'Verificá tu conexión y la API Key.'}`,
+    };
   }
 
   scrollToBottom(): void {
@@ -624,6 +789,10 @@ export class Copilot implements OnInit, OnDestroy {
   private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
+    const savedKey = this.storage.get<string>('p2p.gemini.apiKey');
+    if (savedKey && !this.apiKeyInput()) {
+      this.apiKeyInput.set(savedKey);
+    }
     await this.refreshData();
     await this.checkConnection();
 
@@ -637,6 +806,8 @@ export class Copilot implements OnInit, OnDestroy {
     if (this.autoRefreshTimer) {
       clearInterval(this.autoRefreshTimer);
     }
+    this.voiceService.stopListening();
+    this.voiceService.stopSpeaking();
   }
 
   async checkConnection(): Promise<void> {
@@ -657,11 +828,50 @@ export class Copilot implements OnInit, OnDestroy {
         });
       }
     } else {
-      this.connectionStatus.set({
-        connected: false,
-        model: 'simulated',
-        message: 'Modo navegador web (simulación local)',
-      });
+      const savedKey = this.storage.get<string>('p2p.gemini.apiKey') || this.apiKeyInput().trim();
+      if (!savedKey) {
+        this.connectionStatus.set({
+          connected: false,
+          model: 'simulated',
+          message: 'Modo navegador web (simulación local sin API Key)',
+        });
+        return;
+      }
+
+      try {
+        const testRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${savedKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
+          },
+        );
+        if (testRes.ok) {
+          this.connectionStatus.set({
+            connected: true,
+            model: 'gemini-2.5-flash',
+            message: '¡Conexión verificada exitosamente con Gemini API!',
+          });
+        } else {
+          const errData = (await testRes.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          const errMsg = errData?.error?.message || `HTTP ${testRes.status}`;
+          this.connectionStatus.set({
+            connected: false,
+            model: 'error',
+            message: `Error de API Key: ${errMsg}`,
+          });
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.connectionStatus.set({
+          connected: false,
+          model: 'error',
+          message: `Error de red al conectar: ${msg}`,
+        });
+      }
     }
   }
 
@@ -669,14 +879,17 @@ export class Copilot implements OnInit, OnDestroy {
     const key = this.apiKeyInput().trim();
     if (!key) return;
 
+    this.storage.set('p2p.gemini.apiKey', key);
     const copilot = getElectronCopilot();
     if (copilot) {
       await copilot.setApiKey({ apiKey: key });
       this.actionSuccessNotice.set('¡API Key guardada en SQLite exitosamente!');
-      setTimeout(() => this.actionSuccessNotice.set(null), 4000);
-      await this.checkConnection();
-      this.activeTab.set('chat');
+    } else {
+      this.actionSuccessNotice.set('¡API Key guardada exitosamente en el navegador!');
     }
+    setTimeout(() => this.actionSuccessNotice.set(null), 4000);
+    await this.checkConnection();
+    this.activeTab.set('chat');
   }
 
   async testConnectionAction(): Promise<void> {
@@ -835,6 +1048,10 @@ export class Copilot implements OnInit, OnDestroy {
             ...p.filter((x) => x.id !== response.suggestedPlan!.id),
           ]);
         }
+
+        if (this.voiceService.ttsEnabled()) {
+          this.voiceService.speak(response.reply);
+        }
       } else {
         // Fallback demo for standalone web browser mode
         setTimeout(() => {
@@ -851,18 +1068,23 @@ export class Copilot implements OnInit, OnDestroy {
               'Spread neto 1.45% validado por la regla de oro (>0.50%) con libro de órdenes sanitizado.',
             status: 'PROPOSED',
           };
+          const fallbackText =
+            'He analizado la microestructura del mercado P2P. Detecté una oportunidad de arbitraje triangular superior a la regla de oro (0.50% neto). Podés revisar la ficha y darle PLAY cuando quieras despacharla.';
           this.messages.update((msgs) => [
             ...msgs,
             {
               role: 'assistant',
-              content:
-                'He analizado la microestructura del mercado P2P. Detecté una oportunidad de arbitraje triangular superior a la regla de oro (0.50% neto). Podés revisar la ficha y darle PLAY cuando quieras despacharla.',
+              content: fallbackText,
               plan: fallbackPlan,
               timestamp: Date.now(),
             },
           ]);
           this.plans.update((p) => [fallbackPlan, ...p]);
           this.scrollToBottom();
+
+          if (this.voiceService.ttsEnabled()) {
+            this.voiceService.speak(fallbackText);
+          }
         }, 800);
       }
     } catch (err: unknown) {
@@ -911,6 +1133,10 @@ export class Copilot implements OnInit, OnDestroy {
     } else if (type === 'resumen_ejecutivo') {
       this.sendPrompt(
         'Generá un resumen ejecutivo de la sesión actual de trading: estado del capital, directiva de tesorería, spreads capturados, y recomendaciones prioritarias para el operador.',
+      );
+    } else if (type === 'forensic_audit') {
+      this.sendPrompt(
+        '¿En qué horarios tuve más alertas de riesgo esta semana y respeté el spread mínimo en mis operaciones?',
       );
     } else if (type === 'riesgo_bcv') {
       this.sendPrompt(

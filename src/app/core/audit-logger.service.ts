@@ -88,7 +88,8 @@ export class AuditLoggerService {
             timestamp: event.timestamp,
             category: event.category,
             action: event.action,
-            details: typeof event.details === 'object' ? JSON.stringify(event.details) : event.details,
+            details:
+              typeof event.details === 'object' ? JSON.stringify(event.details) : event.details,
             severity: event.severity,
             createdAt: Date.now(),
           })
@@ -119,7 +120,8 @@ export class AuditLoggerService {
   exportAuditLogsCsv(): string {
     const headers = ['id', 'timestamp', 'category', 'action', 'severity', 'details'];
     const rows = this.events().map((e) => {
-      const detailStr = typeof e.details === 'object' ? JSON.stringify(e.details) : (e.details ?? '');
+      const detailStr =
+        typeof e.details === 'object' ? JSON.stringify(e.details) : (e.details ?? '');
       const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
       return [
         escapeCsv(e.id),

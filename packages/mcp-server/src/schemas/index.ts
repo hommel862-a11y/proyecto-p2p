@@ -353,3 +353,37 @@ export const AuditPaymentProofOcrInputSchema = z.object({
   orderId: z.string().min(2),
 });
 export type AuditPaymentProofOcrInput = z.infer<typeof AuditPaymentProofOcrInputSchema>;
+
+export const AuditAndRiskAnalyticsInputSchema = z.object({
+  timeframeDays: z.number().positive().default(7),
+  minSpreadThresholdPct: z.number().positive().default(0.50),
+  focusArea: z.enum(['ALL', 'RISK_HOURS', 'SPREAD_COMPLIANCE']).default('ALL'),
+  sampleEvents: z
+    .array(
+      z.object({
+        timestamp: z.union([z.string(), z.number()]),
+        severity: z.string().optional(),
+        action: z.string().optional(),
+        category: z.string().optional(),
+        createdAt: z.number().optional(),
+      }),
+    )
+    .optional(),
+  sampleOperations: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        timestamp: z.union([z.string(), z.number()]),
+        side: z.string().optional(),
+        fiatAmount: z.number().optional(),
+        cryptoAmount: z.number().optional(),
+        price: z.number().optional(),
+        bank: z.string().optional(),
+        netSpreadPct: z.number().optional(),
+        rawJson: z.string().optional(),
+        createdAt: z.number().optional(),
+      }),
+    )
+    .optional(),
+});
+export type AuditAndRiskAnalyticsInput = z.infer<typeof AuditAndRiskAnalyticsInputSchema>;

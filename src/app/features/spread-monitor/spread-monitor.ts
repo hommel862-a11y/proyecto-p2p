@@ -93,6 +93,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     'microstructure',
   );
   readonly selectedAutofillMargin = signal<number>(1.2);
+  readonly mcpConsoleExpanded = signal<boolean>(false);
+
+  toggleMcpConsole(): void {
+    this.mcpConsoleExpanded.update((v) => !v);
+  }
 
   /** MCP Tool: detect_usdt_depeg state */
   readonly mcpDepeg = signal<{

@@ -42,6 +42,7 @@ import { registerBlacklistedEntityTool } from './register_blacklisted_entity.js'
 import { sendMultichannelAlertTool } from './send_multichannel_alert.js';
 import { processRemoteSentinelCommandTool } from './process_remote_sentinel_command.js';
 import { auditPaymentProofOcrTool } from './audit_payment_proof_ocr.js';
+import { auditAndRiskAnalyticsTool } from './audit_and_risk_analytics.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -88,6 +89,7 @@ export const ALL_MCP_TOOLS = [
   sendMultichannelAlertTool,
   processRemoteSentinelCommandTool,
   auditPaymentProofOcrTool,
+  auditAndRiskAnalyticsTool,
 ];
 
 export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
@@ -100,12 +102,14 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     calculateDeltaNeutralHedgeTool,
     triggerKillswitchTool,
     addOperationEntryTool,
+    auditAndRiskAnalyticsTool,
   ],
   'p2p-aml-forensics': [
     screenWalletAddressTool,
     inspectTxTaintTool,
     checkCounterpartyBlacklistTool,
     registerBlacklistedEntityTool,
+    auditAndRiskAnalyticsTool,
   ],
   'p2p-multi-exchange': [
     getBinanceP2POrderbookTool,
@@ -196,5 +200,6 @@ export {
   sendMultichannelAlertTool,
   processRemoteSentinelCommandTool,
   auditPaymentProofOcrTool,
+  auditAndRiskAnalyticsTool,
 };
 

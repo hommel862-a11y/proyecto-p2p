@@ -72,6 +72,40 @@
     align-items: center;
     gap: 10px;
 
+    .voice-speaker-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 0.5px solid var(--line, rgba(255, 255, 255, 0.12));
+      color: var(--muted, #cbd5e1);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+      &.active {
+        background: rgba(48, 209, 88, 0.12);
+        border-color: rgba(48, 209, 88, 0.35);
+        color: #30d158;
+      }
+
+      &.speaking {
+        background: rgba(255, 214, 10, 0.18);
+        border-color: rgba(255, 214, 10, 0.5);
+        color: #ffd60a;
+        box-shadow: 0 0 12px rgba(255, 214, 10, 0.3);
+      }
+
+      &:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+      }
+    }
+
     .zen-toggle-btn {
       background: rgba(255, 255, 255, 0.05);
       border: 0.5px solid var(--line, rgba(255, 255, 255, 0.12));
@@ -700,13 +734,179 @@
     background: #0d0d12;
     border-top: 0.5px solid var(--line, rgba(255, 255, 255, 0.08));
 
+    .voice-listening-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      margin-bottom: 10px;
+      background: rgba(255, 69, 58, 0.08);
+      border: 0.5px solid rgba(255, 69, 58, 0.3);
+      border-radius: 12px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      animation: fadeUp 0.2s ease-out;
+
+      .voice-wave-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: #ffffff;
+
+        .voice-dot.red {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #ff453a;
+          box-shadow: 0 0 10px #ff453a;
+          animation: pulseDot 1s infinite alternate;
+        }
+
+        .voice-bar {
+          width: 3px;
+          background: var(--gold, #ffd60a);
+          border-radius: 3px;
+          animation: waveBar 0.7s infinite ease-in-out alternate;
+
+          &:nth-child(2) { height: 12px; animation-delay: 0.05s; }
+          &:nth-child(3) { height: 18px; animation-delay: 0.2s; }
+          &:nth-child(4) { height: 14px; animation-delay: 0.12s; }
+          &:nth-child(5) { height: 16px; animation-delay: 0.28s; }
+        }
+
+        .voice-wave-text {
+          margin-left: 4px;
+        }
+
+        .interim-text {
+          color: var(--gold, #ffd60a);
+          margin-left: 6px;
+          font-style: italic;
+        }
+
+        .hint-text {
+          color: var(--muted, rgba(235, 235, 245, 0.55));
+          margin-left: 6px;
+        }
+      }
+
+      .btn-cancel-voice {
+        background: rgba(255, 255, 255, 0.08);
+        border: 0.5px solid rgba(255, 255, 255, 0.15);
+        color: #ffffff;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover {
+          background: rgba(255, 69, 58, 0.25);
+          border-color: #ff453a;
+        }
+      }
+    }
+
+    .voice-error-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      margin-bottom: 8px;
+      background: rgba(255, 159, 10, 0.12);
+      border: 0.5px solid rgba(255, 159, 10, 0.35);
+      border-radius: 8px;
+      font-size: 0.76rem;
+      color: #ff9f0a;
+
+      .error-text {
+        flex: 1;
+      }
+
+      .btn-config-shortcut {
+        background: rgba(255, 159, 10, 0.2);
+        border: 0.5px solid rgba(255, 159, 10, 0.45);
+        color: #ffd60a;
+        padding: 3px 8px;
+        border-radius: 5px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s ease;
+
+        &:hover {
+          background: rgba(255, 159, 10, 0.35);
+          color: #ffffff;
+        }
+      }
+
+      .btn-close-banner {
+        background: transparent;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        font-size: 0.82rem;
+        opacity: 0.8;
+
+        &:hover { opacity: 1; }
+      }
+    }
+
     .input-form {
       display: flex;
+      align-items: center;
       gap: 8px;
       background: #14141a;
       border: 0.5px solid var(--line, rgba(255, 255, 255, 0.1));
       border-radius: 12px;
       padding: 4px 6px;
+
+      .btn-mic {
+        position: relative;
+        background: rgba(255, 255, 255, 0.05);
+        border: 0.5px solid var(--line, rgba(255, 255, 255, 0.12));
+        color: #ffffff;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        flex-shrink: 0;
+
+        .mic-icon {
+          font-size: 1.05rem;
+          z-index: 2;
+        }
+
+        &:hover:not(:disabled) {
+          background: rgba(255, 214, 10, 0.15);
+          border-color: rgba(255, 214, 10, 0.4);
+          color: var(--gold, #ffd60a);
+          transform: scale(1.04);
+        }
+
+        &.listening {
+          background: rgba(255, 69, 58, 0.22);
+          border-color: #ff453a;
+          color: #ffffff;
+          box-shadow: 0 0 16px rgba(255, 69, 58, 0.45);
+
+          .mic-wave-pulse {
+            position: absolute;
+            inset: -4px;
+            border-radius: 13px;
+            border: 1.5px solid #ff453a;
+            animation: micPulseRing 1.2s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+            pointer-events: none;
+          }
+        }
+      }
 
       input {
         flex: 1;
@@ -1585,4 +1785,41 @@
     border-left: 3px solid var(--danger, #ff453a);
   }
 }
+
+/* ============================================================
+   Voice & Speech Micro-Animations (Apple Pro Edition)
+   ============================================================ */
+@keyframes micPulseRing {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes waveBar {
+  0% {
+    transform: scaleY(0.4);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scaleY(1.3);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
 

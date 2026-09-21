@@ -314,11 +314,7 @@ export function simulateMcpTool(
       ...simulatedResult,
       spotUsdtPrice: spotPrice,
       parityDeviationPct: devPct,
-      status: isDepegged
-        ? spotPrice < 1.0
-          ? 'DEPEG_DISCOUNT'
-          : 'DEPEG_PREMIUM'
-        : 'PEGGED_NORMAL',
+      status: isDepegged ? (spotPrice < 1.0 ? 'DEPEG_DISCOUNT' : 'DEPEG_PREMIUM') : 'PEGGED_NORMAL',
       isDepegged,
       thresholdPct: threshold,
       arbitrageOpportunity: isDepegged,
@@ -804,9 +800,7 @@ export function simulateMcpTool(
       summary: 'Alerta enviada exitosamente por el canal configurado.',
     };
   } else if (toolName === 'process_remote_sentinel_command') {
-    const raw = String(
-      (args as any)?.rawText ?? 'Registra compra de 500 USDT a 41.50 en Banesco',
-    );
+    const raw = String((args as any)?.rawText ?? 'Registra compra de 500 USDT a 41.50 en Banesco');
     simulatedResult = {
       ...simulatedResult,
       commandType: 'LEDGER_TRANSACTION',

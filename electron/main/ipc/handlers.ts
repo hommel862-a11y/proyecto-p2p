@@ -383,6 +383,17 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:transcribe-audio');
+  ipcMain.handle(
+    'copilot:transcribe-audio',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { audioBase64: string; mimeType: string },
+    ) => {
+      return orchestrator.transcribeAudio(params);
+    },
+  );
+
   ipcMain.removeHandler('copilot:execute-plan');
   ipcMain.handle(
     'copilot:execute-plan',

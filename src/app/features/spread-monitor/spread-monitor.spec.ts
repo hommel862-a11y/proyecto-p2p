@@ -110,4 +110,14 @@ describe('SpreadMonitor', () => {
     expect(c.clampMoney(-1)).toBe(0);
     expect(c.clampMoney(820)).toBe(820);
   });
+
+  it('toggleMcpConsole expands and collapses the Apple Dynamic Island drawer', () => {
+    const f = create();
+    const c = f.componentInstance;
+    expect(c.mcpConsoleExpanded()).toBe(false);
+    c.toggleMcpConsole();
+    expect(c.mcpConsoleExpanded()).toBe(true);
+    c.toggleMcpConsole();
+    expect(c.mcpConsoleExpanded()).toBe(false);
+  });
 });

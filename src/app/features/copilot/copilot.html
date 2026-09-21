@@ -12,6 +12,15 @@
     <div class="header-right-controls">
       @if (activeTab() === 'chat') {
         <button 
+          class="voice-speaker-btn"
+          [class.active]="voiceService.ttsEnabled()"
+          [class.speaking]="voiceService.isSpeaking()"
+          (click)="voiceService.toggleTts()"
+          [title]="voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Estratega hablando... Clic para silenciar' : 'Voz del Estratega activada (TTS). Clic para silenciar') : 'Voz del Estratega silenciada. Clic para activar'">
+          <span class="voice-speaker-icon">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? '🔊' : '🔉') : '🔇' }}</span>
+          <span class="voice-speaker-label">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Hablando...' : 'Voz: ON') : 'Voz: OFF' }}</span>
+        </button>
+        <button 
           class="zen-toggle-btn" 
           [class.active]="!sidebarCollapsed()"
           (click)="toggleSidebar()"
@@ -243,6 +252,13 @@
                 <div class="text-block">
                   <strong>Resumen Ejecutivo</strong>
                   <small>Balance de sesión & directivas de mesa</small>
+                </div>
+              </button>
+              <button class="quick-action-row highlight-action" (click)="quickPrompt('forensic_audit')" [disabled]="isLoading()">
+                <span class="icon">🔍</span>
+                <div class="text-block">
+                  <strong>Auditoría Forense & Disciplina</strong>
+                  <small>Horarios de riesgo & Regla de Oro</small>
                 </div>
               </button>
               <button class="quick-action-row" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
@@ -487,10 +503,63 @@
 
         <!-- Input Bar -->
         <div class="input-container">
+          @if (voiceService.isListening()) {
+            <div class="voice-listening-bar">
+              <div class="voice-wave-container">
+                <span class="voice-dot red"></span>
+                <span class="voice-bar"></span>
+                <span class="voice-bar"></span>
+                <span class="voice-bar"></span>
+                <span class="voice-bar"></span>
+                <span class="voice-wave-text">
+                  @if (voiceService.isMediaRecording()) {
+                    🎙️ Grabando audio local ({{ voiceService.recordingSeconds() }}s)... Presioná ⏹ para procesar
+                  } @else {
+                    Escuchando por micrófono...
+                    @if (voiceService.interimTranscript()) {
+                      <strong class="interim-text">"{{ voiceService.interimTranscript() }}"</strong>
+                    } @else {
+                      <span class="hint-text">Hablá con naturalidad (ej: "Audita el spread en Banesco")</span>
+                    }
+                  }
+                </span>
+              </div>
+              <button type="button" class="btn-cancel-voice" (click)="voiceService.stopListening()" title="Detener grabación">
+                Detener ⏹
+              </button>
+            </div>
+          }
+
+          @if (voiceService.lastError()) {
+            <div class="voice-error-banner">
+              <span class="error-text">⚠️ {{ voiceService.lastError() }}</span>
+              @if (voiceService.lastError()?.includes('API Key')) {
+                <button type="button" class="btn-config-shortcut" (click)="activeTab.set('config'); voiceService.lastError.set(null)">
+                  ⚙ Configurar Key
+                </button>
+              }
+              <button type="button" class="btn-close-banner" (click)="voiceService.lastError.set(null)">✕</button>
+            </div>
+          }
+
           <form (ngSubmit)="sendPrompt()" class="input-form">
+            <button
+              type="button"
+              class="btn-mic"
+              [class.listening]="voiceService.isListening()"
+              (click)="toggleVoiceDictation()"
+              [title]="voiceService.isListening() ? 'Detener micrófono' : 'Dictar al Copiloto por voz (Micrófono)'"
+              [disabled]="isLoading()"
+            >
+              @if (voiceService.isListening()) {
+                <span class="mic-wave-pulse"></span>
+              }
+              <span class="mic-icon">{{ voiceService.isListening() ? '⏹' : '🎙️' }}</span>
+            </button>
+
             <input
               type="text"
-              placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos... (Enter para enviar)"
+              placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos... (o hacé clic en 🎙️ para dictar)"
               [ngModel]="inputPrompt()"
               (ngModelChange)="inputPrompt.set($event)"
               name="userPrompt"

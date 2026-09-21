@@ -8,6 +8,7 @@ import {
   evaluateAccountSaturationTool,
   dispatchOrderInstructionsTool,
   lookupCounterpartyReputationTool,
+  auditAndRiskAnalyticsTool,
 } from './index.js';
 
 describe('Institutional 10 MCP Servers Tool Suite', () => {
@@ -120,5 +121,23 @@ describe('Institutional 10 MCP Servers Tool Suite', () => {
     expect(blacklisted.isBlacklisted).toBe(true);
     expect(blacklisted.trustScore).toBeLessThan(50);
     expect(blacklisted.recommendation).toBe('ABORT_TRADE_REFUSE_COUNTERPARTY');
+  });
+
+  it('audit_and_risk_analytics executes forensic dossier evaluation', () => {
+    const res = auditAndRiskAnalyticsTool.execute({
+      timeframeDays: 7,
+      minSpreadThresholdPct: 0.50,
+      focusArea: 'ALL',
+      sampleEvents: [
+        { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'RISK_ALERT' },
+      ],
+      sampleOperations: [
+        { timestamp: '2026-09-19T10:00:00Z', netSpreadPct: 1.45, cryptoAmount: 1000 },
+      ],
+    });
+    expect(res.success).toBe(true);
+    expect(res.dossier.operatorStanding).toBe('DISCIPLINED');
+    expect(res.dossier.goldenRuleComplianceScore).toBe(100);
+    expect(res.dossier.disciplineAudit.compliantOperationsCount).toBe(1);
   });
 });

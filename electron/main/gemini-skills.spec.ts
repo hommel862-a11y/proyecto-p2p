@@ -56,6 +56,8 @@ const VENDORED_CORE_FILES = [
   'counterparty',
   'binance-earn-vault',
   'operations-workflow',
+  'webhooks',
+  'audit-analytics',
 ];
 
 function mkOffer(price: number, maxVes: number, advNo: string, merchantName = 'Mercante Test'): BinanceOfferSummary {
@@ -81,8 +83,8 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     clearFinancialSkillMarketData();
   });
 
-  it('registro público intacto: 43 skills y firma de dispatcher estable', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(43);
+  it('registro público intacto: 44 skills y firma de dispatcher estable', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(44);
     expect(executeFinancialSkill).toBeTypeOf('function');
   });
 
@@ -423,6 +425,26 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     );
     expect(sheetRes['rowValues']).toBeDefined();
     expect(sheetRes['calculatedGrossProfitUsdt']).toBeGreaterThan(0);
+  });
+
+  it('audit_and_risk_analytics formula dictamen forense y detecta distribución horaria y disciplina', () => {
+    const res = dataOf(
+      executeFinancialSkill('audit_and_risk_analytics', {
+        timeframeDays: 7,
+        minSpreadThresholdPct: 0.50,
+        sampleEvents: [
+          { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'SECURITY_ALERT' },
+        ],
+        sampleOperations: [
+          { timestamp: '2026-09-19T10:00:00Z', netSpreadPct: 1.25, cryptoAmount: 1000 },
+        ],
+      }),
+    );
+    expect(res['timeframeDays']).toBe(7);
+    const dossier = res['dossier'] as Record<string, unknown>;
+    expect(dossier).toBeDefined();
+    expect(dossier['operatorStanding']).toBe('DISCIPLINED');
+    expect(dossier['goldenRuleComplianceScore']).toBe(100);
   });
 
   it('integridad: los motores embebidos son byte-idénticos a projects/core/src/lib', () => {

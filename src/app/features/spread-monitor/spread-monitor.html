@@ -104,117 +104,197 @@
     </div>
   } @else {
     <!-- ═══════════════════════════════════════════════════
-         MCP INTELLIGENCE HUD (Centro de Comando & Telemetría)
+         MCP INTELLIGENCE SUITE — APPLE DYNAMIC ISLAND & HUD DRAWER
          ═══════════════════════════════════════════════════ -->
-    <div class="mcp-hud-console" role="region" aria-label="Centro de Comando MCP">
-      <div class="mcp-hud-top-bar">
-        <div class="mcp-hud-title">
-          <span class="hud-pulse-dot"></span>
-          <span class="hud-title-text">MCP INTELLIGENCE SUITE — TELEMETRÍA EN VIVO</span>
-        </div>
-        <div class="mcp-hud-meta">
-          <span class="mcp-badge-live font-mono">PROTOCOL V1.30</span>
-          @if (mcpLastSynced(); as dt) {
-            <span class="mcp-timestamp font-mono">Sync: {{ dt | date:'HH:mm:ss' }}</span>
-          }
-        </div>
-      </div>
-
-      <div class="mcp-hud-grid">
-        <!-- Widget 1: Centinela USDT Depeg -->
-        <div class="mcp-hud-card hud-depeg" [class.hud-alert]="mcpDepeg().isDepegged">
-          <div class="hud-card-header">
-            <span class="hud-card-label">USDT Parity Sentinel</span>
-            <span class="badge" [class.badge-danger]="mcpDepeg().isDepegged" [class.badge-success]="!mcpDepeg().isDepegged">
-              {{ mcpDepeg().isDepegged ? '⚠️ DEPEG' : 'PEGGED OK' }}
+    <div class="mcp-telemetry-wrapper" role="region" aria-label="Centro de Comando y Telemetría MCP">
+      <!-- Dynamic Island Compact Pill Bar -->
+      <div class="mcp-dynamic-island" [class.is-expanded]="mcpConsoleExpanded()">
+        <div
+          class="island-left"
+          (click)="toggleMcpConsole()"
+          role="button"
+          tabindex="0"
+          (keydown.enter)="toggleMcpConsole()"
+          [attr.aria-expanded]="mcpConsoleExpanded()"
+          title="Alternar vista detallada de tarjetas MCP"
+        >
+          <span class="island-pulse-dot"></span>
+          <span class="island-title font-mono">MCP LIVE</span>
+          <div class="island-metrics-capsule">
+            <span class="island-pill" [class.pill-danger]="mcpDepeg().isDepegged" [class.pill-success]="!mcpDepeg().isDepegged">
+              <span class="pill-icon">🛡️</span>
+              <span class="pill-val font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</span>
+              <span class="pill-badge font-mono">{{ mcpDepeg().isDepegged ? 'DEPEG' : 'OK' }}</span>
             </span>
-          </div>
-          <div class="hud-card-body">
-            <div class="hud-big-metric font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</div>
-            <div class="hud-sub-metric font-mono" [class.text-danger]="mcpDepeg().isDepegged" [class.text-muted]="!mcpDepeg().isDepegged">
-              Desvío: {{ mcpDepeg().parityDeviationPct > 0 ? '+' : '' }}{{ mcpDepeg().parityDeviationPct }}%
-            </div>
-          </div>
-        </div>
 
-        <!-- Widget 2: Presión del Libro de Órdenes -->
-        <div class="mcp-hud-card hud-pressure">
-          <div class="hud-card-header">
-            <span class="hud-card-label">Presión Libro Binance</span>
-            <span class="badge" [class.badge-accent]="mcpPressure().dominantSide === 'BUY_PRESSURE'" [class.badge-warning]="mcpPressure().dominantSide === 'SELL_PRESSURE'">
-              {{ mcpPressure().dominantSide === 'BUY_PRESSURE' ? '📈 Demanda' : mcpPressure().dominantSide === 'SELL_PRESSURE' ? '📉 Oferta' : '⚖️ Balance' }}
+            <span class="island-pill pill-accent">
+              <span class="pill-icon">📊</span>
+              <span class="pill-val font-mono">{{ (mcpPressure().orderbookImbalanceRatio * 100).toFixed(0) }}% Bids</span>
+              <span class="pill-badge">{{ mcpPressure().dominantSide === 'BUY_PRESSURE' ? 'Demanda' : mcpPressure().dominantSide === 'SELL_PRESSURE' ? 'Oferta' : 'Balance' }}</span>
             </span>
-          </div>
-          <div class="hud-card-body">
-            <div class="hud-big-metric font-mono">{{ (mcpPressure().orderbookImbalanceRatio * 100).toFixed(0) }}% Bids</div>
-            <div class="hud-progress-track">
-              <div class="hud-progress-fill" [style.width.%]="mcpPressure().orderbookImbalanceRatio * 100"></div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Widget 3: Precios Óptimos Top 1 -->
-        <div class="mcp-hud-card hud-pricing">
-          <div class="hud-card-header">
-            <span class="hud-card-label">Cotización Óptima Top 1</span>
             @if (mcpPricingRecommendation(); as rec) {
-              <span class="badge badge-gold font-mono">+{{ rec.marginVes | num }} Bs</span>
+              <span class="island-pill pill-gold">
+                <span class="pill-icon">⚡</span>
+                <span class="pill-label">Top 1:</span>
+                <span class="pill-val font-mono">+{{ rec.marginVes | num }} Bs</span>
+              </span>
             }
-          </div>
-          <div class="hud-card-body">
-            @if (mcpPricingRecommendation(); as rec) {
-              <div class="hud-pricing-row">
-                <div class="hud-price-col">
-                  <span class="price-type text-success font-mono">C: {{ rec.buySuggested }}</span>
-                  <button type="button" class="btn-micro" (click)="applyMcpPrice('BUY')" title="Fijar precio de compra sugerido por MCP">Aplicar C</button>
-                </div>
-                <div class="hud-price-col">
-                  <span class="price-type text-accent font-mono">V: {{ rec.sellSuggested }}</span>
-                  <button type="button" class="btn-micro" (click)="applyMcpPrice('SELL')" title="Fijar precio de venta sugerido por MCP">Aplicar V</button>
-                </div>
-              </div>
-            } @else {
-              <div class="hud-sub-metric text-muted">Sincronizando precios...</div>
-            }
-          </div>
-        </div>
 
-        <!-- Widget 4: Autofill Inteligente & Golden Spread -->
-        <div class="mcp-hud-card hud-autofill">
-          <div class="hud-card-header">
-            <span class="hud-card-label">Autofill Margen & Golden Rule</span>
             @if (mcpSpreadVerdict(); as v) {
-              <span class="badge font-mono" [class.badge-gold]="v.isGoldenSpread" [class.badge-secondary]="!v.isGoldenSpread">
-                {{ v.isGoldenSpread ? '⭐ GOLDEN' : 'ESTÁNDAR' }}
+              <span class="island-pill" [class.pill-gold]="v.isGoldenSpread" [class.pill-secondary]="!v.isGoldenSpread">
+                <span class="pill-icon">⭐</span>
+                <span class="pill-label font-mono">{{ v.isGoldenSpread ? 'GOLDEN' : 'ESTÁNDAR' }}</span>
               </span>
             }
           </div>
-          <div class="hud-card-body">
-            <div class="hud-autofill-actions">
-              <div class="margin-chips">
-                @for (m of [1.0, 1.2, 1.5, 2.0]; track m) {
-                  <button
-                    type="button"
-                    class="margin-chip"
-                    [class.active]="selectedAutofillMargin() === m"
-                    (click)="selectedAutofillMargin.set(m)"
-                  >
-                    {{ m }}%
-                  </button>
+        </div>
+
+        <div class="island-right">
+          @if (mcpLastSynced(); as dt) {
+            <span class="island-timestamp font-mono">{{ dt | date:'HH:mm:ss' }}</span>
+          }
+          <button
+            type="button"
+            class="btn-island-sync"
+            [class.loading]="mcpSyncing()"
+            (click)="syncMcpIntelligence()"
+            title="Sincronizar Inteligencia MCP"
+          >
+            <span class="sync-icon" [class.spin]="mcpSyncing()">🔄</span>
+          </button>
+          <button
+            type="button"
+            class="btn-island-toggle"
+            (click)="toggleMcpConsole()"
+            [attr.aria-expanded]="mcpConsoleExpanded()"
+            [title]="mcpConsoleExpanded() ? 'Ocultar tarjetas MCP' : 'Expandir tarjetas MCP completas'"
+          >
+            <span class="toggle-text">{{ mcpConsoleExpanded() ? 'Ocultar' : 'Detalle MCP' }}</span>
+            <span class="toggle-chevron" [class.chevron-up]="mcpConsoleExpanded()">▾</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Detailed Grid Drawer -->
+      @if (mcpConsoleExpanded()) {
+        <div class="mcp-hud-drawer">
+          <div class="mcp-hud-grid">
+            <!-- Widget 1: Centinela USDT Depeg -->
+            <div class="mcp-hud-card hud-depeg" [class.hud-alert]="mcpDepeg().isDepegged">
+              <div class="hud-card-header">
+                <div class="hud-header-left">
+                  <span class="hud-card-icon">🛡️</span>
+                  <span class="hud-card-label">USDT Parity Sentinel</span>
+                </div>
+                <span class="badge" [class.badge-danger]="mcpDepeg().isDepegged" [class.badge-success]="!mcpDepeg().isDepegged">
+                  {{ mcpDepeg().isDepegged ? '⚠️ DEPEG' : 'PEGGED OK' }}
+                </span>
+              </div>
+              <div class="hud-card-body">
+                <div class="hud-big-metric font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</div>
+                <div class="hud-sub-metric font-mono" [class.text-danger]="mcpDepeg().isDepegged" [class.text-muted]="!mcpDepeg().isDepegged">
+                  Desvío: {{ mcpDepeg().parityDeviationPct > 0 ? '+' : '' }}{{ mcpDepeg().parityDeviationPct }}%
+                  <span class="hud-tag font-mono">{{ mcpDepeg().riskSeverity }} RISK</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Widget 2: Presión del Libro de Órdenes -->
+            <div class="mcp-hud-card hud-pressure">
+              <div class="hud-card-header">
+                <div class="hud-header-left">
+                  <span class="hud-card-icon">📊</span>
+                  <span class="hud-card-label">Presión Libro Binance</span>
+                </div>
+                <span class="badge" [class.badge-accent]="mcpPressure().dominantSide === 'BUY_PRESSURE'" [class.badge-warning]="mcpPressure().dominantSide === 'SELL_PRESSURE'">
+                  {{ mcpPressure().dominantSide === 'BUY_PRESSURE' ? '📈 Demanda' : mcpPressure().dominantSide === 'SELL_PRESSURE' ? '📉 Oferta' : '⚖️ Balance' }}
+                </span>
+              </div>
+              <div class="hud-card-body">
+                <div class="hud-pressure-row">
+                  <span class="hud-big-metric font-mono">{{ (mcpPressure().orderbookImbalanceRatio * 100).toFixed(0) }}% Bids</span>
+                  <span class="hud-pressure-asks font-mono">{{ (100 - (mcpPressure().orderbookImbalanceRatio * 100)).toFixed(0) }}% Asks</span>
+                </div>
+                <div class="hud-progress-track" role="progressbar" [attr.aria-valuenow]="(mcpPressure().orderbookImbalanceRatio * 100).toFixed(0)" aria-valuemin="0" aria-valuemax="100">
+                  <div class="hud-progress-fill" [style.width.%]="mcpPressure().orderbookImbalanceRatio * 100"></div>
+                </div>
+                <div class="hud-sub-metric text-muted font-mono">
+                  Régimen: {{ mcpPressure().marketRegime }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Widget 3: Precios Óptimos Top 1 -->
+            <div class="mcp-hud-card hud-pricing">
+              <div class="hud-card-header">
+                <div class="hud-header-left">
+                  <span class="hud-card-icon">⚡</span>
+                  <span class="hud-card-label">Cotización Óptima Top 1</span>
+                </div>
+                @if (mcpPricingRecommendation(); as rec) {
+                  <span class="badge badge-gold font-mono">+{{ rec.marginVes | num }} Bs</span>
                 }
               </div>
-              <div class="autofill-btn-row">
-                <button type="button" class="btn-mcp-autofill" (click)="applyAutofillMargined('BUY', selectedAutofillMargin())" title="Autocompletar precio de compra">
-                  🎯 Cargar C
-                </button>
-                <button type="button" class="btn-mcp-autofill" (click)="applyAutofillMargined('SELL', selectedAutofillMargin())" title="Autocompletar precio de venta">
-                  🎯 Cargar V
-                </button>
+              <div class="hud-card-body">
+                @if (mcpPricingRecommendation(); as rec) {
+                  <div class="hud-pricing-row">
+                    <div class="hud-price-col">
+                      <span class="price-type text-success font-mono">C: {{ rec.buySuggested }}</span>
+                      <button type="button" class="btn-micro btn-micro-buy" (click)="applyMcpPrice('BUY')" title="Fijar precio de compra sugerido por MCP">Aplicar C</button>
+                    </div>
+                    <div class="hud-price-col">
+                      <span class="price-type text-accent font-mono">V: {{ rec.sellSuggested }}</span>
+                      <button type="button" class="btn-micro btn-micro-sell" (click)="applyMcpPrice('SELL')" title="Fijar precio de venta sugerido por MCP">Aplicar V</button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="hud-sub-metric text-muted">Sincronizando precios óptimos...</div>
+                }
+              </div>
+            </div>
+
+            <!-- Widget 4: Autofill Inteligente & Golden Spread -->
+            <div class="mcp-hud-card hud-autofill">
+              <div class="hud-card-header">
+                <div class="hud-header-left">
+                  <span class="hud-card-icon">🎯</span>
+                  <span class="hud-card-label">Autofill & Golden Rule</span>
+                </div>
+                @if (mcpSpreadVerdict(); as v) {
+                  <span class="badge font-mono" [class.badge-gold]="v.isGoldenSpread" [class.badge-secondary]="!v.isGoldenSpread">
+                    {{ v.isGoldenSpread ? '⭐ GOLDEN' : 'ESTÁNDAR' }}
+                  </span>
+                }
+              </div>
+              <div class="hud-card-body">
+                <div class="hud-autofill-actions">
+                  <div class="margin-chips">
+                    @for (m of [1.0, 1.2, 1.5, 2.0]; track m) {
+                      <button
+                        type="button"
+                        class="margin-chip"
+                        [class.active]="selectedAutofillMargin() === m"
+                        (click)="selectedAutofillMargin.set(m)"
+                      >
+                        {{ m }}%
+                      </button>
+                    }
+                  </div>
+                  <div class="autofill-btn-row">
+                    <button type="button" class="btn-mcp-autofill btn-autofill-buy" (click)="applyAutofillMargined('BUY', selectedAutofillMargin())" title="Autocompletar precio de compra">
+                      🎯 Cargar C
+                    </button>
+                    <button type="button" class="btn-mcp-autofill btn-autofill-sell" (click)="applyAutofillMargined('SELL', selectedAutofillMargin())" title="Autocompletar precio de venta">
+                      🎯 Cargar V
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      }
     </div>
 
     <div class="trading-desk-layout">

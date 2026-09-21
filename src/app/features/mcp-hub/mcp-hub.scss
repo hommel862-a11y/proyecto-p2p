@@ -119,49 +119,58 @@
   }
 }
 
-/* Tabs */
+/* Tabs — Apple macOS Pill Capsule */
 .hub-nav {
   display: flex;
-  gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 2px;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px;
   overflow-x: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 
   .tab-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 16px;
-    color: #94a3b8;
-    font-size: 0.9rem;
+    border: 1px solid transparent;
+    padding: 7px 16px;
+    color: var(--muted, #94a3b8);
+    font-size: 0.82rem;
     font-weight: 600;
+    border-radius: 999px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     white-space: nowrap;
 
     .tab-count {
       background: rgba(255, 255, 255, 0.08);
-      font-size: 0.75rem;
-      padding: 2px 7px;
-      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      padding: 1px 7px;
+      border-radius: 999px;
       color: #cbd5e1;
     }
 
-    &:hover {
-      color: #e2e8f0;
-      background: rgba(255, 255, 255, 0.03);
+    &:hover:not(.active) {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.06);
     }
 
     &.active {
-      color: #d8b45c;
-      border-bottom-color: #d8b45c;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      font-weight: 700;
 
       .tab-count {
-        background: rgba(216, 180, 92, 0.25);
-        color: #f5e6bd;
+        background: rgba(255, 214, 10, 0.2);
+        color: var(--gold, #ffd60a);
       }
     }
   }

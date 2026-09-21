@@ -67,4 +67,19 @@ describe('Copilot', () => {
       expect.stringContaining('¿Cuál es el riesgo actual de intervención del BCV'),
     );
   });
+
+  it('should toggle voice dictation through voiceService', async () => {
+    const startSpy = vi
+      .spyOn(component.voiceService, 'startMediaRecording')
+      .mockResolvedValue(true);
+    const stopSpy = vi.spyOn(component.voiceService, 'stopListening');
+
+    await component.toggleVoiceDictation();
+    expect(startSpy).toHaveBeenCalled();
+
+    // Mock listening state
+    (component.voiceService.isListening as unknown as { set: (v: boolean) => void }).set(true);
+    await component.toggleVoiceDictation();
+    expect(stopSpy).toHaveBeenCalled();
+  });
 });

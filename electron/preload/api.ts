@@ -46,6 +46,8 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
     },
     copilot: {
       sendMessage: (params) => ipc('copilot:send-message', params) as Promise<any>,
+      transcribeAudio: (params: { audioBase64: string; mimeType: string }) =>
+        ipc('copilot:transcribe-audio', params) as Promise<{ text: string; error?: string }>,
       executePlan: (params) => ipc('copilot:execute-plan', params) as Promise<any>,
       getPlans: (params) => ipc('copilot:get-plans', params) as Promise<any>,
       getLearnings: (params) => ipc('copilot:get-learnings', params) as Promise<any>,
@@ -110,6 +112,7 @@ export const ALLOWED_CHANNELS = [
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',
   'copilot:send-message',
+  'copilot:transcribe-audio',
   'copilot:execute-plan',
   'copilot:get-plans',
   'copilot:get-learnings',

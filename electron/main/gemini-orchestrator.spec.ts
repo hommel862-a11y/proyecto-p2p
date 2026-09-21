@@ -100,4 +100,38 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     const observations = orchestrator.getEngramObservations();
     expect(Array.isArray(observations)).toBe(true);
   });
+
+  it('interroga el historial forense y diagnostica disciplina de spread y horarios de riesgo', async () => {
+    dbService.recordAuditLog({
+      id: 'LOG-TEST-1',
+      timestamp: '2026-09-19T11:30:00Z',
+      category: 'SECURITY_ALERT',
+      action: 'PAYMENT_MISMATCH',
+      details: 'Discrepancia en comprobante',
+      severity: 'error',
+      createdAt: Date.now(),
+    });
+    dbService.saveOperationRecord({
+      id: 'OP-TEST-1',
+      timestamp: '2026-09-19T10:00:00Z',
+      side: 'SELL',
+      fiatAmount: 85000,
+      cryptoAmount: 1000,
+      price: 85.0,
+      bank: 'Banesco',
+      status: 'COMPLETED',
+      rawJson: JSON.stringify({ netSpreadPct: 1.25 }),
+      createdAt: Date.now(),
+    });
+
+    const prompt = '¿En qué horarios tuve más alertas de riesgo esta semana y respeté el spread mínimo?';
+    const response = await orchestrator.sendMessage({ prompt });
+
+    expect(response.reply).toContain('Auditoría Forense del Libro Mayor');
+    expect(response.reply).toContain('Distribución Horaria de Riesgo & Alertas');
+    expect(response.reply).toContain('Disciplina Operativa & Regla de Oro');
+    expect(response.suggestedPlan).toBeDefined();
+    expect(response.suggestedPlan?.title).toContain('Plan de Mitigación Forense');
+    expect(response.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.50);
+  });
 });

@@ -1,14 +1,9 @@
 import { Injectable, signal, computed } from '@angular/core';
-import type {
-  McpStatusDto,
-  McpServerRuntimeInfo,
-  McpAuditLogDto,
-} from '../../../electron/shared/types';
+import type { McpStatusDto, McpAuditLogDto } from '../../../electron/shared/types';
 import { FALLBACK_MCP_SERVERS } from './mcp/mcp-catalog';
 import { simulateMcpTool } from './mcp/mcp-fallbacks';
 
 export { FALLBACK_MCP_SERVERS };
-
 
 @Injectable({
   providedIn: 'root',
