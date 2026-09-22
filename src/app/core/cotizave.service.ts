@@ -68,15 +68,7 @@ export class CotizaveService implements OnDestroy {
       if (electronWin?.electron?.fetchCotizave) {
         data = await electronWin.electron.fetchCotizave({ apiKey: key, endpoint });
       } else {
-        const url = `https://api.cotizave.com/v1/fx/${endpoint}`;
-        const resp = await fetch(url, {
-          method: 'GET',
-          headers: buildCotizaveHeaders(key),
-        });
-        if (!resp.ok) {
-          throw new Error(`Cotizave HTTP Error ${resp.status}`);
-        }
-        data = await resp.json();
+        data = await this.fetchRatesFromBrowser(endpoint, key);
       }
 
       const rates = normalizeCotizaveRates(data);
@@ -86,7 +78,7 @@ export class CotizaveService implements OnDestroy {
       const msg = (err as Error).message || 'No se pudo conectar con Cotizave';
       if (msg.includes('Failed to fetch') || msg.includes('CORS') || msg.includes('NetworkError')) {
         this.error.set(
-          'Error de red/CORS. En navegador, usa la aplicación de escritorio (Electron) para Cotizave.',
+          'Error de red/CORS al conectar con Cotizave. Abrí la app de escritorio (P2P Decision Tool) para que el navegador use su puente local de cotizaciones, o verificá tu conexión.',
         );
       } else {
         this.error.set(msg);
@@ -114,5 +106,40 @@ export class CotizaveService implements OnDestroy {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
+  }
+
+  /**
+   * Camino navegador: primero intenta la API directa de Cotizave. Si el
+   * navegador la bloquea (CORS/red, típicamente `Failed to fetch`), reintenta a
+   * través del puente local que la app de escritorio expone en
+   * http://127.0.0.1:51857/api/cotizave/:endpoint.
+   */
+  private async fetchRatesFromBrowser(endpoint: 'rates', key: string): Promise<unknown> {
+    const url = `https://api.cotizave.com/v1/fx/${endpoint}`;
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: 'GET',
+        headers: buildCotizaveHeaders(key),
+      });
+    } catch {
+      return await this.fetchRatesViaLocalBridge(endpoint, key);
+    }
+    if (!resp.ok) {
+      throw new Error(`Cotizave HTTP Error ${resp.status}`);
+    }
+    return await resp.json();
+  }
+
+  private async fetchRatesViaLocalBridge(endpoint: 'rates', key: string): Promise<unknown> {
+    const bridgeUrl = `http://127.0.0.1:51857/api/cotizave/${endpoint}`;
+    const bridgeResp = await fetch(bridgeUrl, {
+      method: 'GET',
+      headers: { 'x-api-key': key, Accept: 'application/json' },
+    });
+    if (!bridgeResp.ok) {
+      throw new Error(`Cotizave bridge HTTP Error ${bridgeResp.status}`);
+    }
+    return await bridgeResp.json();
   }
 }

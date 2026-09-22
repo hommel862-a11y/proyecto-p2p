@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from 'electron';
+import { app, BrowserWindow, globalShortcut, net } from 'electron';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -40,8 +40,103 @@ const MIME: Record<string, string> = {
  */
 function startStaticServer(): Promise<number> {
   const root = path.resolve(__dirname, '../../../dist/p2p/browser');
+
+  // Puente CORS de Cotizave: la build de navegador (localhost:4200) llama a
+  // /api/cotizave/rates en este servidor cuando su fetch directo a
+  // api.cotizave.com es bloqueado por CORS. El puente hace de proxy a través de
+  // net.fetch de Electron (CORS no aplica dentro de la app de escritorio) y
+  // refleja el origen del navegador solo si es uno de los orígenes propios de
+  // la app (sin `*`).
+  const COTIZAVE_BRIDGE_PREFIX = '/api/cotizave/';
+  const COTIZAVE_ALLOWED_ORIGINS = new Set([
+    'http://localhost:4200',
+    'http://127.0.0.1:4200',
+    'http://localhost:51857',
+    'http://127.0.0.1:51857',
+  ]);
+
+  function applyCotizaveCors(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const origin = req.headers.origin;
+    if (origin && COTIZAVE_ALLOWED_ORIGINS.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Headers', 'x-api-key, accept, content-type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Max-Age', '600');
+    }
+  }
+
+  function writeCotizaveJson(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    status: number,
+    body: unknown,
+  ): void {
+    applyCotizaveCors(req, res);
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  }
+
+  async function handleCotizaveBridge(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: string,
+  ): Promise<void> {
+    if (req.method === 'OPTIONS') {
+      applyCotizaveCors(req, res);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (req.method !== 'GET') {
+      writeCotizaveJson(req, res, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (endpoint !== 'rates') {
+      writeCotizaveJson(req, res, 404, { error: 'Unknown endpoint' });
+      return;
+    }
+    const rawKey = req.headers['x-api-key'];
+    const apiKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
+    if (!apiKey || apiKey.trim().length === 0) {
+      writeCotizaveJson(req, res, 400, { error: 'Cotizave API key is required' });
+      return;
+    }
+    try {
+      const response = await net.fetch(`https://api.cotizave.com/v1/fx/${endpoint}`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          'X-API-Key': apiKey,
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        writeCotizaveJson(req, res, response.status, {
+          error: `Cotizave HTTP Error ${response.status}`,
+        });
+        return;
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        writeCotizaveJson(req, res, 502, { error: 'Cotizave returned non-JSON response' });
+        return;
+      }
+      const data = await response.json();
+      writeCotizaveJson(req, res, 200, data);
+    } catch {
+      writeCotizaveJson(req, res, 502, { error: 'Servidor Cotizave no accesible' });
+    }
+  }
+
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+
+    if (urlPath.startsWith(COTIZAVE_BRIDGE_PREFIX)) {
+      const endpoint = decodeURIComponent(urlPath.slice(COTIZAVE_BRIDGE_PREFIX.length));
+      void handleCotizaveBridge(req, res, endpoint);
+      return;
+    }
+
     const filePath = path.resolve(root, urlPath.replace(/^[/\\]+/, '') || 'index.html');
     if (!filePath.startsWith(root)) {
       res.writeHead(403);
