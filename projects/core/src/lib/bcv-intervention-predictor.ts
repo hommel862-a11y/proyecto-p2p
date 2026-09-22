@@ -17,11 +17,7 @@ export type InterventionPhase =
   | 'QUIET_ACCUMULATION';
 
 export type TreasuryAction =
-  | 'ACCUMULATE_VES_HIGH'
-  | 'BUY_USDT_DIP'
-  | 'HOLD_USDT'
-  | 'AGGRESSIVE_CYCLE_VES'
-  | 'DEFENSIVE_HEDGE';
+  'ACCUMULATE_VES_HIGH' | 'BUY_USDT_DIP' | 'HOLD_USDT' | 'AGGRESSIVE_CYCLE_VES' | 'DEFENSIVE_HEDGE';
 
 export interface BcvGapAnalysis {
   parallelRate: number;
@@ -80,16 +76,19 @@ export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAn
 
   if (gapPct < 10) {
     zone = 'COMPRESSED';
-    description = 'Brecha comprimida (<10%). Fuerte control cambiario o post-inyección masiva de divisas.';
+    description =
+      'Brecha comprimida (<10%). Fuerte control cambiario o post-inyección masiva de divisas.';
   } else if (gapPct <= 25) {
     zone = 'NORMAL';
     description = 'Brecha dentro del rango estructural histórico (10% - 25%). Operativa estándar.';
   } else if (gapPct <= 35) {
     zone = 'ELEVATED';
-    description = 'Brecha elevada (25% - 35%). Alta presión en paralelo; alta probabilidad de inyección BCV correctiva.';
+    description =
+      'Brecha elevada (25% - 35%). Alta presión en paralelo; alta probabilidad de inyección BCV correctiva.';
   } else {
     zone = 'CRITICAL_DISPERSION';
-    description = 'Dispersión crítica (>35%). Riesgo cambiario severo; inminente ajuste de tasa oficial o intervención urgente.';
+    description =
+      'Dispersión crítica (>35%). Riesgo cambiario severo; inminente ajuste de tasa oficial o intervención urgente.';
   }
 
   return {
@@ -105,7 +104,11 @@ export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAn
 /**
  * Convierte una fecha UTC a hora oficial de Venezuela (VET: UTC-4 estricto, sin horario de verano).
  */
-export function getVenezuelaTimeParts(date: Date = new Date()): { day: number; hour: number; minute: number } {
+export function getVenezuelaTimeParts(date: Date = new Date()): {
+  day: number;
+  hour: number;
+  minute: number;
+} {
   // Offset UTC-4 en milisegundos = -4 * 3600 * 1000
   const utc = date.getTime() + date.getTimezoneOffset() * 60000;
   const vetDate = new Date(utc - 4 * 3600000);
@@ -127,10 +130,10 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
   // Horario bancario de colocación: 9:00 AM - 1:00 PM VET (09:00 a 13:00)
 
   let phase: InterventionPhase;
-  let probabilityPct = 50;
-  let nextExpectedIntervention = 'Próximo Lunes 09:30 AM VET';
-  let hoursUntilIntervention = 0;
-  let rationale = '';
+  let probabilityPct: number;
+  let nextExpectedIntervention: string;
+  let hoursUntilIntervention: number;
+  let rationale: string;
 
   const isInterventionDay = day === 1 || day === 4;
 
@@ -140,24 +143,33 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
     nextExpectedIntervention = 'En curso actualmente';
     hoursUntilIntervention = 0;
     rationale = `Inyección de divisas en curso en la banca comercial (${day === 1 ? 'Lunes principal' : 'Jueves de refuerzo'}). Se registra contención artificial del paralelo.`;
-  } else if ((day === 0 && hour >= 16) || (day === 1 && hour < 9) || (day === 3 && hour >= 18) || (day === 4 && hour < 9)) {
+  } else if (
+    (day === 0 && hour >= 16) ||
+    (day === 1 && hour < 9) ||
+    (day === 3 && hour >= 18) ||
+    (day === 4 && hour < 9)
+  ) {
     phase = 'PRE_INTERVENTION_COMPRESSION';
     probabilityPct = 80;
-    nextExpectedIntervention = day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
+    nextExpectedIntervention =
+      day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
     hoursUntilIntervention = day === 1 || day === 4 ? Math.max(1, 9 - hour) : 12;
-    rationale = 'Ventana pre-intervención. Expectativa de inyección de divisas en las próximas horas.';
+    rationale =
+      'Ventana pre-intervención. Expectativa de inyección de divisas en las próximas horas.';
   } else if ((isInterventionDay && hour > 13) || day === 2 || day === 5) {
     phase = 'POST_INTERVENTION_REBOUND';
     probabilityPct = 75;
     nextExpectedIntervention = day <= 2 ? 'Jueves 09:30 AM VET' : 'Próximo Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 2 ? 40 : day === 5 ? 65 : 20;
-    rationale = 'Ventana post-intervención. Los dólares de la subasta son absorbidos rápidamente y el spread suele rebotar al alza en 24-48h.';
+    rationale =
+      'Ventana post-intervención. Los dólares de la subasta son absorbidos rápidamente y el spread suele rebotar al alza en 24-48h.';
   } else {
     phase = 'QUIET_ACCUMULATION';
     probabilityPct = 40;
     nextExpectedIntervention = day === 3 ? 'Jueves 09:30 AM VET' : 'Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 3 ? 18 : 36;
-    rationale = 'Mercado fuera de subastas bancarias. Cotizaciones del paralelo operan por oferta y demanda pura de la calle.';
+    rationale =
+      'Mercado fuera de subastas bancarias. Cotizaciones del paralelo operan por oferta y demanda pura de la calle.';
   }
 
   return {
@@ -191,7 +203,10 @@ export function recommendBcvTreasuryAction(
   }
 
   // Pre-Intervención con brecha elevada
-  if (window.phase === 'PRE_INTERVENTION_COMPRESSION' && (gap.zone === 'ELEVATED' || gap.gapPct >= 22)) {
+  if (
+    window.phase === 'PRE_INTERVENTION_COMPRESSION' &&
+    (gap.zone === 'ELEVATED' || gap.gapPct >= 22)
+  ) {
     return {
       action: 'ACCUMULATE_VES_HIGH',
       confidencePct: 88,
@@ -268,7 +283,7 @@ export interface CentralBankLiquidityDrainResult {
 export function forecastCentralBankLiquidityDrain(
   input: CentralBankLiquidityDrainInput,
 ): CentralBankLiquidityDrainResult {
-  const { dayOfMonth, dayOfWeek, estimatedSeniatCollectionActive, weeklyBcvInjectionMillionsUsd } = input;
+  const { dayOfMonth, estimatedSeniatCollectionActive, weeklyBcvInjectionMillionsUsd } = input;
 
   // Drenaje máximo: Quincenas fiscales (15, 30/31) y días de subasta bancaria (Lunes/Jueves) con inyección > 50M
   const isTaxDrainWindow = estimatedSeniatCollectionActive || dayOfMonth === 15 || dayOfMonth >= 28;
@@ -279,7 +294,8 @@ export function forecastCentralBankLiquidityDrain(
       interbankLiquidityLevel: 'TIGHT_LIQUIDITY_DRAIN',
       p2pDemandImpact: 'COMPRESSED_BUY_PRESSURE',
       projectedParallelTrend48h: 'SIDEWAYS_DIP',
-      strategicGuidance: 'Drenaje agresivo de liquidez en bolívares por recaudación tributaria (SENIAT) + subasta BCV masiva. La demanda de USDT se enfriará temporalmente. Evitar comprar en puntas máximas; esperar retroceso.',
+      strategicGuidance:
+        'Drenaje agresivo de liquidez en bolívares por recaudación tributaria (SENIAT) + subasta BCV masiva. La demanda de USDT se enfriará temporalmente. Evitar comprar en puntas máximas; esperar retroceso.',
     };
   }
 
@@ -288,7 +304,8 @@ export function forecastCentralBankLiquidityDrain(
       interbankLiquidityLevel: 'SURPLUS_BOLIVARES',
       p2pDemandImpact: 'HIGH_INFLATION_SURGE',
       projectedParallelTrend48h: 'BULLISH_BREAKOUT',
-      strategicGuidance: 'Exceso de liquidez en cuenta corriente interbancaria con baja intervención del BCV. Aceleración inminente del tipo de cambio paralelo. Mantener inventario en USDT y no retrasar ventas.',
+      strategicGuidance:
+        'Exceso de liquidez en cuenta corriente interbancaria con baja intervención del BCV. Aceleración inminente del tipo de cambio paralelo. Mantener inventario en USDT y no retrasar ventas.',
     };
   }
 
@@ -296,7 +313,8 @@ export function forecastCentralBankLiquidityDrain(
     interbankLiquidityLevel: 'MODERATE',
     p2pDemandImpact: 'BALANCED_TURNOVER',
     projectedParallelTrend48h: 'STABLE_EXPANSION',
-    strategicGuidance: 'Condiciones de liquidez equilibradas. Rotación continua con spread regular.',
+    strategicGuidance:
+      'Condiciones de liquidez equilibradas. Rotación continua con spread regular.',
   };
 }
 
@@ -320,11 +338,11 @@ export interface FiatDollarizationVelocityResult {
 export function monitorFiatFlightAndDollarizationVelocity(
   input: FiatDollarizationVelocityInput,
 ): FiatDollarizationVelocityResult {
-  const { averageVesHoldingMinutes, merchantUsdtAcceptancePct, monthlyInflationEstimatePct } = input;
+  const { averageVesHoldingMinutes, monthlyInflationEstimatePct } = input;
 
   // Cuanto menor es el tiempo de retención y mayor la inflación, mayor es la velocidad de repudio
   const holdingRatio = Math.max(1, averageVesHoldingMinutes) / 60; // en horas
-  const velocityRaw = (monthlyInflationEstimatePct / 10) / Math.max(0.2, holdingRatio);
+  const velocityRaw = monthlyInflationEstimatePct / 10 / Math.max(0.2, holdingRatio);
   const moneyVelocityIndex = Math.round(velocityRaw * 100) / 100;
 
   let flightRegime: FiatDollarizationVelocityResult['flightRegime'] = 'ORDERLY_DOLLARIZATION';
@@ -342,9 +360,10 @@ export function monitorFiatFlightAndDollarizationVelocity(
     moneyVelocityIndex,
     flightRegime,
     expectedHoldingTimeSafetyThresholdMinutes: safetyMinutes,
-    recommendation: flightRegime === 'HYPER_VELOCITY_REPUDIATION'
-      ? `HUIDA AGUDA DE MONEDA: Los saldos en VES no deben mantenerse más de ${safetyMinutes} minutos ociosos. Salir a USDT inmediatamente.`
-      : `Dolarización transaccional activa. Umbral máximo de tenencia segura en bolívares: ${safetyMinutes} minutos.`,
+    recommendation:
+      flightRegime === 'HYPER_VELOCITY_REPUDIATION'
+        ? `HUIDA AGUDA DE MONEDA: Los saldos en VES no deben mantenerse más de ${safetyMinutes} minutos ociosos. Salir a USDT inmediatamente.`
+        : `Dolarización transaccional activa. Umbral máximo de tenencia segura en bolívares: ${safetyMinutes} minutos.`,
   };
 }
 
@@ -376,7 +395,13 @@ export interface NashRepricingResult {
  * para evitar guerras destructivas de precios (undercutting wars) maximizando el spread conjunto.
  */
 export function simulateGameTheoryNashRepricing(input: NashRepricingInput): NashRepricingResult {
-  const { myCurrentPrice, targetSide, topCompetitors, minimumSpreadAllowedPct, stepVes = 0.01 } = input;
+  const {
+    myCurrentPrice,
+    targetSide,
+    topCompetitors,
+    minimumSpreadAllowedPct,
+    stepVes = 0.01,
+  } = input;
 
   if (!topCompetitors || topCompetitors.length === 0) {
     return {
@@ -384,14 +409,15 @@ export function simulateGameTheoryNashRepricing(input: NashRepricingInput): Nash
       expectedCompetitorResponse: 'WILL_COOPERATE_STEP',
       payoffNetSpreadPct: 1.2,
       nashEquilibriumStatus: 'STABLE_NASH_EQUILIBRIUM',
-      strategicDirective: 'Libro despejado sin competencia directa en punta. Mantener margen máximo.',
+      strategicDirective:
+        'Libro despejado sin competencia directa en punta. Mantener margen máximo.',
     };
   }
 
   const bestCompetitor = topCompetitors[0];
   const priceDistance = Math.abs(myCurrentPrice - bestCompetitor.price);
 
-  let suggestedNashPrice = myCurrentPrice;
+  let suggestedNashPrice: number;
   let expectedResponse: NashRepricingResult['expectedCompetitorResponse'] = 'WILL_COOPERATE_STEP';
   let equilibriumStatus: NashRepricingResult['nashEquilibriumStatus'] = 'STABLE_NASH_EQUILIBRIUM';
 
@@ -420,4 +446,3 @@ export function simulateGameTheoryNashRepricing(input: NashRepricingInput): Nash
     strategicDirective: `Equilibrio de Nash: Fijar cotización a ${suggestedNashPrice} VES (+${stepVes} vs ${bestCompetitor.merchantName}). Evita subcotización agresiva que destruiría el margen de ambos.`,
   };
 }
-

@@ -15,7 +15,7 @@ export interface BinanceP2pRawAd {
   surplusAmount?: string | number;
   minSingleTransAmount?: string | number;
   maxSingleTransAmount?: string | number;
-  tradeMethods?: Array<{ identifier?: string; tradeMethodName?: string }>;
+  tradeMethods?: { identifier?: string; tradeMethodName?: string }[];
 }
 
 export interface BinanceP2pRawAdvertiser {
@@ -152,7 +152,12 @@ export function filterOffersByPayMethod(
   }
   const norm = methodName.toLowerCase().replace(/[^a-z0-9]/g, '');
   return offers.filter((o) =>
-    o.payMethods.some((pm) => pm.toLowerCase().replace(/[^a-z0-9]/g, '').includes(norm)),
+    o.payMethods.some((pm) =>
+      pm
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .includes(norm),
+    ),
   );
 }
 

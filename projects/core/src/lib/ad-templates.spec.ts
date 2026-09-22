@@ -15,7 +15,7 @@ import {
 describe('ad-templates', () => {
   describe('DEFAULT_AD_VARIABLES', () => {
     it('contiene variables requeridas', () => {
-      const keys = DEFAULT_AD_VARIABLES.map(v => v.key);
+      const keys = DEFAULT_AD_VARIABLES.map((v) => v.key);
       expect(keys).toContain('precio');
       expect(keys).toContain('spread');
       expect(keys).toContain('limiteMin');
@@ -27,12 +27,12 @@ describe('ad-templates', () => {
     });
 
     it('variables requeridas tienen required: true', () => {
-      const required = DEFAULT_AD_VARIABLES.filter(v => v.required);
-      expect(required.map(v => v.key)).toContain('precio');
-      expect(required.map(v => v.key)).toContain('spread');
-      expect(required.map(v => v.key)).toContain('limiteMin');
-      expect(required.map(v => v.key)).toContain('limiteMax');
-      expect(required.map(v => v.key)).toContain('usuario');
+      const required = DEFAULT_AD_VARIABLES.filter((v) => v.required);
+      expect(required.map((v) => v.key)).toContain('precio');
+      expect(required.map((v) => v.key)).toContain('spread');
+      expect(required.map((v) => v.key)).toContain('limiteMin');
+      expect(required.map((v) => v.key)).toContain('limiteMax');
+      expect(required.map((v) => v.key)).toContain('usuario');
     });
   });
 
@@ -42,14 +42,14 @@ describe('ad-templates', () => {
     });
 
     it('incluye compra estándar, venta estándar y compra high volume', () => {
-      const names = BUILT_IN_TEMPLATES.map(t => t.name);
+      const names = BUILT_IN_TEMPLATES.map((t) => t.name);
       expect(names).toContain('Compra Estándar Pago Móvil');
       expect(names).toContain('Venta Estándar Pago Móvil');
       expect(names).toContain('Compra Rápida High Volume');
     });
 
     it('tipos correctos', () => {
-      const types = BUILT_IN_TEMPLATES.map(t => t.type);
+      const types = BUILT_IN_TEMPLATES.map((t) => t.type);
       expect(types).toContain('BUY');
       expect(types).toContain('SELL');
     });
@@ -59,27 +59,27 @@ describe('ad-templates', () => {
     it('sustituye variables correctamente', () => {
       const template = 'Precio: {{precio}} Bs, Spread: {{spread}}%';
       const data = { precio: 20.5, spread: 2.5 };
-      
+
       const result = renderTemplate(template, data);
-      
+
       expect(result).toBe('Precio: 20.5 Bs, Spread: 2.5%');
     });
 
     it('maneja múltiples ocurrencias de la misma variable', () => {
       const template = '{{banco}} - {{banco}} - {{banco}}';
       const data = { banco: 'Banesco' };
-      
+
       const result = renderTemplate(template, data);
-      
+
       expect(result).toBe('Banesco - Banesco - Banesco');
     });
 
     it('usa valores por defecto para variables faltantes', () => {
       const template = 'Banco: {{banco}}, Método: {{metodoPago}}';
       const data = { banco: 'Mercantil' }; // metodoPago faltante
-      
+
       const result = renderTemplate(template, data);
-      
+
       expect(result).toContain('Mercantil');
       expect(result).toContain('Pago Móvil'); // default de metodoPago
     });
@@ -87,9 +87,9 @@ describe('ad-templates', () => {
     it('marca variables sin default como [key]', () => {
       const template = 'Referencia: {{referencia}}';
       const data = {}; // sin referencia
-      
+
       const result = renderTemplate(template, data);
-      
+
       expect(result).toBe('Referencia: [referencia]');
     });
   });
@@ -125,7 +125,7 @@ describe('ad-templates', () => {
 
     it('genera preview con title, terms y autoReply', () => {
       const preview = generateAdPreview(template, data);
-      
+
       expect(preview.title).toContain('21.5');
       expect(preview.title).toContain('Banesco');
       expect(preview.terms).toContain('Pago Móvil');
@@ -139,16 +139,16 @@ describe('ad-templates', () => {
       const result = validateAd(
         'Compra USDT a 20 Bs',
         'Términos de prueba cortos',
-        'Auto reply corto'
+        'Auto reply corto',
       );
-      
+
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
     it('rechaza título vacío', () => {
       const result = validateAd('', 'Términos válidos', 'Reply');
-      
+
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Título es obligatorio');
     });
@@ -156,14 +156,14 @@ describe('ad-templates', () => {
     it('rechaza título muy largo', () => {
       const longTitle = 'A'.repeat(60);
       const result = validateAd(longTitle, 'Términos', 'Reply');
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('excede'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('excede'))).toBe(true);
     });
 
     it('rechaza términos vacíos', () => {
       const result = validateAd('Título válido', '', 'Reply');
-      
+
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Términos son obligatorios');
     });
@@ -171,33 +171,28 @@ describe('ad-templates', () => {
     it('advierte sobre auto-reply largo', () => {
       const longReply = 'A'.repeat(600);
       const result = validateAd('Título', 'Términos', longReply);
-      
+
       expect(result.valid).toBe(true); // warning no invalida
-      expect(result.warnings.some(w => w.includes('excede'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('excede'))).toBe(true);
     });
 
     it('advierte sobre palabras prohibidas', () => {
       const result = validateAd('Título', 'Pago por WhatsApp', 'Reply');
-      
-      expect(result.warnings.some(w => w.includes('whatsapp'))).toBe(true);
+
+      expect(result.warnings.some((w) => w.includes('whatsapp'))).toBe(true);
     });
 
     it('advierte sobre variables sin resolver', () => {
       const result = validateAd('Precio {{precio}}', 'Términos {{banco}}', 'Reply {{usuario}}');
-      
-      expect(result.warnings.some(w => w.includes('sin resolver'))).toBe(true);
+
+      expect(result.warnings.some((w) => w.includes('sin resolver'))).toBe(true);
     });
 
     it('respeta configuración de límites personalizados', () => {
-      const result = validateAd(
-        'T'.repeat(30),
-        'Términos',
-        'Reply',
-        { maxTitleLength: 20 }
-      );
-      
+      const result = validateAd('T'.repeat(30), 'Términos', 'Reply', { maxTitleLength: 20 });
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('excede 20'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('excede 20'))).toBe(true);
     });
   });
 
@@ -210,7 +205,7 @@ describe('ad-templates', () => {
         terms: 'Términos',
         autoReply: 'Reply',
       });
-      
+
       expect(template.id).toMatch(/^tpl_\d+_/);
       expect(template.name).toBe('Mi Plantilla');
       expect(template.type).toBe('BUY');
@@ -229,9 +224,11 @@ describe('ad-templates', () => {
         title: 'T',
         terms: 'T',
         autoReply: 'R',
-        variables: [{ key: 'custom', label: 'Custom', type: 'string', required: false, description: 'Test' }],
+        variables: [
+          { key: 'custom', label: 'Custom', type: 'string', required: false, description: 'Test' },
+        ],
       });
-      
+
       expect(template.status).toBe('active');
       expect(template.variables).toHaveLength(1);
       expect(template.variables[0].key).toBe('custom');
@@ -258,7 +255,7 @@ describe('ad-templates', () => {
       };
 
       const clone = cloneTemplate(original);
-      
+
       expect(clone.id).not.toBe(original.id);
       expect(clone.name).toBe('Original (copia)');
       expect(clone.version).toBe(4);
@@ -286,35 +283,95 @@ describe('ad-templates', () => {
       };
 
       const clone = cloneTemplate(original, 'Mi Clon Personalizado');
-      
+
       expect(clone.name).toBe('Mi Clon Personalizado');
     });
   });
 
   describe('filterTemplates', () => {
     const templates: AdTemplate[] = [
-      { id: '1', name: 'Compra 1', type: 'BUY', status: 'active', version: 1, title: '', terms: '', autoReply: '', variables: [], tags: ['pago-movil'], createdAt: '', updatedAt: '', createdBy: '', metadata: {} },
-      { id: '2', name: 'Venta 1', type: 'SELL', status: 'active', version: 1, title: '', terms: '', autoReply: '', variables: [], tags: ['pago-movil'], createdAt: '', updatedAt: '', createdBy: '', metadata: {} },
-      { id: '3', name: 'Compra 2', type: 'BUY', status: 'draft', version: 1, title: '', terms: '', autoReply: '', variables: [], tags: ['high-volume'], createdAt: '', updatedAt: '', createdBy: '', metadata: {} },
-      { id: '4', name: 'Venta 2', type: 'SELL', status: 'paused', version: 1, title: '', terms: '', autoReply: '', variables: [], tags: ['pago-movil', 'high-volume'], createdAt: '', updatedAt: '', createdBy: '', metadata: {} },
+      {
+        id: '1',
+        name: 'Compra 1',
+        type: 'BUY',
+        status: 'active',
+        version: 1,
+        title: '',
+        terms: '',
+        autoReply: '',
+        variables: [],
+        tags: ['pago-movil'],
+        createdAt: '',
+        updatedAt: '',
+        createdBy: '',
+        metadata: {},
+      },
+      {
+        id: '2',
+        name: 'Venta 1',
+        type: 'SELL',
+        status: 'active',
+        version: 1,
+        title: '',
+        terms: '',
+        autoReply: '',
+        variables: [],
+        tags: ['pago-movil'],
+        createdAt: '',
+        updatedAt: '',
+        createdBy: '',
+        metadata: {},
+      },
+      {
+        id: '3',
+        name: 'Compra 2',
+        type: 'BUY',
+        status: 'draft',
+        version: 1,
+        title: '',
+        terms: '',
+        autoReply: '',
+        variables: [],
+        tags: ['high-volume'],
+        createdAt: '',
+        updatedAt: '',
+        createdBy: '',
+        metadata: {},
+      },
+      {
+        id: '4',
+        name: 'Venta 2',
+        type: 'SELL',
+        status: 'paused',
+        version: 1,
+        title: '',
+        terms: '',
+        autoReply: '',
+        variables: [],
+        tags: ['pago-movil', 'high-volume'],
+        createdAt: '',
+        updatedAt: '',
+        createdBy: '',
+        metadata: {},
+      },
     ];
 
     it('filtra por tipo', () => {
       const buy = filterTemplates(templates, { type: 'BUY' });
       expect(buy).toHaveLength(2);
-      expect(buy.every(t => t.type === 'BUY')).toBe(true);
+      expect(buy.every((t) => t.type === 'BUY')).toBe(true);
     });
 
     it('filtra por estado', () => {
       const active = filterTemplates(templates, { status: 'active' });
       expect(active).toHaveLength(2);
-      expect(active.every(t => t.status === 'active')).toBe(true);
+      expect(active.every((t) => t.status === 'active')).toBe(true);
     });
 
     it('filtra por tags (al menos uno)', () => {
       const highVol = filterTemplates(templates, { tags: ['high-volume'] });
       expect(highVol).toHaveLength(2);
-      expect(highVol.every(t => t.tags.includes('high-volume'))).toBe(true);
+      expect(highVol.every((t) => t.tags.includes('high-volume'))).toBe(true);
     });
 
     it('combina filtros', () => {

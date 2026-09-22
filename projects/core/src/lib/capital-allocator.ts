@@ -19,7 +19,7 @@ export interface DynamicLimitsTier {
 
 export interface BankAllocationWeight {
   bankCode: BankCode;
-  recommendedPct: number;    // e.g. 40% Banesco, 35% Mercantil, 25% BDV
+  recommendedPct: number; // e.g. 40% Banesco, 35% Mercantil, 25% BDV
   allocatedCapitalUsdt: number;
   allocatedCapitalVes: number;
   maxRecommendedTickets: number;
@@ -39,12 +39,12 @@ export interface PortfolioAllocationPlan {
  */
 export function computeDynamicOrderLimits(
   capitalUsdt: number,
-  hourOfDay: number = 10,
-  referenceRateVes: number = 60.0,
+  hourOfDay = 10,
+  referenceRateVes = 60.0,
 ): DynamicLimitsTier {
-  let minTicketUsdt = 150;
+  let minTicketUsdt: number;
   let maxTicketUsdt = Math.min(2500, Math.max(500, capitalUsdt * 0.25));
-  let regime: DynamicLimitsTier['regime'] = 'MORNING_LIQUIDITY';
+  let regime: DynamicLimitsTier['regime'];
 
   if (hourOfDay >= 8 && hourOfDay < 12) {
     regime = 'MORNING_LIQUIDITY';
@@ -85,9 +85,9 @@ export function computeDynamicOrderLimits(
  */
 export function buildPortfolioAllocationPlan(
   totalCapitalUsdt: number,
-  registeredAccounts: readonly BankAccount[] = [],
-  referenceRateVes: number = 60.0,
-  hourOfDay: number = 10,
+  _registeredAccounts: readonly BankAccount[] = [],
+  referenceRateVes = 60.0,
+  hourOfDay = 10,
   customWeights?: Partial<Record<BankCode, number>>,
 ): PortfolioAllocationPlan {
   // Institutional target weights for Venezuela P2P (or custom user overrides)
@@ -100,9 +100,16 @@ export function buildPortfolioAllocationPlan(
     OTRO: { pct: 0, role: 'Cuenta auxiliar' },
   };
 
-  const banescoPct = customWeights?.BANESCO != null ? Math.max(0, customWeights.BANESCO) : defaultWeights.BANESCO.pct;
-  const mercantilPct = customWeights?.MERCANTIL != null ? Math.max(0, customWeights.MERCANTIL) : defaultWeights.MERCANTIL.pct;
-  const bdvPct = customWeights?.BDV != null ? Math.max(0, customWeights.BDV) : defaultWeights.BDV.pct;
+  const banescoPct =
+    customWeights?.BANESCO != null
+      ? Math.max(0, customWeights.BANESCO)
+      : defaultWeights.BANESCO.pct;
+  const mercantilPct =
+    customWeights?.MERCANTIL != null
+      ? Math.max(0, customWeights.MERCANTIL)
+      : defaultWeights.MERCANTIL.pct;
+  const bdvPct =
+    customWeights?.BDV != null ? Math.max(0, customWeights.BDV) : defaultWeights.BDV.pct;
 
   const allocations: BankAllocationWeight[] = [
     {
@@ -131,7 +138,11 @@ export function buildPortfolioAllocationPlan(
     },
   ];
 
-  const limitsRecommendation = computeDynamicOrderLimits(totalCapitalUsdt, hourOfDay, referenceRateVes);
+  const limitsRecommendation = computeDynamicOrderLimits(
+    totalCapitalUsdt,
+    hourOfDay,
+    referenceRateVes,
+  );
 
   return {
     totalCapitalUsdt,

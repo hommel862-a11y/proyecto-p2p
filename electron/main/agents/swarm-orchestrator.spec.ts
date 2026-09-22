@@ -25,7 +25,9 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
     if (fs.existsSync(testDbPath)) {
       try {
         fs.unlinkSync(testDbPath);
-      } catch {}
+      } catch {
+        /* ignore test db cleanup failure */
+      }
     }
   });
 
@@ -58,7 +60,7 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
 
     expect(['APPROVED', 'APPROVED_WITH_WARNINGS']).toContain(result.riskVerdict.status);
     expect(result.suggestedPlan).toBeDefined();
-    expect(result.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.50);
+    expect(result.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.5);
     expect(result.executionSummary).toContain('Enjambre Multi-Agente completó la auditoría');
 
     // Verify persistence in Engram memory
@@ -95,7 +97,9 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
 
     expect(result.riskVerdict.status).toBe('VETOED');
     expect(result.suggestedPlan).toBeUndefined();
-    expect(result.riskVerdict.vetoReason).toContain('La contraparte presenta historial de disputas');
+    expect(result.riskVerdict.vetoReason).toContain(
+      'La contraparte presenta historial de disputas',
+    );
   });
 
   it('should audit payment receipts and flag amount discrepancies in dispute mode', () => {

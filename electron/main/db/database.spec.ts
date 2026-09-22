@@ -75,7 +75,10 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
       counterpartyName: 'Done User',
       timestamp: 1700000000000,
     });
-    const completed = transitionOrderFsm(orderCompleted, { type: 'OPERATOR_OVERRIDE', payload: { reason: 'COMPLETED' } }).context;
+    const completed = transitionOrderFsm(orderCompleted, {
+      type: 'OPERATOR_OVERRIDE',
+      payload: { reason: 'COMPLETED' },
+    }).context;
     dbService.saveOrder(completed);
 
     const activeList = dbService.listActiveOrders();
@@ -133,7 +136,8 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
       riskLevel: 'LOW' as const,
       assignedOperatorId: 'OP-01',
       assignedOperatorName: 'Carlos P2P',
-      rationale: 'Spread de arbitraje triangular superior al umbral de oro (0.50%) con libro de profundidad validado.',
+      rationale:
+        'Spread de arbitraje triangular superior al umbral de oro (0.50%) con libro de profundidad validado.',
       status: 'PROPOSED' as const,
       createdAt: 1700000000000,
       updatedAt: 1700000000000,
@@ -163,7 +167,8 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     const learningId = dbService.recordMarketLearning({
       topicKey: 'spread/bcv-injection-cycle',
       category: 'BCV_IMPACT',
-      insight: 'Las intervenciones cambiarias del BCV los días martes a las 10:00 AM aumentan el spread P2P en promedio 1.20%.',
+      insight:
+        'Las intervenciones cambiarias del BCV los días martes a las 10:00 AM aumentan el spread P2P en promedio 1.20%.',
       confidenceScore: 0.95,
       sampleCount: 14,
       dataPayload: { avgDeltaPct: 1.2, dayOfWeek: 2 },
@@ -263,4 +268,3 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     expect(records[0].bank).toBe('Banesco');
   });
 });
-

@@ -60,7 +60,12 @@ const VENDORED_CORE_FILES = [
   'audit-analytics',
 ];
 
-function mkOffer(price: number, maxVes: number, advNo: string, merchantName = 'Mercante Test'): BinanceOfferSummary {
+function mkOffer(
+  price: number,
+  maxVes: number,
+  advNo: string,
+  merchantName = 'Mercante Test',
+): BinanceOfferSummary {
   return {
     advNo,
     price,
@@ -95,9 +100,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
   });
 
   it('evaluate_golden_spread aplica la Regla de Oro institucional (0.50%)', () => {
-    const viable = dataOf(
-      executeFinancialSkill('evaluate_golden_spread', { netSpreadPct: 0.6 }),
-    );
+    const viable = dataOf(executeFinancialSkill('evaluate_golden_spread', { netSpreadPct: 0.6 }));
     expect(viable['isGolden']).toBe(true);
     expect(viable['verdict']).toBe('VIABLE_INSTITUCIONAL');
     expect(viable['thresholdPct']).toBe(0.5);
@@ -120,9 +123,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     const expected = getBcvMarketIntelligence(100, 60);
     expect(g.gapPct).toBe(calculateBcvGap(100, 60).gapPct);
     expect(g.zone).toBe('CRITICAL_DISPERSION'); // >35% => determinístico
-    expect((d['recommendation'] as { action: string }).action).toBe(
-      expected.recommendation.action,
-    );
+    expect((d['recommendation'] as { action: string }).action).toBe(expected.recommendation.action);
     expect((d['recommendation'] as { action: string }).action).toBe('DEFENSIVE_HEDGE');
     expect(d['window']).toBeDefined();
     expect(d['timestamp']).toBeTypeOf('string');
@@ -146,7 +147,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['unhedgedVesRiskScore']).toBe(delta.unhedgedVesRiskScore);
     expect(d['urgency']).toBe(delta.urgency);
 
-    const proposals = d['proposals'] as Array<Record<string, unknown>>;
+    const proposals = d['proposals'] as Record<string, unknown>[];
     expect(proposals.length).toBe(1);
     expect(proposals[0]['hedgeAmountUsdt']).toBe(proposal?.hedgeAmountUsdt ?? -1);
     expect(proposals[0]['action']).toBe(proposal?.action);
@@ -154,7 +155,12 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
   });
 
   it('evaluate_delta_neutral_hedge no propone cobertura cuando el delta es seguro', () => {
-    const safe = { vesBalance: 1000, usdtBalance: 10000, currentParallelRate: 85, vesMaxHoldingTimeMinutes: 0 };
+    const safe = {
+      vesBalance: 1000,
+      usdtBalance: 10000,
+      currentParallelRate: 85,
+      vesMaxHoldingTimeMinutes: 0,
+    };
     const d = dataOf(executeFinancialSkill('evaluate_delta_neutral_hedge', safe));
     expect(d['proposals']).toEqual([]);
     expect(d['urgency']).toBe('NONE');
@@ -173,10 +179,10 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['threatFound']).toBe(true);
     expect(d['riskStatus']).toBe('FLAGGED');
     expect(d['identifierLength']).toBe(9);
-    const threats = d['threats'] as Array<{ severity: string; threatType: string }>;
+    const threats = d['threats'] as { severity: string; threatType: string }[];
     expect(threats[0].severity).toBe('CRITICAL');
     expect(threats[0].threatType).toBe('THIRD_PARTY_FRAUD');
-    expect((d['confidenceScore'] as number)).toBeGreaterThan(0);
+    expect(d['confidenceScore'] as number).toBeGreaterThan(0);
     expect(d['blindHash']).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -204,7 +210,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['profitInitialCurrency']).toBe(expected.netProfit);
     expect(d['isProfitable']).toBe(expected.isProfitable);
     expect(d['roiPct']).not.toBe(1.35); // el hardcode 1.35 fue eliminado
-    expect((d['riskLevel'] as string)).toBe(expected.riskLevel);
+    expect(d['riskLevel'] as string).toBe(expected.riskLevel);
     expect(String(d['engine'])).toContain('triangular-arbitrage');
   });
 
@@ -222,7 +228,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
         initialCurrency: 'USDT',
       }),
     );
-    const steps = d['steps'] as Array<{ toCurrency: string; price: number }>;
+    const steps = d['steps'] as { toCurrency: string; price: number }[];
     const vesToUsdt = steps.find((s) => s.toCurrency === 'USDT');
     expect(vesToUsdt?.price).toBe(86.0); // pierna VES->USDT usa bestBuyPrice real
     expect(d['liveMarketUsed']).toBe(true);
@@ -239,17 +245,14 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['bestQuotedPrice']).toBe(86.2);
     expect(d['bestQuotedPrice']).not.toBe(88.5);
     expect(d['isFullyFillable']).toBe(true);
-    expect((d['effectiveVwapPrice'] as number)).toBeGreaterThan(0);
+    expect(d['effectiveVwapPrice'] as number).toBeGreaterThan(0);
     expect(d['marketDataSource']).toBe('LIVE_BINANCE_P2P_CACHE');
 
     // Cruce con el motor real
     const expected = simulateTradeImpact({
       targetAmountUsdt: 500,
       side: 'BUY',
-      availableOffers: [
-        mkOffer(86.2, 95000, 'adv-buy-1'),
-        mkOffer(86.9, 60000, 'adv-buy-2'),
-      ],
+      availableOffers: [mkOffer(86.2, 95000, 'adv-buy-1'), mkOffer(86.9, 60000, 'adv-buy-2')],
     });
     expect(d['slippageBps']).toBe(expected.slippageBps);
     expect(d['overallFillProbabilityPct']).toBe(expected.overallFillProbabilityPct);
@@ -293,22 +296,21 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(forensics.riskLevel).toBe('CRITICAL');
 
     // Cruce con el motor real
-    const audit =
-      evaluateFraudRisk({
-        orderId: '8899001122',
-        orderAmount: 42500,
-        orderCurrency: 'VES',
-        advertiserVerifiedName: 'CARLOS PEREZ',
-        receipt: {
-          reference: 'ASDFGHJK123',
-          amount: 42500,
-          currency: 'VES',
-          payerName: 'ROSA LOPEZ GOMEZ',
-          bank: 'BANESCO',
-          timestamp: new Date().toISOString(),
-        },
-        blacklistedReferences: [],
-      });
+    const audit = evaluateFraudRisk({
+      orderId: '8899001122',
+      orderAmount: 42500,
+      orderCurrency: 'VES',
+      advertiserVerifiedName: 'CARLOS PEREZ',
+      receipt: {
+        reference: 'ASDFGHJK123',
+        amount: 42500,
+        currency: 'VES',
+        payerName: 'ROSA LOPEZ GOMEZ',
+        bank: 'BANESCO',
+        timestamp: new Date().toISOString(),
+      },
+      blacklistedReferences: [],
+    });
     expect(forensics.overallScore).toBe(audit.overallScore);
     expect(forensics.nameSimilarityPct).toBe(Math.round(audit.nameMatch.score * 100));
   });
@@ -343,8 +345,9 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     expect(d['level']).toBe(expected.level);
     expect(d['direction']).toBe(expected.direction);
     expect(d['expectedSpreadDriftBps']).toBe(expected.expectedSpreadDriftBps);
-    expect((d['suggestedSpreadAdjustmentPct'] as { buyMarkupPct: number }).buyMarkupPct)
-      .toBe(expected.suggestedSpreadAdjustmentPct.buyMarkupPct);
+    expect((d['suggestedSpreadAdjustmentPct'] as { buyMarkupPct: number }).buyMarkupPct).toBe(
+      expected.suggestedSpreadAdjustmentPct.buyMarkupPct,
+    );
   });
 
   it('ejecuta optimize_idle_capital_simple_earn y calculate_earn_yield_vs_p2p_hurdle_rate en Electron', () => {
@@ -431,7 +434,7 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     const res = dataOf(
       executeFinancialSkill('audit_and_risk_analytics', {
         timeframeDays: 7,
-        minSpreadThresholdPct: 0.50,
+        minSpreadThresholdPct: 0.5,
         sampleEvents: [
           { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'SECURITY_ALERT' },
         ],

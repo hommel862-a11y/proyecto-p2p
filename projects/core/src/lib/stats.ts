@@ -40,22 +40,31 @@ function periodKey(iso: string, kind: PeriodKind): string {
 
 /** VES moved on the leg, preferring the recorded value, falling back to price×USDT. */
 function vesLeg(o: Operation): number {
-  return o.type === 'sell'
-    ? o.vesAmount > 0
-      ? o.vesAmount
-      : o.usdtAmount * o.price
-    : o.vesAmount;
+  return o.type === 'sell' ? (o.vesAmount > 0 ? o.vesAmount : o.usdtAmount * o.price) : o.vesAmount;
 }
 
 function aggregate(ops: Operation[], kind: PeriodKind): PeriodStat[] {
   const map = new Map<
     string,
-    { operations: number; pnlVes: number; volumeUsdt: number; fees: number; vesSum: number; usdtSum: number }
+    {
+      operations: number;
+      pnlVes: number;
+      volumeUsdt: number;
+      fees: number;
+      vesSum: number;
+      usdtSum: number;
+    }
   >();
   for (const o of ops) {
     const key = periodKey(o.timestamp, kind);
-    const acc =
-      map.get(key) ?? { operations: 0, pnlVes: 0, volumeUsdt: 0, fees: 0, vesSum: 0, usdtSum: 0 };
+    const acc = map.get(key) ?? {
+      operations: 0,
+      pnlVes: 0,
+      volumeUsdt: 0,
+      fees: 0,
+      vesSum: 0,
+      usdtSum: 0,
+    };
     acc.operations += 1;
     acc.fees += o.fees;
     acc.volumeUsdt += o.usdtAmount;

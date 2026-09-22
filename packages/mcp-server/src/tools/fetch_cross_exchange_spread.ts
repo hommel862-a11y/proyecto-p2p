@@ -44,12 +44,13 @@ async function fetchBybitLiveRates(asset: string, fiat: string): Promise<LiveRat
       });
       if (!res.ok) return [];
       const json = (await res.json()) as {
-        result?: { items?: Array<{ price?: string | number }>; list?: Array<{ price?: string | number }> };
+        result?: {
+          items?: { price?: string | number }[];
+          list?: { price?: string | number }[];
+        };
       };
       const items = json.result?.items ?? json.result?.list ?? [];
-      return items
-        .map((it) => Number(it.price))
-        .filter((p) => Number.isFinite(p) && p > 0);
+      return items.map((it) => Number(it.price)).filter((p) => Number.isFinite(p) && p > 0);
     };
 
     // side 1 = SELL ads (asks), side 0 = BUY ads (bids).
@@ -150,9 +151,7 @@ export const fetchCrossExchangeSpreadTool = {
         exchange: 'Bybit P2P',
         buyRate: bybitLive ? round2(bybitLive.buyRate) : round2(baseRate * 0.988),
         sellRate: bybitLive ? round2(bybitLive.sellRate) : round2(baseRate * 1.015),
-        spreadPct: bybitLive
-          ? spreadPct(bybitLive.buyRate, bybitLive.sellRate)
-          : 2.73,
+        spreadPct: bybitLive ? spreadPct(bybitLive.buyRate, bybitLive.sellRate) : 2.73,
         activeMerchants: 22,
         ...(bybitLive ? { source: 'LIVE' as const } : { source: 'SIMULATED' as const }),
       },

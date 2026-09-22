@@ -11,11 +11,11 @@ export type P2PRole = 'MAKER' | 'TAKER';
 export interface BankFeeStructure {
   bankCode: BankCode;
   name: string;
-  pagoMovilFeePct: number;       // e.g. 0.003 (0.3%)
+  pagoMovilFeePct: number; // e.g. 0.003 (0.3%)
   transferSameBankFeePct: number; // 0%
   transferInterbankFeePct: number; // e.g. 0.003 (0.3%)
-  igtfPct: number;                // e.g. 0 for natural persons local currency
-  velocityScore: number;          // 0 to 100 (ease and speed of turnover in VE market)
+  igtfPct: number; // e.g. 0 for natural persons local currency
+  velocityScore: number; // 0 to 100 (ease and speed of turnover in VE market)
 }
 
 /**
@@ -80,14 +80,14 @@ export const VENEZUELAN_BANK_FEES: Record<BankCode, BankFeeStructure> = {
 
 export interface ArbitrageCycleInput {
   capitalUsdt: number;
-  buyPrice: number;             // VES per USDT
-  sellPrice: number;            // VES per USDT
-  buyRole: P2PRole;             // MAKER (e.g. 0.25% commission) or TAKER (0%)
-  sellRole: P2PRole;            // MAKER or TAKER
-  sourceBank: BankCode;         // Bank used when buying/paying
-  targetBank: BankCode;         // Bank used when selling/receiving
-  isInterbank: boolean;         // Did it clear via interbank Pago Movil / Transfer?
-  makerFeeRate?: number;        // Default 0.0025 (0.25%)
+  buyPrice: number; // VES per USDT
+  sellPrice: number; // VES per USDT
+  buyRole: P2PRole; // MAKER (e.g. 0.25% commission) or TAKER (0%)
+  sellRole: P2PRole; // MAKER or TAKER
+  sourceBank: BankCode; // Bank used when buying/paying
+  targetBank: BankCode; // Bank used when selling/receiving
+  isInterbank: boolean; // Did it clear via interbank Pago Movil / Transfer?
+  makerFeeRate?: number; // Default 0.0025 (0.25%)
 }
 
 export interface ArbitrageCycleResult {
@@ -101,9 +101,9 @@ export interface ArbitrageCycleResult {
   netProceedsVes: number;
   netGainVes: number;
   netGainUsd: number;
-  roiCyclePct: number;          // e.g. 1.25%
-  spreadNominalPct: number;     // ((sellPrice - buyPrice) / buyPrice) * 100
-  effectiveFeeDragPct: number;  // spreadNominalPct - roiCyclePct
+  roiCyclePct: number; // e.g. 1.25%
+  spreadNominalPct: number; // ((sellPrice - buyPrice) / buyPrice) * 100
+  effectiveFeeDragPct: number; // spreadNominalPct - roiCyclePct
 }
 
 export interface VelocityProjection {
@@ -118,26 +118,26 @@ export interface VelocityProjection {
 export interface SpreadQualityInput {
   buyPrice: number;
   sellPrice: number;
-  volatility4hPct?: number;     // Estimated price shift stddev or range in last 4h (e.g. 0.5%)
-  bankCode?: BankCode;          // Primary operational bank
-  accountUsagePct?: number;     // Consumed limit % (0 to 100)
+  volatility4hPct?: number; // Estimated price shift stddev or range in last 4h (e.g. 0.5%)
+  bankCode?: BankCode; // Primary operational bank
+  accountUsagePct?: number; // Consumed limit % (0 to 100)
   buyRole?: P2PRole;
   sellRole?: P2PRole;
 }
 
 export interface SpreadQualityResult {
-  score: number;                // 0 to 100
+  score: number; // 0 to 100
   verdict: SpreadQualityVerdict;
   verdictLabel: string;
-  verdictColor: string;         // Hex code or CSS class reference
+  verdictColor: string; // Hex code or CSS class reference
   nominalSpreadPct: number;
   netSpreadPct: number;
   safetyCorridorPct: number;
   factors: {
-    netMarginScore: number;     // 0 to 100 (35% weight)
-    safetyScore: number;        // 0 to 100 (25% weight)
-    velocityScore: number;      // 0 to 100 (25% weight)
-    limitHealthScore: number;   // 0 to 100 (15% weight)
+    netMarginScore: number; // 0 to 100 (35% weight)
+    safetyScore: number; // 0 to 100 (25% weight)
+    velocityScore: number; // 0 to 100 (25% weight)
+    limitHealthScore: number; // 0 to 100 (15% weight)
   };
   recommendation: string;
 }
@@ -158,9 +158,9 @@ export interface ReverseGoalResult {
   availableCapitalUsdt: number;
   netGainPerCycleUsd: number;
   roiCyclePct: number;
-  requiredCycles: number;       // Number of full roundtrips needed
+  requiredCycles: number; // Number of full roundtrips needed
   totalDailyBankVolumeVes: number;
-  isFeasible: boolean;          // Feasible without inhuman turnover (>12 cycles is risky)
+  isFeasible: boolean; // Feasible without inhuman turnover (>12 cycles is risky)
   warning?: string;
 }
 
@@ -205,9 +205,7 @@ export function computeArbitrageCycle(input: ArbitrageCycleInput): ArbitrageCycl
     : VENEZUELAN_BANK_FEES[sourceBank].transferSameBankFeePct;
   const sourceBankFeeVes = capitalVesInvested * sourceBankFeeRate;
 
-  const targetBankFeeRate = isInterbank
-    ? VENEZUELAN_BANK_FEES[targetBank].pagoMovilFeePct
-    : 0;
+  const targetBankFeeRate = isInterbank ? VENEZUELAN_BANK_FEES[targetBank].pagoMovilFeePct : 0;
   const targetBankFeeVes = grossProceedsVes * targetBankFeeRate;
   const totalBankFeesVes = sourceBankFeeVes + targetBankFeeVes;
 
@@ -318,10 +316,7 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
 
   // Weighted total:
   const rawScore =
-    netMarginScore * 0.35 +
-    safetyScore * 0.25 +
-    velocityScore * 0.25 +
-    limitHealthScore * 0.15;
+    netMarginScore * 0.35 + safetyScore * 0.25 + velocityScore * 0.25 + limitHealthScore * 0.15;
 
   const score = Math.round(Math.min(100, Math.max(0, rawScore)));
 
@@ -335,22 +330,26 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
     verdict = 'OPTIMAL';
     verdictLabel = 'Óptimo / Expansivo';
     verdictColor = '#10b981'; // Green
-    recommendation = 'Spread robusto con excelente colchón. Operar con máximo volumen y posicionamiento Top 1.';
+    recommendation =
+      'Spread robusto con excelente colchón. Operar con máximo volumen y posicionamiento Top 1.';
   } else if (score >= 65) {
     verdict = 'HEALTHY';
     verdictLabel = 'Saludable / Normal';
     verdictColor = '#f59e0b'; // Amber
-    recommendation = 'Operativa estándar. Mantener posición Top 2/Top 3 con margen objetivo de 1.2% - 1.8%.';
+    recommendation =
+      'Operativa estándar. Mantener posición Top 2/Top 3 con margen objetivo de 1.2% - 1.8%.';
   } else if (score >= 45) {
     verdict = 'CAUTION';
     verdictLabel = 'Ajustado / Cauteloso';
     verdictColor = '#f97316'; // Orange
-    recommendation = 'Margen comprimido. Operar solo como Maker (evitar órdenes Taker). Reducir tamaño de lote.';
+    recommendation =
+      'Margen comprimido. Operar solo como Maker (evitar órdenes Taker). Reducir tamaño de lote.';
   } else {
     verdict = 'TOXIC';
     verdictLabel = 'Tóxico / Inviable';
     verdictColor = '#ef4444'; // Red
-    recommendation = 'Pausa recomendada. Las comisiones y el riesgo cambiario absorben la ganancia esperada.';
+    recommendation =
+      'Pausa recomendada. Las comisiones y el riesgo cambiario absorben la ganancia esperada.';
   }
 
   return {
@@ -413,13 +412,15 @@ export function planReverseGoal(input: ReverseGoalInput): ReverseGoalResult {
       requiredCycles: Infinity,
       totalDailyBankVolumeVes: 0,
       isFeasible: false,
-      warning: 'El ciclo actual genera pérdida o ganancia nula debido a comisiones. No es posible alcanzar la meta.',
+      warning:
+        'El ciclo actual genera pérdida o ganancia nula debido a comisiones. No es posible alcanzar la meta.',
     };
   }
 
   const rawCycles = dailyTargetUsd / netGainPerCycleUsd;
   const requiredCycles = Math.ceil(rawCycles);
-  const totalDailyBankVolumeVes = (cycle.capitalVesInvested + cycle.netProceedsVes) * requiredCycles;
+  const totalDailyBankVolumeVes =
+    (cycle.capitalVesInvested + cycle.netProceedsVes) * requiredCycles;
 
   const isFeasible = requiredCycles <= 12; // More than 12 cycles/day is physically and operationally unsustainable for a single operator
   let warning: string | undefined;

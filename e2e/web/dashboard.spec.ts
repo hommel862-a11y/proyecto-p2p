@@ -18,7 +18,7 @@ test('page loads and shows Centro de Control header', async ({ page }) => {
   await expect(page.locator('h2')).toContainText('Centro de Control');
 });
 
-test('KPI tiles are visible with today\'s performance', async ({ page }) => {
+test("KPI tiles are visible with today's performance", async ({ page }) => {
   await goToDashboard(page);
 
   const out = page.locator('.section-group .out').first();
@@ -39,7 +39,9 @@ test('risk verdict card is displayed', async ({ page }) => {
 test('7-day activity chart section exists', async ({ page }) => {
   await goToDashboard(page);
 
-  await expect(page.locator('.section-eyebrow', { hasText: 'Actividad Últimos 7 Días' })).toBeVisible();
+  await expect(
+    page.locator('.section-eyebrow', { hasText: 'Actividad Últimos 7 Días' }),
+  ).toBeVisible();
   const chart = page.locator('.dashboard-chart');
   await expect(chart).toBeVisible();
   // The chart should have 7 columns (one per day of the week).

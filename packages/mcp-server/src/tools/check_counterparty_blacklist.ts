@@ -4,21 +4,23 @@ import {
 } from '../schemas/index.js';
 
 // Seeded known high-risk / reported fraud identifiers for deterministic verification
-const INTERNAL_BLACKLIST_SEED: Array<{
+const INTERNAL_BLACKLIST_SEED: {
   identifierType: 'CEDULA' | 'PHONE' | 'ACCOUNT_NUMBER' | 'BINANCE_ALIAS';
   identifierValue: string;
   counterpartyName: string;
-  fraudCategory: 'TRIANGULATION_SCAM' | 'THIRD_PARTY_PAYER' | 'CHARGEBACK_ATTEMPT' | 'IDENTITY_THEFT';
+  fraudCategory:
+    'TRIANGULATION_SCAM' | 'THIRD_PARTY_PAYER' | 'CHARGEBACK_ATTEMPT' | 'IDENTITY_THEFT';
   incidentNotes: string;
   riskLevel: 'CRITICAL' | 'HIGH';
   reportedAt: string;
-}> = [
+}[] = [
   {
     identifierType: 'CEDULA',
     identifierValue: 'V-28999888',
     counterpartyName: 'Pedro Fraude',
     fraudCategory: 'TRIANGULATION_SCAM',
-    incidentNotes: 'Reportado por estafa de triangulación: comprador suplantó identidad de un comercio.',
+    incidentNotes:
+      'Reportado por estafa de triangulación: comprador suplantó identidad de un comercio.',
     riskLevel: 'CRITICAL',
     reportedAt: '2026-08-15T10:00:00Z',
   },
@@ -69,7 +71,8 @@ export const checkCounterpartyBlacklistTool = {
       }
       if (input.phone && record.identifierType === 'PHONE') {
         const recPh = record.identifierValue.replace(/[^0-9]/g, '');
-        if (recPh === phoneClean || (phoneClean && recPh.endsWith(phoneClean.slice(-7)))) return true;
+        if (recPh === phoneClean || (phoneClean && recPh.endsWith(phoneClean.slice(-7))))
+          return true;
       }
       if (input.accountNumber && record.identifierType === 'ACCOUNT_NUMBER') {
         const recAcc = record.identifierValue.replace(/[^0-9]/g, '');

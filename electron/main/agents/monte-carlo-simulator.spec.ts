@@ -5,7 +5,7 @@ import type { BinanceOfferSummary } from '../vendor/p2p-core/binance-p2p';
 describe('MonteCarloSimulator (Pilar 4 - Microestructura Estocástica)', () => {
   const mockOffers: BinanceOfferSummary[] = [
     {
-      price: 65.20,
+      price: 65.2,
       minVes: 500,
       maxVes: 30000,
       availableFiatVes: 30000,
@@ -27,7 +27,7 @@ describe('MonteCarloSimulator (Pilar 4 - Microestructura Estocástica)', () => {
       payMethods: ['Banesco'],
     },
     {
-      price: 65.60,
+      price: 65.6,
       minVes: 2000,
       maxVes: 80000,
       availableFiatVes: 80000,

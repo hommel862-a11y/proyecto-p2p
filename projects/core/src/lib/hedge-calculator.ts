@@ -11,13 +11,13 @@
  */
 
 export interface HedgeConfig {
-  usdtAmount: number;      // USDT actual en inventario
+  usdtAmount: number; // USDT actual en inventario
   vesPerUsdCurrent: number; // Tipo de cambio VES/USD actual
-  vesPerUsdMin: number;   // Tipo de cambio mínimo tolerado (peor caso)
-  vesPerUsdMax: number;   // Tipo de cambio máximo tolerado (mejor caso)
-  coveragePct: number;    // Porcentaje de cobertura objetivo (0-100)
-  usdtFeeRate: number;    // Tarifa de comisión en USDT (porcentaje)
-  usdtPerVesFee: number;  // VES por cada USDT de comisión
+  vesPerUsdMin: number; // Tipo de cambio mínimo tolerado (peor caso)
+  vesPerUsdMax: number; // Tipo de cambio máximo tolerado (mejor caso)
+  coveragePct: number; // Porcentaje de cobertura objetivo (0-100)
+  usdtFeeRate: number; // Tarifa de comisión en USDT (porcentaje)
+  usdtPerVesFee: number; // VES por cada USDT de comisión
 }
 
 /**
@@ -26,10 +26,10 @@ export interface HedgeConfig {
 export interface HedgeScenario {
   name: string;
   coveragePct: number;
-  usdtNeeded: number;      // USDT necesario para el porcentaje de cobertura
-  vesAtRisk: number;       // VES en riesgo si el tipo cambia
+  usdtNeeded: number; // USDT necesario para el porcentaje de cobertura
+  vesAtRisk: number; // VES en riesgo si el tipo cambia
   breakEvenVesPerUsd: number; // Punto de equilibrio
-  profitLossVes: number;   // PnL proyectado en VES
+  profitLossVes: number; // PnL proyectado en VES
 }
 
 /**
@@ -37,19 +37,11 @@ export interface HedgeScenario {
  * @param config Configuración actual del inventario
  * @returns Escenarios de cobertura para diferentes estrategias
  */
-export function calculateHedgeScenarios(
-  config: HedgeConfig,
-): HedgeScenario[] {
-  const { usdtAmount, vesPerUsdCurrent, vesPerUsdMin, vesPerUsdMax, coveragePct, usdtFeeRate, usdtPerVesFee } = config;
+export function calculateHedgeScenarios(config: HedgeConfig): HedgeScenario[] {
+  const { usdtAmount, vesPerUsdCurrent, vesPerUsdMin, vesPerUsdMax, coveragePct } = config;
 
   // USDT objetivo para cobertura deseada al tipo actual
   const usdtTarget = (usdtAmount * coveragePct) / 100;
-
-  // Comisión estimada en USDT
-  const commissionUsdt = usdtAmount * (usdtFeeRate / 100);
-
-  // USDT neto después de comisión
-  const usdtNet = usdtAmount - commissionUsdt;
 
   // ESCENARIO 1: Conservador - Cobertura total al peor tipo (vesPerUsdMin)
   // Si el tipo baja a min, cada USDT vale menos VES. Para mantener valor VES, necesitamos más USDT.
@@ -119,17 +111,12 @@ export function simulateDevaluation(
 } {
   const { usdtAmount, vesPerUsdCurrent } = config;
 
-  // Valor original en VES
-  const vesValueAtCurrentRate = usdtAmount * vesPerUsdCurrent;
-
   // Valor al nuevo tipo
   const vesValueAtNewRate = usdtAmount * newVesPerUsd;
 
   // Cambio porcentual (positivo = ganancia, negativo = pérdida)
   const percentageChange =
-    vesPerUsdCurrent > 0
-      ? Math.round(((newVesPerUsd / vesPerUsdCurrent) - 1) * 100)
-      : 0;
+    vesPerUsdCurrent > 0 ? Math.round((newVesPerUsd / vesPerUsdCurrent - 1) * 100) : 0;
 
   // percentageLoss: negativo = pérdida, positivo = ganancia
   const percentageLoss = percentageChange;

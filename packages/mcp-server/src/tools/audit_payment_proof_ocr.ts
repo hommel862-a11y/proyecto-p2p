@@ -14,7 +14,11 @@ export const auditPaymentProofOcrTool = {
 
     // 1. Extract Bank
     let detectedBank = 'UNKNOWN';
-    if (lower.includes('venezuela') || lower.includes('bdv') || lower.includes('banco de venezuela')) {
+    if (
+      lower.includes('venezuela') ||
+      lower.includes('bdv') ||
+      lower.includes('banco de venezuela')
+    ) {
       detectedBank = 'BDV';
     } else if (lower.includes('banesco')) {
       detectedBank = 'BANESCO';
@@ -31,14 +35,16 @@ export const auditPaymentProofOcrTool = {
     // 2. Extract Reference Number
     // Matches common Venezuelan reference formats: 6 to 12 digits, often preceded by Ref, Operacion, No.
     const refMatch =
-      text.match(/(?:ref(?:erencia)?|operaci[oó]n|n[uú]mero|nro|aprobaci[oó]n)[:\s.#]*([0-9]{4,12})/i) ||
-      text.match(/\b([0-9]{6,12})\b/);
+      text.match(
+        /(?:ref(?:erencia)?|operaci[oó]n|n[uú]mero|nro|aprobaci[oó]n)[:\s.#]*([0-9]{4,12})/i,
+      ) || text.match(/\b([0-9]{6,12})\b/);
     const extractedRef = refMatch ? refMatch[1] : null;
 
     // 3. Extract Amount in VES
     // Pattern for Latin formats e.g. 1.250,50 or 1250.50
     let extractedAmount: number | null = null;
-    const amountMatches = text.match(/(?:bs\.?|ves|monto)[:\s]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))/i) ||
+    const amountMatches =
+      text.match(/(?:bs\.?|ves|monto)[:\s]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))/i) ||
       text.match(/([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2}))\s*(?:bs|ves)/i);
 
     if (amountMatches && amountMatches[1]) {
@@ -60,9 +66,11 @@ export const auditPaymentProofOcrTool = {
     }
 
     // 4. Extract Cédula / Document ID
-    const cedulaMatch = text.match(/\b([VEJPvejp][-\s]?[0-9]{6,9})\b/) ||
+    const cedulaMatch =
+      text.match(/\b([VEJPvejp][-\s]?[0-9]{6,9})\b/) ||
       text.match(/(?:c[eé]dula|rif|identificaci[oó]n)[:\s]*([0-9]{6,9})/i);
-    const extractedCedula = cedulaMatch && cedulaMatch[1] ? cedulaMatch[1].replace(/[-\s]/g, '').toUpperCase() : null;
+    const extractedCedula =
+      cedulaMatch && cedulaMatch[1] ? cedulaMatch[1].replace(/[-\s]/g, '').toUpperCase() : null;
 
     // 5. Cross-Verification against Expected Order Data
     const discrepancies: string[] = [];
@@ -74,7 +82,7 @@ export const auditPaymentProofOcrTool = {
         isAmountMatch = true;
       } else {
         discrepancies.push(
-          `DISCREPANCIA DE MONTO: Comprobante muestra ${extractedAmount.toFixed(2)} VES pero la orden exige ${input.expectedAmountVes.toFixed(2)} VES.`
+          `DISCREPANCIA DE MONTO: Comprobante muestra ${extractedAmount.toFixed(2)} VES pero la orden exige ${input.expectedAmountVes.toFixed(2)} VES.`,
         );
       }
     } else {
@@ -90,7 +98,7 @@ export const auditPaymentProofOcrTool = {
       const cleanExtracted = extractedCedula.replace(/[^0-9]/g, '');
       if (cleanExpected !== cleanExtracted) {
         discrepancies.push(
-          `ALERTA TITULARIDAD: La cédula del comprobante (${extractedCedula}) no coincide con el comprador verificado (${input.expectedPayerIdDoc}). Posible triangulación.`
+          `ALERTA TITULARIDAD: La cédula del comprobante (${extractedCedula}) no coincide con el comprador verificado (${input.expectedPayerIdDoc}). Posible triangulación.`,
         );
       }
     }

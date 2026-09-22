@@ -50,11 +50,7 @@ export function formatTelegramMessage(event: RuleAlertEvent): string {
       break;
   }
 
-  const parts = [
-    header,
-    `<b>${event.title}</b>`,
-    event.details,
-  ];
+  const parts = [header, `<b>${event.title}</b>`, event.details];
 
   if (event.value !== undefined && event.value !== null && event.value !== '') {
     parts.push(`Valor: <code>${event.value}</code>`);
@@ -70,7 +66,7 @@ export function formatTelegramMessage(event: RuleAlertEvent): string {
 export async function sendTelegramAlert(
   config: TelegramConfig,
   event: RuleAlertEvent,
-  fetchFn?: typeof fetch
+  fetchFn?: typeof fetch,
 ): Promise<{ success: boolean; messageId?: number; error?: string }> {
   // Validación de configuración básica (compatibilidad con v1)
   if (!config.enabled || !config.botToken || !config.chatId) {
@@ -79,14 +75,14 @@ export async function sendTelegramAlert(
 
   // Validación de permisos de alerta por tipo de evento
   const enabled =
-    event.type === 'risk_deny' && config.alertsOnRisk ||
-    event.type === 'risk_pause' && config.alertsOnRisk ||
-    event.type === 'favorable_spread' && config.alertsOnFavorable ||
-    event.type === 'account_limit' && config.alertsOnAccountLimit ||
-    event.type === 'account_warning' && config.alertsOnAccountLimit ||
-    event.type === 'session_start' && config.alertsOnRisk ||
-    event.type === 'session_end' && config.alertsOnRisk ||
-    event.type === 'plan_approved' && (config.alertsOnFavorable || config.enabled);
+    (event.type === 'risk_deny' && config.alertsOnRisk) ||
+    (event.type === 'risk_pause' && config.alertsOnRisk) ||
+    (event.type === 'favorable_spread' && config.alertsOnFavorable) ||
+    (event.type === 'account_limit' && config.alertsOnAccountLimit) ||
+    (event.type === 'account_warning' && config.alertsOnAccountLimit) ||
+    (event.type === 'session_start' && config.alertsOnRisk) ||
+    (event.type === 'session_end' && config.alertsOnRisk) ||
+    (event.type === 'plan_approved' && (config.alertsOnFavorable || config.enabled));
 
   if (!enabled) {
     return { success: false, error: 'Telegram no configurado para este tipo de alerta' };

@@ -11,7 +11,10 @@ import { BankReceiptRecord } from './receipt-ocr';
 describe('FraudShield: Escudo Forense Anti-Fraude & Detección de Estafa Triangular', () => {
   describe('calculateNameSimilarity (Validación Cruzada de Identidad)', () => {
     it('debe reconocer nombres idénticos con score 1.0', () => {
-      const res = calculateNameSimilarity('Carlos Alberto Perez Gomez', 'Carlos Alberto Perez Gomez');
+      const res = calculateNameSimilarity(
+        'Carlos Alberto Perez Gomez',
+        'Carlos Alberto Perez Gomez',
+      );
       expect(res.isMatch).toBe(true);
       expect(res.score).toBe(1.0);
       expect(res.missingTokens.length).toBe(0);

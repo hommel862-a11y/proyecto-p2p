@@ -13,7 +13,8 @@ import {
 export const MACRO_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   {
     name: 'predict_bcv_market_intelligence',
-    description: 'Calcula la brecha cambiaria entre dólar BCV oficial y paralelo y evalúa el ciclo semanal de inyección bancaria.',
+    description:
+      'Calcula la brecha cambiaria entre dólar BCV oficial y paralelo y evalúa el ciclo semanal de inyección bancaria.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -31,34 +32,61 @@ export const MACRO_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'forecast_central_bank_liquidity_drain',
-    description: 'Modela el impacto macro del drenaje de liquidez interbancaria (recaudación fiscal SENIAT y subastas BCV) sobre la demanda P2P.',
+    description:
+      'Modela el impacto macro del drenaje de liquidez interbancaria (recaudación fiscal SENIAT y subastas BCV) sobre la demanda P2P.',
     parameters: {
       type: 'OBJECT',
       properties: {
         dayOfMonth: { type: 'INTEGER', description: 'Día del mes (1 a 31).' },
         dayOfWeek: { type: 'INTEGER', description: 'Día de la semana (0=Dom, 1=Lun).' },
-        estimatedSeniatCollectionActive: { type: 'BOOLEAN', description: 'Indica si hay recaudación especial activa.' },
-        weeklyBcvInjectionMillionsUsd: { type: 'NUMBER', description: 'Monto de la inyección semanal del BCV en millones USD.' },
+        estimatedSeniatCollectionActive: {
+          type: 'BOOLEAN',
+          description: 'Indica si hay recaudación especial activa.',
+        },
+        weeklyBcvInjectionMillionsUsd: {
+          type: 'NUMBER',
+          description: 'Monto de la inyección semanal del BCV en millones USD.',
+        },
       },
-      required: ['dayOfMonth', 'dayOfWeek', 'estimatedSeniatCollectionActive', 'weeklyBcvInjectionMillionsUsd'],
+      required: [
+        'dayOfMonth',
+        'dayOfWeek',
+        'estimatedSeniatCollectionActive',
+        'weeklyBcvInjectionMillionsUsd',
+      ],
     },
   },
   {
     name: 'monitor_fiat_flight_and_dollarization_velocity',
-    description: 'Mide la velocidad de repudio de la moneda local (MV=PY) y determina el umbral máximo seguro de tenencia de saldos en VES.',
+    description:
+      'Mide la velocidad de repudio de la moneda local (MV=PY) y determina el umbral máximo seguro de tenencia de saldos en VES.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        averageVesHoldingMinutes: { type: 'NUMBER', description: 'Tiempo promedio que los comercios retienen bolívares.' },
-        merchantUsdtAcceptancePct: { type: 'NUMBER', description: 'Porcentaje de penetración de USDT.' },
-        monthlyInflationEstimatePct: { type: 'NUMBER', description: 'Inflación mensual estimada en porcentaje.' },
+        averageVesHoldingMinutes: {
+          type: 'NUMBER',
+          description: 'Tiempo promedio que los comercios retienen bolívares.',
+        },
+        merchantUsdtAcceptancePct: {
+          type: 'NUMBER',
+          description: 'Porcentaje de penetración de USDT.',
+        },
+        monthlyInflationEstimatePct: {
+          type: 'NUMBER',
+          description: 'Inflación mensual estimada en porcentaje.',
+        },
       },
-      required: ['averageVesHoldingMinutes', 'merchantUsdtAcceptancePct', 'monthlyInflationEstimatePct'],
+      required: [
+        'averageVesHoldingMinutes',
+        'merchantUsdtAcceptancePct',
+        'monthlyInflationEstimatePct',
+      ],
     },
   },
   {
     name: 'simulate_game_theory_nash_repricing',
-    description: 'Simula el Equilibrio de Nash entre los creadores de mercado líderes para fijar un precio Maker sin desatar guerras de subcotización.',
+    description:
+      'Simula el Equilibrio de Nash entre los creadores de mercado líderes para fijar un precio Maker sin desatar guerras de subcotización.',
     parameters: {
       type: 'OBJECT',
       properties: {

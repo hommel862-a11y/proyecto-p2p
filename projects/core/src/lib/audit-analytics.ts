@@ -109,10 +109,7 @@ function extractNetSpreadPct(op: ForensicOperationRecord): number {
       const parsed = typeof op.rawJson === 'string' ? JSON.parse(op.rawJson) : op.rawJson;
       if (parsed && typeof parsed === 'object') {
         const candidate =
-          parsed.netSpreadPct ??
-          parsed.spreadPct ??
-          parsed.expectedNetSpreadPct ??
-          parsed.spread;
+          parsed.netSpreadPct ?? parsed.spreadPct ?? parsed.expectedNetSpreadPct ?? parsed.spread;
         if (typeof candidate === 'number' && Number.isFinite(candidate)) {
           return candidate;
         }
@@ -129,7 +126,11 @@ function extractNetSpreadPct(op: ForensicOperationRecord): number {
  * Computes trade volume in USDT for weighting.
  */
 function extractVolumeUsdt(op: ForensicOperationRecord): number {
-  if (typeof op.cryptoAmount === 'number' && Number.isFinite(op.cryptoAmount) && op.cryptoAmount > 0) {
+  if (
+    typeof op.cryptoAmount === 'number' &&
+    Number.isFinite(op.cryptoAmount) &&
+    op.cryptoAmount > 0
+  ) {
     return op.cryptoAmount;
   }
   if (
@@ -243,7 +244,7 @@ export function analyzeHourlyRiskDistribution(
  */
 export function auditTradingDisciplineAndSpreadCompliance(
   operations: readonly ForensicOperationRecord[],
-  minSpreadThresholdPct = 0.50,
+  minSpreadThresholdPct = 0.5,
 ): SpreadDisciplineResult {
   if (operations.length === 0) {
     return {
@@ -278,8 +279,16 @@ export function auditTradingDisciplineAndSpreadCompliance(
 
   // Chronological traversal: if operations are sorted desc (newest first), reverse to evaluate timeline
   const chronological = [...operations].sort((a, b) => {
-    const tA = Number(a.createdAt || (typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime()) || 0);
-    const tB = Number(b.createdAt || (typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime()) || 0);
+    const tA = Number(
+      a.createdAt ||
+        (typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime()) ||
+        0,
+    );
+    const tB = Number(
+      b.createdAt ||
+        (typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime()) ||
+        0,
+    );
     return tA - tB;
   });
 
@@ -370,13 +379,9 @@ export function generateForensicDossier(
   const preventiveDirectives: string[] = [];
 
   // Standing calculation
-  let operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' =
-    'DISCIPLINED';
+  let operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' = 'DISCIPLINED';
 
-  if (
-    disciplineAudit.complianceRatePct < 80 ||
-    disciplineAudit.tiltSeverity === 'SEVERE'
-  ) {
+  if (disciplineAudit.complianceRatePct < 80 || disciplineAudit.tiltSeverity === 'SEVERE') {
     operatorStanding = 'CRITICAL_TILT_RISK';
   } else if (
     disciplineAudit.complianceRatePct < 95 ||
@@ -413,27 +418,44 @@ export function generateForensicDossier(
 
   // Preventive directives
   if (operatorStanding === 'CRITICAL_TILT_RISK') {
-    preventiveDirectives.push('Activar pausa mandatoria de 60 minutos en la mesa antes de tomar nuevas órdenes.');
-    preventiveDirectives.push('Bloquear órdenes que no alcancen spread neto de 0.50% mediante Circuit Breaker.');
+    preventiveDirectives.push(
+      'Activar pausa mandatoria de 60 minutos en la mesa antes de tomar nuevas órdenes.',
+    );
+    preventiveDirectives.push(
+      'Bloquear órdenes que no alcancen spread neto de 0.50% mediante Circuit Breaker.',
+    );
   } else if (operatorStanding === 'MODERATE_DEVIATION') {
-    preventiveDirectives.push('Ajustar cotizaciones en ventana pico para incorporar prima de riesgo bancario (+0.25%).');
-    preventiveDirectives.push('Verificar comisiones bancarias acumuladas que erosionan el margen neto.');
+    preventiveDirectives.push(
+      'Ajustar cotizaciones en ventana pico para incorporar prima de riesgo bancario (+0.25%).',
+    );
+    preventiveDirectives.push(
+      'Verificar comisiones bancarias acumuladas que erosionan el margen neto.',
+    );
   } else {
-    preventiveDirectives.push('Mantener el estándar disciplinario actual y sostener el libro de órdenes como Maker.');
+    preventiveDirectives.push(
+      'Mantener el estándar disciplinario actual y sostener el libro de órdenes como Maker.',
+    );
   }
 
   const goldenRuleComplianceScore = Math.round(disciplineAudit.complianceRatePct);
   // Risk concentration score: lower incident rate and fewer high risk hours means better score
   const riskConcentrationScore = Math.max(
     0,
-    Math.min(100, Math.round(100 - hourlyRisk.criticalIncidentRatePct * 1.5 - hourlyRisk.highRiskHours.length * 5)),
+    Math.min(
+      100,
+      Math.round(
+        100 - hourlyRisk.criticalIncidentRatePct * 1.5 - hourlyRisk.highRiskHours.length * 5,
+      ),
+    ),
   );
 
   let executiveVerdict = 'Operador apto con grado de disciplina institucional.';
   if (operatorStanding === 'CRITICAL_TILT_RISK') {
-    executiveVerdict = 'OPERADOR EN RIESGO: Desviación sistemática de márgenes y susceptibilidad a tilt. Requiere contramedidas de inmediato.';
+    executiveVerdict =
+      'OPERADOR EN RIESGO: Desviación sistemática de márgenes y susceptibilidad a tilt. Requiere contramedidas de inmediato.';
   } else if (operatorStanding === 'MODERATE_DEVIATION') {
-    executiveVerdict = 'DESVIACIÓN MODERADA: Apego aceptable pero con vulnerabilidad en horarios pico y margen erosionado.';
+    executiveVerdict =
+      'DESVIACIÓN MODERADA: Apego aceptable pero con vulnerabilidad en horarios pico y margen erosionado.';
   }
 
   return {

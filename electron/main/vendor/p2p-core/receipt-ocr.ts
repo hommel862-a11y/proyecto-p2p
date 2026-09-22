@@ -53,7 +53,10 @@ const BANK_NAMES: Record<BankType, string> = {
  * Normalizes number strings from receipts (handling European/Latin '1.250,50' vs US '1,250.50').
  */
 export function parseReceiptAmount(str: string): number {
-  let cleaned = str.replace(/[^0-9.,]/g, '').replace(/^[.,]+|[.,]+$/g, '').trim();
+  const cleaned = str
+    .replace(/[^0-9.,]/g, '')
+    .replace(/^[.,]+|[.,]+$/g, '')
+    .trim();
   if (!cleaned) return 0;
 
   // Check if Latin format: contains dots as thousand separators and comma as decimal (e.g. 1.250,50)
@@ -91,7 +94,13 @@ export function parseReceiptAmount(str: string): number {
 export function detectBankType(text: string): BankType {
   const lower = text.toLowerCase();
   if (lower.includes('banesco')) return 'BANESCO';
-  if (lower.includes('bdv') || lower.includes('venezuela') || lower.includes('pago móvil bdv') || lower.includes('pagomovil bdv')) return 'BDV';
+  if (
+    lower.includes('bdv') ||
+    lower.includes('venezuela') ||
+    lower.includes('pago móvil bdv') ||
+    lower.includes('pagomovil bdv')
+  )
+    return 'BDV';
   if (lower.includes('mercantil')) return 'MERCANTIL';
   if (lower.includes('provincial') || lower.includes('bbva')) return 'PROVINCIAL';
   if (lower.includes('bancamiga')) return 'BANCAMIGA';
@@ -133,7 +142,9 @@ export function extractReference(text: string): string {
  */
 export function extractIdDocument(text: string): string | undefined {
   // First, check explicit labels like Cédula, CI, Documento, RIF, NIT
-  const labelMatch = text.match(/(?:c[eé]dula|c\.?i\.?|rif|documento|nit|id)[:\s]+([VvEeJjGgP-]?\s?[0-9]{6,10})\b/i);
+  const labelMatch = text.match(
+    /(?:c[eé]dula|c\.?i\.?|rif|documento|nit|id)[:\s]+([VvEeJjGgP-]?\s?[0-9]{6,10})\b/i,
+  );
   if (labelMatch) {
     return labelMatch[1].replace(/\s/g, '').toUpperCase();
   }
@@ -164,11 +175,21 @@ export function parseBankReceiptText(
   const reference = extractReference(rawText);
 
   // Currency detection
-  let currency: 'VES' | 'COP' | 'USD' = 'VES';
+  let currency: 'VES' | 'COP' | 'USD';
   const lower = rawText.toLowerCase();
-  if (bank === 'BANCOLOMBIA' || bank === 'NEQUI' || lower.includes('cop') || lower.includes('pesos')) {
+  if (
+    bank === 'BANCOLOMBIA' ||
+    bank === 'NEQUI' ||
+    lower.includes('cop') ||
+    lower.includes('pesos')
+  ) {
     currency = 'COP';
-  } else if (bank === 'ZINLI' || lower.includes('usd') || lower.includes('dólares') || lower.includes('dolares')) {
+  } else if (
+    bank === 'ZINLI' ||
+    lower.includes('usd') ||
+    lower.includes('dólares') ||
+    lower.includes('dolares')
+  ) {
     currency = 'USD';
   } else {
     currency = 'VES';
@@ -202,26 +223,34 @@ export function parseBankReceiptText(
   let payerName: string | undefined;
   let beneficiaryName: string | undefined;
 
-  const nameMatch = rawText.match(/(?:pagador|ordenante|emisor|titular|nombre\s+del\s+pagador)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i);
+  const nameMatch = rawText.match(
+    /(?:pagador|ordenante|emisor|titular|nombre\s+del\s+pagador)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i,
+  );
   if (nameMatch) {
     payerName = nameMatch[1].split(/[\r\n]/)[0].trim();
   }
 
-  const benefMatch = rawText.match(/(?:beneficiario|destino|a nombre de|para)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i);
+  const benefMatch = rawText.match(
+    /(?:beneficiario|destino|a nombre de|para)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i,
+  );
   if (benefMatch) {
     beneficiaryName = benefMatch[1].split(/[\r\n]/)[0].trim();
   }
 
   // Phone number (e.g. 0414-1234567, 3001234567)
   let beneficiaryPhone: string | undefined;
-  const phoneMatch = rawText.match(/\b(04[12][246][-\s]?[0-9]{3}[-\s]?[0-9]{4}|3[0-9]{2}[-\s]?[0-9]{3}[-\s]?[0-9]{4})\b/);
+  const phoneMatch = rawText.match(
+    /\b(04[12][246][-\s]?[0-9]{3}[-\s]?[0-9]{4}|3[0-9]{2}[-\s]?[0-9]{3}[-\s]?[0-9]{4})\b/,
+  );
   if (phoneMatch) {
     beneficiaryPhone = phoneMatch[1].replace(/[-\s]/g, '');
   }
 
   // Date / Timestamp
   let timestamp: string | undefined;
-  const dateMatch = rawText.match(/\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{2,4}(?:\s+[0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?)\b/);
+  const dateMatch = rawText.match(
+    /\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{2,4}(?:\s+[0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?)\b/,
+  );
   if (dateMatch) {
     timestamp = dateMatch[1];
   } else {

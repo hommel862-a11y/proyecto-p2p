@@ -6,7 +6,6 @@
 
 import type { StrategyPlanCard } from '../../shared/types';
 import {
-  formatTelegramMessage,
   sendTelegramAlert,
   type TelegramConfig,
   type RuleAlertEvent,

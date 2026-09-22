@@ -11,7 +11,10 @@ function makeOffers(prices: number[], maxVesEach: number, finishRate = 100): Bin
     finishRatePct: finishRate,
     orderCount: 10,
     minVes: 100,
-    maxVes: maxVesEach >= 10000 && prices[0] > 0 ? Math.round((maxVesEach / prices[0]) * price) : maxVesEach,
+    maxVes:
+      maxVesEach >= 10000 && prices[0] > 0
+        ? Math.round((maxVesEach / prices[0]) * price)
+        : maxVesEach,
     payMethods: ['Banesco'],
   }));
 }
@@ -100,10 +103,28 @@ function makeDepth(bestBuy: number, bestSell: number, buyVolUsdt: number, sellVo
     spreadPct: ((bestSell - bestBuy) / bestBuy) * 100,
     updatedAt: new Date().toISOString(),
     buyOffers: [
-      { advNo: 'b0', price: bestBuy, merchantName: 'B0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: buyVolUsdt * bestBuy, payMethods: ['Banesco'] },
+      {
+        advNo: 'b0',
+        price: bestBuy,
+        merchantName: 'B0',
+        finishRatePct: 100,
+        orderCount: 5,
+        minVes: 100,
+        maxVes: buyVolUsdt * bestBuy,
+        payMethods: ['Banesco'],
+      },
     ],
     sellOffers: [
-      { advNo: 's0', price: bestSell, merchantName: 'S0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: sellVolUsdt * bestSell, payMethods: ['Banesco'] },
+      {
+        advNo: 's0',
+        price: bestSell,
+        merchantName: 'S0',
+        finishRatePct: 100,
+        orderCount: 5,
+        minVes: 100,
+        maxVes: sellVolUsdt * bestSell,
+        payMethods: ['Banesco'],
+      },
     ],
   } as const as any;
 }
@@ -122,7 +143,9 @@ describe('calculateDepthQuality', () => {
   it('spread enorme castiga el score', () => {
     const good = makeDepth(800, 805, 1000, 1000);
     const bad = makeDepth(800, 900, 1000, 1000);
-    expect(calculateDepthQuality(bad, REQUIRED)).toBeLessThan(calculateDepthQuality(good, REQUIRED));
+    expect(calculateDepthQuality(bad, REQUIRED)).toBeLessThan(
+      calculateDepthQuality(good, REQUIRED),
+    );
   });
 });
 
@@ -162,7 +185,12 @@ describe('determineSignal', () => {
 
 import { computeBankProfits, buildJohnsonMarketQuality } from './johnson-depth';
 
-function makeBankDepth(buyPrice: number, sellPrice: number, buyVolUsdt: number, sellVolUsdt: number) {
+function makeBankDepth(
+  buyPrice: number,
+  sellPrice: number,
+  buyVolUsdt: number,
+  sellVolUsdt: number,
+) {
   return {
     asset: 'USDT',
     fiat: 'VES',
@@ -172,10 +200,28 @@ function makeBankDepth(buyPrice: number, sellPrice: number, buyVolUsdt: number, 
     spreadPct: ((sellPrice - buyPrice) / buyPrice) * 100,
     updatedAt: new Date().toISOString(),
     buyOffers: [
-      { advNo: 'b0', price: buyPrice, merchantName: 'B0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: buyVolUsdt * buyPrice, payMethods: ['Banesco'] },
+      {
+        advNo: 'b0',
+        price: buyPrice,
+        merchantName: 'B0',
+        finishRatePct: 100,
+        orderCount: 5,
+        minVes: 100,
+        maxVes: buyVolUsdt * buyPrice,
+        payMethods: ['Banesco'],
+      },
     ],
     sellOffers: [
-      { advNo: 's0', price: sellPrice, merchantName: 'S0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: sellVolUsdt * sellPrice, payMethods: ['Banesco'] },
+      {
+        advNo: 's0',
+        price: sellPrice,
+        merchantName: 'S0',
+        finishRatePct: 100,
+        orderCount: 5,
+        minVes: 100,
+        maxVes: sellVolUsdt * sellPrice,
+        payMethods: ['Banesco'],
+      },
     ],
   } as const as any;
 }
@@ -186,14 +232,14 @@ describe('computeBankProfits', () => {
     const profits = computeBankProfits(depth, ['ALL'], REQUIRED);
     expect(profits).toHaveLength(1);
     const [p] = profits;
-    expect(p.fillableUsdt).toBe(500);               // targetUsdt default
+    expect(p.fillableUsdt).toBe(500); // targetUsdt default
     expect(p.grossProfitVes).toBeCloseTo(500 * 25, 0);
-    expect(p.binanceFeeUsdt).toBe(0);               // TAKER
-    expect(p.bankFeesVes).toBe(0);                  // mismo banco, no interbank
+    expect(p.binanceFeeUsdt).toBe(0); // TAKER
+    expect(p.bankFeesVes).toBe(0); // mismo banco, no interbank
     expect(p.netGainVes).toBeCloseTo(500 * 25, 0);
     expect(p.roiCyclePct).toBeCloseTo((12500 / 400000) * 100, 2); // 3.125%
     expect(p.effectiveFeeDragPct).toBeCloseTo(0, 2);
-    expect(p.isSafe).toBe(true);                    // >= 0.50%
+    expect(p.isSafe).toBe(true); // >= 0.50%
   });
 
   it('sin input válido produce fila cero sin lanzar excepción (computeArbitrageCycle guarda)', () => {
@@ -208,18 +254,45 @@ describe('computeBankProfits', () => {
     const depth = {
       ...makeBankDepth(800, 825, 1000, 1000),
       buyOffers: [
-        { advNo: 'b0', price: 800, merchantName: 'B0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: 1000 * 800, payMethods: ['Banesco'] },
-        { advNo: 'b1', price: 810, merchantName: 'B1', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: 1000 * 810, payMethods: ['PagoMovil'] },
+        {
+          advNo: 'b0',
+          price: 800,
+          merchantName: 'B0',
+          finishRatePct: 100,
+          orderCount: 5,
+          minVes: 100,
+          maxVes: 1000 * 800,
+          payMethods: ['Banesco'],
+        },
+        {
+          advNo: 'b1',
+          price: 810,
+          merchantName: 'B1',
+          finishRatePct: 100,
+          orderCount: 5,
+          minVes: 100,
+          maxVes: 1000 * 810,
+          payMethods: ['PagoMovil'],
+        },
       ],
       sellOffers: [
-        { advNo: 's0', price: 825, merchantName: 'S0', finishRatePct: 100, orderCount: 5, minVes: 100, maxVes: 1000 * 825, payMethods: ['Banesco', 'PagoMovil'] },
+        {
+          advNo: 's0',
+          price: 825,
+          merchantName: 'S0',
+          finishRatePct: 100,
+          orderCount: 5,
+          minVes: 100,
+          maxVes: 1000 * 825,
+          payMethods: ['Banesco', 'PagoMovil'],
+        },
       ],
     } as const as any;
 
     const profits = computeBankProfits(depth, ['BANESCO', 'PAGO_MOVIL'], REQUIRED);
-    expect(profits[0].bankKey).toBe('BANESCO');    // compra 800 => mayor ganancia
+    expect(profits[0].bankKey).toBe('BANESCO'); // compra 800 => mayor ganancia
     expect(profits[0].netGainVes).toBeGreaterThan(profits[1].netGainVes);
-    expect(profits[1].bankCode).toBe('OTRO');      // PAGO_MOVIL no es banco -> fees OTRO (D4)
+    expect(profits[1].bankCode).toBe('OTRO'); // PAGO_MOVIL no es banco -> fees OTRO (D4)
   });
 
   it('si no hay liquidez suficiente el fillable baja y la ganancia es proporcional', () => {
@@ -250,4 +323,3 @@ describe('buildJohnsonMarketQuality', () => {
     expect(q.bankProfits[0].netGainVes).toBe(0);
   });
 });
-

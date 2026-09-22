@@ -69,12 +69,12 @@ describe('AuditAnalytics Domain Engine', () => {
 
     it('evaluates 100% compliant operations adhering to the Golden Rule (>= 0.50%)', () => {
       const ops: ForensicOperationRecord[] = [
-        { id: 'OP-1', timestamp: '2026-09-19T10:00:00Z', netSpreadPct: 1.20, cryptoAmount: 1000 },
+        { id: 'OP-1', timestamp: '2026-09-19T10:00:00Z', netSpreadPct: 1.2, cryptoAmount: 1000 },
         { id: 'OP-2', timestamp: '2026-09-19T10:30:00Z', netSpreadPct: 0.85, cryptoAmount: 2000 },
-        { id: 'OP-3', timestamp: '2026-09-19T11:00:00Z', netSpreadPct: 1.50, cryptoAmount: 1500 },
+        { id: 'OP-3', timestamp: '2026-09-19T11:00:00Z', netSpreadPct: 1.5, cryptoAmount: 1500 },
       ];
 
-      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.50);
+      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.5);
       expect(res.totalOperationsAnalyzed).toBe(3);
       expect(res.compliantOperationsCount).toBe(3);
       expect(res.nonCompliantOperationsCount).toBe(0);
@@ -87,13 +87,13 @@ describe('AuditAnalytics Domain Engine', () => {
 
     it('detects severe tilt when 3 consecutive operations violate spread threshold', () => {
       const ops: ForensicOperationRecord[] = [
-        { id: 'OP-1', timestamp: 1000, netSpreadPct: 1.10, cryptoAmount: 500 },
-        { id: 'OP-2', timestamp: 2000, netSpreadPct: 0.20, cryptoAmount: 1000 }, // violation 1
+        { id: 'OP-1', timestamp: 1000, netSpreadPct: 1.1, cryptoAmount: 500 },
+        { id: 'OP-2', timestamp: 2000, netSpreadPct: 0.2, cryptoAmount: 1000 }, // violation 1
         { id: 'OP-3', timestamp: 3000, netSpreadPct: 0.15, cryptoAmount: 1000 }, // violation 2
-        { id: 'OP-4', timestamp: 4000, netSpreadPct: 0.10, cryptoAmount: 1000 }, // violation 3
+        { id: 'OP-4', timestamp: 4000, netSpreadPct: 0.1, cryptoAmount: 1000 }, // violation 3
       ];
 
-      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.50);
+      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.5);
       expect(res.totalOperationsAnalyzed).toBe(4);
       expect(res.compliantOperationsCount).toBe(1);
       expect(res.nonCompliantOperationsCount).toBe(3);
@@ -126,7 +126,7 @@ describe('AuditAnalytics Domain Engine', () => {
         },
       ];
 
-      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.50);
+      const res = auditTradingDisciplineAndSpreadCompliance(ops, 0.5);
       expect(res.totalOperationsAnalyzed).toBe(2);
       expect(res.compliantOperationsCount).toBe(1);
       expect(res.nonCompliantOperationsCount).toBe(1);
@@ -140,8 +140,8 @@ describe('AuditAnalytics Domain Engine', () => {
     it('produces DISCIPLINED standing for compliant trading and low risk distribution', () => {
       const risk = analyzeHourlyRiskDistribution([]);
       const discipline = auditTradingDisciplineAndSpreadCompliance([
-        { timestamp: 1000, netSpreadPct: 1.30, cryptoAmount: 1000 },
-        { timestamp: 2000, netSpreadPct: 1.10, cryptoAmount: 1000 },
+        { timestamp: 1000, netSpreadPct: 1.3, cryptoAmount: 1000 },
+        { timestamp: 2000, netSpreadPct: 1.1, cryptoAmount: 1000 },
       ]);
 
       const dossier = generateForensicDossier(risk, discipline);
@@ -159,9 +159,9 @@ describe('AuditAnalytics Domain Engine', () => {
         { timestamp: '2026-09-19T11:10:00Z', severity: 'error' },
       ]);
       const discipline = auditTradingDisciplineAndSpreadCompliance([
-        { timestamp: 1000, netSpreadPct: 0.10, cryptoAmount: 1000 },
-        { timestamp: 2000, netSpreadPct: 0.10, cryptoAmount: 1000 },
-        { timestamp: 3000, netSpreadPct: 0.10, cryptoAmount: 1000 },
+        { timestamp: 1000, netSpreadPct: 0.1, cryptoAmount: 1000 },
+        { timestamp: 2000, netSpreadPct: 0.1, cryptoAmount: 1000 },
+        { timestamp: 3000, netSpreadPct: 0.1, cryptoAmount: 1000 },
       ]);
 
       const dossier = generateForensicDossier(risk, discipline);

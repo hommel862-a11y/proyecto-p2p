@@ -23,13 +23,13 @@ export interface TelegramInboundUpdate {
     chat: { id: number; type: string };
     text?: string;
     date: number;
-    photo?: Array<{
+    photo?: {
       file_id: string;
       file_unique_id: string;
       width: number;
       height: number;
       file_size?: number;
-    }>;
+    }[];
     document?: {
       file_id: string;
       file_name?: string;
@@ -71,7 +71,7 @@ export interface DispatchResult {
  */
 export function escapeMarkdownV2(text: string): string {
   if (!text) return '';
-  return text.replace(/([_*\[\]()~>#+=|{}.!\\-])/g, '\\$1');
+  return text.replace(/([_*[\]()~>#+=|{}.!\\-])/g, '\\$1');
 }
 
 /**
@@ -201,7 +201,8 @@ export function formatBcvIntelligenceTelegramMessage(intel: {
   actionLabel: string;
   timingNotice: string;
 }): string {
-  const zoneIcon = intel.zone === 'CRITICAL_DISPERSION' ? '🔴' : intel.zone === 'ELEVATED' ? '🟡' : '🟢';
+  const zoneIcon =
+    intel.zone === 'CRITICAL_DISPERSION' ? '🔴' : intel.zone === 'ELEVATED' ? '🟡' : '🟢';
   return `🏛️ *INTELIGENCIA CAMBIARIA BCV* 🏛️
 ━━━━━━━━━━━━━━━━━━━━
 📈 *Tasa Paralelo:* \`${escapeMarkdownV2(intel.parallelRate.toFixed(2))} Bs\`
@@ -221,7 +222,7 @@ export function formatBcvIntelligenceTelegramMessage(intel: {
  * Formats bank account usage limits and SUDEBAN alerts.
  */
 export function formatBankLimitsTelegramMessage(
-  accounts: Array<{
+  accounts: {
     bankName: string;
     spentTodayVes: number;
     dailyLimitVes: number;
@@ -229,7 +230,7 @@ export function formatBankLimitsTelegramMessage(
     txCount: number;
     maxTx: number;
     isOverLimit: boolean;
-  }>,
+  }[],
 ): string {
   const rows = accounts
     .map((acc) => {

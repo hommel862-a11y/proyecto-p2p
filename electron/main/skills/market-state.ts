@@ -4,10 +4,7 @@
 
 import { request as httpsRequest } from 'node:https';
 import type { BinanceOfferSummary } from '../vendor/p2p-core/binance-p2p';
-import {
-  buildBinanceSearchPayload,
-  parseBinanceP2pItems,
-} from '../vendor/p2p-core/binance-p2p';
+import { buildBinanceSearchPayload, parseBinanceP2pItems } from '../vendor/p2p-core/binance-p2p';
 import type { BlindThreatRecord } from '../vendor/p2p-core/zk-market-mesh';
 import { ZkMarketMesh } from '../vendor/p2p-core/zk-market-mesh';
 import type { PriceTick } from '../vendor/p2p-core/volatility-forecaster';
@@ -189,7 +186,8 @@ export async function refreshFinancialSkillMarketData(): Promise<{
     if (!buyRes.ok || !sellRes.ok || (buyOffers.length === 0 && sellOffers.length === 0)) {
       return {
         ok: false,
-        message: 'No se obtuvieron ofertas válidas de Binance C2C (red/format). Libro sin refrescar.',
+        message:
+          'No se obtuvieron ofertas válidas de Binance C2C (red/format). Libro sin refrescar.',
       };
     }
     marketBook = buildBookSnapshot(buyOffers, sellOffers);

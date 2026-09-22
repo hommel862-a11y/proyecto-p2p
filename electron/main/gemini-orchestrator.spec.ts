@@ -35,12 +35,15 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     if (fs.existsSync(testDbPath)) {
       try {
         fs.unlinkSync(testDbPath);
-      } catch {}
+      } catch {
+        /* ignore test db cleanup */
+      }
     }
   });
 
   it('procesa una solicitud operativa, formula un plan SOP y lo persiste en SQLite', async () => {
-    const prompt = 'Activa el triaje de incidencia para retención de cuenta bancaria y audita el cumplimiento SOP';
+    const prompt =
+      'Activa el triaje de incidencia para retención de cuenta bancaria y audita el cumplimiento SOP';
     const response = await orchestrator.sendMessage({ prompt });
 
     // 1. Validar contenido analítico en la respuesta
@@ -52,7 +55,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     expect(response.suggestedPlan).toBeDefined();
     const plan = response.suggestedPlan!;
     expect(plan.status).toBe('PROPOSED');
-    expect(plan.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.50);
+    expect(plan.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.5);
     expect(plan.title).toContain('Gobernanza SOP');
 
     // 3. Validar persistencia en SQLite
@@ -124,7 +127,8 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       createdAt: Date.now(),
     });
 
-    const prompt = '¿En qué horarios tuve más alertas de riesgo esta semana y respeté el spread mínimo?';
+    const prompt =
+      '¿En qué horarios tuve más alertas de riesgo esta semana y respeté el spread mínimo?';
     const response = await orchestrator.sendMessage({ prompt });
 
     expect(response.reply).toContain('Auditoría Forense del Libro Mayor');
@@ -132,6 +136,6 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     expect(response.reply).toContain('Disciplina Operativa & Regla de Oro');
     expect(response.suggestedPlan).toBeDefined();
     expect(response.suggestedPlan?.title).toContain('Plan de Mitigación Forense');
-    expect(response.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.50);
+    expect(response.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.5);
   });
 });

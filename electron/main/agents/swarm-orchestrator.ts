@@ -9,7 +9,7 @@ import { SentinelAgent } from './sentinel-agent';
 import { StrategistAgent } from './strategist-agent';
 import { RiskGatekeeperAgent } from './risk-gatekeeper-agent';
 import { DisputeAuditorAgent, type DisputeDossierResult } from './dispute-auditor-agent';
-import { CounterpartyReputationGraph, type CounterpartyProfileRecord } from './counterparty-graph';
+import { CounterpartyReputationGraph } from './counterparty-graph';
 import type {
   SwarmAnalysisResult,
   AgentHealthStatus,
@@ -98,7 +98,10 @@ export class AgentSwarmOrchestrator {
     }
 
     // 3. Strategist Stage (Gentleman AI)
-    const strategistProposal: StrategistProposal = this.strategist.formulateProposal(sentinelSignal, capital);
+    const strategistProposal: StrategistProposal = this.strategist.formulateProposal(
+      sentinelSignal,
+      capital,
+    );
 
     // 4. Risk Gatekeeper Stage (Unilateral Veto Power)
     const riskVerdict: RiskVerdict = this.riskGatekeeper.evaluateProposal(strategistProposal, {
@@ -110,7 +113,7 @@ export class AgentSwarmOrchestrator {
 
     // 5. Persistence & Governance
     let engramObs: EngramObservationRecord | undefined;
-    let executionSummary = '';
+    let executionSummary: string;
 
     if (riskVerdict.status === 'VETOED') {
       executionSummary = `⛔ **OPERACIÓN VETADA POR EL OFICIAL DE RIESGO**\n\n${riskVerdict.vetoReason}\n\n*Acción recomendada*: ${riskVerdict.recommendedAction}`;
@@ -134,9 +137,10 @@ export class AgentSwarmOrchestrator {
         updatedAt: Date.now(),
       });
 
-      const warningText = riskVerdict.warnings.length > 0
-        ? `\n\n⚠️ **Advertencias del Gatekeeper**:\n${riskVerdict.warnings.map((w) => `• ${w}`).join('\n')}`
-        : '\n\n✓ **Auditoría de Riesgo**: Todos los parámetros de seguridad aprobados.';
+      const warningText =
+        riskVerdict.warnings.length > 0
+          ? `\n\n⚠️ **Advertencias del Gatekeeper**:\n${riskVerdict.warnings.map((w) => `• ${w}`).join('\n')}`
+          : '\n\n✓ **Auditoría de Riesgo**: Todos los parámetros de seguridad aprobados.';
 
       executionSummary = `Mirá, el Enjambre Multi-Agente completó la auditoría institucional.\n\n* **Estratega (Gentleman AI)**: ${strategistProposal.rationale}\n* **Retorno Neto Proyectado**: ${strategistProposal.mathematicalValidation.netSpreadPct.toFixed(2)}% (${strategistProposal.plan.expectedProfitUsdt} USDT)\n* **Timing**: ${strategistProposal.recommendedTiming}${warningText}\n\nFijate en los parámetros y dale **EJECUTAR** cuando estés listo para despacharlo.`;
 

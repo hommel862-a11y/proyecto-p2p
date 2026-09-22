@@ -57,7 +57,7 @@ describe('operator-manager pure domain logic', () => {
     ];
 
     it('distributes 7000$ capital between operators and calculates profit split', () => {
-      const plan = buildTeamAllocationPlan(7000, operators, 60.0, 0.90);
+      const plan = buildTeamAllocationPlan(7000, operators, 60.0, 0.9);
       expect(plan.totalDeskCapitalUsdt).toBe(7000);
       expect(plan.deskOwnerRetainedCapitalUsdt).toBe(0);
       expect(plan.operatorsAllocations).toHaveLength(2);
@@ -69,7 +69,9 @@ describe('operator-manager pure domain logic', () => {
       expect(op1.ownerDailyTakeUsdt).toBe(63);
 
       expect(plan.totalDailyOwnerProfitUsdt).toBeGreaterThan(63);
-      expect(plan.monthlyProjectedDeskProfitUsdt).toBe(Math.round(plan.totalDailyOwnerProfitUsdt * 30 * 100) / 100);
+      expect(plan.monthlyProjectedDeskProfitUsdt).toBe(
+        Math.round(plan.totalDailyOwnerProfitUsdt * 30 * 100) / 100,
+      );
     });
 
     it('retains capital for desk leader when total capital exceeds operator sum', () => {

@@ -71,7 +71,7 @@ export function computeTickVelocity(ticks: PriceTick[]): {
   const lastMid = (last.buyPrice + last.sellPrice) / 2;
 
   const midPriceVelocityPctPerHour =
-    firstMid > 0 ? ((lastMid - firstMid) / firstMid) * 100 / timeDeltaHours : 0;
+    firstMid > 0 ? (((lastMid - firstMid) / firstMid) * 100) / timeDeltaHours : 0;
 
   // Spread standard deviation
   const spreads = sorted.map((t) =>
@@ -90,8 +90,8 @@ export function computeTickVelocity(ticks: PriceTick[]): {
     const midMid = (midTick.buyPrice + midTick.sellPrice) / 2;
     const h1Delta = Math.max((midTick.timestampMs - first.timestampMs) / 3600000, 0.005);
     const h2Delta = Math.max((last.timestampMs - midTick.timestampMs) / 3600000, 0.005);
-    const v1 = ((midMid - firstMid) / firstMid) * 100 / h1Delta;
-    const v2 = ((lastMid - midMid) / midMid) * 100 / h2Delta;
+    const v1 = (((midMid - firstMid) / firstMid) * 100) / h1Delta;
+    const v2 = (((lastMid - midMid) / midMid) * 100) / h2Delta;
     priceAcceleration = v2 - v1;
   }
 
@@ -115,15 +115,21 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
 
   if (absVelocity > 1.5) {
     score += 25;
-    drivers.push(`Fuerte velocidad de precio paralelo: ${velocity.midPriceVelocityPctPerHour > 0 ? '+' : ''}${velocity.midPriceVelocityPctPerHour.toFixed(2)}%/hora`);
+    drivers.push(
+      `Fuerte velocidad de precio paralelo: ${velocity.midPriceVelocityPctPerHour > 0 ? '+' : ''}${velocity.midPriceVelocityPctPerHour.toFixed(2)}%/hora`,
+    );
   } else if (absVelocity > 0.6) {
     score += 15;
-    drivers.push(`Deriva moderada de cotizaciones: ${velocity.midPriceVelocityPctPerHour.toFixed(2)}%/hora`);
+    drivers.push(
+      `Deriva moderada de cotizaciones: ${velocity.midPriceVelocityPctPerHour.toFixed(2)}%/hora`,
+    );
   }
 
   if (velocity.spreadStandardDeviation > 0.4) {
     score += 15;
-    drivers.push(`Inestabilidad en el spread del libro (σ = ${velocity.spreadStandardDeviation.toFixed(2)}%)`);
+    drivers.push(
+      `Inestabilidad en el spread del libro (σ = ${velocity.spreadStandardDeviation.toFixed(2)}%)`,
+    );
   }
 
   // 2. Depth Imbalance
@@ -156,7 +162,9 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   if (input.bcvWindow) {
     if (input.bcvWindow.phase === 'INTERVENTION_ACTIVE') {
       score += 25;
-      drivers.push(`Ventana de inyección de divisas BCV activa (${input.bcvWindow.probabilityPct}% prob)`);
+      drivers.push(
+        `Ventana de inyección de divisas BCV activa (${input.bcvWindow.probabilityPct}% prob)`,
+      );
     } else if (input.bcvWindow.phase === 'PRE_INTERVENTION_COMPRESSION') {
       score += 10;
       drivers.push(`Fase previa a subasta bancaria: compresión artificial del tipo de cambio`);
@@ -170,7 +178,9 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   if (input.bcvGap) {
     if (input.bcvGap.zone === 'CRITICAL_DISPERSION') {
       score += 25;
-      drivers.push(`Brecha Paralelo vs BCV en dispersión crítica (${input.bcvGap.gapPct.toFixed(1)}%)`);
+      drivers.push(
+        `Brecha Paralelo vs BCV en dispersión crítica (${input.bcvGap.gapPct.toFixed(1)}%)`,
+      );
     } else if (input.bcvGap.zone === 'ELEVATED') {
       score += 10;
       drivers.push(`Brecha cambiaria por encima del promedio histórico`);
@@ -180,7 +190,9 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   // 5. Spoofing & Orderbook Manipulation
   if (input.spoofReport && input.spoofReport.manipulationRiskScore > 40) {
     score += 15;
-    drivers.push(`Manipulación detectada en microestructura (Riesgo Spoof: ${input.spoofReport.manipulationRiskScore}/100)`);
+    drivers.push(
+      `Manipulación detectada en microestructura (Riesgo Spoof: ${input.spoofReport.manipulationRiskScore}/100)`,
+    );
   }
 
   // Normalize final score between 5 and 100
@@ -197,8 +209,8 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   }
 
   // Determine Spread Drift Direction & Expected bps
-  let direction: SpreadDriftDirection = 'STABLE';
-  let expectedSpreadDriftBps = 0;
+  let direction: SpreadDriftDirection;
+  let expectedSpreadDriftBps: number;
 
   if (level === 'EXTREME') {
     direction = 'EXPANDING';
@@ -220,33 +232,37 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   }
 
   // Suggested spread adjustments for merchant quoting
-  let buyMarkupPct = 0;
-  let sellMarkupPct = 0;
+  let buyMarkupPct: number;
+  let sellMarkupPct: number;
 
   if (level === 'EXTREME') {
-    buyMarkupPct = -0.50; // Discount bids to avoid getting caught on sudden drop
+    buyMarkupPct = -0.5; // Discount bids to avoid getting caught on sudden drop
     sellMarkupPct = +0.65; // Raise asks to harvest volatility
   } else if (level === 'ELEVATED') {
     buyMarkupPct = -0.25;
     sellMarkupPct = +0.35;
   } else if (level === 'NORMAL') {
-    buyMarkupPct = -0.10;
-    sellMarkupPct = +0.10;
+    buyMarkupPct = -0.1;
+    sellMarkupPct = +0.1;
   } else {
     buyMarkupPct = 0;
     sellMarkupPct = 0;
   }
 
   // Actionable Guidance
-  let actionableGuidance = '';
+  let actionableGuidance: string;
   if (level === 'EXTREME') {
-    actionableGuidance = 'Pausar órdenes pasivas o ampliar spread en +80 bps. No mantener inventario en VES mayor a 15 minutos.';
+    actionableGuidance =
+      'Pausar órdenes pasivas o ampliar spread en +80 bps. No mantener inventario en VES mayor a 15 minutos.';
   } else if (level === 'ELEVATED') {
-    actionableGuidance = 'Ajustar cotizaciones: reducir precio de compra un 0.25% y aumentar venta un 0.35% para proteger margen.';
+    actionableGuidance =
+      'Ajustar cotizaciones: reducir precio de compra un 0.25% y aumentar venta un 0.35% para proteger margen.';
   } else if (level === 'NORMAL') {
-    actionableGuidance = 'Condiciones operativas regulares. Spread estándar suficiente para rotación normal.';
+    actionableGuidance =
+      'Condiciones operativas regulares. Spread estándar suficiente para rotación normal.';
   } else {
-    actionableGuidance = 'Baja volatilidad: oportunidad de estrechar spread para maximizar volumen y captura de flujo.';
+    actionableGuidance =
+      'Baja volatilidad: oportunidad de estrechar spread para maximizar volumen y captura de flujo.';
   }
 
   const confidenceScorePct = Math.min(
@@ -272,7 +288,10 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
     },
     liquidityRisk,
     confidenceScorePct,
-    drivers: drivers.length > 0 ? drivers : ['Parámetros de mercado dentro de rangos normales de estabilidad'],
+    drivers:
+      drivers.length > 0
+        ? drivers
+        : ['Parámetros de mercado dentro de rangos normales de estabilidad'],
     actionableGuidance,
   };
 }

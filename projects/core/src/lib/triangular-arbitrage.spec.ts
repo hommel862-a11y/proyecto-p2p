@@ -97,8 +97,12 @@ describe('Triangular Arbitrage Domain Engine', () => {
     it('returns HIGH risk for low margin with long execution duration', () => {
       const risk = evaluateTriangularRisk(0.5, 100, ['USDT', 'COP', 'VES']);
       expect(risk.level).toBe('HIGH');
-      expect(risk.reasons).toContain('Margen neto muy bajo (< 0.8%): alto riesgo de quedar en pérdida ante slippage o micro-fluctuaciones.');
-      expect(risk.reasons).toContain('Tiempo de ejecución prolongado (>= 90 min): alta exposición a volatilidad cambiaria durante la rotación.');
+      expect(risk.reasons).toContain(
+        'Margen neto muy bajo (< 0.8%): alto riesgo de quedar en pérdida ante slippage o micro-fluctuaciones.',
+      );
+      expect(risk.reasons).toContain(
+        'Tiempo de ejecución prolongado (>= 90 min): alta exposición a volatilidad cambiaria durante la rotación.',
+      );
     });
   });
 
@@ -127,12 +131,7 @@ describe('Triangular Arbitrage Domain Engine', () => {
 
     it('calculates breakeven price and slippage tolerance accurately', () => {
       const preset = DEFAULT_TRIANGULAR_PRESETS[0];
-      const result = calculateTriangularArbitrage(
-        preset.id,
-        preset.name,
-        10000,
-        preset.legs,
-      );
+      const result = calculateTriangularArbitrage(preset.id, preset.name, 10000, preset.legs);
 
       expect(result.breakevenPriceLeg3).toBeGreaterThan(0);
       if (result.isProfitable) {
@@ -240,4 +239,3 @@ describe('Triangular Arbitrage Domain Engine', () => {
     });
   });
 });
-

@@ -10,7 +10,7 @@ import type { P2PDatabaseService } from '../db/database';
 import { getBcvMarketIntelligence } from '../vendor/p2p-core/bcv-intervention-predictor';
 import type { ProactiveEventAlert } from './proactive-event-types';
 
-export function detectUsdtDepegParity(spotUsdtPrice = 1.000, thresholdPct = 0.2) {
+export function detectUsdtDepegParity(spotUsdtPrice = 1.0, thresholdPct = 0.2) {
   const deviation = ((spotUsdtPrice - 1.0) / 1.0) * 100;
   const parityDeviationPct = Math.round(deviation * 1000) / 1000;
   const absDev = Math.abs(parityDeviationPct);
@@ -18,7 +18,8 @@ export function detectUsdtDepegParity(spotUsdtPrice = 1.000, thresholdPct = 0.2)
   let status: 'PEGGED' | 'DEPEG_DISCOUNT' | 'DEPEG_PREMIUM' = 'PEGGED';
   let isDepegged = false;
   let riskSeverity: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'NONE';
-  let recommendation = 'USDT operando dentro de paridad normal ($1.000 ± 0.2%). Sin riesgo cambiario global.';
+  let recommendation =
+    'USDT operando dentro de paridad normal ($1.000 ± 0.2%). Sin riesgo cambiario global.';
 
   if (parityDeviationPct < -thresholdPct) {
     status = 'DEPEG_DISCOUNT';
@@ -63,7 +64,11 @@ export class ProactiveEventEngine {
   /**
    * Evaluates macroeconomic BCV window conditions and gap anomaly.
    */
-  evaluateBcvMacroEvent(parallelRate: number, bcvRate: number, now = new Date()): ProactiveEventAlert | null {
+  evaluateBcvMacroEvent(
+    parallelRate: number,
+    bcvRate: number,
+    now = new Date(),
+  ): ProactiveEventAlert | null {
     const intel = getBcvMarketIntelligence(parallelRate, bcvRate, now);
     const gapPct = intel.gap.gapPct;
     const phase = intel.window.phase;
@@ -80,10 +85,15 @@ export class ProactiveEventEngine {
           message: `La brecha entre el paralelo (${parallelRate}) y el BCV (${bcvRate}) alcanzó ${gapPct}%. Dispersión extrema.`,
           data: { gapPct, bcvRate, parallelRate },
           timestamp: Date.now(),
-          recommendedAction: 'Reducir saldo operativo en moneda fiat a menos del 10% del capital total.',
+          recommendedAction:
+            'Reducir saldo operativo en moneda fiat a menos del 10% del capital total.',
         };
 
-        this.persistAndBroadcast(alert, 'macro/gap-dispersion', `Brecha cambiaria en nivel crítico (${gapPct}%).`);
+        this.persistAndBroadcast(
+          alert,
+          'macro/gap-dispersion',
+          `Brecha cambiaria en nivel crítico (${gapPct}%).`,
+        );
         return alert;
       }
       return null;
@@ -101,11 +111,16 @@ export class ProactiveEventEngine {
           message: `El Banco Central está inyectando divisas activamente. Brecha actual: ${gapPct}%. Se prevé volatilidad y caída temporal del paralelo.`,
           data: { gapPct, phase, bcvRate, parallelRate },
           timestamp: Date.now(),
-          recommendedAction: 'Detener órdenes de compra agresivas y esperar estabilización del precio antes del mediodía.',
+          recommendedAction:
+            'Detener órdenes de compra agresivas y esperar estabilización del precio antes del mediodía.',
           autoKillswitch: false,
         };
 
-        this.persistAndBroadcast(alert, 'bcv/intervention-active', 'Ventana de inyección de divisas BCV en curso.');
+        this.persistAndBroadcast(
+          alert,
+          'bcv/intervention-active',
+          'Ventana de inyección de divisas BCV en curso.',
+        );
         return alert;
       }
       return null;
@@ -123,10 +138,15 @@ export class ProactiveEventEngine {
           message: `Faltan aproximadamente ${intel.window.hoursUntilIntervention} horas para la ventana bancaria del BCV.`,
           data: { gapPct, phase, hoursUntil: intel.window.hoursUntilIntervention },
           timestamp: Date.now(),
-          recommendedAction: 'Acelerar el ciclo de rotación y mantener inventario resguardado en USDT.',
+          recommendedAction:
+            'Acelerar el ciclo de rotación y mantener inventario resguardado en USDT.',
         };
 
-        this.persistAndBroadcast(alert, 'bcv/pre-intervention', 'Fase pre-intervención BCV detectada.');
+        this.persistAndBroadcast(
+          alert,
+          'bcv/pre-intervention',
+          'Fase pre-intervención BCV detectada.',
+        );
         return alert;
       }
       return null;
@@ -149,7 +169,10 @@ export class ProactiveEventEngine {
           id: `EVT-${Date.now().toString(36).toUpperCase()}`,
           type: 'USDT_DEPEG_WARNING',
           severity,
-          title: depegResult.riskSeverity === 'CRITICAL' ? '🚨 DEPEG CRÍTICO DE USDT' : '⚠️ DESVÍO DE PARIDAD EN USDT',
+          title:
+            depegResult.riskSeverity === 'CRITICAL'
+              ? '🚨 DEPEG CRÍTICO DE USDT'
+              : '⚠️ DESVÍO DE PARIDAD EN USDT',
           message: depegResult.recommendation,
           data: {
             spotUsdtPrice,
@@ -164,7 +187,7 @@ export class ProactiveEventEngine {
         this.persistAndBroadcast(
           alert,
           'risk/usdt-depeg',
-          `Desvío de paridad en USDT de ${depegResult.parityDeviationPct}% (${depegResult.status}).`
+          `Desvío de paridad en USDT de ${depegResult.parityDeviationPct}% (${depegResult.status}).`,
         );
         return alert;
       }

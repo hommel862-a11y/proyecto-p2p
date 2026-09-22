@@ -5,17 +5,16 @@
  * and maintains human-in-the-loop approval barriers.
  */
 
-import type { P2PDatabaseService, StrategyPlanRecord, MarketLearningRecord, EngramObservationRecord } from './db/database';
+import type {
+  P2PDatabaseService,
+  StrategyPlanRecord,
+  MarketLearningRecord,
+  EngramObservationRecord,
+} from './db/database';
 import type { CopilotChatMessage, CopilotResponse, StrategyPlanCard } from '../shared/types';
-import {
-  GEMINI_FINANCIAL_SKILLS,
-  executeFinancialSkill,
-} from './gemini-skills';
+import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './gemini-skills';
 import type { AgentSwarmOrchestrator } from './agents/swarm-orchestrator';
-import {
-  WebhookDispatcher,
-  type PlanDispatchSummary,
-} from './services/webhook-dispatcher';
+import { WebhookDispatcher, type PlanDispatchSummary } from './services/webhook-dispatcher';
 
 const QUOTA_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
@@ -45,7 +44,12 @@ export class GeminiOrchestrator {
   }
 
   getEffectiveApiKey(): string | undefined {
-    return this.apiKey || process.env['GEMINI_API_KEY'] || this.db.getConfigValue('gemini_api_key') || undefined;
+    return (
+      this.apiKey ||
+      process.env['GEMINI_API_KEY'] ||
+      this.db.getConfigValue('gemini_api_key') ||
+      undefined
+    );
   }
 
   private getCandidateModels(): string[] {
@@ -57,7 +61,7 @@ export class GeminiOrchestrator {
   private extractRetryDelayMs(errText: string): number {
     try {
       const body = JSON.parse(errText) as {
-        error?: { details?: Array<{ retryDelay?: string }> };
+        error?: { details?: { retryDelay?: string }[] };
       };
       const retryDelay = body.error?.details?.find((d) => d.retryDelay)?.retryDelay;
       if (!retryDelay) return 0;
@@ -76,7 +80,11 @@ export class GeminiOrchestrator {
   async testConnection(): Promise<{ success: boolean; model: string; message: string }> {
     const effectiveKey = this.getEffectiveApiKey();
     if (!effectiveKey) {
-      return { success: false, model: 'none', message: 'No se ha detectado ninguna API Key de Gemini configurada.' };
+      return {
+        success: false,
+        model: 'none',
+        message: 'No se ha detectado ninguna API Key de Gemini configurada.',
+      };
     }
     const candidateModels = this.getCandidateModels();
     let lastError = '';
@@ -135,9 +143,14 @@ export class GeminiOrchestrator {
     // 1. Recover empirical context from SQLite & Engram Persistent Memory
     const recentLearnings = this.db.listMarketLearnings(undefined, 5);
     const engramSummary = this.db.getEngramContextSummary(6);
-    const learningsContext = engramSummary || recentLearnings
-      .map((l) => `• [${l.category}] ${l.insight} (Confianza: ${((l.confidenceScore ?? 1) * 100).toFixed(0)}%)`)
-      .join('\n');
+    const learningsContext =
+      engramSummary ||
+      recentLearnings
+        .map(
+          (l) =>
+            `• [${l.category}] ${l.insight} (Confianza: ${((l.confidenceScore ?? 1) * 100).toFixed(0)}%)`,
+        )
+        .join('\n');
 
     // 2. Determine execution path (Gemini API with tools or Deterministic Heuristic Engine)
     const effectiveKey = this.getEffectiveApiKey();
@@ -172,7 +185,8 @@ export class GeminiOrchestrator {
     if (!effectiveKey) {
       return {
         text: '',
-        error: 'Para transcribir audio en Electron, por favor configurá tu API Key de Gemini en la pestaña de Configuración.',
+        error:
+          'Para transcribir audio en Electron, por favor configurá tu API Key de Gemini en la pestaña de Configuración.',
       };
     }
 
@@ -220,13 +234,15 @@ export class GeminiOrchestrator {
 
         if (res.ok) {
           const data = (await res.json()) as {
-            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
           };
           const transcript = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           return { text: transcript };
         }
 
-        const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const errJson = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
         const errMsg = errJson?.error?.message || `HTTP ${res.status}`;
         lastError = errMsg;
       } catch (err: unknown) {
@@ -236,13 +252,20 @@ export class GeminiOrchestrator {
       }
     }
 
-    return { text: '', error: `No se pudo transcribir el audio: ${lastError || 'modelos no disponibles'}` };
+    return {
+      text: '',
+      error: `No se pudo transcribir el audio: ${lastError || 'modelos no disponibles'}`,
+    };
   }
 
   /**
    * Executes Gemini 3.6 Flash REST API with Function Calling tools.
    */
-  private async callGeminiApi(prompt: string, learningsContext: string, apiKey: string): Promise<CopilotResponse> {
+  private async callGeminiApi(
+    prompt: string,
+    learningsContext: string,
+    apiKey: string,
+  ): Promise<CopilotResponse> {
     const candidateModels = this.getCandidateModels();
     const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
 Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
@@ -274,13 +297,15 @@ PAUTAS DE COMUNICACIÓN:
     const requestBody = {
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      tools: [{
-        functionDeclarations: GEMINI_FINANCIAL_SKILLS.map((s) => ({
-          name: s.name,
-          description: s.description,
-          parameters: s.parameters,
-        })),
-      }],
+      tools: [
+        {
+          functionDeclarations: GEMINI_FINANCIAL_SKILLS.map((s) => ({
+            name: s.name,
+            description: s.description,
+            parameters: s.parameters,
+          })),
+        },
+      ],
     };
 
     let lastError: Error | null = null;
@@ -307,14 +332,14 @@ PAUTAS DE COMUNICACIÓN:
       }
 
       const data = (await res.json()) as {
-        candidates?: Array<{
+        candidates?: {
           content?: {
-            parts?: Array<{
+            parts?: {
               text?: string;
               functionCall?: { name: string; args: Record<string, unknown> };
-            }>;
+            }[];
           };
-        }>;
+        }[];
       };
 
       const firstCandidate = data.candidates?.[0];
@@ -379,13 +404,15 @@ PAUTAS DE COMUNICACIÓN:
 
           if (secondTurnRes.ok) {
             const secondTurnData = (await secondTurnRes.json()) as {
-              candidates?: Array<{
+              candidates?: {
                 content?: {
-                  parts?: Array<{ text?: string }>;
+                  parts?: { text?: string }[];
                 };
-              }>;
+              }[];
             };
-            const textResponse = secondTurnData.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text;
+            const textResponse = secondTurnData.candidates?.[0]?.content?.parts?.find(
+              (p) => p.text,
+            )?.text;
             if (textResponse && textResponse.trim().length > 0) {
               detailedExplanation = textResponse.trim();
             }
@@ -407,7 +434,9 @@ PAUTAS DE COMUNICACIÓN:
 
       const textPart = parts.find((p) => p.text);
       return {
-        reply: textPart?.text || 'He analizado tu consulta con base en las directivas de mercado actuales.',
+        reply:
+          textPart?.text ||
+          'He analizado tu consulta con base en las directivas de mercado actuales.',
       };
     }
 
@@ -427,14 +456,78 @@ PAUTAS DE COMUNICACIÓN:
     const learningsGenerated: string[] = [];
 
     // Intention classification based on domain keywords
-    const isMicrostructure = lowerPrompt.includes('avellaneda') || lowerPrompt.includes('stoikov') || lowerPrompt.includes('vpin') || lowerPrompt.includes('toxic') || lowerPrompt.includes('slicing') || lowerPrompt.includes('twap') || lowerPrompt.includes('vwap') || lowerPrompt.includes('markov') || lowerPrompt.includes('market making');
-    const isBcvMacro = lowerPrompt.includes('bcv') || lowerPrompt.includes('paralelo') || lowerPrompt.includes('brecha') || lowerPrompt.includes('drenaje') || lowerPrompt.includes('seniat') || lowerPrompt.includes('fuga') || lowerPrompt.includes('dolariz');
-    const isHedge = lowerPrompt.includes('cobertura') || lowerPrompt.includes('delta') || lowerPrompt.includes('perp') || lowerPrompt.includes('funding') || lowerPrompt.includes('fondeo') || lowerPrompt.includes('devaluaci') || lowerPrompt.includes('gamma') || lowerPrompt.includes('convex');
-    const isKelly = lowerPrompt.includes('kelly') || lowerPrompt.includes('asignaci') || lowerPrompt.includes('ticket') || lowerPrompt.includes('ruina') || lowerPrompt.includes('operadores') || lowerPrompt.includes('capital total');
-    const isCrossExchange = lowerPrompt.includes('cross') || lowerPrompt.includes('dorado') || lowerPrompt.includes('bybit') || lowerPrompt.includes('espacial') || lowerPrompt.includes('corredor') || lowerPrompt.includes('remesa') || lowerPrompt.includes('cop');
-    const isEarnVaults = lowerPrompt.includes('earn') || lowerPrompt.includes('vault') || lowerPrompt.includes('launchpool') || lowerPrompt.includes('parking') || lowerPrompt.includes('ocioso') || lowerPrompt.includes('hurdle') || lowerPrompt.includes('dual') || lowerPrompt.includes('dca') || lowerPrompt.includes('redemption');
-    const isSecurityBank = lowerPrompt.includes('banco') || lowerPrompt.includes('estatus') || lowerPrompt.includes('caida') || lowerPrompt.includes('mantenimiento') || lowerPrompt.includes('pago movil') || lowerPrompt.includes('blacklist') || lowerPrompt.includes('lista negra') || lowerPrompt.includes('fraude') || lowerPrompt.includes('estafa') || lowerPrompt.includes('ocr') || lowerPrompt.includes('comprobante') || lowerPrompt.includes('disputa');
-    const isExecutiveSummary = lowerPrompt.includes('resumen') || lowerPrompt.includes('ejecutivo') || lowerPrompt.includes('sesion') || lowerPrompt.includes('enjambre') || lowerPrompt.includes('swarm') || lowerPrompt.includes('diagnostico');
+    const isMicrostructure =
+      lowerPrompt.includes('avellaneda') ||
+      lowerPrompt.includes('stoikov') ||
+      lowerPrompt.includes('vpin') ||
+      lowerPrompt.includes('toxic') ||
+      lowerPrompt.includes('slicing') ||
+      lowerPrompt.includes('twap') ||
+      lowerPrompt.includes('vwap') ||
+      lowerPrompt.includes('markov') ||
+      lowerPrompt.includes('market making');
+    const isBcvMacro =
+      lowerPrompt.includes('bcv') ||
+      lowerPrompt.includes('paralelo') ||
+      lowerPrompt.includes('brecha') ||
+      lowerPrompt.includes('drenaje') ||
+      lowerPrompt.includes('seniat') ||
+      lowerPrompt.includes('fuga') ||
+      lowerPrompt.includes('dolariz');
+    const isHedge =
+      lowerPrompt.includes('cobertura') ||
+      lowerPrompt.includes('delta') ||
+      lowerPrompt.includes('perp') ||
+      lowerPrompt.includes('funding') ||
+      lowerPrompt.includes('fondeo') ||
+      lowerPrompt.includes('devaluaci') ||
+      lowerPrompt.includes('gamma') ||
+      lowerPrompt.includes('convex');
+    const isKelly =
+      lowerPrompt.includes('kelly') ||
+      lowerPrompt.includes('asignaci') ||
+      lowerPrompt.includes('ticket') ||
+      lowerPrompt.includes('ruina') ||
+      lowerPrompt.includes('operadores') ||
+      lowerPrompt.includes('capital total');
+    const isCrossExchange =
+      lowerPrompt.includes('cross') ||
+      lowerPrompt.includes('dorado') ||
+      lowerPrompt.includes('bybit') ||
+      lowerPrompt.includes('espacial') ||
+      lowerPrompt.includes('corredor') ||
+      lowerPrompt.includes('remesa') ||
+      lowerPrompt.includes('cop');
+    const isEarnVaults =
+      lowerPrompt.includes('earn') ||
+      lowerPrompt.includes('vault') ||
+      lowerPrompt.includes('launchpool') ||
+      lowerPrompt.includes('parking') ||
+      lowerPrompt.includes('ocioso') ||
+      lowerPrompt.includes('hurdle') ||
+      lowerPrompt.includes('dual') ||
+      lowerPrompt.includes('dca') ||
+      lowerPrompt.includes('redemption');
+    const isSecurityBank =
+      lowerPrompt.includes('banco') ||
+      lowerPrompt.includes('estatus') ||
+      lowerPrompt.includes('caida') ||
+      lowerPrompt.includes('mantenimiento') ||
+      lowerPrompt.includes('pago movil') ||
+      lowerPrompt.includes('blacklist') ||
+      lowerPrompt.includes('lista negra') ||
+      lowerPrompt.includes('fraude') ||
+      lowerPrompt.includes('estafa') ||
+      lowerPrompt.includes('ocr') ||
+      lowerPrompt.includes('comprobante') ||
+      lowerPrompt.includes('disputa');
+    const isExecutiveSummary =
+      lowerPrompt.includes('resumen') ||
+      lowerPrompt.includes('ejecutivo') ||
+      lowerPrompt.includes('sesion') ||
+      lowerPrompt.includes('enjambre') ||
+      lowerPrompt.includes('swarm') ||
+      lowerPrompt.includes('diagnostico');
     const isForensicAudit =
       !lowerPrompt.includes('sop') &&
       (lowerPrompt.includes('horario') ||
@@ -450,9 +543,22 @@ PAUTAS DE COMUNICACIÓN:
         lowerPrompt.includes('auditoria forense') ||
         lowerPrompt.includes('tilt') ||
         lowerPrompt.includes('forense'));
-    const isOperationsSop = lowerPrompt.includes('sop') || lowerPrompt.includes('incidencia') || lowerPrompt.includes('triaje') || lowerPrompt.includes('rpa') || lowerPrompt.includes('lead') || lowerPrompt.includes('funnel') || lowerPrompt.includes('sheets') || lowerPrompt.includes('conciliaci') || lowerPrompt.includes('contab') || lowerPrompt.includes('prospecto') || lowerPrompt.includes('competidor') || lowerPrompt.includes('benchmark') || lowerPrompt.includes('operacion');
+    const isOperationsSop =
+      lowerPrompt.includes('sop') ||
+      lowerPrompt.includes('incidencia') ||
+      lowerPrompt.includes('triaje') ||
+      lowerPrompt.includes('rpa') ||
+      lowerPrompt.includes('lead') ||
+      lowerPrompt.includes('funnel') ||
+      lowerPrompt.includes('sheets') ||
+      lowerPrompt.includes('conciliaci') ||
+      lowerPrompt.includes('contab') ||
+      lowerPrompt.includes('prospecto') ||
+      lowerPrompt.includes('competidor') ||
+      lowerPrompt.includes('benchmark') ||
+      lowerPrompt.includes('operacion');
 
-    let reply = '';
+    let reply: string;
     let plan: StrategyPlanRecord | undefined;
     const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
 
@@ -461,7 +567,7 @@ PAUTAS DE COMUNICACIÓN:
     // ─────────────────────────────────────────────────────────────────────────
     if (isMicrostructure) {
       const avellanedaRes = executeFinancialSkill('calculate_optimal_spread_avellaneda', {
-        midPrice: 89.20,
+        midPrice: 89.2,
         inventoryQ: 2.5,
         riskAversionGamma: 0.1,
         orderBookLiquidityDensityK: 1.5,
@@ -484,11 +590,27 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('compute_optimal_order_slicing_twap_vwap');
 
-      const aData = avellanedaRes.data as { optimalBidPrice?: number; optimalAskPrice?: number; reservationPrice?: number; recommendedAction?: string; spreadPct?: number };
-      const vData = vpinRes.data as { vpinMetric?: number; toxicityZone?: string; recommendedRiskAdjustment?: string };
-      const sData = slicingRes.data as { totalSlices?: number; averageSliceAmountUsdt?: number; executionAlgorithm?: string; expectedMarketImpactPct?: number };
+      const aData = avellanedaRes.data as {
+        optimalBidPrice?: number;
+        optimalAskPrice?: number;
+        reservationPrice?: number;
+        recommendedAction?: string;
+        spreadPct?: number;
+      };
+      const vData = vpinRes.data as {
+        vpinMetric?: number;
+        toxicityZone?: string;
+        recommendedRiskAdjustment?: string;
+      };
+      const sData = slicingRes.data as {
+        totalSlices?: number;
+        averageSliceAmountUsdt?: number;
+        executionAlgorithm?: string;
+        expectedMarketImpactPct?: number;
+      };
 
-      reply = `Mirá, analicé la microestructura profunda del libro de órdenes utilizando el modelo cuantitativo de **Avellaneda-Stoikov** y la métrica de toxicidad **VPIN**.\n\n` +
+      reply =
+        `Mirá, analicé la microestructura profunda del libro de órdenes utilizando el modelo cuantitativo de **Avellaneda-Stoikov** y la métrica de toxicidad **VPIN**.\n\n` +
         `### 📐 Calibración Cuantitativa de Cotizaciones (Avellaneda-Stoikov)\n` +
         `* **Precio Medio (Mid-Price)**: 89.20 VES/USDT\n` +
         `* **Precio de Reserva ($r$)**: ${aData.reservationPrice?.toFixed(2) ?? '88.95'} VES (Ajustado por aversión al riesgo ante inventario largo en USDT)\n` +
@@ -524,8 +646,8 @@ PAUTAS DE COMUNICACIÓN:
     // ─────────────────────────────────────────────────────────────────────────
     else if (isBcvMacro) {
       const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
-        parallelRate: 88.50,
-        bcvRate: 72.00,
+        parallelRate: 88.5,
+        bcvRate: 72.0,
       });
       executedSkills.push('predict_bcv_market_intelligence');
 
@@ -542,11 +664,24 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('monitor_fiat_flight_and_dollarization_velocity');
 
-      const bcvData = bcvRes.data as { gap?: { gapPct?: number; riskZone?: string }; recommendation?: { action?: string; confidenceScore?: number }; interventionCycle?: { isInterventionDay?: boolean; optimalWindowHours?: string } };
-      const drainData = drainRes.data as { netVesLiquidityContractionPct?: number; expectedSpreadCompressionBps?: number; strategicAdvice?: string };
-      const flightData = flightRes.data as { dollarizationVelocityIndex?: number; urgencyLevel?: string; recommendedHoldingLimitMinutes?: number };
+      const bcvData = bcvRes.data as {
+        gap?: { gapPct?: number; riskZone?: string };
+        recommendation?: { action?: string; confidenceScore?: number };
+        interventionCycle?: { isInterventionDay?: boolean; optimalWindowHours?: string };
+      };
+      const drainData = drainRes.data as {
+        netVesLiquidityContractionPct?: number;
+        expectedSpreadCompressionBps?: number;
+        strategicAdvice?: string;
+      };
+      const flightData = flightRes.data as {
+        dollarizationVelocityIndex?: number;
+        urgencyLevel?: string;
+        recommendedHoldingLimitMinutes?: number;
+      };
 
-      reply = `Mirá, evalué las condiciones de política monetaria del BCV y el drenaje fiscal del SENIAT con nuestros motores de inteligencia cambiaria.\n\n` +
+      reply =
+        `Mirá, evalué las condiciones de política monetaria del BCV y el drenaje fiscal del SENIAT con nuestros motores de inteligencia cambiaria.\n\n` +
         `### 🏦 Monitor de Brecha Cambiaria & Ventana de Intervención\n` +
         `* **Tasa Oficial BCV**: 72.00 VES/USD | **Tasa Paralela P2P**: 88.50 VES/USD\n` +
         `* **Brecha Cambiaria**: \`${bcvData.gap?.gapPct?.toFixed(1) ?? '22.9'}%\` (Zona de Riesgo: **${bcvData.gap?.riskZone ?? 'ELEVATED'}**)\n` +
@@ -583,7 +718,7 @@ PAUTAS DE COMUNICACIÓN:
       const hedgeRes = executeFinancialSkill('evaluate_delta_neutral_hedge', {
         vesBalance: 45000,
         usdtBalance: 1500,
-        currentParallelRate: 88.50,
+        currentParallelRate: 88.5,
         vesMaxHoldingTimeMinutes: 45,
       });
       executedSkills.push('evaluate_delta_neutral_hedge');
@@ -595,10 +730,21 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('model_perpetual_funding_arbitrage');
 
-      const hData = hedgeRes.data as { fiatExposureUsd?: number; netDeltaRatio?: number; urgency?: string; proposals?: Array<{ action: string; hedgeAmountUsdt: number; reason: string }> };
-      const fData = fundingRes.data as { annualizedFundingYieldPct?: number; dailyProjectedIncomeUsdt?: number; isFundingProfitable?: boolean; executionStrategy?: string };
+      const hData = hedgeRes.data as {
+        fiatExposureUsd?: number;
+        netDeltaRatio?: number;
+        urgency?: string;
+        proposals?: { action: string; hedgeAmountUsdt: number; reason: string }[];
+      };
+      const fData = fundingRes.data as {
+        annualizedFundingYieldPct?: number;
+        dailyProjectedIncomeUsdt?: number;
+        isFundingProfitable?: boolean;
+        executionStrategy?: string;
+      };
 
-      reply = `Mirá, calculé la exposición direccional de la tesorería y modelé una cobertura sintética delta-neutral con captura de tasa de fondeo.\n\n` +
+      reply =
+        `Mirá, calculé la exposición direccional de la tesorería y modelé una cobertura sintética delta-neutral con captura de tasa de fondeo.\n\n` +
         `### 🛡️ Auditoría de Exposición Direccional (Delta Risk)\n` +
         `* **Exposición en Bolívares (VES)**: $${hData.fiatExposureUsd?.toFixed(0) ?? '508'} USD equivalentes\n` +
         `* **Ratio Delta Neto**: ${hData.netDeltaRatio?.toFixed(2) ?? '0.25'} (\`Urgencia: ${hData.urgency ?? 'MEDIUM'}\`)\n` +
@@ -619,7 +765,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 8.5,
         riskLevel: 'LOW',
         assignedOperatorName: 'Desk Risk Officer',
-        rationale: 'Inmunización matemática contra caída de tasa cambiaria más captura de tasa de fondeo positiva.',
+        rationale:
+          'Inmunización matemática contra caída de tasa cambiaria más captura de tasa de fondeo positiva.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -648,7 +795,8 @@ PAUTAS DE COMUNICACIÓN:
         strategicRationale?: string;
       };
 
-      reply = `Mirá, apliqué el modelo matemático del **Criterio de Kelly Institucional (Fractional Half-Kelly)** para maximizar la tasa compuesta geométrica de crecimiento protegiendo el bankroll.\n\n` +
+      reply =
+        `Mirá, apliqué el modelo matemático del **Criterio de Kelly Institucional (Fractional Half-Kelly)** para maximizar la tasa compuesta geométrica de crecimiento protegiendo el bankroll.\n\n` +
         `### 📊 Optimización de Tickets (Kelly Fractional)\n` +
         `* **Bankroll Total Disponible**: $5,000 USDT\n` +
         `* **Full Kelly Teórico**: ${kData.fullKellyFractionPct?.toFixed(1) ?? '48.5'}% (Demasiado agresivo para un entorno bancario regulado).\n` +
@@ -668,7 +816,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 67.5,
         riskLevel: 'LOW',
         assignedOperatorName: 'Desk Risk & Treasury Lead',
-        rationale: 'Dimensionamiento matemático según Criterio de Kelly fraccional para máxima expansión geométrica sin riesgo de quiebra.',
+        rationale:
+          'Dimensionamiento matemático según Criterio de Kelly fraccional para máxima expansión geométrica sin riesgo de quiebra.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -680,9 +829,9 @@ PAUTAS DE COMUNICACIÓN:
     // ─────────────────────────────────────────────────────────────────────────
     else if (isEarnVaults) {
       const hurdleRes = executeFinancialSkill('calculate_earn_yield_vs_p2p_hurdle_rate', {
-        grossP2pSpreadPct: 1.40,
-        platformFeePct: 0.10,
-        bankingRiskPremiumPct: 0.30,
+        grossP2pSpreadPct: 1.4,
+        platformFeePct: 0.1,
+        bankingRiskPremiumPct: 0.3,
         fxDevaluationRiskPct: 0.15,
         averageTradeCycleHours: 2.5,
         simpleEarnAprPct: 12.5,
@@ -701,11 +850,25 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('simulate_earn_instant_redemption_latency');
 
-      const hData = hurdleRes.data as { hurdleRateMet?: boolean; netHourlyP2pYieldPct?: number; passiveHourlyEarnYieldPct?: number; recommendation?: string };
-      const eData = earnRes.data as { interestEarnedUsdt?: number; effectiveAprPct?: number; parkingStrategy?: string };
-      const rData = redemptionRes.data as { instantRedemptionAvailable?: boolean; estimatedLatencySeconds?: number; isSafeForRapidP2pExecution?: boolean };
+      const hData = hurdleRes.data as {
+        hurdleRateMet?: boolean;
+        netHourlyP2pYieldPct?: number;
+        passiveHourlyEarnYieldPct?: number;
+        recommendation?: string;
+      };
+      const eData = earnRes.data as {
+        interestEarnedUsdt?: number;
+        effectiveAprPct?: number;
+        parkingStrategy?: string;
+      };
+      const rData = redemptionRes.data as {
+        instantRedemptionAvailable?: boolean;
+        estimatedLatencySeconds?: number;
+        isSafeForRapidP2pExecution?: boolean;
+      };
 
-      reply = `Mirá, calculé la tasa de corte (**Hurdle Rate**) comparando el costo de oportunidad entre rotación activa P2P y rendimiento pasivo en **Binance Simple Earn Flexible**.\n\n` +
+      reply =
+        `Mirá, calculé la tasa de corte (**Hurdle Rate**) comparando el costo de oportunidad entre rotación activa P2P y rendimiento pasivo en **Binance Simple Earn Flexible**.\n\n` +
         `### ⚡ Comparación de Rendimiento (Hurdle Rate)\n` +
         `* **Spread Neto P2P por Hora**: \`+${hData.netHourlyP2pYieldPct?.toFixed(3) ?? '0.340'}%/hora\` (Tras comisiones bancarias y devaluación estimada).\n` +
         `* **Rendimiento Simple Earn Flexible**: \`+${hData.passiveHourlyEarnYieldPct?.toFixed(5) ?? '0.00143'}%/hora\` (12.5% APR anualizado).\n` +
@@ -726,7 +889,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 21.0,
         riskLevel: 'LOW',
         assignedOperatorName: 'Treasury Manager',
-        rationale: 'Capital devengando interés pasivo con cuota de rescate instantáneo para compras P2P relámpago.',
+        rationale:
+          'Capital devengando interés pasivo con cuota de rescate instantáneo para compras P2P relámpago.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -740,7 +904,7 @@ PAUTAS DE COMUNICACIÓN:
       const crossRes = executeFinancialSkill('calculate_cross_exchange_basis_spread', {
         buyPlatform: 'Binance P2P',
         sellPlatform: 'El Dorado P2P',
-        buyPrice: 88.30,
+        buyPrice: 88.3,
         sellPrice: 89.65,
         transferFeeUsdt: 1.0,
         tradeAmountUsdt: 1500,
@@ -756,7 +920,8 @@ PAUTAS DE COMUNICACIÓN:
         clearingTimeMinutes?: number;
       };
 
-      reply = `Mirá, evalué el arbitraje espacial de bases entre plataformas cruzadas (**Binance P2P vs El Dorado P2P**).\n\n` +
+      reply =
+        `Mirá, evalué el arbitraje espacial de bases entre plataformas cruzadas (**Binance P2P vs El Dorado P2P**).\n\n` +
         `### 🌐 Arbitraje Espacial de Bases (Cross-Exchange)\n` +
         `* **Plataforma de Compra (Bid)**: Binance P2P @ 88.30 VES/USDT\n` +
         `* **Plataforma de Venta (Ask)**: El Dorado P2P @ 89.65 VES/USDT\n` +
@@ -775,10 +940,11 @@ PAUTAS DE COMUNICACIÓN:
         fiat: 'VES',
         capitalRequiredUsdt: 1500,
         expectedNetSpreadPct: Number((cData.netSpreadPct ?? 1.46).toFixed(2)),
-        expectedProfitUsdt: Number((cData.netProfitUsdt ?? 21.90).toFixed(2)),
+        expectedProfitUsdt: Number((cData.netProfitUsdt ?? 21.9).toFixed(2)),
         riskLevel: 'LOW',
         assignedOperatorName: 'Arbitrage Desk',
-        rationale: 'Discrepancia de base confirmada de 1.46% neto tras absorber comisiones de retiro y fricción cambiaria.',
+        rationale:
+          'Discrepancia de base confirmada de 1.46% neto tras absorber comisiones de retiro y fricción cambiaria.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -799,10 +965,11 @@ PAUTAS DE COMUNICACIÓN:
         averageSettlementLatencyMinutes?: number;
         pauseTradingDirective?: boolean;
         operationalSummary?: string;
-        details?: Array<{ bankName: string; status: string; settlementLatencyMinutes: number }>;
+        details?: { bankName: string; status: string; settlementLatencyMinutes: number }[];
       };
 
-      reply = `Mirá, ejecuté la auditoría de seguridad operativa y estado de plataformas bancarias en tiempo real.\n\n` +
+      reply =
+        `Mirá, ejecuté la auditoría de seguridad operativa y estado de plataformas bancarias en tiempo real.\n\n` +
         `### 🛡️ Monitor de Infraestructura Bancaria & Compensación\n` +
         `* **Estado de la Red**: \`${bData.networkStatus ?? 'ALL_SYSTEMS_OPERATIONAL'}\`\n` +
         `* **Directiva de Pausa**: ${bData.pauseTradingDirective ? '🚨 PAUSA ACTIVA' : '✅ Trading Autorizado (Sin caídas de servicio)'}\n` +
@@ -825,7 +992,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 11.5,
         riskLevel: 'LOW',
         assignedOperatorName: 'Compliance & Security Officer',
-        rationale: 'Canales bancarios estables sin riesgo de fondos atrapados ni coincidencia en listas negras.',
+        rationale:
+          'Canales bancarios estables sin riesgo de fondos atrapados ni coincidencia en listas negras.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -836,20 +1004,42 @@ PAUTAS DE COMUNICACIÓN:
     // CASO 8: RESUMEN EJECUTIVO & DIAGNÓSTICO ENJAMBRE (SWARM)
     // ─────────────────────────────────────────────────────────────────────────
     else if (isExecutiveSummary) {
-      const swarmHealth = this.swarm ? this.swarm.getSwarmHealth() : [
-        { role: 'SENTINEL', name: 'Alpha Sentinel', status: 'ONLINE', opsProcessed: 142 },
-        { role: 'STRATEGIST', name: 'Gentleman AI', status: 'ONLINE', opsProcessed: 98 },
-        { role: 'RISK_GATEKEEPER', name: 'Risk Gatekeeper', status: 'ONLINE', opsProcessed: 98 },
-        { role: 'DISPUTE_AUDITOR', name: 'Dispute & Proof Auditor', status: 'STANDBY', opsProcessed: 12 },
-      ];
+      const swarmHealth = this.swarm
+        ? this.swarm.getSwarmHealth()
+        : [
+            { role: 'SENTINEL', name: 'Alpha Sentinel', status: 'ONLINE', opsProcessed: 142 },
+            { role: 'STRATEGIST', name: 'Gentleman AI', status: 'ONLINE', opsProcessed: 98 },
+            {
+              role: 'RISK_GATEKEEPER',
+              name: 'Risk Gatekeeper',
+              status: 'ONLINE',
+              opsProcessed: 98,
+            },
+            {
+              role: 'DISPUTE_AUDITOR',
+              name: 'Dispute & Proof Auditor',
+              status: 'STANDBY',
+              opsProcessed: 12,
+            },
+          ];
 
-      const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', { parallelRate: 88.5, bcvRate: 72.0 });
+      const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
+        parallelRate: 88.5,
+        bcvRate: 72.0,
+      });
       executedSkills.push('predict_bcv_market_intelligence');
       const bData = bcvRes.data as { gap?: { gapPct?: number } };
 
-      reply = `Mirá, formulé el **Resumen Ejecutivo de la Mesa P2P** consolidando la telemetría del Enjambre Multi-Agente.\n\n` +
+      reply =
+        `Mirá, formulé el **Resumen Ejecutivo de la Mesa P2P** consolidando la telemetría del Enjambre Multi-Agente.\n\n` +
         `### ⚡ Estado del Enjambre Multi-Agente (Swarm Telemetry)\n` +
-        swarmHealth.map((a) => `* **${a.name}** (\`${a.role}\`): Estado \`${a.status}\` — Ops procesadas: ${a.opsProcessed}`).join('\n') + `\n\n` +
+        swarmHealth
+          .map(
+            (a) =>
+              `* **${a.name}** (\`${a.role}\`): Estado \`${a.status}\` — Ops procesadas: ${a.opsProcessed}`,
+          )
+          .join('\n') +
+        `\n\n` +
         `### 📈 Diagnóstico Macro & Mercado P2P\n` +
         `* **Brecha Cambiaria BCV**: \`${bData.gap?.gapPct?.toFixed(1) ?? '22.9'}%\` (Paralelo: 88.50 | BCV: 72.00 VES/USD)\n` +
         `* **Regla de Oro Institucional**: Spread objetivo >= 0.50% neto. Ninguna orden con margen inferior es admitida por el Risk Gatekeeper.\n` +
@@ -888,7 +1078,7 @@ PAUTAS DE COMUNICACIÓN:
 
       const auditRes = executeFinancialSkill('audit_and_risk_analytics', {
         timeframeDays: 7,
-        minSpreadThresholdPct: 0.50,
+        minSpreadThresholdPct: 0.5,
         focusArea: 'ALL',
         sampleEvents: rawLogs.map((l) => ({
           timestamp: l.timestamp,
@@ -947,7 +1137,8 @@ PAUTAS DE COMUNICACIÓN:
       const hRisk = dossier?.hourlyRisk;
       const dAudit = dossier?.disciplineAudit;
 
-      reply = `Mirá, realicé la **Auditoría Forense del Libro Mayor** interrogando directamente tus registros en SQLite (${hRisk?.totalEventsAnalyzed ?? rawLogs.length} eventos de auditoría y ${dAudit?.totalOperationsAnalyzed ?? rawOps.length} operaciones comerciales analizadas).\n\n` +
+      reply =
+        `Mirá, realicé la **Auditoría Forense del Libro Mayor** interrogando directamente tus registros en SQLite (${hRisk?.totalEventsAnalyzed ?? rawLogs.length} eventos de auditoría y ${dAudit?.totalOperationsAnalyzed ?? rawOps.length} operaciones comerciales analizadas).\n\n` +
         `### 🕒 Distribución Horaria de Riesgo & Alertas\n` +
         `* **Ventana Horaria Crítica**: \`${hRisk?.peakRiskWindow ?? '11:00 - 12:00'}\` (Puntaje de riesgo: ${hRisk?.peakRiskScore ?? 0} con ${hRisk?.totalCriticalIncidents ?? 0} incidentes/alertas).\n` +
         `* **Tasa de Incidentes Críticos**: \`${hRisk?.criticalIncidentRatePct ?? 0}%\` sobre el total de eventos.\n` +
@@ -960,7 +1151,14 @@ PAUTAS DE COMUNICACIÓN:
         `* **Calificación**: \`${dossier?.operatorStanding ?? 'DISCIPLINED'}\` (Puntaje Regla de Oro: ${dossier?.goldenRuleComplianceScore ?? 100}/100).\n` +
         `* **Dictamen Ejecutivo**: ${dossier?.executiveVerdict ?? 'Operador disciplinado bajo estándares institucionales.'}\n\n` +
         `### 🛡️ Directivas Preventivas Sugeridas\n` +
-        (dossier?.preventiveDirectives || ['Mantener la disciplina actual y no negociar spreads inferiores al 0.50%.']).map((dir) => `* ${dir}`).join('\n') + `\n\n` +
+        (
+          dossier?.preventiveDirectives || [
+            'Mantener la disciplina actual y no negociar spreads inferiores al 0.50%.',
+          ]
+        )
+          .map((dir) => `* ${dir}`)
+          .join('\n') +
+        `\n\n` +
         `A continuación te genero la ficha táctica de mitigación para blindar la mesa en los horarios de riesgo.`;
 
       plan = {
@@ -970,11 +1168,20 @@ PAUTAS DE COMUNICACIÓN:
         asset: 'USDT',
         fiat: 'VES',
         capitalRequiredUsdt: 1500,
-        expectedNetSpreadPct: Math.max(0.50, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25),
-        expectedProfitUsdt: Number(((1500 * Math.max(0.50, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25)) / 100).toFixed(2)),
-        riskLevel: dossier?.operatorStanding === 'CRITICAL_TILT_RISK' ? 'HIGH' : dossier?.operatorStanding === 'MODERATE_DEVIATION' ? 'MEDIUM' : 'LOW',
+        expectedNetSpreadPct: Math.max(0.5, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25),
+        expectedProfitUsdt: Number(
+          ((1500 * Math.max(0.5, dAudit?.volumeWeightedAverageSpreadPct ?? 1.25)) / 100).toFixed(2),
+        ),
+        riskLevel:
+          dossier?.operatorStanding === 'CRITICAL_TILT_RISK'
+            ? 'HIGH'
+            : dossier?.operatorStanding === 'MODERATE_DEVIATION'
+              ? 'MEDIUM'
+              : 'LOW',
         assignedOperatorName: 'Forensic Audit & Risk Officer',
-        rationale: dossier?.executiveVerdict ?? 'Protocolo forense de disciplina y control de horarios críticos.',
+        rationale:
+          dossier?.executiveVerdict ??
+          'Protocolo forense de disciplina y control de horarios críticos.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1023,12 +1230,32 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('forecast_cash_flow_and_reconciliation');
 
-      const sData = sopRes.data as { isCompliant?: boolean; complianceScore?: number; summary?: string; disciplinaryAction?: string };
-      const tData = triageRes.data as { severityLevel?: string; maxResolutionSlaMinutes?: number; requiresHumanHandoff?: boolean; isolationProtocol?: string; recommendedRemediationSteps?: string[] };
-      const lData = sheetRes.data as { calculatedGrossProfitUsdt?: number; calculatedNetMarginPct?: number; formulaNetSpreadPct?: string };
-      const cfData = cashFlowRes.data as { totalConsolidatedTreasuryUsdt?: number; runwayOperationalDays?: number; treasuryHealthVerdict?: string };
+      const sData = sopRes.data as {
+        isCompliant?: boolean;
+        complianceScore?: number;
+        summary?: string;
+        disciplinaryAction?: string;
+      };
+      const tData = triageRes.data as {
+        severityLevel?: string;
+        maxResolutionSlaMinutes?: number;
+        requiresHumanHandoff?: boolean;
+        isolationProtocol?: string;
+        recommendedRemediationSteps?: string[];
+      };
+      const lData = sheetRes.data as {
+        calculatedGrossProfitUsdt?: number;
+        calculatedNetMarginPct?: number;
+        formulaNetSpreadPct?: string;
+      };
+      const cfData = cashFlowRes.data as {
+        totalConsolidatedTreasuryUsdt?: number;
+        runwayOperationalDays?: number;
+        treasuryHealthVerdict?: string;
+      };
 
-      reply = `Mirá, formulé la auditoría de gobernanza operativa, triaje de incidentes y estado de conciliación de la mesa P2P.\n\n` +
+      reply =
+        `Mirá, formulé la auditoría de gobernanza operativa, triaje de incidentes y estado de conciliación de la mesa P2P.\n\n` +
         `### 📋 Auditoría de Cumplimiento SOP (Protocolos Operativos Estándar)\n` +
         `* **Índice de Cumplimiento**: \`${sData.complianceScore ?? 100}%\` (${sData.isCompliant ? '✅ Conforme a Norma' : '⚠️ Desviación Detectada'})\n` +
         `* **Dictamen Disciplinario**: \`${sData.disciplinaryAction ?? 'NONE'}\`\n` +
@@ -1051,11 +1278,12 @@ PAUTAS DE COMUNICACIÓN:
         asset: 'USDT',
         fiat: 'VES',
         capitalRequiredUsdt: 1200,
-        expectedNetSpreadPct: 1.40,
+        expectedNetSpreadPct: 1.4,
         expectedProfitUsdt: 16.8,
         riskLevel: 'LOW',
         assignedOperatorName: 'Compliance & Operations Lead',
-        rationale: 'Cumplimiento 100% de verificación documental y concordancia bancaria, conciliación automatizada y sincronización contable.',
+        rationale:
+          'Cumplimiento 100% de verificación documental y concordancia bancaria, conciliación automatizada y sincronización contable.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1078,12 +1306,12 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('simulate_trade_impact');
 
-      const goldenRes = executeFinancialSkill('evaluate_golden_spread', { netSpreadPct: 1.35 });
+      executeFinancialSkill('evaluate_golden_spread', { netSpreadPct: 1.35 });
       executedSkills.push('evaluate_golden_spread');
 
       const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
-        parallelRate: 88.50,
-        bcvRate: 72.00,
+        parallelRate: 88.5,
+        bcvRate: 72.0,
       });
       executedSkills.push('predict_bcv_market_intelligence');
 
@@ -1091,12 +1319,17 @@ PAUTAS DE COMUNICACIÓN:
         netSpreadPct?: number;
         profitInitialCurrency?: number;
         routeName?: string;
-        steps?: Array<{ stepNumber: number; description: string; expectedOutput: number }>;
+        steps?: { stepNumber: number; description: string; expectedOutput: number }[];
       };
-      const sData = simRes.data as { effectiveVwapPrice?: number; slippageBps?: number; liquidityHealth?: string };
+      const sData = simRes.data as {
+        effectiveVwapPrice?: number;
+        slippageBps?: number;
+        liquidityHealth?: string;
+      };
       const bData = bcvRes.data as { gap?: { gapPct?: number } };
 
-      reply = `Mirá, analicé las oportunidades de **arbitraje triangular institucional** en el mercado venezolano con rigor de microestructura y preservación de capital.\n\n` +
+      reply =
+        `Mirá, analicé las oportunidades de **arbitraje triangular institucional** en el mercado venezolano con rigor de microestructura y preservación de capital.\n\n` +
         `### 🔄 Desglose de la Ruta Triangular de 3 Piernas\n` +
         `* **Pierna 1 (Entrada)**: VES (Pago Móvil Banesco) ➔ Comprar USDT en Binance P2P (@ 88.35 VES/USDT)\n` +
         `* **Pierna 2 (Cruce)**: Convertir USDT ➔ Activo Puente (BTC/FDUSD) en libro spot con cero comisión maker\n` +
@@ -1122,7 +1355,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: Number((tData.profitInitialCurrency ?? 13.5).toFixed(2)),
         riskLevel: 'LOW',
         assignedOperatorName: 'Operador Principal',
-        rationale: 'Brecha cambiaria favorable (22.9%) con liquidez profunda en Banesco y spread neto que supera holgadamente la regla de oro.',
+        rationale:
+          'Brecha cambiaria favorable (22.9%) con liquidez profunda en Banesco y spread neto que supera holgadamente la regla de oro.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1153,9 +1387,10 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     const engramCount = this.db.listEngramObservations({ status: 'active' }, 100).length;
-    const memoryHint = engramCount > 0
-      ? `\n\n* **Memoria Persistente Engram**: ${engramCount} observaciones activas sincronizadas en SQLite.*`
-      : '';
+    const memoryHint =
+      engramCount > 0
+        ? `\n\n* **Memoria Persistente Engram**: ${engramCount} observaciones activas sincronizadas en SQLite.*`
+        : '';
 
     const finalReply = engineNote ? `${reply}${memoryHint}${engineNote}` : `${reply}${memoryHint}`;
 
@@ -1173,7 +1408,11 @@ PAUTAS DE COMUNICACIÓN:
   private generatePlanFromSkill(skillName: string, data: unknown): StrategyPlanCard | undefined {
     const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
     if (skillName === 'scan_triangular_arbitrage' && data && typeof data === 'object') {
-      const d = data as { netSpreadPct?: number; profitInitialCurrency?: number; isProfitable?: boolean };
+      const d = data as {
+        netSpreadPct?: number;
+        profitInitialCurrency?: number;
+        isProfitable?: boolean;
+      };
       return {
         id: planId,
         title: 'Arbitraje Triangular Validado por Gemini',
@@ -1183,13 +1422,18 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: d.profitInitialCurrency ?? 12.0,
         riskLevel: (d.netSpreadPct ?? 1) >= 1.0 ? 'LOW' : 'MEDIUM',
         assignedOperatorName: 'Operador Turno Mañana',
-        rationale: 'Estrategia validada mediante la herramienta matemática scan_triangular_arbitrage del Core.',
+        rationale:
+          'Estrategia validada mediante la herramienta matemática scan_triangular_arbitrage del Core.',
         status: 'PROPOSED',
       };
     }
 
     if (skillName === 'evaluate_delta_neutral_hedge' && data && typeof data === 'object') {
-      const d = data as { fiatExposureUsd?: number; urgency?: string; proposals?: Array<{ action: string; hedgeAmountUsdt: number; reason: string }> };
+      const d = data as {
+        fiatExposureUsd?: number;
+        urgency?: string;
+        proposals?: { action: string; hedgeAmountUsdt: number; reason: string }[];
+      };
       const prop = d.proposals?.[0];
       return {
         id: planId,
@@ -1200,13 +1444,19 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 0.0,
         riskLevel: d.urgency === 'HIGH' ? 'HIGH' : 'LOW',
         assignedOperatorName: 'Desk Risk Manager',
-        rationale: prop?.reason || 'Inmunización del portafolio contra devaluación brusca del bolívar (VES).',
+        rationale:
+          prop?.reason ||
+          'Inmunización del portafolio contra devaluación brusca del bolívar (VES).',
         status: 'PROPOSED',
       };
     }
 
     if (skillName === 'forecast_market_volatility_2h' && data && typeof data === 'object') {
-      const d = data as { level?: string; direction?: string; suggestedSpreadAdjustmentPct?: { buyMarkupPct: number; sellMarkupPct: number } };
+      const d = data as {
+        level?: string;
+        direction?: string;
+        suggestedSpreadAdjustmentPct?: { buyMarkupPct: number; sellMarkupPct: number };
+      };
       return {
         id: planId,
         title: 'Reajuste Dinámico de Markups (2 Horas)',
@@ -1222,7 +1472,12 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'simulate_trade_impact' && data && typeof data === 'object') {
-      const d = data as { targetAmountUsdt?: number; effectiveVwapPrice?: number; slippageBps?: number; liquidityHealth?: string };
+      const d = data as {
+        targetAmountUsdt?: number;
+        effectiveVwapPrice?: number;
+        slippageBps?: number;
+        liquidityHealth?: string;
+      };
       return {
         id: planId,
         title: 'Ejecución Optimizada por VWAP & Anti-Slippage',
@@ -1238,7 +1493,12 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'calculate_optimal_spread_avellaneda' && data && typeof data === 'object') {
-      const d = data as { optimalBidPrice?: number; optimalAskPrice?: number; reservationPrice?: number; recommendedAction?: string };
+      const d = data as {
+        optimalBidPrice?: number;
+        optimalAskPrice?: number;
+        reservationPrice?: number;
+        recommendedAction?: string;
+      };
       return {
         id: planId,
         title: 'Market Making Cuantitativo (Avellaneda-Stoikov)',
@@ -1253,15 +1513,24 @@ PAUTAS DE COMUNICACIÓN:
       };
     }
 
-    if (skillName === 'compute_optimal_order_slicing_twap_vwap' && data && typeof data === 'object') {
-      const d = data as { totalSlices?: number; averageSliceAmountUsdt?: number; executionAlgorithm?: string; expectedMarketImpactPct?: number };
+    if (
+      skillName === 'compute_optimal_order_slicing_twap_vwap' &&
+      data &&
+      typeof data === 'object'
+    ) {
+      const d = data as {
+        totalSlices?: number;
+        averageSliceAmountUsdt?: number;
+        executionAlgorithm?: string;
+        expectedMarketImpactPct?: number;
+      };
       return {
         id: planId,
         title: `Ejecución Algorítmica ${d.executionAlgorithm ?? 'TWAP'} (Anti-Impact)`,
         route: `${d.totalSlices ?? 5} Bloques de ~$${d.averageSliceAmountUsdt ?? 500} USDT`,
         capitalRequiredUsdt: (d.totalSlices ?? 5) * (d.averageSliceAmountUsdt ?? 500),
         expectedNetSpreadPct: 0.95,
-        expectedProfitUsdt: (((d.totalSlices ?? 5) * (d.averageSliceAmountUsdt ?? 500)) * 0.95) / 100,
+        expectedProfitUsdt: ((d.totalSlices ?? 5) * (d.averageSliceAmountUsdt ?? 500) * 0.95) / 100,
         riskLevel: 'LOW',
         assignedOperatorName: 'Algorithmic Execution Desk',
         rationale: `Fragmentación institucional programada para no mover el libro. Impacto estimado: solo ${d.expectedMarketImpactPct ?? 0.2}%.`,
@@ -1270,7 +1539,14 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'calculate_cross_exchange_basis_spread' && data && typeof data === 'object') {
-      const d = data as { buyPlatform?: string; sellPlatform?: string; netSpreadPct?: number; netProfitUsdt?: number; buyPrice?: number; sellPrice?: number };
+      const d = data as {
+        buyPlatform?: string;
+        sellPlatform?: string;
+        netSpreadPct?: number;
+        netProfitUsdt?: number;
+        buyPrice?: number;
+        sellPrice?: number;
+      };
       return {
         id: planId,
         title: 'Arbitraje Espacial Cross-Exchange',
@@ -1286,7 +1562,11 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'optimize_capital_allocation_kelly' && data && typeof data === 'object') {
-      const d = data as { optimalTicketSizeUsdt?: number; recommendedFractionPct?: number; strategicRationale?: string };
+      const d = data as {
+        optimalTicketSizeUsdt?: number;
+        recommendedFractionPct?: number;
+        strategicRationale?: string;
+      };
       return {
         id: planId,
         title: 'Asignación Óptima de Capital (Kelly Criterion)',
@@ -1296,13 +1576,20 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: ((d.optimalTicketSizeUsdt ?? 1000) * 1.3) / 100,
         riskLevel: 'LOW',
         assignedOperatorName: 'Treasury & Risk Officer',
-        rationale: d.strategicRationale || 'Optimización matemática de crecimiento patrimonial minimizando probabilidad de ruina.',
+        rationale:
+          d.strategicRationale ||
+          'Optimización matemática de crecimiento patrimonial minimizando probabilidad de ruina.',
         status: 'PROPOSED',
       };
     }
 
     if (skillName === 'optimize_idle_capital_simple_earn' && data && typeof data === 'object') {
-      const d = data as { idleCapitalUsdt?: number; effectiveAprPct?: number; interestEarnedUsdt?: number; parkingStrategy?: string };
+      const d = data as {
+        idleCapitalUsdt?: number;
+        effectiveAprPct?: number;
+        interestEarnedUsdt?: number;
+        parkingStrategy?: string;
+      };
       const cap = d.idleCapitalUsdt ?? 2000;
       const apr = d.effectiveAprPct ?? 12.5;
       const profit = d.interestEarnedUsdt ?? 21.0;
@@ -1315,13 +1602,19 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: profit,
         riskLevel: 'LOW',
         assignedOperatorName: 'Chief Treasury Officer',
-        rationale: d.parkingStrategy || `Rendimiento compuesto libre de riesgo del ${apr}% APR con rescate instantáneo para fondeo inmediato de órdenes P2P.`,
+        rationale:
+          d.parkingStrategy ||
+          `Rendimiento compuesto libre de riesgo del ${apr}% APR con rescate instantáneo para fondeo inmediato de órdenes P2P.`,
         status: 'PROPOSED',
       };
     }
 
     if (skillName === 'check_bank_operational_status' && data && typeof data === 'object') {
-      const d = data as { networkStatus?: string; averageSettlementLatencyMinutes?: number; operationalSummary?: string };
+      const d = data as {
+        networkStatus?: string;
+        averageSettlementLatencyMinutes?: number;
+        operationalSummary?: string;
+      };
       return {
         id: planId,
         title: 'Protocolo de Seguridad y Monitoreo Bancario',
@@ -1331,30 +1624,56 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 12.0,
         riskLevel: 'LOW',
         assignedOperatorName: 'Compliance Officer',
-        rationale: d.operationalSummary || 'Monitoreo de latencia y estabilidad de la cámara de compensación bancaria.',
+        rationale:
+          d.operationalSummary ||
+          'Monitoreo de latencia y estabilidad de la cámara de compensación bancaria.',
         status: 'PROPOSED',
       };
     }
 
-    if (skillName === 'calculate_earn_yield_vs_p2p_hurdle_rate' && data && typeof data === 'object') {
-      const d = data as { verdict?: string; netP2pCycleReturnPct?: number; isP2pProfitableOverEarn?: boolean; reasoning?: string };
+    if (
+      skillName === 'calculate_earn_yield_vs_p2p_hurdle_rate' &&
+      data &&
+      typeof data === 'object'
+    ) {
+      const d = data as {
+        verdict?: string;
+        netP2pCycleReturnPct?: number;
+        isP2pProfitableOverEarn?: boolean;
+        reasoning?: string;
+      };
       const isOperate = d.verdict === 'OPERATE_P2P';
       return {
         id: planId,
-        title: isOperate ? 'Despliegue Táctico P2P (Supera Hurdle Rate)' : 'Refugio de Tesorería en Binance Earn',
-        route: isOperate ? 'Rotación Maker P2P (Spread Superior al Hurdle)' : 'Estacionar Capital en Simple Earn Flexible',
+        title: isOperate
+          ? 'Despliegue Táctico P2P (Supera Hurdle Rate)'
+          : 'Refugio de Tesorería en Binance Earn',
+        route: isOperate
+          ? 'Rotación Maker P2P (Spread Superior al Hurdle)'
+          : 'Estacionar Capital en Simple Earn Flexible',
         capitalRequiredUsdt: 1500,
         expectedNetSpreadPct: isOperate ? (d.netP2pCycleReturnPct ?? 1.1) : 0.45,
         expectedProfitUsdt: isOperate ? (1500 * (d.netP2pCycleReturnPct ?? 1.1)) / 100 : 6.75,
         riskLevel: isOperate ? 'MEDIUM' : 'LOW',
         assignedOperatorName: isOperate ? 'Lead Market Maker' : 'Chief Treasury Officer',
-        rationale: d.reasoning || 'Evaluación cuantitativa comparativa entre spread P2P y tasa libre de riesgo.',
+        rationale:
+          d.reasoning ||
+          'Evaluación cuantitativa comparativa entre spread P2P y tasa libre de riesgo.',
         status: 'PROPOSED',
       };
     }
 
-    if (skillName === 'optimize_locked_vs_flexible_liquidity_ladder' && data && typeof data === 'object') {
-      const d = data as { totalTreasuryUsdt?: number; flexibleBufferUsdt?: number; locked30dUsdt?: number; blendedPortfolioAprPct?: number };
+    if (
+      skillName === 'optimize_locked_vs_flexible_liquidity_ladder' &&
+      data &&
+      typeof data === 'object'
+    ) {
+      const d = data as {
+        totalTreasuryUsdt?: number;
+        flexibleBufferUsdt?: number;
+        locked30dUsdt?: number;
+        blendedPortfolioAprPct?: number;
+      };
       const total = d.totalTreasuryUsdt ?? 10000;
       const blendedApr = d.blendedPortfolioAprPct ?? 5.2;
       return {
@@ -1372,7 +1691,12 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'evaluate_dual_investment_p2p_exit' && data && typeof data === 'object') {
-      const d = data as { strikePrice?: number; annualizedAprPct?: number; investedCapitalUsdt?: number; recommendation?: string };
+      const d = data as {
+        strikePrice?: number;
+        annualizedAprPct?: number;
+        investedCapitalUsdt?: number;
+        recommendation?: string;
+      };
       const cap = d.investedCapitalUsdt ?? 2000;
       const strike = d.strikePrice ?? 70000;
       const apr = d.annualizedAprPct ?? 25.0;
@@ -1391,7 +1715,12 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     if (skillName === 'triage_incident_and_escalate' && data && typeof data === 'object') {
-      const d = data as { severityLevel?: string; maxResolutionSlaMinutes?: number; requiresHumanHandoff?: boolean; isolationProtocol?: string };
+      const d = data as {
+        severityLevel?: string;
+        maxResolutionSlaMinutes?: number;
+        requiresHumanHandoff?: boolean;
+        isolationProtocol?: string;
+      };
       return {
         id: planId,
         title: `Protocolo de Triaje Operativo (${d.severityLevel ?? 'P1_CRITICAL'})`,
@@ -1401,13 +1730,20 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 12.5,
         riskLevel: d.severityLevel === 'P1_CRITICAL' ? 'HIGH' : 'MEDIUM',
         assignedOperatorName: 'Chief Security & Operations Officer',
-        rationale: d.isolationProtocol || 'Protocolo de contención de crisis operativa y remediación supervisada.',
+        rationale:
+          d.isolationProtocol ||
+          'Protocolo de contención de crisis operativa y remediación supervisada.',
         status: 'PROPOSED',
       };
     }
 
     if (skillName === 'audit_sop_compliance_enforcement' && data && typeof data === 'object') {
-      const d = data as { isCompliant?: boolean; complianceScore?: number; summary?: string; disciplinaryAction?: string };
+      const d = data as {
+        isCompliant?: boolean;
+        complianceScore?: number;
+        summary?: string;
+        disciplinaryAction?: string;
+      };
       return {
         id: planId,
         title: 'Auditoría Forense de Gobernanza SOP',
@@ -1417,7 +1753,9 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: 13.5,
         riskLevel: 'LOW',
         assignedOperatorName: 'Compliance Officer',
-        rationale: d.summary || 'Auditoría formal de apego a Protocolos Operativos Estándar para prevención de fraudes.',
+        rationale:
+          d.summary ||
+          'Auditoría formal de apego a Protocolos Operativos Estándar para prevención de fraudes.',
         status: 'PROPOSED',
       };
     }
@@ -1433,7 +1771,8 @@ PAUTAS DE COMUNICACIÓN:
         expectedProfitUsdt: d.calculatedGrossProfitUsdt ?? 14.0,
         riskLevel: 'LOW',
         assignedOperatorName: 'Desk Operations Lead',
-        rationale: 'Registro de auditoría transaccional con fórmulas dinámicas para conciliación de caja.',
+        rationale:
+          'Registro de auditoría transaccional con fórmulas dinámicas para conciliación de caja.',
         status: 'PROPOSED',
       };
     }
@@ -1485,7 +1824,10 @@ PAUTAS DE COMUNICACIÓN:
       try {
         dispatchSummary = await this.webhookDispatcher.dispatchPlanExecution(plan);
       } catch (dispatchErr) {
-        console.warn(`[GeminiOrchestrator] Webhook dispatch warning for plan ${planId}:`, dispatchErr);
+        console.warn(
+          `[GeminiOrchestrator] Webhook dispatch warning for plan ${planId}:`,
+          dispatchErr,
+        );
       }
     }
 

@@ -5,7 +5,7 @@
  */
 
 import { type Operation } from './log';
-import { roundMoney, clampNonNegative } from './money';
+import { roundMoney } from './money';
 
 export type BankCode = 'BANESCO' | 'MERCANTIL' | 'BDV' | 'BANCAMIGA' | 'PROVINCIAL' | 'OTRO';
 export type AccountRail = 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'MIXTO';
@@ -103,7 +103,10 @@ export function computeAccountUsage(
 
   for (const op of todayOps) {
     // Only count operations tied to this account or matching the bank name
-    const matchesAccount = op.bankAccountId === account.id || (!op.bankAccountId && op.merchantNote?.toLowerCase().includes(account.bankName.toLowerCase()));
+    const matchesAccount =
+      op.bankAccountId === account.id ||
+      (!op.bankAccountId &&
+        op.merchantNote?.toLowerCase().includes(account.bankName.toLowerCase()));
     if (!matchesAccount) continue;
 
     if (op.type === 'buy') {
@@ -117,7 +120,10 @@ export function computeAccountUsage(
     }
   }
 
-  const currentBalanceVes = roundMoney(account.initialBalanceVes - spentTodayVes + receivedTodayVes, 2);
+  const currentBalanceVes = roundMoney(
+    account.initialBalanceVes - spentTodayVes + receivedTodayVes,
+    2,
+  );
   const dailyLimit = account.dailyLimitVes;
 
   let dailyConsumedPct = 0;
@@ -133,14 +139,12 @@ export function computeAccountUsage(
 
   // ---- Monthly usage ----
   let monthlyConsumedPct = 0;
-  let monthlyRemainingVes = 0;
   let isOverMonthlyLimit = false;
   let isNearMonthlyLimit = false;
 
   const monthlyLimit = account.monthlyLimitVes ?? 0;
   if (monthlyLimit > 0) {
     monthlyConsumedPct = Math.round((spentThisMonthVes / monthlyLimit) * 100);
-    monthlyRemainingVes = Math.max(0, roundMoney(monthlyLimit - spentThisMonthVes, 2));
     isOverMonthlyLimit = spentThisMonthVes >= monthlyLimit;
     isNearMonthlyLimit = !isOverMonthlyLimit && monthlyConsumedPct >= 80;
   }

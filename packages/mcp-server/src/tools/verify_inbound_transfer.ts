@@ -27,9 +27,7 @@ export const verifyInboundTransferTool = {
       senderCedulaValidated: !!input.senderCedula,
       senderPhoneValidated: !!input.senderPhone,
       ledgerReceiptId: isExactMatch ? `REC-${Date.now()}-${ref.slice(-4)}` : null,
-      recommendation: isExactMatch
-        ? 'SAFE_TO_RELEASE_CRYPTO'
-        : 'HOLD_CRYPTO_VERIFY_BANK_STATEMENT',
+      recommendation: isExactMatch ? 'SAFE_TO_RELEASE_CRYPTO' : 'HOLD_CRYPTO_VERIFY_BANK_STATEMENT',
       timestamp: new Date().toISOString(),
     };
   },

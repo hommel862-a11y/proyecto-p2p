@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  generateComplianceStatement,
-  type ComplianceReportMetadata,
-} from './compliance';
+import { generateComplianceStatement, type ComplianceReportMetadata } from './compliance';
 import { type Operation } from './log';
 import { type BankAccount } from './accounts';
 import { type Counterparty } from './counterparty';

@@ -24,7 +24,8 @@ export class SentinelAgent {
       status: 'ONLINE',
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
-      description: 'Monitoreo 24/7 de libros P2P, brecha cambiaria BCV y paridades cripto sin costo de tokens.',
+      description:
+        'Monitoreo 24/7 de libros P2P, brecha cambiaria BCV y paridades cripto sin costo de tokens.',
       assignedMcpDomains: this.assignedMcpDomains,
       assignedSkills: this.assignedSkills,
     };
@@ -39,7 +40,8 @@ export class SentinelAgent {
     flowToxicityRisk: string;
   } {
     const bankRes = executeFinancialSkill('check_bank_operational_status', {});
-    const bankData = bankRes.data as { networkStatus?: string; pauseTradingDirective?: boolean } | undefined;
+    const bankData = bankRes.data as
+      { networkStatus?: string; pauseTradingDirective?: boolean } | undefined;
 
     const bcvRes = executeFinancialSkill('predict_bcv_market_intelligence', {
       parallelRate: 88.5,
@@ -82,7 +84,7 @@ export class SentinelAgent {
 
     // 1. Calculate spread directly with institutional fee model
     const grossSpreadPct = ((bestAsk - bestBid) / bestBid) * 100;
-    const estimatedFeesPct = 0.40; // 0.1% taker + 0.3% bank transfer
+    const estimatedFeesPct = 0.4; // 0.1% taker + 0.3% bank transfer
     const netSpreadPct = grossSpreadPct - estimatedFeesPct;
 
     executeFinancialSkill('evaluate_golden_spread', {
@@ -100,7 +102,7 @@ export class SentinelAgent {
       recommendation?: { action?: string; confidenceScore?: number };
     };
 
-    const rateGapPct = bcvData.gap?.gapPct ?? (((parallelRate - bcvRate) / bcvRate) * 100);
+    const rateGapPct = bcvData.gap?.gapPct ?? ((parallelRate - bcvRate) / bcvRate) * 100;
     const notes: string[] = [];
 
     // 3. Check Venezuelan banking network operational status
@@ -122,22 +124,32 @@ export class SentinelAgent {
       toxicityZone?: string;
     };
 
-    if (netSpreadPct >= 0.50) {
-      notes.push(`Regla de oro alcanzada: spread neto de ${netSpreadPct.toFixed(2)}% supera el umbral de 0.50%.`);
+    if (netSpreadPct >= 0.5) {
+      notes.push(
+        `Regla de oro alcanzada: spread neto de ${netSpreadPct.toFixed(2)}% supera el umbral de 0.50%.`,
+      );
     } else {
-      notes.push(`Spread neto de ${netSpreadPct.toFixed(2)}% por debajo del umbral institucional (0.50%).`);
+      notes.push(
+        `Spread neto de ${netSpreadPct.toFixed(2)}% por debajo del umbral institucional (0.50%).`,
+      );
     }
 
     if (rateGapPct > 20) {
-      notes.push(`Brecha BCV/Paralelo elevada (${rateGapPct.toFixed(1)}%). Alta demanda de cobertura en dólares.`);
+      notes.push(
+        `Brecha BCV/Paralelo elevada (${rateGapPct.toFixed(1)}%). Alta demanda de cobertura en dólares.`,
+      );
     }
 
     if (bankData?.networkStatus) {
-      notes.push(`Cámara Bancaria: ${bankData.networkStatus} (Latencia promedio: ${bankData.averageSettlementLatencyMinutes ?? 1.0} min).`);
+      notes.push(
+        `Cámara Bancaria: ${bankData.networkStatus} (Latencia promedio: ${bankData.averageSettlementLatencyMinutes ?? 1.0} min).`,
+      );
     }
 
     if (vpinData?.toxicityZone) {
-      notes.push(`Toxicidad de flujo (VPIN): ${vpinData.toxicityZone} (${((vpinData.vpinMetric ?? 0.15) * 100).toFixed(1)}%).`);
+      notes.push(
+        `Toxicidad de flujo (VPIN): ${vpinData.toxicityZone} (${((vpinData.vpinMetric ?? 0.15) * 100).toFixed(1)}%).`,
+      );
     }
 
     return {
@@ -152,7 +164,7 @@ export class SentinelAgent {
       bcvRate,
       parallelRate,
       rateGapPct: Number(rateGapPct.toFixed(2)),
-      isViable: netSpreadPct >= 0.50,
+      isViable: netSpreadPct >= 0.5,
       notes,
     };
   }

@@ -39,7 +39,7 @@ export interface AdTemplate {
   };
 }
 
-export type AdPreviewData = {
+export interface AdPreviewData {
   precio: number;
   spread: number;
   limiteMin: number;
@@ -48,58 +48,137 @@ export type AdPreviewData = {
   metodoPago: string;
   usuario: string;
   referencia: string;
-};
+}
 
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
-};
+}
 
 export const DEFAULT_AD_VARIABLES: AdTemplateVariable[] = [
-  { key: 'precio', label: 'Precio VES/USDT', type: 'currency', required: true, description: 'Precio actual del anuncio' },
-  { key: 'spread', label: 'Spread %', type: 'percentage', required: true, description: 'Porcentaje de ganancia sobre precio de mercado' },
-  { key: 'limiteMin', label: 'Límite mínimo', type: 'currency', required: true, defaultValue: 100, description: 'Monto mínimo de transacción' },
-  { key: 'limiteMax', label: 'Límite máximo', type: 'currency', required: true, defaultValue: 50000, description: 'Monto máximo de transacción' },
-  { key: 'banco', label: 'Banco preferido', type: 'bank', required: false, defaultValue: 'Banesco', description: 'Banco para recibir/enviar pagos' },
-  { key: 'metodoPago', label: 'Método de pago', type: 'string', required: false, defaultValue: 'Pago Móvil', description: 'Pago Móvil, Transferencia, etc.' },
-  { key: 'usuario', label: 'Nombre de usuario', type: 'string', required: true, description: 'Tu nombre en Binance' },
-  { key: 'referencia', label: 'Referencia', type: 'string', required: false, description: 'Referencia de pago (opcional)' },
+  {
+    key: 'precio',
+    label: 'Precio VES/USDT',
+    type: 'currency',
+    required: true,
+    description: 'Precio actual del anuncio',
+  },
+  {
+    key: 'spread',
+    label: 'Spread %',
+    type: 'percentage',
+    required: true,
+    description: 'Porcentaje de ganancia sobre precio de mercado',
+  },
+  {
+    key: 'limiteMin',
+    label: 'Límite mínimo',
+    type: 'currency',
+    required: true,
+    defaultValue: 100,
+    description: 'Monto mínimo de transacción',
+  },
+  {
+    key: 'limiteMax',
+    label: 'Límite máximo',
+    type: 'currency',
+    required: true,
+    defaultValue: 50000,
+    description: 'Monto máximo de transacción',
+  },
+  {
+    key: 'banco',
+    label: 'Banco preferido',
+    type: 'bank',
+    required: false,
+    defaultValue: 'Banesco',
+    description: 'Banco para recibir/enviar pagos',
+  },
+  {
+    key: 'metodoPago',
+    label: 'Método de pago',
+    type: 'string',
+    required: false,
+    defaultValue: 'Pago Móvil',
+    description: 'Pago Móvil, Transferencia, etc.',
+  },
+  {
+    key: 'usuario',
+    label: 'Nombre de usuario',
+    type: 'string',
+    required: true,
+    description: 'Tu nombre en Binance',
+  },
+  {
+    key: 'referencia',
+    label: 'Referencia',
+    type: 'string',
+    required: false,
+    description: 'Referencia de pago (opcional)',
+  },
 ];
 
-export const BUILT_IN_TEMPLATES: Omit<AdTemplate, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'createdBy'>[] = [
+export const BUILT_IN_TEMPLATES: Omit<
+  AdTemplate,
+  'id' | 'version' | 'createdAt' | 'updatedAt' | 'createdBy'
+>[] = [
   {
     name: 'Compra Estándar Pago Móvil',
     type: 'BUY',
     status: 'active',
     title: '⚡ Compra USDT | {{precio}} Bs | {{spread}}% | {{banco}}',
-    terms: '📋 TÉRMINOS Y CONDICIONES:\n\n✅ Pago por {{metodoPago}} a {{banco}}\n💰 Límite: {{limiteMin}} - {{limiteMax}} Bs\n⏱️ Tiempo de pago: 15 minutos\n📱 Referencia: {{referencia}}\n\n⚠️ REGLAS:\n• Solo pagos desde TU cuenta bancaria\n• No acepto pagos de terceros (anti-triangulación)\n• Comprobante obligatorio al pagar\n• Liberación inmediata al verificar\n\n🤝 Gracias por operar con {{usuario}}',
-    autoReply: '¡Hola! Gracias por elegir mi anuncio. Por favor realiza el pago por {{metodoPago}} a {{banco}} y envía el comprobante. Libero USDT al verificar ✅',
+    terms:
+      '📋 TÉRMINOS Y CONDICIONES:\n\n✅ Pago por {{metodoPago}} a {{banco}}\n💰 Límite: {{limiteMin}} - {{limiteMax}} Bs\n⏱️ Tiempo de pago: 15 minutos\n📱 Referencia: {{referencia}}\n\n⚠️ REGLAS:\n• Solo pagos desde TU cuenta bancaria\n• No acepto pagos de terceros (anti-triangulación)\n• Comprobante obligatorio al pagar\n• Liberación inmediata al verificar\n\n🤝 Gracias por operar con {{usuario}}',
+    autoReply:
+      '¡Hola! Gracias por elegir mi anuncio. Por favor realiza el pago por {{metodoPago}} a {{banco}} y envía el comprobante. Libero USDT al verificar ✅',
     variables: DEFAULT_AD_VARIABLES,
     tags: ['compra', 'pago-movil', 'estandar'],
-    metadata: { minSpread: 0.5, maxSpread: 5, preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV'], paymentMethods: ['Pago Móvil', 'Transferencia'], timeWindow: { start: '07:00', end: '22:00' } },
+    metadata: {
+      minSpread: 0.5,
+      maxSpread: 5,
+      preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV'],
+      paymentMethods: ['Pago Móvil', 'Transferencia'],
+      timeWindow: { start: '07:00', end: '22:00' },
+    },
   },
   {
     name: 'Venta Estándar Pago Móvil',
     type: 'SELL',
     status: 'active',
     title: '💰 Venta USDT | {{precio}} Bs | {{spread}}% | {{banco}}',
-    terms: '📋 TÉRMINOS Y CONDICIONES:\n\n✅ Recibes USDT tras pago confirmado\n💰 Límite: {{limiteMin}} - {{limiteMax}} Bs\n⏱️ Tiempo de pago: 15 minutos\n🏦 Pago a: {{banco}} ({{metodoPago}})\n\n⚠️ REGLAS:\n• Pago desde TU cuenta (anti-triangulación)\n• Comprobante = liberación inmediata\n• No cancelar orden sin avisar\n• Datos bancarios en chat privado\n\n🤝 Operación segura con {{usuario}}',
-    autoReply: '¡Hola! Para comprar mis USDT, transfiere {{limiteMin}}-{{limiteMax}} Bs por {{metodoPago}} a {{banco}}. Envía comprobante y libero al instante 🚀',
+    terms:
+      '📋 TÉRMINOS Y CONDICIONES:\n\n✅ Recibes USDT tras pago confirmado\n💰 Límite: {{limiteMin}} - {{limiteMax}} Bs\n⏱️ Tiempo de pago: 15 minutos\n🏦 Pago a: {{banco}} ({{metodoPago}})\n\n⚠️ REGLAS:\n• Pago desde TU cuenta (anti-triangulación)\n• Comprobante = liberación inmediata\n• No cancelar orden sin avisar\n• Datos bancarios en chat privado\n\n🤝 Operación segura con {{usuario}}',
+    autoReply:
+      '¡Hola! Para comprar mis USDT, transfiere {{limiteMin}}-{{limiteMax}} Bs por {{metodoPago}} a {{banco}}. Envía comprobante y libero al instante 🚀',
     variables: DEFAULT_AD_VARIABLES,
     tags: ['venta', 'pago-movil', 'estandar'],
-    metadata: { minSpread: 0.5, maxSpread: 5, preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV'], paymentMethods: ['Pago Móvil', 'Transferencia'], timeWindow: { start: '07:00', end: '22:00' } },
+    metadata: {
+      minSpread: 0.5,
+      maxSpread: 5,
+      preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV'],
+      paymentMethods: ['Pago Móvil', 'Transferencia'],
+      timeWindow: { start: '07:00', end: '22:00' },
+    },
   },
   {
     name: 'Compra Rápida High Volume',
     type: 'BUY',
     status: 'draft',
     title: '🚀 COMPRA RÁPIDA USDT | {{precio}} Bs | {{banco}} | 24/7',
-    terms: '⚡ COMPRA EXPRESS - ALTO VOLUMEN\n\n💰 Límites: {{limiteMin}} - {{limiteMax}} Bs\n🏦 {{banco}} | {{metodoPago}}\n⏱️ Liberación < 5 min tras comprobante\n\n📋 REGLAS:\n✅ Pago propio únicamente\n✅ Comprobante obligatorio\n✅ Sin terceros (verificación cédula)\n❌ Sin cancelaciones unilaterales\n\n🤖 {{usuario}} - Operador verificado',
-    autoReply: '⚡ COMPRA RÁPIDA: Paga por {{metodoPago}} a {{banco}}, envía comprobante, libero en < 5 min. Límite {{limiteMax}} Bs.',
-    variables: DEFAULT_AD_VARIABLES.filter(v => v.key !== 'spread'),
+    terms:
+      '⚡ COMPRA EXPRESS - ALTO VOLUMEN\n\n💰 Límites: {{limiteMin}} - {{limiteMax}} Bs\n🏦 {{banco}} | {{metodoPago}}\n⏱️ Liberación < 5 min tras comprobante\n\n📋 REGLAS:\n✅ Pago propio únicamente\n✅ Comprobante obligatorio\n✅ Sin terceros (verificación cédula)\n❌ Sin cancelaciones unilaterales\n\n🤖 {{usuario}} - Operador verificado',
+    autoReply:
+      '⚡ COMPRA RÁPIDA: Paga por {{metodoPago}} a {{banco}}, envía comprobante, libero en < 5 min. Límite {{limiteMax}} Bs.',
+    variables: DEFAULT_AD_VARIABLES.filter((v) => v.key !== 'spread'),
     tags: ['compra', 'high-volume', 'express', '24/7'],
-    metadata: { minSpread: 0.2, maxSpread: 2, preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV', 'Banplus'], paymentMethods: ['Pago Móvil'], timeWindow: { start: '00:00', end: '23:59' } },
+    metadata: {
+      minSpread: 0.2,
+      maxSpread: 2,
+      preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV', 'Banplus'],
+      paymentMethods: ['Pago Móvil'],
+      timeWindow: { start: '00:00', end: '23:59' },
+    },
   },
 ];
 
@@ -113,7 +192,7 @@ export function renderTemplate(template: string, data: Partial<AdPreviewData>): 
   if (missingVars) {
     for (const mv of missingVars) {
       const key = mv.slice(2, -2);
-      const defVar = DEFAULT_AD_VARIABLES.find(v => v.key === key);
+      const defVar = DEFAULT_AD_VARIABLES.find((v) => v.key === key);
       if (defVar?.defaultValue !== undefined) {
         result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(defVar.defaultValue));
       } else {
@@ -124,7 +203,10 @@ export function renderTemplate(template: string, data: Partial<AdPreviewData>): 
   return result;
 }
 
-export function generateAdPreview(template: AdTemplate, data: Partial<AdPreviewData>): { title: string; terms: string; autoReply: string } {
+export function generateAdPreview(
+  template: AdTemplate,
+  data: Partial<AdPreviewData>,
+): { title: string; terms: string; autoReply: string } {
   return {
     title: renderTemplate(template.title, data),
     terms: renderTemplate(template.terms, data),
@@ -132,7 +214,12 @@ export function generateAdPreview(template: AdTemplate, data: Partial<AdPreviewD
   };
 }
 
-export function validateAd(title: string, terms: string, autoReply: string, config?: { maxTitleLength?: number; maxTermsLength?: number; maxAutoReplyLength?: number }): ValidationResult {
+export function validateAd(
+  title: string,
+  terms: string,
+  autoReply: string,
+  config?: { maxTitleLength?: number; maxTermsLength?: number; maxAutoReplyLength?: number },
+): ValidationResult {
   const maxTitle = config?.maxTitleLength || 50;
   const maxTerms = config?.maxTermsLength || 2000;
   const maxAutoReply = config?.maxAutoReplyLength || 500;
@@ -165,7 +252,9 @@ export function validateAd(title: string, terms: string, autoReply: string, conf
   return { valid: errors.length === 0, errors, warnings };
 }
 
-export function createAdTemplate(data: Partial<AdTemplate> & { name: string; type: AdType }): AdTemplate {
+export function createAdTemplate(
+  data: Partial<AdTemplate> & { name: string; type: AdType },
+): AdTemplate {
   const now = new Date().toISOString();
   return {
     id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -197,11 +286,14 @@ export function cloneTemplate(template: AdTemplate, newName?: string): AdTemplat
   };
 }
 
-export function filterTemplates(templates: AdTemplate[], filters: { type?: AdType; status?: AdStatus; tags?: string[] } = {}): AdTemplate[] {
-  return templates.filter(t => {
+export function filterTemplates(
+  templates: AdTemplate[],
+  filters: { type?: AdType; status?: AdStatus; tags?: string[] } = {},
+): AdTemplate[] {
+  return templates.filter((t) => {
     if (filters.type && t.type !== filters.type) return false;
     if (filters.status && t.status !== filters.status) return false;
-    if (filters.tags?.length && !filters.tags.some(tag => t.tags.includes(tag))) return false;
+    if (filters.tags?.length && !filters.tags.some((tag) => t.tags.includes(tag))) return false;
     return true;
   });
 }

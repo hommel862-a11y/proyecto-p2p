@@ -25,7 +25,10 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       getOrder: (orderId: string) => ipc('p2p:db-get-order', orderId) as Promise<unknown>,
       listActiveOrders: () => ipc('p2p:db-list-active-orders') as Promise<unknown[]>,
       recordBankEvent: (event: unknown) =>
-        ipc('p2p:db-record-bank-event', event) as Promise<{ isDuplicate: boolean; eventId: number }>,
+        ipc('p2p:db-record-bank-event', event) as Promise<{
+          isDuplicate: boolean;
+          eventId: number;
+        }>,
       saveAuditLog: (record: any) => ipc('p2p:db-save-audit-log', record) as Promise<boolean>,
       listAuditLogs: (params?: any) => ipc('p2p:db-list-audit-logs', params) as Promise<unknown[]>,
       saveOperationRecord: (record: any) =>
@@ -51,7 +54,8 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       executePlan: (params) => ipc('copilot:execute-plan', params) as Promise<any>,
       getPlans: (params) => ipc('copilot:get-plans', params) as Promise<any>,
       getLearnings: (params) => ipc('copilot:get-learnings', params) as Promise<any>,
-      getEngramObservations: (params) => ipc('copilot:get-engram-observations', params) as Promise<any>,
+      getEngramObservations: (params) =>
+        ipc('copilot:get-engram-observations', params) as Promise<any>,
       setApiKey: (params) => ipc('copilot:set-api-key', params) as Promise<any>,
       testConnection: () => ipc('copilot:test-connection') as Promise<any>,
       getWatcherStatus: () => ipc('copilot:get-watcher-status') as Promise<any>,
@@ -59,16 +63,17 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       runSwarmAnalysis: (params) => ipc('copilot:run-swarm-analysis', params) as Promise<any>,
       getSwarmHealth: () => ipc('copilot:get-swarm-health') as Promise<any>,
       auditDisputeProof: (params) => ipc('copilot:audit-dispute-proof', params) as Promise<any>,
-      triggerProactiveEval: (params) => ipc('copilot:trigger-proactive-eval', params) as Promise<any>,
+      triggerProactiveEval: (params) =>
+        ipc('copilot:trigger-proactive-eval', params) as Promise<any>,
       assessCounterparty: (params) => ipc('copilot:assess-counterparty', params) as Promise<any>,
-      recordCounterpartyTrade: (params) => ipc('copilot:record-counterparty-trade', params) as Promise<any>,
+      recordCounterpartyTrade: (params) =>
+        ipc('copilot:record-counterparty-trade', params) as Promise<any>,
       listCounterparties: (params) => ipc('copilot:list-counterparties', params) as Promise<any>,
       runMonteCarlo: (params) => ipc('copilot:run-monte-carlo', params) as Promise<any>,
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
-      capture: (sourceId?: string) =>
-        ipc('p2p:screen-pipe-capture', { sourceId }) as Promise<any>,
+      capture: (sourceId?: string) => ipc('p2p:screen-pipe-capture', { sourceId }) as Promise<any>,
     },
     mcp: {
       getStatus: () => ipc('p2p:mcp-status') as Promise<any>,
@@ -134,5 +139,3 @@ export const ALLOWED_CHANNELS = [
   'p2p:mcp-status',
   'p2p:mcp-test-tool',
 ] as const;
-
-

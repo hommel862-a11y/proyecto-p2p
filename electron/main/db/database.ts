@@ -39,7 +39,12 @@ export interface StrategyPlanRecord {
 export interface MarketLearningRecord {
   id?: number;
   topicKey: string;
-  category: 'SPREAD_CYCLE' | 'BCV_IMPACT' | 'OPERATOR_PERFORMANCE' | 'COUNTERPARTY_BEHAVIOR' | 'TRIANGULATION_ROUTE';
+  category:
+    | 'SPREAD_CYCLE'
+    | 'BCV_IMPACT'
+    | 'OPERATOR_PERFORMANCE'
+    | 'COUNTERPARTY_BEHAVIOR'
+    | 'TRIANGULATION_ROUTE';
   insight: string;
   confidenceScore?: number;
   sampleCount?: number;
@@ -69,7 +74,8 @@ export interface BlacklistEntryRecord {
   identifierType: 'CEDULA' | 'PHONE' | 'ACCOUNT_NUMBER' | 'BINANCE_ALIAS';
   identifierValue: string;
   counterpartyName?: string;
-  fraudCategory: 'TRIANGULATION_SCAM' | 'THIRD_PARTY_PAYER' | 'CHARGEBACK_ATTEMPT' | 'IDENTITY_THEFT' | 'OTHER';
+  fraudCategory:
+    'TRIANGULATION_SCAM' | 'THIRD_PARTY_PAYER' | 'CHARGEBACK_ATTEMPT' | 'IDENTITY_THEFT' | 'OTHER';
   incidentNotes?: string;
   riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM';
   reportedAt: number;
@@ -383,7 +389,9 @@ export class P2PDatabaseService {
         : undefined,
       fraudScore: row['fraud_score'] !== null ? Number(row['fraud_score']) : undefined,
       flags: row['flags_json'] ? (JSON.parse(row['flags_json'] as string) as string[]) : [],
-      history: row['history_json'] ? (JSON.parse(row['history_json'] as string) as FsmOrderContext['history']) : [],
+      history: row['history_json']
+        ? (JSON.parse(row['history_json'] as string) as FsmOrderContext['history'])
+        : [],
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     };
@@ -398,7 +406,7 @@ export class P2PDatabaseService {
       WHERE current_state NOT IN ('COMPLETED', 'DISPUTED', 'CANCELLED')
       ORDER BY created_at DESC
     `);
-    const rows = stmt.all() as Array<Record<string, unknown>>;
+    const rows = stmt.all() as Record<string, unknown>[];
     return rows.map((row) => ({
       orderId: row['order_id'] as string,
       side: row['side'] as 'BUY' | 'SELL',
@@ -415,7 +423,9 @@ export class P2PDatabaseService {
         : undefined,
       fraudScore: row['fraud_score'] !== null ? Number(row['fraud_score']) : undefined,
       flags: row['flags_json'] ? (JSON.parse(row['flags_json'] as string) as string[]) : [],
-      history: row['history_json'] ? (JSON.parse(row['history_json'] as string) as FsmOrderContext['history']) : [],
+      history: row['history_json']
+        ? (JSON.parse(row['history_json'] as string) as FsmOrderContext['history'])
+        : [],
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     }));
@@ -439,7 +449,8 @@ export class P2PDatabaseService {
         AND received_at >= ?
       LIMIT 1
     `);
-    const existing = checkStmt.get(dedupHash, cleanBank, cleanRef, thirtyDaysAgo) as { id: number } | undefined;
+    const existing = checkStmt.get(dedupHash, cleanBank, cleanRef, thirtyDaysAgo) as
+      { id: number } | undefined;
 
     if (existing) {
       return { isDuplicate: true, eventId: existing.id };
@@ -487,7 +498,14 @@ export class P2PDatabaseService {
       INSERT INTO fsm_audit_log (order_id, from_state, to_state, event, reason, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(audit.orderId, audit.fromState, audit.toState, audit.event, audit.reason ?? null, audit.timestamp);
+    stmt.run(
+      audit.orderId,
+      audit.fromState,
+      audit.toState,
+      audit.event,
+      audit.reason ?? null,
+      audit.timestamp,
+    );
   }
 
   /**
@@ -568,7 +586,7 @@ export class P2PDatabaseService {
    */
   listStrategyPlans(limit = 20): StrategyPlanRecord[] {
     const stmt = this.db.prepare(`SELECT * FROM strategy_plans ORDER BY created_at DESC LIMIT ?`);
-    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    const rows = stmt.all(limit) as Record<string, unknown>[];
     return rows.map((row) => ({
       id: row['id'] as string,
       title: row['title'] as string,
@@ -652,17 +670,17 @@ export class P2PDatabaseService {
    */
   listMarketLearnings(category?: string, limit = 50): MarketLearningRecord[] {
     let stmt;
-    let rows: Array<Record<string, unknown>>;
+    let rows: Record<string, unknown>[];
     if (category) {
       stmt = this.db.prepare(`
         SELECT * FROM market_learnings WHERE category = ? ORDER BY updated_at DESC LIMIT ?
       `);
-      rows = stmt.all(category, limit) as Array<Record<string, unknown>>;
+      rows = stmt.all(category, limit) as Record<string, unknown>[];
     } else {
       stmt = this.db.prepare(`
         SELECT * FROM market_learnings ORDER BY updated_at DESC LIMIT ?
       `);
-      rows = stmt.all(limit) as Array<Record<string, unknown>>;
+      rows = stmt.all(limit) as Record<string, unknown>[];
     }
 
     return rows.map((row) => ({
@@ -672,7 +690,9 @@ export class P2PDatabaseService {
       insight: row['insight'] as string,
       confidenceScore: Number(row['confidence_score']),
       sampleCount: Number(row['sample_count']),
-      dataPayload: row['data_payload_json'] ? JSON.parse(row['data_payload_json'] as string) : undefined,
+      dataPayload: row['data_payload_json']
+        ? JSON.parse(row['data_payload_json'] as string)
+        : undefined,
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     }));
@@ -740,7 +760,7 @@ export class P2PDatabaseService {
     params.push(limit);
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+    const rows = stmt.all(...params) as Record<string, unknown>[];
 
     return rows.map((row) => ({
       id: Number(row['id']),
@@ -770,11 +790,13 @@ export class P2PDatabaseService {
 
     return observations
       .map((obs) => {
-        return `[ENGRAM MEMORY | topic: ${obs.topicKey} | type: ${obs.type} | conf: ${((obs.confidenceScore ?? 1) * 100).toFixed(0)}%]\n` +
+        return (
+          `[ENGRAM MEMORY | topic: ${obs.topicKey} | type: ${obs.type} | conf: ${((obs.confidenceScore ?? 1) * 100).toFixed(0)}%]\n` +
           `• What: ${obs.what}\n` +
           `• Why: ${obs.why}\n` +
           `• Where: ${obs.whereAffected}\n` +
-          `• Learned: ${obs.learned}`;
+          `• Learned: ${obs.learned}`
+        );
       })
       .join('\n\n');
   }
@@ -816,7 +838,7 @@ export class P2PDatabaseService {
       entry.fraudCategory,
       entry.incidentNotes ?? null,
       entry.riskLevel ?? 'CRITICAL',
-      entry.reportedAt || Date.now()
+      entry.reportedAt || Date.now(),
     );
     return Number(res.lastInsertRowid);
   }
@@ -856,7 +878,7 @@ export class P2PDatabaseService {
 
     const sql = `SELECT * FROM counterparty_blacklist WHERE ${conditions.join(' OR ')} ORDER BY reported_at DESC`;
     const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+    const rows = stmt.all(...params) as Record<string, unknown>[];
 
     return rows.map((row) => ({
       id: Number(row['id']),
@@ -874,8 +896,10 @@ export class P2PDatabaseService {
    * Lists recent blacklist records with an optional limit.
    */
   listBlacklistEntries(limit = 50): BlacklistEntryRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM counterparty_blacklist ORDER BY reported_at DESC LIMIT ?');
-    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    const stmt = this.db.prepare(
+      'SELECT * FROM counterparty_blacklist ORDER BY reported_at DESC LIMIT ?',
+    );
+    const rows = stmt.all(limit) as Record<string, unknown>[];
     return rows.map((row) => ({
       id: Number(row['id']),
       identifierType: row['identifier_type'] as BlacklistEntryRecord['identifierType'],
@@ -922,7 +946,7 @@ export class P2PDatabaseService {
     params.push(limit);
 
     const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as Array<Record<string, unknown>>;
+    const rows = stmt.all(...params) as Record<string, unknown>[];
     return rows.map((r) => ({
       id: String(r['id']),
       timestamp: String(r['timestamp']),
@@ -964,8 +988,10 @@ export class P2PDatabaseService {
    * Lists operation records from SQLite relational ledger.
    */
   listOperationRecords(limit = 50): OperationRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM operation_records ORDER BY created_at DESC LIMIT ?');
-    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    const stmt = this.db.prepare(
+      'SELECT * FROM operation_records ORDER BY created_at DESC LIMIT ?',
+    );
+    const rows = stmt.all(limit) as Record<string, unknown>[];
     return rows.map((r) => ({
       id: String(r['id']),
       timestamp: String(r['timestamp']),

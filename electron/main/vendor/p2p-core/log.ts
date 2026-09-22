@@ -62,10 +62,7 @@ export interface LogSummary {
  * Filter operations by active operator ID.
  * When `operatorId` is undefined, returns all operations unchanged.
  */
-export function filterOpsByOperator(
-  ops: readonly Operation[],
-  operatorId?: string,
-): Operation[] {
+export function filterOpsByOperator(ops: readonly Operation[], operatorId?: string): Operation[] {
   if (!operatorId) return [...ops];
   return ops.filter((o) => o.operatorId === operatorId);
 }
@@ -73,10 +70,7 @@ export function filterOpsByOperator(
 /**
  * Compute a per-operator summary: count and PnL filtered by operator.
  */
-export function computeOperatorSummary(
-  ops: readonly Operation[],
-  operatorId?: string,
-): LogSummary {
+export function computeOperatorSummary(ops: readonly Operation[], operatorId?: string): LogSummary {
   const filtered = filterOpsByOperator(ops, operatorId);
   return computeLogSummary(filtered);
 }

@@ -12,7 +12,7 @@
 
 import type { Operation } from './log';
 import type { BankAccount } from './accounts';
-import { encryptBackupAES256, decryptBackupAES256 } from './backup-encryption';
+import { encryptBackupAES256 } from './backup-encryption';
 
 export type ExportFormat = 'csv' | 'json' | 'json-encrypted';
 export type ExportScope = 'operations' | 'accounts' | 'summary' | 'full';
@@ -20,14 +20,14 @@ export type ExportScope = 'operations' | 'accounts' | 'summary' | 'full';
 export interface ExportConfig {
   format: ExportFormat;
   scope: ExportScope;
-  dateFrom?: string;      // ISO date
-  dateTo?: string;        // ISO date
+  dateFrom?: string; // ISO date
+  dateTo?: string; // ISO date
   bankId?: string;
   operatorId?: string;
   operationTypes?: ('buy' | 'sell' | 'assign')[];
   includeHeaders: boolean;
-  password?: string;      // For json-encrypted
-  timezone: string;       // e.g., 'America/Caracas'
+  password?: string; // For json-encrypted
+  timezone: string; // e.g., 'America/Caracas'
 }
 
 export interface InstitutionalMetrics {
@@ -39,18 +39,18 @@ export interface InstitutionalMetrics {
   netPnlUsdt: number;
   totalFeesVes: number;
   totalFeesUsdt: number;
-  aprRealPct: number;           // APR anualizado real
-  turnoverRatio: number;        // Volumen / Capital promedio
-  winRatePct: number;           // % operaciones ganadoras
-  avgSpreadPct: number;         // Spread promedio ponderado
-  maxDrawdownPct: number;       // Máxima caída desde pico
-  sharpeRatio: number;          // Ratio riesgo-retorno
+  aprRealPct: number; // APR anualizado real
+  turnoverRatio: number; // Volumen / Capital promedio
+  winRatePct: number; // % operaciones ganadoras
+  avgSpreadPct: number; // Spread promedio ponderado
+  maxDrawdownPct: number; // Máxima caída desde pico
+  sharpeRatio: number; // Ratio riesgo-retorno
   bestOperation: { id: string; pnlVes: number } | null;
   worstOperation: { id: string; pnlVes: number } | null;
   byBank: Record<string, { volumeVes: number; count: number; pnlVes: number }>;
   byOperator: Record<string, { volumeVes: number; count: number; pnlVes: number }>;
   byType: Record<string, { volumeVes: number; count: number; pnlVes: number }>;
-  dailyPnl: Array<{ date: string; pnlVes: number; volumeVes: number }>;
+  dailyPnl: { date: string; pnlVes: number; volumeVes: number }[];
 }
 
 export interface ExportedReport {
@@ -73,12 +73,25 @@ export interface ExportedReport {
  */
 export function operationsToCsv(operations: Operation[], includeHeaders = true): string {
   const headers = [
-    'ID', 'Fecha', 'Tipo', 'Par', 'Monto VES', 'Monto USDT', 'Precio',
-    'Comerciante', 'Comisiones VES', 'Comisiones USDT', 'Notas',
-    'Error Free', 'Operador ID', 'Operador Nombre', 'Spread %', 'PnL VES'
+    'ID',
+    'Fecha',
+    'Tipo',
+    'Par',
+    'Monto VES',
+    'Monto USDT',
+    'Precio',
+    'Comerciante',
+    'Comisiones VES',
+    'Comisiones USDT',
+    'Notas',
+    'Error Free',
+    'Operador ID',
+    'Operador Nombre',
+    'Spread %',
+    'PnL VES',
   ];
-  
-  const rows = operations.map(op => [
+
+  const rows = operations.map((op) => [
     op.id,
     op.timestamp,
     op.type.toUpperCase(),
@@ -88,7 +101,7 @@ export function operationsToCsv(operations: Operation[], includeHeaders = true):
     op.price.toFixed(2),
     op.merchantNote || '',
     op.fees?.toFixed(2) || '0',
-    (op.fees ? (op.fees / op.price) : 0).toFixed(4) || '0',
+    (op.fees ? op.fees / op.price : 0).toFixed(4) || '0',
     (op.notes || '').replace(/"/g, '""'),
     op.errorFree ? 'SI' : 'NO',
     op.operatorId || '',
@@ -96,10 +109,10 @@ export function operationsToCsv(operations: Operation[], includeHeaders = true):
     op.type === 'buy' || op.type === 'sell' ? calculateSpreadPct(op).toFixed(2) : '',
     op.type === 'sell' ? calculateOpPnL(op).toFixed(2) : '',
   ]);
-  
+
   let csv = '';
   if (includeHeaders) csv += headers.join(',') + '\n';
-  csv += rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  csv += rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
   return csv;
 }
 
@@ -108,11 +121,17 @@ export function operationsToCsv(operations: Operation[], includeHeaders = true):
  */
 export function accountsToCsv(accounts: BankAccount[], includeHeaders = true): string {
   const headers = [
-    'ID', 'Banco', 'Código', 'Rail', 'Número Enmascarado',
-    'Límite Diario VES', 'Límite Mensual VES', 'Saldo Inicial VES'
+    'ID',
+    'Banco',
+    'Código',
+    'Rail',
+    'Número Enmascarado',
+    'Límite Diario VES',
+    'Límite Mensual VES',
+    'Saldo Inicial VES',
   ];
-  
-  const rows = accounts.map(acc => [
+
+  const rows = accounts.map((acc) => [
     acc.id,
     acc.bankName,
     acc.bankCode,
@@ -122,10 +141,10 @@ export function accountsToCsv(accounts: BankAccount[], includeHeaders = true): s
     acc.monthlyLimitVes?.toFixed(2) || '0',
     acc.initialBalanceVes?.toFixed(2) || '0',
   ]);
-  
+
   let csv = '';
   if (includeHeaders) csv += headers.join(',') + '\n';
-  csv += rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  csv += rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
   return csv;
 }
 
@@ -143,7 +162,7 @@ function calculateSpreadPct(op: Operation): number {
  */
 function calculateOpPnL(op: Operation): number {
   // Simplified PnL calculation
-  return op.vesAmount - (op.usdtAmount * op.price);
+  return op.vesAmount - op.usdtAmount * op.price;
 }
 
 /**
@@ -152,33 +171,31 @@ function calculateOpPnL(op: Operation): number {
 export function computeInstitutionalMetrics(
   operations: Operation[],
   accounts: BankAccount[],
-  config: ExportConfig
+  config: ExportConfig,
 ): InstitutionalMetrics {
   const filtered = filterOperations(operations, config);
   const dateFrom = config.dateFrom ? new Date(config.dateFrom) : null;
   const dateTo = config.dateTo ? new Date(config.dateTo) : null;
-  
+
   let totalVolumeUsdt = 0;
   let totalVolumeVes = 0;
   let netPnlVes = 0;
   let netPnlUsdt = 0;
   let totalFeesVes = 0;
   let totalFeesUsdt = 0;
-  let buyCount = 0, sellCount = 0;
   let winCount = 0;
-  let spreadSum = 0;
   let spreadWeightedSum = 0;
   let spreadWeightedWeight = 0;
   const dailyMap = new Map<string, { pnl: number; volume: number }>();
   const byBank: Record<string, { volumeVes: number; count: number; pnlVes: number }> = {};
   const byOperator: Record<string, { volumeVes: number; count: number; pnlVes: number }> = {};
   const byType: Record<string, { volumeVes: number; count: number; pnlVes: number }> = {};
-  
+
   let bestOp: { id: string; pnlVes: number } | null = null;
   let worstOp: { id: string; pnlVes: number } | null = null;
   let maxPnl = -Infinity;
   let minPnl = Infinity;
-  
+
   for (const op of filtered) {
     const opDate = op.timestamp.split('T')[0];
     const pnlVes = calculateOpPnL(op);
@@ -186,68 +203,74 @@ export function computeInstitutionalMetrics(
     const volumeUsdt = Math.abs(op.usdtAmount);
     const feeVes = op.fees || 0;
     const feeUsdt = feeVes / (op.price || 1);
-    
+
     totalVolumeUsdt += volumeUsdt;
     totalVolumeVes += volumeVes;
     netPnlVes += pnlVes;
     netPnlUsdt += pnlVes / (op.price || 1);
     totalFeesVes += feeVes;
     totalFeesUsdt += feeUsdt;
-    
-    if (op.type === 'buy') buyCount++;
-    if (op.type === 'sell') sellCount++;
+
     if (pnlVes > 0) winCount++;
-    
+
     const spread = calculateSpreadPct(op);
-    spreadSum += spread;
     spreadWeightedSum += spread * volumeVes;
     spreadWeightedWeight += volumeVes;
-    
-    if (pnlVes > maxPnl) { maxPnl = pnlVes; bestOp = { id: op.id, pnlVes }; }
-    if (pnlVes < minPnl) { minPnl = pnlVes; worstOp = { id: op.id, pnlVes }; }
-    
+
+    if (pnlVes > maxPnl) {
+      maxPnl = pnlVes;
+      bestOp = { id: op.id, pnlVes };
+    }
+    if (pnlVes < minPnl) {
+      minPnl = pnlVes;
+      worstOp = { id: op.id, pnlVes };
+    }
+
     // Daily aggregation
     const day = dailyMap.get(opDate) || { pnl: 0, volume: 0 };
     day.pnl += pnlVes;
     day.volume += volumeVes;
     dailyMap.set(opDate, day);
-    
+
     // By bank
     const bankKey = op.merchantNote || 'UNKNOWN';
     byBank[bankKey] = byBank[bankKey] || { volumeVes: 0, count: 0, pnlVes: 0 };
     byBank[bankKey].volumeVes += volumeVes;
     byBank[bankKey].count++;
     byBank[bankKey].pnlVes += pnlVes;
-    
+
     // By operator
     const opKey = op.operatorId || 'UNKNOWN';
     byOperator[opKey] = byOperator[opKey] || { volumeVes: 0, count: 0, pnlVes: 0 };
     byOperator[opKey].volumeVes += volumeVes;
     byOperator[opKey].count++;
     byOperator[opKey].pnlVes += pnlVes;
-    
+
     // By type
     byType[op.type] = byType[op.type] || { volumeVes: 0, count: 0, pnlVes: 0 };
     byType[op.type].volumeVes += volumeVes;
     byType[op.type].count++;
     byType[op.type].pnlVes += pnlVes;
   }
-  
+
   // APR calculation (simplified)
-  const daysInPeriod = dateFrom && dateTo ? 
-    Math.max(1, (dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) : 30;
-  const avgCapital = accounts.reduce((sum, a) => sum + (a.initialBalanceVes || 0), 0) / Math.max(1, accounts.length);
+  const daysInPeriod =
+    dateFrom && dateTo
+      ? Math.max(1, (dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
+      : 30;
+  const avgCapital =
+    accounts.reduce((sum, a) => sum + (a.initialBalanceVes || 0), 0) / Math.max(1, accounts.length);
   const aprRealPct = avgCapital > 0 ? (netPnlVes / avgCapital) * (365 / daysInPeriod) * 100 : 0;
-  
+
   // Turnover ratio
   const turnoverRatio = avgCapital > 0 ? totalVolumeVes / avgCapital : 0;
-  
+
   // Win rate
   const winRatePct = filtered.length > 0 ? (winCount / filtered.length) * 100 : 0;
-  
+
   // Avg spread
   const avgSpreadPct = spreadWeightedWeight > 0 ? spreadWeightedSum / spreadWeightedWeight : 0;
-  
+
   // Max drawdown (simplified)
   let peak = 0;
   let maxDrawdown = 0;
@@ -259,17 +282,22 @@ export function computeInstitutionalMetrics(
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
   const maxDrawdownPct = peak > 0 ? (maxDrawdown / peak) * 100 : 0;
-  
+
   // Sharpe (simplified)
-  const returns = filtered.map(op => calculateOpPnL(op));
+  const returns = filtered.map((op) => calculateOpPnL(op));
   const avgReturn = returns.reduce((a, b) => a + b, 0) / Math.max(1, returns.length);
-  const stdDev = Math.sqrt(returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / Math.max(1, returns.length));
+  const stdDev = Math.sqrt(
+    returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / Math.max(1, returns.length),
+  );
   const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
-  
+
   return {
-    period: { 
+    period: {
       from: dateFrom?.toISOString() || filtered[0]?.timestamp || new Date().toISOString(),
-      to: dateTo?.toISOString() || filtered[filtered.length - 1]?.timestamp || new Date().toISOString()
+      to:
+        dateTo?.toISOString() ||
+        filtered[filtered.length - 1]?.timestamp ||
+        new Date().toISOString(),
     },
     totalOperations: filtered.length,
     totalVolumeUsdt: Math.round(totalVolumeUsdt * 100) / 100,
@@ -289,9 +317,13 @@ export function computeInstitutionalMetrics(
     byBank,
     byOperator,
     byType,
-    dailyPnl: Array.from(dailyMap.entries()).map(([date, data]) => ({
-      date, pnlVes: Math.round(data.pnl * 100) / 100, volumeVes: Math.round(data.volume * 100) / 100
-    })).sort((a, b) => a.date.localeCompare(b.date)),
+    dailyPnl: Array.from(dailyMap.entries())
+      .map(([date, data]) => ({
+        date,
+        pnlVes: Math.round(data.pnl * 100) / 100,
+        volumeVes: Math.round(data.volume * 100) / 100,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
 
@@ -299,7 +331,7 @@ export function computeInstitutionalMetrics(
  * Filtra operaciones según configuración
  */
 function filterOperations(operations: Operation[], config: ExportConfig): Operation[] {
-  return operations.filter(op => {
+  return operations.filter((op) => {
     const opDate = op.timestamp.split('T')[0];
     if (config.dateFrom && opDate < config.dateFrom.split('T')[0]) return false;
     if (config.dateTo && opDate > config.dateTo.split('T')[0]) return false;
@@ -316,11 +348,11 @@ function filterOperations(operations: Operation[], config: ExportConfig): Operat
 export async function exportLedgerReport(
   operations: Operation[],
   accounts: BankAccount[],
-  config: ExportConfig
+  config: ExportConfig,
 ): Promise<{ content: string; filename: string; mimeType: string }> {
   const metrics = computeInstitutionalMetrics(operations, accounts, config);
   const filteredOps = filterOperations(operations, config);
-  
+
   const report: ExportedReport = {
     metadata: {
       generatedAt: new Date().toISOString(),
@@ -335,9 +367,9 @@ export async function exportLedgerReport(
     accounts: config.scope === 'accounts' || config.scope === 'full' ? accounts : undefined,
     summary: config.scope === 'summary' || config.scope === 'full' ? metrics : undefined,
   };
-  
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  
+
   if (config.format === 'csv') {
     const csvParts: string[] = [];
     if (config.scope === 'operations' || config.scope === 'full') {
@@ -358,10 +390,10 @@ export async function exportLedgerReport(
       mimeType: 'text/csv; charset=utf-8',
     };
   }
-  
+
   if (config.format === 'json' || config.format === 'json-encrypted') {
     const json = JSON.stringify(report, null, 2);
-    
+
     if (config.format === 'json-encrypted') {
       if (!config.password) throw new Error('Password required for encrypted export');
       const encrypted = await encryptBackupAES256(config.password, json);
@@ -372,14 +404,14 @@ export async function exportLedgerReport(
         mimeType: 'application/json',
       };
     }
-    
+
     return {
       content: json,
       filename: `p2p-ledger-${config.scope}-${timestamp}.json`,
       mimeType: 'application/json',
     };
   }
-  
+
   throw new Error(`Formato no soportado: ${config.format}`);
 }
 
@@ -402,14 +434,27 @@ function metricsToCsv(metrics: InstitutionalMetrics, includeHeaders: boolean): s
     ['Spread Promedio %', metrics.avgSpreadPct.toFixed(2)],
     ['Max Drawdown %', metrics.maxDrawdownPct.toFixed(2)],
     ['Sharpe Ratio', metrics.sharpeRatio.toFixed(2)],
-    ['Mejor Operación', metrics.bestOperation ? `${metrics.bestOperation.id}: ${metrics.bestOperation.pnlVes.toFixed(2)} VES` : 'N/A'],
-    ['Peor Operación', metrics.worstOperation ? `${metrics.worstOperation.id}: ${metrics.worstOperation.pnlVes.toFixed(2)} VES` : 'N/A'],
+    [
+      'Mejor Operación',
+      metrics.bestOperation
+        ? `${metrics.bestOperation.id}: ${metrics.bestOperation.pnlVes.toFixed(2)} VES`
+        : 'N/A',
+    ],
+    [
+      'Peor Operación',
+      metrics.worstOperation
+        ? `${metrics.worstOperation.id}: ${metrics.worstOperation.pnlVes.toFixed(2)} VES`
+        : 'N/A',
+    ],
   ];
-  
+
   let csv = '';
   if (includeHeaders) csv += rows[0].join(',') + '\n';
-  csv += rows.slice(1).map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-  
+  csv += rows
+    .slice(1)
+    .map((r) => r.map((v) => `"${v}"`).join(','))
+    .join('\n');
+
   // Add byBank, byOperator, byType sections
   for (const [section, data] of [
     ['POR BANCO', metrics.byBank],
@@ -417,23 +462,19 @@ function metricsToCsv(metrics: InstitutionalMetrics, includeHeaders: boolean): s
     ['POR TIPO', metrics.byType],
   ] as const) {
     csv += `\n# ${section}\n`;
-    csv += (includeHeaders ? 'Clave,Volumen VES,Operaciones,PnL VES\n' : '');
+    csv += includeHeaders ? 'Clave,Volumen VES,Operaciones,PnL VES\n' : '';
     for (const [key, val] of Object.entries(data)) {
       csv += `"${key}",${val.volumeVes.toFixed(2)},${val.count},${val.pnlVes.toFixed(2)}\n`;
     }
   }
-  
+
   return csv;
 }
 
 /**
  * Descarga reporte en navegador/Electron
  */
-export function downloadReport(
-  content: string,
-  filename: string,
-  mimeType: string
-): void {
+export function downloadReport(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

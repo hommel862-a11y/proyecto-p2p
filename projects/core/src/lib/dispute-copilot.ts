@@ -116,7 +116,8 @@ export function buildDisputeDossier(params: DisputeDossierParams): DisputeDossie
       time: auditTimeStr,
       timestamp: now,
       title: 'Retención Preventiva & Apertura de Disputa',
-      description: 'Fondos en criptoactivos retenidos en custodia preventiva conforme a las políticas de Binance contra pagos de terceros.',
+      description:
+        'Fondos en criptoactivos retenidos en custodia preventiva conforme a las políticas de Binance contra pagos de terceros.',
       category: 'ACTION',
     },
   ];

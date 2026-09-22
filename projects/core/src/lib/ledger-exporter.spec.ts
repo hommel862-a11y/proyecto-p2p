@@ -105,10 +105,12 @@ describe('ledger-exporter', () => {
     });
 
     it('escapa comillas en notas', () => {
-      const opsWithQuotes: Operation[] = [{
-        ...mockOps[0],
-        notes: 'Nota con "comillas"',
-      }];
+      const opsWithQuotes: Operation[] = [
+        {
+          ...mockOps[0],
+          notes: 'Nota con "comillas"',
+        },
+      ];
       const csv = operationsToCsv(opsWithQuotes, true);
       expect(csv).toContain('""comillas""');
     });
@@ -126,7 +128,7 @@ describe('ledger-exporter', () => {
   describe('computeInstitutionalMetrics', () => {
     it('calcula métricas básicas correctamente', () => {
       const metrics = computeInstitutionalMetrics(mockOps, mockAccounts, baseConfig);
-      
+
       expect(metrics.totalOperations).toBe(3);
       expect(metrics.totalVolumeVes).toBeGreaterThan(0);
       expect(metrics.netPnlVes).toBeDefined();
@@ -182,7 +184,7 @@ describe('ledger-exporter', () => {
       expect(metrics.dailyPnl.length).toBeGreaterThan(0);
       // Verificar orden ascendente
       for (let i = 1; i < metrics.dailyPnl.length; i++) {
-        expect(metrics.dailyPnl[i].date >= metrics.dailyPnl[i-1].date).toBe(true);
+        expect(metrics.dailyPnl[i].date >= metrics.dailyPnl[i - 1].date).toBe(true);
       }
     });
   });
@@ -191,7 +193,7 @@ describe('ledger-exporter', () => {
     it('genera CSV de métricas con secciones', () => {
       const metrics = computeInstitutionalMetrics(mockOps, mockAccounts, baseConfig);
       const csv = metricsToCsv(metrics, true);
-      
+
       expect(csv).toContain('Métrica,Valor');
       expect(csv).toContain('Total Operaciones');
       expect(csv).toContain('POR BANCO');
@@ -203,7 +205,7 @@ describe('ledger-exporter', () => {
   describe('exportLedgerReport', () => {
     it('exporta CSV completo', async () => {
       const result = await exportLedgerReport(mockOps, mockAccounts, baseConfig);
-      
+
       expect(result.mimeType).toBe('text/csv; charset=utf-8');
       expect(result.filename).toContain('.csv');
       expect(result.content).toContain('OP-001');
@@ -213,7 +215,7 @@ describe('ledger-exporter', () => {
     it('exporta solo operaciones', async () => {
       const config = { ...baseConfig, scope: 'operations' as const };
       const result = await exportLedgerReport(mockOps, mockAccounts, config);
-      
+
       expect(result.content).toContain('OPERACIONES');
       expect(result.content).not.toContain('CUENTAS BANCARIAS');
     });
@@ -221,7 +223,7 @@ describe('ledger-exporter', () => {
     it('exporta JSON', async () => {
       const config = { ...baseConfig, format: 'json' as const };
       const result = await exportLedgerReport(mockOps, mockAccounts, config);
-      
+
       expect(result.mimeType).toBe('application/json');
       expect(result.filename).toContain('.json');
       const parsed = JSON.parse(result.content);
@@ -232,7 +234,7 @@ describe('ledger-exporter', () => {
     it('exporta JSON encriptado', async () => {
       const config = { ...baseConfig, format: 'json-encrypted' as const, password: 'test123' };
       const result = await exportLedgerReport(mockOps, mockAccounts, config);
-      
+
       expect(result.filename).toContain('.json.enc');
       const parsed = JSON.parse(result.content);
       expect(parsed.format).toBe('p2p-encrypted-v1');
@@ -241,8 +243,10 @@ describe('ledger-exporter', () => {
 
     it('lanza error si json-encrypted sin password', async () => {
       const config = { ...baseConfig, format: 'json-encrypted' as const };
-      
-      await expect(exportLedgerReport(mockOps, mockAccounts, config)).rejects.toThrow('Password required');
+
+      await expect(exportLedgerReport(mockOps, mockAccounts, config)).rejects.toThrow(
+        'Password required',
+      );
     });
   });
 });

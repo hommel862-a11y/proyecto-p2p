@@ -214,7 +214,7 @@ export interface InstantRedemptionResult {
 // 1. Optimize Idle Capital Simple Earn
 // ---------------------------------------------------------------------------
 export function optimizeIdleCapitalSimpleEarn(
-  input: SimpleEarnOptimizationInput
+  input: SimpleEarnOptimizationInput,
 ): SimpleEarnOptimizationResult {
   const capital = Math.max(0, input.capitalUsdt);
   const tier1Limit = input.tier1LimitUsdt ?? 500;
@@ -250,9 +250,7 @@ export function optimizeIdleCapitalSimpleEarn(
 // ---------------------------------------------------------------------------
 // 2. Evaluate Dual Investment P2P Exit
 // ---------------------------------------------------------------------------
-export function evaluateDualInvestmentP2pExit(
-  input: DualInvestmentInput
-): DualInvestmentResult {
+export function evaluateDualInvestmentP2pExit(input: DualInvestmentInput): DualInvestmentResult {
   const spot = Math.max(0.0001, input.currentSpotPrice);
   const strike = Math.max(0.0001, input.strikePrice);
   const days = Math.max(1, input.durationDays);
@@ -305,7 +303,7 @@ export function evaluateDualInvestmentP2pExit(
 // 3. Calculate USDT / FDUSD Yield Arbitrage
 // ---------------------------------------------------------------------------
 export function calculateUsdtFdusdYieldArbitrage(
-  input: StablecoinYieldArbitrageInput
+  input: StablecoinYieldArbitrageInput,
 ): StablecoinYieldArbitrageResult {
   const usdtBal = Math.max(0, input.usdtBalance);
   const fdusdBal = Math.max(0, input.fdusdBalance);
@@ -322,26 +320,26 @@ export function calculateUsdtFdusdYieldArbitrage(
   const pegDeviationPct = ((marketRate - 1.0) / 1.0) * 100;
 
   let optimalSwapDirection: 'SWAP_USDT_TO_FDUSD' | 'SWAP_FDUSD_TO_USDT' | 'MAINTAIN_EQUILIBRIUM';
-  let breakevenDays = 0;
-  let projectedNetAdvantageUsdt = 0;
+  let breakevenDays: number;
+  let projectedNetAdvantageUsdt: number;
 
   if (fdusdApr > usdtApr + 0.015 && marketRate <= 1.0005) {
     optimalSwapDirection = 'SWAP_USDT_TO_FDUSD';
     const netAprAdvantage = fdusdApr - usdtApr;
-    breakevenDays = netAprAdvantage > 0 ? (swapFee / (netAprAdvantage / 365)) : 999;
-    projectedNetAdvantageUsdt = usdtBal * (netAprAdvantage * horizon / 365) - usdtBal * swapFee;
+    breakevenDays = netAprAdvantage > 0 ? swapFee / (netAprAdvantage / 365) : 999;
+    projectedNetAdvantageUsdt = usdtBal * ((netAprAdvantage * horizon) / 365) - usdtBal * swapFee;
   } else if (usdtApr > fdusdApr + 0.015 && marketRate >= 0.9995) {
     optimalSwapDirection = 'SWAP_FDUSD_TO_USDT';
     const netAprAdvantage = usdtApr - fdusdApr;
-    breakevenDays = netAprAdvantage > 0 ? (swapFee / (netAprAdvantage / 365)) : 999;
-    projectedNetAdvantageUsdt = fdusdBal * (netAprAdvantage * horizon / 365) - fdusdBal * swapFee;
+    breakevenDays = netAprAdvantage > 0 ? swapFee / (netAprAdvantage / 365) : 999;
+    projectedNetAdvantageUsdt = fdusdBal * ((netAprAdvantage * horizon) / 365) - fdusdBal * swapFee;
   } else {
     optimalSwapDirection = 'MAINTAIN_EQUILIBRIUM';
     breakevenDays = 0;
     projectedNetAdvantageUsdt = 0;
   }
 
-  const summary = `Arbitraje USDT/FDUSD: Spread APR ${(rateSpreadPct).toFixed(2)}%, Desvío Peg ${(pegDeviationPct).toFixed(3)}%. Dirección: ${optimalSwapDirection}.`;
+  const summary = `Arbitraje USDT/FDUSD: Spread APR ${rateSpreadPct.toFixed(2)}%, Desvío Peg ${pegDeviationPct.toFixed(3)}%. Dirección: ${optimalSwapDirection}.`;
 
   return {
     currentUsdtYieldMonthly: Number(currentUsdtYieldMonthly.toFixed(2)),
@@ -359,7 +357,7 @@ export function calculateUsdtFdusdYieldArbitrage(
 // 4. Model Launchpool Capital Parking
 // ---------------------------------------------------------------------------
 export function modelLaunchpoolCapitalParking(
-  input: LaunchpoolParkingInput
+  input: LaunchpoolParkingInput,
 ): LaunchpoolParkingResult {
   const capital = Math.max(0, input.capitalUsdt);
   const duration = Math.max(1, input.launchpoolDurationDays);
@@ -373,9 +371,8 @@ export function modelLaunchpoolCapitalParking(
   const totalTokensProjected = dailyTokensEarned * duration;
   const totalProjectedValueUsdt = totalTokensProjected * tokenPrice;
 
-  const impliedAnnualizedAprPct = capital > 0
-    ? (totalProjectedValueUsdt / capital) * (365 / duration) * 100
-    : 0;
+  const impliedAnnualizedAprPct =
+    capital > 0 ? (totalProjectedValueUsdt / capital) * (365 / duration) * 100 : 0;
 
   const earnOpportunityCostUsdt = (capital * earnApr * duration) / 365;
   const netExcessProfitUsdt = totalProjectedValueUsdt - earnOpportunityCostUsdt;
@@ -399,7 +396,7 @@ export function modelLaunchpoolCapitalParking(
 // 5. Optimize Locked vs Flexible Liquidity Ladder
 // ---------------------------------------------------------------------------
 export function optimizeLockedVsFlexibleLiquidityLadder(
-  input: LiquidityLadderInput
+  input: LiquidityLadderInput,
 ): LiquidityLadderResult {
   const totalTreasury = Math.max(0, input.totalTreasuryUsdt);
   const dailyVolume = Math.max(0, input.dailyP2pVolumeUsdt);
@@ -408,7 +405,7 @@ export function optimizeLockedVsFlexibleLiquidityLadder(
 
   const requiredOperationalBuffer = Math.min(
     totalTreasury,
-    dailyVolume * turnoverDays * (1 + bufferPct)
+    dailyVolume * turnoverDays * (1 + bufferPct),
   );
 
   const flexibleBufferUsdt = Math.max(totalTreasury * 0.35, requiredOperationalBuffer);
@@ -422,9 +419,7 @@ export function optimizeLockedVsFlexibleLiquidityLadder(
   const l60Apr = input.locked60dAprPct / 100;
 
   const totalAnnualYield =
-    flexibleBufferUsdt * flexApr +
-    locked30dUsdt * l30Apr +
-    locked60dUsdt * l60Apr;
+    flexibleBufferUsdt * flexApr + locked30dUsdt * l30Apr + locked60dUsdt * l60Apr;
 
   const blendedPortfolioAprPct = totalTreasury > 0 ? (totalAnnualYield / totalTreasury) * 100 : 0;
   const liquidityCoverageRatio = dailyVolume > 0 ? flexibleBufferUsdt / dailyVolume : 10.0;
@@ -446,7 +441,7 @@ export function optimizeLockedVsFlexibleLiquidityLadder(
 // 6. Calculate Earn Yield vs P2P Hurdle Rate
 // ---------------------------------------------------------------------------
 export function calculateEarnYieldVsP2pHurdleRate(
-  input: EarnHurdleRateInput
+  input: EarnHurdleRateInput,
 ): EarnHurdleRateResult {
   const grossSpread = Math.max(0, input.grossP2pSpreadPct);
   const platformFee = Math.max(0, input.platformFeePct);
@@ -462,11 +457,12 @@ export function calculateEarnYieldVsP2pHurdleRate(
   const hourlyP2pReturnPct = netP2pCycleReturnPct / cycleHours;
   const hourlyEarnYieldPct = (earnApr / (365 * 24)) * 100;
 
-  const hurdleSpreadPct = platformFee + bankingRisk + fxRisk + (hourlyEarnYieldPct * cycleHours);
-  const isP2pProfitableOverEarn = hourlyP2pReturnPct > hourlyEarnYieldPct && netP2pCycleReturnPct > 0.35;
+  const hurdleSpreadPct = platformFee + bankingRisk + fxRisk + hourlyEarnYieldPct * cycleHours;
+  const isP2pProfitableOverEarn =
+    hourlyP2pReturnPct > hourlyEarnYieldPct && netP2pCycleReturnPct > 0.35;
 
   let verdict: 'OPERATE_P2P' | 'PARK_IN_EARN' | 'ARBITRAGE_CYCLE_SUBOPTIMAL';
-  let reasoning = '';
+  let reasoning: string;
 
   if (isP2pProfitableOverEarn && netP2pCycleReturnPct >= 0.5) {
     verdict = 'OPERATE_P2P';
@@ -494,9 +490,7 @@ export function calculateEarnYieldVsP2pHurdleRate(
 // ---------------------------------------------------------------------------
 // 7. Model BNB Vault Yield Stacking
 // ---------------------------------------------------------------------------
-export function modelBnbVaultYieldStacking(
-  input: BnbVaultInput
-): BnbVaultResult {
+export function modelBnbVaultYieldStacking(input: BnbVaultInput): BnbVaultResult {
   const bnbAmount = Math.max(0, input.bnbAmount);
   const bnbPrice = Math.max(1, input.bnbPriceUsdt);
   const totalBnbValueUsdt = bnbAmount * bnbPrice;
@@ -529,7 +523,7 @@ export function modelBnbVaultYieldStacking(
 // 8. Forecast Flexible Earn Tier Saturation
 // ---------------------------------------------------------------------------
 export function forecastFlexibleEarnTierSaturation(
-  input: TierSaturationInput
+  input: TierSaturationInput,
 ): TierSaturationResult {
   const totalCapital = Math.max(0, input.totalCapitalUsdt);
   const tier1Limit = input.tier1LimitPerAccountUsdt ?? 500;
@@ -541,14 +535,16 @@ export function forecastFlexibleEarnTierSaturation(
   const tier2DegradedUsdt = Math.max(0, totalCapital - tier1Limit);
 
   const singleAccountAnnualYield = tier1UtilizedUsdt * t1Apr + tier2DegradedUsdt * t2Apr;
-  const singleAccountEffectiveAprPct = totalCapital > 0 ? (singleAccountAnnualYield / totalCapital) * 100 : 0;
+  const singleAccountEffectiveAprPct =
+    totalCapital > 0 ? (singleAccountAnnualYield / totalCapital) * 100 : 0;
 
   const multiAccountTier1Capacity = tier1Limit * availableSubaccounts;
   const multiTier1Allocated = Math.min(totalCapital, multiAccountTier1Capacity);
   const multiTier2Allocated = Math.max(0, totalCapital - multiAccountTier1Capacity);
 
   const multiAccountAnnualYield = multiTier1Allocated * t1Apr + multiTier2Allocated * t2Apr;
-  const multiAccountOptimizedAprPct = totalCapital > 0 ? (multiAccountAnnualYield / totalCapital) * 100 : 0;
+  const multiAccountOptimizedAprPct =
+    totalCapital > 0 ? (multiAccountAnnualYield / totalCapital) * 100 : 0;
 
   const potentialAnnualSurplusUsdt = multiAccountAnnualYield - singleAccountAnnualYield;
   const recommendedSubaccountsNeeded = Math.ceil(totalCapital / tier1Limit);
@@ -567,9 +563,7 @@ export function forecastFlexibleEarnTierSaturation(
 // ---------------------------------------------------------------------------
 // 9. Calculate Auto-Invest DCA Spread Funnel
 // ---------------------------------------------------------------------------
-export function calculateAutoInvestDcaSpreadFunnel(
-  input: AutoInvestDcaInput
-): AutoInvestDcaResult {
+export function calculateAutoInvestDcaSpreadFunnel(input: AutoInvestDcaInput): AutoInvestDcaResult {
   const monthlyProfit = Math.max(0, input.monthlyP2pNetProfitUsdt);
   const ratio = Math.min(100, Math.max(0, input.reinvestmentRatioPct)) / 100;
   const assetGrowth = (input.projectedAnnualAssetGrowthPct ?? 15) / 100;
@@ -577,7 +571,7 @@ export function calculateAutoInvestDcaSpreadFunnel(
   const monthlyReinvestedUsdt = monthlyProfit * ratio;
   const retainedTreasuryUsdt = monthlyProfit - monthlyReinvestedUsdt;
 
-  let periodicInvestmentUsdt = 0;
+  let periodicInvestmentUsdt: number;
   if (input.executionFrequency === 'DAILY') {
     periodicInvestmentUsdt = monthlyReinvestedUsdt / 30;
   } else if (input.executionFrequency === 'WEEKLY') {
@@ -604,7 +598,7 @@ export function calculateAutoInvestDcaSpreadFunnel(
 // 10. Simulate Earn Instant Redemption Latency
 // ---------------------------------------------------------------------------
 export function simulateEarnInstantRedemptionLatency(
-  input: InstantRedemptionInput
+  input: InstantRedemptionInput,
 ): InstantRedemptionResult {
   const requested = Math.max(0, input.redemptionAmountUsdt);
   const dailyQuota = input.dailyInstantQuotaUsdt ?? 1000000;
@@ -618,17 +612,19 @@ export function simulateEarnInstantRedemptionLatency(
   const standardRedemptionPendingUsdt = Math.max(0, requested - availableQuota);
 
   let executionRisk: 'NEGLIGIBLE' | 'PARTIAL_DELAY' | 'HIGH_LATENCY';
-  let actionablePlan = '';
+  let actionablePlan: string;
 
   if (canExecuteInstant) {
     executionRisk = 'NEGLIGIBLE';
-    actionablePlan = 'Rescate instantáneo aprobado al 100%. Fondos acreditados inmediatamente a Billetera Spot sin demora para atender la orden P2P.';
+    actionablePlan =
+      'Rescate instantáneo aprobado al 100%. Fondos acreditados inmediatamente a Billetera Spot sin demora para atender la orden P2P.';
   } else if (instantRedemptionAvailableUsdt > 0) {
     executionRisk = 'PARTIAL_DELAY';
     actionablePlan = `Cuota diaria superada parcialmente. Rescatar ${instantRedemptionAvailableUsdt.toFixed(2)} USDT de forma inmediata y solicitar el excedente (${standardRedemptionPendingUsdt.toFixed(2)} USDT) mediante Standard Redemption (D+1 00:00 UTC).`;
   } else {
     executionRisk = 'HIGH_LATENCY';
-    actionablePlan = 'Cuota diaria de rescate instantáneo agotada. Retiro diferido a D+1. Suspender colocación de órdenes Maker hasta reposición de liquidez.';
+    actionablePlan =
+      'Cuota diaria de rescate instantáneo agotada. Retiro diferido a D+1. Suspender colocación de órdenes Maker hasta reposición de liquidez.';
   }
 
   return {

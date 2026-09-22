@@ -155,7 +155,7 @@ describe('webhooks', () => {
             text: formatTelegramMessage(event),
             parse_mode: 'HTML',
           }),
-        })
+        }),
       );
     });
 

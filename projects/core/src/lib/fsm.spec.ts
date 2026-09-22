@@ -187,7 +187,12 @@ describe('P2P Order Finite State Machine (FSM)', () => {
       fraudScore: 10,
       flagsJson: JSON.stringify(['SAFE_HISTORY']),
       historyJson: JSON.stringify([
-        { fromState: 'ORDER_DETECTED', toState: 'PAYMENT_PENDING', event: 'ORDER_CONFIRMED', timestamp: 1 },
+        {
+          fromState: 'ORDER_DETECTED',
+          toState: 'PAYMENT_PENDING',
+          event: 'ORDER_CONFIRMED',
+          timestamp: 1,
+        },
       ]),
       createdAt: 1700000000000,
       updatedAt: 1700000050000,

@@ -46,7 +46,10 @@ const KNOWN_MARKET_ALIASES: Record<string, string> = {
 const ALLOWED_QUOTE_TYPES = new Set(['p2p', 'reference', 'parallel', 'official']);
 
 function normalizeMarketKey(raw: string): string | null {
-  const lower = raw.toLowerCase().trim().replace(/[-\s]+/g, '_');
+  const lower = raw
+    .toLowerCase()
+    .trim()
+    .replace(/[-\s]+/g, '_');
   if (KNOWN_MARKET_ALIASES[lower]) return KNOWN_MARKET_ALIASES[lower];
   const stripped = lower.replace(/_p2p(_ves)?$/g, '');
   if (stripped && stripped !== lower) return stripped;
@@ -134,12 +137,7 @@ export function computeTriangulationGap(
   binance: { ask?: number; bid?: number } | null,
   other: { ask?: number; bid?: number } | null,
 ): { gapVes: number | null; gapPct: number | null } {
-  if (
-    binance?.bid == null ||
-    binance.bid <= 0 ||
-    other?.ask == null ||
-    other.ask <= 0
-  ) {
+  if (binance?.bid == null || binance.bid <= 0 || other?.ask == null || other.ask <= 0) {
     return { gapVes: null, gapPct: null };
   }
   const gapVes = round2(other.ask - binance.bid);

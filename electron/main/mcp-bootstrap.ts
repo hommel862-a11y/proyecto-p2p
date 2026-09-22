@@ -10,14 +10,14 @@ export interface McpBootstrapStatus {
   error?: string;
 }
 
-let mcpStatus: McpBootstrapStatus = {
+const mcpStatus: McpBootstrapStatus = {
   enabled: false,
   started: false,
   startTime: Date.now(),
   totalCalls: 0,
 };
 
-let inMemoryAuditLogs: McpAuditLogDto[] = [];
+const inMemoryAuditLogs: McpAuditLogDto[] = [];
 let activeServerInstance: any = null;
 
 /**
@@ -34,14 +34,39 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 5,
     uptimeSeconds: 0,
     tools: [
-      { name: 'calculate_spread', description: 'Calcula el spread bruto, comisiones deducibles y spread neto porcentual.' },
-      { name: 'evaluate_trade_risk', description: 'Evalúa la propuesta contra las 6 reglas institucionales de control de capital.' },
-      { name: 'simulate_trade_impact', description: 'Simula el impacto de la orden en la liquidez y límites diarios.' },
-      { name: 'consult_zk_market_mesh', description: 'Consulta listas negras federadas con hashes ciegos (Zero-Knowledge).' },
-      { name: 'forecast_volatility_window', description: 'Predice dinámica de spread a 2h con ciclos de intervención del BCV.' },
-      { name: 'calculate_delta_neutral_hedge', description: 'Calcula la cobertura corta sintética para inventarios en bolívares.' },
-      { name: 'trigger_killswitch', description: 'Detiene inmediatamente todas las operaciones (Human-in-the-Loop).' },
-      { name: 'add_operation_entry', description: 'Asienta una nueva operación en el Ledger contable (Human-in-the-Loop).' },
+      {
+        name: 'calculate_spread',
+        description: 'Calcula el spread bruto, comisiones deducibles y spread neto porcentual.',
+      },
+      {
+        name: 'evaluate_trade_risk',
+        description:
+          'Evalúa la propuesta contra las 6 reglas institucionales de control de capital.',
+      },
+      {
+        name: 'simulate_trade_impact',
+        description: 'Simula el impacto de la orden en la liquidez y límites diarios.',
+      },
+      {
+        name: 'consult_zk_market_mesh',
+        description: 'Consulta listas negras federadas con hashes ciegos (Zero-Knowledge).',
+      },
+      {
+        name: 'forecast_volatility_window',
+        description: 'Predice dinámica de spread a 2h con ciclos de intervención del BCV.',
+      },
+      {
+        name: 'calculate_delta_neutral_hedge',
+        description: 'Calcula la cobertura corta sintética para inventarios en bolívares.',
+      },
+      {
+        name: 'trigger_killswitch',
+        description: 'Detiene inmediatamente todas las operaciones (Human-in-the-Loop).',
+      },
+      {
+        name: 'add_operation_entry',
+        description: 'Asienta una nueva operación en el Ledger contable (Human-in-the-Loop).',
+      },
     ],
     resources: [
       { uri: 'p2p://risk/live-status', name: 'Estado del Kill-Switch y Modo Seguro' },
@@ -61,10 +86,25 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'screen_wallet_address', description: 'Evalúa el riesgo AML on-chain de una dirección cripto (TRC20, ERC20, BEP20).' },
-      { name: 'inspect_tx_taint', description: 'Inspecciona el grado de contaminación y saltos a mixers en hashes blockchain.' },
-      { name: 'check_counterparty_blacklist', description: 'Consulta listas negras locales SQLite por cédula, teléfono o cuenta ante estafas de triangulación.' },
-      { name: 'register_blacklisted_entity', description: 'Registra entidades sospechosas o fraudulentas en la lista negra local (Human-in-the-Loop).' },
+      {
+        name: 'screen_wallet_address',
+        description: 'Evalúa el riesgo AML on-chain de una dirección cripto (TRC20, ERC20, BEP20).',
+      },
+      {
+        name: 'inspect_tx_taint',
+        description:
+          'Inspecciona el grado de contaminación y saltos a mixers en hashes blockchain.',
+      },
+      {
+        name: 'check_counterparty_blacklist',
+        description:
+          'Consulta listas negras locales SQLite por cédula, teléfono o cuenta ante estafas de triangulación.',
+      },
+      {
+        name: 'register_blacklisted_entity',
+        description:
+          'Registra entidades sospechosas o fraudulentas en la lista negra local (Human-in-the-Loop).',
+      },
     ],
     resources: [
       { uri: 'p2p://aml/sanctions-db', name: 'Base de Billeteras y Direcciones Sancionadas' },
@@ -81,11 +121,26 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'get_binance_p2p_orderbook', description: 'Profundidad en vivo del libro P2P de Binance para VES/USDT.' },
-      { name: 'fetch_cross_exchange_spread', description: 'Compara precios P2P en tiempo real entre Binance, Bybit, OKX y KuCoin.' },
-      { name: 'detect_usdt_depeg', description: 'Detección de despegue de paridad de USDT (< 0.998 o > 1.002).' },
-      { name: 'recommend_competitive_pricing', description: 'Precios óptimos para situarse en el Top 3 con margen objetivo.' },
-      { name: 'analyze_orderbook_pressure', description: 'Presión compradora vs vendedora a nivel de microestructura.' },
+      {
+        name: 'get_binance_p2p_orderbook',
+        description: 'Profundidad en vivo del libro P2P de Binance para VES/USDT.',
+      },
+      {
+        name: 'fetch_cross_exchange_spread',
+        description: 'Compara precios P2P en tiempo real entre Binance, Bybit, OKX y KuCoin.',
+      },
+      {
+        name: 'detect_usdt_depeg',
+        description: 'Detección de despegue de paridad de USDT (< 0.998 o > 1.002).',
+      },
+      {
+        name: 'recommend_competitive_pricing',
+        description: 'Precios óptimos para situarse en el Top 3 con margen objetivo.',
+      },
+      {
+        name: 'analyze_orderbook_pressure',
+        description: 'Presión compradora vs vendedora a nivel de microestructura.',
+      },
     ],
     resources: [
       { uri: 'p2p://market/cross-exchange/depth', name: 'Profundidad Multi-Mercado Unificada' },
@@ -102,9 +157,21 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'verify_inbound_transfer', description: 'Concilia instantáneamente transferencias o PagoMóvil verificando referencia y monto.' },
-      { name: 'check_bank_operational_status', description: 'Monitorea en tiempo real fallas bancarias locales y emite órdenes de PAUSA preventiva.' },
-      { name: 'audit_payment_proof_ocr', description: 'Audita comprobantes de pago mediante OCR y verifica titularidad y monto exacto contra la orden.' },
+      {
+        name: 'verify_inbound_transfer',
+        description:
+          'Concilia instantáneamente transferencias o PagoMóvil verificando referencia y monto.',
+      },
+      {
+        name: 'check_bank_operational_status',
+        description:
+          'Monitorea en tiempo real fallas bancarias locales y emite órdenes de PAUSA preventiva.',
+      },
+      {
+        name: 'audit_payment_proof_ocr',
+        description:
+          'Audita comprobantes de pago mediante OCR y verifica titularidad y monto exacto contra la orden.',
+      },
     ],
     resources: [
       { uri: 'p2p://banking/clearing-feed', name: 'Cámara de Compensación y Pagos Entrantes' },
@@ -121,7 +188,11 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'compile_dispute_dossier', description: 'Genera un expediente forense en PDF con sellos SHA-256 para ganar apelaciones.' },
+      {
+        name: 'compile_dispute_dossier',
+        description:
+          'Genera un expediente forense en PDF con sellos SHA-256 para ganar apelaciones.',
+      },
     ],
     resources: [
       { uri: 'p2p://legal/appeal-templates', name: 'Plantillas de Argumentación Legal P2P' },
@@ -138,10 +209,17 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'evaluate_account_saturation', description: 'Monitorea la velocidad transaccional y cupos bancarios para prevenir bloqueos.' },
+      {
+        name: 'evaluate_account_saturation',
+        description:
+          'Monitorea la velocidad transaccional y cupos bancarios para prevenir bloqueos.',
+      },
     ],
     resources: [
-      { uri: 'p2p://compliance/sudeban-limits', name: 'Límites Regulatorios y Circulares Vigentes' },
+      {
+        uri: 'p2p://compliance/sudeban-limits',
+        name: 'Límites Regulatorios y Circulares Vigentes',
+      },
       { uri: 'p2p://compliance/account-scores', name: 'Scoring de Salud de Cuentas Bancarias' },
     ],
   },
@@ -155,11 +233,26 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'calculate_delta_neutral_hedge', description: 'Calcula la cobertura corta sintética para inventarios en bolívares.' },
-      { name: 'stress_test_portfolio', description: 'Simula escenarios de devaluación y caída de solvencia.' },
-      { name: 'rebalance_capital_allocation', description: 'Distribución óptima de capital entre operadores y prevención de pitufeo.' },
-      { name: 'audit_counterparty_exposure', description: 'Audita concentración por contraparte y patrones de triangulación.' },
-      { name: 'project_compound_runway', description: 'Proyección de crecimiento con interés compuesto y límites bancarios.' },
+      {
+        name: 'calculate_delta_neutral_hedge',
+        description: 'Calcula la cobertura corta sintética para inventarios en bolívares.',
+      },
+      {
+        name: 'stress_test_portfolio',
+        description: 'Simula escenarios de devaluación y caída de solvencia.',
+      },
+      {
+        name: 'rebalance_capital_allocation',
+        description: 'Distribución óptima de capital entre operadores y prevención de pitufeo.',
+      },
+      {
+        name: 'audit_counterparty_exposure',
+        description: 'Audita concentración por contraparte y patrones de triangulación.',
+      },
+      {
+        name: 'project_compound_runway',
+        description: 'Proyección de crecimiento con interés compuesto y límites bancarios.',
+      },
     ],
     resources: [
       { uri: 'p2p://portfolio/stress-scenarios', name: 'Escenarios de Stress Testing' },
@@ -176,9 +269,20 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'dispatch_order_instructions', description: 'Despacha coordenadas bancarias e instrucciones seguras vía Telegram o WhatsApp.' },
-      { name: 'send_multichannel_alert', description: 'Despacha alertas proactivas a Telegram/WhatsApp con botones interactivos.' },
-      { name: 'process_remote_sentinel_command', description: 'Procesa instrucciones de texto o voz asentando compras/ventas directamente en el Ledger.' },
+      {
+        name: 'dispatch_order_instructions',
+        description:
+          'Despacha coordenadas bancarias e instrucciones seguras vía Telegram o WhatsApp.',
+      },
+      {
+        name: 'send_multichannel_alert',
+        description: 'Despacha alertas proactivas a Telegram/WhatsApp con botones interactivos.',
+      },
+      {
+        name: 'process_remote_sentinel_command',
+        description:
+          'Procesa instrucciones de texto o voz asentando compras/ventas directamente en el Ledger.',
+      },
     ],
     resources: [
       { uri: 'p2p://omnichannel/active-chats', name: 'Sesiones de Chat con Contrapartes VIP' },
@@ -195,11 +299,26 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 3,
     uptimeSeconds: 0,
     tools: [
-      { name: 'get_bcv_rates', description: 'Tasas oficiales BCV (USD, EUR) y fecha de valor efectiva.' },
-      { name: 'get_parallel_rates', description: 'Cotizaciones de EnParaleloVzla, CotizaVe y CriptoNoticias.' },
-      { name: 'calculate_rate_gap', description: 'Brecha oficial vs. paralelo y riesgo de distorsión cambiaria.' },
-      { name: 'check_bcv_intervention_window', description: 'Estado de la ventana de subastas del BCV (09:00 - 13:00 VET).' },
-      { name: 'autofill_trade_reference', description: 'Precio sugerido de apertura optimizado según punto medio y margen.' },
+      {
+        name: 'get_bcv_rates',
+        description: 'Tasas oficiales BCV (USD, EUR) y fecha de valor efectiva.',
+      },
+      {
+        name: 'get_parallel_rates',
+        description: 'Cotizaciones de EnParaleloVzla, CotizaVe y CriptoNoticias.',
+      },
+      {
+        name: 'calculate_rate_gap',
+        description: 'Brecha oficial vs. paralelo y riesgo de distorsión cambiaria.',
+      },
+      {
+        name: 'check_bcv_intervention_window',
+        description: 'Estado de la ventana de subastas del BCV (09:00 - 13:00 VET).',
+      },
+      {
+        name: 'autofill_trade_reference',
+        description: 'Precio sugerido de apertura optimizado según punto medio y margen.',
+      },
     ],
     resources: [
       { uri: 'p2p://rates/bcv', name: 'Tasas Oficiales BCV' },
@@ -217,9 +336,18 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'gdrive_backup_receipt', description: 'Respalda y organiza comprobantes de pago escaneados en Google Drive.' },
-      { name: 'gsheets_sync_trade', description: 'Sincroniza una operación del Ledger en tiempo real en Google Sheets.' },
-      { name: 'gdrive_sync_db_backup', description: 'Genera y respalda un snapshot contable en Google Drive.' },
+      {
+        name: 'gdrive_backup_receipt',
+        description: 'Respalda y organiza comprobantes de pago escaneados en Google Drive.',
+      },
+      {
+        name: 'gsheets_sync_trade',
+        description: 'Sincroniza una operación del Ledger en tiempo real en Google Sheets.',
+      },
+      {
+        name: 'gdrive_sync_db_backup',
+        description: 'Genera y respalda un snapshot contable en Google Drive.',
+      },
     ],
     resources: [
       { uri: 'p2p://cloud/gdrive/receipts', name: 'Directorio de Comprobantes en Drive' },
@@ -236,8 +364,14 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
     resourceCount: 2,
     uptimeSeconds: 0,
     tools: [
-      { name: 'consult_zk_market_mesh', description: 'Consulta listas negras federadas con hashes ciegos (Zero-Knowledge).' },
-      { name: 'lookup_counterparty_reputation', description: 'Consulta reputación y antecedentes de fraude de cédulas/cuentas.' },
+      {
+        name: 'consult_zk_market_mesh',
+        description: 'Consulta listas negras federadas con hashes ciegos (Zero-Knowledge).',
+      },
+      {
+        name: 'lookup_counterparty_reputation',
+        description: 'Consulta reputación y antecedentes de fraude de cédulas/cuentas.',
+      },
     ],
     resources: [
       { uri: 'p2p://mesh/reputation-index', name: 'Índice de Reputación Federada ZK' },
@@ -298,7 +432,9 @@ export function getMcpFullStatus(): McpStatusDto {
 
   const servers = MCP_SERVER_REGISTRY.map((s) => ({
     ...s,
-    status: (mcpStatus.started || process.env['NODE_ENV'] !== 'production' ? 'ONLINE' : 'STANDBY') as 'ONLINE' | 'STANDBY',
+    status: (mcpStatus.started || process.env['NODE_ENV'] !== 'production'
+      ? 'ONLINE'
+      : 'STANDBY') as 'ONLINE' | 'STANDBY',
     uptimeSeconds,
   }));
 
@@ -324,8 +460,11 @@ export async function executeMcpToolTest(
     const importEsm = new Function('specifier', 'return import(specifier)');
     const mcpModule = await importEsm(fileUrl);
 
-    const tools: Array<{ name: string; inputSchema: { parse: (input: unknown) => unknown }; execute: (input: unknown) => unknown }> =
-      mcpModule.ALL_MCP_TOOLS || [];
+    const tools: {
+      name: string;
+      inputSchema: { parse: (input: unknown) => unknown };
+      execute: (input: unknown) => unknown;
+    }[] = mcpModule.ALL_MCP_TOOLS || [];
 
     const matchedTool = tools.find((t) => t.name === toolName);
     if (!matchedTool) {
@@ -340,8 +479,12 @@ export async function executeMcpToolTest(
     const logEntry: McpAuditLogDto = {
       timestamp: new Date().toISOString(),
       toolName,
-      inputHash: Buffer.from(JSON.stringify(args || {})).toString('base64').substring(0, 16),
-      outputHash: Buffer.from(JSON.stringify(realResult || {})).toString('base64').substring(0, 16),
+      inputHash: Buffer.from(JSON.stringify(args || {}))
+        .toString('base64')
+        .substring(0, 16),
+      outputHash: Buffer.from(JSON.stringify(realResult || {}))
+        .toString('base64')
+        .substring(0, 16),
       success: true,
     };
     inMemoryAuditLogs.push(logEntry);
@@ -369,4 +512,3 @@ export async function executeMcpToolTest(
     };
   }
 }
-

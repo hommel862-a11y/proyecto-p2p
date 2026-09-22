@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { computeLogSummary, filterOpsByOperator, computeOperatorSummary, type Operation } from './log';
+import {
+  computeLogSummary,
+  filterOpsByOperator,
+  computeOperatorSummary,
+  type Operation,
+} from './log';
 
 function op(over: Partial<Operation> = {}): Operation {
   return {
@@ -71,7 +76,9 @@ describe('computeLogSummary', () => {
       op({ id: 'c', errorFree: false }),
     ];
     expect(computeLogSummary(ops).zeroErrorStreak).toBe(0);
-    expect(computeLogSummary([op({ errorFree: true }), op({ errorFree: true })]).zeroErrorStreak).toBe(2);
+    expect(
+      computeLogSummary([op({ errorFree: true }), op({ errorFree: true })]).zeroErrorStreak,
+    ).toBe(2);
   });
 
   it('exposure = net USDT; capitalDeployed = net VES', () => {
@@ -109,9 +116,7 @@ describe('filterOpsByOperator and computeOperatorSummary', () => {
     opWithOperator('op-alpha', 'Ana López'),
     opWithOperator('op-alpha', 'Ana López'),
   ];
-  const betaOps: Operation[] = [
-    opWithOperator('op-beta', 'Carlos Pérez'),
-  ];
+  const betaOps: Operation[] = [opWithOperator('op-beta', 'Carlos Pérez')];
   const allOps: Operation[] = [...alphaOps, ...betaOps];
 
   it('returns all ops when operatorId is undefined', () => {

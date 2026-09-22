@@ -52,10 +52,10 @@ export interface ComplianceStatement {
     to: string;
   };
   totalOperations: number;
-  totalVesIngresos: number;    // Venta de cripto (entradas de VES a la cuenta)
-  totalVesEgresos: number;     // Compra de cripto (salidas de VES de la cuenta)
-  totalCryptoIn: number;       // Cripto comprado
-  totalCryptoOut: number;      // Cripto vendido
+  totalVesIngresos: number; // Venta de cripto (entradas de VES a la cuenta)
+  totalVesEgresos: number; // Compra de cripto (salidas de VES de la cuenta)
+  totalCryptoIn: number; // Cripto comprado
+  totalCryptoOut: number; // Cripto vendido
   netMarginVes: number;
   records: ComplianceRecordItem[];
   generatedAt: string;
@@ -119,14 +119,17 @@ export function generateComplianceStatement(
       price: roundMoney(op.price, 2),
       feesVes: roundMoney(op.fees, 2),
       bankAccountName: acc ? `${acc.bankName} (${acc.rail})` : 'No asignada',
-      counterpartyAlias: cp ? cp.alias : (op.merchantNote || 'Desconocido'),
+      counterpartyAlias: cp ? cp.alias : op.merchantNote || 'Desconocido',
       counterpartyRealName: cp?.realName,
       counterpartyDocumentId: cp?.documentId,
       complianceVerdict: op.errorFree ? 'CONFORME' : 'OBSERVACIÓN',
     });
   }
 
-  const from = filtered[0]?.timestamp.slice(0, 10) ?? filter?.startDate ?? new Date().toISOString().slice(0, 10);
+  const from =
+    filtered[0]?.timestamp.slice(0, 10) ??
+    filter?.startDate ??
+    new Date().toISOString().slice(0, 10);
   const to = filtered[filtered.length - 1]?.timestamp.slice(0, 10) ?? filter?.endDate ?? from;
 
   return {

@@ -64,7 +64,9 @@ export function calculatePositionPrice(
   if (offers.length === 0) return 0;
 
   // Sort: BUY offers descending (highest price first), SELL offers ascending (lowest price first)
-  const sorted = [...offers].sort((a, b) => (side === 'BUY' ? b.price - a.price : a.price - b.price));
+  const sorted = [...offers].sort((a, b) =>
+    side === 'BUY' ? b.price - a.price : a.price - b.price,
+  );
 
   let targetIndex = 0;
   if (strategy === 'TOP_2' && sorted.length >= 2) targetIndex = 1;
@@ -89,7 +91,8 @@ export function calculatePositionPrice(
  * Evaluates the market depth against repricing rules and computes the next decision.
  */
 export function evaluateRepricer(input: RepricerEvaluationInput): RepricerDecision {
-  const { config, marketDepth, currentBuyAdPrice, currentSellAdPrice, isDailyLimitExceeded } = input;
+  const { config, marketDepth, currentBuyAdPrice, currentSellAdPrice, isDailyLimitExceeded } =
+    input;
   const safetyFlags: string[] = [];
 
   // 1. Guard against bank limit exhaustion
@@ -171,10 +174,13 @@ export function evaluateRepricer(input: RepricerEvaluationInput): RepricerDecisi
   }
 
   // 8. Determine if update is needed
-  const buyChanged = currentBuyAdPrice !== undefined && Math.abs(currentBuyAdPrice - targetBuy) >= 0.01;
-  const sellChanged = currentSellAdPrice !== undefined && Math.abs(currentSellAdPrice - targetSell) >= 0.01;
+  const buyChanged =
+    currentBuyAdPrice !== undefined && Math.abs(currentBuyAdPrice - targetBuy) >= 0.01;
+  const sellChanged =
+    currentSellAdPrice !== undefined && Math.abs(currentSellAdPrice - targetSell) >= 0.01;
 
-  const action: 'UPDATE' | 'KEEP' = buyChanged || sellChanged || !currentBuyAdPrice ? 'UPDATE' : 'KEEP';
+  const action: 'UPDATE' | 'KEEP' =
+    buyChanged || sellChanged || !currentBuyAdPrice ? 'UPDATE' : 'KEEP';
 
   return {
     action,
@@ -182,9 +188,10 @@ export function evaluateRepricer(input: RepricerEvaluationInput): RepricerDecisi
     suggestedSellPrice: targetSell,
     spreadVes,
     spreadPct,
-    reason: action === 'UPDATE'
-      ? `Precios ajustados para estrategia ${config.strategy}: Compra ${targetBuy} Bs / Venta ${targetSell} Bs (Spread: ${spreadVes} Bs).`
-      : 'Precios actuales de los anuncios ya se encuentran en la posición óptima.',
+    reason:
+      action === 'UPDATE'
+        ? `Precios ajustados para estrategia ${config.strategy}: Compra ${targetBuy} Bs / Venta ${targetSell} Bs (Spread: ${spreadVes} Bs).`
+        : 'Precios actuales de los anuncios ya se encuentran en la posición óptima.',
     safetyFlags,
     isSafe: true,
   };

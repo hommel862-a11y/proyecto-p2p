@@ -11,7 +11,6 @@ import {
   type AntiTriangulationAssessment,
   assessCounterpartyRisk,
   verifyTitularMatch,
-  normalizeName,
 } from '../vendor/p2p-core/counterparty';
 import { generateBlindHash } from '../vendor/p2p-core/zk-market-mesh';
 
@@ -154,15 +153,21 @@ export class CounterpartyReputationGraph {
         successfulTradesCount: hadIncident ? 0 : 1,
         triangulationIncidentsCount: hadIncident ? 1 : 0,
         totalVolumeUsdt: params.volumeUsdt,
-        notes: hadIncident ? 'Alerta de titular no coincidente en primer intercambio.' : 'Primer intercambio exitoso.',
+        notes: hadIncident
+          ? 'Alerta de titular no coincidente en primer intercambio.'
+          : 'Primer intercambio exitoso.',
         lastTradeTimestamp: now,
         createdAt: now,
         updatedAt: now,
       };
       this.upsertProfile(profile);
     } else {
-      const successfulTrades = hadIncident ? profile.successfulTradesCount : profile.successfulTradesCount + 1;
-      const incidents = hadIncident ? profile.triangulationIncidentsCount + 1 : profile.triangulationIncidentsCount;
+      const successfulTrades = hadIncident
+        ? profile.successfulTradesCount
+        : profile.successfulTradesCount + 1;
+      const incidents = hadIncident
+        ? profile.triangulationIncidentsCount + 1
+        : profile.triangulationIncidentsCount;
       const totalVolume = profile.totalVolumeUsdt + params.volumeUsdt;
 
       let newReputation = profile.reputation;
@@ -214,11 +219,17 @@ export class CounterpartyReputationGraph {
   }
 
   getProfileByAliasOrDoc(alias: string, documentId?: string): CounterpartyProfileRecord | null {
-    const rawDb = (this.db as unknown as { db: { prepare: (sql: string) => { get: (...args: unknown[]) => unknown } } }).db;
+    const rawDb = (
+      this.db as unknown as {
+        db: { prepare: (sql: string) => { get: (...args: unknown[]) => unknown } };
+      }
+    ).db;
     if (!rawDb) return null;
 
     if (documentId) {
-      const stmt = rawDb.prepare('SELECT * FROM counterparty_profiles WHERE document_id = ? OR alias = ?');
+      const stmt = rawDb.prepare(
+        'SELECT * FROM counterparty_profiles WHERE document_id = ? OR alias = ?',
+      );
       const row = stmt.get(documentId, alias) as Record<string, unknown> | undefined;
       return row ? this.mapRowToProfile(row) : null;
     }
@@ -229,16 +240,26 @@ export class CounterpartyReputationGraph {
   }
 
   listProfiles(limit = 50): CounterpartyProfileRecord[] {
-    const rawDb = (this.db as unknown as { db: { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[] } } }).db;
+    const rawDb = (
+      this.db as unknown as {
+        db: { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[] } };
+      }
+    ).db;
     if (!rawDb) return [];
 
-    const stmt = rawDb.prepare('SELECT * FROM counterparty_profiles ORDER BY updated_at DESC LIMIT ?');
-    const rows = stmt.all(limit) as Array<Record<string, unknown>>;
+    const stmt = rawDb.prepare(
+      'SELECT * FROM counterparty_profiles ORDER BY updated_at DESC LIMIT ?',
+    );
+    const rows = stmt.all(limit) as Record<string, unknown>[];
     return rows.map((r) => this.mapRowToProfile(r));
   }
 
   private upsertProfile(profile: CounterpartyProfileRecord): void {
-    const rawDb = (this.db as unknown as { db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } }).db;
+    const rawDb = (
+      this.db as unknown as {
+        db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } };
+      }
+    ).db;
     if (!rawDb) return;
 
     const stmt = rawDb.prepare(`
@@ -295,7 +316,9 @@ export class CounterpartyReputationGraph {
       triangulationIncidentsCount: Number(row['triangulation_incidents_count']),
       totalVolumeUsdt: Number(row['total_volume_usdt']),
       notes: row['notes'] ? String(row['notes']) : undefined,
-      lastTradeTimestamp: row['last_trade_timestamp'] ? Number(row['last_trade_timestamp']) : undefined,
+      lastTradeTimestamp: row['last_trade_timestamp']
+        ? Number(row['last_trade_timestamp'])
+        : undefined,
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     };

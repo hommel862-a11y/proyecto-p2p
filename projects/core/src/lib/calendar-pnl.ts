@@ -10,28 +10,28 @@ import { type Operation } from './log';
 export type HeatmapLevel = 0 | 1 | 2 | 3 | 4;
 
 export interface CalendarDayStat {
-  date: string;               // YYYY-MM-DD
-  dayOfMonth: number;         // 1-31
-  dayOfWeek: number;          // 0 (Sun) - 6 (Sat)
+  date: string; // YYYY-MM-DD
+  dayOfMonth: number; // 1-31
+  dayOfWeek: number; // 0 (Sun) - 6 (Sat)
   operationsCount: number;
   buyCount: number;
   sellCount: number;
-  completedCycles: number;    // min(buyCount, sellCount)
+  completedCycles: number; // min(buyCount, sellCount)
   volumeUsdt: number;
   pnlVes: number;
   pnlUsdt: number;
   feesVes: number;
-  roiPct: number;             // pnl / invested capital
-  heatLevel: HeatmapLevel;    // 0: none/idle, 1: low (<0.5%), 2: med (0.5-1%), 3: high (1-1.5%), 4: superstar (>1.5%)
+  roiPct: number; // pnl / invested capital
+  heatLevel: HeatmapLevel; // 0: none/idle, 1: low (<0.5%), 2: med (0.5-1%), 3: high (1-1.5%), 4: superstar (>1.5%)
   hasLoss: boolean;
 }
 
 export interface CalendarMonthView {
   year: number;
-  month: number;              // 1-12
+  month: number; // 1-12
   monthName: string;
   totalDays: number;
-  startingDayOfWeek: number;  // 0 (Sun) - 6 (Sat)
+  startingDayOfWeek: number; // 0 (Sun) - 6 (Sat)
   activeTradingDays: number;
   profitableDays: number;
   lossDays: number;
@@ -46,8 +46,18 @@ export interface CalendarMonthView {
 }
 
 const MONTH_NAMES_ES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
 ];
 
 function pad(n: number): string {
@@ -55,31 +65,30 @@ function pad(n: number): string {
 }
 
 function vesLeg(o: Operation): number {
-  return o.type === 'sell'
-    ? o.vesAmount > 0
-      ? o.vesAmount
-      : o.usdtAmount * o.price
-    : o.vesAmount;
+  return o.type === 'sell' ? (o.vesAmount > 0 ? o.vesAmount : o.usdtAmount * o.price) : o.vesAmount;
 }
 
 export function buildCalendarMonthView(
   ops: readonly Operation[],
   year: number,
   month: number, // 1 to 12
-  referenceRateVes: number = 60.0,
+  referenceRateVes = 60.0,
 ): CalendarMonthView {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstDayOfWeek = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
 
-  const dailyMap = new Map<number, {
-    ops: Operation[];
-    pnlVes: number;
-    volumeUsdt: number;
-    feesVes: number;
-    buyCount: number;
-    sellCount: number;
-    buyVesInvested: number;
-  }>();
+  const dailyMap = new Map<
+    number,
+    {
+      ops: Operation[];
+      pnlVes: number;
+      volumeUsdt: number;
+      feesVes: number;
+      buyCount: number;
+      sellCount: number;
+      buyVesInvested: number;
+    }
+  >();
 
   for (let d = 1; d <= daysInMonth; d++) {
     dailyMap.set(d, {
@@ -113,10 +122,10 @@ export function buildCalendarMonthView(
         if (o.type === 'buy') {
           entry.buyCount++;
           entry.buyVesInvested += leg;
-          entry.pnlVes -= (leg + o.fees);
+          entry.pnlVes -= leg + o.fees;
         } else {
           entry.sellCount++;
-          entry.pnlVes += (leg - o.fees);
+          entry.pnlVes += leg - o.fees;
         }
       }
     }

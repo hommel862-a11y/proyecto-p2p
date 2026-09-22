@@ -109,7 +109,8 @@ describe('Compliance, Multichannel & Proof Reader MCP Tools Suite', () => {
         channel: 'TELEGRAM',
         priority: 'ALERT',
         title: 'Spread Favorable Detectado',
-        messageMarkdown: 'Spread en Binance P2P a 2.4% con Banesco. Volumen disponible: 1,500 USDT.',
+        messageMarkdown:
+          'Spread en Binance P2P a 2.4% con Banesco. Volumen disponible: 1,500 USDT.',
         actionButtons: [
           { label: 'Fijar Alerta', callbackAction: 'LOCK_SPREAD_ALERT' },
           { label: 'Abrir Anuncio Maker', callbackAction: 'OPEN_MAKER_AD' },

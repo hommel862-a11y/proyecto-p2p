@@ -21,9 +21,9 @@ describe('electron-quick-overlay', () => {
         feeRatePct: 0.5,
         isBuy: true,
       };
-      
+
       const result = calculateSpread(input);
-      
+
       // Spread = fee rate
       expect(result.spreadPct).toBe(0.5);
       // netPrice = price * (1 - fee/100)
@@ -51,9 +51,9 @@ describe('electron-quick-overlay', () => {
         feeRatePct: 0.5,
         isBuy: false,
       };
-      
+
       const result = calculateSpread(input);
-      
+
       // Venta: PnL positivo = ganancia neta de comisión (simplificado)
       expect(result.pnlVes).toBe(400);
       expect(result.breakEvenPrice).toBe(796);
@@ -66,9 +66,9 @@ describe('electron-quick-overlay', () => {
         feeRatePct: 1,
         isBuy: true,
       };
-      
+
       const result = calculateSpread(input);
-      
+
       expect(result.amountUsdt).toBe(50); // 40000 / 800
       expect(result.netAmountVes).toBe(39600); // 40000 - 400 fee
     });
@@ -80,28 +80,32 @@ describe('electron-quick-overlay', () => {
         feeRatePct: 1,
         isBuy: true,
       };
-      
+
       const result = calculateSpread(input);
-      
+
       expect(result.amountVes).toBe(40000); // 50 * 800
       expect(result.netAmountUsdt).toBe(49.5); // 50 - 0.5 fee
     });
 
     it('lanza error si precio es 0 o negativo', () => {
-      expect(() => calculateSpread({
-        price: 0,
-        amountVes: 1000,
-        feeRatePct: 0.5,
-        isBuy: true,
-      })).toThrow('Precio debe ser mayor a 0');
+      expect(() =>
+        calculateSpread({
+          price: 0,
+          amountVes: 1000,
+          feeRatePct: 0.5,
+          isBuy: true,
+        }),
+      ).toThrow('Precio debe ser mayor a 0');
     });
 
     it('lanza error si no se proporciona monto', () => {
-      expect(() => calculateSpread({
-        price: 800,
-        feeRatePct: 0.5,
-        isBuy: true,
-      })).toThrow('Debe proporcionar amountVes o amountUsdt mayor a 0');
+      expect(() =>
+        calculateSpread({
+          price: 800,
+          feeRatePct: 0.5,
+          isBuy: true,
+        }),
+      ).toThrow('Debe proporcionar amountVes o amountUsdt mayor a 0');
     });
   });
 
@@ -113,7 +117,7 @@ describe('electron-quick-overlay', () => {
         size: { width: 320, height: 400 },
         position: { x: 100, y: 100 },
       });
-      
+
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -122,16 +126,16 @@ describe('electron-quick-overlay', () => {
       const result = validateQuickOverlayConfig({
         shortcut: 'InvalidShortcut',
       });
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('Atajo'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('Atajo'))).toBe(true);
     });
 
     it('rechaza opacidad fuera de rango', () => {
       const result = validateQuickOverlayConfig({ opacity: 1.5 });
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Opacidad debe estar entre 0.1 y 1');
-      
+
       const result2 = validateQuickOverlayConfig({ opacity: 0.05 });
       expect(result2.valid).toBe(false);
     });
@@ -163,9 +167,9 @@ describe('electron-quick-overlay', () => {
         amountVes: 80000,
         amountUsdt: 100,
       };
-      
+
       const formatted = formatSpreadResult(result);
-      
+
       expect(formatted.spread).toBe('+0.50%');
       expect(formatted.netPrice).toContain('796.00');
       expect(formatted.netAmountVes).toContain('79,600.00'); // en-US uses comma for thousands
@@ -186,7 +190,7 @@ describe('electron-quick-overlay', () => {
         amountVes: 80000,
         amountUsdt: 100,
       };
-      
+
       const formatted = formatSpreadResult(result);
       expect(formatted.pnlVes).toBe('+400.00 Bs');
     });
@@ -195,7 +199,7 @@ describe('electron-quick-overlay', () => {
   describe('createQuickOverlayController', () => {
     it('crea controlador con configuración por defecto', () => {
       const controller = createQuickOverlayController();
-      
+
       expect(controller.config).toEqual(DEFAULT_QUICK_OVERLAY_CONFIG);
       expect(controller.visible).toBe(false);
       expect(controller.position).toEqual({ x: 100, y: 100 });
@@ -203,66 +207,66 @@ describe('electron-quick-overlay', () => {
 
     it('show/hide/toggle actualizan visibilidad', () => {
       const controller = createQuickOverlayController();
-      
+
       controller.show();
       expect(controller.visible).toBe(true);
-      
+
       controller.hide();
       expect(controller.visible).toBe(false);
-      
+
       controller.toggle();
       expect(controller.visible).toBe(true);
-      
+
       controller.toggle();
       expect(controller.visible).toBe(false);
     });
 
     it('calculate delega a calculateSpread', () => {
       const controller = createQuickOverlayController();
-      
+
       const result = controller.calculate({
         price: 800,
         amountVes: 80000,
         feeRatePct: 0.5,
         isBuy: true,
       });
-      
+
       expect(result.spreadPct).toBe(0.5);
       expect(result.netPrice).toBe(796);
     });
 
     it('setPosition actualiza posición y config', () => {
       const controller = createQuickOverlayController();
-      
+
       controller.setPosition(200, 300);
-      
+
       expect(controller.position).toEqual({ x: 200, y: 300 });
       expect(controller.config.position).toEqual({ x: 200, y: 300 });
     });
 
     it('updateConfig valida y actualiza', () => {
       const controller = createQuickOverlayController();
-      
+
       controller.updateConfig({ opacity: 0.8, autoHide: true });
-      
+
       expect(controller.config.opacity).toBe(0.8);
       expect(controller.config.autoHide).toBe(true);
     });
 
     it('updateConfig lanza error si configuración inválida', () => {
       const controller = createQuickOverlayController();
-      
+
       expect(() => controller.updateConfig({ opacity: 2 })).toThrow();
     });
 
     it('on/off manejan eventos', () => {
       const controller = createQuickOverlayController();
       const callback = vi.fn();
-      
+
       const unsubscribe = controller.on('show', callback);
       controller.show();
       expect(callback).toHaveBeenCalled();
-      
+
       unsubscribe();
       controller.hide();
       controller.show();
@@ -271,7 +275,7 @@ describe('electron-quick-overlay', () => {
 
     it('ipc expone canales correctos', () => {
       const controller = createQuickOverlayController();
-      
+
       expect(QUICK_OVERLAY_IPC_CHANNELS.CALCULATE).toBe('quick-overlay:calculate');
       expect(QUICK_OVERLAY_IPC_CHANNELS.RESULT).toBe('quick-overlay:result');
       expect(QUICK_OVERLAY_IPC_CHANNELS.SHOW).toBe('quick-overlay:show');
@@ -310,7 +314,7 @@ describe('electron-quick-overlay', () => {
         size: { width: 320, height: 400 },
         position: { x: 100, y: 100 },
       });
-      
+
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -319,16 +323,16 @@ describe('electron-quick-overlay', () => {
       const result = validateQuickOverlayConfig({
         shortcut: 'InvalidShortcut',
       });
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('Atajo'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('Atajo'))).toBe(true);
     });
 
     it('rechaza opacidad fuera de rango', () => {
       const result = validateQuickOverlayConfig({ opacity: 1.5 });
       expect(result.valid).toBe(false);
       expect(result.errors).toContain('Opacidad debe estar entre 0.1 y 1');
-      
+
       const result2 = validateQuickOverlayConfig({ opacity: 0.05 });
       expect(result2.valid).toBe(false);
     });

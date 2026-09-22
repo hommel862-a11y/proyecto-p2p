@@ -161,7 +161,7 @@ export interface P2PIpcChannels {
   };
   'copilot:get-learnings': {
     request: { category?: string; limit?: number };
-    response: Array<{
+    response: {
       id?: number;
       topicKey: string;
       category: string;
@@ -169,7 +169,7 @@ export interface P2PIpcChannels {
       confidenceScore: number;
       sampleCount: number;
       createdAt: number;
-    }>;
+    }[];
   };
   'copilot:set-api-key': {
     request: { apiKey: string };
@@ -225,8 +225,8 @@ export interface McpServerRuntimeInfo {
   toolCount: number;
   resourceCount: number;
   uptimeSeconds: number;
-  tools: Array<{ name: string; description: string }>;
-  resources: Array<{ uri: string; name: string }>;
+  tools: { name: string; description: string }[];
+  resources: { uri: string; name: string }[];
 }
 
 export interface McpAuditLogDto {
@@ -334,18 +334,30 @@ export interface ElectronAPI {
   };
   killswitch: {
     trigger(params?: { reason?: string; source?: string }): Promise<boolean>;
-    getStatus(): Promise<{ isTriggered: boolean; timestamp?: number; reason?: string; source?: string }>;
+    getStatus(): Promise<{
+      isTriggered: boolean;
+      timestamp?: number;
+      reason?: string;
+      source?: string;
+    }>;
   };
   copilot: {
-    sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
-    executePlan(params: { planId: string }): Promise<{ success: boolean; error?: string; dispatchSummary?: any }>;
+    sendMessage(params: {
+      prompt: string;
+      history?: CopilotChatMessage[];
+    }): Promise<CopilotResponse>;
+    executePlan(params: {
+      planId: string;
+    }): Promise<{ success: boolean; error?: string; dispatchSummary?: any }>;
     getPlans(params?: { limit?: number }): Promise<StrategyPlanCard[]>;
     getLearnings(params?: { category?: string; limit?: number }): Promise<unknown[]>;
     setApiKey(params: { apiKey: string }): Promise<boolean>;
     testConnection(): Promise<{ success: boolean; model: string; message: string }>;
     getWatcherStatus(): Promise<AlphaWatcherStatus>;
     setWatcherConfig(params: Partial<AlphaWatcherConfigDto>): Promise<boolean>;
-    onAlphaOpportunity?(callback: (data: { plan: StrategyPlanCard; detectedAt: number }) => void): () => void;
+    onAlphaOpportunity?(
+      callback: (data: { plan: StrategyPlanCard; detectedAt: number }) => void,
+    ): () => void;
   };
   screenPipe: {
     getSources(): Promise<ScreenPipeSource[]>;
@@ -353,7 +365,10 @@ export interface ElectronAPI {
   };
   mcp: {
     getStatus(): Promise<McpStatusDto>;
-    testTool(toolName: string, args: unknown): Promise<{ success: boolean; result?: unknown; error?: string; executionTimeMs: number }>;
+    testTool(
+      toolName: string,
+      args: unknown,
+    ): Promise<{ success: boolean; result?: unknown; error?: string; executionTimeMs: number }>;
   };
 }
 

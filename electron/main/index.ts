@@ -3,7 +3,12 @@ import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
 import { SECURE_WEB_PREFERENCES } from './window-config';
-import { registerIpcHandlers, triggerKillswitch, getDbService, setAlphaWatcher } from './ipc/handlers';
+import {
+  registerIpcHandlers,
+  triggerKillswitch,
+  getDbService,
+  setAlphaWatcher,
+} from './ipc/handlers';
 import { bootstrapMcpServer } from './mcp-bootstrap';
 import { AlphaWatcher } from './alpha-watcher';
 

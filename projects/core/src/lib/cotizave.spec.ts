@@ -21,7 +21,14 @@ describe('cotizave core', () => {
       base: 'VES',
       fetched_at: '2025-01-15T12:00:00Z',
       rates: [
-        { market: 'binance_p2p', type: 'p2p', ask: 36.5, bid: 35.8, mid: 36.15, updated_at: '2025-01-15T11:55:00Z' },
+        {
+          market: 'binance_p2p',
+          type: 'p2p',
+          ask: 36.5,
+          bid: 35.8,
+          mid: 36.15,
+          updated_at: '2025-01-15T11:55:00Z',
+        },
         { market: 'bybit_p2p', type: 'p2p', ask: 37.0, bid: 35.5 },
         { market: 'okx_p2p', type: 'p2p', ask: 36.8, bid: 35.9 },
         { market: 'bitget', type: 'p2p', ask: 36.2, bid: 35.4 },
@@ -53,8 +60,20 @@ describe('cotizave core', () => {
     it('maps the real Cotizave reference/parallel payload', () => {
       const payload = {
         rates: [
-          { market: 'reference', type: 'reference', base: 'USD', mid: 832.4883, updated_at: '2026-09-11T04:00:00Z' },
-          { market: 'parallel', type: 'parallel', base: 'USD', mid: 952.405674, updated_at: '2026-09-13T21:01:44.648Z' },
+          {
+            market: 'reference',
+            type: 'reference',
+            base: 'USD',
+            mid: 832.4883,
+            updated_at: '2026-09-11T04:00:00Z',
+          },
+          {
+            market: 'parallel',
+            type: 'parallel',
+            base: 'USD',
+            mid: 952.405674,
+            updated_at: '2026-09-13T21:01:44.648Z',
+          },
           { market: 'binance', type: 'p2p', ask: 962.795, bid: 962.28, mid: 962.5375 },
         ],
       };
@@ -75,9 +94,7 @@ describe('cotizave core', () => {
     });
 
     it('handles array payload', () => {
-      const arr = [
-        { market: 'mexc_p2p', type: 'p2p', ask: 38, bid: 34 },
-      ];
+      const arr = [{ market: 'mexc_p2p', type: 'p2p', ask: 38, bid: 34 }];
       const result = normalizeCotizaveRates(arr);
       expect(result['mexc']).toBeDefined();
       expect(result['mexc'].ask).toBe(38);
@@ -127,10 +144,7 @@ describe('cotizave core', () => {
     });
 
     it('returns negative gap when other.ask < binance.bid', () => {
-      const { gapVes } = computeTriangulationGap(
-        { ask: 36, bid: 37 },
-        { ask: 35.5, bid: 35 },
-      );
+      const { gapVes } = computeTriangulationGap({ ask: 36, bid: 37 }, { ask: 35.5, bid: 35 });
       expect(gapVes).toBe(-1.5);
     });
   });

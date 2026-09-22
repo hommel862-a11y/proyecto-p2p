@@ -8,7 +8,6 @@
 
 import { net, BrowserWindow, Notification } from 'electron';
 import type { P2PDatabaseService, StrategyPlanRecord } from './db/database';
-import type { StrategyPlanCard } from '../shared/types';
 import { ProactiveEventEngine } from './agents/proactive-event-engine';
 
 export interface AlphaWatcherConfig {
@@ -52,7 +51,13 @@ export class AlphaWatcher {
     return this.proactiveEngine;
   }
 
-  getStatus(): { enabled: boolean; pollIntervalSeconds: number; minNetSpreadPct: number; scanCount: number; lastOpportunity: unknown } {
+  getStatus(): {
+    enabled: boolean;
+    pollIntervalSeconds: number;
+    minNetSpreadPct: number;
+    scanCount: number;
+    lastOpportunity: unknown;
+  } {
     return {
       enabled: this.isRunning(),
       pollIntervalSeconds: this.config.pollIntervalSeconds,
@@ -178,12 +183,12 @@ export class AlphaWatcher {
       // 2. Proactive Macro Evaluation (BCV Window & Extreme Gap)
       // Uses approximate benchmark for BCV rate vs P2P parallel price
       if (bestBuy && bestBuy > 0) {
-        const estimatedBcvRate = 65.50; // Reference anchor
+        const estimatedBcvRate = 65.5; // Reference anchor
         this.proactiveEngine.evaluateBcvMacroEvent(bestBuy, estimatedBcvRate);
       }
 
       // 3. Proactive Depeg Monitoring (USDT vs USD)
-      this.proactiveEngine.evaluateUsdtDepegEvent(1.000);
+      this.proactiveEngine.evaluateUsdtDepegEvent(1.0);
     } catch {
       // Quiet fail on network glitch to avoid noisy polling crashes
     } finally {
@@ -191,32 +196,39 @@ export class AlphaWatcher {
     }
   }
 
-  private async fetchBinanceSide(tradeType: 'BUY' | 'SELL'): Promise<Array<{ price: number; maxVes: number }>> {
+  private async fetchBinanceSide(
+    tradeType: 'BUY' | 'SELL',
+  ): Promise<{ price: number; maxVes: number }[]> {
     try {
-      const response = await net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST',
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      const response = await net.fetch(
+        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+        {
+          method: 'POST',
+          signal: AbortSignal.timeout(10000),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          body: JSON.stringify({
+            asset: this.config.asset,
+            fiat: this.config.fiat,
+            tradeType,
+            page: 1,
+            rows: 5,
+            payTypes: this.config.payTypes,
+            countries: [],
+            proMerchantAds: false,
+            shieldMerchantAds: false,
+            filterType: 'all',
+            periods: [],
+          }),
         },
-        body: JSON.stringify({
-          asset: this.config.asset,
-          fiat: this.config.fiat,
-          tradeType,
-          page: 1,
-          rows: 5,
-          payTypes: this.config.payTypes,
-          countries: [],
-          proMerchantAds: false,
-          shieldMerchantAds: false,
-          filterType: 'all',
-          periods: [],
-        }),
-      });
+      );
 
       if (!response.ok) return [];
-      const json = (await response.json()) as { data?: Array<{ adv?: { price?: string | number; maxSingleTransAmount?: string | number } }> };
+      const json = (await response.json()) as {
+        data?: { adv?: { price?: string | number; maxSingleTransAmount?: string | number } }[];
+      };
       const items = json.data || [];
       return items
         .map((it) => ({

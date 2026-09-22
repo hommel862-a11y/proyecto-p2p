@@ -30,7 +30,8 @@ describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
 
   describe('parseBankNotification', () => {
     it('correctly parses Mercantil Pago Móvil SMS/Email', () => {
-      const msg = 'MERCANTIL: Recibiste un Pago Movil por Bs. 2.450,00 de CI: V-18.450.123 con Ref: 987654. Gracias.';
+      const msg =
+        'MERCANTIL: Recibiste un Pago Movil por Bs. 2.450,00 de CI: V-18.450.123 con Ref: 987654. Gracias.';
       const parsed = parseBankNotification(msg);
 
       expect(parsed.bank).toBe('MERCANTIL');
@@ -41,7 +42,8 @@ describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
     });
 
     it('correctly parses Bancamiga Pago Móvil Notification', () => {
-      const msg = 'Bancamiga informa: Abono por Pago Movil Bs. 15.000,00. Cedula: 19888777 Ref: 11223344.';
+      const msg =
+        'Bancamiga informa: Abono por Pago Movil Bs. 15.000,00. Cedula: 19888777 Ref: 11223344.';
       const parsed = parseBankNotification(msg);
 
       expect(parsed.bank).toBe('BANCAMIGA');
@@ -74,7 +76,8 @@ describe('Bank Reconciliation & Anti-Triangulation Engine (Core)', () => {
     });
 
     it('correctly parses Banco de Venezuela (BDV / PagoClave) Notification', () => {
-      const msg = 'BDV informa: Recibiste PagoClave por Bs. 8.500,00 de CI: V16789123 Ref: 9988776655.';
+      const msg =
+        'BDV informa: Recibiste PagoClave por Bs. 8.500,00 de CI: V16789123 Ref: 9988776655.';
       const parsed = parseBankNotification(msg);
 
       expect(parsed.bank).toBe('BDV');

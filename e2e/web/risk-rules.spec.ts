@@ -20,7 +20,9 @@ test('6 configurable rule inputs are visible with default values', async ({ page
   await goToRiskRules(page);
 
   // Spread mínimo (VES/USDT) — default 15
-  await expect(page.locator('label', { hasText: 'Spread mínimo' }).locator('input[type="number"]')).toHaveValue('15');
+  await expect(
+    page.locator('label', { hasText: 'Spread mínimo' }).locator('input[type="number"]'),
+  ).toHaveValue('15');
 
   // Máx. operaciones concurrentes — default 3
   await expect(page.getByLabel('Máx. operaciones concurrentes')).toHaveValue('3');

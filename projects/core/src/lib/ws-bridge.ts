@@ -29,14 +29,21 @@ export interface WsMessage {
 }
 
 export interface WsChatEvent {
-  eventType: 'message_received' | 'message_sent' | 'order_update' | 'dispute_created' | 'payment_confirmed' | 'connection_status';
+  eventType:
+    | 'message_received'
+    | 'message_sent'
+    | 'order_update'
+    | 'dispute_created'
+    | 'payment_confirmed'
+    | 'connection_status';
   payload: unknown;
   timestamp: string;
 }
 
 export type WsEventHandler = (event: WsChatEvent) => void;
 
-export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
+export type WsConnectionStatus =
+  'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
 
 /**
  * Cliente WebSocket para Binance P2P Chat
@@ -45,7 +52,7 @@ export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected' | '
 export class WsBridge {
   private ws: WebSocket | null = null;
   private config: WsBridgeConfig;
-  private handlers: Map<string, WsEventHandler[]> = new Map();
+  private handlers = new Map<string, WsEventHandler[]>();
   private status: WsConnectionStatus = 'disconnected';
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -79,14 +86,13 @@ export class WsBridge {
       // En producción, la URL sería wss://stream.binance.com:9443/ws/...
       // Para testing usamos una URL mock
       const wsUrl = `wss://stream.binance.com:9443/ws/${this.config.userId}@p2pChat`;
-      
+
       this.ws = new WebSocket(wsUrl);
-      
+
       this.ws.onopen = () => this.handleOpen();
       this.ws.onclose = (e) => this.handleClose(e);
       this.ws.onerror = (e) => this.handleError(e);
       this.ws.onmessage = (e) => this.handleMessage(e);
-      
     } catch (err) {
       this.setStatus('error');
       throw err;
@@ -99,12 +105,12 @@ export class WsBridge {
   disconnect(): void {
     this.config.autoReconnect = false;
     this.clearTimers();
-    
+
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
-    
+
     this.setStatus('disconnected');
     this.isAuthenticated = false;
   }
@@ -133,7 +139,11 @@ export class WsBridge {
   /**
    * Envía un comprobante de pago (imagen/archivo)
    */
-  async sendReceipt(orderId: string, receiptData: string, type: 'image' | 'file' = 'image'): Promise<string> {
+  async sendReceipt(
+    orderId: string,
+    receiptData: string,
+    type: 'image' | 'file' = 'image',
+  ): Promise<string> {
     return this.sendMessage({
       type: 'receipt',
       content: receiptData,
@@ -177,13 +187,13 @@ export class WsBridge {
     this.setStatus('connected');
     this.reconnectAttempts = 0;
     this.startHeartbeat();
-    
+
     // Autenticar
     this.authenticate();
-    
+
     // Enviar mensajes encolados
     this.flushQueue();
-    
+
     this.emit('connection_status', {
       eventType: 'connection_status',
       payload: { status: 'connected' },
@@ -194,15 +204,15 @@ export class WsBridge {
   private handleClose(event: CloseEvent): void {
     this.clearTimers();
     this.isAuthenticated = false;
-    
+
     const wasConnected = this.status === 'connected';
     this.setStatus('disconnected');
 
     this.emit('connection_status', {
       eventType: 'connection_status',
-      payload: { 
-        status: 'disconnected', 
-        code: event.code, 
+      payload: {
+        status: 'disconnected',
+        code: event.code,
         reason: event.reason,
         wasClean: event.wasClean,
       },
@@ -210,14 +220,18 @@ export class WsBridge {
     });
 
     // Reconexión automática
-    if (this.config.autoReconnect && wasConnected && this.reconnectAttempts < this.config.maxReconnectAttempts) {
+    if (
+      this.config.autoReconnect &&
+      wasConnected &&
+      this.reconnectAttempts < this.config.maxReconnectAttempts
+    ) {
       this.scheduleReconnect();
     }
   }
 
   private handleError(error: Event): void {
     this.setStatus('error');
-    
+
     this.emit('connection_status', {
       eventType: 'connection_status',
       payload: { status: 'error', error: error.toString() },
@@ -228,7 +242,7 @@ export class WsBridge {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data);
-      
+
       // Manejar mensajes de autenticación
       if (data.type === 'auth') {
         this.isAuthenticated = data.success === true;
@@ -247,7 +261,6 @@ export class WsBridge {
 
       this.emit(wsEvent.eventType, wsEvent);
       this.emit('*', wsEvent); // Wildcard handler
-      
     } catch (err) {
       console.error('[WsBridge] Error parsing message:', err);
     }
@@ -255,7 +268,7 @@ export class WsBridge {
 
   private authenticate(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    
+
     const authPayload = {
       type: 'auth',
       apiKey: this.config.apiKey,
@@ -263,7 +276,7 @@ export class WsBridge {
       userId: this.config.userId,
       timestamp: Date.now(),
     };
-    
+
     this.sendRaw(authPayload);
   }
 
@@ -282,15 +295,15 @@ export class WsBridge {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
-    
+
     this.setStatus('reconnecting');
     this.reconnectAttempts++;
-    
+
     const delay = Math.min(
       this.config.reconnectInterval * Math.pow(1.5, this.reconnectAttempts - 1),
-      60000 // Max 60 seconds
+      60000, // Max 60 seconds
     );
-    
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect().catch(() => {

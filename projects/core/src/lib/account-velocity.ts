@@ -62,7 +62,8 @@ export function countTodayTransactions(
   return todayOps.filter(
     (op) =>
       op.bankAccountId === account.id ||
-      (!op.bankAccountId && op.merchantNote?.toLowerCase().includes(account.bankName.toLowerCase())),
+      (!op.bankAccountId &&
+        op.merchantNote?.toLowerCase().includes(account.bankName.toLowerCase())),
   ).length;
 }
 

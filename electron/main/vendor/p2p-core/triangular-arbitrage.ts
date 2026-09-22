@@ -177,18 +177,24 @@ export function evaluateTriangularRisk(
   }
 
   if (roiPct < 0.8) {
-    reasons.push('Margen neto muy bajo (< 0.8%): alto riesgo de quedar en pérdida ante slippage o micro-fluctuaciones.');
+    reasons.push(
+      'Margen neto muy bajo (< 0.8%): alto riesgo de quedar en pérdida ante slippage o micro-fluctuaciones.',
+    );
   }
 
   if (totalMinutes >= 90) {
-    reasons.push('Tiempo de ejecución prolongado (>= 90 min): alta exposición a volatilidad cambiaria durante la rotación.');
+    reasons.push(
+      'Tiempo de ejecución prolongado (>= 90 min): alta exposición a volatilidad cambiaria durante la rotación.',
+    );
   } else if (totalMinutes >= 45) {
     reasons.push('Tiempo moderado de rotación (45-90 min): vigilar cambios en órdenes P2P.');
   }
 
   const hasHighVolatilityFiat = currenciesInvolved.includes('VES');
   if (hasHighVolatilityFiat && totalMinutes > 40 && roiPct < 1.5) {
-    reasons.push('Involucra VES con rotación mayor a 40 min y margen < 1.5%: riesgo de devaluación intradiaria.');
+    reasons.push(
+      'Involucra VES con rotación mayor a 40 min y margen < 1.5%: riesgo de devaluación intradiaria.',
+    );
   }
 
   let level: TriangularRiskLevel = 'LOW';
@@ -251,12 +257,18 @@ export function calculateTriangularArbitrage(
     if (leg3.isDivision) {
       breakevenPriceLeg3 = roundMoney((step2.outputAmount * feeFactorLeg3) / targetGross, 4);
       if (leg3.price > 0 && breakevenPriceLeg3 >= leg3.price) {
-        slippageTolerancePct = roundMoney(((breakevenPriceLeg3 - leg3.price) / leg3.price) * 100, 2);
+        slippageTolerancePct = roundMoney(
+          ((breakevenPriceLeg3 - leg3.price) / leg3.price) * 100,
+          2,
+        );
       }
     } else {
       breakevenPriceLeg3 = roundMoney(targetGross / (step2.outputAmount * feeFactorLeg3), 4);
       if (leg3.price > 0 && leg3.price >= breakevenPriceLeg3) {
-        slippageTolerancePct = roundMoney(((leg3.price - breakevenPriceLeg3) / leg3.price) * 100, 2);
+        slippageTolerancePct = roundMoney(
+          ((leg3.price - breakevenPriceLeg3) / leg3.price) * 100,
+          2,
+        );
       }
     }
   }
@@ -293,7 +305,8 @@ export const DEFAULT_TRIANGULAR_PRESETS: TriangularRoutePreset[] = [
   {
     id: 'route-ves-usdt-cop',
     name: 'VES ➔ USDT ➔ COP ➔ VES (Frontera / Bancolombia)',
-    description: 'Comprar USDT con VES, liquidar USDT a COP en Binance P2P y retornar a VES vía mesa de cambio.',
+    description:
+      'Comprar USDT con VES, liquidar USDT a COP en Binance P2P y retornar a VES vía mesa de cambio.',
     initialCurrency: 'VES',
     legs: [
       {
@@ -344,7 +357,8 @@ export const DEFAULT_TRIANGULAR_PRESETS: TriangularRoutePreset[] = [
   {
     id: 'route-usdt-usd-ves',
     name: 'USDT ➔ USD (Zinli/Wally) ➔ VES ➔ USDT (Dólar Digital)',
-    description: 'Vender USDT por USD en billetera digital, pagar a tasa paralela atractiva y recomprar USDT con VES.',
+    description:
+      'Vender USDT por USD en billetera digital, pagar a tasa paralela atractiva y recomprar USDT con VES.',
     initialCurrency: 'USDT',
     legs: [
       {
@@ -444,9 +458,10 @@ export function analyzeFxCorridorEfficiency(
   }
 
   const evaluated: FxCorridorRanking[] = corridors.map((c) => {
-    const rawGapPct = c.officialParityRate > 0
-      ? ((c.spotCrossRate - c.officialParityRate) / c.officialParityRate) * 100
-      : 0;
+    const rawGapPct =
+      c.officialParityRate > 0
+        ? ((c.spotCrossRate - c.officialParityRate) / c.officialParityRate) * 100
+        : 0;
     const totalFriction = c.bankingFrictionPct + c.makerFeePct;
     const netYieldPct = Math.round((rawGapPct - totalFriction) * 100) / 100;
 
@@ -545,13 +560,16 @@ export function calculateCrossExchangeBasisSpread(
   const sellPrice = maxBidPlatform.bestBidPrice;
   const fiat = minAskPlatform.fiatCurrency;
 
-  const grossSpreadPct = buyPrice > 0 ? Math.round(((sellPrice - buyPrice) / buyPrice) * 10000) / 100 : 0;
-  const totalFeesUsdt = minAskPlatform.internalTransferFeeUsdt + (capitalUsdt * 0.002); // 0.2% estimado P2P fees
+  const grossSpreadPct =
+    buyPrice > 0 ? Math.round(((sellPrice - buyPrice) / buyPrice) * 10000) / 100 : 0;
+  const totalFeesUsdt = minAskPlatform.internalTransferFeeUsdt + capitalUsdt * 0.002; // 0.2% estimado P2P fees
   const grossProfitUsdt = capitalUsdt * (grossSpreadPct / 100);
   const netProfitUsdt = Math.round((grossProfitUsdt - totalFeesUsdt) * 100) / 100;
-  const netSpreadPct = capitalUsdt > 0 ? Math.round((netProfitUsdt / capitalUsdt) * 10000) / 100 : 0;
+  const netSpreadPct =
+    capitalUsdt > 0 ? Math.round((netProfitUsdt / capitalUsdt) * 10000) / 100 : 0;
 
-  const isExecutable = netSpreadPct >= 0.50 && minAskPlatform.platformName !== maxBidPlatform.platformName;
+  const isExecutable =
+    netSpreadPct >= 0.5 && minAskPlatform.platformName !== maxBidPlatform.platformName;
 
   return {
     fiatCurrency: fiat,
@@ -568,4 +586,3 @@ export function calculateCrossExchangeBasisSpread(
       : `Spread insuficiente (${netSpreadPct}% neto). No supera el umbral de viabilidad institucional (0.50%).`,
   };
 }
-

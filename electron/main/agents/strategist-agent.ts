@@ -26,7 +26,8 @@ export class StrategistAgent {
       status: 'ONLINE',
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
-      description: 'Modelado cuantitativo de rutas triangulares, microestructura VWAP y optimización de márgenes institucionales.',
+      description:
+        'Modelado cuantitativo de rutas triangulares, microestructura VWAP y optimización de márgenes institucionales.',
       assignedMcpDomains: this.assignedMcpDomains,
       assignedSkills: this.assignedSkills,
     };
@@ -67,7 +68,7 @@ export class StrategistAgent {
     });
 
     const calculatedNetSpread = signal.netSpreadPct;
-    const meetsGoldenRule = calculatedNetSpread >= 0.50;
+    const meetsGoldenRule = calculatedNetSpread >= 0.5;
 
     // 2. Simulate orderbook depth and VWAP slippage
     const simRes = executeFinancialSkill('simulate_trade_impact', {
@@ -81,17 +82,33 @@ export class StrategistAgent {
       liquidityHealth?: string;
     };
 
-    const vwapPrice = simData?.effectiveVwapPrice && simData.effectiveVwapPrice > 0
-      ? simData.effectiveVwapPrice
-      : signal.bestAsk;
+    const vwapPrice =
+      simData?.effectiveVwapPrice && simData.effectiveVwapPrice > 0
+        ? simData.effectiveVwapPrice
+        : signal.bestAsk;
     const slippageBps = simData?.slippageBps ?? 12;
 
     // 3. Monte Carlo Microstructure Simulation (500 iterations)
     const mcSimulator = new MonteCarloSimulator();
     const mockBook = [
-      { price: signal.bestAsk, minVes: 500, maxVes: requestedCapital * signal.bestAsk * 2.0, merchantName: 'Merchant_Top' },
-      { price: signal.bestAsk * 1.0005, minVes: 1000, maxVes: requestedCapital * signal.bestAsk * 3.0, merchantName: 'Merchant_2' },
-      { price: signal.bestAsk * 1.001, minVes: 2000, maxVes: requestedCapital * signal.bestAsk * 5.0, merchantName: 'Merchant_3' },
+      {
+        price: signal.bestAsk,
+        minVes: 500,
+        maxVes: requestedCapital * signal.bestAsk * 2.0,
+        merchantName: 'Merchant_Top',
+      },
+      {
+        price: signal.bestAsk * 1.0005,
+        minVes: 1000,
+        maxVes: requestedCapital * signal.bestAsk * 3.0,
+        merchantName: 'Merchant_2',
+      },
+      {
+        price: signal.bestAsk * 1.001,
+        minVes: 2000,
+        maxVes: requestedCapital * signal.bestAsk * 5.0,
+        merchantName: 'Merchant_3',
+      },
     ];
     const mcResult = mcSimulator.runSimulation(mockBook as any, {
       iterations: 500,
@@ -115,16 +132,17 @@ export class StrategistAgent {
       status: 'PROPOSED',
     };
 
-    const timing = signal.rateGapPct && signal.rateGapPct > 25
-      ? 'URGENTE: Ventana previa a intervención cambiaria BCV (completar rotación antes de 11:30 AM)'
-      : 'ESTÁNDAR: Liquidez fluida en horario de alto tráfico bancario (09:00 - 15:00)';
+    const timing =
+      signal.rateGapPct && signal.rateGapPct > 25
+        ? 'URGENTE: Ventana previa a intervención cambiaria BCV (completar rotación antes de 11:30 AM)'
+        : 'ESTÁNDAR: Liquidez fluida en horario de alto tráfico bancario (09:00 - 15:00)';
 
     return {
       plan,
       rationale: plan.rationale,
       mathematicalValidation: {
         grossSpreadPct: signal.grossSpreadPct,
-        estimatedFeesPct: 0.40,
+        estimatedFeesPct: 0.4,
         netSpreadPct: calculatedNetSpread,
         vwapPrice,
         slippageBps,

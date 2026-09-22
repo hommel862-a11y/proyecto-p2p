@@ -102,7 +102,9 @@ describe('Orderbook Microstructure: Detección de Spoofing & Liquidez Fantasma',
       expect(report.phantomLiquidityCount).toBe(1);
       expect(report.phantomLiquidityVes).toBe(950000);
 
-      const phantomClassification = report.classifiedOrders.find((c) => c.advNo === 'ADV-PHANTOM-WALL');
+      const phantomClassification = report.classifiedOrders.find(
+        (c) => c.advNo === 'ADV-PHANTOM-WALL',
+      );
       expect(phantomClassification?.category).toBe('PHANTOM_LIQUIDITY');
     });
   });
@@ -263,4 +265,3 @@ describe('Orderbook Microstructure: Detección de Spoofing & Liquidez Fantasma',
     });
   });
 });
-

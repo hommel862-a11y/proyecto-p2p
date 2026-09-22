@@ -254,7 +254,12 @@ export type VerifyInboundTransferInput = z.infer<typeof VerifyInboundTransferInp
 
 export const CompileDisputeDossierInputSchema = z.object({
   orderId: z.string().min(3, 'Order ID requerido'),
-  disputeReason: z.enum(['THIRD_PARTY_PAYMENT', 'UNRELEASED_CRYPTO', 'FAKE_RECEIPT', 'INCORRECT_AMOUNT']),
+  disputeReason: z.enum([
+    'THIRD_PARTY_PAYMENT',
+    'UNRELEASED_CRYPTO',
+    'FAKE_RECEIPT',
+    'INCORRECT_AMOUNT',
+  ]),
   bankReference: z.string().optional(),
   amountUsdt: z.number().positive(),
   amountVes: z.number().positive(),
@@ -289,7 +294,9 @@ export const LookupCounterpartyReputationInputSchema = z.object({
   phoneNumber: z.string().optional(),
   bankAccountNumber: z.string().optional(),
 });
-export type LookupCounterpartyReputationInput = z.infer<typeof LookupCounterpartyReputationInputSchema>;
+export type LookupCounterpartyReputationInput = z.infer<
+  typeof LookupCounterpartyReputationInputSchema
+>;
 
 // ─── Compliance, Multichannel & Proof Reader Schemas ───
 
@@ -311,7 +318,13 @@ export const RegisterBlacklistedEntityInputSchema = z.object({
   identifierType: z.enum(['CEDULA', 'PHONE', 'ACCOUNT_NUMBER', 'BINANCE_ALIAS']),
   identifierValue: z.string().min(3, 'El valor del identificador debe tener al menos 3 caracteres'),
   counterpartyName: z.string().optional(),
-  fraudCategory: z.enum(['TRIANGULATION_SCAM', 'THIRD_PARTY_PAYER', 'CHARGEBACK_ATTEMPT', 'IDENTITY_THEFT', 'OTHER']),
+  fraudCategory: z.enum([
+    'TRIANGULATION_SCAM',
+    'THIRD_PARTY_PAYER',
+    'CHARGEBACK_ATTEMPT',
+    'IDENTITY_THEFT',
+    'OTHER',
+  ]),
   incidentNotes: z.string().optional(),
   riskLevel: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']).default('CRITICAL'),
   humanConfirm: z.boolean({ message: 'humanConfirm es requerido (Human-in-the-loop)' }),
@@ -342,7 +355,9 @@ export const ProcessRemoteSentinelCommandInputSchema = z.object({
   channel: z.enum(['TELEGRAM', 'WHATSAPP', 'VOICE_TRANSCRIPTION']).default('TELEGRAM'),
   humanConfirm: z.boolean().default(true),
 });
-export type ProcessRemoteSentinelCommandInput = z.infer<typeof ProcessRemoteSentinelCommandInputSchema>;
+export type ProcessRemoteSentinelCommandInput = z.infer<
+  typeof ProcessRemoteSentinelCommandInputSchema
+>;
 
 export const AuditPaymentProofOcrInputSchema = z.object({
   ocrRawText: z.string().min(5, 'Texto OCR requerido'),
@@ -356,7 +371,7 @@ export type AuditPaymentProofOcrInput = z.infer<typeof AuditPaymentProofOcrInput
 
 export const AuditAndRiskAnalyticsInputSchema = z.object({
   timeframeDays: z.number().positive().default(7),
-  minSpreadThresholdPct: z.number().positive().default(0.50),
+  minSpreadThresholdPct: z.number().positive().default(0.5),
   focusArea: z.enum(['ALL', 'RISK_HOURS', 'SPREAD_COMPLIANCE']).default('ALL'),
   sampleEvents: z
     .array(

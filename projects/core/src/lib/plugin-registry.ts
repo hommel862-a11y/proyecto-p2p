@@ -127,20 +127,29 @@ export const PluginRegistryImpl: PluginRegistry = {
           // Pasar adaptadores del sistema para que el plugin se integre
           await module.init({
             storage: {
-              get: (key: string) => localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)!) : null,
+              get: (key: string) =>
+                localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)!) : null,
               set: (key: string, value: any) => localStorage.setItem(key, JSON.stringify(value)),
               remove: (key: string) => localStorage.removeItem(key),
-              exportAll: () => {/* serializar localStorage actual */},
-              importAll: (json: string) => {/* importar desde JSON */},
+              exportAll: () => {
+                /* serializar localStorage actual */
+              },
+              importAll: (_json: string) => {
+                /* importar desde JSON */
+              },
             },
             rules: {
-              evaluate: (ctx: any) => {/* usar rules.ts del core */},
+              evaluate: (_ctx: any) => {
+                /* usar rules.ts del core */
+              },
               ALLOW: 'ALLOW',
               DENY: 'DENY',
               PAUSE: 'PAUSE',
             },
             marketDepth: {/* source from spread-monitor service */},
-            setMarketQuality: ((q: any) => {/* actualizar calidad de mercado */}),
+            setMarketQuality: (_q: any) => {
+              /* actualizar calidad de mercado */
+            },
           });
           console.log(`[plugin-registry] ${pluginId}.init() ejecutado exitosamente`);
         } catch (initError) {
@@ -153,9 +162,10 @@ export const PluginRegistryImpl: PluginRegistry = {
       pluginEntry.status = 'READY';
       this.plugins.set(pluginId, pluginEntry);
 
-      console.log(`[plugin-registry] ${pluginId} cargado y listo. Total plugins: ${this.plugins.size}`);
+      console.log(
+        `[plugin-registry] ${pluginId} cargado y listo. Total plugins: ${this.plugins.size}`,
+      );
       return true;
-
     } catch (error: any) {
       console.error(`[plugin-registry] Error crítico cargando ${pluginId}:`, error);
 
@@ -193,7 +203,8 @@ export const PluginRegistryImpl: PluginRegistry = {
 
     const entry = this.plugins.get(pluginId)!;
     // Ejecutar cleanup si el plugin lo provee
-    const maybeModule = (entry as unknown as Record<string, unknown>)?.['module'] as { cleanup?: () => Promise<void> } | undefined;
+    const maybeModule = (entry as unknown as Record<string, unknown>)?.['module'] as
+      { cleanup?: () => Promise<void> } | undefined;
     if (maybeModule && typeof maybeModule.cleanup === 'function') {
       try {
         await maybeModule.cleanup();
@@ -204,7 +215,9 @@ export const PluginRegistryImpl: PluginRegistry = {
     }
 
     this.plugins.delete(pluginId);
-    console.log(`[plugin-registry] ${pluginId} descargado. Quedan ${this.plugins.size} plugins activos`);
+    console.log(
+      `[plugin-registry] ${pluginId} descargado. Quedan ${this.plugins.size} plugins activos`,
+    );
     return true;
   },
 
@@ -222,7 +235,7 @@ export const PluginRegistryImpl: PluginRegistry = {
    * @returns PluginMetadata[] lista de plugins activos
    */
   getActivePlugins(): PluginMetadata[] {
-    return Array.from(this.plugins.values()).filter(p => p.status === 'READY');
+    return Array.from(this.plugins.values()).filter((p) => p.status === 'READY');
   },
 
   /**
@@ -233,7 +246,7 @@ export const PluginRegistryImpl: PluginRegistry = {
   getOverduePlugins(): PluginMetadata[] {
     const now = Date.now();
     const twoHoursMs = 2 * 60 * 60 * 1000; // 7200000 ms
-    return Array.from(this.plugins.values()).filter(p => {
+    return Array.from(this.plugins.values()).filter((p) => {
       // Un plugin es "overdue" si fue cargado hace más de 2h y aún tiene status READY
       // (significa no ha sido verificado/recargado desde entonces)
       return p.lastLoaded < now - twoHoursMs && p.status === 'READY';
@@ -256,11 +269,14 @@ export function formatPluginMetadata(metadata: PluginMetadata): string {
  * @param ctx Contexto actual del sistema (spread, liquidez, etc.)
  * @returns boolean true si cumple requisitos
  */
-export function checkPluginRequirements(metadata: PluginMetadata, ctx: {
-  currentSpread?: number;
-  bestBuyVolume?: number;
-  bestSellVolume?: number;
-}): boolean {
+export function checkPluginRequirements(
+  metadata: PluginMetadata,
+  ctx: {
+    currentSpread?: number;
+    bestBuyVolume?: number;
+    bestSellVolume?: number;
+  },
+): boolean {
   const { requirements = {} } = metadata;
 
   if (requirements.minSpread !== undefined && ctx.currentSpread !== undefined) {

@@ -9,13 +9,7 @@ import { roundMoney } from './money';
 import type { Operation } from './log';
 
 export type BankIdentifier =
-  | 'MERCANTIL'
-  | 'BANCAMIGA'
-  | 'BANESCO'
-  | 'PROVINCIAL'
-  | 'BDV'
-  | 'BANPLUS'
-  | 'UNKNOWN';
+  'MERCANTIL' | 'BANCAMIGA' | 'BANESCO' | 'PROVINCIAL' | 'BDV' | 'BANPLUS' | 'UNKNOWN';
 
 export interface ParsedBankNotification {
   bank: BankIdentifier;
@@ -39,10 +33,7 @@ export interface ExpectedTradePayment {
 }
 
 export type ReconciliationStatus =
-  | 'VERIFIED_SAFE'
-  | 'TRIANGULATION_ALERT'
-  | 'AMOUNT_MISMATCH'
-  | 'UNPARSED_NOTIFICATION';
+  'VERIFIED_SAFE' | 'TRIANGULATION_ALERT' | 'AMOUNT_MISMATCH' | 'UNPARSED_NOTIFICATION';
 
 export interface ReconciliationResult {
   status: ReconciliationStatus;
@@ -67,7 +58,10 @@ export interface ReconciliationResult {
  */
 export function normalizeIdentityDoc(doc: string): string {
   if (!doc) return '';
-  const clean = doc.trim().toUpperCase().replace(/[\s\.\-]/g, '');
+  const clean = doc
+    .trim()
+    .toUpperCase()
+    .replace(/[\s.-]/g, '');
   if (/^[0-9]+$/.test(clean)) {
     // Default to Venezuelan personal citizen prefix if none provided
     return `V${clean}`;
@@ -82,7 +76,9 @@ export function normalizeIdentityDoc(doc: string): string {
 export function parseVesAmount(text: string): number {
   if (!text) return 0;
   // Look for number following "Bs", "VES", "Bs." or standalone monetary patterns
-  const match = text.match(/(?:Bs\.?|VES)?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})|[0-9]+(?:[.,][0-9]{1,2})?)/i);
+  const match = text.match(
+    /(?:Bs\.?|VES)?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})|[0-9]+(?:[.,][0-9]{1,2})?)/i,
+  );
   if (!match) return 0;
 
   let raw = match[1];
@@ -108,11 +104,15 @@ export function parseVesAmount(text: string): number {
 export function extractIdentityDoc(text: string): string {
   if (!text) return '';
   // 1. Explicit label prefix: "CI: V-18.450.123", "Cédula: 19888777", "de CI: V29.999.000"
-  const explicit = text.match(/(?:ci|c\.i\.?|cedula|cédula|identificacion|identificación|rif)[:.\s]*([VEJG]?[-.\s]*[0-9]{1,2}(?:\.[0-9]{3}){2}|[VEJG]?[-.\s]*[0-9]{5,10})/i);
+  const explicit = text.match(
+    /(?:ci|c\.i\.?|cedula|cédula|identificacion|identificación|rif)[:.\s]*([VEJG]?[-.\s]*[0-9]{1,2}(?:\.[0-9]{3}){2}|[VEJG]?[-.\s]*[0-9]{5,10})/i,
+  );
   if (explicit) return normalizeIdentityDoc(explicit[1]);
 
   // 2. Standard Venezuelan ID standalone token: "V-12345678", "V12345678", "E-82111222"
-  const standard = text.match(/\b([VEJG][-.\s]*[0-9]{1,2}(?:\.[0-9]{3}){2}|[VEJG][-.\s]*[0-9]{5,10})\b/i);
+  const standard = text.match(
+    /\b([VEJG][-.\s]*[0-9]{1,2}(?:\.[0-9]{3}){2}|[VEJG][-.\s]*[0-9]{5,10})\b/i,
+  );
   if (standard) return normalizeIdentityDoc(standard[1]);
 
   return '';
@@ -139,7 +139,11 @@ export function parseBankNotification(text: string): ParsedBankNotification {
   const upper = rawText.toUpperCase();
 
   // 1. Mercantil Pago Móvil
-  if (upper.includes('MERCANTIL') || upper.includes('TPAGO') || upper.includes('PAGO MOVIL MERCANTIL')) {
+  if (
+    upper.includes('MERCANTIL') ||
+    upper.includes('TPAGO') ||
+    upper.includes('PAGO MOVIL MERCANTIL')
+  ) {
     baseResult.bank = 'MERCANTIL';
     baseResult.bankName = 'Banco Mercantil';
 
@@ -150,7 +154,9 @@ export function parseBankNotification(text: string): ParsedBankNotification {
     if (refMatch) baseResult.reference = refMatch[1];
 
     baseResult.senderId = extractIdentityDoc(rawText);
-    baseResult.isParsed = baseResult.amountVes > 0 && (baseResult.reference.length > 0 || baseResult.senderId.length > 0);
+    baseResult.isParsed =
+      baseResult.amountVes > 0 &&
+      (baseResult.reference.length > 0 || baseResult.senderId.length > 0);
     return baseResult;
   }
 
@@ -171,7 +177,11 @@ export function parseBankNotification(text: string): ParsedBankNotification {
   }
 
   // 3. Banesco Pago Móvil
-  if (upper.includes('BANESCO') || upper.includes('PAGO ELECTRONICO') || upper.includes('MULTIPAGOS')) {
+  if (
+    upper.includes('BANESCO') ||
+    upper.includes('PAGO ELECTRONICO') ||
+    upper.includes('MULTIPAGOS')
+  ) {
     baseResult.bank = 'BANESCO';
     baseResult.bankName = 'Banesco';
 
@@ -203,7 +213,12 @@ export function parseBankNotification(text: string): ParsedBankNotification {
   }
 
   // 5. Banco de Venezuela (BDV / PagoClave / BDVenlínea)
-  if (upper.includes('BDV') || upper.includes('BANCO DE VENEZUELA') || upper.includes('PAGOCLAVE') || upper.includes('BDVENLINEA')) {
+  if (
+    upper.includes('BDV') ||
+    upper.includes('BANCO DE VENEZUELA') ||
+    upper.includes('PAGOCLAVE') ||
+    upper.includes('BDVENLINEA')
+  ) {
     baseResult.bank = 'BDV';
     baseResult.bankName = 'Banco de Venezuela';
 

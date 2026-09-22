@@ -100,7 +100,10 @@ describe('backup-encryption', () => {
 
     it('tampered ciphertext throws on decryption', async () => {
       const envelope = await encryptBackupAES256(PASSWORD, payload);
-      const tampered = { ...envelope, ciphertext: envelope.ciphertext + 'X' } as EncryptedBackupEnvelope;
+      const tampered = {
+        ...envelope,
+        ciphertext: envelope.ciphertext + 'X',
+      } as EncryptedBackupEnvelope;
       await expect(decryptBackupAES256(PASSWORD, tampered)).rejects.toThrow();
     });
   });

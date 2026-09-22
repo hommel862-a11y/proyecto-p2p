@@ -62,7 +62,9 @@ test('switching to Sesiones shows session history section', async ({ page }) => 
   await goToStats(page);
 
   await page.getByRole('button', { name: 'Sesiones' }).click();
-  await expect(page.locator('.section-eyebrow', { hasText: 'Historial de Jornadas Operativas' })).toBeVisible();
+  await expect(
+    page.locator('.section-eyebrow', { hasText: 'Historial de Jornadas Operativas' }),
+  ).toBeVisible();
 });
 
 test('pair filter dropdown is present with All/USDT/VES options', async ({ page }) => {
@@ -94,9 +96,12 @@ test('empty session state shows message when no sessions exist', async ({ page }
 
 test('after adding an operation via localStorage, stats update', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate((ops) => {
-    localStorage.setItem('p2p.operations', JSON.stringify(ops));
-  }, [SAMPLE_OP]);
+  await page.evaluate(
+    (ops) => {
+      localStorage.setItem('p2p.operations', JSON.stringify(ops));
+    },
+    [SAMPLE_OP],
+  );
   await page.reload();
 
   await page.locator('a[routerlink="/stats"]').click();
@@ -112,9 +117,12 @@ test('after adding an operation via localStorage, stats update', async ({ page }
 
 test('detail table appears after adding operations', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate((ops) => {
-    localStorage.setItem('p2p.operations', JSON.stringify(ops));
-  }, [SAMPLE_OP]);
+  await page.evaluate(
+    (ops) => {
+      localStorage.setItem('p2p.operations', JSON.stringify(ops));
+    },
+    [SAMPLE_OP],
+  );
   await page.reload();
 
   await page.locator('a[routerlink="/stats"]').click();
@@ -144,9 +152,13 @@ test('filtering by USDT pair after adding mixed operations', async ({ page }) =>
   await page.locator('a[routerlink="/stats"]').click();
 
   // Initially shows total operations = 2.
-  await expect(page.locator('.stat-grid .stat-tile').nth(0).locator('.stat-value')).toContainText('2');
+  await expect(page.locator('.stat-grid .stat-tile').nth(0).locator('.stat-value')).toContainText(
+    '2',
+  );
 
   // Filter to USDT only → 1 operation.
   await page.locator('label.inline select').selectOption('USDT');
-  await expect(page.locator('.stat-grid .stat-tile').nth(0).locator('.stat-value')).toContainText('1');
+  await expect(page.locator('.stat-grid .stat-tile').nth(0).locator('.stat-value')).toContainText(
+    '1',
+  );
 });

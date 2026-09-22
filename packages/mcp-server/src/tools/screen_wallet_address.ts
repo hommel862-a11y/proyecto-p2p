@@ -1,7 +1,4 @@
-import {
-  ScreenWalletAddressInputSchema,
-  type ScreenWalletAddressInput,
-} from '../schemas/index.js';
+import { ScreenWalletAddressInputSchema, type ScreenWalletAddressInput } from '../schemas/index.js';
 
 export const screenWalletAddressTool = {
   name: 'screen_wallet_address',

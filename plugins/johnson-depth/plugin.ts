@@ -48,7 +48,13 @@ export interface JohnsonPluginContext {
 }
 
 /** Bancos válidos (claves de BankCode con tabla de fees; D4). PAGO_MOVIL/ALL quedan fuera. */
-export const BANK_KEYS: readonly string[] = ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL'];
+export const BANK_KEYS: readonly string[] = [
+  'BANESCO',
+  'MERCANTIL',
+  'BDV',
+  'BANCAMIGA',
+  'PROVINCIAL',
+];
 /** Filtros anti-fake recomendados (ver Task 1). */
 export const PLUGIN_OPTIONS = { minFinishRatePct: 90, maxPriceDeviationFactor: 3 } as const;
 

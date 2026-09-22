@@ -9,11 +9,7 @@ import {
   type BinanceP2pMarketDepth,
 } from './binance-p2p';
 import { roundMoney } from './money';
-import {
-  computeArbitrageCycle,
-  VENEZUELAN_BANK_FEES,
-  type P2PRole,
-} from './spread-quality';
+import { computeArbitrageCycle, VENEZUELAN_BANK_FEES, type P2PRole } from './spread-quality';
 import { type BankCode } from './accounts';
 import { MINIMUM_VIABLE_NET_SPREAD_PCT } from './operator-manager';
 
@@ -116,9 +112,8 @@ export function calculateDepthQuality(
 
   // 1. Ratio de balance buy/sell (50%)
   const total = buyUsdt + sellUsdt;
-  const volumeRatio = total > 0
-    ? Math.min(Math.min(buyUsdt, sellUsdt) / Math.max(total / 2, 1), 1) * 100
-    : 50;
+  const volumeRatio =
+    total > 0 ? Math.min(Math.min(buyUsdt, sellUsdt) / Math.max(total / 2, 1), 1) * 100 : 50;
 
   // 2. Profundidad relativa al spread (30%) — spread porcentual alto castiga
   const spreadPct =
@@ -160,7 +155,11 @@ export function determineSignal(
   liquidityScore: number,
   req: JohnsonDepthRequirements,
 ): 'STRONG_BUY' | 'BUY' | 'CAUTION' | 'AVOID' {
-  if (depth.spreadVes !== undefined && depth.spreadVes !== null && depth.spreadVes < req.minSpread) {
+  if (
+    depth.spreadVes !== undefined &&
+    depth.spreadVes !== null &&
+    depth.spreadVes < req.minSpread
+  ) {
     return 'AVOID';
   }
   if (liquidityScore < 40) return 'AVOID';
@@ -177,14 +176,14 @@ export interface JohnsonBankProfit {
   buyPriceVes: number;
   sellPriceVes: number;
   fillableUsdt: number;
-  grossProfitVes: number;      // (sell - buy) * fillable — bruto, sin fees
+  grossProfitVes: number; // (sell - buy) * fillable — bruto, sin fees
   binanceFeeUsdt: number;
   bankFeesVes: number;
-  netGainVes: number;          // ganancia neta tras fees
+  netGainVes: number; // ganancia neta tras fees
   netGainUsd: number;
-  roiCyclePct: number;         // sobre capital invertido
+  roiCyclePct: number; // sobre capital invertido
   effectiveFeeDragPct: number; // % del spread nominal perdido en fees
-  isSafe: boolean;             // roiCyclePct >= MINIMUM_VIABLE_NET_SPREAD_PCT
+  isSafe: boolean; // roiCyclePct >= MINIMUM_VIABLE_NET_SPREAD_PCT
 }
 
 export interface JohnsonBankConfig {
@@ -297,8 +296,10 @@ export function buildJohnsonMarketQuality(
   const liquidityScore = calculateLiquidityScore(depth, req);
   const bankProfits = computeBankProfits(depth, bankKeys, req, config);
   const recommendation = determineSignal(depth, depthScore, liquidityScore, req);
-  const bestBank = bankProfits.length > 0 && bankProfits[0].netGainVes > 0 ? bankProfits[0].bankKey : null;
-  const spreadPct = depth.bestBuyPrice > 0 ? ((depth.spreadVes ?? 0) / depth.bestBuyPrice) * 100 : 0;
+  const bestBank =
+    bankProfits.length > 0 && bankProfits[0].netGainVes > 0 ? bankProfits[0].bankKey : null;
+  const spreadPct =
+    depth.bestBuyPrice > 0 ? ((depth.spreadVes ?? 0) / depth.bestBuyPrice) * 100 : 0;
 
   return {
     depthScore,
@@ -311,4 +312,3 @@ export function buildJohnsonMarketQuality(
     timestamp: Date.now(),
   };
 }
-

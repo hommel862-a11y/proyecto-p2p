@@ -66,7 +66,9 @@ test('export CSV downloads a file with the es-VE header and the added row', asyn
 
   // buildOperationsCsv() emits a UTF-8 BOM then a `;`-delimited es-VE header.
   expect(csv.startsWith('\uFEFF')).toBe(true);
-  expect(csv).toContain('Fecha/Hora;Tipo;Par;Monto VES;Monto USDT;Precio;Comisiones;Sin errores;Comercio;Notas');
+  expect(csv).toContain(
+    'Fecha/Hora;Tipo;Par;Monto VES;Monto USDT;Precio;Comisiones;Sin errores;Comercio;Notas',
+  );
   expect(csv).toContain(';compra;USDT;1000;25;40;0;no;csv e2e;');
   expect(download.suggestedFilename()).toMatch(/^p2p-operaciones-\d{4}-\d{2}-\d{2}\.csv$/);
 });

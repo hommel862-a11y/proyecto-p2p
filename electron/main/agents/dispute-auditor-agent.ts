@@ -6,7 +6,6 @@
 
 import type { AgentHealthStatus } from './types';
 import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
-import { executeFinancialSkill } from '../gemini-skills';
 
 export interface DisputeDossierResult {
   orderId: string;
@@ -32,7 +31,8 @@ export class DisputeAuditorAgent {
       status: 'ONLINE',
       lastActiveTime: this.lastActive,
       opsProcessed: this.opsProcessed,
-      description: 'Auditoría forense de comprobantes bancarios, deduplicación de pagos y armado de dossieres de apelación.',
+      description:
+        'Auditoría forense de comprobantes bancarios, deduplicación de pagos y armado de dossieres de apelación.',
       assignedMcpDomains: this.assignedMcpDomains,
       assignedSkills: this.assignedSkills,
     };
@@ -49,7 +49,8 @@ export class DisputeAuditorAgent {
   }): { isComplete: boolean; missingFields: string[] } {
     const missing: string[] = [];
     if (!params.orderId) missing.push('orderId');
-    if (params.receiptAmount === undefined || params.receiptAmount <= 0) missing.push('receiptAmount');
+    if (params.receiptAmount === undefined || params.receiptAmount <= 0)
+      missing.push('receiptAmount');
     if (!params.reference || params.reference.trim().length === 0) missing.push('reference');
     if (!params.bankName || params.bankName.trim().length === 0) missing.push('bankName');
 
@@ -81,7 +82,9 @@ export class DisputeAuditorAgent {
     if (!isAmountValid) {
       fraudScore += 65;
       verdict = 'SUSPECT_FRAUD';
-      reasons.push(`Discrepancia en monto: esperado Bs ${params.expectedAmountFiat.toFixed(2)}, recibido en comprobante Bs ${params.receiptAmountFiat.toFixed(2)}.`);
+      reasons.push(
+        `Discrepancia en monto: esperado Bs ${params.expectedAmountFiat.toFixed(2)}, recibido en comprobante Bs ${params.receiptAmountFiat.toFixed(2)}.`,
+      );
     }
 
     if (!isRefValid) {

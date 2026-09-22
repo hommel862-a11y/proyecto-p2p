@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  GEMINI_FINANCIAL_SKILLS,
-  executeFinancialSkill,
-} from './agent-skills';
+import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './agent-skills';
 
 describe('Agent Skills & Function Calling Declarations', () => {
   it('should expose the financial skills schemas for Gemini', () => {
@@ -71,7 +68,10 @@ describe('Agent Skills & Function Calling Declarations', () => {
       maxAllowedFiatDeltaRatio: 0.15,
     });
     expect(res.success).toBe(true);
-    const data = res.data as { metrics: { urgency: string; netDeltaRatio: number }; proposals: unknown[] };
+    const data = res.data as {
+      metrics: { urgency: string; netDeltaRatio: number };
+      proposals: unknown[];
+    };
     expect(data.metrics).toBeDefined();
     expect(data.metrics.urgency).not.toBe('NONE');
     expect(data.proposals.length).toBeGreaterThan(0);
@@ -142,7 +142,10 @@ describe('Agent Skills & Function Calling Declarations', () => {
       bcvRate: 70.0,
     });
     expect(res.success).toBe(true);
-    const data = res.data as { gap: { gapPct: number; riskLevel: string }; recommendation: { action: string } };
+    const data = res.data as {
+      gap: { gapPct: number; riskLevel: string };
+      recommendation: { action: string };
+    };
     expect(data.gap.gapPct).toBeGreaterThan(20);
     expect(data.recommendation).toBeDefined();
   });
@@ -183,7 +186,11 @@ describe('Agent Skills & Function Calling Declarations', () => {
       ],
     });
     expect(res.success).toBe(true);
-    const data = res.data as { isFullyFillable: boolean; totalFilledUsdt: number; bestQuotedPrice: number };
+    const data = res.data as {
+      isFullyFillable: boolean;
+      totalFilledUsdt: number;
+      bestQuotedPrice: number;
+    };
     expect(data.isFullyFillable).toBe(true);
     expect(data.totalFilledUsdt).toBe(600);
     expect(data.bestQuotedPrice).toBe(84.0);
@@ -374,7 +381,7 @@ describe('Agent Skills & Function Calling Declarations', () => {
     it('executes audit_and_risk_analytics via dispatcher', () => {
       const res = executeFinancialSkill('audit_and_risk_analytics', {
         timeframeDays: 7,
-        minSpreadThresholdPct: 0.50,
+        minSpreadThresholdPct: 0.5,
         sampleEvents: [
           { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'SECURITY_ALERT' },
         ],
@@ -393,5 +400,3 @@ describe('Agent Skills & Function Calling Declarations', () => {
     });
   });
 });
-
-

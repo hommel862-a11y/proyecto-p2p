@@ -8,7 +8,12 @@ export interface BankHealthDetail {
   bankName: string;
   status: 'OPERATIONAL' | 'DEGRADED' | 'MAINTENANCE' | 'OUTAGE';
   settlementLatencyMinutes: number;
-  incidentType?: 'CLEARING_DELAY' | 'PORTAL_MAINTENANCE' | 'PAGO_MOVIL_SWITCH_SLOWDOWN' | 'SUDEBAN_RESTRICTION' | 'NONE';
+  incidentType?:
+    | 'CLEARING_DELAY'
+    | 'PORTAL_MAINTENANCE'
+    | 'PAGO_MOVIL_SWITCH_SLOWDOWN'
+    | 'SUDEBAN_RESTRICTION'
+    | 'NONE';
   description: string;
   recommendedAction: 'NORMAL_TRADING' | 'MONITOR_CLOSELY' | 'PAUSE_BANK_ADS';
 }
@@ -19,7 +24,7 @@ const KNOWN_BANKS: Record<string, { name: string; baseLatency: number }> = {
   '0105': { name: 'Mercantil Banco', baseLatency: 1.0 },
   '0108': { name: 'BBVA Provincial', baseLatency: 1.2 },
   '0172': { name: 'Bancamiga', baseLatency: 0.9 },
-  'PAGO_MOVIL': { name: 'Suiche Pago Móvil Interbancario', baseLatency: 0.5 },
+  PAGO_MOVIL: { name: 'Suiche Pago Móvil Interbancario', baseLatency: 0.5 },
 };
 
 export const checkBankOperationalStatusTool = {
@@ -34,8 +39,11 @@ export const checkBankOperationalStatusTool = {
         : ['0102', '0134', '0105', '0108', '0172', 'PAGO_MOVIL'];
 
     const details: BankHealthDetail[] = requestedCodes.map((code) => {
-      const bankInfo = KNOWN_BANKS[code] ?? { name: `Banco Desconocido (${code})`, baseLatency: 2.0 };
-      
+      const bankInfo = KNOWN_BANKS[code] ?? {
+        name: `Banco Desconocido (${code})`,
+        baseLatency: 2.0,
+      };
+
       // Deterministic simulation or synthetic health evaluation
       const isDegradedMock = code === '0102' && false; // BDV regular
       const status: BankHealthDetail['status'] = isDegradedMock ? 'DEGRADED' : 'OPERATIONAL';
@@ -54,27 +62,33 @@ export const checkBankOperationalStatusTool = {
       };
     });
 
-    const hasCriticalOutage = details.some((d) => d.status === 'OUTAGE' || d.status === 'MAINTENANCE');
+    const hasCriticalOutage = details.some(
+      (d) => d.status === 'OUTAGE' || d.status === 'MAINTENANCE',
+    );
     const hasDegradedService = details.some((d) => d.status === 'DEGRADED');
 
-    const affectedBanks = details
-      .filter((d) => d.status !== 'OPERATIONAL')
-      .map((d) => d.bankName);
+    const affectedBanks = details.filter((d) => d.status !== 'OPERATIONAL').map((d) => d.bankName);
 
     return {
       timestamp: new Date().toISOString(),
-      networkStatus: hasCriticalOutage ? 'CRITICAL_ALERT' : hasDegradedService ? 'CAUTION_DEGRADED' : 'ALL_SYSTEMS_OPERATIONAL',
+      networkStatus: hasCriticalOutage
+        ? 'CRITICAL_ALERT'
+        : hasDegradedService
+          ? 'CAUTION_DEGRADED'
+          : 'ALL_SYSTEMS_OPERATIONAL',
       pauseTradingDirective: hasCriticalOutage,
       affectedBanks,
       averageSettlementLatencyMinutes: Number(
-        (details.reduce((acc, b) => acc + b.settlementLatencyMinutes, 0) / details.length).toFixed(1)
+        (details.reduce((acc, b) => acc + b.settlementLatencyMinutes, 0) / details.length).toFixed(
+          1,
+        ),
       ),
       bankDetails: details,
       operationalAdvice: hasCriticalOutage
         ? `PAUSA AUTOMÁTICA SUGERIDA: Suspender temporalmente anuncios de venta con destino a ${affectedBanks.join(', ')} para evitar demoras en liberación.`
         : hasDegradedService
-        ? `PRECAUCIÓN: Monitorear tiempos de confirmación en ${affectedBanks.join(', ')}. Exigir captura con código de validación bancaria.`
-        : 'Todos los canales bancarios y Pago Móvil operan con óptima liquidez y acreditación inmediata.',
+          ? `PRECAUCIÓN: Monitorear tiempos de confirmación en ${affectedBanks.join(', ')}. Exigir captura con código de validación bancaria.`
+          : 'Todos los canales bancarios y Pago Móvil operan con óptima liquidez y acreditación inmediata.',
     };
   },
 };

@@ -12,8 +12,7 @@ const ENABLE_SSE = process.env.MCP_ENABLE_SSE === 'true';
 
 async function main() {
   const serverId =
-    process.env.MCP_SERVER_ID ||
-    process.argv.find((a) => a.startsWith('--server='))?.split('=')[1];
+    process.env.MCP_SERVER_ID || process.argv.find((a) => a.startsWith('--server='))?.split('=')[1];
   const server = createP2PMcpServer({ serverId });
 
   // ─── Transporte stdio (siempre activo, es el canal principal) ───

@@ -69,9 +69,27 @@ describe('Operations Workflow, CRM, SOP Governance & Ledger Suite', () => {
         targetSide: 'SELL',
         ourMinMarginPct: 0.8,
         competitorOffers: [
-          { operatorName: 'Trader 1', price: 85.0, completionRatePct: 98, totalOrdersCount: 500, paymentMethods: ['Banesco', 'Pago Móvil'] },
-          { operatorName: 'Trader 2', price: 85.2, completionRatePct: 95, totalOrdersCount: 200, paymentMethods: ['Banesco', 'Mercantil'] },
-          { operatorName: 'Trader 3', price: 85.8, completionRatePct: 92, totalOrdersCount: 150, paymentMethods: ['Zinli'] },
+          {
+            operatorName: 'Trader 1',
+            price: 85.0,
+            completionRatePct: 98,
+            totalOrdersCount: 500,
+            paymentMethods: ['Banesco', 'Pago Móvil'],
+          },
+          {
+            operatorName: 'Trader 2',
+            price: 85.2,
+            completionRatePct: 95,
+            totalOrdersCount: 200,
+            paymentMethods: ['Banesco', 'Mercantil'],
+          },
+          {
+            operatorName: 'Trader 3',
+            price: 85.8,
+            completionRatePct: 92,
+            totalOrdersCount: 150,
+            paymentMethods: ['Zinli'],
+          },
         ],
       });
 
@@ -105,13 +123,38 @@ describe('Operations Workflow, CRM, SOP Governance & Ledger Suite', () => {
       const result = executeDesktopRpaReconciliation({
         bankName: 'Banesco',
         rawBankStatements: [
-          { referenceNumber: 'REF1001', amount: 8500, beneficiaryOrPayer: 'Juan Perez', timestamp: '10:00' },
-          { referenceNumber: 'REF1002', amount: 4200, beneficiaryOrPayer: 'Maria Gomez', timestamp: '10:15' },
-          { referenceNumber: 'REF9999', amount: 1000, beneficiaryOrPayer: 'Desconocido', timestamp: '10:30' },
+          {
+            referenceNumber: 'REF1001',
+            amount: 8500,
+            beneficiaryOrPayer: 'Juan Perez',
+            timestamp: '10:00',
+          },
+          {
+            referenceNumber: 'REF1002',
+            amount: 4200,
+            beneficiaryOrPayer: 'Maria Gomez',
+            timestamp: '10:15',
+          },
+          {
+            referenceNumber: 'REF9999',
+            amount: 1000,
+            beneficiaryOrPayer: 'Desconocido',
+            timestamp: '10:30',
+          },
         ],
         registeredP2pOrders: [
-          { orderId: 'ORD-1', expectedBankReference: 'REF1001', expectedAmountFiat: 8500, counterpartyRealName: 'Juan Perez' },
-          { orderId: 'ORD-2', expectedBankReference: 'REF1002', expectedAmountFiat: 4300, counterpartyRealName: 'Maria Gomez' }, // Mismatch
+          {
+            orderId: 'ORD-1',
+            expectedBankReference: 'REF1001',
+            expectedAmountFiat: 8500,
+            counterpartyRealName: 'Juan Perez',
+          },
+          {
+            orderId: 'ORD-2',
+            expectedBankReference: 'REF1002',
+            expectedAmountFiat: 4300,
+            counterpartyRealName: 'Maria Gomez',
+          }, // Mismatch
         ],
       });
 

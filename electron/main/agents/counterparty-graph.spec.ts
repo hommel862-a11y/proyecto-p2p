@@ -15,7 +15,9 @@ describe('CounterpartyReputationGraph (Pilar 3: Grafo Semántico de Reputación)
       db: {
         exec: vi.fn(),
         prepare: vi.fn((sql: string) => {
-          if (sql.includes('SELECT * FROM counterparty_profiles WHERE document_id = ? OR alias = ?')) {
+          if (
+            sql.includes('SELECT * FROM counterparty_profiles WHERE document_id = ? OR alias = ?')
+          ) {
             return {
               get: vi.fn((doc: string, alias: string) => {
                 for (const p of inMemoryProfiles.values()) {
@@ -34,26 +36,44 @@ describe('CounterpartyReputationGraph (Pilar 3: Grafo Semántico de Reputación)
           }
           if (sql.includes('INSERT INTO counterparty_profiles')) {
             return {
-              run: vi.fn((id, alias, realName, doc, phone, bank, rep, score, trades, incidents, vol, notes, last, cr, up) => {
-                const record = {
+              run: vi.fn(
+                (
                   id,
                   alias,
-                  real_name: realName,
-                  document_id: doc,
+                  realName,
+                  doc,
                   phone,
-                  bank_accounts_json: bank,
-                  reputation: rep,
-                  risk_score: score,
-                  successful_trades_count: trades,
-                  triangulation_incidents_count: incidents,
-                  total_volume_usdt: vol,
+                  bank,
+                  rep,
+                  score,
+                  trades,
+                  incidents,
+                  vol,
                   notes,
-                  last_trade_timestamp: last,
-                  created_at: cr,
-                  updated_at: up,
-                };
-                inMemoryProfiles.set(alias, record);
-              }),
+                  last,
+                  cr,
+                  up,
+                ) => {
+                  const record = {
+                    id,
+                    alias,
+                    real_name: realName,
+                    document_id: doc,
+                    phone,
+                    bank_accounts_json: bank,
+                    reputation: rep,
+                    risk_score: score,
+                    successful_trades_count: trades,
+                    triangulation_incidents_count: incidents,
+                    total_volume_usdt: vol,
+                    notes,
+                    last_trade_timestamp: last,
+                    created_at: cr,
+                    updated_at: up,
+                  };
+                  inMemoryProfiles.set(alias, record);
+                },
+              ),
             };
           }
           if (sql.includes('SELECT * FROM counterparty_profiles ORDER BY updated_at DESC')) {

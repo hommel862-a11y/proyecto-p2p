@@ -27,14 +27,19 @@ test('result section shows capital and annual income with default inputs', async
   await expect(result.locator('dt', { hasText: 'Capital requerido' })).toBeVisible();
   await expect(result.locator('dt', { hasText: 'Capital en Bs' })).toBeVisible();
   // With defaults: annual = 20 * 365 = 7300, capital = 7300 / 0.10 = 73000
-  await expect(result.locator('dd', { hasText: 'Capital requerido' }).locator('..').locator('dd').last()).toContainText('USDT');
+  await expect(
+    result.locator('dd', { hasText: 'Capital requerido' }).locator('..').locator('dd').last(),
+  ).toContainText('USDT');
 });
 
 test('changing target USD updates calculated capital', async ({ page }) => {
   await goToIncomeCalculator(page);
 
   await page.getByLabel('Meta diaria (USD)').fill('50');
-  const capitalDd = page.locator('dt', { hasText: 'Capital requerido' }).locator('..').locator('dd');
+  const capitalDd = page
+    .locator('dt', { hasText: 'Capital requerido' })
+    .locator('..')
+    .locator('dd');
   // With target=50, apr=10%, days=365: capital = (50*365)/0.10 = 182500
   await expect(capitalDd).toContainText('182.500');
 });
@@ -43,7 +48,10 @@ test('changing APR updates calculated capital', async ({ page }) => {
   await goToIncomeCalculator(page);
 
   await page.getByLabel('Tasa anual (APR) (%)').fill('20');
-  const capitalDd = page.locator('dt', { hasText: 'Capital requerido' }).locator('..').locator('dd');
+  const capitalDd = page
+    .locator('dt', { hasText: 'Capital requerido' })
+    .locator('..')
+    .locator('dd');
   // With target=20, apr=20%, days=365: capital = (20*365)/0.20 = 36500
   await expect(capitalDd).toContainText('36.500');
 });
@@ -57,7 +65,9 @@ test('VES conversion shows non-zero values', async ({ page }) => {
   await expect(capitalBs).not.toHaveText('0,00 Bs');
 });
 
-test('comparison table renders with rows for each target and columns for each APR band', async ({ page }) => {
+test('comparison table renders with rows for each target and columns for each APR band', async ({
+  page,
+}) => {
   await goToIncomeCalculator(page);
 
   await expect(page.locator('.section-eyebrow', { hasText: 'Tabla Comparativa' })).toBeVisible();

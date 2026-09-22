@@ -56,11 +56,7 @@ function last7DayKeys(): string[] {
 
 /** VES moved on the leg, preferring the recorded value, falling back to price×USDT. */
 function vesLeg(o: Operation): number {
-  return o.type === 'sell'
-    ? o.vesAmount > 0
-      ? o.vesAmount
-      : o.usdtAmount * o.price
-    : o.vesAmount;
+  return o.type === 'sell' ? (o.vesAmount > 0 ? o.vesAmount : o.usdtAmount * o.price) : o.vesAmount;
 }
 
 /**

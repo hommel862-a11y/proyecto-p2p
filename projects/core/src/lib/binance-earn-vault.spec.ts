@@ -141,9 +141,11 @@ describe('Binance Earn Vault & Passive Treasury Optimization', () => {
       expect(result.flexibleBufferUsdt).toBeGreaterThanOrEqual(19500); // 10000 * 1.5 * 1.3
       expect(result.locked30dUsdt + result.locked60dUsdt).toBeCloseTo(
         result.totalTreasuryUsdt - result.flexibleBufferUsdt,
-        1
+        1,
       );
-      expect(result.blendedPortfolioAprPct).toBeGreaterThan(result.flexibleBufferUsdt > 0 ? 2.5 : 0);
+      expect(result.blendedPortfolioAprPct).toBeGreaterThan(
+        result.flexibleBufferUsdt > 0 ? 2.5 : 0,
+      );
       expect(result.liquidityCoverageRatio).toBeGreaterThan(1.0);
     });
   });

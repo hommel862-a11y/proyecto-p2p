@@ -7,7 +7,8 @@
 import { type BinanceOfferSummary } from './binance-p2p';
 import { computeVolumeWeightedPrice, type JohnsonDepthOptions } from './johnson-depth';
 
-export type SpoofCategory = 'LEGITIMATE' | 'SUSPICIOUS_HIGH_TURNOVER' | 'PHANTOM_LIQUIDITY' | 'SPOOF_BAIT';
+export type SpoofCategory =
+  'LEGITIMATE' | 'SUSPICIOUS_HIGH_TURNOVER' | 'PHANTOM_LIQUIDITY' | 'SPOOF_BAIT';
 
 export interface TrackedOrderState {
   advNo: string;
@@ -72,7 +73,11 @@ export class OrderPersistenceTracker {
   /**
    * Ingesta un snapshot del libro de órdenes y actualiza tiempos de persistencia.
    */
-  ingestSnapshot(offers: readonly BinanceOfferSummary[], side: 'BUY' | 'SELL', nowMs = Date.now()): void {
+  ingestSnapshot(
+    offers: readonly BinanceOfferSummary[],
+    side: 'BUY' | 'SELL',
+    nowMs = Date.now(),
+  ): void {
     const currentAdvNos = new Set<string>();
 
     for (const offer of offers) {
@@ -158,11 +163,17 @@ export class OrderPersistenceTracker {
 
       const isDisappeared = !!order.disappearedAtMs;
       const executedTrades = order.lastOrderCount - order.orderCount;
-      const volumeRatio = medianVolumeVes > 0 ? order.maxVes / medianVolumeVes : order.maxVes / avgVolumeVes;
+      const volumeRatio =
+        medianVolumeVes > 0 ? order.maxVes / medianVolumeVes : order.maxVes / avgVolumeVes;
 
       // 1. Detección de Liquidez Fantasma (Phantom Liquidity)
       // Muro de volumen masivo (> 4x mediana o > 400,000 VES) que desaparece rápidamente sin completar órdenes
-      if ((volumeRatio >= 4.0 || order.maxVes >= 400000) && isDisappeared && activeAgeSec <= 150 && executedTrades === 0) {
+      if (
+        (volumeRatio >= 4.0 || order.maxVes >= 400000) &&
+        isDisappeared &&
+        activeAgeSec <= 150 &&
+        executedTrades === 0
+      ) {
         classified.push({
           advNo: order.advNo,
           merchantName: order.merchantName,
@@ -332,7 +343,9 @@ export interface AvellanedaStoikovResult {
  * Calcula el precio de reserva (indiferencia) y las cotizaciones óptimas de compra/venta
  * bajo la teoría clásica de microestructura de Avellaneda-Stoikov (2008).
  */
-export function computeAvellanedaStoikovQuotes(input: AvellanedaStoikovInput): AvellanedaStoikovResult {
+export function computeAvellanedaStoikovQuotes(
+  input: AvellanedaStoikovInput,
+): AvellanedaStoikovResult {
   const {
     midPrice,
     currentInventoryUsdt,
@@ -352,7 +365,9 @@ export function computeAvellanedaStoikovQuotes(input: AvellanedaStoikovInput): A
   const reservationPrice = midPrice - inventoryDiscount;
 
   // Optimal spread: s = (2 / gamma) * ln(1 + gamma / kappa)
-  const baseSpread = (2 / riskAversionGamma) * Math.log(1 + (riskAversionGamma / Math.max(0.01, orderbookLiquidityDensityK)));
+  const baseSpread =
+    (2 / riskAversionGamma) *
+    Math.log(1 + riskAversionGamma / Math.max(0.01, orderbookLiquidityDensityK));
   const optimalHalfSpread = (baseSpread * midPrice) / 200; // Ajustado a porcentaje de precio
 
   const optimalBidPrice = Math.round((reservationPrice - optimalHalfSpread) * 100) / 100;
@@ -393,7 +408,8 @@ export interface VpinAnalysisResult {
   vpinScore: number; // 0.0 a 1.0 (Probabilidad de flujo tóxico/informado)
   toxicBucketCount: number;
   totalVolumeEvaluated: number;
-  toxicityClassification: 'LOW_RETAIL' | 'MODERATE_FLOW' | 'HIGH_INFORMED_TOXICITY' | 'EXTREME_ADVERSE_SELECTION';
+  toxicityClassification:
+    'LOW_RETAIL' | 'MODERATE_FLOW' | 'HIGH_INFORMED_TOXICITY' | 'EXTREME_ADVERSE_SELECTION';
   recommendedProtectiveSpreadMultiplier: number;
   warningNotice?: string;
 }
@@ -427,9 +443,8 @@ export function calculateVpinMetric(input: VpinAnalysisInput): VpinAnalysisResul
     }
   }
 
-  const vpinScore = totalVolume > 0
-    ? Math.round((totalAbsoluteOrderImbalance / totalVolume) * 1000) / 1000
-    : 0.1;
+  const vpinScore =
+    totalVolume > 0 ? Math.round((totalAbsoluteOrderImbalance / totalVolume) * 1000) / 1000 : 0.1;
 
   let toxicityClassification: VpinAnalysisResult['toxicityClassification'] = 'LOW_RETAIL';
   let multiplier = 1.0;
@@ -438,12 +453,14 @@ export function calculateVpinMetric(input: VpinAnalysisInput): VpinAnalysisResul
   if (vpinScore >= 0.45) {
     toxicityClassification = 'EXTREME_ADVERSE_SELECTION';
     multiplier = 2.2;
-    warningNotice = 'ALERTA CRÍTICA: Flujo predominantemente informado/institucional. Alto riesgo de salto cambiario inminente. Ampliar spread Maker o congelar órdenes pasivas.';
-  } else if (vpinScore >= 0.30) {
+    warningNotice =
+      'ALERTA CRÍTICA: Flujo predominantemente informado/institucional. Alto riesgo de salto cambiario inminente. Ampliar spread Maker o congelar órdenes pasivas.';
+  } else if (vpinScore >= 0.3) {
     toxicityClassification = 'HIGH_INFORMED_TOXICITY';
     multiplier = 1.6;
-    warningNotice = 'PRECAUCIÓN: Desbalance marcado en la dirección de órdenes. Los tomadores tienen urgencia de salida.';
-  } else if (vpinScore >= 0.20) {
+    warningNotice =
+      'PRECAUCIÓN: Desbalance marcado en la dirección de órdenes. Los tomadores tienen urgencia de salida.';
+  } else if (vpinScore >= 0.2) {
     toxicityClassification = 'MODERATE_FLOW';
     multiplier = 1.25;
   }
@@ -490,22 +507,22 @@ export interface InstitutionalSlicingResult {
  * Divide un ticket institucional en micro-lotes temporales (TWAP/VWAP) para minimizar
  * el impacto de mercado y prevenir el front-running en el libro P2P.
  */
-export function computeOrderSlicingPlan(input: InstitutionalSlicingInput): InstitutionalSlicingResult {
+export function computeOrderSlicingPlan(
+  input: InstitutionalSlicingInput,
+): InstitutionalSlicingResult {
   const {
     totalAmountUsdt,
     executionDurationMinutes,
     estimatedMarketVolumePerHourUsdt,
     currentMidPrice,
-    maxMarketParticipationPct = 15,
     algorithm = 'TWAP',
   } = input;
 
   const durationHours = executionDurationMinutes / 60;
   const projectedTotalMarketVolume = estimatedMarketVolumePerHourUsdt * durationHours;
 
-  const participationRate = projectedTotalMarketVolume > 0
-    ? (totalAmountUsdt / projectedTotalMarketVolume) * 100
-    : 100;
+  const participationRate =
+    projectedTotalMarketVolume > 0 ? (totalAmountUsdt / projectedTotalMarketVolume) * 100 : 100;
 
   const targetSliceSize = Math.max(300, Math.min(2500, totalAmountUsdt / 5));
   const rawSlices = Math.ceil(totalAmountUsdt / targetSliceSize);
@@ -531,7 +548,12 @@ export function computeOrderSlicingPlan(input: InstitutionalSlicingInput): Insti
       sliceAmountUsdt: sliceUsdt,
       sliceAmountVes: sliceVes,
       targetPrice: currentMidPrice,
-      participationRatePct: Math.round((sliceUsdt / Math.max(1, (estimatedMarketVolumePerHourUsdt / 60) * sliceIntervalMinutes)) * 1000) / 10,
+      participationRatePct:
+        Math.round(
+          (sliceUsdt /
+            Math.max(1, (estimatedMarketVolumePerHourUsdt / 60) * sliceIntervalMinutes)) *
+            1000,
+        ) / 10,
     });
   }
 
@@ -562,7 +584,8 @@ export interface MarkovFillProbabilityResult {
   effectiveQueueAheadUsdt: number;
   fillProbabilityInHorizonPct: number;
   expectedFillDurationMinutes: number;
-  urgencyState: 'INSTANT_FILL_PROBABLE' | 'HEALTHY_EXECUTION' | 'CONGESTED_QUEUE' | 'DEAD_ORDER_ZONE';
+  urgencyState:
+    'INSTANT_FILL_PROBABLE' | 'HEALTHY_EXECUTION' | 'CONGESTED_QUEUE' | 'DEAD_ORDER_ZONE';
   recommendedPricingAdjustment: number;
 }
 
@@ -570,7 +593,9 @@ export interface MarkovFillProbabilityResult {
  * Estima la probabilidad estocástica de llenado de una orden pasiva (Maker)
  * mediante modelado de colas y procesos markovianos de absorción de liquidez.
  */
-export function calculateMakerFillProbabilityMarkov(input: MarkovFillProbabilityInput): MarkovFillProbabilityResult {
+export function calculateMakerFillProbabilityMarkov(
+  input: MarkovFillProbabilityInput,
+): MarkovFillProbabilityResult {
   const {
     queuePositionIndex,
     queueAheadVolumeUsdt,
@@ -594,7 +619,10 @@ export function calculateMakerFillProbabilityMarkov(input: MarkovFillProbability
 
   if (queuePositionIndex === 0 || fillProbabilityInHorizonPct >= 85) {
     urgencyState = 'INSTANT_FILL_PROBABLE';
-  } else if (fillProbabilityInHorizonPct < 30 || expectedFillDurationMinutes > targetHorizonMinutes * 2) {
+  } else if (
+    fillProbabilityInHorizonPct < 30 ||
+    expectedFillDurationMinutes > targetHorizonMinutes * 2
+  ) {
     urgencyState = 'DEAD_ORDER_ZONE';
     recommendedPricingAdjustment = 0.05;
   } else if (fillProbabilityInHorizonPct < 55) {
@@ -612,4 +640,3 @@ export function calculateMakerFillProbabilityMarkov(input: MarkovFillProbability
     recommendedPricingAdjustment,
   };
 }
-

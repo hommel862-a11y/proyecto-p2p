@@ -40,13 +40,13 @@ export interface SocialContentFunnelResult {
 
 export interface CompetitorBenchmarkInput {
   ourCurrentPrice: number;
-  competitorOffers: Array<{
+  competitorOffers: {
     operatorName: string;
     price: number;
     completionRatePct: number;
     totalOrdersCount: number;
     paymentMethods: string[];
-  }>;
+  }[];
   targetSide: 'BUY' | 'SELL';
   ourMinMarginPct: number;
 }
@@ -84,30 +84,30 @@ export interface WorkspaceSyncResult {
 
 export interface DesktopRpaInput {
   bankName: string;
-  rawBankStatements: Array<{
+  rawBankStatements: {
     referenceNumber: string;
     amount: number;
     beneficiaryOrPayer: string;
     timestamp: string;
-  }>;
-  registeredP2pOrders: Array<{
+  }[];
+  registeredP2pOrders: {
     orderId: string;
     expectedBankReference: string;
     expectedAmountFiat: number;
     counterpartyRealName: string;
-  }>;
+  }[];
 }
 
 export interface DesktopRpaResult {
   totalStatementsParsed: number;
   matchedTransactionsCount: number;
   unmatchedOrphanDepositsCount: number;
-  discrepanciesDetected: Array<{
+  discrepanciesDetected: {
     referenceNumber: string;
     issue: 'AMOUNT_MISMATCH' | 'NAME_MISMATCH' | 'DUPLICATE_REFERENCE' | 'UNREGISTERED_INBOUND';
     bankAmount: number;
     orderAmount?: number;
-  }>;
+  }[];
   autoReconciliationRatePct: number;
   status: 'RECONCILIATION_BALANCED' | 'DISCREPANCIES_FLAGGED';
 }
@@ -128,7 +128,8 @@ export interface ServiceHealthResult {
 }
 
 export interface IncidentTriageInput {
-  incidentType: 'BANK_ACCOUNT_HOLD' | 'THIRD_PARTY_PAYMENT' | 'PARTIAL_PAYMENT_FRAUD' | 'APP_LATENCY_DELAY';
+  incidentType:
+    'BANK_ACCOUNT_HOLD' | 'THIRD_PARTY_PAYMENT' | 'PARTIAL_PAYMENT_FRAUD' | 'APP_LATENCY_DELAY';
   amountAtRiskUsdt: number;
   orderId?: string;
   counterpartyAlias?: string;
@@ -193,14 +194,15 @@ export interface CashFlowForecastResult {
   runwayOperationalDays: number;
   rebalanceRequired: boolean;
   recommendedUsdtReorderAmount: number;
-  treasuryHealthVerdict: 'EXCELLENT_LIQUIDITY' | 'NEEDS_FIAT_REBALANCING' | 'CRITICAL_RUNWAY_DEFICIT';
+  treasuryHealthVerdict:
+    'EXCELLENT_LIQUIDITY' | 'NEEDS_FIAT_REBALANCING' | 'CRITICAL_RUNWAY_DEFICIT';
 }
 
 // ---------------------------------------------------------------------------
 // 1. Qualify Direct Lead and Close
 // ---------------------------------------------------------------------------
 export function qualifyDirectLeadAndClose(
-  input: DirectLeadQualificationInput
+  input: DirectLeadQualificationInput,
 ): DirectLeadQualificationResult {
   const vol = Math.max(0, input.estimatedWeeklyVolumeUsdt);
   const rate = Math.max(0.01, input.currentParallelRate);
@@ -214,7 +216,7 @@ export function qualifyDirectLeadAndClose(
   else score -= 15;
 
   let leadTier: 'VIP_COMMERCIAL' | 'RETAIL_TRADER' | 'HIGH_RISK_SUSPECT';
-  let recommendedNetMarginBps = 120;
+  let recommendedNetMarginBps: number;
   let actionProtocol: 'ONBOARD_IMMEDIATELY' | 'REQUEST_IDENTITY_VERIFICATION' | 'DECLINE_HIGH_RISK';
 
   if (score >= 80) {
@@ -233,19 +235,22 @@ export function qualifyDirectLeadAndClose(
 
   const quotedRate = Number((rate * (1 + recommendedNetMarginBps / 10000)).toFixed(2));
 
-  let objectionHandlingScript = '';
+  let objectionHandlingScript: string;
   switch (input.primaryConcern) {
     case 'SECURITY':
-      objectionHandlingScript = 'Entiendo perfectamente tu prioridad. Operamos como mesa institucional con cuentas jurídicas propias verificadas, sin intermediarios de terceros ni triangulaciones que pongan en riesgo tus cuentas bancarias.';
+      objectionHandlingScript =
+        'Entiendo perfectamente tu prioridad. Operamos como mesa institucional con cuentas jurídicas propias verificadas, sin intermediarios de terceros ni triangulaciones que pongan en riesgo tus cuentas bancarias.';
       break;
     case 'SPEED':
-      objectionHandlingScript = 'Liquidamos de inmediato vía Banesco y Pago Móvil interbancario en menos de 4 minutos una vez confirmados los fondos.';
+      objectionHandlingScript =
+        'Liquidamos de inmediato vía Banesco y Pago Móvil interbancario en menos de 4 minutos una vez confirmados los fondos.';
       break;
     case 'PRICE':
       objectionHandlingScript = `Para tu volumen proyectado de $${vol} USDT semanales te ofrecemos tasa preferencial fija de ${quotedRate} VES, garantizándote liquidez completa en un solo ticket sin fragmentación.`;
       break;
     default:
-      objectionHandlingScript = 'Contamos con límites transaccionales corporativos ampliados para procesar tu orden en una única operación limpia.';
+      objectionHandlingScript =
+        'Contamos con límites transaccionales corporativos ampliados para procesar tu orden en una única operación limpia.';
   }
 
   return {
@@ -262,13 +267,13 @@ export function qualifyDirectLeadAndClose(
 // 2. Generate Social Traffic Funnel
 // ---------------------------------------------------------------------------
 export function generateSocialTrafficFunnel(
-  input: SocialContentFunnelInput
+  input: SocialContentFunnelInput,
 ): SocialContentFunnelResult {
   const gap = Number(input.currentBcvGapPct.toFixed(1));
-  let hook = '';
-  let body = '';
-  let cta = '';
-  let targetConversion = 2.5;
+  let hook: string;
+  let body: string;
+  let cta: string;
+  let targetConversion: number;
 
   if (input.educationalTheme === 'INFLATION_HEDGE') {
     hook = `⚠️ ¿Por qué retener bolívares más de 45 minutos te cuesta hasta un 8% semanal?`;
@@ -291,7 +296,8 @@ export function generateSocialTrafficFunnel(
     hookHeadline: hook,
     educationalBody: body,
     callToActionCta: cta,
-    recommendedPostingWindow: input.platform === 'TIKTOK' ? '18:00 - 21:00 UTC-4' : '11:30 - 14:00 UTC-4',
+    recommendedPostingWindow:
+      input.platform === 'TIKTOK' ? '18:00 - 21:00 UTC-4' : '11:30 - 14:00 UTC-4',
     targetConversionRatePct: targetConversion,
   };
 }
@@ -300,7 +306,7 @@ export function generateSocialTrafficFunnel(
 // 3. Benchmark Competitor Market Intelligence
 // ---------------------------------------------------------------------------
 export function benchmarkCompetitorMarketIntelligence(
-  input: CompetitorBenchmarkInput
+  input: CompetitorBenchmarkInput,
 ): CompetitorBenchmarkResult {
   const offers = input.competitorOffers;
   if (!offers || offers.length === 0) {
@@ -315,7 +321,7 @@ export function benchmarkCompetitorMarketIntelligence(
   }
 
   const sorted = [...offers].sort((a, b) =>
-    input.targetSide === 'BUY' ? b.price - a.price : a.price - b.price
+    input.targetSide === 'BUY' ? b.price - a.price : a.price - b.price,
   );
 
   const prices = sorted.map((o) => o.price);
@@ -327,9 +333,10 @@ export function benchmarkCompetitorMarketIntelligence(
 
   let rank = 1;
   for (const c of sorted) {
-    const isAhead = input.targetSide === 'BUY'
-      ? c.price > input.ourCurrentPrice
-      : c.price < input.ourCurrentPrice;
+    const isAhead =
+      input.targetSide === 'BUY'
+        ? c.price > input.ourCurrentPrice
+        : c.price < input.ourCurrentPrice;
     if (isAhead) rank++;
   }
 
@@ -365,15 +372,13 @@ export function benchmarkCompetitorMarketIntelligence(
 // ---------------------------------------------------------------------------
 // 4. Orchestrate Workspace Sync
 // ---------------------------------------------------------------------------
-export function orchestrateWorkspaceSync(
-  input: WorkspaceSyncInput
-): WorkspaceSyncResult {
+export function orchestrateWorkspaceSync(input: WorkspaceSyncInput): WorkspaceSyncResult {
   const priorityColor =
     input.urgencyLevel === 'CRITICAL'
       ? '#FF453A'
       : input.urgencyLevel === 'HIGH'
-      ? '#FF9F0A'
-      : '#30D158';
+        ? '#FF9F0A'
+        : '#30D158';
 
   const notionProps: Record<string, string> = {
     Title: `[${input.entityType}] ${input.referenceId}`,
@@ -383,7 +388,11 @@ export function orchestrateWorkspaceSync(
     Timestamp: new Date().toISOString(),
   };
 
-  const clickUpTags = [input.entityType.toLowerCase(), input.urgencyLevel.toLowerCase(), 'p2p-desk'];
+  const clickUpTags = [
+    input.entityType.toLowerCase(),
+    input.urgencyLevel.toLowerCase(),
+    'p2p-desk',
+  ];
   const trelloTitle = `🚨 [${input.urgencyLevel}] ${input.entityType}: ${input.referenceId}`;
 
   return {
@@ -406,9 +415,7 @@ export function orchestrateWorkspaceSync(
 // ---------------------------------------------------------------------------
 // 5. Execute Desktop RPA Reconciliation
 // ---------------------------------------------------------------------------
-export function executeDesktopRpaReconciliation(
-  input: DesktopRpaInput
-): DesktopRpaResult {
+export function executeDesktopRpaReconciliation(input: DesktopRpaInput): DesktopRpaResult {
   const statements = input.rawBankStatements || [];
   const orders = input.registeredP2pOrders || [];
 
@@ -463,9 +470,7 @@ export function executeDesktopRpaReconciliation(
 // ---------------------------------------------------------------------------
 // 6. Monitor Service Health and Fallback
 // ---------------------------------------------------------------------------
-export function monitorServiceHealthAndFallback(
-  input: ServiceHealthInput
-): ServiceHealthResult {
+export function monitorServiceHealthAndFallback(input: ServiceHealthInput): ServiceHealthResult {
   let score = 100;
   if (input.webSocketLatencyMs > 1000) score -= 25;
   else if (input.webSocketLatencyMs > 400) score -= 10;
@@ -479,8 +484,8 @@ export function monitorServiceHealthAndFallback(
   score = Math.max(0, Math.min(100, score));
 
   let systemStatus: 'OPTIMAL' | 'DEGRADED' | 'CIRCUIT_BREAKER_TRIGGERED';
-  let fallback = false;
-  let advice = '';
+  let fallback: boolean;
+  let advice: string;
 
   if (score >= 80) {
     systemStatus = 'OPTIMAL';
@@ -489,11 +494,13 @@ export function monitorServiceHealthAndFallback(
   } else if (score >= 50) {
     systemStatus = 'DEGRADED';
     fallback = false;
-    advice = 'Latencia elevada detectada en feeds de precios o APIs bancarias. Reducir ritmo de rotación.';
+    advice =
+      'Latencia elevada detectada en feeds de precios o APIs bancarias. Reducir ritmo de rotación.';
   } else {
     systemStatus = 'CIRCUIT_BREAKER_TRIGGERED';
     fallback = true;
-    advice = 'Degradación crítica del sistema. Circuit Breaker activado preventivamente para evitar descalces.';
+    advice =
+      'Degradación crítica del sistema. Circuit Breaker activado preventivamente para evitar descalces.';
   }
 
   return {
@@ -508,13 +515,11 @@ export function monitorServiceHealthAndFallback(
 // ---------------------------------------------------------------------------
 // 7. Triage Incident and Escalate
 // ---------------------------------------------------------------------------
-export function triageIncidentAndEscalate(
-  input: IncidentTriageInput
-): IncidentTriageResult {
+export function triageIncidentAndEscalate(input: IncidentTriageInput): IncidentTriageResult {
   let severity: 'P1_CRITICAL' | 'P2_HIGH' | 'P3_MODERATE' | 'P4_LOW';
-  let slaMinutes = 15;
-  let requiresHuman = true;
-  let protocol = '';
+  let slaMinutes: number;
+  let requiresHuman: boolean;
+  let protocol: string;
   const remediation: string[] = [];
 
   switch (input.incidentType) {
@@ -522,7 +527,8 @@ export function triageIncidentAndEscalate(
       severity = 'P1_CRITICAL';
       slaMinutes = 10;
       requiresHuman = true;
-      protocol = 'PROTOCOLO_DEFENSA_BANCARIA_P1: Pausar inmediatamente anuncios vinculados a la cuenta afectada y solicitar estado de cuenta formal al banco.';
+      protocol =
+        'PROTOCOLO_DEFENSA_BANCARIA_P1: Pausar inmediatamente anuncios vinculados a la cuenta afectada y solicitar estado de cuenta formal al banco.';
       remediation.push('Desactivar cuenta bancaria en el selector de métodos.');
       remediation.push('Derivar órdenes activas a cuenta de contingencia pre-autorizada.');
       remediation.push('Generar export de comprobantes y órdenes asociadas.');
@@ -532,8 +538,11 @@ export function triageIncidentAndEscalate(
       severity = 'P2_HIGH';
       slaMinutes = 20;
       requiresHuman = true;
-      protocol = 'PROTOCOLO_PAGO_TERCERO_P2: Retención preventiva de criptoactivos. Prohibido liberar fondos.';
-      remediation.push('Solicitar en el chat que el titular original confirme identidad o proceda con la reversión inmediata.');
+      protocol =
+        'PROTOCOLO_PAGO_TERCERO_P2: Retención preventiva de criptoactivos. Prohibido liberar fondos.';
+      remediation.push(
+        'Solicitar en el chat que el titular original confirme identidad o proceda con la reversión inmediata.',
+      );
       remediation.push('No liberar USDT bajo ninguna circunstancia sin autorización del CSO.');
       remediation.push('Preparar expediente en Dispute Copilot con captura de comprobante.');
       break;
@@ -567,24 +576,28 @@ export function triageIncidentAndEscalate(
 // ---------------------------------------------------------------------------
 // 8. Audit SOP Compliance Enforcement
 // ---------------------------------------------------------------------------
-export function auditSopComplianceEnforcement(
-  input: SopAuditInput
-): SopAuditResult {
+export function auditSopComplianceEnforcement(input: SopAuditInput): SopAuditResult {
   const violations: string[] = [];
   let score = 100;
 
   if (input.fundsReleasedBeforeBankVerification) {
-    violations.push('VIOLACIÓN GRAVE: Criptoactivos liberados sin confirmación directa en cuenta bancaria (Saldo Disponible).');
+    violations.push(
+      'VIOLACIÓN GRAVE: Criptoactivos liberados sin confirmación directa en cuenta bancaria (Saldo Disponible).',
+    );
     score -= 60;
   }
 
   if (!input.accountHolderMatchesDocument) {
-    violations.push('VIOLACIÓN CRÍTICA: Orden procesada con titular bancario no coincidente con el documento verificado en Binance.');
+    violations.push(
+      'VIOLACIÓN CRÍTICA: Orden procesada con titular bancario no coincidente con el documento verificado en Binance.',
+    );
     score -= 35;
   }
 
   if (!input.bankBalanceConfirmedInAvailableFunds) {
-    violations.push('VIOLACIÓN DE RIESGO: Se aceptó saldo en tránsito o retenido sin confirmar saldo disponible líquido.');
+    violations.push(
+      'VIOLACIÓN DE RIESGO: Se aceptó saldo en tránsito o retenido sin confirmar saldo disponible líquido.',
+    );
     score -= 20;
   }
 
@@ -617,9 +630,7 @@ export function auditSopComplianceEnforcement(
 // ---------------------------------------------------------------------------
 // 9. Sync Google Sheets Live Ledger
 // ---------------------------------------------------------------------------
-export function syncGoogleSheetsLiveLedger(
-  input: GoogleSheetsSyncInput
-): GoogleSheetsSyncResult {
+export function syncGoogleSheetsLiveLedger(input: GoogleSheetsSyncInput): GoogleSheetsSyncResult {
   const grossProfitUsdt =
     input.tradeType === 'SELL'
       ? input.cryptoAmountUsdt * (input.exchangeRate / (input.exchangeRate * 0.985) - 1)
@@ -662,7 +673,7 @@ export function syncGoogleSheetsLiveLedger(
 // 10. Forecast Cash Flow and Reconciliation
 // ---------------------------------------------------------------------------
 export function forecastCashFlowAndReconciliation(
-  input: CashFlowForecastInput
+  input: CashFlowForecastInput,
 ): CashFlowForecastResult {
   const fiat = Math.max(0, input.fiatBankBalancesTotalUsdtEquiv);
   const crypto = Math.max(0, input.cryptoExchangeBalancesUsdt);
@@ -674,8 +685,8 @@ export function forecastCashFlowAndReconciliation(
   const runway = burnDaily > 0 ? total / burnDaily : 999;
 
   let verdict: 'EXCELLENT_LIQUIDITY' | 'NEEDS_FIAT_REBALANCING' | 'CRITICAL_RUNWAY_DEFICIT';
-  let rebalance = false;
-  let reorderUsdt = 0;
+  let rebalance: boolean;
+  let reorderUsdt: number;
 
   if (fiatRatio > 35) {
     verdict = 'NEEDS_FIAT_REBALANCING';

@@ -5,21 +5,24 @@ import type { P2PDatabaseService } from '../db/database';
 describe('ProactiveEventEngine (Event-Driven Proactive IA)', () => {
   let engine: ProactiveEventEngine;
   let mockDb: any;
-  let sentEvents: Array<{ channel: string; payload: any }>;
+  let sentEvents: { channel: string; payload: any }[];
 
   beforeEach(() => {
     sentEvents = [];
     mockDb = {
       saveEngramObservation: vi.fn().mockReturnValue(1),
     };
-    engine = new ProactiveEventEngine(mockDb as unknown as P2PDatabaseService, (channel, payload) => {
-      sentEvents.push({ channel, payload });
-    });
+    engine = new ProactiveEventEngine(
+      mockDb as unknown as P2PDatabaseService,
+      (channel, payload) => {
+        sentEvents.push({ channel, payload });
+      },
+    );
   });
 
   describe('detectUsdtDepegParity', () => {
     it('returns PEGGED when spot price is within ±0.2%', () => {
-      const res = detectUsdtDepegParity(1.000, 0.2);
+      const res = detectUsdtDepegParity(1.0, 0.2);
       expect(res.isDepegged).toBe(false);
       expect(res.status).toBe('PEGGED');
     });
@@ -61,7 +64,7 @@ describe('ProactiveEventEngine (Event-Driven Proactive IA)', () => {
 
   describe('evaluateUsdtDepegEvent', () => {
     it('emits CRITICAL alert with autoKillswitch flag on severe depeg', () => {
-      const alert = engine.evaluateUsdtDepegEvent(0.980);
+      const alert = engine.evaluateUsdtDepegEvent(0.98);
       expect(alert).not.toBeNull();
       expect(alert?.type).toBe('USDT_DEPEG_WARNING');
       expect(alert?.severity).toBe('CRITICAL');
@@ -70,12 +73,12 @@ describe('ProactiveEventEngine (Event-Driven Proactive IA)', () => {
         expect.objectContaining({
           topicKey: 'risk/usdt-depeg',
           status: 'active',
-        })
+        }),
       );
     });
 
     it('does not emit alert when USDT is pegged normally', () => {
-      const alert = engine.evaluateUsdtDepegEvent(1.000);
+      const alert = engine.evaluateUsdtDepegEvent(1.0);
       expect(alert).toBeNull();
       expect(mockDb.saveEngramObservation).not.toHaveBeenCalled();
     });

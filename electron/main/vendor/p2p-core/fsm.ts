@@ -148,10 +148,7 @@ export function createFsmOrder(params: {
  * Pure transition reducer. Evaluates event against valid state transition rules,
  * updates context fields immutably, and appends to the audit trail.
  */
-export function transitionOrderFsm(
-  ctx: FsmOrderContext,
-  event: FsmEvent,
-): FsmTransitionResult {
+export function transitionOrderFsm(ctx: FsmOrderContext, event: FsmEvent): FsmTransitionResult {
   const allowedEvents = VALID_TRANSITIONS[ctx.currentState];
   const now = event.timestamp ?? Date.now();
 
@@ -173,7 +170,7 @@ export function transitionOrderFsm(
       nextState = 'PAYMENT_PENDING';
       break;
 
-    case 'BANK_PAYMENT_DETECTED':
+    case 'BANK_PAYMENT_DETECTED': {
       if (!event.payload?.bankPayment) {
         return {
           success: false,
@@ -184,11 +181,14 @@ export function transitionOrderFsm(
       // Validar coincidencia de monto aproximado o exacto con tolerancia de 0.01 VES
       const diff = Math.abs(event.payload.bankPayment.amountFiat - ctx.amountFiat);
       if (diff > 0.01) {
-        nextFlags.push(`AMOUNT_MISMATCH: esperado ${ctx.amountFiat}, recibido ${event.payload.bankPayment.amountFiat}`);
+        nextFlags.push(
+          `AMOUNT_MISMATCH: esperado ${ctx.amountFiat}, recibido ${event.payload.bankPayment.amountFiat}`,
+        );
       }
       nextBankPayment = event.payload.bankPayment;
       nextState = 'BANK_EVENT_RECEIVED';
       break;
+    }
 
     case 'IDENTITY_CHECK_PASSED':
       nextState = 'IDENTITY_VERIFIED';

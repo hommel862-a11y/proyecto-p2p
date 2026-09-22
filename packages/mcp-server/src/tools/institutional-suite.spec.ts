@@ -126,7 +126,7 @@ describe('Institutional 10 MCP Servers Tool Suite', () => {
   it('audit_and_risk_analytics executes forensic dossier evaluation', () => {
     const res = auditAndRiskAnalyticsTool.execute({
       timeframeDays: 7,
-      minSpreadThresholdPct: 0.50,
+      minSpreadThresholdPct: 0.5,
       focusArea: 'ALL',
       sampleEvents: [
         { timestamp: '2026-09-19T11:00:00Z', severity: 'error', action: 'RISK_ALERT' },

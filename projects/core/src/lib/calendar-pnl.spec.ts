@@ -114,10 +114,7 @@ describe('buildCalendarMonthView', () => {
     expect(day10?.pnlVes).toBe(470); // (30500-30)-30000 = 470
     expect(day10?.feesVes).toBe(30);
 
-    const controlOps: Operation[] = [
-      ops[0],
-      ops[1],
-    ];
+    const controlOps: Operation[] = [ops[0], ops[1]];
     const controlView = buildCalendarMonthView(controlOps, 2026, 9, 60.0);
     const controlDay10 = controlView.days.find((d) => d?.dayOfMonth === 10);
     expect(day10?.operationsCount).toBe(controlDay10?.operationsCount);

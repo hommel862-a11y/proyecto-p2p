@@ -1,7 +1,4 @@
-import {
-  InspectTxTaintInputSchema,
-  type InspectTxTaintInput,
-} from '../schemas/index.js';
+import { InspectTxTaintInputSchema, type InspectTxTaintInput } from '../schemas/index.js';
 
 export const inspectTxTaintTool = {
   name: 'inspect_tx_taint',

@@ -7,12 +7,12 @@
 
 export interface CompoundSimulationInput {
   initialCapitalUsdt: number;
-  netMarginPctPerCycle: number;      // e.g. 0.9 for 0.9% net per complete cycle
-  cyclesPerDay: number;              // e.g. 1.5 cycles/day
-  operationalDays: number;           // e.g. 30, 60, 90 or 180
-  reinvestmentRatePct: number;       // e.g. 100 for full compound, 50 for 50/50 harvest policy
-  dailyBankLimitVes?: number;        // Total aggregated daily transfer limit across registered accounts
-  referenceRateVes?: number;         // Current VES/USDT exchange rate for banking volume conversions
+  netMarginPctPerCycle: number; // e.g. 0.9 for 0.9% net per complete cycle
+  cyclesPerDay: number; // e.g. 1.5 cycles/day
+  operationalDays: number; // e.g. 30, 60, 90 or 180
+  reinvestmentRatePct: number; // e.g. 100 for full compound, 50 for 50/50 harvest policy
+  dailyBankLimitVes?: number; // Total aggregated daily transfer limit across registered accounts
+  referenceRateVes?: number; // Current VES/USDT exchange rate for banking volume conversions
 }
 
 export interface DailyProjectionPoint {
@@ -23,7 +23,7 @@ export interface DailyProjectionPoint {
   harvestedGainUsdt: number;
   endingCapitalUsdt: number;
   cumulativeHarvestedUsdt: number;
-  totalPortfolioValueUsdt: number;   // endingCapital + cumulativeHarvested
+  totalPortfolioValueUsdt: number; // endingCapital + cumulativeHarvested
   dailyVolumeVes: number;
   exceedsBankLimit: boolean;
 }

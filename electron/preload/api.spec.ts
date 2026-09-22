@@ -21,7 +21,7 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards fetchBinanceP2p to the p2p:fetch-binance channel', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       return Promise.resolve({ data: [] });
@@ -34,7 +34,7 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards fetchBybitP2p to the p2p:fetch-bybit-p2p channel', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       return Promise.resolve({ result: { items: [] } });
@@ -56,12 +56,16 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards fetchElDoradoQuote to the p2p:fetch-eldorado-quote channel', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       return Promise.resolve({ quote: { rate: 4380 } });
     });
-    const res = await api.fetchElDoradoQuote({ clientId: 'client', referralId: 'ref', direction: 'buy' });
+    const res = await api.fetchElDoradoQuote({
+      clientId: 'client',
+      referralId: 'ref',
+      direction: 'buy',
+    });
     expect(calls).toEqual([
       {
         channel: 'p2p:fetch-eldorado-quote',
@@ -72,7 +76,7 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards crypto methods to the allow-listed crypto:* channels', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       if (channel === 'crypto:is-available') return Promise.resolve(true);
@@ -96,7 +100,7 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards db and killswitch methods to their respective IPC channels', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       if (channel === 'p2p:db-save-order') return Promise.resolve(true);
@@ -114,7 +118,7 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards copilot methods to copilot:* IPC channels', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       if (channel === 'copilot:send-message') return Promise.resolve({ reply: 'ok' });
@@ -138,11 +142,13 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards screenPipe methods to p2p:screen-pipe-* channels', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
-      if (channel === 'p2p:screen-pipe-sources') return Promise.resolve([{ id: 'src-1', name: 'Screen 1' }]);
-      if (channel === 'p2p:screen-pipe-capture') return Promise.resolve({ dataUrl: 'data:...', timestampMs: 12345 });
+      if (channel === 'p2p:screen-pipe-sources')
+        return Promise.resolve([{ id: 'src-1', name: 'Screen 1' }]);
+      if (channel === 'p2p:screen-pipe-capture')
+        return Promise.resolve({ dataUrl: 'data:...', timestampMs: 12345 });
       return Promise.resolve(null);
     });
 
@@ -158,11 +164,16 @@ describe('Electron preload bridge (secure IPC)', () => {
   });
 
   it('forwards mcp methods to p2p:mcp-* channels', async () => {
-    const calls: Array<{ channel: string; args: unknown[] }> = [];
+    const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {
       calls.push({ channel, args });
       if (channel === 'p2p:mcp-status') {
-        return Promise.resolve({ servers: [], recentAuditLogs: [], totalCallsServed: 0, activeTransport: 'stdio' });
+        return Promise.resolve({
+          servers: [],
+          recentAuditLogs: [],
+          totalCallsServed: 0,
+          activeTransport: 'stdio',
+        });
       }
       if (channel === 'p2p:mcp-test-tool') {
         return Promise.resolve({ success: true, executionTimeMs: 12 });
@@ -171,19 +182,26 @@ describe('Electron preload bridge (secure IPC)', () => {
     });
 
     const status = await api.mcp.getStatus();
-    const testResult = await api.mcp.testTool('calculate_spread', { buyPrice: 100, sellPrice: 101 });
+    const testResult = await api.mcp.testTool('calculate_spread', {
+      buyPrice: 100,
+      sellPrice: 101,
+    });
 
     expect(status.activeTransport).toBe('stdio');
     expect(testResult.success).toBe(true);
     expect(calls).toEqual([
       { channel: 'p2p:mcp-status', args: [] },
-      { channel: 'p2p:mcp-test-tool', args: [{ toolName: 'calculate_spread', args: { buyPrice: 100, sellPrice: 101 } }] },
+      {
+        channel: 'p2p:mcp-test-tool',
+        args: [{ toolName: 'calculate_spread', args: { buyPrice: 100, sellPrice: 101 } }],
+      },
     ]);
   });
 
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
-    expect((ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:'))).toHaveLength(0);
+    expect(
+      (ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:')),
+    ).toHaveLength(0);
   });
 });
-

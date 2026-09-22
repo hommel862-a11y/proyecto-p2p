@@ -245,6 +245,8 @@ export function verifyBackupIntegrity<T>(backup: ChecksummedBackup<T>): Verifica
     isValid,
     expectedChecksum: backup.checksumSha256,
     actualChecksum: actualHash,
-    error: isValid ? undefined : 'Fallo de integridad: los datos fueron alterados o están corruptos',
+    error: isValid
+      ? undefined
+      : 'Fallo de integridad: los datos fueron alterados o están corruptos',
   };
 }

@@ -123,7 +123,8 @@ describe('Predictor del Ciclo de Intervención Cambiaria BCV', () => {
     });
 
     it('monitorFiatFlightAndDollarizationVelocity detects hyper-velocity repudiation when holding time drops', async () => {
-      const { monitorFiatFlightAndDollarizationVelocity } = await import('./bcv-intervention-predictor');
+      const { monitorFiatFlightAndDollarizationVelocity } =
+        await import('./bcv-intervention-predictor');
       const res = monitorFiatFlightAndDollarizationVelocity({
         averageVesHoldingMinutes: 15,
         merchantUsdtAcceptancePct: 85,
@@ -160,4 +161,3 @@ describe('Predictor del Ciclo de Intervención Cambiaria BCV', () => {
     });
   });
 });
-

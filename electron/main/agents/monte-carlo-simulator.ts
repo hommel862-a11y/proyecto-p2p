@@ -6,7 +6,10 @@
  */
 
 import type { BinanceOfferSummary } from '../vendor/p2p-core/binance-p2p';
-import { simulateTradeImpact, type TradeImpactSimulationResult } from '../vendor/p2p-core/trade-impact-simulator';
+import {
+  simulateTradeImpact,
+  type TradeImpactSimulationResult,
+} from '../vendor/p2p-core/trade-impact-simulator';
 
 export interface MonteCarloSimulationConfig {
   iterations: number; // e.g. 500 to 1000 runs
@@ -124,7 +127,7 @@ export class MonteCarloSimulator {
 
     const sum = slippageDistribution.reduce((acc, v) => acc + v, 0);
     const meanSlippage = Number((sum / iterations).toFixed(3));
-    const medianIndex = Math.floor(iterations * 0.50);
+    const medianIndex = Math.floor(iterations * 0.5);
     const p95Index = Math.floor(iterations * 0.95);
     const p99Index = Math.floor(iterations * 0.99);
 
@@ -137,12 +140,12 @@ export class MonteCarloSimulator {
     const var95Usdt = Number(((ticketAmountUsdt * p95Slippage) / 100).toFixed(2));
 
     // Safe if P95 worst case slippage does not eat more than 0.30% of margin
-    const isSafeForExecution = p95Slippage <= 0.30 && fillRate >= 80;
+    const isSafeForExecution = p95Slippage <= 0.3 && fillRate >= 80;
 
-    let recommendation = '';
+    let recommendation: string;
     if (isSafeForExecution) {
       recommendation = `Distribución robusta: Deslizamiento P95 proyectado en ${p95Slippage}% (${Math.round(p95Slippage * 100)} bps). Tasa de llenado del ${fillRate}%. Operación institucionalmente segura.`;
-    } else if (p95Slippage <= 0.60) {
+    } else if (p95Slippage <= 0.6) {
       recommendation = `Riesgo moderado de cola: El 5% de los escenarios genera slippage hasta ${p95Slippage}%. Operar solo si el spread neto supera 1.10% o reducir el ticket a la mitad.`;
     } else {
       recommendation = `ALERTA DE VOLATILIDAD EXTREMA: Deslizamiento P95 crítico (${p95Slippage}%). Alta probabilidad de cancelaciones en el libro. No despachar orden de mercado completa.`;

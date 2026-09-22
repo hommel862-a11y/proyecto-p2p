@@ -25,7 +25,7 @@ export function clampAtLeast(v: number, floor: number): number {
  * Round a monetary value safely to a fixed number of decimal places (IEEE 754 safe).
  * Handles edge cases like 1.005 rounding correctly to 1.01.
  */
-export function roundMoney(v: number, decimals: number = 2): number {
+export function roundMoney(v: number, decimals = 2): number {
   if (!Number.isFinite(v)) return 0;
   const factor = 10 ** Math.max(0, Math.floor(decimals));
   return Math.round((v + Number.EPSILON) * factor) / factor;
@@ -40,4 +40,3 @@ export function roundMoney(v: number, decimals: number = 2): number {
 export function clampMoney(v: number): number {
   return clampNonNegative(v);
 }
-

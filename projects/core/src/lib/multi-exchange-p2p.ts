@@ -158,7 +158,9 @@ export function normalizeBybitOrder(
 ): UnifiedP2pOrder {
   const price = Number(raw.price) || 0;
   const availableCrypto = Number(raw.lastQuantity) || 0;
-  const methods = (raw.payments || []).map((p) => (paymentMap && paymentMap[p] ? paymentMap[p] : p));
+  const methods = (raw.payments || []).map((p) =>
+    paymentMap && paymentMap[p] ? paymentMap[p] : p,
+  );
 
   return {
     id: raw.id || `byb-${Math.random().toString(36).slice(2, 9)}`,

@@ -19,10 +19,34 @@ function op(p: Partial<Operation> & { timestamp: string; type: 'buy' | 'sell' })
 
 describe('computeStats', () => {
   const ops: Operation[] = [
-    op({ timestamp: '2026-01-01T10:00:00.000Z', type: 'sell', usdtAmount: 10, vesAmount: 8200, fees: 5 }),
-    op({ timestamp: '2026-01-15T10:00:00.000Z', type: 'sell', usdtAmount: 10, vesAmount: 8300, fees: 5 }),
-    op({ timestamp: '2026-02-01T10:00:00.000Z', type: 'buy', usdtAmount: 10, vesAmount: 8000, fees: 5 }),
-    op({ timestamp: '2026-04-10T10:00:00.000Z', type: 'sell', usdtAmount: 10, vesAmount: 8400, fees: 5 }),
+    op({
+      timestamp: '2026-01-01T10:00:00.000Z',
+      type: 'sell',
+      usdtAmount: 10,
+      vesAmount: 8200,
+      fees: 5,
+    }),
+    op({
+      timestamp: '2026-01-15T10:00:00.000Z',
+      type: 'sell',
+      usdtAmount: 10,
+      vesAmount: 8300,
+      fees: 5,
+    }),
+    op({
+      timestamp: '2026-02-01T10:00:00.000Z',
+      type: 'buy',
+      usdtAmount: 10,
+      vesAmount: 8000,
+      fees: 5,
+    }),
+    op({
+      timestamp: '2026-04-10T10:00:00.000Z',
+      type: 'sell',
+      usdtAmount: 10,
+      vesAmount: 8400,
+      fees: 5,
+    }),
   ];
 
   it('buckets by day', () => {
@@ -56,7 +80,15 @@ describe('computeStats', () => {
   });
 
   it('converts PnL to USDT using the bucket average price', () => {
-    const s = computeStats([op({ timestamp: '2026-03-01T10:00:00.000Z', type: 'sell', usdtAmount: 10, vesAmount: 8200, fees: 0 })]);
+    const s = computeStats([
+      op({
+        timestamp: '2026-03-01T10:00:00.000Z',
+        type: 'sell',
+        usdtAmount: 10,
+        vesAmount: 8200,
+        fees: 0,
+      }),
+    ]);
     const m = s.monthly[0];
     expect(m.pnlUsdt).toBeCloseTo(10); // 8200 VES / 820 VES per USDT = 10 USDT
   });

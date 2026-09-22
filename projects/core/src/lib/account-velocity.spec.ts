@@ -85,8 +85,18 @@ describe('Account Velocity & Rotation (Anti-Sudeban)', () => {
 
   it('counts today transactions matched by merchantNote when no bankAccountId is set', () => {
     const noteOps: Operation[] = [
-      { ...baseOp, id: 'op-n1', bankAccountId: undefined, merchantNote: 'Compra vía Banesco Pago Móvil' },
-      { ...baseOp, id: 'op-n2', bankAccountId: undefined, merchantNote: 'Venta Banesco pago móvil' },
+      {
+        ...baseOp,
+        id: 'op-n1',
+        bankAccountId: undefined,
+        merchantNote: 'Compra vía Banesco Pago Móvil',
+      },
+      {
+        ...baseOp,
+        id: 'op-n2',
+        bankAccountId: undefined,
+        merchantNote: 'Venta Banesco pago móvil',
+      },
       { ...baseOp, id: 'op-n3', bankAccountId: undefined, merchantNote: 'Sin referencia bancaria' },
     ];
     expect(countTodayTransactions(banescoPagoMovil, noteOps)).toBe(2);
@@ -194,7 +204,13 @@ describe('Account Velocity & Rotation (Anti-Sudeban)', () => {
 
   it('returns null when every account is saturated or over-limit', () => {
     // acc-1 over-limit (55000 spent > 50000 cap) but still OPTIMAL in velocity terms.
-    const overLimitOp: Operation = { ...baseOp, id: 'op-ol', bankAccountId: 'acc-1', vesAmount: 55000, usdtAmount: 68.75 };
+    const overLimitOp: Operation = {
+      ...baseOp,
+      id: 'op-ol',
+      bankAccountId: 'acc-1',
+      vesAmount: 55000,
+      usdtAmount: 68.75,
+    };
     const saturatedAcc2 = makeBuyOps('acc-2', 16);
     const rec = getRotationRecommendation(
       [banescoPagoMovil, mercantilTransf],

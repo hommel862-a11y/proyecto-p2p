@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  WebhookDispatcher,
-  type PlanDispatchSummary,
-} from './webhook-dispatcher';
+import { WebhookDispatcher, type PlanDispatchSummary } from './webhook-dispatcher';
 import type { StrategyPlanCard } from '../../shared/types';
 
 describe('WebhookDispatcher', () => {
@@ -128,9 +125,7 @@ describe('WebhookDispatcher', () => {
     expect(summary.genericWebhook?.dispatched).toBe(true);
     expect(summary.genericWebhook?.status).toBe(200);
 
-    const genericCall = mockFetch.mock.calls.find(([u]) =>
-      (u as string).includes('zapier'),
-    );
+    const genericCall = mockFetch.mock.calls.find(([u]) => (u as string).includes('zapier'));
     expect(genericCall).toBeDefined();
     expect(genericCall![1].headers['X-P2P-Signature']).toBe('p2p-secret-key');
   });

@@ -53,7 +53,8 @@ export const processRemoteSentinelCommandTool = {
       // Extract bank if mentioned
       let bankName = 'Pago Móvil';
       if (lower.includes('banesco')) bankName = 'Banesco';
-      else if (lower.includes('venezuela') || lower.includes('bdv')) bankName = 'Banco de Venezuela';
+      else if (lower.includes('venezuela') || lower.includes('bdv'))
+        bankName = 'Banco de Venezuela';
       else if (lower.includes('mercantil')) bankName = 'Mercantil';
       else if (lower.includes('provincial')) bankName = 'Provincial';
       else if (lower.includes('bancamiga')) bankName = 'Bancamiga';

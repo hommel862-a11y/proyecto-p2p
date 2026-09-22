@@ -144,15 +144,8 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     checkBcvInterventionWindowTool,
     autofillTradeReferenceTool,
   ],
-  'p2p-google-workspace': [
-    gdriveBackupReceiptTool,
-    gsheetsSyncTradeTool,
-    gdriveSyncDbBackupTool,
-  ],
-  'p2p-counterparty-mesh': [
-    consultZkMarketMeshTool,
-    lookupCounterpartyReputationTool,
-  ],
+  'p2p-google-workspace': [gdriveBackupReceiptTool, gsheetsSyncTradeTool, gdriveSyncDbBackupTool],
+  'p2p-counterparty-mesh': [consultZkMarketMeshTool, lookupCounterpartyReputationTool],
 };
 
 export {
@@ -202,4 +195,3 @@ export {
   auditPaymentProofOcrTool,
   auditAndRiskAnalyticsTool,
 };
-

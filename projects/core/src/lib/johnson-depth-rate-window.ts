@@ -30,10 +30,7 @@ export function detectRateDivergence(input: RateDivergenceInput): RateDivergence
   void windowMinutes;
 
   // binance.bid = bestSellPrice (lo que pagas); other.ask = parallelRate (lo que te pagan)
-  const gap = computeTriangulationGap(
-    { bid: depth.bestSellPrice },
-    { ask: parallelRate },
-  );
+  const gap = computeTriangulationGap({ bid: depth.bestSellPrice }, { ask: parallelRate });
 
   const rateMomentumPct =
     parallelRateBefore && parallelRateBefore > 0

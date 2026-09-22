@@ -83,14 +83,14 @@ export function computeSessionSummary(
 
   // Compute average duration of operations that tracked durationMs
   const timedOps = sessionOps.filter((o) => typeof o.durationMs === 'number' && o.durationMs > 0);
-  const avgOpDurationMs = timedOps.length > 0
-    ? Math.round(timedOps.reduce((sum, o) => sum + (o.durationMs ?? 0), 0) / timedOps.length)
-    : 0;
+  const avgOpDurationMs =
+    timedOps.length > 0
+      ? Math.round(timedOps.reduce((sum, o) => sum + (o.durationMs ?? 0), 0) / timedOps.length)
+      : 0;
 
   // Turnover rate: operations per hour
-  const turnoverRatePerHour = durationHours > 0
-    ? Number((sessionOps.length / durationHours).toFixed(2))
-    : sessionOps.length;
+  const turnoverRatePerHour =
+    durationHours > 0 ? Number((sessionOps.length / durationHours).toFixed(2)) : sessionOps.length;
 
   const volumeUsdt = sessionOps.reduce((sum, o) => sum + o.usdtAmount, 0);
 
@@ -117,5 +117,7 @@ export function aggregateSessions(
   const safe = Array.isArray(sessions) ? sessions : [];
   return safe
     .map((s) => computeSessionSummary(s, allOps))
-    .sort((a, b) => new Date(b.session.startTime).getTime() - new Date(a.session.startTime).getTime());
+    .sort(
+      (a, b) => new Date(b.session.startTime).getTime() - new Date(a.session.startTime).getTime(),
+    );
 }

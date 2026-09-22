@@ -7,11 +7,7 @@ import { computeSha256 } from './backup-encryption';
 export const DEFAULT_ZK_SALT_DOMAIN = 'p2p-ve-mesh-salt-2026';
 
 export type MeshThreatType =
-  | 'THIRD_PARTY_FRAUD'
-  | 'TRIANGULATION'
-  | 'IDENTITY_THEFT'
-  | 'CHARGEBACK'
-  | 'UNRESPONSIVE_RELEASE';
+  'THIRD_PARTY_FRAUD' | 'TRIANGULATION' | 'IDENTITY_THEFT' | 'CHARGEBACK' | 'UNRESPONSIVE_RELEASE';
 
 export type MeshThreatSeverity = 'WARNING' | 'HIGH' | 'CRITICAL';
 
@@ -66,7 +62,10 @@ export function normalizeIdentifier(raw: string): string {
  * Generates a blind Zero-Knowledge identifier hash using salt domain.
  * Cannot be reversed to reveal client DNI or account number.
  */
-export function generateBlindHash(rawIdentifier: string, saltDomain: string = DEFAULT_ZK_SALT_DOMAIN): string {
+export function generateBlindHash(
+  rawIdentifier: string,
+  saltDomain: string = DEFAULT_ZK_SALT_DOMAIN,
+): string {
   const normalized = normalizeIdentifier(rawIdentifier);
   if (!normalized) return '';
   return computeSha256(`${normalized}::${saltDomain}`);
@@ -82,7 +81,8 @@ export class ZkMarketMesh {
   private readonly threatsByHash = new Map<string, BlindThreatRecord>();
 
   constructor(nodeId?: string, saltDomain: string = DEFAULT_ZK_SALT_DOMAIN) {
-    this.localNodeId = nodeId || `node-${computeSha256(`mesh-node-${Date.now()}-${Math.random()}`).slice(0, 12)}`;
+    this.localNodeId =
+      nodeId || `node-${computeSha256(`mesh-node-${Date.now()}-${Math.random()}`).slice(0, 12)}`;
     this.defaultSalt = saltDomain;
   }
 
@@ -162,7 +162,11 @@ export class ZkMarketMesh {
    * Ingests a gossip packet from another operator node.
    * Preserves zero-knowledge integrity and increases confirmation weight.
    */
-  ingestGossipPacket(packet: MeshGossipPacket): { imported: number; updated: number; ignored: number } {
+  ingestGossipPacket(packet: MeshGossipPacket): {
+    imported: number;
+    updated: number;
+    ignored: number;
+  } {
     if (packet.protocolVersion !== 'zk-mesh-v1' || !Array.isArray(packet.threats)) {
       return { imported: 0, updated: 0, ignored: 0 };
     }
@@ -204,8 +208,10 @@ export class ZkMarketMesh {
   /**
    * Creates an outbound gossip packet to broadcast to peer nodes.
    */
-  createGossipPacket(sinceTimestamp: number = 0): MeshGossipPacket {
-    const list = Array.from(this.threatsByHash.values()).filter((t) => t.timestamp >= sinceTimestamp);
+  createGossipPacket(sinceTimestamp = 0): MeshGossipPacket {
+    const list = Array.from(this.threatsByHash.values()).filter(
+      (t) => t.timestamp >= sinceTimestamp,
+    );
 
     return {
       protocolVersion: 'zk-mesh-v1',

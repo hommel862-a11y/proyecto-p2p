@@ -8,7 +8,7 @@
 import { type Operation } from './log';
 import { roundMoney, clampNonNegative } from './money';
 
-export const MINIMUM_VIABLE_NET_SPREAD_PCT = 0.50; // Inflexible rule: never burn bank quotas below 0.50%
+export const MINIMUM_VIABLE_NET_SPREAD_PCT = 0.5; // Inflexible rule: never burn bank quotas below 0.50%
 
 export interface OperatorProfile {
   id: string;
@@ -79,7 +79,8 @@ export function evaluateGoldenSpread(netSpreadPct: number): GoldenSpreadCheck {
       isViable: true,
       alertLevel: 'GOLDEN_ZONE',
       headline: 'Zona de Oro (Super Spread > 1.50%)',
-      message: 'Margen institucional óptimo. Operar con tickets altos y máxima rotación de capital.',
+      message:
+        'Margen institucional óptimo. Operar con tickets altos y máxima rotación de capital.',
     };
   }
 
@@ -89,7 +90,8 @@ export function evaluateGoldenSpread(netSpreadPct: number): GoldenSpreadCheck {
       isViable: true,
       alertLevel: 'HEALTHY',
       headline: 'Margen Saludable (0.80% - 1.49%)',
-      message: 'Spread estable y seguro para mantener anuncios activos en Banesco y canales principales.',
+      message:
+        'Spread estable y seguro para mantener anuncios activos en Banesco y canales principales.',
     };
   }
 
@@ -99,7 +101,8 @@ export function evaluateGoldenSpread(netSpreadPct: number): GoldenSpreadCheck {
       isViable: true,
       alertLevel: 'MARGINAL_CAUTION',
       headline: 'Umbral Mínimo Viable (0.50% - 0.79%)',
-      message: 'En el piso de rentabilidad. Usar órdenes con tickets mínimos protegidos para no agotar cupos bancarios.',
+      message:
+        'En el piso de rentabilidad. Usar órdenes con tickets mínimos protegidos para no agotar cupos bancarios.',
     };
   }
 
@@ -108,7 +111,8 @@ export function evaluateGoldenSpread(netSpreadPct: number): GoldenSpreadCheck {
     isViable: false,
     alertLevel: 'BELOW_THRESHOLD_PAUSE',
     headline: 'Regla de Oro Rota (< 0.50% Neto)',
-    message: 'ALERTA: El spread está por debajo del 0.50%. Pausar anuncios o rotar de pasarela; quemar cupos por menos de 0.50% destruye la cuenta bancaria.',
+    message:
+      'ALERTA: El spread está por debajo del 0.50%. Pausar anuncios o rotar de pasarela; quemar cupos por menos de 0.50% destruye la cuenta bancaria.',
   };
 }
 
@@ -118,8 +122,8 @@ export function evaluateGoldenSpread(netSpreadPct: number): GoldenSpreadCheck {
 export function buildTeamAllocationPlan(
   totalDeskCapitalUsdt: number,
   operators: readonly OperatorProfile[],
-  referenceRateVes: number = 60.0,
-  expectedAvgCycleSpreadPct: number = 0.85,
+  referenceRateVes = 60.0,
+  expectedAvgCycleSpreadPct = 0.85,
 ): TeamAllocationPlan {
   const safeTotalCapital = clampNonNegative(totalDeskCapitalUsdt);
   const activeOperators = operators.filter((op) => op.active);
@@ -134,7 +138,7 @@ export function buildTeamAllocationPlan(
     );
     totalAllocatedToOperators += allocatedCapital;
 
-    const dailyCycleProfitPerCycle = (allocatedCapital * (expectedAvgCycleSpreadPct / 100));
+    const dailyCycleProfitPerCycle = allocatedCapital * (expectedAvgCycleSpreadPct / 100);
     const totalDailyProfit = dailyCycleProfitPerCycle * Math.max(0.5, op.targetDailyCycles);
     const opShare = totalDailyProfit * (op.commissionSplitPct / 100);
     const ownerShare = totalDailyProfit - opShare;
@@ -153,13 +157,17 @@ export function buildTeamAllocationPlan(
 
   // Leader operating their own retained capital (e.g. 2 daily cycles)
   const leaderDailyCycles = 2.0;
-  const leaderRetainedProfitUsdt = (deskOwnerRetainedCapitalUsdt * (expectedAvgCycleSpreadPct / 100)) * leaderDailyCycles;
+  const leaderRetainedProfitUsdt =
+    deskOwnerRetainedCapitalUsdt * (expectedAvgCycleSpreadPct / 100) * leaderDailyCycles;
 
   const operatorsDailyProfitSum = allocations.reduce((acc, a) => acc + a.targetDailyProfitUsdt, 0);
   const operatorsTakeSum = allocations.reduce((acc, a) => acc + a.operatorDailyTakeUsdt, 0);
   const ownerFromOperatorsSum = allocations.reduce((acc, a) => acc + a.ownerDailyTakeUsdt, 0);
 
-  const totalDailyEstimatedProfitUsdt = roundMoney(leaderRetainedProfitUsdt + operatorsDailyProfitSum, 2);
+  const totalDailyEstimatedProfitUsdt = roundMoney(
+    leaderRetainedProfitUsdt + operatorsDailyProfitSum,
+    2,
+  );
   const totalDailyOwnerProfitUsdt = roundMoney(leaderRetainedProfitUsdt + ownerFromOperatorsSum, 2);
   const totalDailyOperatorsProfitUsdt = roundMoney(operatorsTakeSum, 2);
 
@@ -181,8 +189,8 @@ export function buildTeamAllocationPlan(
 export function auditOperatorPerformance(
   operator: OperatorProfile,
   operatorOps: readonly Operation[],
-  referenceRateVes: number = 60.0,
-  periodDays: number = 10,
+  referenceRateVes = 60.0,
+  periodDays = 10,
 ): OperatorAuditResult {
   const safePeriod = Math.max(1, periodDays);
   let buyCount = 0;
@@ -197,10 +205,10 @@ export function auditOperatorPerformance(
 
     if (op.type === 'buy') {
       buyCount++;
-      netPnlVes -= (op.vesAmount + op.fees);
+      netPnlVes -= op.vesAmount + op.fees;
     } else {
       sellCount++;
-      netPnlVes += (op.vesAmount - op.fees);
+      netPnlVes += op.vesAmount - op.fees;
     }
   }
 
@@ -209,9 +217,10 @@ export function auditOperatorPerformance(
   const totalNetProfitUsdt = roundMoney(netPnlVes / referenceRateVes, 2);
 
   const investedCapitalVes = operator.assignedCapitalUsdt * referenceRateVes;
-  const averageNetSpreadPct = investedCapitalVes > 0 && completedCycles > 0
-    ? roundMoney((netPnlVes / (investedCapitalVes * completedCycles)) * 100, 2)
-    : 0;
+  const averageNetSpreadPct =
+    investedCapitalVes > 0 && completedCycles > 0
+      ? roundMoney((netPnlVes / (investedCapitalVes * completedCycles)) * 100, 2)
+      : 0;
 
   const safeNetProfit = Math.max(0, totalNetProfitUsdt);
   const operatorShareUsdt = roundMoney(safeNetProfit * (operator.commissionSplitPct / 100), 2);
@@ -221,20 +230,26 @@ export function auditOperatorPerformance(
   const isMeetingSpreadTarget = averageNetSpreadPct >= MINIMUM_VIABLE_NET_SPREAD_PCT;
   const recommendations: string[] = [];
 
-  let status: OperatorAuditResult['status'] = 'INACTIVE';
+  let status: OperatorAuditResult['status'];
 
   if (operatorOps.length === 0) {
     status = 'INACTIVE';
     recommendations.push('El operador no registra operaciones en esta ventana de auditoría.');
   } else if (!isMeetingSpreadTarget) {
     status = 'UNDERPERFORMING';
-    recommendations.push(`Spread medio (${averageNetSpreadPct}%) por debajo de la Regla de Oro (0.50%). Revisar estrategia de precios para no quemar límites.`);
+    recommendations.push(
+      `Spread medio (${averageNetSpreadPct}%) por debajo de la Regla de Oro (0.50%). Revisar estrategia de precios para no quemar límites.`,
+    );
   } else if (averageNetSpreadPct >= 1.0) {
     status = 'OPTIMAL';
-    recommendations.push(`Desempeño sobresaliente con ${averageNetSpreadPct}% neto por ciclo. Candidato a asignación prioritaria de capital.`);
+    recommendations.push(
+      `Desempeño sobresaliente con ${averageNetSpreadPct}% neto por ciclo. Candidato a asignación prioritaria de capital.`,
+    );
   } else {
     status = 'ACCEPTABLE';
-    recommendations.push(`Rendimiento saludable dentro de los estándares de mercado (${averageNetSpreadPct}% neto).`);
+    recommendations.push(
+      `Rendimiento saludable dentro de los estándares de mercado (${averageNetSpreadPct}% neto).`,
+    );
   }
 
   return {

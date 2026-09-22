@@ -41,7 +41,8 @@ import {
 export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   {
     name: 'audit_and_risk_analytics',
-    description: 'Interroga el registro forense en SQLite para auditar disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas.',
+    description:
+      'Interroga el registro forense en SQLite para auditar disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -51,7 +52,8 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
         },
         minSpreadThresholdPct: {
           type: 'NUMBER',
-          description: 'Umbral mínimo de spread neto exigido por la Regla de Oro (por defecto 0.50%).',
+          description:
+            'Umbral mínimo de spread neto exigido por la Regla de Oro (por defecto 0.50%).',
         },
         focusArea: {
           type: 'STRING',
@@ -80,7 +82,8 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'evaluate_golden_spread',
-    description: 'Compara un spread neto contra la Regla de Oro institucional (umbral mínimo recomendado de 0.50%).',
+    description:
+      'Compara un spread neto contra la Regla de Oro institucional (umbral mínimo recomendado de 0.50%).',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -94,7 +97,8 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'evaluate_delta_neutral_hedge',
-    description: 'Audita la exposición neta en moneda local (VES) y propone órdenes de cobertura sintética (delta-neutral) con derivados spot/perp si se supera el riesgo de devaluación.',
+    description:
+      'Audita la exposición neta en moneda local (VES) y propone órdenes de cobertura sintética (delta-neutral) con derivados spot/perp si se supera el riesgo de devaluación.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -120,7 +124,8 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'forecast_market_volatility_2h',
-    description: 'Pronostica el índice de volatilidad, dirección del spread y markups recomendados de compra/venta para las próximas 2 horas.',
+    description:
+      'Pronostica el índice de volatilidad, dirección del spread y markups recomendados de compra/venta para las próximas 2 horas.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -142,13 +147,15 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'audit_zk_mesh_threat',
-    description: 'Audita identificadores sensibles (cédula, RIF, teléfono, cuenta bancaria) contra la red ZK de inteligencia antifraude usando hashes ciegos.',
+    description:
+      'Audita identificadores sensibles (cédula, RIF, teléfono, cuenta bancaria) contra la red ZK de inteligencia antifraude usando hashes ciegos.',
     parameters: {
       type: 'OBJECT',
       properties: {
         identifier: {
           type: 'STRING',
-          description: 'Cédula de identidad, RIF, número telefónico o número de cuenta de la contraparte.',
+          description:
+            'Cédula de identidad, RIF, número telefónico o número de cuenta de la contraparte.',
         },
       },
       required: ['identifier'],
@@ -156,54 +163,87 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'calculate_convexity_and_gamma_risk',
-    description: 'Modela la pérdida patrimonial acelerada por riesgo de convexidad y efecto Gamma ante saltos devaluatorios no lineales del tipo de cambio.',
+    description:
+      'Modela la pérdida patrimonial acelerada por riesgo de convexidad y efecto Gamma ante saltos devaluatorios no lineales del tipo de cambio.',
     parameters: {
       type: 'OBJECT',
       properties: {
         spotParallelRate: { type: 'NUMBER', description: 'Tasa paralela actual.' },
         vesHoldingAmount: { type: 'NUMBER', description: 'Monto de bolívares en cartera.' },
-        expectedDevaluationJumpPct: { type: 'NUMBER', description: 'Salto devaluatorio proyectado en porcentaje.' },
+        expectedDevaluationJumpPct: {
+          type: 'NUMBER',
+          description: 'Salto devaluatorio proyectado en porcentaje.',
+        },
         timeHorizonDays: { type: 'NUMBER', description: 'Días de exposición proyectados.' },
       },
-      required: ['spotParallelRate', 'vesHoldingAmount', 'expectedDevaluationJumpPct', 'timeHorizonDays'],
+      required: [
+        'spotParallelRate',
+        'vesHoldingAmount',
+        'expectedDevaluationJumpPct',
+        'timeHorizonDays',
+      ],
     },
   },
   {
     name: 'model_perpetual_funding_arbitrage',
-    description: 'Calcula el rendimiento APY del arbitraje de Funding Rate en derivados perpetuos (Cash-and-Carry) para subsidiar tesorería.',
+    description:
+      'Calcula el rendimiento APY del arbitraje de Funding Rate en derivados perpetuos (Cash-and-Carry) para subsidiar tesorería.',
     parameters: {
       type: 'OBJECT',
       properties: {
         collateralUsdt: { type: 'NUMBER', description: 'Colateral en USDT disponible.' },
-        currentFundingRate8hPct: { type: 'NUMBER', description: 'Tasa de financiamiento por 8h en porcentaje.' },
-        holdingPeriodDays: { type: 'NUMBER', description: 'Días estimados de mantenimiento de posición.' },
+        currentFundingRate8hPct: {
+          type: 'NUMBER',
+          description: 'Tasa de financiamiento por 8h en porcentaje.',
+        },
+        holdingPeriodDays: {
+          type: 'NUMBER',
+          description: 'Días estimados de mantenimiento de posición.',
+        },
       },
       required: ['collateralUsdt', 'currentFundingRate8hPct', 'holdingPeriodDays'],
     },
   },
   {
     name: 'optimize_capital_allocation_kelly',
-    description: 'Optimiza el tamaño del ticket y distribución por entidad bancaria mediante el Criterio Fraccional de Kelly.',
+    description:
+      'Optimiza el tamaño del ticket y distribución por entidad bancaria mediante el Criterio Fraccional de Kelly.',
     parameters: {
       type: 'OBJECT',
       properties: {
         totalCapitalUsdt: { type: 'NUMBER', description: 'Capital total de la tesorería en USDT.' },
-        winRatePct: { type: 'NUMBER', description: 'Tasa de acierto histórica en operaciones P2P.' },
-        averageProfitPerWinUsdt: { type: 'NUMBER', description: 'Ganancia promedio por trade ganador.' },
-        averageLossPerLossUsdt: { type: 'NUMBER', description: 'Pérdida promedio por trade adverso.' },
+        winRatePct: {
+          type: 'NUMBER',
+          description: 'Tasa de acierto histórica en operaciones P2P.',
+        },
+        averageProfitPerWinUsdt: {
+          type: 'NUMBER',
+          description: 'Ganancia promedio por trade ganador.',
+        },
+        averageLossPerLossUsdt: {
+          type: 'NUMBER',
+          description: 'Pérdida promedio por trade adverso.',
+        },
       },
-      required: ['totalCapitalUsdt', 'winRatePct', 'averageProfitPerWinUsdt', 'averageLossPerLossUsdt'],
+      required: [
+        'totalCapitalUsdt',
+        'winRatePct',
+        'averageProfitPerWinUsdt',
+        'averageLossPerLossUsdt',
+      ],
     },
   },
   {
     name: 'check_bank_operational_status',
-    description: 'Monitorea en tiempo real el estado operativo, latencias de acreditación y fallas en plataformas bancarias venezolanas (Banesco, Mercantil, BDV, Pago Móvil) y emite directivas de pausa.',
+    description:
+      'Monitorea en tiempo real el estado operativo, latencias de acreditación y fallas en plataformas bancarias venezolanas (Banesco, Mercantil, BDV, Pago Móvil) y emite directivas de pausa.',
     parameters: {
       type: 'OBJECT',
       properties: {
         bankCodes: {
           type: 'ARRAY',
-          description: 'Códigos bancarios a verificar (ej. 0102 BDV, 0134 Banesco, 0105 Mercantil, 0108 Provincial, 0172 Bancamiga, PAGO_MOVIL).',
+          description:
+            'Códigos bancarios a verificar (ej. 0102 BDV, 0134 Banesco, 0105 Mercantil, 0108 Provincial, 0172 Bancamiga, PAGO_MOVIL).',
           items: { type: 'STRING' },
         },
       },
@@ -212,7 +252,8 @@ export const RISK_SKILLS_DEFINITIONS: AgentSkillDefinition[] = [
   },
   {
     name: 'check_counterparty_blacklist',
-    description: 'Consulta la lista negra institucional de cédulas, teléfonos, cuentas bancarias o alias de Binance reportados por estafas de triangulación o fraude.',
+    description:
+      'Consulta la lista negra institucional de cédulas, teléfonos, cuentas bancarias o alias de Binance reportados por estafas de triangulación o fraude.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -416,9 +457,10 @@ export function dispatchRiskSkill(
     }
 
     case 'check_bank_operational_status': {
-      const requestedCodes = Array.isArray(args['bankCodes']) && (args['bankCodes'] as string[]).length > 0
-        ? (args['bankCodes'] as string[])
-        : ['0102', '0134', '0105', '0108', '0172', 'PAGO_MOVIL'];
+      const requestedCodes =
+        Array.isArray(args['bankCodes']) && (args['bankCodes'] as string[]).length > 0
+          ? (args['bankCodes'] as string[])
+          : ['0102', '0134', '0105', '0108', '0172', 'PAGO_MOVIL'];
 
       const KNOWN_BANKS_INFO: Record<string, { name: string; baseLatency: number }> = {
         '0102': { name: 'Banco de Venezuela (BDV)', baseLatency: 1.5 },
@@ -426,11 +468,14 @@ export function dispatchRiskSkill(
         '0105': { name: 'Mercantil Banco', baseLatency: 1.0 },
         '0108': { name: 'BBVA Provincial', baseLatency: 1.2 },
         '0172': { name: 'Bancamiga', baseLatency: 0.9 },
-        'PAGO_MOVIL': { name: 'Suiche Pago Móvil Interbancario', baseLatency: 0.5 },
+        PAGO_MOVIL: { name: 'Suiche Pago Móvil Interbancario', baseLatency: 0.5 },
       };
 
       const details = requestedCodes.map((code) => {
-        const bankInfo = KNOWN_BANKS_INFO[code] ?? { name: `Banco Desconocido (${code})`, baseLatency: 2.0 };
+        const bankInfo = KNOWN_BANKS_INFO[code] ?? {
+          name: `Banco Desconocido (${code})`,
+          baseLatency: 2.0,
+        };
         return {
           bankCode: code,
           bankName: bankInfo.name,
@@ -442,7 +487,11 @@ export function dispatchRiskSkill(
         };
       });
 
-      const avgLatency = Number((details.reduce((acc, b) => acc + b.settlementLatencyMinutes, 0) / details.length).toFixed(1));
+      const avgLatency = Number(
+        (details.reduce((acc, b) => acc + b.settlementLatencyMinutes, 0) / details.length).toFixed(
+          1,
+        ),
+      );
 
       return {
         success: true,
@@ -454,23 +503,48 @@ export function dispatchRiskSkill(
           affectedBanks: [],
           averageSettlementLatencyMinutes: avgLatency,
           details,
-          operationalSummary: 'Todos los canales bancarios auditados operan con latencia normal. Pago Móvil interbancario disponible.',
+          operationalSummary:
+            'Todos los canales bancarios auditados operan con latencia normal. Pago Móvil interbancario disponible.',
         },
         executedAt: now,
       };
     }
 
     case 'check_counterparty_blacklist': {
-      const cedulaClean = String(args['cedula'] ?? '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const cedulaClean = String(args['cedula'] ?? '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toLowerCase();
       const phoneClean = String(args['phone'] ?? '').replace(/[^0-9]/g, '');
       const accountClean = String(args['accountNumber'] ?? '').replace(/[^0-9]/g, '');
-      const aliasClean = String(args['binanceAlias'] ?? '').trim().toLowerCase();
+      const aliasClean = String(args['binanceAlias'] ?? '')
+        .trim()
+        .toLowerCase();
 
       const KNOWN_BLACKLIST = [
-        { type: 'CEDULA', val: '28999888', name: 'Pedro Fraude', reason: 'Estafa de triangulación detectada' },
-        { type: 'PHONE', val: '04141234567', name: 'Carlos Estafa', reason: 'Paga desde cuentas bancarias de terceros' },
-        { type: 'ACCOUNT_NUMBER', val: '01020111223344556677', name: 'Mula Financiera', reason: 'Cuenta con reclamos bancarios' },
-        { type: 'BINANCE_ALIAS', val: 'scammaster99', name: 'Unknown', reason: 'Usuario reportado por fraude reiterado' },
+        {
+          type: 'CEDULA',
+          val: '28999888',
+          name: 'Pedro Fraude',
+          reason: 'Estafa de triangulación detectada',
+        },
+        {
+          type: 'PHONE',
+          val: '04141234567',
+          name: 'Carlos Estafa',
+          reason: 'Paga desde cuentas bancarias de terceros',
+        },
+        {
+          type: 'ACCOUNT_NUMBER',
+          val: '01020111223344556677',
+          name: 'Mula Financiera',
+          reason: 'Cuenta con reclamos bancarios',
+        },
+        {
+          type: 'BINANCE_ALIAS',
+          val: 'scammaster99',
+          name: 'Unknown',
+          reason: 'Usuario reportado por fraude reiterado',
+        },
       ];
 
       let matched = false;
@@ -511,7 +585,9 @@ export function dispatchRiskSkill(
           isBlacklisted: matched,
           riskVerdict: matched ? 'BLOCKED_FRAUD_DETECTED' : 'CLEAR',
           counterpartyName: matched ? matchedName : 'Verificado / Limpio',
-          incidentNotes: matched ? matchReason : 'Sin antecedentes en la base de datos de riesgo y listas negras.',
+          incidentNotes: matched
+            ? matchReason
+            : 'Sin antecedentes en la base de datos de riesgo y listas negras.',
           action: matched ? 'CANCEL_TRADE_AND_REPORT' : 'PROCEED_WITH_STANDARD_CHECKS',
         },
         executedAt: now,
@@ -520,13 +596,16 @@ export function dispatchRiskSkill(
 
     case 'audit_and_risk_analytics': {
       const timeframeDays = Number(args['timeframeDays'] || 7);
-      const minSpreadThresholdPct = Number(args['minSpreadThresholdPct'] || 0.50);
+      const minSpreadThresholdPct = Number(args['minSpreadThresholdPct'] || 0.5);
       const focusArea = String(args['focusArea'] || 'ALL');
       const sampleEvents = (args['sampleEvents'] as ForensicAuditEvent[]) || [];
       const sampleOperations = (args['sampleOperations'] as ForensicOperationRecord[]) || [];
 
       const riskDist = analyzeHourlyRiskDistribution(sampleEvents);
-      const discipline = auditTradingDisciplineAndSpreadCompliance(sampleOperations, minSpreadThresholdPct);
+      const discipline = auditTradingDisciplineAndSpreadCompliance(
+        sampleOperations,
+        minSpreadThresholdPct,
+      );
       const dossier = generateForensicDossier(riskDist, discipline);
 
       return {

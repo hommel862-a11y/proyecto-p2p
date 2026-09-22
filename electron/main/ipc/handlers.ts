@@ -1,10 +1,21 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
 import { createHmac } from 'crypto';
-import type { P2PIpcChannels, BinanceSearchParams, CotizaveRequest, BybitP2pFetchRequest, ElDoradoQuoteRequest, ScreenPipeSource, AlphaWatcherConfigDto } from '../../shared/types';
+import type {
+  P2PIpcChannels,
+  BinanceSearchParams,
+  CotizaveRequest,
+  BybitP2pFetchRequest,
+  ElDoradoQuoteRequest,
+  ScreenPipeSource,
+  AlphaWatcherConfigDto,
+} from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
-import { MonteCarloSimulator, type MonteCarloSimulationConfig } from '../agents/monte-carlo-simulator';
+import {
+  MonteCarloSimulator,
+  type MonteCarloSimulationConfig,
+} from '../agents/monte-carlo-simulator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 
@@ -25,29 +36,32 @@ export function registerIpcHandlers(): void {
     'p2p:fetch-binance',
     async (_event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
       try {
-        const response = await net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          method: 'POST',
-          signal: AbortSignal.timeout(15000),
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            Accept: '*/*',
+        const response = await net.fetch(
+          'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+          {
+            method: 'POST',
+            signal: AbortSignal.timeout(15000),
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              Accept: '*/*',
+            },
+            body: JSON.stringify({
+              asset: params.asset ?? 'USDT',
+              fiat: params.fiat ?? 'VES',
+              tradeType: params.tradeType ?? 'BUY',
+              page: 1,
+              rows: params.rows ?? 10,
+              payTypes: params.payTypes ?? [],
+              countries: [],
+              proMerchantAds: false,
+              shieldMerchantAds: false,
+              filterType: 'all',
+              periods: [],
+            }),
           },
-          body: JSON.stringify({
-            asset: params.asset ?? 'USDT',
-            fiat: params.fiat ?? 'VES',
-            tradeType: params.tradeType ?? 'BUY',
-            page: 1,
-            rows: params.rows ?? 10,
-            payTypes: params.payTypes ?? [],
-            countries: [],
-            proMerchantAds: false,
-            shieldMerchantAds: false,
-            filterType: 'all',
-            periods: [],
-          }),
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`Binance P2P respondió HTTP ${response.status}`);
@@ -56,10 +70,18 @@ export function registerIpcHandlers(): void {
         return await response.json();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
-          throw new Error('Servidor de Binance P2P no accesible (sin conexión o DNS no disponible)');
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error(
+            'Servidor de Binance P2P no accesible (sin conexión o DNS no disponible)',
+            { cause: err },
+          );
         }
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
   );
@@ -94,10 +116,17 @@ export function registerIpcHandlers(): void {
         return await response.json();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
-          throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)');
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)', {
+            cause: err,
+          });
         }
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
   );
@@ -150,10 +179,17 @@ export function registerIpcHandlers(): void {
         return await response.json();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
-          throw new Error('Servidor Bybit P2P no accesible (sin conexión o timeout)');
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error('Servidor Bybit P2P no accesible (sin conexión o timeout)', {
+            cause: err,
+          });
         }
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
   );
@@ -189,7 +225,9 @@ export function registerIpcHandlers(): void {
         crypto: req.asset ?? 'USDT',
         legalTender: req.fiat ?? 'USD',
         ...(typeof req.amount === 'number' && req.amount > 0 ? { amount: req.amount } : {}),
-        ...(req.paymentMethod && req.paymentMethod.trim().length > 0 ? { payment_method: req.paymentMethod.trim() } : {}),
+        ...(req.paymentMethod && req.paymentMethod.trim().length > 0
+          ? { payment_method: req.paymentMethod.trim() }
+          : {}),
       };
 
       try {
@@ -205,10 +243,17 @@ export function registerIpcHandlers(): void {
         return await response.json();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        if (message.includes('ENOTFOUND') || message.includes('fetch failed') || message.includes('aborted') || message.includes('timeout')) {
-          throw new Error('Servidor El Dorado no accesible (sin conexión o timeout)');
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error('Servidor El Dorado no accesible (sin conexión o timeout)', {
+            cause: err,
+          });
         }
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
   );
@@ -267,17 +312,14 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.removeHandler('p2p:db-save-audit-log');
-  ipcMain.handle(
-    'p2p:db-save-audit-log',
-    (_event: IpcMainInvokeEvent, record: any): boolean => {
-      try {
-        return db.recordAuditLog(record);
-      } catch (err) {
-        console.warn('[IPC] Error in p2p:db-save-audit-log:', err);
-        return false;
-      }
-    },
-  );
+  ipcMain.handle('p2p:db-save-audit-log', (_event: IpcMainInvokeEvent, record: any): boolean => {
+    try {
+      return db.recordAuditLog(record);
+    } catch (err) {
+      console.warn('[IPC] Error in p2p:db-save-audit-log:', err);
+      return false;
+    }
+  });
 
   ipcMain.removeHandler('p2p:db-list-audit-logs');
   ipcMain.handle(
@@ -361,7 +403,9 @@ export function registerIpcHandlers(): void {
           types: ['window', 'screen'],
           thumbnailSize: { width: 1920, height: 1080 },
         });
-        const target = options?.sourceId ? sources.find((s) => s.id === options.sourceId) : sources[0];
+        const target = options?.sourceId
+          ? sources.find((s) => s.id === options.sourceId)
+          : sources[0];
         if (!target) return null;
         return {
           dataUrl: target.thumbnail.toDataURL(),
@@ -386,10 +430,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:transcribe-audio');
   ipcMain.handle(
     'copilot:transcribe-audio',
-    async (
-      _event: IpcMainInvokeEvent,
-      params: { audioBase64: string; mimeType: string },
-    ) => {
+    async (_event: IpcMainInvokeEvent, params: { audioBase64: string; mimeType: string }) => {
       return orchestrator.transcribeAudio(params);
     },
   );
@@ -403,12 +444,9 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.removeHandler('copilot:get-plans');
-  ipcMain.handle(
-    'copilot:get-plans',
-    (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
-      return orchestrator.getPlans(params?.limit);
-    },
-  );
+  ipcMain.handle('copilot:get-plans', (_event: IpcMainInvokeEvent, params?: { limit?: number }) => {
+    return orchestrator.getPlans(params?.limit);
+  });
 
   ipcMain.removeHandler('copilot:get-learnings');
   ipcMain.handle(
@@ -421,7 +459,10 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:get-engram-observations');
   ipcMain.handle(
     'copilot:get-engram-observations',
-    (_event: IpcMainInvokeEvent, params?: { filter?: { topicKey?: string; type?: string; status?: string }; limit?: number }) => {
+    (
+      _event: IpcMainInvokeEvent,
+      params?: { filter?: { topicKey?: string; type?: string; status?: string }; limit?: number },
+    ) => {
       return orchestrator.getEngramObservations(params?.filter, params?.limit);
     },
   );
@@ -457,13 +498,10 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.removeHandler('copilot:run-swarm-analysis');
-  ipcMain.handle(
-    'copilot:run-swarm-analysis',
-    async (_event: IpcMainInvokeEvent, params?: any) => {
-      const swarm = getAgentSwarm();
-      return swarm.runAnalysisPipeline(params);
-    },
-  );
+  ipcMain.handle('copilot:run-swarm-analysis', async (_event: IpcMainInvokeEvent, params?: any) => {
+    const swarm = getAgentSwarm();
+    return swarm.runAnalysisPipeline(params);
+  });
 
   ipcMain.removeHandler('copilot:get-swarm-health');
   ipcMain.handle('copilot:get-swarm-health', async () => {
@@ -472,23 +510,23 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.removeHandler('copilot:audit-dispute-proof');
-  ipcMain.handle(
-    'copilot:audit-dispute-proof',
-    async (_event: IpcMainInvokeEvent, params: any) => {
-      const swarm = getAgentSwarm();
-      return swarm.auditPaymentProof(params);
-    },
-  );
+  ipcMain.handle('copilot:audit-dispute-proof', async (_event: IpcMainInvokeEvent, params: any) => {
+    const swarm = getAgentSwarm();
+    return swarm.auditPaymentProof(params);
+  });
 
   ipcMain.removeHandler('copilot:trigger-proactive-eval');
   ipcMain.handle(
     'copilot:trigger-proactive-eval',
-    async (_event: IpcMainInvokeEvent, params?: { parallelRate?: number; bcvRate?: number; spotUsdt?: number }) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      params?: { parallelRate?: number; bcvRate?: number; spotUsdt?: number },
+    ) => {
       const watcher = getAlphaWatcher();
       const engine = watcher.getProactiveEngine();
-      const parallel = params?.parallelRate ?? 78.50;
-      const bcv = params?.bcvRate ?? 65.50;
-      const spot = params?.spotUsdt ?? 1.000;
+      const parallel = params?.parallelRate ?? 78.5;
+      const bcv = params?.bcvRate ?? 65.5;
+      const spot = params?.spotUsdt ?? 1.0;
 
       const macroAlert = engine.evaluateBcvMacroEvent(parallel, bcv);
       const depegAlert = engine.evaluateUsdtDepegEvent(spot);
@@ -503,7 +541,10 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:assess-counterparty');
   ipcMain.handle(
     'copilot:assess-counterparty',
-    async (_event: IpcMainInvokeEvent, params: { alias: string; realName: string; documentId?: string; bankPayerName?: string }) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { alias: string; realName: string; documentId?: string; bankPayerName?: string },
+    ) => {
       const swarm = getAgentSwarm();
       return swarm.getCounterpartyGraph().assessRisk(params);
     },
@@ -512,14 +553,17 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:record-counterparty-trade');
   ipcMain.handle(
     'copilot:record-counterparty-trade',
-    async (_event: IpcMainInvokeEvent, params: {
-      alias: string;
-      realName: string;
-      documentId: string;
-      volumeUsdt: number;
-      bankPayerName: string;
-      hadTriangulationAttempt: boolean;
-    }) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      params: {
+        alias: string;
+        realName: string;
+        documentId: string;
+        volumeUsdt: number;
+        bankPayerName: string;
+        hadTriangulationAttempt: boolean;
+      },
+    ) => {
       const swarm = getAgentSwarm();
       swarm.getCounterpartyGraph().recordTrade(params);
       return { success: true };
@@ -543,13 +587,16 @@ export function registerIpcHandlers(): void {
       params: { offers: any[]; config: MonteCarloSimulationConfig },
     ) => {
       const sim = new MonteCarloSimulator();
-      return sim.runSimulation(params?.offers ?? [], params?.config ?? {
-        iterations: 500,
-        cancellationProbabilityPct: 15,
-        priceDriftVolatilityBps: 30,
-        ticketAmountUsdt: 1000,
-        side: 'BUY',
-      });
+      return sim.runSimulation(
+        params?.offers ?? [],
+        params?.config ?? {
+          iterations: 500,
+          cancellationProbabilityPct: 15,
+          priceDriftVolatilityBps: 30,
+          ticketAmountUsdt: 1000,
+          side: 'BUY',
+        },
+      );
     },
   );
 
@@ -602,7 +649,6 @@ export function getAgentSwarm(): AgentSwarmOrchestrator {
   }
   return agentSwarmInstance;
 }
-
 
 export interface KillswitchState {
   isTriggered: boolean;

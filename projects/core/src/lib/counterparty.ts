@@ -8,11 +8,11 @@ import { type Operation } from './log';
 import { roundMoney } from './money';
 
 export type CounterpartyReputation =
-  | 'TRUSTED'     // Verified KYC, titular match, multiple safe trades
-  | 'VERIFIED'    // Document and identity verified once
-  | 'NORMAL'      // Standard merchant or user
-  | 'SUSPICIOUS'  // Inconsistent payment names or delay history
-  | 'BLOCKED';    // Do not trade under any circumstance
+  | 'TRUSTED' // Verified KYC, titular match, multiple safe trades
+  | 'VERIFIED' // Document and identity verified once
+  | 'NORMAL' // Standard merchant or user
+  | 'SUSPICIOUS' // Inconsistent payment names or delay history
+  | 'BLOCKED'; // Do not trade under any circumstance
 
 export interface Counterparty {
   id: string;
@@ -87,7 +87,8 @@ export function assessCounterpartyRisk(
       return {
         isSafe: true,
         riskLevel: 'MEDIUM',
-        warning: 'Contraparte no registrada en el CRM. Verificá que el titular bancario coincida con la cédula en plataforma.',
+        warning:
+          'Contraparte no registrada en el CRM. Verificá que el titular bancario coincida con la cédula en plataforma.',
         isThirdPartyPayment: false,
       };
     }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Trade Impact, Slippage & Fill Probability Simulation Engine.
  * Simulates real-world execution friction on Binance P2P orderbooks:
  * order exhaustion, slippage across multiple depth tiers, merchant reliability
@@ -131,10 +131,14 @@ export function simulateTradeImpact(input: TradeImpactInput): TradeImpactSimulat
   const avgMerchantScore = totalFilledUsdt > 0 ? weightedFinishRateSum / totalFilledUsdt : 50;
   const depthPenalty = isFullyFillable ? 0 : 35;
   const slippagePenalty = Math.min(30, slippagePct * 10);
-  const overallFillProbabilityPct = Math.max(5, Math.min(99, Math.round(avgMerchantScore - depthPenalty - slippagePenalty)));
+  const overallFillProbabilityPct = Math.max(
+    5,
+    Math.min(99, Math.round(avgMerchantScore - depthPenalty - slippagePenalty)),
+  );
 
   // Liquidity health classification
-  let liquidityHealth: 'HIGH_LIQUIDITY' | 'ACCEPTABLE' | 'THIN_BOOK' | 'CRITICAL_SLIPPAGE' = 'HIGH_LIQUIDITY';
+  let liquidityHealth: 'HIGH_LIQUIDITY' | 'ACCEPTABLE' | 'THIN_BOOK' | 'CRITICAL_SLIPPAGE' =
+    'HIGH_LIQUIDITY';
   if (!isFullyFillable || slippagePct > 1.5) {
     liquidityHealth = 'CRITICAL_SLIPPAGE';
   } else if (slippagePct > 0.6) {
@@ -143,15 +147,17 @@ export function simulateTradeImpact(input: TradeImpactInput): TradeImpactSimulat
     liquidityHealth = 'ACCEPTABLE';
   }
 
-  let actionableRecommendation = '';
+  let actionableRecommendation: string;
   if (liquidityHealth === 'HIGH_LIQUIDITY') {
-    actionableRecommendation = 'Liquidez óptima. Deslizamiento casi nulo (<20 bps). Ejecución inmediata recomendada.';
+    actionableRecommendation =
+      'Liquidez óptima. Deslizamiento casi nulo (<20 bps). Ejecución inmediata recomendada.';
   } else if (liquidityHealth === 'ACCEPTABLE') {
     actionableRecommendation = `Deslizamiento moderado (${slippageBps} bps). Viable para tickets institucionales si el spread supera 0.80%.`;
   } else if (liquidityHealth === 'THIN_BOOK') {
     actionableRecommendation = `Libro fino. Deslizamiento de ${slippagePct.toFixed(2)}%. Fragmentar el ticket en 2 órdenes más pequeñas.`;
   } else {
-    actionableRecommendation = 'ALERTA: Profundidad insuficiente para el ticket solicitado. Riesgo alto de quemar margen.';
+    actionableRecommendation =
+      'ALERTA: Profundidad insuficiente para el ticket solicitado. Riesgo alto de quemar margen.';
   }
 
   return {

@@ -20,10 +20,7 @@ export type FraudRiskFlag =
   | 'SUSPICIOUS_ROUND_SUM'
   | 'EXPIRED_OR_FUTURE_RECEIPT';
 
-export type FraudRecommendation =
-  | 'AUTO_RELEASE_OK'
-  | 'MANUAL_AUDIT_REQUIRED'
-  | 'LOCK_AND_DISPUTE';
+export type FraudRecommendation = 'AUTO_RELEASE_OK' | 'MANUAL_AUDIT_REQUIRED' | 'LOCK_AND_DISPUTE';
 
 export interface BankReferenceValidation {
   isValid: boolean;
@@ -154,10 +151,7 @@ export function levenshteinDistance(a: string, b: string): number {
 /**
  * Evaluates similarity between verified counterparty name and payer name on receipt.
  */
-export function calculateNameSimilarity(
-  nameA: string,
-  nameB: string,
-): NameMatchResult {
+export function calculateNameSimilarity(nameA: string, nameB: string): NameMatchResult {
   const normA = normalizeText(nameA);
   const normB = normalizeText(nameB);
 
@@ -197,11 +191,7 @@ export function calculateNameSimilarity(
         break;
       }
       // Allow minor 1-char OCR typo on tokens > 4 chars
-      if (
-        tokenA.length >= 4 &&
-        tokenB.length >= 4 &&
-        levenshteinDistance(tokenA, tokenB) <= 1
-      ) {
+      if (tokenA.length >= 4 && tokenB.length >= 4 && levenshteinDistance(tokenA, tokenB) <= 1) {
         matched = true;
         break;
       }
@@ -215,7 +205,8 @@ export function calculateNameSimilarity(
 
   // Jaccard-like score with token overlap
   const totalUniqueTokens = new Set([...tokensA, ...tokensB]).size;
-  const tokenScore = totalUniqueTokens > 0 ? matchedTokens.length / Math.min(tokensA.length, tokensB.length) : 0;
+  const tokenScore =
+    totalUniqueTokens > 0 ? matchedTokens.length / Math.min(tokensA.length, tokensB.length) : 0;
 
   // Edit distance score on full normalized strings without spaces
   const compactA = normA.replace(/\s/g, '');
@@ -245,13 +236,7 @@ function isTrivialSequence(str: string): boolean {
   if (/^(.)\1+$/.test(str)) return true;
 
   // Simple ascending or descending sequences of digits
-  const sequentialPatterns = [
-    '0123456789',
-    '1234567890',
-    '9876543210',
-    '12345678',
-    '87654321',
-  ];
+  const sequentialPatterns = ['0123456789', '1234567890', '9876543210', '12345678', '87654321'];
   for (const seq of sequentialPatterns) {
     if (seq.includes(str) || str.includes(seq)) return true;
   }
@@ -322,9 +307,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: '6 a 14 dígitos numéricos',
-        reason: isDigits
-          ? undefined
-          : `Referencia Mercantil inválida: "${reference}".`,
+        reason: isDigits ? undefined : `Referencia Mercantil inválida: "${reference}".`,
       };
     }
     case 'PROVINCIAL': {
@@ -334,9 +317,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: '6 a 12 dígitos numéricos',
-        reason: isDigits
-          ? undefined
-          : `Referencia Provincial inválida: "${reference}".`,
+        reason: isDigits ? undefined : `Referencia Provincial inválida: "${reference}".`,
       };
     }
     case 'BANCAMIGA': {
@@ -346,9 +327,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: '6 a 12 dígitos numéricos',
-        reason: isDigits
-          ? undefined
-          : `Referencia Bancamiga inválida: "${reference}".`,
+        reason: isDigits ? undefined : `Referencia Bancamiga inválida: "${reference}".`,
       };
     }
     case 'NEQUI': {
@@ -359,9 +338,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: 'Prefijo M + 6-12 dígitos o 8-12 dígitos numéricos',
-        reason: isValidNequi
-          ? undefined
-          : `Referencia Nequi inválida: "${reference}".`,
+        reason: isValidNequi ? undefined : `Referencia Nequi inválida: "${reference}".`,
       };
     }
     case 'BANCOLOMBIA': {
@@ -371,9 +348,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: '6 a 14 dígitos numéricos',
-        reason: isDigits
-          ? undefined
-          : `Referencia Bancolombia inválida: "${reference}".`,
+        reason: isDigits ? undefined : `Referencia Bancolombia inválida: "${reference}".`,
       };
     }
     case 'ZINLI':
@@ -384,9 +359,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: '6 a 24 caracteres alfanuméricos',
-        reason: isAlnum
-          ? undefined
-          : `Código de operación inválido: "${reference}".`,
+        reason: isAlnum ? undefined : `Código de operación inválido: "${reference}".`,
       };
     }
     default: {
@@ -396,9 +369,7 @@ export function validateBankReference(
         bank,
         reference,
         expectedFormat: 'Al menos 5 caracteres conteniendo dígitos',
-        reason: hasMinLength
-          ? undefined
-          : `Referencia desconocida o incompleta: "${reference}".`,
+        reason: hasMinLength ? undefined : `Referencia desconocida o incompleta: "${reference}".`,
       };
     }
   }
@@ -407,9 +378,7 @@ export function validateBankReference(
 /**
  * Comprehensive Anti-Fraud & Triangular Scam Evaluator.
  */
-export function evaluateFraudRisk(
-  params: FraudEvaluationParams,
-): FraudShieldAuditResult {
+export function evaluateFraudRisk(params: FraudEvaluationParams): FraudShieldAuditResult {
   const {
     orderId,
     orderAmount,
@@ -472,7 +441,9 @@ export function evaluateFraudRisk(
       refValidation.reason || 'Número de referencia bancaria no supera las reglas de integridad.',
     );
   } else {
-    auditDetails.push(`Referencia bancaria legítima (${refValidation.reference}) para entidad ${bank}.`);
+    auditDetails.push(
+      `Referencia bancaria legítima (${refValidation.reference}) para entidad ${bank}.`,
+    );
   }
 
   // 4. Amount Verification
@@ -497,9 +468,7 @@ export function evaluateFraudRisk(
 
   // 6. Blacklist Check
   const normPayerId = receipt.payerId ? normalizeText(receipt.payerId) : '';
-  const isIdBlacklisted = blacklistedIds.some((b) =>
-    normPayerId.includes(normalizeText(b)),
-  );
+  const isIdBlacklisted = blacklistedIds.some((b) => normPayerId.includes(normalizeText(b)));
   const isRefBlacklisted = blacklistedReferences.some(
     (b) => normalizeText(b) === normalizeText(reference),
   );
@@ -526,7 +495,12 @@ export function evaluateFraudRisk(
   let riskLevel: FraudRiskLevel = 'SAFE';
   let recommendation: FraudRecommendation = 'AUTO_RELEASE_OK';
 
-  if (clampedScore >= 50 || flags.includes('THIRD_PARTY_PAYER') || flags.includes('BLACKLISTED_ENTITY') || flags.includes('RAPID_REPEAT_REFERENCE')) {
+  if (
+    clampedScore >= 50 ||
+    flags.includes('THIRD_PARTY_PAYER') ||
+    flags.includes('BLACKLISTED_ENTITY') ||
+    flags.includes('RAPID_REPEAT_REFERENCE')
+  ) {
     riskLevel = 'CRITICAL';
     recommendation = 'LOCK_AND_DISPUTE';
   } else if (clampedScore >= 20 || flags.length > 0) {
@@ -538,8 +512,8 @@ export function evaluateFraudRisk(
     riskLevel === 'SAFE'
       ? 'Comprobante verificado. Pago seguro de titular directo.'
       : riskLevel === 'WARNING'
-      ? 'Precaución: Se detectaron inconsistencias menores que requieren auditoría visual.'
-      : 'PELIGRO DE ESTAFA: Bloquear orden y abrir disputa inmediatamente.';
+        ? 'Precaución: Se detectaron inconsistencias menores que requieren auditoría visual.'
+        : 'PELIGRO DE ESTAFA: Bloquear orden y abrir disputa inmediatamente.';
 
   const disputeTemplateText = generateDisputeClaim({
     orderId,
