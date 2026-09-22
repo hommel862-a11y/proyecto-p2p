@@ -62,7 +62,16 @@ Cambios de código en los 2 archivos productivos + 1 spec listados. Commits work
 ## Progress
 
 - [x] Diagnóstico (systematic-debugging fase 1–3): causa raíz confirmada — sin bridge navegador→Electron para Cotizave; patrón Binance (proxy) no viable por key header.
-- [x] T1..T3 implementados (evidencia arriba). T4 parcialmente corrido: `npx tsc --noEmit` OK (root `files:[]`), `npm run test:electron` OK (74 tests), spec Angular 3/3 en jsdom; PENDIENTE por bloqueo pre-existente (sesión anterior): `npm run build` falla por `clipboard-payment.service.ts(68)` TS2345 ('compliance' ∉ AuditCategory) y `tsc -p electron/tsconfig.json` falla por `clipboard-watcher.ts(50)` TS2554 — ambos archivos fuera de scope/vetados. `build:preload` OK. ChromeHeadless no disponible (faltan `@vitest/browser-*`). Smoke bridge → orquestador.
+- [x] T1..T3 implementados (evidencia arriba).
+- [x] Commit work-unit `7e89953` (`fix(cotizave): bridge CORS local via app de escritorio para el navegador`) en `feat/p2p-decision-tool-mvp`. Solo archivos del feature: `electron/main/index.ts` (solo hunks del bridge, vía `git apply --cached`; el resto del archivo sigue con WIP de clipboard de otra sesión), `src/app/core/cotizave.service.ts`, `src/app/core/cotizave.service.spec.ts`, `odd/tasks/cotizave-cors-bridge.md`.
+- [ ] T4: PARCIAL (honesta). Corrido por mí tras el writer:
+  1. `npx tsc --noEmit` → EXIT 0.
+  2. `npm run test:electron` → 11 files / 74 tests, EXIT 0.
+  3. Spec Angular → 3/3 passed (Node+jsdom); ChromeHeadless no instalado (partial).
+  4. `npx eslint` sobre los 3 archivos → 0 errors (1 prettier warning corregido con --fix).
+  5. `npm run build` y `tsc -p electron/tsconfig.json` → BLOQUEADOS por otros-sesión WIP sin commitear y vetado (`clipboard-payment.service.ts(68)` TS2345; `clipboard-watcher.ts(50)` TS2554). Mi código no introduce errores de tipo.
+  6. Smoke bridge → pendiente (requiere rebuild + relaunch Electron; bloqueado por el mismo WIP).
+- Próximo paso: cuando la otra sesión commitee/arregle `clipboard-*`, correr `npm run build && npx tsc -p electron/tsconfig.json && npm run build:preload`, relanzar desktop y smoke `Invoke-WebRequest http://127.0.0.1:51857/api/cotizave/rates -Headers @{'x-api-key'='test'}`.
 
 ## Engram mirror
 
