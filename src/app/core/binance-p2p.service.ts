@@ -166,6 +166,20 @@ export class BinanceP2pService implements OnDestroy {
       // Direct fetch failed (likely browser CORS restriction)
     }
 
+    // Fallback: bridge local de la app de escritorio (mismo mecanismo que
+    // Cotizave). La desktop expone 127.0.0.1:51857 como proxy CORS local, de
+    // modo que el navegador cotiza en vivo sin depender de proxies públicos.
+    try {
+      const bridgeResp = await fetch('http://127.0.0.1:51857/api/binance/p2p', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (bridgeResp.ok) return await bridgeResp.json();
+    } catch {
+      // Bridge not available: fall through to proxy or clear error
+    }
+
     // Security check: Only route through proxy if explicitly configured or enabled
     let proxyUrl: string;
     if (this.customProxyUrl()) {
