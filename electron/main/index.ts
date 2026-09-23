@@ -43,40 +43,49 @@ const MIME: Record<string, string> = {
 function startStaticServer(): Promise<number> {
   const root = path.resolve(__dirname, '../../../dist/p2p/browser');
 
-  // Puente CORS de Cotizave: la build de navegador (localhost:4200) llama a
-  // /api/cotizave/rates en este servidor cuando su fetch directo a
-  // api.cotizave.com es bloqueado por CORS. El puente hace de proxy a través de
-  // net.fetch de Electron (CORS no aplica dentro de la app de escritorio) y
-  // refleja el origen del navegador solo si es uno de los orígenes propios de
-  // la app (sin `*`).
-  const COTIZAVE_BRIDGE_PREFIX = '/api/cotizave/';
-  const COTIZAVE_ALLOWED_ORIGINS = new Set([
+  // Puente CORS local: la build de navegador (localhost:4200) llama a
+  // /api/cotizave/rates y /api/binance/p2p en este servidor cuando su fetch
+  // directo al proveedor es bloqueado por CORS. El puente hace de proxy a
+  // través de net.fetch de Electron (CORS no aplica dentro de la app de
+  // escritorio) y refleja el origen del navegador solo si es uno de los
+  // orígenes propios de la app (sin `*`).
+  const BRIDGE_ALLOWED_ORIGINS = new Set([
     'http://localhost:4200',
     'http://127.0.0.1:4200',
     'http://localhost:51857',
     'http://127.0.0.1:51857',
   ]);
 
-  function applyCotizaveCors(req: http.IncomingMessage, res: http.ServerResponse): void {
+  function applyBridgeCors(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    allowMethods: string,
+    allowHeaders: string,
+  ): void {
     const origin = req.headers.origin;
-    if (origin && COTIZAVE_ALLOWED_ORIGINS.has(origin)) {
+    if (origin && BRIDGE_ALLOWED_ORIGINS.has(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Headers', 'x-api-key, accept, content-type');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', allowHeaders);
+      res.setHeader('Access-Control-Allow-Methods', allowMethods);
       res.setHeader('Access-Control-Max-Age', '600');
     }
   }
 
-  function writeCotizaveJson(
+  function writeBridgeJson(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     status: number,
     body: unknown,
+    allowMethods: string,
+    allowHeaders: string,
   ): void {
-    applyCotizaveCors(req, res);
+    applyBridgeCors(req, res, allowMethods, allowHeaders);
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
   }
+
+  const COTIZAVE_CORS = ['GET, OPTIONS', 'x-api-key, accept, content-type'] as const;
+  const BINANCE_CORS = ['POST, OPTIONS', 'content-type'] as const;
 
   async function handleCotizaveBridge(
     req: http.IncomingMessage,
@@ -84,23 +93,30 @@ function startStaticServer(): Promise<number> {
     endpoint: string,
   ): Promise<void> {
     if (req.method === 'OPTIONS') {
-      applyCotizaveCors(req, res);
+      applyBridgeCors(req, res, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
       res.writeHead(204);
       res.end();
       return;
     }
     if (req.method !== 'GET') {
-      writeCotizaveJson(req, res, 405, { error: 'Method not allowed' });
+      writeBridgeJson(req, res, 405, { error: 'Method not allowed' }, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
       return;
     }
     if (endpoint !== 'rates') {
-      writeCotizaveJson(req, res, 404, { error: 'Unknown endpoint' });
+      writeBridgeJson(req, res, 404, { error: 'Unknown endpoint' }, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
       return;
     }
     const rawKey = req.headers['x-api-key'];
     const apiKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
     if (!apiKey || apiKey.trim().length === 0) {
-      writeCotizaveJson(req, res, 400, { error: 'Cotizave API key is required' });
+      writeBridgeJson(
+        req,
+        res,
+        400,
+        { error: 'Cotizave API key is required' },
+        COTIZAVE_CORS[0],
+        COTIZAVE_CORS[1],
+      );
       return;
     }
     try {
@@ -113,29 +129,117 @@ function startStaticServer(): Promise<number> {
         },
       });
       if (!response.ok) {
-        writeCotizaveJson(req, res, response.status, {
-          error: `Cotizave HTTP Error ${response.status}`,
-        });
+        writeBridgeJson(
+          req,
+          res,
+          response.status,
+          { error: `Cotizave HTTP Error ${response.status}` },
+          COTIZAVE_CORS[0],
+          COTIZAVE_CORS[1],
+        );
         return;
       }
       const contentType = response.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
-        writeCotizaveJson(req, res, 502, { error: 'Cotizave returned non-JSON response' });
+        writeBridgeJson(
+          req,
+          res,
+          502,
+          { error: 'Cotizave returned non-JSON response' },
+          COTIZAVE_CORS[0],
+          COTIZAVE_CORS[1],
+        );
         return;
       }
       const data = await response.json();
-      writeCotizaveJson(req, res, 200, data);
+      writeBridgeJson(req, res, 200, data, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
     } catch {
-      writeCotizaveJson(req, res, 502, { error: 'Servidor Cotizave no accesible' });
+      writeBridgeJson(
+        req,
+        res,
+        502,
+        { error: 'Servidor Cotizave no accesible' },
+        COTIZAVE_CORS[0],
+        COTIZAVE_CORS[1],
+      );
+    }
+  }
+
+  async function handleBinanceBridge(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    if (req.method === 'OPTIONS') {
+      applyBridgeCors(req, res, BINANCE_CORS[0], BINANCE_CORS[1]);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (req.method !== 'POST') {
+      writeBridgeJson(req, res, 405, { error: 'Method not allowed' }, BINANCE_CORS[0], BINANCE_CORS[1]);
+      return;
+    }
+    let payload: unknown;
+    try {
+      const raw = await new Promise<string>((resolve, reject) => {
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString('utf8');
+          if (body.length > 64 * 1024) {
+            reject(new Error('Payload demasiado grande'));
+          }
+        });
+        req.on('end', () => resolve(body));
+        req.on('error', reject);
+      });
+      payload = JSON.parse(raw);
+    } catch {
+      writeBridgeJson(req, res, 400, { error: 'Invalid JSON body' }, BINANCE_CORS[0], BINANCE_CORS[1]);
+      return;
+    }
+    try {
+      const response = await net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+        method: 'POST',
+        signal: AbortSignal.timeout(15000),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        writeBridgeJson(
+          req,
+          res,
+          response.status,
+          { error: `Binance HTTP Error ${response.status}` },
+          BINANCE_CORS[0],
+          BINANCE_CORS[1],
+        );
+        return;
+      }
+      const data = await response.json();
+      writeBridgeJson(req, res, 200, data, BINANCE_CORS[0], BINANCE_CORS[1]);
+    } catch {
+      writeBridgeJson(
+        req,
+        res,
+        502,
+        { error: 'Servidor Binance no accesible' },
+        BINANCE_CORS[0],
+        BINANCE_CORS[1],
+      );
     }
   }
 
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
 
-    if (urlPath.startsWith(COTIZAVE_BRIDGE_PREFIX)) {
-      const endpoint = decodeURIComponent(urlPath.slice(COTIZAVE_BRIDGE_PREFIX.length));
+    if (urlPath.startsWith('/api/cotizave/')) {
+      const endpoint = decodeURIComponent(urlPath.slice('/api/cotizave/'.length));
       void handleCotizaveBridge(req, res, endpoint);
+      return;
+    }
+
+    if (urlPath.startsWith('/api/binance/')) {
+      void handleBinanceBridge(req, res);
       return;
     }
 
@@ -155,7 +259,7 @@ function startStaticServer(): Promise<number> {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com data: blob:",
+      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com http://127.0.0.1:51857 http://localhost:51857 data: blob:",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
@@ -218,7 +322,13 @@ async function checkUrl(url: string): Promise<boolean> {
 }
 
 async function createWindow(): Promise<void> {
-  let targetUrl = '';
+  // El servidor estático se levanta SIEMPRE: además de servir la SPA cuando no
+  // hay dev server, expone el puente CORS de Cotizave y Binance
+  // (127.0.0.1:51857) para que la build de navegador use la app de escritorio
+  // como proxy local.
+  const port = await startStaticServer();
+
+  let targetUrl = `http://localhost:${port}/#/spread`;
   try {
     const isLocalhostUp = await checkUrl('http://localhost:4200/');
     const isIpUp = !isLocalhostUp && (await checkUrl('http://127.0.0.1:4200/'));
@@ -227,11 +337,6 @@ async function createWindow(): Promise<void> {
     }
   } catch {
     // fallback to static server
-  }
-
-  if (!targetUrl) {
-    const port = await startStaticServer();
-    targetUrl = `http://localhost:${port}/#/spread`;
   }
 
   mainWindow = new BrowserWindow({

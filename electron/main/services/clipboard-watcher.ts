@@ -45,9 +45,9 @@ export class ClipboardWatcherService {
     this.clipboardImpl =
       clipboardReader ||
       ({
-        readText: (type?: 'selection' | 'clipboard') => {
+        readText: () => {
           try {
-            return clipboard?.readText ? clipboard.readText(type || 'clipboard') : '';
+            return clipboard?.readText ? clipboard.readText() : '';
           } catch {
             return '';
           }
