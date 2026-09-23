@@ -22,8 +22,36 @@ try {
   // Ignore fallback
 }
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+// Renderer crashes reportados en Windows (Electron 44, Chromium 140) tras
+// ~30-70s de vida; fallback a rasterización por software estabiliza el
+// renderer en equipos con drivers GPU problemáticos.
+app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Recupera la ventana principal si sigue viva o la recrea si el renderer
+ * murió. Sin esto, un renderer caído dejaba el proceso vivo con el
+ * single-instance lock tomado y la app "no abría" en silencio.
+ */
+async function ensureMainWindow(): Promise<void> {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const wc = mainWindow.webContents;
+    if (wc.isDestroyed() || wc.isCrashed()) {
+      try {
+        wc.reload();
+      } catch {
+        // webContents destruido: recrear la ventana entera.
+      }
+    } else {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    return;
+  }
+  await createWindow();
+}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -392,11 +420,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    console.log('[p2p] second-instance: revivir ventana principal');
+    void ensureMainWindow();
   });
 
   app.whenReady().then(async () => {
@@ -428,5 +453,24 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     void createWindow();
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[p2p] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[p2p] unhandledRejection:', reason);
+});
+app.on('render-process-gone', (_event, webContents, details) => {
+  // Auto-recovery del renderer: sin esto, un crash deja el proceso vivo con
+  // el single-instance lock tomado y la app "no abre" en silencio.
+  if (details.reason === 'crashed' || details.reason === 'killed' || details.reason === 'oom') {
+    console.error('[p2p] renderer gone, reason:', details.reason, '— recargando');
+    if (webContents.isDestroyed() || webContents.isCrashed()) {
+      void ensureMainWindow();
+    } else {
+      webContents.reload();
+    }
   }
 });
