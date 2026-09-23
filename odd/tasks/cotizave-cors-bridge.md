@@ -77,6 +77,7 @@ Cambios de código en los 2 archivos productivos + 1 spec listados. Commits work
      - OPTIONS `Origin: https://evil.example` → `204` SIN header ACAO (no refleja) ✓
      - GET con key real del usuario → proxy `net.fetch` → datos reales de Cotizave (probado 200 con tasas completas en instancia dev del mismo código; key 'test' recibe 401 de Cotizave — rechazo del proveedor, correcto)
 - Entrega: `release/win-unpacked` reemplazado por paquete limpio (`electron-builder --dir`), el manual defectuoso quedó en `release/win-unpacked.bak-manual`. La app empaquetada corre con el bridge: `127.0.0.1:51857` escuchando.
+- **CSP — el eslabón que faltaba (commit `0d2d491`)**: `connect-src` del `src/index.html` NO incluía `http://127.0.0.1:51857` → Chrome bloqueaba el fetch del fallback con "Refused to connect... Content Security Policy" antes de llegar a CORS (por eso el usuario veía "API no implementada"). Agregados `http://127.0.0.1:51857 http://localhost:51857` a `connect-src`. Dev server re-sirve la CSP corregida (verificado: `51857 permitido: True`). NOTA: requiere rebuild del paquete desktop al final para que la copia estática embebida en el asar quede igual de permisiva (hoy el desktop usa el dev URL cuando 4200 está arriba; en estático usa IPC, no fetch → no afecta el flujo principal).
 - Próximo paso: merge de `feat/cotizave-bridge-always-on` a la rama principal cuando la otra sesión cierre su WIP (`clipboard-*`, dashboard, copilot).
 
 ## Engram mirror
