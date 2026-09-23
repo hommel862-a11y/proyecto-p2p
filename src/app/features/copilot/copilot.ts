@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speech.service';
 import { StorageService } from '../../core/storage';
 import {
@@ -200,6 +201,7 @@ export class Copilot implements OnInit, OnDestroy {
 
   readonly voiceService = inject(VoiceSpeechService);
   private readonly storage = inject(StorageService);
+  private readonly router = inject(Router);
 
   sidebarCollapsed = signal<boolean>(false);
 
@@ -795,6 +797,13 @@ export class Copilot implements OnInit, OnDestroy {
     }
     await this.refreshData();
     await this.checkConnection();
+
+    const url = this.router.parseUrl(this.router.url);
+    const prefill = url.queryParams['prefill'];
+    if (prefill) {
+      this.inputPrompt.set(prefill);
+      this.activeTab.set('chat');
+    }
 
     // Periodic auto-sync with Alpha Watcher plans and learnings
     this.autoRefreshTimer = setInterval(async () => {

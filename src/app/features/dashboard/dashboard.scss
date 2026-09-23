@@ -1138,3 +1138,15 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* Forensic Audit Grid (Skill #44) */
+.forensic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+
+  @media (max-width: 950px) {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -174,6 +174,102 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
+       3.5. Auditoría Forense & Disciplina Operativa (Skill #44)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'treasury') {
+    <section class="apple-card-section forensic-audit-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">🔍</span>
+          <div>
+            <h3 class="apple-section-title">Auditoría Forense & Disciplina Operativa (Skill #44)</h3>
+            <p class="apple-section-subtitle">Evaluación de la Regla de Oro (&ge; 0.50%), detección de rachas de tilt y ventana horaria de congestión bancaria</p>
+          </div>
+        </div>
+
+        <div class="apple-section-actions">
+          <button type="button" class="apple-pill-btn apple-btn-primary" (click)="goToForensicCopilot()" title="Preguntar al Copiloto sobre tu disciplina y horarios">
+            🧠 Consultar al Copiloto →
+          </button>
+        </div>
+      </div>
+
+      <div class="forensic-grid">
+        <!-- Card 1: Dictamen de Disciplina -->
+        <div class="apple-kpi-card" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Disciplina del Operador</span>
+            <span class="apple-kpi-icon">⚖️</span>
+          </div>
+          <div class="apple-kpi-val font-mono" style="font-size: 19px;">
+            @if (forensicDossier().operatorStanding === 'DISCIPLINED') {
+              <span style="color: var(--accent);">🟢 Disciplinado</span>
+            } @else if (forensicDossier().operatorStanding === 'MODERATE_DEVIATION') {
+              <span style="color: var(--warn);">🟡 Desvío Moderado</span>
+            } @else {
+              <span style="color: var(--danger);">🔴 Alerta de Tilt</span>
+            }
+          </div>
+          <div class="apple-kpi-footer">
+            <span class="apple-kpi-subtext">
+              @if (forensicDiscipline().tiltDetected) {
+                ⚠️ Racha de operaciones sub-óptimas
+              } @else {
+                Márgenes respetados rigurosamente
+              }
+            </span>
+            <span class="apple-kpi-link">Copiloto →</span>
+          </div>
+        </div>
+
+        <!-- Card 2: Cumplimiento Regla de Oro -->
+        <div class="apple-kpi-card apple-card-progress" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Regla de Oro (&ge; 0.50%)</span>
+            <span class="apple-pill-mini gold font-mono">{{ forensicDiscipline().complianceRatePct | number:'1.1-1' }}%</span>
+          </div>
+          <div class="apple-kpi-val font-mono" style="color: var(--gold-strong); font-size: 19px;">
+            {{ forensicDiscipline().averageSpreadPct | number:'1.2-2' }}% <span class="apple-kpi-unit">spread prom.</span>
+          </div>
+          <div class="apple-track-bar">
+            <div class="apple-track-fill" [style.width.%]="forensicDiscipline().complianceRatePct"></div>
+          </div>
+          <div class="apple-kpi-footer">
+            <span class="apple-kpi-subtext">
+              {{ forensicDiscipline().compliantOperationsCount }} de {{ forensicDiscipline().totalOperationsAnalyzed }} órdenes conformes
+            </span>
+          </div>
+        </div>
+
+        <!-- Card 3: Ventana Horaria de Mayor Riesgo -->
+        <div class="apple-kpi-card" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Ventana Horaria Crítica</span>
+            <span class="apple-kpi-icon">⏱️</span>
+          </div>
+          <div class="apple-kpi-val font-mono" style="font-size: 19px;">
+            @if (forensicRiskAnalysis().peakRiskScore > 0) {
+              <span style="color: var(--gold-strong);">{{ forensicRiskAnalysis().peakRiskWindow }}</span>
+            } @else {
+              <span style="color: var(--accent);">0 Alertas</span>
+            }
+          </div>
+          <div class="apple-kpi-footer">
+            <span class="apple-pill-mini" [class.danger]="isPeakRiskHourNow()" [class.live]="!isPeakRiskHourNow()">
+              @if (isPeakRiskHourNow()) {
+                ⚠️ Hora Actual en Pico de Riesgo
+              } @else {
+                🟢 Horario Fuera de Congestión
+              }
+            </span>
+            <span class="apple-kpi-link">Detalles →</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
        4. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid
        ═══════════════════════════════════════════════════ -->
   @if (activeTab() === 'all' || activeTab() === 'treasury') {

@@ -6,6 +6,7 @@ import { RisksService } from '../../core/rules';
 import { SessionService } from '../../core/session.service';
 import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
+import { AuditLoggerService } from '../../core/audit-logger.service';
 import { fmtVes, fmtUsd, FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { CotizaveService } from '../../core/cotizave.service';
@@ -14,12 +15,18 @@ import {
   computeDashboard,
   computeSessionSummary,
   getBcvMarketIntelligence,
+  analyzeHourlyRiskDistribution,
+  auditTradingDisciplineAndSpreadCompliance,
+  generateForensicDossier,
   type Operation,
   type DayActivity,
   type AccountVelocityHealth,
   type BcvMarketIntelligence,
   type BcvGapAnalysis,
   type BcvPredictorWindow,
+  type HourlyRiskDistributionResult,
+  type SpreadDisciplineResult,
+  type ForensicDossier,
 } from '@p2p/core';
 
 export interface McpVolatilityForecastDto {
@@ -86,6 +93,7 @@ export class Dashboard implements OnInit, OnDestroy {
   private readonly storage = inject(StorageService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
+  private readonly audit = inject(AuditLoggerService);
   readonly sessionService = inject(SessionService);
   readonly accountsService = inject(AccountsService);
   readonly binanceService = inject(BinanceP2pService);
@@ -174,6 +182,35 @@ export class Dashboard implements OnInit, OnDestroy {
 
   /** Risk engine live verdict from sample state. */
   readonly verdict = computed(() => this.risks.evaluate(this.risks.sampleState()));
+
+  /** Forensic Risk & Hourly Distribution (Skill #44) */
+  readonly forensicRiskAnalysis = computed<HourlyRiskDistributionResult>(() => {
+    return analyzeHourlyRiskDistribution(this.audit.events());
+  });
+
+  /** Trading Discipline & Golden Rule Compliance (net spread >= 0.50%) */
+  readonly forensicDiscipline = computed<SpreadDisciplineResult>(() => {
+    return auditTradingDisciplineAndSpreadCompliance(this.ops(), 0.5);
+  });
+
+  /** Full Forensic Dossier */
+  readonly forensicDossier = computed<ForensicDossier>(() => {
+    return generateForensicDossier(this.forensicRiskAnalysis(), this.forensicDiscipline());
+  });
+
+  /** Whether the current hour is inside the historical peak risk window */
+  readonly isPeakRiskHourNow = computed<boolean>(() => {
+    const currentHour = new Date().getHours();
+    return this.forensicRiskAnalysis().highRiskHours.includes(currentHour);
+  });
+
+  goToForensicCopilot(): void {
+    void this.router.navigate(['/copilot'], {
+      queryParams: {
+        prefill: '¿En qué horarios tuve más alertas de riesgo esta semana y respeté el spread mínimo?',
+      },
+    });
+  }
 
   /** Daily transaction velocity per account (SUDEBAN rotation awareness). */
   readonly accountVelocities = computed(() => this.accountsService.accountVelocities());

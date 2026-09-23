@@ -96,4 +96,19 @@ describe('Dashboard', () => {
     expect(c.selectedChartTab()).toBe('volume');
     expect(f.nativeElement.textContent).toContain('Volumen Diario (USDT)');
   });
+
+  it('computes forensic audit signals and renders forensic card', () => {
+    seed([
+      op({ id: '1', type: 'buy', vesAmount: 8000, usdtAmount: 10, price: 800 }),
+      op({ id: '2', type: 'sell', vesAmount: 8800, usdtAmount: 10, price: 880 }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.forensicDiscipline()).toBeDefined();
+    expect(c.forensicDossier()).toBeDefined();
+    expect(f.nativeElement.textContent).toContain('Auditoría Forense & Disciplina Operativa');
+    expect(f.nativeElement.textContent).toContain('Regla de Oro');
+  });
 });
