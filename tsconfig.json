@@ -26,6 +26,14 @@
     "strictInputAccessModifiers": true
   },
   "files": [],
+  "exclude": [
+    "node_modules",
+    "**/node_modules/*",
+    "dist",
+    "electron/dist",
+    ".angular",
+    "out-tsc"
+  ],
   "references": [
     {
       "path": "./tsconfig.app.json"

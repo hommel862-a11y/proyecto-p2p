@@ -18,10 +18,8 @@ export function createP2PMcpServer(options?: CreateMcpServerOptions): McpServer 
     version: '1.0.0',
   });
 
-  const toolsToRegister =
-    options?.serverId && MCP_TOOLS_BY_SERVER[options.serverId]
-      ? MCP_TOOLS_BY_SERVER[options.serverId]
-      : ALL_MCP_TOOLS;
+  const selectedTools = options?.serverId ? MCP_TOOLS_BY_SERVER[options.serverId] : undefined;
+  const toolsToRegister = selectedTools ?? ALL_MCP_TOOLS;
 
   // 1. Register Tools with Zod schema validation & audit trail
   for (const tool of toolsToRegister) {

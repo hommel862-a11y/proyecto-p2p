@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import type { McpStatusDto, McpServerRuntimeInfo, McpAuditLogDto } from '../shared/types';
 import { refreshFinancialSkillMarketData } from './gemini-skills';
@@ -381,6 +382,66 @@ export const MCP_SERVER_REGISTRY: McpServerRuntimeInfo[] = [
 ];
 
 /**
+ * Resolves the path to the bundled MCP server (packages/mcp-server/dist/index.js).
+ * Supports both development mode and packaged Electron (.asar) mode via asarUnpack.
+ */
+export function resolveMcpDistPath(): string {
+  const fromCompiled = path.resolve(__dirname, '../../../packages/mcp-server/dist/index.js');
+  const fromSource = path.resolve(__dirname, '../../packages/mcp-server/dist/index.js');
+
+  const candidates = [
+    ...(fromCompiled.includes('app.asar') ? [fromCompiled.replace('app.asar', 'app.asar.unpacked')] : []),
+    ...(fromSource.includes('app.asar') ? [fromSource.replace('app.asar', 'app.asar.unpacked')] : []),
+    fromCompiled,
+    fromSource,
+  ];
+
+  if (typeof process !== 'undefined' && process.resourcesPath) {
+    candidates.push(
+      path.join(process.resourcesPath, 'app.asar.unpacked', 'packages', 'mcp-server', 'dist', 'index.js'),
+      path.join(process.resourcesPath, 'packages', 'mcp-server', 'dist', 'index.js'),
+    );
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return fromCompiled;
+}
+
+let cachedMcpModule: any = null;
+
+export async function loadMcpModule(): Promise<any> {
+  if (cachedMcpModule) {
+    return cachedMcpModule;
+  }
+  process.env['MCP_EMBEDDED_IMPORT'] = 'true';
+  const mcpDistPath = resolveMcpDistPath();
+  if (!fs.existsSync(mcpDistPath)) {
+    throw new Error(
+      `MCP Server bundle not found at: ${mcpDistPath}. Ensure packages/mcp-server is compiled and included in release.`,
+    );
+  }
+  const fileUrl = new URL(`file:///${mcpDistPath.replace(/\\/g, '/')}`).href;
+  try {
+    // Native ESM import directly supported in Node 16+ / Vitest
+    cachedMcpModule = await import(/* @vite-ignore */ fileUrl);
+  } catch {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      cachedMcpModule = await (0, eval)(`import(${JSON.stringify(fileUrl)})`);
+    } catch {
+      const importEsm = new Function('specifier', 'return import(specifier)');
+      cachedMcpModule = await importEsm(fileUrl);
+    }
+  }
+  return cachedMcpModule;
+}
+
+/**
  * Initializes the embedded P2P MCP server if MCP_ENABLED=1 or --enable-mcp flag is passed.
  * Does not block Electron application startup if disabled or fails.
  */
@@ -393,11 +454,7 @@ export async function bootstrapMcpServer(): Promise<McpBootstrapStatus> {
   }
 
   try {
-    const mcpDistPath = path.resolve(__dirname, '../../../packages/mcp-server/dist/index.js');
-    const fileUrl = new URL(`file:///${mcpDistPath.replace(/\\/g, '/')}`).href;
-
-    const importEsm = new Function('specifier', 'return import(specifier)');
-    const mcpModule = await importEsm(fileUrl);
+    const mcpModule = await loadMcpModule();
 
     if (mcpModule && typeof mcpModule.createP2PMcpServer === 'function') {
       activeServerInstance = mcpModule.createP2PMcpServer();
@@ -455,10 +512,7 @@ export async function executeMcpToolTest(
 
   try {
     process.env['MCP_EMBEDDED_IMPORT'] = 'true';
-    const mcpDistPath = path.resolve(__dirname, '../../../packages/mcp-server/dist/index.js');
-    const fileUrl = new URL(`file:///${mcpDistPath.replace(/\\/g, '/')}`).href;
-    const importEsm = new Function('specifier', 'return import(specifier)');
-    const mcpModule = await importEsm(fileUrl);
+    const mcpModule = await loadMcpModule();
 
     const tools: {
       name: string;

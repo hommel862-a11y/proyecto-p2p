@@ -1594,6 +1594,7 @@ export function analyzeHourlyRiskDistribution(
     const rawTs = ev.createdAt || ev.timestamp;
     const hour = extractHourFromTimestamp(rawTs);
     const bucket = buckets[hour];
+    if (!bucket) continue;
     bucket.totalEvents++;
 
     const sev = String(ev.severity || 'info').toLowerCase();
@@ -1614,6 +1615,7 @@ export function analyzeHourlyRiskDistribution(
 
   for (let h = 0; h < 24; h++) {
     const b = buckets[h];
+    if (!b) continue;
     const score = Number((b.errorCount * 3.0 + b.warnCount * 1.5 + b.infoCount * 0.2).toFixed(2));
     b.criticalRiskScore = score;
 

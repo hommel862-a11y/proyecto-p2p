@@ -9,7 +9,11 @@ extraMetadata:
 files:
   - electron/dist/**/*
   - dist/p2p/browser/**/*
+  - packages/mcp-server/dist/**/*
+  - packages/mcp-server/package.json
   - package.json
+asarUnpack:
+  - packages/mcp-server/**/*
 win:
   target: nsis
   artifactName: ${productName}-${version}-setup.${ext}
