@@ -4,6 +4,7 @@ import { ToastComponent } from './core/toast.component';
 import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
 import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
+import { ClipboardPaymentBannerComponent } from './shared/components/clipboard-payment-banner.component';
 
 export type AppTheme = 'dark' | 'apple-dark' | 'light';
 
@@ -15,6 +16,7 @@ export type AppTheme = 'dark' | 'apple-dark' | 'light';
     ToastComponent,
     HotkeysModalComponent,
     CommandPalette,
+    ClipboardPaymentBannerComponent,
   ],
   selector: 'app-root',
   styleUrl: './app.scss',

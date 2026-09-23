@@ -2,13 +2,14 @@ import type { ElectronAPI } from '../shared/types';
 
 // Minimal, trusted subset of ipcRenderer the bridge is allowed to use.
 export type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
+export type IpcOn = (channel: string, listener: (...args: unknown[]) => void) => () => void;
 
 /**
  * Pure, framework-free builder for the renderer-facing API.
  * Kept free of any `electron` import so it is unit-testable under Vitest
  * (no native binary required) and so the security surface is auditable.
  */
-export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
+export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
   return {
     getVersion: () => ipc('app:get-version') as Promise<string>,
     fetchBinanceP2p: (params) => ipc('p2p:fetch-binance', params) as Promise<unknown>,
@@ -80,6 +81,20 @@ export function createP2PApi(ipc: IpcInvoke): ElectronAPI {
       testTool: (toolName: string, args: unknown) =>
         ipc('p2p:mcp-test-tool', { toolName, args }) as Promise<any>,
     },
+    clipboard: {
+      toggleWatcher: (enabled: boolean) =>
+        ipc('p2p:clipboard-watcher-toggle', { enabled }) as Promise<boolean>,
+      getWatcherStatus: () =>
+        ipc('p2p:clipboard-watcher-status') as Promise<{
+          enabled: boolean;
+          pollIntervalMs: number;
+          lastDetectedReference?: string;
+        }>,
+      onPaymentDetected: (callback: (payload: any) => void) => {
+        if (!onEvent) return () => {};
+        return onEvent('p2p:clipboard-payment-detected', (payload) => callback(payload));
+      },
+    },
   };
 }
 
@@ -97,6 +112,7 @@ export const EXPOSED_API_KEYS = [
   'copilot',
   'screenPipe',
   'mcp',
+  'clipboard',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -138,4 +154,13 @@ export const ALLOWED_CHANNELS = [
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',
   'p2p:mcp-test-tool',
+  'p2p:clipboard-watcher-toggle',
+  'p2p:clipboard-watcher-status',
+] as const;
+
+// Allow-listed server-to-renderer push event channels
+export const ALLOWED_LISTEN_CHANNELS = [
+  'p2p:clipboard-payment-detected',
+  'copilot:alpha-opportunity-detected',
+  'p2p:killswitch-triggered',
 ] as const;

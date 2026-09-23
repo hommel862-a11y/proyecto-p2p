@@ -198,6 +198,43 @@ describe('Electron preload bridge (secure IPC)', () => {
     ]);
   });
 
+  it('forwards clipboard methods and registers payment listeners', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const listenCalls: { channel: string; listener: unknown }[] = [];
+
+    const api = createP2PApi(
+      (channel, ...args) => {
+        calls.push({ channel, args });
+        if (channel === 'p2p:clipboard-watcher-toggle') return Promise.resolve(true);
+        if (channel === 'p2p:clipboard-watcher-status')
+          return Promise.resolve({ enabled: true, pollIntervalMs: 900 });
+        return Promise.resolve(null);
+      },
+      (channel, listener) => {
+        listenCalls.push({ channel, listener });
+        return () => {};
+      },
+    );
+
+    const toggled = await api.clipboard.toggleWatcher(true);
+    const status = await api.clipboard.getWatcherStatus();
+
+    let receivedPayload: unknown = null;
+    const unsub = api.clipboard.onPaymentDetected((p) => {
+      receivedPayload = p;
+    });
+
+    expect(toggled).toBe(true);
+    expect(status.enabled).toBe(true);
+    expect(calls).toEqual([
+      { channel: 'p2p:clipboard-watcher-toggle', args: [{ enabled: true }] },
+      { channel: 'p2p:clipboard-watcher-status', args: [] },
+    ]);
+    expect(listenCalls.length).toBe(1);
+    expect(listenCalls[0].channel).toBe('p2p:clipboard-payment-detected');
+    expect(typeof unsub).toBe('function');
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect(

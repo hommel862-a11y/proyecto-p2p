@@ -90,6 +90,22 @@ export interface ScreenPipeSource {
   thumbnailDataUrl: string;
 }
 
+export interface ClipboardPaymentPayload {
+  bank: string;
+  bankDisplayName: string;
+  reference: string;
+  amount: number;
+  currency: 'VES' | 'COP' | 'USD';
+  payerName?: string;
+  payerId?: string;
+  beneficiaryPhone?: string;
+  timestamp: number;
+  rawText: string;
+  confidenceScore: number;
+  isBlacklisted?: boolean;
+  blacklistReason?: string;
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -202,6 +218,14 @@ export interface P2PIpcChannels {
   'p2p:mcp-test-tool': {
     request: { toolName: string; args: unknown };
     response: { success: boolean; result?: unknown; error?: string; executionTimeMs: number };
+  };
+  'p2p:clipboard-watcher-toggle': {
+    request: { enabled: boolean };
+    response: boolean;
+  };
+  'p2p:clipboard-watcher-status': {
+    request: void;
+    response: { enabled: boolean; pollIntervalMs: number; lastDetectedReference?: string };
   };
 }
 
@@ -369,6 +393,15 @@ export interface ElectronAPI {
       toolName: string,
       args: unknown,
     ): Promise<{ success: boolean; result?: unknown; error?: string; executionTimeMs: number }>;
+  };
+  clipboard: {
+    toggleWatcher(enabled: boolean): Promise<boolean>;
+    getWatcherStatus(): Promise<{
+      enabled: boolean;
+      pollIntervalMs: number;
+      lastDetectedReference?: string;
+    }>;
+    onPaymentDetected(callback: (payload: ClipboardPaymentPayload) => void): () => void;
   };
 }
 

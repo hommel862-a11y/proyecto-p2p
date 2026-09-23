@@ -18,6 +18,7 @@ import {
 } from '../agents/monte-carlo-simulator';
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
+import { ClipboardWatcherService } from '../services/clipboard-watcher';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -612,6 +613,25 @@ export function registerIpcHandlers(): void {
       return executeMcpToolTest(params.toolName, params.args);
     },
   );
+
+  ipcMain.removeHandler('p2p:clipboard-watcher-toggle');
+  ipcMain.handle(
+    'p2p:clipboard-watcher-toggle',
+    async (_event: IpcMainInvokeEvent, params: { enabled: boolean }): Promise<boolean> => {
+      const watcher = getClipboardWatcher();
+      if (params.enabled) {
+        watcher.start();
+      } else {
+        watcher.stop();
+      }
+      return watcher.isEnabled();
+    },
+  );
+
+  ipcMain.removeHandler('p2p:clipboard-watcher-status');
+  ipcMain.handle('p2p:clipboard-watcher-status', async () => {
+    return getClipboardWatcher().getStatus();
+  });
 }
 
 let dbInstance: P2PDatabaseService | null = null;
@@ -640,6 +660,18 @@ export function getAlphaWatcher(): AlphaWatcher {
     alphaWatcherInstance = new AlphaWatcher(getDbService(), () => null);
   }
   return alphaWatcherInstance;
+}
+
+let clipboardWatcherInstance: ClipboardWatcherService | null = null;
+export function setClipboardWatcher(watcher: ClipboardWatcherService): void {
+  clipboardWatcherInstance = watcher;
+}
+
+export function getClipboardWatcher(): ClipboardWatcherService {
+  if (!clipboardWatcherInstance) {
+    clipboardWatcherInstance = new ClipboardWatcherService(getDbService(), () => null);
+  }
+  return clipboardWatcherInstance;
 }
 
 let agentSwarmInstance: AgentSwarmOrchestrator | null = null;

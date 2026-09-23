@@ -180,6 +180,29 @@ export class OperationLog {
         merchantNote: preset.merchantNote ?? '',
       });
     }
+
+    const autoFillAmount = Number(url.queryParams['autoFillAmount']);
+    const autoFillRef = url.queryParams['autoFillRef'];
+    const autoFillBank = url.queryParams['autoFillBank'];
+    const autoFillPayer = url.queryParams['autoFillPayer'];
+    const autoFillPayerId = url.queryParams['autoFillPayerId'];
+
+    if (autoFillAmount > 0 || autoFillRef) {
+      this.form.set({
+        ...EMPTY_DRAFT,
+        vesAmount: autoFillAmount || 0,
+        merchantNote: autoFillRef ? `Ref: ${autoFillRef}` : '',
+        payerName: autoFillPayer || '',
+        notes: [
+          autoFillBank ? `Banco: ${autoFillBank}` : '',
+          autoFillPayer ? `Pagador: ${autoFillPayer}` : '',
+          autoFillPayerId ? `Cédula: ${autoFillPayerId}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      });
+      this.toast.info('Formulario de operación prellenado desde el comprobante.');
+    }
   }
 
   readonly visibleOps = computed(() => {

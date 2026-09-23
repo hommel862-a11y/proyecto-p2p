@@ -1,12 +1,29 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { createP2PApi, EXPOSED_API_KEYS, ALLOWED_CHANNELS } from './api';
+import {
+  createP2PApi,
+  EXPOSED_API_KEYS,
+  ALLOWED_CHANNELS,
+  ALLOWED_LISTEN_CHANNELS,
+} from './api';
 
-const api = createP2PApi((channel: string, ...args: unknown[]) => {
-  if (!(ALLOWED_CHANNELS as readonly string[]).includes(channel)) {
-    throw new Error(`P2P bridge: channel "${channel}" is not allow-listed`);
-  }
-  return ipcRenderer.invoke(channel, ...args);
-});
+const api = createP2PApi(
+  (channel: string, ...args: unknown[]) => {
+    if (!(ALLOWED_CHANNELS as readonly string[]).includes(channel)) {
+      throw new Error(`P2P bridge: channel "${channel}" is not allow-listed`);
+    }
+    return ipcRenderer.invoke(channel, ...args);
+  },
+  (channel: string, listener: (...args: unknown[]) => void) => {
+    if (!(ALLOWED_LISTEN_CHANNELS as readonly string[]).includes(channel)) {
+      throw new Error(`P2P bridge: listen channel "${channel}" is not allow-listed`);
+    }
+    const handler = (_event: unknown, ...args: unknown[]) => listener(...args);
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+);
 
 // Secure exposure: only the narrow typed API — never the raw ipcRenderer,
 // never node built-ins (design #301 D3).
