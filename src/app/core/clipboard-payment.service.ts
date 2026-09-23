@@ -51,7 +51,7 @@ export class ClipboardPaymentService {
           this.isWatcherEnabled.set(status.enabled);
         }
       })
-      .catch(() => {});
+      .catch(() => undefined);
 
     // Listen for payment events
     this.unsubscribeListener = electron.clipboard.onPaymentDetected(

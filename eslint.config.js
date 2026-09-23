@@ -3,11 +3,34 @@ const eslint = require('@eslint/js');
 const tseslint = require('typescript-eslint');
 const angular = require('angular-eslint');
 const prettier = require('eslint-config-prettier');
-const eslintPluginPrettier = require('eslint-plugin-prettier');
 
 module.exports = tseslint.config(
   {
-    files: ['**/*.ts'],
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.angular/**',
+      '**/out-tsc/**',
+      '**/coverage/**',
+      '**/release/**',
+      'android/**',
+      'electron/dist/**',
+      'electron/node_modules/**',
+      'packages/mcp-server/dist/**',
+      'packages/mcp-server/node_modules/**',
+      'legacy/**',
+      'odd/**',
+      'returno/**',
+      'scratch/**',
+      '__screenshots__/**',
+      'test-results/**',
+      'playwright-report/**',
+      'blob-report/**',
+      '*.log',
+    ],
+  },
+  {
+    files: ['src/**/*.ts', 'projects/**/*.ts'],
     extends: [
       eslint.configs.recommended,
       ...tseslint.configs.recommended,
@@ -16,9 +39,6 @@ module.exports = tseslint.config(
       prettier,
     ],
     processor: angular.processInlineTemplates,
-    plugins: {
-      prettier: eslintPluginPrettier,
-    },
     rules: {
       '@angular-eslint/directive-selector': [
         'error',
@@ -40,7 +60,20 @@ module.exports = tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
       'prefer-const': 'error',
-      'prettier/prettier': 'warn',
+    },
+  },
+  {
+    files: ['electron/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.ts'],
+    extends: [
+      eslint.configs.recommended,
+      ...tseslint.configs.recommended,
+      prettier,
+    ],
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-console': 'off',
+      'prefer-const': 'error',
     },
   },
   {
@@ -67,21 +100,5 @@ module.exports = tseslint.config(
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
-  },
-  {
-    ignores: [
-      'dist/',
-      'node_modules/',
-      'android/',
-      'electron/dist/',
-      'packages/mcp-server/dist/',
-      '.angular/',
-      'out-tsc/',
-      'legacy/',
-      'returno/',
-      'release/',
-      'coverage/',
-      '!**/.eslintrc.json',
-    ],
   }
 );
