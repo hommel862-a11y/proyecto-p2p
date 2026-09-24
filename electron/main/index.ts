@@ -29,6 +29,11 @@ app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
 
+// Marca temporal del último 'unresponsive' del renderer y ventana de tolerancia
+// para el auto-reload acotado (ver listener en createWindow).
+let lastUnresponsiveAt = 0;
+const UNRESPONSIVE_RELOAD_WINDOW_MS = 60_000;
+
 /**
  * Recupera la ventana principal si sigue viva o la recrea si el renderer
  * murió. Sin esto, un renderer caído dejaba el proceso vivo con el
@@ -382,6 +387,30 @@ async function createWindow(): Promise<void> {
   });
 
   registerIpcHandlers();
+
+  // Renderer colgado (modal bloqueante, bucle infinito) sin crashear: el evento
+  // 'unresponsive' del webContents cubre lo que 'render-process-gone' no ve.
+  // El reload se acota con una ventana de 60s: si se vuelve a colgar enseguida
+  // se loguea pero NO se recarga, para evitar un bucle infinito de recargas.
+  mainWindow.webContents.on('unresponsive', () => {
+    const now = Date.now();
+    console.error('[p2p] renderer unresponsive');
+    if (now - lastUnresponsiveAt < UNRESPONSIVE_RELOAD_WINDOW_MS) {
+      console.error('[p2p] unresponsive reciente, se omite reload para evitar bucles');
+      return;
+    }
+    lastUnresponsiveAt = now;
+    const wc = mainWindow?.webContents;
+    if (wc && !wc.isDestroyed() && !wc.isCrashed()) {
+      wc.reload();
+    } else {
+      void ensureMainWindow();
+    }
+  });
+
+  mainWindow.webContents.on('responsive', () => {
+    console.log('[p2p] renderer responsive de nuevo');
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
