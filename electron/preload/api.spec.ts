@@ -235,6 +235,53 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(typeof unsub).toBe('function');
   });
 
+  it('forwards db audit and operation record methods to their IPC channels', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:db-save-audit-log') return Promise.resolve(true);
+      if (channel === 'p2p:db-save-operation-record') return Promise.resolve(true);
+      return Promise.resolve([]);
+    });
+
+    const savedAudit = await api.db.saveAuditLog({ eventType: 'login', timestamp: 1710000000 });
+    const auditLogs = await api.db.listAuditLogs({ limit: 10, offset: 0 });
+    const savedOperation = await api.db.saveOperationRecord({
+      operation: 'sync-orders',
+      timestamp: 1710000001,
+    });
+    const operationRecords = await api.db.listOperationRecords({ limit: 5, offset: 0 });
+
+    expect(savedAudit).toBe(true);
+    expect(savedOperation).toBe(true);
+    expect(auditLogs).toEqual([]);
+    expect(operationRecords).toEqual([]);
+    expect(calls).toEqual([
+      {
+        channel: 'p2p:db-save-audit-log',
+        args: [{ eventType: 'login', timestamp: 1710000000 }],
+      },
+      { channel: 'p2p:db-list-audit-logs', args: [{ limit: 10, offset: 0 }] },
+      {
+        channel: 'p2p:db-save-operation-record',
+        args: [{ operation: 'sync-orders', timestamp: 1710000001 }],
+      },
+      { channel: 'p2p:db-list-operation-records', args: [{ limit: 5, offset: 0 }] },
+    ]);
+  });
+
+  it('allow-lists the db audit and operation record channels', () => {
+    const auditAndOperationChannels = [
+      'p2p:db-save-audit-log',
+      'p2p:db-list-audit-logs',
+      'p2p:db-save-operation-record',
+      'p2p:db-list-operation-records',
+    ];
+    for (const channel of auditAndOperationChannels) {
+      expect(ALLOWED_CHANNELS as readonly string[]).toContain(channel);
+    }
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect(
