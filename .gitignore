@@ -63,3 +63,15 @@ electron-launch.log
 *.apk
 /electron/scratch/
 .engram/
+
+# Security and sensitive local data
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+!electron/main/db/schema.sql
+mi_operaciones_binance.csv
+*.pem
+*.key

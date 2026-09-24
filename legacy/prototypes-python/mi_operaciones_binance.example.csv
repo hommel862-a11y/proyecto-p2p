@@ -1,0 +1,2 @@
+Fecha/Hora,Tipo,Par,Cantidad,Tasa Bs,Total Bs,Banco,Contraparte,Tiempo Liberacion (min),Spread vs BCV,Clasificacion,Estado,Notas
+2026-08-29 16:41,VENTA,EUR,100.00,900.00,"90,000.00",Banesco,@TraderDemo,5,20.00%,EXCELENTE,COMPLETADA,Ciclo automatico
