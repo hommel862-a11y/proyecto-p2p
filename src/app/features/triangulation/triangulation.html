@@ -488,7 +488,7 @@
       <div class="risk-factors-list">
         <span class="risk-title">Factores de Riesgo Monitoreados:</span>
         <ul>
-          @for (reason of calculationResult().riskReasons; track reason) {
+          @for (reason of calculationResult().riskReasons; track $index) {
             <li>{{ reason }}</li>
           }
           @if (calculationResult().riskReasons.length === 0) {
