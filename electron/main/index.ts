@@ -302,14 +302,35 @@ function startStaticServer(): Promise<number> {
 
     fs.readFile(filePath, (err, data) => {
       if (err) {
+        // El fallback SPA solo aplica a rutas de navegación SIN extensión de
+        // archivo. Un asset faltante (main-*.js, chunk-*.js, styles-*.css, ...)
+        // debe responder 404 real y NUNCA index.html: servir HTML con 200 en
+        // lugar del módulo pedido produce "Failed to fetch dynamically
+        // imported module" y enmascara builds obsoletas cacheadas.
+        const requestedExt = path.extname(urlPath);
+        if (requestedExt) {
+          res.writeHead(404, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end('Not found');
+          return;
+        }
         fs.readFile(path.join(root, 'index.html'), (e2, html) => {
           if (e2) {
-            res.writeHead(404);
+            res.writeHead(404, {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+            });
             res.end('Not found');
           } else {
             res.writeHead(200, {
               'Content-Type': 'text/html',
               'Content-Security-Policy': CSP,
+              // El index no tiene hash en el nombre: una build nueva debe
+              // llegar SIEMPRE al renderer, nunca una copia vieja del disco
+              // de Chromium (causa de chunks huérfanos tipo chunk-DSekyxvb.js).
+              'Cache-Control': 'no-store',
             });
             res.end(html);
           }
@@ -317,9 +338,14 @@ function startStaticServer(): Promise<number> {
         return;
       }
       const ext = path.extname(filePath);
+      // Los bundles con hash en el nombre (main-*.js, chunk-*.js, styles-*.css)
+      // son inmutables: una vez servidos se cachean agresivamente. Todo lo
+      // demás (index, manifest, 3rdpartylicenses) va con no-store.
+      const hashedAsset = /[.-][A-Za-z0-9_-]{8,}\.(?:js|css|woff2?)$/.test(filePath);
       res.writeHead(200, {
         'Content-Type': MIME[ext] ?? 'application/octet-stream',
         'Content-Security-Policy': CSP,
+        'Cache-Control': hashedAsset ? 'public, max-age=31536000, immutable' : 'no-store',
       });
       res.end(data);
     });

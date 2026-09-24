@@ -55,3 +55,25 @@ Reparar los problemas detectados en la auditoría de la app de escritorio y la c
 
 ## Route
 - Delegado directo: 3 agentes en paralelo (frentes disjuntos). Preflight SDD resuelto (Automatic / Both / Auto).
+
+## Incidente post-cierre: "Failed to fetch dynamically imported module: http://localhost:51857/chunk-DSekyxvb.js"
+
+### Causa raíz (2026-09-23)
+1. El servidor estático de `electron/main/index.ts` no enviaba headers de caché: Chromium (perfil persistente `%APPDATA%/p2p-decisor-desktop`) reutilizó el `index.html` de una build ANTERIOR (el nombre de archivo no cambia entre builds), que referenciaba `chunk-DSekyxvb.js` — hash ya inexistente tras el rebuild.
+2. El SPA fallback respondía 200 + index.html para CUALQUIER ruta fallida, incluidos `.js` faltantes → Chromium intentaba parsear HTML como módulo ES → error "Failed to fetch dynamically imported module". El fallback enmascaraba el 404 real.
+
+### Fix aplicado (electron/main/index.ts, `startStaticServer`)
+- Assets con extensión que no existen en disco → 404 real (`text/plain`, `Cache-Control: no-store`). NUNCA index.html.
+- SPA fallback SOLO para rutas de navegación sin extensión de archivo.
+- `Cache-Control: no-store` en index.html (y todo lo no-hasheado) para que una build nueva SIEMPRE llegue al renderer.
+- Bundles con hash en el nombre (`/[.-][A-Za-z0-9_-]{8,}\.(js|css|woff2?)$/`) → `public, max-age=31536000, immutable`.
+- Limpieza manual de `Cache` y `Code Cache` del userData para desalojar el index obsoleto ya almacenado (Local Storage intacto: config Telegram persiste).
+
+### Verificación del fix
+- `http://localhost:51857/chunk-DSekyxvb.js` → 404 text/plain (antes: 200 text/html).
+- `/` → 200 text/html con `Cache-Control: no-store`.
+- `/main-VLLUJEEO.js` → 200 text/javascript, `immutable`.
+- `/chunk-K_VmmcvY.js` → 200, `immutable`.
+- `npx tsc -p electron/tsconfig.json` → exit 0.
+- `npm run test:electron` → 12 files / 81 tests pass (tras el fix).
+- App relanzada: 5 procesos electron, puerto 51857 OK, estable.
