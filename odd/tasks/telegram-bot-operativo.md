@@ -50,5 +50,12 @@ Resultados del 24/09/2026 (verificación integrada, commit `8afbc67`):
 - Completado y sincronizado: commit `8afbc67` enviado a `origin/feat/p2p-decision-tool-mvp`.
 - Validación manual en vivo del flujo por parte del usuario (abrir bot → /start → Detectar Chat ID en Settings/Risk Rules).
 
+## Seguimiento 24/09 (bug ACCESO DENEGADO persistente)
+- **Síntoma**: el usuario seguía recibiendo `ACCESO DENEGADO (USUARIO NO AUTORIZADO): Tu Chat ID es 6029278859` incluso después de guardar su Chat ID.
+- **Causa raíz**: `saveConfig` solo iniciaba el polling si `!this.isPolling()`. Con el worker 24/7 ya activo (chatId viejo capturado al arrancar), cambiar el Chat ID no reiniciaba el loop: `pollLoop(token, authorizedChatId)` (línea 317) seguía comparando contra el Chat ID viejo. `startPolling()` tiene `if (this.isPolling()) return;` — tampoco reinicia.
+- **Fix** (`telegram-worker.service.ts`): en `saveConfig`, capturar `previous = this.config()` ANTES del `config.set`; si `pollingEnabled && isPolling() && (botToken o chatId cambiaron)` → `stopPolling()` + `startPolling()` para que `pollLoop` recapture el nuevo `authorizedChatId`.
+- **Tests** (`telegram-worker.service.spec.ts`, TDD RED→GREEN): reinicia el polling cuando el Chat ID cambia mientras el worker está activo; mantiene el polling sin reiniciarlo cuando solo cambia `alertsEnabled`.
+- **Evidencia**: `ng test` worker spec 23 passed; suite completa app 52 files / 497 passed + core 30 files / 200 passed; `npx tsc --noEmit` OK; `npm run build` OK (solo warnings CommonJS pre-existentes).
+
 ## Route
 - Delegado directo: agentes en paralelo (frentes disjuntos por archivo). ODD (no SDD).

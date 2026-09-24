@@ -102,6 +102,7 @@ export class TelegramWorkerService implements OnDestroy {
   }
 
   async saveConfig(config: TelegramConfig): Promise<void> {
+    const previous = this.config();
     await this.credentials.setTelegramConfig({
       token: config.botToken,
       chatId: config.chatId,
@@ -109,7 +110,17 @@ export class TelegramWorkerService implements OnDestroy {
       pollingEnabled: config.pollingEnabled,
     });
     this.config.set({ ...config });
-    if (config.pollingEnabled && !this.isPolling()) {
+
+    const identityChanged =
+      config.botToken !== previous.botToken || config.chatId !== previous.chatId;
+
+    if (config.pollingEnabled && this.isPolling() && identityChanged) {
+      // Long-polling activo con un Token/Chat ID distinto: reiniciar el loop
+      // para que pollLoop recapture el nuevo authorizedChatId (si no, sigue
+      // comparando contra el Chat ID anterior y deniega los mensajes nuevos).
+      this.stopPolling();
+      this.startPolling();
+    } else if (config.pollingEnabled && !this.isPolling()) {
       this.startPolling();
     } else if (!config.pollingEnabled && this.isPolling()) {
       this.stopPolling();

@@ -405,6 +405,63 @@ describe('TelegramWorkerService', () => {
     });
   });
 
+  describe('saveConfig', () => {
+    it('reinicia el polling cuando el Chat ID cambia mientras el worker ya está activo', async () => {
+      // Estado previo: polling 24/7 corriendo con un Chat ID viejo.
+      svc.isPolling.set(true);
+      svc.config.set({
+        botToken: TOKEN,
+        chatId: '999000111',
+        alertsEnabled: true,
+        pollingEnabled: true,
+      });
+
+      const stopSpy = vi.spyOn(svc, 'stopPolling').mockImplementation(() => {});
+      const startSpy = vi.spyOn(svc, 'startPolling').mockImplementation(() => {});
+
+      await svc.saveConfig({
+        botToken: TOKEN,
+        chatId: String(CHAT_ID),
+        alertsEnabled: true,
+        pollingEnabled: true,
+      });
+
+      // El loop activo debe reiniciarse para que pollLoop recapture el
+      // nuevo authorizedChatId (el bug anterior no hacía nada aquí).
+      expect(stopSpy).toHaveBeenCalled();
+      expect(startSpy).toHaveBeenCalled();
+
+      stopSpy.mockRestore();
+      startSpy.mockRestore();
+    });
+
+    it('mantiene el polling activo sin reiniciarlo cuando el Chat ID no cambia', async () => {
+      svc.isPolling.set(true);
+      svc.config.set({
+        botToken: TOKEN,
+        chatId: String(CHAT_ID),
+        alertsEnabled: true,
+        pollingEnabled: true,
+      });
+
+      const stopSpy = vi.spyOn(svc, 'stopPolling').mockImplementation(() => {});
+      const startSpy = vi.spyOn(svc, 'startPolling').mockImplementation(() => {});
+
+      await svc.saveConfig({
+        botToken: TOKEN,
+        chatId: String(CHAT_ID),
+        alertsEnabled: false,
+        pollingEnabled: true,
+      });
+
+      expect(stopSpy).not.toHaveBeenCalled();
+      expect(startSpy).not.toHaveBeenCalled();
+
+      stopSpy.mockRestore();
+      startSpy.mockRestore();
+    });
+  });
+
   describe('sendTelegramMessage', () => {
     it('posts MarkdownV2 to sendMessage and returns true on success', async () => {
       const fetchMock = fetchRouter({ sendMessage: { ok: true, result: { message_id: 1 } } });
