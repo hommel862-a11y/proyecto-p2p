@@ -27,6 +27,21 @@ export interface TelegramConfig {
   pollingEnabled?: boolean;
 }
 
+export interface TelegramBotInfo {
+  id: number;
+  username: string;
+  firstName: string;
+}
+
+export interface TelegramChatDetectionResult {
+  success: boolean;
+  chatId?: string;
+  username?: string;
+  firstName?: string;
+  botUsername?: string;
+  error?: string;
+}
+
 export interface TelegramLogEntry {
   time: string;
   command: string;
@@ -57,6 +72,12 @@ export class TelegramWorkerService implements OnDestroy {
   readonly isPolling = signal<boolean>(false);
   readonly lastHeartbeat = signal<Date | null>(null);
   readonly recentLogs = signal<TelegramLogEntry[]>([]);
+  readonly lastInboundChat = signal<{
+    chatId: string;
+    username?: string;
+    firstName?: string;
+    receivedAt: Date;
+  } | null>(null);
 
   private abortController: AbortController | null = null;
   private currentOffset = 0;
@@ -92,6 +113,123 @@ export class TelegramWorkerService implements OnDestroy {
       this.startPolling();
     } else if (!config.pollingEnabled && this.isPolling()) {
       this.stopPolling();
+    }
+  }
+
+  async getBotInfo(token: string): Promise<TelegramBotInfo | null> {
+    const cleanToken = token.trim();
+    if (!cleanToken) return null;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        ok: boolean;
+        result?: { id: number; username?: string; first_name?: string };
+      };
+      if (!data.ok || !data.result) return null;
+      return {
+        id: data.result.id,
+        username: data.result.username ?? '',
+        firstName: data.result.first_name ?? '',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async detectChatIdFromUpdates(token: string): Promise<TelegramChatDetectionResult> {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Ingresa primero el Token del Bot.' };
+    }
+
+    const botInfo = await this.getBotInfo(cleanToken);
+    if (!botInfo) {
+      return {
+        success: false,
+        error:
+          'Token inválido o sin respuesta de api.telegram.org. Revisa el token provisto por @BotFather.',
+      };
+    }
+
+    // Check if an inbound message was already captured in memory by background long-polling
+    const cachedChat = this.lastInboundChat();
+    if (cachedChat?.chatId) {
+      return {
+        success: true,
+        chatId: cachedChat.chatId,
+        username: cachedChat.username,
+        firstName: cachedChat.firstName,
+        botUsername: botInfo.username,
+      };
+    }
+
+    // 409 CONFLICT — CONCURRENCY DECISION (documented):
+    // getUpdates is a single-consumer API: the Bot API only allows ONE active
+    // getUpdates connection per bot. The 24/7 pollLoop keeps a long-poll open with its
+    // own `currentOffset`, so an additional getUpdates WITHOUT offset (as a raw
+    // `getUpdates?limit=20` would) is rejected by Telegram with HTTP 409
+    // "Conflict: terminated by other getUpdates request".
+    // Therefore, when polling is RUNNING we never touch getUpdates: the pollLoop is
+    // already capturing inbound updates and stores them in `lastInboundChat` (checked
+    // above), so a /start pressed by the user will be detected on the next UI retry
+    // from cache. We only query getUpdates directly when polling is OFF (the usual
+    // first-pairing path, since startPolling requires a chatId that is still unknown).
+    if (this.isPolling()) {
+      return {
+        success: false,
+        botUsername: botInfo.username,
+        error: `El worker 24/7 ya está escuchando al bot (long-polling activo). Abrí https://t.me/${botInfo.username}, tocá "Iniciar" (/start) y reintentá: el propio worker captura tu chat y lo detectará en el siguiente intento.`,
+      };
+    }
+
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${cleanToken}/getUpdates?limit=20`);
+      if (!res.ok) {
+        return {
+          success: false,
+          botUsername: botInfo.username,
+          error: `Error HTTP ${res.status} al consultar getUpdates.`,
+        };
+      }
+
+      const data = (await res.json()) as { ok: boolean; result: TelegramInboundUpdate[] };
+      if (!data.ok || !Array.isArray(data.result) || data.result.length === 0) {
+        return {
+          success: false,
+          botUsername: botInfo.username,
+          error: `No se encontraron mensajes en el bot. Abrí https://t.me/${botInfo.username}, tocá "Iniciar" (/start) y volvé a presionar "Detectar Chat ID".`,
+        };
+      }
+
+      // Search from newest to oldest update for a valid chat id
+      for (let i = data.result.length - 1; i >= 0; i--) {
+        const u = data.result[i];
+        const chat = u.message?.chat || u.callback_query?.message?.chat;
+        const from = u.message?.from || u.callback_query?.from;
+        if (chat?.id) {
+          const firstName = from && 'first_name' in from ? (from as { first_name?: string }).first_name : undefined;
+          return {
+            success: true,
+            chatId: String(chat.id),
+            username: from?.username,
+            firstName: firstName || from?.username,
+            botUsername: botInfo.username,
+          };
+        }
+      }
+
+      return {
+        success: false,
+        botUsername: botInfo.username,
+        error: `No se detectó ningún chat válido. Escribile /start a @${botInfo.username} en Telegram.`,
+      };
+    } catch {
+      return {
+        success: false,
+        botUsername: botInfo.username,
+        error: 'Error de red al conectar con los servidores de Telegram.',
+      };
     }
   }
 
@@ -213,10 +351,27 @@ export class TelegramWorkerService implements OnDestroy {
     token: string,
     authorizedChatId: string,
   ): Promise<void> {
+    const chat = update.message?.chat || update.callback_query?.message?.chat;
+    const from = update.message?.from || update.callback_query?.from;
+    const chatId =
+      update.message?.chat.id || update.callback_query?.message?.chat.id || authorizedChatId;
+
+    if (chat?.id) {
+      this.lastInboundChat.set({
+        chatId: String(chat.id),
+        username: from?.username,
+        firstName: from && 'first_name' in from ? (from as { first_name?: string }).first_name : undefined,
+        receivedAt: new Date(),
+      });
+    }
+
     const dispatch = dispatchTelegramUpdate(update, authorizedChatId);
     const timeStr = new Date().toLocaleTimeString('es-VE');
 
     if (!dispatch.authorized) {
+      if (chatId) {
+        await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+      }
       this.addLog({
         time: timeStr,
         command: update.message?.text || 'desconocido',
@@ -226,9 +381,6 @@ export class TelegramWorkerService implements OnDestroy {
       });
       return;
     }
-
-    const chatId =
-      update.message?.chat.id || update.callback_query?.message?.chat.id || authorizedChatId;
 
     // 1. Acciones del Despachador
     switch (dispatch.action) {
@@ -262,6 +414,12 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'STATUS': {
+        if (dispatch.command === '/start') {
+          await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+          this.addLog({ time: timeStr, command: '/start', action: 'STATUS', status: 'SUCCESS' });
+          break;
+        }
+
         const freshDepth = await this.getFreshMarketDepth();
         const depth = freshDepth ?? this.binance.marketDepth();
         const repricerState = this.repricer.isActive() ? '🟢 ACTIVO' : '⏸ DETENIDO';

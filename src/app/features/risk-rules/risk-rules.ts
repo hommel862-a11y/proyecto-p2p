@@ -90,6 +90,8 @@ export class RiskRules implements OnInit {
   readonly telegramChatId = signal<string>('');
   readonly telegramAlertsEnabled = signal<boolean>(true);
   readonly telegramPollingEnabled = signal<boolean>(false);
+  readonly detectingChatId = signal<boolean>(false);
+  readonly botUsername = signal<string>('P2pTradeServiceBot');
 
   ngOnInit(): void {
     void this.telegramWorker.getConfig().then((cfg) => {
@@ -97,6 +99,11 @@ export class RiskRules implements OnInit {
       this.telegramChatId.set(cfg.chatId);
       this.telegramAlertsEnabled.set(cfg.alertsEnabled);
       this.telegramPollingEnabled.set(cfg.pollingEnabled ?? false);
+      if (cfg.botToken) {
+        void this.telegramWorker.getBotInfo(cfg.botToken).then((info) => {
+          if (info?.username) this.botUsername.set(info.username);
+        });
+      }
     });
   }
 
@@ -139,6 +146,53 @@ export class RiskRules implements OnInit {
       this.telegramWorker.startPolling();
     } else {
       this.telegramWorker.stopPolling();
+    }
+  }
+
+  async detectChatId(): Promise<void> {
+    const token = this.telegramToken().trim();
+    if (!token) {
+      this.toast.warn('Ingresá primero el Token del Bot provisto por @BotFather.');
+      return;
+    }
+
+    this.detectingChatId.set(true);
+    try {
+      let result = await this.telegramWorker.detectChatIdFromUpdates(token);
+      if (result.botUsername) {
+        this.botUsername.set(result.botUsername);
+      }
+
+      // If not immediately available, retry up to 3 times (every 2.5s) to allow user to press /start
+      if (!result.success) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 2500));
+          result = await this.telegramWorker.detectChatIdFromUpdates(token);
+          if (result.success) break;
+        }
+      }
+
+      if (result.success && result.chatId) {
+        this.telegramChatId.set(result.chatId);
+        const name = result.firstName || result.username || 'Usuario';
+        this.toast.success(
+          `¡Chat ID detectado con éxito: ${result.chatId} (${name})! Guardando configuración...`,
+          'Telegram Conectado',
+        );
+        this.saveTelegramConfig();
+        // Disparar prueba automática inmediata
+        await this.sendTestTelegramAlert();
+      } else {
+        const botName = result.botUsername || this.botUsername() || 'P2pTradeServiceBot';
+        this.toast.warn(
+          `Aún no detectamos tu mensaje en @${botName}. Presioná "✈️ Abrir Bot", dale a "Iniciar" (/start) en Telegram y volvé a presionar "Detectar Chat ID".`,
+          'Paso Requerido en Telegram',
+        );
+      }
+    } catch {
+      this.toast.error('Error al intentar detectar el Chat ID. Verifica tu conexión.');
+    } finally {
+      this.detectingChatId.set(false);
     }
   }
 
@@ -197,11 +251,20 @@ export class RiskRules implements OnInit {
         } catch {
           // ignore unparseable response body
         }
-        this.toast.error(
-          detail
-            ? `Telegram rechazó la petición (${detail}).`
-            : 'Telegram rechazó la petición. Verifica el Token y Chat ID.',
-        );
+
+        if (detail.includes('chat not found')) {
+          const botHandle = this.botUsername() || 'P2pTradeServiceBot';
+          this.toast.error(
+            `El Chat ID ${chatId} no ha iniciado el bot @${botHandle}. Hacé clic en "✈️ Abrir Bot", presioná "Iniciar" (/start) en Telegram y luego pulsá "Detectar Chat ID".`,
+            'Chat no iniciado en Telegram',
+          );
+        } else {
+          this.toast.error(
+            detail
+              ? `Telegram rechazó la petición (${detail}).`
+              : 'Telegram rechazó la petición. Verifica el Token y Chat ID.',
+          );
+        }
       }
     } catch {
       this.toast.info('Alerta simulada (sin conexión a internet o bloqueada por CORS).');

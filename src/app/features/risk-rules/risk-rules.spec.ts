@@ -1,9 +1,12 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RiskRules } from './risk-rules';
 import { RisksService, sanitizeConfig, type RiskConfig } from '../../core/rules';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
+import { TelegramWorkerService } from '../../core/telegram-worker.service';
+import { ToastService } from '../../core/toast.service';
+import { BinanceP2pService } from '../../core/binance-p2p.service';
 
 const DEFAULT: RiskConfig = {
   minSpread: 15,
@@ -14,17 +17,70 @@ const DEFAULT: RiskConfig = {
   apiStatus: 'ok',
 };
 
+type MockFn = ReturnType<typeof vi.fn>;
+
+interface ToastMock {
+  success: MockFn;
+  error: MockFn;
+  warn: MockFn;
+  info: MockFn;
+}
+
+interface WorkerMock {
+  getConfig: MockFn;
+  getBotInfo: MockFn;
+  detectChatIdFromUpdates: MockFn;
+  saveConfig: MockFn;
+  startPolling: MockFn;
+  stopPolling: MockFn;
+  isPolling: MockFn;
+  recentLogs: MockFn;
+}
+
 describe('RiskRules', () => {
   let fixture: ComponentFixture<RiskRules>;
   let mem: MemoryStorage;
+  let toast: ToastMock;
+  let worker: WorkerMock;
+  let binance: { fetchMarketDepth: MockFn };
 
   beforeEach(() => {
     mem = new MemoryStorage();
+    toast = { success: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+    worker = {
+      getConfig: vi.fn().mockResolvedValue({
+        botToken: '',
+        chatId: '',
+        alertsEnabled: true,
+        pollingEnabled: false,
+      }),
+      getBotInfo: vi.fn().mockResolvedValue(null),
+      detectChatIdFromUpdates: vi.fn().mockResolvedValue({
+        success: false,
+        botUsername: 'MockBot',
+      }),
+      saveConfig: vi.fn().mockResolvedValue(undefined),
+      startPolling: vi.fn(),
+      stopPolling: vi.fn(),
+      isPolling: vi.fn(() => false),
+      recentLogs: vi.fn(() => []),
+    };
+    binance = { fetchMarketDepth: vi.fn() };
     TestBed.configureTestingModule({
       imports: [RiskRules],
-      providers: [{ provide: P2P_STORAGE, useValue: mem }],
+      providers: [
+        { provide: P2P_STORAGE, useValue: mem },
+        { provide: TelegramWorkerService, useValue: worker as unknown as TelegramWorkerService },
+        { provide: ToastService, useValue: toast as unknown as ToastService },
+        { provide: BinanceP2pService, useValue: binance as unknown as BinanceP2pService },
+      ],
     });
     TestBed.inject(RisksService).save({ ...DEFAULT });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   function create(): ComponentFixture<RiskRules> {
@@ -110,6 +166,101 @@ describe('RiskRules', () => {
     expect(cfg.maxConsecutiveErrors).toBe(1);
     // the live verdict stays finite/typed
     expect(c.verdict()).toBeDefined();
+  });
+
+  it('detectChatId() con token vacío => toast warn y no llama al worker', async () => {
+    const c = create().componentInstance;
+    c.telegramToken.set('');
+
+    await c.detectChatId();
+
+    expect(toast.warn).toHaveBeenCalledWith(expect.stringContaining('Token'));
+    expect(worker.detectChatIdFromUpdates).not.toHaveBeenCalled();
+    expect(c.detectingChatId()).toBe(false);
+  });
+
+  it('detectChatId() con detección exitosa => setea chatId, guarda config y dispara la prueba', async () => {
+    const c = create().componentInstance;
+    c.telegramToken.set('123456789:AAA-bot-token');
+    worker.detectChatIdFromUpdates.mockResolvedValue({
+      success: true,
+      chatId: '987654321',
+      firstName: 'Ana',
+      username: 'ana_p2p',
+      botUsername: 'MockBot',
+    });
+    const saveSpy = vi.spyOn(c, 'saveTelegramConfig');
+    const testSpy = vi.spyOn(c, 'sendTestTelegramAlert').mockResolvedValue();
+
+    await c.detectChatId();
+
+    expect(c.telegramChatId()).toBe('987654321');
+    expect(c.botUsername()).toBe('MockBot');
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('987654321'),
+      'Telegram Conectado',
+    );
+    // El chatId ya está en la signal ANTES de guardar: la config persistida lo incluye.
+    expect(worker.saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: '987654321', botToken: '123456789:AAA-bot-token' }),
+    );
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(testSpy).toHaveBeenCalledTimes(1);
+    expect(c.detectingChatId()).toBe(false);
+  });
+
+  it('detectChatId() sin detección => reintenta (1+3) y termina con toast warn con pasos', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const c = create().componentInstance;
+    c.telegramToken.set('123456789:AAA-bot-token');
+    worker.detectChatIdFromUpdates.mockResolvedValue({ success: false, botUsername: 'MockBot' });
+
+    const pending = c.detectChatId();
+    await vi.runAllTimersAsync();
+    await pending;
+
+    // 1 intento inicial + 3 reintentos cada 2.5s
+    expect(worker.detectChatIdFromUpdates).toHaveBeenCalledTimes(4);
+    expect(toast.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Abrir Bot'),
+      expect.stringContaining('Paso Requerido en Telegram'),
+    );
+    expect(c.telegramChatId()).toBe('');
+    expect(c.botUsername()).toBe('MockBot');
+    expect(c.detectingChatId()).toBe(false);
+  });
+
+  it('sendTestTelegramAlert() con 400 "chat not found" => toast.error con orientación Abrir Bot / Iniciar', async () => {
+    const c = create().componentInstance;
+    c.telegramToken.set('123456789:AAA-bot-token');
+    c.telegramChatId.set('987654321');
+    c.botUsername.set('MockBot');
+    binance.fetchMarketDepth.mockResolvedValue({
+      bestBuyPrice: 100.5,
+      bestSellPrice: 99.25,
+      spreadPct: 1.26,
+      spreadVes: 1.25,
+    });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ ok: false, description: 'chat not found' }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await c.sendTestTelegramAlert();
+
+    expect(binance.fetchMarketDepth).toHaveBeenCalledWith('USDT', 'VES', true);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('sendMessage'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('Abrir Bot'),
+      expect.stringContaining('Chat no iniciado'),
+    );
+    const [message] = toast.error.mock.calls[0] as [string];
+    expect(message).toContain('@MockBot');
+    expect(message).toContain('Iniciar');
   });
 });
 

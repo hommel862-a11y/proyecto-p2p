@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, net } from 'electron';
+import { app, BrowserWindow, globalShortcut, net, shell } from 'electron';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -456,6 +456,13 @@ async function createWindow(): Promise<void> {
         mainWindow.focus();
       }
     });
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https:') || url.startsWith('http:') || url.startsWith('tg:')) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
   });
 
   void mainWindow.loadURL(targetUrl);

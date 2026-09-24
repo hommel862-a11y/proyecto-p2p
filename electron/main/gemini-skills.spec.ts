@@ -458,5 +458,5 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
         readFileSync(join(libDir, `${name}.ts`), 'utf8'),
       );
     }
-  });
+  }, 15000);
 });

@@ -172,7 +172,7 @@
       <div class="terminal-field">
         <label class="terminal-label" for="telegram-chat-id">
           <span>Chat ID / Usuario Autorizado</span>
-          <span class="terminal-subtext">Obtenido de @userinfobot</span>
+          <span class="terminal-subtext">Obtenido de @userinfobot o autodetectado</span>
         </label>
         <div class="input-control-wrap">
           <input
@@ -183,6 +183,31 @@
             (input)="telegramChatId.set($any($event.target).value)"
             placeholder="987654321"
           />
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 6px;">
+          <a
+            [href]="'https://t.me/' + (botUsername() || 'P2pTradeServiceBot')"
+            target="_blank"
+            rel="noopener"
+            class="btn btn-primary btn-sm"
+            style="flex: 1; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px; text-decoration: none;"
+            title="Abre tu bot en Telegram para presionar Iniciar"
+          >
+            ✈️ Abrir Bot
+          </a>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            style="flex: 1.3; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
+            [disabled]="detectingChatId()"
+            (click)="detectChatId()"
+            title="Detecta automáticamente tu Chat ID leyendo el último mensaje /start que enviaste a tu bot"
+          >
+            <span>{{ detectingChatId() ? '⏳ Vinculando...' : '🔍 Detectar Chat ID' }}</span>
+          </button>
+        </div>
+        <div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;">
+          Bot: <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong> • Tocá "Abrir Bot" e "Iniciar" (/start) en Telegram.
         </div>
       </div>
 

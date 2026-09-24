@@ -266,11 +266,42 @@ export function dispatchTelegramUpdate(
     const fromId = update.message.from.id;
     const text = (update.message.text || update.message.caption || '').trim();
 
+    // /start is the pairing and discovery handshake: always allow and respond with the Chat ID
+    if (text.startsWith('/start')) {
+      const isAuth = fromId === authId;
+      const pairingInfo = isAuth
+        ? escapeMarkdownV2('Tu terminal P2P ya está vinculado a este chat.')
+        : `ℹ️ ${escapeMarkdownV2('Para autorizar este chat, ingresá este ID')} \`${fromId}\` ${escapeMarkdownV2('en')} *${escapeMarkdownV2('Reglas de Riesgo > Telegram Sentinel')}* ${escapeMarkdownV2('o pulsá')} *${escapeMarkdownV2('"Detectar mi Chat ID"')}*`;
+      const availableCommands = [
+        ['/status', 'Estado en tiempo real del terminal'],
+        ['/spreads', 'Monitoreo de márgenes y arbitraje'],
+        ['/bcv', 'Inteligencia cambiaria y ventana BCV'],
+        ['/bancos', 'Cupos bancarios y límites SUDEBAN'],
+        ['/killswitch', 'Parada de emergencia inmediata'],
+        ['/resume', 'Reanudar operaciones'],
+      ]
+        .map(([cmd, desc]) => `• \`${cmd}\` \\- ${escapeMarkdownV2(desc)}`)
+        .join('\n');
+
+      return {
+        authorized: true,
+        command: '/start',
+        action: 'STATUS',
+        responseMarkdown:
+          `🤖 *${escapeMarkdownV2('TELEGRAM SENTINEL 2.0 CONECTADO Y OPERATIVO')}* 🛡️\n\n` +
+          `✅ ${escapeMarkdownV2('Tu Telegram Chat ID es')}: \`${fromId}\`\n\n` +
+          `${pairingInfo}\n\n` +
+          `*${escapeMarkdownV2('Comandos disponibles')}:*\n` +
+          `${availableCommands}\n\n` +
+          `📸 *${escapeMarkdownV2('Auditoría de Comprobantes')}:* ${escapeMarkdownV2('Enviá una foto de un Pago Móvil o transferencia y la auditaré al instante.')}`,
+      };
+    }
+
     if (fromId !== authId) {
       return {
         authorized: false,
         responseMarkdown: escapeMarkdownV2(
-          '⛔ ACCESO DENEGADO (USUARIO NO AUTORIZADO): Tu Chat ID no tiene permisos en este terminal P2P.',
+          `⛔ ACCESO DENEGADO (USUARIO NO AUTORIZADO): Tu Chat ID es ${fromId}. Configuralo en tu Terminal P2P (Reglas de Riesgo > Telegram Sentinel) para autorizar este chat.`,
         ),
       };
     }
@@ -295,7 +326,6 @@ export function dispatchTelegramUpdate(
       };
     }
 
-    // B. Text Commands
     if (text.startsWith('/killswitch') || text.startsWith('/pausar')) {
       return {
         authorized: true,

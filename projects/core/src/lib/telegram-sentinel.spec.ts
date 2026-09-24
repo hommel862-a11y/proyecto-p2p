@@ -13,6 +13,8 @@ import {
 } from './telegram-sentinel';
 
 describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
+  const AUTH_CHAT_ID = 123456789;
+
   describe('escapeMarkdownV2 (Seguridad de Caracteres Reservados)', () => {
     it('escapa correctamente caracteres reservados de Telegram MarkdownV2', () => {
       const raw = 'Spread: 2.5% [USDT/VES] (Ref #12345) - Ganancia +15.00$!';
@@ -76,8 +78,6 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
   });
 
   describe('dispatchTelegramUpdate (Dispatcher Seguro y Ruteo de Comandos)', () => {
-    const AUTH_CHAT_ID = 123456789;
-
     it('rechaza mensajes de usuarios no autorizados (autenticación estricta)', () => {
       const update: TelegramInboundUpdate = {
         update_id: 1,
@@ -93,6 +93,93 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
       expect(res.authorized).toBe(false);
       expect(res.responseMarkdown).toContain('NO AUTORIZADO');
+    });
+
+    it('permite /start a usuarios nuevos para descubrir su Chat ID y vincularlo', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 100,
+        message: {
+          message_id: 1,
+          from: { id: 777888999, username: 'nuevo_operador' },
+          chat: { id: 777888999, type: 'private' },
+          text: '/start',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.command).toBe('/start');
+      expect(res.action).toBe('STATUS');
+      expect(res.responseMarkdown).toContain('777888999');
+      expect(res.responseMarkdown).toContain('Para autorizar este chat');
+    });
+
+    it('ejecuta /start de usuario ya autorizado confirmando vinculación', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 101,
+        message: {
+          message_id: 2,
+          from: { id: AUTH_CHAT_ID, username: 'admin' },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text: '/start',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.command).toBe('/start');
+      expect(res.responseMarkdown).toContain('ya está vinculado a este chat');
+    });
+
+    it('informa el Chat ID del intruso en el acceso denegado genérico', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 30,
+        message: {
+          message_id: 130,
+          from: { id: 555111222, username: 'intruso' },
+          chat: { id: 555111222, type: 'private' },
+          text: '/status',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(false);
+      expect(res.responseMarkdown).toContain('ACCESO DENEGADO');
+      expect(res.responseMarkdown).toContain('555111222');
+    });
+
+    it('no habilita otros comandos tras un /start de usuario no autorizado', () => {
+      const startUpdate: TelegramInboundUpdate = {
+        update_id: 31,
+        message: {
+          message_id: 131,
+          from: { id: 555111222, username: 'intruso' },
+          chat: { id: 555111222, type: 'private' },
+          text: '/start',
+          date: Date.now(),
+        },
+      };
+
+      const startRes = dispatchTelegramUpdate(startUpdate, AUTH_CHAT_ID);
+      expect(startRes.authorized).toBe(true);
+      expect(startRes.command).toBe('/start');
+
+      const statusUpdate: TelegramInboundUpdate = {
+        update_id: 32,
+        message: {
+          message_id: 132,
+          from: { id: 555111222, username: 'intruso' },
+          chat: { id: 555111222, type: 'private' },
+          text: '/status',
+          date: Date.now(),
+        },
+      };
+
+      const statusRes = dispatchTelegramUpdate(statusUpdate, AUTH_CHAT_ID);
+      expect(statusRes.authorized).toBe(false);
     });
 
     it('ejecuta comando /killswitch de administrador autorizado', () => {
@@ -217,6 +304,95 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       const resBancos = dispatchTelegramUpdate(updateBancos, AUTH_CHAT_ID);
       expect(resBancos.authorized).toBe(true);
       expect(resBancos.action).toBe('BANCOS');
+    });
+  });
+
+  describe('Parseabilidad MarkdownV2 de las respuestas (siempre enviables)', () => {
+    // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
+    // aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
+    const NON_STRUCTURAL_RESERVED = /[\[\]()~>#+=|{}.!\-]/;
+
+    function expectParseableMarkdownV2(markdown: string): void {
+      const tokens = markdown.split('`');
+      let violation: string | undefined;
+      tokens.forEach((token, idx) => {
+        if (idx % 2 !== 0) return; // dentro de un span de código la puntuación es literal
+        for (let i = 0; i < token.length; i++) {
+          const ch = token[i];
+          if (NON_STRUCTURAL_RESERVED.test(ch) && token[i - 1] !== '\\') {
+            violation =
+              `carácter reservado '${ch}' sin escapar` +
+              ` en "...${token.slice(Math.max(0, i - 18), i + 18)}..."`;
+            break;
+          }
+        }
+      });
+      expect(violation, violation).toBeUndefined();
+
+      // Sanidad estructural básica: delimitadores balanceados, sin backslash
+      // colgante y sin saltos de línea dentro de spans de código.
+      expect((markdown.match(/`/g) ?? []).length % 2).toBe(0);
+      expect((markdown.match(/\*/g) ?? []).length % 2).toBe(0);
+      expect(markdown).not.toMatch(/\\$/);
+      (markdown.match(/`[^`]*`/g) ?? []).forEach((span) =>
+        expect(span).not.toContain('\n'),
+      );
+    }
+
+    it('la respuesta de /start para un usuario no autorizado es parseable', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 200,
+        message: {
+          message_id: 1,
+          from: { id: 777888999, username: 'nuevo_operador' },
+          chat: { id: 777888999, type: 'private' },
+          text: '/start',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.responseMarkdown).toContain('777888999');
+      expect(res.responseMarkdown).toContain('Reglas de Riesgo');
+      expectParseableMarkdownV2(res.responseMarkdown);
+    });
+
+    it('la respuesta de /start para un usuario autorizado es parseable y confirma la vinculación', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 201,
+        message: {
+          message_id: 2,
+          from: { id: AUTH_CHAT_ID, username: 'admin' },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text: '/start',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(true);
+      expect(res.responseMarkdown).toContain('ya está vinculado a este chat');
+      expectParseableMarkdownV2(res.responseMarkdown);
+    });
+
+    it('la respuesta de acceso denegado genérico es parseable e incluye el Chat ID del intruso', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 202,
+        message: {
+          message_id: 3,
+          from: { id: 555111222, username: 'intruso' },
+          chat: { id: 555111222, type: 'private' },
+          text: '/spreads',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, AUTH_CHAT_ID);
+      expect(res.authorized).toBe(false);
+      expect(res.responseMarkdown).toContain('ACCESO DENEGADO');
+      expect(res.responseMarkdown).toContain('555111222');
+      expectParseableMarkdownV2(res.responseMarkdown);
     });
   });
 
