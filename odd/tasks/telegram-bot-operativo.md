@@ -39,7 +39,7 @@ Dejar operativo el flujo de Telegram de punta a punta: el usuario abre el bot, p
 - Todos los tests pasan; build sin warnings.
 
 ## Verification evidence
-Resultados del 24/09/2026 (verificación integrada, commit `TBD`):
+Resultados del 24/09/2026 (verificación integrada, commit `8afbc67`):
 - `npx tsc --noEmit` (root) → OK. `npx tsc -p electron/tsconfig.json --noEmit` → OK.
 - `npm run test:electron` → 12 files / 81 tests passed.
 - `npm test -- --watch=false` (ng test) → 52 files / 497 tests passed.
@@ -47,7 +47,8 @@ Resultados del 24/09/2026 (verificación integrada, commit `TBD`):
 - `node scripts/sync-vendor-core.cjs --check` → 24/24 idénticos.
 
 ## Next step
-- Commit de work unit + push de la rama `feat/p2p-decision-tool-mvp` (autorizado por el usuario).
+- Completado y sincronizado: commit `8afbc67` enviado a `origin/feat/p2p-decision-tool-mvp`.
+- Validación manual en vivo del flujo por parte del usuario (abrir bot → /start → Detectar Chat ID en Settings/Risk Rules).
 
 ## Route
 - Delegado directo: agentes en paralelo (frentes disjuntos por archivo). ODD (no SDD).
