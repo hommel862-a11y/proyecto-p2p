@@ -49,6 +49,13 @@ esbuild
       process.exit(1);
     }
     console.log(`Preload bundled (guarded) -> ${path.relative(root, outfile)}`);
+
+    // Guarantee schema.sql is copied to dist/main/db (tsc output does not include it)
+    const srcSchema = path.resolve(__dirname, 'main/db/schema.sql');
+    const destSchema = path.resolve(__dirname, 'dist/main/db/schema.sql');
+    fs.mkdirSync(path.dirname(destSchema), { recursive: true });
+    fs.copyFileSync(srcSchema, destSchema);
+    console.log('[build:preload] schema.sql sincronizado en electron/dist/main/db/schema.sql');
   })
   .catch((err) => {
     console.error('Preload bundle failed:', err.message);
