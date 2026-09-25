@@ -120,4 +120,20 @@ describe('ClipboardPaymentService', () => {
       },
     });
   });
+
+  it('processes raw Venezuelan payment text correctly', () => {
+    const rawText =
+      'Banesco: Recibiste Pago Movil por Bs. 2.450,00 de Juan Perez CI 18.234.567 al telf 04141234567 Ref: 981234.';
+    const result = service.processRawText(rawText);
+
+    expect(result).not.toBeNull();
+    expect(result?.amount).toBe(2450);
+    expect(result?.reference).toBe('981234');
+    expect(service.detectedPayment()).toEqual(result);
+  });
+
+  it('ignores invalid text or short snippets in processRawText', () => {
+    expect(service.processRawText('hola que tal')).toBeNull();
+    expect(service.processRawText('')).toBeNull();
+  });
 });

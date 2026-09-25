@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { Clipboard } from '@capacitor/clipboard';
+import { parseBankReceiptText } from '@p2p/core';
 import { ToastService } from './toast.service';
 import { AuditLoggerService } from './audit-logger.service';
 
@@ -30,9 +32,86 @@ export class ClipboardPaymentService {
   readonly hasElectronBridge = signal<boolean>(false);
 
   private unsubscribeListener: (() => void) | null = null;
+  private lastScannedHash = '';
 
   constructor() {
     this.initElectronListener();
+    this.initVisibilityListener();
+  }
+
+  private initVisibilityListener(): void {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (
+          document.visibilityState === 'visible' &&
+          this.isWatcherEnabled() &&
+          !this.hasElectronBridge()
+        ) {
+          void this.scanClipboard();
+        }
+      });
+    }
+  }
+
+  /**
+   * Scans mobile/web clipboard using @capacitor/clipboard and extracts Venezuelan payment data.
+   */
+  async scanClipboard(): Promise<ClipboardPaymentPayload | null> {
+    try {
+      const { value } = await Clipboard.read();
+      if (!value || typeof value !== 'string') {
+        return null;
+      }
+      return this.processRawText(value);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parses raw receipt text from clipboard and triggers onPaymentDetected if valid.
+   */
+  processRawText(text: string): ClipboardPaymentPayload | null {
+    if (!text || text.trim().length < 15) {
+      return null;
+    }
+
+    const quickHash = text.slice(0, 40) + text.length;
+    if (quickHash === this.lastScannedHash) {
+      return null;
+    }
+
+    const parsed = parseBankReceiptText(text);
+    if (!parsed || parsed.amount <= 0 || !parsed.reference) {
+      return null;
+    }
+
+    this.lastScannedHash = quickHash;
+
+    const ts =
+      typeof parsed.timestamp === 'number'
+        ? parsed.timestamp
+        : typeof parsed.timestamp === 'string'
+          ? Date.parse(parsed.timestamp) || Date.now()
+          : Date.now();
+
+    const payload: ClipboardPaymentPayload = {
+      bank: parsed.bank,
+      bankDisplayName: parsed.bankDisplayName || parsed.bank.toUpperCase(),
+      reference: parsed.reference,
+      amount: parsed.amount,
+      currency: (parsed.currency as 'VES' | 'COP' | 'USD') || 'VES',
+      payerName: parsed.payerName,
+      payerId: parsed.payerId,
+      beneficiaryPhone: parsed.beneficiaryPhone,
+      timestamp: ts,
+      rawText: text,
+      confidenceScore: parsed.confidenceScore || 85,
+      isBlacklisted: false,
+    };
+
+    this.onPaymentDetected(payload);
+    return payload;
   }
 
   private initElectronListener(): void {
@@ -104,19 +183,27 @@ export class ClipboardPaymentService {
 
   async toggleWatcher(enable?: boolean): Promise<boolean> {
     const electron = (globalThis as any).electron;
-    if (!electron?.clipboard?.toggleWatcher) {
-      return false;
+    if (electron?.clipboard?.toggleWatcher) {
+      const target = enable ?? !this.isWatcherEnabled();
+      const updated = await electron.clipboard.toggleWatcher(target);
+      this.isWatcherEnabled.set(updated);
+      this.toast.info(
+        `Vigilancia del portapapeles ${updated ? 'activada' : 'pausada'}`,
+        'Portapapeles',
+      );
+      return updated;
     }
 
     const target = enable ?? !this.isWatcherEnabled();
-    const updated = await electron.clipboard.toggleWatcher(target);
-    this.isWatcherEnabled.set(updated);
-
+    this.isWatcherEnabled.set(target);
+    if (target) {
+      void this.scanClipboard();
+    }
     this.toast.info(
-      `Vigilancia del portapapeles ${updated ? 'activada' : 'pausada'}`,
+      `Vigilancia del portapapeles ${target ? 'activada' : 'pausada'}`,
       'Portapapeles',
     );
-    return updated;
+    return target;
   }
 
   destroy(): void {

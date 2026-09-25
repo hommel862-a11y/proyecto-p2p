@@ -45,7 +45,13 @@ __screenshots__/
 Thumbs.db
 
 # Native shell build output (SLICE 3) — regenerated, not source
-/android/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/*.log
+/android/*.pid
+/android/app/src/main/assets/public/
 /electron/dist/
 /release/
 /test-results/

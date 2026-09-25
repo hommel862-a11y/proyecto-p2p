@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">P2P Decision Tool</string>
+    <string name="title_activity_main">P2P Decision Tool</string>
+    <string name="package_name">com.p2p.decisiontool</string>
+    <string name="custom_url_scheme">com.p2p.decisiontool</string>
+</resources>
