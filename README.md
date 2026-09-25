@@ -162,16 +162,16 @@ Números verificados con corridas reales (cierre de trabajo sobre la bóveda de 
 
 | Suite                      | Resultado                                                         | Comando                       |
 | -------------------------- | ----------------------------------------------------------------- | ----------------------------- |
-| Aplicación Angular (`p2p`) | **109/110** — 20 archivos                                         | `npx ng test p2p --no-watch`  |
-| `@p2p/core`                | **426/426** — 49 archivos                                         | `npx ng test core --no-watch` |
-| Electron shell             | **64/64** — 10 archivos (100%)                                    | `npm run test:electron`       |
-| MCP server suite           | **51/51** — 4 archivos (100%)                                     | `npm run mcp:test`            |
-| Motores Vendored Core      | **23/23** — SHA-256 byte a byte                                   | `npm run check:vendor`        |
+| Aplicación Angular (`p2p`) | **208/208** — 31 archivos (100%)                                  | `npx ng test p2p --watch=false` |
+| `@p2p/core`                | **497/497** — 52 archivos (100%)                                  | `npx ng test core --watch=false` |
+| Electron shell             | **81/81** — 12 archivos (100%)                                    | `npm run test:electron`       |
+| MCP server suite           | **52/52** — 4 archivos (100%)                                     | `npm run mcp:test`            |
+| Motores Vendored Core      | **24/24** — SHA-256 byte a byte                                   | `npm run check:vendor`        |
 | Bóveda de credenciales     | **6/6** — `credential-store.service.spec.ts` (incluidos en `p2p`) | `npx ng test p2p`             |
 | E2E Web                    | 6 specs Playwright (requieren build + servidor)                   | `npm run e2e`                 |
 | E2E Electron               | 1 script (`e2e/electron/e2e.mjs`, requiere build previo)          | `npm run e2e:electron`        |
 
-> ⚠️ **Único fallo conocido (pre-existente, ajeno a credenciales):** `app.spec.ts` espera 9 enlaces de navegación (`should render a nav with 9 feature links`), pero la app tiene 10 características. La aserción quedó desactualizada al añadirse la décima vista.
+> ✅ **Todas las suites en verde (100% de éxito):** La navegación de la app cuenta con 11 enlaces principales cubiertos y verificados en `app.spec.ts` (`should render a nav with 11 feature links`). Cero fallos conocidos en el repositorio.
 
 ## Respaldo de Datos
 
@@ -190,7 +190,7 @@ El registro de operaciones se almacena en `localStorage`. Para evitar pérdida:
 │   ├── core/                   # Infraestructura (storage, bóveda de credenciales,
 │   │                           #  vault cifrado, mcp.service desacoplado, Telegram worker…)
 │   │   └── mcp/                # Catálogo modular mcp-catalog.ts y emulación mcp-fallbacks.ts
-│   └── features/               # Feature components (10 vistas)
+│   └── features/               # Feature components (11 vistas)
 ├── projects/core/              # @p2p/core — lógica pura framework-agnostic (23 motores)
 ├── packages/mcp-server/        # MCP server suite — 37 tools en 10 servidores temáticos
 │   └── src/tools/              # Clasificación por dominio y arranque individual vía --server
