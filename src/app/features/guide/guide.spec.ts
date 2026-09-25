@@ -77,4 +77,14 @@ describe('Guide', () => {
     expect(text).toContain('Checklist Operativo Paso a Paso');
     expect(text).toContain('La Rutina del Trader');
   });
+
+  it('navigates to terms tab and displays sovereign privacy and risk policy', () => {
+    component.setTab('terms');
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Términos de Uso, Privacidad Soberana & Gestión de Riesgo');
+    expect(text).toContain('Cero Telemetría');
+    expect(text).toContain('Naturaleza Jurídica del Software');
+  });
 });

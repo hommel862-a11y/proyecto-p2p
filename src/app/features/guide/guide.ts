@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-export type GuideTab = 'intro' | 'tools' | 'swarm' | 'mcp' | 'security' | 'workflow';
+export type GuideTab = 'intro' | 'tools' | 'swarm' | 'mcp' | 'security' | 'workflow' | 'terms';
 
 @Component({
   selector: 'app-guide',
@@ -20,6 +20,7 @@ export class Guide {
     { id: 'mcp', label: '4. Servidores MCP', icon: '🔌', badge: '10 Dominios' },
     { id: 'security', label: '5. Blindaje Bancario & SUDEBAN', icon: '🛡️' },
     { id: 'workflow', label: '6. Checklist Paso a Paso', icon: '🎯' },
+    { id: 'terms', label: '7. Términos & Privacidad', icon: '⚖️', badge: 'Legal' },
   ];
 
   setTab(tab: GuideTab): void {
