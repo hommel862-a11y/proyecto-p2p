@@ -5,6 +5,9 @@ import { HotkeysModalComponent } from './shared/components/hotkeys-modal.compone
 import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
 import { ClipboardPaymentBannerComponent } from './shared/components/clipboard-payment-banner.component';
+import { ApiSettingsModalComponent } from './shared/components/api-settings-modal.component';
+import { CotizaveService } from './core/cotizave.service';
+import { BinanceP2pService } from './core/binance-p2p.service';
 
 export type AppTheme = 'dark' | 'apple-dark' | 'light';
 
@@ -17,6 +20,7 @@ export type AppTheme = 'dark' | 'apple-dark' | 'light';
     HotkeysModalComponent,
     CommandPalette,
     ClipboardPaymentBannerComponent,
+    ApiSettingsModalComponent,
   ],
   selector: 'app-root',
   styleUrl: './app.scss',
@@ -24,6 +28,14 @@ export type AppTheme = 'dark' | 'apple-dark' | 'light';
 })
 export class App {
   protected readonly title = signal('p2p');
+  readonly cotizave = inject(CotizaveService);
+  readonly binance = inject(BinanceP2pService);
+  readonly mobileDrawerOpen = signal<boolean>(false);
+  readonly apiModalOpen = signal<boolean>(false);
+
+  readonly hasActiveApis = computed<boolean>(() => {
+    return !!this.cotizave.apiKey();
+  });
   readonly theme = signal<AppTheme>(this.initialTheme());
   readonly themeLabel = computed<string>(() => {
     switch (this.theme()) {
@@ -97,6 +109,23 @@ export class App {
         /* sin DOM */
       }
     }
+  }
+
+  toggleMobileDrawer(): void {
+    this.mobileDrawerOpen.update((v) => !v);
+  }
+
+  closeMobileDrawer(): void {
+    this.mobileDrawerOpen.set(false);
+  }
+
+  openApiModal(): void {
+    this.apiModalOpen.set(true);
+    this.mobileDrawerOpen.set(false);
+  }
+
+  closeApiModal(): void {
+    this.apiModalOpen.set(false);
   }
 
   private listenThemeToggle(): void {

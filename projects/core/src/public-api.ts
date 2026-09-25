@@ -51,3 +51,4 @@ export * from './lib/zk-market-mesh';
 export * from './lib/binance-earn-vault';
 export * from './lib/operations-workflow';
 export * from './lib/audit-analytics';
+export * from './lib/circuit-breaker';

@@ -2,17 +2,7 @@
   <aside class="sidebar" aria-label="Barra lateral de navegación">
     <div class="brand">
       <span class="logo">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L22 12L12 22L2 12L12 2Z" fill="url(#goldGrad)" opacity="0.85"/>
-          <path d="M12 6L18 12L12 18L6 12L12 6Z" stroke="url(#goldGrad)" stroke-width="1.2" fill="none"/>
-          <defs>
-            <linearGradient id="goldGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#f5e6bd"/>
-              <stop offset="45%" stop-color="#d8b45c"/>
-              <stop offset="100%" stop-color="#b08a33"/>
-            </linearGradient>
-          </defs>
-        </svg>
+        <img src="assets/icons/brand-logo.png" alt="P2P Decisor" class="brand-logo-img" />
       </span>
       <span class="brand-text">
         <span class="brand-label-p2p">P2P</span>
@@ -71,25 +61,37 @@
         <span>Centro MCP</span>
       </a>
     </nav>
-    <div class="sidebar-foot">v{{ version() }} · Modo manual · sin API</div>
+    <div class="sidebar-foot">v{{ version() }} · P2P Decisor</div>
   </aside>
 
   <div class="main">
     <header class="header-bar">
       <div class="header-left">
-        <h1 class="header-title">Herramienta de Decisión P2P</h1>
-        <p class="header-subtitle">Operaciones de arbitraje · Mercado Venezuela</p>
+        <div class="header-mobile-brand">
+          <img src="assets/icons/brand-logo.png" alt="P2P Decisor" class="mobile-logo-img" />
+          <div class="header-titles">
+            <h1 class="header-title">P2P Decisor</h1>
+            <p class="header-subtitle">Arbitraje · Mercado Venezuela</p>
+          </div>
+        </div>
       </div>
       <div class="header-right">
-        <span class="header-status">
-          <span class="status-dot"></span>
-          <span>Manual · Sin API</span>
-        </span>
-        <button type="button" class="btn-ghost btn-shortcut" (click)="hotkeys.togglePalette()" title="Paleta de comandos (Ctrl+K)">
+        <!-- Interactive API status pill to open connections modal -->
+        <button
+          type="button"
+          class="header-status btn-status-pill"
+          (click)="openApiModal()"
+          [title]="hasActiveApis() ? 'APIs activas - Toca para configurar' : 'Modo manual - Toca para conectar APIs'"
+        >
+          <span class="status-dot" [class.dot-active]="hasActiveApis()"></span>
+          <span>{{ hasActiveApis() ? '🟢 APIs Activas' : 'Manual · Sin API' }}</span>
+        </button>
+
+        <button type="button" class="btn-ghost btn-shortcut desktop-only" (click)="hotkeys.togglePalette()" title="Paleta de comandos (Ctrl+K)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shortcut-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span class="shortcut-label">Ctrl K</span>
         </button>
-        <button type="button" class="btn-ghost" (click)="hotkeys.openModal()" title="Atajos de teclado institucionales (?)">
+        <button type="button" class="btn-ghost desktop-only" (click)="hotkeys.openModal()" title="Atajos de teclado institucionales (?)">
           ⌨️ Atajos
         </button>
         <button type="button" class="btn-ghost btn-theme" (click)="toggleTheme()" [title]="'Cambiar tema (Actual: ' + themeLabel() + ')'">
@@ -103,7 +105,7 @@
               <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
             }
           </svg>
-          {{ themeLabel() }}
+          <span class="theme-label-text desktop-only">{{ themeLabel() }}</span>
         </button>
       </div>
     </header>
@@ -111,6 +113,112 @@
       <router-outlet />
     </section>
   </div>
+
+  <!-- Fixed Mobile Bottom Navigation Bar (Visible only on mobile <= 768px) -->
+  <nav class="mobile-bottom-nav" aria-label="Navegación móvil inferior">
+    <a routerLink="/spread" routerLinkActive="active" class="bottom-tab" ariaCurrentWhenActive="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
+      <span>Spread</span>
+    </a>
+    <a routerLink="/income" routerLinkActive="active" class="bottom-tab" ariaCurrentWhenActive="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
+      <span>Calcular</span>
+    </a>
+    <a routerLink="/log" routerLinkActive="active" class="bottom-tab" ariaCurrentWhenActive="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+      <span>Órdenes</span>
+    </a>
+    <button type="button" class="bottom-tab" (click)="toggleMobileDrawer()" [class.active]="mobileDrawerOpen()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      <span>Más</span>
+    </button>
+  </nav>
+
+  <!-- Mobile Off-Canvas Drawer Sheet -->
+  @if (mobileDrawerOpen()) {
+    <div
+      class="mobile-drawer-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && closeMobileDrawer()"
+      (keydown.escape)="closeMobileDrawer()"
+      aria-label="Cerrar menú móvil"
+    >
+      <div class="mobile-drawer-panel" role="dialog" aria-modal="true" aria-label="Menú de herramientas">
+        <div class="drawer-header">
+          <div class="drawer-brand">
+            <img src="assets/icons/brand-logo.png" alt="P2P Decisor" class="drawer-logo-img" />
+            <span class="drawer-title">Herramientas P2P</span>
+          </div>
+          <button type="button" class="btn-close-drawer" (click)="closeMobileDrawer()">&times;</button>
+        </div>
+
+        <div class="drawer-body">
+          <button type="button" class="drawer-api-btn" (click)="openApiModal()">
+            <span>🌐 Conexiones & APIs</span>
+            <span class="drawer-badge" [class.badge-active]="hasActiveApis()">
+              {{ hasActiveApis() ? '🟢 Conectado' : 'Configurar' }}
+            </span>
+          </button>
+
+          <span class="drawer-section-title">Misión</span>
+          <a routerLink="/dashboard" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span>Centro de Control</span>
+          </a>
+          <a routerLink="/spread" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
+            <span>Monitor de Spread</span>
+          </a>
+          <a routerLink="/log" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+            <span>Operaciones</span>
+          </a>
+
+          <span class="drawer-section-title">Planificación & Análisis</span>
+          <a routerLink="/income" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
+            <span>Calculadora</span>
+          </a>
+          <a routerLink="/triangulation" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l10 18H2L12 2z"/><circle cx="12" cy="12" r="2"/></svg>
+            <span>Triangulación</span>
+          </a>
+          <a routerLink="/copilot" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg>
+            <span>Copiloto IA</span>
+          </a>
+          <a routerLink="/receipts" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Comprobantes & OCR</span>
+          </a>
+          <a routerLink="/stats" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/></svg>
+            <span>Cumplimiento</span>
+          </a>
+
+          <span class="drawer-section-title">Configuración</span>
+          <a routerLink="/risk" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>
+            <span>Riesgo</span>
+          </a>
+          <a routerLink="/guide" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><polyline points="15 4 15 9 20 9"/><line x1="8" y1="13" x2="13" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+            <span>Guía & Términos</span>
+          </a>
+          <a routerLink="/mcp" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <span>Centro MCP</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (apiModalOpen()) {
+    <app-api-settings-modal (close)="closeApiModal()" />
+  }
+
   <app-toast />
   <app-hotkeys-modal />
   <app-command-palette />

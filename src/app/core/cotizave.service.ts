@@ -1,7 +1,12 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { CredentialStoreService } from './credential-store.service';
-import { normalizeCotizaveRates, buildCotizaveHeaders, type CotizaveRate } from '@p2p/core';
+import {
+  normalizeCotizaveRates,
+  buildCotizaveHeaders,
+  type CotizaveRate,
+  CircuitBreaker,
+} from '@p2p/core';
 
 @Injectable({ providedIn: 'root' })
 export class CotizaveService implements OnDestroy {
@@ -14,6 +19,13 @@ export class CotizaveService implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly lastFetched = signal<Date | null>(null);
   readonly autoRefresh = signal<boolean>(false);
+
+  readonly circuitBreaker = new CircuitBreaker({
+    failureThreshold: 3,
+    cooldownPeriodMs: 25_000,
+    maxRetries: 1,
+    baseDelayMs: 300,
+  });
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -54,24 +66,38 @@ export class CotizaveService implements OnDestroy {
     this.error.set(null);
 
     try {
-      let data: unknown;
+      const executeNetworkCall = async (signal: AbortSignal) => {
+        const electronWin =
+          typeof window !== 'undefined'
+            ? (window as unknown as {
+                electron?: {
+                  fetchCotizave?: (req: unknown) => Promise<unknown>;
+                };
+              })
+            : null;
 
-      const electronWin =
-        typeof window !== 'undefined'
-          ? (window as unknown as {
-              electron?: {
-                fetchCotizave?: (req: unknown) => Promise<unknown>;
-              };
-            })
-          : null;
+        if (electronWin?.electron?.fetchCotizave) {
+          return await electronWin.electron.fetchCotizave({ apiKey: key, endpoint });
+        }
+        return await this.fetchRatesFromBrowser(endpoint, key, signal);
+      };
 
-      if (electronWin?.electron?.fetchCotizave) {
-        data = await electronWin.electron.fetchCotizave({ apiKey: key, endpoint });
+      let rates: Record<string, CotizaveRate>;
+      const fallbackHandler = (): Record<string, CotizaveRate> => {
+        const cached = this.ratesByMarket();
+        if (cached && Object.keys(cached).length > 0) {
+          this.toast.warn('Usando cotizaciones cacheadas (circuito en protección).', 'Cotizave');
+          return cached;
+        }
+        throw new Error('Cotizave no disponible y sin caché previa');
+      };
+
+      const result = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
+      if (result && typeof result === 'object' && ('binance' in result || 'oficial' in result)) {
+        rates = result as Record<string, CotizaveRate>;
       } else {
-        data = await this.fetchRatesFromBrowser(endpoint, key);
+        rates = normalizeCotizaveRates(result);
       }
-
-      const rates = normalizeCotizaveRates(data);
       this.ratesByMarket.set(rates);
       this.lastFetched.set(new Date());
     } catch (err) {
@@ -114,16 +140,21 @@ export class CotizaveService implements OnDestroy {
    * través del puente local que la app de escritorio expone en
    * http://127.0.0.1:51857/api/cotizave/:endpoint.
    */
-  private async fetchRatesFromBrowser(endpoint: 'rates', key: string): Promise<unknown> {
+  private async fetchRatesFromBrowser(
+    endpoint: 'rates',
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const url = `https://api.cotizave.com/v1/fx/${endpoint}`;
     let resp: Response;
     try {
       resp = await fetch(url, {
         method: 'GET',
         headers: buildCotizaveHeaders(key),
+        signal,
       });
     } catch {
-      return await this.fetchRatesViaLocalBridge(endpoint, key);
+      return await this.fetchRatesViaLocalBridge(endpoint, key, signal);
     }
     if (!resp.ok) {
       throw new Error(`Cotizave HTTP Error ${resp.status}`);
@@ -131,11 +162,16 @@ export class CotizaveService implements OnDestroy {
     return await resp.json();
   }
 
-  private async fetchRatesViaLocalBridge(endpoint: 'rates', key: string): Promise<unknown> {
+  private async fetchRatesViaLocalBridge(
+    endpoint: 'rates',
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const bridgeUrl = `http://127.0.0.1:51857/api/cotizave/${endpoint}`;
     const bridgeResp = await fetch(bridgeUrl, {
       method: 'GET',
       headers: { 'x-api-key': key, Accept: 'application/json' },
+      signal,
     });
     if (!bridgeResp.ok) {
       throw new Error(`Cotizave bridge HTTP Error ${bridgeResp.status}`);

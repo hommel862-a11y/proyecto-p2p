@@ -1,6 +1,11 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
-import { computeMarketDepth, BINANCE_PAY_METHODS, type BinanceP2pMarketDepth } from '@p2p/core';
+import {
+  computeMarketDepth,
+  BINANCE_PAY_METHODS,
+  type BinanceP2pMarketDepth,
+  CircuitBreaker,
+} from '@p2p/core';
 
 @Injectable({ providedIn: 'root' })
 export class BinanceP2pService implements OnDestroy {
@@ -16,6 +21,13 @@ export class BinanceP2pService implements OnDestroy {
   /** Security policy: public third-party proxies are disabled by default */
   readonly usePublicCorsProxy = signal<boolean>(false);
   readonly customProxyUrl = signal<string>('');
+
+  readonly circuitBreaker = new CircuitBreaker({
+    failureThreshold: 4,
+    cooldownPeriodMs: 30_000,
+    maxRetries: 1,
+    baseDelayMs: 400,
+  });
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -74,52 +86,66 @@ export class BinanceP2pService implements OnDestroy {
     const binanceMethod = BINANCE_PAY_METHODS[bankKey] || '';
 
     try {
-      let buyData: unknown = null;
-      let sellData: unknown = null;
+      const executeNetworkCall = async (signal: AbortSignal) => {
+        let buyData: unknown = null;
+        let sellData: unknown = null;
 
-      // Check if running in Electron with IPC bridge (Zero CORS, 100% direct & secure)
-      const electronWin =
-        typeof window !== 'undefined'
-          ? (window as unknown as {
-              electron?: {
-                fetchBinanceP2p?: (p: unknown) => Promise<unknown>;
-              };
-            })
-          : null;
+        const electronWin =
+          typeof window !== 'undefined'
+            ? (window as unknown as {
+                electron?: {
+                  fetchBinanceP2p?: (p: unknown) => Promise<unknown>;
+                };
+              })
+            : null;
 
-      if (electronWin?.electron?.fetchBinanceP2p) {
-        const [resBuy, resSell] = await Promise.all([
-          electronWin.electron.fetchBinanceP2p({
-            asset,
-            fiat,
-            tradeType: 'BUY',
-            payTypes: binanceMethod ? [binanceMethod] : [],
-            rows: 10,
-          }),
-          electronWin.electron.fetchBinanceP2p({
-            asset,
-            fiat,
-            tradeType: 'SELL',
-            payTypes: binanceMethod ? [binanceMethod] : [],
-            rows: 10,
-          }),
-        ]);
-        buyData = resBuy;
-        sellData = resSell;
-      } else {
-        // Web browser environment
-        const [resBuy, resSell] = await Promise.all([
-          this.fetchViaWeb('BUY', asset, fiat, binanceMethod),
-          this.fetchViaWeb('SELL', asset, fiat, binanceMethod),
-        ]);
-        buyData = resBuy;
-        sellData = resSell;
-      }
+        if (electronWin?.electron?.fetchBinanceP2p) {
+          const [resBuy, resSell] = await Promise.all([
+            electronWin.electron.fetchBinanceP2p({
+              asset,
+              fiat,
+              tradeType: 'BUY',
+              payTypes: binanceMethod ? [binanceMethod] : [],
+              rows: 10,
+            }),
+            electronWin.electron.fetchBinanceP2p({
+              asset,
+              fiat,
+              tradeType: 'SELL',
+              payTypes: binanceMethod ? [binanceMethod] : [],
+              rows: 10,
+            }),
+          ]);
+          buyData = resBuy;
+          sellData = resSell;
+        } else {
+          const [resBuy, resSell] = await Promise.all([
+            this.fetchViaWeb('BUY', asset, fiat, binanceMethod, signal),
+            this.fetchViaWeb('SELL', asset, fiat, binanceMethod, signal),
+          ]);
+          buyData = resBuy;
+          sellData = resSell;
+        }
 
-      const depth = computeMarketDepth(buyData, sellData, asset, fiat, binanceMethod);
+        return computeMarketDepth(buyData, sellData, asset, fiat, binanceMethod);
+      };
+
+      const cachedDepth = this.marketDepth();
+      const fallbackHandler = cachedDepth
+        ? (): BinanceP2pMarketDepth => {
+            if (!silent) {
+              this.toast.warn(
+                'Usando profundidad de mercado en caché (circuito Binance en protección).',
+                'Binance P2P',
+              );
+            }
+            return cachedDepth;
+          }
+        : undefined;
+
+      const depth = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
       this.marketDepth.set(depth);
       this.lastFetched.set(new Date());
-
       return depth;
     } catch (err) {
       const msg = (err as Error).message || 'No se pudo conectar con Binance P2P';
@@ -138,6 +164,7 @@ export class BinanceP2pService implements OnDestroy {
     asset: string,
     fiat: string,
     payType?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const payload = {
       asset,
@@ -160,20 +187,20 @@ export class BinanceP2pService implements OnDestroy {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal,
       });
       if (resp.ok) return await resp.json();
     } catch {
       // Direct fetch failed (likely browser CORS restriction)
     }
 
-    // Fallback: bridge local de la app de escritorio (mismo mecanismo que
-    // Cotizave). La desktop expone 127.0.0.1:51857 como proxy CORS local, de
-    // modo que el navegador cotiza en vivo sin depender de proxies públicos.
+    // Fallback: bridge local de la app de escritorio
     try {
       const bridgeResp = await fetch('http://127.0.0.1:51857/api/binance/p2p', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal,
       });
       if (bridgeResp.ok) return await bridgeResp.json();
     } catch {
@@ -196,6 +223,7 @@ export class BinanceP2pService implements OnDestroy {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!proxyResp.ok) {

@@ -1938,4 +1938,138 @@
   100% { transform: rotate(360deg); }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Mobile Portrait Adaptations (<= 768px)
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .trading-desk-panel {
+    padding: 0;
+  }
+
+  .desk-main-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .desk-title-group {
+    width: 100%;
+  }
+
+  .desk-title-row {
+    flex-wrap: wrap;
+    gap: 8px;
+
+    h2 {
+      font-size: 1.15rem;
+    }
+
+    .badge {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+    }
+  }
+
+  .panel-subtitle {
+    font-size: 0.72rem;
+  }
+
+  .desk-header-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .segmented-control-bar {
+    width: 100%;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .segmented-tab {
+      flex-shrink: 0;
+      padding: 8px 12px;
+      font-size: 0.75rem;
+      min-height: 40px;
+    }
+  }
+
+  .desk-quick-buttons {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* Dynamic Island mobile reflow */
+  .mcp-dynamic-island {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 14px;
+    padding: 10px 12px;
+    gap: 10px;
+
+    .island-left {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .island-metrics-capsule {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+      gap: 6px;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    .island-right {
+      width: 100%;
+      justify-content: space-between;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 8px;
+    }
+  }
+
+  /* Layout cards */
+  .trading-desk-layout {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-top: 10px;
+  }
+
+  .terminal-input-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  /* Larger touch targets for inputs on mobile */
+  .form-control,
+  input[type="number"],
+  input[type="text"],
+  select {
+    min-height: 44px;
+    font-size: 0.9rem;
+  }
+
+  .btn-submit-action,
+  .btn-action-primary {
+    min-height: 48px;
+    font-size: 0.9rem;
+  }
+}
+
 
