@@ -89,6 +89,43 @@ export interface SentinelSignal {
   notes: string[];
 }
 
+/**
+ * Narrow view of the renderer's treasury snapshot consumed by the Risk Gatekeeper.
+ * Projected from `TreasurySnapshotDto` by the orchestrator: the gatekeeper only needs the
+ * aggregates, never the per-account list, so a bloated DTO cannot widen its blast radius.
+ */
+export interface TreasuryRiskContext {
+  /** Accounts at or above 100% of their daily VES cap. */
+  overLimitCount: number;
+  /** Accounts between 80% and 100% of their daily VES cap. */
+  nearLimitCount: number;
+  /** Accounts the operator paused (`status === 'DISABLED'`). */
+  disabledCount: number;
+  /** Accounts at their daily transaction cap (SUDEBAN velocity). */
+  saturatedCount: number;
+  /** Real VES moved today across all accounts. */
+  totalSpentTodayVes: number;
+  /** Real sum of daily VES caps across ACTIVE accounts. */
+  totalDailyLimitVes: number;
+}
+
+/** Where the daily-volume/daily-limit figures used by Rule 2 actually came from. */
+export type TreasuryAuditSource = 'RENDERER_SNAPSHOT' | 'FALLBACK_DEFAULTS';
+
+/**
+ * Real treasury figures the verdict was audited against. Present on every verdict so
+ * downstream consumers (plan execution, HUD) can tell a real limit from a placeholder.
+ */
+export interface TreasuryAudit {
+  source: TreasuryAuditSource;
+  dailyVolumeUsed: number;
+  dailyLimitUsed: number;
+  overLimitCount: number;
+  nearLimitCount: number;
+  disabledCount: number;
+  saturatedCount: number;
+}
+
 export interface StrategistProposal {
   plan: StrategyPlanCard;
   rationale: string;
@@ -123,6 +160,8 @@ export interface RiskVerdict {
     bcvInterventionWindowRisk: 'NONE' | 'ELEVATED' | 'CRITICAL';
     dailyBankLimitExceeded: boolean;
     antiPitufeoViolation: boolean;
+    /** Real treasury figures behind Rule 2; absent only on pre-bridge call sites. */
+    treasuryAudit?: TreasuryAudit;
   };
   recommendedAction: string;
   evaluatedAt: number;

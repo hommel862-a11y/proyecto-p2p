@@ -5,6 +5,7 @@
  */
 
 import type { P2PDatabaseService, EngramObservationRecord } from '../db/database';
+import { getTreasurySnapshot } from '../ipc/treasury-snapshot';
 import { SentinelAgent } from './sentinel-agent';
 import { StrategistAgent } from './strategist-agent';
 import { RiskGatekeeperAgent } from './risk-gatekeeper-agent';
@@ -16,7 +17,16 @@ import type {
   SentinelSignal,
   StrategistProposal,
   RiskVerdict,
+  TreasuryRiskContext,
 } from './types';
+
+/**
+ * Placeholders used ONLY while the renderer has not announced a real treasury snapshot.
+ * They keep the pre-bridge behavior identical instead of failing closed, so an un-bridged
+ * renderer degrades to the previous (deliberately conservative) numbers.
+ */
+const FALLBACK_DAILY_VOLUME_USDT = 4500;
+const FALLBACK_DAILY_LIMIT_USDT = 15000;
 
 export class AgentSwarmOrchestrator {
   private sentinel: SentinelAgent;
@@ -104,11 +114,30 @@ export class AgentSwarmOrchestrator {
     );
 
     // 4. Risk Gatekeeper Stage (Unilateral Veto Power)
+    // Real treasury state announced by the renderer; null until it announces one.
+    const announcedSnapshot = getTreasurySnapshot();
+    const treasuryContext: TreasuryRiskContext | null = announcedSnapshot
+      ? {
+          overLimitCount: announcedSnapshot.overLimitCount,
+          nearLimitCount: announcedSnapshot.nearLimitCount,
+          disabledCount: announcedSnapshot.disabledCount,
+          saturatedCount: announcedSnapshot.saturatedCount,
+          totalSpentTodayVes: announcedSnapshot.totalSpentTodayVes,
+          totalDailyLimitVes: announcedSnapshot.totalDailyLimitVes,
+        }
+      : null;
+
     const riskVerdict: RiskVerdict = this.riskGatekeeper.evaluateProposal(strategistProposal, {
-      dailyVolumeProcessedUsdt: 4500,
-      dailyLimitUsdt: 15000,
+      // Real figures when the treasury is bridged, legacy placeholders otherwise.
+      // A zero aggregate limit means every account is unlimited/disabled, so the
+      // placeholder is the safer ceiling to audit against.
+      dailyVolumeProcessedUsdt: treasuryContext
+        ? treasuryContext.totalSpentTodayVes
+        : FALLBACK_DAILY_VOLUME_USDT,
+      dailyLimitUsdt: treasuryContext?.totalDailyLimitVes || FALLBACK_DAILY_LIMIT_USDT,
       counterpartyRiskLevel: evaluatedRiskLevel,
       isBcvInterventionWindowActive: params?.isBcvInterventionWindowActive ?? false,
+      treasurySnapshot: treasuryContext,
     });
 
     // 5. Persistence & Governance

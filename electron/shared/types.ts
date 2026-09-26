@@ -163,6 +163,10 @@ export interface P2PIpcChannels {
     request: void;
     response: { isTriggered: boolean; timestamp?: number; reason?: string; source?: string };
   };
+  'p2p:treasury-announce': {
+    request: TreasurySnapshotDto;
+    response: boolean;
+  };
   'copilot:send-message': {
     request: { prompt: string; history?: CopilotChatMessage[] };
     response: CopilotResponse;
@@ -313,6 +317,55 @@ export interface CopilotResponse {
   learningsGenerated?: string[];
 }
 
+/**
+ * Per-account slice of the treasury projection announced by the renderer.
+ * Produced by `AccountsService.buildTreasurySnapshot()` in the Angular app.
+ */
+export interface TreasuryAccountSnapshotDto {
+  id: string;
+  bankName: string;
+  bankCode: string;
+  rail: string;
+  /** Absent means ACTIVE, mirroring `BankAccount.status` in @p2p/core. */
+  status?: 'ACTIVE' | 'DISABLED';
+  dailyLimitVes: number;
+  monthlyLimitVes?: number;
+  remainingLimitVes: number;
+  isOverLimit: boolean;
+  isNearLimit: boolean;
+  todayTransactionCount: number;
+  maxDailyTransactions: number;
+  velocityHealth: string;
+  isAtThreshold: boolean;
+}
+
+/**
+ * Plain, serializable projection of the renderer's real treasury state.
+ *
+ * This is the only channel through which the main process learns about bank accounts:
+ * they live exclusively in renderer localStorage (`p2p.bank-accounts`) and are never
+ * migrated to SQLite. It replaces the hardcoded daily-volume/daily-limit literals the
+ * Risk Gatekeeper used to audit against.
+ */
+export interface TreasurySnapshotDto {
+  /** Read-only on the main side: the payload is cached and inspected, never mutated. */
+  accounts: readonly TreasuryAccountSnapshotDto[];
+  totalBalanceVes: number;
+  totalSpentTodayVes: number;
+  totalReceivedTodayVes: number;
+  /**
+   * Sum of `dailyLimitVes` over ACTIVE accounts that declare a cap (0 means unlimited in
+   * @p2p/core and is therefore excluded). 0 when every account is unlimited or disabled.
+   */
+  totalDailyLimitVes: number;
+  nearLimitCount: number;
+  overLimitCount: number;
+  disabledCount: number;
+  saturatedCount: number;
+  rotationRecommendationId: string | null;
+  generatedAt: number;
+}
+
 // The narrow, typed surface the preload exposes on `window.electron`.
 export interface ElectronAPI {
   getVersion(): Promise<string>;
@@ -365,6 +418,12 @@ export interface ElectronAPI {
       source?: string;
     }>;
   };
+  /**
+   * Publish the real treasury state so the main process stops auditing against
+   * hardcoded daily limits. Fire-and-forget from the caller's perspective; resolves to
+   * true when the main process accepted and cached the payload.
+   */
+  announceTreasury(snapshot: TreasurySnapshotDto): Promise<boolean>;
   copilot: {
     sendMessage(params: {
       prompt: string;

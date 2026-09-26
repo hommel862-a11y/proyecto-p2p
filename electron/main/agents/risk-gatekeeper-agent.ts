@@ -5,7 +5,13 @@
  * and BCV intervention window protection.
  */
 
-import type { RiskVerdict, StrategistProposal, AgentHealthStatus } from './types';
+import type {
+  RiskVerdict,
+  StrategistProposal,
+  AgentHealthStatus,
+  TreasuryAudit,
+  TreasuryRiskContext,
+} from './types';
 import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
 
@@ -71,6 +77,10 @@ export class RiskGatekeeperAgent {
 
   /**
    * Evaluates a trade proposal against the 6 safety rules of institutional trading.
+   *
+   * `context.treasurySnapshot` carries the renderer's real bank-account state. When it is
+   * present, Rule 2 audits against those figures and the hard treasury blocks apply. When it
+   * is absent or null, the legacy literal-based behavior is preserved unchanged.
    */
   evaluateProposal(
     proposal: StrategistProposal,
@@ -79,6 +89,7 @@ export class RiskGatekeeperAgent {
       dailyLimitUsdt?: number;
       counterpartyRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
       isBcvInterventionWindowActive?: boolean;
+      treasurySnapshot?: TreasuryRiskContext | null;
     },
   ): RiskVerdict {
     this.opsProcessed++;
@@ -91,6 +102,21 @@ export class RiskGatekeeperAgent {
     const dailyLimit = context?.dailyLimitUsdt ?? 15000;
     const counterpartyRisk = context?.counterpartyRiskLevel ?? 'LOW';
     const isBcvActive = context?.isBcvInterventionWindowActive ?? false;
+
+    // Real treasury state announced by the renderer, or null when it never announced one.
+    const treasury = context?.treasurySnapshot ?? null;
+
+    // Record which figures Rule 2 actually ran on, so consumers never confuse a real limit
+    // with a placeholder. Always present, even on the fallback path.
+    const treasuryAudit: TreasuryAudit = {
+      source: treasury ? 'RENDERER_SNAPSHOT' : 'FALLBACK_DEFAULTS',
+      dailyVolumeUsed: dailyVolume,
+      dailyLimitUsed: dailyLimit,
+      overLimitCount: treasury?.overLimitCount ?? 0,
+      nearLimitCount: treasury?.nearLimitCount ?? 0,
+      disabledCount: treasury?.disabledCount ?? 0,
+      saturatedCount: treasury?.saturatedCount ?? 0,
+    };
 
     // Rule 1: Golden Spread Rule (Net Spread >= 0.50%) - INNEGOCIABLE
     if (!meetsGoldenRule || proposal.mathematicalValidation.netSpreadPct < 0.5) {
@@ -144,6 +170,85 @@ export class RiskGatekeeperAgent {
     }
 
     // Rule 2: Daily Banking & Custody Exposure Limit
+
+    // Rule 2.a: Hard treasury blocks read from the real renderer snapshot.
+    // Entirely skipped when no snapshot was announced, which keeps the legacy
+    // literal-based behavior intact for call sites that do not bridge the treasury.
+    if (treasury) {
+      if (treasury.disabledCount > 0) {
+        return {
+          status: 'VETOED',
+          riskScore: 90,
+          vetoReason: `VETO POR RIESGO (TESORERÍA REAL): ${treasury.disabledCount} cuenta(s) bancaria(s) están en estado DISABLED (pausadas por el operador o bloqueadas por el banco). No existe ruta de custodia ejecutable mientras una cuenta esté deshabilitada.`,
+          warnings: [
+            `${treasury.disabledCount} cuenta(s) en estado DISABLED: la rotación de cuenta está bloqueada.`,
+          ],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: false,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Reactivar las cuentas deshabilitadas en Tesorería y relanzar el análisis con un snapshot actualizado.',
+          evaluatedAt: Date.now(),
+        };
+      }
+
+      if (treasury.overLimitCount > 0) {
+        return {
+          status: 'VETOED',
+          riskScore: 90,
+          vetoReason: `VETO POR RIESGO (TESORERÍA REAL): ${treasury.overLimitCount} cuenta(s) bancaria(s) agotaron su límite diario en VES. Riesgo inminente de rechazo por compliance bancario. Rotación obligatoria antes de operar.`,
+          warnings: [
+            `${treasury.overLimitCount} cuenta(s) sobre el límite diario: ${treasuryAudit.dailyVolumeUsed} VES movementados contra ${treasuryAudit.dailyLimitUsed} VES de límite agregado.`,
+          ],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: true,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Rotar hacia una cuenta ACTIVE con saldo disponible o esperar el reset de las 00:00 UTC.',
+          evaluatedAt: Date.now(),
+        };
+      }
+
+      if (treasury.saturatedCount > 0) {
+        return {
+          status: 'VETOED',
+          riskScore: 90,
+          vetoReason: `VETO POR RIESGO (VELOCIDAD BANCARIA): ${treasury.saturatedCount} cuenta(s) alcanzó su tope diario de transacciones SUDEBAN. Añadir una transferencia más expone a veto del banco por saturación de la cuenta.`,
+          warnings: [
+            `${treasury.saturatedCount} cuenta(s) en estado de velocidad SATURATED: sin ruta de rotación disponible.`,
+          ],
+          auditedParameters: {
+            meetsGoldenRule: true,
+            counterpartyRiskLevel: counterpartyRisk,
+            bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
+            dailyBankLimitExceeded: false,
+            antiPitufeoViolation: false,
+            treasuryAudit,
+          },
+          recommendedAction:
+            'Esperar el reset de transacciones (00:00 UTC) o recargar la tesorería con una cuenta adicional antes de operar.',
+          evaluatedAt: Date.now(),
+        };
+      }
+
+      if (treasury.nearLimitCount > 0) {
+        riskScore += 15;
+        warnings.push(
+          `${treasury.nearLimitCount} cuenta(s) cercana(s) al límite diario VES (>= 80%). Rotar antes de la próxima operación para preservar margen de custodia.`,
+        );
+      }
+    }
+
     const projectedTotalVolume = dailyVolume + proposal.plan.capitalRequiredUsdt;
     const dailyBankLimitExceeded = projectedTotalVolume > dailyLimit;
     if (dailyBankLimitExceeded) {
@@ -158,6 +263,7 @@ export class RiskGatekeeperAgent {
           bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
           dailyBankLimitExceeded: true,
           antiPitufeoViolation: false,
+          treasuryAudit,
         },
         recommendedAction:
           'Rotar hacia cuenta bancaria secundaria o esperar reset a las 00:00 UTC.',
@@ -246,6 +352,7 @@ export class RiskGatekeeperAgent {
         bcvInterventionWindowRisk: isBcvActive ? 'ELEVATED' : 'NONE',
         dailyBankLimitExceeded: false,
         antiPitufeoViolation: false,
+        treasuryAudit,
       },
       recommendedAction:
         status === 'APPROVED'

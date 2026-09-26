@@ -8,10 +8,12 @@ import type {
   ElDoradoQuoteRequest,
   ScreenPipeSource,
   AlphaWatcherConfigDto,
+  TreasurySnapshotDto,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
+import { getTreasurySnapshot, setTreasurySnapshot } from './treasury-snapshot';
 import {
   MonteCarloSimulator,
   type MonteCarloSimulationConfig,
@@ -374,6 +376,16 @@ export function registerIpcHandlers(): void {
     return { ...killswitchState };
   });
 
+  // Bank accounts live only in renderer localStorage (`p2p.bank-accounts`), so this is the
+  // single ingress that lets the main process audit against real limits instead of literals.
+  ipcMain.removeHandler('p2p:treasury-announce');
+  ipcMain.handle(
+    'p2p:treasury-announce',
+    (_event: IpcMainInvokeEvent, snapshot: TreasurySnapshotDto): boolean => {
+      return setTreasurySnapshot(snapshot);
+    },
+  );
+
   ipcMain.removeHandler('p2p:screen-pipe-sources');
   ipcMain.handle('p2p:screen-pipe-sources', async (): Promise<ScreenPipeSource[]> => {
     try {
@@ -692,6 +704,16 @@ export interface KillswitchState {
 export const killswitchState: KillswitchState = {
   isTriggered: false,
 };
+
+/**
+ * Latest treasury snapshot announced by the renderer, or null when it never announced one.
+ * The swarm reads it from `ipc/treasury-snapshot` directly (that module is a leaf, so no
+ * import cycle with this file); this getter is the public accessor for other main-process
+ * consumers such as plan execution.
+ */
+export function getLatestTreasurySnapshot(): TreasurySnapshotDto | null {
+  return getTreasurySnapshot();
+}
 
 export function triggerKillswitch(reason = 'Emergencia', source = 'IPC'): boolean {
   killswitchState.isTriggered = true;

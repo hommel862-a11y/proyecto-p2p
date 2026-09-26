@@ -48,6 +48,9 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
           source?: string;
         }>,
     },
+    // Publishes the renderer's real treasury state. Bank accounts never leave localStorage,
+    // so this announcement is the only way the main process learns the real daily limits.
+    announceTreasury: (snapshot) => ipc('p2p:treasury-announce', snapshot) as Promise<boolean>,
     copilot: {
       sendMessage: (params) => ipc('copilot:send-message', params) as Promise<any>,
       transcribeAudio: (params: { audioBase64: string; mimeType: string }) =>
@@ -109,6 +112,7 @@ export const EXPOSED_API_KEYS = [
   'crypto',
   'db',
   'killswitch',
+  'announceTreasury',
   'copilot',
   'screenPipe',
   'mcp',
@@ -136,6 +140,7 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-list-operation-records',
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',
+  'p2p:treasury-announce',
   'copilot:send-message',
   'copilot:transcribe-audio',
   'copilot:execute-plan',

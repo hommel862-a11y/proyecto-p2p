@@ -1,4 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import type {
+  TreasuryAccountSnapshotDto,
+  TreasurySnapshotDto,
+} from '../../../electron/shared/types';
 import { StorageService } from './storage';
 import { AuditLoggerService } from './audit-logger.service';
 import {
@@ -16,6 +20,29 @@ import {
 
 const ACCOUNTS_STORAGE_KEY = 'p2p.bank-accounts';
 const OPS_KEY = 'p2p.operations';
+
+/**
+ * Mirrors the global SUDEBAN daily transaction cap in @p2p/core. Only used to fill the
+ * snapshot when an account somehow has no velocity record, which cannot happen while
+ * `accountVelocities()` and `usages()` both derive from `accounts()`.
+ */
+const FALLBACK_MAX_DAILY_TRANSACTIONS = 15;
+
+/** Per-account slice of the treasury projection announced to the main process. */
+export type TreasurySnapshotAccount = TreasuryAccountSnapshotDto;
+
+/**
+ * Serializable projection of the real treasury state, derived from the same signals the
+ * dashboard renders. It is the payload of the `p2p:treasury-announce` channel and lets the
+ * main process audit bank limits instead of hardcoded literals.
+ *
+ * The shape is inherited from the IPC contract (`TreasurySnapshotDto`) rather than
+ * redeclared, so the renderer cannot drift from what the main process validates; only the
+ * account array is widened to a readonly view because the renderer never mutates it either.
+ */
+export interface TreasurySnapshot extends Omit<TreasurySnapshotDto, 'accounts'> {
+  accounts: ReadonlyArray<TreasurySnapshotAccount>;
+}
 
 const DEFAULT_ACCOUNTS: BankAccount[] = [
   {
@@ -112,6 +139,68 @@ export class AccountsService {
 
   getAccountById(id: string): BankAccount | undefined {
     return this.accounts().find((a) => a.id === id);
+  }
+
+  /**
+   * Build the plain-object treasury projection consumed by the Electron main process.
+   *
+   * Combines the summary, the per-account daily usage, the velocity health and the rotation
+   * pick into a single serializable value: no class instances, no circular references, safe
+   * to structured-clone across the process boundary. Every figure comes from the same signals
+   * the dashboard already renders, so the main process and the UI can never disagree.
+   */
+  buildTreasurySnapshot(): TreasurySnapshot {
+    const summary = this.treasurySummary();
+    const usages = this.usages();
+    const velocityByAccountId = new Map(
+      this.accountVelocities().map((velocity) => [velocity.accountId, velocity] as const),
+    );
+
+    const accounts: TreasurySnapshotAccount[] = usages.map((usage) => {
+      const account = usage.account;
+      const velocity = velocityByAccountId.get(account.id);
+      return {
+        id: account.id,
+        bankName: account.bankName,
+        bankCode: account.bankCode,
+        rail: account.rail,
+        // Left undefined when the stored account predates the status field: absent means
+        // ACTIVE, exactly as in @p2p/core.
+        status: account.status,
+        dailyLimitVes: account.dailyLimitVes,
+        monthlyLimitVes: account.monthlyLimitVes,
+        remainingLimitVes: usage.remainingLimitVes,
+        isOverLimit: usage.isOverLimit,
+        isNearLimit: usage.isNearLimit,
+        todayTransactionCount: velocity?.todayTransactionCount ?? 0,
+        maxDailyTransactions:
+          velocity?.maxDailyTransactions ??
+          account.maxDailyTransactions ??
+          FALLBACK_MAX_DAILY_TRANSACTIONS,
+        velocityHealth: velocity?.velocityHealth ?? 'OPTIMAL',
+        isAtThreshold: velocity?.isAtThreshold ?? false,
+      };
+    });
+
+    // Only ACTIVE accounts with an explicit cap contribute headroom: a DISABLED account is
+    // not a rotation target, and dailyLimitVes === 0 means "unlimited" in @p2p/core.
+    const totalDailyLimitVes = accounts
+      .filter((a) => a.status !== 'DISABLED' && a.dailyLimitVes > 0)
+      .reduce((sum, a) => sum + a.dailyLimitVes, 0);
+
+    return {
+      accounts,
+      totalBalanceVes: summary.totalBalanceVes,
+      totalSpentTodayVes: summary.totalSpentTodayVes,
+      totalReceivedTodayVes: summary.totalReceivedTodayVes,
+      totalDailyLimitVes,
+      nearLimitCount: summary.nearLimitCount,
+      overLimitCount: summary.overLimitCount,
+      disabledCount: accounts.filter((a) => a.status === 'DISABLED').length,
+      saturatedCount: accounts.filter((a) => a.velocityHealth === 'SATURATED').length,
+      rotationRecommendationId: this.rotationRecommendation()?.id ?? null,
+      generatedAt: Date.now(),
+    };
   }
 
   addAccount(account: Omit<BankAccount, 'id'>): BankAccount {
