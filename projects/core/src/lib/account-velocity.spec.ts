@@ -228,3 +228,185 @@ describe('Account Velocity & Rotation (Anti-Sudeban)', () => {
     expect(allSaturated).toBeNull();
   });
 });
+
+describe('Account rotation: DISABLED status, per-account cap and target bank', () => {
+  const baseOp: Operation = {
+    id: 'op',
+    timestamp: '2026-09-03T10:00:00.000Z',
+    type: 'buy',
+    pair: 'USDT',
+    vesAmount: 1000,
+    usdtAmount: 1.2,
+    price: 800,
+    merchantNote: '',
+    fees: 0,
+    notes: '',
+    errorFree: true,
+    bankAccountId: 'acc-1',
+  };
+
+  /** Creates `count` buy operations for an account, each moving `vesEach` VES. */
+  function makeBuyOps(accountId: string, count: number, vesEach = 1000): Operation[] {
+    return Array.from({ length: count }, (_, i) => ({
+      ...baseOp,
+      id: `op-${accountId}-${i}`,
+      bankAccountId: accountId,
+      vesAmount: vesEach,
+      usdtAmount: vesEach / 800,
+    }));
+  }
+
+  // BANESCO with the smaller daily cap, MERCANTIL with the larger one.
+  const banescoAcc: BankAccount = {
+    id: 'acc-1',
+    bankName: 'Banesco Pago Móvil',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL',
+    accountNumberMasked: '0414-***1234',
+    dailyLimitVes: 50000,
+    initialBalanceVes: 60000,
+  };
+
+  const mercantilAcc: BankAccount = {
+    id: 'acc-2',
+    bankName: 'Mercantil Transferencia',
+    bankCode: 'MERCANTIL',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0105-***9876',
+    dailyLimitVes: 200000,
+    initialBalanceVes: 150000,
+  };
+
+  // Healthy, lots of headroom: it would win every unfiltered rotation.
+  const disabledAcc: BankAccount = {
+    id: 'acc-off',
+    bankName: 'Banesco Cuenta Pausada',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL',
+    accountNumberMasked: '0414-***0004',
+    dailyLimitVes: 900000,
+    initialBalanceVes: 900000,
+    status: 'DISABLED',
+  };
+
+  it('excludes DISABLED accounts from the rotation recommendation', () => {
+    // Both candidates are OPTIMAL; the tie-break on remaining limit would pick
+    // disabledAcc (900000 > 200000) if DISABLED accounts were not skipped.
+    const rec = getRotationRecommendation(
+      [disabledAcc, mercantilAcc],
+      makeBuyOps('acc-off', 3),
+      1000,
+    );
+    expect(rec?.id).toBe('acc-2');
+  });
+
+  it('returns null when every account is DISABLED', () => {
+    expect(getRotationRecommendation([disabledAcc], makeBuyOps('acc-off', 3), 1000)).toBeNull();
+  });
+
+  it('skips DISABLED accounts even when the target bank is not provided', () => {
+    // 16 ops would be SATURATED and already excluded; the DISABLED flag is a separate gate.
+    const rec = getRotationRecommendation([banescoAcc, disabledAcc], makeBuyOps('acc-1', 3), 1000);
+    expect(rec?.id).toBe('acc-1');
+  });
+
+  it('restricts rotation to targetBankCode when provided', () => {
+    // Unfiltered the tie-break picks mercantilAcc (200000 remaining vs 50000).
+    const rec = getRotationRecommendation([banescoAcc, mercantilAcc], [], 1000, undefined, 'BANESCO');
+    expect(rec?.id).toBe('acc-1');
+  });
+
+  it('returns null when no account belongs to the target bank', () => {
+    expect(getRotationRecommendation([banescoAcc, mercantilAcc], [], 1000, undefined, 'BDV')).toBeNull();
+  });
+
+  it('prefers an ACTIVE account of the target bank over a DISABLED one', () => {
+    const rec = getRotationRecommendation([disabledAcc, banescoAcc], [], 1000, undefined, 'BANESCO');
+    expect(rec?.id).toBe('acc-1');
+  });
+
+  it('keeps the legacy signatures working without the new parameters', () => {
+    // Two arguments only: no requiredVes, no thresholds, no targetBankCode.
+    expect(getRotationRecommendation([banescoAcc, mercantilAcc], [])?.id).toBe('acc-2');
+    // Three arguments: requiredVes still honored.
+    expect(getRotationRecommendation([banescoAcc, mercantilAcc], [], 1000)?.id).toBe('acc-2');
+    // Four arguments: thresholds still honored (cap 5 -> acc-1 has 3 ops = MODERATE,
+    // acc-2 has 0 ops = OPTIMAL, so acc-2 still wins by health rank).
+    expect(getRotationRecommendation([banescoAcc, mercantilAcc], [], 1000, {
+      maxDailyTransactions: 5,
+    })?.id).toBe('acc-2');
+    // Same call plus a target bank: the new fifth parameter does not shift the others.
+    expect(getRotationRecommendation([banescoAcc, mercantilAcc], [], 1000, {
+      maxDailyTransactions: 5,
+    }, 'BANESCO')?.id).toBe('acc-1');
+  });
+
+  it('applies the per-account maxDailyTransactions cap over the global default', () => {
+    const capped: BankAccount = { ...banescoAcc, id: 'acc-cap', maxDailyTransactions: 3 };
+    const threeOps = makeBuyOps('acc-cap', 3);
+
+    const cappedStatus = computeAccountVelocity(capped, threeOps);
+    expect(cappedStatus.maxDailyTransactions).toBe(3);
+    expect(cappedStatus.todayTransactionCount).toBe(3);
+    expect(cappedStatus.usedPct).toBe(100); // 3/3
+    expect(cappedStatus.velocityHealth).toBe('SATURATED');
+    expect(cappedStatus.isAtThreshold).toBe(true);
+    expect(cappedStatus.isNearThreshold).toBe(false);
+    expect(cappedStatus.recommendedWaitHours).toBe(24);
+
+    // The very same traffic on an account without a cap stays OPTIMAL (3/15 = 20%).
+    const globalStatus = computeAccountVelocity({ ...banescoAcc, id: 'acc-plain' }, threeOps.map(
+      (op) => ({ ...op, bankAccountId: 'acc-plain' }),
+    ));
+    expect(globalStatus.maxDailyTransactions).toBe(15);
+    expect(globalStatus.usedPct).toBe(20);
+    expect(globalStatus.velocityHealth).toBe('OPTIMAL');
+    expect(globalStatus.isAtThreshold).toBe(false);
+  });
+
+  it('reads the per-account cap from the shared thresholds when the account has none', () => {
+    const plain = { ...banescoAcc, id: 'acc-plain' };
+    const status = computeAccountVelocity(plain, makeBuyOps('acc-plain', 5), {
+      maxDailyTransactions: 4,
+    });
+    expect(status.maxDailyTransactions).toBe(4);
+    expect(status.usedPct).toBe(125); // 5/4
+    expect(status.velocityHealth).toBe('SATURATED');
+  });
+
+  it('lets a per-account cap also relax the global threshold', () => {
+    const relaxed: BankAccount = { ...banescoAcc, id: 'acc-relaxed', maxDailyTransactions: 20 };
+    // 16 ops: SATURATED under the global 15, only REST_RECOMMENDED under a cap of 20.
+    const status = computeAccountVelocity(relaxed, makeBuyOps('acc-relaxed', 16));
+    expect(status.maxDailyTransactions).toBe(20);
+    expect(status.usedPct).toBe(80); // 16/20
+    expect(status.velocityHealth).toBe('REST_RECOMMENDED');
+    expect(status.isAtThreshold).toBe(false);
+    expect(status.recommendedWaitHours).toBe(4);
+  });
+
+  it('exposes each account cap through computeVelocities', () => {
+    const capped: BankAccount = { ...banescoAcc, id: 'acc-cap', maxDailyTransactions: 3 };
+    const statuses = computeVelocities([capped, mercantilAcc], [
+      ...makeBuyOps('acc-cap', 3),
+      ...makeBuyOps('acc-2', 0),
+    ]);
+    expect(statuses[0].accountId).toBe('acc-cap');
+    expect(statuses[0].maxDailyTransactions).toBe(3);
+    expect(statuses[0].velocityHealth).toBe('SATURATED');
+    expect(statuses[1].accountId).toBe('acc-2');
+    expect(statuses[1].maxDailyTransactions).toBe(15);
+    expect(statuses[1].velocityHealth).toBe('OPTIMAL');
+  });
+
+  it('treats an account capped at 3 as saturated so rotation moves away from it', () => {
+    const capped: BankAccount = { ...banescoAcc, id: 'acc-cap', maxDailyTransactions: 3 };
+    // 3 ops on the capped account: SATURATED, so it is skipped despite 47000 remaining.
+    const rec = getRotationRecommendation(
+      [capped, mercantilAcc],
+      [...makeBuyOps('acc-cap', 3), ...makeBuyOps('acc-2', 0)],
+      1000,
+    );
+    expect(rec?.id).toBe('acc-2');
+  });
+});

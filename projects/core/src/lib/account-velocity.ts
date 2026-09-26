@@ -6,7 +6,7 @@
  * No network, no Angular.
  */
 
-import { type AccountRail, type BankAccount, computeAccountUsage } from './accounts';
+import { type AccountRail, type BankAccount, type BankCode, computeAccountUsage } from './accounts';
 import { type Operation } from './log';
 
 /** Per-account daily transaction cap configuration for the velocity heuristic. */
@@ -84,13 +84,17 @@ export function assessVelocity(
 
 /**
  * Compute the full velocity status for a single bank account.
+ *
+ * The effective transaction cap is `account.maxDailyTransactions` when set, otherwise
+ * the global `thresholds.maxDailyTransactions` (default 15). This lets a bank account
+ * with a stricter SUDEBAN per-day cap declare its own cap.
  */
 export function computeAccountVelocity(
   account: BankAccount,
   todayOps: readonly Operation[],
   thresholds: VelocityThresholds = DEFAULT_VELOCITY_THRESHOLDS,
 ): AccountVelocityStatus {
-  const max = thresholds.maxDailyTransactions;
+  const max = account.maxDailyTransactions ?? thresholds.maxDailyTransactions;
   const count = countTodayTransactions(account, todayOps);
   const usedPct = max > 0 ? Math.round((count / max) * 100) : 0;
   const velocityHealth = assessVelocity(count, max);
@@ -130,18 +134,29 @@ export function computeVelocities(
  * over-limit (VES cap reached) accounts, requires enough remaining daily VES
  * limit for `requiredVes`, then prioritizes the healthiest velocity state,
  * tie-broken by the largest remaining VES limit.
+ *
+ * Accounts with `status === 'DISABLED'` are skipped before any evaluation. When
+ * `targetBankCode` is provided, only accounts of that bank are considered, avoiding
+ * interbank fees against a specific counterparty bank. Both parameters are optional
+ * and trailing, so existing call sites keep working unchanged.
  */
 export function getRotationRecommendation(
   accounts: readonly BankAccount[],
   todayOps: readonly Operation[],
   requiredVes?: number,
   thresholds?: VelocityThresholds,
+  targetBankCode?: BankCode,
 ): BankAccount | null {
   const need = requiredVes ?? 0;
 
   let best: { account: BankAccount; remainingLimitVes: number; healthRank: number } | null = null;
 
   for (const acc of accounts) {
+    // Skip accounts paused by the operator (bank-side freeze / manual lock).
+    if (acc.status === 'DISABLED') continue;
+    // Skip accounts from a bank other than the requested one.
+    if (targetBankCode && acc.bankCode !== targetBankCode) continue;
+
     const usage = computeAccountUsage(acc, todayOps);
 
     // Skip accounts whose daily VES cap is exhausted.

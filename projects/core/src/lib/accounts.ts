@@ -9,6 +9,12 @@ import { roundMoney } from './money';
 
 export type BankCode = 'BANESCO' | 'MERCANTIL' | 'BDV' | 'BANCAMIGA' | 'PROVINCIAL' | 'OTRO';
 export type AccountRail = 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'MIXTO';
+/**
+ * Manual lifecycle state of a bank account. A DISABLED account keeps its
+ * configuration (limits, rail, balances) but is never auto-recommended for a trade.
+ * An absent value means ACTIVE, which keeps already-stored configurations valid.
+ */
+export type BankAccountStatus = 'ACTIVE' | 'DISABLED';
 
 export interface BankAccount {
   /** Unique stable ID (UUID). */
@@ -27,6 +33,18 @@ export interface BankAccount {
   initialBalanceVes: number;
   /** Monthly outbound transfer limit in VES established by the bank. 0 means unlimited. */
   monthlyLimitVes?: number;
+  /**
+   * Manual lifecycle state. Omitted means ACTIVE (backward compatible with stored configs).
+   * DISABLED accounts are paused by the operator (e.g. bank-side freeze) without
+   * deleting the configuration, and are excluded from every trade recommendation.
+   */
+  status?: BankAccountStatus;
+  /**
+   * Per-account daily transaction cap used by the velocity heuristic. When present it
+   * overrides the global default cap (15) for this account, which is useful when a bank
+   * enforces a stricter SUDEBAN per-day transaction count.
+   */
+  maxDailyTransactions?: number;
 }
 
 export interface AccountUsage {
@@ -212,15 +230,25 @@ export function computeTreasurySummary(
  * Recommend the best account to execute a buy trade of `requiredVes`.
  * Selects an account that has both enough balance and enough remaining daily limit,
  * prioritizing the account with the most remaining capacity.
+ *
+ * Accounts with `status === 'DISABLED'` are never recommended. When `targetBankCode`
+ * is provided, only accounts of that bank are considered, which avoids paying
+ * interbank fees when the counterparty funds from a specific bank. The parameter is
+ * optional and trailing, so existing three-argument call sites keep working unchanged.
  */
 export function recommendAccountForTrade(
   accounts: readonly BankAccount[],
   requiredVes: number,
   todayOps: readonly Operation[],
+  targetBankCode?: BankCode,
 ): BankAccount | null {
   const valid = accounts
     .map((acc) => computeAccountUsage(acc, todayOps))
     .filter((u) => {
+      // Skip accounts paused by the operator.
+      if (u.account.status === 'DISABLED') return false;
+      // Skip accounts from a bank other than the requested one.
+      if (targetBankCode && u.account.bankCode !== targetBankCode) return false;
       const hasLimit = u.account.dailyLimitVes === 0 || u.remainingLimitVes >= requiredVes;
       const hasBalance = u.currentBalanceVes >= requiredVes;
       return hasLimit && hasBalance;

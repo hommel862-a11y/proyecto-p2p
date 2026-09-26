@@ -209,3 +209,196 @@ describe('BankAccount and Treasury Core Logic', () => {
     expect(summary.overMonthlyLimitCount).toBe(0);
   });
 });
+
+describe('Multi-account selection: targetBankCode and DISABLED status', () => {
+  // mercantil has the most headroom, so it wins every unfiltered recommendation.
+  const mercantilBig: BankAccount = {
+    id: 'acc-m1',
+    bankName: 'Mercantil Transferencia',
+    bankCode: 'MERCANTIL',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0105-***0001',
+    dailyLimitVes: 900000,
+    initialBalanceVes: 900000,
+  };
+
+  const banescoA: BankAccount = {
+    id: 'acc-b1',
+    bankName: 'Banesco Pago Móvil A',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL',
+    accountNumberMasked: '0414-***0002',
+    dailyLimitVes: 50000,
+    initialBalanceVes: 100000,
+  };
+
+  const banescoB: BankAccount = {
+    id: 'acc-b2',
+    bankName: 'Banesco Pago Móvil B',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL',
+    accountNumberMasked: '0414-***0003',
+    dailyLimitVes: 30000,
+    initialBalanceVes: 80000,
+  };
+
+  const disabledMercantil: BankAccount = {
+    id: 'acc-off',
+    bankName: 'Mercantil Cuenta Pausada',
+    bankCode: 'MERCANTIL',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0105-***0004',
+    dailyLimitVes: 900000,
+    initialBalanceVes: 900000,
+    status: 'DISABLED',
+  };
+
+  const disabledBanesco: BankAccount = {
+    id: 'acc-off-b',
+    bankName: 'Banesco Cuenta Pausada',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL',
+    accountNumberMasked: '0414-***0005',
+    dailyLimitVes: 900000,
+    initialBalanceVes: 900000,
+    status: 'DISABLED',
+  };
+
+  it('recommends the largest-headroom account when no target bank is requested', () => {
+    const best = recommendAccountForTrade([banescoA, banescoB, mercantilBig], 1000, []);
+    expect(best?.id).toBe('acc-m1');
+  });
+
+  it('recommends only accounts of targetBankCode even when another bank has more headroom', () => {
+    // Without the filter mercantilBig (900000 remaining) would win.
+    const best = recommendAccountForTrade(
+      [banescoA, banescoB, mercantilBig],
+      1000,
+      [],
+      'BANESCO',
+    );
+    expect(best?.id).toBe('acc-b1'); // 50000 remaining beats banescoB's 30000
+  });
+
+  it('picks the other bank when targetBankCode points to it', () => {
+    const best = recommendAccountForTrade(
+      [banescoA, banescoB, mercantilBig],
+      1000,
+      [],
+      'MERCANTIL',
+    );
+    expect(best?.id).toBe('acc-m1');
+  });
+
+  it('returns null when no account of the target bank has enough daily limit', () => {
+    // Banesco accounts cap at 50000 / 30000 remaining; only mercantil could cover 60000.
+    const best = recommendAccountForTrade(
+      [banescoA, banescoB, mercantilBig],
+      60000,
+      [],
+      'BANESCO',
+    );
+    expect(best).toBeNull();
+  });
+
+  it('excludes DISABLED accounts from the recommendation', () => {
+    // disabledMercantil would win unfiltered (900000 remaining, best headroom).
+    const best = recommendAccountForTrade([banescoA, disabledMercantil], 1000, []);
+    expect(best?.id).toBe('acc-b1');
+  });
+
+  it('returns null when the only DISABLED account is otherwise the best candidate', () => {
+    expect(recommendAccountForTrade([disabledMercantil], 1000, [])).toBeNull();
+  });
+
+  it('prefers an ACTIVE account of the target bank over a DISABLED one', () => {
+    // Both are BANESCO, but the paused one has far more headroom.
+    const best = recommendAccountForTrade([banescoA, disabledBanesco], 1000, [], 'BANESCO');
+    expect(best?.id).toBe('acc-b1');
+  });
+
+  it('returns null when every account of the target bank is DISABLED', () => {
+    expect(recommendAccountForTrade([disabledBanesco], 1000, [], 'BANESCO')).toBeNull();
+  });
+
+  it('keeps the legacy three-argument signature working', () => {
+    expect(recommendAccountForTrade([banescoA, mercantilBig], 1000, [])?.id).toBe('acc-m1');
+    expect(recommendAccountForTrade([banescoA, mercantilBig], 60000, [])?.id).toBe('acc-m1');
+    expect(recommendAccountForTrade([banescoA, banescoB], 1000, [])?.id).toBe('acc-b1');
+  });
+
+  it('computes VES consumption unchanged for accounts carrying the new optional fields', () => {
+    const active: BankAccount = {
+      id: 'acc-b1',
+      bankName: 'Banesco Pago Móvil A',
+      bankCode: 'BANESCO',
+      rail: 'PAGO_MOVIL',
+      accountNumberMasked: '0414-***0002',
+      dailyLimitVes: 50000,
+      initialBalanceVes: 60000,
+      monthlyLimitVes: 100000,
+      status: 'ACTIVE',
+      maxDailyTransactions: 3,
+    };
+
+    const ops: Operation[] = Array.from({ length: 3 }, (_, i) => ({
+      id: `op-c-${i}`,
+      timestamp: '2026-09-03T10:00:00.000Z',
+      type: 'buy' as const,
+      pair: 'USDT',
+      vesAmount: 1000,
+      usdtAmount: 1.25,
+      price: 800,
+      merchantNote: '',
+      fees: 0,
+      notes: '',
+      errorFree: true,
+      bankAccountId: 'acc-b1',
+    }));
+
+    const usage = computeAccountUsage(active, ops);
+    // The new fields are carried through untouched and do not alter the VES math.
+    expect(usage.account.status).toBe('ACTIVE');
+    expect(usage.account.maxDailyTransactions).toBe(3);
+    expect(usage.spentTodayVes).toBe(3000);
+    expect(usage.receivedTodayVes).toBe(0);
+    expect(usage.currentBalanceVes).toBe(57000);
+    expect(usage.consumedLimitPct).toBe(6); // 3000 / 50000
+    expect(usage.remainingLimitVes).toBe(47000);
+    expect(usage.isOverLimit).toBe(false);
+  });
+
+  it('still computes limit consumption for DISABLED accounts (config is preserved)', () => {
+    const nearLimitPaused: BankAccount = { ...disabledBanesco, dailyLimitVes: 50000, initialBalanceVes: 60000 };
+    const ops: Operation[] = [
+      {
+        id: 'op-p1',
+        timestamp: '2026-09-03T10:00:00.000Z',
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 42050,
+        usdtAmount: 52.5,
+        price: 800,
+        merchantNote: '',
+        fees: 0,
+        notes: '',
+        errorFree: true,
+        bankAccountId: 'acc-off-b',
+      },
+    ];
+
+    const usage = computeAccountUsage(nearLimitPaused, ops);
+    expect(usage.spentTodayVes).toBe(42050);
+    expect(usage.consumedLimitPct).toBe(84);
+    expect(usage.remainingLimitVes).toBe(7950);
+    expect(usage.isNearLimit).toBe(true);
+    expect(usage.isOverLimit).toBe(false);
+  });
+
+  it('aggregates treasury summary including DISABLED accounts', () => {
+    const summary = computeTreasurySummary([banescoA, disabledBanesco], []);
+    expect(summary.accountsUsage).toHaveLength(2);
+    expect(summary.accountsUsage[1].account.status).toBe('DISABLED');
+    expect(summary.totalBalanceVes).toBe(1000000); // 100000 + 900000
+  });
+});
