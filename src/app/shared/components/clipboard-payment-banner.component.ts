@@ -232,6 +232,18 @@ import { ClipboardPaymentService } from '../../core/clipboard-payment.service';
           opacity: 0.7;
         }
       }
+
+      @media (max-width: 768px) {
+        .clipboard-banner {
+          left: 12px;
+          right: 12px;
+          bottom: calc(68px + env(safe-area-inset-bottom, 12px));
+          min-width: 0;
+          max-width: calc(100vw - 24px);
+          padding: 10px 12px;
+          gap: 10px;
+        }
+      }
     `,
   ],
 })

@@ -550,6 +550,15 @@
   .layout {
     flex-direction: column;
     min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .sidebar {

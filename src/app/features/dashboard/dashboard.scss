@@ -1150,3 +1150,178 @@
   }
 }
 
+/* ============================================================
+   Mobile Vertical Screen (<= 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+  .apple-desk-panel {
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .apple-main-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px 14px;
+    gap: 12px;
+    border-radius: 16px;
+
+    .apple-title-group {
+      .apple-title-badge-row {
+        flex-wrap: wrap;
+        gap: 6px;
+
+        .apple-desk-title {
+          font-size: 1.15rem;
+        }
+
+        .apple-pro-badge {
+          font-size: 0.62rem;
+        }
+      }
+
+      .apple-desk-subtitle {
+        font-size: 0.72rem;
+        line-height: 1.35;
+      }
+    }
+  }
+
+  .apple-dynamic-island {
+    border-radius: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+
+    .island-left {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+
+      .island-info {
+        width: 100%;
+
+        .island-metrics {
+          flex-wrap: wrap;
+          font-size: 0.72rem;
+          line-height: 1.4;
+          gap: 4px;
+        }
+      }
+    }
+
+    .island-actions {
+      width: 100%;
+
+      .apple-pill-btn {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: 0.76rem;
+      }
+    }
+  }
+
+  .apple-segmented-bar {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px;
+    gap: 4px;
+    border-radius: 12px;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .apple-segmented-tab {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      font-size: 0.74rem;
+      gap: 6px;
+    }
+  }
+
+  .apple-bento-kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .apple-card-section {
+    padding: 14px 12px;
+    border-radius: 16px;
+    gap: 12px;
+
+    .apple-section-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+
+      .apple-section-title-wrap {
+        gap: 8px;
+
+        .apple-section-icon {
+          font-size: 1.2rem;
+        }
+
+        .apple-section-title {
+          font-size: 0.95rem;
+        }
+
+        .apple-section-subtitle {
+          font-size: 0.72rem;
+        }
+      }
+
+      .apple-section-actions {
+        width: 100%;
+
+        .apple-pill-btn,
+        .apple-treasury-pill {
+          width: 100%;
+          justify-content: center;
+          text-align: center;
+        }
+      }
+    }
+  }
+
+  .apple-bank-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .apple-bank-card {
+    padding: 12px 12px;
+    border-radius: 14px;
+    gap: 10px;
+
+    .apple-bank-card-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+
+      .apple-bank-badges {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        width: 100%;
+      }
+    }
+  }
+
+  .apple-grid-two-col {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .forensic-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+

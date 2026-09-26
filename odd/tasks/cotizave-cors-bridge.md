@@ -95,7 +95,7 @@ Cambios de código en los 2 archivos productivos + 1 spec listados. Commits work
 
 ## Engram mirror
 
-- Estado: **PENDIENTE** — `mem_save` falla con `repository_binding_unavailable` (binding del repo no creable; revisar `.engram/config.json`). El archivo local es la fuente de verdad. Resincronizar cuando esté disponible.
+- Estado: **SINCRONIZADO** — Memoria registrada en Engram (obs-c39ae18c04e5505f, topic: `api/cors-bridge-electron`). El puente local de Electron y su integración en Angular están consolidados.
 
 ## Route decisions
 
