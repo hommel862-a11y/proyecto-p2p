@@ -161,19 +161,27 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
   let triggerKillswitch: ReturnType<typeof vi.fn>;
   let getKillswitchStatus: ReturnType<typeof vi.fn>;
   /** Faithful stand-in for `ipc/killswitch-state.ts`: one-way flag, read back through status. */
-  let mainKillswitch: { isTriggered: boolean; timestamp?: number; reason?: string; source?: string };
+  let mainKillswitch: {
+    isTriggered: boolean;
+    timestamp?: number;
+    reason?: string;
+    source?: string;
+  };
 
   beforeEach(async () => {
     snapshot = buildFakeSnapshot();
     announceTreasury = vi.fn().mockResolvedValue(true);
     mainKillswitch = { isTriggered: false };
     triggerKillswitch = vi.fn().mockImplementation(() => {
-      mainKillswitch = { isTriggered: true, timestamp: 1, reason: 'manual-toggle', source: 'copilot-ui' };
+      mainKillswitch = {
+        isTriggered: true,
+        timestamp: 1,
+        reason: 'manual-toggle',
+        source: 'copilot-ui',
+      };
       return Promise.resolve(true);
     });
-    getKillswitchStatus = vi.fn().mockImplementation(() =>
-      Promise.resolve({ ...mainKillswitch }),
-    );
+    getKillswitchStatus = vi.fn().mockImplementation(() => Promise.resolve({ ...mainKillswitch }));
 
     (window as unknown as { electron?: unknown }).electron = {
       announceTreasury,
@@ -230,9 +238,7 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
         todayTransactionCount: a.maxDailyTransactions,
       })),
     };
-    vi.spyOn(TestBed.inject(AccountsService), 'buildTreasurySnapshot').mockReturnValue(
-      saturated,
-    );
+    vi.spyOn(TestBed.inject(AccountsService), 'buildTreasurySnapshot').mockReturnValue(saturated);
 
     component.syncTreasurySnapshot();
 
@@ -298,7 +304,11 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
     (window as unknown as { electron?: unknown }).electron = {
       announceTreasury,
       killswitch: { trigger: triggerKillswitch, getStatus: getKillswitchStatus },
-      copilot: { runSwarmAnalysis, getPlans: vi.fn().mockResolvedValue([]), getLearnings: vi.fn().mockResolvedValue([]) },
+      copilot: {
+        runSwarmAnalysis,
+        getPlans: vi.fn().mockResolvedValue([]),
+        getLearnings: vi.fn().mockResolvedValue([]),
+      },
     };
     component.syncTreasurySnapshot();
     announceTreasury.mockClear();
