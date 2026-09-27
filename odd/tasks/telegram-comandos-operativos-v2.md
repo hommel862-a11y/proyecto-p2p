@@ -44,9 +44,9 @@ Cerrar los gaps reales del informe técnico de bots Telegram del usuario: conver
 - Plantillas: `formatRadarTelegramMessage`, `formatMacroTelegramMessage`, `formatBacktestTelegramMessage`, `formatRepriceTelegramMessage` — funciones puras en core, alto de Telegram, MarkdownV2 seguro.
 
 ## Checklist
-- [ ] T1 (core). telegram-sentinel.ts: comandos `/radar`, `/reprecio`, `/macro`, `/backtest` + callbacks REPRICE_CONFIRM/REPRICE_CANCEL/BACKTEST_RUN + plantillas format* puras con escapeMarkdownV2. Spec ampliado (telegram-sentinel.spec.ts).
-- [ ] T2 (worker). telegram-worker.service.ts: wiring de acciones → servicios reales (spread-monitor/multi-exchange, binance-repricer, getBcvMarketIntelligence + volatility-forecaster, spawn del harness backtest.cjs); ack de callback antes de ejecutar; envío del resultado como mensaje posterior. Spec ampliado.
-- [ ] T3. Verificación integrada: `npx tsc --noEmit`, `npm run check:vendor`, `npm run test:electron`, `npm test -- --watch=false`. Work-unit commits en `feat/p2p-decision-tool-mvp` (sin push).
+- [x] T1 (core). telegram-sentinel.ts: comandos `/radar`, `/reprecio`, `/macro`, `/backtest` + callbacks REPRICE_CONFIRM/REPRICE_CANCEL/BACKTEST_RUN + plantillas format* puras con escapeMarkdownV2. Spec ampliado (telegram-sentinel.spec.ts). Commit `287271f`, core 53 files / 573 passed, tsc OK, vendor 24/24.
+- [x] T2 (worker). telegram-worker.service.ts: wiring de acciones → servicios reales (BinanceP2pService:fetchMarketDepth + AccountsService:usages, BinanceRepricerService:currentBuyAdPrice/currentSellAdPrice, CotizaveService + getBcvMarketIntelligence + predictTwoHourVolatility, harness backtest.cjs vía IPC electron.backtest.run con ELECTRON_RUN_AS_NODE); ack de callback antes de ejecutar; envío asíncrono sin bloquear polling. **Scope expandido justificado**: el renderer no tiene acceso Node, se creó `electron/main/services/backtest-runner.ts` + IPC `p2p:backtest-run` + preload/shared types + packaging asarUnpack de scripts/backtest.cjs. Commit `0e22584`; worker spec 41 passed, electron 125 passed, tsc OK, vendor 24/24.
+- [x] T3. Verificación integrada: `npx tsc --noEmit`, `npm run check:vendor`, `npm run test:electron`, `npm test -- --watch=false`. Work-unit commits en `feat/p2p-decision-tool-mvp` (sin push): `287271f` (core), `e813353` (docs), `0e22584` (worker).
 
 ## Acceptance criteria
 - Desde Telegram: `/radar bcv 2000` devuelve el top de gaps filtrado por banco; `/reprecio 84.5 85.2` pide confirmación por botón y al confirmar fuerza el reprice; `/macro` devuelve BCV + volatilidad 2h + spread promedio; `/backtest usdt/buy 7d` ejecuta el harness y reporta métricas con formato MarkdownV2 que parsea.
@@ -55,3 +55,11 @@ Cerrar los gaps reales del informe técnico de bots Telegram del usuario: conver
 
 ## Route
 - Delegado directo ODD (no SDD): Agente W1 (core, frentes `projects/core/**`) y luego Agente W2 (worker, `src/app/core/telegram-worker.service.ts`) — secuenciales por dependencia de contrato, no en paralelo sobre el mismo archivo. Verificación integrada por el orquestador (gatekeeper ODD).
+
+## Verification evidence
+Resultados del 27/09/2026 (feature doc `e813353`, W1 `287271f`, W2 `0e22584`; sin push):
+- `npx ng test core --watch=false` → 53 files / 573 tests passed.
+- `npx ng test --include "**/telegram-worker.service.spec.ts" --watch=false` → 1 file / 41 tests passed (runner termina con el error ambiental `No tests found matching...` conocido; reproducido también en baseline, no cuenta como fallo).
+- `npx vitest run` (electron) → 15 files / 125 tests passed (incluye backtest-runner.spec.ts).
+- `npx tsc --noEmit` → OK. `npm run check:vendor` → 24/24 idénticos.
+- Limitaciones honestas declaradas por W2: harness no acepta pair/timeframe en CLI (solo etiqueta informativa); maxDrawdownPct = `n/d` (el harness no computa drawdown); /radar limita a 8 filas y revela drops; sin depth en vivo el radar dice "sin datos en vivo" en vez de inventar números.
