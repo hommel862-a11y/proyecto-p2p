@@ -12,6 +12,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speech.service';
+import { AccountsService, type TreasurySnapshot } from '../../core/accounts.service';
 import { StorageService } from '../../core/storage';
 import {
   type CopilotChatMessage,
@@ -187,6 +188,55 @@ function getElectronCopilot(): ElectronCopilotBridge | undefined {
       ?.copilot;
   }
   return undefined;
+}
+
+/**
+ * Treasury slice of the preload bridge: the single ingress that lets the main process audit
+ * real bank limits, plus the kill-switch the main process owns. Kept as a separate, narrow
+ * interface (instead of widening `ElectronCopilotBridge`) because the copilot namespace never
+ * carries these channels.
+ */
+interface ElectronTreasuryBridge {
+  announceTreasury?(snapshot: TreasurySnapshot): Promise<boolean>;
+  killswitch?: {
+    trigger(params?: { reason?: string; source?: string }): Promise<boolean>;
+    getStatus(): Promise<{
+      isTriggered: boolean;
+      timestamp?: number;
+      reason?: string;
+      source?: string;
+    }>;
+  };
+}
+
+function getElectronTreasury(): ElectronTreasuryBridge | undefined {
+  if (typeof window !== 'undefined') {
+    return (window as unknown as { electron?: ElectronTreasuryBridge }).electron;
+  }
+  return undefined;
+}
+
+/**
+ * Honest "minutes per cycle" projection for the HUD, derived only from the real SUDEBAN
+ * velocity headroom the snapshot carries: the transactions each ACTIVE account can still
+ * execute today, spread over the minutes left in the local day. This is a projection from
+ * measured data, not an estimate of the operator's pace.
+ *
+ * Returns `Number.NaN` when there is no measurable headroom (no accounts, every account
+ * DISABLED, or every account already at its cap) because there is no honest number to show in
+ * that case — the HUD must degrade visibly instead of printing a plausible-looking figure.
+ */
+function projectMinutesPerCycle(snapshot: TreasurySnapshot, now: number = Date.now()): number {
+  const remainingTransactions = snapshot.accounts.reduce((sum, account) => {
+    if (account.status === 'DISABLED') return sum;
+    return sum + Math.max(0, account.maxDailyTransactions - account.todayTransactionCount);
+  }, 0);
+  if (remainingTransactions <= 0) return Number.NaN;
+
+  const endOfDay = new Date(now);
+  endOfDay.setHours(24, 0, 0, 0);
+  const minutesLeft = Math.max(1, Math.round((endOfDay.getTime() - now) / 60_000));
+  return Math.round(minutesLeft / remainingTransactions);
 }
 
 @Component({
@@ -675,21 +725,55 @@ export class Copilot implements OnInit, OnDestroy {
   apiKeyInput = signal<string>('');
   isTestingConnection = signal<boolean>(false);
 
-  // Institutional Treasury HUD Metrics
-  treasuryMetrics = signal<{
+  // ---------------------------------------------------------------------------
+  // Institutional Treasury HUD — real data only
+  //
+  // Every figure below is derived from `AccountsService.buildTreasurySnapshot()` (the exact
+  // projection the dashboard renders and the one announced to the main process) or from an
+  // input the operator typed. No treasury literal is hardcoded anymore: when the snapshot is
+  // not available yet the HUD degrades to `Number.NaN`, which the ticker prints verbatim,
+  // instead of inventing a plausible-looking number.
+  //
+  // Known template debt, NOT fixable from this file: `copilot.html` still carries the labels
+  // written for the old fabricated numbers. `cryptoRatioPct`/`fiatRatioPct` now hold
+  // `nearLimitCount`/`overLimitCount` and `dailyAccumulatedProfitUsdt` holds the VES bank
+  // balance, so those labels must be reworded by a follow-up that owns the template. The
+  // template is out of this workstream's authorized scope, so the mismatch is reported rather
+  // than silently worked around.
+  // ---------------------------------------------------------------------------
+  private readonly accounts = inject(AccountsService);
+
+  /** Latest real treasury projection, or null when AccountsService could not produce one. */
+  readonly treasurySnapshot = signal<TreasurySnapshot | null>(null);
+
+  /** Real kill-switch state, mirrored from the main process that owns and gates it. */
+  readonly killswitchActive = signal<boolean>(false);
+
+  /** False until a real snapshot exists: the HUD degrades, it never fabricates. */
+  readonly treasuryDataAvailable = computed<boolean>(() => this.treasurySnapshot() !== null);
+
+  treasuryMetrics = computed<{
     totalEquityUsd: number;
     cryptoRatioPct: number;
     fiatRatioPct: number;
     dailyAccumulatedProfitUsdt: number;
     avgCycleVelocityMinutes: number;
     killSwitchActive: boolean;
-  }>({
-    totalEquityUsd: 12500,
-    cryptoRatioPct: 88,
-    fiatRatioPct: 12,
-    dailyAccumulatedProfitUsdt: 142.5,
-    avgCycleVelocityMinutes: 14,
-    killSwitchActive: false,
+  }>(() => {
+    const snapshot = this.treasurySnapshot();
+    return {
+      // The only USDT figure this build can show honestly is the capital the operator declares
+      // in the Earn tab (same input `optimizeIdleCapitalSimpleEarn` uses); there is no
+      // on-chain or ledger equity feed yet, so this is declared, not measured.
+      totalEquityUsd: this.earnCapitalUsdt(),
+      cryptoRatioPct: snapshot ? snapshot.nearLimitCount : Number.NaN,
+      fiatRatioPct: snapshot ? snapshot.overLimitCount : Number.NaN,
+      dailyAccumulatedProfitUsdt: snapshot ? snapshot.totalBalanceVes : Number.NaN,
+      avgCycleVelocityMinutes: snapshot
+        ? projectMinutesPerCycle(snapshot, snapshot.generatedAt)
+        : Number.NaN,
+      killSwitchActive: this.killswitchActive(),
+    };
   });
 
   // Centinela Autónomo (Alpha Watcher) state
@@ -774,19 +858,97 @@ export class Copilot implements OnInit, OnDestroy {
     }
   }
 
-  triggerKillSwitch(): void {
-    const current = this.treasuryMetrics();
-    const newState = !current.killSwitchActive;
-    this.treasuryMetrics.update((m) => ({ ...m, killSwitchActive: newState }));
-    if (newState) {
-      this.actionSuccessNotice.set(
-        '🚨 KILL-SWITCH ACTIVADO: Órdenes pausadas y directiva de resguardo en USDT emitida.',
-      );
-    } else {
-      this.actionSuccessNotice.set(
-        '✅ KILL-SWITCH DESACTIVADO: Mesa de operaciones en modo normal.',
-      );
+  /**
+   * Rebuild the treasury projection from AccountsService and mirror it into the HUD.
+   *
+   * Pure and synchronous: the AccountsService signals are already the single source of truth
+   * the dashboard renders, so this reads rather than recomputes any treasury figure.
+   */
+  syncTreasurySnapshot(): void {
+    try {
+      this.treasurySnapshot.set(this.accounts.buildTreasurySnapshot());
+    } catch (err: unknown) {
+      console.warn('[Copilot] Could not build the treasury snapshot:', err);
+      this.treasurySnapshot.set(null);
     }
+  }
+
+  /**
+   * Publish the real treasury state to the main process through `p2p:treasury-announce`.
+   *
+   * Fire-and-forget by contract: main only caches the payload, so a missing bridge or a
+   * rejected payload must never break the HUD flow. The swarm re-announces right before every
+   * analysis, so a transient failure can never leave the gatekeeper auditing stale data
+   * without the operator noticing.
+   */
+  async announceTreasuryToMain(): Promise<void> {
+    const bridge = getElectronTreasury();
+    if (!bridge?.announceTreasury) return;
+    const snapshot = this.treasurySnapshot() ?? this.accounts.buildTreasurySnapshot();
+    try {
+      const accepted = await bridge.announceTreasury(snapshot);
+      if (!accepted) {
+        console.warn('[Copilot] Main process rejected the treasury snapshot.');
+      }
+    } catch (err: unknown) {
+      console.warn('[Copilot] Treasury announce failed:', err);
+    }
+  }
+
+  /**
+   * Mirror the main process' kill-switch state into the HUD.
+   *
+   * The flag lives in the main process (`ipc/killswitch-state.ts`) and is what actually gates
+   * plan execution, so the pill must reflect main's truth instead of the renderer's optimism.
+   */
+  async syncKillswitchFromMain(): Promise<void> {
+    const bridge = getElectronTreasury();
+    if (!bridge?.killswitch?.getStatus) return;
+    try {
+      const status = await bridge.killswitch.getStatus();
+      this.killswitchActive.set(status?.isTriggered === true);
+    } catch (err: unknown) {
+      console.warn('[Copilot] Could not read the kill-switch status:', err);
+    }
+  }
+
+  /**
+   * Arm the kill-switch through the real `p2p:killswitch-trigger` channel.
+   *
+   * Arming is deliberately one-way: main exposes no reset channel, because recovering the
+   * desk is an operator decision and not a HUD click. A second click therefore re-confirms the
+   * authoritative state instead of pretending to disarm. Without the bridge (browser/simulated
+   * mode) the pill keeps its previous local-only behaviour.
+   */
+  async triggerKillSwitch(): Promise<void> {
+    if (this.killswitchActive()) {
+      this.actionSuccessNotice.set(
+        '⛔ KILL-SWITCH YA ACTIVO: el rearmado es decisión del proceso principal (reinicio de la app).',
+      );
+      setTimeout(() => this.actionSuccessNotice.set(null), 5000);
+      await this.syncKillswitchFromMain();
+      return;
+    }
+
+    const bridge = getElectronTreasury();
+    let armed = true;
+    if (bridge?.killswitch?.trigger) {
+      try {
+        armed = await bridge.killswitch.trigger({ reason: 'manual-toggle', source: 'copilot-ui' });
+      } catch (err: unknown) {
+        console.warn('[Copilot] Kill-switch trigger failed:', err);
+        // Never guess the outcome: re-read the authoritative state from main.
+        await this.syncKillswitchFromMain();
+        armed = this.killswitchActive();
+      }
+    }
+
+    this.killswitchActive.set(armed);
+    this.actionSuccessNotice.set(
+      armed
+        ? '🚨 KILL-SWITCH ACTIVADO: Órdenes pausadas y directiva de resguardo en USDT emitida.'
+        : '⚠️ KILL-SWITCH NO ACTIVADO: el proceso principal rechazó el disparo.',
+    );
     setTimeout(() => this.actionSuccessNotice.set(null), 5000);
   }
 
@@ -798,6 +960,9 @@ export class Copilot implements OnInit, OnDestroy {
       this.apiKeyInput.set(savedKey);
     }
     await this.refreshData();
+    // The kill-switch lives in the main process: read the real state before the pill is shown,
+    // so the HUD can never advertise an armed desk that is not actually armed (or vice versa).
+    await this.syncKillswitchFromMain();
     await this.checkConnection();
 
     const url = this.router.parseUrl(this.router.url);
@@ -926,6 +1091,11 @@ export class Copilot implements OnInit, OnDestroy {
   }
 
   async refreshData(): Promise<void> {
+    // Real treasury first: this also runs on the 15s auto-sync, which is what keeps the HUD and
+    // the main-process cache fresh after operations are booked anywhere in the app.
+    this.syncTreasurySnapshot();
+    await this.announceTreasuryToMain();
+
     const copilot = getElectronCopilot();
     if (copilot) {
       try {
@@ -983,6 +1153,11 @@ export class Copilot implements OnInit, OnDestroy {
     try {
       const copilot = getElectronCopilot();
       if (copilot?.runSwarmAnalysis) {
+        // Re-announce immediately before the run: the Risk Gatekeeper and plan execution read
+        // the snapshot cached in the main process, so it must be the freshest projection rather
+        // than whatever the periodic auto-sync last published.
+        this.syncTreasurySnapshot();
+        await this.announceTreasuryToMain();
         const result = await copilot.runSwarmAnalysis();
         const statusBadge =
           result.riskVerdict.status === 'VETOED' ? '⛔ VETADO POR RIESGO' : '🛡 APROBADO POR RIESGO';
