@@ -6,6 +6,8 @@ import type {
   CotizaveRequest,
   BybitP2pFetchRequest,
   ElDoradoQuoteRequest,
+  BacktestRunRequest,
+  BacktestRunResult,
   ScreenPipeSource,
   AlphaWatcherConfigDto,
   TreasurySnapshotDto,
@@ -22,6 +24,7 @@ import {
 import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
+import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -259,6 +262,21 @@ export function registerIpcHandlers(): void {
         }
         throw new Error(message, { cause: err });
       }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:backtest-run');
+  ipcMain.handle(
+    'p2p:backtest-run',
+    async (_event: IpcMainInvokeEvent, req: BacktestRunRequest): Promise<BacktestRunResult> => {
+      // `req` carries only the pair/timeframe labels the operator picked in Telegram.
+      // They are never forwarded to the process: the harness path is a main-process
+      // constant and the harness takes no selectors on its CLI, so the renderer has no
+      // influence over what runs.
+      return runBacktest(req ?? {}, {
+        appRoot: resolveAppRoot(app.getAppPath()),
+        execute: createNodeExecutor(),
+      });
     },
   );
 

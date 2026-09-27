@@ -4,6 +4,7 @@ import { BinanceP2pService } from './binance-p2p.service';
 import { BinanceRepricerService } from './binance-repricer.service';
 import { AccountsService } from './accounts.service';
 import { CotizaveService } from './cotizave.service';
+import { MarketHistoryService } from './market-history.service';
 import { CredentialStoreService } from './credential-store.service';
 import {
   dispatchTelegramUpdate,
@@ -14,7 +15,23 @@ import {
   evaluateFraudRisk,
   getBcvMarketIntelligence,
   escapeMarkdownV2,
+  formatRadarTelegramMessage,
+  formatMacroTelegramMessage,
+  formatBacktestTelegramMessage,
+  formatRepriceTelegramMessage,
+  buildRepriceConfirmationKeyboard,
+  predictTwoHourVolatility,
+  computeTickVelocity,
   type BinanceP2pMarketDepth,
+  type BinanceOfferSummary,
+  type BacktestReportResult,
+  type BacktestRequestParams,
+  type MacroIntelSnapshot,
+  type PriceTick,
+  type RadarGapRow,
+  type RadarScanParams,
+  type RepriceParams,
+  type SentinelActionParams,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
 } from '@p2p/core';
@@ -59,6 +76,184 @@ const TELEGRAM_DEFAULTS: TelegramConfig = {
 
 const TELEGRAM_OFFSET_STORAGE_KEY = 'p2p_telegram_offset';
 
+/** Result shape returned by the Electron backtest bridge. */
+interface BacktestBridgeResult {
+  ok: boolean;
+  stdout?: string;
+  stderr?: string;
+  error?: string;
+  summaryPath?: string;
+  summary?: unknown;
+}
+
+/** SUDEBAN's default cap when an account does not declare its own. */
+const DEFAULT_MAX_DAILY_TRANSACTIONS = 15;
+
+/** How many bank rows `/radar` is willing to print before truncating. */
+const RADAR_MAX_ROWS = 8;
+
+/** Volatility window the macro report extrapolates to, in hours. */
+const MACRO_VOLATILITY_WINDOW_HOURS = 2;
+
+/** Selectors `/backtest` falls back to when the operator omits them. */
+const DEFAULT_BACKTEST_PAIR = 'USDT/VES';
+const DEFAULT_BACKTEST_TIMEFRAME = 'histórico completo';
+
+/**
+ * Bank-name fragments that identify the same institution in Binance offer
+ * metadata. The operator types free text (`/radar bcv`), while offers spell the
+ * bank in many ways ("Banco de Venezuela", "BDV Pago Móvil", "Banesco Pago
+ * Móvil"), so the query is expanded before matching.
+ */
+const BANK_QUERY_TOKENS: Readonly<Record<string, readonly string[]>> = {
+  BCV: ['BDV', 'BANCODELAVENEZUELA'],
+  BANESCO: ['BANESCO'],
+  MERCANTIL: ['MERCANTIL'],
+  BANCAMIGA: ['BANCAMIGA'],
+  PROVINCIAL: ['PROVINCIAL', 'BBVA'],
+  PAGOMOVIL: ['PAGOMOVIL'],
+};
+
+/** Canonical institution behind a raw offer/label string, or null when unknown. */
+function resolveBankCode(raw: string): string | null {
+  const norm = normalizeBank(raw);
+  if (!norm) return null;
+  if (norm.includes('BANESCO')) return 'BANESCO';
+  if (norm.includes('MERCANTIL')) return 'MERCANTIL';
+  if (norm.includes('BANCAMIGA')) return 'BANCAMIGA';
+  if (norm.includes('PROVINCIAL') || norm.includes('BBVA')) return 'PROVINCIAL';
+  if (norm.includes('BANCODELAVENEZUELA') || norm.includes('BDV')) return 'BDV';
+  return null;
+}
+
+/** Uppercase-and-strip a bank label so matching ignores case, spaces and accents. */
+function normalizeBank(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+/** True when `bank` satisfies the operator's free-text filter. */
+function matchesBankFilter(bank: string, query: string | undefined): boolean {
+  const normQuery = query ? normalizeBank(query) : '';
+  if (!normQuery) return true;
+  const row = normalizeBank(bank);
+  if (!row) return false;
+  const tokens = BANK_QUERY_TOKENS[normQuery] ?? [normQuery];
+  if (tokens.some((token) => row.includes(token))) return true;
+  const code = resolveBankCode(bank);
+  return code !== null && tokens.some((token) => token === code);
+}
+
+/** Narrow `DispatchResult.params` to `/radar` options, ignoring foreign payloads. */
+function asRadarScanParams(params: SentinelActionParams | undefined): RadarScanParams {
+  const source = asRecord(params);
+  const out: RadarScanParams = {};
+  const bank = source?.['bank'];
+  if (typeof bank === 'string' && bank.trim()) out.bank = bank.trim();
+  const capital = source?.['capital'];
+  if (typeof capital === 'number' && Number.isFinite(capital)) out.capital = capital;
+  return out;
+}
+
+/** Narrow `DispatchResult.params` to forced reprice prices, or undefined. */
+function asRepriceParams(params: SentinelActionParams | undefined): RepriceParams | undefined {
+  const source = asRecord(params);
+  if (!source) return undefined;
+  const buyPrice = source['buyPrice'];
+  const sellPrice = source['sellPrice'];
+  if (typeof buyPrice !== 'number' || !Number.isFinite(buyPrice)) return undefined;
+  if (typeof sellPrice !== 'number' || !Number.isFinite(sellPrice)) return undefined;
+  return { buyPrice, sellPrice };
+}
+
+/** Narrow `DispatchResult.params` to `/backtest` selectors. */
+function asBacktestParams(params: SentinelActionParams | undefined): BacktestRequestParams {
+  const source = asRecord(params);
+  const out: BacktestRequestParams = {};
+  const pair = source?.['pair'];
+  if (typeof pair === 'string' && pair.trim()) out.pair = pair.trim();
+  const timeframe = source?.['timeframe'];
+  if (typeof timeframe === 'string' && timeframe.trim()) out.timeframe = timeframe.trim();
+  return out;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readRecord(value: unknown, key: string): Record<string, unknown> | null {
+  return asRecord(asRecord(value)?.[key]);
+}
+
+function readNumber(value: unknown, key: string): number {
+  const raw = asRecord(value)?.[key];
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : Number.NaN;
+}
+
+function readArray(value: unknown, key: string): unknown[] {
+  const raw = asRecord(value)?.[key];
+  return Array.isArray(raw) ? raw : [];
+}
+
+/** Mean ROI across harness cycles; NaN when the harness recorded none. */
+function meanCycleRoiPct(cycles: unknown[], leg: 'simulated' | 'recorded'): number {
+  const values: number[] = [];
+  for (const cycle of cycles) {
+    const roiPct = readNumber(readRecord(cycle, leg), 'roiPct');
+    if (Number.isFinite(roiPct)) values.push(roiPct);
+  }
+  if (values.length === 0) return Number.NaN;
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+/**
+ * Maps the JSON summary written by `scripts/backtest.cjs` onto the W1 report
+ * contract. Anything the harness does not compute stays NaN so the formatter
+ * renders `n/d` instead of an invented number.
+ */
+function mapBacktestSummary(
+  summary: unknown,
+  selection: { pair: string; timeframe: string },
+): { report: BacktestReportResult; caveats: string[] } {
+  const data = readRecord(summary, 'data');
+  const spread = readRecord(summary, 'spreadEngine');
+  const triangular = readRecord(summary, 'triangularEngine');
+  const cycles = readArray(triangular, 'cycles');
+  const pointsEvaluated = readNumber(spread, 'pointsEvaluated');
+  const cyclesFound = readNumber(triangular, 'cyclesFound');
+
+  const caveats: string[] = [];
+  caveats.push('El simulador no acepta par ni temporalidad por CLI: se ejecutó sobre su dataset local completo');
+  if (!Number.isFinite(cyclesFound) || cycles.length === 0) {
+    caveats.push('Sin ciclos triangulares en el dataset, las rentabilidades salen como n/d');
+  }
+  if (Number.isFinite(pointsEvaluated) && pointsEvaluated > 0) {
+    const operations = readNumber(data, 'operations');
+    caveats.push(
+      `Evaluó ${Math.round(pointsEvaluated)} puntos de spread (las operaciones cerradas son ${Number.isFinite(operations) ? Math.round(operations) : 0})`,
+    );
+  }
+
+  return {
+    report: {
+      pair: selection.pair,
+      timeframe: selection.timeframe,
+      trades: Math.max(0, Math.round(readNumber(data, 'operations')) || 0),
+      winRatePct: readNumber(spread, 'aciertoNetoPct'),
+      avgReturnPct: meanCycleRoiPct(cycles, 'simulated'),
+      netReturnPct: meanCycleRoiPct(cycles, 'recorded'),
+      // The harness never computes a drawdown curve: report it as unavailable.
+      maxDrawdownPct: Number.NaN,
+    },
+    caveats,
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class TelegramWorkerService implements OnDestroy {
   private readonly credentials = inject(CredentialStoreService);
@@ -67,6 +262,7 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly repricer = inject(BinanceRepricerService);
   private readonly accounts = inject(AccountsService);
   private readonly cotizave = inject(CotizaveService);
+  private readonly marketHistory = inject(MarketHistoryService);
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
@@ -81,6 +277,12 @@ export class TelegramWorkerService implements OnDestroy {
 
   private abortController: AbortController | null = null;
   private currentOffset = 0;
+  /**
+   * Selectors from the last `/backtest` confirmation. The W1 callback contract
+   * sends a bare `BACKTEST_RUN` (no params), so the worker has to remember what
+   * the operator actually asked for between the request and the button press.
+   */
+  private pendingBacktest: BacktestRequestParams | null = null;
 
   constructor() {
     void this.hydrateAndStart();
@@ -541,12 +743,449 @@ export class TelegramWorkerService implements OnDestroy {
         break;
       }
 
+      // ---- Operational commands V2 (W1 contract) ----------------------------
+
+      case 'RADAR_SCAN': {
+        const params = asRadarScanParams(dispatch.params);
+        const depth = await this.getFreshMarketDepth();
+        const allRows = depth ? this.buildRadarRows(depth, params.bank, params.capital) : [];
+        // Telegram rejects messages over 4096 characters and a full book can produce far
+        // more banks than fit, so the report is capped at the widest gaps and says how
+        // many it left out.
+        const rows = allRows.slice(0, RADAR_MAX_ROWS);
+        const dropped = allRows.length - rows.length;
+        const notes: string[] = [];
+        if (depth) {
+          if (dropped > 0) {
+            notes.push(
+              `Se muestran los ${rows.length} bancos con mayor gap; ${dropped} quedaron fuera del reporte.`,
+            );
+          }
+        } else {
+          notes.push('Sin datos en vivo: el libro de Binance no respondió. Se muestran cero oportunidades, no un estimado.');
+        }
+        const msg =
+          formatRadarTelegramMessage(rows, { bank: params.bank, capital: params.capital }) +
+          (notes.length > 0
+            ? `\nℹ️ ${notes.map((note) => escapeMarkdownV2(note)).join('\nℹ️ ')}`
+            : '');
+        await this.sendTelegramMessage(token, chatId, msg);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/radar',
+          action: 'RADAR_SCAN',
+          status: 'SUCCESS',
+          details: `${rows.length}/${allRows.length} fila(s) desde ${depth ? 'libro en vivo' : 'sin libro'}`,
+        });
+        break;
+      }
+
+      case 'REPRICE_REQUEST': {
+        const params = asRepriceParams(dispatch.params);
+        if (!params) {
+          await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+          break;
+        }
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          formatRepriceTelegramMessage({ ...params, confirmed: false }),
+          buildRepriceConfirmationKeyboard(params.buyPrice, params.sellPrice),
+        );
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/reprecio',
+          action: 'REPRICE_REQUEST',
+          status: 'SUCCESS',
+          details: `pendiente ${params.buyPrice}/${params.sellPrice}`,
+        });
+        break;
+      }
+
+      case 'REPRICE_EXECUTE': {
+        // The callback must always be answered first, even if the apply fails:
+        // otherwise Telegram leaves the button spinning for 30s.
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Reprice aplicado');
+        const params = asRepriceParams(dispatch.params);
+        if (!params) {
+          await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+          this.addLog({
+            time: timeStr,
+            command: 'Reprice',
+            action: 'REPRICE_EXECUTE',
+            status: 'ERROR',
+            details: 'Callback sin precios finitos',
+          });
+          break;
+        }
+
+        const previousBuy = this.repricer.currentBuyAdPrice();
+        const previousSell = this.repricer.currentSellAdPrice();
+        const applied = this.applyForcedReprice(params);
+        const state = applied
+          ? `📌 *Estado anterior:* \`buy ${previousBuy.toFixed(2)} · sell ${previousSell.toFixed(2)}\``
+          : `⚠️ ${escapeMarkdownV2('El motor rechazó los precios forzados: no se modificó la cotización.')}`;
+
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          formatRepriceTelegramMessage({ ...params, confirmed: applied }) + `\n${state}`,
+        );
+        this.addLog({
+          time: timeStr,
+          command: 'Reprice',
+          action: 'REPRICE_EXECUTE',
+          status: applied ? 'SUCCESS' : 'ERROR',
+          details: `${previousBuy}/${previousSell} -> ${params.buyPrice}/${params.sellPrice}`,
+        });
+        break;
+      }
+
+      case 'REPRICE_CANCEL': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Reprice cancelado');
+        await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+        this.addLog({
+          time: timeStr,
+          command: 'Reprice',
+          action: 'REPRICE_CANCEL',
+          status: 'SUCCESS',
+          details: `sin cambios (${this.repricer.currentBuyAdPrice().toFixed(2)}/${this.repricer.currentSellAdPrice().toFixed(2)})`,
+        });
+        break;
+      }
+
+      case 'MACRO': {
+        const [depth] = await Promise.all([
+          this.getFreshMarketDepth(),
+          this.cotizave.fetchRates().catch(() => undefined),
+        ]);
+        const rates = this.cotizave.ratesByMarket();
+        const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
+        const bcv = rates['bcv']?.mid || rates['oficial']?.mid;
+
+        if (!parallel || !bcv) {
+          await this.sendTelegramMessage(
+            token,
+            chatId,
+            `⚠️ *MACRO SIN DATOS EN VIVO*\n\nNo hay tasa BCV ni libro de Binance disponibles. Verifica la API key de Cotizave y sincroniza el panel antes de pedir este reporte\\.`,
+          );
+          this.addLog({
+            time: timeStr,
+            command: dispatch.command ?? '/macro',
+            action: 'MACRO',
+            status: 'SUCCESS',
+            details: 'sin tasa BCV o sin libro',
+          });
+          break;
+        }
+
+        const intel = getBcvMarketIntelligence(parallel, bcv);
+        const history = this.marketHistory.history();
+        const spread = this.resolveAverageSpreadPct(depth);
+        const spreadPct = spread.spreadPct;
+        const ticks = this.buildPriceTicks();
+        const velocity = computeTickVelocity(ticks);
+        const forecast = predictTwoHourVolatility({
+          recentTicks: ticks,
+          currentSpreadPct: Number.isFinite(spreadPct) ? spreadPct : intel.gap.gapPct,
+          bcvGap: intel.gap,
+          bcvWindow: intel.window,
+        });
+
+        const snapshot: MacroIntelSnapshot = {
+          bcvRef: intel.gap.bcvRate,
+          parallelRef: intel.gap.parallelRate,
+          spreadPct,
+          // Linearized 2h move from real tick velocity — the forecaster itself
+          // returns a 0-100 index, not a percentage.
+          volatility2hPct: Number.isFinite(velocity.midPriceVelocityPctPerHour)
+            ? Math.abs(velocity.midPriceVelocityPctPerHour) * MACRO_VOLATILITY_WINDOW_HOURS
+            : Number.NaN,
+          forecastNote: `${forecast.level} · ${forecast.direction} · ${escapeMarkdownV2(forecast.actionableGuidance)} (${history.length} snapshots)`,
+        };
+
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          formatMacroTelegramMessage(snapshot) +
+            `\nℹ️ ${escapeMarkdownV2(`Spread: ${spread.source} · Velo 2h: ${MACRO_VOLATILITY_WINDOW_HOURS}h · índice ${forecast.volatilityIndex.toFixed(0)}/100 · confianza ${forecast.confidenceScorePct.toFixed(0)}%`)}`,
+        );
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/macro',
+          action: 'MACRO',
+          status: 'SUCCESS',
+          details: `gap ${intel.gap.gapPct.toFixed(2)}% · zona ${intel.gap.zone}`,
+        });
+        break;
+      }
+
+      case 'BACKTEST_REQUEST': {
+        const params = asBacktestParams(dispatch.params);
+        this.pendingBacktest = params;
+        const selection = `${params.pair ?? DEFAULT_BACKTEST_PAIR} · ${params.timeframe ?? DEFAULT_BACKTEST_TIMEFRAME}`;
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          `🧪 *BACKTEST HISTÓRICO EN COLA* 🧪\n━━━━━━━━━━━━━━━━━\n⚙️ *Selección:* \`${escapeMarkdownV2(selection)}\`\n⏳ ${escapeMarkdownV2('Confirmá para encolar la simulación: lee el historial local y puede tardar.')}\nℹ️ ${escapeMarkdownV2('El simulador corre sobre su dataset completo; par y temporalidad son etiquetas de referencia.')}`,
+          {
+            inline_keyboard: [[{ text: '▶ Ejecutar backtest', callback_data: 'BACKTEST_RUN' }]],
+          },
+        );
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/backtest',
+          action: 'BACKTEST_REQUEST',
+          status: 'SUCCESS',
+          details: selection,
+        });
+        break;
+      }
+
+      case 'BACKTEST_EXECUTE': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Backtest encolado');
+        await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+        const selection = this.pendingBacktest ?? {};
+        this.pendingBacktest = null;
+        this.addLog({
+          time: timeStr,
+          command: 'Backtest',
+          action: 'BACKTEST_EXECUTE',
+          status: 'SUCCESS',
+          details: `encolado: ${selection.pair ?? DEFAULT_BACKTEST_PAIR} · ${selection.timeframe ?? DEFAULT_BACKTEST_TIMEFRAME}`,
+        });
+        // Fire and forget: the poll loop must keep draining getUpdates while the
+        // harness runs, so the simulation is never awaited inline.
+        void this.runBacktestAndReport(token, chatId, selection);
+        break;
+      }
+
       default: {
         if (dispatch.responseMarkdown) {
           await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
         }
       }
     }
+  }
+
+  /**
+   * Derives one row per bank from the live orderbook: best ask price, the
+   * liquidity behind it in USDT (`maxVes / price`), the spread against the same
+   * bank's best bid, and the SUDEBAN cap of the matching treasury account.
+   * Every field traces back to a real offer — nothing is estimated.
+   */
+  private buildRadarRows(
+    depth: BinanceP2pMarketDepth,
+    bankFilter?: string,
+    capital?: number,
+  ): RadarGapRow[] {
+    // Best ask per bank = lowest ask; best bid per bank = highest bid.
+    const bestAsk = new Map<string, BinanceOfferSummary>();
+    for (const offer of depth.sellOffers ?? []) {
+      for (const method of this.offerBankLabels(offer)) {
+        const current = bestAsk.get(method);
+        if (!current || offer.price < current.price) bestAsk.set(method, offer);
+      }
+    }
+    const bestBid = new Map<string, BinanceOfferSummary>();
+    for (const offer of depth.buyOffers ?? []) {
+      for (const method of this.offerBankLabels(offer)) {
+        const current = bestBid.get(method);
+        if (!current || offer.price > current.price) bestBid.set(method, offer);
+      }
+    }
+
+    const caps = this.resolveTransactionCaps();
+    const rows: RadarGapRow[] = [];
+
+    for (const [bank, ask] of bestAsk) {
+      if (!matchesBankFilter(bank, bankFilter)) continue;
+      if (!Number.isFinite(ask.price) || ask.price <= 0) continue;
+
+      const volumeUsdt = ask.maxVes > 0 ? ask.maxVes / ask.price : 0;
+      if (typeof capital === 'number' && Number.isFinite(capital) && volumeUsdt < capital) {
+        continue;
+      }
+
+      const bid = bestBid.get(bank);
+      const spreadPct =
+        bid && Number.isFinite(bid.price) && bid.price > 0
+          ? ((bid.price - ask.price) / ask.price) * 100
+          : Number.NaN;
+
+      rows.push({
+        bank,
+        price: ask.price,
+        maxTc: caps.get(resolveBankCode(bank) ?? normalizeBank(bank)) ?? DEFAULT_MAX_DAILY_TRANSACTIONS,
+        volumeUsdt,
+        spreadPct,
+      });
+    }
+
+    // Actionable rows first: widest gap wins, and banks with no matching bid (unknown
+    // spread) sink to the bottom instead of interleaving by price.
+    rows.sort((a, b) => {
+      const aOk = Number.isFinite(a.spreadPct);
+      const bOk = Number.isFinite(b.spreadPct);
+      if (aOk !== bOk) return aOk ? -1 : 1;
+      if (aOk && bOk) {
+        const delta = b.spreadPct - a.spreadPct;
+        if (delta !== 0) return delta;
+      }
+      return a.price - b.price;
+    });
+    return rows;
+  }
+
+  /** Offer payment methods, or a single empty-key bucket when unlabelled. */
+  private offerBankLabels(offer: BinanceOfferSummary): string[] {
+    const methods = (offer.payMethods ?? []).filter(
+      (method): method is string => typeof method === 'string' && method.trim().length > 0,
+    );
+    return methods.length > 0 ? methods : [''];
+  }
+
+  /**
+   * SUDEBAN daily transaction caps keyed by canonical bank code, taken from the
+   * real treasury accounts. The highest configured cap wins so a split pair of
+   * accounts (transfer + P2M) is not understated.
+   */
+  private resolveTransactionCaps(): Map<string, number> {
+    const caps = new Map<string, number>();
+    for (const usage of this.accounts.usages()) {
+      const account = usage.account;
+      const declared = account.maxDailyTransactions;
+      if (typeof declared !== 'number' || !Number.isFinite(declared)) continue;
+      const code = resolveBankCode(account.bankName) ?? resolveBankCode(account.bankCode);
+      if (!code) continue;
+      const current = caps.get(code);
+      if (current === undefined || declared > current) caps.set(code, declared);
+    }
+    return caps;
+  }
+
+  /**
+   * Average spread percentage plus where it came from: the mean of the recorded
+   * history when present, otherwise the live book spread. The source is reported
+   * to the operator so a historical average is never read as a live reading.
+   */
+  private resolveAverageSpreadPct(
+    depth: BinanceP2pMarketDepth | null,
+  ): { spreadPct: number; source: string } {
+    const spreads = this.marketHistory
+      .history()
+      .map((point) => point.spreadPct)
+      .filter((value) => typeof value === 'number' && Number.isFinite(value));
+    if (spreads.length > 0) {
+      return {
+        spreadPct: spreads.reduce((total, value) => total + value, 0) / spreads.length,
+        source: `promedio del historial (${spreads.length} snapshots)`,
+      };
+    }
+    if (depth && Number.isFinite(depth.spreadPct)) {
+      return { spreadPct: depth.spreadPct, source: 'libro en vivo' };
+    }
+    return { spreadPct: Number.NaN, source: 'sin datos de spread' };
+  }
+
+  /** Converts the recorded market history into forecaster price ticks. */
+  private buildPriceTicks(): PriceTick[] {
+    return this.marketHistory
+      .history()
+      .filter(
+        (point) =>
+          Number.isFinite(point.bestBuyPrice) &&
+          Number.isFinite(point.bestSellPrice) &&
+          point.bestBuyPrice > 0 &&
+          point.bestSellPrice > 0,
+      )
+      .map((point) => ({
+        timestampMs: Date.parse(point.timestamp),
+        buyPrice: point.bestBuyPrice,
+        sellPrice: point.bestSellPrice,
+      }));
+  }
+
+  /**
+   * Applies the operator's forced prices to the repricer engine.
+   *
+   * The engine has no separate "force" API: `currentBuyAdPrice` /
+   * `currentSellAdPrice` *are* its live ad prices and are what the next
+   * `executeCycle()` evaluates against. Deliberately no cycle is run here — an
+   * automatic evaluation would immediately overwrite the manual override.
+   */
+  private applyForcedReprice(params: RepriceParams): boolean {
+    try {
+      this.repricer.currentBuyAdPrice.set(params.buyPrice);
+      this.repricer.currentSellAdPrice.set(params.sellPrice);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Runs the historical harness through the desktop bridge and reports back.
+   * Always resolves: a failing or missing harness is reported, never thrown.
+   */
+  private async runBacktestAndReport(
+    token: string,
+    chatId: number | string,
+    selection: BacktestRequestParams,
+  ): Promise<void> {
+    const pair = selection.pair ?? DEFAULT_BACKTEST_PAIR;
+    const timeframe = selection.timeframe ?? DEFAULT_BACKTEST_TIMEFRAME;
+    const bridge = this.electronBacktestBridge();
+
+    if (!bridge) {
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        `⚠️ *BACKTEST NO DISPONIBLE*\n\nEl simulador requiere la app de escritorio: el navegador no puede lanzar Node\\. Ejecutá \`/backtest\` desde la app de escritorio\\.`,
+      );
+      return;
+    }
+
+    try {
+      const result = await bridge.run({ pair, timeframe });
+      if (!result || result.ok !== true) {
+        const reason =
+          (result && typeof result.error === 'string' && result.error) ||
+          'el simulador no devolvió un informe';
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          `⚠️ *BACKTEST NO DISPONIBLE*\n\n${escapeMarkdownV2(reason)}`,
+        );
+        return;
+      }
+
+      const mapped = mapBacktestSummary(result.summary, { pair, timeframe });
+      const caveats = mapped.caveats.map((line) => `ℹ️ ${escapeMarkdownV2(line)}`).join('\n');
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        `${formatBacktestTelegramMessage(mapped.report)}\n${caveats}` +
+          (result.summaryPath
+            ? `\n📄 ${escapeMarkdownV2(`Informe: ${result.summaryPath}`)}`
+            : ''),
+      );
+    } catch {
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        `⚠️ *BACKTEST NO DISPONIBLE*\n\n${escapeMarkdownV2('El simulador histórico falló al ejecutarse. Revisa la terminal.')}`,
+      );
+    }
+  }
+
+  /** The preload-exposed backtest runner, or null outside the desktop shell. */
+  private electronBacktestBridge(): { run: (options: unknown) => Promise<BacktestBridgeResult> } | null {
+    const shell = (globalThis as unknown as Record<string, unknown>)['electron'];
+    const backtest = asRecord(asRecord(shell)?.['backtest']);
+    const run = backtest?.['run'];
+    if (typeof run !== 'function') return null;
+    return { run: run as (options: unknown) => Promise<BacktestBridgeResult> };
   }
 
   private async processReceiptFile(
@@ -600,6 +1239,30 @@ export class TelegramWorkerService implements OnDestroy {
     } catch {
       const errorMsg = `⚠️ *ERROR AL AUDITAR COMPROBANTE*: No se pudo extraer el texto o conectar con la imagen\\.`;
       await this.sendTelegramMessage(token, chatId, errorMsg);
+    }
+  }
+
+  /**
+   * Answers a Telegram callback query so the button stops spinning.
+   * Best effort: a failed ack must never abort the command the operator asked for.
+   */
+  async answerCallbackQuery(
+    token: string,
+    callbackQueryId: string | undefined,
+    text?: string,
+  ): Promise<boolean> {
+    if (!callbackQueryId) return false;
+    try {
+      const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
+      if (text) body['text'] = text.slice(0, 190);
+      const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 

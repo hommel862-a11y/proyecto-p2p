@@ -12,8 +12,14 @@ files:
   - packages/mcp-server/dist/**/*
   - packages/mcp-server/package.json
   - package.json
+  # The Telegram BACKTEST_RUN action spawns this harness as a Node child, so it has
+  # to travel with the app.
+  - scripts/backtest.cjs
 asarUnpack:
   - packages/mcp-server/**/*
+  # A script cannot be spawned from inside app.asar; the runner resolves the
+  # app.asar.unpacked copy.
+  - scripts/backtest.cjs
 win:
   target: nsis
   artifactName: ${productName}-${version}-setup.${ext}

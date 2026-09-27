@@ -106,6 +106,30 @@ export interface ClipboardPaymentPayload {
   blacklistReason?: string;
 }
 
+/**
+ * Selector labels for a backtest run. Both are advisory: the harness reads its
+ * own local dataset and accepts no pair/timeframe on its CLI.
+ */
+export interface BacktestRunRequest {
+  pair?: string;
+  timeframe?: string;
+}
+
+/** Outcome of one harness run, including the parsed JSON summary when available. */
+export interface BacktestRunResult {
+  ok: boolean;
+  /** Harness stdout, trimmed to a bounded length. */
+  stdout?: string;
+  /** Harness stderr, trimmed to a bounded length. */
+  stderr?: string;
+  /** Human-readable failure reason when `ok` is false. */
+  error?: string;
+  /** Path of the JSON summary the harness wrote. */
+  summaryPath?: string;
+  /** Parsed harness summary; absent when the run or the read failed. */
+  summary?: unknown;
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -126,6 +150,10 @@ export interface P2PIpcChannels {
   'p2p:fetch-eldorado-quote': {
     request: ElDoradoQuoteRequest;
     response: unknown;
+  };
+  'p2p:backtest-run': {
+    request: BacktestRunRequest;
+    response: BacktestRunResult;
   };
   'crypto:is-available': {
     request: void;
@@ -373,6 +401,15 @@ export interface ElectronAPI {
   fetchCotizave(req: CotizaveRequest): Promise<unknown>;
   fetchBybitP2p(req: BybitP2pFetchRequest): Promise<unknown>;
   fetchElDoradoQuote(req: ElDoradoQuoteRequest): Promise<unknown>;
+  /**
+   * Runs the historical simulation harness in the main process. The renderer has
+   * no Node access, so this is the only path to `scripts/backtest.cjs`. The
+   * renderer may only select the pair/timeframe labels — never the script, the
+   * interpreter or any argument list.
+   */
+  backtest: {
+    run(req: BacktestRunRequest): Promise<BacktestRunResult>;
+  };
   crypto: {
     isAvailable(): Promise<boolean>;
     encrypt(plaintext: string): Promise<string>;

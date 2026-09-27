@@ -1,4 +1,4 @@
-import type { ElectronAPI } from '../shared/types';
+import type { ElectronAPI, BacktestRunResult } from '../shared/types';
 
 // Minimal, trusted subset of ipcRenderer the bridge is allowed to use.
 export type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -16,6 +16,11 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
     fetchCotizave: (req) => ipc('p2p:fetch-cotizave', req) as Promise<unknown>,
     fetchBybitP2p: (req) => ipc('p2p:fetch-bybit-p2p', req) as Promise<unknown>,
     fetchElDoradoQuote: (req) => ipc('p2p:fetch-eldorado-quote', req) as Promise<unknown>,
+    // The renderer cannot spawn Node; the main process owns the harness path and
+    // the argument list, so this bridge only forwards selector labels.
+    backtest: {
+      run: (req) => ipc('p2p:backtest-run', req) as Promise<BacktestRunResult>,
+    },
     crypto: {
       isAvailable: () => ipc('crypto:is-available') as Promise<boolean>,
       encrypt: (plaintext: string) => ipc('crypto:encrypt', plaintext) as Promise<string>,
@@ -109,6 +114,7 @@ export const EXPOSED_API_KEYS = [
   'fetchCotizave',
   'fetchBybitP2p',
   'fetchElDoradoQuote',
+  'backtest',
   'crypto',
   'db',
   'killswitch',
@@ -127,6 +133,7 @@ export const ALLOWED_CHANNELS = [
   'p2p:fetch-cotizave',
   'p2p:fetch-bybit-p2p',
   'p2p:fetch-eldorado-quote',
+  'p2p:backtest-run',
   'crypto:is-available',
   'crypto:encrypt',
   'crypto:decrypt',
