@@ -605,6 +605,11 @@
     padding: 12px 10px calc(76px + env(safe-area-inset-bottom, 12px));
     max-width: 100%;
     min-height: auto;
+
+    &:has(.copilot-container) {
+      padding: 0 !important;
+      overflow: hidden;
+    }
   }
 
   /* Fixed Mobile Bottom Navigation Bar */
@@ -624,6 +629,10 @@
     border-top: 1px solid var(--line);
     z-index: 1000;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45);
+
+    &.nav-hidden {
+      display: none !important;
+    }
 
     .bottom-tab {
       flex: 1;

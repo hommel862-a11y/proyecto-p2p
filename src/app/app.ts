@@ -51,6 +51,7 @@ export class App {
   /** Real app version when running under Electron; falls back to the web build. */
   readonly version = signal<string>('1.0.0');
   readonly hotkeys = inject(HotkeysService);
+  readonly isInputFocused = signal<boolean>(false);
   private readonly destroyRef = inject(DestroyRef);
 
   constructor() {
@@ -61,6 +62,26 @@ export class App {
     }
     this.resolveVersion();
     this.listenThemeToggle();
+    this.listenInputFocus();
+  }
+
+  private listenInputFocus(): void {
+    if (typeof window === 'undefined') return;
+    const onFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        this.isInputFocused.set(true);
+      }
+    };
+    const onFocusOut = () => {
+      this.isInputFocused.set(false);
+    };
+    window.addEventListener('focusin', onFocusIn);
+    window.addEventListener('focusout', onFocusOut);
+    this.destroyRef.onDestroy(() => {
+      window.removeEventListener('focusin', onFocusIn);
+      window.removeEventListener('focusout', onFocusOut);
+    });
   }
 
   private resolveVersion(): void {

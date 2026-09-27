@@ -203,7 +203,9 @@ export class Copilot implements OnInit, OnDestroy {
   private readonly storage = inject(StorageService);
   private readonly router = inject(Router);
 
-  sidebarCollapsed = signal<boolean>(false);
+  sidebarCollapsed = signal<boolean>(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
+  );
 
   toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
@@ -848,29 +850,45 @@ export class Copilot implements OnInit, OnDestroy {
       }
 
       try {
-        const testRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${savedKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
-          },
-        );
-        if (testRes.ok) {
+        const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+        let verifiedModel: string | null = null;
+        let lastErrMsg = '';
+
+        for (const model of candidateModels) {
+          try {
+            const testRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${savedKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
+              },
+            );
+            if (testRes.ok) {
+              verifiedModel = model;
+              break;
+            } else {
+              const errData = (await testRes.json().catch(() => ({}))) as {
+                error?: { message?: string };
+              };
+              lastErrMsg = errData?.error?.message || `HTTP ${testRes.status}`;
+            }
+          } catch (e: unknown) {
+            lastErrMsg = e instanceof Error ? e.message : String(e);
+          }
+        }
+
+        if (verifiedModel) {
           this.connectionStatus.set({
             connected: true,
-            model: 'gemini-2.5-flash',
-            message: '¡Conexión verificada exitosamente con Gemini API!',
+            model: verifiedModel,
+            message: `¡Conexión verificada exitosamente con Google Gemini (${verifiedModel})!`,
           });
         } else {
-          const errData = (await testRes.json().catch(() => ({}))) as {
-            error?: { message?: string };
-          };
-          const errMsg = errData?.error?.message || `HTTP ${testRes.status}`;
           this.connectionStatus.set({
             connected: false,
             model: 'error',
-            message: `Error de API Key: ${errMsg}`,
+            message: `Error de API Key Gemini: ${lastErrMsg}`,
           });
         }
       } catch (err: unknown) {
@@ -1062,39 +1080,102 @@ export class Copilot implements OnInit, OnDestroy {
           this.voiceService.speak(response.reply);
         }
       } else {
-        // Fallback demo for standalone web browser mode
-        setTimeout(() => {
-          const fallbackPlan: StrategyPlanCard = {
-            id: `WEB-${Date.now().toString(36).toUpperCase()}`,
-            title: 'Triangulación Táctica VES -> USDT -> BTC',
-            route: 'VES (Pago Móvil) -> USDT -> BTC -> VES',
-            capitalRequiredUsdt: 1000,
-            expectedNetSpreadPct: 1.45,
-            expectedProfitUsdt: 14.5,
-            riskLevel: 'LOW',
-            assignedOperatorName: 'Operador Principal',
-            rationale:
-              'Spread neto 1.45% validado por la regla de oro (>0.50%) con libro de órdenes sanitizado.',
-            status: 'PROPOSED',
-          };
-          const fallbackText =
-            'He analizado la microestructura del mercado P2P. Detecté una oportunidad de arbitraje triangular superior a la regla de oro (0.50% neto). Podés revisar la ficha y darle PLAY cuando quieras despacharla.';
+        // Standalone web / mobile (Capacitor) mode with Google Gemini API
+        const apiKey = this.storage.get<string>('p2p.gemini.apiKey') || this.apiKeyInput().trim();
+        if (apiKey) {
+          try {
+            const historyContents = this.messages()
+              .slice(-10)
+              .map((m) => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }],
+              }));
+
+            const systemInstruction = {
+              parts: [
+                {
+                  text: 'Sos el Copiloto y Estratega de Arbitraje P2P institucional para el mercado de Venezuela. Respondés en español con tono analítico y profesional de banca privada y tesorería. Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias. Sé conciso, analítico y directo.',
+                },
+              ],
+            };
+
+            const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+            let replyText = '';
+
+            for (const model of models) {
+              try {
+                const res = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      system_instruction: systemInstruction,
+                      contents: historyContents,
+                      generationConfig: {
+                        temperature: 0.4,
+                        maxOutputTokens: 1000,
+                      },
+                    }),
+                  },
+                );
+
+                if (res.ok) {
+                  const data = (await res.json()) as {
+                    candidates?: { content?: { parts?: { text?: string }[] } }[];
+                  };
+                  replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+                  if (replyText) break;
+                }
+              } catch {
+                // Try fallback model
+              }
+            }
+
+            if (!replyText) {
+              replyText =
+                'No se pudo obtener respuesta de la API de Google Gemini. Verificá que tu API Key sea válida y tenga cuota disponible.';
+            }
+
+            this.messages.update((msgs) => [
+              ...msgs,
+              {
+                role: 'assistant',
+                content: replyText,
+                timestamp: Date.now(),
+              },
+            ]);
+            this.scrollToBottom();
+
+            if (this.voiceService.ttsEnabled()) {
+              this.voiceService.speak(replyText);
+            }
+          } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            this.messages.update((msgs) => [
+              ...msgs,
+              {
+                role: 'assistant',
+                content: `Error al consultar Gemini API: ${errorMsg}. Podés verificar tu clave en la pestaña "Conexión Gemini".`,
+                timestamp: Date.now(),
+              },
+            ]);
+            this.scrollToBottom();
+          }
+        } else {
+          // No API key provided: inform the user
+          const noKeyText =
+            'Para chatear con el Copiloto IA en tu teléfono, ingresá tu API Key gratuita de Google Gemini en la pestaña "⚙ Conexión Gemini" o en el panel de APIs del menú superior.';
           this.messages.update((msgs) => [
             ...msgs,
             {
               role: 'assistant',
-              content: fallbackText,
-              plan: fallbackPlan,
+              content: noKeyText,
               timestamp: Date.now(),
             },
           ]);
-          this.plans.update((p) => [fallbackPlan, ...p]);
           this.scrollToBottom();
-
-          if (this.voiceService.ttsEnabled()) {
-            this.voiceService.speak(fallbackText);
-          }
-        }, 800);
+        }
       }
     } catch (err: unknown) {
       this.messages.update((msgs) => [

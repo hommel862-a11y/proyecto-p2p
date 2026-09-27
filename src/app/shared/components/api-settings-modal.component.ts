@@ -1,10 +1,11 @@
-import { Component, inject, signal, output } from '@angular/core';
+import { Component, inject, signal, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CotizaveService } from '../../core/cotizave.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
+import { StorageService } from '../../core/storage';
 
 @Component({
   selector: 'app-api-settings-modal',
@@ -15,8 +16,8 @@ import { ToastService } from '../../core/toast.service';
       class="api-modal-backdrop"
       role="button"
       tabindex="0"
-      (click)="$event.target === $event.currentTarget && close.emit()"
-      (keydown.escape)="close.emit()"
+      (click)="$event.target === $event.currentTarget && modalClose.emit()"
+      (keydown.escape)="modalClose.emit()"
       aria-label="Cerrar ventana de conexiones y APIs"
     >
       <div
@@ -37,7 +38,7 @@ import { ToastService } from '../../core/toast.service';
           <button
             type="button"
             class="btn-close"
-            (click)="close.emit()"
+            (click)="modalClose.emit()"
             aria-label="Cerrar modal"
           >
             &times;
@@ -201,10 +202,67 @@ import { ToastService } from '../../core/toast.service';
               </button>
             </div>
           </section>
+
+          <!-- 4. Google Gemini AI Copilot -->
+          <section class="api-card">
+            <div class="api-card-head">
+              <div class="api-title-row">
+                <span class="api-badge" [class.badge-active]="hasGeminiKey()">
+                  {{ hasGeminiKey() ? '🟢 ACTIVO' : '🟡 PENDIENTE' }}
+                </span>
+                <strong>Google Gemini AI (Copiloto P2P)</strong>
+              </div>
+              <span class="api-desc">
+                Inteligencia Artificial para análisis de brechas cambiarias, arbitraje y detección de riesgos en tiempo real.
+              </span>
+            </div>
+
+            <div class="api-input-group">
+              <label for="gemini-key-input">API Key de Google Gemini</label>
+              <div class="input-with-action">
+                <input
+                  id="gemini-key-input"
+                  [type]="showGeminiKey() ? 'text' : 'password'"
+                  [value]="geminiKeyInput()"
+                  (input)="onGeminiKeyInput($event)"
+                  placeholder="AIzaSy..."
+                  class="font-mono form-control"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="btn-icon-action"
+                  (click)="showGeminiKey.set(!showGeminiKey())"
+                  [title]="showGeminiKey() ? 'Ocultar clave' : 'Mostrar clave'"
+                >
+                  {{ showGeminiKey() ? '👁️‍🗨️' : '👁️' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="api-actions-row">
+              <button
+                type="button"
+                class="btn-save"
+                (click)="saveGemini()"
+                [disabled]="isTestingGemini()"
+              >
+                Guardar Gemini
+              </button>
+              <button
+                type="button"
+                class="btn-test"
+                (click)="testGemini()"
+                [disabled]="!geminiKeyInput().trim() || isTestingGemini()"
+              >
+                {{ isTestingGemini() ? 'Verificando...' : '🧠 Probar IA' }}
+              </button>
+            </div>
+          </section>
         </div>
 
         <div class="dialog-footer">
-          <button type="button" class="btn-primary-close" (click)="close.emit()">
+          <button type="button" class="btn-primary-close" (click)="modalClose.emit()">
             Listo
           </button>
         </div>
@@ -467,14 +525,20 @@ export class ApiSettingsModalComponent {
   readonly cotizave = inject(CotizaveService);
   readonly binance = inject(BinanceP2pService);
   readonly telegram = inject(TelegramWorkerService);
+  private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
 
-  readonly close = output<void>();
+  readonly modalClose = output<void>();
 
   readonly showCotizaveKey = signal<boolean>(false);
   readonly cotizaveKeyInput = signal<string>(this.cotizave.apiKey());
   readonly telegramTokenInput = signal<string>(this.telegram.config().botToken || '');
   readonly telegramChatIdInput = signal<string>(this.telegram.config().chatId || '');
+
+  readonly showGeminiKey = signal<boolean>(false);
+  readonly geminiKeyInput = signal<string>(this.storage.get<string>('p2p.gemini.apiKey') || '');
+  readonly hasGeminiKey = computed<boolean>(() => !!this.storage.get<string>('p2p.gemini.apiKey'));
+  readonly isTestingGemini = signal<boolean>(false);
 
   onCotizaveInput(event: Event): void {
     const val = (event.target as HTMLInputElement).value;
@@ -551,6 +615,76 @@ export class ApiSettingsModalComponent {
       }
     } catch {
       this.toast.error('Error al contactar API de Telegram.', 'Telegram');
+    }
+  }
+
+  onGeminiKeyInput(event: Event): void {
+    const val = (event.target as HTMLInputElement).value;
+    this.geminiKeyInput.set(val);
+  }
+
+  async saveGemini(): Promise<void> {
+    const key = this.geminiKeyInput().trim();
+    this.storage.set('p2p.gemini.apiKey', key);
+
+    if (typeof window !== 'undefined') {
+      const electronCopilot = (
+        window as unknown as {
+          electronAPI?: { copilot?: { setApiKey: (args: { apiKey: string }) => Promise<void> } };
+        }
+      ).electronAPI?.copilot;
+      if (electronCopilot) {
+        await electronCopilot.setApiKey({ apiKey: key });
+      }
+    }
+
+    this.toast.success('Clave de Google Gemini guardada.', 'Gemini AI');
+  }
+
+  async testGemini(): Promise<void> {
+    const key = this.geminiKeyInput().trim() || this.storage.get<string>('p2p.gemini.apiKey');
+    if (!key) {
+      this.toast.warn('Ingresá una API Key de Google Gemini.', 'Gemini AI');
+      return;
+    }
+
+    this.isTestingGemini.set(true);
+    try {
+      const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      let verifiedModel: string | null = null;
+      let lastErrMsg = '';
+
+      for (const model of candidateModels) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
+            },
+          );
+          if (res.ok) {
+            verifiedModel = model;
+            break;
+          } else {
+            const errData = (await res.json().catch(() => ({}))) as {
+              error?: { message?: string };
+            };
+            lastErrMsg = errData?.error?.message || `HTTP ${res.status}`;
+          }
+        } catch (e: unknown) {
+          lastErrMsg = e instanceof Error ? e.message : String(e);
+        }
+      }
+
+      if (verifiedModel) {
+        this.toast.success(`Google Gemini (${verifiedModel}) verificado y listo.`, 'Gemini AI');
+      } else {
+        this.toast.error(`Error al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
+      }
+    } finally {
+      this.isTestingGemini.set(false);
     }
   }
 }

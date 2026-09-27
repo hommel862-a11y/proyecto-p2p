@@ -87,8 +87,8 @@ export class BinanceP2pService implements OnDestroy {
 
     try {
       const executeNetworkCall = async (signal: AbortSignal) => {
-        let buyData: unknown = null;
-        let sellData: unknown = null;
+        let buyData: unknown;
+        let sellData: unknown;
 
         const electronWin =
           typeof window !== 'undefined'

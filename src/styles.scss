@@ -1990,4 +1990,86 @@ button:active, .btn:active {
   }
 }
 
+/* ============================================================
+   Mobile Global Adaptations (<= 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Prevent involuntary mobile browser auto-zoom when focusing inputs */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
 
+  /* Compact panels and cards on mobile screens */
+  .panel,
+  .panel-card,
+  .terminal-card,
+  .corporate-card,
+  .metric-card {
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .data-section {
+    padding: 12px 14px !important;
+  }
+
+  /* Prevent table and pre/code horizontal blowout of the screen */
+  .table-container,
+  .table-wrap,
+  .data-section {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box !important;
+  }
+
+  /* Stat grid on mobile: 2 equal columns for KPI tiles */
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .stat-tile {
+    padding: 10px 12px !important;
+    .stat-label {
+      font-size: 0.72rem !important;
+    }
+    .stat-value {
+      font-size: 1.15rem !important;
+    }
+  }
+
+  /* Segmented toolbars touch-friendly */
+  .terminal-card-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  /* Out dl stats on mobile */
+  .out {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin: 14px 0 !important;
+
+    > div {
+      padding: 12px 14px !important;
+      dt {
+        font-size: 0.72rem !important;
+      }
+      dd {
+        font-size: 1.15rem !important;
+      }
+    }
+  }
+
+  /* Ensure touch targets have adequate height */
+  button,
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    min-height: 40px;
+  }
+}

@@ -1822,4 +1822,195 @@
   }
 }
 
+/* ============================================================
+   Copilot Mobile Vertical Adaptations (<= 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+  .copilot-container {
+    height: calc(100dvh - 52px - 58px - env(safe-area-inset-bottom, 0px));
+    max-width: 100%;
+    padding: 6px 8px;
+    margin: 0;
+  }
+
+  .copilot-header {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    gap: 8px;
+
+    .title-area {
+      h2 {
+        font-size: 1.05rem;
+      }
+      .subtitle {
+        display: none;
+      }
+    }
+
+    .header-right-controls {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .voice-speaker-btn,
+      .zen-toggle-btn {
+        padding: 5px 10px;
+        font-size: 0.72rem;
+      }
+    }
+  }
+
+  .tab-nav {
+    width: 100%;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 6px;
+    padding-bottom: 2px;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-btn {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      font-size: 0.72rem;
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+  }
+
+  .ticker-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .ticker-item {
+      flex-shrink: 0;
+      font-size: 0.7rem;
+    }
+  }
+
+  .swarm-telemetry-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    .swarm-agents-list {
+      flex-shrink: 0;
+    }
+  }
+
+  .copilot-workbench {
+    flex-direction: column;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    gap: 6px;
+  }
+
+  .copilot-sidebar {
+    width: 100% !important;
+    max-height: 200px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    border-radius: 12px;
+  }
+
+  .copilot-chat-canvas {
+    width: 100% !important;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    overflow: hidden;
+
+    .messages-viewport {
+      padding: 8px 6px;
+      gap: 8px;
+
+      .message-row {
+        max-width: 94%;
+        gap: 6px;
+
+        .avatar {
+          width: 26px;
+          height: 26px;
+          font-size: 0.7rem;
+        }
+
+        .message-bubble {
+          padding: 8px 12px;
+          font-size: 0.82rem;
+          line-height: 1.4;
+          border-radius: 12px;
+        }
+      }
+    }
+
+    .chat-input-bar {
+      padding: 6px 8px;
+      background: #0d111a;
+      border-top: 1px solid var(--line);
+
+      .input-form {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px;
+
+        .btn-mic {
+          width: 40px;
+          height: 40px;
+          flex-shrink: 0;
+        }
+
+        input {
+          flex: 1;
+          font-size: 16px !important;
+          min-height: 40px;
+          padding: 6px 10px;
+        }
+
+        .btn-send {
+          min-height: 40px;
+          padding: 6px 12px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          flex-shrink: 0;
+        }
+      }
+    }
+  }
+
+  /* Other Copilot Tabs on mobile */
+  .plans-layout,
+  .earn-grid,
+  .operations-grid,
+  .counterparties-grid,
+  .config-grid,
+  .memory-container {
+    width: 100%;
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+}
+
+
 

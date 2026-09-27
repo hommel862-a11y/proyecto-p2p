@@ -115,7 +115,7 @@
   </div>
 
   <!-- Fixed Mobile Bottom Navigation Bar (Visible only on mobile <= 768px) -->
-  <nav class="mobile-bottom-nav" aria-label="Navegación móvil inferior">
+  <nav class="mobile-bottom-nav" [class.nav-hidden]="isInputFocused()" aria-label="Navegación móvil inferior">
     <a routerLink="/spread" routerLinkActive="active" class="bottom-tab" ariaCurrentWhenActive="page">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
       <span>Spread</span>
@@ -216,7 +216,7 @@
   }
 
   @if (apiModalOpen()) {
-    <app-api-settings-modal (close)="closeApiModal()" />
+    <app-api-settings-modal (modalClose)="closeApiModal()" />
   }
 
   <app-toast />

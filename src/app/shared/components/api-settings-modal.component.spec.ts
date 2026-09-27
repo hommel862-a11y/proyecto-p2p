@@ -4,6 +4,7 @@ import { CotizaveService } from '../../core/cotizave.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
+import { StorageService } from '../../core/storage';
 import { signal } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -36,6 +37,13 @@ describe('ApiSettingsModalComponent', () => {
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    warn: vi.fn(),
+  };
+
+  const mockStorage = {
+    get: vi.fn().mockReturnValue(''),
+    set: vi.fn(),
+    remove: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -46,6 +54,7 @@ describe('ApiSettingsModalComponent', () => {
         { provide: BinanceP2pService, useValue: mockBinance },
         { provide: TelegramWorkerService, useValue: mockTelegram },
         { provide: ToastService, useValue: mockToast },
+        { provide: StorageService, useValue: mockStorage },
       ],
     }).compileComponents();
 
@@ -60,7 +69,7 @@ describe('ApiSettingsModalComponent', () => {
 
   it('should emit close event when clicking close button', () => {
     let closed = false;
-    component.close.subscribe(() => {
+    component.modalClose.subscribe(() => {
       closed = true;
     });
 
@@ -79,4 +88,12 @@ describe('ApiSettingsModalComponent', () => {
     component.onProxyToggle({ target: { checked: true } } as unknown as Event);
     expect(mockBinance.setUsePublicProxy).toHaveBeenCalledWith(true);
   });
+
+  it('should save Google Gemini API key to storage', async () => {
+    component.geminiKeyInput.set('AIzaSyTest123');
+    await component.saveGemini();
+    expect(mockStorage.set).toHaveBeenCalledWith('p2p.gemini.apiKey', 'AIzaSyTest123');
+    expect(mockToast.success).toHaveBeenCalledWith('Clave de Google Gemini guardada.', 'Gemini AI');
+  });
 });
+
