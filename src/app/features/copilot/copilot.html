@@ -78,17 +78,21 @@
 
   <!-- COMPACT TOP TICKER (INSTITUTIONAL METRICS) -->
   <div class="ticker-bar">
-    <div class="ticker-item">
-      <span class="t-label">EQUITY:</span>
+    <div class="ticker-item" title="Capital declarado por el operador en la pestaña Tesorería &amp; Earn. No es equity medido: todavía no hay feed on-chain ni contable que lo confirme.">
+      <span class="t-label">CAPITAL DECLARADO:</span>
       <span class="t-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
     </div>
     <div class="ticker-sep">|</div>
-    <div class="ticker-item">
-      <span class="t-label">PNL HOY:</span>
-      <span class="t-val profit">+${{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} USDT</span>
+    <div class="ticker-item" title="Saldo bancario consolidado en VES de todas las cuentas de la mesa, según el snapshot real de AccountsService. No es P&amp;L: no hay feed de ganancias realizado, por eso no lleva signo ni moneda USDT.">
+      <span class="t-label">SALDO TESORERÍA:</span>
+      @if (treasuryDataAvailable()) {
+        <span class="t-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
+      } @else {
+        <span class="t-val profit">-- VES</span>
+      }
     </div>
     <div class="ticker-sep">|</div>
-    <div class="ticker-item">
+    <div class="ticker-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo. Rates sembradas por defecto: sin feed en vivo, el porcentaje es tan solo tan real como esas dos tasas.">
       <span class="t-label">BRECHA BCV:</span>
       <span class="t-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
         +{{ bcvIntelligence().gap.gapPct }}%
@@ -218,19 +222,32 @@
             </div>
           </div>
 
-          <!-- Ratio Delta Fiat/Crypto Card -->
-          <div class="sidebar-box">
+          <!-- Bank daily-cap headroom: real account counts from the treasury snapshot.
+               The projection degrades to `Number.NaN` in copilot.ts, and Angular template
+               expressions expose no `Number`/`isNaN` global, so `x === x` is the only NaN test
+               available here (copilot.ts owns the formatter; this template only degrades). -->
+          <div class="sidebar-box" title="Conteos reales de cuentas bancarias tomados del snapshot de tesorería. No hay un ratio fiat/crypto medido en esta build.">
+            @let nearLimitAccounts = treasuryMetrics().cryptoRatioPct;
+            @let overLimitAccounts = treasuryMetrics().fiatRatioPct;
+            @let cycleMinutes = treasuryMetrics().avgCycleVelocityMinutes;
             <div class="box-header">
-              <span class="box-title">⚖ RATIO FIAT / CRYPTO</span>
-              <span class="box-badge">{{ treasuryMetrics().avgCycleVelocityMinutes }}m/ciclo</span>
+              <span class="box-title">🏦 CUPO DIARIO SUDEBAN</span>
+              <span class="box-badge" title="Proyección real: minutos que faltan en el día local divididos por las transacciones de cupo que las cuentas activas todavía pueden ejecutar. Muestra «--» cuando no queda cupo disponible.">
+                {{ cycleMinutes === cycleMinutes ? cycleMinutes + ' min/tx rest.' : '-- min/tx rest.' }}
+              </span>
             </div>
-            <div class="delta-bar-container">
+            <div class="delta-bar-container" title="El ancho de cada barra es el conteo real de cuentas en ese estado, no un porcentaje.">
               <div class="delta-bar crypto" [style.width.%]="treasuryMetrics().cryptoRatioPct"></div>
               <div class="delta-bar fiat" [style.width.%]="treasuryMetrics().fiatRatioPct"></div>
             </div>
             <div class="delta-subtext">
-              <span>Crypto: {{ treasuryMetrics().cryptoRatioPct }}%</span>
-              <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">VES: {{ treasuryMetrics().fiatRatioPct }}%</span>
+              @if (treasuryDataAvailable()) {
+                <span>Cercanas: {{ nearLimitAccounts }}</span>
+                <span [class.warning]="treasuryMetrics().fiatRatioPct > 15">Sobre-límite: {{ overLimitAccounts }}</span>
+              } @else {
+                <span>Cercanas: --</span>
+                <span>Sobre-límite: --</span>
+              }
             </div>
           </div>
 
