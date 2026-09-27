@@ -6,11 +6,47 @@ import {
   formatReceiptAuditTelegramMessage,
   formatBcvIntelligenceTelegramMessage,
   formatBankLimitsTelegramMessage,
+  formatRadarTelegramMessage,
+  formatMacroTelegramMessage,
+  formatBacktestTelegramMessage,
+  formatRepriceTelegramMessage,
   buildFraudAlertKeyboard,
   buildRepricerControlKeyboard,
+  buildRepriceConfirmationKeyboard,
+  buildRepriceCallbackData,
+  parseRepriceCallbackData,
   dispatchTelegramUpdate,
   TelegramInboundUpdate,
 } from './telegram-sentinel';
+
+// Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
+// aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
+const NON_STRUCTURAL_RESERVED = /[\[\]()~>#+=|{}.!\-]/;
+
+function expectParseableMarkdownV2(markdown: string): void {
+  const tokens = markdown.split('`');
+  let violation: string | undefined;
+  tokens.forEach((token, idx) => {
+    if (idx % 2 !== 0) return; // dentro de un span de código la puntuación es literal
+    for (let i = 0; i < token.length; i++) {
+      const ch = token[i];
+      if (NON_STRUCTURAL_RESERVED.test(ch) && token[i - 1] !== '\\') {
+        violation =
+          `carácter reservado '${ch}' sin escapar` +
+          ` en "...${token.slice(Math.max(0, i - 18), i + 18)}..."`;
+        break;
+      }
+    }
+  });
+  expect(violation, violation).toBeUndefined();
+
+  // Sanidad estructural básica: delimitadores balanceados, sin backslash
+  // colgante y sin saltos de línea dentro de spans de código.
+  expect((markdown.match(/`/g) ?? []).length % 2).toBe(0);
+  expect((markdown.match(/\*/g) ?? []).length % 2).toBe(0);
+  expect(markdown).not.toMatch(/\\$/);
+  (markdown.match(/`[^`]*`/g) ?? []).forEach((span) => expect(span).not.toContain('\n'));
+}
 
 describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
   const AUTH_CHAT_ID = 123456789;
@@ -308,37 +344,6 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
   });
 
   describe('Parseabilidad MarkdownV2 de las respuestas (siempre enviables)', () => {
-    // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
-    // aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
-    const NON_STRUCTURAL_RESERVED = /[\[\]()~>#+=|{}.!\-]/;
-
-    function expectParseableMarkdownV2(markdown: string): void {
-      const tokens = markdown.split('`');
-      let violation: string | undefined;
-      tokens.forEach((token, idx) => {
-        if (idx % 2 !== 0) return; // dentro de un span de código la puntuación es literal
-        for (let i = 0; i < token.length; i++) {
-          const ch = token[i];
-          if (NON_STRUCTURAL_RESERVED.test(ch) && token[i - 1] !== '\\') {
-            violation =
-              `carácter reservado '${ch}' sin escapar` +
-              ` en "...${token.slice(Math.max(0, i - 18), i + 18)}..."`;
-            break;
-          }
-        }
-      });
-      expect(violation, violation).toBeUndefined();
-
-      // Sanidad estructural básica: delimitadores balanceados, sin backslash
-      // colgante y sin saltos de línea dentro de spans de código.
-      expect((markdown.match(/`/g) ?? []).length % 2).toBe(0);
-      expect((markdown.match(/\*/g) ?? []).length % 2).toBe(0);
-      expect(markdown).not.toMatch(/\\$/);
-      (markdown.match(/`[^`]*`/g) ?? []).forEach((span) =>
-        expect(span).not.toContain('\n'),
-      );
-    }
-
     it('la respuesta de /start para un usuario no autorizado es parseable', () => {
       const update: TelegramInboundUpdate = {
         update_id: 200,
@@ -453,6 +458,565 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(msg).toContain('CUPOS BANCARIOS');
       expect(msg).toContain('Banesco');
       expect(msg).toContain('LÍMITE PRÓXIMO');
+    });
+  });
+
+  describe('Comandos Operativos V2 (/radar, /reprecio, /macro, /backtest)', () => {
+    function message(text: string, updateId = 900): TelegramInboundUpdate {
+      return {
+        update_id: updateId,
+        message: {
+          message_id: updateId,
+          from: { id: AUTH_CHAT_ID },
+          chat: { id: AUTH_CHAT_ID, type: 'private' },
+          text,
+          date: Date.now(),
+        },
+      };
+    }
+
+    function callback(data: string, fromId = AUTH_CHAT_ID, updateId = 950): TelegramInboundUpdate {
+      return {
+        update_id: updateId,
+        callback_query: {
+          id: `cb-${updateId}`,
+          from: { id: fromId },
+          data,
+          message: { message_id: updateId, chat: { id: AUTH_CHAT_ID } },
+        },
+      };
+    }
+
+    describe('/radar', () => {
+      it('despacha RADAR_SCAN sin params cuando no recibe argumentos', () => {
+        const res = dispatchTelegramUpdate(message('/radar'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.command).toBe('/radar');
+        expect(res.action).toBe('RADAR_SCAN');
+        expect(res.params).toEqual({});
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('despacha RADAR_SCAN con bank y capital cuando recibe ambos argumentos', () => {
+        const res = dispatchTelegramUpdate(message('/radar bcv 2000'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('RADAR_SCAN');
+        expect(res.params).toEqual({ bank: 'bcv', capital: 2000 });
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('interpreta un primer token numérico como capital y no como banco', () => {
+        const res = dispatchTelegramUpdate(message('/radar 2000'), AUTH_CHAT_ID);
+        expect(res.action).toBe('RADAR_SCAN');
+        expect(res.params).toEqual({ capital: 2000 });
+      });
+
+      it('devuelve guía de parseo y ninguna acción cuando el capital no es numérico', () => {
+        const res = dispatchTelegramUpdate(message('/radar bcv dosmil'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/radar [banco] [capital]`');
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('nunca lanza ante capital no finito y responde con la guía', () => {
+        const res = dispatchTelegramUpdate(message('/radar bcv Infinity'), AUTH_CHAT_ID);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/radar [banco] [capital]`');
+      });
+
+      it('ignora argumentos extra sin lanzar', () => {
+        const res = dispatchTelegramUpdate(message('/radar bcv 2000 3000 extra'), AUTH_CHAT_ID);
+        expect(res.action).toBe('RADAR_SCAN');
+        expect(res.params).toEqual({ bank: 'bcv', capital: 2000 });
+      });
+    });
+
+    describe('/reprecio', () => {
+      it('despacha REPRICE_REQUEST con los precios parseados y exige confirmación', () => {
+        const res = dispatchTelegramUpdate(message('/reprecio 84.5 85.2'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.command).toBe('/reprecio');
+        expect(res.action).toBe('REPRICE_REQUEST');
+        expect(res.params).toEqual({ buyPrice: 84.5, sellPrice: 85.2 });
+        expect(res.responseMarkdown).toContain('CONFIRMACIÓN REQUERIDA');
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('no ejecuta nada en core: la acción es siempre REPRICE_REQUEST, no REPRICE_EXECUTE', () => {
+        const res = dispatchTelegramUpdate(message('/reprecio 84.5 85.2'), AUTH_CHAT_ID);
+        expect(res.action).not.toBe('REPRICE_EXECUTE');
+      });
+
+      it('rechaza argumentos faltantes devolviendo la guía de parseo', () => {
+        const res = dispatchTelegramUpdate(message('/reprecio 84.5'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/reprecio <buy> <sell>`');
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('rechaza precios no numéricos devolviendo la guía de parseo', () => {
+        const res = dispatchTelegramUpdate(message('/reprecio abc def'), AUTH_CHAT_ID);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/reprecio <buy> <sell>`');
+      });
+
+      it('rechaza precios no finitos devolviendo la guía de parseo', () => {
+        const res = dispatchTelegramUpdate(message('/reprecio Infinity 85.2'), AUTH_CHAT_ID);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/reprecio <buy> <sell>`');
+      });
+    });
+
+    describe('callbacks de confirmación de reprice', () => {
+      it('REPRICE_CONFIRM parsea los precios del callback y despacha REPRICE_EXECUTE', () => {
+        const res = dispatchTelegramUpdate(callback('REPRICE_CONFIRM:84.5:85.2'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('REPRICE_EXECUTE');
+        expect(res.params).toEqual({ buyPrice: 84.5, sellPrice: 85.2 });
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('REPRICE_CANCEL despacha la acción de cancelación sin params', () => {
+        const res = dispatchTelegramUpdate(callback('REPRICE_CANCEL'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('REPRICE_CANCEL');
+        expect(res.params).toBeUndefined();
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('REPRICE_CONFIRM con precios no numéricos no ejecuta y devuelve la guía', () => {
+        const res = dispatchTelegramUpdate(callback('REPRICE_CONFIRM:abc:def'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/reprecio <buy> <sell>`');
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('REPRICE_CONFIRM incompleto no ejecuta y devuelve la guía', () => {
+        const res = dispatchTelegramUpdate(callback('REPRICE_CONFIRM:84.5'), AUTH_CHAT_ID);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('`/reprecio <buy> <sell>`');
+      });
+
+      it('niega los callbacks de confirmación a un usuario no autorizado', () => {
+        const res = dispatchTelegramUpdate(
+          callback('REPRICE_CONFIRM:84.5:85.2', 555111222),
+          AUTH_CHAT_ID,
+        );
+        expect(res.authorized).toBe(false);
+        expect(res.action).toBeUndefined();
+        expect(res.responseMarkdown).toContain('NO AUTORIZADO');
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('niega REPRICE_CANCEL y BACKTEST_RUN a un usuario no autorizado', () => {
+        const cancel = dispatchTelegramUpdate(callback('REPRICE_CANCEL', 555111222), AUTH_CHAT_ID);
+        expect(cancel.authorized).toBe(false);
+        expect(cancel.action).toBeUndefined();
+
+        const run = dispatchTelegramUpdate(callback('BACKTEST_RUN', 555111222), AUTH_CHAT_ID);
+        expect(run.authorized).toBe(false);
+        expect(run.action).toBeUndefined();
+      });
+    });
+
+    describe('/macro', () => {
+      it('despacha MACRO sin params', () => {
+        const res = dispatchTelegramUpdate(message('/macro'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.command).toBe('/macro');
+        expect(res.action).toBe('MACRO');
+        expect(res.params).toBeUndefined();
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+    });
+
+    describe('/backtest', () => {
+      it('despacha BACKTEST_REQUEST con par y temporalidad', () => {
+        const res = dispatchTelegramUpdate(message('/backtest usdt/buy 7d'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.command).toBe('/backtest');
+        expect(res.action).toBe('BACKTEST_REQUEST');
+        expect(res.params).toEqual({ pair: 'usdt/buy', timeframe: '7d' });
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('despacha BACKTEST_REQUEST sin params cuando no recibe argumentos', () => {
+        const res = dispatchTelegramUpdate(message('/backtest'), AUTH_CHAT_ID);
+        expect(res.action).toBe('BACKTEST_REQUEST');
+        expect(res.params).toEqual({});
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('acepta solo el par cuando falta la temporalidad', () => {
+        const res = dispatchTelegramUpdate(message('/backtest usdt/buy'), AUTH_CHAT_ID);
+        expect(res.action).toBe('BACKTEST_REQUEST');
+        expect(res.params).toEqual({ pair: 'usdt/buy' });
+      });
+
+      it('el callback BACKTEST_RUN despacha BACKTEST_EXECUTE', () => {
+        const res = dispatchTelegramUpdate(callback('BACKTEST_RUN'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('BACKTEST_EXECUTE');
+        expect(res.params).toBeUndefined();
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+    });
+
+    describe('retrocompatibilidad del contrato previo', () => {
+      it('no altera la acción de los comandos existentes', () => {
+        const expectations: { text: string; action: string }[] = [
+          { text: '/status', action: 'STATUS' },
+          { text: '/spreads', action: 'SPREADS' },
+          { text: '/bcv', action: 'BCV' },
+          { text: '/bancos', action: 'BANCOS' },
+          { text: '/killswitch', action: 'KILLSWITCH' },
+          { text: '/pausar', action: 'KILLSWITCH' },
+          { text: '/resume', action: 'RESUME' },
+        ];
+
+        expectations.forEach(({ text, action }, index) => {
+          const res = dispatchTelegramUpdate(message(text, 1000 + index), AUTH_CHAT_ID);
+          expect(res.authorized).toBe(true);
+          expect(res.action, text).toBe(action);
+          expect(res.command, text).toBe(text);
+        });
+      });
+
+      it('no altera los callbacks existentes', () => {
+        const dispute = dispatchTelegramUpdate(callback('DISPUTE_ORD-5501'), AUTH_CHAT_ID);
+        expect(dispute.action).toBe('DISPUTE_ORDER');
+        expect(dispute.orderId).toBe('ORD-5501');
+
+        const killswitch = dispatchTelegramUpdate(callback('BOT_KILLSWITCH'), AUTH_CHAT_ID);
+        expect(killswitch.action).toBe('KILLSWITCH');
+
+        const resume = dispatchTelegramUpdate(callback('BOT_RESUME'), AUTH_CHAT_ID);
+        expect(resume.action).toBe('RESUME');
+
+        const status = dispatchTelegramUpdate(callback('BOT_STATUS'), AUTH_CHAT_ID);
+        expect(status.action).toBe('STATUS');
+      });
+
+      it('no confunde un comando nuevo con un prefijo de uno existente', () => {
+        const res = dispatchTelegramUpdate(message('/radares', 1200), AUTH_CHAT_ID);
+        expect(res.action).not.toBe('RADAR_SCAN');
+        expect(res.action).not.toBe('STATUS');
+      });
+    });
+  });
+
+  describe('Round-trip del payload de confirmación de reprice', () => {
+    it('buildRepriceCallbackData emite el formato REPRICE_CONFIRM:<buy>:<sell>', () => {
+      expect(buildRepriceCallbackData(84.5, 85.2)).toBe('REPRICE_CONFIRM:84.5:85.2');
+    });
+
+    it('el teclado de confirmación expone REPRICE_CONFIRM y REPRICE_CANCEL', () => {
+      const kb = buildRepriceConfirmationKeyboard(84.5, 85.2);
+      const buttons = kb.inline_keyboard.flat();
+      expect(buttons.some((b) => b.callback_data === 'REPRICE_CONFIRM:84.5:85.2')).toBe(true);
+      expect(buttons.some((b) => b.callback_data === 'REPRICE_CANCEL')).toBe(true);
+    });
+
+    it('el teclado generado por core se despacha de vuelta a los mismos precios', () => {
+      const kb = buildRepriceConfirmationKeyboard(84.5, 85.2);
+      const confirmData = kb.inline_keyboard
+        .flat()
+        .find((b) => b.callback_data?.startsWith('REPRICE_CONFIRM'))?.callback_data;
+      expect(confirmData).toBeDefined();
+
+      const res = dispatchTelegramUpdate(
+        {
+          update_id: 1300,
+          callback_query: {
+            id: 'cb-roundtrip',
+            from: { id: 123456789 },
+            data: confirmData,
+            message: { message_id: 1300, chat: { id: 123456789 } },
+          },
+        },
+        123456789,
+      );
+
+      expect(res.action).toBe('REPRICE_EXECUTE');
+      expect(res.params).toEqual({ buyPrice: 84.5, sellPrice: 85.2 });
+    });
+
+    it('parseRepriceCallbackData devuelve los precios o undefined si no puede parsear', () => {
+      expect(parseRepriceCallbackData('REPRICE_CONFIRM:84.5:85.2')).toEqual({
+        buyPrice: 84.5,
+        sellPrice: 85.2,
+      });
+      expect(parseRepriceCallbackData('REPRICE_CONFIRM:abc:def')).toBeUndefined();
+      expect(parseRepriceCallbackData('REPRICE_CONFIRM:84.5')).toBeUndefined();
+      expect(parseRepriceCallbackData('REPRICE_CANCEL')).toBeUndefined();
+      expect(parseRepriceCallbackData('DISPUTE_ORD-1')).toBeUndefined();
+    });
+  });
+
+  describe('Plantillas Operativas V2 (Radar, Macro, Backtest, Reprice)', () => {
+    const RADAR_ROWS = [
+      { bank: 'Banesco', price: 815.5, maxTc: 2000, volumeUsdt: 54000, spreadPct: 3.42 },
+      { bank: 'Mercantil', price: 812.1, maxTc: 1500, volumeUsdt: 32000, spreadPct: 2.87 },
+      { bank: 'BFC (Banesco Foreign)', price: 818.9, maxTc: 800, volumeUsdt: 12400, spreadPct: 1.95 },
+    ];
+
+    it('formatea el radar de gaps con el filtro aplicado y el top de brechas', () => {
+      const msg = formatRadarTelegramMessage(RADAR_ROWS, { bank: 'bcv', capital: 2000 });
+
+      expect(msg).toContain('RADAR');
+      expect(msg).toContain('Banesco');
+      expect(msg).toContain('Mercantil');
+      expect(msg).toContain('3\\.42%');
+      expect(msg).toContain('bcv');
+      expect(msg).toContain('2000\\.00');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el radar sin filtro declara los filtros por defecto', () => {
+      const msg = formatRadarTelegramMessage(RADAR_ROWS);
+      expect(msg).toContain('todos');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el radar sin resultados no rompe el balance de MarkdownV2', () => {
+      const msg = formatRadarTelegramMessage([], { bank: 'bcv' });
+      expect(msg).toContain('bcv');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el radar no lanza ante métricas no finitas', () => {
+      const msg = formatRadarTelegramMessage([
+        { bank: 'X', price: Number.NaN, maxTc: Number.NaN, volumeUsdt: Number.NaN, spreadPct: Number.NaN },
+      ]);
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('formatea el reporte macro consolidado', () => {
+      const msg = formatMacroTelegramMessage({
+        bcvRef: 685,
+        parallelRef: 815,
+        spreadPct: 18.98,
+        volatility2hPct: 2.35,
+        forecastNote: 'Ventana de intervencion en 48h',
+      });
+
+      expect(msg).toContain('MACRO');
+      expect(msg).toContain('685\\.00');
+      expect(msg).toContain('815\\.00');
+      expect(msg).toContain('18\\.98%');
+      expect(msg).toContain('2\\.35%');
+      expect(msg).toContain('Ventana de intervencion en 48h');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el reporte macro omite el pronostico cuando no viene informado', () => {
+      const withNote = formatMacroTelegramMessage({
+        bcvRef: 685,
+        parallelRef: 815,
+        spreadPct: 18.98,
+        volatility2hPct: 2.35,
+        forecastNote: '   ',
+      });
+      expect(withNote).toContain('MACRO');
+      expectParseableMarkdownV2(withNote);
+    });
+
+    it('formatea el reporte de backtest historico', () => {
+      const msg = formatBacktestTelegramMessage({
+        pair: 'usdt/buy',
+        timeframe: '7d',
+        trades: 42,
+        winRatePct: 61.9,
+        avgReturnPct: 1.84,
+        maxDrawdownPct: -4.2,
+        netReturnPct: 12.5,
+      });
+
+      expect(msg).toContain('BACKTEST');
+      expect(msg).toContain('usdt/buy');
+      expect(msg).toContain('7d');
+      expect(msg).toContain('61\\.90%');
+      expect(msg).toContain('\\-4\\.20%');
+      expect(msg).toContain('12\\.50%');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el backtest no lanza ante métricas no finitas', () => {
+      const msg = formatBacktestTelegramMessage({
+        pair: 'usdt/buy',
+        timeframe: '7d',
+        trades: Number.NaN,
+        winRatePct: Number.NaN,
+        avgReturnPct: Number.NaN,
+        maxDrawdownPct: Number.NaN,
+        netReturnPct: Number.NaN,
+      });
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el prompt de reprice pide confirmación explícita y no afirma ejecución', () => {
+      const msg = formatRepriceTelegramMessage({ buyPrice: 84.5, sellPrice: 85.2, confirmed: false });
+      expect(msg).toContain('CONFIRMACIÓN REQUERIDA');
+      expect(msg).toContain('84\\.50');
+      expect(msg).toContain('85\\.20');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el estado confirmado del reprice reporta la ejecución', () => {
+      const msg = formatRepriceTelegramMessage({ buyPrice: 84.5, sellPrice: 85.2, confirmed: true });
+      expect(msg).not.toContain('CONFIRMACIÓN REQUERIDA');
+      expect(msg).toContain('84\\.50');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el reprice con delta negativo escapa el signo correctamente', () => {
+      const msg = formatRepriceTelegramMessage({ buyPrice: 85.2, sellPrice: 84.5, confirmed: true });
+      expect(msg).toContain('\\-0\\.70');
+      expectParseableMarkdownV2(msg);
+    });
+  });
+
+  describe('Parseabilidad MarkdownV2 de los comandos operativos V2', () => {
+    it('todas las respuestas nuevas son parseables en MarkdownV2', () => {
+      const AUTH = 123456789;
+      const updates: { label: string; update: TelegramInboundUpdate }[] = [
+        {
+          label: '/radar',
+          update: {
+            update_id: 2000,
+            message: {
+              message_id: 1,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/radar',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/radar bcv 2000',
+          update: {
+            update_id: 2001,
+            message: {
+              message_id: 2,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/radar bcv 2000',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/radar bcv dosmil (guía)',
+          update: {
+            update_id: 2002,
+            message: {
+              message_id: 3,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/radar bcv dosmil',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/reprecio 84.5 85.2',
+          update: {
+            update_id: 2003,
+            message: {
+              message_id: 4,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/reprecio 84.5 85.2',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/reprecio incompleto (guía)',
+          update: {
+            update_id: 2004,
+            message: {
+              message_id: 5,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/reprecio 84.5',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/macro',
+          update: {
+            update_id: 2005,
+            message: {
+              message_id: 6,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/macro',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: '/backtest usdt/buy 7d',
+          update: {
+            update_id: 2006,
+            message: {
+              message_id: 7,
+              from: { id: AUTH },
+              chat: { id: AUTH, type: 'private' },
+              text: '/backtest usdt/buy 7d',
+              date: Date.now(),
+            },
+          },
+        },
+        {
+          label: 'REPRICE_CONFIRM',
+          update: {
+            update_id: 2007,
+            callback_query: {
+              id: 'cb-a',
+              from: { id: AUTH },
+              data: 'REPRICE_CONFIRM:84.5:85.2',
+              message: { message_id: 7, chat: { id: AUTH } },
+            },
+          },
+        },
+        {
+          label: 'REPRICE_CANCEL',
+          update: {
+            update_id: 2008,
+            callback_query: {
+              id: 'cb-b',
+              from: { id: AUTH },
+              data: 'REPRICE_CANCEL',
+              message: { message_id: 7, chat: { id: AUTH } },
+            },
+          },
+        },
+        {
+          label: 'BACKTEST_RUN',
+          update: {
+            update_id: 2009,
+            callback_query: {
+              id: 'cb-c',
+              from: { id: AUTH },
+              data: 'BACKTEST_RUN',
+              message: { message_id: 7, chat: { id: AUTH } },
+            },
+          },
+        },
+      ];
+
+      updates.forEach(({ label, update }) => {
+        const res = dispatchTelegramUpdate(update, AUTH);
+        expectParseableMarkdownV2(res.responseMarkdown);
+        expect(res.responseMarkdown.length, label).toBeGreaterThan(0);
+      });
     });
   });
 });
