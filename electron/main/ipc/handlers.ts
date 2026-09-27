@@ -14,6 +14,7 @@ import { P2PDatabaseService } from '../db/database';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
 import { getTreasurySnapshot, setTreasurySnapshot } from './treasury-snapshot';
+import { killswitchState, triggerKillswitch } from './killswitch-state';
 import {
   MonteCarloSimulator,
   type MonteCarloSimulationConfig,
@@ -694,16 +695,14 @@ export function getAgentSwarm(): AgentSwarmOrchestrator {
   return agentSwarmInstance;
 }
 
-export interface KillswitchState {
-  isTriggered: boolean;
-  timestamp?: number;
-  reason?: string;
-  source?: string;
-}
-
-export const killswitchState: KillswitchState = {
-  isTriggered: false,
-};
+/**
+ * Kill-switch state lives in `ipc/killswitch-state.ts` (a leaf module) and is re-exported
+ * here for backward compatibility with existing importers. Keeping it out of this file is
+ * what lets `gemini-orchestrator.ts` enforce the kill-switch on plan execution: handlers.ts
+ * imports the orchestrator, so the orchestrator must not import handlers.
+ */
+export type { KillswitchState } from './killswitch-state';
+export { killswitchState, triggerKillswitch };
 
 /**
  * Latest treasury snapshot announced by the renderer, or null when it never announced one.
@@ -713,14 +712,6 @@ export const killswitchState: KillswitchState = {
  */
 export function getLatestTreasurySnapshot(): TreasurySnapshotDto | null {
   return getTreasurySnapshot();
-}
-
-export function triggerKillswitch(reason = 'Emergencia', source = 'IPC'): boolean {
-  killswitchState.isTriggered = true;
-  killswitchState.timestamp = Date.now();
-  killswitchState.reason = reason;
-  killswitchState.source = source;
-  return true;
 }
 
 // Compile-time guarantee that the handler map matches the channel contract.

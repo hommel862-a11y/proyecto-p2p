@@ -15,6 +15,8 @@ import type { CopilotChatMessage, CopilotResponse, StrategyPlanCard } from '../s
 import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './gemini-skills';
 import type { AgentSwarmOrchestrator } from './agents/swarm-orchestrator';
 import { WebhookDispatcher, type PlanDispatchSummary } from './services/webhook-dispatcher';
+import { killswitchState } from './ipc/killswitch-state';
+import { getTreasurySnapshot } from './ipc/treasury-snapshot';
 
 const QUOTA_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
@@ -1789,17 +1791,92 @@ PAUTAS DE COMUNICACIÓN:
   }
 
   /**
+   * Records a refused execution in Engram so an operator can audit attempts that never
+   * reached the approval state and never left the machine.
+   */
+  private recordBlockedExecution(
+    plan: StrategyPlanRecord,
+    barrier: string,
+    detail: string,
+  ): void {
+    this.db.saveEngramObservation({
+      topicKey: `execution/blocked-${plan.id}-${Date.now().toString(36)}`,
+      type: 'decision',
+      scope: 'project',
+      what: `Ejecución del plan ${plan.id} (${plan.title}) bloqueada por ${barrier}.`,
+      why: detail,
+      whereAffected: `Ruta: ${plan.route}`,
+      learned: `Control Human-in-the-Loop detenido antes de aprobar y despachar: ${detail}. El plan permanece en estado ${plan.status} y ningún canal externo fue notificado.`,
+      confidenceScore: 1.0,
+      status: 'active',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+
+  /**
    * Approves a strategy plan and shifts its state in SQLite,
    * triggering multi-channel webhook dispatches to Telegram Sentinel and Google Sheets Ledger.
+   *
+   * ODD T3 (C1): approval sits behind an execution barrier. The kill-switch and the real
+   * treasury projection announced by the renderer are read live on every call, and a block
+   * short-circuits BEFORE the status flip and BEFORE any dispatch, so a refused plan can
+   * never reach SQLite as APPROVED nor an external channel. Both sources are read from leaf
+   * modules (`ipc/killswitch-state`, `ipc/treasury-snapshot`) because this file is imported
+   * by `ipc/handlers.ts`; importing handlers back here would close a cycle.
+   *
+   * Plan existence is checked first on purpose: a missing id cannot execute anything, and
+   * reporting the precise error keeps the Human-in-the-Loop contract intact.
    */
   async executePlan(planId: string): Promise<{
     success: boolean;
     error?: string;
     dispatchSummary?: PlanDispatchSummary;
+    riskWarnings?: string[];
   }> {
     const plan = this.db.getStrategyPlan(planId);
     if (!plan) {
       return { success: false, error: `El plan ${planId} no existe en la base de datos.` };
+    }
+
+    if (killswitchState.isTriggered) {
+      const detail = killswitchState.reason
+        ? `kill-switch activo (${killswitchState.reason}, origen: ${killswitchState.source ?? 'desconocido'})`
+        : 'kill-switch activo';
+      console.warn(`[GeminiOrchestrator] Ejecución bloqueada para ${planId}: ${detail}`);
+      this.recordBlockedExecution(plan, 'kill-switch', detail);
+      return { success: false, error: `Ejecución bloqueada: ${detail}` };
+    }
+
+    const riskWarnings: string[] = [];
+    const treasury = getTreasurySnapshot();
+    if (treasury) {
+      // The counts come from the renderer's projection, which already resolves the account
+      // status semantics of T2: `status: 'DISABLED'` counts as disabled and an absent status
+      // counts as ACTIVE. This side never re-derives them from the raw account list.
+      const criticalReasons: string[] = [];
+      if (treasury.disabledCount > 0) {
+        criticalReasons.push(`${treasury.disabledCount} deshabilitada(s)`);
+      }
+      if (treasury.overLimitCount > 0) {
+        criticalReasons.push(`${treasury.overLimitCount} sobre el límite diario`);
+      }
+      if (treasury.saturatedCount > 0) {
+        criticalReasons.push(`${treasury.saturatedCount} saturada(s) en velocidad`);
+      }
+
+      if (criticalReasons.length > 0) {
+        const detail = `tesorería real en estado crítico (over-limit/saturada/deshabilitada): ${criticalReasons.join(', ')}`;
+        console.warn(`[GeminiOrchestrator] Ejecución bloqueada para ${planId}: ${detail}`);
+        this.recordBlockedExecution(plan, 'tesorería real', detail);
+        return { success: false, error: `Ejecución bloqueada: ${detail}` };
+      }
+
+      if (treasury.nearLimitCount > 0) {
+        riskWarnings.push(
+          `${treasury.nearLimitCount} cuenta(s) bancaria(s) cercana(s) al límite diario (>= 80%). Rotar antes de la siguiente operación.`,
+        );
+      }
     }
 
     const updated = this.db.updateStrategyPlanStatus(planId, 'APPROVED');
@@ -1831,7 +1908,13 @@ PAUTAS DE COMUNICACIÓN:
       }
     }
 
-    return { success: updated, dispatchSummary };
+    return {
+      success: updated,
+      dispatchSummary,
+      // Only surfaced when the treasury is near its daily limits: the plan still executes,
+      // but the operator (and any caller of this result) must see the rotation warning.
+      ...(riskWarnings.length > 0 ? { riskWarnings } : {}),
+    };
   }
 
   /**

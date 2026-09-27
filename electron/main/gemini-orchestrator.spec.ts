@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import { P2PDatabaseService } from './db/database';
+import type { StrategyPlanRecord } from './db/database';
 import { GeminiOrchestrator } from './gemini-orchestrator';
+import type { WebhookDispatcher } from './services/webhook-dispatcher';
+import { killswitchState, resetKillswitch, triggerKillswitch } from './ipc/killswitch-state';
+import { clearTreasurySnapshot, setTreasurySnapshot } from './ipc/treasury-snapshot';
+import type { TreasurySnapshotDto } from '../shared/types';
 
 describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
   const testDbPath = path.resolve(__dirname, '../../scratch/test_copilot_ops.sqlite');
@@ -137,5 +142,160 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     expect(response.suggestedPlan).toBeDefined();
     expect(response.suggestedPlan?.title).toContain('Plan de Mitigación Forense');
     expect(response.suggestedPlan?.expectedNetSpreadPct).toBeGreaterThanOrEqual(0.5);
+  });
+
+  /**
+   * ODD T3 (C1): plan execution sits behind an execution barrier. The kill-switch and the
+   * real treasury projection are module-level singletons shared with the rest of the main
+   * process, so every test arms and disarms them explicitly.
+   */
+  describe('barrera de ejecución: kill-switch y tesorería real', () => {
+    const barrierPlanId = 'PLAN-BARRIER-1';
+    let guarded: GeminiOrchestrator;
+    let dispatchPlanExecution: ReturnType<typeof vi.fn>;
+
+    function buildSnapshot(overrides: Partial<TreasurySnapshotDto> = {}): TreasurySnapshotDto {
+      return {
+        accounts: [],
+        totalBalanceVes: 240000,
+        totalSpentTodayVes: 0,
+        totalReceivedTodayVes: 0,
+        totalDailyLimitVes: 440000,
+        nearLimitCount: 0,
+        overLimitCount: 0,
+        disabledCount: 0,
+        saturatedCount: 0,
+        rotationRecommendationId: null,
+        generatedAt: Date.now(),
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      resetKillswitch();
+      clearTreasurySnapshot();
+
+      // A stub dispatcher makes "no despachó" an assertion instead of an inference.
+      dispatchPlanExecution = vi.fn().mockResolvedValue({
+        planId: barrierPlanId,
+        timestamp: Date.now(),
+        telegram: { sent: false },
+        sheets: { synced: false, mode: 'SIMULATED' },
+      });
+      guarded = new GeminiOrchestrator(
+        dbService,
+        undefined,
+        undefined,
+        { dispatchPlanExecution } as unknown as WebhookDispatcher,
+      );
+
+      const plan: StrategyPlanRecord = {
+        id: barrierPlanId,
+        title: 'Plan de la barrera de ejecución',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        asset: 'USDT',
+        fiat: 'VES',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.4,
+        expectedProfitUsdt: 14,
+        riskLevel: 'LOW',
+        rationale: 'Spread neto por encima de la regla de oro.',
+        status: 'PROPOSED',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      dbService.saveStrategyPlan(plan);
+    });
+
+    afterEach(() => {
+      resetKillswitch();
+      clearTreasurySnapshot();
+    });
+
+    it('bloquea la ejecución con el kill-switch activo: no aprueba ni despacha', async () => {
+      triggerKillswitch('Prueba de barrera', 'SPEC');
+
+      const result = await guarded.executePlan(barrierPlanId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('kill-switch activo');
+      expect(result.dispatchSummary).toBeUndefined();
+      expect(dispatchPlanExecution).not.toHaveBeenCalled();
+      expect(dbService.getStrategyPlan(barrierPlanId)?.status).toBe('PROPOSED');
+      expect(
+        dbService
+          .listEngramObservations()
+          .some((obs) => obs.topicKey.startsWith(`execution/blocked-${barrierPlanId}`)),
+      ).toBe(true);
+    });
+
+    it.each([
+      ['over-limit', { overLimitCount: 1 }],
+      ['saturada', { saturatedCount: 1 }],
+      ['deshabilitada', { disabledCount: 1 }],
+    ])(
+      'bloquea la ejecución con la tesorería real en estado crítico (%s)',
+      async (_label, overrides) => {
+        setTreasurySnapshot(buildSnapshot(overrides));
+
+        const result = await guarded.executePlan(barrierPlanId);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('tesorería real en estado crítico');
+        expect(dispatchPlanExecution).not.toHaveBeenCalled();
+        expect(dbService.getStrategyPlan(barrierPlanId)?.status).toBe('PROPOSED');
+      },
+    );
+
+    it('bloquea la ejecución con una cuenta sobre el límite y otra deshabilitada', async () => {
+      setTreasurySnapshot(buildSnapshot({ overLimitCount: 1, disabledCount: 1 }));
+
+      const result = await guarded.executePlan(barrierPlanId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('1 deshabilitada(s)');
+      expect(result.error).toContain('1 sobre el límite diario');
+    });
+
+    it('ejecuta sin restricciones: kill-switch libre y sin snapshot cacheado', async () => {
+      const result = await guarded.executePlan(barrierPlanId);
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.riskWarnings).toBeUndefined();
+      expect(dispatchPlanExecution).toHaveBeenCalledTimes(1);
+      expect(dbService.getStrategyPlan(barrierPlanId)?.status).toBe('APPROVED');
+    });
+
+    it('ejecuta con advertencia cuando una cuenta se acerca al límite diario', async () => {
+      setTreasurySnapshot(buildSnapshot({ nearLimitCount: 1 }));
+
+      const result = await guarded.executePlan(barrierPlanId);
+
+      expect(result.success).toBe(true);
+      expect(result.riskWarnings).toHaveLength(1);
+      expect(result.riskWarnings?.[0]).toContain('cerca');
+      expect(dispatchPlanExecution).toHaveBeenCalledTimes(1);
+      expect(dbService.getStrategyPlan(barrierPlanId)?.status).toBe('APPROVED');
+    });
+
+    it('reacciona en caliente: un kill-switch disparado después bloquea el siguiente plan', async () => {
+      const first = await guarded.executePlan(barrierPlanId);
+      expect(first.success).toBe(true);
+
+      triggerKillswitch('Segundo intento', 'SPEC');
+      expect(killswitchState.isTriggered).toBe(true);
+
+      dbService.saveStrategyPlan({
+        ...(dbService.getStrategyPlan(barrierPlanId) as StrategyPlanRecord),
+        id: 'PLAN-BARRIER-2',
+        status: 'PROPOSED',
+      });
+      const second = await guarded.executePlan('PLAN-BARRIER-2');
+
+      expect(second.success).toBe(false);
+      expect(second.error).toContain('Segundo intento');
+      expect(dispatchPlanExecution).toHaveBeenCalledTimes(1);
+    });
   });
 });
