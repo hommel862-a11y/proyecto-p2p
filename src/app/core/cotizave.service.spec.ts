@@ -114,4 +114,39 @@ describe('CotizaveService', () => {
     expect(svc.error()).toContain('Cotizave');
     expect(toast.error).toHaveBeenCalled();
   });
+
+  it('surfaces the real HTTP 401 (invalid key) instead of the generic no-cache message when the desktop IPC rejects', async () => {
+    (window as unknown as Record<string, unknown>)['electron'] = {
+      fetchCotizave: vi.fn(async () => {
+        throw new Error('Cotizave HTTP Error 401');
+      }),
+    };
+
+    await svc.fetchRates();
+
+    expect(svc.loading()).toBe(false);
+    expect(svc.error()).not.toBeNull();
+    expect(svc.error()).toContain('401');
+    expect(svc.error()).not.toContain('no disponible y sin caché');
+    const toastMsg = toast.error.mock.calls[0]?.[0] as string | undefined;
+    expect(toastMsg).toContain('401');
+  });
+
+  it('keeps using the cached rates and warns when the circuit is open but a previous cache exists', async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+    vi.stubGlobal('fetch', fetchMock);
+    await svc.fetchRates();
+    expect(Object.keys(svc.ratesByMarket()).length).toBeGreaterThan(0);
+
+    // Ahora el camino IPC/red falla: la próxima ejecución del circuito debe
+    // caer en el fallback y reutilizar la caché cargada.
+    const failingMock = vi.fn<FetchLike>().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', failingMock);
+
+    await svc.fetchRates();
+
+    expect(Object.keys(svc.ratesByMarket()).length).toBeGreaterThan(0);
+    expect(svc.ratesByMarket()['binance']).toBeDefined();
+    expect(toast.warn).toHaveBeenCalled();
+  });
 });

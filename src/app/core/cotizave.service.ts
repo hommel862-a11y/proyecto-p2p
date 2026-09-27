@@ -66,20 +66,26 @@ export class CotizaveService implements OnDestroy {
     this.error.set(null);
 
     try {
+      let lastError: unknown = null;
       const executeNetworkCall = async (signal: AbortSignal) => {
-        const electronWin =
-          typeof window !== 'undefined'
-            ? (window as unknown as {
-                electron?: {
-                  fetchCotizave?: (req: unknown) => Promise<unknown>;
-                };
-              })
-            : null;
+        try {
+          const electronWin =
+            typeof window !== 'undefined'
+              ? (window as unknown as {
+                  electron?: {
+                    fetchCotizave?: (req: unknown) => Promise<unknown>;
+                  };
+                })
+              : null;
 
-        if (electronWin?.electron?.fetchCotizave) {
-          return await electronWin.electron.fetchCotizave({ apiKey: key, endpoint });
+          if (electronWin?.electron?.fetchCotizave) {
+            return await electronWin.electron.fetchCotizave({ apiKey: key, endpoint });
+          }
+          return await this.fetchRatesFromBrowser(endpoint, key, signal);
+        } catch (err) {
+          lastError = err;
+          throw err;
         }
-        return await this.fetchRatesFromBrowser(endpoint, key, signal);
       };
 
       let rates: Record<string, CotizaveRate>;
@@ -89,7 +95,20 @@ export class CotizaveService implements OnDestroy {
           this.toast.warn('Usando cotizaciones cacheadas (circuito en protección).', 'Cotizave');
           return cached;
         }
-        throw new Error('Cotizave no disponible y sin caché previa');
+        const lastMsg = lastError instanceof Error ? lastError.message : '';
+        if (lastMsg.includes('HTTP Error 401')) {
+          throw new Error(
+            'API key de Cotizave inválida o vencida (HTTP 401). Revisá tu key en Ajustes → API Keys.',
+            { cause: lastError },
+          );
+        }
+        if (lastMsg.includes('HTTP Error 403')) {
+          throw new Error(
+            'Cotizave rechazó el acceso (HTTP 403). Verificá que el plan de tu API key incluya el endpoint /v1/fx.',
+            { cause: lastError },
+          );
+        }
+        throw new Error('Cotizave no disponible y sin caché previa', { cause: lastError ?? undefined });
       };
 
       const result = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
