@@ -82,7 +82,6 @@ describe('Repricer Engine (Core)', () => {
     minSpreadVes: 10.0,
     breakEvenSellPrice: 835.0,
     maxBuyPrice: 832.0,
-    isDryRun: true,
   };
 
   it('calculates position price correctly for TOP_1, TOP_2 and UNDERCUT', () => {

@@ -222,6 +222,14 @@ describe('TelegramWorkerService', () => {
             start: vi.fn(),
             stop: vi.fn(),
             isActive: vi.fn(() => false),
+            // Modo real del motor. Sin publicador de merchant registrado, el
+            // servicio solo puede reportar SOLO LECTURA.
+            executionMode: vi.fn(() => 'READ_ONLY'),
+            executionModeLabel: vi.fn(() => 'SOLO LECTURA — NO PUBLICA'),
+            executionModeDetail: vi.fn(
+              () =>
+                'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.',
+            ),
             // Writable, like the real engine: the worker overwrites these on an
             // operator-confirmed reprice.
             currentBuyAdPrice: buyAdPrice,
@@ -654,6 +662,22 @@ describe('TelegramWorkerService', () => {
     function sentPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
       return sentText(spy, index).replace(/\\/g, '');
     }
+
+    it('STATUS reports the real repricer mode and never promises live publishing', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/status'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      // El operador tiene que ver la verdad desde el teléfono: el motor calcula y
+      // loguea precios, pero no publica anuncios.
+      expect(text).toContain('Modo del Repricer: *SOLO LECTURA — NO PUBLICA*');
+      expect(text).toMatch(/no publica anuncios/i);
+      // "PUNTAS EN VIVO" sí es honesto (es una lectura del libro), pero el modo de
+      // publicación no puede aparecer en vivo.
+      expect(text).not.toMatch(/en vivo/i);
+    });
 
     it('RADAR_SCAN builds rows from the live depth and reports real liquidity', async () => {
       fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);

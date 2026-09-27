@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, OnDestroy } from '@angular/core';
+import { Injectable, computed, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { BinanceP2pService } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
@@ -9,12 +9,74 @@ import {
   type RepricerStrategy,
 } from '@p2p/core';
 
+/**
+ * Modos de ejecución REALES del motor de repricing.
+ *
+ * Solo hay dos verdades posibles, y ninguna depende de lo que el operador
+ * seleccione en la interfaz: o existe un publicador de anuncios registrado, o no
+ * existe. Ver el registro de publicadores más abajo.
+ */
+export const REPRICER_EXECUTION_MODES = {
+  /** Calcula precios y los registra. No toca ningún anuncio de Binance. */
+  READ_ONLY: 'READ_ONLY',
+  /** Existe un publicador registrado y el ciclo le delega la escritura. */
+  PUBLISHING: 'PUBLISHING',
+} as const;
+
+export type RepricerExecutionMode =
+  (typeof REPRICER_EXECUTION_MODES)[keyof typeof REPRICER_EXECUTION_MODES];
+
+/** Precios que el motor quiere dejar publicados en los anuncios del operador. */
+export interface RepricerPublishRequest {
+  buyPrice: number;
+  sellPrice: number;
+  strategy: RepricerStrategy;
+}
+
+/**
+ * Puerto de escritura contra los anuncios de Binance P2P.
+ *
+ * NO EXISTE NINGUNA IMPLEMENTACIÓN EN ESTE REPOSITORIO. El único endpoint de
+ * Binance del proyecto es `adv/search` (lectura de mercado, en
+ * `binance-p2p.service.ts`). La interfaz existe únicamente como punto de
+ * extensión honesto.
+ */
+export interface RepricerAdPublisher {
+  /** Devuelve `true` si los anuncios quedaron efectivamente actualizados. */
+  publish(request: RepricerPublishRequest): Promise<boolean>;
+}
+
+/**
+ * Registro de publicadores de anuncios.
+ *
+ * ESTÁ VACÍO A PROPÓSITO, y por eso el motor jamás puede reportarse "en vivo".
+ *
+ * Para que este motor reporte `PUBLISHING` de forma legítima habría que:
+ *   1. implementar `RepricerAdPublisher` contra la API de merchant de Binance
+ *      (credenciales, idempotencia, límites de tasa, dinero real);
+ *   2. registrarlo con `registerRepricerPublisher()` durante el arranque;
+ *   3. verificar el resultado real de la escritura.
+ * Recién entonces las etiquetas de este archivo dicen la verdad, sin que nadie
+ * tenga que editarlas: el modo es DERIVADO de la existencia del publicador.
+ */
+const adPublisher = signal<RepricerAdPublisher | null>(null);
+
+/** Registra el publicador real. Único camino que puede habilitar el modo `PUBLISHING`. */
+export function registerRepricerPublisher(publisher: RepricerAdPublisher): void {
+  adPublisher.set(publisher);
+}
+
+/** Limpia el registro. Exclusivo para tests: el runtime nunca lo llama. */
+export function unregisterRepricerPublisher(): void {
+  adPublisher.set(null);
+}
+
 export interface RepricerLogEntry {
   timestamp: string;
   action: 'UPDATE' | 'KEEP' | 'PAUSE';
   message: string;
   spreadVes: number;
-  isDryRun: boolean;
+  executionMode: RepricerExecutionMode;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -24,7 +86,6 @@ export class BinanceRepricerService implements OnDestroy {
   private readonly accounts = inject(AccountsService);
 
   readonly isActive = signal<boolean>(false);
-  readonly isDryRun = signal<boolean>(true);
   readonly strategy = signal<RepricerStrategy>('TOP_1');
   readonly stepVes = signal<number>(0.05);
   readonly minSpreadVes = signal<number>(10.0);
@@ -40,6 +101,42 @@ export class BinanceRepricerService implements OnDestroy {
 
   private loopTimer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * Única fuente de verdad del modo de ejecución. No es un flag: se deriva de si
+   * hay un publicador real registrado. Sin publicador, `READ_ONLY` es el único
+   * valor alcanzable, y ninguna etiqueta puede afirmar publicación.
+   */
+  readonly executionMode = computed<RepricerExecutionMode>(() =>
+    adPublisher() ? REPRICER_EXECUTION_MODES.PUBLISHING : REPRICER_EXECUTION_MODES.READ_ONLY,
+  );
+
+  /**
+   * ¿Hay un publicador real registrado? Lo consume la UI para el color del badge,
+   * para que ninguna plantilla tenga que comparar el modo a mano.
+   */
+  readonly isPublishing = computed<boolean>(
+    () => this.executionMode() === REPRICER_EXECUTION_MODES.PUBLISHING,
+  );
+
+  /** Etiqueta corta del modo real. Es la única fuente de las etiquetas de la UI. */
+  readonly executionModeLabel = computed<string>(() =>
+    this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY
+      ? 'SOLO LECTURA — NO PUBLICA'
+      : 'PUBLICANDO EN BINANCE',
+  );
+
+  /** Frase explicativa: qué hace el motor y qué NO hace. */
+  readonly executionModeDetail = computed<string>(() =>
+    this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY
+      ? 'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.'
+      : 'Publica los precios calculados contra la API de merchant de Binance.',
+  );
+
+  /** Prefijo de cada línea de log. Nunca dice "en vivo" por construcción. */
+  readonly logPrefix = computed<string>(() =>
+    this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY ? '[SOLO LECTURA] ' : '[PUBLICANDO] ',
+  );
+
   ngOnDestroy(): void {
     this.stop();
   }
@@ -51,7 +148,7 @@ export class BinanceRepricerService implements OnDestroy {
     } else {
       this.start();
       this.toast.success(
-        `Bot de Repricing activado (${this.isDryRun() ? 'Modo Simulación' : 'Modo En Vivo'}).`,
+        `Bot de Repricing activado (${this.executionModeLabel()}). ${this.executionModeDetail()}`,
         'Mesa de Operaciones',
       );
     }
@@ -92,14 +189,6 @@ export class BinanceRepricerService implements OnDestroy {
     if (this.isActive()) void this.executeCycle();
   }
 
-  setDryRun(dryRun: boolean): void {
-    this.isDryRun.set(dryRun);
-    this.toast.info(
-      dryRun ? 'Modo Simulación activado (no toca anuncios reales).' : 'Modo En Vivo activado.',
-      'Configuración Repricer',
-    );
-  }
-
   async executeCycle(): Promise<RepricerDecision | null> {
     const depth = await this.binance.fetchMarketDepth('USDT', 'VES');
     if (!depth) {
@@ -118,7 +207,6 @@ export class BinanceRepricerService implements OnDestroy {
       minSpreadVes: this.minSpreadVes(),
       breakEvenSellPrice: this.breakEvenFloor(),
       maxBuyPrice: this.maxBuyPrice(),
-      isDryRun: this.isDryRun(),
     };
 
     const decision = evaluateRepricer({
@@ -134,12 +222,7 @@ export class BinanceRepricerService implements OnDestroy {
     if (decision.action === 'UPDATE') {
       this.currentBuyAdPrice.set(decision.suggestedBuyPrice);
       this.currentSellAdPrice.set(decision.suggestedSellPrice);
-      const prefix = this.isDryRun() ? '[SIMULACIÓN] ' : '[EN VIVO] ';
-      this.addLog(
-        'UPDATE',
-        `${prefix}Precios optimizados: Compra ${decision.suggestedBuyPrice} Bs | Venta ${decision.suggestedSellPrice} Bs (${this.strategy()})`,
-        decision.spreadVes,
-      );
+      await this.publishOrLog(decision);
     } else if (decision.action === 'PAUSE') {
       this.stop();
       this.addLog(
@@ -159,13 +242,42 @@ export class BinanceRepricerService implements OnDestroy {
     return decision;
   }
 
+  /**
+   * Escribe los precios si hay un publicador real registrado; si no, deja constancia
+   * de que solo se calcularon. El log usa SIEMPRE `logPrefix()`, que ya depende del
+   * modo real, así que no puede afirmar publicación cuando no la hubo.
+   */
+  private async publishOrLog(decision: RepricerDecision): Promise<void> {
+    const prefix = this.logPrefix();
+    const resumen = `Compra ${decision.suggestedBuyPrice} Bs | Venta ${decision.suggestedSellPrice} Bs (${this.strategy()})`;
+    const publisher = adPublisher();
+
+    if (!publisher) {
+      this.addLog('UPDATE', `${prefix}Precios optimizados: ${resumen}`, decision.spreadVes);
+      return;
+    }
+
+    const published = await publisher.publish({
+      buyPrice: decision.suggestedBuyPrice,
+      sellPrice: decision.suggestedSellPrice,
+      strategy: this.strategy(),
+    });
+    this.addLog(
+      'UPDATE',
+      published
+        ? `${prefix}Precios publicados en Binance: ${resumen}`
+        : `${prefix}Publicación rechazada por el publicador: ${resumen}`,
+      decision.spreadVes,
+    );
+  }
+
   private addLog(action: 'UPDATE' | 'KEEP' | 'PAUSE', message: string, spreadVes: number): void {
     const entry: RepricerLogEntry = {
       timestamp: new Date().toLocaleTimeString('es-VE'),
       action,
       message,
       spreadVes,
-      isDryRun: this.isDryRun(),
+      executionMode: this.executionMode(),
     };
     this.logs.update((prev) => [entry, ...prev.slice(0, 19)]);
   }

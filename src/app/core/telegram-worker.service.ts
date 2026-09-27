@@ -641,7 +641,7 @@ export class TelegramWorkerService implements OnDestroy {
             ? 'SINCRONIZADO'
             : '⚠️ SINCRONIZADO (stale)'
           : 'PENDIENTE';
-        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\``;
+        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}`;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
         break;

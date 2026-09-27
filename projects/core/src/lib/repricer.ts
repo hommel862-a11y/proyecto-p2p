@@ -25,8 +25,6 @@ export interface RepricerConfig {
   breakEvenSellPrice: number;
   /** Hard maximum buying price to prevent overpaying */
   maxBuyPrice?: number;
-  /** Whether the repricer is in dry-run/simulation mode */
-  isDryRun: boolean;
 }
 
 export interface RepricerEvaluationInput {
