@@ -10,13 +10,18 @@ import {
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
+  formatPanelTelegramMessage,
   buildFraudAlertKeyboard,
   buildRepricerControlKeyboard,
   buildRepriceConfirmationKeyboard,
   buildRepriceCallbackData,
+  buildPanelKeyboard,
+  isPanelCallbackData,
   parseRepriceCallbackData,
   dispatchTelegramUpdate,
+  PANEL_CALLBACKS,
   TelegramInboundUpdate,
+  type PanelReport,
 } from './telegram-sentinel';
 
 // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
@@ -1017,6 +1022,209 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
         expectParseableMarkdownV2(res.responseMarkdown);
         expect(res.responseMarkdown.length, label).toBeGreaterThan(0);
       });
+    });
+  });
+
+  describe('panel editable (/panel)', () => {
+    const PANEL_AUTH = 555000111;
+
+    /**
+     * El mismo texto con los escapes de MarkdownV2 quitados, para que las
+     * aserciones hablen del valor que ve el operador (`85.90`) y no del
+     * formato de cable (`85\.90`). El formato de cable lo cubre
+     * `expectParseableMarkdownV2`.
+     */
+    function plain(markdown: string): string {
+      return markdown.replace(/\\/g, '');
+    }
+
+    /** Report de referencia. Todo valor ausente viaja como NaN, nunca como 0. */
+    const FULL_REPORT: PanelReport = {
+      executionModeLabel: 'SOLO LECTURA — NO PUBLICA',
+      executionModeDetail:
+        'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.',
+      repricerActive: true,
+      repricerBuyPrice: 84.5,
+      repricerSellPrice: 85.2,
+      market: { bestBuyPrice: 85.0, bestSellPrice: 85.9, spreadPct: 1.06, spreadVes: 0.9 },
+      fetchedAt: '12:00:00',
+      marketStale: false,
+    };
+
+    it('formatea el panel con el modo real, el libro y la frescura', () => {
+      const msg = formatPanelTelegramMessage(FULL_REPORT);
+
+      expect(msg).toContain('PANEL DEL TERMINAL');
+      expect(msg).toContain('SOLO LECTURA — NO PUBLICA');
+      expect(msg).toContain('No publica anuncios');
+      expect(msg).toContain('🟢 ACTIVO');
+      const visible = plain(msg);
+      expect(visible).toContain('84.50');
+      expect(visible).toContain('85.20');
+      expect(visible).toContain('85.00');
+      expect(visible).toContain('85.90');
+      expect(visible).toContain('+1.06%');
+      expect(visible).toContain('12:00:00');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('nunca afirma publicación en vivo', () => {
+      const msg = formatPanelTelegramMessage(FULL_REPORT);
+
+      expect(msg).not.toMatch(/en vivo/i);
+      expect(msg).not.toMatch(/publicando/i);
+    });
+
+    it('declaro el motor detenido sin dejar de mostrar el resto del estado', () => {
+      const msg = formatPanelTelegramMessage({ ...FULL_REPORT, repricerActive: false });
+
+      expect(msg).toContain('⏸ DETENIDO');
+      expect(plain(msg)).toContain('85.90');
+    });
+
+    it('declaro la ausencia de libro en vez de imprimir ceros como precios', () => {
+      const msg = formatPanelTelegramMessage({ ...FULL_REPORT, market: null });
+
+      expect(msg).toContain('Libro sin datos');
+      // 0.00 sería un precio mentira: tiene que faltar la línea, no mostrar 0.
+      expect(plain(msg)).not.toContain('`0.00 Bs`');
+      expect(plain(msg)).not.toContain('+0.00%');
+      // El resto del panel sigue siendo útil aunque no haya libro.
+      expect(msg).toContain('SOLO LECTURA — NO PUBLICA');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('imprime n/d cuando el motor todavía no tiene precio definido', () => {
+      const msg = formatPanelTelegramMessage({
+        ...FULL_REPORT,
+        repricerBuyPrice: Number.NaN,
+        repricerSellPrice: Number.NaN,
+      });
+
+      expect(plain(msg)).toMatch(/compra `n\/d Bs`/);
+      expect(plain(msg)).toMatch(/venta `n\/d Bs`/);
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('marca la lectura de caché como posiblemente desactualizada', () => {
+      const msg = formatPanelTelegramMessage({ ...FULL_REPORT, marketStale: true });
+
+      expect(msg).toMatch(/pueden estar desactualizados/i);
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('es determinista: el mismo report produce el mismo texto', () => {
+      // El formateador no puede leer el reloj: el tiempo entra ya formateado.
+      expect(formatPanelTelegramMessage(FULL_REPORT)).toBe(
+        formatPanelTelegramMessage(FULL_REPORT),
+      );
+    });
+
+    it('construye el teclado del panel con refrescar, pausar y reanudar', () => {
+      const kb = buildPanelKeyboard();
+      const buttons = kb.inline_keyboard.flat();
+
+      expect(buttons.map((b) => b.callback_data)).toEqual([
+        PANEL_CALLBACKS.REFRESH,
+        PANEL_CALLBACKS.REPRICER_STOP,
+        PANEL_CALLBACKS.REPRICER_START,
+      ]);
+    });
+
+    it('reconoce solo los callbacks propios del panel', () => {
+      expect(isPanelCallbackData(PANEL_CALLBACKS.REFRESH)).toBe(true);
+      expect(isPanelCallbackData(PANEL_CALLBACKS.REPRICER_STOP)).toBe(true);
+      expect(isPanelCallbackData(PANEL_CALLBACKS.REPRICER_START)).toBe(true);
+      // Los callbacks legacy emiten mensajes nuevos: no son del panel.
+      expect(isPanelCallbackData('BOT_KILLSWITCH')).toBe(false);
+      expect(isPanelCallbackData('REPRICE_CONFIRM:84.5:85.2')).toBe(false);
+      expect(isPanelCallbackData('BACKTEST_RUN')).toBe(false);
+      expect(isPanelCallbackData(undefined)).toBe(false);
+    });
+
+    it('rutea /panel a la acción PANEL para el chat autorizado', () => {
+      const res = dispatchTelegramUpdate(
+        {
+          update_id: 3001,
+          message: {
+            message_id: 1,
+            from: { id: PANEL_AUTH },
+            chat: { id: PANEL_AUTH, type: 'private' },
+            text: '/panel',
+            date: Date.now(),
+          },
+        },
+        PANEL_AUTH,
+      );
+
+      expect(res.authorized).toBe(true);
+      expect(res.command).toBe('/panel');
+      expect(res.action).toBe('PANEL');
+      expectParseableMarkdownV2(res.responseMarkdown);
+    });
+
+    it('rechaza /panel de un chat no autorizado', () => {
+      const res = dispatchTelegramUpdate(
+        {
+          update_id: 3002,
+          message: {
+            message_id: 1,
+            from: { id: 999 },
+            chat: { id: 999, type: 'private' },
+            text: '/panel',
+            date: Date.now(),
+          },
+        },
+        PANEL_AUTH,
+      );
+
+      expect(res.authorized).toBe(false);
+      expect(res.action).toBeUndefined();
+    });
+
+    it('rutea los botones del panel a PANEL, KILLSWITCH y RESUME', () => {
+      const cases: Array<[string, string]> = [
+        [PANEL_CALLBACKS.REFRESH, 'PANEL'],
+        [PANEL_CALLBACKS.REPRICER_STOP, 'KILLSWITCH'],
+        [PANEL_CALLBACKS.REPRICER_START, 'RESUME'],
+      ];
+
+      cases.forEach(([data, action]) => {
+        const res = dispatchTelegramUpdate(
+          {
+            update_id: 3003,
+            callback_query: {
+              id: 'cb-panel',
+              from: { id: PANEL_AUTH },
+              data,
+              // El mensaje del callback ES el panel que hay que re-renderizar.
+              message: { message_id: 7, chat: { id: PANEL_AUTH } },
+            },
+          },
+          PANEL_AUTH,
+        );
+
+        expect(res.action, data).toBe(action);
+        expect(res.authorized, data).toBe(true);
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+    });
+
+    it('rechaza un botón del panel lanzado desde un chat no autorizado', () => {
+      const res = dispatchTelegramUpdate(
+        {
+          update_id: 3004,
+          callback_query: {
+            id: 'cb-intruder',
+            from: { id: 999 },
+            data: PANEL_CALLBACKS.REPRICER_STOP,
+            message: { message_id: 7, chat: { id: 999 } },
+          },
+        },
+        PANEL_AUTH,
+      );
+
+      expect(res.authorized).toBe(false);
     });
   });
 });

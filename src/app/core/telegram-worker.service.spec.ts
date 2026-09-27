@@ -625,6 +625,392 @@ describe('TelegramWorkerService', () => {
     });
   });
 
+  describe('editTelegramMessage', () => {
+    /** Route only editMessageText, mirroring a real 400 from the Bot API. */
+    function stubEdit(payload: unknown, status = 200) {
+      const mock = vi.fn<FetchLike>(async () => jsonResponse(payload, status < 400, status));
+      vi.stubGlobal('fetch', mock);
+      return mock;
+    }
+
+    it('posts the message id, text and keyboard to editMessageText', async () => {
+      const mock = stubEdit({ ok: true, result: { message_id: 7 } });
+      const keyboard: TelegramInlineKeyboardMarkup = {
+        inline_keyboard: [[{ text: '🔄 Refrescar', callback_data: 'PANEL_REFRESH' }]],
+      };
+
+      const outcome = await svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*', keyboard);
+
+      expect(outcome).toBe('EDITED');
+      const [url, init] = mock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`https://api.telegram.org/bot${TOKEN}/editMessageText`);
+      expect(init.method).toBe('POST');
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(body['chat_id']).toBe(CHAT_ID);
+      expect(body['message_id']).toBe(7);
+      expect(body['parse_mode']).toBe('MarkdownV2');
+      expect(body['reply_markup']).toEqual(keyboard);
+    });
+
+    it('omits reply_markup when no keyboard is supplied', async () => {
+      const mock = stubEdit({ ok: true, result: { message_id: 7 } });
+
+      await svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*');
+
+      const [, init] = mock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(body).not.toHaveProperty('reply_markup');
+    });
+
+    it('classifies "message is not modified" as an UNCHANGED success', async () => {
+      stubEdit(
+        { ok: false, error_code: 400, description: 'Bad Request: message is not modified' },
+        400,
+      );
+
+      await expect(svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*')).resolves.toBe(
+        'UNCHANGED',
+      );
+    });
+
+    it('classifies "message to edit not found" as NOT_FOUND', async () => {
+      stubEdit(
+        { ok: false, error_code: 400, description: 'Bad Request: message to edit not found' },
+        400,
+      );
+
+      await expect(svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*')).resolves.toBe(
+        'NOT_FOUND',
+      );
+    });
+
+    it('returns FAILED for any other API error', async () => {
+      stubEdit(
+        { ok: false, error_code: 400, description: 'Bad Request: chat not found' },
+        400,
+      );
+
+      await expect(svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*')).resolves.toBe('FAILED');
+    });
+
+    it('returns FAILED without throwing when the body is not JSON', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<FetchLike>(async () => ({
+          ok: false,
+          status: 500,
+          json: async () => {
+            throw new Error('not json');
+          },
+        }) as unknown as Response),
+      );
+
+      await expect(svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*')).resolves.toBe('FAILED');
+    });
+
+    it('returns FAILED on network failure (no throw)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<FetchLike>(async () => Promise.reject(new Error('down'))),
+      );
+
+      await expect(svc.editTelegramMessage(TOKEN, CHAT_ID, 7, '*PANEL*')).resolves.toBe('FAILED');
+    });
+  });
+
+  describe('panel editable (/panel)', () => {
+    type EditOutcome = 'EDITED' | 'UNCHANGED' | 'NOT_FOUND' | 'FAILED';
+    type PanelWorkerApi = {
+      answerCallbackQuery: (
+        token: string,
+        callbackQueryId: string | undefined,
+        text?: string,
+      ) => Promise<boolean>;
+      editTelegramMessage: (
+        token: string,
+        chatId: number | string,
+        messageId: number,
+        text: string,
+        keyboard?: TelegramInlineKeyboardMarkup,
+      ) => Promise<EditOutcome>;
+    };
+
+    function panelInternals(): PanelWorkerApi {
+      return svc as unknown as PanelWorkerApi;
+    }
+
+    function sentPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
+      const call = spy.mock.calls[index] as unknown as [string, string, string];
+      return (call[2] ?? '').replace(/\\/g, '');
+    }
+
+    /** Texto editado con los escapes de MarkdownV2 quitados: (token, chat, id, text, kb). */
+    function editedPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
+      const call = spy.mock.calls[index] as unknown as [string, number, number, string];
+      return (call[3] ?? '').replace(/\\/g, '');
+    }
+
+    it('sends one panel with the keyboard when /panel has no message to edit', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/panel'), TOKEN, String(CHAT_ID));
+
+      // Sin message_id no hay nada que re-renderizar: un envío nuevo y nada más.
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(editSpy).not.toHaveBeenCalled();
+      const keyboard = (sendSpy.mock.calls[0] as unknown as [string, string, string, unknown])[3] as
+        | TelegramInlineKeyboardMarkup
+        | undefined;
+      const flat = (keyboard?.inline_keyboard ?? []).flat().map((b) => b.callback_data);
+      expect(flat).toContain('PANEL_REFRESH');
+      expect(flat).toContain('PANEL_REPRICER_STOP');
+      expect(flat).toContain('PANEL_REPRICER_START');
+    });
+
+    it('re-renders the panel in place when the message already exists', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      // El message_id viene del propio callback: ese mensaje ES el panel.
+      expect(editSpy).toHaveBeenCalledTimes(1);
+      const [token, chatId, messageId] = editSpy.mock.calls[0] as unknown as [
+        string,
+        number,
+        number,
+      ];
+      expect(token).toBe(TOKEN);
+      expect(chatId).toBe(CHAT_ID);
+      expect(messageId).toBe(7);
+    });
+
+    it('acknowledges the callback before editing the panel', async () => {
+      const order: string[] = [];
+      vi.spyOn(panelInternals(), 'answerCallbackQuery').mockImplementation(async () => {
+        order.push('ack');
+        return true;
+      });
+      vi.spyOn(panelInternals(), 'editTelegramMessage').mockImplementation(async () => {
+        order.push('edit');
+        return 'EDITED';
+      });
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      // Un tap no puede dejar el spinner girando aunque la edición falle después.
+      expect(order).toEqual(['ack', 'edit']);
+    });
+
+    it('still acknowledges the callback when the edit fails', async () => {
+      const ackSpy = vi.spyOn(panelInternals(), 'answerCallbackQuery').mockResolvedValue(true);
+      vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('FAILED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      expect(ackSpy).toHaveBeenCalled();
+      // FAILED no se disfraza de éxito en el log del operador.
+      const log = svc.recentLogs().find((entry) => entry.action === 'PANEL');
+      expect(log?.status).toBe('ERROR');
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('treats an unchanged edit as a success, not an error', async () => {
+      vi.spyOn(panelInternals(), 'answerCallbackQuery').mockResolvedValue(true);
+      vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('UNCHANGED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const log = svc.recentLogs().find((entry) => entry.action === 'PANEL');
+      expect(log?.status).toBe('SUCCESS');
+    });
+
+    it('sends a fresh panel when the original message no longer exists', async () => {
+      vi.spyOn(panelInternals(), 'answerCallbackQuery').mockResolvedValue(true);
+      vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('NOT_FOUND');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      // Borraron el panel: la recuperación honesta es mandar uno nuevo.
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(sentPlain(sendSpy)).toContain('PANEL DEL TERMINAL');
+    });
+
+    it('reports the real repricer mode and never promises live publishing', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toContain('PANEL DEL TERMINAL');
+      expect(text).toContain('SOLO LECTURA — NO PUBLICA');
+      expect(text).toMatch(/no publica anuncios/i);
+      expect(text).not.toMatch(/en vivo/i);
+    });
+
+    it('shows the real book with a fresh timestamp when the fetch succeeds', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const binance = TestBed.inject(BinanceP2pService);
+      vi.mocked(binance.lastFetched).mockReturnValue(new Date('2026-09-27T12:00:00.000Z'));
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toContain('85.00'); // ask
+      expect(text).toContain('85.90'); // bid
+      expect(text).toContain('+1.06%');
+      expect(text).not.toMatch(/desactualizados/i);
+    });
+
+    it('never invents a price when there is no book at all', async () => {
+      fetchMarketDepth.mockResolvedValue(null);
+      const binance = TestBed.inject(BinanceP2pService);
+      vi.mocked(binance.marketDepth).mockReturnValue(null);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      // 0.00 sería un precio mentira; el panel declara que no hay libro.
+      expect(text).toContain('Libro sin datos');
+      expect(text).not.toContain('`0.00 Bs`');
+      expect(text).not.toContain('+0.00%');
+    });
+
+    it('never prints the engine placeholder zero as a real price', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      // El motor arranca en 0 = "todavía no hay precio definido".
+      expect(buyAdPrice()).toBe(0);
+      expect(sellAdPrice()).toBe(0);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toMatch(/compra `n\/d Bs`/);
+      expect(text).toMatch(/venta `n\/d Bs`/);
+      expect(text).not.toContain('`0.00 Bs`');
+    });
+
+    it('shows the real engine prices once the operator forces a reprice', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      buyAdPrice.set(84.5);
+      sellAdPrice.set(85.2);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toContain('compra `84.50 Bs`');
+      expect(text).toContain('venta `85.20 Bs`');
+    });
+
+    it('flags a cached book as possibly outdated instead of presenting it as fresh', async () => {
+      // Sin fetch fresco caemos a la caché: puede estar vieja y hay que decirlo.
+      fetchMarketDepth.mockResolvedValue(null);
+      const binance = TestBed.inject(BinanceP2pService);
+      vi.mocked(binance.marketDepth).mockReturnValue(LIVE_DEPTH);
+      vi.mocked(binance.lastFetched).mockReturnValue(new Date('2026-09-27T11:55:00.000Z'));
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      expect(editedPlain(editSpy)).toMatch(/pueden estar desactualizados/i);
+    });
+
+    it('stops the engine and re-renders the same panel when the stop button is pressed', async () => {
+      const repricer = TestBed.inject(BinanceRepricerService);
+      const ackSpy = vi.spyOn(panelInternals(), 'answerCallbackQuery').mockResolvedValue(true);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(callbackUpdate('PANEL_REPRICER_STOP'), TOKEN, String(CHAT_ID));
+
+      expect(ackSpy).toHaveBeenCalled();
+      expect(repricer.stop).toHaveBeenCalled();
+      // Botón del panel = re-render en el lugar, nunca un mensaje nuevo al chat.
+      expect(editSpy).toHaveBeenCalledTimes(1);
+      expect(sendSpy).not.toHaveBeenCalled();
+      const [token, chatId, messageId] = editSpy.mock.calls[0] as unknown as [
+        string,
+        number,
+        number,
+      ];
+      expect([token, chatId, messageId]).toEqual([TOKEN, CHAT_ID, 7]);
+      expect(editedPlain(editSpy)).toContain('DETENIDO');
+    });
+
+    it('resumes the engine and re-renders the same panel when the start button is pressed', async () => {
+      const repricer = TestBed.inject(BinanceRepricerService);
+      vi.mocked(repricer.isActive).mockReturnValue(true);
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const ackSpy = vi.spyOn(panelInternals(), 'answerCallbackQuery').mockResolvedValue(true);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(callbackUpdate('PANEL_REPRICER_START'), TOKEN, String(CHAT_ID));
+
+      expect(ackSpy).toHaveBeenCalled();
+      expect(repricer.start).toHaveBeenCalled();
+      expect(editSpy).toHaveBeenCalledTimes(1);
+      expect(sendSpy).not.toHaveBeenCalled();
+      // El re-render refleja el estado NUEVO, no una copia congelada.
+      expect(editedPlain(editSpy)).toContain('ACTIVO');
+    });
+
+    it('keeps the /killswitch command sending a fresh message, not an edit', async () => {
+      const editSpy = vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/killswitch'), TOKEN, String(CHAT_ID));
+
+      expect(editSpy).not.toHaveBeenCalled();
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(sentPlain(sendSpy)).toContain('KILLSWITCH EJECUTADO');
+    });
+
+    it('leaves the /status contract untouched', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi.spyOn(panelInternals(), 'editTelegramMessage').mockResolvedValue('EDITED');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/status'), TOKEN, String(CHAT_ID));
+
+      // Regresión: /status sigue enviando su propio mensaje, sin teclado ni edición.
+      expect(editSpy).not.toHaveBeenCalled();
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const call = sendSpy.mock.calls[0] as unknown as [string, string, string, unknown];
+      expect(call[2]).toContain('ESTADO DEL TERMINAL P2P');
+      expect(call[3]).toBeUndefined();
+    });
+  });
+
   describe('operational commands V2 (W1 contract)', () => {
     /**
      * New worker internals, reached through a cast so this spec compiles before

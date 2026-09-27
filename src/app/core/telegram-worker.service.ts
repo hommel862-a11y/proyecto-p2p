@@ -20,6 +20,9 @@ import {
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
   buildRepriceConfirmationKeyboard,
+  formatPanelTelegramMessage,
+  buildPanelKeyboard,
+  isPanelCallbackData,
   predictTwoHourVolatility,
   computeTickVelocity,
   type BinanceP2pMarketDepth,
@@ -27,6 +30,7 @@ import {
   type BacktestReportResult,
   type BacktestRequestParams,
   type MacroIntelSnapshot,
+  type PanelReport,
   type PriceTick,
   type RadarGapRow,
   type RadarScanParams,
@@ -66,6 +70,20 @@ export interface TelegramLogEntry {
   status: 'SUCCESS' | 'DENIED' | 'ERROR';
   details?: string;
 }
+
+/**
+ * Resultado de editar un mensaje en el lugar. Separa los finales que el operador
+ * NO debe ver igual:
+ *
+ * - `EDITED`: el panel se re-renderizó.
+ * - `UNCHANGED`: Telegram rechazó la edición porque texto y markup ya eran
+ *   idénticos. Desde el punto de vista del panel es ÉXITO — tocó refrescar sin
+ *   cambios de estado y no hay nada que mostrar.
+ * - `NOT_FOUND`: el mensaje ya no existe (fue borrado). La recuperación honesta
+ *   es enviar un panel nuevo.
+ * - `FAILED`: error real de la API o de red.
+ */
+export type TelegramEditOutcome = 'EDITED' | 'UNCHANGED' | 'NOT_FOUND' | 'FAILED';
 
 const TELEGRAM_DEFAULTS: TelegramConfig = {
   botToken: '',
@@ -198,6 +216,24 @@ function readNumber(value: unknown, key: string): number {
 function readArray(value: unknown, key: string): unknown[] {
   const raw = asRecord(value)?.[key];
   return Array.isArray(raw) ? raw : [];
+}
+
+/**
+ * Lee el `description` de un error de la Bot API. Tolera un cuerpo vacío o no
+ * JSON: clasificar un fallo nunca puede ser la razón para romper el flujo.
+ */
+async function readTelegramErrorDescription(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { description?: unknown };
+    return typeof data?.description === 'string' ? data.description : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Case-insensitive sobre el `description` de la Bot API (`Bad Request: …`). */
+function telegramErrorMentions(description: string, needle: string): boolean {
+  return description.toLowerCase().includes(needle.toLowerCase());
 }
 
 /** Mean ROI across harness cycles; NaN when the harness recorded none. */
@@ -600,6 +636,24 @@ export class TelegramWorkerService implements OnDestroy {
       case 'KILLSWITCH': {
         this.repricer.stop();
         this.toast.error('KILLSWITCH ACTIVADO REMOTAMENTE DESDE TELEGRAM', 'Seguridad P2P');
+        // Un botón del panel no puede emitir un mensaje nuevo: el panel se
+        // re-renderiza en el lugar, que es justo lo que el operador pidió.
+        if (isPanelCallbackData(update.callback_query?.data)) {
+          await this.answerCallbackQuery(token, update.callback_query?.id, 'Motor detenido');
+          const outcome = await this.deliverPanel(
+            token,
+            chatId,
+            update.callback_query?.message?.message_id ?? null,
+          );
+          this.addLog({
+            time: timeStr,
+            command: 'Panel',
+            action: 'KILLSWITCH',
+            status: outcome === 'FAILED' ? 'ERROR' : 'SUCCESS',
+            details: `detenido desde el panel (${outcome})`,
+          });
+          break;
+        }
         await this.sendTelegramMessage(
           token,
           chatId,
@@ -617,6 +671,22 @@ export class TelegramWorkerService implements OnDestroy {
       case 'RESUME': {
         this.repricer.start();
         this.toast.info('Bot reanudado remotamente desde Telegram', 'Telegram Sentinel');
+        if (isPanelCallbackData(update.callback_query?.data)) {
+          await this.answerCallbackQuery(token, update.callback_query?.id, 'Motor reanudado');
+          const outcome = await this.deliverPanel(
+            token,
+            chatId,
+            update.callback_query?.message?.message_id ?? null,
+          );
+          this.addLog({
+            time: timeStr,
+            command: 'Panel',
+            action: 'RESUME',
+            status: outcome === 'FAILED' ? 'ERROR' : 'SUCCESS',
+            details: `reanudado desde el panel (${outcome})`,
+          });
+          break;
+        }
         await this.sendTelegramMessage(
           token,
           chatId,
@@ -644,6 +714,27 @@ export class TelegramWorkerService implements OnDestroy {
         const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}`;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
+        break;
+      }
+
+      case 'PANEL': {
+        // Un tap en un botón no puede dejar el spinner girando: se responde
+        // SIEMPRE antes de editar, incluso si la edición después falla.
+        await this.answerCallbackQuery(
+          token,
+          update.callback_query?.id,
+          update.callback_query ? 'Panel actualizado' : undefined,
+        );
+
+        const panelMessageId = update.callback_query?.message?.message_id ?? null;
+        const outcome = await this.deliverPanel(token, chatId, panelMessageId);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/panel',
+          action: 'PANEL',
+          status: outcome === 'FAILED' ? 'ERROR' : 'SUCCESS',
+          details: panelMessageId === null ? `enviado nuevo (${outcome})` : `re-renderizado (${outcome})`,
+        });
         break;
       }
 
@@ -1107,6 +1198,69 @@ export class TelegramWorkerService implements OnDestroy {
   }
 
   /**
+   * Reúne el estado REAL del terminal para el panel. Cada campo es una lectura
+   * concreta: nada se estima. Lo que no existe viaja como `null` / `NaN` para
+   * que el formateador lo declare en vez de inventar un precio.
+   */
+  private async buildPanelReport(): Promise<PanelReport> {
+    const freshDepth = await this.getFreshMarketDepth();
+    const depth = freshDepth ?? this.binance.marketDepth();
+    // El motor arranca en 0 = "todavía no hay precio". Imprimir `0.00` sería un
+    // precio inventado, así que viaja como NaN y el panel lo muestra como n/d.
+    const engineBuy = this.repricer.currentBuyAdPrice();
+    const engineSell = this.repricer.currentSellAdPrice();
+
+    return {
+      executionModeLabel: this.repricer.executionModeLabel(),
+      executionModeDetail: this.repricer.executionModeDetail(),
+      repricerActive: this.repricer.isActive(),
+      repricerBuyPrice: Number.isFinite(engineBuy) && engineBuy > 0 ? engineBuy : Number.NaN,
+      repricerSellPrice: Number.isFinite(engineSell) && engineSell > 0 ? engineSell : Number.NaN,
+      market: depth
+        ? {
+            bestBuyPrice: depth.bestBuyPrice,
+            bestSellPrice: depth.bestSellPrice,
+            spreadPct: depth.spreadPct,
+            spreadVes: depth.spreadVes,
+          }
+        : null,
+      fetchedAt: this.formatFetchTime(this.binance.lastFetched()),
+      // Sin lectura fresca lo mostrado viene de caché y puede estar viejo: el
+      // panel lo declara en vez de presentarlo como lectura de este momento.
+      marketStale: !freshDepth,
+    };
+  }
+
+  /**
+   * Entrega el panel: lo re-renderiza en el lugar cuando el mensaje sigue vivo
+   * y cae a un envío nuevo cuando ya no existe.
+   *
+   * `messageId` es SIEMPRE `callback_query.message.message_id`: ese mensaje ES el
+   * panel, así que no hay id por chat que recordar ni estado que pueda quedar
+   * viejo. `null` significa "no hay mensaje que editar": se envía uno nuevo.
+   */
+  private async deliverPanel(
+    token: string,
+    chatId: number | string,
+    messageId: number | null,
+  ): Promise<TelegramEditOutcome | 'SENT'> {
+    const report = await this.buildPanelReport();
+    const text = formatPanelTelegramMessage(report);
+    const keyboard = buildPanelKeyboard();
+
+    if (messageId === null) {
+      return (await this.sendTelegramMessage(token, chatId, text, keyboard)) ? 'SENT' : 'FAILED';
+    }
+
+    const outcome = await this.editTelegramMessage(token, chatId, messageId, text, keyboard);
+    if (outcome === 'NOT_FOUND') {
+      // El mensaje fue borrado: mandar un panel nuevo es la recuperación honesta.
+      return (await this.sendTelegramMessage(token, chatId, text, keyboard)) ? 'SENT' : 'FAILED';
+    }
+    return outcome;
+  }
+
+  /**
    * Applies the operator's forced prices to the repricer engine.
    *
    * The engine has no separate "force" API: `currentBuyAdPrice` /
@@ -1291,6 +1445,54 @@ export class TelegramWorkerService implements OnDestroy {
       return res.ok;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Ability de editar un mensaje en el lugar (`editMessageText`).
+   *
+   * Devuelve el motivo del fallo en vez de un booleano, porque los dos finales
+   * 400 habituales exigen respuestas distintas: `message is not modified`
+   * es éxito silencioso, `message to edit not found` se recupera enviando un
+   * panel nuevo, y cualquier otra cosa sí es un error.
+   *
+   * Nunca se desreferencia el cuerpo de la respuesta: `editMessageText` devuelve
+   * el Message, o `true` cuando el mensaje fue enviado desde modo inline, así que
+   * asumir la forma del resultado rompería justo en el caso que la API no
+   * garantiza.
+   */
+  async editTelegramMessage(
+    token: string,
+    chatId: number | string,
+    messageId: number,
+    markdownText: string,
+    keyboard?: TelegramInlineKeyboardMarkup,
+  ): Promise<TelegramEditOutcome> {
+    try {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        message_id: messageId,
+        text: markdownText,
+        parse_mode: 'MarkdownV2',
+      };
+      if (keyboard) {
+        body['reply_markup'] = keyboard;
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) return 'EDITED';
+
+      const description = await readTelegramErrorDescription(res);
+      if (telegramErrorMentions(description, 'message is not modified')) return 'UNCHANGED';
+      if (telegramErrorMentions(description, 'message to edit not found')) return 'NOT_FOUND';
+      return 'FAILED';
+    } catch {
+      return 'FAILED';
     }
   }
 

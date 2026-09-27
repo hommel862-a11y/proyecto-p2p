@@ -1,7 +1,7 @@
 /**
  * Telegram Sentinel & Remote Dispatcher Engine.
  * Formats high-priority institutional alerts in MarkdownV2, generates interactive inline keyboards,
- * and securely parses and authenticates incoming remote commands (/killswitch, /status, /spreads).
+ * and securely parses and authenticates incoming remote commands (/killswitch, /status, /spreads, /panel).
  * Pure TypeScript, framework-agnostic, zero external dependencies.
  */
 
@@ -61,7 +61,8 @@ export type SentinelAction =
   | 'REPRICE_CANCEL'
   | 'MACRO'
   | 'BACKTEST_REQUEST'
-  | 'BACKTEST_EXECUTE';
+  | 'BACKTEST_EXECUTE'
+  | 'PANEL';
 
 /** Filters accepted by `/radar [banco] [capital]`. */
 export interface RadarScanParams {
@@ -466,6 +467,118 @@ export function formatRepriceTelegramMessage(req: RepriceRequestReport): string 
 }
 
 // ---------------------------------------------------------------------------
+// Panel editable — payload puro, formateador y teclado
+//
+// El panel NO tiene estado: `update.callback_query.message` ES el panel y
+// Telegram lo entrega en cada callback. No hay id por chat, ni store, ni
+// sincronización que pueda quedar vieja.
+//
+// H Honestidad: el modo de ejecución entra YA resuelto desde el repricer y se
+// imprime tal cual. No existe ninguna ruta por la que este formateador pueda
+// afirmar publicación en vivo. Y un libro ausente se DECLARA ausente: nunca se
+// imprime un cero haciéndolo pasar por un precio.
+// ---------------------------------------------------------------------------
+
+/** `callback_data` de los botones del panel editable. */
+export const PANEL_CALLBACKS = {
+  REFRESH: 'PANEL_REFRESH',
+  REPRICER_STOP: 'PANEL_REPRICER_STOP',
+  REPRICER_START: 'PANEL_REPRICER_START',
+} as const;
+
+export type PanelCallback = (typeof PANEL_CALLBACKS)[keyof typeof PANEL_CALLBACKS];
+
+/** Lectura del libro de Binance. `null` cuando no hay profundidad disponible. */
+export interface PanelMarketSnapshot {
+  bestBuyPrice: number;
+  bestSellPrice: number;
+  spreadPct: number;
+  spreadVes: number;
+}
+
+/**
+ * Estado del terminal que imprime el panel. Todo valor numérico ausente viaja
+ * como `NaN` para que el formateador lo muestre como `n/d`.
+ */
+export interface PanelReport {
+  /** Etiqueta corta del modo REAL de ejecución (`SOLO LECTURA — NO PUBLICA`). */
+  executionModeLabel: string;
+  /** Frase que explica el modo real y qué NO hace el motor. */
+  executionModeDetail: string;
+  /** ¿Está corriendo el motor de repricing? */
+  repricerActive: boolean;
+  /** Precio de compra que el motor quiere dejar; `NaN` si aún no hay ninguno. */
+  repricerBuyPrice: number;
+  /** Precio de venta que el motor quiere dejar; `NaN` si aún no hay ninguno. */
+  repricerSellPrice: number;
+  /** Libro de Binance, o `null` si no hay profundidad disponible. */
+  market: PanelMarketSnapshot | null;
+  /** Momento de la lectura ya formateado por el worker; `—` si nunca hubo lectura. */
+  fetchedAt: string;
+  /** `true` cuando lo mostrado viene de caché y puede estar desactualizado. */
+  marketStale: boolean;
+}
+
+/** Igual que `formatMetric`, pero con el signo del spread explícito. */
+function formatSignedMetric(value: number, decimals = 2): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/d';
+  return `+${escapeMarkdownV2(value.toFixed(decimals))}`;
+}
+
+/**
+ * Formatea el panel editable del terminal: modo de ejecución real, estado del
+ * motor, precios que el motor quiere dejar, libro de Binance y frescura de la
+ * lectura. Cuando el libro no está disponible lo dice en vez de mostrar ceros.
+ */
+export function formatPanelTelegramMessage(report: PanelReport): string {
+  const engine = report.repricerActive ? '🟢 ACTIVO' : '⏸ DETENIDO';
+
+  const marketBlock = report.market
+    ? `💵 *Compra \\(Ask\\):* \`${formatMetric(report.market.bestBuyPrice)} Bs\`
+💰 *Venta \\(Bid\\):* \`${formatMetric(report.market.bestSellPrice)} Bs\`
+⚡ *Spread:* \`${formatSignedMetric(report.market.spreadPct)}%\` \\(\`${formatMetric(report.market.spreadVes)} Bs\`\\)`
+    : `⚠️ *Libro sin datos:* ${escapeMarkdownV2('Binance no devolvió profundidad. No se muestran precios porque no los hay, no porque valgan cero.')}`;
+
+  const freshness = report.marketStale
+    ? `🕐 *Datos de las* \`${formatCodeSpan(report.fetchedAt)}\` ${escapeMarkdownV2('— pueden estar desactualizados')}`
+    : `🕐 *Datos de las* \`${formatCodeSpan(report.fetchedAt)}\``;
+
+  return `🛡️ *PANEL DEL TERMINAL* 🛡️
+━━━━━━━━━━━━━━━━━━
+🧠 *Modo de ejecución:* *${escapeMarkdownV2(report.executionModeLabel)}*
+ℹ️ _${escapeMarkdownV2(report.executionModeDetail)}_
+⚙️ *Motor de repricing:* ${escapeMarkdownV2(engine)}
+💱 *Precios del motor:* compra \`${formatMetric(report.repricerBuyPrice)} Bs\` • venta \`${formatMetric(report.repricerSellPrice)} Bs\`
+
+${marketBlock}
+
+${freshness}
+_${escapeMarkdownV2('Este mensaje se actualiza en el lugar: usá el botón de refrescar en vez de mandar el comando otra vez.')}_`;
+}
+
+/**
+ * Teclado del panel editable. Todos sus botones re-renderizan el MISMO mensaje,
+ * por eso usan callbacks `PANEL_*` propios y no reutilizan los `BOT_*`, que sí
+ * emiten mensajes nuevos al chat.
+ */
+export function buildPanelKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: '🔄 Refrescar', callback_data: PANEL_CALLBACKS.REFRESH }],
+      [
+        { text: '⏸ Pausar motor', callback_data: PANEL_CALLBACKS.REPRICER_STOP },
+        { text: '▶ Reanudar motor', callback_data: PANEL_CALLBACKS.REPRICER_START },
+      ],
+    ],
+  };
+}
+
+/** `true` cuando el callback proviene de un botón del panel editable. */
+export function isPanelCallbackData(data: string | undefined): boolean {
+  return Object.values(PANEL_CALLBACKS).some((value) => value === data);
+}
+
+// ---------------------------------------------------------------------------
 // Operational commands V2 — command parsing helpers (shared by dispatcher and keyboards)
 // ---------------------------------------------------------------------------
 
@@ -580,6 +693,7 @@ export function dispatchTelegramUpdate(
         ['/reprecio <buy> <sell>', 'Forzar repricing (requiere confirmación)'],
         ['/macro', 'Reporte macro consolidado: BCV, spread y volatilidad'],
         ['/backtest [par] [temporalidad]', 'Simulación histórica del par'],
+        ['/panel', 'Panel editable del terminal: se actualiza en el lugar'],
         ['/killswitch', 'Parada de emergencia inmediata'],
         ['/resume', 'Reanudar operaciones'],
       ]
@@ -779,11 +893,22 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (command.name === '/panel') {
+      // Un panel se mira, no se scrollea: el worker devuelve UN mensaje con
+      // teclado y los botones lo re-renderizan en el lugar.
+      return {
+        authorized: true,
+        command: '/panel',
+        action: 'PANEL',
+        responseMarkdown: `🛡️ *CONSULTANDO PANEL DEL TERMINAL*\\.\\.\\.`,
+      };
+    }
+
     return {
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /reprecio, /macro, /backtest, /killswitch, /resume o envía una foto de un comprobante bancario.`,
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o envía una foto de un comprobante bancario.`,
       ),
     };
   }
@@ -831,6 +956,30 @@ export function dispatchTelegramUpdate(
         authorized: true,
         action: 'STATUS',
         responseMarkdown: `📊 *ESTADO OPERATIVO VERIFICADO*`,
+      };
+    }
+
+    // Botones del panel editable. El mensaje que trae el callback ES el panel,
+    // así que el worker lo re-renderiza en el lugar en vez de emitir otro.
+    if (isPanelCallbackData(data)) {
+      if (data === PANEL_CALLBACKS.REFRESH) {
+        return {
+          authorized: true,
+          action: 'PANEL',
+          responseMarkdown: `🔄 *PANEL ACTUALIZADO*`,
+        };
+      }
+      if (data === PANEL_CALLBACKS.REPRICER_STOP) {
+        return {
+          authorized: true,
+          action: 'KILLSWITCH',
+          responseMarkdown: `🚨 *MOTOR DE REPRICING DETENIDO DESDE EL PANEL*`,
+        };
+      }
+      return {
+        authorized: true,
+        action: 'RESUME',
+        responseMarkdown: `▶ *MOTOR DE REPRICING REANUDADO DESDE EL PANEL*`,
       };
     }
 
