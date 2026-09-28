@@ -361,4 +361,42 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
       { uri: 'p2p://mesh/blacklist-feed', name: 'Lista Negra Consensuada' },
     ],
   },
+  {
+    id: 'p2p-ad-automaker',
+    name: 'P2P Ad Automaker / Repricer 🚀',
+    category: 'mercado',
+    status: 'ONLINE',
+    transport: 'stdio',
+    toolCount: 4,
+    resourceCount: 1,
+    uptimeSeconds: 3600,
+    tools: [
+      {
+        name: 'evaluate_ad_repricing',
+        description:
+          'Evalúa microestructura, anti-spoofing, Regla de Oro y circuit breakers para calcular el precio óptimo del anuncio.',
+      },
+      {
+        name: 'publish_ad_price',
+        description:
+          'Publica o actualiza precio en Binance/Bybit con guardarraíles anti-fat-finger y modo Dry-Run.',
+      },
+      {
+        name: 'toggle_ad_status',
+        description:
+          'Conmuta estado de anuncios P2P (PAUSE, RESUME, CLOSE) ante saturación bancaria o intervención BCV.',
+      },
+      {
+        name: 'audit_ad_competitiveness',
+        description:
+          'Audita posición competitiva, detecta undercutting y evalúa brecha respecto al TOP objetivo.',
+      },
+    ],
+    resources: [
+      {
+        uri: 'p2p://ads/repricer-status',
+        name: 'Estado del Repricer y Guardarraíles de Publicación',
+      },
+    ],
+  },
 ];

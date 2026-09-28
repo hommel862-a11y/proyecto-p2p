@@ -282,6 +282,45 @@ describe('Electron preload bridge (secure IPC)', () => {
     }
   });
 
+  it('forwards bank account db operations over IPC and allow-lists their channels', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:db-save-bank-account') return Promise.resolve(true);
+      if (channel === 'p2p:db-delete-bank-account') return Promise.resolve(true);
+      if (channel === 'p2p:db-get-bank-account') return Promise.resolve({ id: 'acc-1' });
+      return Promise.resolve([]);
+    });
+
+    const account = { id: 'acc-1', bankName: 'Banesco' };
+    const saved = await api.db.saveBankAccount(account);
+    const retrieved = await api.db.getBankAccount('acc-1');
+    const listed = await api.db.listBankAccounts({ status: 'ACTIVE' });
+    const deleted = await api.db.deleteBankAccount('acc-1');
+
+    expect(saved).toBe(true);
+    expect(retrieved).toEqual({ id: 'acc-1' });
+    expect(listed).toEqual([]);
+    expect(deleted).toBe(true);
+
+    expect(calls).toEqual([
+      { channel: 'p2p:db-save-bank-account', args: [account] },
+      { channel: 'p2p:db-get-bank-account', args: ['acc-1'] },
+      { channel: 'p2p:db-list-bank-accounts', args: [{ status: 'ACTIVE' }] },
+      { channel: 'p2p:db-delete-bank-account', args: ['acc-1'] },
+    ]);
+
+    const bankAccountChannels = [
+      'p2p:db-save-bank-account',
+      'p2p:db-get-bank-account',
+      'p2p:db-list-bank-accounts',
+      'p2p:db-delete-bank-account',
+    ];
+    for (const ch of bankAccountChannels) {
+      expect(ALLOWED_CHANNELS as readonly string[]).toContain(ch);
+    }
+  });
+
   it('keeps domain math out of IPC (consumed directly from @p2p/core in the web bundle)', () => {
     // No channel carries spread/income/rules payloads — those live in core.
     expect(

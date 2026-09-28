@@ -26,6 +26,12 @@ export const routes: Routes = [
       import('./features/triangulation/triangulation').then((m) => m.Triangulation),
   },
   {
+    path: 'remittances',
+    title: 'Cotizador Comercial de Remesas',
+    loadComponent: () =>
+      import('./features/remittances/remittances.component').then((m) => m.RemittancesComponent),
+  },
+  {
     path: 'copilot',
     title: 'Copiloto Estratega IA',
     loadComponent: () => import('./features/copilot/copilot').then((m) => m.Copilot),

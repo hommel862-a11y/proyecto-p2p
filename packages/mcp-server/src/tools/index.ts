@@ -43,6 +43,11 @@ import { sendMultichannelAlertTool } from './send_multichannel_alert.js';
 import { processRemoteSentinelCommandTool } from './process_remote_sentinel_command.js';
 import { auditPaymentProofOcrTool } from './audit_payment_proof_ocr.js';
 import { auditAndRiskAnalyticsTool } from './audit_and_risk_analytics.js';
+// p2p-ad-automaker: Repricer & Ad Management Tools
+import { evaluateAdRepricingTool } from './evaluate_ad_repricing.js';
+import { publishAdPriceTool } from './publish_ad_price.js';
+import { toggleAdStatusTool } from './toggle_ad_status.js';
+import { auditAdCompetitivenessTool } from './audit_ad_competitiveness.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -90,6 +95,11 @@ export const ALL_MCP_TOOLS = [
   processRemoteSentinelCommandTool,
   auditPaymentProofOcrTool,
   auditAndRiskAnalyticsTool,
+  // p2p-ad-automaker
+  evaluateAdRepricingTool,
+  publishAdPriceTool,
+  toggleAdStatusTool,
+  auditAdCompetitivenessTool,
 ];
 
 export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
@@ -146,6 +156,12 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
   ],
   'p2p-google-workspace': [gdriveBackupReceiptTool, gsheetsSyncTradeTool, gdriveSyncDbBackupTool],
   'p2p-counterparty-mesh': [consultZkMarketMeshTool, lookupCounterpartyReputationTool],
+  'p2p-ad-automaker': [
+    evaluateAdRepricingTool,
+    publishAdPriceTool,
+    toggleAdStatusTool,
+    auditAdCompetitivenessTool,
+  ],
 };
 
 export {
@@ -194,4 +210,9 @@ export {
   processRemoteSentinelCommandTool,
   auditPaymentProofOcrTool,
   auditAndRiskAnalyticsTool,
+  // p2p-ad-automaker
+  evaluateAdRepricingTool,
+  publishAdPriceTool,
+  toggleAdStatusTool,
+  auditAdCompetitivenessTool,
 };

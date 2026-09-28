@@ -41,6 +41,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
         ipc('p2p:db-save-operation-record', record) as Promise<boolean>,
       listOperationRecords: (params?: any) =>
         ipc('p2p:db-list-operation-records', params) as Promise<unknown[]>,
+      saveBankAccount: (account: unknown) =>
+        ipc('p2p:db-save-bank-account', account) as Promise<boolean>,
+      getBankAccount: (id: string) =>
+        ipc('p2p:db-get-bank-account', id) as Promise<unknown>,
+      listBankAccounts: (filter?: unknown) =>
+        ipc('p2p:db-list-bank-accounts', filter) as Promise<unknown[]>,
+      deleteBankAccount: (id: string) =>
+        ipc('p2p:db-delete-bank-account', id) as Promise<boolean>,
     },
     killswitch: {
       trigger: (params?: { reason?: string; source?: string }) =>
@@ -145,6 +153,10 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-list-audit-logs',
   'p2p:db-save-operation-record',
   'p2p:db-list-operation-records',
+  'p2p:db-save-bank-account',
+  'p2p:db-get-bank-account',
+  'p2p:db-list-bank-accounts',
+  'p2p:db-delete-bank-account',
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',
   'p2p:treasury-announce',

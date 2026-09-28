@@ -888,6 +888,10 @@
               <input type="number" min="0" step="0.01" [value]="repricer.breakEvenFloor()" (input)="repricer.breakEvenFloor.set(clampMoney(+$any($event.target).value))" title="El bot jamás cotizará venta por debajo de este costo" />
             </label>
             <label>
+              Techo Máximo Compra (VES)
+              <input type="number" min="0" step="0.01" [value]="repricer.maxBuyPrice()" (input)="repricer.maxBuyPrice.set(clampMoney(+$any($event.target).value))" title="El bot jamás pagará compra por encima de este precio (0 = sin límite)" />
+            </label>
+            <label>
               Modo de Ejecución Real
               <!-- No es un selector: el modo no lo elige el operador, se deriva de si existe un publicador real. -->
               <select disabled [title]="repricer.executionModeDetail()">
@@ -897,6 +901,91 @@
                 {{ repricer.executionModeDetail() }}
               </span>
             </label>
+          </div>
+
+          <!-- Panel de Control Publicador MCP (p2p-ad-automaker) -->
+          <div class="mcp-publisher-card" style="margin-top: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(216, 180, 92, 0.3); background: rgba(0, 0, 0, 0.35);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.2rem;">🚀</span>
+                <div>
+                  <strong style="color: var(--gold); font-size: 0.85rem;">Publicador de Anuncios MCP (p2p-ad-automaker)</strong>
+                  <div style="font-size: 0.74rem; color: #94a3b8;">
+                    {{ mcpPublisher.isEnabled() ? (mcpPublisher.isDryRun() ? 'Modo Simulación Activo (Dry-Run)' : 'Modo En Vivo Conectado (Producción)') : 'Desconectado (Modo Solo Lectura)' }}
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button
+                  type="button"
+                  class="btn"
+                  [style.background]="mcpPublisher.isEnabled() ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'"
+                  [style.color]="mcpPublisher.isEnabled() ? '#f87171' : '#34d399'"
+                  [style.borderColor]="mcpPublisher.isEnabled() ? '#ef4444' : '#10b981'"
+                  style="font-size: 0.78rem; padding: 4px 10px; font-weight: 600;"
+                  (click)="toggleMcpPublisher()"
+                >
+                  {{ mcpPublisher.isEnabled() ? 'Desconectar Publicador' : 'Conectar Publicador MCP' }}
+                </button>
+              </div>
+            </div>
+
+            @if (mcpPublisher.isEnabled()) {
+              <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 8px;">
+                <label style="font-size: 0.75rem;">
+                  Modo de Operación
+                  <select
+                    [value]="mcpPublisher.isDryRun() ? 'dry_run' : 'live'"
+                    (change)="mcpPublisher.isDryRun.set($any($event.target).value === 'dry_run')"
+                    style="font-size: 0.75rem; padding: 4px 6px;"
+                  >
+                    <option value="dry_run">Dry-Run (Simulación)</option>
+                    <option value="live">Producción (Live Real)</option>
+                  </select>
+                </label>
+
+                <label style="font-size: 0.75rem;">
+                  Anti-Fat-Finger Máx Desvío (%)
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="10"
+                    step="0.5"
+                    [value]="mcpPublisher.maxDeviationPct()"
+                    (input)="mcpPublisher.maxDeviationPct.set(+$any($event.target).value)"
+                    style="font-size: 0.75rem; padding: 4px 6px;"
+                  />
+                </label>
+
+                <label style="font-size: 0.75rem;">
+                  ID Anuncio Compra
+                  <input
+                    type="text"
+                    [value]="mcpPublisher.buyAdId()"
+                    (input)="mcpPublisher.buyAdId.set($any($event.target).value)"
+                    style="font-size: 0.75rem; padding: 4px 6px;"
+                  />
+                </label>
+
+                <label style="font-size: 0.75rem;">
+                  ID Anuncio Venta
+                  <input
+                    type="text"
+                    [value]="mcpPublisher.sellAdId()"
+                    (input)="mcpPublisher.sellAdId.set($any($event.target).value)"
+                    style="font-size: 0.75rem; padding: 4px 6px;"
+                  />
+                </label>
+              </div>
+
+              @if (mcpPublisher.lastPublishedSignature()) {
+                <div style="margin-top: 8px; font-size: 0.72rem; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 6px;">
+                  <span>Firma Auditada: <code class="font-mono" style="color: var(--gold);">{{ mcpPublisher.lastPublishedSignature() }}</code></span>
+                  <span>Última Publicación: {{ mcpPublisher.lastPublishTimestamp() | date:'HH:mm:ss' }} ({{ mcpPublisher.successfulPublishesCount() }} exitosas)</span>
+                </div>
+              }
+            }
           </div>
         </div>
       }
@@ -1472,6 +1561,155 @@
                   {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
                 </div>
               </div>
+            </div>
+          }
+        </div>
+
+        <!-- Borrador de Anuncio en 1 Clic (Auto-Composer Inteligente) -->
+        <div class="ad-composer-card" style="margin-top: 14px; padding: 14px; border-radius: 8px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.3rem;">⚡</span>
+              <div>
+                <strong style="color: var(--gold); font-size: 0.92rem;">Borrador de Anuncio en 1 Clic</strong>
+                <div style="font-size: 0.74rem; color: #94a3b8;">
+                  Configurado automáticamente con microestructura real y cupos bancarios
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <!-- Selector Compra / Venta -->
+              <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.4); border-radius: 6px; padding: 2px;">
+                <button
+                  type="button"
+                  class="btn"
+                  [style.background]="adComposer.side() === 'BUY' ? 'var(--accent)' : 'transparent'"
+                  [style.color]="adComposer.side() === 'BUY' ? '#fff' : '#94a3b8'"
+                  style="font-size: 0.72rem; padding: 3px 8px; border: none; font-weight: 600;"
+                  (click)="adComposer.side.set('BUY'); adComposer.composeDraft()"
+                >
+                  Comprar USDT
+                </button>
+                <button
+                  type="button"
+                  class="btn"
+                  [style.background]="adComposer.side() === 'SELL' ? 'var(--gold)' : 'transparent'"
+                  [style.color]="adComposer.side() === 'SELL' ? '#000' : '#94a3b8'"
+                  style="font-size: 0.72rem; padding: 3px 8px; border: none; font-weight: 600;"
+                  (click)="adComposer.side.set('SELL'); adComposer.composeDraft()"
+                >
+                  Vender USDT
+                </button>
+              </div>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="font-size: 0.74rem; padding: 4px 8px;"
+                (click)="adComposer.composeDraft()"
+                [disabled]="adComposer.isComposing()"
+                title="Recalcular con el libro actual"
+              >
+                {{ adComposer.isComposing() ? 'Calculando...' : '🔄 Recalcular' }}
+              </button>
+            </div>
+          </div>
+
+          @if (adComposer.currentDraft(); as draft) {
+            <!-- Resumen de Anuncio -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+              <div>
+                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Precio Óptimo</span>
+                <strong style="font-size: 1.1rem; color: var(--gold);" class="font-mono">{{ draft.priceFormatted }}</strong>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Límites Operación</span>
+                <strong style="font-size: 0.82rem; color: #f1f5f9;" class="font-mono">
+                  {{ draft.minLimitVes | num }} - {{ draft.maxLimitVes | num }} Bs
+                </strong>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Monto Total</span>
+                <strong style="font-size: 0.85rem; color: #38bdf8;" class="font-mono">
+                  ${{ draft.totalAssetAmountUsdt }} USDT
+                </strong>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Banco / Método</span>
+                <span class="badge" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
+                  {{ draft.selectedBank }} ({{ draft.paymentMethods.join(', ') }})
+                </span>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Margen Estimado</span>
+                <strong style="font-size: 0.85rem; color: #34d399;" class="font-mono">
+                  +{{ draft.expectedNetSpreadPct }}% (+{{ draft.expectedProfitVesPerCycle | num }} Bs)
+                </strong>
+              </div>
+            </div>
+
+            <!-- Banner de Estado de Seguridad / Guardarraíles -->
+            @if (!draft.readyToPublish) {
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 0.75rem; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 1rem;">⚠️</span>
+                <span>
+                  <strong>Freno de seguridad activo:</strong>
+                  @if (draft.guardrails.flags.includes('INVERTED_OR_ZERO_SPREAD')) {
+                    El spread de mercado es negativo o nulo ({{ draft.expectedNetSpreadPct }}%). El sistema no permite publicar a pérdida.
+                  } @else if (draft.guardrails.flags.includes('NO_ACTIVE_BANK_CAPACITY')) {
+                    Tus cuentas bancarias activas están saturadas o no tienen cupo diario restante.
+                  } @else {
+                    {{ draft.guardrails.flags.join(', ') }}
+                  }
+                </span>
+              </div>
+            } @else {
+              <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; font-size: 0.74rem; color: #6ee7b7; display: flex; align-items: center; gap: 6px;">
+                <span>✅</span>
+                <span><strong>Validación aprobada:</strong> Parámetros verificados. Listo para publicar en Binance P2P.</span>
+              </div>
+            }
+
+            <!-- Botones de Acción: Publicar en 1 Clic, Copiar y Abrir Binance -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <button
+                type="button"
+                class="btn"
+                [style.background]="draft.readyToPublish ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#ef4444'"
+                style="color: #fff; font-weight: 700; font-size: 0.85rem; padding: 8px 16px; border: none; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                [disabled]="adComposer.isPublishing()"
+                (click)="adComposer.publishStagedDraft()"
+              >
+                <span>🚀</span>
+                <span>{{ adComposer.isPublishing() ? 'Publicando en Binance...' : (draft.readyToPublish ? 'PUBLICAR ANUNCIO EN 1 CLIC' : 'PUBLICAR (REVISAR ALERTA)') }}</span>
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="font-size: 0.8rem; padding: 8px 12px;"
+                (click)="copyDraftClipboard()"
+                title="Copiar datos del anuncio para pegar en Binance"
+              >
+                📋 Copiar
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="font-size: 0.8rem; padding: 8px 12px;"
+                (click)="adComposer.openBinanceAdvPost()"
+                title="Abrir la página de publicación de anuncios en Binance P2P"
+              >
+                🔗 Abrir Binance P2P
+              </button>
+            </div>
+          } @else {
+            <div style="text-align: center; padding: 14px 8px; color: #94a3b8; font-size: 0.8rem;">
+              <button type="button" class="btn btn-primary" (click)="adComposer.composeDraft()" [disabled]="adComposer.isComposing()">
+                ⚡ Generar Borrador Inteligente Ahora
+              </button>
             </div>
           }
         </div>

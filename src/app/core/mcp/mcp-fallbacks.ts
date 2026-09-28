@@ -845,6 +845,81 @@ export function simulateMcpTool(
         : 'NO LIBERAR CRIPTO: Revisar comprobante manualmente.',
       auditTimestamp: new Date().toISOString(),
     };
+  } else if (toolName === 'evaluate_ad_repricing') {
+    const side = (args as any)?.side ?? 'BUY';
+    const targetRank = (args as any)?.targetRank ?? 'TOP_1';
+    const stepVes = Number((args as any)?.stepVes ?? 0.05);
+    const suggestedPrice = side === 'BUY' ? 78.85 : 79.95;
+    simulatedResult = {
+      ...simulatedResult,
+      recommendedAction: 'UPDATE_PRICE',
+      side,
+      targetRank,
+      suggestedPrice,
+      targetCompetitorPrice: side === 'BUY' ? 78.8 : 80.0,
+      targetCompetitorMerchant: 'MarketMakerPro',
+      stepVes,
+      minSpreadPct: 0.5,
+      breakEvenFloorPrice: 0,
+      circuitBreakerTriggered: false,
+      timestamp: new Date().toISOString(),
+    };
+  } else if (toolName === 'publish_ad_price') {
+    const adId = (args as any)?.adId ?? 'AD-1001';
+    const exchange = (args as any)?.exchange ?? 'BINANCE_P2P';
+    const newPrice = Number((args as any)?.newPrice ?? 78.85);
+    const dryRun = Boolean((args as any)?.dryRun ?? true);
+    simulatedResult = {
+      ...simulatedResult,
+      success: true,
+      adId,
+      exchange,
+      publishedPrice: newPrice,
+      dryRun,
+      status: dryRun ? 'SIMULATED_SUCCESS' : 'PUBLISHED_LIVE',
+      rationale: (args as any)?.rationale ?? 'Ajuste automatizado por microestructura MCP',
+      timestamp: new Date().toISOString(),
+      auditTrail: {
+        guardrailChecked: true,
+        maxPriceDeviationPct: 3.0,
+        signature: `SIG-AD-${adId.slice(-6)}-${Date.now()}`,
+      },
+    };
+  } else if (toolName === 'toggle_ad_status') {
+    const adId = (args as any)?.adId ?? 'AD-1001';
+    const exchange = (args as any)?.exchange ?? 'BINANCE_P2P';
+    const action = (args as any)?.action ?? 'PAUSE';
+    const reason = (args as any)?.reason ?? 'MANUAL_OVERRIDE';
+    const stateMap: Record<string, string> = { PAUSE: 'PAUSED', RESUME: 'ACTIVE', CLOSE: 'CLOSED' };
+    simulatedResult = {
+      ...simulatedResult,
+      success: true,
+      adId,
+      exchange,
+      previousAction: action,
+      currentStatus: stateMap[action] ?? 'PAUSED',
+      triggerReason: reason,
+      timestamp: new Date().toISOString(),
+      actionSummary: `Anuncio ${adId} en ${exchange} conmutado a ${stateMap[action] ?? 'PAUSED'} debido a ${reason}.`,
+    };
+  } else if (toolName === 'audit_ad_competitiveness') {
+    const adId = (args as any)?.adId ?? 'AD-1001';
+    const myCurrentPrice = Number((args as any)?.myCurrentPrice ?? 78.85);
+    simulatedResult = {
+      ...simulatedResult,
+      adId,
+      myCurrentPrice,
+      currentRank: 'TOP_1',
+      desiredRank: (args as any)?.desiredRank ?? 'TOP_1',
+      isMeetingTargetRank: true,
+      totalCompetitorsAnalyzed: 10,
+      suspiciousCompetitorsCount: 0,
+      priceGapWithLeader: 0,
+      leaderPrice: myCurrentPrice,
+      leaderMerchant: 'Self',
+      assessment: 'Posición competitiva saludable (TOP_1).',
+      timestamp: new Date().toISOString(),
+    };
   }
 
   return simulatedResult;

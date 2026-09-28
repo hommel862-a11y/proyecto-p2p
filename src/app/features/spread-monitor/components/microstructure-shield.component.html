@@ -68,6 +68,169 @@
     </div>
   </div>
 
+  <!-- Oráculo OBI (Order Book Imbalance) & Termómetro de Presión -->
+  <div class="terminal-input-card" style="margin-bottom: 14px; border: 1px solid rgba(99, 102, 241, 0.35);">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">⚖️</span>
+        <span class="card-title">Oráculo OBI (Order Book Imbalance) & Presión de Mercado</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="badge" [style.background]="obiReport().classification === 'STRONG_BUY_PRESSURE' || obiReport().classification === 'MODERATE_BUY_PRESSURE' ? 'rgba(16, 185, 129, 0.2)' : obiReport().classification === 'STRONG_SELL_PRESSURE' || obiReport().classification === 'MODERATE_SELL_PRESSURE' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.1)'"
+          [style.color]="obiReport().classification === 'STRONG_BUY_PRESSURE' || obiReport().classification === 'MODERATE_BUY_PRESSURE' ? '#10b981' : obiReport().classification === 'STRONG_SELL_PRESSURE' || obiReport().classification === 'MODERATE_SELL_PRESSURE' ? '#ef4444' : '#cbd5e1'">
+          {{ obiReport().pressureLabel }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Barra Graduada de Balance OBI -->
+    <div style="padding: 16px; background: rgba(0, 0, 0, 0.25); border-radius: 12px; margin-top: 12px;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 700; margin-bottom: 6px;">
+        <span style="color: #ef4444;">🔴 Presión Vendedora ({{ obiReport().sellVolumeUsdt | number:'1.0-0' }} USDT)</span>
+        <span style="color: var(--muted);">Inclinación: {{ obiReport().obiPercentage > 0 ? '+' : '' }}{{ obiReport().obiPercentage }}%</span>
+        <span style="color: #10b981;">🟢 Presión Compradora ({{ obiReport().buyVolumeUsdt | number:'1.0-0' }} USDT)</span>
+      </div>
+
+      <div style="position: relative; height: 14px; background: #0f172a; border-radius: 9999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.1);">
+        <!-- Gradient fill -->
+        <div style="position: absolute; inset: 0; background: linear-gradient(90deg, #ef4444 0%, #64748b 50%, #10b981 100%); opacity: 0.35;"></div>
+        <!-- Center marker -->
+        <div style="position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #ffffff; transform: translateX(-50%); z-index: 2;"></div>
+        <!-- Live Needle -->
+        <div
+          [style.left.%]="obiReport().gaugePercent"
+          style="position: absolute; top: -1px; bottom: -1px; width: 6px; background: #38bdf8; border-radius: 9999px; box-shadow: 0 0 10px #38bdf8; transform: translateX(-50%); z-index: 3; transition: left 0.3s ease;">
+        </div>
+      </div>
+
+      <!-- Tactical Maker Recommendation Guidance -->
+      <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #10b981; margin-bottom: 4px;">
+            🛒 Recomendación Anuncio Venta (Tú vendes USDT)
+          </div>
+          <div style="font-size: 0.8rem; color: #e2e8f0; line-height: 1.4;">
+            {{ obiReport().makerSellPriceGuidance }}
+          </div>
+        </div>
+
+        <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">
+            💵 Recomendación Anuncio Compra (Tú compras USDT)
+          </div>
+          <div style="font-size: 0.8rem; color: #e2e8f0; line-height: 1.4;">
+            {{ obiReport().makerBuyPriceGuidance }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Gaps de Liquidez si existen -->
+      @if (obiReport().gaps.length > 0) {
+        <div style="margin-top: 10px; font-size: 0.74rem; color: #f59e0b; display: flex; align-items: center; gap: 6px;">
+          <span>⚠️ Vacíos de liquidez detectados:</span>
+          @for (gap of obiReport().gaps.slice(0, 2); track gap.fromPrice) {
+            <span style="background: rgba(245, 158, 11, 0.15); padding: 1px 6px; border-radius: 4px;">
+              {{ gap.side === 'BUY' ? 'Compra' : 'Venta' }} Nivel {{ gap.level }}: Salto de {{ gap.gapPct }}%
+            </span>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Alerta de Bloques OTC Institucionales (Ballenas) -->
+  @if (otcWhaleReport().whaleDetected) {
+    <div
+      style="margin-bottom: 14px; padding: 12px 16px; border-radius: var(--radius); background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.5rem;">🐋</span>
+        <div>
+          <div style="font-size: 0.85rem; font-weight: 700; color: var(--gold);">
+            IRRUPCIÓN DE BLOQUE OTC INSTITUCIONAL (\${{ otcWhaleReport().totalWhaleVolumeUsd | number:'1.0-0' }} USD)
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text);">
+            {{ otcWhaleReport().rationale }}
+          </div>
+        </div>
+      </div>
+      <span
+        class="badge"
+        [style.background]="otcWhaleReport().recommendedAction === 'PAUSE_BUYS_PHANTOM_CORRECTION' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'"
+        [style.color]="otcWhaleReport().recommendedAction === 'PAUSE_BUYS_PHANTOM_CORRECTION' ? '#ef4444' : '#10b981'">
+        {{ otcWhaleReport().recommendedAction === 'PAUSE_BUYS_PHANTOM_CORRECTION' ? '🛑 PAUSAR COMPRAS' : '🚀 ANTICIPAR SUBIDA' }}
+      </span>
+    </div>
+  }
+
+  <!-- Tramos de Capital (Brackets) e Inframundo -->
+  <div class="terminal-input-card" style="margin-bottom: 14px;">
+    <div class="terminal-card-header">
+      <div class="card-header-title">
+        <span class="card-icon">⚡</span>
+        <span class="card-title">Detección por Tramos de Capital (Brackets)</span>
+      </div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedBracket() === 'ALL'"
+          [class.btn-secondary]="selectedBracket() !== 'ALL'"
+          style="font-size: 0.74rem; padding: 3px 8px;"
+          (click)="selectedBracket.set('ALL')">
+          Todo el Libro
+        </button>
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedBracket() === 'INFRAMUNDO'"
+          [class.btn-secondary]="selectedBracket() !== 'INFRAMUNDO'"
+          style="font-size: 0.74rem; padding: 3px 8px; border-color: #38bdf8;"
+          (click)="selectedBracket.set('INFRAMUNDO')"
+          title="Bs 5.000 - Bs 15.000 (Spread neto 2.0% - 3.5%)">
+          🎯 Tramo 1 (Inframundo 5k-15k)
+        </button>
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedBracket() === 'MEDIO'"
+          [class.btn-secondary]="selectedBracket() !== 'MEDIO'"
+          style="font-size: 0.74rem; padding: 3px 8px;"
+          (click)="selectedBracket.set('MEDIO')"
+          title="Bs 50.000 - Bs 120.000 (Spread neto 1.2% - 1.8%)">
+          ⚖️ Tramo 2 (Medio 50k-120k)
+        </button>
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="selectedBracket() === 'INSTITUCIONAL'"
+          [class.btn-secondary]="selectedBracket() !== 'INSTITUCIONAL'"
+          style="font-size: 0.74rem; padding: 3px 8px;"
+          (click)="selectedBracket.set('INSTITUCIONAL')"
+          title="Bs 250.000 - Bs 300.000 (Spread neto 0.8% - 1.2%)">
+          🏛️ Tramo 3 (Institucional 250k-300k)
+        </button>
+      </div>
+    </div>
+
+    @if (bracketFilterResult(); as bRes) {
+      <div style="margin-top: 10px; padding: 10px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius); border: 1px solid var(--border);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.8rem;">
+          <span style="font-weight: 700; color: #38bdf8;">{{ bRes.bracket.name }} — {{ bRes.bracket.rotationProfile }}</span>
+          <span class="badge badge-accent">Spread Objetivo: {{ bRes.bracket.targetNetSpreadMinPct }}% - {{ bRes.bracket.targetNetSpreadMaxPct }}%</span>
+        </div>
+        <div style="font-size: 0.74rem; color: var(--muted); margin-bottom: 8px;">
+          {{ bRes.bracket.description }}
+        </div>
+        <div style="display: flex; gap: 16px; font-size: 0.78rem; flex-wrap: wrap;">
+          <div><strong style="color: var(--text);">Ofertas en tramo:</strong> {{ bRes.offers.length }}</div>
+          <div><strong style="color: var(--text);">Mejor precio:</strong> <span class="font-mono text-accent">{{ bRes.bestPrice | number:'1.2-2' }} VES</span></div>
+          <div><strong style="color: var(--text);">Volumen total:</strong> <span class="font-mono">{{ bRes.totalVolumeVes | number:'1.0-0' }} VES</span></div>
+          <div><strong style="color: var(--muted);">Polvo (<$20) purgado:</strong> {{ bRes.purgedDustCount }}</div>
+        </div>
+      </div>
+    }
+  </div>
+
   <!-- Comparador: Profundidad Visible vs Purgada -->
   <div class="terminal-input-card">
     <div class="terminal-card-header">

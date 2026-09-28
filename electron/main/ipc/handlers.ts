@@ -382,6 +382,58 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('p2p:db-save-bank-account');
+  ipcMain.handle(
+    'p2p:db-save-bank-account',
+    (_event: IpcMainInvokeEvent, account: any): boolean => {
+      try {
+        return db.saveBankAccount(account);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-save-bank-account:', err);
+        return false;
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-get-bank-account');
+  ipcMain.handle(
+    'p2p:db-get-bank-account',
+    (_event: IpcMainInvokeEvent, id: string): unknown => {
+      try {
+        return db.getBankAccount(id);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-get-bank-account:', err);
+        return null;
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-list-bank-accounts');
+  ipcMain.handle(
+    'p2p:db-list-bank-accounts',
+    (_event: IpcMainInvokeEvent, filter?: { status?: string; bankCode?: string }): unknown[] => {
+      try {
+        return db.listBankAccounts(filter);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-list-bank-accounts:', err);
+        return [];
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-delete-bank-account');
+  ipcMain.handle(
+    'p2p:db-delete-bank-account',
+    (_event: IpcMainInvokeEvent, id: string): boolean => {
+      try {
+        return db.deleteBankAccount(id);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-delete-bank-account:', err);
+        return false;
+      }
+    },
+  );
+
   ipcMain.removeHandler('p2p:killswitch-trigger');
   ipcMain.handle(
     'p2p:killswitch-trigger',

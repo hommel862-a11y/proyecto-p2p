@@ -183,6 +183,22 @@ export interface P2PIpcChannels {
     request: unknown;
     response: { isDuplicate: boolean; eventId: number };
   };
+  'p2p:db-save-bank-account': {
+    request: unknown;
+    response: boolean;
+  };
+  'p2p:db-get-bank-account': {
+    request: string;
+    response: unknown;
+  };
+  'p2p:db-list-bank-accounts': {
+    request: { status?: string; bankCode?: string } | void;
+    response: unknown[];
+  };
+  'p2p:db-delete-bank-account': {
+    request: string;
+    response: boolean;
+  };
   'p2p:killswitch-trigger': {
     request: { reason?: string; source?: string };
     response: boolean;
@@ -445,6 +461,10 @@ export interface ElectronAPI {
       createdAt: number;
     }): Promise<boolean>;
     listOperationRecords(params?: { limit?: number }): Promise<unknown[]>;
+    saveBankAccount(account: unknown): Promise<boolean>;
+    getBankAccount(id: string): Promise<unknown>;
+    listBankAccounts(filter?: { status?: string; bankCode?: string }): Promise<unknown[]>;
+    deleteBankAccount(id: string): Promise<boolean>;
   };
   killswitch: {
     trigger(params?: { reason?: string; source?: string }): Promise<boolean>;

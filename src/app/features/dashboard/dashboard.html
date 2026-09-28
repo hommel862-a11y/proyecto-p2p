@@ -776,4 +776,105 @@
       </div>
     </div>
   }
+
+  <!-- Modal de Protocolo Pre-Vuelo & Escudo Anti-Tilt -->
+  @if (showPreflightModal()) {
+    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelPreflight()" (keydown.escape)="cancelPreflight()" aria-label="Cerrar modal de pre-vuelo">
+      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="preflight-modal-title" style="max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.5rem;">🛡️</span>
+            <h3 id="preflight-modal-title" style="margin: 0; font-size: 1.25rem;">Protocolo Pre-Vuelo & Escudo Anti-Tilt</h3>
+          </div>
+          <span
+            class="apple-pill-mini"
+            [class.live]="preflightEvaluation().status === 'CLEARED'"
+            [class.muted]="preflightEvaluation().status === 'WARNING'"
+            [style.background]="preflightEvaluation().status === 'HALTED_BLOCKED' ? 'rgba(239, 68, 68, 0.2)' : ''"
+            [style.color]="preflightEvaluation().status === 'HALTED_BLOCKED' ? '#ef4444' : ''"
+          >
+            {{ preflightEvaluation().status }}
+          </span>
+        </div>
+
+        <p style="font-size: 0.88rem; color: var(--muted); margin-bottom: 18px;">
+          Verificación obligatoria de 15 segundos antes de operar. Previene el 90% de congelamientos SUDEBAN y estafas triangulares.
+        </p>
+
+        <!-- Checklist Verification Items -->
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+          @for (item of preflightEvaluation().items; track item.id) {
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07);">
+              <span style="font-size: 1.1rem; line-height: 1;">{{ item.passed ? '✅' : '❌' }}</span>
+              <div style="flex: 1;">
+                <div style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">{{ item.label }}</div>
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 2px;">{{ item.detail }}</div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Interactive Preflight Controls -->
+        <div style="background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <!-- Strict Zero Third Party Checkbox -->
+          <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+            <input
+              type="checkbox"
+              style="margin-top: 3px; accent-color: #10b981; width: 16px; height: 16px;"
+              [ngModel]="preflightStrictNoThirdParty()"
+              (ngModelChange)="preflightStrictNoThirdParty.set($event)"
+            />
+            <span style="font-size: 0.82rem; color: #f1f5f9; line-height: 1.4;">
+              <strong>Confirmo la Regla Anti-Terceros</strong>: No liberaré fondos si el titular de la transferencia no coincide exactamente con el titular verificado.
+            </span>
+          </label>
+
+          <!-- Mental State / Anti-Tilt selector -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Estado Emocional del Trader:</label>
+            <select
+              style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 8px 12px; color: #ffffff; font-size: 0.85rem;"
+              [ngModel]="preflightMentalState()"
+              (ngModelChange)="preflightMentalState.set($event)"
+            >
+              <option value="OPTIMAL">🟢 Óptimo (Enfocado, descansado, paciente)</option>
+              <option value="ALERT">🔵 Alerta (Listo para alta rotación)</option>
+              <option value="TIRED">🟡 Cansado (Operar solo tickets pequeños)</option>
+              <option value="TILTED_STRESSED">🔴 Tilt / Estrés (Riesgo alto de revancha)</option>
+            </select>
+          </div>
+
+          <!-- Daily Loss Limit -->
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Límite de Pérdida Diaria (Stop-Loss):</label>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.82rem; color: #94a3b8;">$</span>
+              <input
+                type="number"
+                style="width: 80px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 8px; color: #ffffff; font-size: 0.85rem; font-weight: 700;"
+                [ngModel]="preflightDailyLossLimit()"
+                (ngModelChange)="preflightDailyLossLimit.set($event)"
+                min="10"
+                step="10"
+              />
+              <span style="font-size: 0.78rem; color: #94a3b8;">USD</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-ghost" (click)="cancelPreflight()">Cancelar</button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!preflightEvaluation().canTrade"
+            (click)="confirmPreflightSession()"
+            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none;"
+          >
+            🛡️ Confirmar & Abrir Sesión Blindada
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </section>

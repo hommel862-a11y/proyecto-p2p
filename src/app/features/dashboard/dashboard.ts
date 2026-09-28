@@ -27,7 +27,11 @@ import {
   type HourlyRiskDistributionResult,
   type SpreadDisciplineResult,
   type ForensicDossier,
+  evaluatePreflightDiscipline,
+  type MentalState,
+  type PreflightEvaluationResult,
 } from '@p2p/core';
+import { FormsModule } from '@angular/forms';
 
 export interface McpVolatilityForecastDto {
   windowHours?: number;
@@ -84,7 +88,7 @@ const OPS_KEY = 'p2p.operations';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, ...FORMAT_PIPES],
+  imports: [CommonModule, RouterLink, FormsModule, ...FORMAT_PIPES],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })
@@ -373,11 +377,51 @@ export class Dashboard implements OnInit, OnDestroy {
     return computeSessionSummary(s, this.ops());
   });
 
+  // Pre-Flight Protocol & Anti-Tilt Guard
+  readonly showPreflightModal = signal<boolean>(false);
+  readonly preflightStrictNoThirdParty = signal<boolean>(true);
+  readonly preflightMentalState = signal<MentalState>('OPTIMAL');
+  readonly preflightDailyLossLimit = signal<number>(100);
+
+  readonly preflightEvaluation = computed<PreflightEvaluationResult>(() => {
+    const accounts = this.unifiedAccounts();
+    const maxSat =
+      accounts.length > 0
+        ? Math.max(...accounts.map((a) => a.consumedLimitPct))
+        : 0;
+
+    return evaluatePreflightDiscipline({
+      bankSaturationPct: maxSat,
+      strictNoThirdPartyAcknowledged: this.preflightStrictNoThirdParty(),
+      telegramSentinelActive: true,
+      dailyLossLimitUsd: this.preflightDailyLossLimit(),
+      mentalState: this.preflightMentalState(),
+      unresolvedDisputesCount: 0,
+    });
+  });
+
   startSession(): void {
+    this.showPreflightModal.set(true);
+  }
+
+  cancelPreflight(): void {
+    this.showPreflightModal.set(false);
+  }
+
+  confirmPreflightSession(): void {
+    const evalResult = this.preflightEvaluation();
+    if (!evalResult.canTrade) {
+      this.toast.error(
+        'No se puede abrir sesión: resuelve los bloqueos críticos de disciplina.',
+        'Protocolo Pre-Vuelo',
+      );
+      return;
+    }
     this.sessionService.startSession({ targetOps: 5 });
+    this.showPreflightModal.set(false);
     this.toast.success(
-      'Sesión de trading abierta. Las operaciones se vincularán a esta jornada.',
-      'Sesión Iniciada',
+      `Sesión Blindada Iniciada (${evalResult.sessionToken}). Ticket máx recomendado: $${evalResult.recommendedMaxSingleTicketUsdt} USDT.`,
+      'Pre-Vuelo Autorizado',
     );
   }
 

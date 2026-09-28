@@ -3,10 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   calculateTriangularArbitrage,
+  evaluateTriangularSlippageRisk,
   DEFAULT_TRIANGULAR_PRESETS,
   type TriangularRoutePreset,
   type ExchangeLeg,
   type TriangularArbitrageResult,
+  type SlippageRiskGuardResult,
   type Operation,
 } from '@p2p/core';
 import { StorageService } from '../../core/storage';
@@ -136,6 +138,21 @@ export class Triangulation implements OnInit, OnDestroy {
    */
   readonly tacticalReport = computed<McpTacticalReport>(() => {
     return this.intelligence.generateTacticalReport(this.calculationResult());
+  });
+
+  /**
+   * Slippage & Volatility Risk Guard
+   */
+  readonly settlementMinutes = signal<number>(25);
+
+  readonly slippageGuard = computed<SlippageRiskGuardResult>(() => {
+    const res = this.calculationResult();
+    const asset = res.routeId.includes('EUR') ? 'EUR' : 'BTC';
+    return evaluateTriangularSlippageRisk({
+      initialSpreadPct: res.roiPct,
+      volatileAsset: asset,
+      estimatedSettlementMinutes: this.settlementMinutes(),
+    });
   });
 
   /**

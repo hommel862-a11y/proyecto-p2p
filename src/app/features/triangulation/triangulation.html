@@ -134,6 +134,37 @@
     }
   </div>
 
+  <!-- Slippage & Volatility Risk Guard Banner -->
+  <div
+    style="margin-top: 10px; padding: 10px 14px; border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
+    [style.background]="slippageGuard().recommendation === 'OPERAR' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.12)'"
+    [style.border]="slippageGuard().recommendation === 'OPERAR' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.35)'">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 1.2rem;">{{ slippageGuard().recommendation === 'OPERAR' ? '🛡️' : '⚠️' }}</span>
+      <div>
+        <div style="font-size: 0.82rem; font-weight: 700;" [style.color]="slippageGuard().recommendation === 'OPERAR' ? '#10b981' : '#f87171'">
+          Guardia de Deslizamiento (Ventana {{ settlementMinutes() }} min): {{ slippageGuard().recommendation === 'OPERAR' ? 'PERMITIDO OPERAR' : 'NO OPERAR — RIESGO DE VOLATILIDAD' }}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--muted);">
+          {{ slippageGuard().rationale }}
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.75rem; color: var(--muted);">Espera estimada:</span>
+      <select
+        class="terminal-select"
+        style="padding: 2px 6px; font-size: 0.75rem;"
+        [value]="settlementMinutes()"
+        (change)="settlementMinutes.set(+$any($event.target).value)">
+        <option value="15">15 min (Rápido)</option>
+        <option value="25">25 min (Normal)</option>
+        <option value="45">45 min (Congestión bancaria)</option>
+      </select>
+    </div>
+  </div>
+
+
   <!-- Section: Radar Scanner Matrix -->
   <div class="glass-section-card scanner-card">
     <div class="section-title-row">

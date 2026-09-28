@@ -4,8 +4,15 @@ import { FormsModule } from '@angular/forms';
 import {
   OrderPersistenceTracker,
   computeMicrostructureSanitizedDepth,
+  filterOffersByBracket,
+  detectOtcWhaleBlocks,
+  CAPITAL_BRACKETS,
   type SpoofReport,
   type OrderClassification,
+  type BracketId,
+  type OtcWhaleReport,
+  calculateOrderBookImbalance,
+  type OrderBookImbalanceResult,
 } from '@p2p/core';
 import { BinanceP2pService } from '../../../core/binance-p2p.service';
 import { ToastService } from '../../../core/toast.service';
@@ -23,6 +30,8 @@ export class MicrostructureShield {
 
   readonly tracker = new OrderPersistenceTracker(15);
   readonly selectedSide = signal<'BUY' | 'SELL'>('SELL');
+  readonly selectedBracket = signal<BracketId | 'ALL'>('ALL');
+  readonly brackets = CAPITAL_BRACKETS;
   readonly targetUsdt = signal<number>(100);
 
   // Ingest snapshots whenever market depth updates
@@ -63,6 +72,27 @@ export class MicrostructureShield {
       this.targetUsdt(),
       this.tracker,
     );
+  });
+
+  readonly bracketFilterResult = computed(() => {
+    const bId = this.selectedBracket();
+    if (bId === 'ALL') return null;
+    return filterOffersByBracket(this.activeOffers(), bId);
+  });
+
+  readonly otcWhaleReport = computed<OtcWhaleReport>(() => {
+    return detectOtcWhaleBlocks(this.activeOffers());
+  });
+
+  readonly obiReport = computed<OrderBookImbalanceResult>(() => {
+    const depth = this.currentDepth();
+    if (!depth) {
+      return calculateOrderBookImbalance([], []);
+    }
+    return calculateOrderBookImbalance(depth.buyOffers, depth.sellOffers, {
+      depthLevels: 10,
+      minOrderUsdt: 20,
+    });
   });
 
   readonly classifiedOrders = computed<OrderClassification[]>(() => {

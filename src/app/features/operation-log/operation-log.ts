@@ -25,6 +25,7 @@ import { OperationFormComponent, type OpDraft } from './operation-form.component
 import { OperationTableComponent } from './operation-table.component';
 import { BackupPanelComponent } from './backup-panel.component';
 import { OperationTimerBannerComponent } from './operation-timer-banner.component';
+import { InvoiceModalComponent } from './invoice-modal.component';
 import { McpService } from '../../core/mcp.service';
 
 /** CSV header row (es-VE) for the operation-ledger export. */
@@ -90,6 +91,7 @@ const EMPTY_DRAFT: OpDraft = {
     OperationTableComponent,
     BackupPanelComponent,
     OperationTimerBannerComponent,
+    InvoiceModalComponent,
   ],
   templateUrl: './operation-log.html',
 })
@@ -116,6 +118,7 @@ export class OperationLog {
   /** Modals confirmation state */
   readonly pendingDeleteId = signal<string | null>(null);
   readonly pendingImportOps = signal<Operation[] | null>(null);
+  readonly showInvoiceModal = signal<boolean>(false);
 
   readonly form = signal<OpDraft>({ ...EMPTY_DRAFT });
 

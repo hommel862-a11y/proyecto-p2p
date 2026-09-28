@@ -237,5 +237,36 @@ describe('Triangular Arbitrage Domain Engine', () => {
       expect(result.isExecutable).toBe(true);
       expect(result.netProfitUsdt).toBeGreaterThan(0);
     });
+
+    it('evaluateTriangularSlippageRisk recommends NO_OPERAR when volatility exceeds spread', async () => {
+      const { evaluateTriangularSlippageRisk } = await import('./triangular-arbitrage');
+      // Low spread (0.8%) with 45 min wait on BTC with 60% annualized volatility
+      const res = evaluateTriangularSlippageRisk({
+        initialSpreadPct: 0.8,
+        volatileAsset: 'BTC',
+        estimatedSettlementMinutes: 45,
+        annualizedVolatilityPct: 60,
+      });
+
+      expect(res.recommendation).toBe('NO_OPERAR_RIESGO_VOLATILIDAD');
+      expect(res.worstCaseSlippagePct).toBeGreaterThan(0.5);
+      expect(res.rationale).toContain('NO OPERAR');
+    });
+
+    it('evaluateTriangularSlippageRisk recommends OPERAR when spread is sufficiently wide', async () => {
+      const { evaluateTriangularSlippageRisk } = await import('./triangular-arbitrage');
+      // High spread (3.5%) with short 10 min wait
+      const res = evaluateTriangularSlippageRisk({
+        initialSpreadPct: 3.5,
+        volatileAsset: 'ETH',
+        estimatedSettlementMinutes: 10,
+        annualizedVolatilityPct: 40,
+      });
+
+      expect(res.recommendation).toBe('OPERAR');
+      expect(res.netRiskAdjustedSpreadPct).toBeGreaterThan(2.0);
+      expect(res.rationale).toContain('Margen triangular suficiente');
+    });
   });
 });
+

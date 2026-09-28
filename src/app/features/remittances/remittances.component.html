@@ -1,0 +1,249 @@
+<div class="remittances-container">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="header-titles">
+      <div class="badge-pill">
+        <span class="badge-dot"></span>
+        <span>Cross-Border Commercial Engine</span>
+      </div>
+      <h1 class="main-title">Cotizador Comercial de Remesas</h1>
+      <p class="subtitle">
+        Calcula rutas multidivisa en segundos, deduce impuestos bancarios de origen (4x1000) y genera cotizaciones profesionales para WhatsApp.
+      </p>
+    </div>
+  </header>
+
+  <!-- Corridor Selection Grid -->
+  <div class="corridor-selector">
+    @for (corridor of corridors; track corridor.id) {
+      <button
+        type="button"
+        class="corridor-card"
+        [class.active]="corridor.id === selectedCorridorId()"
+        (click)="selectCorridor(corridor.id)"
+      >
+        <div class="corridor-flags">
+          <span class="flag">{{ corridor.originFlag }}</span>
+          <span class="arrow">➔</span>
+          <span class="flag">{{ corridor.destFlag }}</span>
+        </div>
+        <div class="corridor-meta">
+          <div class="corridor-name">{{ corridor.name }}</div>
+          <div class="corridor-method">{{ corridor.paymentMethod }}</div>
+        </div>
+        @if (corridor.defaultBankingFeePct > 0) {
+          <span class="tax-tag">Gravamen {{ corridor.defaultBankingFeePct }}%</span>
+        }
+      </button>
+    }
+  </div>
+
+  <!-- Workspace Grid: Inputs & Live Preview -->
+  <div class="workspace-grid">
+    <!-- Left Column: Parameters -->
+    <div class="parameters-panel">
+      <!-- Mode Toggle -->
+      <div class="mode-toggle-card">
+        <label class="toggle-label">Modo de Cotización:</label>
+        <div class="mode-buttons">
+          <button
+            type="button"
+            class="btn-mode"
+            [class.active]="calculationMode() === 'BY_SEND_AMOUNT'"
+            (click)="calculationMode.set('BY_SEND_AMOUNT')"
+          >
+            Monto a Enviar ({{ activeCorridor().originCurrency }})
+          </button>
+          <button
+            type="button"
+            class="btn-mode"
+            [class.active]="calculationMode() === 'BY_RECEIVE_AMOUNT'"
+            (click)="calculationMode.set('BY_RECEIVE_AMOUNT')"
+          >
+            Monto a Recibir (VES)
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Input Amount -->
+      <div class="input-card">
+        <div class="input-header">
+          <label class="input-label">
+            {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en VES' }}
+          </label>
+          <span class="currency-tag">
+            {{ calculationMode() === 'BY_SEND_AMOUNT' ? activeCorridor().originCurrency : 'VES' }}
+          </span>
+        </div>
+        <div class="amount-input-wrapper">
+          <input
+            type="number"
+            class="amount-input"
+            [ngModel]="inputAmount()"
+            (ngModelChange)="inputAmount.set($event)"
+            min="1"
+            step="any"
+          />
+        </div>
+      </div>
+
+      <!-- Rates & Frictions Tuning -->
+      <div class="tuning-card">
+        <h3 class="tuning-title">Parámetros de Tasa & Fricción</h3>
+        
+        <div class="tuning-grid">
+          <!-- Origin Rate -->
+          <div class="tuning-field">
+            <label>Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
+            <input
+              type="number"
+              class="tuning-input"
+              [ngModel]="originCryptoRate()"
+              (ngModelChange)="originCryptoRate.set($event)"
+              step="any"
+            />
+          </div>
+
+          <!-- Destination Rate (VES/USDT) -->
+          <div class="tuning-field">
+            <div class="field-label-row">
+              <label>Tasa Salida (VES/USDT)</label>
+              <span class="live-tag">P2P En Vivo</span>
+            </div>
+            <input
+              type="number"
+              class="tuning-input"
+              [ngModel]="destCryptoRate()"
+              (ngModelChange)="destCryptoRate.set($event)"
+              step="any"
+            />
+          </div>
+
+          <!-- Operator Margin -->
+          <div class="tuning-field">
+            <label>Margen de la Mesa (%)</label>
+            <div class="input-with-suffix">
+              <input
+                type="number"
+                class="tuning-input"
+                [ngModel]="operatorMarginPct()"
+                (ngModelChange)="operatorMarginPct.set($event)"
+                step="0.1"
+                min="0"
+                max="50"
+              />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+
+          <!-- Banking Friction (e.g. 4x1000) -->
+          <div class="tuning-field">
+            <label>Fricción Bancaria / 4x1000 (%)</label>
+            <div class="input-with-suffix">
+              <input
+                type="number"
+                class="tuning-input"
+                [ngModel]="bankingFeePct()"
+                (ngModelChange)="bankingFeePct.set($event)"
+                step="0.1"
+                min="0"
+              />
+              <span class="suffix">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customization for WhatsApp -->
+        <div class="custom-branding-grid">
+          <div class="tuning-field">
+            <label>Nombre de tu Mesa / Negocio</label>
+            <input
+              type="text"
+              class="tuning-input text-input"
+              [ngModel]="deskName()"
+              (ngModelChange)="deskName.set($event)"
+              placeholder="Ej. Caracas Trading Desk"
+            />
+          </div>
+          <div class="tuning-field">
+            <label>Validez de la Cotización</label>
+            <div class="input-with-suffix">
+              <input
+                type="number"
+                class="tuning-input"
+                [ngModel]="validityMinutes()"
+                (ngModelChange)="validityMinutes.set($event)"
+                min="5"
+                max="60"
+              />
+              <span class="suffix">min</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Quote Results & WhatsApp Action -->
+    <div class="results-panel">
+      <!-- Payout Hero Card -->
+      <div class="hero-quote-card">
+        <div class="hero-top">
+          <span class="hero-label">Liquidación Final al Cliente</span>
+          <span class="effective-rate-badge">
+            Tasa: 1 {{ quote().originCurrency }} = {{ quote().effectiveRate }} {{ quote().destCurrency }}
+          </span>
+        </div>
+        
+        <div class="hero-amount-display">
+          <span class="hero-currency">VES</span>
+          <span class="hero-number">{{ quote().destPayoutAmount | number:'1.2-2' }}</span>
+        </div>
+
+        <div class="hero-breakdown-row">
+          <div class="breakdown-stat">
+            <span class="stat-name">Monto Bruto Enviado</span>
+            <span class="stat-value">{{ quote().grossOriginAmount | number:'1.2-2' }} {{ quote().originCurrency }}</span>
+          </div>
+          <div class="breakdown-stat">
+            <span class="stat-name">Fricción Bancaria (Impuesto)</span>
+            <span class="stat-value text-warning">-{{ quote().bankingFeeTotal | number:'1.2-2' }} {{ quote().originCurrency }}</span>
+          </div>
+          <div class="breakdown-stat">
+            <span class="stat-name">Ganancia Neta Mesa</span>
+            <span class="stat-value text-success">+{{ quote().operatorMarginUsdt | number:'1.2-2' }} USDT ({{ quote().operatorProfitDestFiat | number:'1.0-0' }} VES)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- WhatsApp Preview Card -->
+      <div class="whatsapp-card">
+        <div class="whatsapp-header">
+          <div class="wa-brand">
+            <span class="wa-icon">💬</span>
+            <span class="wa-title">Vista Previa para WhatsApp / Telegram</span>
+          </div>
+          <button
+            type="button"
+            class="btn-copy-wa"
+            [class.btn-copied]="copied()"
+            (click)="copyQuoteToClipboard()"
+          >
+            @if (copied()) {
+              <span>✅ ¡Copiado al Portapapeles!</span>
+            } @else {
+              <span>📋 Copiar Cotización</span>
+            }
+          </button>
+        </div>
+
+        <div class="whatsapp-bubble">
+          <pre class="bubble-content">{{ formattedMessage() }}</pre>
+        </div>
+
+        <div class="whatsapp-footer-hint">
+          <span>💡 Consejo del Arquitecto: Copiá el mensaje directamente y pegalo en tu chat con el cliente. La cláusula anti-terceros protege tu cuenta de congelamientos preventivos.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

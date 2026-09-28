@@ -65,6 +65,15 @@ import { AutoBackupService } from '../../core/auto-backup.service';
         <button
           type="button"
           class="btn btn-secondary"
+          style="border-color: var(--gold); color: var(--gold);"
+          (click)="openInvoiceModal.emit()"
+          title="Generar facturas PDF en lote para cumplimiento y blindaje bancario"
+        >
+          🛡️ Facturación Fiscal (PDF Lote)
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary"
           (click)="syncGoogleSheets.emit()"
           title="Sincroniza operaciones con Google Sheets vía MCP"
         >
@@ -148,6 +157,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
 export class BackupPanelComponent {
   readonly autoBackup = inject(AutoBackupService);
   readonly downloadJson = output<void>();
+  readonly openInvoiceModal = output<void>();
   readonly importFile = output<Event>();
   readonly downloadCsv = output<void>();
   readonly syncGoogleSheets = output<void>();

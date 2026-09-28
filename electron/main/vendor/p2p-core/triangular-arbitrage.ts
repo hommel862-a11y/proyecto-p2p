@@ -586,3 +586,58 @@ export function calculateCrossExchangeBasisSpread(
       : `Spread insuficiente (${netSpreadPct}% neto). No supera el umbral de viabilidad institucional (0.50%).`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Triangular Slippage & Volatility Risk Guard
+// ---------------------------------------------------------------------------
+
+export interface SlippageRiskGuardInput {
+  initialSpreadPct: number;
+  volatileAsset?: string; // 'BTC', 'ETH', 'BNB'
+  estimatedSettlementMinutes?: number; // 15 to 45 min payment release window
+  annualizedVolatilityPct?: number; // default ~50%
+}
+
+export interface SlippageRiskGuardResult {
+  expectedAdverseSlippagePct: number;
+  worstCaseSlippagePct: number; // 95% 1-tailed VaR
+  netRiskAdjustedSpreadPct: number;
+  recommendation: 'OPERAR' | 'NO_OPERAR_RIESGO_VOLATILIDAD';
+  rationale: string;
+}
+
+/**
+ * Evaluates market slippage risk during the payment release window of a triangular cycle.
+ * Prevents taking uncompensated market risk on volatile legs (e.g. BTC, ETH) while waiting for fiat confirmation.
+ */
+export function evaluateTriangularSlippageRisk(
+  input: SlippageRiskGuardInput,
+): SlippageRiskGuardResult {
+  const {
+    initialSpreadPct,
+    volatileAsset = 'BTC',
+    estimatedSettlementMinutes = 25,
+    annualizedVolatilityPct = 55,
+  } = input;
+
+  const minutesInYear = 365 * 24 * 60;
+  const timeFraction = Math.max(1, estimatedSettlementMinutes) / minutesInYear;
+  const periodVol = (annualizedVolatilityPct / 100) * Math.sqrt(timeFraction);
+
+  // Expected 1-sigma move and 95% confidence 1-tailed adverse move (1.645 sigma)
+  const expectedAdverseSlippagePct = Math.round(periodVol * 100 * 100) / 100;
+  const worstCaseSlippagePct = Math.round(periodVol * 1.645 * 100 * 100) / 100;
+
+  const netRiskAdjustedSpreadPct = Math.round((initialSpreadPct - worstCaseSlippagePct) * 100) / 100;
+  const isSafe = netRiskAdjustedSpreadPct > 0.3;
+
+  return {
+    expectedAdverseSlippagePct,
+    worstCaseSlippagePct,
+    netRiskAdjustedSpreadPct,
+    recommendation: isSafe ? 'OPERAR' : 'NO_OPERAR_RIESGO_VOLATILIDAD',
+    rationale: isSafe
+      ? `Margen triangular suficiente (+${netRiskAdjustedSpreadPct}% neto ajustado por riesgo) para absorber ${estimatedSettlementMinutes}m de espera en ${volatileAsset}.`
+      : `El riesgo de deslizamiento cambiario en ${volatileAsset} (${worstCaseSlippagePct}% a 95% de confianza en ${estimatedSettlementMinutes}m) consume el margen inicial (${initialSpreadPct}%). Recomendación: NO OPERAR sin cobertura simultánea.`,
+  };
+}

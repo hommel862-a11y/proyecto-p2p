@@ -402,3 +402,82 @@ export const AuditAndRiskAnalyticsInputSchema = z.object({
     .optional(),
 });
 export type AuditAndRiskAnalyticsInput = z.infer<typeof AuditAndRiskAnalyticsInputSchema>;
+
+// ===========================================================================
+// p2p-ad-automaker Schemas (Institutional Repricer & Ad Management)
+// ===========================================================================
+
+export const EvaluateAdRepricingInputSchema = z.object({
+  side: z.enum(['BUY', 'SELL']),
+  fiat: z.string().default('VES'),
+  asset: z.string().default('USDT'),
+  targetRank: z.enum(['TOP_1', 'TOP_2', 'TOP_3']).default('TOP_2'),
+  stepVes: z.number().positive().default(0.05),
+  minSpreadPct: z.number().min(0).default(0.5), // Golden Rule floor
+  breakEvenFloorPrice: z.number().min(0).default(0),
+  minCompetitorOrderLimitUsdt: z.number().min(0).default(200), // Anti-spoofing limit
+  minCompetitorFinishRatePct: z.number().min(0).max(100).default(90), // Anti-spoofing finish rate
+  bcvInterventionActive: z.boolean().default(false),
+  accountSaturationPct: z.number().min(0).max(100).default(0),
+  competitorOrders: z
+    .array(
+      z.object({
+        advNo: z.string().optional(),
+        price: z.number().positive(),
+        surplusAmount: z.number().optional(),
+        minSingleTransAmount: z.number().optional(),
+        maxSingleTransAmount: z.number().optional(),
+        finishRate: z.number().optional(),
+        advertiserName: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+export type EvaluateAdRepricingInput = z.infer<typeof EvaluateAdRepricingInputSchema>;
+
+export const PublishAdPriceInputSchema = z.object({
+  adId: z.string().min(1, 'Se requiere adId'),
+  exchange: z.enum(['BINANCE', 'BYBIT']).default('BINANCE'),
+  side: z.enum(['BUY', 'SELL']),
+  newPrice: z.number().positive('Precio debe ser mayor a 0'),
+  expectedPreviousPrice: z.number().positive().optional(),
+  maxPriceDeviationPct: z.number().min(0.1).max(10).default(3.0), // Circuit breaker for fat-finger prices
+  dryRun: z.boolean().default(false),
+  rationale: z.string().optional(),
+});
+export type PublishAdPriceInput = z.infer<typeof PublishAdPriceInputSchema>;
+
+export const ToggleAdStatusInputSchema = z.object({
+  adId: z.string().min(1, 'Se requiere adId'),
+  exchange: z.enum(['BINANCE', 'BYBIT']).default('BINANCE'),
+  action: z.enum(['PAUSE', 'RESUME', 'CLOSE']),
+  reason: z.enum([
+    'ACCOUNT_SATURATION',
+    'BCV_INTERVENTION',
+    'KILLSWITCH_TRIGGERED',
+    'SPREAD_UNVIABLE',
+    'OPERATOR_MANUAL',
+    'SCHEDULED_MAINTENANCE',
+  ]),
+  notes: z.string().optional(),
+  humanConfirm: z.boolean().default(true),
+});
+export type ToggleAdStatusInput = z.infer<typeof ToggleAdStatusInputSchema>;
+
+export const AuditAdCompetitivenessInputSchema = z.object({
+  adId: z.string().min(1),
+  myCurrentPrice: z.number().positive(),
+  side: z.enum(['BUY', 'SELL']),
+  competitors: z.array(
+    z.object({
+      price: z.number().positive(),
+      merchantName: z.string().optional(),
+      minLimitVes: z.number().optional(),
+      maxLimitVes: z.number().optional(),
+      finishRatePct: z.number().optional(),
+    }),
+  ),
+  desiredRank: z.enum(['TOP_1', 'TOP_2', 'TOP_3']).default('TOP_2'),
+});
+export type AuditAdCompetitivenessInput = z.infer<typeof AuditAdCompetitivenessInputSchema>;
+

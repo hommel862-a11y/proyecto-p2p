@@ -149,4 +149,24 @@ CREATE TABLE IF NOT EXISTS operation_records (
 
 CREATE INDEX IF NOT EXISTS idx_op_records_time ON operation_records(created_at DESC);
 
+-- Bank Accounts (Institutional Treasury Ledger)
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id TEXT PRIMARY KEY,
+  bank_name TEXT NOT NULL,
+  bank_code TEXT NOT NULL,
+  rail TEXT NOT NULL CHECK (rail IN ('PAGO_MOVIL', 'TRANSFERENCIA', 'MIXTO')),
+  account_number_masked TEXT NOT NULL,
+  daily_limit_ves REAL NOT NULL DEFAULT 0,
+  monthly_limit_ves REAL DEFAULT 0,
+  initial_balance_ves REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DISABLED')),
+  max_daily_transactions INTEGER DEFAULT 15,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_status ON bank_accounts(status);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_code ON bank_accounts(bank_code);
+
+
 

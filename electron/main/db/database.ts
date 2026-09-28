@@ -106,6 +106,21 @@ export interface OperationRecord {
   createdAt: number;
 }
 
+export interface BankAccountRecord {
+  id: string;
+  bankName: string;
+  bankCode: string;
+  rail: 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'MIXTO';
+  accountNumberMasked: string;
+  dailyLimitVes: number;
+  monthlyLimitVes?: number;
+  initialBalanceVes: number;
+  status?: 'ACTIVE' | 'DISABLED';
+  maxDailyTransactions?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 export class P2PDatabaseService {
   private db: DatabaseSync;
 
@@ -314,6 +329,23 @@ export class P2PDatabaseService {
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_op_records_time ON operation_records(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS bank_accounts (
+        id TEXT PRIMARY KEY,
+        bank_name TEXT NOT NULL,
+        bank_code TEXT NOT NULL,
+        rail TEXT NOT NULL CHECK (rail IN ('PAGO_MOVIL', 'TRANSFERENCIA', 'MIXTO')),
+        account_number_masked TEXT NOT NULL,
+        daily_limit_ves REAL NOT NULL DEFAULT 0,
+        monthly_limit_ves REAL DEFAULT 0,
+        initial_balance_ves REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DISABLED')),
+        max_daily_transactions INTEGER DEFAULT 15,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_bank_accounts_status ON bank_accounts(status);
+      CREATE INDEX IF NOT EXISTS idx_bank_accounts_code ON bank_accounts(bank_code);
     `);
   }
 
@@ -1008,7 +1040,95 @@ export class P2PDatabaseService {
     }));
   }
 
+  /**
+   * Saves or updates a bank account record in SQLite.
+   */
+  saveBankAccount(acc: BankAccountRecord): boolean {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO bank_accounts (
+        id, bank_name, bank_code, rail, account_number_masked,
+        daily_limit_ves, monthly_limit_ves, initial_balance_ves,
+        status, max_daily_transactions, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      acc.id,
+      acc.bankName,
+      acc.bankCode,
+      acc.rail,
+      acc.accountNumberMasked,
+      acc.dailyLimitVes,
+      acc.monthlyLimitVes ?? 0,
+      acc.initialBalanceVes,
+      acc.status ?? 'ACTIVE',
+      acc.maxDailyTransactions ?? 15,
+      acc.createdAt || now,
+      acc.updatedAt || now,
+    );
+    return true;
+  }
+
+  /**
+   * Retrieves a single bank account by id.
+   */
+  getBankAccount(id: string): BankAccountRecord | null {
+    const stmt = this.db.prepare('SELECT * FROM bank_accounts WHERE id = ?');
+    const row = stmt.get(id) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return this.mapBankAccountRow(row);
+  }
+
+  /**
+   * Lists bank accounts, optionally filtering by status and/or bankCode.
+   */
+  listBankAccounts(filter?: { status?: string; bankCode?: string }): BankAccountRecord[] {
+    let query = 'SELECT * FROM bank_accounts WHERE 1=1';
+    const params: string[] = [];
+
+    if (filter?.status) {
+      query += ' AND status = ?';
+      params.push(filter.status);
+    }
+    if (filter?.bankCode) {
+      query += ' AND bank_code = ?';
+      params.push(filter.bankCode);
+    }
+    query += ' ORDER BY bank_name ASC';
+
+    const stmt = this.db.prepare(query);
+    const rows = (params.length > 0 ? stmt.all(...params) : stmt.all()) as Record<string, unknown>[];
+    return rows.map((r) => this.mapBankAccountRow(r));
+  }
+
+  /**
+   * Deletes a bank account by id. Returns true if an account was deleted.
+   */
+  deleteBankAccount(id: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM bank_accounts WHERE id = ?');
+    const info = stmt.run(id);
+    return Number(info.changes) > 0;
+  }
+
+  private mapBankAccountRow(r: Record<string, unknown>): BankAccountRecord {
+    return {
+      id: String(r['id']),
+      bankName: String(r['bank_name']),
+      bankCode: String(r['bank_code']),
+      rail: r['rail'] as 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'MIXTO',
+      accountNumberMasked: String(r['account_number_masked']),
+      dailyLimitVes: Number(r['daily_limit_ves']),
+      monthlyLimitVes: r['monthly_limit_ves'] ? Number(r['monthly_limit_ves']) : 0,
+      initialBalanceVes: Number(r['initial_balance_ves']),
+      status: (r['status'] as 'ACTIVE' | 'DISABLED') ?? 'ACTIVE',
+      maxDailyTransactions: r['max_daily_transactions'] ? Number(r['max_daily_transactions']) : 15,
+      createdAt: Number(r['created_at']),
+      updatedAt: Number(r['updated_at']),
+    };
+  }
+
   close(): void {
     this.db.close();
   }
 }
+

@@ -46,7 +46,7 @@ export function createP2PMcpServer(options?: CreateMcpServerOptions): McpServer 
 
         try {
           const validated = tool.inputSchema.parse(args);
-          const result = tool.execute(validated as any);
+          const result = await Promise.resolve(tool.execute(validated as any));
 
           // Audit log
           auditService.record({

@@ -83,6 +83,20 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
   },
 ];
 
+export interface ElectronDbBridge {
+  saveBankAccount(account: unknown): Promise<boolean>;
+  getBankAccount(id: string): Promise<unknown>;
+  listBankAccounts(filter?: { status?: string; bankCode?: string }): Promise<unknown[]>;
+  deleteBankAccount(id: string): Promise<boolean>;
+}
+
+function getElectronDb(): ElectronDbBridge | undefined {
+  if (typeof window !== 'undefined') {
+    return (window as unknown as { electron?: { db?: ElectronDbBridge } }).electron?.db;
+  }
+  return undefined;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AccountsService {
   private readonly storage = inject(StorageService);
@@ -92,6 +106,33 @@ export class AccountsService {
 
   /** Monotonic bump: invalidates operation-derived computeds after ledger writes. */
   private readonly ledgerRevision = signal(0);
+
+  constructor() {
+    void this.initElectronSync();
+  }
+
+  /**
+   * When running inside Electron, synchronize SQLite accounts with in-memory state.
+   * If SQLite has accounts, adopt them. If SQLite is empty, seed it with the initial accounts.
+   */
+  async initElectronSync(bridgeOverride?: ElectronDbBridge): Promise<void> {
+    const electronDb = bridgeOverride ?? getElectronDb();
+    if (!electronDb?.listBankAccounts) return;
+
+    try {
+      const records = (await electronDb.listBankAccounts()) as BankAccount[];
+      if (Array.isArray(records) && records.length > 0) {
+        this.saveAccounts(records);
+      } else if (electronDb.saveBankAccount) {
+        const current = this.accounts();
+        for (const acc of current) {
+          await electronDb.saveBankAccount(acc);
+        }
+      }
+    } catch (err) {
+      console.warn('[AccountsService] Failed to sync accounts with Electron SQLite:', err);
+    }
+  }
 
   readonly rawOperations = computed<Operation[]>(() => {
     // `ledgerRevision` is intentionally read to make this computed re-evaluate when
@@ -210,6 +251,10 @@ export class AccountsService {
     };
     const next = [...this.accounts(), created];
     this.saveAccounts(next);
+    const electronDb = getElectronDb();
+    if (electronDb?.saveBankAccount) {
+      void electronDb.saveBankAccount(created);
+    }
     this.audit.log(
       'CONFIG_CHANGE',
       'Cuenta bancaria agregada',
@@ -222,6 +267,10 @@ export class AccountsService {
   updateAccount(updated: BankAccount): void {
     const next = this.accounts().map((a) => (a.id === updated.id ? updated : a));
     this.saveAccounts(next);
+    const electronDb = getElectronDb();
+    if (electronDb?.saveBankAccount) {
+      void electronDb.saveBankAccount(updated);
+    }
     this.audit.log(
       'CONFIG_CHANGE',
       'Cuenta bancaria actualizada',
@@ -233,6 +282,10 @@ export class AccountsService {
   deleteAccount(id: string): void {
     const next = this.accounts().filter((a) => a.id !== id);
     this.saveAccounts(next);
+    const electronDb = getElectronDb();
+    if (electronDb?.deleteBankAccount) {
+      void electronDb.deleteBankAccount(id);
+    }
     this.audit.log('CONFIG_CHANGE', 'Cuenta bancaria eliminada', { id }, 'info');
   }
 

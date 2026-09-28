@@ -267,4 +267,60 @@ describe('P2PDatabaseService (SQLite WAL Mode)', () => {
     expect(records[0].cryptoAmount).toBe(750);
     expect(records[0].bank).toBe('Banesco');
   });
+
+  it('should persist, retrieve, filter and delete bank account records in SQLite', () => {
+    const banesco = {
+      id: 'acc-banesco-01',
+      bankName: 'Banesco Pago Móvil',
+      bankCode: 'BANESCO',
+      rail: 'PAGO_MOVIL' as const,
+      accountNumberMasked: '0414-***1234',
+      dailyLimitVes: 50000,
+      monthlyLimitVes: 200000,
+      initialBalanceVes: 45000,
+      status: 'ACTIVE' as const,
+      maxDailyTransactions: 15,
+    };
+
+    const mercantil = {
+      id: 'acc-mercantil-01',
+      bankName: 'Mercantil Transferencia',
+      bankCode: 'MERCANTIL',
+      rail: 'TRANSFERENCIA' as const,
+      accountNumberMasked: '0105-***9988',
+      dailyLimitVes: 300000,
+      initialBalanceVes: 100000,
+      status: 'DISABLED' as const,
+      maxDailyTransactions: 20,
+    };
+
+    expect(dbService.saveBankAccount(banesco)).toBe(true);
+    expect(dbService.saveBankAccount(mercantil)).toBe(true);
+
+    const retrieved = dbService.getBankAccount('acc-banesco-01');
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.bankName).toBe('Banesco Pago Móvil');
+    expect(retrieved?.dailyLimitVes).toBe(50000);
+    expect(retrieved?.status).toBe('ACTIVE');
+
+    // List all
+    const all = dbService.listBankAccounts();
+    expect(all.length).toBe(2);
+
+    // Filter by status
+    const activeOnly = dbService.listBankAccounts({ status: 'ACTIVE' });
+    expect(activeOnly.length).toBe(1);
+    expect(activeOnly[0].id).toBe('acc-banesco-01');
+
+    // Filter by bankCode
+    const mercantilOnly = dbService.listBankAccounts({ bankCode: 'MERCANTIL' });
+    expect(mercantilOnly.length).toBe(1);
+    expect(mercantilOnly[0].id).toBe('acc-mercantil-01');
+
+    // Delete
+    expect(dbService.deleteBankAccount('acc-banesco-01')).toBe(true);
+    expect(dbService.getBankAccount('acc-banesco-01')).toBeNull();
+    expect(dbService.deleteBankAccount('acc-banesco-01')).toBe(false);
+  });
 });
+

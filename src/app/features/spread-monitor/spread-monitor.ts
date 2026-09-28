@@ -39,6 +39,8 @@ import { TradeTimerService, type TradePreset } from '../../core/trade-timer.serv
 import { DatePipe } from '@angular/common';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { BinanceRepricerService } from '../../core/binance-repricer.service';
+import { McpAdPublisherService } from '../../core/mcp-ad-publisher.service';
+import { AdComposerService } from '../../core/ad-composer.service';
 import { HotkeysService } from '../../core/hotkeys.service';
 import { AccountsService } from '../../core/accounts.service';
 import { MarketHistoryService } from '../../core/market-history.service';
@@ -84,6 +86,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly spreadQuality = inject(SpreadQualityService);
   readonly cotizave = inject(CotizaveService);
   readonly mcp = inject(McpService);
+  readonly mcpPublisher = inject(McpAdPublisherService);
+  readonly adComposer = inject(AdComposerService);
   protected readonly Math = Math;
 
   private mcpSyncTimerId: number | null = null;
@@ -97,6 +101,30 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   toggleMcpConsole(): void {
     this.mcpConsoleExpanded.update((v) => !v);
+  }
+
+  toggleMcpPublisher(): void {
+    if (this.mcpPublisher.isEnabled()) {
+      this.mcpPublisher.disablePublishing();
+    } else {
+      this.mcpPublisher.enablePublishing({
+        dryRun: this.mcpPublisher.isDryRun(),
+        maxDeviationPct: this.mcpPublisher.maxDeviationPct(),
+        buyAdId: this.mcpPublisher.buyAdId(),
+        sellAdId: this.mcpPublisher.sellAdId(),
+      });
+    }
+  }
+
+  async copyDraftClipboard(): Promise<void> {
+    const text = this.adComposer.getClipboardSummary();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast.success('Resumen de anuncio copiado al portapapeles.', 'Anuncio P2P');
+    } catch {
+      this.toast.info('No se pudo acceder al portapapeles.', 'Anuncio P2P');
+    }
   }
 
   /** MCP Tool: detect_usdt_depeg state */

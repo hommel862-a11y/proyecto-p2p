@@ -172,6 +172,7 @@
   <div class="section-divider"></div>
   <app-backup-panel
     (downloadJson)="downloadBackup()"
+    (openInvoiceModal)="showInvoiceModal.set(true)"
     (importFile)="importFile($event)"
     (downloadCsv)="downloadCsv()"
     (syncGoogleSheets)="syncAllToGoogleSheets()"
@@ -204,4 +205,12 @@
       </div>
     </div>
   }
+
+  <!-- Modal de Facturación Fiscal y Blindaje Bancario (Invoice Engine) -->
+  @if (showInvoiceModal()) {
+    <app-invoice-modal
+      [operations]="operations()"
+      (close)="showInvoiceModal.set(false)" />
+  }
 </section>
+
