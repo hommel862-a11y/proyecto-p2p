@@ -462,3 +462,42 @@ function weightedSpreadPct(outcomes: readonly DecisionOutcome[]): number | null 
   const plainSum = reported.reduce((sum, outcome) => sum + outcome.realizedSpreadPct, 0);
   return plainSum / reported.length;
 }
+
+/** The realized figures a cycle close must record. */
+export interface RealizedCycleFigures {
+  readonly realizedProfitUsdt: number;
+  readonly realizedSpreadPct: number;
+}
+
+/**
+ * Computes the realized figures of a whole cycle from the outcomes it recorded.
+ *
+ * This is the same aggregation the read model applies per decision, applied to the
+ * union of the cycle's outcomes: reported profits are summed and the spread keeps
+ * the notional weighting of {@link weightedSpreadPct}. Closing a cycle with figures
+ * built by any other rule would make the cycle totals disagree with the decision
+ * rows that produced them.
+ *
+ * Returns `null` — not zeros — when the recorded outcomes cannot justify a `CLOSED`
+ * status: no outcomes at all, or no outcome reporting a realized spread, or none
+ * reporting a realized profit. Zero is a plausible realized profit, so returning it
+ * would be indistinguishable from a real break-even cycle. A caller that gets `null`
+ * must not close the cycle as `CLOSED`; `ABANDONED` is the honest status for a cycle
+ * whose executions were never verified.
+ *
+ * Note the current publisher records `filledAmountUsdt: 0` and reports no spread or
+ * profit, so in production today this returns `null` for every cycle. That is the
+ * intended behaviour: the journal must expose that it cannot prove a realized P&L
+ * until a verified fill is recorded.
+ */
+export function realizedCycleFigures(
+  outcomes: readonly DecisionOutcome[],
+): RealizedCycleFigures | null {
+  const realizedSpreadPct = weightedSpreadPct(outcomes);
+  if (realizedSpreadPct === null) return null;
+  const realizedProfitUsdt = sumReported(
+    outcomes.map((outcome) => outcome.realizedProfitUsdt),
+  );
+  if (realizedProfitUsdt === null) return null;
+  return { realizedProfitUsdt, realizedSpreadPct };
+}

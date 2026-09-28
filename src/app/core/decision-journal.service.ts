@@ -1,19 +1,22 @@
 import { Injectable } from '@angular/core';
-import type {
-  CloseDecisionCycleInput,
-  DecisionCycle,
-  DecisionCyclesFilter,
-  DecisionJournalRepository,
-  DecisionOutcome,
-  DecisionPerformanceFilter,
-  DecisionPerformanceRow,
-  MarketSnapshot,
-  OpenDecisionCycleInput,
-  RecordDecisionInput,
-  RecordMarketSnapshotInput,
-  RecordOutcomeInput,
-  RepricerDecisionRecord,
-  VerificationSummary,
+import {
+  buildDecisionSelfAudit,
+  realizedCycleFigures,
+  type CloseDecisionCycleInput,
+  type DecisionCycle,
+  type DecisionCyclesFilter,
+  type DecisionJournalRepository,
+  type DecisionOutcome,
+  type DecisionPerformanceFilter,
+  type DecisionPerformanceRow,
+  type DecisionSelfAudit,
+  type MarketSnapshot,
+  type OpenDecisionCycleInput,
+  type RecordDecisionInput,
+  type RecordMarketSnapshotInput,
+  type RecordOutcomeInput,
+  type RepricerDecisionRecord,
+  type VerificationSummary,
 } from '@p2p/core';
 
 /**
@@ -119,6 +122,110 @@ export class DecisionJournalService {
 
   getVerificationSummary(filter?: DecisionPerformanceFilter): Promise<VerificationSummary> {
     return this.call('getVerificationSummary', filter);
+  }
+
+  // --- derived views ----------------------------------------------------------
+  //
+  // `closeCycle` above is the raw port, and it is kept raw on purpose: it persists
+  // the figures the caller gives it and never aggregates them behind the caller's
+  // back. These two methods are the ones that do the aggregating, so a caller that
+  // wants a `CLOSED` cycle with honest numbers has exactly one path to get them.
+
+  /**
+   * Closes a cycle as `CLOSED` with the figures its own recorded outcomes justify.
+   *
+   * The figures are computed with `realizedCycleFigures`, the same aggregation the
+   * read model applies, so the cycle totals can never disagree with the decision
+   * rows that produced them.
+   *
+   * Refuses — loudly, and without writing anything — when the cycle does not exist
+   * or when its outcomes cannot justify a `CLOSED` status: no outcomes, or no
+   * outcome reporting a realized spread or a realized profit. Zero is a plausible
+   * realized profit, so the refusal exists to stop "we closed it" from silently
+   * becoming "we invented a break-even result". Use {@link abandonCycle} for those
+   * cycles: `ABANDONED` is the honest terminal status for a cycle whose execution
+   * was never verified.
+   *
+   * Note this is the case in production today: the ad publisher records attempts
+   * with `filledAmountUsdt: 0` and reports no figures, so until a verified fill is
+   * recorded, this method refuses and `abandonCycle` is the only way out.
+   */
+  async closeCycleWithRealizedFigures(cycleId: string, reason: string): Promise<DecisionCycle> {
+    const cycle = await this.getCycle(cycleId);
+    if (cycle === null) {
+      throw new Error(
+        `DecisionJournalService: el ciclo "${cycleId}" no existe; no se puede cerrar.`,
+      );
+    }
+
+    const decisions = await this.listDecisionsByCycle(cycleId);
+    const outcomeGroups = await Promise.all(
+      decisions.map((decision) => this.listOutcomesByDecision(decision.id)),
+    );
+    const outcomes: readonly DecisionOutcome[] = outcomeGroups.flat();
+
+    const figures = realizedCycleFigures(outcomes);
+    if (figures === null) {
+      const reportingSpread = outcomes.filter((outcome) => outcome.realizedSpreadPct !== null).length;
+      const reportingProfit = outcomes.filter(
+        (outcome) => outcome.realizedProfitUsdt !== null,
+      ).length;
+      throw new Error(
+        `DecisionJournalService: el ciclo "${cycleId}" tiene ${outcomes.length} outcome(s) registrados ` +
+          `(${reportingSpread} con spread realizado, ${reportingProfit} con profit realizado) y ` +
+          'eso no justifica un cierre CLOSED. Cerralo como ABANDONED con abandonCycle(): un ' +
+          'intento de publicación no es una ejecución verificada.',
+      );
+    }
+
+    return this.closeCycle(cycleId, {
+      status: 'CLOSED',
+      closeReason: reason,
+      realizedProfitUsdt: figures.realizedProfitUsdt,
+      realizedSpreadPct: figures.realizedSpreadPct,
+    });
+  }
+
+  /**
+   * Closes a cycle as `ABANDONED`: the cycle is over and it is explicitly NOT a
+   * verified result.
+   *
+   * The `realized*` columns are not nullable, so they get the figures the recorded
+   * outcomes justify, and zero when nothing was recorded. Zeros here mean "nothing
+   * was verified", which is what the status already says; they never mean a
+   * break-even result. The `reason` is mandatory so the row explains itself to
+   * whoever reads it later.
+   */
+  async abandonCycle(cycleId: string, reason: string): Promise<DecisionCycle> {
+    const decisions = await this.listDecisionsByCycle(cycleId);
+    const outcomeGroups = await Promise.all(
+      decisions.map((decision) => this.listOutcomesByDecision(decision.id)),
+    );
+    const figures = realizedCycleFigures(outcomeGroups.flat());
+
+    return this.closeCycle(cycleId, {
+      status: 'ABANDONED',
+      closeReason: reason,
+      realizedProfitUsdt: figures?.realizedProfitUsdt ?? 0,
+      realizedSpreadPct: figures?.realizedSpreadPct ?? 0,
+    });
+  }
+
+  /**
+   * The journal's self-audit, typed: modeled vs realized spread per side, how much
+   * is backed by a recorded attempt, and how much was taken on stale data.
+   *
+   * Both reads use the SAME filter, which is what lets the pure builder cross-check
+   * that the rows and the summary describe the same set of decisions. Rates are
+   * 0..1 ratios. `decisionsWithRecordedAttempt` counts publication attempts, not
+   * fills — see `DecisionSelfAudit` in core.
+   */
+  async getSelfAudit(filter?: DecisionPerformanceFilter): Promise<DecisionSelfAudit> {
+    const [rows, summary] = await Promise.all([
+      this.getDecisionPerformance(filter),
+      this.getVerificationSummary(filter),
+    ]);
+    return buildDecisionSelfAudit(rows, summary);
   }
 
   // --- maintenance ------------------------------------------------------------

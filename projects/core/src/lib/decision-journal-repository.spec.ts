@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { InMemoryDecisionJournalRepository } from './decision-journal-repository';
+import {
+  InMemoryDecisionJournalRepository,
+  realizedCycleFigures,
+} from './decision-journal-repository';
 import type {
   DecisionJournalRepository,
   DecisionPerformanceFilter,
 } from './decision-journal-repository';
 import type {
+  DecisionOutcome,
   MarketSnapshot,
   RecordDecisionInput,
   RecordMarketSnapshotInput,
@@ -568,6 +572,108 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
         await port.getDecision(decision.id),
       );
       expect((await port.listCycles())[0]).not.toBe((await port.getCycle(cycleId)));
+    });
+  });
+});
+
+describe('realizedCycleFigures', () => {
+  const outcome = (overrides: Partial<DecisionOutcome> = {}): DecisionOutcome => ({
+    id: 1,
+    decisionId: 1,
+    source: 'LOCAL_SIGNAL',
+    success: true,
+    filledAmountUsdt: 100,
+    filledPrice: 385,
+    realizedSpreadPct: 2,
+    realizedProfitUsdt: 1.5,
+    externalRef: null,
+    detail: null,
+    recordedAt: FIXED_EPOCH_MS,
+    createdAt: FIXED_EPOCH_MS,
+    ...overrides,
+  });
+
+  it('refuses to produce figures for a cycle with no outcomes instead of inventing zeros', () => {
+    expect(realizedCycleFigures([])).toBeNull();
+  });
+
+  it('refuses when no outcome reports a realized spread (a publish attempt is not a fill)', () => {
+    const outcomes = [
+      outcome({ realizedSpreadPct: null, filledAmountUsdt: 0 }),
+      outcome({ id: 2, success: false, realizedSpreadPct: null, filledAmountUsdt: 0 }),
+    ];
+    expect(realizedCycleFigures(outcomes)).toBeNull();
+  });
+
+  it('refuses when no outcome reports a realized profit', () => {
+    const outcomes = [outcome({ realizedProfitUsdt: null })];
+    expect(realizedCycleFigures(outcomes)).toBeNull();
+  });
+
+  it('sums reported profit and weights the spread by filled notional across the cycle', () => {
+    const outcomes = [
+      outcome({ filledAmountUsdt: 100, realizedSpreadPct: 2, realizedProfitUsdt: 1.8 }),
+      outcome({ id: 2, decisionId: 2, filledAmountUsdt: 300, realizedSpreadPct: 3, realizedProfitUsdt: 6 }),
+    ];
+    expect(realizedCycleFigures(outcomes)).toEqual({
+      realizedProfitUsdt: 7.8,
+      realizedSpreadPct: 2.75,
+    });
+  });
+
+  it('falls back to the plain mean when no reporting outcome has a fill behind it', () => {
+    const outcomes = [
+      outcome({ filledAmountUsdt: 0, realizedSpreadPct: 1, realizedProfitUsdt: 0.4 }),
+      outcome({ id: 2, filledAmountUsdt: 0, realizedSpreadPct: 2, realizedProfitUsdt: 0.6 }),
+    ];
+    expect(realizedCycleFigures(outcomes)).toEqual({
+      realizedProfitUsdt: 1,
+      realizedSpreadPct: 1.5,
+    });
+  });
+
+  it('ignores outcomes that report no spread when weighting the cycle', () => {
+    const outcomes = [
+      outcome({ filledAmountUsdt: 100, realizedSpreadPct: 2, realizedProfitUsdt: 1.8 }),
+      outcome({
+        id: 2,
+        success: false,
+        filledAmountUsdt: 100,
+        realizedSpreadPct: null,
+        realizedProfitUsdt: null,
+      }),
+    ];
+    expect(realizedCycleFigures(outcomes)).toEqual({
+      realizedProfitUsdt: 1.8,
+      realizedSpreadPct: 2,
+    });
+  });
+
+  it('produces exactly the read model figures for the outcomes of a single decision', async () => {
+    const local = new InMemoryDecisionJournalRepository();
+    const cycle = await local.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 500 });
+    const snapshot = await local.appendMarketSnapshot(marketInput());
+    const decision = await local.appendDecision(
+      decisionInput({ cycleId: cycle.id, snapshotId: snapshot.id }),
+    );
+    await local.appendOutcome(
+      outcomeInput({ decisionId: decision.id, filledAmountUsdt: 100, realizedSpreadPct: 2, realizedProfitUsdt: 1.8 }),
+    );
+    await local.appendOutcome(
+      outcomeInput({
+        decisionId: decision.id,
+        filledAmountUsdt: 300,
+        realizedSpreadPct: 3,
+        realizedProfitUsdt: 6,
+      }),
+    );
+
+    const [row] = await local.getDecisionPerformance();
+    const outcomes = await local.listOutcomesByDecision(decision.id);
+
+    expect(realizedCycleFigures(outcomes)).toEqual({
+      realizedProfitUsdt: row!.realizedProfitUsdt,
+      realizedSpreadPct: row!.realizedSpreadPct,
     });
   });
 });

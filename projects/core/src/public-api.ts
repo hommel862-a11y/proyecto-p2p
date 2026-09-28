@@ -62,3 +62,4 @@ export * from './lib/preflight-discipline';
 export * from './lib/ad-auto-composer';
 export * from './lib/decision-journal';
 export * from './lib/decision-journal-repository';
+export * from './lib/decision-journal-audit';
