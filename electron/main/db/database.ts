@@ -4,6 +4,11 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { FsmOrderContext, P2POrderState } from '../../shared/types';
+import {
+  SqliteDecisionJournalRepository,
+  purgeMarketSnapshotsBefore,
+} from './decision-journal.repository';
+import type { DecisionJournalRepository } from './decision-journal.repository';
 
 export interface InboundBankEventRecord {
   id?: number;
@@ -123,6 +128,12 @@ export interface BankAccountRecord {
 
 export class P2PDatabaseService {
   private db: DatabaseSync;
+  /**
+   * Lazily created and cached: the adapter is stateless apart from the cycle-id
+   * sequence, so one instance per connection keeps ids monotonic and lets callers
+   * rely on `getDecisionJournal()` returning the same object.
+   */
+  private decisionJournal: DecisionJournalRepository | null = null;
 
   constructor(dbFilePath?: string) {
     let targetPath = dbFilePath;
@@ -1110,6 +1121,28 @@ export class P2PDatabaseService {
     return Number(info.changes) > 0;
   }
 
+  /**
+   * Decision Journal bound to this connection. The schema is applied in the
+   * constructor, so the journal tables exist by the time anyone asks for it.
+   */
+  getDecisionJournal(): DecisionJournalRepository {
+    if (!this.decisionJournal) {
+      this.decisionJournal = new SqliteDecisionJournalRepository(this.db);
+    }
+    return this.decisionJournal;
+  }
+
+  /**
+   * Retention for the only prunable journal table. Snapshots still cited by a decision
+   * are kept: losing the evidence a decision rests on is worse than a large file.
+   *
+   * @param cutoff exclusive epoch-ms bound on `fetched_at`.
+   * @returns the number of snapshots actually deleted.
+   */
+  purgeMarketSnapshotsBefore(cutoff: number): number {
+    return purgeMarketSnapshotsBefore(this.db, cutoff);
+  }
+
   private mapBankAccountRow(r: Record<string, unknown>): BankAccountRecord {
     return {
       id: String(r['id']),
@@ -1128,6 +1161,7 @@ export class P2PDatabaseService {
   }
 
   close(): void {
+    this.decisionJournal = null;
     this.db.close();
   }
 }

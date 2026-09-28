@@ -168,5 +168,144 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 CREATE INDEX IF NOT EXISTS idx_bank_accounts_status ON bank_accounts(status);
 CREATE INDEX IF NOT EXISTS idx_bank_accounts_code ON bank_accounts(bank_code);
 
+-- ===========================================================================
+-- Decision Journal (append-only memory of what the engine decided, saw, and got)
+-- ===========================================================================
+--
+-- The port lives in `projects/core/src/lib/decision-journal-repository.ts` and its
+-- in-memory adapter there is the executable specification of the contract.
+-- `electron/tsconfig.json` pins `rootDir: "."` and cannot import from
+-- `projects/core` (tsc TS6059), so the adapter mirrors the contract locally and
+-- `main/db/decision-journal.repository.spec.ts` proves the two agree. The same
+-- constraint is why the enum CHECK lists below are literal copies rather than
+-- generated: their single source of truth is the arrays exported by
+-- `projects/core/src/lib/decision-journal.ts` (DECISION_SIDES, DECISION_ORIGINS,
+-- DECISION_CYCLE_STATUSES, DECISION_EXECUTION_MODES, OUTCOME_SOURCES) plus
+-- `RepricerDecision['action']` from `projects/core/src/lib/repricer.ts`, and the
+-- spec asserts each CHECK list equals those arrays, in order.
+--
+-- Only `decision_cycles` is mutable (via `closeCycle`). Snapshots, decisions and
+-- outcomes are never updated or deleted: a journal that gets rewritten loses the
+-- property that makes it trustworthy. `market_snapshots` is the one prunable table
+-- (see `purgeMarketSnapshotsBefore`), and the hard FK below means a snapshot a
+-- decision still cites can never be purged.
+
+CREATE TABLE IF NOT EXISTS market_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  obi REAL NOT NULL,
+  bid_usd REAL NOT NULL,
+  ask_usd REAL NOT NULL,
+  n_bids INTEGER NOT NULL,
+  n_asks INTEGER NOT NULL,
+  stale INTEGER NOT NULL CHECK (stale IN (0, 1)),
+  fetched_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_snapshots_fetched_at ON market_snapshots(fetched_at);
+
+CREATE TABLE IF NOT EXISTS decision_cycles (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'ABANDONED')),
+  title TEXT,
+  origin TEXT NOT NULL CHECK (origin IN ('OPERATOR', 'AUTO_ENGINE', 'MCP_AGENT', 'STRATEGY_PLAN')),
+  capital_reserved_usdt REAL NOT NULL,
+  realized_profit_usdt REAL,
+  realized_spread_pct REAL,
+  close_reason TEXT,
+  opened_at INTEGER NOT NULL,
+  closed_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_cycles_status ON decision_cycles(status);
+CREATE INDEX IF NOT EXISTS idx_decision_cycles_origin ON decision_cycles(origin);
+CREATE INDEX IF NOT EXISTS idx_decision_cycles_created ON decision_cycles(created_at);
+
+CREATE TABLE IF NOT EXISTS repricer_decisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- Hard reference: a decision that cannot name its cycle is not auditable.
+  cycle_id TEXT NOT NULL REFERENCES decision_cycles(id),
+  -- Hard reference: a decision without the market it was taken on cannot be audited.
+  snapshot_id INTEGER NOT NULL REFERENCES market_snapshots(id),
+  side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+  decision_price REAL NOT NULL,
+  origin TEXT NOT NULL CHECK (origin IN ('OPERATOR', 'AUTO_ENGINE', 'MCP_AGENT', 'STRATEGY_PLAN')),
+  execution_mode TEXT NOT NULL CHECK (execution_mode IN ('READ_ONLY', 'PUBLISHING')),
+  action TEXT NOT NULL CHECK (action IN ('UPDATE', 'KEEP', 'PAUSE')),
+  modeled_spread_pct REAL NOT NULL,
+  reason TEXT NOT NULL,
+  safety_flags_json TEXT NOT NULL,
+  -- Observed context, copied from the referenced snapshot at write time so the
+  -- decision can never contradict its own evidence.
+  observed_obi REAL NOT NULL,
+  observed_bid_usd REAL NOT NULL,
+  observed_ask_usd REAL NOT NULL,
+  observed_stale INTEGER NOT NULL CHECK (observed_stale IN (0, 1)),
+  -- Soft references: no FK, because those entities are not persisted yet.
+  account_id TEXT,
+  plan_id TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_repricer_decisions_cycle ON repricer_decisions(cycle_id);
+CREATE INDEX IF NOT EXISTS idx_repricer_decisions_snapshot ON repricer_decisions(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_repricer_decisions_created ON repricer_decisions(created_at);
+CREATE INDEX IF NOT EXISTS idx_repricer_decisions_stale ON repricer_decisions(observed_stale);
+
+CREATE TABLE IF NOT EXISTS decision_outcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- Hard reference: an outcome is always attached to a decision.
+  decision_id INTEGER NOT NULL REFERENCES repricer_decisions(id),
+  source TEXT NOT NULL CHECK (source IN ('LOCAL_SIGNAL', 'BINANCE_MERCHANT', 'CSV_IMPORT', 'MANUAL')),
+  -- A failed publish is a row with success = 0, never a missing row.
+  success INTEGER NOT NULL CHECK (success IN (0, 1)),
+  filled_amount_usdt REAL NOT NULL,
+  filled_price REAL,
+  realized_spread_pct REAL,
+  realized_profit_usdt REAL,
+  external_ref TEXT,
+  detail TEXT,
+  recorded_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_outcomes_decision ON decision_outcomes(decision_id);
+CREATE INDEX IF NOT EXISTS idx_decision_outcomes_recorded ON decision_outcomes(recorded_at);
+
+-- Read model: every decision LEFT JOINed with its outcomes, so an unverified decision
+-- is still visible with fill_count = 0. The spread columns are the RAW ingredients of
+-- the notional-weighted mean (numerator, denominator, plain-sum, reporting count) and
+-- the aggregation fallback is decided in the adapter, which is the only place allowed
+-- to know the reference semantics.
+CREATE VIEW IF NOT EXISTS decision_performance AS
+SELECT
+  d.id AS decision_id,
+  d.cycle_id,
+  d.snapshot_id,
+  d.side,
+  d.origin,
+  d.execution_mode,
+  d.action,
+  d.decision_price,
+  d.modeled_spread_pct,
+  d.observed_stale,
+  d.observed_obi,
+  d.created_at AS decided_at,
+  COUNT(o.id) AS fill_count,
+  SUM(o.filled_amount_usdt) AS filled_amount_usdt,
+  SUM(o.realized_profit_usdt) AS realized_profit_usdt,
+  SUM(CASE WHEN o.realized_spread_pct IS NOT NULL
+           THEN o.realized_spread_pct * o.filled_amount_usdt ELSE 0 END) AS spread_weighted_numerator,
+  SUM(CASE WHEN o.realized_spread_pct IS NOT NULL
+           THEN o.filled_amount_usdt ELSE 0 END) AS spread_weighted_denominator,
+  SUM(CASE WHEN o.realized_spread_pct IS NOT NULL
+           THEN o.realized_spread_pct ELSE 0 END) AS spread_plain_sum,
+  COUNT(CASE WHEN o.realized_spread_pct IS NOT NULL THEN 1 END) AS spread_reporting_count
+FROM repricer_decisions d
+LEFT JOIN decision_outcomes o ON o.decision_id = d.id
+GROUP BY d.id;
+
 
 

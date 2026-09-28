@@ -13,6 +13,16 @@ import type {
   TreasurySnapshotDto,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
+import type {
+  CloseDecisionCycleInput,
+  DecisionCyclesFilter,
+  DecisionJournalRequest,
+  DecisionPerformanceFilter,
+  OpenDecisionCycleInput,
+  RecordDecisionInput,
+  RecordMarketSnapshotInput,
+  RecordOutcomeInput,
+} from '../db/decision-journal.repository';
 import { GeminiOrchestrator } from '../gemini-orchestrator';
 import { AgentSwarmOrchestrator } from '../agents/swarm-orchestrator';
 import { getTreasurySnapshot, setTreasurySnapshot } from './treasury-snapshot';
@@ -25,6 +35,16 @@ import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
 import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
+
+/**
+ * Exhaustiveness guard. Taking `never` means a new `DecisionJournalOp` that this file
+ * does not handle is a compile error here, instead of silently falling through to a
+ * runtime `undefined`. A plain `default:` clause would defeat that, because TypeScript
+ * considers a switch with a `default` exhaustive regardless of its cases.
+ */
+function unsupportedDecisionJournalOp(op: never): never {
+  throw new Error(`decision_journal: unsupported IPC op "${String(op)}"`);
+}
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -352,6 +372,64 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         console.warn('[IPC] Error in p2p:db-list-audit-logs:', err);
         return [];
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Decision Journal
+  //
+  // One channel with an explicit `op` instead of one channel per operation: the journal
+  // is a single append-only record set, so a single allow-listed entry point keeps the
+  // renderer surface auditable in one place. The wire shape is `{ op, payload }`; the
+  // switch narrows the opaque payload per op.
+  //
+  // Journal writes are NOT wrapped in try/catch-and-swallow: a rejected write (unknown
+  // cycle, closed cycle) is information the caller must see, so the prefixed
+  // `decision_journal:` Error propagates to the renderer instead of degrading to a
+  // silent no-op. This is deliberately unlike the best-effort order/audit handlers
+  // above, where a missing row is treated as an empty result.
+  // ---------------------------------------------------------------------------
+  ipcMain.removeHandler('p2p:db-decision-journal');
+  ipcMain.handle(
+    'p2p:db-decision-journal',
+    async (_event: IpcMainInvokeEvent, request: DecisionJournalRequest): Promise<unknown> => {
+      const journal = db.getDecisionJournal();
+      const payload = request.payload;
+      switch (request.op) {
+        case 'appendMarketSnapshot':
+          return journal.appendMarketSnapshot(payload as RecordMarketSnapshotInput);
+        case 'openCycle':
+          return journal.openCycle(payload as OpenDecisionCycleInput);
+        case 'closeCycle':
+          return journal.closeCycle(
+            (payload as { cycleId: string; input: CloseDecisionCycleInput }).cycleId,
+            (payload as { cycleId: string; input: CloseDecisionCycleInput }).input,
+          );
+        case 'getCycle':
+          return journal.getCycle(payload as string);
+        case 'listCycles':
+          return journal.listCycles(payload as DecisionCyclesFilter | undefined);
+        case 'appendDecision':
+          return journal.appendDecision(payload as RecordDecisionInput);
+        case 'getDecision':
+          return journal.getDecision(payload as number);
+        case 'listDecisionsByCycle':
+          return journal.listDecisionsByCycle(payload as string);
+        case 'appendOutcome':
+          return journal.appendOutcome(payload as RecordOutcomeInput);
+        case 'listOutcomesByDecision':
+          return journal.listOutcomesByDecision(payload as number);
+        case 'getDecisionPerformance':
+          return journal.getDecisionPerformance(payload as DecisionPerformanceFilter | undefined);
+        case 'getVerificationSummary':
+          return journal.getVerificationSummary(
+            payload as DecisionPerformanceFilter | undefined,
+          );
+        case 'purgeMarketSnapshotsBefore':
+          return db.purgeMarketSnapshotsBefore(payload as number);
+        default:
+          return unsupportedDecisionJournalOp(request.op);
       }
     },
   );

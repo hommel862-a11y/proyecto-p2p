@@ -327,4 +327,69 @@ describe('Electron preload bridge (secure IPC)', () => {
       (ALLOWED_CHANNELS as readonly string[]).filter((c) => c.startsWith('core:')),
     ).toHaveLength(0);
   });
+
+  it('forwards decision journal ops over the single allow-listed channel', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'p2p:db-decision-journal') return Promise.resolve({ id: 1 });
+      return Promise.resolve(null);
+    });
+
+    const snapshot = await api.decisionJournal.invoke('appendMarketSnapshot', {
+      obi: 0.4,
+      bidUsd: 26.1,
+      askUsd: 26.4,
+      nBids: 7,
+      nAsks: 9,
+      stale: false,
+    });
+
+    expect(snapshot).toEqual({ id: 1 });
+    expect(calls).toEqual([
+      {
+        channel: 'p2p:db-decision-journal',
+        args: [
+          {
+            op: 'appendMarketSnapshot',
+            payload: { obi: 0.4, bidUsd: 26.1, askUsd: 26.4, nBids: 7, nAsks: 9, stale: false },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('sends the uniform { op, payload } wire shape, including for argument-less ops', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve(null);
+    });
+
+    // No payload at all: the key must still be present and undefined, never omitted,
+    // so the main process can narrow on `op` and read `payload` uniformly.
+    await api.decisionJournal.invoke('getVerificationSummary');
+
+    expect(calls).toEqual([
+      {
+        channel: 'p2p:db-decision-journal',
+        args: [{ op: 'getVerificationSummary', payload: undefined }],
+      },
+    ]);
+  });
+
+  it('allow-lists the decision journal channel exactly once', () => {
+    const occurrences = (ALLOWED_CHANNELS as readonly string[]).filter(
+      (c) => c === 'p2p:db-decision-journal',
+    );
+    expect(occurrences).toHaveLength(1);
+  });
+
+  it('never leaks a raw ipc primitive through the journal bridge', () => {
+    const api = createP2PApi(() => Promise.resolve(null));
+    // The journal seam exposes exactly one function and nothing else: no channel
+    // string, no ipcRenderer, no direct send/invoke.
+    expect(Object.keys(api.decisionJournal)).toEqual(['invoke']);
+    expect((api.decisionJournal as unknown as Record<string, unknown>).ipcRenderer).toBeUndefined();
+  });
 });

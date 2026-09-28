@@ -1,15 +1,38 @@
 import type { ElectronAPI, BacktestRunResult } from '../shared/types';
+// Type-only, so it is erased at compile time and cannot pull `node:sqlite` (or any
+// other main-process module) into the preload bundle. The reverse direction — the main
+// process importing a type from this file — is deliberately avoided: `electron/tsconfig.json`
+// includes only `main/**` and `shared/**`, so such an edge would pull this untypechecked
+// file into the main program and surface its latent unrelated drift.
+import type { DecisionJournalOp } from '../main/db/decision-journal.repository';
 
 // Minimal, trusted subset of ipcRenderer the bridge is allowed to use.
 export type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
 export type IpcOn = (channel: string, listener: (...args: unknown[]) => void) => () => void;
 
 /**
+ * The journal bridge, as seen by the renderer.
+ *
+ * Deliberately `unknown` in both directions: the real payload and result types live in
+ * `@p2p/core` and belong to the Angular service that consumes them, and the preload
+ * cannot import from `projects/core` (the Electron tsconfig pins `rootDir: "."`, which
+ * rejects a cross-project import with TS6059). Typing the boundary as `unknown` keeps
+ * the bridge honest instead of duplicating domain types that could silently drift, and
+ * the real typing is applied in exactly one place: `DecisionJournalService`.
+ */
+export interface DecisionJournalBridge {
+  invoke: (op: DecisionJournalOp, payload?: unknown) => Promise<unknown>;
+}
+
+/** The renderer-facing API: the shared `ElectronAPI` plus the journal seam. */
+export type P2PApi = ElectronAPI & { decisionJournal: DecisionJournalBridge };
+
+/**
  * Pure, framework-free builder for the renderer-facing API.
  * Kept free of any `electron` import so it is unit-testable under Vitest
  * (no native binary required) and so the security surface is auditable.
  */
-export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
+export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
   return {
     getVersion: () => ipc('app:get-version') as Promise<string>,
     fetchBinanceP2p: (params) => ipc('p2p:fetch-binance', params) as Promise<unknown>,
@@ -49,6 +72,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): ElectronAPI {
         ipc('p2p:db-list-bank-accounts', filter) as Promise<unknown[]>,
       deleteBankAccount: (id: string) =>
         ipc('p2p:db-delete-bank-account', id) as Promise<boolean>,
+    },
+    // The single decision-journal entry point. No raw channel reaches the renderer and
+    // the payload is opaque here; `DecisionJournalService` applies the real domain types.
+    // The wire shape is uniformly `{ op, payload }` so the main process can switch on
+    // `op` and narrow `payload` in one place, instead of the renderer hand-building a
+    // differently-shaped object per operation.
+    decisionJournal: {
+      invoke: (op, payload) => ipc('p2p:db-decision-journal', { op, payload }) as Promise<unknown>,
     },
     killswitch: {
       trigger: (params?: { reason?: string; source?: string }) =>
@@ -125,6 +156,7 @@ export const EXPOSED_API_KEYS = [
   'backtest',
   'crypto',
   'db',
+  'decisionJournal',
   'killswitch',
   'announceTreasury',
   'copilot',
@@ -157,6 +189,7 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-get-bank-account',
   'p2p:db-list-bank-accounts',
   'p2p:db-delete-bank-account',
+  'p2p:db-decision-journal',
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',
   'p2p:treasury-announce',
