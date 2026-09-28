@@ -64,6 +64,8 @@ export const COMPLIANT_SERVICE_CONCEPTS: readonly ServiceConceptTemplate[] = [
   },
 ];
 
+export type InvoiceTemplateType = 'NEOBANK_USD' | 'LOCAL_VES' | 'CORPORATE_BRANDED';
+
 export interface IssuerProfile {
   businessName: string;
   taxId: string; // e.g. RIF, NIT, EIN, RFC
@@ -71,6 +73,7 @@ export interface IssuerProfile {
   email?: string;
   phone?: string;
   website?: string;
+  logoDataUrl?: string; // Optional base64/dataURL for corporate header
 }
 
 export interface ClientProfile {
@@ -103,7 +106,9 @@ export interface GeneratedInvoice {
   currency: string;
   ticketTier: TicketTier;
   referenceCode: string; // Masked sanitized transaction ref
+  paymentMethodOrBank?: string; // e.g. Banesco, Pago Móvil, Zelle
   notes: string;
+  templateType: InvoiceTemplateType;
 }
 
 export interface NormalizedTransactionRow {
@@ -127,6 +132,7 @@ export interface InvoiceBatchOptions {
   defaultTaxRatePct?: number; // e.g. 0% for export of services
   dueDaysOffset?: number;
   customServiceConceptId?: string;
+  templateType?: InvoiceTemplateType;
 }
 
 /** Words strictly banned from invoices to avoid AML / crypto keyword flags */
@@ -285,11 +291,54 @@ export function generateInvoicesFromTransactions(
     const invoiceNumber = `${prefix}-${new Date(tx.dateIso).getFullYear()}-${counter.toString().padStart(4, '0')}`;
     counter++;
 
+    // Determine template type (defaults to LOCAL_VES if fiat is VES, otherwise NEOBANK_USD)
+    const templateType: InvoiceTemplateType =
+      options.templateType ?? (tx.fiatCurrency === 'VES' ? 'LOCAL_VES' : 'NEOBANK_USD');
+
     // Deterministically pick a service concept rotation based on index and amount
     const concept = selectCompliantConcept(tx.fiatAmount, options.customServiceConceptId, index);
-    const tier = classifyTicketTier(tx.fiatAmount, tx.fiatCurrency);
 
-    const subtotal = roundMoney(tx.fiatAmount, 2);
+    let currency: string;
+    let subtotal: number;
+    let paymentMethod: string;
+    let notes: string;
+    let referenceCode: string;
+
+    const rawBank = (tx.bankName || 'BNC').trim();
+    const cleanBank = sanitizeComplianceText(rawBank).replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'BNK';
+    const cleanSuffix = tx.sourceId ? tx.sourceId.replace(/[^a-zA-Z0-9]/g, '').slice(-6) : '000000';
+
+    if (templateType === 'NEOBANK_USD') {
+      currency = options.currencyOverride || (tx.fiatCurrency === 'EUR' ? 'EUR' : 'USD');
+      // For neobanks, if original tx was in VES, use cryptoAmount (USDT -> USD 1:1) or divide by price
+      if (tx.fiatCurrency === 'VES') {
+        subtotal = tx.cryptoAmount > 0 ? tx.cryptoAmount : (tx.price > 0 ? roundMoney(tx.fiatAmount / tx.price, 2) : tx.fiatAmount);
+      } else {
+        subtotal = roundMoney(tx.fiatAmount, 2);
+      }
+      paymentMethod = tx.bankName ? `Transferencia Neobanco (${tx.bankName})` : 'Compensación Electrónica Neobanco';
+      referenceCode = `REF-NEO-${cleanBank}-${cleanSuffix}`;
+      notes = 'Factura mercantil internacional emitida por concepto de servicios profesionales intangibles y consultoría digital remota. Pago recibido vía compensación electrónica internacional / neobanco.';
+    } else if (templateType === 'LOCAL_VES') {
+      currency = options.currencyOverride || 'VES';
+      if (tx.fiatCurrency !== 'VES') {
+        subtotal = roundMoney(tx.cryptoAmount * (tx.price || 1), 2);
+      } else {
+        subtotal = roundMoney(tx.fiatAmount, 2);
+      }
+      paymentMethod = tx.bankName ? `Pago Móvil / Liquidación Bancaria (${tx.bankName})` : 'Pago Móvil / Transferencia Bancaria';
+      referenceCode = `REF-PM-${cleanBank}-${cleanSuffix}`;
+      notes = 'Factura mercantil de servicios profesionales. Cancelado mediante liquidación bancaria electrónica / Pago Móvil nacional.';
+    } else {
+      // CORPORATE_BRANDED
+      currency = options.currencyOverride || tx.fiatCurrency || 'USD';
+      subtotal = roundMoney(tx.fiatAmount > 0 ? tx.fiatAmount : tx.cryptoAmount, 2);
+      paymentMethod = tx.bankName ? `Transferencia Corporativa (${tx.bankName})` : 'Transferencia Bancaria Directa';
+      referenceCode = `REF-CORP-${cleanBank}-${cleanSuffix}`;
+      notes = 'Factura fiscal corporativa para justificación contable y auditoría de cumplimiento comercial. Contraparte verificada y fondos de curso legal.';
+    }
+
+    const tier = classifyTicketTier(subtotal, currency);
     const taxAmount = taxRate > 0 ? roundMoney((subtotal * taxRate) / 100, 2) : 0;
     const total = roundMoney(subtotal + taxAmount, 2);
 
@@ -297,9 +346,6 @@ export function generateInvoicesFromTransactions(
     const dueDateObj = new Date(tx.dateIso);
     dueDateObj.setDate(dueDateObj.getDate() + dueDays);
     const dueDate = dueDateObj.toISOString().split('T')[0];
-
-    // Reference code: hash/obfuscate the order ID to make it clean
-    const sanitizedRef = sanitizeComplianceText(`REF-${tx.bankName.slice(0, 3).toUpperCase()}-${tx.sourceId.slice(-6)}`);
 
     invoices.push({
       invoiceNumber,
@@ -309,7 +355,7 @@ export function generateInvoicesFromTransactions(
       client: {
         name: tx.counterparty || 'Cliente Corporativo',
         taxId: 'N/A',
-        country: 'VE',
+        country: templateType === 'NEOBANK_USD' ? 'US' : 'VE',
       },
       conceptCategory: concept.category,
       items: [
@@ -324,10 +370,12 @@ export function generateInvoicesFromTransactions(
       taxRatePct: taxRate,
       taxAmount,
       total,
-      currency: options.currencyOverride || tx.fiatCurrency,
+      currency,
       ticketTier: tier,
-      referenceCode: sanitizedRef,
-      notes: 'Factura mercantil emitida por concepto de servicios profesionales intangibles. Operación cancelada vía transferencia electrónica.',
+      referenceCode,
+      paymentMethodOrBank: paymentMethod,
+      notes,
+      templateType,
     });
   }
 

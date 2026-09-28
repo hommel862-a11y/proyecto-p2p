@@ -30,15 +30,65 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
 
   const streamOps: string[] = [];
 
+  const templateType = invoice.templateType ?? 'NEOBANK_USD';
+
+  // Template-specific palette and metadata
+  let headerBg = '0.06 0.09 0.16 rg'; // NEOBANK_USD deep slate #0f172a
+  let accentColor = '0.22 0.70 0.90 rg'; // Ice blue
+  let tableHeaderBg = '0.10 0.15 0.28 rg';
+  let invoiceTypeLabel = 'FACTURA';
+  let clientHeader = 'CLIENTE / BENEFICIARIO RECEPTOR:';
+  let footerTitle = 'DECLARACION DE CONFORMIDAD Y CUMPLIMIENTO BANCARIO INTERNACIONAL:';
+  let footerSubtext = 'Documento emitido para justificacion contable y acreditacion de fondos ante entidades fintech y banca internacional.';
+  let isCorporate = false;
+
+  if (templateType === 'LOCAL_VES') {
+    headerBg = '0.08 0.14 0.30 rg'; // Venezuelan Banking Navy #14244d
+    accentColor = '0.92 0.72 0.15 rg'; // Warm gold
+    tableHeaderBg = '0.12 0.20 0.40 rg';
+    invoiceTypeLabel = 'COMPROBANTE';
+    clientHeader = 'CLIENTE / CONTRAPARTE RECEPTORA:';
+    footerTitle = 'DECLARACION DE CONFORMIDAD FISCAL Y TRIBUTARIA NACIONAL:';
+    footerSubtext = 'Comprobante mercantil emitido de conformidad con regulaciones de liquidacion y prestacion de servicios.';
+  } else if (templateType === 'CORPORATE_BRANDED') {
+    headerBg = '0.05 0.20 0.16 rg'; // Corporate emerald slate #0d3329
+    accentColor = '0.95 0.78 0.25 rg'; // Polished gold
+    tableHeaderBg = '0.08 0.26 0.20 rg';
+    invoiceTypeLabel = 'FACTURA CORP';
+    clientHeader = 'ENTIDAD RECEPTORA / CLIENTE CORPORATIVO:';
+    footerTitle = 'AUDITORIA Y REGISTRO MERCANTIL CORPORATIVO:';
+    footerSubtext = 'Emision certificada bajo estrictos estandares de auditoria financiera, control contable y provision impositiva.';
+    isCorporate = true;
+  }
+
   // Top header background bar
-  streamOps.push('0.08 0.18 0.36 rg'); // Deep navy
+  streamOps.push(headerBg);
   streamOps.push(`0 ${pageHeight - 90} ${pageWidth} 90 re f`);
+
+  let textStartX = 40;
+  if (isCorporate) {
+    // Draw corporate monogram seal crest
+    streamOps.push('0.95 0.78 0.25 RG 1.5 w');
+    streamOps.push(`40 ${pageHeight - 74} 34 34 re S`);
+    streamOps.push('0.10 0.28 0.22 rg');
+    streamOps.push(`41 ${pageHeight - 73} 32 32 re f`);
+
+    const initials = (invoice.issuer.businessName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2) || 'CP').toUpperCase();
+    streamOps.push('BT');
+    streamOps.push('/F2 13 Tf');
+    streamOps.push(accentColor);
+    streamOps.push(`46 ${pageHeight - 54} Td`);
+    streamOps.push(`(${escapePdfText(initials)}) Tj`);
+    streamOps.push('ET');
+
+    textStartX = 86;
+  }
 
   // Header Title
   streamOps.push('BT');
-  streamOps.push('/F2 20 Tf');
+  streamOps.push('/F2 18 Tf');
   streamOps.push('1 1 1 rg'); // White
-  streamOps.push(`40 ${pageHeight - 48} Td`);
+  streamOps.push(`${textStartX} ${pageHeight - 48} Td`);
   streamOps.push(`(${escapePdfText(invoice.issuer.businessName)}) Tj`);
   streamOps.push('ET');
 
@@ -46,23 +96,23 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
   streamOps.push('BT');
   streamOps.push('/F1 9 Tf');
   streamOps.push('0.85 0.90 0.98 rg');
-  streamOps.push(`40 ${pageHeight - 68} Td`);
-  streamOps.push(`(RIF / ID Fiscal: ${escapePdfText(invoice.issuer.taxId)}  |  ${escapePdfText(invoice.issuer.address)}) Tj`);
+  streamOps.push(`${textStartX} ${pageHeight - 68} Td`);
+  streamOps.push(`(ID Fiscal: ${escapePdfText(invoice.issuer.taxId)}  |  ${escapePdfText(invoice.issuer.address)}) Tj`);
   streamOps.push('ET');
 
   // Invoice Number Badge (top right)
   streamOps.push('BT');
-  streamOps.push('/F2 13 Tf');
-  streamOps.push('1 0.85 0.3 rg'); // Gold
-  streamOps.push(`400 ${pageHeight - 48} Td`);
-  streamOps.push(`(FACTURA: ${escapePdfText(invoice.invoiceNumber)}) Tj`);
+  streamOps.push('/F2 12 Tf');
+  streamOps.push(accentColor);
+  streamOps.push(`380 ${pageHeight - 48} Td`);
+  streamOps.push(`(${invoiceTypeLabel}: ${escapePdfText(invoice.invoiceNumber)}) Tj`);
   streamOps.push('ET');
 
   // Dates badge
   streamOps.push('BT');
-  streamOps.push('/F1 9 Tf');
+  streamOps.push('/F1 8.5 Tf');
   streamOps.push('1 1 1 rg');
-  streamOps.push(`400 ${pageHeight - 68} Td`);
+  streamOps.push(`380 ${pageHeight - 68} Td`);
   streamOps.push(`(Emision: ${escapePdfText(invoice.issueDate)}  Vence: ${escapePdfText(invoice.dueDate)}) Tj`);
   streamOps.push('ET');
 
@@ -79,13 +129,16 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
   streamOps.push('/F2 9 Tf');
   streamOps.push('0.1 0.1 0.15 rg');
   streamOps.push(`55 ${clientY - 20} Td`);
-  streamOps.push('(CLIENTE / CONTRAPARTE RECEPTORA:) Tj');
-  streamOps.push('/F1 10 Tf');
+  streamOps.push(`(${clientHeader}) Tj`);
+  streamOps.push('/F1 9.5 Tf');
   streamOps.push(`0 -16 Td`);
-  streamOps.push(`(${escapePdfText(invoice.client.name)}  -  Pais: ${escapePdfText(invoice.client.country || 'VE')}) Tj`);
+  const clientSub = invoice.paymentMethodOrBank
+    ? `${invoice.client.name}  |  Canal: ${invoice.paymentMethodOrBank}`
+    : `${invoice.client.name}  |  Pais: ${invoice.client.country || 'VE'}`;
+  streamOps.push(`(${escapePdfText(clientSub.slice(0, 60))}) Tj`);
   streamOps.push('/F1 8 Tf');
   streamOps.push('0.4 0.45 0.5 rg');
-  streamOps.push(`360 16 Td`);
+  streamOps.push(`345 16 Td`);
   streamOps.push(`(Ref. Interna: ${escapePdfText(invoice.referenceCode)}) Tj`);
   streamOps.push(`0 -16 Td`);
   streamOps.push(`(Categoria: ${escapePdfText(invoice.conceptCategory)}) Tj`);
@@ -95,7 +148,7 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
   // Items Table Header
   // ---------------------------------------------------------------------------
   const tableTopY = clientY - 80;
-  streamOps.push('0.12 0.22 0.42 rg'); // Table header navy
+  streamOps.push(tableHeaderBg);
   streamOps.push(`40 ${tableTopY} ${pageWidth - 80} 22 re f`);
 
   streamOps.push('BT');
@@ -187,15 +240,15 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
   streamOps.push('/F2 8 Tf');
   streamOps.push('0.25 0.3 0.35 rg');
   streamOps.push(`40 ${footerY + 36} Td`);
-  streamOps.push('(DECLARACION DE CONFORMIDAD Y CUMPLIMIENTO BANCARIO:) Tj');
+  streamOps.push(`(${escapePdfText(footerTitle)}) Tj`);
   streamOps.push('/F1 7.5 Tf');
   streamOps.push('0.4 0.45 0.5 rg');
   streamOps.push(`0 -12 Td`);
   streamOps.push(`(${escapePdfText(invoice.notes)}) Tj`);
   streamOps.push(`0 -10 Td`);
-  streamOps.push('(Comprobante emitido electronicamente de conformidad con normativas de facturacion mercantil y provisiones tributarias.) Tj');
+  streamOps.push(`(${escapePdfText(footerSubtext)}) Tj`);
   streamOps.push(`0 -10 Td`);
-  streamOps.push(`(Verificacion de autenticidad: SHA-256 Validated  |  Ref: ${escapePdfText(invoice.referenceCode)}  |  Nivel: ${invoice.ticketTier}) Tj`);
+  streamOps.push(`(Verificacion: SHA-256 Validated  |  Ref: ${escapePdfText(invoice.referenceCode)}  |  Tipo: ${invoice.templateType}  |  Tier: ${invoice.ticketTier}) Tj`);
   streamOps.push('ET');
 
   const streamContent = streamOps.join('\n');

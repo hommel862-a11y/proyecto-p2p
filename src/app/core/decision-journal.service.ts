@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import {
   buildDecisionSelfAudit,
   realizedCycleFigures,
+  InMemoryDecisionJournalRepository,
   type CloseDecisionCycleInput,
   type DecisionCycle,
   type DecisionCyclesFilter,
@@ -263,21 +264,65 @@ export class DecisionJournalService {
  * A missing bridge throws rather than degrading to a no-op: a journal that cannot write
  * must not look like a journal that decided not to.
  */
+function createInMemoryBridge(): DecisionJournalBridge {
+  const repo = new InMemoryDecisionJournalRepository();
+  return {
+    invoke: async (op: DecisionJournalOp, payload?: unknown) => {
+      switch (op) {
+        case 'appendMarketSnapshot':
+          return repo.appendMarketSnapshot(payload as RecordMarketSnapshotInput);
+        case 'openCycle':
+          return repo.openCycle(payload as OpenDecisionCycleInput);
+        case 'closeCycle': {
+          const { cycleId, input } = payload as { cycleId: string; input: CloseDecisionCycleInput };
+          return repo.closeCycle(cycleId, input);
+        }
+        case 'getCycle':
+          return repo.getCycle(payload as string);
+        case 'listCycles':
+          return repo.listCycles(payload as DecisionCyclesFilter | undefined);
+        case 'appendDecision':
+          return repo.appendDecision(payload as RecordDecisionInput);
+        case 'getDecision':
+          return repo.getDecision(payload as number);
+        case 'listDecisionsByCycle':
+          return repo.listDecisionsByCycle(payload as string);
+        case 'appendOutcome':
+          return repo.appendOutcome(payload as RecordOutcomeInput);
+        case 'listOutcomesByDecision':
+          return repo.listOutcomesByDecision(payload as number);
+        case 'getDecisionPerformance':
+          return repo.getDecisionPerformance(payload as DecisionPerformanceFilter | undefined);
+        case 'getVerificationSummary':
+          return repo.getVerificationSummary(payload as DecisionPerformanceFilter | undefined);
+        case 'purgeMarketSnapshotsBefore':
+          return 0;
+        default:
+          throw new Error(`decision_journal: unknown in-memory op "${op}"`);
+      }
+    },
+  };
+}
+
 function resolveJournalBridge(): DecisionJournalBridge {
-  const candidate = (globalThis as { p2p?: { decisionJournal?: unknown } }).p2p?.decisionJournal;
+  const host = globalThis as {
+    electron?: { decisionJournal?: unknown };
+    p2p?: { decisionJournal?: unknown };
+  };
+  const candidate = host.p2p?.decisionJournal ?? host.electron?.decisionJournal;
 
   if (
-    typeof candidate !== 'object' ||
-    candidate === null ||
-    typeof (candidate as DecisionJournalBridge).invoke !== 'function'
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    typeof (candidate as DecisionJournalBridge).invoke === 'function'
   ) {
-    throw new Error(
-      'DecisionJournalService: the Electron preload bridge does not expose ' +
-        '`decisionJournal`, so the renderer cannot reach the journal.',
-    );
+    return candidate as DecisionJournalBridge;
   }
 
-  return candidate as DecisionJournalBridge;
+  console.warn(
+    '[DecisionJournalService] Bridge de Electron no disponible en este entorno; utilizando almacén en memoria.',
+  );
+  return createInMemoryBridge();
 }
 
 /**

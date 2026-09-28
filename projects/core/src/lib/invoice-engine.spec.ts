@@ -114,4 +114,61 @@ describe('InvoiceEngine Domain Logic', () => {
     expect(invoices[0].total).toBe(8500);
     expect(invoices[0].issuer.businessName).toBe(dummyIssuer.businessName);
   });
+
+  it('supports NEOBANK_USD template with automatic USD conversion and fintech metadata', () => {
+    const csv = `Fecha/Hora,Tipo,Par,Cantidad,Tasa Bs,Total Bs,Banco,Contraparte,Estado
+2026-09-01 10:00,VENTA,USDT,150.00,90.00,"13500.00",Facebank,@NeobankBuyer,COMPLETADA`;
+
+    const parsed = parseBinanceP2pCsv(csv);
+    const invoices = generateInvoicesFromTransactions(parsed, dummyIssuer, {
+      templateType: 'NEOBANK_USD',
+    });
+
+    expect(invoices).toHaveLength(1);
+    const inv = invoices[0];
+    expect(inv.templateType).toBe('NEOBANK_USD');
+    expect(inv.currency).toBe('USD');
+    expect(inv.total).toBe(150); // Converted from 150 USDT
+    expect(inv.referenceCode).toContain('REF-NEO-');
+    expect(inv.client.country).toBe('US');
+    expect(inv.paymentMethodOrBank).toContain('Facebank');
+    expect(inv.notes).toContain('neobanco');
+  });
+
+  it('supports LOCAL_VES template retaining VES amounts and national clearing references', () => {
+    const csv = `Fecha/Hora,Tipo,Par,Cantidad,Tasa Bs,Total Bs,Banco,Contraparte,Estado
+2026-09-01 10:00,VENTA,USDT,100.00,90.00,"9000.00",Banesco,@LocalBuyer,COMPLETADA`;
+
+    const parsed = parseBinanceP2pCsv(csv);
+    const invoices = generateInvoicesFromTransactions(parsed, dummyIssuer, {
+      templateType: 'LOCAL_VES',
+    });
+
+    expect(invoices).toHaveLength(1);
+    const inv = invoices[0];
+    expect(inv.templateType).toBe('LOCAL_VES');
+    expect(inv.currency).toBe('VES');
+    expect(inv.total).toBe(9000);
+    expect(inv.referenceCode).toContain('REF-PM-');
+    expect(inv.client.country).toBe('VE');
+    expect(inv.paymentMethodOrBank).toContain('Banesco');
+    expect(inv.notes).toContain('Pago Móvil');
+  });
+
+  it('supports CORPORATE_BRANDED template with formal audit metadata and monogram crest support', () => {
+    const csv = `Fecha/Hora,Tipo,Par,Cantidad,Tasa Bs,Total Bs,Banco,Contraparte,Estado
+2026-09-01 10:00,VENTA,USDT,2500.00,1.00,"2500.00",Mercantil Panama,@CorporatePartner,COMPLETADA`;
+
+    const parsed = parseBinanceP2pCsv(csv);
+    const invoices = generateInvoicesFromTransactions(parsed, dummyIssuer, {
+      templateType: 'CORPORATE_BRANDED',
+    });
+
+    expect(invoices).toHaveLength(1);
+    const inv = invoices[0];
+    expect(inv.templateType).toBe('CORPORATE_BRANDED');
+    expect(inv.total).toBe(2500);
+    expect(inv.referenceCode).toContain('REF-CORP-');
+    expect(inv.notes).toContain('justificación contable');
+  });
 });

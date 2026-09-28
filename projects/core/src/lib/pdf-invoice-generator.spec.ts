@@ -21,6 +21,7 @@ describe('PdfInvoiceGenerator & ZipPackager', () => {
       country: 'VE',
     },
     conceptCategory: 'Marketing & Publicidad',
+    templateType: 'CORPORATE_BRANDED',
     items: [
       {
         description: 'Consultoría en Estrategia de Marketing Digital',
@@ -87,5 +88,28 @@ describe('PdfInvoiceGenerator & ZipPackager', () => {
     // Verify first header has PK
     expect(zipBytes[0]).toBe(0x50);
     expect(zipBytes[1]).toBe(0x4b);
+  });
+
+  it('renders distinct PDF visual elements for LOCAL_VES and CORPORATE_BRANDED templates', () => {
+    const localInvoice: GeneratedInvoice = {
+      ...sampleInvoice,
+      templateType: 'LOCAL_VES',
+      currency: 'VES',
+      invoiceNumber: 'COMP-2026-001',
+      paymentMethodOrBank: 'Pago Móvil Banesco',
+    };
+    const localPdf = new TextDecoder('utf-8').decode(generateInvoicePdf(localInvoice));
+    expect(localPdf).toContain('COMPROBANTE');
+    expect(localPdf).toContain('Pago Movil Banesco');
+
+    const corpInvoice: GeneratedInvoice = {
+      ...sampleInvoice,
+      templateType: 'CORPORATE_BRANDED',
+      invoiceNumber: 'CORP-2026-999',
+      paymentMethodOrBank: 'Banesco Panama',
+    };
+    const corpPdf = new TextDecoder('utf-8').decode(generateInvoicePdf(corpInvoice));
+    expect(corpPdf).toContain('FACTURA CORP');
+    expect(corpPdf).toContain('AUDITORIA');
   });
 });

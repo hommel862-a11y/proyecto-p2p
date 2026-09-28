@@ -28,6 +28,7 @@ const api = createP2PApi(
 // Secure exposure: only the narrow typed API — never the raw ipcRenderer,
 // never node built-ins (design #301 D3).
 contextBridge.exposeInMainWorld('electron', api);
+contextBridge.exposeInMainWorld('p2p', api);
 
 // Fail-closed guard: if the exposed shape ever drifts, refuse to start.
 const exposed = Object.keys(api) as string[];
