@@ -216,8 +216,8 @@ async function runScenario(repo: CoreDecisionJournalRepository): Promise<Scenari
   });
 
   // d2 outcome: a single real fill, so no notional-weighting fallback is involved.
-  // (The zero-notional fallback is covered separately in the read-model suite, because
-  // that is the one case where core's two sources of truth disagree with each other.)
+  // (The zero-notional plain-mean fallback is covered in the read-model suite, where both
+  // adapters are asserted against it.)
   const oSingleFill = await repo.appendOutcome({
     decisionId: d2.id,
     source: 'MANUAL',
@@ -876,6 +876,7 @@ describe('Decision Journal — observed context', () => {
 describe('Decision Journal — decision_performance read model', () => {
   let db: DatabaseSync;
   let repo: SqliteDecisionJournalRepository;
+  let reference: InMemoryDecisionJournalRepository;
 
   /** One snapshot + one open cycle, ready to receive decisions. */
   async function scaffold() {
@@ -903,13 +904,21 @@ describe('Decision Journal — decision_performance read model', () => {
   }
 
   beforeEach(() => {
+    // Frozen clock: the parity test below deep-equals rows that carry `cycleId` (built
+    // from `Date.now()`) and `decidedAt`, so a moving clock would fail for no reason.
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
     db = new DatabaseSync(':memory:');
     db.exec('PRAGMA foreign_keys = ON;');
     db.exec(fs.readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf8'));
     repo = new SqliteDecisionJournalRepository(db);
+    reference = new InMemoryDecisionJournalRepository();
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    vi.useRealTimers();
+  });
 
   it('keeps a decision with zero outcomes (LEFT JOIN, never INNER)', async () => {
     const { decision } = await scaffold();
@@ -1036,80 +1045,96 @@ describe('Decision Journal — decision_performance read model', () => {
   });
 
   /**
-   * The one place where core contradicts itself, pinned on purpose.
+   * Parity for the two branches of the read-model spread aggregation.
    *
-   * `DecisionPerformanceRow.realizedSpreadPct` in
-   * `projects/core/src/lib/decision-journal.ts` documents: "When all reporting outcomes
-   * filled 0, it falls back to the plain mean." But
-   * `InMemoryDecisionJournalRepository.weightedSpreadPct` returns
-   * `weighted / reported.length`, and when every reporting outcome filled 0 the
-   * numerator `SUM(spread * filled)` is 0 — so the reference adapter returns 0, not the
-   * plain mean.
+   * `DecisionPerformanceRow.realizedSpreadPct` documents one contract: the
+   * notional-weighted mean when there is notional, the plain mean when every reporting
+   * outcome filled 0, and null when none reports one. Both adapters must implement
+   * exactly that for the same write sequence.
    *
-   * This adapter implements the DOCUMENTED contract (plain mean), because a journal that
-   * reports 0% realized spread for outcomes that explicitly said 1.0% and 2.0% would be
-   * lying about a trade, and honesty is the first rule the domain states. It is also
-   * consistent with the weighted branch, which is what a zero-notional import (e.g. a
-   * CSV row of a historical decision) actually needs.
-   *
-   * The reference adapter is out of this change's ownership, so the divergence is
-   * reported rather than fixed here. This test is deliberately named so it surfaces in
-   * the report; delete it only when core is corrected.
+   * The zero-notional branch used to be a known divergence: this adapter implemented the
+   * documented plain mean while `InMemoryDecisionJournalRepository.weightedSpreadPct`
+   * returned `weighted / reported.length`, which collapses to 0 when the notional is 0.
+   * Core is now corrected, so the guard is parity rather than a divergence report — and
+   * the weighted branch is asserted here too, so a "fix" that made every case a plain
+   * mean would fail instead of passing.
    */
-  it('KNOWN DIVERGENCE: core documents a plain-mean fallback, InMemory returns 0', async () => {
-    const memory = new InMemoryDecisionJournalRepository();
-    const sqliteDecision = await scaffold();
-
-    for (const spread of [1.0, 2.0]) {
-      await repo.appendOutcome({
-        decisionId: sqliteDecision.decision.id,
-        source: 'CSV_IMPORT',
-        success: true,
-        filledAmountUsdt: 0,
-        realizedSpreadPct: spread,
-        realizedProfitUsdt: 0,
-      });
+  it('matches the reference adapter on the zero-notional fallback and the weighted mean', async () => {
+    interface ReportedFill {
+      readonly filledAmountUsdt: number;
+      readonly realizedSpreadPct: number;
     }
 
-    // Same inputs, same reference class the parity suite uses.
-    const memorySnapshot = await memory.appendMarketSnapshot({
-      obi: 0,
-      bidUsd: 1,
-      askUsd: 2,
-      nBids: 1,
-      nAsks: 1,
-      stale: false,
-    });
-    const memoryCycle = await memory.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 1 });
-    const memoryRecord = await memory.appendDecision({
-      cycleId: memoryCycle.id,
-      snapshotId: memorySnapshot.id,
-      side: 'BUY',
-      decisionPrice: 1,
-      origin: 'OPERATOR',
-      executionMode: 'PUBLISHING',
-      action: 'UPDATE',
-      modeledSpreadPct: 1,
-      reason: 'r',
-    });
-    for (const spread of [1.0, 2.0]) {
-      await memory.appendOutcome({
-        decisionId: memoryRecord.id,
-        source: 'CSV_IMPORT',
-        success: true,
-        filledAmountUsdt: 0,
-        realizedSpreadPct: spread,
-        realizedProfitUsdt: 0,
+    /**
+     * Same scaffold and same outcomes on either adapter, so the aggregation is the only
+     * thing that can make the two rows differ.
+     */
+    const rowFor = async (
+      r: CoreDecisionJournalRepository,
+      outcomes: readonly ReportedFill[],
+    ): Promise<DecisionPerformanceRow> => {
+      const snapshot = await r.appendMarketSnapshot({
+        obi: 0,
+        bidUsd: 1,
+        askUsd: 2,
+        nBids: 1,
+        nAsks: 1,
+        stale: false,
       });
-    }
+      const cycle = await r.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 1 });
+      const decision = await r.appendDecision({
+        cycleId: cycle.id,
+        snapshotId: snapshot.id,
+        side: 'BUY',
+        decisionPrice: 1,
+        origin: 'OPERATOR',
+        executionMode: 'PUBLISHING',
+        action: 'UPDATE',
+        modeledSpreadPct: 1,
+        reason: 'r',
+      });
+      for (const fill of outcomes) {
+        await r.appendOutcome({
+          decisionId: decision.id,
+          source: 'CSV_IMPORT',
+          success: true,
+          filledAmountUsdt: fill.filledAmountUsdt,
+          realizedSpreadPct: fill.realizedSpreadPct,
+          realizedProfitUsdt: 0,
+        });
+      }
+      // Scoped to the cycle just created, so a second call on the same adapter cannot
+      // silently read the first call's row.
+      const rows = await r.getDecisionPerformance({ cycleId: cycle.id });
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    };
 
-    const [sqliteRow] = await repo.getDecisionPerformance();
-    const [memoryRow] = await memory.getDecisionPerformance();
+    // Branch 1: every reporting outcome filled 0, so the notional carries no information
+    // and the contract is the plain mean (1 + 2) / 2 = 1.5. Reporting 0 here would be a
+    // number no consumer could tell apart from "we really captured nothing".
+    const zeroNotional: readonly ReportedFill[] = [
+      { filledAmountUsdt: 0, realizedSpreadPct: 1.0 },
+      { filledAmountUsdt: 0, realizedSpreadPct: 2.0 },
+    ];
+    const sqliteZero = await rowFor(repo, zeroNotional);
+    const memoryZero = await rowFor(reference, zeroNotional);
 
-    // This adapter: the documented plain mean of the reported spreads.
-    expect(sqliteRow.realizedSpreadPct).toBeCloseTo(1.5, 10);
-    // Core's reference adapter: 0, contradicting its own documented contract.
-    expect(memoryRow.realizedSpreadPct).toBe(0);
+    expect(sqliteZero.realizedSpreadPct).toBe(1.5);
+    expect(memoryZero.realizedSpreadPct).toBe(1.5);
+    expect(sqliteZero).toEqual(memoryZero);
+
+    // Branch 2: real notional, so the weighting survives: (2*100 + 3*300) / 400 = 2.75.
+    const weighted: readonly ReportedFill[] = [
+      { filledAmountUsdt: 100, realizedSpreadPct: 2.0 },
+      { filledAmountUsdt: 300, realizedSpreadPct: 3.0 },
+    ];
+    const sqliteWeighted = await rowFor(repo, weighted);
+    const memoryWeighted = await rowFor(reference, weighted);
+
+    expect(sqliteWeighted.realizedSpreadPct).toBe(2.75);
+    expect(memoryWeighted.realizedSpreadPct).toBe(2.75);
+    expect(sqliteWeighted).toEqual(memoryWeighted);
   });
 });
 

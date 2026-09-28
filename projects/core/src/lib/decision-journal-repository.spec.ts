@@ -390,6 +390,57 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
       expect(row.realizedSpreadPct).toBe(1.25);
     });
 
+    it('falls back to the plain mean when every reporting outcome filled 0', async () => {
+      const decision = await port.appendDecision(decisionInput({ cycleId, snapshotId }));
+      // A historical import: the spreads are known, the notionals were not recorded.
+      await port.appendOutcome(
+        outcomeInput({
+          decisionId: decision.id,
+          filledAmountUsdt: 0,
+          filledPrice: undefined,
+          realizedSpreadPct: 1,
+          realizedProfitUsdt: 0,
+        }),
+      );
+      await port.appendOutcome(
+        outcomeInput({
+          decisionId: decision.id,
+          filledAmountUsdt: 0,
+          filledPrice: undefined,
+          realizedSpreadPct: 2,
+          realizedProfitUsdt: 0,
+        }),
+      );
+
+      const [row] = await port.getDecisionPerformance();
+      // The notional total is 0, so the weighting carries no information and the
+      // documented contract is the plain mean: (1 + 2) / 2 = 1.5. Reporting 0 here
+      // would be a value a consumer cannot tell apart from "we captured nothing".
+      expect(row.fillCount).toBe(2);
+      expect(row.filledAmountUsdt).toBe(0);
+      expect(row.realizedSpreadPct).toBe(1.5);
+    });
+
+    it('keeps the notional weighting when only some reporting outcomes filled 0', async () => {
+      const decision = await port.appendDecision(decisionInput({ cycleId, snapshotId }));
+      await port.appendOutcome(
+        outcomeInput({
+          decisionId: decision.id,
+          filledAmountUsdt: 0,
+          filledPrice: undefined,
+          realizedSpreadPct: 1,
+          realizedProfitUsdt: 0,
+        }),
+      );
+      await port.appendOutcome(
+        outcomeInput({ decisionId: decision.id, filledAmountUsdt: 100, realizedSpreadPct: 2 }),
+      );
+
+      const [row] = await port.getDecisionPerformance();
+      // The fallback is only for the all-zero case: (1*0 + 2*100) / 100 = 2, not 1.5.
+      expect(row.realizedSpreadPct).toBe(2);
+    });
+
     it('reports a null realized spread when no outcome reports one', async () => {
       const decision = await port.appendDecision(decisionInput({ cycleId, snapshotId }));
       await port.appendOutcome(

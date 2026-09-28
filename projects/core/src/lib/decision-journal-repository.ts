@@ -428,7 +428,23 @@ function sumReported(values: readonly (number | null)[]): number | null {
   return reported.length === 0 ? null : reported.reduce((sum, value) => sum + value, 0);
 }
 
-/** Notional-weighted mean of the reported spreads, or null when none reports one. */
+/**
+ * Notional-weighted mean of the reported spreads, or null when none reports one.
+ *
+ * The zero-notional fallback is the documented contract
+ * (`DecisionPerformanceRow.realizedSpreadPct`) and must stay. When every reporting
+ * outcome filled 0 the weighting is `SUM(spread * 0) / SUM(0)`, which is `0 / 0`: the
+ * naive `weighted / reported.length` shortcut therefore reports **0%** for outcomes
+ * that explicitly said 1% and 2%. That is the worst kind of wrong number — 0 is a
+ * perfectly plausible realized spread, so a consumer cannot tell "we filled nothing"
+ * apart from "we filled nothing AND the journal invented a 0% spread out of the data
+ * it was given". Reporting the plain mean instead keeps the row honest: the data said
+ * 1% and 2%, so the aggregate says 1.5%.
+ *
+ * Do not "simplify" this into a single expression without the branch. The case is
+ * reachable in production via a historical/CSV import, where the spread is known and
+ * the notional was never recorded.
+ */
 function weightedSpreadPct(outcomes: readonly DecisionOutcome[]): number | null {
   const reported = outcomes.filter(
     (outcome): outcome is DecisionOutcome & { realizedSpreadPct: number } =>
@@ -436,9 +452,13 @@ function weightedSpreadPct(outcomes: readonly DecisionOutcome[]): number | null 
   );
   if (reported.length === 0) return null;
   const notional = reported.reduce((sum, outcome) => sum + outcome.filledAmountUsdt, 0);
-  const weighted = reported.reduce(
-    (sum, outcome) => sum + outcome.realizedSpreadPct * outcome.filledAmountUsdt,
-    0,
-  );
-  return notional > 0 ? weighted / notional : weighted / reported.length;
+  if (notional > 0) {
+    const weighted = reported.reduce(
+      (sum, outcome) => sum + outcome.realizedSpreadPct * outcome.filledAmountUsdt,
+      0,
+    );
+    return weighted / notional;
+  }
+  const plainSum = reported.reduce((sum, outcome) => sum + outcome.realizedSpreadPct, 0);
+  return plainSum / reported.length;
 }
