@@ -8,6 +8,7 @@ import type {
   DecisionPerformanceFilter,
 } from './decision-journal-repository';
 import type {
+  DecisionCycleCloseStatus,
   DecisionOutcome,
   MarketSnapshot,
   RecordDecisionInput,
@@ -272,6 +273,128 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
           realizedSpreadPct: 0,
         }),
       ).rejects.toThrow(/cycle/i);
+    });
+
+    // -------------------------------------------------------------------------
+    // The terminal-cycle invariant.
+    //
+    // `DecisionCycleCloseStatus` is `'CLOSED' | 'ABANDONED'`, so every call below has to
+    // cast to reach a status the types forbid. That is not test noise: the real caller of
+    // the raw port is the IPC boundary, where the payload is `unknown` and reaches
+    // `closeCycle` unvalidated. If the adapter trusts the type, a caller that asks for
+    // `status: 'OPEN'` gets a row stamped `closed_at` whose realized figures are set
+    // while the cycle still counts as open — and a second call then overwrites those
+    // figures. These tests pin the runtime refusal that the type alone does not give.
+    // -------------------------------------------------------------------------
+
+    it('rejects a close asking for a non-terminal status instead of half-closing the cycle', async () => {
+      for (const asked of ['OPEN', 'CLOSED_PENDING', '', 'closed']) {
+        await expect(
+          port.closeCycle(cycleId, {
+            status: asked as DecisionCycleCloseStatus,
+            closeReason: 'no es un cierre',
+            realizedProfitUsdt: 5,
+            realizedSpreadPct: 5,
+          }),
+        ).rejects.toThrow(/decision_journal:.*terminal/i);
+      }
+
+      // Rejected before any write: the cycle is untouched, so the refusal cannot be
+      // mistaken for a close that happened and then failed.
+      const untouched = await port.getCycle(cycleId);
+      expect(untouched?.status).toBe('OPEN');
+      expect(untouched?.closedAt).toBeNull();
+      expect(untouched?.closeReason).toBeNull();
+      expect(untouched?.realizedProfitUsdt).toBeNull();
+      expect(untouched?.realizedSpreadPct).toBeNull();
+    });
+
+    it('rejects the non-terminal status even when the cycle does not exist', async () => {
+      // Request validity is checked before state, so a caller with a malformed close
+      // learns that, and not that it typo'd a cycle id.
+      await expect(
+        port.closeCycle('cycle-nope', {
+          status: 'OPEN' as DecisionCycleCloseStatus,
+          closeReason: 'x',
+          realizedProfitUsdt: 0,
+          realizedSpreadPct: 0,
+        }),
+      ).rejects.toThrow(/terminal/i);
+    });
+
+    it('refuses a second close and leaves the first close figures untouched', async () => {
+      const closed = await port.closeCycle(cycleId, {
+        status: 'CLOSED',
+        closeReason: 'primer cierre',
+        realizedProfitUsdt: 7.8,
+        realizedSpreadPct: 2.75,
+      });
+
+      for (const attempt of [
+        { status: 'CLOSED' as DecisionCycleCloseStatus, realizedProfitUsdt: 99, realizedSpreadPct: 99 },
+        { status: 'ABANDONED' as DecisionCycleCloseStatus, realizedProfitUsdt: 99, realizedSpreadPct: 99 },
+      ]) {
+        await expect(
+          port.closeCycle(cycleId, {
+            status: attempt.status,
+            closeReason: 'segundo intento',
+            realizedProfitUsdt: attempt.realizedProfitUsdt,
+            realizedSpreadPct: attempt.realizedSpreadPct,
+          }),
+        ).rejects.toThrow(/already CLOSED and cannot be closed again/);
+
+        // The realized figures are what the operator reads to judge performance.
+        // A refused re-close must not be able to restate them.
+        const stored = await port.getCycle(cycleId);
+        expect(stored).toEqual(closed);
+        expect(stored?.realizedProfitUsdt).toBe(7.8);
+        expect(stored?.realizedSpreadPct).toBe(2.75);
+      }
+    });
+
+    it('refuses a decision appended to a CLOSED cycle', async () => {
+      await port.appendDecision(decisionInput({ cycleId, snapshotId }));
+      await port.closeCycle(cycleId, {
+        status: 'CLOSED',
+        closeReason: 'fin de sesion',
+        realizedProfitUsdt: 3.25,
+        realizedSpreadPct: 1.4,
+      });
+
+      // A cycle closed with figures frozen from the decisions it held must not keep
+      // growing behind the operator's back: a decision added now is excluded from
+      // `realizedProfitUsdt`, so the cycle total silently stops describing its rows.
+      await expect(
+        port.appendDecision(decisionInput({ cycleId, snapshotId, reason: ' posterior al cierre' })),
+      ).rejects.toThrow(/decision_journal:.*is CLOSED and cannot accept new decisions/);
+
+      expect(await port.listDecisionsByCycle(cycleId)).toHaveLength(1);
+      const summary = await port.getVerificationSummary();
+      expect(summary.openCycles).toBe(0);
+      expect(summary.totalDecisions).toBe(1);
+    });
+
+    it('refuses a decision appended to an ABANDONED cycle', async () => {
+      await port.closeCycle(cycleId, {
+        status: 'ABANDONED',
+        closeReason: 'Mercado iliquido',
+        realizedProfitUsdt: 0,
+        realizedSpreadPct: 0,
+      });
+
+      await expect(
+        port.appendDecision(decisionInput({ cycleId, snapshotId })),
+      ).rejects.toThrow(/decision_journal:.*is ABANDONED and cannot accept new decisions/);
+
+      expect(await port.listDecisionsByCycle(cycleId)).toEqual([]);
+    });
+
+    it('still refuses an unknown cycle before looking at its status', async () => {
+      // Order matters for the operator: "which cycle?" is answerable without the
+      // journal, so it is asked first and never reported as a lifecycle problem.
+      await expect(
+        port.appendDecision(decisionInput({ cycleId: 'cycle-nope', snapshotId })),
+      ).rejects.toThrow(/unknown cycle/);
     });
 
     it('lists cycles filtered by status', async () => {

@@ -216,7 +216,22 @@ CREATE TABLE IF NOT EXISTS decision_cycles (
   opened_at INTEGER NOT NULL,
   closed_at INTEGER,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  -- `closed_at IS NULL` is exactly `status = 'OPEN'`: `openCycle` writes NULL and no
+  -- other code path sets it, while `closeCycle` is the only writer of a terminal status
+  -- and always stamps it. So the two disagreeing pairs — open but stamped, and closed but
+  -- unstamped — have no legitimate producer, and one of them is the shape a
+  -- `closeCycle({ status: 'OPEN' })` used to leave behind. Stated here so the invariant
+  -- does not live only in the adapter, which raw SQL and an unvalidated IPC payload both
+  -- bypass.
+  --
+  -- Note for anyone adding a migration: this constraint is NOT retrofitted. Every journal
+  -- object is `CREATE TABLE IF NOT EXISTS`, so an existing database keeps its original
+  -- definition and its rows verbatim — an install upgraded from an older build is protected
+  -- by the adapter guards instead. Do not turn this into a table rebuild to "fix" old rows
+  -- without first counting them: that is a data migration, and this file has no version
+  -- table to make it repeatable.
+  CHECK ((status = 'OPEN') = (closed_at IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_decision_cycles_status ON decision_cycles(status);

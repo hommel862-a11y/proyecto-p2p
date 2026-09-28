@@ -236,6 +236,136 @@ const strOrNull = (row: Row, key: string): string | null => {
 /** Errors are flat and prefixed, never a driver-specific wrapper. */
 const fail = (message: string): Error => new Error(`decision_journal: ${message}`);
 
+/**
+ * The terminal statuses `closeCycle` accepts, as an allow-list.
+ *
+ * Mirrored verbatim from `projects/core/src/lib/decision-journal-repository.ts`, which this
+ * adapter cannot import (`electron/tsconfig.json` pins `rootDir: "."`). The parity spec
+ * replays the same rejections through both adapters and compares the messages, so a drift
+ * here fails the suite instead of shipping.
+ */
+const TERMINAL_CLOSE_STATUSES: readonly DecisionCycleCloseStatus[] = ['CLOSED', 'ABANDONED'];
+
+/**
+ * Refuses a `closeCycle` that asks for anything other than a terminal status.
+ *
+ * `CloseDecisionCycleInput['status']` is typed `'CLOSED' | 'ABANDONED'`, so at a
+ * type-checked call site this is unreachable — which is exactly why it is here. The raw
+ * port is exposed over IPC, where the payload arrives as `unknown`: an allow-list keeps the
+ * invariant in code instead of in a type the boundary discards. Checking the stored row
+ * instead (`status !== 'OPEN'` on the cycle) answers a different question — "is it open?" —
+ * and lets `status: 'OPEN'` through, producing a cycle that reports itself open while
+ * carrying realized figures. A second call then passes the same check and restates them.
+ */
+function assertTerminalCloseStatus(status: DecisionCycleCloseStatus): void {
+  if (!TERMINAL_CLOSE_STATUSES.includes(status)) {
+    throw fail(
+      `closeCycle requires a terminal status (${TERMINAL_CLOSE_STATUSES.join(' | ')}), got "${String(status)}"`,
+    );
+  }
+}
+
+/**
+ * Validates the `closeCycle` payload arriving over IPC and returns it narrowed.
+ *
+ * ## Why this lives at the boundary and not only in the adapter
+ *
+ * The handler used to write `payload as { cycleId, input }` and forward it. A cast is a
+ * claim to the compiler, not a check at runtime, and the one caller of this port that is
+ * never type-checked is the renderer: it sends JSON over a channel, and the handler's own
+ * `switch` is on `op`, not on the payload's shape. So the adapter's guards were the only
+ * thing standing between the wire and the row, and the shapes they cannot see are exactly
+ * the ones that produce a wrong *kind* of failure: `payload` undefined threw a `TypeError`
+ * from dereferencing a missing field, which says nothing about what the caller got wrong,
+ * and a non-finite `realizedProfitUsdt` would have been stored into the very column the
+ * operator reads to judge performance.
+ *
+ * ## Why it returns a rebuilt object rather than the original
+ *
+ * The returned value is constructed from validated fields only, so no unchecked property
+ * of the incoming object can ride along. `closedAt` is only included when present, so an
+ * absent timestamp stays absent instead of becoming `undefined` with an explicit key.
+ */
+export function parseCloseCyclePayload(payload: unknown): {
+  cycleId: string;
+  input: CloseDecisionCycleInput;
+} {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw fail(`closeCycle payload must be an object, got ${describeJson(payload)}`);
+  }
+  const { cycleId, input } = payload as { cycleId?: unknown; input?: unknown };
+
+  if (typeof cycleId !== 'string' || cycleId.trim().length === 0) {
+    throw fail(`closeCycle payload.cycleId must be a non-empty string, got ${describeJson(cycleId)}`);
+  }
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw fail(`closeCycle payload.input must be an object, got ${describeJson(input)}`);
+  }
+  const candidate = input as Partial<CloseDecisionCycleInput>;
+
+  // The status allow-list is reused from the adapter rather than re-spelled, so the two
+  // layers cannot drift on what "terminal" means. It runs first: a non-terminal status is
+  // the most consequential thing a caller can ask for here, and it is answerable without
+  // reading any of the figures.
+  assertTerminalCloseStatus(candidate.status as DecisionCycleCloseStatus);
+
+  if (typeof candidate.closeReason !== 'string') {
+    throw fail(
+      `closeCycle payload.input.closeReason must be a string, got ${describeJson(candidate.closeReason)}`,
+    );
+  }
+  if (typeof candidate.realizedProfitUsdt !== 'number' || !Number.isFinite(candidate.realizedProfitUsdt)) {
+    throw fail(
+      `closeCycle payload.input.realizedProfitUsdt must be a finite number, got ${describeJson(candidate.realizedProfitUsdt)}`,
+    );
+  }
+  if (typeof candidate.realizedSpreadPct !== 'number' || !Number.isFinite(candidate.realizedSpreadPct)) {
+    throw fail(
+      `closeCycle payload.input.realizedSpreadPct must be a finite number, got ${describeJson(candidate.realizedSpreadPct)}`,
+    );
+  }
+
+  const narrowed: CloseDecisionCycleInput = {
+    status: candidate.status as DecisionCycleCloseStatus,
+    closeReason: candidate.closeReason,
+    realizedProfitUsdt: candidate.realizedProfitUsdt,
+    realizedSpreadPct: candidate.realizedSpreadPct,
+    ...(candidate.closedAt === undefined
+      ? {}
+      : { closedAt: requireFinite(candidate.closedAt, 'closedAt') }),
+  };
+  return { cycleId, input: narrowed };
+}
+
+/** Rejects a non-finite `closedAt` before it can reach the `closed_at` column. */
+function requireFinite(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw fail(`closeCycle payload.input.${field} must be a finite number, got ${describeJson(value)}`);
+  }
+  return value;
+}
+
+/**
+ * Renders an untrusted value for an error message: JSON for the JSON-ish, a type name
+ * otherwise. `JSON.stringify` alone is useless here because it returns `undefined` for
+ * `undefined`, `NaN`, and `Infinity` — the three most likely values to be rejected — which
+ * would make the message say `got undefined` and hide the actual problem.
+ */
+function describeJson(value: unknown): string {
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    return String(value);
+  }
+  if (value === undefined) {
+    return 'undefined';
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    // A cyclic or otherwise unserializable payload must still produce a usable message.
+    return typeof value;
+  }
+}
+
 /** Ratios are rounded to 4 decimals so repeated runs compare exactly. */
 const roundRatio = (value: number): number => Number(value.toFixed(4));
 
@@ -425,6 +555,10 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
   }
 
   async closeCycle(cycleId: string, input: CloseDecisionCycleInput): Promise<DecisionCycle> {
+    // Request first, state second, matching the reference adapter. The status allow-list
+    // runs before the lookup so a malformed close is reported as a malformed request even
+    // for a cycle nobody has heard of.
+    assertTerminalCloseStatus(input.status);
     const existing = this.db
       .prepare('SELECT * FROM decision_cycles WHERE id = ?')
       .get(cycleId) as Row | undefined;
@@ -475,11 +609,22 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
     // Existence is checked here so the rejection is a flat, prefixed Error rather
     // than a raw SQLite driver message. The hard FKs in schema.sql are the backstop.
     // Order matters: the cycle is validated first, matching the reference adapter.
+    //
+    // Existence is NOT enough. A caller holding a cached `cycleId` keeps writing after the
+    // cycle was closed, and those decisions land under a `realized_profit_usdt` frozen at
+    // close time — figures computed from none of them. The cycle total then stops
+    // describing the rows beneath it while `openCycles` reports 0: an accounting lie
+    // rather than a lag. The status is read here, not assumed, so this holds for a
+    // terminal cycle however it got that way.
     const cycle = this.db
-      .prepare('SELECT id FROM decision_cycles WHERE id = ?')
+      .prepare('SELECT status FROM decision_cycles WHERE id = ?')
       .get(input.cycleId) as Row | undefined;
     if (!cycle) {
       throw fail(`unknown cycle "${input.cycleId}"`);
+    }
+    const cycleStatus = str(cycle, 'status');
+    if (cycleStatus !== 'OPEN') {
+      throw fail(`cycle "${input.cycleId}" is ${cycleStatus} and cannot accept new decisions`);
     }
     const snapshot = this.db
       .prepare('SELECT * FROM market_snapshots WHERE id = ?')

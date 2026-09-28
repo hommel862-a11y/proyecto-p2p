@@ -14,9 +14,15 @@
  *  - **Referential integrity is enforced on write.** A decision must point at an
  *    existing cycle and an existing snapshot; an outcome must point at an
  *    existing decision. Violations reject with an `Error`.
- *  - **Only `decision_cycles` is mutable**, through `closeCycle`. A cycle that
- *    already reached `CLOSED` or `ABANDONED` can never be closed again. There
- *    is deliberately no `updateDecision` / `deleteOutcome` in this port.
+ *  - **Only `decision_cycles` is mutable**, through `closeCycle`, and that single
+ *    mutation is one-way. `closeCycle` accepts a terminal status by allow-list
+ *    (`CLOSED` | `ABANDONED`), never `OPEN`; a cycle that already reached one of
+ *    them can never be closed again, so its realized figures are written once and
+ *    never restated. Conversely `appendDecision` only accepts an `OPEN` cycle, so
+ *    a closed cycle cannot grow after the figures that describe it were frozen.
+ *    There is deliberately no `updateDecision` / `deleteOutcome` in this port.
+ *    Both halves are enforced at runtime, not only by the types: the raw port is
+ *    reachable from IPC, where `CloseDecisionCycleInput` is just an `unknown`.
  *  - **`observed*` fields are copied from the referenced snapshot**, never taken
  *    from the caller, so a decision cannot contradict its own market evidence.
  *  - **Reads never hand out internal references.** Every returned record is a
@@ -26,6 +32,7 @@
 import type {
   CloseDecisionCycleInput,
   DecisionCycle,
+  DecisionCycleCloseStatus,
   DecisionCycleStatus,
   DecisionOrigin,
   DecisionOutcome,
@@ -78,15 +85,16 @@ export interface DecisionJournalRepository {
   /** Opens a cycle in `OPEN` status and returns it with its assigned id. */
   openCycle(input: OpenDecisionCycleInput): Promise<DecisionCycle>;
   /**
-   * Moves an open cycle to a terminal status. Rejects when the cycle does not
-   * exist or is already `CLOSED`/`ABANDONED`.
+   * Moves an open cycle to a terminal status. Rejects when `input.status` is not
+   * terminal (`CLOSED` | `ABANDONED`), when the cycle does not exist, or when it
+   * already reached a terminal status — so the realized figures are written once.
    */
   closeCycle(cycleId: string, input: CloseDecisionCycleInput): Promise<DecisionCycle>;
   getCycle(cycleId: string): Promise<DecisionCycle | null>;
   listCycles(filter?: DecisionCyclesFilter): Promise<DecisionCycle[]>;
   /**
-   * Appends a decision. Rejects when `cycleId` or `snapshotId` do not exist.
-   * The observed context is copied from the snapshot.
+   * Appends a decision. Rejects when `cycleId` is not an `OPEN` cycle or `snapshotId`
+   * does not exist. The observed context is copied from the snapshot.
    */
   appendDecision(input: RecordDecisionInput): Promise<RepricerDecisionRecord>;
   getDecision(decisionId: number): Promise<RepricerDecisionRecord | null>;
@@ -113,6 +121,32 @@ export interface DecisionJournalSeed {
 /** Ratios are rounded to 4 decimals so repeated runs compare exactly. */
 function roundRatio(value: number): number {
   return Number(value.toFixed(4));
+}
+
+/**
+ * The terminal statuses `closeCycle` accepts, as an allow-list.
+ *
+ * Mirrored verbatim in `electron/main/db/decision-journal.repository.ts`, which cannot
+ * import from `projects/core` (`rootDir: "."` under `electron/tsconfig.json`); the parity
+ * spec replays the same rejections through both adapters to keep the messages identical.
+ */
+const TERMINAL_CLOSE_STATUSES: readonly DecisionCycleCloseStatus[] = ['CLOSED', 'ABANDONED'];
+
+/**
+ * Refuses a `closeCycle` that asks for anything other than a terminal status.
+ *
+ * `CloseDecisionCycleInput['status']` is typed `'CLOSED' | 'ABANDONED'`, so at a
+ * type-checked call site this is unreachable. It is still checked because the real caller
+ * of the raw port is the IPC boundary, where the payload arrives as `unknown`: a
+ * type-level guarantee is not a runtime one, and the cost of being wrong is a cycle that
+ * reports itself open while carrying another cycle's realized figures.
+ */
+function assertTerminalCloseStatus(status: DecisionCycleCloseStatus): void {
+  if (!TERMINAL_CLOSE_STATUSES.includes(status)) {
+    throw new Error(
+      `decision_journal: closeCycle requires a terminal status (${TERMINAL_CLOSE_STATUSES.join(' | ')}), got "${String(status)}"`,
+    );
+  }
 }
 
 function copyCycle(cycle: DecisionCycle): DecisionCycle {
@@ -206,6 +240,15 @@ export class InMemoryDecisionJournalRepository implements DecisionJournalReposit
     cycleId: string,
     input: CloseDecisionCycleInput,
   ): Promise<DecisionCycle> {
+    // Request first, state second. The status is validated by an allow-list and not by
+    // `status !== 'OPEN'` on the stored row: the guard that matters is "this call asks
+    // for a terminal status", which is a property of the request and has to hold even
+    // for a cycle nobody has heard of. A negative check against the stored row answers a
+    // different question — "is it open?" — and lets `status: 'OPEN'` through, stamping
+    // `closedAt` and the realized figures on a cycle that still counts as open. A second
+    // such call then passes the open-check and overwrites those figures, so the record
+    // the operator reads to judge performance is whatever the last caller typed.
+    assertTerminalCloseStatus(input.status);
     const cycle = this.cycles.get(cycleId);
     if (!cycle) {
       throw new Error(`decision_journal: unknown cycle "${cycleId}"`);
@@ -247,8 +290,19 @@ export class InMemoryDecisionJournalRepository implements DecisionJournalReposit
   }
 
   async appendDecision(input: RecordDecisionInput): Promise<RepricerDecisionRecord> {
-    if (!this.cycles.has(input.cycleId)) {
+    const cycle = this.cycles.get(input.cycleId);
+    if (!cycle) {
       throw new Error(`decision_journal: unknown cycle "${input.cycleId}"`);
+    }
+    // Only an OPEN cycle may receive decisions. Existence is not enough: a caller that
+    // holds a cached `cycleId` keeps writing after the cycle was closed, and those
+    // decisions land under a `realizedProfitUsdt` frozen at close time — figures that
+    // were computed from none of them. The cycle total then stops describing the rows
+    // underneath it while `openCycles` reports 0, which is an accounting lie, not a lag.
+    if (cycle.status !== 'OPEN') {
+      throw new Error(
+        `decision_journal: cycle "${input.cycleId}" is ${cycle.status} and cannot accept new decisions`,
+      );
     }
     const snapshot = this.snapshots.find((row) => row.id === input.snapshotId);
     if (!snapshot) {

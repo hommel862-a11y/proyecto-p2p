@@ -19,6 +19,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   SqliteDecisionJournalRepository,
+  parseCloseCyclePayload,
   purgeMarketSnapshotsBefore,
 } from './decision-journal.repository';
 import { P2PDatabaseService } from './database';
@@ -29,6 +30,7 @@ import {
   DECISION_SIDES,
   OUTCOME_SOURCES,
   type DecisionCycle,
+  type DecisionCycleCloseStatus,
   type DecisionOutcome,
   type DecisionPerformanceRow,
   type MarketSnapshot,
@@ -359,11 +361,40 @@ describe('Decision Journal — SQLite adapter parity', () => {
   });
 
   it('rejects the same invalid writes with the same flat errors', async () => {
-    const probes = (r: CoreDecisionJournalRepository) => [
-      () =>
+    /**
+     * Every rejection the port promises, as a thunk so each one can be replayed twice
+     * (once to assert it throws, once to capture the message) without duplicating setup.
+     *
+     * The last four probes are the terminal-cycle invariant and need state, so the
+     * factory is async: the same sequence runs against both adapters and the two message
+     * lists are compared element by element. That comparison is the actual test — two
+     * adapters that reject the same call with different wording still diverge for any
+     * consumer that reads the message.
+     */
+    const probes = async (r: CoreDecisionJournalRepository) => {
+      const open = await r.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+      const closed = await r.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+      const abandoned = await r.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+      const snapshot = await r.appendMarketSnapshot({
+        obi: 0,
+        bidUsd: 1,
+        askUsd: 2,
+        nBids: 1,
+        nAsks: 1,
+        stale: false,
+      });
+      const terminalClose = {
+        closeReason: 'cierre',
+        realizedProfitUsdt: 1,
+        realizedSpreadPct: 1,
+      };
+      await r.closeCycle(closed.id, { status: 'CLOSED', ...terminalClose });
+      await r.closeCycle(abandoned.id, { status: 'ABANDONED', ...terminalClose });
+
+      const decision = (cycleId: string) => () =>
         r.appendDecision({
-          cycleId: 'cycle_does_not_exist',
-          snapshotId: 1,
+          cycleId,
+          snapshotId: snapshot.id,
           side: 'BUY',
           decisionPrice: 1,
           origin: 'OPERATOR',
@@ -371,42 +402,93 @@ describe('Decision Journal — SQLite adapter parity', () => {
           action: 'KEEP',
           modeledSpreadPct: 1,
           reason: 'r',
-        }),
-      () =>
-        r.closeCycle('cycle_does_not_exist', {
-          status: 'CLOSED',
-          closeReason: 'r',
-          realizedProfitUsdt: 0,
-          realizedSpreadPct: 0,
-        }),
-      () =>
-        r.appendOutcome({
-          decisionId: 4242,
-          source: 'MANUAL',
-          success: true,
-          filledAmountUsdt: 0,
-        }),
-    ];
+        });
+
+      return {
+        messages: [
+          'decision_journal: unknown cycle "cycle_does_not_exist"',
+          'decision_journal: unknown cycle "cycle_does_not_exist"',
+          'decision_journal: unknown decision 4242',
+          // A close that asks for a non-terminal status is refused as a malformed
+          // request, whether or not the cycle exists.
+          'decision_journal: closeCycle requires a terminal status (CLOSED | ABANDONED), got "OPEN"',
+          // ...and refused again for a cycle that does exist, so the invariant cannot be
+          // satisfied by closing first and asking for a non-terminal status afterwards.
+          'decision_journal: closeCycle requires a terminal status (CLOSED | ABANDONED), got "OPEN"',
+          `decision_journal: cycle "${closed.id}" is already CLOSED and cannot be closed again`,
+          `decision_journal: cycle "${abandoned.id}" is ABANDONED and cannot accept new decisions`,
+        ],
+        thunks: [
+          () =>
+            r.appendDecision({
+              cycleId: 'cycle_does_not_exist',
+              snapshotId: 1,
+              side: 'BUY',
+              decisionPrice: 1,
+              origin: 'OPERATOR',
+              executionMode: 'READ_ONLY',
+              action: 'KEEP',
+              modeledSpreadPct: 1,
+              reason: 'r',
+            }),
+          () =>
+            r.closeCycle('cycle_does_not_exist', {
+              status: 'CLOSED',
+              closeReason: 'r',
+              realizedProfitUsdt: 0,
+              realizedSpreadPct: 0,
+            }),
+          () =>
+            r.appendOutcome({
+              decisionId: 4242,
+              source: 'MANUAL',
+              success: true,
+              filledAmountUsdt: 0,
+            }),
+          // The cast is the point: `CloseDecisionCycleInput.status` forbids 'OPEN', and
+          // the IPC boundary is exactly where that type stops being enforced.
+          () =>
+            r.closeCycle(open.id, {
+              status: 'OPEN' as DecisionCycleCloseStatus,
+              closeReason: 'r',
+              realizedProfitUsdt: 5,
+              realizedSpreadPct: 5,
+            }),
+          () =>
+            r.closeCycle(open.id, {
+              status: 'OPEN' as DecisionCycleCloseStatus,
+              closeReason: 'r',
+              realizedProfitUsdt: 99,
+              realizedSpreadPct: 99,
+            }),
+          () =>
+            r.closeCycle(closed.id, {
+              status: 'ABANDONED',
+              closeReason: 'segundo intento',
+              realizedProfitUsdt: 99,
+              realizedSpreadPct: 99,
+            }),
+          decision(abandoned.id),
+        ],
+      };
+    };
 
     const collect = async (r: CoreDecisionJournalRepository): Promise<string[]> => {
-      const messages: string[] = [];
-      for (const probe of probes(r)) {
+      const { thunks, messages: expected } = await probes(r);
+      const seen: string[] = [];
+      for (const thunk of thunks) {
         // Flat `Error`, prefixed, no driver-specific wrapper.
-        await expect(probe()).rejects.toThrow(/^decision_journal:/);
-        await probe().catch((err: Error) => messages.push(err.message));
+        await expect(thunk()).rejects.toThrow(/^decision_journal:/);
+        await thunk().catch((err: Error) => seen.push(err.message));
       }
-      return messages;
+      expect(seen).toEqual(expected);
+      return seen;
     };
 
     const sqliteErrors = await collect(repo);
     const memoryErrors = await collect(reference);
 
     expect(sqliteErrors).toEqual(memoryErrors);
-    expect(sqliteErrors).toEqual([
-      'decision_journal: unknown cycle "cycle_does_not_exist"',
-      'decision_journal: unknown cycle "cycle_does_not_exist"',
-      'decision_journal: unknown decision 4242',
-    ]);
   });
 
   it('rejects a decision whose snapshot does not exist', async () => {
@@ -803,6 +885,347 @@ describe('Decision Journal — cycle lifecycle', () => {
 
   it('returns null for a cycle that does not exist', async () => {
     expect(await repo.getCycle('cycle_nope')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4b. The terminal-cycle invariant, on real SQLite
+// ---------------------------------------------------------------------------
+
+describe('Decision Journal — a terminal cycle is final', () => {
+  let db: DatabaseSync;
+  let repo: SqliteDecisionJournalRepository;
+  /** Opened and closed by the legacy-table test, which needs its own connection. */
+  let legacyRepo: SqliteDecisionJournalRepository;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    db = new DatabaseSync(':memory:');
+    db.exec('PRAGMA foreign_keys = ON;');
+    db.exec(fs.readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf8'));
+    repo = new SqliteDecisionJournalRepository(db);
+  });
+
+  afterEach(() => {
+    db.close();
+    vi.useRealTimers();
+  });
+
+  /**
+   * `decision_cycles` exactly as it was defined before the terminal-cycle CHECK: the same
+   * columns and the same enum CHECK, with nothing tying `status` to `closed_at`. Frozen
+   * here so the "legacy database" test keeps testing a real past schema instead of
+   * whatever schema.sql happens to contain today.
+   */
+  const LEGACY_DECISION_CYCLES_DDL = `
+    CREATE TABLE decision_cycles (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'ABANDONED')),
+      title TEXT,
+      origin TEXT NOT NULL CHECK (origin IN ('OPERATOR', 'AUTO_ENGINE', 'MCP_AGENT', 'STRATEGY_PLAN')),
+      capital_reserved_usdt REAL NOT NULL,
+      realized_profit_usdt REAL,
+      realized_spread_pct REAL,
+      close_reason TEXT,
+      opened_at INTEGER NOT NULL,
+      closed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `;
+
+  const snapshotInput = {
+    obi: 0.1,
+    bidUsd: 1,
+    askUsd: 1.1,
+    nBids: 1,
+    nAsks: 1,
+    stale: false,
+  };
+
+  const decisionInput = (cycleId: string, snapshotId: number) => ({
+    cycleId,
+    snapshotId,
+    side: 'BUY' as const,
+    decisionPrice: 1.05,
+    origin: 'AUTO_ENGINE' as const,
+    executionMode: 'PUBLISHING' as const,
+    action: 'UPDATE' as const,
+    modeledSpreadPct: 1.2,
+    reason: 'reprice',
+  });
+
+  it('refuses a close asking for OPEN, and writes nothing at all', async () => {
+    const cycle = await repo.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+
+    for (const asked of ['OPEN', 'CLOSED_PENDING', 'closed', '', 'null']) {
+      await expect(
+        repo.closeCycle(cycle.id, {
+          status: asked as DecisionCycleCloseStatus,
+          closeReason: 'no es un cierre',
+          realizedProfitUsdt: 5,
+          realizedSpreadPct: 5,
+        }),
+      ).rejects.toThrow(
+        `decision_journal: closeCycle requires a terminal status (CLOSED | ABANDONED), got "${asked}"`,
+      );
+    }
+
+    // Not "rejected but partially applied": the stored row is byte-for-byte what
+    // openCycle wrote, so a refused close cannot leave a stamped-but-open cycle behind.
+    const stored = db
+      .prepare('SELECT status, closed_at, close_reason, realized_profit_usdt FROM decision_cycles WHERE id = ?')
+      .get(cycle.id) as Record<string, unknown>;
+    expect(stored).toEqual({
+      status: 'OPEN',
+      closed_at: null,
+      close_reason: null,
+      realized_profit_usdt: null,
+    });
+  });
+
+  it('refuses a close asking for OPEN on a cycle that is already terminal', async () => {
+    const cycle = await repo.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+    const closed = await repo.closeCycle(cycle.id, {
+      status: 'CLOSED',
+      closeReason: 'cierre legitimo',
+      realizedProfitUsdt: 4.2,
+      realizedSpreadPct: 1.1,
+    });
+
+    // Reachable in the buggy build: the first call passes the `status !== 'OPEN'` guard
+    // against the *stored* row, leaves status OPEN with a close stamp, and the second
+    // call passes it again and restates the figures.
+    for (const figures of [
+      { realizedProfitUsdt: 5, realizedSpreadPct: 5 },
+      { realizedProfitUsdt: 99, realizedSpreadPct: 99 },
+    ]) {
+      await expect(
+        repo.closeCycle(cycle.id, {
+          status: 'OPEN' as DecisionCycleCloseStatus,
+          closeReason: 'reapertura encubierta',
+          ...figures,
+        }),
+      ).rejects.toThrow(/terminal status/);
+      expect(await repo.getCycle(cycle.id)).toEqual(closed);
+    }
+    expect(closed.realizedProfitUsdt).toBe(4.2);
+  });
+
+  it('refuses to append a decision to a CLOSED cycle and leaves the frozen figures alone', async () => {
+    const snapshot = await repo.appendMarketSnapshot(snapshotInput);
+    const cycle = await repo.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+    await repo.appendDecision(decisionInput(cycle.id, snapshot.id));
+    const closed = await repo.closeCycle(cycle.id, {
+      status: 'CLOSED',
+      closeReason: 'fin de sesion',
+      realizedProfitUsdt: 3.25,
+      realizedSpreadPct: 1.4,
+      closedAt: T0 + 1000,
+    });
+
+    // This is the engine-with-a-cached-cycleId case: the close happened, the engine kept
+    // the id, and the next write would otherwise land under figures computed from none
+    // of these decisions.
+    await expect(
+      repo.appendDecision({
+        ...decisionInput(cycle.id, snapshot.id),
+        reason: 'decision posterior al cierre',
+      }),
+    ).rejects.toThrow(
+      `decision_journal: cycle "${cycle.id}" is CLOSED and cannot accept new decisions`,
+    );
+
+    expect(await repo.listDecisionsByCycle(cycle.id)).toHaveLength(1);
+    expect(await repo.getCycle(cycle.id)).toEqual(closed);
+    // The cycle is closed AND no longer growing, so the read model and the stored
+    // figures tell the same story.
+    const summary = await repo.getVerificationSummary();
+    expect(summary.openCycles).toBe(0);
+    expect(summary.totalDecisions).toBe(1);
+  });
+
+  it('refuses to append a decision to an ABANDONED cycle', async () => {
+    const snapshot = await repo.appendMarketSnapshot(snapshotInput);
+    const cycle = await repo.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 10 });
+    await repo.closeCycle(cycle.id, {
+      status: 'ABANDONED',
+      closeReason: 'Mercado iliquido',
+      realizedProfitUsdt: 0,
+      realizedSpreadPct: 0,
+    });
+
+    await expect(repo.appendDecision(decisionInput(cycle.id, snapshot.id))).rejects.toThrow(
+      `decision_journal: cycle "${cycle.id}" is ABANDONED and cannot accept new decisions`,
+    );
+    expect(await repo.listDecisionsByCycle(cycle.id)).toEqual([]);
+  });
+
+  it('holds the same refusals on a legacy table that predates the CHECK', async () => {
+    // The adapter guards are `status` checks, so they do not need the schema CHECK. A
+    // database created before that CHECK existed keeps the old table definition —
+    // `CREATE TABLE IF NOT EXISTS` never rewrites one — which is the state the operator's
+    // own `%APPDATA%` database is in. Reproduced by building the old `decision_cycles`
+    // DDL by hand and loading the current schema.sql on top of it. If the refusals below
+    // only held because of the CHECK, the hardening would protect fresh installs and
+    // nothing else.
+    const legacy = new DatabaseSync(':memory:');
+    legacy.exec('PRAGMA foreign_keys = ON;');
+    legacy.exec(LEGACY_DECISION_CYCLES_DDL);
+    legacy.exec(fs.readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf8'));
+    legacyRepo = new SqliteDecisionJournalRepository(legacy);
+
+    const snapshot = await legacyRepo.appendMarketSnapshot(snapshotInput);
+    const cycle = await legacyRepo.openCycle({
+      origin: 'OPERATOR',
+      capitalReservedUsdt: 10,
+      openedAt: T0,
+    });
+
+    // (a) The non-terminal close is refused by the adapter, on a table with no CHECK.
+    await expect(
+      legacyRepo.closeCycle(cycle.id, {
+        status: 'OPEN' as DecisionCycleCloseStatus,
+        closeReason: 'reapertura encubierta',
+        realizedProfitUsdt: 99,
+        realizedSpreadPct: 99,
+      }),
+    ).rejects.toThrow(
+      'decision_journal: closeCycle requires a terminal status (CLOSED | ABANDONED), got "OPEN"',
+    );
+
+    // (b) An honest close still works, and the decision guard bites afterwards.
+    await legacyRepo.closeCycle(cycle.id, {
+      status: 'CLOSED',
+      closeReason: 'cierre legitimo',
+      realizedProfitUsdt: 4.2,
+      realizedSpreadPct: 1.1,
+    });
+    await expect(legacyRepo.appendDecision(decisionInput(cycle.id, snapshot.id))).rejects.toThrow(
+      `decision_journal: cycle "${cycle.id}" is CLOSED and cannot accept new decisions`,
+    );
+    expect(await legacyRepo.listDecisionsByCycle(cycle.id)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4b. The IPC boundary validates the close payload instead of casting it blind
+// ---------------------------------------------------------------------------
+
+describe('Decision Journal — the closeCycle IPC payload', () => {
+  /**
+   * `parseCloseCyclePayload` is the only thing between an `unknown` off the wire and
+   * `closeCycle`. The handler used to do `payload as { cycleId, input }` and forward it,
+   * so every guarantee below depended on the caller having been type-checked — which at
+   * an IPC boundary it never is.
+   *
+   * The terminal-cycle invariant is NOT re-proved here: `closeCycle` enforces it, and the
+   * tests above prove that against real SQLite. What is proved here is narrower and
+   * complementary: that a payload which is not a close request is refused *as a
+   * malformed request*, with a flat `decision_journal:` error, instead of surfacing as a
+   * `TypeError` from dereferencing `undefined` or being forwarded as-is.
+   */
+  const validInput = {
+    status: 'CLOSED',
+    closeReason: 'fin de sesion',
+    realizedProfitUsdt: 3.25,
+    realizedSpreadPct: 1.4,
+  } as const;
+
+  it('accepts a well-formed close and forwards it unchanged', () => {
+    expect(parseCloseCyclePayload({ cycleId: 'cycle_1', input: validInput })).toEqual({
+      cycleId: 'cycle_1',
+      input: validInput,
+    });
+  });
+
+  it('keeps an optional closedAt instead of dropping it', () => {
+    const parsed = parseCloseCyclePayload({
+      cycleId: 'cycle_1',
+      input: { ...validInput, closedAt: T0 + 1000 },
+    });
+    expect(parsed.input.closedAt).toBe(T0 + 1000);
+  });
+
+  it('refuses a non-terminal status with the same message the adapter uses', () => {
+    // The allow-list lives in the adapter, and this boundary reuses it rather than
+    // duplicating the literals. One vocabulary, so the two cannot drift: a caller that
+    // sees the same refusal here and again inside `closeCycle` is not two bugs.
+    expect(() =>
+      parseCloseCyclePayload({ cycleId: 'cycle_1', input: { ...validInput, status: 'OPEN' } }),
+    ).toThrow(
+      'decision_journal: closeCycle requires a terminal status (CLOSED | ABANDONED), got "OPEN"',
+    );
+  });
+
+  it('refuses a payload that is not an object at all', () => {
+    for (const bad of [undefined, null, 'closeCycle', 42, true, ['cycle_1']]) {
+      expect(() => parseCloseCyclePayload(bad)).toThrow(/decision_journal:.*closeCycle payload/i);
+    }
+  });
+
+  it('refuses a missing, empty or non-string cycleId', () => {
+    for (const cycleId of [undefined, null, '', '   ', 7, {}]) {
+      expect(() => parseCloseCyclePayload({ cycleId, input: validInput })).toThrow(
+        /decision_journal:.*cycleId/i,
+      );
+    }
+  });
+
+  it('refuses a missing or non-object input', () => {
+    for (const input of [undefined, null, 'CLOSED', 3]) {
+      expect(() => parseCloseCyclePayload({ cycleId: 'cycle_1', input })).toThrow(
+        /decision_journal:.*input/i,
+      );
+    }
+  });
+
+  it('refuses figures that are not finite numbers', () => {
+    // `NaN` is the one that matters: it passes a naive `typeof === 'number'` check and
+    // would be stored as a non-numeric realized figure, which is exactly the column the
+    // operator reads to judge performance.
+    for (const realizedProfitUsdt of [NaN, Infinity, -Infinity, undefined, null, '5', {}]) {
+      expect(() =>
+        parseCloseCyclePayload({
+          cycleId: 'cycle_1',
+          input: { ...validInput, realizedProfitUsdt },
+        }),
+      ).toThrow(/decision_journal:.*realizedProfitUsdt/i);
+    }
+    for (const realizedSpreadPct of [NaN, Infinity, undefined, '1.4']) {
+      expect(() =>
+        parseCloseCyclePayload({
+          cycleId: 'cycle_1',
+          input: { ...validInput, realizedSpreadPct },
+        }),
+      ).toThrow(/decision_journal:.*realizedSpreadPct/i);
+    }
+  });
+
+  it('refuses a closeReason that is not a string', () => {
+    for (const closeReason of [undefined, null, 5, {}]) {
+      expect(() =>
+        parseCloseCyclePayload({ cycleId: 'cycle_1', input: { ...validInput, closeReason } }),
+      ).toThrow(/decision_journal:.*closeReason/i);
+    }
+  });
+
+  it('refuses a non-numeric closedAt rather than letting it reach Date.now()', () => {
+    for (const closedAt of [NaN, 'later', {}]) {
+      expect(() =>
+        parseCloseCyclePayload({ cycleId: 'cycle_1', input: { ...validInput, closedAt } }),
+      ).toThrow(/decision_journal:.*closedAt/i);
+    }
+  });
+
+  it('never forwards a half-parsed payload: a refusal happens before any field is read', () => {
+    // Every rejection above is total — it returns nothing, so the handler has no partially
+    // validated object to act on. Proven rather than asserted: there is no return value to
+    // inspect, and the throw is the observable.
+    expect(() =>
+      parseCloseCyclePayload({ cycleId: '', input: { ...validInput, status: 'OPEN' } }),
+    ).toThrow(/decision_journal:/);
   });
 });
 
@@ -1427,6 +1850,93 @@ describe('Decision Journal — schema.sql', () => {
     expect(() => insertCycle('c2', 'OPEN', 'ROBOT')).toThrow(/CHECK constraint failed/);
     expect(() => insertCycle('c3', 'OPEN', 'OPERATOR')).not.toThrow();
     db.close();
+  });
+
+  it('refuses a cycle whose status and close stamp disagree', () => {
+    // The two shapes a real close can produce, and the two it cannot. `closeCycle` is the
+    // only writer of `closed_at` and it always stamps a terminal close, so the impossible
+    // pairs have no legitimate producer — and the buggy build produced one of them,
+    // because the guard lived in the adapter and nothing stopped raw SQL or an unvalidated
+    // IPC payload from reaching the row. The CHECK is the backstop for exactly that path.
+    const db = new DatabaseSync(':memory:');
+    db.exec(schemaSql);
+    const insert = (id: string, status: string, closedAt: number | null) =>
+      db
+        .prepare(
+          `INSERT INTO decision_cycles
+             (id, status, origin, capital_reserved_usdt, opened_at, closed_at, created_at, updated_at)
+           VALUES (?, ?, 'OPERATOR', 1, ?, ?, ?, ?)`,
+        )
+        .run(id, status, T0, closedAt, T0, T0);
+
+    // The legitimate shapes.
+    expect(() => insert('ok_open', 'OPEN', null)).not.toThrow();
+    expect(() => insert('ok_closed', 'CLOSED', T0 + 1)).not.toThrow();
+    expect(() => insert('ok_abandoned', 'ABANDONED', T0 + 1)).not.toThrow();
+
+    // The impossible ones.
+    expect(() => insert('bad_open_stamped', 'OPEN', T0 + 1)).toThrow(/CHECK constraint failed/);
+    expect(() => insert('bad_closed_unstamped', 'CLOSED', null)).toThrow(/CHECK constraint failed/);
+    expect(() => insert('bad_abandoned_unstamped', 'ABANDONED', null)).toThrow(
+      /CHECK constraint failed/,
+    );
+
+    // A refused insert leaves no row behind.
+    expect(
+      (db.prepare("SELECT COUNT(*) AS n FROM decision_cycles WHERE id = 'bad_open_stamped'").get() as {
+        n: number;
+      }).n,
+    ).toBe(0);
+    db.close();
+  });
+
+  it('leaves an existing database alone: the hardening applies to new tables only', () => {
+    // `applySchema()` runs `CREATE TABLE IF NOT EXISTS`, so on a database that already has
+    // `decision_cycles` the statement is a no-op: no table rebuild, no validation of the
+    // rows already there, and no data loss. The operator's real database is exactly this
+    // case, so it is reproduced here rather than assumed — including a row that violates
+    // the new CHECK, which must survive untouched rather than abort startup or be deleted.
+    const legacy = new DatabaseSync(':memory:');
+    legacy.exec(`
+      CREATE TABLE decision_cycles (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'ABANDONED')),
+        title TEXT,
+        origin TEXT NOT NULL CHECK (origin IN ('OPERATOR', 'AUTO_ENGINE', 'MCP_AGENT', 'STRATEGY_PLAN')),
+        capital_reserved_usdt REAL NOT NULL,
+        realized_profit_usdt REAL,
+        realized_spread_pct REAL,
+        close_reason TEXT,
+        opened_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO decision_cycles
+        (id, status, origin, capital_reserved_usdt, realized_profit_usdt, realized_spread_pct,
+         close_reason, opened_at, closed_at, created_at, updated_at)
+      VALUES ('legacy_open_stamped', 'OPEN', 'AUTO_ENGINE', 10, 42, 4.2, 'cierre viejo',
+              ${T0}, ${T0 + 1}, ${T0}, ${T0});
+    `);
+
+    expect(() => legacy.exec(schemaSql)).not.toThrow();
+
+    const row = legacy.prepare('SELECT * FROM decision_cycles WHERE id = ?').get('legacy_open_stamped') as {
+      status: string;
+      closed_at: number;
+      realized_profit_usdt: number;
+    };
+    expect(row).toMatchObject({
+      status: 'OPEN',
+      closed_at: T0 + 1,
+      realized_profit_usdt: 42,
+    });
+    // And the table definition is the legacy one: the CHECK is not retrofitted, so this
+    // path cannot fail on rows the operator already has.
+    expect(legacy.prepare("SELECT sql FROM sqlite_master WHERE name = 'decision_cycles'").get()).not.toMatchObject(
+      { sql: expect.stringContaining('closed_at IS NULL') },
+    );
+    legacy.close();
   });
 
   it('stores enums as TEXT and booleans as 0/1 with a CHECK', () => {

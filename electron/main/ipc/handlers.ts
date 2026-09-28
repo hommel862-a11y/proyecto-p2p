@@ -13,8 +13,8 @@ import type {
   TreasurySnapshotDto,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
+import { parseCloseCyclePayload } from '../db/decision-journal.repository';
 import type {
-  CloseDecisionCycleInput,
   DecisionCyclesFilter,
   DecisionJournalRequest,
   DecisionPerformanceFilter,
@@ -402,10 +402,17 @@ export function registerIpcHandlers(): void {
         case 'openCycle':
           return journal.openCycle(payload as OpenDecisionCycleInput);
         case 'closeCycle':
-          return journal.closeCycle(
-            (payload as { cycleId: string; input: CloseDecisionCycleInput }).cycleId,
-            (payload as { cycleId: string; input: CloseDecisionCycleInput }).input,
-          );
+          // Validated, not cast: `payload` is `unknown` here, and `closeCycle` is the one
+          // op whose payload can restate a cycle's realized figures. A malformed request is
+          // refused with a flat `decision_journal:` error naming the offending field; the
+          // cast it replaces would have thrown a bare `TypeError` on a missing `payload`, or
+          // forwarded unchecked numbers into the columns the operator reads to judge
+          // performance. The adapter still enforces the terminal-cycle invariant itself —
+          // this is the shape check in front of it, not a replacement.
+          return (() => {
+            const { cycleId, input } = parseCloseCyclePayload(payload);
+            return journal.closeCycle(cycleId, input);
+          })();
         case 'getCycle':
           return journal.getCycle(payload as string);
         case 'listCycles':
