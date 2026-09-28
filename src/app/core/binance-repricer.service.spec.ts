@@ -1,17 +1,16 @@
-import '@angular/compiler';
+﻿import '@angular/compiler';
 import { Injector } from '@angular/core';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   BinanceRepricerService,
   REPRICER_EXECUTION_MODES,
-  REPRICER_MARKET_STALE_AFTER_MS,
   registerRepricerPublisher,
   unregisterRepricerPublisher,
   type RepricerAdPublisher,
   type RepricerPublishRequest,
 } from './binance-repricer.service';
 import { ToastService } from './toast.service';
-import { BinanceP2pService } from './binance-p2p.service';
+import { BinanceP2pService, type BinanceDepthFetch } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
 import { DecisionJournalService } from './decision-journal.service';
 import {
@@ -61,12 +60,29 @@ const DEPTH: BinanceP2pMarketDepth = {
       payMethods: ['Banesco'],
     },
   ],
+  // Deliberadamente viejo. `updatedAt` es la hora en que se PARSEÓ la respuesta,
+  // no la del exchange: leerlo para medir frescura da ~2 ms siempre. Este fixture
+  // no lo usa el motor, y por eso no puede hacer verde un test imposible.
   updatedAt: '2026-09-27T12:00:00.000Z',
 };
 
-/** El mismo libro, pero con una marca de tiempo de ahora: datos frescos. */
-function freshDepth(overrides: Partial<BinanceP2pMarketDepth> = {}): BinanceP2pMarketDepth {
-  return { ...DEPTH, updatedAt: new Date().toISOString(), ...overrides };
+/** El libro llegó de Binance en esta misma llamada. */
+function liveFetch(depth: BinanceP2pMarketDepth = DEPTH): BinanceDepthFetch {
+  return { depth, source: 'LIVE', fetchedAt: Date.now() };
+}
+
+/**
+ * El MISMO libro, servido desde la caché durante una caída de Binance.
+ *
+ * `fetchedAt` se acaba de fijar a propósito: la frescura no depende de la edad,
+ * depende de no haber podido observar el libro otra vez. Un libro de 0 ms
+ * servido de la caché NO es un libro fresco.
+ */
+function cachedFetch(
+  depth: BinanceP2pMarketDepth = DEPTH,
+  fetchedAt: number = Date.now(),
+): BinanceDepthFetch {
+  return { depth, source: 'CACHE', fetchedAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +136,17 @@ interface JournalHarness {
   /** Ops forzadas a fallar, para ejercitar la política de robustez. */
   readonly failOn: Map<JournalOpName, Error>;
   readonly ops: () => JournalOpName[];
+  /**
+   * Deja pasar el tráfico y CONGELA las ops indicadas hasta `release()`.
+   *
+   * Sin este control, "dos ciclos concurrentes" es una carrera que el
+   * planificador puede ganar o perder: el test pasaría en verde por suerte y el
+   * bug seguiría vivo. Acá las dos llamadas quedan efectivamente solapadas
+   * dentro del journal, que es donde la invariante tiene que valer.
+   */
+  holdUntilReleased(...ops: JournalOpName[]): void;
+  /** Suelta lo retenido por `holdUntilReleased`. */
+  release(): void;
 }
 
 type JournalInvoke = (op: JournalOpName, payload?: unknown) => Promise<unknown>;
@@ -136,6 +163,7 @@ function createJournalHarness(): JournalHarness {
   const snapshotInputs: RecordMarketSnapshotInput[] = [];
   const decisionInputs: RecordDecisionInput[] = [];
   const failOn = new Map<JournalOpName, Error>();
+  let gate: { ops: ReadonlySet<JournalOpName>; wait: Promise<void>; open: () => void } | null = null;
 
   // El switch replica el de `electron/main/ipc/handlers.ts`, incluido el payload
   // envuelto de `closeCycle`. Si las formas divergieran, el test probaría un
@@ -144,6 +172,11 @@ function createJournalHarness(): JournalHarness {
     calls.push({ op, payload });
     const failure = failOn.get(op);
     if (failure) throw failure;
+
+    // Se retiene ANTES de tocar el repositorio: si se retuviera después, la
+    // segunda llamada ya habría leído el estado que la primera cambió y la
+    // carrera ni existiría.
+    if (gate && gate.ops.has(op)) await gate.wait;
 
     switch (op) {
       case 'appendMarketSnapshot': {
@@ -190,6 +223,18 @@ function createJournalHarness(): JournalHarness {
     decisionInputs,
     failOn,
     ops: () => calls.map((call) => call.op),
+    holdUntilReleased(...ops: JournalOpName[]): void {
+      let open!: () => void;
+      const wait = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      gate = { ops: new Set(ops), wait, open };
+    },
+    release(): void {
+      const pending = gate;
+      gate = null;
+      pending?.open();
+    },
   };
 }
 
@@ -203,14 +248,14 @@ describe('BinanceRepricerService', () => {
     error: vi.fn(),
     warn: vi.fn(),
   };
-  const fetchMarketDepth = vi.fn(async (): Promise<BinanceP2pMarketDepth | null> => DEPTH);
+  const fetchDepth = vi.fn(async (): Promise<BinanceDepthFetch | null> => liveFetch());
 
   /** Re-inyecta el motor con el journal actual; `usages` viene del injector. */
   function buildService(usages: () => { isOverLimit: boolean }[] = () => []): void {
     svc = Injector.create({
       providers: [
         { provide: ToastService, useValue: toast },
-        { provide: BinanceP2pService, useValue: { fetchMarketDepth } },
+        { provide: BinanceP2pService, useValue: { fetchMarketDepthWithSource: fetchDepth } },
         { provide: AccountsService, useValue: { usages } },
         { provide: DecisionJournalService, useValue: journal },
         BinanceRepricerService,
@@ -230,8 +275,8 @@ describe('BinanceRepricerService', () => {
     toast.info.mockReset();
     toast.error.mockReset();
     toast.warn.mockReset();
-    fetchMarketDepth.mockReset();
-    fetchMarketDepth.mockResolvedValue(DEPTH);
+    fetchDepth.mockReset();
+    fetchDepth.mockResolvedValue(liveFetch());
     unregisterRepricerPublisher();
     rebuildJournal();
   });
@@ -373,7 +418,7 @@ describe('BinanceRepricerService', () => {
     });
 
     it('no inventa decisiones cuando el libro de mercado no responde', async () => {
-      fetchMarketDepth.mockResolvedValue(null);
+      fetchDepth.mockResolvedValue(null);
 
       expect(await svc.executeCycle()).toBeNull();
       expect(svc.logs()).toHaveLength(0);
@@ -479,7 +524,7 @@ describe('BinanceRepricerService', () => {
       // otra vez en vez de dar KEEP.
       svc.currentBuyAdPrice.set(0);
       svc.currentSellAdPrice.set(0);
-      fetchMarketDepth.mockResolvedValue(freshDepth());
+      fetchDepth.mockResolvedValue(liveFetch());
       const second = await svc.executeCycle();
 
       expect(second?.action).toBe('UPDATE');
@@ -526,7 +571,7 @@ describe('BinanceRepricerService', () => {
       await svc.executeCycle();
       svc.currentBuyAdPrice.set(0);
       svc.currentSellAdPrice.set(0);
-      fetchMarketDepth.mockResolvedValue(freshDepth());
+      fetchDepth.mockResolvedValue(liveFetch());
       await svc.executeCycle();
 
       const open = await journal.listCycles({ status: 'OPEN' });
@@ -578,8 +623,8 @@ describe('BinanceRepricerService', () => {
       expect(rows[0].observedObi).toBe(expected.obiRatio);
     });
 
-    it('no marca como viejo un libro recién consultado', async () => {
-      fetchMarketDepth.mockResolvedValue(freshDepth());
+    it('no marca como viejo un libro recién consultado a Binance', async () => {
+      fetchDepth.mockResolvedValue(liveFetch());
 
       await svc.executeCycle();
 
@@ -588,29 +633,52 @@ describe('BinanceRepricerService', () => {
       expect(rows.every((row) => row.observedStale === false)).toBe(true);
     });
 
-    it('marca como viejo el libro que el motor decidió usar estando viejo', async () => {
-      const oldStamp = new Date(Date.now() - REPRICER_MARKET_STALE_AFTER_MS - 5_000).toISOString();
-      fetchMarketDepth.mockResolvedValue(freshDepth({ updatedAt: oldStamp }));
+    it('marca como viejo el libro que salió de la caché, aunque sea recientísimo', async () => {
+      // El bug: la frescura se medía restando la hora en que se PARSEÓ la
+      // respuesta, que da ~2 ms siempre. Con un libro servido de la caché hace
+      // un segundo, esa resta da 1 s y el panel responde "fresco" sobre un libro
+      // que el motor no pudo volver a observar. La honestidad no es la edad: es
+      // saber si este libro se vio ahora o se re-servió.
+      const fetchedAt = Date.now();
+      fetchDepth.mockResolvedValue(cachedFetch(DEPTH, fetchedAt));
 
       await svc.executeCycle();
 
       expect(harness.snapshotInputs[0].stale).toBe(true);
-      expect(harness.snapshotInputs[0].fetchedAt).toBe(Date.parse(oldStamp));
+      // Y la evidencia conserva CUÁNDO se observó el libro por última vez.
+      expect(harness.snapshotInputs[0].fetchedAt).toBe(fetchedAt);
       const rows = await journal.getDecisionPerformance();
       expect(rows.every((row) => row.observedStale === true)).toBe(true);
     });
 
-    it('trata como viejo un libro cuya marca de tiempo no es confiable', async () => {
-      // Ante duda, se declara viejo: un default optimistic hides stale data.
-      fetchMarketDepth.mockResolvedValue(freshDepth({ updatedAt: 'no-es-una-fecha' }));
+    it('deja que el panel muestre un porcentaje de libro viejo NO nulo', async () => {
+      // La tercera pregunta de auditoría tiene que poder responderse con un
+      // número. Si el ratio no puede salir de cero, la pregunta no tiene
+      // respuesta y el operador lee "siempre fresco" donde la verdad es otra.
+      fetchDepth.mockResolvedValue(liveFetch());
       await svc.executeCycle();
-      expect(harness.snapshotInputs[0].stale).toBe(true);
 
-      rebuildJournal();
-      fetchMarketDepth.mockResolvedValue(
-        freshDepth({ updatedAt: new Date(Date.now() + 60_000).toISOString() }),
-      );
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      fetchDepth.mockResolvedValue(cachedFetch());
       await svc.executeCycle();
+
+      const summary = await journal.getVerificationSummary();
+      expect(summary.totalDecisions).toBe(4);
+      expect(summary.staleDecisions).toBe(2);
+      expect(summary.staleRate).toBeCloseTo(0.5, 4);
+
+      const audit = await journal.getSelfAudit();
+      expect(audit.staleExposure.decisionsOnStaleMarket).toBe(2);
+      expect(audit.staleExposure.staleRate).toBeCloseTo(0.5, 4);
+    });
+
+    it('trata como viejo un depth sin marca de tiempo confiable', async () => {
+      // Ante duda, se declara viejo: un default optimistic esconde datos viejos.
+      fetchDepth.mockResolvedValue({ depth: DEPTH, source: 'LIVE', fetchedAt: Number.NaN });
+
+      await svc.executeCycle();
+
       expect(harness.snapshotInputs[0].stale).toBe(true);
     });
 
@@ -692,17 +760,23 @@ describe('BinanceRepricerService', () => {
       expect(svc.logs()[0].message).toContain('Publicación rechazada por el publicador');
     });
 
-    it('graba el PAUSE de seguridad como decisión auditable', async () => {
+    it('no graba el PAUSE de seguridad como decisión publicable', async () => {
+      // Un PAUSE nunca llega a `publishOrLog`: no hay anuncio que escribir. Si se
+      // journaliza igual entra al denominador de "decisiones con intento de
+      // publicación" y por construcción no puede tener intento, así que el ratio
+      // decae sin que exista un solo fallo real. Ver el bloque "denominador de
+      // verificación" para la métrica completa.
       svc.minSpreadVes.set(10_000);
 
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
-      const open = await journal.listCycles({ status: 'OPEN' });
-      const rows = await journal.listDecisionsByCycle(open[0].id);
-      expect(rows).toHaveLength(2);
-      expect(rows.every((row) => row.action === 'PAUSE')).toBe(true);
-      expect(rows[0].safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
+      expect(harness.decisionInputs).toHaveLength(0);
+      // El rastro de que el motor decidió pausar NO se pierde: queda en el log
+      // del motor, con la regla de seguridad que lo disparó.
+      expect(svc.logs()[0].action).toBe('PAUSE');
+      expect(svc.logs()[0].message).toMatch(/menor al mínimo requerido/i);
     });
 
     it('un fallo del journal no tumba el repricer: sigue operando y avisa', async () => {
@@ -777,7 +851,7 @@ describe('BinanceRepricerService', () => {
       toast.error.mockClear();
       svc.currentBuyAdPrice.set(0);
       svc.currentSellAdPrice.set(0);
-      fetchMarketDepth.mockResolvedValue(freshDepth());
+      fetchDepth.mockResolvedValue(liveFetch());
       await svc.executeCycle();
 
       expect(toast.error).not.toHaveBeenCalled();
@@ -798,7 +872,7 @@ describe('BinanceRepricerService', () => {
     });
 
     it('no registra nada cuando el libro de mercado no responde', async () => {
-      fetchMarketDepth.mockResolvedValue(null);
+      fetchDepth.mockResolvedValue(null);
 
       await svc.executeCycle();
 
@@ -808,8 +882,7 @@ describe('BinanceRepricerService', () => {
     });
 
     it('no registra nada en los ciclos donde el motor no decide (KEEP)', async () => {
-      const book = freshDepth();
-      fetchMarketDepth.mockResolvedValue(book);
+      fetchDepth.mockResolvedValue(liveFetch());
 
       await svc.executeCycle();
       const afterDecision = (await journal.getVerificationSummary()).totalDecisions;
@@ -880,7 +953,7 @@ describe('BinanceRepricerService', () => {
 
       svc.currentBuyAdPrice.set(0);
       svc.currentSellAdPrice.set(0);
-      fetchMarketDepth.mockResolvedValue(freshDepth());
+      fetchDepth.mockResolvedValue(liveFetch());
       await svc.executeCycle();
 
       const first = publish.mock.calls[0][0] as RepricerPublishRequest;
@@ -892,6 +965,204 @@ describe('BinanceRepricerService', () => {
       expect(second.decisionIds).toBeDefined();
       expect(first.decisionIds?.['BUY']).not.toBe(second.decisionIds?.['BUY']);
       expect(first.decisionIds?.['SELL']).not.toBe(second.decisionIds?.['SELL']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bug 4: el denominador de la métrica de verificación
+  //
+  // El denominador son las decisiones que PUEDEN tener intento de publicación.
+  // Journalizar una acción que nunca llega al publicador mete en ese
+  // denominador filas que por construcción no pueden tener intento: el ratio
+  // decae de forma monótona sin que exista un solo fallo real, y
+  // `decisionsAwaitingOutcome` cuenta como backlog algo que nadie forgot.
+  // -------------------------------------------------------------------------
+  describe('denominador de verificación (PAUSE y las no publicables)', () => {
+    /** Todas las acciones que el motor puede terminar journalizando. */
+    const journaledActions = (): string[] => harness.decisionInputs.map((input) => input.action);
+
+    it('no journaliza el PAUSE por regla de seguridad (spread insuficiente)', async () => {
+      svc.minSpreadVes.set(10_000);
+
+      const decision = await svc.executeCycle();
+
+      expect(decision?.action).toBe('PAUSE');
+      expect(journaledActions()).toEqual([]);
+    });
+
+    it('no journaliza el PAUSE por límites bancarios agotados', async () => {
+      buildService(() => [{ isOverLimit: true }]);
+
+      const decision = await svc.executeCycle();
+
+      expect(decision?.action).toBe('PAUSE');
+      expect(journaledActions()).toEqual([]);
+    });
+
+    it('no journaliza el PAUSE por profundidad de mercado insuficiente', async () => {
+      fetchDepth.mockResolvedValue(
+        liveFetch({ ...DEPTH, bestSellPrice: 0, sellOffers: [], spreadVes: 0, spreadPct: 0 }),
+      );
+
+      const decision = await svc.executeCycle();
+
+      expect(decision?.action).toBe('PAUSE');
+      expect(journaledActions()).toEqual([]);
+    });
+
+    it('un PAUSE no infla el denominador ni el backlog de outcomes', async () => {
+      const publish = vi.fn(async (): Promise<boolean> => true);
+      registerRepricerPublisher({ publish });
+
+      await svc.executeCycle();
+      // El harness no registra outcomes —no hay publicador de verdad—, así que
+      // la invariante no es un valor absoluto: es que el PAUSE no mueva NINGUNA
+      // de las tres cifras. Antes/después es lo que aísla el efecto del PAUSE.
+      const afterUpdate = await journal.getVerificationSummary();
+      expect(afterUpdate.totalDecisions).toBe(2);
+
+      // El mismo motor, ahora con el spread mínimo imposible de alcanzar.
+      svc.minSpreadVes.set(10_000);
+      const paused = await svc.executeCycle();
+
+      expect(paused?.action).toBe('PAUSE');
+      const afterPause = await journal.getVerificationSummary();
+      // Ni el denominador se mueve, ni el ratio decae, ni aparece un backlog
+      // fantasma: una decisión sin intento posible no es un fallo de verificación.
+      expect(afterPause.totalDecisions).toBe(afterUpdate.totalDecisions);
+      expect(afterPause.verificationRate).toBe(afterUpdate.verificationRate);
+      expect(afterPause.decisionsAwaitingOutcome).toBe(afterUpdate.decisionsAwaitingOutcome);
+      // Y el publicador no se llamó: el PAUSE no publica.
+      expect(publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('deja constancia de la pausa en el log del motor aunque no la journalice', async () => {
+      svc.minSpreadVes.set(10_000);
+
+      await svc.executeCycle();
+
+      const entry = svc.logs()[0];
+      expect(entry.action).toBe('PAUSE');
+      expect(entry.message).toMatch(/Spread proyectado/);
+      // Y el motivo queda en la decisión que el operador puede inspeccionar.
+      expect(svc.lastDecision()?.safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
+      expect(svc.lastDecision()?.reason).toMatch(/menor al mínimo requerido/i);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Bug 5: `resolveJournalCycle` era check-then-act
+  //
+  // `start()`, `setStrategy()` y el timer de 20 s llaman a `executeCycle()`
+  // con `void`: ninguno espera al anterior. Sin una única resolución en vuelo,
+  // un toggle seguido de un cambio de estrategia abre DOS ciclos OPEN y parte
+  // las decisiones en dos. Todo lo que el journal calcula queda ambiguo.
+  // -------------------------------------------------------------------------
+  describe('una sola resolución de ciclo en vuelo', () => {
+    /** Deja correr los microtasks pendientes para que ambas llamadas se solapen. */
+    function flush(): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    it('abre EXACTAMENTE un ciclo con dos ciclos concurrentes', async () => {
+      harness.holdUntilReleased('listCycles', 'openCycle');
+
+      const first = svc.executeCycle();
+      const second = svc.executeCycle();
+      await flush();
+      harness.release();
+      await Promise.all([first, second]);
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      // Y las dos decisiones van al mismo ciclo, partidas por lado pero no por ciclo.
+      expect(await journal.listDecisionsByCycle(open[0].id)).toHaveLength(4);
+      expect(harness.ops().filter((op) => op === 'openCycle')).toHaveLength(1);
+    });
+
+    it('no abre un segundo ciclo cuando el disparador es el toggle + cambio de estrategia', async () => {
+      harness.holdUntilReleased('listCycles', 'openCycle');
+
+      const started = svc.start();
+      svc.setStrategy('UNDERCUT');
+      await flush();
+      harness.release();
+      await flush();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      expect(harness.ops().filter((op) => op === 'openCycle')).toHaveLength(1);
+      svc.stop();
+      expect(started).toBeUndefined();
+    });
+
+    it('mantiene el ciclo resuelto cuando otro ciclo se abre y se cierra', async () => {
+      await svc.executeCycle();
+      const resolved = await journal.listCycles({ status: 'OPEN' });
+      expect(resolved).toHaveLength(1);
+
+      // Otro actor churna ciclos. El id cacheado sigue siendo válido: no hay
+      // razón para invalidarlo, y hacerlo abriría un contenedor nuevo por ruido.
+      const other = await harness.repo.openCycle({
+        origin: 'OPERATOR',
+        capitalReservedUsdt: 100,
+        title: 'Ciclo del operador',
+      });
+      await harness.repo.closeCycle(other.id, {
+        status: 'ABANDONED',
+        closeReason: 'prueba',
+        realizedProfitUsdt: 0,
+        realizedSpreadPct: 0,
+      });
+
+      harness.calls.length = 0;
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      expect(open[0].id).toBe(resolved[0].id);
+      expect(harness.ops()).not.toContain('openCycle');
+      expect(await journal.listDecisionsByCycle(resolved[0].id)).toHaveLength(4);
+    });
+
+    it('re-resuelve el ciclo después de que una escritura falle contra un ciclo ya cerrado', async () => {
+      await svc.executeCycle();
+      const resolved = await journal.listCycles({ status: 'OPEN' });
+
+      // El ciclo se cierra por fuera —el operador lo abandona a mano—. Un id
+      // cacheado a un ciclo CLOSED hace que la escritura de decisiones falle
+      // para siempre si no se suelta: el motor sigue publicando sin auditarse.
+      await harness.repo.closeCycle(resolved[0].id, {
+        status: 'ABANDONED',
+        closeReason: 'abandonado por el operador',
+        realizedProfitUsdt: 0,
+        realizedSpreadPct: 0,
+      });
+
+      // El ciclo siguiente NO se salva: escribe contra el ciclo muerto, falla, y
+      // lo reporta. Perder una fila es mejor que dejar de auditar para siempre,
+      // pero el fallo no puede ser silencioso.
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      const blind = await svc.executeCycle();
+
+      expect(blind?.action).toBe('UPDATE');
+      expect(String(consoleError.mock.calls[0]?.[0])).toMatch(/appendDecision\(BUY\)/);
+
+      // Y el ciclo DESPUÉS de ese fallo vuelve a resolver: se abre uno nuevo y
+      // las decisiones se auditan de nuevo. Un fallo transitorio no se vuelve
+      // permanente.
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      expect(open[0].id).not.toBe(resolved[0].id);
+      expect(await journal.listDecisionsByCycle(open[0].id)).toHaveLength(2);
     });
   });
 });

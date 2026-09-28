@@ -1,12 +1,11 @@
 import { Injectable, computed, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
-import { BinanceP2pService } from './binance-p2p.service';
+import { BinanceP2pService, type BinanceDepthFetch } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
 import { DecisionJournalService } from './decision-journal.service';
 import {
   calculateOrderBookImbalance,
   evaluateRepricer,
-  type BinanceP2pMarketDepth,
   type DecisionSide,
   type OpenDecisionCycleInput,
   type RecordMarketSnapshotInput,
@@ -33,14 +32,26 @@ export type RepricerExecutionMode =
   (typeof REPRICER_EXECUTION_MODES)[keyof typeof REPRICER_EXECUTION_MODES];
 
 /**
- * Antigüedad máxima, en milisegundos, para que la profundidad consultada al
- * decidir siga considerándose vigente.
+ * Acciones que el motor journaliza.
  *
- * El motor decide sobre el libro que le llega, no sobre el libro que le gustaría
- * tener. Si ese dato tiene más edad que este umbral, la decisión se tomó sobre
- * información vieja, y el journal tiene que poder decirlo después.
+ * El denominador de la métrica de verificación son las decisiones que PUEDEN
+ * tener un intento de publicación, así que solo entran las que llegan al
+ * publicador. `KEEP` no decide nada ("los precios ya están donde deben"), y
+ * `PAUSE` decide no hacer nada: ni una ni otra van a producir un outcome, y
+ * contarlas infla el denominador con filas que no pueden tener intento.
+ *
+ * Lo que se pierde al no journalizar un PAUSE —el registro durable de que el
+ * motor se detuvo— no se pierde del todo: queda en `logs()` con la regla que lo
+ * disparó. La solución de fondo (que el resumen excluya por `action`) exige
+ * tocar el cálculo del resumen, que hoy vive fuera de la propiedad de este
+ * archivo.
  */
-export const REPRICER_MARKET_STALE_AFTER_MS = 60_000;
+const JOURNALLED_ACTIONS: ReadonlySet<RepricerDecision['action']> = new Set(['UPDATE']);
+
+/** ¿Esta decisión puede llegar a un intento de publicación? */
+function canAttemptPublication(action: RepricerDecision['action']): boolean {
+  return JOURNALLED_ACTIONS.has(action);
+}
 
 /** Precios que el motor quiere dejar publicados en los anuncios del operador. */
 export interface RepricerPublishRequest {
@@ -134,6 +145,17 @@ export class BinanceRepricerService implements OnDestroy {
    */
   private journalCycleId: string | null = null;
   private journalCycleWarningShown = false;
+
+  /**
+   * Resolución de ciclo EN VUELO, si la hay.
+   *
+   * `start()`, `setStrategy()` y el timer de 20 s llaman a `executeCycle()` con
+   * `void`: ninguno espera al anterior. Sin esta promesa en vuelo, dos llamadas
+   * simultáneas hacen las dos el lookup, ven que no hay ciclo abierto, y abren
+   * DOS ciclos `OPEN` — con las decisiones partidas entre dos, que es
+   * exactamente lo que vuelve ambiguo todo lo que el journal calcula.
+   */
+  private journalCycleInFlight: Promise<string | null> | null = null;
 
   readonly isActive = signal<boolean>(false);
   readonly strategy = signal<RepricerStrategy>('TOP_1');
@@ -242,10 +264,14 @@ export class BinanceRepricerService implements OnDestroy {
   }
 
   async executeCycle(): Promise<RepricerDecision | null> {
-    const depth = await this.binance.fetchMarketDepth('USDT', 'VES');
-    if (!depth) {
+    // Se pide el libro CON su procedencia. Un depth suelto no puede responder si
+    // se acaba de observar o si el circuito está re-sirviendo caché, y esa es
+    // justamente la pregunta que la auditoría necesita responder.
+    const fetched = await this.binance.fetchMarketDepthWithSource('USDT', 'VES');
+    if (!fetched) {
       return null;
     }
+    const depth = fetched.depth;
 
     // Check if any daily bank account cupo is breached
     const usages = this.accounts.usages();
@@ -273,12 +299,17 @@ export class BinanceRepricerService implements OnDestroy {
 
     // El journal se escribe ANTES de que el motor actúe sobre el libro: la
     // decisión tiene que existir cuando la publicación ocurra, para que el
-    // outcome (éxito o fallo) se pueda colgar de ella. `KEEP` no decide nada —
-    // "los precios ya están donde deben" no es una decisión, y contarlo como
-    // tal inflaría el número de decisiones auditadas.
+    // outcome (éxito o fallo) se pueda colgar de ella.
+    //
+    // Solo se journalizan las decisiones que pueden PUBLICAR. `KEEP` no decide
+    // nada ("los precios ya están donde deben") y `PAUSE` decide no hacer nada:
+    // ninguno de los dos llega a `publishOrLog`, así que ninguno puede tener
+    // un outcome. Contarlos metería filas en el denominador de verificación que
+    // por construcción no pueden acertar, y el ratio decaería sin que exista un
+    // solo fallo. Ver `JOURNALLED_ACTIONS`.
     let journaledDecisionIds: Partial<Record<DecisionSide, number>> | null = null;
-    if (decision.action !== 'KEEP') {
-      journaledDecisionIds = await this.recordInJournal(decision, depth);
+    if (canAttemptPublication(decision.action)) {
+      journaledDecisionIds = await this.recordInJournal(decision, fetched);
     }
 
     if (decision.action === 'UPDATE') {
@@ -322,7 +353,7 @@ export class BinanceRepricerService implements OnDestroy {
    */
   private async recordInJournal(
     decision: RepricerDecision,
-    depth: BinanceP2pMarketDepth,
+    fetched: BinanceDepthFetch,
   ): Promise<Partial<Record<DecisionSide, number>> | null> {
     const journal = this.journal;
     if (!journal) {
@@ -347,7 +378,7 @@ export class BinanceRepricerService implements OnDestroy {
 
     let snapshotId: number;
     try {
-      const snapshot = await journal.appendMarketSnapshot(this.buildSnapshotInput(depth));
+      const snapshot = await journal.appendMarketSnapshot(this.buildSnapshotInput(fetched));
       snapshotId = snapshot.id;
     } catch (err) {
       // Sin evidencia de mercado la decisión no es auditable, así que no se
@@ -383,6 +414,11 @@ export class BinanceRepricerService implements OnDestroy {
         decisionIds[side] = written.id;
       } catch (err) {
         this.reportJournalFailure(`appendDecision(${side})`, decision, err);
+        // El ciclo cacheado puede estar muerto —cerrado por el operador, o
+        // cerrado por quien gane la carrera de apertura— y reusarlo convertiría
+        // un fallo transitorio en uno permanente. Se descarta y la próxima
+        // decisión vuelve a resolver.
+        this.forgetJournalCycle();
         // Se devuelve lo que SÍ se escribió: el lado ya journalizado va a tener un
         // outcome, el que falló no. Perder ambos sería tirar auditoría que existe.
         return Object.keys(decisionIds).length > 0 ? decisionIds : null;
@@ -403,6 +439,17 @@ export class BinanceRepricerService implements OnDestroy {
    * decisión. Si el motor es el único que abre ciclos —lo es, mientras el cierre sea
    * manual— hay a lo sumo uno abierto, así que no hay ambigüedad al reutilizarlo.
    *
+   * Un unico `cycle_id` en vuelo, y no un lock por reintento: si dos llamadas
+   * resuelven a la vez, las dos ven "no hay ciclo abierto" y las dos abren uno.
+   * El resultado se comparte en vez de calcularse dos veces, y se cachea la
+   * resolución UNA vez, al terminar, para que la siguiente decisión ya tenga el id.
+   *
+   * Si la escritura de una decisión falla, el id cacheado se descarta. Puede haber
+   * pasado lo mismo que en el caso del ciclo ya cerrado: el `cycle_id` cacheado
+   * apunta a un ciclo que ya no acepta decisiones, y un id que no cambia nunca deja
+   * al motor sin auditar para siempre. Reintentar la resolución es barato; quedarse
+   * ciego, no.
+   *
    * NO cierra el ciclo, y no es un oversight: `CloseDecisionCycleInput` exige
    * `realizedProfitUsdt` y `realizedSpreadPct`, cifras que no existen hasta que
    * haya outcomes. Cerrar con inventos sería peor que no cerrar, y dejar el ciclo
@@ -414,17 +461,41 @@ export class BinanceRepricerService implements OnDestroy {
     const cached = this.journalCycleId;
     if (cached) return cached;
 
+    // Si ya hay una resolución en vuelo, esta decisión se cuelga de ella en
+    // lugar de empezar una segunda: dos lookups simultáneos verían los dos que
+    // no hay ciclo abierto y abrirían dos.
+    const inFlight = this.journalCycleInFlight;
+    if (inFlight) return inFlight;
+
+    const resolution = (async (): Promise<string | null> => {
+      try {
+        const [open] = await journal.listCycles({ status: 'OPEN' });
+        const cycle = open ?? (await journal.openCycle(this.buildCycleInput()));
+        this.journalCycleId = cycle.id;
+        return cycle.id;
+      } catch (err) {
+        // Misma política que el resto del journal: el trading no se frena porque la
+        // persistencia no esté disponible, pero tampoco se pierde en silencio.
+        this.reportJournalCycleFailure(err);
+        return null;
+      }
+    })();
+
+    this.journalCycleInFlight = resolution;
     try {
-      const [open] = await journal.listCycles({ status: 'OPEN' });
-      const cycle = open ?? (await journal.openCycle(this.buildCycleInput()));
-      this.journalCycleId = cycle.id;
-      return cycle.id;
-    } catch (err) {
-      // Misma política que el resto del journal: el trading no se frena porque la
-      // persistencia no esté disponible, pero tampoco se pierde en silencio.
-      this.reportJournalCycleFailure(err);
-      return null;
+      return await resolution;
+    } finally {
+      if (this.journalCycleInFlight === resolution) this.journalCycleInFlight = null;
     }
+  }
+
+  /**
+   * Descarta el ciclo cacheado. Para cuando la escritura de una decisión falló:
+   * el id puede apuntar a un ciclo que ya no acepta decisiones, y reusar un id
+   * muerto deja al motor publicando sin auditar el resto de la sesión.
+   */
+  private forgetJournalCycle(): void {
+    this.journalCycleId = null;
   }
 
   /**
@@ -452,10 +523,17 @@ export class BinanceRepricerService implements OnDestroy {
    * solo necesita los derivados. `obi` se CONSUME de `calculateOrderBookImbalance`
    * —que ya existe y es puro—; no se recalcula ni se reimplementa acá.
    */
-  private buildSnapshotInput(depth: BinanceP2pMarketDepth): RecordMarketSnapshotInput {
+  private buildSnapshotInput(fetched: BinanceDepthFetch): RecordMarketSnapshotInput {
+    const depth = fetched.depth;
     const now = Date.now();
-    const fetchedAt = Date.parse(depth.updatedAt);
-    const age = now - fetchedAt;
+    // `fetchedAt` es el instante en que se OBSERVÓ el libro, no el instante en
+   // que este proceso lo parseó. La diferencia es el bug: parsear da ~2 ms, así
+   // que la edad calculada era siempre fresca, incluso re-sirviendo un libro que
+   // el circuito lleva segundos sin poder volver a observar. `fetchedAt` congela
+   // el reloj del camino de caché, así que sí mide la edad real de lo que el
+   // motor usó.
+    const observedAt = fetched.fetchedAt;
+    const age = now - observedAt;
 
     return {
       obi: calculateOrderBookImbalance(depth.buyOffers, depth.sellOffers).obiRatio,
@@ -463,10 +541,13 @@ export class BinanceRepricerService implements OnDestroy {
       askUsd: depth.bestSellPrice,
       nBids: depth.buyOffers.length,
       nAsks: depth.sellOffers.length,
-      // Frescura REAL, no un default: si la marca de tiempo no es confiable —ilegible
-      // o en el futuro— el dato se declara viejo antes que limpio.
-      stale: !Number.isFinite(age) || age < 0 || age > REPRICER_MARKET_STALE_AFTER_MS,
-      fetchedAt: Number.isFinite(age) ? fetchedAt : now,
+      // Frescura por PROCEDENCIA, no por reloj: lo que se acaba de pedir a Binance
+      // es fresco por definición, y lo que salió de la caché no lo es aunque tenga
+      // dos segundos. Un reloj solo no alcanza —una respuesta recién bajada puede
+      // venir de un origin edge con su propio delay—, así que la procedencia es la
+      // señal primaria y el reloj queda como respaldo para marcas imposibles.
+      stale: fetched.source !== 'LIVE' || !Number.isFinite(age) || age < 0,
+      fetchedAt: Number.isFinite(age) ? observedAt : now,
     };
   }
 

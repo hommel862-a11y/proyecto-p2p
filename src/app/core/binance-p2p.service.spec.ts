@@ -106,4 +106,55 @@ describe('BinanceP2pService', () => {
     expect(svc.marketDepth()).toBeNull();
     expect(svc.error()).toContain('escritorio');
   });
+
+  // -------------------------------------------------------------------------
+  // Procedencia del libro: la única verdad de frescura que este proyecto tiene.
+  //
+  // `adv/search` no trae marca de tiempo del servidor, así que "la edad del
+  // libro" no se puede medir. Lo que SÍ se sabe es de dónde salió el depth:
+  // de la red ahora, o de la caché porque el circuito de Binance está en
+  // protección. Esa diferencia es la que la auditoría necesita, y antes de
+  // existir no había forma de distinguirla.
+  // -------------------------------------------------------------------------
+  describe('procedencia de la profundidad', () => {
+    it('marca LIVE cuando la respuesta viene de Binance', async () => {
+      vi.stubGlobal('fetch', vi.fn<FetchLike>(async () => jsonResponse(BINANCE_PAYLOAD)));
+
+      const result = await svc.fetchMarketDepthWithSource('USDT', 'VES', true);
+
+      expect(result?.source).toBe('LIVE');
+      expect(result?.depth.bestBuyPrice).toBeGreaterThan(0);
+      expect(result?.fetchedAt).toBeGreaterThan(0);
+    });
+
+    it('marca CACHE y conserva cuándo se observó el libro, durante una caída', async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(BINANCE_PAYLOAD));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const live = await svc.fetchMarketDepthWithSource('USDT', 'VES', true);
+      expect(live?.source).toBe('LIVE');
+
+      // Binance se cae. El circuito devuelve el libro cacheado: es el mismo
+      // objeto, con la misma marca de cuando se observó por última vez.
+      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+      const cached = await svc.fetchMarketDepthWithSource('USDT', 'VES', true);
+
+      expect(cached?.source).toBe('CACHE');
+      expect(cached?.depth).toBe(live?.depth);
+      // La edad se congela en el instante real de la observación: si el reloj se
+      // moviera, el motor estaría inventando una frescura que no midió.
+      expect(cached?.fetchedAt).toBe(live?.fetchedAt);
+    });
+
+    it('sigue devolviendo el depth pelado por la API que ya usan las pantallas', async () => {
+      vi.stubGlobal('fetch', vi.fn<FetchLike>(async () => jsonResponse(BINANCE_PAYLOAD)));
+
+      const depth = await svc.fetchMarketDepth('USDT', 'VES', true);
+
+      expect(depth).not.toBeNull();
+      expect(depth?.bestSellPrice).toBeGreaterThan(0);
+      // Sin campos nuevos que las otras cuatro pantallas tengan que conocer.
+      expect(Object.keys(depth ?? {})).not.toContain('source');
+    });
+  });
 });

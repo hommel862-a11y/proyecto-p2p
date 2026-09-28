@@ -7,6 +7,33 @@ import {
   CircuitBreaker,
 } from '@p2p/core';
 
+/**
+ * De dónde salió un libro de mercado.
+ *
+ * `adv/search` NO trae marca de tiempo del servidor, así que la edad real del
+ * libro no existe como dato: la única marca que hay es la hora en que el
+ * proceso parseó la respuesta, y esa da ~2 ms siempre. Calcular "antigüedad"
+ * con eso produce un número que no mide nada.
+ *
+ * Lo que sí se sabe sin inventar nada es si el libro se acaba de observar o se
+ * está re-sirviendo desde la caché porque el circuito de Binance está en
+ * protección. Eso es lo que declara esta unión, y es la única base honesta
+ * para decir "esta decisión se tomó sobre un libro viejo".
+ */
+export type BinanceDepthSource = 'LIVE' | 'CACHE';
+
+export interface BinanceDepthFetch {
+  readonly depth: BinanceP2pMarketDepth;
+  readonly source: BinanceDepthSource;
+  /**
+   * Epoch ms de la ÚLTIMA observación real del libro: esta llamada si el
+   * origen es `LIVE`, o la llamada original que lo produjo si vino de `CACHE`.
+   * Nunca se mueve por re-servir la caché: avanzar el reloj al guardar una
+   * decisión sería fabricar una frescura que nadie midió.
+   */
+  readonly fetchedAt: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BinanceP2pService implements OnDestroy {
   private readonly toast = inject(ToastService);
@@ -30,6 +57,16 @@ export class BinanceP2pService implements OnDestroy {
   });
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Epoch ms de la última consulta que LLEGÓ a Binance. Un acierto de caché no
+   * lo mueve: es la referencia para decir cuán viejo es realmente el libro que
+   * se está re-sirviendo.
+   *
+   * Solo existe si hubo una consulta real, y el camino de caché exige haber
+   * tenido una: la caché se puebla únicamente desde el camino de red.
+   */
+  private liveFetchedAt: number | null = null;
 
   ngOnDestroy(): void {
     this.stopAutoRefresh();
@@ -74,11 +111,39 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
+  /**
+   * La profundidad, pelada. Es lo que consumen las pantallas.
+   *
+   * Quien tenga que AUDITAR una decisión necesita además saber de dónde salió
+   * el libro, y eso no se puede recuperar del objeto: el camino de caché
+   * devuelve el mismo depth que ya estaba en el signal. Por eso existe
+   * {@link fetchMarketDepthWithSource}, y por eso no se agrega el dato acá: las
+   * pantallas no lo necesitan y `BinanceP2pMarketDepth` es un tipo de core que
+   * además está vendorizado byte a byte.
+   */
   async fetchMarketDepth(
     asset = 'USDT',
     fiat = 'VES',
     silent = false,
   ): Promise<BinanceP2pMarketDepth | null> {
+    const fetched = await this.fetchMarketDepthWithSource(asset, fiat, silent);
+    return fetched?.depth ?? null;
+  }
+
+  /**
+   * Igual que {@link fetchMarketDepth}, pero además declara la procedencia del
+   * libro: recién observado (`LIVE`) o re-servido desde la caché (`CACHE`).
+   *
+   * El circuit breaker es el único que sabe cuál de los dos caminos se tomó, y
+   * esa información se pierde en cuanto se devuelve el depth suelto. Acá se
+   * captura antes de perderla. `fetchedAt` es el instante real de la
+   * observación: la caché lo conserva congelado en vez de "refrescarlo".
+   */
+  async fetchMarketDepthWithSource(
+    asset = 'USDT',
+    fiat = 'VES',
+    silent = false,
+  ): Promise<BinanceDepthFetch | null> {
     this.loading.set(true);
     this.error.set(null);
 
@@ -86,6 +151,9 @@ export class BinanceP2pService implements OnDestroy {
     const binanceMethod = BINANCE_PAY_METHODS[bankKey] || '';
 
     try {
+      /** Se llena SOLO cuando la respuesta llegó; un acierto de caché no lo toca. */
+      let observedAt: number | null = null;
+
       const executeNetworkCall = async (signal: AbortSignal) => {
         let buyData: unknown;
         let sellData: unknown;
@@ -127,6 +195,9 @@ export class BinanceP2pService implements OnDestroy {
           sellData = resSell;
         }
 
+        // El libro quedó observado AHORA. Se marca antes de parsearlo porque lo
+        // que importa es cuándo llegó la respuesta, no cuándo se procesó.
+        observedAt = Date.now();
         return computeMarketDepth(buyData, sellData, asset, fiat, binanceMethod);
       };
 
@@ -144,9 +215,16 @@ export class BinanceP2pService implements OnDestroy {
         : undefined;
 
       const depth = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
+      if (observedAt !== null) {
+        this.liveFetchedAt = observedAt;
+      }
       this.marketDepth.set(depth);
       this.lastFetched.set(new Date());
-      return depth;
+      return {
+        depth,
+        source: observedAt === null ? 'CACHE' : 'LIVE',
+        fetchedAt: observedAt ?? this.liveFetchedAt ?? Date.now(),
+      };
     } catch (err) {
       const msg = (err as Error).message || 'No se pudo conectar con Binance P2P';
       this.error.set(msg);
