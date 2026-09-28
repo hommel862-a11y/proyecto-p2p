@@ -47,6 +47,22 @@ export interface RepricerPublishRequest {
   buyPrice: number;
   sellPrice: number;
   strategy: RepricerStrategy;
+  /**
+   * Correlación con el journal: el `repricer_decisions.id` de cada lado, cuando
+   * el motor pudo escribir la decisión.
+   *
+   * Opcional y aditivo a propósito. El puerto tiene más de un implementador
+   * (`McpAdPublisherService` y al menos un doble en tests), y un parámetro
+   * obligatorio rompería a los que no journalizan. Sin este campo el publicador
+   * sigue funcionando: publica y no registra nada.
+   *
+   * Es un `Partial` porque los dos lados se journalizan por separado y una
+   * escritura puede fallar a mitad de camino. Lo que NO puede pasar es mandar
+   * un id que no exista: `decision_outcomes.decision_id` es una FK dura, así que
+   * un id inventado no agruparía nada. Si no hay decisión real, no se manda
+   * correlación.
+   */
+  decisionIds?: Partial<Record<DecisionSide, number>>;
 }
 
 /**
@@ -260,14 +276,15 @@ export class BinanceRepricerService implements OnDestroy {
     // outcome (éxito o fallo) se pueda colgar de ella. `KEEP` no decide nada —
     // "los precios ya están donde deben" no es una decisión, y contarlo como
     // tal inflaría el número de decisiones auditadas.
+    let journaledDecisionIds: Partial<Record<DecisionSide, number>> | null = null;
     if (decision.action !== 'KEEP') {
-      await this.recordInJournal(decision, depth);
+      journaledDecisionIds = await this.recordInJournal(decision, depth);
     }
 
     if (decision.action === 'UPDATE') {
       this.currentBuyAdPrice.set(decision.suggestedBuyPrice);
       this.currentSellAdPrice.set(decision.suggestedSellPrice);
-      await this.publishOrLog(decision);
+      await this.publishOrLog(decision, journaledDecisionIds ?? undefined);
     } else if (decision.action === 'PAUSE') {
       this.stop();
       this.addLog(
@@ -288,21 +305,29 @@ export class BinanceRepricerService implements OnDestroy {
   }
 
   /**
-   * Persiste la decisión y la evidencia de mercado que la respalda.
+   * Persiste la decisión y la evidencia de mercado que la respalda, y devuelve
+   * los ids que DE VERDAD se escribieron, por lado.
+   *
+   * Esos ids son la correlación que el publicador necesita para colgarle un
+   * outcome a cada intento. Se devuelven solo los que existen: una escritura
+   * puede fallar a mitad del bucle, y devolver la mitad no verificable sería
+   * mandar un id que el repositorio nunca asignó.
    *
    * NUNCA propaga el error: un journal que no puede escribir no puede frenar el
    * trading, pero sí tiene que avisar. Tampoco reintenta —el motor sigue operando
    * y el siguiente ciclo vuelve a intentarlo una sola vez—: el journal no es un
    * requisito de disponibilidad del motor de decisiones.
+   *
+   * @returns Los `repricer_decisions.id` escritos, o `null` si no se escribió ninguno.
    */
   private async recordInJournal(
     decision: RepricerDecision,
     depth: BinanceP2pMarketDepth,
-  ): Promise<void> {
+  ): Promise<Partial<Record<DecisionSide, number>> | null> {
     const journal = this.journal;
     if (!journal) {
       this.warnJournalNotWired();
-      return;
+      return null;
     }
 
     // El ciclo se resuelve PRIMERO. `repricer_decisions.cycle_id` es una FK dura a
@@ -311,7 +336,7 @@ export class BinanceRepricerService implements OnDestroy {
     // resolución falla, que es basura que `market_snapshots` acumula sin dueño.
     const cycleId = await this.resolveJournalCycle(journal);
     if (!cycleId) {
-      return;
+      return null;
     }
 
     // El modo se lee del servicio AHORA, en el momento de la decisión. Nunca desde
@@ -328,7 +353,7 @@ export class BinanceRepricerService implements OnDestroy {
       // Sin evidencia de mercado la decisión no es auditable, así que no se
       // escribe: no tiene sentido dejar una fila que no se puede verificar.
       this.reportJournalFailure('appendMarketSnapshot', decision, err);
-      return;
+      return null;
     }
 
     // Una fila por lado: el motor reposiciona DOS anuncios y cada uno se llena (o
@@ -340,9 +365,10 @@ export class BinanceRepricerService implements OnDestroy {
       { side: 'SELL', price: decision.suggestedSellPrice },
     ];
 
+    const decisionIds: Partial<Record<DecisionSide, number>> = {};
     for (const { side, price } of sides) {
       try {
-        await journal.appendDecision({
+        const written = await journal.appendDecision({
           cycleId,
           snapshotId,
           side,
@@ -354,11 +380,15 @@ export class BinanceRepricerService implements OnDestroy {
           reason: decision.reason,
           safetyFlags: decision.safetyFlags,
         });
+        decisionIds[side] = written.id;
       } catch (err) {
         this.reportJournalFailure(`appendDecision(${side})`, decision, err);
-        return;
+        // Se devuelve lo que SÍ se escribió: el lado ya journalizado va a tener un
+        // outcome, el que falló no. Perder ambos sería tirar auditoría que existe.
+        return Object.keys(decisionIds).length > 0 ? decisionIds : null;
       }
     }
+    return decisionIds;
   }
 
   /**
@@ -486,8 +516,16 @@ export class BinanceRepricerService implements OnDestroy {
    * Escribe los precios si hay un publicador real registrado; si no, deja constancia
    * de que solo se calcularon. El log usa SIEMPRE `logPrefix()`, que ya depende del
    * modo real, así que no puede afirmar publicación cuando no la hubo.
+   *
+   * `decisionIds` viaja al publicador para que pueda colgar un outcome a cada
+   * intento. Es `undefined` cuando el motor no logró escribir la decisión, y en
+   * ese caso el publicador publica igual y no registra nada: preferimos una
+   * publicación sin auditoría a una publicación con una auditoría inventada.
    */
-  private async publishOrLog(decision: RepricerDecision): Promise<void> {
+  private async publishOrLog(
+    decision: RepricerDecision,
+    decisionIds?: Partial<Record<DecisionSide, number>>,
+  ): Promise<void> {
     const prefix = this.logPrefix();
     const resumen = `Compra ${decision.suggestedBuyPrice} Bs | Venta ${decision.suggestedSellPrice} Bs (${this.strategy()})`;
     const publisher = adPublisher();
@@ -497,11 +535,19 @@ export class BinanceRepricerService implements OnDestroy {
       return;
     }
 
-    const published = await publisher.publish({
+    const request: RepricerPublishRequest = {
       buyPrice: decision.suggestedBuyPrice,
       sellPrice: decision.suggestedSellPrice,
       strategy: this.strategy(),
-    });
+    };
+    // La clave solo se agrega cuando hay algo que mandar: mandar
+    // `decisionIds: undefined` no es lo mismo que no mandar el campo, y el
+    // publicador decide con `undefined` igual que con la clave ausente.
+    if (decisionIds) {
+      request.decisionIds = decisionIds;
+    }
+
+    const published = await publisher.publish(request);
     this.addLog(
       'UPDATE',
       published

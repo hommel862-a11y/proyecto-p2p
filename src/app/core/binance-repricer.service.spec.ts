@@ -8,6 +8,7 @@ import {
   registerRepricerPublisher,
   unregisterRepricerPublisher,
   type RepricerAdPublisher,
+  type RepricerPublishRequest,
 } from './binance-repricer.service';
 import { ToastService } from './toast.service';
 import { BinanceP2pService } from './binance-p2p.service';
@@ -161,6 +162,8 @@ function createJournalHarness(): JournalHarness {
         return repo.listCycles(payload as DecisionCyclesFilter | undefined);
       case 'getCycle':
         return repo.getCycle(payload as string);
+      case 'getDecision':
+        return repo.getDecision(payload as number);
       case 'listDecisionsByCycle':
         return repo.listDecisionsByCycle(payload as string);
       case 'getDecisionPerformance':
@@ -308,10 +311,14 @@ describe('BinanceRepricerService', () => {
       // el sello de "publicando" va atado a la llamada real.
       expect(decision?.action).toBe('UPDATE');
       expect(publish).toHaveBeenCalledTimes(1);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
       expect(publish).toHaveBeenCalledWith({
         buyPrice: decision?.suggestedBuyPrice,
         sellPrice: decision?.suggestedSellPrice,
         strategy: 'TOP_1',
+        // La correlación es lo que permite colgarle un outcome a cada lado.
+        decisionIds: { BUY: rows[0].id, SELL: rows[1].id },
       });
       expect(svc.logs()[0].message).toContain('Precios publicados en Binance');
     });
@@ -814,6 +821,77 @@ describe('BinanceRepricerService', () => {
       expect(second?.action).toBe('KEEP');
       expect((await journal.getVerificationSummary()).totalDecisions).toBe(afterDecision);
       expect(harness.snapshotInputs).toHaveLength(1);
+    });
+  });
+
+  describe('correlación decisión → publicación (F2c)', () => {
+    /** Doble que ACEPTA el request, para poder inspeccionar la correlación. */
+    function spyPublisher() {
+      return vi.fn(async (_request: RepricerPublishRequest): Promise<boolean> => true);
+    }
+
+    it('entrega al publicador el decisionId real de cada lado', async () => {
+      const publish = spyPublisher();
+      registerRepricerPublisher({ publish });
+
+      const decision = await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      const sent = publish.mock.calls[0][0] as RepricerPublishRequest;
+      expect(sent.decisionIds).toBeDefined();
+
+      // No alcanza con que sea "un id": tiene que ser el de ESE lado. Un mapeo
+      // invertido colgaría el outcome de compra del trade de venta y el journal
+      // sería internamente consistente pero falso.
+      const buyDecision = await journal.getDecision(sent.decisionIds?.['BUY'] ?? -1);
+      const sellDecision = await journal.getDecision(sent.decisionIds?.['SELL'] ?? -1);
+      expect(buyDecision?.side).toBe('BUY');
+      expect(sellDecision?.side).toBe('SELL');
+      expect(buyDecision?.decisionPrice).toBe(decision?.suggestedBuyPrice);
+      expect(sellDecision?.decisionPrice).toBe(decision?.suggestedSellPrice);
+      expect(buyDecision?.id).toBe(rows[0].id);
+      expect(sellDecision?.id).toBe(rows[1].id);
+    });
+
+    it('no manda correlación inventada si la decisión no se pudo journalar', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const publish = spyPublisher();
+      registerRepricerPublisher({ publish });
+      harness.failOn.set('appendDecision', new Error('FK constraint failed'));
+
+      const decision = await svc.executeCycle();
+
+      // Sin fila de decisión no hay id real que mandar: `decision_outcomes`
+      // tiene una FK dura, así que un id inventado no agruparía nada. La
+      // publicación sigue adelante igual.
+      expect(decision?.action).toBe('UPDATE');
+      expect(publish).toHaveBeenCalledTimes(1);
+      const sent = publish.mock.calls[0][0] as RepricerPublishRequest;
+      expect(sent.decisionIds).toBeUndefined();
+      expect(svc.logs()[0].message).toMatch(/Precios publicados en Binance/);
+      expect(consoleError).toHaveBeenCalled();
+    });
+
+    it('reutiliza los mismos ids en la segunda corrida, con decisiones nuevas', async () => {
+      const publish = spyPublisher();
+      registerRepricerPublisher({ publish });
+      await svc.executeCycle();
+
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      fetchMarketDepth.mockResolvedValue(freshDepth());
+      await svc.executeCycle();
+
+      const first = publish.mock.calls[0][0] as RepricerPublishRequest;
+      const second = publish.mock.calls[1][0] as RepricerPublishRequest;
+
+      // Cada intento cuelga de SU decisión: outcomes repetidos sobre la misma
+      // fila serían fills parciales, y acá no hubo ningún fill.
+      expect(first.decisionIds).toBeDefined();
+      expect(second.decisionIds).toBeDefined();
+      expect(first.decisionIds?.['BUY']).not.toBe(second.decisionIds?.['BUY']);
+      expect(first.decisionIds?.['SELL']).not.toBe(second.decisionIds?.['SELL']);
     });
   });
 });
