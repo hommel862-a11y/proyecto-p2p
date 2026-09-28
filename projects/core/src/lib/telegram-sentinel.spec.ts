@@ -18,11 +18,13 @@ import {
   buildPanelKeyboard,
   isPanelCallbackData,
   parseRepriceCallbackData,
+  formatJournalAuditLine,
   dispatchTelegramUpdate,
   PANEL_CALLBACKS,
   TelegramInboundUpdate,
   type PanelReport,
 } from './telegram-sentinel';
+import type { VerificationSummary } from './decision-journal';
 
 // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
 // aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
@@ -52,6 +54,42 @@ function expectParseableMarkdownV2(markdown: string): void {
   expect(markdown).not.toMatch(/\\$/);
   (markdown.match(/`[^`]*`/g) ?? []).forEach((span) => expect(span).not.toContain('\n'));
 }
+
+/**
+ * Palabras con las que la línea de auditoría NO puede afirmar nada. `verifiedDecisions`
+ * cuenta decisiones con al menos un **intento de publicación** registrado, no trades
+ * realizados: pedir un precio no es vender a ese precio. Si alguien "abrevia" el rótulo
+ * a "Verificado 12/1042" le está diciendo al operador que 12 decisiones están confirmadas
+ * contra el mercado, y eso es falso.
+ */
+const FORBIDDEN_VERIFICATION_CLAIMS = [
+  /verificad/i,
+  /confirmad/i,
+  /trade/i,
+  /fill/i,
+  /llenad/i,
+  /realizad/i,
+  /ejecutad/i,
+];
+
+/**
+ * Resumen de referencia: 1042 decisiones, 12 con al menos un intento de publicación
+ * registrado (`12/1042` = 1.2%) y 31 decididas sobre un libro que el propio motor ya
+ * marcó como viejo (`31/1042` = 3.0%).
+ *
+ * Las dos tasas se eligen DISTINTAS a propósito: si un refactor intercambia
+ * `verificationRate` por `staleRate`, o las confunde, tiene que notarse. Con las dos
+ * al 3.0% un error así pasaría el filtro verde.
+ */
+const SUMMARY: VerificationSummary = {
+  totalDecisions: 1042,
+  verifiedDecisions: 12,
+  verificationRate: 12 / 1042,
+  staleDecisions: 31,
+  staleRate: 31 / 1042,
+  openCycles: 1,
+  decisionsAwaitingOutcome: 1030,
+};
 
 describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
   const AUTH_CHAT_ID = 123456789;
@@ -1120,6 +1158,41 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       );
     });
 
+    it('incluye la línea de auditoría con los números del journal', () => {
+      const msg = formatPanelTelegramMessage({ ...FULL_REPORT, journalAudit: SUMMARY });
+
+      expect(plain(msg)).toContain('12/1042');
+      expect(plain(msg)).toContain('intento de publicación');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('declara la auditoría no disponible cuando el journal no respondió', () => {
+      const msg = formatPanelTelegramMessage({ ...FULL_REPORT, journalAudit: null });
+
+      expect(plain(msg)).toContain('no disponible');
+      // No disponible NO es lo mismo que cero decisiones: se distinguen a propósito.
+      expect(plain(msg)).not.toContain('sin decisiones registradas');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('omite la línea de auditoría cuando nunca se consultó el journal', () => {
+      // Sin resumen no hay nada que afirmar: el panel no inventa un número.
+      const msg = formatPanelTelegramMessage(FULL_REPORT);
+
+      expect(plain(msg)).not.toContain('Auditoría de decisiones');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('el panel completo no promete trades ejecutados en ninguna de sus líneas', () => {
+      const msg = plain(
+        formatPanelTelegramMessage({ ...FULL_REPORT, journalAudit: SUMMARY }),
+      );
+
+      FORBIDDEN_VERIFICATION_CLAIMS.forEach((claim) => {
+        expect(msg, String(claim)).not.toMatch(claim);
+      });
+    });
+
     it('construye el teclado del panel con refrescar, pausar y reanudar', () => {
       const kb = buildPanelKeyboard();
       const buttons = kb.inline_keyboard.flat();
@@ -1225,6 +1298,109 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       );
 
       expect(res.authorized).toBe(false);
+    });
+  });
+
+  describe('línea de auditoría del journal (/panel y /status)', () => {
+    /** El texto con los escapes de MarkdownV2 quitados: lo que ve el operador. */
+    function plain(markdown: string): string {
+      return markdown.replace(/\\/g, '');
+    }
+
+    it('imprime los conteos con los números correctos', () => {
+      const line = formatJournalAuditLine(SUMMARY);
+      const visible = plain(line);
+
+      expect(visible).toContain('Auditoría de decisiones');
+      // Una sola aserción con la línea completa y en orden: fija cada tasa a SU
+      // rótulo, así que intercambiar `verificationRate` y `staleRate` se nota.
+      expect(visible).toMatch(
+        /`12\/1042` decisiones con intento de publicación • `1\.2%` decididas sobre libro viejo `3\.0%`/,
+      );
+      expectParseableMarkdownV2(line);
+    });
+
+    it('dice "intento" y nunca promete verificación de trades', () => {
+      const visible = plain(formatJournalAuditLine(SUMMARY));
+
+      // El rotulado dice exactamente lo que el número es: un intento registrado.
+      expect(visible).toContain('intento de publicación');
+      FORBIDDEN_VERIFICATION_CLAIMS.forEach((claim) => {
+        expect(visible, String(claim)).not.toMatch(claim);
+      });
+    });
+
+    it('escapa MarkdownV2 en cada valor interpolado, no solo en el porcentaje', () => {
+      // El `.` es un carácter reservado: sin escape, Telegram rechaza el envío entero.
+      // Se comprueban los TRES valores dinámicos: el conteo, la tasa de verificación
+      // y la tasa de libro viejo.
+      const line = formatJournalAuditLine({ ...SUMMARY, verifiedDecisions: 12.5 });
+
+      expect(line).toContain('12\\.5/1042');
+      expect(line).toContain('1\\.2%');
+      expect(line).toContain('3\\.0%');
+      expectParseableMarkdownV2(line);
+    });
+
+    it('omite la porción de libro viejo cuando ninguna decisión se tomó sobre uno viejo', () => {
+      const line = formatJournalAuditLine({ ...SUMMARY, staleDecisions: 0, staleRate: 0 });
+      const visible = plain(line);
+
+      // La tasa de verificación sigue: la que desaparece es solo la de libro viejo.
+      expect(visible).toContain('12/1042');
+      expect(visible).toContain('1.2%');
+      expect(visible).not.toContain('libro viejo');
+      expect(visible).not.toContain('0.0%');
+      expectParseableMarkdownV2(line);
+    });
+
+    it('declara que no hay decisiones registradas cuando el denominador no sirve', () => {
+      // 0, NaN e Infinity son los tres finales de un resumen vacío o corrupto.
+      // Ninguno puede llegar al teléfono como 0/0, NaN o Infinity.
+      [0, Number.NaN, Number.POSITIVE_INFINITY].forEach((totalDecisions) => {
+        const line = formatJournalAuditLine({
+          ...SUMMARY,
+          totalDecisions,
+          verificationRate: Number.NaN,
+          staleDecisions: 0,
+          staleRate: Number.NaN,
+        });
+        const visible = plain(line);
+        const label = String(totalDecisions);
+
+        expect(visible, label).toContain('sin decisiones registradas');
+        expect(visible, label).not.toMatch(/0\/0/);
+        expect(visible, label).not.toMatch(/NaN|Infinity|n\/d/);
+        expectParseableMarkdownV2(line);
+      });
+    });
+
+    it('no inventa un porcentaje ante un resumen corrupto', () => {
+      // Hay decisiones tomadas sobre libro viejo pero la tasa no llegó: se dice
+      // n/d, que es la verdad, en vez de omitir el dato o inventar 0%.
+      const line = formatJournalAuditLine({
+        ...SUMMARY,
+        verifiedDecisions: Number.NaN,
+        staleRate: Number.NaN,
+      });
+      const visible = plain(line);
+
+      expect(visible).not.toMatch(/NaN|Infinity/);
+      expect(visible).toContain('n/d');
+      expectParseableMarkdownV2(line);
+    });
+
+    it('declara la auditoría no disponible cuando el journal no se pudo leer', () => {
+      const line = formatJournalAuditLine(null);
+      const visible = plain(line);
+
+      expect(visible).toContain('no disponible');
+      expect(visible).not.toMatch(/0\/0|NaN|Infinity/);
+      expectParseableMarkdownV2(line);
+    });
+
+    it('es determinista: el mismo resumen produce la misma línea', () => {
+      expect(formatJournalAuditLine(SUMMARY)).toBe(formatJournalAuditLine(SUMMARY));
     });
   });
 });

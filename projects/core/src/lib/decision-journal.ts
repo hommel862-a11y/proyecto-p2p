@@ -268,7 +268,15 @@ export interface DecisionPerformanceRow {
 export interface VerificationSummary {
   /** Decisions matching the filter. */
   readonly totalDecisions: number;
-  /** Decisions with at least one outcome. */
+  /**
+   * Decisions with at least one recorded outcome — a publication attempt,
+   * successful or not.
+   *
+   * NOT filled trades: the field keeps the legacy name `verifiedDecisions`, but
+   * see `DecisionJournalAudit` for why renaming it to "verified" is exactly the
+   * mistake that lets a publish attempt pass for a fill. Any UI that surfaces
+   * this number must label it as an attempt.
+   */
   readonly verifiedDecisions: number;
   /** `verifiedDecisions / totalDecisions`; 0 when there are no decisions. */
   readonly verificationRate: number;

@@ -5,6 +5,8 @@
  * Pure TypeScript, framework-agnostic, zero external dependencies.
  */
 
+import type { VerificationSummary } from './decision-journal';
+
 export interface TelegramInlineKeyboardButton {
   text: string;
   callback_data?: string;
@@ -517,6 +519,14 @@ export interface PanelReport {
   fetchedAt: string;
   /** `true` cuando lo mostrado viene de caché y puede estar desactualizado. */
   marketStale: boolean;
+  /**
+   * Auditoría del decision journal.
+   *
+   * `undefined` = nunca se consultó (el panel omite la línea: no hay nada que
+   * afirmar). `null` = se intentó y no se pudo leer (la línea dice "no
+   * disponible"). No es lo mismo que un journal vacío, que tiene su propio texto.
+   */
+  journalAudit?: VerificationSummary | null;
 }
 
 /** Igual que `formatMetric`, pero con el signo del spread explícito. */
@@ -526,9 +536,50 @@ function formatSignedMetric(value: number, decimals = 2): string {
 }
 
 /**
+ * Una línea con la auditoría del decision journal.
+ *
+ * El número que se muestra NO es un trade. `verifiedDecisions` cuenta decisiones
+ * con al menos un **intento de publicación** registrado: el motor pidió un precio
+ * y otra persona lo vio. Eso no es una venta ejecutada, ni un orderId de Binance,
+ * ni un fill. Decir "verificadas" le mentiría al operador sobre lo que el sistema
+ * sabe, así que el rótulo dice exactamente lo que el número es.
+ *
+ * Tres casos, tres textos distintos, porque no son lo mismo:
+ * - `null`: no se pudo leer el journal → "no disponible".
+ * - denominador 0 o no finito: no hay decisiones → "sin decisiones registradas".
+ * - tasas no finitas: hay datos parciales → "n/d" en vez de inventar un porcentaje.
+ */
+export function formatJournalAuditLine(summary: VerificationSummary | null): string {
+  if (summary === null) {
+    return `🗒️ *Auditoría de decisiones:* ${escapeMarkdownV2('no disponible')}`;
+  }
+
+  const total = summary.totalDecisions;
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) {
+    return `🗒️ *Auditoría de decisiones:* ${escapeMarkdownV2('sin decisiones registradas todavía')}`;
+  }
+
+  const counts = `${formatCount(summary.verifiedDecisions)}/${formatCount(total)}`;
+  const rate = formatMetric(summary.verificationRate * 100, 1);
+  const head =
+    `🗒️ *Auditoría de decisiones:* \`${counts}\` ` +
+    `${escapeMarkdownV2('decisiones con intento de publicación')} • \`${rate}%\``;
+
+  // La porción de libro viejo solo aparece cuando hubo decisiones sobre un libro
+  // viejo: un 0% sin contexto es ruido, no información.
+  const stale = summary.staleDecisions;
+  if (typeof stale === 'number' && Number.isFinite(stale) && stale > 0) {
+    return `${head} ${escapeMarkdownV2('decididas sobre libro viejo')} \`${formatMetric(summary.staleRate * 100, 1)}%\``;
+  }
+
+  return head;
+}
+
+/**
  * Formatea el panel editable del terminal: modo de ejecución real, estado del
- * motor, precios que el motor quiere dejar, libro de Binance y frescura de la
- * lectura. Cuando el libro no está disponible lo dice en vez de mostrar ceros.
+ * motor, precios que el motor quiere dejar, libro de Binance, frescura de la
+ * lectura y auditoría del journal. Cuando un dato no está disponible lo dice en
+ * vez de mostrar ceros.
  */
 export function formatPanelTelegramMessage(report: PanelReport): string {
   const engine = report.repricerActive ? '🟢 ACTIVO' : '⏸ DETENIDO';
@@ -543,6 +594,11 @@ export function formatPanelTelegramMessage(report: PanelReport): string {
     ? `🕐 *Datos de las* \`${formatCodeSpan(report.fetchedAt)}\` ${escapeMarkdownV2('— pueden estar desactualizados')}`
     : `🕐 *Datos de las* \`${formatCodeSpan(report.fetchedAt)}\``;
 
+  const audit =
+    report.journalAudit === undefined
+      ? ''
+      : `\n${formatJournalAuditLine(report.journalAudit)}`;
+
   return `🛡️ *PANEL DEL TERMINAL* 🛡️
 ━━━━━━━━━━━━━━━━━━
 🧠 *Modo de ejecución:* *${escapeMarkdownV2(report.executionModeLabel)}*
@@ -550,7 +606,7 @@ export function formatPanelTelegramMessage(report: PanelReport): string {
 ⚙️ *Motor de repricing:* ${escapeMarkdownV2(engine)}
 💱 *Precios del motor:* compra \`${formatMetric(report.repricerBuyPrice)} Bs\` • venta \`${formatMetric(report.repricerSellPrice)} Bs\`
 
-${marketBlock}
+${marketBlock}${audit}
 
 ${freshness}
 _${escapeMarkdownV2('Este mensaje se actualiza en el lugar: usá el botón de refrescar en vez de mandar el comando otra vez.')}_`;

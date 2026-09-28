@@ -9,10 +9,12 @@ import { BinanceRepricerService } from './binance-repricer.service';
 import { AccountsService } from './accounts.service';
 import { CotizaveService } from './cotizave.service';
 import { MarketHistoryService } from './market-history.service';
+import { DecisionJournalService } from './decision-journal.service';
 import type {
   BinanceP2pMarketDepth,
   TelegramInboundUpdate,
   TelegramInlineKeyboardMarkup,
+  VerificationSummary,
 } from '@p2p/core';
 
 const TOKEN = '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11';
@@ -151,14 +153,112 @@ const BACKTEST_SUMMARY = {
   },
 };
 
+/**
+ * Journal audit exactly as `getVerificationSummary` returns it: 1042 decisions,
+ * 12 with at least one publication attempt on record, 31 taken on a book the
+ * engine had already flagged as stale.
+ */
+const JOURNAL_SUMMARY: VerificationSummary = {
+  totalDecisions: 1042,
+  verifiedDecisions: 12,
+  verificationRate: 12 / 1042,
+  staleDecisions: 31,
+  staleRate: 31 / 1042,
+  openCycles: 1,
+  decisionsAwaitingOutcome: 1030,
+};
+
+const toast = {
+  success: vi.fn(),
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+};
+
+/** Mock handles, reassigned on every TestBed setup so tests can steer them. */
+let fetchMarketDepth: ReturnType<typeof vi.fn<() => Promise<BinanceP2pMarketDepth | null>>>;
+let usages: ReturnType<typeof vi.fn<() => unknown[]>>;
+let ratesByMarket: ReturnType<typeof vi.fn<() => Record<string, unknown>>>;
+let buyAdPrice: ReturnType<typeof signal<number>>;
+let sellAdPrice: ReturnType<typeof signal<number>>;
+let marketHistory: ReturnType<typeof vi.fn<() => unknown[]>>;
+let getVerificationSummary: ReturnType<typeof vi.fn<() => Promise<VerificationSummary>>>;
+
+/**
+ * Los providers del worker, con el journal incluido.
+ *
+ * El facade va aparte porque `DecisionJournalService` lanza en su constructor
+ * cuando el preload no expone el bridge: esa es exactamente la situación del
+ * build web, y hay que poder reproducirla SIN el provider.
+ *
+ * Vive en módulo (y no dentro de un describe) para que cada escenario arme su
+ * propio TestBed una sola vez, en vez de reconfigurar uno ya instanciado: un
+ * `hydrateAndStart()` a medio hacer de una instancia previa contamina el módulo
+ * de testing compartido y hace fallar specs de OTRO archivo.
+ */
+function workerProviders(): unknown[] {
+  return [
+    {
+      provide: CredentialStoreService,
+      useValue: {
+        getTelegramConfig: vi.fn(async () => null),
+        setTelegramConfig: vi.fn(async () => undefined),
+      },
+    },
+    { provide: ToastService, useValue: toast },
+    {
+      provide: BinanceP2pService,
+      useValue: {
+        fetchMarketDepth,
+        marketDepth: vi.fn(() => null),
+        lastFetched: vi.fn(() => null),
+      },
+    },
+    {
+      provide: BinanceRepricerService,
+      useValue: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        isActive: vi.fn(() => false),
+        // Modo real del motor. Sin publicador de merchant registrado, el
+        // servicio solo puede reportar SOLO LECTURA.
+        executionMode: vi.fn(() => 'READ_ONLY'),
+        executionModeLabel: vi.fn(() => 'SOLO LECTURA — NO PUBLICA'),
+        executionModeDetail: vi.fn(
+          () =>
+            'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.',
+        ),
+        // Writable, like the real engine: the worker overwrites these on an
+        // operator-confirmed reprice.
+        currentBuyAdPrice: buyAdPrice,
+        currentSellAdPrice: sellAdPrice,
+      },
+    },
+    { provide: AccountsService, useValue: { usages } },
+    {
+      provide: CotizaveService,
+      useValue: {
+        fetchRates: vi.fn(async () => undefined),
+        ratesByMarket,
+      },
+    },
+    { provide: MarketHistoryService, useValue: { history: marketHistory } },
+  ];
+}
+
+/** Reinicia los handles compartidos antes de cada TestBed. */
+function resetSharedMocks(): void {
+  fetchMarketDepth = vi.fn(async (): Promise<BinanceP2pMarketDepth | null> => null);
+  usages = vi.fn((): unknown[] => []);
+  ratesByMarket = vi.fn((): Record<string, unknown> => ({}));
+  marketHistory = vi.fn((): unknown[] => []);
+  buyAdPrice = signal(0);
+  sellAdPrice = signal(0);
+  getVerificationSummary = vi.fn(async () => JOURNAL_SUMMARY);
+}
+
 describe('TelegramWorkerService', () => {
   let svc: TelegramWorkerService;
-  const toast = {
-    success: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  };
 
   // Private method exercised through a minimal typed cast (no `any`):
   type ProcessIncoming = (
@@ -175,14 +275,6 @@ describe('TelegramWorkerService', () => {
     );
   }
 
-  /** Mock handles, reassigned on every TestBed setup so tests can steer them. */
-  let fetchMarketDepth: ReturnType<typeof vi.fn<() => Promise<BinanceP2pMarketDepth | null>>>;
-  let usages: ReturnType<typeof vi.fn<() => unknown[]>>;
-  let ratesByMarket: ReturnType<typeof vi.fn<() => Record<string, unknown>>>;
-  let buyAdPrice: ReturnType<typeof signal<number>>;
-  let sellAdPrice: ReturnType<typeof signal<number>>;
-  let marketHistory: ReturnType<typeof vi.fn<() => unknown[]>>;
-
   beforeEach(async () => {
     toast.success.mockReset();
     toast.info.mockReset();
@@ -191,60 +283,12 @@ describe('TelegramWorkerService', () => {
 
     delete (window as unknown as Record<string, unknown>)['electron'];
 
-    fetchMarketDepth = vi.fn(async (): Promise<BinanceP2pMarketDepth | null> => null);
-    usages = vi.fn((): unknown[] => []);
-    ratesByMarket = vi.fn((): Record<string, unknown> => ({}));
-    marketHistory = vi.fn((): unknown[] => []);
-    buyAdPrice = signal(0);
-    sellAdPrice = signal(0);
+    resetSharedMocks();
 
     TestBed.configureTestingModule({
       providers: [
-        {
-          provide: CredentialStoreService,
-          useValue: {
-            getTelegramConfig: vi.fn(async () => null),
-            setTelegramConfig: vi.fn(async () => undefined),
-          },
-        },
-        { provide: ToastService, useValue: toast },
-        {
-          provide: BinanceP2pService,
-          useValue: {
-            fetchMarketDepth,
-            marketDepth: vi.fn(() => null),
-            lastFetched: vi.fn(() => null),
-          },
-        },
-        {
-          provide: BinanceRepricerService,
-          useValue: {
-            start: vi.fn(),
-            stop: vi.fn(),
-            isActive: vi.fn(() => false),
-            // Modo real del motor. Sin publicador de merchant registrado, el
-            // servicio solo puede reportar SOLO LECTURA.
-            executionMode: vi.fn(() => 'READ_ONLY'),
-            executionModeLabel: vi.fn(() => 'SOLO LECTURA — NO PUBLICA'),
-            executionModeDetail: vi.fn(
-              () =>
-                'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.',
-            ),
-            // Writable, like the real engine: the worker overwrites these on an
-            // operator-confirmed reprice.
-            currentBuyAdPrice: buyAdPrice,
-            currentSellAdPrice: sellAdPrice,
-          },
-        },
-        { provide: AccountsService, useValue: { usages } },
-        {
-          provide: CotizaveService,
-          useValue: {
-            fetchRates: vi.fn(async () => undefined),
-            ratesByMarket,
-          },
-        },
-        { provide: MarketHistoryService, useValue: { history: marketHistory } },
+        ...workerProviders(),
+        { provide: DecisionJournalService, useValue: { getVerificationSummary } },
       ],
     });
 
@@ -1011,6 +1055,118 @@ describe('TelegramWorkerService', () => {
     });
   });
 
+  describe('auditoría del journal en el panel y en /status', () => {
+    type EditOutcome = 'EDITED' | 'UNCHANGED' | 'NOT_FOUND' | 'FAILED';
+    type PanelWorkerApi = {
+      answerCallbackQuery: (
+        token: string,
+        callbackQueryId: string | undefined,
+        text?: string,
+      ) => Promise<boolean>;
+      editTelegramMessage: (
+        token: string,
+        chatId: number | string,
+        messageId: number,
+        text: string,
+        keyboard?: TelegramInlineKeyboardMarkup,
+      ) => Promise<EditOutcome>;
+    };
+
+    function panelInternals(): PanelWorkerApi {
+      return svc as unknown as PanelWorkerApi;
+    }
+
+    /** Texto enviado con los escapes de MarkdownV2 quitados. */
+    function sentPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
+      const call = spy.mock.calls[index] as unknown as [string, string, string];
+      return (call[2] ?? '').replace(/\\/g, '');
+    }
+
+    /** Texto editado con los escapes de MarkdownV2 quitados. */
+    function editedPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
+      const call = spy.mock.calls[index] as unknown as [string, number, number, string];
+      return (call[3] ?? '').replace(/\\/g, '');
+    }
+
+    it('shows the real journal numbers in the panel', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      expect(getVerificationSummary).toHaveBeenCalled();
+      const text = editedPlain(editSpy);
+      expect(text).toContain('12/1042');
+      expect(text).toContain('intento de publicación');
+      expect(text).toContain('3.0%');
+    });
+
+    it('includes the journal audit in /status', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/status'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('ESTADO DEL TERMINAL P2P');
+      expect(text).toContain('12/1042');
+      expect(text).toContain('intento de publicación');
+    });
+
+    it('says the audit is unavailable when the journal read fails', async () => {
+      getVerificationSummary.mockRejectedValue(new Error('sqlite locked'));
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      // Un journal que no responde NO se disfraza de journal vacío.
+      const text = editedPlain(editSpy);
+      expect(text).toContain('no disponible');
+      expect(text).not.toContain('sin decisiones registradas');
+    });
+
+    it('declares an empty journal instead of printing 0/0', async () => {
+      getVerificationSummary.mockResolvedValue({
+        ...JOURNAL_SUMMARY,
+        totalDecisions: 0,
+        verifiedDecisions: 0,
+        verificationRate: 0,
+        staleDecisions: 0,
+        staleRate: 0,
+        decisionsAwaitingOutcome: 0,
+      });
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toContain('sin decisiones registradas');
+      expect(text).not.toMatch(/0\/0|NaN|Infinity/);
+    });
+
+    it('never claims a trade happened where only an attempt was recorded', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      [/verificad/i, /confirmad/i, /trade/i, /fill/i, /llenad/i].forEach((claim) => {
+        expect(text, String(claim)).not.toMatch(claim);
+      });
+    });
+  });
+
   describe('operational commands V2 (W1 contract)', () => {
     /**
      * New worker internals, reached through a cast so this spec compiles before
@@ -1466,5 +1622,73 @@ describe('TelegramWorkerService', () => {
       await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(2));
       expect(sentText(sendSpy, 1)).toContain('escritorio');
     });
+  });
+});
+
+/**
+ * Es un `describe` TOP-LEVEL a propósito, no uno anidado.
+ *
+ * `DecisionJournalService` lanza en su constructor cuando el preload no expone el
+ * bridge: eso es el build web, y el worker no puede caer por un dato opcional. Omitir
+ * el provider reproduce la situación exacta.
+ *
+ * Vive aparte porque armar este TestBed DENTRO del describe principal obliga a
+ * reconfigurar uno ya instanciado: el worker que quedó a medias sigue teniendo un
+ * `hydrateAndStart()` en vuelo, reinstancia el TestBed compartido en el archivo que
+ * corra después y le rompe los tests. Un describe, un TestBed, una hidratación
+ * esperada.
+ */
+describe('TelegramWorkerService sin puente de journal (build web)', () => {
+  type EditApi = {
+    editTelegramMessage: (
+      token: string,
+      chatId: number | string,
+      messageId: number,
+      text: string,
+      keyboard?: TelegramInlineKeyboardMarkup,
+    ) => Promise<'EDITED'>;
+  };
+
+  let browserSvc: TelegramWorkerService;
+
+  beforeEach(async () => {
+    resetSharedMocks();
+    TestBed.configureTestingModule({ providers: workerProviders() });
+
+    browserSvc = TestBed.inject(TelegramWorkerService);
+    // La hidratación se espera SIEMPRE: una instancia a medias contamina el
+    // TestBed compartido del proceso.
+    await vi.waitFor(() => expect(browserSvc.config()).toBeDefined());
+  });
+
+  afterEach(() => {
+    browserSvc.stopPolling();
+    delete (window as unknown as Record<string, unknown>)['electron'];
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  it('declares the audit unavailable instead of taking the worker down', async () => {
+    const editSpy = vi
+      .spyOn(browserSvc as unknown as EditApi, 'editTelegramMessage')
+      .mockResolvedValue('EDITED');
+
+    await (
+      browserSvc as unknown as {
+        processIncomingUpdate: (
+          update: TelegramInboundUpdate,
+          token: string,
+          authorizedChatId: string,
+        ) => Promise<void>;
+      }
+    ).processIncomingUpdate(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+    const call = editSpy.mock.calls[0] as unknown as [string, number, number, string];
+    const text = (call[3] ?? '').replace(/\\/g, '');
+    // El panel se entrega igual: perder un dato opcional no puede romper el mensaje
+    // que el operador tiene abierto en ese momento.
+    expect(text).toContain('PANEL DEL TERMINAL');
+    expect(text).toContain('no disponible');
+    expect(text).not.toMatch(/0\/0|NaN|Infinity/);
   });
 });

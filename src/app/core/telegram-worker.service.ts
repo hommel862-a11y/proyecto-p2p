@@ -23,6 +23,7 @@ import {
   formatPanelTelegramMessage,
   buildPanelKeyboard,
   isPanelCallbackData,
+  formatJournalAuditLine,
   predictTwoHourVolatility,
   computeTickVelocity,
   type BinanceP2pMarketDepth,
@@ -38,8 +39,29 @@ import {
   type SentinelActionParams,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
+  type VerificationSummary,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
+import { DecisionJournalService } from './decision-journal.service';
+
+/**
+ * Resuelve el facade del journal SOLO si se puede construir.
+ *
+ * `DecisionJournalService` lanza en su constructor cuando el preload de Electron no
+ * registró el bridge — exactamente lo que pasa en el build web. Pedirlo a ciegas
+ * desde un field initializer tumbaría el worker completo, y con él el panel que el
+ * operador está mirando, todo por un dato opcional.
+ *
+ * `null` es una respuesta definitiva ("en este runtime no hay journal"), no un
+ * estado a reintentar en cada refresco: se decide una vez, al construir el worker.
+ */
+function injectDecisionJournalIfAvailable(): DecisionJournalService | null {
+  try {
+    return inject(DecisionJournalService);
+  } catch {
+    return null;
+  }
+}
 
 export interface TelegramConfig {
   botToken: string;
@@ -299,6 +321,8 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly accounts = inject(AccountsService);
   private readonly cotizave = inject(CotizaveService);
   private readonly marketHistory = inject(MarketHistoryService);
+  /** `null` en el build web: no hay bridge, y el panel lo declara. */
+  private readonly journal = injectDecisionJournalIfAvailable();
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
@@ -705,13 +729,17 @@ export class TelegramWorkerService implements OnDestroy {
 
         const freshDepth = await this.getFreshMarketDepth();
         const depth = freshDepth ?? this.binance.marketDepth();
+        const journalAudit = await this.readJournalAudit();
         const repricerState = this.repricer.isActive() ? '🟢 ACTIVO' : '⏸ DETENIDO';
         const libroState = depth
           ? freshDepth
             ? 'SINCRONIZADO'
             : '⚠️ SINCRONIZADO (stale)'
           : 'PENDIENTE';
-        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}`;
+        // La auditoría se formatea con el MISMO formateador puro del panel: el
+        // worker no compone texto de auditoría por su cuenta, así que /panel y
+        // /status no pueden divergir en el rótulo ni en el escapado.
+        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\n${formatJournalAuditLine(journalAudit)}\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}`;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
         break;
@@ -1198,12 +1226,33 @@ export class TelegramWorkerService implements OnDestroy {
   }
 
   /**
+   * Lee la auditoría del journal sin dejar que un fallo tumbe el panel.
+   *
+   * Un journal que no responde es un dato ausente, no un panel roto: se devuelve
+   * `null` y la línea del panel dice "no disponible". Un journal vacío es otra
+   * cosa — trae su propio resumen y el formateador lo distingue.
+   */
+  private async readJournalAudit(): Promise<VerificationSummary | null> {
+    if (!this.journal) return null;
+    try {
+      return await this.journal.getVerificationSummary();
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Reúne el estado REAL del terminal para el panel. Cada campo es una lectura
    * concreta: nada se estima. Lo que no existe viaja como `null` / `NaN` para
    * que el formateador lo declare en vez de inventar un precio.
    */
   private async buildPanelReport(): Promise<PanelReport> {
-    const freshDepth = await this.getFreshMarketDepth();
+    // El journal y el libro son lecturas independientes: una lenta no tiene por
+    // qué frenar a la otra, y un journal colgado no puede quedarse esperando.
+    const [freshDepth, journalAudit] = await Promise.all([
+      this.getFreshMarketDepth(),
+      this.readJournalAudit(),
+    ]);
     const depth = freshDepth ?? this.binance.marketDepth();
     // El motor arranca en 0 = "todavía no hay precio". Imprimir `0.00` sería un
     // precio inventado, así que viaja como NaN y el panel lo muestra como n/d.
@@ -1228,6 +1277,7 @@ export class TelegramWorkerService implements OnDestroy {
       // Sin lectura fresca lo mostrado viene de caché y puede estar viejo: el
       // panel lo declara en vez de presentarlo como lectura de este momento.
       marketStale: !freshDepth,
+      journalAudit,
     };
   }
 
