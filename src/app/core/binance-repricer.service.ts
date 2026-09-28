@@ -2,8 +2,13 @@ import { Injectable, computed, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { BinanceP2pService } from './binance-p2p.service';
 import { AccountsService } from './accounts.service';
+import { DecisionJournalService } from './decision-journal.service';
 import {
+  calculateOrderBookImbalance,
   evaluateRepricer,
+  type BinanceP2pMarketDepth,
+  type DecisionSide,
+  type RecordMarketSnapshotInput,
   type RepricerConfig,
   type RepricerDecision,
   type RepricerStrategy,
@@ -25,6 +30,30 @@ export const REPRICER_EXECUTION_MODES = {
 
 export type RepricerExecutionMode =
   (typeof REPRICER_EXECUTION_MODES)[keyof typeof REPRICER_EXECUTION_MODES];
+
+/**
+ * Ciclo contable al que se atribuyen las decisiones mientras el motor todavía no
+ * maneja ciclos.
+ *
+ * NO es un ciclo inventado: es un valor obviamente no-real, para que ninguna fila
+ * pueda pasar por verificada contablemente. `decision_cycles` es parte del
+ * contrato, pero abrir y cerrar un ciclo exige cifras realizadas que nadie conoce
+ * en el momento de decidir, y la capa de outcomes todavía no existe.
+ *
+ * PUNTO DE INTEGRACIÓN (fase siguiente): cuando exista el seguimiento de ciclos,
+ * este archivo debe resolver el ciclo abierto real en vez de esta constante.
+ */
+export const DECISION_JOURNAL_PENDING_CYCLE_ID = 'PENDING_CYCLE_TRACKING';
+
+/**
+ * Antigüedad máxima, en milisegundos, para que la profundidad consultada al
+ * decidir siga considerándose vigente.
+ *
+ * El motor decide sobre el libro que le llega, no sobre el libro que le gustaría
+ * tener. Si ese dato tiene más edad que este umbral, la decisión se tomó sobre
+ * información vieja, y el journal tiene que poder decirlo después.
+ */
+export const REPRICER_MARKET_STALE_AFTER_MS = 60_000;
 
 /** Precios que el motor quiere dejar publicados en los anuncios del operador. */
 export interface RepricerPublishRequest {
@@ -85,6 +114,14 @@ export class BinanceRepricerService implements OnDestroy {
   private readonly binance = inject(BinanceP2pService);
   private readonly accounts = inject(AccountsService);
 
+  /**
+   * Journal de decisiones. Opcional a propósito: si el servicio de journal no
+   * está cableado todavía, el motor sigue operando sin auditoría en vez de morir.
+   * El trading no se frena porque la persistencia no esté disponible.
+   */
+  private readonly journal = inject(DecisionJournalService, { optional: true });
+  private journalWarningShown = false;
+
   readonly isActive = signal<boolean>(false);
   readonly strategy = signal<RepricerStrategy>('TOP_1');
   readonly stepVes = signal<number>(0.05);
@@ -134,7 +171,9 @@ export class BinanceRepricerService implements OnDestroy {
 
   /** Prefijo de cada línea de log. Nunca dice "en vivo" por construcción. */
   readonly logPrefix = computed<string>(() =>
-    this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY ? '[SOLO LECTURA] ' : '[PUBLICANDO] ',
+    this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY
+      ? '[SOLO LECTURA] '
+      : '[PUBLICANDO] ',
   );
 
   ngOnDestroy(): void {
@@ -219,6 +258,15 @@ export class BinanceRepricerService implements OnDestroy {
 
     this.lastDecision.set(decision);
 
+    // El journal se escribe ANTES de que el motor actúe sobre el libro: la
+    // decisión tiene que existir cuando la publicación ocurra, para que el
+    // outcome (éxito o fallo) se pueda colgar de ella. `KEEP` no decide nada —
+    // "los precios ya están donde deben" no es una decisión, y contarlo como
+    // tal inflaría el número de decisiones auditadas.
+    if (decision.action !== 'KEEP') {
+      await this.recordInJournal(decision, depth);
+    }
+
     if (decision.action === 'UPDATE') {
       this.currentBuyAdPrice.set(decision.suggestedBuyPrice);
       this.currentSellAdPrice.set(decision.suggestedSellPrice);
@@ -240,6 +288,117 @@ export class BinanceRepricerService implements OnDestroy {
     }
 
     return decision;
+  }
+
+  /**
+   * Persiste la decisión y la evidencia de mercado que la respalda.
+   *
+   * NUNCA propaga el error: un journal que no puede escribir no puede frenar el
+   * trading, pero sí tiene que avisar. Tampoco reintenta —el motor sigue operando
+   * y el siguiente ciclo vuelve a intentarlo una sola vez—: el journal no es un
+   * requisito de disponibilidad del motor de decisiones.
+   */
+  private async recordInJournal(
+    decision: RepricerDecision,
+    depth: BinanceP2pMarketDepth,
+  ): Promise<void> {
+    const journal = this.journal;
+    if (!journal) {
+      this.warnJournalNotWired();
+      return;
+    }
+
+    // El modo se lee del servicio AHORA, en el momento de la decisión. Nunca desde
+    // un counter, ni desde un timestamp, ni desde "hubo un publish antes": esa
+    // columna separa una decisión modelada de una decisión ejecutada, y mentir
+    // ahí arruina el journal entero.
+    const executionMode = this.executionMode();
+
+    let snapshotId: number;
+    try {
+      const snapshot = await journal.appendMarketSnapshot(this.buildSnapshotInput(depth));
+      snapshotId = snapshot.id;
+    } catch (err) {
+      // Sin evidencia de mercado la decisión no es auditable, así que no se
+      // escribe: no tiene sentido dejar una fila que no se puede verificar.
+      this.reportJournalFailure('appendMarketSnapshot', decision, err);
+      return;
+    }
+
+    // Una fila por lado: el motor reposiciona DOS anuncios y cada uno se llena (o
+    // se rechaza) por separado. La fila de cada lado es la que después recibe su
+    // outcome. `observed*` NO se manda: el adapter los copia del snapshot, para
+    // que una decisión no pueda contradecir su propia evidencia.
+    const sides: readonly { readonly side: DecisionSide; readonly price: number }[] = [
+      { side: 'BUY', price: decision.suggestedBuyPrice },
+      { side: 'SELL', price: decision.suggestedSellPrice },
+    ];
+
+    for (const { side, price } of sides) {
+      try {
+        await journal.appendDecision({
+          cycleId: DECISION_JOURNAL_PENDING_CYCLE_ID,
+          snapshotId,
+          side,
+          decisionPrice: price,
+          origin: 'AUTO_ENGINE',
+          executionMode,
+          action: decision.action,
+          modeledSpreadPct: decision.spreadPct,
+          reason: decision.reason,
+          safetyFlags: decision.safetyFlags,
+        });
+      } catch (err) {
+        this.reportJournalFailure(`appendDecision(${side})`, decision, err);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Snapshot NORMALIZADO de lo que el motor vio al decidir.
+   *
+   * No es el JSON crudo de `adv/search`: eso serían ~40 KB por fila y el journal
+   * solo necesita los derivados. `obi` se CONSUME de `calculateOrderBookImbalance`
+   * —que ya existe y es puro—; no se recalcula ni se reimplementa acá.
+   */
+  private buildSnapshotInput(depth: BinanceP2pMarketDepth): RecordMarketSnapshotInput {
+    const now = Date.now();
+    const fetchedAt = Date.parse(depth.updatedAt);
+    const age = now - fetchedAt;
+
+    return {
+      obi: calculateOrderBookImbalance(depth.buyOffers, depth.sellOffers).obiRatio,
+      bidUsd: depth.bestBuyPrice,
+      askUsd: depth.bestSellPrice,
+      nBids: depth.buyOffers.length,
+      nAsks: depth.sellOffers.length,
+      // Frescura REAL, no un default: si la marca de tiempo no es confiable —ilegible
+      // o en el futuro— el dato se declara viejo antes que limpio.
+      stale: !Number.isFinite(age) || age < 0 || age > REPRICER_MARKET_STALE_AFTER_MS,
+      fetchedAt: Number.isFinite(age) ? fetchedAt : now,
+    };
+  }
+
+  /**
+   * Un fallo del journal se reporta una vez, con contexto, y el motor sigue.
+   * `console.error` deja el rastro completo; el toast evita que el operador
+   * publique con plata real sin enterarse de que dejó de auditarse.
+   */
+  private reportJournalFailure(stage: string, decision: RepricerDecision, err: unknown): void {
+    const detail = err instanceof Error ? err.message : String(err);
+    const context = `[repricer] No se pudo registrar la decisión ${decision.action}: ${stage} falló (${detail}).`;
+    console.error(context, err);
+    this.toast.error(context, 'Journal de decisiones');
+  }
+
+  /** Avisa UNA vez que las decisiones no se están auditando, sin tapar el log real. */
+  private warnJournalNotWired(): void {
+    if (this.journalWarningShown) return;
+    this.journalWarningShown = true;
+    console.warn(
+      '[repricer] DecisionJournalService no está cableado: las decisiones se calculan pero no quedan auditadas.',
+    );
   }
 
   /**
