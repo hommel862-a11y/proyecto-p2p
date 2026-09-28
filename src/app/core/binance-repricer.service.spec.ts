@@ -3,7 +3,6 @@ import { Injector } from '@angular/core';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   BinanceRepricerService,
-  DECISION_JOURNAL_PENDING_CYCLE_ID,
   REPRICER_EXECUTION_MODES,
   REPRICER_MARKET_STALE_AFTER_MS,
   registerRepricerPublisher,
@@ -16,12 +15,14 @@ import { AccountsService } from './accounts.service';
 import { DecisionJournalService } from './decision-journal.service';
 import {
   calculateOrderBookImbalance,
+  InMemoryDecisionJournalRepository,
   type BinanceP2pMarketDepth,
-  type MarketSnapshot,
+  type DecisionCyclesFilter,
+  type DecisionPerformanceFilter,
+  type OpenDecisionCycleInput,
   type RecordDecisionInput,
   type RecordMarketSnapshotInput,
   type RepricerDecision,
-  type RepricerDecisionRecord,
 } from '@p2p/core';
 
 /**
@@ -67,74 +68,132 @@ function freshDepth(overrides: Partial<BinanceP2pMarketDepth> = {}): BinanceP2pM
   return { ...DEPTH, updatedAt: new Date().toISOString(), ...overrides };
 }
 
-function snapshotRecord(input: RecordMarketSnapshotInput, id: number): MarketSnapshot {
-  const now = Date.now();
-  return {
-    id,
-    obi: input.obi,
-    bidUsd: input.bidUsd,
-    askUsd: input.askUsd,
-    nBids: input.nBids,
-    nAsks: input.nAsks,
-    stale: input.stale,
-    fetchedAt: input.fetchedAt ?? now,
-    createdAt: now,
-  };
+// ---------------------------------------------------------------------------
+// Journal harness
+//
+// NO hay doble del journal. El seam real (`DecisionJournalService`) queda montado
+// sobre el adapter de referencia (`InMemoryDecisionJournalRepository`), que es el
+// que hace cumplir el contrato: integridad referencial, ids asignados por el
+// repositorio y `observed*` copiados del snapshot.
+//
+// La razón de fondo: un doble que acepta cualquier `cycleId` no prueba nada. El
+// bug que motivó este archivo —mandar `PENDING_CYCLE_TRACKING` como si fuera un
+// ciclo— pasó la suite verde justamente porque el doble no tenía integridad
+// referencial. Un test tiene que poder FALLAR por la misma razón que falla
+// producción; eso exige el puerto real, no una imitación suya.
+// ---------------------------------------------------------------------------
+
+type JournalOpName =
+  | 'appendMarketSnapshot'
+  | 'openCycle'
+  | 'closeCycle'
+  | 'getCycle'
+  | 'listCycles'
+  | 'appendDecision'
+  | 'getDecision'
+  | 'listDecisionsByCycle'
+  | 'appendOutcome'
+  | 'listOutcomesByDecision'
+  | 'getDecisionPerformance'
+  | 'getVerificationSummary'
+  | 'purgeMarketSnapshotsBefore';
+
+interface JournalCall {
+  readonly op: JournalOpName;
+  readonly payload: unknown;
 }
 
-/**
- * Doble del seam del journal. No importa `@p2p/core` de más: existe solo para
- * observar QUÉ se le pide al journal y en qué orden, que es exactamente lo que
- * el motor tiene que garantizar.
- */
-class FakeDecisionJournal {
-  /** Secuencia real de llamadas: prueba el orden snapshot -> decisión. */
-  readonly calls: string[] = [];
-  readonly snapshots: RecordMarketSnapshotInput[] = [];
-  readonly decisions: RecordDecisionInput[] = [];
-  snapshotFailure: Error | null = null;
-  decisionFailure: Error | null = null;
-  private readonly stored: MarketSnapshot[] = [];
-  private nextSnapshotId = 1;
+interface JournalHarness {
+  /** El seam real del renderer. Se lee por acá, igual que en producción. */
+  readonly journal: DecisionJournalService;
+  /** El adapter de referencia, para sembrar estado previo (un ciclo ya abierto). */
+  readonly repo: InMemoryDecisionJournalRepository;
+  /**
+   * ESPÍA de transporte, no doble del puerto: registra qué se pidió y en qué
+   * orden. La semántica de cada operación es la del adapter real.
+   */
+  readonly calls: JournalCall[];
+  /** Los inputs tal como los envió el motor, para afirmar sobre lo que se pidió. */
+  readonly snapshotInputs: RecordMarketSnapshotInput[];
+  readonly decisionInputs: RecordDecisionInput[];
+  /** Ops forzadas a fallar, para ejercitar la política de robustez. */
+  readonly failOn: Map<JournalOpName, Error>;
+  readonly ops: () => JournalOpName[];
+}
 
-  async appendMarketSnapshot(input: RecordMarketSnapshotInput): Promise<MarketSnapshot> {
-    this.calls.push('appendMarketSnapshot');
-    if (this.snapshotFailure) throw this.snapshotFailure;
-    const record = snapshotRecord(input, this.nextSnapshotId++);
-    this.snapshots.push(input);
-    this.stored.push(record);
-    return record;
-  }
+type JournalInvoke = (op: JournalOpName, payload?: unknown) => Promise<unknown>;
 
-  async appendDecision(input: RecordDecisionInput): Promise<RepricerDecisionRecord> {
-    this.calls.push('appendDecision');
-    if (this.decisionFailure) throw this.decisionFailure;
-    this.decisions.push(input);
-    const observed = this.stored.find((row) => row.id === input.snapshotId);
-    return {
-      id: this.decisions.length,
-      cycleId: input.cycleId,
-      snapshotId: input.snapshotId,
-      side: input.side,
-      decisionPrice: input.decisionPrice,
-      origin: input.origin,
-      executionMode: input.executionMode,
-      action: input.action,
-      modeledSpreadPct: input.modeledSpreadPct,
-      reason: input.reason,
-      safetyFlags: [...(input.safetyFlags ?? [])],
-      observedObi: observed?.obi ?? 0,
-      observedBidUsd: observed?.bidUsd ?? 0,
-      observedAskUsd: observed?.askUsd ?? 0,
-      observedStale: observed?.stale ?? false,
-      createdAt: Date.now(),
-    };
-  }
+/** Monta el bridge que el preload expone en `globalThis.p2p.decisionJournal`. */
+function installJournalBridge(invoke: JournalInvoke): void {
+  const host = globalThis as { p2p?: Record<string, unknown> };
+  host.p2p = { ...(host.p2p ?? {}), decisionJournal: { invoke } };
+}
+
+function createJournalHarness(): JournalHarness {
+  const repo = new InMemoryDecisionJournalRepository();
+  const calls: JournalCall[] = [];
+  const snapshotInputs: RecordMarketSnapshotInput[] = [];
+  const decisionInputs: RecordDecisionInput[] = [];
+  const failOn = new Map<JournalOpName, Error>();
+
+  // El switch replica el de `electron/main/ipc/handlers.ts`, incluido el payload
+  // envuelto de `closeCycle`. Si las formas divergieran, el test probaría un
+  // transporte que no existe.
+  const invoke: JournalInvoke = async (op, payload) => {
+    calls.push({ op, payload });
+    const failure = failOn.get(op);
+    if (failure) throw failure;
+
+    switch (op) {
+      case 'appendMarketSnapshot': {
+        const input = payload as RecordMarketSnapshotInput;
+        snapshotInputs.push(input);
+        return repo.appendMarketSnapshot(input);
+      }
+      case 'appendDecision': {
+        const input = payload as RecordDecisionInput;
+        decisionInputs.push(input);
+        return repo.appendDecision(input);
+      }
+      case 'openCycle':
+        return repo.openCycle(payload as OpenDecisionCycleInput);
+      case 'listCycles':
+        return repo.listCycles(payload as DecisionCyclesFilter | undefined);
+      case 'getCycle':
+        return repo.getCycle(payload as string);
+      case 'listDecisionsByCycle':
+        return repo.listDecisionsByCycle(payload as string);
+      case 'getDecisionPerformance':
+        return repo.getDecisionPerformance(payload as DecisionPerformanceFilter | undefined);
+      case 'getVerificationSummary':
+        return repo.getVerificationSummary(payload as DecisionPerformanceFilter | undefined);
+      case 'purgeMarketSnapshotsBefore':
+        throw new Error(`decision_journal: unsupported IPC op "${op}"`);
+      default:
+        throw new Error(`decision_journal: unsupported IPC op "${op}"`);
+    }
+  };
+
+  // El bridge tiene que existir ANTES de construir el servicio: lo resuelve en el
+  // inicializador de campo y lanza si no lo encuentra.
+  installJournalBridge(invoke);
+  const journal = new DecisionJournalService();
+
+  return {
+    journal,
+    repo,
+    calls,
+    snapshotInputs,
+    decisionInputs,
+    failOn,
+    ops: () => calls.map((call) => call.op),
+  };
 }
 
 describe('BinanceRepricerService', () => {
   let svc: BinanceRepricerService;
-  let journal: FakeDecisionJournal;
+  let harness: JournalHarness;
+  let journal: DecisionJournalService;
   const toast = {
     success: vi.fn(),
     info: vi.fn(),
@@ -156,6 +215,13 @@ describe('BinanceRepricerService', () => {
     }).get(BinanceRepricerService);
   }
 
+  /** Journal nuevo (repositorio en blanco, servicio nuevo, sin ciclo cacheado). */
+  function rebuildJournal(): void {
+    harness = createJournalHarness();
+    journal = harness.journal;
+    buildService();
+  }
+
   beforeEach(() => {
     toast.success.mockReset();
     toast.info.mockReset();
@@ -164,13 +230,13 @@ describe('BinanceRepricerService', () => {
     fetchMarketDepth.mockReset();
     fetchMarketDepth.mockResolvedValue(DEPTH);
     unregisterRepricerPublisher();
-    journal = new FakeDecisionJournal();
-    buildService();
+    rebuildJournal();
   });
 
   afterEach(() => {
     svc.stop();
     unregisterRepricerPublisher();
+    delete (globalThis as { p2p?: unknown }).p2p;
     vi.restoreAllMocks();
   });
 
@@ -318,26 +384,175 @@ describe('BinanceRepricerService', () => {
     });
   });
 
+  describe('ciclo contable real (F2b)', () => {
+    it('el journal rechaza una decisión cuyo ciclo no existe, y por eso hay que resolver uno', async () => {
+      // Documenta la razón del diseño. Con un doble permisivo esto pasaba
+      // inadvertido: acá la fila NO se escribe y el error dice por qué.
+      const snapshot = await journal.appendMarketSnapshot({
+        obi: 0,
+        bidUsd: 960,
+        askUsd: 985,
+        nBids: 1,
+        nAsks: 1,
+        stale: false,
+      });
+
+      await expect(
+        journal.appendDecision({
+          cycleId: 'PENDING_CYCLE_TRACKING',
+          snapshotId: snapshot.id,
+          side: 'BUY',
+          decisionPrice: 1,
+          origin: 'AUTO_ENGINE',
+          executionMode: 'READ_ONLY',
+          action: 'UPDATE',
+          modeledSpreadPct: 2.6,
+          reason: 'prueba',
+        }),
+      ).rejects.toThrow(/unknown cycle/);
+
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
+    });
+
+    it('abre un ciclo real y le atribuye la decisión', async () => {
+      await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      expect(open[0].id).not.toBe('PENDING_CYCLE_TRACKING');
+      expect(open[0].status).toBe('OPEN');
+      // El ciclo lo abre el motor, no un humano: el origen tiene que decirlo.
+      expect(open[0].origin).toBe('AUTO_ENGINE');
+      expect(open[0].title).toContain(svc.strategy());
+      // El motor no modela capital: 0 es "nada reservado", no una estimación.
+      expect(open[0].capitalReservedUsdt).toBe(0);
+      // NO lo cierra: las cifras realizadas no existen todavía.
+      expect(open[0].closedAt).toBeNull();
+      expect(open[0].realizedProfitUsdt).toBeNull();
+      expect(open[0].realizedSpreadPct).toBeNull();
+    });
+
+    it('resuelve el ciclo antes de escribir, y el snapshot antes que la decisión', async () => {
+      await svc.executeCycle();
+
+      // El orden importa: primero existe el ciclo al que colgar la decisión,
+      // después la evidencia, y recién entonces la decisión que la cita.
+      expect(harness.ops()).toEqual([
+        'listCycles',
+        'openCycle',
+        'appendMarketSnapshot',
+        'appendDecision',
+        'appendDecision',
+      ]);
+    });
+
+    it('reutiliza un ciclo que ya está abierto en vez de abrir otro', async () => {
+      const preexisting = await harness.repo.openCycle({
+        origin: 'OPERATOR',
+        capitalReservedUsdt: 500,
+        title: 'Sesion del operador',
+      });
+
+      await svc.executeCycle();
+
+      // El operador piensa en ciclos: una decisión tiene que caer en el suyo,
+      // no en un contenedor nuevo que se abre por decisión del motor.
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      expect(open[0].id).toBe(preexisting.id);
+      expect(harness.ops()).not.toContain('openCycle');
+      expect(await journal.listDecisionsByCycle(preexisting.id)).toHaveLength(2);
+    });
+
+    it('cachea el ciclo resuelto: la segunda decisión no vuelve a preguntar', async () => {
+      await svc.executeCycle();
+      harness.calls.length = 0;
+
+      // Los anuncios vuelven a estar fuera de posición, así que el motor decide
+      // otra vez en vez de dar KEEP.
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      fetchMarketDepth.mockResolvedValue(freshDepth());
+      const second = await svc.executeCycle();
+
+      expect(second?.action).toBe('UPDATE');
+      // Un lookup por ciclo, no uno por decisión: a 20 s de intervalo, volver a
+      // preguntar en cada decisión es tránsito inútil sobre el mismo canal.
+      expect(harness.ops()).toEqual([
+        'appendMarketSnapshot',
+        'appendDecision',
+        'appendDecision',
+      ]);
+      expect((await journal.listCycles({ status: 'OPEN' })).length).toBe(1);
+    });
+
+    it('deja la decisión recuperable desde el journal: el round-trip cierra', async () => {
+      const decision = await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+
+      // Se relee POR ID, como lo haría la capa de outcomes: no se mira un doble
+      // que devolvió lo que se le pasó, sino lo que quedó realmente almacenado.
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.map((row) => row.side)).toEqual(['BUY', 'SELL']);
+      expect(rows[0].cycleId).toBe(open[0].id);
+      expect(rows[0].decisionPrice).toBe(decision?.suggestedBuyPrice);
+      expect(rows[1].decisionPrice).toBe(decision?.suggestedSellPrice);
+      // La evidencia se copió del snapshot: la decisión no la contradice.
+      expect(rows[0].observedObi).toBe(
+        calculateOrderBookImbalance(DEPTH.buyOffers, DEPTH.sellOffers).obiRatio,
+      );
+      expect(rows[0].observedBidUsd).toBe(DEPTH.bestBuyPrice);
+      expect(rows[0].observedAskUsd).toBe(DEPTH.bestSellPrice);
+
+      // El conteo del read model cuadra, y `openCycles: 1` es VERDAD: existe un
+      // ciclo abierto de verdad al que pertenecen esas decisiones.
+      const summary = await journal.getVerificationSummary();
+      expect(summary.totalDecisions).toBe(2);
+      expect(summary.openCycles).toBe(1);
+      expect(summary.decisionsAwaitingOutcome).toBe(2);
+      expect((await journal.getDecisionPerformance()).length).toBe(2);
+    });
+
+    it('agrupa las decisiones de varias corridas bajo el mismo ciclo', async () => {
+      await svc.executeCycle();
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      fetchMarketDepth.mockResolvedValue(freshDepth());
+      await svc.executeCycle();
+
+      const open = await journal.listCycles({ status: 'OPEN' });
+      expect(open).toHaveLength(1);
+      // Un ciclo agrupa; un ciclo por decisión no agruparía nada.
+      expect(await journal.listDecisionsByCycle(open[0].id)).toHaveLength(4);
+    });
+  });
+
   describe('journal de decisiones (F2b)', () => {
     it('graba el snapshot ANTES que la decisión y ambas filas lo comparten', async () => {
       await svc.executeCycle();
 
       // El orden importa: la decisión apunta a evidencia que ya existe.
-      expect(journal.calls[0]).toBe('appendMarketSnapshot');
-      expect(journal.calls.slice(1)).toEqual(['appendDecision', 'appendDecision']);
-      expect(journal.snapshots).toHaveLength(1);
-      expect(journal.decisions).toHaveLength(2);
-      expect(new Set(journal.decisions.map((d) => d.snapshotId)).size).toBe(1);
+      const snapshotAt = harness.ops().indexOf('appendMarketSnapshot');
+      expect(snapshotAt).toBeGreaterThan(-1);
+      expect(harness.ops().lastIndexOf('appendDecision')).toBeGreaterThan(snapshotAt);
+
+      const rows = await journal.getDecisionPerformance();
+      expect(rows).toHaveLength(2);
+      expect(new Set(rows.map((row) => row.decisionId)).size).toBe(2);
+      const decisions = await journal.listDecisionsByCycle(rows[0].cycleId);
+      expect(new Set(decisions.map((row) => row.snapshotId)).size).toBe(1);
     });
 
     it('persiste un snapshot normalizado, no el JSON crudo de adv/search', async () => {
       await svc.executeCycle();
 
       // ~40 KB de JSON crudo por fila es inasequible; solo los derivados.
-      expect(Object.keys(journal.snapshots[0]).sort()).toEqual(
+      expect(Object.keys(harness.snapshotInputs[0]).sort()).toEqual(
         ['askUsd', 'bidUsd', 'fetchedAt', 'nAsks', 'nBids', 'obi', 'stale'].sort(),
       );
-      const snapshot = journal.snapshots[0];
+      const snapshot = harness.snapshotInputs[0];
       expect(snapshot.bidUsd).toBe(DEPTH.bestBuyPrice);
       expect(snapshot.askUsd).toBe(DEPTH.bestSellPrice);
       expect(snapshot.nBids).toBe(DEPTH.buyOffers.length);
@@ -348,9 +563,12 @@ describe('BinanceRepricerService', () => {
       await svc.executeCycle();
 
       const expected = calculateOrderBookImbalance(DEPTH.buyOffers, DEPTH.sellOffers);
-      expect(journal.snapshots[0].obi).toBe(expected.obiRatio);
+      expect(harness.snapshotInputs[0].obi).toBe(expected.obiRatio);
       // Un default 0rationado no serviría: el libro de prueba NO está equilibrado.
-      expect(journal.snapshots[0].obi).not.toBe(0);
+      expect(harness.snapshotInputs[0].obi).not.toBe(0);
+      // Y queda en la fila leída, no solo en lo que se envió.
+      const rows = await journal.getDecisionPerformance();
+      expect(rows[0].observedObi).toBe(expected.obiRatio);
     });
 
     it('no marca como viejo un libro recién consultado', async () => {
@@ -358,7 +576,9 @@ describe('BinanceRepricerService', () => {
 
       await svc.executeCycle();
 
-      expect(journal.snapshots[0].stale).toBe(false);
+      expect(harness.snapshotInputs[0].stale).toBe(false);
+      const rows = await journal.getDecisionPerformance();
+      expect(rows.every((row) => row.observedStale === false)).toBe(true);
     });
 
     it('marca como viejo el libro que el motor decidió usar estando viejo', async () => {
@@ -367,55 +587,61 @@ describe('BinanceRepricerService', () => {
 
       await svc.executeCycle();
 
-      expect(journal.snapshots[0].stale).toBe(true);
-      expect(journal.snapshots[0].fetchedAt).toBe(Date.parse(oldStamp));
+      expect(harness.snapshotInputs[0].stale).toBe(true);
+      expect(harness.snapshotInputs[0].fetchedAt).toBe(Date.parse(oldStamp));
+      const rows = await journal.getDecisionPerformance();
+      expect(rows.every((row) => row.observedStale === true)).toBe(true);
     });
 
     it('trata como viejo un libro cuya marca de tiempo no es confiable', async () => {
       // Ante duda, se declara viejo: un default optimistic hides stale data.
       fetchMarketDepth.mockResolvedValue(freshDepth({ updatedAt: 'no-es-una-fecha' }));
       await svc.executeCycle();
-      expect(journal.snapshots[0].stale).toBe(true);
+      expect(harness.snapshotInputs[0].stale).toBe(true);
 
-      journal = new FakeDecisionJournal();
-      buildService();
+      rebuildJournal();
       fetchMarketDepth.mockResolvedValue(
         freshDepth({ updatedAt: new Date(Date.now() + 60_000).toISOString() }),
       );
       await svc.executeCycle();
-      expect(journal.snapshots[0].stale).toBe(true);
+      expect(harness.snapshotInputs[0].stale).toBe(true);
     });
 
     it('registra una fila por lado con el precio que el motor decidió', async () => {
       const decision = await svc.executeCycle();
 
-      expect(journal.decisions.map((d) => d.side)).toEqual(['BUY', 'SELL']);
-      expect(journal.decisions[0].decisionPrice).toBe(decision?.suggestedBuyPrice);
-      expect(journal.decisions[1].decisionPrice).toBe(decision?.suggestedSellPrice);
-      expect(journal.decisions.every((d) => d.modeledSpreadPct === decision?.spreadPct)).toBe(true);
-      expect(journal.decisions.every((d) => d.reason === decision?.reason)).toBe(true);
-      expect(journal.decisions.every((d) => d.action === 'UPDATE')).toBe(true);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.map((row) => row.side)).toEqual(['BUY', 'SELL']);
+      expect(rows[0].decisionPrice).toBe(decision?.suggestedBuyPrice);
+      expect(rows[1].decisionPrice).toBe(decision?.suggestedSellPrice);
+      expect(rows.every((row) => row.modeledSpreadPct === decision?.spreadPct)).toBe(true);
+      expect(rows.every((row) => row.reason === decision?.reason)).toBe(true);
+      expect(rows.every((row) => row.action === 'UPDATE')).toBe(true);
     });
 
     it('atribuye la decisión al motor automático, no a un operador humano', async () => {
       await svc.executeCycle();
 
-      expect(journal.decisions.every((d) => d.origin === 'AUTO_ENGINE')).toBe(true);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.every((row) => row.origin === 'AUTO_ENGINE')).toBe(true);
     });
 
-    it('marca el ciclo como pendiente de tracking en vez de inventar un ciclo', async () => {
+    it('no inventa ids de ciclo: el que manda existe de verdad', async () => {
       await svc.executeCycle();
 
-      expect(journal.decisions.every((d) => d.cycleId === DECISION_JOURNAL_PENDING_CYCLE_ID)).toBe(
-        true,
-      );
-      expect(DECISION_JOURNAL_PENDING_CYCLE_ID).toMatch(/PENDING/);
+      // La razón de ser de `cycleId` explícito es que se pueda RESOLVER. Un id
+      // inventado destruiría exactamente la propiedad por la que existe la tabla.
+      for (const input of harness.decisionInputs) {
+        expect(await journal.getCycle(input.cycleId)).not.toBeNull();
+      }
     });
 
     it('no manda los observed*: el adapter los copia del snapshot', async () => {
       await svc.executeCycle();
 
-      for (const input of journal.decisions) {
+      for (const input of harness.decisionInputs) {
         // Una decisión no puede contradecir su propia evidencia.
         expect(Object.keys(input)).not.toContain('observedObi');
         expect(Object.keys(input)).not.toContain('observedBidUsd');
@@ -427,7 +653,9 @@ describe('BinanceRepricerService', () => {
     it('registra el modo real READ_ONLY cuando no hay publicador', async () => {
       await svc.executeCycle();
 
-      expect(journal.decisions.every((d) => d.executionMode === 'READ_ONLY')).toBe(true);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.every((row) => row.executionMode === 'READ_ONLY')).toBe(true);
     });
 
     it('registra el modo real PUBLISHING cuando hay un publicador registrado', async () => {
@@ -437,19 +665,23 @@ describe('BinanceRepricerService', () => {
       await svc.executeCycle();
 
       expect(publish).toHaveBeenCalledTimes(1);
-      expect(
-        journal.decisions.every((d) => d.executionMode === REPRICER_EXECUTION_MODES.PUBLISHING),
-      ).toBe(true);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.every((row) => row.executionMode === REPRICER_EXECUTION_MODES.PUBLISHING)).toBe(
+        true,
+      );
     });
 
     it('mantiene PUBLISHING aunque el publicador rechace la escritura', async () => {
-      registerRepricerPublisher({ publish: vi.fn(async () => false) });
+      registerRepricerPublisher({ publish: vi.fn(async (): Promise<boolean> => false) });
 
       await svc.executeCycle();
 
       // El modo es el del motor al decidir; el rechazo es un outcome (F2c), no un
       // modo distinto. Rebajar el modo acá hides la existencia del publicador.
-      expect(journal.decisions.every((d) => d.executionMode === 'PUBLISHING')).toBe(true);
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows.every((row) => row.executionMode === 'PUBLISHING')).toBe(true);
       expect(svc.logs()[0].message).toContain('Publicación rechazada por el publicador');
     });
 
@@ -459,16 +691,18 @@ describe('BinanceRepricerService', () => {
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
-      expect(journal.decisions).toHaveLength(2);
-      expect(journal.decisions.every((d) => d.action === 'PAUSE')).toBe(true);
-      expect(journal.decisions[0].safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows).toHaveLength(2);
+      expect(rows.every((row) => row.action === 'PAUSE')).toBe(true);
+      expect(rows[0].safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
     });
 
     it('un fallo del journal no tumba el repricer: sigue operando y avisa', async () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const publish = vi.fn(async (): Promise<boolean> => true);
       registerRepricerPublisher({ publish });
-      journal.snapshotFailure = new Error('SQLITE_BUSY: database is locked');
+      harness.failOn.set('appendMarketSnapshot', new Error('SQLITE_BUSY: database is locked'));
 
       const decision = await svc.executeCycle();
 
@@ -486,17 +720,19 @@ describe('BinanceRepricerService', () => {
 
     it('no reintenta el journal en loop ni avanza a la decisión sin evidencia', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      journal.snapshotFailure = new Error('disk full');
+      harness.failOn.set('appendMarketSnapshot', new Error('disk full'));
 
       await svc.executeCycle();
 
-      expect(journal.calls).toEqual(['appendMarketSnapshot']);
-      expect(journal.decisions).toHaveLength(0);
+      // Un solo intento por ciclo: ni segundo snapshot, ni decisión a medias.
+      expect(harness.ops().filter((op) => op === 'appendMarketSnapshot')).toHaveLength(1);
+      expect(harness.decisionInputs).toHaveLength(0);
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
     });
 
     it('un fallo al grabar la decisión tampoco tumba al repricer', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      journal.decisionFailure = new Error('FK constraint failed: decision_cycles');
+      harness.failOn.set('appendDecision', new Error('FK constraint failed: decision_cycles'));
 
       const decision = await svc.executeCycle();
 
@@ -505,14 +741,63 @@ describe('BinanceRepricerService', () => {
       expect(toast.error).toHaveBeenCalled();
     });
 
+    it('si no puede resolver el ciclo, avisa una vez, loguea siempre y sigue operando', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const publish = vi.fn(async (): Promise<boolean> => true);
+      registerRepricerPublisher({ publish });
+      harness.failOn.set('listCycles', new Error('SQLITE_BUSY: database is locked'));
+
+      const first = await svc.executeCycle();
+
+      // El motor sigue operando igual: un journal ilegible no frena el trading.
+      expect(first?.action).toBe('UPDATE');
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(svc.logs()[0].message).toMatch(/Precios publicados en Binance/);
+      expect(String(consoleError.mock.calls[0]?.[0])).toMatch(/ciclo/i);
+      expect(String(consoleError.mock.calls[0]?.[0])).toMatch(/SQLITE_BUSY/);
+
+      // Sin ciclo no hay decisión auditable: no se escribe ni una fila. Y tampoco
+      // se dejó un snapshot huérfano colgando, porque el ciclo se resuelve antes.
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
+      expect(harness.ops()).not.toContain('openCycle');
+      expect(harness.snapshotInputs).toHaveLength(0);
+
+      // El aviso al operador es UNA vez...
+      expect(toast.error).toHaveBeenCalledTimes(1);
+
+      // ...y el segundo intento no lo repite: el rastro sigue en el log, porque si
+      // el ciclo nunca se resuelve el operador tiene que poder ver por qué.
+      toast.error.mockClear();
+      svc.currentBuyAdPrice.set(0);
+      svc.currentSellAdPrice.set(0);
+      fetchMarketDepth.mockResolvedValue(freshDepth());
+      await svc.executeCycle();
+
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalledTimes(2);
+    });
+
+    it('si no puede ABRIR el ciclo, aplica la misma política de robustez', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      harness.failOn.set('openCycle', new Error('disk full'));
+
+      const decision = await svc.executeCycle();
+
+      expect(decision?.action).toBe('UPDATE');
+      expect(svc.logs()[0].message).toMatch(/Precios optimizados/);
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(String(consoleError.mock.calls[0]?.[0])).toMatch(/disk full/);
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
+    });
+
     it('no registra nada cuando el libro de mercado no responde', async () => {
       fetchMarketDepth.mockResolvedValue(null);
 
       await svc.executeCycle();
 
-      expect(journal.calls).toHaveLength(0);
-      expect(journal.snapshots).toHaveLength(0);
-      expect(journal.decisions).toHaveLength(0);
+      expect(harness.calls).toHaveLength(0);
+      expect(harness.snapshotInputs).toHaveLength(0);
+      expect(harness.decisionInputs).toHaveLength(0);
     });
 
     it('no registra nada en los ciclos donde el motor no decide (KEEP)', async () => {
@@ -520,15 +805,15 @@ describe('BinanceRepricerService', () => {
       fetchMarketDepth.mockResolvedValue(book);
 
       await svc.executeCycle();
-      const afterDecision = journal.decisions.length;
+      const afterDecision = (await journal.getVerificationSummary()).totalDecisions;
       expect(afterDecision).toBe(2);
 
       const second = await svc.executeCycle();
 
       // KEEP no es una decisión: journalizarlo infla el conteo de decisiones.
       expect(second?.action).toBe('KEEP');
-      expect(journal.decisions).toHaveLength(afterDecision);
-      expect(journal.snapshots).toHaveLength(1);
+      expect((await journal.getVerificationSummary()).totalDecisions).toBe(afterDecision);
+      expect(harness.snapshotInputs).toHaveLength(1);
     });
   });
 });

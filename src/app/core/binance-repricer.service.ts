@@ -8,6 +8,7 @@ import {
   evaluateRepricer,
   type BinanceP2pMarketDepth,
   type DecisionSide,
+  type OpenDecisionCycleInput,
   type RecordMarketSnapshotInput,
   type RepricerConfig,
   type RepricerDecision,
@@ -30,20 +31,6 @@ export const REPRICER_EXECUTION_MODES = {
 
 export type RepricerExecutionMode =
   (typeof REPRICER_EXECUTION_MODES)[keyof typeof REPRICER_EXECUTION_MODES];
-
-/**
- * Ciclo contable al que se atribuyen las decisiones mientras el motor todavía no
- * maneja ciclos.
- *
- * NO es un ciclo inventado: es un valor obviamente no-real, para que ninguna fila
- * pueda pasar por verificada contablemente. `decision_cycles` es parte del
- * contrato, pero abrir y cerrar un ciclo exige cifras realizadas que nadie conoce
- * en el momento de decidir, y la capa de outcomes todavía no existe.
- *
- * PUNTO DE INTEGRACIÓN (fase siguiente): cuando exista el seguimiento de ciclos,
- * este archivo debe resolver el ciclo abierto real en vez de esta constante.
- */
-export const DECISION_JOURNAL_PENDING_CYCLE_ID = 'PENDING_CYCLE_TRACKING';
 
 /**
  * Antigüedad máxima, en milisegundos, para que la profundidad consultada al
@@ -121,6 +108,16 @@ export class BinanceRepricerService implements OnDestroy {
    */
   private readonly journal = inject(DecisionJournalService, { optional: true });
   private journalWarningShown = false;
+
+  /**
+   * Ciclo abierto al que se atribuyen las decisiones, resuelto una vez y cacheado.
+   *
+   * `null` significa "todavía no se resolvió", NO "no hay ciclo": la distinción
+   * importa porque es la que permite reintentar la resolución en el siguiente
+   * ciclo del motor tras un fallo transitorio.
+   */
+  private journalCycleId: string | null = null;
+  private journalCycleWarningShown = false;
 
   readonly isActive = signal<boolean>(false);
   readonly strategy = signal<RepricerStrategy>('TOP_1');
@@ -308,6 +305,15 @@ export class BinanceRepricerService implements OnDestroy {
       return;
     }
 
+    // El ciclo se resuelve PRIMERO. `repricer_decisions.cycle_id` es una FK dura a
+    // `decision_cycles.id`: sin un ciclo que exista de verdad, la decisión no se
+    // escribe. Resolver antes evita dejar un snapshot huérfano cada 20 s cuando la
+    // resolución falla, que es basura que `market_snapshots` acumula sin dueño.
+    const cycleId = await this.resolveJournalCycle(journal);
+    if (!cycleId) {
+      return;
+    }
+
     // El modo se lee del servicio AHORA, en el momento de la decisión. Nunca desde
     // un counter, ni desde un timestamp, ni desde "hubo un publish antes": esa
     // columna separa una decisión modelada de una decisión ejecutada, y mentir
@@ -337,7 +343,7 @@ export class BinanceRepricerService implements OnDestroy {
     for (const { side, price } of sides) {
       try {
         await journal.appendDecision({
-          cycleId: DECISION_JOURNAL_PENDING_CYCLE_ID,
+          cycleId,
           snapshotId,
           side,
           decisionPrice: price,
@@ -353,6 +359,60 @@ export class BinanceRepricerService implements OnDestroy {
         return;
       }
     }
+  }
+
+  /**
+   * Resuelve el ciclo contable REAL al que pertenece la decisión, y lo cachea.
+   *
+   * `cycleId` es explícito porque el operador P2P piensa en ciclos cerrados, no en
+   * spreads sueltos. Por eso NO se inventa un id: un id inventado pasa la
+   * comprobación de tipos y llega a la tabla, y ahí no agrupa nada ni se puede
+   * verificar. Lo que hace falta es un ciclo de verdad.
+   *
+   * El orden es lookup -> open, y el resultado se cachea para no preguntar en cada
+   * decisión. Si el motor es el único que abre ciclos —lo es, mientras el cierre sea
+   * manual— hay a lo sumo uno abierto, así que no hay ambigüedad al reutilizarlo.
+   *
+   * NO cierra el ciclo, y no es un oversight: `CloseDecisionCycleInput` exige
+   * `realizedProfitUsdt` y `realizedSpreadPct`, cifras que no existen hasta que
+   * haya outcomes. Cerrar con inventos sería peor que no cerrar, y dejar el ciclo
+   * abierto para siempre haría que `openCycles` creciera y mintiera. Con este
+   * diseño `openCycles: 1` es VERDAD: existe un ciclo abierto con decisiones
+   * adentro, y cerrarlo es una acción explícita del operador.
+   */
+  private async resolveJournalCycle(journal: DecisionJournalService): Promise<string | null> {
+    const cached = this.journalCycleId;
+    if (cached) return cached;
+
+    try {
+      const [open] = await journal.listCycles({ status: 'OPEN' });
+      const cycle = open ?? (await journal.openCycle(this.buildCycleInput()));
+      this.journalCycleId = cycle.id;
+      return cycle.id;
+    } catch (err) {
+      // Misma política que el resto del journal: el trading no se frena porque la
+      // persistencia no esté disponible, pero tampoco se pierde en silencio.
+      this.reportJournalCycleFailure(err);
+      return null;
+    }
+  }
+
+  /**
+   * Datos del ciclo que abre el motor.
+   *
+   * Solo valores que el repricer ya conoce, porque el contrato del journal no pide
+   * `asset` ni `fiat` y no hay razón para inventar campos nuevos que el motor
+   * realmente no tiene. `capitalReservedUsdt: 0` NO es una estimación: el motor no
+   * modela capital —solo cotiza y, sin publicador, no publica—, así que 0 es la
+   * verdad de "nada reservado" y la deja explícita en la fila. El operador la
+   * concilia al cerrar el ciclo, cuando exista la capa de outcomes.
+   */
+  private buildCycleInput(): OpenDecisionCycleInput {
+    return {
+      origin: 'AUTO_ENGINE',
+      capitalReservedUsdt: 0,
+      title: `Repricer ${this.strategy()}`,
+    };
   }
 
   /**
@@ -390,6 +450,27 @@ export class BinanceRepricerService implements OnDestroy {
     const context = `[repricer] No se pudo registrar la decisión ${decision.action}: ${stage} falló (${detail}).`;
     console.error(context, err);
     this.toast.error(context, 'Journal de decisiones');
+  }
+
+  /**
+   * No se pudo resolver el ciclo contable. Es la ÚNICA etapa donde la decisión no
+   * puede llegar a escribirse aunque todo lo demás esté sano, así que el aviso al
+   * operador es proporcional: el rastro completo va al log en cada intento —si el
+   * ciclo nunca se resuelve, el operador tiene que poder ver por qué, no solo que
+   * "falló"— y el toast aparece una vez, para no tapar la pantalla cada 20 s.
+   */
+  private reportJournalCycleFailure(err: unknown): void {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[repricer] No se pudo resolver el ciclo de decisiones: ${detail}. Las decisiones no se están auditando.`,
+      err,
+    );
+    if (this.journalCycleWarningShown) return;
+    this.journalCycleWarningShown = true;
+    this.toast.error(
+      '[repricer] No se pudo resolver el ciclo de decisiones: las decisiones se calculan pero no quedan auditadas.',
+      'Journal de decisiones',
+    );
   }
 
   /** Avisa UNA vez que las decisiones no se están auditando, sin tapar el log real. */
