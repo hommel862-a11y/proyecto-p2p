@@ -44,6 +44,27 @@ export class McpService {
 
   readonly onlineCount = computed(() => this.servers().filter((s) => s.status === 'ONLINE').length);
 
+  /**
+   * ¿La llamada MCP sale de esta máquina?
+   *
+   * `testTool` tiene dos caminos y no se pareciían en nada: contra Electron
+   * delegan en el proceso main, y sin él responden `simulateMcpTool`, que es un
+   * simulador local. Ambos devuelven `success: true` con un resultado con la
+   * misma forma, así que un consumidor NO puede distinguirlos mirando la
+   * respuesta: tiene que preguntarlo antes.
+   *
+   * Vive acá y no en el consumidor porque la decisión de en qué rama cae
+   * `testTool` es de este servicio. Duplicar el `window.electron?.mcp?.testTool`
+   * en otro archivo produciría dos fuentes de verdad para el mismo hecho, que
+   * es exactamente el modo de fallo que este journal no puede permitirse.
+   *
+   * No es un signal a propósito: el puente lo inyecta el preload antes de que
+   * arranque la app y no cambia en caliente, así que no hay nada que reaccionar.
+   */
+  hasNativeTransport(): boolean {
+    return typeof window !== 'undefined' && Boolean(window.electron?.mcp?.testTool);
+  }
+
   readonly totalToolsCount = computed(() =>
     this.servers().reduce((acc, s) => acc + s.toolCount, 0),
   );

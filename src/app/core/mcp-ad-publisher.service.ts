@@ -19,13 +19,66 @@ export interface McpPublisherConfig {
 }
 
 /**
- * `detail` de un intento aceptado.
+ * `detail` de un intento aceptado SIN confirmación del merchant.
  *
- * Dice explícitamente que no hay fill, para que la fila se sostenga sola cuando
- * alguien la lea sin el código al lado. Un `detail` vacío dejaría al consumidor
- * adivinar si el 0 de `filledAmountUsdt` significa "no llenó" o "no se midió".
+ * Dice las dos cosas: que no hay fill, y que tampoco hubo escritura contra
+ * Binance. Un `detail` vacío dejaría al consumidor adivinar si el 0 de
+ * `filledAmountUsdt` significa "no llenó" o "no se midió", y `source` por sí
+ * solo no alcanza para saber que el precio nunca llegó a un anuncio.
  */
 const PUBLISH_ACCEPTED_DETAIL = 'Intento de publicación aceptado; sin fill confirmado.';
+
+/**
+ * Forma del recibo que fabrica el simulador de `publish_ad_price`.
+ *
+ * `SIG-AD-<últimos 6 del adId>-<Date.now()>`. Se genera con el reloj de la
+ * máquina que corre el publicador, así que no identifica nada en ningún
+ * exchange: no se puede buscar, no se puede contrastar, no es una referencia.
+ *
+ * Se reconoce por la forma y no por confianza porque el campo es texto libre:
+ * un `externalRef` que empezara con esto sería un comprobante falso colgado de
+ * una fila de auditoría, que es peor que no tenerlo.
+ */
+const SYNTHETIC_SIGNATURE_PREFIX = 'SIG-AD-';
+
+/**
+ * Respuesta de `publish_ad_price`, tal como la ve este servicio.
+ *
+ * `merchantConfirmed` y `simulated` son los dos campos que deciden si lo que
+ * volvió es una confirmación del exchange o el resultado de un simulador. Se
+ * leen porque no hay forma de deducirlo del resto: las dos ramas de
+ * `McpService.testTool` devuelven `success: true` con la misma forma.
+ */
+interface PublishToolResult {
+  success?: boolean;
+  error?: string;
+  simulated?: boolean;
+  merchantConfirmed?: boolean;
+  status?: string;
+  dryRun?: boolean;
+  auditTrail?: {
+    signature?: string;
+    merchantRef?: string | null;
+  };
+}
+
+/**
+ * Una publicación, ya juzgada: qué se hizo y qué se puede afirmar de ella.
+ *
+ * El punto de este tipo es que `merchantRef` y `merchantConfirmed` no pueden
+ * viajar separados. Antes el journal heredaba un `source` fijo y se guardaba una
+ * firma que nadie le había pasado: la fila afirmaba una confirmación de Binance
+ * que el código de arriba nunca había recibido. Ahora la afirmación se DERIVA de
+ * la respuesta, y si no hay evidencia no hay `BINANCE_MERCHANT` que escribir.
+ */
+interface PublishOutcome {
+  /** Referencia verificable del exchange, o `null` si no la hay. */
+  readonly merchantRef: string | null;
+  /** `true` solo con confirmación explícita Y una referencia real que la respalde. */
+  readonly merchantConfirmed: boolean;
+  /** Recibo local, para conservarlo como evidencia legible sin adquirir autoridad. */
+  readonly localReceipt: string | null;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -72,6 +125,41 @@ export class McpAdPublisherService implements RepricerAdPublisher {
   private lastSellPrice: number | null = null;
 
   /**
+   * ¿Hay a quién delegarle una escritura de verdad?
+   *
+   * El modo del repricer es DERIVADO: `executionMode()` vale `PUBLISHING` si y
+   * solo si hay un publicador registrado. Eso significa que registrar este
+   * servicio es indistinguible, para el motor, de tener escritura real contra
+   * la API de merchant de Binance — y no la hay. Por eso el registro se
+   * condiciona a las dos condiciones que sí se pueden verificar acá:
+   *
+   *  1. el operador apagó el dry-run, y
+   *  2. hay puente MCP nativo. En build web `McpService.testTool` responde
+   *     `simulateMcpTool`, así que "en vivo" sería una simulación con otro
+   *     nombre.
+   *
+   * Sin registro, el motor queda en `READ_ONLY`: sigue decidiendo y sigue
+   * journalizando decisiones, pero journaliza `executionMode: 'READ_ONLY'` y no
+   * delega ninguna escritura. Es la diferencia entre una decisión modelada y
+   * una ejecutada, y esa columna no se negocia.
+   *
+   * ── Lo que esto NO arregla ────────────────────────────────────────────────
+   *
+   * Con las dos condiciones satisfechas, `publish_ad_price` sigue siendo una
+   * función pura: no abre socket contra Binance. El motor va a reportar
+   * `PUBLISHING` y su etiqueta va a decir "Publica los precios calculados contra
+   * la API de merchant de Binance", y eso sigue siendo más de lo que ocurre.
+   * El journal ya no miente en ningún caso (por eso `source` depende de la
+   * evidencia y no del modo), pero la ETIQUETA del modo solo se vuelve verdad
+   * cuando exista la capa de escritura real, que vive en
+   * `binance-repricer.service.ts`. Está anotado acá porque este es el punto
+   * donde la diferencia se ve, no porque sea una nota de changelog.
+   */
+  private hasRealPublisher(): boolean {
+    return !this.isDryRun() && this.mcp.hasNativeTransport();
+  }
+
+  /**
    * Enables the MCP Ad Publisher and registers it in the repricer engine.
    * This officially transitions BinanceRepricerService into PUBLISHING mode.
    */
@@ -83,9 +171,23 @@ export class McpAdPublisherService implements RepricerAdPublisher {
     if (config?.exchange !== undefined) this.exchange.set(config.exchange);
 
     this.isEnabled.set(true);
-    registerRepricerPublisher(this);
 
-    const mode = this.isDryRun() ? 'SIMULACIÓN (Dry-Run)' : 'PRODUCCIÓN EN VIVO';
+    // Registrar o no es la diferencia entre que el motor diga "PUBLICANDO" y
+    // que diga "SOLO LECTURA". El registro se hace solo si hay un publicador
+    // real detrás: el simulador no se registra, porque su único efecto sería
+    // poner una etiqueta que el operador lee como verdad.
+    const registrable = this.hasRealPublisher();
+    if (registrable) {
+      registerRepricerPublisher(this);
+    } else {
+      unregisterRepricerPublisher();
+    }
+
+    const mode = registrable
+      ? 'PRODUCCIÓN EN VIVO'
+      : this.isDryRun()
+        ? 'SIMULACIÓN (Dry-Run)'
+        : 'SIMULACIÓN (sin puente MCP nativo)';
     this.toast.success(
       `Publicador MCP activado en modo ${mode} con guardarraíles anti-fat-finger (${this.maxDeviationPct()}% máx desvío).`,
       'P2P Ad Automaker MCP',
@@ -145,11 +247,7 @@ export class McpAdPublisherService implements RepricerAdPublisher {
           rationale: `Repricing ${request.strategy}: Compra ajustada a ${request.buyPrice} VES`,
         });
 
-        const buyData = buyRes.result as {
-          success?: boolean;
-          error?: string;
-          auditTrail?: { signature?: string };
-        } | null;
+        const buyData = buyRes.result as PublishToolResult | null;
 
         if (!buyRes.success || buyData?.success === false) {
           const err = buyData?.error || buyRes.error || 'Rechazo de seguridad en anuncio de compra';
@@ -160,21 +258,24 @@ export class McpAdPublisherService implements RepricerAdPublisher {
             decisionId: request.decisionIds?.['BUY'],
             success: false,
             detail: `Rechazo del publicador MCP: ${err}`,
-            externalRef: null,
+            outcome: { merchantRef: null, merchantConfirmed: false, localReceipt: null },
           });
           return false;
         }
 
-        if (buyData?.auditTrail?.signature) {
-          this.lastPublishedSignature.set(buyData.auditTrail.signature);
+        // Qué se puede afirmar de esta respuesta. Se calcula UNA vez y se pasa
+        // al journal, para que la etiqueta del origen, el `externalRef` y la
+        // señal de UI no puedan discrepar entre sí.
+        const buyOutcome = this.judgeResponse(buyData);
+        if (buyOutcome.merchantConfirmed) {
+          this.lastPublishedSignature.set(buyOutcome.merchantRef);
         }
         this.lastBuyPrice = request.buyPrice;
         await this.recordPublishAttempt({
           side: 'BUY',
           decisionId: request.decisionIds?.['BUY'],
           success: true,
-          detail: PUBLISH_ACCEPTED_DETAIL,
-          externalRef: buyData?.auditTrail?.signature ?? null,
+          outcome: buyOutcome,
         });
       }
 
@@ -192,11 +293,7 @@ export class McpAdPublisherService implements RepricerAdPublisher {
           rationale: `Repricing ${request.strategy}: Venta ajustada a ${request.sellPrice} VES`,
         });
 
-        const sellData = sellRes.result as {
-          success?: boolean;
-          error?: string;
-          auditTrail?: { signature?: string };
-        } | null;
+        const sellData = sellRes.result as PublishToolResult | null;
 
         if (!sellRes.success || sellData?.success === false) {
           const err = sellData?.error || sellRes.error || 'Rechazo de seguridad en anuncio de venta';
@@ -207,21 +304,21 @@ export class McpAdPublisherService implements RepricerAdPublisher {
             decisionId: request.decisionIds?.['SELL'],
             success: false,
             detail: `Rechazo del publicador MCP: ${err}`,
-            externalRef: null,
+            outcome: { merchantRef: null, merchantConfirmed: false, localReceipt: null },
           });
           return false;
         }
 
-        if (sellData?.auditTrail?.signature) {
-          this.lastPublishedSignature.set(sellData.auditTrail.signature);
+        const sellOutcome = this.judgeResponse(sellData);
+        if (sellOutcome.merchantConfirmed) {
+          this.lastPublishedSignature.set(sellOutcome.merchantRef);
         }
         this.lastSellPrice = request.sellPrice;
         await this.recordPublishAttempt({
           side: 'SELL',
           decisionId: request.decisionIds?.['SELL'],
           success: true,
-          detail: PUBLISH_ACCEPTED_DETAIL,
-          externalRef: sellData?.auditTrail?.signature ?? null,
+          outcome: sellOutcome,
         });
       }
 
@@ -242,11 +339,79 @@ export class McpAdPublisherService implements RepricerAdPublisher {
             attemptedSide === 'BUY' ? request.decisionIds?.['BUY'] : request.decisionIds?.['SELL'],
           success: false,
           detail: `Error de ejecución en MCP Ad Automaker: ${msg}`,
-          externalRef: null,
+          outcome: { merchantRef: null, merchantConfirmed: false, localReceipt: null },
         });
       }
       return false;
     }
+  }
+
+  /**
+   * Decide qué se puede AFIRMAR de la respuesta de `publish_ad_price`.
+   *
+   * Acá estaba el bug: el origen y la referencia se escribían fijos, sin mirar
+   * lo que volvió la llamada. Con `dryRun` activo (el default) o en build web, la
+   * respuesta es de un simulador, y la fila decía igual "Binance confirmó esto,
+   * ref SIG-AD-xxxx".
+   *
+   * Las tres condiciones son necesarias y ninguna alcanza sola:
+   *
+   *  1. `merchantConfirmed === true` — afirmación explícita de la capa de
+   *     escritura. `publish_ad_price` devuelve `false` siempre, porque es una
+   *     función pura; hoy esta rama no se recorre en producción, y por eso el
+   *     journal no depende de ella para ser honesto.
+   *  2. La respuesta no viene marcada como `simulated`. En build web
+   *     `simulateMcpTool` devuelve `simulated: true` con `status:
+   *     'PUBLISHED_LIVE'` y `dryRun: false`: si el status fuera la evidencia,
+   *     el build web mentiría. La marca de simulación le gana al status.
+   *  3. Hay una referencia REAL, y no un `SIG-AD-...` fabricado con
+   *     `Date.now()`.
+   *
+   * El recibo local se devuelve igual: se pierde la evidencia si se tira, pero
+   * se conserva en el `detail`, que es donde un humano lo lee sin confundirlo
+   * con un comprobante del exchange.
+   */
+  private judgeResponse(data: PublishToolResult | null): PublishOutcome {
+    const signature = data?.auditTrail?.signature ?? null;
+    const localReceipt = signature;
+
+    // La referencia del exchange, si la capa de escritura la trajo. Se prefiere
+    // `merchantRef` explícito; `signature` sirve para una implementación que no
+    // lo mande, siempre que no tenga la forma del recibo fabricado.
+    const candidate = data?.auditTrail?.merchantRef ?? signature;
+    const isSynthetic = candidate === null || candidate.startsWith(SYNTHETIC_SIGNATURE_PREFIX);
+    const merchantRef = isSynthetic ? null : candidate;
+
+    const assertedConfirmation =
+      data?.merchantConfirmed === true && data?.simulated !== true && !this.isDryRun();
+
+    return {
+      merchantRef,
+      // La referencia NO es decorativa: sin ella, "Binance confirmó" no
+      // señala nada que se pueda auditar, así que no se afirma.
+      merchantConfirmed: assertedConfirmation && merchantRef !== null,
+      localReceipt,
+    };
+  }
+
+  /**
+   * `detail` del outcome, escrito para que la fila se sostenga sola.
+   *
+   * Un lector sin el código al lado tiene que poder distinguir "el guardarraíl
+   * aceptó el precio" de "el precio quedó publicado en un anuncio de Binance".
+   */
+  private buildDetail(attempt: { readonly success: boolean; readonly outcome: PublishOutcome }): string {
+    if (!attempt.success) {
+      return attempt.outcome.localReceipt
+        ? `Rechazo del publicador MCP. Recibo local: ${attempt.outcome.localReceipt}`
+        : 'Rechazo del publicador MCP.';
+    }
+    if (attempt.outcome.merchantConfirmed) {
+      return `${PUBLISH_ACCEPTED_DETAIL} Confirmado por el merchant de Binance (ref ${attempt.outcome.merchantRef}).`;
+    }
+    return attempt.outcome.localReceipt
+      ? `${PUBLISH_ACCEPTED_DETAIL} Ejecución simulada: no se contactó al merchant de Binance ni se publicó el anuncio. Recibo local (no es referencia del exchange): ${attempt.outcome.localReceipt}.`
+      : `${PUBLISH_ACCEPTED_DETAIL} Ejecución simulada: no se contactó al merchant de Binance ni se publicó el anuncio.`;
   }
 
   /**
@@ -286,13 +451,35 @@ export class McpAdPublisherService implements RepricerAdPublisher {
     readonly side: DecisionSide;
     readonly decisionId: number | undefined;
     readonly success: boolean;
-    readonly detail: string;
-    readonly externalRef: string | null;
+    readonly detail?: string;
+    readonly outcome: PublishOutcome;
   }): Promise<void> {
+    const detail = attempt.detail ?? this.buildDetail(attempt);
+
     // Sin decisión journalizada no hay a qué colgar el outcome, y
     // `decision_outcomes.decision_id` es una FK dura. Un id inventado no
     // agruparía nada; lo honesto es publicar sin registrar.
+    //
+    // ── Por qué esto NO puede volver a ser un `return` mudo ────────────────
+    //
+    // Este return cortaba ANTES de la rama que avisa, y esa era exactamente la
+    // parte rota. El motor devuelve `{BUY: id}` aunque `appendDecision('SELL')`
+    // falle, así que el SELL sale con `decisionId === undefined`: un anuncio
+    // realmente publicado, sin outcome, sin warn y sin toast. El criterio "nada
+    // se pierde en silencio" se incumplía justo donde más caro sale.
+    //
+    // NO se aborta la publicación. Un fallo de auditoría no es motivo para
+    // dejar de operar —la decisión ya se tomó y el anuncio ya se tocó—, pero sí
+    // es motivo para que quede escrito a qué anuncio corresponde este hueco.
     if (attempt.decisionId === undefined) {
+      const adId = attempt.side === 'BUY' ? this.buyAdId() : this.sellAdId();
+      console.error(
+        `[mcp-ad-publisher] Publicación ${attempt.success ? 'aceptada' : 'rechazada'} SIN REGISTRAR ` +
+          `(lado ${attempt.side}, anuncio ${adId}, exchange ${this.exchange()}, dryRun=${this.isDryRun()}). ` +
+          `El motor no pudo escribir la decisión padre (appendDecision falló o no hubo correlación), ` +
+          `así que no hay decision_id al que colgar el outcome y esta publicación queda sin auditoría. ` +
+          `No se frena la publicación a propósito: revisar la escritura de decisiones del repricer.`,
+      );
       return;
     }
 
@@ -305,18 +492,33 @@ export class McpAdPublisherService implements RepricerAdPublisher {
     try {
       await journal.appendOutcome({
         decisionId: attempt.decisionId,
-        source: 'BINANCE_MERCHANT',
+        // El origen se DERIVA de la evidencia de la respuesta, no se fija acá.
+        //
+        // `LOCAL_SIGNAL` es el valor correcto para todo lo que no venga del
+        // merchant de Binance: el resultado lo produjo esta máquina. Y ya existe
+        // en el union `OutcomeSource`, así que este fix no agrega nada al
+        // contrato de la tabla ni obliga a tocar core, `schema.sql` y el
+        // adapter de SQLite a la vez.
+        //
+        // Antes esto era `'BINANCE_MERCHANT'` fijo, y el journal afirmaba una
+        // confirmación del exchange sobre una llamada que nunca salió de la
+        // máquina: con dry-run activo (el default) o en cualquier build web, una
+        // simulación quedaba etiquetada como si Binance la hubiera confirmado.
+        source: attempt.outcome.merchantConfirmed ? 'BINANCE_MERCHANT' : 'LOCAL_SIGNAL',
         success: attempt.success,
         filledAmountUsdt: 0,
-        externalRef: attempt.externalRef ?? undefined,
-        detail: attempt.detail,
+        // Solo una referencia real del exchange entra acá. Una firma `SIG-AD-`
+        // fabricada con `Date.now()` sería un comprobante falso colgado de una
+        // fila de auditoría, que es peor que no tener referencia.
+        externalRef: attempt.outcome.merchantRef ?? undefined,
+        detail,
         // `filledPrice`, `realizedSpreadPct` y `realizedProfitUsdt` NO se mandan:
         // su ausencia ES el dato. Ver el comentario de arriba antes de "arreglarlo".
       });
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const errDetail = err instanceof Error ? err.message : String(err);
       console.error(
-        `[mcp-ad-publisher] No se pudo registrar el outcome de publicación (lado ${attempt.side}, success=${attempt.success}): ${detail}. El anuncio ya se intentó publicar igual.`,
+        `[mcp-ad-publisher] No se pudo registrar el outcome de publicación (lado ${attempt.side}, success=${attempt.success}): ${errDetail}. El anuncio ya se intentó publicar igual.`,
         err,
       );
     }

@@ -92,6 +92,9 @@ describe('McpAdPublisherService', () => {
 
   const mockMcp = {
     testTool: vi.fn(),
+    // Por defecto hay puente nativo (Electron). Cada test que simula un build
+    // web lo apaga explícitamente, para que el caso raro sea visible.
+    hasNativeTransport: vi.fn((): boolean => true),
   };
 
   /**
@@ -133,10 +136,51 @@ describe('McpAdPublisherService', () => {
     return ids;
   }
 
-  /** Respuesta MCP de éxito, con la firma que el publicador guarda. */
-  const mcpAccept = {
+  /**
+   * Respuesta MCP con CONFIRMACIÓN REAL del merchant.
+   *
+   * Solo existe en los tests a propósito: en este repositorio no hay capa de
+   * escritura contra la API de merchant de Binance, así que ninguna respuesta
+   * real trae esto. Es el contrato que el publicador tiene que reconocer para
+   * poder journalizar `BINANCE_MERCHANT`: si algún día se implementa la
+   * escritura real, este es el shape que tiene que producir.
+   *
+   * El `signature` NO es `SIG-AD-...`: esa forma es la del recibo fabricado por
+   * el simulador, y un `externalRef` de Binance no se parece a eso.
+   */
+  const mcpMerchantConfirm = {
     success: true,
-    result: { success: true, auditTrail: { signature: 'SIG-AD-OK' } },
+    result: {
+      success: true,
+      merchantConfirmed: true,
+      status: 'PUBLISHED_LIVE',
+      dryRun: false,
+      auditTrail: {
+        guardrailChecked: true,
+        signature: 'BINANCE-MERCHANT-REF-8842',
+        merchantRef: 'BINANCE-MERCHANT-REF-8842',
+      },
+    },
+  };
+
+  /**
+   * Respuesta MCP de una ejecución SIMULADA — el caso que el bug daba por bueno.
+   *
+   * Es lo que devuelve hoy `publish_ad_price` (recibo fabricado con
+   * `Date.now()`) y también lo que devuelve `simulateMcpTool` en build web
+   * (`simulated: true` con la misma firma inventada). Ninguna de las dos cosas
+   * salió de la máquina, así que ninguna puede journalizarse como confirmación
+   * de Binance.
+   */
+  const mcpSimulated = {
+    success: true,
+    result: {
+      success: true,
+      simulated: true,
+      status: 'SIMULATED_SUCCESS',
+      dryRun: true,
+      auditTrail: { guardrailChecked: true, signature: 'SIG-AD-ADV-01-1700000000000' },
+    },
   };
 
   beforeEach(async () => {
@@ -144,6 +188,8 @@ describe('McpAdPublisherService', () => {
     mockToast.info.mockReset();
     mockToast.error.mockReset();
     mockMcp.testTool.mockReset();
+    mockMcp.hasNativeTransport.mockReset();
+    mockMcp.hasNativeTransport.mockReturnValue(true);
     unregisterRepricerPublisher();
     harness = createJournalHarness();
 
@@ -175,19 +221,44 @@ describe('McpAdPublisherService', () => {
     expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.READ_ONLY);
   });
 
-  it('activates PUBLISHING mode when enablePublishing is called', () => {
+  it('NO activa PUBLISHING en dry-run: una simulación no es un publicador real', () => {
+    // Este test antes afirmaba lo contrario (`executionMode() === PUBLISHING` con
+    // `dryRun: true`). El modo del repricer se DERIVA de que haya un publicador
+    // registrado, así que registrar un simulador le hacía decir "PUBLICANDO EN
+    // BINANCE" sobre un pipeline que no publica nada. Un número que el operador
+    // lee tiene que ser verdad también en la etiqueta del modo.
     publisherSvc.enablePublishing({ dryRun: true, maxDeviationPct: 2.5 });
 
     expect(publisherSvc.isEnabled()).toBe(true);
     expect(publisherSvc.isDryRun()).toBe(true);
     expect(publisherSvc.maxDeviationPct()).toBe(2.5);
-    expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.PUBLISHING);
-    expect(repricerSvc.isPublishing()).toBe(true);
+    expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.READ_ONLY);
+    expect(repricerSvc.isPublishing()).toBe(false);
+    expect(repricerSvc.executionModeLabel()).toBe('SOLO LECTURA — NO PUBLICA');
     expect(mockToast.success).toHaveBeenCalled();
   });
 
+  it('activa PUBLISHING solo con dry-run apagado y puente MCP nativo', () => {
+    publisherSvc.enablePublishing({ dryRun: false });
+
+    expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.PUBLISHING);
+    expect(repricerSvc.isPublishing()).toBe(true);
+  });
+
+  it('NO activa PUBLISHING en build web aunque el operador apague el dry-run', () => {
+    // El otro disparador del bug: en web `McpService.testTool` no sale de la
+    // máquina, responde `simulateMcpTool`. Sin puente nativo no hay a quién
+    // delegarle una escritura, así que el modo tiene que seguir siendo
+    // READ_ONLY aunque `dryRun` esté en false.
+    mockMcp.hasNativeTransport.mockReturnValue(false);
+    publisherSvc.enablePublishing({ dryRun: false });
+
+    expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.READ_ONLY);
+    expect(repricerSvc.isPublishing()).toBe(false);
+  });
+
   it('restores READ_ONLY mode when disablePublishing is called', () => {
-    publisherSvc.enablePublishing();
+    publisherSvc.enablePublishing({ dryRun: false });
     expect(repricerSvc.executionMode()).toBe(REPRICER_EXECUTION_MODES.PUBLISHING);
 
     publisherSvc.disablePublishing();
@@ -198,14 +269,7 @@ describe('McpAdPublisherService', () => {
 
   it('dispatches publish requests to MCP publish_ad_price tool and handles success', async () => {
     publisherSvc.enablePublishing({ dryRun: false });
-    mockMcp.testTool.mockResolvedValue({
-      success: true,
-      result: {
-        success: true,
-        publishedPrice: 78.5,
-        auditTrail: { signature: 'SIG-AD-TEST-123' },
-      },
-    });
+    mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
     const result = await publisherSvc.publish({
       buyPrice: 78.5,
@@ -215,9 +279,26 @@ describe('McpAdPublisherService', () => {
 
     expect(result).toBe(true);
     expect(mockMcp.testTool).toHaveBeenCalledTimes(2);
-    expect(publisherSvc.lastPublishedSignature()).toBe('SIG-AD-TEST-123');
+    // Solo una referencia REAL del merchant llega a la señal de UI. Antes se
+    // publicaba ahí el `SIG-AD-...` fabricado, que en pantalla se leía como un
+    // comprobante del exchange.
+    expect(publisherSvc.lastPublishedSignature()).toBe('BINANCE-MERCHANT-REF-8842');
     expect(publisherSvc.successfulPublishesCount()).toBe(1);
     expect(publisherSvc.lastPublishTimestamp()).not.toBeNull();
+  });
+
+  it('NO expone una firma fabricada como si fuera una publicación real', async () => {
+    publisherSvc.enablePublishing({ dryRun: false });
+    mockMcp.testTool.mockResolvedValue(mcpSimulated);
+
+    const result = await publisherSvc.publish({
+      buyPrice: 78.5,
+      sellPrice: 79.5,
+      strategy: 'TOP_1',
+    });
+
+    expect(result).toBe(true);
+    expect(publisherSvc.lastPublishedSignature()).toBeNull();
   });
 
   it('aborts and returns false if MCP tool reports guardrail rejection', async () => {
@@ -251,10 +332,14 @@ describe('McpAdPublisherService', () => {
   // -------------------------------------------------------------------------
 
   describe('journal de intentos de publicación', () => {
-    it('un intento aceptado deja un outcome con success true', async () => {
+    it('una publicación REAL se journaliza como BINANCE_MERCHANT con su ref real', async () => {
+      // La rama honesta: hay confirmación explícita del merchant y una
+      // referencia que no es un recibo fabricado. Acá `BINANCE_MERCHANT` es
+      // verdad, y el `externalRef` es el identificador con el que se puede ir a
+      // buscar la publicación.
       const ids = await seedDecisions(['BUY', 'SELL']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       const result = await publisherSvc.publish({
         buyPrice: 960,
@@ -274,12 +359,126 @@ describe('McpAdPublisherService', () => {
       expect(harness.outcomeInputs.every((input) => input.source === 'BINANCE_MERCHANT')).toBe(
         true,
       );
+      expect(
+        harness.outcomeInputs.every((input) => input.externalRef === 'BINANCE-MERCHANT-REF-8842'),
+      ).toBe(true);
 
       // Y se relee del puerto, no del doble: lo que quedó realmente almacenado.
       const stored = await harness.repo.listOutcomesByDecision(ids.BUY);
       expect(stored).toHaveLength(1);
       expect(stored[0].success).toBe(true);
       expect(stored[0].source).toBe('BINANCE_MERCHANT');
+      expect(stored[0].externalRef).toBe('BINANCE-MERCHANT-REF-8842');
+    });
+
+    it('una publicación SIMULADA NO se journaliza como BINANCE_MERCHANT', async () => {
+      // El bug. Dry-run por default: el publicador llama a `publish_ad_price`,
+      // que es una función pura, y la respuesta trae un `SIG-AD-...` fabricado
+      // con `Date.now()`. Con `source` hardcodeado, el journal decía "Binance
+      // confirmó esto" sobre una llamada que no salió de la máquina.
+      const ids = await seedDecisions(['BUY']);
+      publisherSvc.enablePublishing();
+      mockMcp.testTool.mockResolvedValue(mcpSimulated);
+
+      await publisherSvc.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      const stored = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(stored).toHaveLength(1);
+      // `LOCAL_SIGNAL`: el resultado lo produjo esta máquina, no el exchange.
+      // Es un valor que YA existe en el union de `OutcomeSource`, así que este
+      // fix no agregan nada al contrato de la tabla.
+      expect(stored[0].source).toBe('LOCAL_SIGNAL');
+      expect(stored[0].source).not.toBe('BINANCE_MERCHANT');
+    });
+
+    it('en build web NO journaliza como BINANCE_MERCHANT aunque dryRun esté apagado', async () => {
+      // El segundo disparador del bug: `dryRun: false` NO implica escritura
+      // real. En web `McpService.testTool` responde `simulateMcpTool`, y su
+      // resultado viene marcado con `simulated: true` aunque el status diga
+      // `PUBLISHED_LIVE`. La evidencia de la respuesta tiene que ganarle al
+      // flag que mandó el operador.
+      const ids = await seedDecisions(['BUY']);
+      mockMcp.hasNativeTransport.mockReturnValue(false);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue({
+        success: true,
+        result: {
+          success: true,
+          simulated: true,
+          status: 'PUBLISHED_LIVE',
+          dryRun: false,
+          auditTrail: { signature: 'SIG-AD-ADV-01-1700000000000' },
+        },
+      });
+
+      await publisherSvc.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      const stored = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(stored[0].source).toBe('LOCAL_SIGNAL');
+    });
+
+    it('una firma sintética NUNCA se persiste como externalRef', async () => {
+      // Defensa en profundidad. Aunque la respuesta afirme `merchantConfirmed`,
+      // un `SIG-AD-<adId>-<epoch>` es el formato del recibo que fabrica el
+      // simulador: no identifica nada en Binance. Si se guardara, el journal
+      // tendría un "referencia de exchange" que al auditarla no lleva a
+      // ninguna parte.
+      const ids = await seedDecisions(['BUY']);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue({
+        success: true,
+        result: {
+          success: true,
+          merchantConfirmed: true,
+          status: 'PUBLISHED_LIVE',
+          dryRun: false,
+          auditTrail: { signature: 'SIG-AD-ADV-01-1700000000000' },
+        },
+      });
+
+      await publisherSvc.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      const stored = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(stored[0].externalRef).toBeNull();
+      // Sin una referencia real no hay nada verificable detrás de la afirmación
+      // "Binance confirmó", así que el origen tampoco puede ser el merchant.
+      expect(stored[0].source).toBe('LOCAL_SIGNAL');
+    });
+
+    it('el intento simulado conserva su recibo en el detail, sin vestirse de ref', async () => {
+      // No se pierde evidencia: el `SIG-AD-...` se conserva como texto auditable
+      // — donde un humano lo lee y entiende que es un recibo local — y no como
+      // `externalRef`, que es el campo que un sistema leería como referencia
+      // del exchange.
+      const ids = await seedDecisions(['BUY']);
+      publisherSvc.enablePublishing();
+      mockMcp.testTool.mockResolvedValue(mcpSimulated);
+
+      await publisherSvc.publish({
+        buyPrice: 960,
+        sellPrice: 0,
+        strategy: 'TOP_1',
+        decisionIds: { BUY: ids.BUY },
+      });
+
+      const stored = await harness.repo.listOutcomesByDecision(ids.BUY);
+      expect(String(stored[0].detail)).toContain('SIG-AD-ADV-01-1700000000000');
+      expect(String(stored[0].detail)).toMatch(/simulad|simulaci/i);
     });
 
     it('etiqueta el origen con un valor que el contrato de la tabla acepta', async () => {
@@ -287,13 +486,14 @@ describe('McpAdPublisherService', () => {
       // outcomes es LOCAL_SIGNAL | BINANCE_MERCHANT | CSV_IMPORT | MANUAL, y el
       // CHECK de `schema.sql` no acepta nada más, así que un valor nuevo exige
       // tocar core, el schema y el adapter de SQLite a la vez.
-      // Lo que el outcome registra es el CANAL del resultado, no quién lo produjo:
-      // la autoridad que aceptó o rechazó fue el lado merchant de Binance, y eso
-      // es `BINANCE_MERCHANT`. Quién lo produjo ya está en la decisión padre
-      // (`origin`), que es a la que el outcome se cuelga siempre.
+      //
+      // El outcome registra el CANAL del resultado, y el canal solo es
+      // `BINANCE_MERCHANT` si el merchant confirmó. Este test usa una
+      // confirmación real, así que el valor temido igual queda por fuera del
+      // contrato — no porque el tipo lo fuerce, sino porque la verdad manda.
       const ids = await seedDecisions(['BUY']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       await publisherSvc.publish({
         buyPrice: 960,
@@ -363,8 +563,8 @@ describe('McpAdPublisherService', () => {
       // que todavía no existe: es la misma mentira que ya se corrigió en la
       // agregación de core, reintroducida por el otro lado.
       const ids = await seedDecisions(['BUY']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       await publisherSvc.publish({
         buyPrice: 960,
@@ -390,8 +590,8 @@ describe('McpAdPublisherService', () => {
 
     it('escribe exactamente un outcome por intento, por lado', async () => {
       const ids = await seedDecisions(['BUY', 'SELL']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       await publisherSvc.publish({
         buyPrice: 960,
@@ -432,8 +632,8 @@ describe('McpAdPublisherService', () => {
     it('un fallo del journal no tumba la publicación', async () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const ids = await seedDecisions(['BUY', 'SELL']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
       harness.failOn.set('appendOutcome', new Error('SQLITE_BUSY: database is locked'));
 
       const result = await publisherSvc.publish({
@@ -447,7 +647,7 @@ describe('McpAdPublisherService', () => {
       // persistencia no esté disponible.
       expect(result).toBe(true);
       expect(publisherSvc.successfulPublishesCount()).toBe(1);
-      expect(publisherSvc.lastPublishedSignature()).toBe('SIG-AD-OK');
+      expect(publisherSvc.lastPublishedSignature()).toBe('BINANCE-MERCHANT-REF-8842');
       // Pero tampoco se pierde en silencio.
       expect(consoleError).toHaveBeenCalled();
       expect(String(consoleError.mock.calls[0]?.[0])).toMatch(/outcome/i);
@@ -457,8 +657,9 @@ describe('McpAdPublisherService', () => {
     });
 
     it('sin correlación no inventa outcomes: sin decisión no hay a qué colgarse', async () => {
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       const result = await publisherSvc.publish({
         buyPrice: 960,
@@ -470,6 +671,87 @@ describe('McpAdPublisherService', () => {
       // una FK dura: un id inventado pasaría el tipo y no agruparía nada.
       expect(result).toBe(true);
       expect(harness.outcomeInputs).toHaveLength(0);
+      // Y NO en silencio: una publicación real sin nada que la registre tiene
+      // que dejar rastro, o el criterio "nada se pierde en silencio" se incumple
+      // justo en el caso más caro.
+      expect(consoleError).toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // Bug 2: publicación real sin trazabilidad, en silencio absoluto.
+    //
+    // La cadena: `binance-repricer.service.ts` devuelve `{BUY: id}` aunque
+    // `appendDecision('SELL')` falle, así que el SELL sale con
+    // `decisionId === undefined`. En `recordPublishAttempt` el guardián
+    // `if (attempt.decisionId === undefined) return;` cortaba ANTES de la rama
+    // que avisa: cero warn, cero toast, cero outcome, para un anuncio que sí se
+    // intentó publicar.
+    //
+    // Restricción de diseño que NO se rompe: un fallo del journal no puede
+    // tumbar la publicación. Por eso la respuesta no es abortar, es hablar.
+    // -------------------------------------------------------------------------
+    describe('publicación sin decisión correlacionada', () => {
+      it('publica igual y ADVIERTE: nada se pierde en silencio', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        publisherSvc.enablePublishing({ dryRun: false });
+        mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
+
+        // Sin `decisionIds`: es exactamente lo que pasa cuando el motor no
+        // logró journalizar la decisión.
+        const result = await publisherSvc.publish({
+          buyPrice: 960,
+          sellPrice: 985,
+          strategy: 'TOP_1',
+        });
+
+        // La publicación NO se frena. El aviso no es un fallo del publish.
+        expect(result).toBe(true);
+        expect(mockMcp.testTool).toHaveBeenCalledTimes(2);
+        expect(publisherSvc.successfulPublishesCount()).toBe(1);
+        expect(harness.outcomeInputs).toHaveLength(0);
+
+        // Pero el intento sin auditar queda anunciado, una vez por lado.
+        expect(consoleError).toHaveBeenCalledTimes(2);
+      });
+
+      it('el aviso dice qué lado se publicó y que no quedó registrado', async () => {
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        publisherSvc.enablePublishing({ dryRun: false });
+        mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
+
+        await publisherSvc.publish({
+          buyPrice: 960,
+          sellPrice: 0,
+          strategy: 'TOP_1',
+        });
+
+        const messages = consoleError.mock.calls.map((call) => String(call[0]));
+        // Un log que no dice qué anuncio ni de qué lado es inservible: el
+        // operador recibe uno de estos cada 20 s y tiene que poder actuar.
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatch(/BUY/);
+        expect(messages[0]).toContain('BINANCE-BUY-ADV-01');
+        expect(messages[0]).toMatch(/sin (correlaci|registr)/i);
+      });
+
+      it('el aviso no confunde "sin journal" con un fallo del journal', async () => {
+        // Son dos condiciones distintas y una sola palabra las separa para
+        // quien triaje: acá el journal está sano, lo que falta es la decisión
+        // padre. Que el texto lo diga evita que se investigue la base de datos
+        // cuando el problema es la escritura de la decisión.
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        publisherSvc.enablePublishing({ dryRun: false });
+        mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
+
+        await publisherSvc.publish({
+          buyPrice: 960,
+          sellPrice: 0,
+          strategy: 'TOP_1',
+        });
+
+        const message = String(consoleError.mock.calls[0]?.[0]);
+        expect(message).toMatch(/appendDecision|decisi/i);
+      });
     });
 
     it('un outcome de intento hace la decisión verificable SIN que exista trade', async () => {
@@ -477,8 +759,8 @@ describe('McpAdPublisherService', () => {
       // este cambio de semántica introduce: `verifiedDecisions` va a contar
       // "tiene al menos un intento registrado", NO "tiene un trade realizado".
       const ids = await seedDecisions(['BUY']);
-      publisherSvc.enablePublishing();
-      mockMcp.testTool.mockResolvedValue(mcpAccept);
+      publisherSvc.enablePublishing({ dryRun: false });
+      mockMcp.testTool.mockResolvedValue(mcpMerchantConfirm);
 
       await publisherSvc.publish({
         buyPrice: 960,
