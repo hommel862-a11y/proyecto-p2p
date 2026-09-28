@@ -4,7 +4,7 @@ import {
   filterAntiSpoofingOffers,
   type BankAccountProfile,
 } from './ad-auto-composer.js';
-import type { BinanceP2pMarketDepth } from './repricer.js';
+import type { BinanceP2pMarketDepth } from './binance-p2p.js';
 
 describe('ad-auto-composer domain engine', () => {
   const mockDepth: BinanceP2pMarketDepth = {
