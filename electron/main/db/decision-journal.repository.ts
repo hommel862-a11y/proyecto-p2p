@@ -752,11 +752,6 @@ function countOpenCycles(db: DatabaseSync, filter?: DecisionPerformanceFilter): 
  * is auditable. Notional-weighted mean of the reported spreads; when every reporting
  * outcome filled 0 the weighting is meaningless, so it falls back to the plain mean,
  * as `DecisionPerformanceRow.realizedSpreadPct` documents in core.
- *
- * KNOWN DIVERGENCE: `InMemoryDecisionJournalRepository` implements this fallback as
- * `weighted / reported.length`, which collapses to 0 when the notional is 0 and so
- * contradicts the documented plain mean. Core is out of this change's ownership; the
- * divergence is pinned by the "KNOWN DIVERGENCE" test in the spec and reported.
  */
 function mapPerformanceRow(row: Row): DecisionPerformanceRow {
   const fillCount = num(row, 'fill_count');
