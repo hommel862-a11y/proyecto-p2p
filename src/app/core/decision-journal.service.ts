@@ -31,7 +31,7 @@ import {
  * op at runtime with a `decision_journal:` error, so a drift here fails loudly instead
  * of silently doing nothing.
  */
-type DecisionJournalOp =
+export type DecisionJournalOp =
   | 'appendMarketSnapshot'
   | 'openCycle'
   | 'closeCycle'
@@ -52,9 +52,45 @@ type DecisionJournalOp =
  * domain types applied by this service, and duplicating them in the bridge would create
  * a second source of truth that could drift from core.
  */
-interface DecisionJournalBridge {
+export interface DecisionJournalBridge {
   invoke: (op: DecisionJournalOp, payload?: unknown) => Promise<unknown>;
 }
+
+/**
+ * Which journal the app is really talking to, in a form a consumer can act on.
+ *
+ * The bridge is resolved once, in a field initializer, so this never changes for the
+ * lifetime of the service: it is data, not a state machine, and it is a plain readonly
+ * value rather than a signal because nothing can move it.
+ */
+export interface JournalAvailability {
+  /**
+   * `true` when the app fell back to an in-memory journal because the Electron bridge
+   * was absent. Every call still succeeds, which is precisely the problem: RAM dies
+   * with the process and the operator cannot tell that apart from a persisted read.
+   */
+  readonly degraded: boolean;
+  /**
+   * Why the journal is degraded, in words a human can act on. Empty while healthy: a
+   * healthy journal has nothing to explain.
+   */
+  readonly reason: string;
+}
+
+/**
+ * The degradation reason, in the user's language because it is meant to be SHOWN.
+ * Exported so a UI does not have to re-invent the sentence next to the `true`.
+ */
+export const IN_MEMORY_JOURNAL_REASON =
+  'El puente de Electron no está disponible en este entorno: el journal está en memoria ' +
+  'y todo lo que se registre se pierde al cerrar la aplicación.';
+
+const HEALTHY_JOURNAL: JournalAvailability = Object.freeze({ degraded: false, reason: '' });
+
+const DEGRADED_JOURNAL: JournalAvailability = Object.freeze({
+  degraded: true,
+  reason: IN_MEMORY_JOURNAL_REASON,
+});
 
 /**
  * Renderer-side seam for the Decision Journal.
@@ -71,7 +107,19 @@ interface DecisionJournalBridge {
  */
 @Injectable({ providedIn: 'root' })
 export class DecisionJournalService {
-  private readonly bridge: DecisionJournalBridge = resolveJournalBridge();
+  // Field initializers run in declaration order, so `resolved` comes first: the bridge
+  // and the availability below are two views of that one decision, not two decisions.
+  private readonly resolved = resolveJournalBridge();
+  private readonly bridge: DecisionJournalBridge = this.resolved.bridge;
+
+  /**
+   * Whether the app is persisting to SQLite or answering from RAM.
+   *
+   * Exposed because the fallback is silent otherwise: a `console.warn` nobody reads
+   * leaves the UI rendering decisions as persisted while they live in a store that
+   * dies with the process. A consumer that shows real state has to be able to ask.
+   */
+  readonly availability: JournalAvailability = this.resolved.availability;
 
   // --- writes -----------------------------------------------------------------
 
@@ -252,17 +300,15 @@ export class DecisionJournalService {
 }
 
 /**
- * Resolves the bridge from the preload API, asserting the one member `ElectronAPI` does
- * not declare.
+ * The in-memory journal, used when the Electron bridge is absent: the web build, and
+ * every runtime that never ran the preload.
  *
- * `electron/shared/types.ts` is outside this change's ownership, so `decisionJournal`
- * cannot be added to the shared `ElectronAPI` type. Rather than sprinkling `as any`
- * through the app, the missing member is asserted ONCE here, at the seam, and
- * everything downstream keeps real types. `ElectronAPI` itself is left untouched, so no
- * other consumer is affected.
- *
- * A missing bridge throws rather than degrading to a no-op: a journal that cannot write
- * must not look like a journal that decided not to.
+ * It is a real implementation and not a no-op — every read and every write succeeds —
+ * which is exactly why the degradation has to be REPORTED instead of thrown. A caller
+ * that cannot tell this apart from the SQLite bridge reads a tidy summary of rows that
+ * will be gone with the process, and a journal that cannot write ends up looking like a
+ * journal that decided not to write. `resolveJournalBridge` pairs this bridge with
+ * {@link JournalAvailability} so that difference is visible to whoever renders state.
  */
 function createInMemoryBridge(): DecisionJournalBridge {
   const repo = new InMemoryDecisionJournalRepository();
@@ -304,7 +350,28 @@ function createInMemoryBridge(): DecisionJournalBridge {
   };
 }
 
-function resolveJournalBridge(): DecisionJournalBridge {
+/**
+ * Resolves the bridge from the preload API, asserting the one member `ElectronAPI` does
+ * not declare.
+ *
+ * `electron/shared/types.ts` is outside this change's ownership, so `decisionJournal`
+ * cannot be added to the shared `ElectronAPI` type. Rather than sprinkling `as any`
+ * through the app, the missing member is asserted ONCE here, at the seam, and
+ * everything downstream keeps real types. `ElectronAPI` itself is left untouched, so no
+ * other consumer is affected.
+ *
+ * A missing bridge does NOT throw. Throwing here took the whole terminal down over one
+ * optional data source, and the operator lost the panel he already had open — losing a
+ * data source must never cost the message that reports on the others. It degrades to an
+ * in-memory journal and DECLARES it: the fallback returns `availability.degraded` with
+ * a reason, so a journal that cannot persist can never be mistaken for a journal that
+ * decided not to write. The `console.warn` below is only the echo of that declaration —
+ * it was the only report before, and a log line nobody reads is not a report.
+ */
+function resolveJournalBridge(): {
+  bridge: DecisionJournalBridge;
+  availability: JournalAvailability;
+} {
   const host = globalThis as {
     electron?: { decisionJournal?: unknown };
     p2p?: { decisionJournal?: unknown };
@@ -316,13 +383,13 @@ function resolveJournalBridge(): DecisionJournalBridge {
     candidate !== null &&
     typeof (candidate as DecisionJournalBridge).invoke === 'function'
   ) {
-    return candidate as DecisionJournalBridge;
+    return { bridge: candidate as DecisionJournalBridge, availability: HEALTHY_JOURNAL };
   }
 
   console.warn(
     '[DecisionJournalService] Bridge de Electron no disponible en este entorno; utilizando almacén en memoria.',
   );
-  return createInMemoryBridge();
+  return { bridge: createInMemoryBridge(), availability: DEGRADED_JOURNAL };
 }
 
 /**

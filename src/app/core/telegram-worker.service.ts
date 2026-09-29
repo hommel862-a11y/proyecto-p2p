@@ -63,6 +63,33 @@ function injectDecisionJournalIfAvailable(): DecisionJournalService | null {
   }
 }
 
+/**
+ * ¿Este resumen se puede imprimir sin que el panel mienta?
+ *
+ * `verificationRate` y `staleRate` los divide el repositorio, y una división sin
+ * denominador da `NaN`. Los dos adaptadores que existen hoy lo evitan, pero el valor
+ * cruza el IPC como `unknown`: acá no alcanza con confiar en que el otro lado tuvo
+ * cuidado. Un resumen que no se puede imprimir se trata como una lectura fallida —"no
+ * disponible"— en vez de dejar que el operador lea un porcentaje que no significa nada.
+ *
+ * Un journal con 0 decisiones SÍ pasa: el formateador tiene su propio texto para eso y
+ * no imprime ninguna cifra, así que no hay nada que proteger.
+ */
+function isPrintableAudit(summary: VerificationSummary | null | undefined): summary is VerificationSummary {
+  if (summary === null || typeof summary !== 'object') return false;
+
+  const total = summary.totalDecisions;
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) return true;
+
+  return (
+    typeof summary.verifiedDecisions === 'number' &&
+    Number.isFinite(summary.verifiedDecisions) &&
+    summary.verifiedDecisions >= 0 &&
+    typeof summary.verificationRate === 'number' &&
+    Number.isFinite(summary.verificationRate)
+  );
+}
+
 export interface TelegramConfig {
   botToken: string;
   chatId: string;
@@ -1228,14 +1255,24 @@ export class TelegramWorkerService implements OnDestroy {
   /**
    * Lee la auditoría del journal sin dejar que un fallo tumbe el panel.
    *
-   * Un journal que no responde es un dato ausente, no un panel roto: se devuelve
-   * `null` y la línea del panel dice "no disponible". Un journal vacío es otra
-   * cosa — trae su propio resumen y el formateador lo distingue.
+   * `null` es "no hay nada que afirmar acá" y el formateador lo dice con "no
+   * disponible". Llega por tres caminos distintos, y todos significan lo mismo para el
+   * operador: en este runtime no hay journal, la lectura falló, o el journal está
+   * DEGRADADO a memoria.
+   *
+   * El caso degradado es el que este método existe para: un journal en RAM responde TODAS las
+   * consultas con éxito, así que sin esta comprobación el panel pintaría las cifras de
+   * un almacén que muere con el proceso como si fueran el registro persistido. Perder
+   * un dato opcional no puede romper el panel, pero sí puede —y debe— declararse.
+   *
+   * Un journal vacío es otra cosa: trae su propio resumen y el formateador lo distingue.
    */
   private async readJournalAudit(): Promise<VerificationSummary | null> {
     if (!this.journal) return null;
+    if (this.journal.availability.degraded) return null;
     try {
-      return await this.journal.getVerificationSummary();
+      const summary = await this.journal.getVerificationSummary();
+      return isPrintableAudit(summary) ? summary : null;
     } catch {
       return null;
     }

@@ -288,7 +288,13 @@ describe('TelegramWorkerService', () => {
     TestBed.configureTestingModule({
       providers: [
         ...workerProviders(),
-        { provide: DecisionJournalService, useValue: { getVerificationSummary } },
+        {
+          provide: DecisionJournalService,
+          // El doble implementa el contrato completo del facade, `availability`
+          // incluida: un journal que escribe en SQLite NO está degradado, y el worker
+          // lee ese estado antes de pintar cifras.
+          useValue: { availability: { degraded: false, reason: '' }, getVerificationSummary },
+        },
       ],
     });
 
@@ -1149,6 +1155,25 @@ describe('TelegramWorkerService', () => {
 
       const text = editedPlain(editSpy);
       expect(text).toContain('sin decisiones registradas');
+      expect(text).not.toMatch(/0\/0|NaN|Infinity/);
+    });
+
+    it('refuses a summary whose rate the repository could not divide', async () => {
+      // `verifiedDecisions / totalDecisions` con un denominador que disappeared llega
+      // como NaN por un IPC que no tipa nada. Imprimirlo sería un porcentaje inventado.
+      getVerificationSummary.mockResolvedValue({
+        ...JOURNAL_SUMMARY,
+        verificationRate: Number.NaN,
+      });
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const editSpy = vi
+        .spyOn(panelInternals(), 'editTelegramMessage')
+        .mockResolvedValue('EDITED');
+
+      await processIncoming(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+      const text = editedPlain(editSpy);
+      expect(text).toContain('no disponible');
       expect(text).not.toMatch(/0\/0|NaN|Infinity/);
     });
 

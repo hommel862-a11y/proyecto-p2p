@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { DecisionJournalService } from './decision-journal.service';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
 import {
   InMemoryDecisionJournalRepository,
   type CloseDecisionCycleInput,
@@ -341,5 +341,86 @@ describe('DecisionJournalService — cycle close and self-audit', () => {
       expect(audit.sides[0]?.decisions).toBe(0);
       expect(harness.ops()).toEqual(expect.arrayContaining(['getDecisionPerformance', 'getVerificationSummary']));
     });
+  });
+});
+
+/**
+ * The bridge is resolved in a field initializer, so these specs build the service by
+ * hand with the host it will find. That is not a shortcut: `resolveJournalBridge` reads
+ * `globalThis.p2p` / `globalThis.electron` exactly once, and the only way to observe
+ * which of the two it picked is to control the host before construction.
+ */
+describe('DecisionJournalService — journal availability', () => {
+  interface JournalHost {
+    p2p?: { decisionJournal?: unknown };
+    electron?: { decisionJournal?: unknown };
+  }
+
+  const host = globalThis as JournalHost;
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    delete host.p2p;
+    delete host.electron;
+    // The degradation still logs; silencing it keeps the failure output readable and
+    // lets the test assert the console path separately.
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    delete host.p2p;
+    delete host.electron;
+    warn.mockRestore();
+  });
+
+  it('declares itself degraded, with a reason, when no bridge is present', () => {
+    const journal = new DecisionJournalService();
+
+    expect(journal.availability.degraded).toBe(true);
+    expect(journal.availability.reason).toBe(IN_MEMORY_JOURNAL_REASON);
+    // The console line is the echo of that declaration, not the declaration itself.
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('degrades without taking the caller down: reads still answer', async () => {
+    const journal = new DecisionJournalService();
+
+    // A degraded journal that threw would take the terminal down over an optional data
+    // source. A degraded journal that reads as "empty" is a journal that looks like it
+    // decided not to write. It has to keep answering, AND say it is answering from RAM.
+    const summary = await journal.getVerificationSummary();
+
+    expect(journal.availability.degraded).toBe(true);
+    expect(summary.totalDecisions).toBe(0);
+  });
+
+  it('does not report degraded when the real Electron bridge is in use', () => {
+    installJournalBridge(async () => ({}));
+
+    const journal = new DecisionJournalService();
+
+    expect(journal.availability.degraded).toBe(false);
+    // Healthy has nothing to explain: an empty reason is the honest value here.
+    expect(journal.availability.reason).toBe('');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reads through the real bridge, not through the in-memory fallback', async () => {
+    installJournalBridge(async () => ({
+      totalDecisions: 7,
+      verifiedDecisions: 3,
+      verificationRate: 3 / 7,
+      staleDecisions: 0,
+      staleRate: 0,
+      openCycles: 0,
+      decisionsAwaitingOutcome: 4,
+    }));
+
+    const journal = new DecisionJournalService();
+
+    // Same numbers the bridge returned: a service that quietly swapped in its own store
+    // would report its own empty journal and call it persistence.
+    await expect(journal.getVerificationSummary()).resolves.toMatchObject({ totalDecisions: 7 });
+    expect(journal.availability.degraded).toBe(false);
   });
 });
