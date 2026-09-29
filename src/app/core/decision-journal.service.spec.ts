@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
+import { DecisionJournalService } from './decision-journal.service';
 import {
   InMemoryDecisionJournalRepository,
   type CloseDecisionCycleInput,
@@ -98,7 +98,7 @@ function createJournalHarness(): JournalHarness {
   });
 
   // The bridge must exist BEFORE the service is built: it is resolved in a field
-  // initializer and throws when missing.
+  // initializer, so there is no seam to install it after construction.
   return { journal: new DecisionJournalService(), repo, ops: () => ops };
 }
 
@@ -377,9 +377,57 @@ describe('DecisionJournalService — journal availability', () => {
     const journal = new DecisionJournalService();
 
     expect(journal.availability.degraded).toBe(true);
-    expect(journal.availability.reason).toBe(IN_MEMORY_JOURNAL_REASON);
+    // The SUBSTANCE of the reason is the assertion, not its identity: this string is
+    // printed to the operator, so comparing it against the constant it is assigned would
+    // only ever catch `''`. What has to survive any rewording is BOTH halves of the
+    // warning — the records live in memory, and they are lost on exit — because a
+    // sentence with only one of the two still leaves the operator not knowing that his
+    // trading log is being thrown away.
+    const reason = journal.availability.reason;
+    expect(reason).not.toBe('');
+    expect(reason).toMatch(/memoria/i);
+    expect(reason).toMatch(/se pierde/i);
+    expect(reason).toMatch(/cerrar|salir/i);
     // The console line is the echo of that declaration, not the declaration itself.
     expect(warn).toHaveBeenCalled();
+  });
+
+  it('stays degraded after a successful write, instead of healing itself', async () => {
+    const journal = new DecisionJournalService();
+    const reasonBefore = journal.availability.reason;
+
+    // The dangerous shape is a service that "recovers" once a write lands: the write
+    // SUCCEEDS against RAM, and a journal that then reports itself healthy is the exact
+    // lie this availability exists to prevent. A degradation is a property of the
+    // runtime, not of whether the last call happened to work.
+    const cycle = await journal.openCycle({ origin: 'OPERATOR', capitalReservedUsdt: 500 });
+    const snapshot = await journal.appendMarketSnapshot({
+      obi: 0.25,
+      bidUsd: 0.0092,
+      askUsd: 0.0094,
+      nBids: 8,
+      nAsks: 6,
+      stale: false,
+      fetchedAt: NOW,
+    });
+    const decision = await journal.appendDecision({
+      cycleId: cycle.id,
+      snapshotId: snapshot.id,
+      side: 'BUY',
+      decisionPrice: 385.5,
+      origin: 'AUTO_ENGINE',
+      executionMode: 'READ_ONLY',
+      action: 'UPDATE',
+      modeledSpreadPct: 1.2,
+      reason: 'Repriced to hold Top 1',
+    });
+
+    // The write really landed in the RAM store — the journal is not broken, it is volatile.
+    await expect(journal.getDecision(decision.id)).resolves.not.toBeNull();
+    await expect(journal.getVerificationSummary()).resolves.toMatchObject({ totalDecisions: 1 });
+    // ...and it is still, and still says, degraded — same reason, not a fresh one.
+    expect(journal.availability.degraded).toBe(true);
+    expect(journal.availability.reason).toBe(reasonBefore);
   });
 
   it('degrades without taking the caller down: reads still answer', async () => {

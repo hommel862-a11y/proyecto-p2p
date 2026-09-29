@@ -42,35 +42,23 @@ import {
   type VerificationSummary,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
-import { DecisionJournalService } from './decision-journal.service';
-
-/**
- * Resuelve el facade del journal SOLO si se puede construir.
- *
- * `DecisionJournalService` lanza en su constructor cuando el preload de Electron no
- * registró el bridge — exactamente lo que pasa en el build web. Pedirlo a ciegas
- * desde un field initializer tumbaría el worker completo, y con él el panel que el
- * operador está mirando, todo por un dato opcional.
- *
- * `null` es una respuesta definitiva ("en este runtime no hay journal"), no un
- * estado a reintentar en cada refresco: se decide una vez, al construir el worker.
- */
-function injectDecisionJournalIfAvailable(): DecisionJournalService | null {
-  try {
-    return inject(DecisionJournalService);
-  } catch {
-    return null;
-  }
-}
+import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
 
 /**
  * ¿Este resumen se puede imprimir sin que el panel mienta?
  *
- * `verificationRate` y `staleRate` los divide el repositorio, y una división sin
- * denominador da `NaN`. Los dos adaptadores que existen hoy lo evitan, pero el valor
- * cruza el IPC como `unknown`: acá no alcanza con confiar en que el otro lado tuvo
- * cuidado. Un resumen que no se puede imprimir se trata como una lectura fallida —"no
- * disponible"— en vez de dejar que el operador lea un porcentaje que no significa nada.
+ * `verificationRate` —la tasa que divide el repositorio— llega como `unknown` desde el
+ * IPC, y una división sin denominador da `NaN`. Los dos adaptadores que existen hoy lo
+ * evitan, pero acá no alcanza con confiar en que el otro lado tuvo cuidado. Un resumen
+ * que no se puede imprimir se trata como una lectura fallida —"no disponible"— en vez
+ * de dejar que el operador lea un porcentaje que no significa nada.
+ *
+ * `staleRate` NO se inspecciona acá, y es deliberado: el formateador la cubre una capa
+ * más abajo, donde una tasa no finita se imprime como `n/d` en vez de como `NaN`
+ * (`formatMetric`, telegram-sentinel.ts:344-347, usado por la rama de libro viejo de
+ * `formatJournalAuditLine`). Exigirla acá tiraría el panel entero —con los conteos y la
+ * tasa de verificación, que SÍ son reales— por un `n/d` que el formateador ya sabe
+ * declarar solo.
  *
  * Un journal con 0 decisiones SÍ pasa: el formateador tiene su propio texto para eso y
  * no imprime ninguna cifra, así que no hay nada que proteger.
@@ -348,8 +336,21 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly accounts = inject(AccountsService);
   private readonly cotizave = inject(CotizaveService);
   private readonly marketHistory = inject(MarketHistoryService);
-  /** `null` en el build web: no hay bridge, y el panel lo declara. */
-  private readonly journal = injectDecisionJournalIfAvailable();
+  /**
+   * El journal, o `null` si el token no está cableado.
+   *
+   * Esto era un `try { inject(...) } catch { null }` y el `catch` mentía: `DecisionJournalService`
+   * es `providedIn: 'root'`, así que pedirlo nunca falla por falta de bridge — un bridge
+   * ausente se resuelve ADENTRO del servicio, que degrada a memoria y lo DECLARA en
+   * `availability`. La razón del `catch` dejó de ser cierta en `e39ee8c`, y un `catch`
+   * que se justifica con una razón imposible es peor que ningún `catch`: seguiría
+   * tragándose un fallo de construcción real, que sí es un bug y merece verse.
+   *
+   * `null` significa una sola cosa ahora: nadie proveyó el token, y no hay journal que
+   * leer. El build web NO llega acá: llega con un service degradado, que es el caso que
+   * el panel tiene que declarar en vez de esconder.
+   */
+  private readonly journal = inject(DecisionJournalService, { optional: true });
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
@@ -765,8 +766,10 @@ export class TelegramWorkerService implements OnDestroy {
           : 'PENDIENTE';
         // La auditoría se formatea con el MISMO formateador puro del panel: el
         // worker no compone texto de auditoría por su cuenta, así que /panel y
-        // /status no pueden divergir en el rótulo ni en el escapado.
-        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\n${formatJournalAuditLine(journalAudit)}\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}`;
+        // /status no pueden divergir en el rótulo ni en el escapado. El aviso de
+        // journal degradado NO es texto de auditoría, va aparte y también es el
+        // mismo en las dos superficies: acá y en el panel.
+        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\n${formatJournalAuditLine(journalAudit)}\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}${this.journalDegradedNotice()}`;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
         break;
@@ -1256,14 +1259,18 @@ export class TelegramWorkerService implements OnDestroy {
    * Lee la auditoría del journal sin dejar que un fallo tumbe el panel.
    *
    * `null` es "no hay nada que afirmar acá" y el formateador lo dice con "no
-   * disponible". Llega por tres caminos distintos, y todos significan lo mismo para el
-   * operador: en este runtime no hay journal, la lectura falló, o el journal está
-   * DEGRADADO a memoria.
+   * disponible". Llega por tres caminos distintos, y este método los cubre a los
+   * tres por la misma razón: en ningún caso pinta cifras.
    *
-   * El caso degradado es el que este método existe para: un journal en RAM responde TODAS las
+   * El caso degradado es el que más importa acá: un journal en RAM responde TODAS las
    * consultas con éxito, así que sin esta comprobación el panel pintaría las cifras de
-   * un almacén que muere con el proceso como si fueran el registro persistido. Perder
-   * un dato opcional no puede romper el panel, pero sí puede —y debe— declararse.
+   * un almacén que muere con el proceso como si fueran el registro persistido.
+   *
+   * OJO con lo que este método NO hace: ocultar las cifras no es declarar la causa.
+   * "No disponible" y "todo lo que registres se pierde al salir" se leen igual de
+   * propósito para el operador, y confundirlos es el hueco que dejó el commit que
+   * degrada en silencio. Por eso tapar las cifras (acá) y nombrarlas
+   * (`journalDegradedNotice`) están separados: uno protege las cifras, el otro explica.
    *
    * Un journal vacío es otra cosa: trae su propio resumen y el formateador lo distingue.
    */
@@ -1276,6 +1283,28 @@ export class TelegramWorkerService implements OnDestroy {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * La línea que le dice al operador que sus registros se están tirando.
+   *
+   * Sale del mismo warning que ya separa el libro viejo de la lectura fresca: acá lo
+   * que se separa es "no hay nada que leer" de "lo que leas no va a estar mañana".
+   *
+   * Devuelve `''` (no un bloque condicional) para poder concatenarla siempre: la
+   * presencia del aviso la decide `availability`, y el texto es el que declaró el
+   * servicio, textual. Lo único que este worker agrega es la etiqueta —con qué marca
+   * se dice—, porque la frase es del service: quién lo dice es decisión de la capa de
+   * presentación, qué es cierto no lo es.
+   *
+   * `IN_MEMORY_JOURNAL_REASON` es el piso, no una segunda copia: un journal degradado
+   * con razón vacía imprimiría un aviso vacío, que es exactamente el silencio que esto
+   * reemplaza.
+   */
+  private journalDegradedNotice(): string {
+    const availability = this.journal?.availability;
+    if (!availability?.degraded) return '';
+    return `\n\n⚠️ *Journal de decisiones:* ${escapeMarkdownV2(availability.reason || IN_MEMORY_JOURNAL_REASON)}`;
   }
 
   /**
@@ -1332,7 +1361,10 @@ export class TelegramWorkerService implements OnDestroy {
     messageId: number | null,
   ): Promise<TelegramEditOutcome | 'SENT'> {
     const report = await this.buildPanelReport();
-    const text = formatPanelTelegramMessage(report);
+    // El aviso va pegado al cuerpo del panel, no dentro de él: el formateador puro es
+    // el dueño del panel y no se le mete texto encima. Encadenarlo lo deja entero, y el
+    // formateador no necesita saber que existe esta situación.
+    const text = `${formatPanelTelegramMessage(report)}${this.journalDegradedNotice()}`;
     const keyboard = buildPanelKeyboard();
 
     if (messageId === null) {

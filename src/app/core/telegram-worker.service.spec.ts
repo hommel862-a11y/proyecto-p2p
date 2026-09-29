@@ -257,6 +257,20 @@ function resetSharedMocks(): void {
   getVerificationSummary = vi.fn(async () => JOURNAL_SUMMARY);
 }
 
+/**
+ * Borra los DOS hosts que `resolveJournalBridge` mira, no solo `electron`.
+ *
+ * `resolveJournalBridge` consulta `globalThis.p2p` ANTES que `globalThis.electron`
+ * (decision-journal.service.ts:379), así que borrar únicamente `electron` deja vivo
+ * cualquier `p2p` que otro spec haya instalado: este archivo terminaría probando el
+ * bridge de otro suite, y el caso "build web" dejaría de ser el build web. Los dos se
+ * borran juntos y en cada setup, no por cortesía: es lo que hace el test hermético.
+ */
+function clearJournalHosts(): void {
+  delete (window as unknown as Record<string, unknown>)['electron'];
+  delete (globalThis as { p2p?: unknown }).p2p;
+}
+
 describe('TelegramWorkerService', () => {
   let svc: TelegramWorkerService;
 
@@ -281,7 +295,7 @@ describe('TelegramWorkerService', () => {
     toast.error.mockReset();
     toast.warn.mockReset();
 
-    delete (window as unknown as Record<string, unknown>)['electron'];
+    clearJournalHosts();
 
     resetSharedMocks();
 
@@ -305,7 +319,7 @@ describe('TelegramWorkerService', () => {
 
   afterEach(() => {
     svc?.stopPolling();
-    delete (window as unknown as Record<string, unknown>)['electron'];
+    clearJournalHosts();
     vi.unstubAllGlobals();
     TestBed.resetTestingModule();
   });
@@ -1638,7 +1652,7 @@ describe('TelegramWorkerService', () => {
     });
 
     it('BACKTEST_EXECUTE explains itself when no desktop bridge exists', async () => {
-      delete (window as unknown as Record<string, unknown>)['electron'];
+      clearJournalHosts();
       vi.spyOn(internals(), 'answerCallbackQuery').mockResolvedValue(true);
       const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
 
@@ -1653,9 +1667,11 @@ describe('TelegramWorkerService', () => {
 /**
  * Es un `describe` TOP-LEVEL a propósito, no uno anidado.
  *
- * `DecisionJournalService` lanza en su constructor cuando el preload no expone el
- * bridge: eso es el build web, y el worker no puede caer por un dato opcional. Omitir
- * el provider reproduce la situación exacta.
+ * Este es el camino REAL de la degradación: sin bridge, el service se construye igual
+ * (no lanza —eso dejó de pasar en `e39ee8c`), cae a memoria y lo declara en
+ * `availability`. Omitir el provider deja que se use el `providedIn: 'root'` del
+ * service, que es exactamente el service del build web, y borrar los dos hosts antes de
+ * armarlo es lo que garantiza eso en vez de dejarlo en manos del orden de los tests.
  *
  * Vive aparte porque armar este TestBed DENTRO del describe principal obliga a
  * reconfigurar uno ya instanciado: el worker que quedó a medias sigue teniendo un
@@ -1677,6 +1693,9 @@ describe('TelegramWorkerService sin puente de journal (build web)', () => {
   let browserSvc: TelegramWorkerService;
 
   beforeEach(async () => {
+    // Los dos hosts, antes de construir: este describe vale porque el service real
+    // cae a memoria por sí mismo, y eso solo es cierto si no hay bridge.
+    clearJournalHosts();
     resetSharedMocks();
     TestBed.configureTestingModule({ providers: workerProviders() });
 
@@ -1688,7 +1707,7 @@ describe('TelegramWorkerService sin puente de journal (build web)', () => {
 
   afterEach(() => {
     browserSvc.stopPolling();
-    delete (window as unknown as Record<string, unknown>)['electron'];
+    clearJournalHosts();
     vi.unstubAllGlobals();
     TestBed.resetTestingModule();
   });
@@ -1715,5 +1734,155 @@ describe('TelegramWorkerService sin puente de journal (build web)', () => {
     expect(text).toContain('PANEL DEL TERMINAL');
     expect(text).toContain('no disponible');
     expect(text).not.toMatch(/0\/0|NaN|Infinity/);
+  });
+
+  it('tells the operator the records are in memory and die on exit', async () => {
+    // "No disponible" solo dice que no hay nada que leer. El operador tiene que
+    // distinguir ESO de "lo que registres ahora se pierde al cerrar", porque son
+    // consecuencias opuestas: la primera no le cuesta nada, la segunda le cuesta la
+    // auditoría de cada decisión de trading de la sesión. Este es el test que falla si
+    // alguien saca el aviso, porque el resto del panel sigue viéndose perfecto.
+    const editSpy = vi
+      .spyOn(browserSvc as unknown as EditApi, 'editTelegramMessage')
+      .mockResolvedValue('EDITED');
+
+    await (
+      browserSvc as unknown as {
+        processIncomingUpdate: (
+          update: TelegramInboundUpdate,
+          token: string,
+          authorizedChatId: string,
+        ) => Promise<void>;
+      }
+    ).processIncomingUpdate(callbackUpdate('PANEL_REFRESH'), TOKEN, String(CHAT_ID));
+
+    const call = editSpy.mock.calls[0] as unknown as [string, number, number, string];
+    const text = (call[3] ?? '').replace(/\\/g, '');
+    // La razón la declara el service real (sin bridge → IN_MEMORY_JOURNAL_REASON), y
+    // el panel tiene que mostrarla: memoria + pérdida al salir son las dos hechos que
+    // la hacen distinta de un "no disponible" de fábrica.
+    expect(text).toMatch(/memoria/i);
+    expect(text).toMatch(/se pierde al cerrar|al cerrar la aplicación/i);
+  });
+});
+
+/**
+ * Journal degradado DICHA por el doble, sin pasar por el build web.
+ *
+ * El describe de arriba cubre la degradación por la vía real, pero esa vía depende de
+ * que nada instale un bridge. Acá la degradación se declara explícitamente, así que el
+ * aviso del panel queda cubierto contra la mitad del contrato que de verdad importa: la
+ * razón la elige quien DECLARA la degradación, y el worker tiene que mostrarla tal cual
+ * en vez de quedarse con la etiqueta.
+ *
+ * Top-level y aparte por el mismo motivo que los otros dos: un TestBed más dentro del
+ * describe principal reinstancia el compartido y rompe los specs que corran después.
+ */
+describe('TelegramWorkerService con journal degradado declarado', () => {
+  interface DegradedEditApi {
+    editTelegramMessage: (
+      token: string,
+      chatId: number | string,
+      messageId: number,
+      text: string,
+      keyboard?: TelegramInlineKeyboardMarkup,
+    ) => Promise<'EDITED'>;
+  }
+
+  /**
+   * Razón propia del test, a propósito: si se usara `IN_MEMORY_JOURNAL_REASON`, el
+   * assert de abajo solo probaría que el panel se copia a sí mismo. Con una frase
+   * distinta, probaría lo que tiene que probar — que se muestra la razón DECLARADA.
+   */
+  const DECLARED_REASON = 'el journal está en memoria y se pierde al salir';
+
+  let degradedSvc: TelegramWorkerService;
+
+  function processOn(
+    svc: TelegramWorkerService,
+    update: TelegramInboundUpdate,
+  ): Promise<void> {
+    return (
+      svc as unknown as {
+        processIncomingUpdate: (
+          update: TelegramInboundUpdate,
+          token: string,
+          authorizedChatId: string,
+        ) => Promise<void>;
+      }
+    ).processIncomingUpdate(update, TOKEN, String(CHAT_ID));
+  }
+
+  beforeEach(async () => {
+    clearJournalHosts();
+    resetSharedMocks();
+    TestBed.configureTestingModule({
+      providers: [
+        ...workerProviders(),
+        {
+          provide: DecisionJournalService,
+          // `degraded: true` con cifras disponibles detrás: el resumen en RAM existe y
+          // responde, y el panel tiene que ignorarlo igual.
+          useValue: {
+            availability: { degraded: true, reason: DECLARED_REASON },
+            getVerificationSummary,
+          },
+        },
+      ],
+    });
+
+    degradedSvc = TestBed.inject(TelegramWorkerService);
+    await vi.waitFor(() => expect(degradedSvc.config()).toBeDefined());
+  });
+
+  afterEach(() => {
+    degradedSvc.stopPolling();
+    clearJournalHosts();
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  /** Texto editado con los escapes de MarkdownV2 quitados. */
+  function editedPlain(spy: ReturnType<typeof vi.spyOn>, index = 0): string {
+    const call = spy.mock.calls[index] as unknown as [string, number, number, string];
+    return (call[3] ?? '').replace(/\\/g, '');
+  }
+
+  it('shows the declared reason, not a generic "no disponible"', async () => {
+    const editSpy = vi
+      .spyOn(degradedSvc as unknown as DegradedEditApi, 'editTelegramMessage')
+      .mockResolvedValue('EDITED');
+
+    await processOn(degradedSvc, callbackUpdate('PANEL_REFRESH'));
+
+    const text = editedPlain(editSpy);
+    expect(text).toContain(DECLARED_REASON);
+    // "No disponible" sigue estando: la línea de auditoría no puede inventar cifras. Lo
+    // que cambia es que ya no es la ÚNICA cosa que el operador sabe.
+    expect(text).toContain('no disponible');
+  });
+
+  it('never paints a degraded journal as a persisted audit', async () => {
+    const editSpy = vi
+      .spyOn(degradedSvc as unknown as DegradedEditApi, 'editTelegramMessage')
+      .mockResolvedValue('EDITED');
+
+    await processOn(degradedSvc, callbackUpdate('PANEL_REFRESH'));
+
+    // Un journal en RAM no se consulta siquiera: preguntar y descartar después sería
+    // dejar la tentación de imprimirlas a un cambio de línea de distancia.
+    expect(getVerificationSummary).not.toHaveBeenCalled();
+    const text = editedPlain(editSpy);
+    expect(text).not.toContain('12/1042');
+    expect(text).not.toMatch(/0\/0|NaN|Infinity/);
+  });
+
+  it('carries the same warning in /status, not only in the panel', async () => {
+    const sendSpy = vi.spyOn(degradedSvc, 'sendTelegramMessage').mockResolvedValue(true);
+
+    await processOn(degradedSvc, commandMessage('/status'));
+
+    const call = sendSpy.mock.calls[0] as unknown as [string, string, string];
+    expect((call[2] ?? '').replace(/\\/g, '')).toContain(DECLARED_REASON);
   });
 });

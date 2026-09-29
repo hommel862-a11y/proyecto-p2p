@@ -79,7 +79,15 @@ export interface JournalAvailability {
 
 /**
  * The degradation reason, in the user's language because it is meant to be SHOWN.
- * Exported so a UI does not have to re-invent the sentence next to the `true`.
+ *
+ * `TelegramWorkerService` renders this verbatim in its panel and `/status`, as the one
+ * line that separates "there is no audit to read" from "everything you record from now
+ * on dies with the process". That is why the sentence lives HERE and is exported: the
+ * worker decides WHERE to say it, this owns WHAT is true about it.
+ *
+ * Two facts are load-bearing and a rewording must keep both, because the whole point of
+ * declaring the fallback is that the operator is losing records: the journal is IN
+ * MEMORY, and what it holds is LOST ON EXIT.
  */
 export const IN_MEMORY_JOURNAL_REASON =
   'El puente de Electron no está disponible en este entorno: el journal está en memoria ' +
