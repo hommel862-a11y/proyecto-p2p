@@ -28,7 +28,11 @@ export function clampAtLeast(v: number, floor: number): number {
 export function roundMoney(v: number, decimals = 2): number {
   if (!Number.isFinite(v)) return 0;
   const factor = 10 ** Math.max(0, Math.floor(decimals));
-  return Math.round((v + Number.EPSILON) * factor) / factor;
+  const rounded = Math.round((v + Number.EPSILON) * factor) / factor;
+  // Rounding a small negative produces -0, which is mathematically zero but compares
+  // unequal to 0 under Object.is and reads as a defect in financial output. Normalize it
+  // to the canonical 0 so a "no edge" margin never carries a sign it does not have.
+  return rounded === 0 ? 0 : rounded;
 }
 
 /**

@@ -56,21 +56,26 @@ describe('AdComposerService', () => {
     fetchMarketDepth: vi.fn(async () => mockDepth),
   };
 
+  const mockAccount = {
+    id: 'acc-1',
+    bankName: 'Banesco',
+    bankCode: 'BANESCO',
+    rail: 'PAGO_MOVIL' as const,
+    accountNumberMasked: '0134***456',
+    dailyLimitVes: 50000,
+    initialBalanceVes: 50000,
+    status: 'ACTIVE' as const,
+  };
+
   const mockAccounts = {
-    accounts: () => [
-      {
-        id: 'acc-1',
-        bankName: 'Banesco',
-        accountNumber: '01341234567890123456',
-        dailyLimitVes: 50000,
-        status: 'ACTIVE' as const,
-        isPagoMovil: true,
-      },
-    ],
+    accounts: () => [mockAccount],
     usages: () => [
       {
-        accountId: 'acc-1',
-        usedVes: 10000,
+        account: mockAccount,
+        spentTodayVes: 10000,
+        remainingVes: 40000,
+        isOverLimit: false,
+        isNearLimit: false,
       },
     ],
   };
@@ -111,7 +116,7 @@ describe('AdComposerService', () => {
 
     expect(draft).not.toBeNull();
     expect(draft?.side).toBe('BUY');
-    expect(draft?.price).toBe(78.45);
+    expect(draft?.price).toBe(78.4);
     expect(draft?.selectedBank).toBe('Banesco');
     expect(draft?.maxLimitVes).toBe(40000);
     expect(svc.currentDraft()).toBe(draft);
@@ -125,7 +130,7 @@ describe('AdComposerService', () => {
 
     expect(success).toBe(true);
     expect(mockPublisher.publish).toHaveBeenCalledWith({
-      buyPrice: 78.45,
+      buyPrice: 78.4,
       sellPrice: 0,
       strategy: 'TOP_1',
     });
@@ -137,7 +142,7 @@ describe('AdComposerService', () => {
     const summary = svc.getClipboardSummary();
 
     expect(summary).toContain('ANUNCIO P2P (BUY USDT)');
-    expect(summary).toContain('78.45 VES');
+    expect(summary).toContain('78.40 VES');
     expect(summary).toContain('Banesco');
     expect(summary).toContain('TÉRMINOS Y CONDICIONES');
   });

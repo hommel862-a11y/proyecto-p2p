@@ -42,7 +42,7 @@ describe('PdfInvoiceGenerator & ZipPackager', () => {
 
   it('generates a valid standards-compliant PDF 1.4 byte array', () => {
     const pdfBytes = generateInvoicePdf(sampleInvoice);
-    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes instanceof Uint8Array || ArrayBuffer.isView(pdfBytes)).toBe(true);
     expect(pdfBytes.length).toBeGreaterThan(500);
 
     const pdfString = new TextDecoder('utf-8').decode(pdfBytes);

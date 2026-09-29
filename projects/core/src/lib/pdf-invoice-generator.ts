@@ -295,7 +295,7 @@ export function generateInvoicePdf(invoice: GeneratedInvoice): Uint8Array {
 
   pdfOutput += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
-  return new TextEncoder().encode(pdfOutput);
+  return new Uint8Array(new TextEncoder().encode(pdfOutput));
 }
 
 // ---------------------------------------------------------------------------
