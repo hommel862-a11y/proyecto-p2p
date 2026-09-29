@@ -48,6 +48,16 @@ import { evaluateAdRepricingTool } from './evaluate_ad_repricing.js';
 import { publishAdPriceTool } from './publish_ad_price.js';
 import { toggleAdStatusTool } from './toggle_ad_status.js';
 import { auditAdCompetitivenessTool } from './audit_ad_competitiveness.js';
+// 9 High-Impact Strategic Quantitative & Operational MCP Tools
+import { scanSyntheticStableArbitrageTool } from './scan_synthetic_stable_arbitrage.js';
+import { auditDistressedLiquiditySniperTool } from './audit_distressed_liquidity_sniper.js';
+import { queryOtcDarkpoolSpreadTool } from './query_otc_darkpool_spread.js';
+import { routeFintechPayrollSettlementTool } from './route_fintech_payroll_settlement.js';
+import { recommendCounterpartyYieldPriceTool } from './recommend_counterparty_yield_price.js';
+import { processConciergeInquiryTool } from './process_concierge_inquiry.js';
+import { predictBcvMacroRegimeTool } from './predict_bcv_macro_regime.js';
+import { optimizeTreasuryIdleYieldTool } from './optimize_treasury_idle_yield.js';
+import { executeBrowserOperatorTaskTool } from './execute_browser_operator_task.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -100,6 +110,16 @@ export const ALL_MCP_TOOLS = [
   publishAdPriceTool,
   toggleAdStatusTool,
   auditAdCompetitivenessTool,
+  // 9 High-Impact Strategic Tools
+  scanSyntheticStableArbitrageTool,
+  auditDistressedLiquiditySniperTool,
+  queryOtcDarkpoolSpreadTool,
+  routeFintechPayrollSettlementTool,
+  recommendCounterpartyYieldPriceTool,
+  processConciergeInquiryTool,
+  predictBcvMacroRegimeTool,
+  optimizeTreasuryIdleYieldTool,
+  executeBrowserOperatorTaskTool,
 ];
 
 export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
@@ -113,6 +133,15 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     triggerKillswitchTool,
     addOperationEntryTool,
     auditAndRiskAnalyticsTool,
+    scanSyntheticStableArbitrageTool,
+    auditDistressedLiquiditySniperTool,
+    queryOtcDarkpoolSpreadTool,
+    routeFintechPayrollSettlementTool,
+    recommendCounterpartyYieldPriceTool,
+    processConciergeInquiryTool,
+    predictBcvMacroRegimeTool,
+    optimizeTreasuryIdleYieldTool,
+    executeBrowserOperatorTaskTool,
   ],
   'p2p-aml-forensics': [
     screenWalletAddressTool,
@@ -127,11 +156,15 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     detectUsdtDepegTool,
     recommendCompetitivePricingTool,
     analyzeOrderbookPressureTool,
+    scanSyntheticStableArbitrageTool,
+    auditDistressedLiquiditySniperTool,
+    queryOtcDarkpoolSpreadTool,
   ],
   'p2p-bank-sentinel': [
     verifyInboundTransferTool,
     checkBankOperationalStatusTool,
     auditPaymentProofOcrTool,
+    executeBrowserOperatorTaskTool,
   ],
   'p2p-dispute-dossier': [compileDisputeDossierTool],
   'p2p-sudeban-radar': [evaluateAccountSaturationTool],
@@ -141,11 +174,14 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     rebalanceCapitalAllocationTool,
     auditCounterpartyExposureTool,
     projectCompoundRunwayTool,
+    optimizeTreasuryIdleYieldTool,
   ],
   'p2p-omnichannel': [
     dispatchOrderInstructionsTool,
     sendMultichannelAlertTool,
     processRemoteSentinelCommandTool,
+    processConciergeInquiryTool,
+    routeFintechPayrollSettlementTool,
   ],
   'p2p-macro-predictor': [
     getBcvRatesTool,
@@ -153,9 +189,14 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     calculateRateGapTool,
     checkBcvInterventionWindowTool,
     autofillTradeReferenceTool,
+    predictBcvMacroRegimeTool,
   ],
   'p2p-google-workspace': [gdriveBackupReceiptTool, gsheetsSyncTradeTool, gdriveSyncDbBackupTool],
-  'p2p-counterparty-mesh': [consultZkMarketMeshTool, lookupCounterpartyReputationTool],
+  'p2p-counterparty-mesh': [
+    consultZkMarketMeshTool,
+    lookupCounterpartyReputationTool,
+    recommendCounterpartyYieldPriceTool,
+  ],
   'p2p-ad-automaker': [
     evaluateAdRepricingTool,
     publishAdPriceTool,
@@ -215,4 +256,14 @@ export {
   publishAdPriceTool,
   toggleAdStatusTool,
   auditAdCompetitivenessTool,
+  // 9 High-Impact Strategic Tools
+  scanSyntheticStableArbitrageTool,
+  auditDistressedLiquiditySniperTool,
+  queryOtcDarkpoolSpreadTool,
+  routeFintechPayrollSettlementTool,
+  recommendCounterpartyYieldPriceTool,
+  processConciergeInquiryTool,
+  predictBcvMacroRegimeTool,
+  optimizeTreasuryIdleYieldTool,
+  executeBrowserOperatorTaskTool,
 };

@@ -13,7 +13,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'master',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 8,
+    toolCount: 17,
     resourceCount: 5,
     uptimeSeconds: 3600,
     tools: [
@@ -49,6 +49,42 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
       {
         name: 'add_operation_entry',
         description: 'Asienta una nueva operación en el Ledger contable (Human-in-the-Loop).',
+      },
+      {
+        name: 'scan_synthetic_stable_arbitrage',
+        description: 'Rastrea oportunidades de arbitraje sintético entre curvas de stablecoins y libros P2P locales.',
+      },
+      {
+        name: 'audit_distressed_liquidity_sniper',
+        description: 'Audita y absorbe liquidez distressed o fat-fingers descalzados en libros P2P.',
+      },
+      {
+        name: 'query_otc_darkpool_spread',
+        description: 'Compara arbitrajes entre exchanges retail y taquillas OTC de efectivo físico.',
+      },
+      {
+        name: 'route_fintech_payroll_settlement',
+        description: 'Enruta liquidaciones de nóminas remotas internacionales (Deel, Wise, Payoneer) a USDT o VES.',
+      },
+      {
+        name: 'recommend_counterparty_yield_price',
+        description: 'Personaliza spreads y cotizaciones según tiempo de liberación y volumen de la contraparte.',
+      },
+      {
+        name: 'process_concierge_inquiry',
+        description: 'Atiende consultas conversacionales de WhatsApp/Telegram y genera cotizaciones garantizadas.',
+      },
+      {
+        name: 'predict_bcv_macro_regime',
+        description: 'Predice regímenes de intervención del BCV y directivas de desvalorización de inventarios.',
+      },
+      {
+        name: 'optimize_treasury_idle_yield',
+        description: 'Optimiza el barrido de capital ocioso a bóvedas de rendimiento flexible en horas bajas.',
+      },
+      {
+        name: 'execute_browser_operator_task',
+        description: 'Compila tareas de navegación web autónoma para conciliación bancaria y extracción de estados.',
       },
     ],
     resources: [

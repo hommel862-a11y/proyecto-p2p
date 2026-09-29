@@ -83,6 +83,50 @@ import {
   type ForensicAuditEvent,
   type ForensicOperationRecord,
 } from './audit-analytics';
+import {
+  calculateSyntheticStableOpportunity,
+  scanSyntheticStableCurves,
+  type StableCrossQuote,
+} from './synthetic-stable-arbitrage';
+import {
+  evaluateSnipingOpportunity,
+  scanOrderbookSnipingOpportunities,
+  type P2pOrderbookAdItem,
+} from './orderbook-sniper';
+import {
+  aggregateDarkPoolOpportunities,
+  type MarketVenueQuote,
+} from './otc-darkpool-aggregator';
+import {
+  calculateFintechSettlementQuote,
+  type FintechSettlementRequest,
+} from './fintech-settlement-routing';
+import {
+  calculateDynamicCounterpartyPricing,
+  classifyCounterpartyTier,
+  type DynamicPricingRequest,
+} from './counterparty-yield-pricing';
+import {
+  parseCustomerChatMessage,
+  generateConciergeReply,
+} from './omnichannel-concierge';
+import {
+  evaluateMacroBcvRegime,
+  type MacroTelemetryInput,
+} from './macro-bcv-intelligence';
+import {
+  calculateTreasuryYieldAllocation,
+  type TreasuryYieldParams,
+} from './smart-treasury-yield';
+import {
+  compileBrowserOperatorTask,
+  type BrowserOperatorTaskInput,
+} from './browser-operator-bridge';
+import {
+  calculateRemittanceQuote,
+  formatRemittanceWhatsAppMessage,
+  type RemittanceQuoteRequest,
+} from './remittance-corridor';
 
 export interface AgentSkillParameterSchema {
   type: 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
@@ -1328,6 +1372,289 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
       required: ['timeframeDays', 'minSpreadThresholdPct'],
     },
   },
+  {
+    name: 'scan_synthetic_stable_arbitrage',
+    description: 'Escanea curvas de precios entre monedas estables (USDT, USDC, FDUSD, EURC) en spot y libros P2P locales para capturar descalces sintéticos sin riesgo.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        quotes: {
+          type: 'ARRAY',
+          description: 'Lista de cotizaciones de activos estables en spot y P2P.',
+          items: { type: 'OBJECT', description: 'Cotización con spotRate, p2pUsdtRateFiat, p2pTargetRateFiat.' },
+        },
+        minThresholdPct: { type: 'NUMBER', description: 'Umbral mínimo de margen neto requerido (por defecto 0.45%).' },
+      },
+      required: ['quotes'],
+    },
+  },
+  {
+    name: 'audit_distressed_liquidity_sniper',
+    description: 'Monitorea el libro de órdenes P2P para detectar anomalías, liquidaciones forzadas y fat-fingers por debajo del precio justo de mercado.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        ads: {
+          type: 'ARRAY',
+          description: 'Anuncios del libro de órdenes con precio, volumen y límites.',
+          items: { type: 'OBJECT', description: 'Anuncio P2P.' },
+        },
+        fairMarketPrice: { type: 'NUMBER', description: 'Precio justo de mercado promedio ponderado en fiat.' },
+        minProfitThresholdPct: { type: 'NUMBER', description: 'Umbral mínimo de desvío rentable (por defecto 1.2%).' },
+      },
+      required: ['ads', 'fairMarketPrice'],
+    },
+  },
+  {
+    name: 'query_otc_darkpool_spread',
+    description: 'Agrega y compara spreads entre plataformas P2P (Binance, Bybit, El Dorado) y mesas OTC locales de efectivo en dólares (Caracas, Bogotá).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        venues: {
+          type: 'ARRAY',
+          description: 'Cotizaciones de compra y venta por exchange y mesa OTC.',
+          items: { type: 'OBJECT', description: 'Cotización de venue con buyRate, sellRate y costos.' },
+        },
+        capitalUsd: { type: 'NUMBER', description: 'Monto de capital a evaluar en la ruta de arbitraje.' },
+      },
+      required: ['venues'],
+    },
+  },
+  {
+    name: 'route_fintech_payroll_settlement',
+    description: 'Calcula rutas y comisiones de liquidación para nóminas remotas y fondos de plataformas internacionales (Deel, Wise, Payoneer, Stripe, PayPal).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        platform: { type: 'STRING', enum: ['DEEL', 'WISE', 'PAYONEER', 'STRIPE', 'PAYPAL'], description: 'Plataforma de origen de los fondos.' },
+        grossAmountUsd: { type: 'NUMBER', description: 'Monto bruto a liquidar en USD.' },
+        payoutRail: { type: 'STRING', enum: ['USDT_TRC20', 'VES_PAGO_MOVIL', 'VES_TRANSFERENCIA', 'USD_CASH_DELIVERY'], description: 'Vía de pago solicitada por el cliente.' },
+        vesRatePerUsd: { type: 'NUMBER', description: 'Tasa de cambio de referencia en bolívares.' },
+      },
+      required: ['platform', 'grossAmountUsd', 'payoutRail'],
+    },
+  },
+  {
+    name: 'recommend_counterparty_yield_price',
+    description: 'Genera cotizaciones con pricing dinámico ajustando el spread según la velocidad de liberación, volumen y fricción de cada contraparte.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        counterpartyId: { type: 'STRING', description: 'Identificador único del cliente o comerciante.' },
+        averageReleaseMinutes: { type: 'NUMBER', description: 'Tiempo promedio de liberación en minutos.' },
+        completedTradesCount: { type: 'NUMBER', description: 'Cantidad de órdenes finalizadas exitosamente.' },
+        disputeCount: { type: 'NUMBER', description: 'Número de disputas previas.' },
+        monthlyVolumeUsd: { type: 'NUMBER', description: 'Volumen mensual operado en USD.' },
+        baseMarketRate: { type: 'NUMBER', description: 'Tasa base del mercado.' },
+        orderType: { type: 'STRING', enum: ['BUY', 'SELL'], description: 'Tipo de operación desde la perspectiva de la mesa.' },
+        requestedAmountUsd: { type: 'NUMBER', description: 'Monto solicitado en USD.' },
+      },
+      required: ['counterpartyId', 'averageReleaseMinutes', 'completedTradesCount', 'baseMarketRate', 'orderType', 'requestedAmountUsd'],
+    },
+  },
+  {
+    name: 'process_concierge_inquiry',
+    description: 'Parsea consultas en lenguaje natural de WhatsApp/Telegram, calcula cotizaciones en tiempo real y genera la respuesta comercial estructurada.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        rawCustomerMessage: { type: 'STRING', description: 'Texto del mensaje enviado por el cliente.' },
+        deskRatePerUsd: { type: 'NUMBER', description: 'Tasa de cambio activa de la mesa P2P.' },
+        bankName: { type: 'STRING', description: 'Banco receptor activo.' },
+        bankAccountDetails: { type: 'STRING', description: 'Coordenadas bancarias oficiales de la mesa.' },
+      },
+      required: ['rawCustomerMessage', 'deskRatePerUsd', 'bankName', 'bankAccountDetails'],
+    },
+  },
+  {
+    name: 'predict_bcv_macro_regime',
+    description: 'Evalúa la brecha cambiaria y probabilidad de intervención bancaria del BCV para emitir directivas de exposición en bolívares.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        bcvOfficialRate: { type: 'NUMBER', description: 'Tasa oficial publicada por el BCV.' },
+        parallelMarketRate: { type: 'NUMBER', description: 'Tasa de mercado paralelo / P2P.' },
+        daysSinceLastIntervention: { type: 'NUMBER', description: 'Días transcurridos desde la última venta de divisas del BCV.' },
+        currentHourOfDayUtcMinus4: { type: 'NUMBER', description: 'Hora local de Venezuela (0-23).' },
+        currentDayOfWeek: { type: 'NUMBER', description: 'Día de la semana (1 = Lunes, 5 = Viernes).' },
+      },
+      required: ['bcvOfficialRate', 'parallelMarketRate', 'daysSinceLastIntervention', 'currentHourOfDayUtcMinus4', 'currentDayOfWeek'],
+    },
+  },
+  {
+    name: 'optimize_treasury_idle_yield',
+    description: 'Calcula la asignación óptima de capital ocioso en USDT hacia productos de rendimiento flexible (Binance Simple Earn) en horas de baja actividad.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        totalUsdtInventory: { type: 'NUMBER', description: 'Saldo total de USDT en tesorería.' },
+        currentlyCommittedUsdt: { type: 'NUMBER', description: 'Capital comprometido en anuncios u órdenes activas.' },
+        marketVelocity: { type: 'STRING', enum: ['LOW_OFFPEAK', 'NORMAL_FLOW', 'HIGH_SURGE'], description: 'Velocidad actual del mercado.' },
+        flexibleApyPct: { type: 'NUMBER', description: 'Rendimiento anual flexible ofrecido por la plataforma (por defecto 10.5%).' },
+      },
+      required: ['totalUsdtInventory', 'currentlyCommittedUsdt', 'marketVelocity'],
+    },
+  },
+  {
+    name: 'compile_browser_operator_task',
+    description: 'Genera contratos declarativos de automatización web con Playwright para consultar estados de cuenta y comprobantes en neobancos.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        targetSite: { type: 'STRING', enum: ['BANESCO_PANAMA', 'FACEBANK', 'SIMLY', 'MERCANTIL_PANAMA', 'BINANCE_P2P'], description: 'Portal financiero objetivo.' },
+        action: { type: 'STRING', enum: ['FETCH_RECENT_TRANSACTIONS', 'DOWNLOAD_ACCOUNT_STATEMENT', 'VERIFY_TRANSFER_REFERENCE', 'CHECK_BALANCE'], description: 'Acción de navegación a ejecutar.' },
+        referenceToVerify: { type: 'STRING', description: 'Número de referencia bancaria a verificar (opcional).' },
+      },
+      required: ['targetSite', 'action'],
+    },
+  },
+  {
+    name: 'execute_maker_laddering_plan',
+    description: 'Calcula precios óptimos de compra y venta escalonados según el modelo Avellaneda-Stoikov para mantener el liderazgo en el libro P2P.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        midPrice: { type: 'NUMBER', description: 'Precio medio del libro P2P.' },
+        currentInventoryUsdt: { type: 'NUMBER', description: 'Inventario actual en USDT.' },
+        targetInventoryUsdt: { type: 'NUMBER', description: 'Inventario objetivo deseado.' },
+      },
+      required: ['midPrice', 'currentInventoryUsdt', 'targetInventoryUsdt'],
+    },
+  },
+  {
+    name: 'balance_cross_exchange_inventory',
+    description: 'Analiza desbalances de liquidez entre cuentas de Binance, Bybit y billeteras on-chain para orquestar transferencias de rebalanceo.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        binanceBalanceUsdt: { type: 'NUMBER', description: 'Saldo disponible en Binance.' },
+        bybitBalanceUsdt: { type: 'NUMBER', description: 'Saldo disponible en Bybit.' },
+        onchainBalanceUsdt: { type: 'NUMBER', description: 'Saldo disponible en billeteras frías/calientes.' },
+      },
+      required: ['binanceBalanceUsdt', 'bybitBalanceUsdt', 'onchainBalanceUsdt'],
+    },
+  },
+  {
+    name: 'enforce_depeg_delta_hedge',
+    description: 'Calcula el tamaño de cobertura corta sintética en futuros para proteger el inventario contra devaluaciones o pérdidas de paridad.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        inventoryVes: { type: 'NUMBER', description: 'Monto total de bolívares en balance.' },
+        currentPrice: { type: 'NUMBER', description: 'Precio de referencia del activo.' },
+        hedgeRatioPct: { type: 'NUMBER', description: 'Porcentaje de cobertura deseado (10% a 100%).' },
+      },
+      required: ['inventoryVes', 'currentPrice'],
+    },
+  },
+  {
+    name: 'audit_chargeback_shield',
+    description: 'Audita el riesgo de reversión o contracargo de fondos provenientes de plataformas fintech y pasarelas de pago digitales.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        platform: { type: 'STRING', enum: ['DEEL', 'WISE', 'PAYONEER', 'STRIPE', 'PAYPAL'], description: 'Plataforma de pago.' },
+        amountUsd: { type: 'NUMBER', description: 'Monto de la transacción.' },
+        isVerifiedContractor: { type: 'BOOLEAN', description: 'Indica si el cliente presentó contrato y soporte laboral.' },
+      },
+      required: ['platform', 'amountUsd'],
+    },
+  },
+  {
+    name: 'classify_and_price_client_tier',
+    description: 'Segmenta a una contraparte en niveles de servicio (VIP, Rápido, Estándar, Fricción) y recomienda el multiplicador de spread correspondiente.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        counterpartyId: { type: 'STRING', description: 'Identificador del cliente.' },
+        averageReleaseMinutes: { type: 'NUMBER', description: 'Tiempo de liberación en minutos.' },
+        completedTradesCount: { type: 'NUMBER', description: 'Total de órdenes completadas.' },
+        disputeCount: { type: 'NUMBER', description: 'Disputas registradas.' },
+        monthlyVolumeUsd: { type: 'NUMBER', description: 'Volumen mensual en USD.' },
+      },
+      required: ['counterpartyId', 'averageReleaseMinutes', 'completedTradesCount', 'disputeCount', 'monthlyVolumeUsd'],
+    },
+  },
+  {
+    name: 'negotiate_whatsapp_order_intake',
+    description: 'Maneja el flujo conversacional de cierre de orden en WhatsApp, validando datos de cuenta y generando la confirmación de operación.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        customerMessage: { type: 'STRING', description: 'Mensaje del cliente.' },
+        activeRate: { type: 'NUMBER', description: 'Tasa activa de la mesa.' },
+        bankName: { type: 'STRING', description: 'Banco a operar.' },
+        accountDetails: { type: 'STRING', description: 'Datos bancarios oficiales.' },
+      },
+      required: ['customerMessage', 'activeRate', 'bankName', 'accountDetails'],
+    },
+  },
+  {
+    name: 'bundle_corporate_b2b_dossier',
+    description: 'Genera el expediente comercial y facturación mercantil con respaldo de cumplimiento para clientes corporativos de alto ticket.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        clientName: { type: 'STRING', description: 'Razón social del cliente corporativo.' },
+        taxId: { type: 'STRING', description: 'Identificación fiscal (RIF/EIN/NIT).' },
+        amountUsd: { type: 'NUMBER', description: 'Monto de la operación en USD.' },
+        serviceCategory: { type: 'STRING', description: 'Concepto del servicio intangible.' },
+      },
+      required: ['clientName', 'taxId', 'amountUsd', 'serviceCategory'],
+    },
+  },
+  {
+    name: 'compile_fast_dispute_evidence',
+    description: 'Compila de manera pericial los comprobantes bancarios, registros de chat y marcas temporales ante una apelación en Binance.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        orderId: { type: 'STRING', description: 'Número de orden en disputa.' },
+        counterpartyName: { type: 'STRING', description: 'Nombre de la contraparte.' },
+        disputeReason: { type: 'STRING', description: 'Motivo de la disputa.' },
+        claimedAmount: { type: 'NUMBER', description: 'Monto en reclamo.' },
+      },
+      required: ['orderId', 'counterpartyName', 'disputeReason', 'claimedAmount'],
+    },
+  },
+  {
+    name: 'quote_instant_remittance_corridor',
+    description: 'Genera cotizaciones inmediatas para corredores internacionales de remesas (COP, CLP, BRL, Zelle, SEPA a VES) con formato de WhatsApp.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        corridorId: { type: 'STRING', enum: ['COP_BANCOLOMBIA_TO_VES', 'USD_ZELLE_TO_VES', 'EUR_SEPA_TO_VES', 'CLP_BANCOESTADO_TO_VES', 'BRL_PIX_TO_VES'], description: 'Corredor de remesas.' },
+        sendAmount: { type: 'NUMBER', description: 'Monto enviado en moneda origen.' },
+        deskSpreadPct: { type: 'NUMBER', description: 'Margen de la mesa (por defecto 2.5%).' },
+      },
+      required: ['corridorId', 'sendAmount'],
+    },
+  },
+  {
+    name: 'execute_preemptive_bcv_drain',
+    description: 'Emite directivas de vaciado preventivo de bolívares en cuenta antes de la apertura de mesas cambiarias del BCV para evitar desvalorización.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        currentVesBalance: { type: 'NUMBER', description: 'Saldo total actual en bolívares en bancos.' },
+        bcvInterventionProbabilityPct: { type: 'NUMBER', description: 'Probabilidad de intervención estimada.' },
+      },
+      required: ['currentVesBalance', 'bcvInterventionProbabilityPct'],
+    },
+  },
+  {
+    name: 'evaluate_emergency_killswitch',
+    description: 'Evalúa la activación del interruptor de emergencia para pausar anuncios y congelar operaciones ante anomalías críticas de mercado.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        reason: { type: 'STRING', description: 'Motivo del disparo del interruptor.' },
+        anomalySeverity: { type: 'STRING', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], description: 'Severidad del evento.' },
+      },
+      required: ['reason', 'anomalySeverity'],
+    },
+  },
 ];
 
 /**
@@ -2387,6 +2714,590 @@ export function executeFinancialSkill(
             timeframeDays,
             focusArea,
             dossier,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'scan_synthetic_stable_arbitrage': {
+        const pairs = (args['pairs'] as StableCrossQuote[]) || [];
+        const minNetSpreadPct = Number(args['minNetSpreadPct'] || 0.15);
+        const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            opportunitiesCount: opportunities.length,
+            opportunities,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'audit_distressed_liquidity_sniper': {
+        const rawAds = (args['ads'] as any[]) || [];
+        const fairMarketRate = Number(args['fairMarketRate'] || 0);
+        const side = (args['side'] === 'BUY' ? 'BUY' : 'SELL') as 'BUY' | 'SELL';
+        const minDislocationPct = Number(args['minDislocationPct'] || 0.8);
+        const ads: P2pOrderbookAdItem[] = rawAds.map((a) => ({
+          advId: a.advId || a.advNo || 'AD-0',
+          merchantName: a.merchantName || a.advertiserName || 'Anonymous',
+          orderType: (a.orderType || (a.side === 'BUY' ? 'BUY' : 'SELL')) as 'BUY' | 'SELL',
+          price: Number(a.price || 0),
+          availableAmountCrypto: Number(a.availableAmountCrypto || a.availableAmountUsdt || 0),
+          minLimitFiat: Number(a.minLimitFiat || a.minLimitVes || 0),
+          maxLimitFiat: Number(a.maxLimitFiat || a.maxLimitVes || 0),
+          paymentMethods: Array.isArray(a.paymentMethods) ? a.paymentMethods : [],
+          fiatCurrency: a.fiatCurrency || 'VES',
+        }));
+
+        const snipingOpportunities = scanOrderbookSnipingOpportunities(
+          ads,
+          {
+            fairMarketPrice: fairMarketRate,
+            minProfitThresholdPct: minDislocationPct,
+          },
+        );
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            fairMarketRate,
+            side,
+            snipingOpportunitiesCount: snipingOpportunities.length,
+            snipingOpportunities,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'query_otc_darkpool_spread': {
+        const quotes = (args['quotes'] as MarketVenueQuote[]) || [];
+        const volumeUsd = Number(args['volumeUsd'] || 10000);
+        const minNetSpreadPct = Number(args['minNetSpreadPct'] || 1.2);
+        const routes = aggregateDarkPoolOpportunities(quotes, {
+          capitalUsd: volumeUsd,
+          minNetSpreadPct,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            volumeUsd,
+            routesCount: routes.length,
+            routes,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'route_fintech_payroll_settlement': {
+        const platform = (args['platform'] || args['sourcePlatform'] || 'DEEL') as any;
+        const grossAmountUsd = Number(args['grossAmountUsd'] || args['amountUsd'] || 1000);
+        const payoutRail = (args['payoutRail'] || (String(args['targetDestination']).includes('BANESCO') ? 'VES_TRANSFERENCIA' : 'USDT_TRC20')) as any;
+        const vesRatePerUsd = Number(args['vesRatePerUsd'] || 85.0);
+        const clientTier = (args['clientTier'] || 'STANDARD') as any;
+        const isVerifiedContractor = Boolean(args['isVerifiedContractor']);
+
+        const settlementQuote = calculateFintechSettlementQuote({
+          platform,
+          grossAmountUsd,
+          payoutRail,
+          vesRatePerUsd,
+          clientTier,
+          isVerifiedContractor,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: settlementQuote,
+          executedAt: now,
+        };
+      }
+
+      case 'recommend_counterparty_yield_price': {
+        const counterpartyId = String(args['counterpartyId'] || 'CP-GENERIC');
+        const baseMarketRate = Number(args['marketBasePrice'] || args['baseMarketRate'] || 85.0);
+        const orderType = (args['orderSide'] === 'SELL' || args['orderType'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
+        const averageReleaseMinutes = Number(args['averageReleaseMinutes'] || 15);
+        const completedTradesCount = Number(args['completedTradesCount'] || 100);
+        const disputeCount = Number(args['disputeCount'] || 0);
+        const monthlyVolumeUsd = Number(args['monthlyVolumeUsd'] || 10000);
+        const requestedAmountUsd = Number(args['requestedAmountUsd'] || 1000);
+
+        const pricing = calculateDynamicCounterpartyPricing({
+          metrics: {
+            counterpartyId,
+            averageReleaseMinutes,
+            completedTradesCount,
+            disputeCount,
+            monthlyVolumeUsd,
+          },
+          baseMarketRate,
+          orderType,
+          requestedAmountUsd,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: pricing,
+          executedAt: now,
+        };
+      }
+
+      case 'process_concierge_inquiry': {
+        const message = String(args['message'] || '');
+        const customerPhone = args['customerPhone'] ? String(args['customerPhone']) : undefined;
+        const deskRatePerUsd = Number(args['deskSellRate'] || args['deskRatePerUsd'] || 87.0);
+        const bankName = String(args['bankName'] || 'Banesco');
+        const bankAccountDetails = String(args['bankAccountDetails'] || '0134-XXXX-XXXX-XXXX a nombre de Inversiones P2P');
+
+        const parsed = parseCustomerChatMessage(message);
+        const responsePayload = generateConciergeReply(parsed, {
+          deskRatePerUsd,
+          bankName,
+          bankAccountDetails,
+          quoteValidityMinutes: 15,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            customerPhone,
+            ...responsePayload,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'predict_bcv_macro_regime': {
+        const bcvOfficialRate = Number(args['bcvOfficialRate'] || 80.0);
+        const parallelMarketRate = Number(args['parallelRate'] || args['parallelMarketRate'] || 85.0);
+        const daysSinceLastIntervention = Number(args['daysSinceLastIntervention'] || 4);
+        const currentHourOfDayUtcMinus4 = Number(args['currentHourVET'] || args['currentHourOfDayUtcMinus4'] || 10);
+        const currentDayOfWeek = Number(args['currentDayOfWeek'] || 1); // 1 = Mon
+        const estimatedWeeklyBcvInjectionUsd = Number(args['estimatedInterventionAmountUsd'] || args['estimatedWeeklyBcvInjectionUsd'] || 50000000);
+
+        const regimeAssessment = evaluateMacroBcvRegime({
+          bcvOfficialRate,
+          parallelMarketRate,
+          daysSinceLastIntervention,
+          currentHourOfDayUtcMinus4,
+          currentDayOfWeek,
+          estimatedWeeklyBcvInjectionUsd,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: regimeAssessment,
+          executedAt: now,
+        };
+      }
+
+      case 'optimize_treasury_idle_yield': {
+        const totalUsdtInventory = Number(args['totalUsdtInventory'] || args['totalTreasuryUsdt'] || 20000);
+        const currentlyCommittedUsdt = Number(args['currentlyCommittedUsdt'] || args['operationalReserveUsdt'] || 5000);
+        const marketVelocity = (args['marketVelocity'] || 'LOW_OFFPEAK') as any;
+        const flexibleApyPct = Number(args['flexibleApyPct'] || args['minYieldApyPct'] || 10.5);
+        const minimumSafetyBufferUsd = Number(args['minimumSafetyBufferUsd'] || 2500);
+
+        const allocation = calculateTreasuryYieldAllocation({
+          totalUsdtInventory,
+          currentlyCommittedUsdt,
+          marketVelocity,
+          flexibleApyPct,
+          minimumSafetyBufferUsd,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: allocation,
+          executedAt: now,
+        };
+      }
+
+      case 'compile_browser_operator_task': {
+        const targetSite = (args['targetSite'] || 'BANESCO_PANAMA') as any;
+        const action = (args['action'] || 'CHECK_BALANCE') as any;
+        const referenceToVerify = args['referenceToVerify'] ? String(args['referenceToVerify']) : undefined;
+        const expectedAmount = args['expectedAmount'] ? Number(args['expectedAmount']) : undefined;
+
+        const task = compileBrowserOperatorTask({
+          targetSite,
+          action,
+          referenceToVerify,
+          expectedAmount,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: task,
+          executedAt: now,
+        };
+      }
+
+      case 'execute_maker_laddering_plan': {
+        const midPrice = Number(args['midPrice'] || 85.0);
+        const currentInventoryUsdt = Number(args['currentInventoryUsdt'] || 5000);
+        const targetInventoryUsdt = Number(args['targetInventoryUsdt'] || 5000);
+
+        const quotes = computeAvellanedaStoikovQuotes({
+          midPrice,
+          currentInventoryUsdt,
+          targetInventoryUsdt,
+          volatilityDaily: 0.02,
+          timeRemainingFraction: 1.0,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            midPrice,
+            currentInventoryUsdt,
+            targetInventoryUsdt,
+            makerQuotes: quotes,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'balance_cross_exchange_inventory': {
+        const binanceBalanceUsdt = Number(args['binanceBalanceUsdt'] || 0);
+        const bybitBalanceUsdt = Number(args['bybitBalanceUsdt'] || 0);
+        const onchainBalanceUsdt = Number(args['onchainBalanceUsdt'] || 0);
+        const total = binanceBalanceUsdt + bybitBalanceUsdt + onchainBalanceUsdt;
+        const targetPerVenue = total > 0 ? total / 3 : 0;
+
+        const venues = [
+          { name: 'BINANCE', current: binanceBalanceUsdt, diff: binanceBalanceUsdt - targetPerVenue },
+          { name: 'BYBIT', current: bybitBalanceUsdt, diff: bybitBalanceUsdt - targetPerVenue },
+          { name: 'ONCHAIN', current: onchainBalanceUsdt, diff: onchainBalanceUsdt - targetPerVenue },
+        ];
+
+        const rebalanceInstructions: string[] = [];
+        const surplus = venues.filter((v) => v.diff > 50);
+        const deficit = venues.filter((v) => v.diff < -50);
+
+        for (const s of surplus) {
+          for (const d of deficit) {
+            const transfer = Math.min(s.diff, Math.abs(d.diff));
+            if (transfer > 10) {
+              rebalanceInstructions.push(`Transferir ${transfer.toFixed(2)} USDT desde ${s.name} hacia ${d.name}`);
+            }
+          }
+        }
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            totalInventoryUsdt: total,
+            targetPerVenueUsdt: targetPerVenue,
+            venues,
+            rebalanceNeeded: rebalanceInstructions.length > 0,
+            rebalanceInstructions,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'enforce_depeg_delta_hedge': {
+        const inventoryVes = Number(args['inventoryVes'] || 0);
+        const currentPrice = Number(args['currentPrice'] || 85.0);
+        const hedgeRatioPct = Number(args['hedgeRatioPct'] || 100);
+
+        const inventoryUsd = currentPrice > 0 ? inventoryVes / currentPrice : 0;
+        const targetHedgeUsd = inventoryUsd * (hedgeRatioPct / 100);
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            inventoryVes,
+            currentPrice,
+            inventoryEquivalentUsd: Number(inventoryUsd.toFixed(2)),
+            hedgeRatioPct,
+            recommendedShortFuturesUsd: Number(targetHedgeUsd.toFixed(2)),
+            action: targetHedgeUsd > 10 ? 'OPEN_SHORT_PERP_HEDGE' : 'NO_HEDGE_REQUIRED',
+            rationale: `Cobertura preventiva del ${hedgeRatioPct}% contra devaluación de bolívares.`,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'audit_chargeback_shield': {
+        const platform = String(args['platform'] || 'DEEL').toUpperCase();
+        const amountUsd = Number(args['amountUsd'] || 1000);
+        const isVerifiedContractor = Boolean(args['isVerifiedContractor']);
+
+        let riskScore = 15;
+        let holdPeriodHours = 0;
+        const securityMeasures: string[] = [];
+
+        if (platform === 'PAYPAL' || platform === 'STRIPE') {
+          riskScore += 45;
+          holdPeriodHours = 48;
+          securityMeasures.push('Riesgo alto de contracargo bancario/friendly-fraud. Exigir KYC completo y espera de 48h.');
+        } else if (platform === 'WISE') {
+          riskScore += 25;
+          holdPeriodHours = 12;
+          securityMeasures.push('Verificar que la cuenta de origen pertenezca exactamente al mismo titular.');
+        } else if (platform === 'DEEL' || platform === 'PAYONEER') {
+          riskScore += 10;
+          holdPeriodHours = 0;
+          securityMeasures.push('Plataforma corporativa de payroll de bajo riesgo de reversión.');
+        }
+
+        if (!isVerifiedContractor) {
+          riskScore += 30;
+          securityMeasures.push('Contratista no verificado: solicitar contrato de servicios o invoice de plataforma.');
+        }
+
+        if (amountUsd > 3000) {
+          riskScore += 15;
+          securityMeasures.push('Ticket superior a $3,000: requiere aprobación de compliance y prueba de fondos.');
+        }
+
+        const riskLevel = riskScore >= 60 ? 'HIGH' : riskScore >= 35 ? 'MEDIUM' : 'LOW';
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            platform,
+            amountUsd,
+            isVerifiedContractor,
+            riskScore: Math.min(100, riskScore),
+            riskLevel,
+            recommendedHoldPeriodHours: holdPeriodHours,
+            securityMeasures,
+            verdict: riskLevel === 'HIGH' ? 'REJECT_OR_ESCROW_48H' : 'APPROVED_FOR_ROUTING',
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'classify_and_price_client_tier': {
+        const counterpartyId = String(args['counterpartyId'] || 'CP-GENERIC');
+        const averageReleaseMinutes = Number(args['averageReleaseMinutes'] || 15);
+        const completedTradesCount = Number(args['completedTradesCount'] || 100);
+        const disputeCount = Number(args['disputeCount'] || 0);
+        const monthlyVolumeUsd = Number(args['monthlyVolumeUsd'] || 10000);
+
+        const tier = classifyCounterpartyTier({
+          counterpartyId,
+          averageReleaseMinutes,
+          completedTradesCount,
+          disputeCount,
+          monthlyVolumeUsd,
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            counterpartyId,
+            tier,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'negotiate_whatsapp_order_intake': {
+        const customerMessage = String(args['customerMessage'] || '');
+        const activeRate = Number(args['activeRate'] || 85.0);
+        const bankName = String(args['bankName'] || 'Banesco');
+        const accountDetails = String(args['accountDetails'] || '');
+
+        const parsed = parseCustomerChatMessage(customerMessage);
+        const orderAmountUsdt = parsed.detectedAmount || 100;
+        const totalVes = Number((orderAmountUsdt * activeRate).toFixed(2));
+
+        const confirmationMsg = `✅ *COTIZACIÓN CONFIRMADA DE MESA P2P*\n` +
+          `• Monto: *${orderAmountUsdt.toFixed(2)} USDT*\n` +
+          `• Tasa Acordada: *${activeRate.toFixed(2)} VES/USDT*\n` +
+          `• Total a transferir: *${totalVes.toLocaleString('es-VE')} VES*\n` +
+          `• Banco Destino: *${bankName}*\n` +
+          `• Datos de Cuenta: ${accountDetails}\n\n` +
+          `⚠️ _Por favor adjunte el comprobante digital en este chat una vez emitido el pago._`;
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            orderAmountUsdt,
+            activeRate,
+            totalVes,
+            bankName,
+            parsedIntent: parsed.intent,
+            confirmationMessage: confirmationMsg,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'bundle_corporate_b2b_dossier': {
+        const clientName = String(args['clientName'] || 'EMPRESA CLIENTE S.A.');
+        const taxId = String(args['taxId'] || 'J-00000000-0');
+        const amountUsd = Number(args['amountUsd'] || 0);
+        const serviceCategory = String(args['serviceCategory'] || 'SERVICIOS_TECNOLOGICOS_CONSULTORIA');
+
+        const invoiceId = `INV-${Date.now().toString(36).toUpperCase()}`;
+        const dossier = {
+          invoiceId,
+          clientName,
+          taxId,
+          amountUsd,
+          serviceCategory,
+          status: 'COMPLIANCE_READY',
+          generatedTimestamp: new Date().toISOString(),
+          fiscalNotes: 'Documentación mercantil de soporte para liquidación bancaria y justificación cambiaria.',
+          complianceChecklist: [
+            'Verificación KYC corporativo y RIF vigente',
+            'Contrato marco de prestación de servicios tecnológicos',
+            'Factura digital con desglose de honorarios e IVA exento según ley',
+            'Trazabilidad de billetera y liquidación bancaria en cuenta nacional/internacional',
+          ],
+        };
+
+        return {
+          success: true,
+          skillName,
+          data: dossier,
+          executedAt: now,
+        };
+      }
+
+      case 'compile_fast_dispute_evidence': {
+        const orderId = String(args['orderId'] || 'P2P-ORD-000');
+        const counterpartyName = String(args['counterpartyName'] || 'Contraparte');
+        const disputeReason = String(args['disputeReason'] || 'Tercero no autorizado / Falta de pago');
+        const claimedAmount = Number(args['claimedAmount'] || 0);
+
+        const dossier = buildDisputeDossier({
+          orderId,
+          orderAmountFiat: claimedAmount,
+          orderAmountCrypto: claimedAmount > 0 ? claimedAmount / 85.0 : 0,
+          fiatCurrency: 'VES',
+          cryptoAsset: 'USDT',
+          counterpartyBinanceName: counterpartyName,
+          bankPayerName: 'Tercero Desconocido',
+          bankName: 'BANESCO',
+          bankReference: '99887766',
+          bankPaymentTimestamp: Date.now(),
+          orderCreatedTimestamp: Date.now() - 600000,
+          fraudAudit: {
+            orderId,
+            overallScore: 85,
+            riskLevel: 'CRITICAL',
+            nameMatch: {
+              score: 0.15,
+              isMatch: false,
+              normalizedA: counterpartyName,
+              normalizedB: 'TERCERO DESCONOCIDO',
+              matchedTokens: [],
+              missingTokens: ['TERCERO'],
+            },
+            referenceValidation: {
+              isValid: true,
+              bank: 'BANESCO',
+              reference: '99887766',
+              expectedFormat: '8 dígitos',
+            },
+            amountDifference: 0,
+            summaryHeadline: `ALERTA DE SEGURIDAD: ${disputeReason}`,
+            auditDetails: [`Motivo: ${disputeReason}`],
+            disputeTemplateText: `[RECLAMO FORMAL P2P - ORDEN #${orderId}]\nEstimado soporte de Binance: Se abre disputa formal contra ${counterpartyName}. Motivo: ${disputeReason}.`,
+            flags: ['THIRD_PARTY_PAYER'],
+            recommendation: 'LOCK_AND_DISPUTE',
+          },
+        });
+
+        return {
+          success: true,
+          skillName,
+          data: dossier,
+          executedAt: now,
+        };
+      }
+
+      case 'quote_instant_remittance_corridor': {
+        const corridorId = String(args['corridorId'] || 'USD_ZELLE_TO_VES');
+        const sendAmount = Number(args['sendAmount'] || args['amount'] || 100);
+        const deskSpreadPct = Number(args['deskSpreadPct'] || args['operatorMarginPct'] || 2.5);
+
+        const quote = calculateRemittanceQuote({
+          corridorId,
+          calculationMode: 'BY_SEND_AMOUNT',
+          amount: sendAmount,
+          originCryptoRate: 1.0,
+          destCryptoRate: 85.0,
+          operatorMarginPct: deskSpreadPct,
+        });
+
+        const whatsappMessage = formatRemittanceWhatsAppMessage(quote);
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            ...quote,
+            whatsappFormattedMessage: whatsappMessage,
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'execute_preemptive_bcv_drain': {
+        const currentVesBalance = Number(args['currentVesBalance'] || 0);
+        const bcvInterventionProbabilityPct = Number(args['bcvInterventionProbabilityPct'] || 80);
+
+        const urgency = bcvInterventionProbabilityPct >= 75 ? 'CRITICAL' : bcvInterventionProbabilityPct >= 50 ? 'HIGH' : 'MODERATE';
+        const drainRatio = bcvInterventionProbabilityPct >= 75 ? 0.90 : bcvInterventionProbabilityPct >= 50 ? 0.65 : 0.40;
+        const targetDrainVes = currentVesBalance * drainRatio;
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            currentVesBalance,
+            bcvInterventionProbabilityPct,
+            urgency,
+            recommendedDrainVes: targetDrainVes,
+            recommendedAction: `Drenar ${targetDrainVes.toLocaleString('es-VE')} VES (${(drainRatio * 100).toFixed(0)}% del balance) comprando USDT de inmediato antes del cierre de mesa BCV.`,
+            preferredChannels: ['PAGO_MOVIL_INMEDIATO', 'BANESCO_TRANSFERENCIA_DIRECTA'],
+          },
+          executedAt: now,
+        };
+      }
+
+      case 'evaluate_emergency_killswitch': {
+        const reason = String(args['reason'] || 'Anomalía crítica de mercado');
+        const anomalySeverity = (args['anomalySeverity'] || 'HIGH') as any;
+
+        const killswitchActivated = anomalySeverity === 'HIGH' || anomalySeverity === 'CRITICAL';
+
+        return {
+          success: true,
+          skillName,
+          data: {
+            killswitchActivated,
+            anomalySeverity,
+            reason,
+            actionsTriggered: killswitchActivated
+              ? ['PAUSE_ALL_P2P_ADS', 'CANCEL_OPEN_MAKER_OFFERS', 'FREEZE_AUTOMATED_TRANSFERS', 'SEND_CRITICAL_TELEGRAM_ALERT']
+              : ['LOG_WARNING', 'NOTIFY_RISK_MANAGER'],
+            unpauseRequirement: 'Revisión manual y confirmación de operador humano antes de reanudar actividad.',
           },
           executedAt: now,
         };

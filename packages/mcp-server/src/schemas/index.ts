@@ -481,3 +481,129 @@ export const AuditAdCompetitivenessInputSchema = z.object({
 });
 export type AuditAdCompetitivenessInput = z.infer<typeof AuditAdCompetitivenessInputSchema>;
 
+// ==========================================
+// 9 HIGH-VALUE QUANTITATIVE & OPERATIONAL TOOLS
+// ==========================================
+
+export const ScanSyntheticStableArbitrageInputSchema = z.object({
+  pairs: z
+    .array(
+      z.object({
+        sourceAsset: z.string(),
+        targetAsset: z.string(),
+        exchangeRate: z.number().positive(),
+        feePct: z.number().min(0).default(0),
+        reverseExchangeRate: z.number().positive(),
+        reverseFeePct: z.number().min(0).default(0),
+      }),
+    )
+    .optional(),
+  minNetSpreadPct: z.number().default(0.15),
+});
+export type ScanSyntheticStableArbitrageInput = z.infer<typeof ScanSyntheticStableArbitrageInputSchema>;
+
+export const AuditDistressedLiquiditySniperInputSchema = z.object({
+  ads: z.array(
+    z.object({
+      advId: z.string(),
+      merchantName: z.string(),
+      orderType: z.enum(['BUY', 'SELL']),
+      price: z.number().positive(),
+      availableAmountCrypto: z.number().positive(),
+      minLimitFiat: z.number().min(0),
+      maxLimitFiat: z.number().positive(),
+      paymentMethods: z.array(z.string()),
+      fiatCurrency: z.string().optional(),
+    }),
+  ),
+  fairMarketRate: z.number().positive(),
+  minDislocationPct: z.number().default(0.8),
+  maxTakerFeePct: z.number().default(0.1),
+});
+export type AuditDistressedLiquiditySniperInput = z.infer<typeof AuditDistressedLiquiditySniperInputSchema>;
+
+export const QueryOtcDarkpoolSpreadInputSchema = z.object({
+  quotes: z
+    .array(
+      z.object({
+        venueId: z.string(),
+        venueName: z.string(),
+        venueType: z.enum(['BINANCE_P2P', 'BYBIT_P2P', 'ELDORADO_P2P', 'SYLO_P2P', 'PHYSICAL_CASH_DESK']),
+        currencyPair: z.string(),
+        buyRate: z.number().positive(),
+        sellRate: z.number().positive(),
+        makerFeePct: z.number().optional(),
+        takerFeePct: z.number().optional(),
+        transferOrCashFrictionPct: z.number().optional(),
+        minTradeVolumeUsd: z.number().optional(),
+        maxTradeVolumeUsd: z.number().optional(),
+        locationCity: z.string().optional(),
+      }),
+    )
+    .optional(),
+  volumeUsd: z.number().positive().default(10000),
+  minNetSpreadPct: z.number().default(1.2),
+});
+export type QueryOtcDarkpoolSpreadInput = z.infer<typeof QueryOtcDarkpoolSpreadInputSchema>;
+
+export const RouteFintechPayrollSettlementInputSchema = z.object({
+  platform: z.enum(['DEEL', 'WISE', 'PAYONEER', 'STRIPE', 'PAYPAL']).default('DEEL'),
+  grossAmountUsd: z.number().positive(),
+  payoutRail: z.enum(['USDT_TRC20', 'VES_PAGO_MOVIL', 'VES_TRANSFERENCIA', 'USD_CASH_DELIVERY']).default('VES_PAGO_MOVIL'),
+  vesRatePerUsd: z.number().positive().optional(),
+  clientTier: z.enum(['STANDARD', 'RECURRENT_REMOTE', 'CORPORATE_AGENCY']).default('STANDARD'),
+  isVerifiedContractor: z.boolean().default(false),
+});
+export type RouteFintechPayrollSettlementInput = z.infer<typeof RouteFintechPayrollSettlementInputSchema>;
+
+export const RecommendCounterpartyYieldPriceInputSchema = z.object({
+  counterpartyId: z.string().min(1),
+  baseMarketRate: z.number().positive(),
+  orderType: z.enum(['BUY', 'SELL']),
+  averageReleaseMinutes: z.number().min(0).default(15),
+  completedTradesCount: z.number().min(0).default(50),
+  disputeCount: z.number().min(0).default(0),
+  monthlyVolumeUsd: z.number().min(0).default(5000),
+  frictionScore: z.number().min(0).max(100).optional(),
+  requestedAmountUsd: z.number().positive().default(1000),
+});
+export type RecommendCounterpartyYieldPriceInput = z.infer<typeof RecommendCounterpartyYieldPriceInputSchema>;
+
+export const ProcessConciergeInquiryInputSchema = z.object({
+  customerMessage: z.string().min(1, 'El mensaje del cliente no puede estar vacío'),
+  deskRatePerUsd: z.number().positive().default(86.5),
+  bankName: z.string().default('Banesco'),
+  bankAccountDetails: z.string().default('0134-XXXX-XXXX-XXXX a nombre de Inversiones P2P'),
+  quoteValidityMinutes: z.number().min(1).max(60).default(15),
+});
+export type ProcessConciergeInquiryInput = z.infer<typeof ProcessConciergeInquiryInputSchema>;
+
+export const PredictBcvMacroRegimeInputSchema = z.object({
+  bcvOfficialRate: z.number().positive(),
+  parallelMarketRate: z.number().positive(),
+  daysSinceLastIntervention: z.number().min(0).default(3),
+  currentHourOfDayUtcMinus4: z.number().min(0).max(23).default(10),
+  currentDayOfWeek: z.number().min(1).max(7).default(1),
+  estimatedWeeklyBcvInjectionUsd: z.number().positive().default(50000000),
+});
+export type PredictBcvMacroRegimeInput = z.infer<typeof PredictBcvMacroRegimeInputSchema>;
+
+export const OptimizeTreasuryIdleYieldInputSchema = z.object({
+  totalUsdtInventory: z.number().min(0),
+  currentlyCommittedUsdt: z.number().min(0).default(0),
+  marketVelocity: z.enum(['LOW_OFFPEAK', 'NORMAL_FLOW', 'HIGH_SURGE']).default('LOW_OFFPEAK'),
+  flexibleApyPct: z.number().positive().default(10.5),
+  minimumSafetyBufferUsd: z.number().min(0).default(2500),
+});
+export type OptimizeTreasuryIdleYieldInput = z.infer<typeof OptimizeTreasuryIdleYieldInputSchema>;
+
+export const ExecuteBrowserOperatorTaskInputSchema = z.object({
+  targetSite: z.enum(['BANESCO_PANAMA', 'FACEBANK', 'SIMLY', 'MERCANTIL_PANAMA', 'BINANCE_P2P']),
+  action: z.enum(['FETCH_RECENT_TRANSACTIONS', 'DOWNLOAD_ACCOUNT_STATEMENT', 'VERIFY_TRANSFER_REFERENCE', 'CHECK_BALANCE']),
+  referenceToVerify: z.string().optional(),
+  expectedAmount: z.number().positive().optional(),
+  headless: z.boolean().default(true),
+});
+export type ExecuteBrowserOperatorTaskInput = z.infer<typeof ExecuteBrowserOperatorTaskInputSchema>;
+
+

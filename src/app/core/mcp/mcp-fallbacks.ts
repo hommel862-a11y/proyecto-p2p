@@ -8,7 +8,31 @@ import {
   DEFAULT_ZK_SALT_DOMAIN,
   simulateCompoundGrowth,
   buildPortfolioAllocationPlan,
+  scanSyntheticStableCurves,
+  scanOrderbookSnipingOpportunities,
+  aggregateDarkPoolOpportunities,
+  calculateFintechSettlementQuote,
+  calculateDynamicCounterpartyPricing,
+  parseCustomerChatMessage,
+  generateConciergeReply,
+  evaluateMacroBcvRegime,
+  calculateTreasuryYieldAllocation,
+  compileBrowserOperatorTask,
 } from '@p2p/core';
+
+export interface McpFallbackAvailability {
+  readonly degraded: boolean;
+  readonly reason: string;
+}
+
+export const MCP_FALLBACK_DEGRADED_REASON =
+  'El entorno web no cuenta con conexión al daemon MCP de Electron ni APIs bancarias o de exchange en vivo. ' +
+  'Las respuestas son simulaciones referenciales y ninguna recomendación financiera es ejecutable automáticamente.';
+
+const DEGRADED_MCP_AVAILABILITY: McpFallbackAvailability = Object.freeze({
+  degraded: true,
+  reason: MCP_FALLBACK_DEGRADED_REASON,
+});
 
 /**
  * Simula la ejecución de herramientas MCP en modo web cuando no hay conexión nativa de Electron.
@@ -22,8 +46,10 @@ export function simulateMcpTool(
     toolName,
     status: 'OK',
     simulated: true,
+    actionable: false,
+    availability: DEGRADED_MCP_AVAILABILITY,
     args,
-    message: `Ejecución de prueba completada en ${executionTimeMs} ms.`,
+    message: `Ejecución de prueba simulada localmente en ${executionTimeMs} ms (modo degradado).`,
   };
 
   if (toolName === 'calculate_spread') {
@@ -51,8 +77,13 @@ export function simulateMcpTool(
     const capital = Number((args as any)?.currentCapitalUsdt ?? 5000);
     const score = Number((args as any)?.counterpartyScore ?? 98);
     const tradeRiskPct = (tradeAmount / capital) * 100;
+    // The spread is an observed market value. Without a caller-supplied reading the
+    // MIN_SPREAD rule cannot be evaluated, so we declare absence instead of inventing a
+    // spread that would silently clear the rule.
+    const observedSpread = (args as any)?.currentSpreadPct;
+    const hasObservedSpread = observedSpread !== undefined && Number(observedSpread) > 0;
     const ctx: RuleContext = {
-      currentSpread: 1.25,
+      currentSpread: hasObservedSpread ? Number(observedSpread) : Number.NaN,
       minSpread: 0.5,
       openOps: 1,
       tradeRiskPct,
@@ -60,17 +91,34 @@ export function simulateMcpTool(
       consecutiveErrors: score < 50 ? 2 : 0,
       maxRiskPerTradePct: 20,
     };
-    const verdict = evaluate(ctx);
     const recommendedMaxUsdt = (capital * (ctx.maxRiskPerTradePct ?? 20)) / 100;
-    simulatedResult = {
-      ...simulatedResult,
-      decision: verdict.decision,
-      reason: verdict.reason,
-      tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
-      recommendedSizeUsdt: Math.min(tradeAmount, recommendedMaxUsdt),
-      isCounterpartyAcceptable: score >= 70,
-      violations: verdict.decision !== 'ALLOW' ? [verdict.reason] : [],
-    };
+
+    if (!hasObservedSpread) {
+      simulatedResult = {
+        ...simulatedResult,
+        decision: 'INSUFFICIENT_DATA',
+        reason: 'MISSING_CURRENT_SPREAD',
+        currentSpreadPct: null,
+        tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+        recommendedSizeUsdt: null,
+        isCounterpartyAcceptable: null,
+        violations: ['MISSING_CURRENT_SPREAD'],
+        actionable: false,
+      };
+    } else {
+      const verdict = evaluate(ctx);
+      simulatedResult = {
+        ...simulatedResult,
+        decision: verdict.decision,
+        reason: verdict.reason,
+        currentSpreadPct: Number(observedSpread),
+        tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+        recommendedSizeUsdt: Math.min(tradeAmount, recommendedMaxUsdt),
+        isCounterpartyAcceptable: score >= 70,
+        violations: verdict.decision !== 'ALLOW' ? [verdict.reason] : [],
+        actionable: false,
+      };
+    }
   } else if (toolName === 'simulate_trade_impact') {
     const currentExposure = Number((args as any)?.currentExposureUsdt ?? 400);
     const proposedTrade = Number((args as any)?.proposedTradeAmountUsdt ?? 600);
@@ -90,7 +138,8 @@ export function simulateMcpTool(
       limitExceeded,
       maxSafeRemainingUsdt: Math.max(0, maxLimit - currentExposure),
       wouldTrigger: triggers,
-      verdict: triggers.length === 0 ? 'SAFE_TO_EXECUTE' : 'REQUIRES_REDUCTION',
+      verdict: triggers.length === 0 ? 'SIMULATED_WITHIN_LIMITS' : 'REQUIRES_REDUCTION',
+      actionable: false,
     };
   } else if (toolName === 'consult_zk_market_mesh') {
     const rawId = String((args as any)?.rawIdentifier ?? 'V-18456789');
@@ -102,10 +151,12 @@ export function simulateMcpTool(
       isFlagged: false,
       threatCategory: null,
       severity: null,
-      confidenceScore: 0.95,
+      confidenceScore: 0,
       confirmationsCount: 0,
-      privacyGuaranteed: true,
-      verdict: 'CLEAR_NO_FEDERATED_FLAGS',
+      // No mesh was contacted, so anonymity cannot be attested. Absence, not a guarantee.
+      privacyGuaranteed: false,
+      verdict: 'NO_MESH_CONNECTION_UNVERIFIED',
+      actionable: false,
     };
   } else if (toolName === 'forecast_volatility_window') {
     const parallel = Number((args as any)?.parallelRate ?? 84.12);
@@ -428,24 +479,28 @@ export function simulateMcpTool(
       activeChannelsCount: plan.allocations.length,
     };
   } else if (toolName === 'audit_counterparty_exposure') {
-    const alias = String((args as any)?.counterpartyAlias ?? 'VnzlaTrader_Pro');
-    const count = Number((args as any)?.historicalTradesCount ?? 45);
+    const alias = (args as any)?.counterpartyAlias ?? null;
+    const count = (args as any)?.historicalTradesCount ?? null;
+    // No counterparty ledger is reachable here. Emitting a risk score or an approval
+    // verdict would be fabricated KYC, so we report the absence instead.
     simulatedResult = {
       ...simulatedResult,
       totalTradesAudited: count,
-      uniqueCounterpartiesCount: Math.max(1, Math.round(count * 0.7)),
-      counterpartyRiskScore: 12,
+      uniqueCounterpartiesCount: null,
+      counterpartyRiskScore: null,
       concentration: {
         topCounterpartyAlias: alias,
-        topCounterpartyVolumeUsdt: 1200,
-        topCounterpartySharePct: 15,
-        exceedsSafeLimit: false,
+        topCounterpartyVolumeUsdt: null,
+        topCounterpartySharePct: null,
+        exceedsSafeLimit: null,
       },
-      flaggedCounterpartiesCount: 0,
-      flaggedCounterparties: [],
-      complianceVerdict: 'APPROVED_FOR_TRADING',
-      recommendations: ['Concentración dentro de límites seguros (< 20%).'],
-      isSafeForInstitutionalTrading: true,
+      flaggedCounterpartiesCount: null,
+      flaggedCounterparties: null,
+      complianceVerdict: 'UNVERIFIED_NO_COUNTERPARTY_LEDGER',
+      recommendations: null,
+      isSafeForInstitutionalTrading: null,
+      unavailableReason: 'NO_COUNTERPARTY_LEDGER',
+      actionable: false,
     };
   } else if (toolName === 'project_compound_runway') {
     const initCap = Number((args as any)?.initialCapitalUsdt ?? 5000);
@@ -504,25 +559,30 @@ export function simulateMcpTool(
   } else if (toolName === 'gsheets_sync_trade') {
     const trade = (args as any)?.trade ?? {};
     const sheetName = String((args as any)?.sheetName ?? 'Operaciones P2P');
+    // No Sheets connection exists in this environment. A hardcoded ID would point at a
+    // spreadsheet that does not exist and invite the agent to "open" it.
+    const spreadsheetId = (args as any)?.spreadsheetId ?? null;
     simulatedResult = {
       ...simulatedResult,
-      success: true,
-      spreadsheetId: (args as any)?.spreadsheetId ?? '1p2p_Ledger_Master_Spreadsheet',
+      success: false,
+      spreadsheetId,
       sheetName,
-      updatedRange: `'${sheetName}'!A2:L2`,
-      updatedRows: 1,
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${(args as any)?.spreadsheetId ?? '1p2p_Ledger_Master_Spreadsheet'}/edit`,
+      updatedRange: null,
+      updatedRows: 0,
+      spreadsheetUrl: null,
       mode: 'SIMULATED',
       syncedTrade: {
-        id: trade.id ?? 'ORD-SIM',
-        side: trade.side ?? 'BUY',
-        rate: trade.rate ?? 84.5,
-        usdtAmount: trade.usdtAmount ?? 100,
-        vesAmount: trade.vesAmount ?? 8450,
-        netProfitUsdt: trade.netProfitUsdt ?? 1.5,
-        counterparty: trade.counterparty ?? 'Anónimo',
+        id: trade.id ?? null,
+        side: trade.side ?? null,
+        rate: trade.rate ?? null,
+        usdtAmount: trade.usdtAmount ?? null,
+        vesAmount: trade.vesAmount ?? null,
+        netProfitUsdt: trade.netProfitUsdt ?? null,
+        counterparty: trade.counterparty ?? null,
       },
-      message: `Operación sincronizada exitosamente en Google Sheets.`,
+      unavailableReason: 'NO_GOOGLE_SHEETS_CONNECTION',
+      message: 'No se pudo sincronizar: no hay conexión con Google Sheets en este entorno.',
+      timestamp: new Date().toISOString(),
     };
   } else if (toolName === 'gdrive_sync_db_backup') {
     const backupType = String((args as any)?.backupType ?? 'ledger_json');
@@ -547,11 +607,12 @@ export function simulateMcpTool(
       ...simulatedResult,
       address: addr,
       network: net,
-      riskScore: 5,
-      riskLevel: 'LOW_RISK',
-      recommendation: 'APPROVE_TRANSFER',
-      flags: [],
-      sanctionedMatch: false,
+      riskScore: null,
+      riskLevel: 'UNVERIFIED_OFFLINE',
+      recommendation: 'MANUAL_COMPLIANCE_REVIEW_REQUIRED',
+      flags: ['NO_LIVE_AML_FEED'],
+      sanctionedMatch: null,
+      actionable: false,
       timestamp: new Date().toISOString(),
     };
   } else if (toolName === 'inspect_tx_taint') {
@@ -560,11 +621,12 @@ export function simulateMcpTool(
       ...simulatedResult,
       txHash: tx,
       chain: (args as any)?.chain ?? 'TRON',
-      taintPercentage: 0.2,
-      directHopToMixer: false,
-      clusterAttribution: 'CLEAN_OTC_MERCHANT_FLOW',
-      isClean: true,
-      compliancePass: true,
+      taintPercentage: null,
+      directHopToMixer: null,
+      clusterAttribution: 'UNINSPECTED_OFFLINE_FALLBACK',
+      isClean: null,
+      compliancePass: false,
+      actionable: false,
       inspectionTimestamp: new Date().toISOString(),
     };
   } else if (toolName === 'fetch_cross_exchange_spread') {
@@ -608,28 +670,31 @@ export function simulateMcpTool(
       crossArbitrageOpportunity: {
         buyOn: 'KuCoin P2P',
         buyPrice: Number((baseRate * 0.985).toFixed(2)),
-        sellOn: 'KuCoin P2P',
-        sellPrice: Number((baseRate * 1.018).toFixed(2)),
-        netSpreadPct: 3.35,
-        isViable: true,
-        estimatedProfitPer1000Usdt: 33.5,
+        sellOn: 'Bybit P2P',
+        sellPrice: Number((baseRate * 1.015).toFixed(2)),
+        netSpreadPct: 3.05,
+        isViable: false,
+        actionable: false,
+        unverifiedNotice: 'Precios referenciales generados localmente. Requiere conexión en vivo para validar viabilidad de ejecución.',
+        estimatedProfitPer1000Usdt: 0,
       },
       timestamp: new Date().toISOString(),
     };
   } else if (toolName === 'verify_inbound_transfer') {
-    const ref = String((args as any)?.referenceNumber ?? '984721');
+    const ref = (args as any)?.referenceNumber ? String((args as any).referenceNumber) : 'REF-UNVERIFIED';
     simulatedResult = {
       ...simulatedResult,
       referenceNumber: ref,
-      amountVes: Number((args as any)?.amountVes ?? 12500),
+      amountVes: (args as any)?.amountVes ? Number((args as any).amountVes) : 0,
       bankCode: (args as any)?.bankCode ?? '0102',
-      status: 'MATCH_FOUND_VERIFIED',
-      reconciledInMs: 142,
-      bankResponseCode: '00',
-      senderCedulaValidated: true,
-      senderPhoneValidated: true,
-      ledgerReceiptId: `REC-${Date.now()}-${ref.slice(-4)}`,
-      recommendation: 'SAFE_TO_RELEASE_CRYPTO',
+      status: 'UNVERIFIED_NO_BANK_CONNECTION',
+      reconciledInMs: 0,
+      bankResponseCode: null,
+      senderCedulaValidated: false,
+      senderPhoneValidated: false,
+      ledgerReceiptId: null,
+      recommendation: 'DO_NOT_RELEASE_AWAITING_MANUAL_VERIFICATION',
+      actionable: false,
       timestamp: new Date().toISOString(),
     };
   } else if (toolName === 'compile_dispute_dossier') {
@@ -696,11 +761,12 @@ export function simulateMcpTool(
       ...simulatedResult,
       documentId: doc,
       blindHash: `zk_hash_${doc.slice(-4)}_mock`,
-      trustScore: 96,
-      isBlacklisted: false,
-      riskLevel: 'VERIFIED_CLEAN',
+      trustScore: null,
+      isBlacklisted: null,
+      riskLevel: 'UNVERIFIED_OFFLINE',
       historicalIncidents: [],
-      recommendation: 'PROCEED_WITH_TRADE',
+      recommendation: 'VERIFICATION_UNAVAILABLE_PROCEED_WITH_CAUTION',
+      actionable: false,
       consultedAt: new Date().toISOString(),
     };
   } else if (toolName === 'check_bank_operational_status') {
@@ -805,8 +871,9 @@ export function simulateMcpTool(
       ...simulatedResult,
       commandType: 'LEDGER_TRANSACTION',
       action: 'ADD_OPERATION_ENTRY',
-      status: 'PROCESSED_AND_SETTLED',
-      ledgerImpact: true,
+      status: 'SIMULATED_LOCAL_PARSE',
+      ledgerImpact: false,
+      actionable: false,
       transactionDetail: {
         ledgerId: `LEDGER-REMOTE-${Date.now()}`,
         side: raw.toLowerCase().includes('venta') ? 'sell' : 'buy',
@@ -816,33 +883,31 @@ export function simulateMcpTool(
         bank: 'Banesco',
         recordedAt: new Date().toISOString(),
       },
-      summary: 'Operación remota registrada y asentada en el Ledger.',
+      summary: 'Comando interpretado localmente sin persistencia en base de datos SQLite (modo degradado).',
       rawText: raw,
     };
   } else if (toolName === 'audit_payment_proof_ocr') {
     const ocr = String((args as any)?.ocrRawText ?? '');
     const expAmt = Number((args as any)?.expectedAmountVes ?? 12500);
-    const isMatch = ocr.includes('12500') || ocr.includes('12.500');
     simulatedResult = {
       ...simulatedResult,
       orderId: (args as any)?.orderId ?? 'ORD-P2P-101',
-      verdict: isMatch ? 'MATCH_VERIFIED_SAFE_TO_RELEASE' : 'MANUAL_AUDIT_REQUIRED',
-      isSafeToRelease: isMatch,
+      verdict: 'SIMULATED_LOCAL_PREVIEW',
+      isSafeToRelease: false,
+      actionable: false,
       extractedData: {
-        reference: '884920',
+        reference: ocr ? 'PARSED_FROM_OCR' : 'NO_REFERENCE',
         amountVes: expAmt,
-        bank: 'BANESCO',
-        payerCedula: 'V20123456',
+        bank: (args as any)?.expectedBank ?? 'BANESCO',
+        payerCedula: (args as any)?.expectedPayerIdDoc ?? 'V-UNVERIFIED',
       },
       expectedData: {
         amountVes: expAmt,
         bank: (args as any)?.expectedBank ?? 'BANESCO',
-        payerIdDoc: (args as any)?.expectedPayerIdDoc ?? 'V20123456',
+        payerIdDoc: (args as any)?.expectedPayerIdDoc ?? 'V-UNVERIFIED',
       },
-      discrepancies: isMatch ? [] : ['Monto no coincide con la orden activa.'],
-      actionAdvice: isMatch
-        ? 'VERIFICACIÓN EXITOSA: Seguro para liberar los USDT en Binance.'
-        : 'NO LIBERAR CRIPTO: Revisar comprobante manualmente.',
+      discrepancies: ['MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.'],
+      actionAdvice: 'MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.',
       auditTimestamp: new Date().toISOString(),
     };
   } else if (toolName === 'evaluate_ad_repricing') {
@@ -919,6 +984,208 @@ export function simulateMcpTool(
       leaderMerchant: 'Self',
       assessment: 'Posición competitiva saludable (TOP_1).',
       timestamp: new Date().toISOString(),
+    };
+  } else if (toolName === 'scan_synthetic_stable_arbitrage') {
+    const pairs = (args as any)?.pairs ?? [
+      {
+        targetAsset: 'USDC',
+        spotPair: 'USDCUSDT',
+        spotRate: 0.9992,
+        spotFeePct: 0.05,
+        p2pUsdtRateFiat: 85.5,
+        p2pTargetRateFiat: 86.8,
+        fiatCurrency: 'VES',
+        tradingCapitalUsd: 2500,
+      },
+    ];
+    const minNetSpreadPct = Number((args as any)?.minNetSpreadPct ?? 0.15);
+    const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
+    simulatedResult = {
+      ...simulatedResult,
+      opportunitiesCount: opportunities.length,
+      opportunities,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'audit_distressed_liquidity_sniper') {
+    const ads = (args as any)?.ads ?? [
+      {
+        advId: 'AD-SNIPER-1',
+        merchantName: 'DistressedSeller',
+        orderType: 'SELL',
+        price: 80.5,
+        availableAmountCrypto: 800,
+        minLimitFiat: 1000,
+        maxLimitFiat: 64000,
+        paymentMethods: ['Banesco'],
+        fiatCurrency: 'VES',
+      },
+    ];
+    const fairMarketRate = Number((args as any)?.fairMarketRate ?? 85.5);
+    const minDislocationPct = Number((args as any)?.minDislocationPct ?? 0.8);
+    const snipingOpportunities = scanOrderbookSnipingOpportunities(ads, {
+      fairMarketPrice: fairMarketRate,
+      minProfitThresholdPct: minDislocationPct,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      fairMarketRate,
+      snipingOpportunitiesCount: snipingOpportunities.length,
+      snipingOpportunities,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'query_otc_darkpool_spread') {
+    const volumeUsd = Number((args as any)?.volumeUsd ?? 10000);
+    const minNetSpreadPct = Number((args as any)?.minNetSpreadPct ?? 1.2);
+    const quotes = (args as any)?.quotes ?? [
+      {
+        venueId: 'BINANCE_P2P',
+        venueName: 'Binance P2P',
+        venueType: 'BINANCE_P2P',
+        currencyPair: 'USDT/VES',
+        buyRate: 85.2,
+        sellRate: 86.8,
+        makerFeePct: 0.1,
+        takerFeePct: 0.1,
+      },
+      {
+        venueId: 'CCS_CASH_DESK',
+        venueName: 'Caracas Cash Desk',
+        venueType: 'PHYSICAL_CASH_DESK',
+        currencyPair: 'USDT/VES',
+        buyRate: 83.5,
+        sellRate: 88.5,
+        transferOrCashFrictionPct: 0.5,
+      },
+    ];
+    const routes = aggregateDarkPoolOpportunities(quotes, {
+      capitalUsd: volumeUsd,
+      minNetSpreadPct,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      volumeTestedUsd: volumeUsd,
+      routesFoundCount: routes.length,
+      routes,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'route_fintech_payroll_settlement') {
+    const platform = (args as any)?.platform ?? (args as any)?.sourcePlatform ?? 'DEEL';
+    const grossAmountUsd = Number((args as any)?.grossAmountUsd ?? (args as any)?.amountUsd ?? 2500);
+    const payoutRail = (args as any)?.payoutRail ?? 'VES_PAGO_MOVIL';
+    const vesRatePerUsd = Number((args as any)?.vesRatePerUsd ?? 85.5);
+    const clientTier = (args as any)?.clientTier ?? 'RECURRENT_REMOTE';
+    const isVerifiedContractor = Boolean((args as any)?.isVerifiedContractor ?? true);
+    const quote = calculateFintechSettlementQuote({
+      platform,
+      grossAmountUsd,
+      payoutRail,
+      vesRatePerUsd,
+      clientTier,
+      isVerifiedContractor,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      quote,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'recommend_counterparty_yield_price') {
+    const counterpartyId = String((args as any)?.counterpartyId ?? 'CP-VIP-1');
+    const baseMarketRate = Number((args as any)?.baseMarketRate ?? (args as any)?.marketBasePrice ?? 85.5);
+    const orderType = ((args as any)?.orderType ?? 'BUY') as 'BUY' | 'SELL';
+    const averageReleaseMinutes = Number((args as any)?.averageReleaseMinutes ?? 2.5);
+    const completedTradesCount = Number((args as any)?.completedTradesCount ?? 120);
+    const disputeCount = Number((args as any)?.disputeCount ?? 0);
+    const monthlyVolumeUsd = Number((args as any)?.monthlyVolumeUsd ?? 30000);
+    const requestedAmountUsd = Number((args as any)?.requestedAmountUsd ?? 3000);
+    const pricing = calculateDynamicCounterpartyPricing({
+      metrics: {
+        counterpartyId,
+        averageReleaseMinutes,
+        completedTradesCount,
+        disputeCount,
+        monthlyVolumeUsd,
+      },
+      baseMarketRate,
+      orderType,
+      requestedAmountUsd,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      result: pricing,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'process_concierge_inquiry') {
+    const customerMessage = String((args as any)?.customerMessage ?? (args as any)?.message ?? 'Buenas tardes a como tienen la tasa de USDT?');
+    const deskRatePerUsd = Number((args as any)?.deskRatePerUsd ?? (args as any)?.deskSellRate ?? 87.0);
+    const bankName = String((args as any)?.bankName ?? 'Banesco');
+    const bankAccountDetails = String((args as any)?.bankAccountDetails ?? '0134-XXXX-XXXX-XXXX');
+    const parsed = parseCustomerChatMessage(customerMessage);
+    const reply = generateConciergeReply(parsed, {
+      deskRatePerUsd,
+      bankName,
+      bankAccountDetails,
+      quoteValidityMinutes: 15,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      ...reply,
+      processedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'predict_bcv_macro_regime') {
+    const bcvOfficialRate = Number((args as any)?.bcvOfficialRate ?? 80.0);
+    const parallelMarketRate = Number((args as any)?.parallelMarketRate ?? (args as any)?.parallelRate ?? 91.5);
+    const daysSinceLastIntervention = Number((args as any)?.daysSinceLastIntervention ?? 4);
+    const currentHourOfDayUtcMinus4 = Number((args as any)?.currentHourOfDayUtcMinus4 ?? 10);
+    const currentDayOfWeek = Number((args as any)?.currentDayOfWeek ?? 1);
+    const estimatedWeeklyBcvInjectionUsd = Number((args as any)?.estimatedWeeklyBcvInjectionUsd ?? 50000000);
+    const assessment = evaluateMacroBcvRegime({
+      bcvOfficialRate,
+      parallelMarketRate,
+      daysSinceLastIntervention,
+      currentHourOfDayUtcMinus4,
+      currentDayOfWeek,
+      estimatedWeeklyBcvInjectionUsd,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      assessment,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'optimize_treasury_idle_yield') {
+    const totalUsdtInventory = Number((args as any)?.totalUsdtInventory ?? 25000);
+    const currentlyCommittedUsdt = Number((args as any)?.currentlyCommittedUsdt ?? 4000);
+    const marketVelocity = (args as any)?.marketVelocity ?? 'LOW_OFFPEAK';
+    const flexibleApyPct = Number((args as any)?.flexibleApyPct ?? 10.5);
+    const minimumSafetyBufferUsd = Number((args as any)?.minimumSafetyBufferUsd ?? 2500);
+    const plan = calculateTreasuryYieldAllocation({
+      totalUsdtInventory,
+      currentlyCommittedUsdt,
+      marketVelocity,
+      flexibleApyPct,
+      minimumSafetyBufferUsd,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      plan,
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'execute_browser_operator_task') {
+    const targetSite = (args as any)?.targetSite ?? 'BANESCO_PANAMA';
+    const action = (args as any)?.action ?? 'VERIFY_TRANSFER_REFERENCE';
+    const referenceToVerify = (args as any)?.referenceToVerify ?? 'REF-998877';
+    const expectedAmount = Number((args as any)?.expectedAmount ?? 1250);
+    const compiledTask = compileBrowserOperatorTask({
+      targetSite,
+      action,
+      referenceToVerify,
+      expectedAmount,
+      headless: true,
+    });
+    simulatedResult = {
+      ...simulatedResult,
+      compiledTask,
+      executionStatus: 'TASK_COMPILED_READY_FOR_AGENT_RUNNER',
+      evaluatedAt: new Date().toISOString(),
     };
   }
 

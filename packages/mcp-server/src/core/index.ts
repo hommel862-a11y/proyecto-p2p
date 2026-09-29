@@ -11,6 +11,21 @@ export function computeSha256(data: string): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
+// ─── roundMoney ──────────────────────────────────────────────────────────────
+
+export function roundMoney(value: number, decimals: number = 2): number {
+  // Hand-maintained mirror of `projects/core/src/lib/money.ts`. Unlike the copies under
+  // `electron/main/vendor/p2p-core` (which `gemini-skills.spec.ts` enforces byte-for-byte),
+  // this aggregate is NOT covered by that guard, so semantic drift here is silent. The
+  // -0 normalization below MUST match the core, because the engines in this file route
+  // every reported margin through it.
+  const factor = Math.pow(10, decimals);
+  const rounded = Math.round((value + Number.EPSILON) * factor) / factor;
+  // Keep the canonical 0: rounding a small negative yields -0, which is mathematically zero
+  // but compares unequal to 0 and would surface as a signed "edge" in the tool payload.
+  return rounded === 0 ? 0 : rounded;
+}
+
 // ─── Spread Engine ────────────────────────────────────────────────────────────
 
 export interface SpreadResult {
@@ -1883,3 +1898,1159 @@ export function generateForensicDossier(
     executiveVerdict,
   };
 }
+
+// ==========================================
+// 1. SYNTHETIC STABLECOIN ARBITRAGE HUNTER
+// ==========================================
+
+export type StableAsset = 'USDT' | 'USDC' | 'FDUSD' | 'EURC' | 'PYUSD';
+
+export interface StableCrossQuote {
+  targetAsset: StableAsset;
+  spotPair: string;
+  spotRate: number;
+  spotFeePct?: number;
+  p2pMakerFeePct?: number;
+  transferOrCashFrictionPct?: number;
+  p2pUsdtRateFiat: number;
+  p2pTargetRateFiat: number;
+  fiatCurrency?: string;
+  tradingCapitalUsd?: number;
+}
+
+export interface SyntheticStableOpportunity {
+  id: string;
+  targetAsset: StableAsset;
+  spotPair: string;
+  spotRate: number;
+  syntheticP2pEquivalentRate: number;
+  p2pTargetMarketRate: number;
+  /** Always observable: the spot/P2P rate dislocation needs no cost assumption. */
+  grossSpreadPct: number;
+  /** `null` when at least one cost input is missing. An unmeasured cost is not a zero cost. */
+  estimatedFeesPct: number | null;
+  /**
+   * `null` when at least one cost input is missing. A net margin derived from zeroed costs
+   * is inflated by exactly the term that was never measured and would be read as available
+   * margin. `null` means "no net margin is knowable", never 0.
+   */
+  netSpreadPct: number | null;
+  direction: 'CONVERT_SPOT_AND_SELL_P2P' | 'BUY_P2P_AND_CONVERT_SPOT' | 'NO_OPPORTUNITY';
+  projectedProfitUsd: number;
+  isActionable: boolean;
+  reason?: 'MISSING_FRICTION_METRICS';
+  missingCostInputs: readonly (
+    | 'spotFeePct'
+    | 'p2pMakerFeePct'
+    | 'transferOrCashFrictionPct'
+  )[];
+  actionDirective: string;
+  timestamp: string;
+}
+
+export function calculateSyntheticStableOpportunity(
+  quote: StableCrossQuote,
+  minThresholdPct = 0.45,
+): SyntheticStableOpportunity {
+  const capital = quote.tradingCapitalUsd && quote.tradingCapitalUsd > 0 ? quote.tradingCapitalUsd : 1000;
+
+  // An unknown fee is not a zero fee. Every cost term must be supplied by the caller;
+  // when one is missing the route is reported but never marked actionable, because the
+  // net margin would otherwise be inflated by the very term that is unknown.
+  const missingCostInputs: ('spotFeePct' | 'p2pMakerFeePct' | 'transferOrCashFrictionPct')[] = [];
+  if (quote.spotFeePct === undefined) missingCostInputs.push('spotFeePct');
+  if (quote.p2pMakerFeePct === undefined) missingCostInputs.push('p2pMakerFeePct');
+  if (quote.transferOrCashFrictionPct === undefined) missingCostInputs.push('transferOrCashFrictionPct');
+  const hasExplicitCosts = missingCostInputs.length === 0;
+
+  const spotFee = quote.spotFeePct ?? 0;
+  const p2pMakerFee = quote.p2pMakerFeePct ?? 0;
+  const settlementFriction = quote.transferOrCashFrictionPct ?? 0;
+  // Only summed when every term was supplied: the aggregate is meaningless over a mix of
+  // measured and defaulted terms, and it would read as a real fee estimate.
+  const totalFrictionPct = hasExplicitCosts ? spotFee + p2pMakerFee + settlementFriction : null;
+
+  const syntheticCostFiat = quote.spotRate * quote.p2pUsdtRateFiat;
+  const marketSellFiat = quote.p2pTargetRateFiat;
+
+  const spreadRouteA = syntheticCostFiat > 0
+    ? ((marketSellFiat - syntheticCostFiat) / syntheticCostFiat) * 100
+    : 0;
+
+  const spreadRouteB = marketSellFiat > 0
+    ? ((syntheticCostFiat - marketSellFiat) / marketSellFiat) * 100
+    : 0;
+
+  let direction: 'CONVERT_SPOT_AND_SELL_P2P' | 'BUY_P2P_AND_CONVERT_SPOT' | 'NO_OPPORTUNITY' = 'NO_OPPORTUNITY';
+  let bestGrossSpread = 0;
+
+  // Direction is chosen from the observable rate dislocation only; whether it survives costs
+  // is a separate question that needs the cost inputs.
+  if (spreadRouteA > spreadRouteB && spreadRouteA > 0) {
+    direction = 'CONVERT_SPOT_AND_SELL_P2P';
+    bestGrossSpread = spreadRouteA;
+  } else if (spreadRouteB > 0) {
+    direction = 'BUY_P2P_AND_CONVERT_SPOT';
+    bestGrossSpread = spreadRouteB;
+  } else {
+    direction = 'NO_OPPORTUNITY';
+    bestGrossSpread = Math.max(spreadRouteA, spreadRouteB);
+  }
+
+  // The net margin only exists when every cost term was measured. A zero-cost subtraction
+  // would be inflated by exactly the term we did not measure, so it is not reported at all.
+  const roundedGrossSpread = roundMoney(bestGrossSpread, 2);
+  const roundedNetSpread: number | null =
+    totalFrictionPct === null ? null : roundMoney(bestGrossSpread - totalFrictionPct, 2);
+  const isActionable =
+    hasExplicitCosts &&
+    roundedNetSpread !== null &&
+    roundedNetSpread >= minThresholdPct &&
+    direction !== 'NO_OPPORTUNITY';
+  const projectedProfitUsd = isActionable
+    ? roundMoney((capital * roundedNetSpread!) / 100, 2)
+    : 0;
+
+  let actionDirective = 'Mercado alineado sin descalce explotable.';
+  if (!hasExplicitCosts) {
+    actionDirective =
+      `Bloqueado por fricción desconocida: se requieren ${missingCostInputs.join(', ')} antes de autorizar ejecución. ` +
+      `El descalce bruto es observable (${roundedGrossSpread}%), el margen neto no.`;
+  } else if (direction === 'CONVERT_SPOT_AND_SELL_P2P') {
+    actionDirective = `Comprar ${quote.targetAsset} en Spot a tasa ${quote.spotRate.toFixed(4)} y publicar anuncio de venta P2P a ${quote.p2pTargetRateFiat.toFixed(2)} ${quote.fiatCurrency || 'VES'}. Margen neto: +${roundedNetSpread}% (+$${projectedProfitUsd} USD).`;
+  } else if (direction === 'BUY_P2P_AND_CONVERT_SPOT') {
+    actionDirective = `Tomar ${quote.targetAsset} barato en P2P a ${quote.p2pTargetRateFiat.toFixed(2)} ${quote.fiatCurrency || 'VES'} y convertir a USDT en Spot. Margen neto: +${roundedNetSpread}% (+$${projectedProfitUsd} USD).`;
+  }
+
+  return {
+    id: `SYNTH-${quote.targetAsset}-${Date.now().toString(36)}`,
+    targetAsset: quote.targetAsset,
+    spotPair: quote.spotPair,
+    spotRate: quote.spotRate,
+    syntheticP2pEquivalentRate: roundMoney(syntheticCostFiat, 2),
+    p2pTargetMarketRate: roundMoney(marketSellFiat, 2),
+    grossSpreadPct: roundedGrossSpread,
+    estimatedFeesPct: totalFrictionPct === null ? null : roundMoney(totalFrictionPct, 2),
+    netSpreadPct: roundedNetSpread,
+    direction,
+    projectedProfitUsd,
+    isActionable,
+    ...(hasExplicitCosts ? {} : { reason: 'MISSING_FRICTION_METRICS' as const }),
+    missingCostInputs,
+    actionDirective,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export function scanSyntheticStableCurves(
+  quotes: readonly StableCrossQuote[],
+  minThresholdPct = 0.45,
+): SyntheticStableOpportunity[] {
+  // Unpriced routes are reported, not hidden: the gross dislocation is real information
+  // even when the cost inputs needed to price it are missing.
+  return quotes
+    .map((q) => calculateSyntheticStableOpportunity(q, minThresholdPct))
+    .sort(compareOpportunitiesByNetSpread);
+}
+
+/**
+ * Opportunities with a known net spread rank first, highest first. An opportunity whose net
+ * spread is `null` is not comparable to a number, so it goes last instead of poisoning the
+ * ordering with NaN. `Array.prototype.sort` is stable, so unpriced routes keep their input
+ * order and the ranking stays deterministic.
+ */
+function compareOpportunitiesByNetSpread(
+  a: SyntheticStableOpportunity,
+  b: SyntheticStableOpportunity,
+): number {
+  if (a.netSpreadPct === null || b.netSpreadPct === null) {
+    if (a.netSpreadPct === b.netSpreadPct) return 0;
+    return a.netSpreadPct === null ? 1 : -1;
+  }
+  return b.netSpreadPct - a.netSpreadPct;
+}
+
+// ==========================================
+// 2. ORDERBOOK SNIPER & DISTRESSED LIQUIDITY
+// ==========================================
+
+export interface P2pOrderbookAdItem {
+  advId: string;
+  merchantName: string;
+  orderType: 'BUY' | 'SELL';
+  price: number;
+  availableAmountCrypto: number;
+  minLimitFiat: number;
+  maxLimitFiat: number;
+  paymentMethods: string[];
+  fiatCurrency?: string;
+}
+
+export interface SnipedOpportunityAlert {
+  advId: string;
+  merchantName: string;
+  orderType: 'BUY' | 'SELL';
+  adPrice: number;
+  fairMarketPrice: number;
+  priceDivergencePct: number;
+  availableLiquidityUsd: number;
+  grossProfitUsd: number;
+  takerFeePct: number | null;
+  netProfitUsd: number;
+  netYieldPct: number | null;
+  urgencyScore: number;
+  recommendedAction: 'SNIPE_IMMEDIATELY' | 'PROCEED_WITH_CAUTION' | 'IGNORE';
+  isActionable: boolean;
+  reason?: 'MISSING_FRICTION_METRICS';
+  riskRationale: string;
+  timestamp: string;
+}
+
+export interface SniperAuditConfig {
+  fairMarketPrice: number;
+  minProfitThresholdPct?: number;
+  maxTakerFeePct?: number;
+  minLiquidityFloorUsd?: number;
+}
+
+export function evaluateSnipingOpportunity(
+  ad: P2pOrderbookAdItem,
+  config: SniperAuditConfig,
+): SnipedOpportunityAlert | null {
+  const fair = config.fairMarketPrice;
+  if (!fair || fair <= 0 || !ad.price || ad.price <= 0) return null;
+
+  const minThreshold = config.minProfitThresholdPct ?? 1.2;
+  // An unknown taker fee is not a zero fee. Block instead of defaulting it away.
+  const hasExplicitFee = config.maxTakerFeePct !== undefined && config.maxTakerFeePct >= 0;
+  const takerFeePct = hasExplicitFee ? config.maxTakerFeePct! : null;
+  const floorUsd = config.minLiquidityFloorUsd ?? 50;
+
+  if (ad.availableAmountCrypto < floorUsd) {
+    return null;
+  }
+
+  let divergencePct = 0;
+  let isUnderpricedSell = false;
+  let isOverpricedBuy = false;
+
+  if (ad.orderType === 'SELL') {
+    divergencePct = ((fair - ad.price) / fair) * 100;
+    isUnderpricedSell = divergencePct >= minThreshold;
+  } else {
+    divergencePct = ((ad.price - fair) / fair) * 100;
+    isOverpricedBuy = divergencePct >= minThreshold;
+  }
+
+  if (!isUnderpricedSell && !isOverpricedBuy) {
+    return null;
+  }
+
+  const roundedDivergence = roundMoney(divergencePct, 2);
+  const liquidityUsd = roundMoney(ad.availableAmountCrypto, 2);
+  const grossProfitUsd = roundMoney((liquidityUsd * roundedDivergence) / 100, 2);
+
+  let netProfitUsd = 0;
+  let netYieldPct: number | null = null;
+  if (takerFeePct !== null) {
+    const takerFeeUsd = roundMoney((liquidityUsd * takerFeePct) / 100, 2);
+    netProfitUsd = roundMoney(grossProfitUsd - takerFeeUsd, 2);
+    netYieldPct = roundMoney((netProfitUsd / liquidityUsd) * 100, 2);
+    // Same gate as the core engine: a priced dislocation that no longer clears the
+    // threshold once the fee is deducted is not an opportunity.
+    if (netYieldPct < minThreshold) return null;
+  }
+
+  const isActionable = takerFeePct !== null;
+
+  let urgency = 50;
+  if (roundedDivergence > 2.5) urgency += 30;
+  if (liquidityUsd >= 500) urgency += 20;
+
+  let recommendedAction: 'SNIPE_IMMEDIATELY' | 'PROCEED_WITH_CAUTION' | 'IGNORE' = 'SNIPE_IMMEDIATELY';
+  let riskRationale = 'Oportunidad de absorción limpia con descalce de precio favorable.';
+
+  if (!isActionable) {
+    recommendedAction = 'PROCEED_WITH_CAUTION';
+    riskRationale =
+      'Bloqueado por fricción desconocida: se requiere parametrizar maxTakerFeePct antes de autorizar ejecución. El descalce de precio es observable, el margen neto no.';
+  } else if (roundedDivergence > 6.0) {
+    recommendedAction = 'PROCEED_WITH_CAUTION';
+    riskRationale = 'Desvío extremo (>6%). Posible error tipográfico grave (fat-finger) o condiciones de pago no estándar. Verificar términos antes de liberar.';
+  } else if (ad.paymentMethods.length === 0) {
+    recommendedAction = 'PROCEED_WITH_CAUTION';
+    riskRationale = 'Sin métodos de pago reconocidos explícitos.';
+  }
+
+  return {
+    advId: ad.advId,
+    merchantName: ad.merchantName,
+    orderType: ad.orderType,
+    adPrice: ad.price,
+    fairMarketPrice: fair,
+    priceDivergencePct: roundedDivergence,
+    availableLiquidityUsd: liquidityUsd,
+    grossProfitUsd,
+    takerFeePct,
+    netProfitUsd,
+    netYieldPct,
+    urgencyScore: urgency,
+    recommendedAction,
+    isActionable,
+    ...(isActionable ? {} : { reason: 'MISSING_FRICTION_METRICS' as const }),
+    riskRationale,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export function scanOrderbookSnipingOpportunities(
+  ads: readonly P2pOrderbookAdItem[],
+  config: SniperAuditConfig,
+): SnipedOpportunityAlert[] {
+  const alerts: SnipedOpportunityAlert[] = [];
+  for (const ad of ads) {
+    const evaluated = evaluateSnipingOpportunity(ad, config);
+    if (evaluated) {
+      alerts.push(evaluated);
+    }
+  }
+  return alerts.sort((a, b) => b.netProfitUsd - a.netProfitUsd);
+}
+
+// ==========================================
+// 3. MULTI-MARKET OTC DARK POOL AGGREGATOR
+// ==========================================
+
+export type VenueType = 'BINANCE_P2P' | 'BYBIT_P2P' | 'ELDORADO_P2P' | 'SYLO_P2P' | 'PHYSICAL_CASH_DESK';
+
+export interface MarketVenueQuote {
+  venueId: string;
+  venueName: string;
+  venueType: VenueType;
+  currencyPair: string;
+  buyRate: number;
+  sellRate: number;
+  makerFeePct?: number;
+  takerFeePct?: number;
+  transferOrCashFrictionPct?: number;
+  minTradeVolumeUsd?: number;
+  maxTradeVolumeUsd?: number;
+  locationCity?: string;
+}
+
+export interface CrossVenueArbitrageRoute {
+  routeId: string;
+  sourceVenue: MarketVenueQuote;
+  destinationVenue: MarketVenueQuote;
+  asset: string;
+  /** Always observable: the price dislocation between two venues needs no cost assumption. */
+  grossSpreadPct: number;
+  /**
+   * `null` when a friction term was never measured. An unmeasured cost is not a zero cost,
+   * so no aggregate may be reported for it.
+   */
+  totalFrictionPct: number | null;
+  /**
+   * `null` when `hasUnknownFriction` is true. The net margin cannot be derived from a cost
+   * term we never measured, and a number here would be read as available margin. `null`
+   * means "no net margin is knowable", never 0.
+   */
+  netSpreadPct: number | null;
+  projectedProfitUsd: number;
+  capitalTestedUsd: number;
+  isActionable: boolean;
+  hasUnknownFriction?: boolean;
+  reason?: 'MISSING_FRICTION_METRICS';
+  securityRating: 'HIGH_SAFETY' | 'MODERATE_SECURITY' | 'PHYSICAL_ESCORT_REQUIRED';
+  executionPlaybook: string;
+  timestamp: string;
+}
+
+export interface DarkPoolAggregatorOptions {
+  capitalUsd?: number;
+  minNetSpreadPct?: number;
+}
+
+export function aggregateDarkPoolOpportunities(
+  venues: readonly MarketVenueQuote[],
+  options: DarkPoolAggregatorOptions = {},
+): CrossVenueArbitrageRoute[] {
+  const capital = options.capitalUsd && options.capitalUsd > 0 ? options.capitalUsd : 5000;
+  const minNetSpread = options.minNetSpreadPct ?? 1.2;
+  const routes: CrossVenueArbitrageRoute[] = [];
+
+  for (const source of venues) {
+    for (const dest of venues) {
+      if (source.venueId === dest.venueId) continue;
+      if (source.currencyPair !== dest.currencyPair) continue;
+
+      const buyCost = source.buyRate;
+      const sellProceeds = dest.sellRate;
+      if (buyCost <= 0 || sellProceeds <= 0) continue;
+
+      const grossSpread = ((sellProceeds - buyCost) / buyCost) * 100;
+      if (grossSpread <= 0) continue;
+
+      const hasUnknownFriction =
+        source.transferOrCashFrictionPct === undefined ||
+        dest.transferOrCashFrictionPct === undefined;
+
+      // An unmeasured friction term is not a zero friction term. While any term is unknown
+      // the net spread is not computed at all: it would be inflated by exactly the cost we
+      // did not measure, and a human would read that number as available margin.
+      let totalFrictionPct: number | null = null;
+      let netSpreadPct: number | null = null;
+      if (!hasUnknownFriction) {
+        const sourceTransferFriction = source.transferOrCashFrictionPct!;
+        const destTransferFriction = dest.transferOrCashFrictionPct!;
+        const sourceFriction = (source.takerFeePct ?? 0.1) + sourceTransferFriction;
+        const destFriction = (dest.makerFeePct ?? 0.1) + destTransferFriction;
+        const totalFriction = sourceFriction + destFriction;
+
+        totalFrictionPct = roundMoney(totalFriction, 2);
+        netSpreadPct = roundMoney(grossSpread - totalFriction, 2);
+      }
+
+      const isActionable = !hasUnknownFriction && netSpreadPct !== null && netSpreadPct >= minNetSpread;
+      const projectedProfitUsd = isActionable ? roundMoney((capital * netSpreadPct!) / 100, 2) : 0;
+
+      let securityRating: 'HIGH_SAFETY' | 'MODERATE_SECURITY' | 'PHYSICAL_ESCORT_REQUIRED' = 'HIGH_SAFETY';
+      let playbook = hasUnknownFriction
+        ? `Bloqueado por fricción desconocida: Se requiere parametrizar transferOrCashFrictionPct para ${source.venueName} y ${dest.venueName} antes de autorizar ejecución.`
+        : `Comprar en ${source.venueName} y vender en ${dest.venueName} vía libro digital.`;
+
+      if (!hasUnknownFriction && (source.venueType === 'PHYSICAL_CASH_DESK' || dest.venueType === 'PHYSICAL_CASH_DESK')) {
+        securityRating = 'PHYSICAL_ESCORT_REQUIRED';
+        playbook = `ALERTA DE SEGURIDAD FÍSICA: Liquidación en efectivo presencial en mesa física. Exigir furgón/escolta blindada, conteo con máquina UV y acreditación de fondos bancarios antes de retirarse.`;
+      } else if (!hasUnknownFriction && (source.venueType === 'ELDORADO_P2P' || dest.venueType === 'ELDORADO_P2P')) {
+        securityRating = 'MODERATE_SECURITY';
+        playbook = `Operación cross-platform con custodia en El Dorado / Sylo. Verificar confirmación en blockchain antes de liberar fiat.`;
+      }
+
+      routes.push({
+        routeId: `ROUTE-${source.venueId}-TO-${dest.venueId}`,
+        sourceVenue: source,
+        destinationVenue: dest,
+        asset: source.currencyPair,
+        grossSpreadPct: roundMoney(grossSpread, 2),
+        totalFrictionPct,
+        netSpreadPct,
+        projectedProfitUsd,
+        capitalTestedUsd: capital,
+        isActionable,
+        hasUnknownFriction,
+        ...(hasUnknownFriction ? { reason: 'MISSING_FRICTION_METRICS' as const } : {}),
+        securityRating,
+        executionPlaybook: playbook,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  return routes.sort(compareRoutesByNetSpread);
+}
+
+/**
+ * Routes with a known net spread rank first, highest first. A route whose net spread is
+ * `null` is not comparable to a number, so it goes last instead of poisoning the ordering
+ * with NaN. `Array.prototype.sort` is stable, so unpriced routes keep their insertion order
+ * and the ranking stays deterministic.
+ */
+function compareRoutesByNetSpread(
+  a: CrossVenueArbitrageRoute,
+  b: CrossVenueArbitrageRoute,
+): number {
+  if (a.netSpreadPct === null || b.netSpreadPct === null) {
+    if (a.netSpreadPct === b.netSpreadPct) return 0;
+    return a.netSpreadPct === null ? 1 : -1;
+  }
+  return b.netSpreadPct - a.netSpreadPct;
+}
+
+// ==========================================
+// 4. FINTECH SETTLEMENT & PAYROLL ROUTING
+// ==========================================
+
+export type FintechPlatform = 'DEEL' | 'WISE' | 'PAYONEER' | 'STRIPE' | 'PAYPAL';
+export type PayoutRail = 'USDT_TRC20' | 'VES_PAGO_MOVIL' | 'VES_TRANSFERENCIA' | 'USD_CASH_DELIVERY';
+
+export interface FintechSettlementRequest {
+  platform: FintechPlatform;
+  grossAmountUsd: number;
+  payoutRail: PayoutRail;
+  vesRatePerUsd?: number;
+  clientTier?: 'STANDARD' | 'RECURRENT_REMOTE' | 'CORPORATE_AGENCY';
+  isVerifiedContractor?: boolean;
+}
+
+export interface FintechSettlementQuote {
+  settlementId: string;
+  platform: FintechPlatform;
+  payoutRail: PayoutRail;
+  grossAmountUsd: number;
+  platformIncomingFeeUsd: number;
+  deskCommissionPct: number;
+  deskCommissionUsd: number;
+  netProceedsUsd: number;
+  netProceedsVes?: number;
+  effectiveExchangeRateVes?: number;
+  chargebackRiskTier: 'LOW' | 'MODERATE' | 'HIGH_HOLD_REQUIRED';
+  holdHoursRequired: number;
+  complianceDossierRequired: boolean;
+  formattedClientProposal: string;
+  timestamp: string;
+}
+
+const PLATFORM_INBOUND_FEES: Record<FintechPlatform, number> = {
+  DEEL: 0.0,
+  WISE: 0.005,
+  PAYONEER: 0.01,
+  STRIPE: 0.029,
+  PAYPAL: 0.044,
+};
+
+function resolveDeskFeePct(platform: FintechPlatform, amount: number, tier: string): number {
+  let baseFee = 4.5;
+  if (amount >= 10000) baseFee = 3.2;
+  else if (amount >= 5000) baseFee = 3.8;
+  else if (amount >= 2000) baseFee = 4.2;
+
+  if (tier === 'CORPORATE_AGENCY') baseFee -= 0.5;
+  else if (tier === 'RECURRENT_REMOTE') baseFee -= 0.3;
+
+  if (platform === 'PAYPAL') baseFee += 2.5;
+  else if (platform === 'STRIPE') baseFee += 1.5;
+
+  return Math.max(1.5, baseFee);
+}
+
+export function calculateFintechSettlementQuote(
+  req: FintechSettlementRequest,
+): FintechSettlementQuote {
+  const gross = Math.max(10, req.grossAmountUsd);
+  const platformFeeRate = PLATFORM_INBOUND_FEES[req.platform] ?? 0.01;
+  const platformIncomingFeeUsd = roundMoney(gross * platformFeeRate, 2);
+  const netInboundAfterPlatform = gross - platformIncomingFeeUsd;
+
+  const tier = req.clientTier ?? 'STANDARD';
+  const deskCommissionPct = resolveDeskFeePct(req.platform, gross, tier);
+  const deskCommissionUsd = roundMoney((netInboundAfterPlatform * deskCommissionPct) / 100, 2);
+  const netProceedsUsd = roundMoney(netInboundAfterPlatform - deskCommissionUsd, 2);
+
+  let holdHours = 0;
+  let chargebackRisk: 'LOW' | 'MODERATE' | 'HIGH_HOLD_REQUIRED' = 'LOW';
+  let complianceRequired = gross >= 3000;
+
+  if (req.platform === 'PAYPAL' || req.platform === 'STRIPE') {
+    chargebackRisk = 'HIGH_HOLD_REQUIRED';
+    holdHours = req.isVerifiedContractor ? 24 : 48;
+    complianceRequired = true;
+  } else if (req.platform === 'WISE') {
+    chargebackRisk = 'MODERATE';
+    holdHours = 6;
+  } else {
+    chargebackRisk = 'LOW';
+    holdHours = 0;
+  }
+
+  let netProceedsVes: number | undefined;
+  let effectiveRateVes: number | undefined;
+
+  if (req.payoutRail === 'VES_PAGO_MOVIL' || req.payoutRail === 'VES_TRANSFERENCIA') {
+    const rate = req.vesRatePerUsd && req.vesRatePerUsd > 0 ? req.vesRatePerUsd : 85.0;
+    netProceedsVes = roundMoney(netProceedsUsd * rate, 2);
+    effectiveRateVes = roundMoney(netProceedsVes / gross, 2);
+  }
+
+  const payoutDesc = netProceedsVes
+    ? `${netProceedsVes.toLocaleString('es-VE')} VES`
+    : `${netProceedsUsd} USDT`;
+
+  const proposal = [
+    `💼 *LIQUIDACIÓN DE FONDOS INTERNACIONALES (${req.platform})*`,
+    `────────────────────────────`,
+    `💵 *Monto Bruto Facturado:* $${gross.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`,
+    `📉 *Comisión de Red/Recepción:* -$${platformIncomingFeeUsd.toFixed(2)} USD`,
+    `⚖️ *Tarifa de Gestión de Mesa:* ${deskCommissionPct.toFixed(2)}% (-$${deskCommissionUsd.toFixed(2)} USD)`,
+    `✅ *FONDOS NETOS A RECIBIR:* *${payoutDesc}*`,
+    `📍 *Método de Desembolso:* ${req.payoutRail}`,
+    holdHours > 0 ? `⏳ *Período de Seguridad / Hold:* ${holdHours} horas por política antifraude.` : `⚡ *Desembolso Inmediato:* Sin período de retención.`,
+  ].join('\n');
+
+  return {
+    settlementId: `STL-${req.platform}-${Date.now().toString(36).toUpperCase()}`,
+    platform: req.platform,
+    payoutRail: req.payoutRail,
+    grossAmountUsd: gross,
+    platformIncomingFeeUsd,
+    deskCommissionPct,
+    deskCommissionUsd,
+    netProceedsUsd,
+    netProceedsVes,
+    effectiveExchangeRateVes: effectiveRateVes,
+    chargebackRiskTier: chargebackRisk,
+    holdHoursRequired: holdHours,
+    complianceDossierRequired: complianceRequired,
+    formattedClientProposal: proposal,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ==========================================
+// 5. COUNTERPARTY YIELD & SPREAD PRICING
+// ==========================================
+
+export type CounterpartyTier =
+  | 'VIP_INSTITUTIONAL'
+  | 'FAST_AND_RELIABLE'
+  | 'STANDARD'
+  | 'SLOW_OR_FRICTIONAL'
+  | 'HIGH_RISK_SURCHARGE';
+
+export interface CounterpartyMetrics {
+  counterpartyId: string;
+  name?: string;
+  averageReleaseMinutes: number;
+  completedTradesCount: number;
+  disputeCount: number;
+  monthlyVolumeUsd: number;
+  frictionScore?: number;
+}
+
+export interface DynamicPricingRequest {
+  metrics: CounterpartyMetrics;
+  baseMarketRate: number;
+  orderType: 'BUY' | 'SELL';
+  requestedAmountUsd: number;
+}
+
+export interface DynamicPricingResult {
+  counterpartyId: string;
+  tier: CounterpartyTier;
+  baseMarketRate: number;
+  spreadAdjustmentPct: number;
+  adjustedRate: number;
+  projectedDeskAlphaUsd: number;
+  rationale: string;
+  recommendedMaxExposureUsd: number;
+  timestamp: string;
+}
+
+export function classifyCounterpartyTier(metrics: CounterpartyMetrics): CounterpartyTier {
+  if (metrics.disputeCount >= 2 || (metrics.frictionScore && metrics.frictionScore > 75)) {
+    return 'HIGH_RISK_SURCHARGE';
+  }
+  if (metrics.completedTradesCount >= 25 && metrics.monthlyVolumeUsd >= 10000 && metrics.averageReleaseMinutes <= 3) {
+    return 'VIP_INSTITUTIONAL';
+  }
+  if (metrics.completedTradesCount >= 10 && metrics.averageReleaseMinutes <= 5) {
+    return 'FAST_AND_RELIABLE';
+  }
+  if (metrics.averageReleaseMinutes > 20 || (metrics.frictionScore && metrics.frictionScore > 50)) {
+    return 'SLOW_OR_FRICTIONAL';
+  }
+  return 'STANDARD';
+}
+
+export function calculateDynamicCounterpartyPricing(
+  req: DynamicPricingRequest,
+): DynamicPricingResult {
+  const tier = classifyCounterpartyTier(req.metrics);
+  const baseRate = req.baseMarketRate;
+  const amount = Math.max(10, req.requestedAmountUsd);
+
+  let spreadAdjustmentPct = 0;
+  let rationale = '';
+  let maxExposure = 5000;
+
+  switch (tier) {
+    case 'VIP_INSTITUTIONAL':
+      spreadAdjustmentPct = -0.3;
+      rationale = 'Cliente VIP recurrente con liberación ultra rápida (<3 min). Descuento de fidelidad para maximizar rotación de capital.';
+      maxExposure = 50000;
+      break;
+    case 'FAST_AND_RELIABLE':
+      spreadAdjustmentPct = 0.0;
+      rationale = 'Contraparte rápida y confiable. Tasa de mercado estándar competitiva.';
+      maxExposure = 15000;
+      break;
+    case 'STANDARD':
+      spreadAdjustmentPct = 0.35;
+      rationale = 'Cliente estándar o nuevo. Margen de seguridad moderado aplicado.';
+      maxExposure = 5000;
+      break;
+    case 'SLOW_OR_FRICTIONAL':
+      spreadAdjustmentPct = 1.25;
+      rationale = 'Cliente lento (>20 min liberación). Recargo por costo de oportunidad y bloqueo transaccional de cuentas bancarias.';
+      maxExposure = 2000;
+      break;
+    case 'HIGH_RISK_SURCHARGE':
+      spreadAdjustmentPct = 2.0;
+      rationale = 'Historial de disputas o alta fricción. Recargo estricto de riesgo con límite de exposición reducido.';
+      maxExposure = 800;
+      break;
+  }
+
+  let adjustedRate = baseRate;
+  if (req.orderType === 'SELL') {
+    adjustedRate = baseRate * (1 + spreadAdjustmentPct / 100);
+  } else {
+    adjustedRate = baseRate * (1 - spreadAdjustmentPct / 100);
+  }
+
+  const roundedRate = roundMoney(adjustedRate, 2);
+  const projectedAlphaUsd = roundMoney((amount * Math.abs(spreadAdjustmentPct)) / 100, 2);
+
+  return {
+    counterpartyId: req.metrics.counterpartyId,
+    tier,
+    baseMarketRate: baseRate,
+    spreadAdjustmentPct: roundMoney(spreadAdjustmentPct, 2),
+    adjustedRate: roundedRate,
+    projectedDeskAlphaUsd: projectedAlphaUsd,
+    rationale,
+    recommendedMaxExposureUsd: maxExposure,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ==========================================
+// 6. OMNICHANNEL CONCIERGE (WHATSAPP/TELEGRAM)
+// ==========================================
+
+export type ConciergeIntent =
+  | 'QUOTE_REQUEST'
+  | 'PAYMENT_PROOF_SENT'
+  | 'BANK_DETAILS_REQUEST'
+  | 'GREETING'
+  | 'UNRECOGNIZED';
+
+export interface ConciergeParsedInquiry {
+  intent: ConciergeIntent;
+  detectedAmount?: number;
+  detectedCurrency?: string;
+  detectedBankRail?: string;
+  operationType: 'BUY_CRYPTO' | 'SELL_CRYPTO';
+  confidenceScore: number;
+}
+
+export interface ConciergeQuoteContext {
+  deskRatePerUsd: number;
+  bankName: string;
+  bankAccountDetails: string;
+  quoteValidityMinutes?: number;
+}
+
+export interface ConciergeResponsePayload {
+  parsedInquiry: ConciergeParsedInquiry;
+  quoteAmountCrypto?: number;
+  quoteAmountFiat?: number;
+  exchangeRateUsed: number;
+  validUntilIso: string;
+  formattedReplyMessage: string;
+  requiresOperatorHumanReview: boolean;
+}
+
+export function parseCustomerChatMessage(message: string): ConciergeParsedInquiry {
+  const clean = message.toLowerCase().trim();
+  let intent: ConciergeIntent = 'UNRECOGNIZED';
+
+  if (/hola|buen(as|os)|saludos|que tal/i.test(clean) && clean.length < 25) {
+    intent = 'GREETING';
+  } else if (/comprobante|capture|pago realizado|ya transfer[ií]|listo el pago|aqui esta el capture/i.test(clean)) {
+    intent = 'PAYMENT_PROOF_SENT';
+  } else if (/datos|cuenta|donde transfiero|pasa los datos|numero de cuenta|pago movil/i.test(clean) && !/\d{2,}/.test(clean)) {
+    intent = 'BANK_DETAILS_REQUEST';
+  } else if (/cuanto|tasa|precio|cotiz|cambi|tienes|disponible|\$/i.test(clean) || /\d+/.test(clean)) {
+    intent = 'QUOTE_REQUEST';
+  }
+
+  let opType: 'BUY_CRYPTO' | 'SELL_CRYPTO' = 'BUY_CRYPTO';
+  if (/vendo|vender|recibo bolivares|cambiar usdt a|tengo usdt/i.test(clean)) {
+    opType = 'SELL_CRYPTO';
+  }
+
+  let detectedAmount: number | undefined;
+  const numMatch = clean.match(/(\d+([\.,]\d+)?)/);
+  if (numMatch) {
+    const rawNum = numMatch[1].replace(',', '.');
+    const parsedVal = parseFloat(rawNum);
+    if (!isNaN(parsedVal) && parsedVal > 0) {
+      detectedAmount = parsedVal;
+    }
+  }
+
+  let detectedCurrency = 'USDT';
+  if (/bs|ves|boliv/i.test(clean)) detectedCurrency = 'VES';
+  else if (/\$|usd|dolar/i.test(clean)) detectedCurrency = 'USD';
+
+  let detectedBankRail: string | undefined;
+  if (/pago movil|pagomovil/i.test(clean)) detectedBankRail = 'Pago Móvil';
+  else if (/banesco/i.test(clean)) detectedBankRail = 'Banesco';
+  else if (/mercantil/i.test(clean)) detectedBankRail = 'Mercantil';
+  else if (/zelle/i.test(clean)) detectedBankRail = 'Zelle';
+
+  const confidence = detectedAmount ? 0.9 : 0.6;
+
+  return {
+    intent,
+    detectedAmount,
+    detectedCurrency,
+    detectedBankRail,
+    operationType: opType,
+    confidenceScore: confidence,
+  };
+}
+
+export function generateConciergeReply(
+  inquiry: ConciergeParsedInquiry,
+  context: ConciergeQuoteContext,
+): ConciergeResponsePayload {
+  const rate = context.deskRatePerUsd;
+  const validityMins = context.quoteValidityMinutes ?? 15;
+  const validUntil = new Date(Date.now() + validityMins * 60000).toISOString();
+  const timeFormatted = new Date(Date.now() + validityMins * 60000).toLocaleTimeString('es-VE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  let quoteCrypto: number | undefined;
+  let quoteFiat: number | undefined;
+  let replyText = '';
+  let requiresReview = false;
+
+  if (inquiry.intent === 'GREETING') {
+    replyText = `👋 ¡Hola! Bienvenido a nuestra Mesa de Cambio P2P.\n\nActualmente tenemos liquidez activa en *Banesco, Mercantil y Pago Móvil*.\n\n📊 *Tasa del Momento:* 1 USDT = ${rate.toFixed(2)} Bs\n\n¿Qué monto te gustaría consultar o cambiar hoy?`;
+  } else if (inquiry.intent === 'PAYMENT_PROOF_SENT') {
+    replyText = `📥 *Comprobante recibido con éxito.*\n\nEstamos conciliando la referencia en nuestra banca electrónica. Una vez confirmado en cuenta, liberaremos tu operación en menos de 3 minutos.\n\n¡Gracias por tu paciencia!`;
+    requiresReview = true;
+  } else if (inquiry.intent === 'BANK_DETAILS_REQUEST') {
+    replyText = `🏦 *DATOS BANCARIOS OFICIALES PARA TRANSFERIR:*\n\n${context.bankAccountDetails}\n\n⚠️ *Regla de Oro:* Solo recibimos fondos del titular de la cuenta (Cero terceros). Por favor envía el comprobante tras transferir.`;
+  } else {
+    const amount = inquiry.detectedAmount ?? 100;
+    if (inquiry.detectedCurrency === 'VES') {
+      quoteFiat = amount;
+      quoteCrypto = roundMoney(amount / rate, 2);
+    } else {
+      quoteCrypto = amount;
+      quoteFiat = roundMoney(amount * rate, 2);
+    }
+
+    replyText = [
+      `📊 *COTIZACIÓN OFICIAL — MESA P2P*`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `▪ *Monto a Liquidar:* ${quoteCrypto} USDT`,
+      `▪ *Tasa de Mesa:* ${rate.toFixed(2)} Bs/USDT`,
+      `▪ *Total Neto en Bolívares:* *${quoteFiat.toLocaleString('es-VE')} VES*`,
+      `▪ *Banco:* ${context.bankName}`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `⏱️ *Cotización garantizada hasta:* ${timeFormatted} (Válida por ${validityMins} minutos)`,
+      `\n¿Deseas que te enviemos los datos bancarios para proceder?`,
+    ].join('\n');
+  }
+
+  return {
+    parsedInquiry: inquiry,
+    quoteAmountCrypto: quoteCrypto,
+    quoteAmountFiat: quoteFiat,
+    exchangeRateUsed: rate,
+    validUntilIso: validUntil,
+    formattedReplyMessage: replyText,
+    requiresOperatorHumanReview: requiresReview,
+  };
+}
+
+// ==========================================
+// 7. MACRO SENTIMENT & BCV INTELLIGENCE
+// ==========================================
+
+export type MacroRegimeType =
+  | 'BCV_INTERVENTION_WINDOW'
+  | 'PARALLEL_GAP_EXPANSION'
+  | 'INVENTORY_STABILITY'
+  | 'EXTREME_DEVALUATION_PRESSURE';
+
+export interface MacroTelemetryInput {
+  bcvOfficialRate: number;
+  parallelMarketRate: number;
+  daysSinceLastIntervention: number;
+  currentHourOfDayUtcMinus4: number;
+  currentDayOfWeek: number;
+  estimatedWeeklyBcvInjectionUsd?: number;
+}
+
+export interface MacroRegimeAssessment {
+  regime: MacroRegimeType;
+  rateGapPct: number;
+  interventionProbabilityPct: number;
+  devaluationSpeedRiskScore: number;
+  recommendedVesHoldMaxMinutes: number;
+  makerSpreadAdjustmentPct: number;
+  tacticalDirective: string;
+  provenance: 'ESTIMATED_HEURISTIC' | 'VERIFIED_SCHEDULE';
+  timestamp: string;
+}
+
+export function evaluateMacroBcvRegime(input: MacroTelemetryInput): MacroRegimeAssessment {
+  const bcv = Math.max(0.01, input.bcvOfficialRate);
+  const parallel = Math.max(0.01, input.parallelMarketRate);
+  const rateGapPct = roundMoney(((parallel - bcv) / bcv) * 100, 2);
+
+  const scheduleDays = [1, 4]; // Default Monday & Thursday heuristic
+  const startHour = 9;
+  const endHour = 13;
+  const provenance: 'ESTIMATED_HEURISTIC' | 'VERIFIED_SCHEDULE' = 'ESTIMATED_HEURISTIC';
+
+  let interventionProb = 15;
+  const isInterventionDay = scheduleDays.includes(input.currentDayOfWeek);
+  const isInterventionHour = input.currentHourOfDayUtcMinus4 >= startHour && input.currentHourOfDayUtcMinus4 <= endHour;
+
+  if (isInterventionDay && isInterventionHour) {
+    interventionProb += 55;
+  } else if (input.daysSinceLastIntervention >= 5) {
+    interventionProb += 35;
+  }
+
+  if (rateGapPct > 25) {
+    interventionProb += 15;
+  }
+  interventionProb = Math.min(95, Math.max(5, interventionProb));
+
+  let regime: MacroRegimeType = 'INVENTORY_STABILITY';
+  let devalSpeedRisk = 20;
+  let maxVesHoldMinutes = 60;
+  let spreadAdjustmentPct = 0;
+  let tacticalDirective = 'Operación habitual. Mantener inventario balanceado 50% USDT / 50% VES.';
+
+  if (interventionProb >= 70) {
+    regime = 'BCV_INTERVENTION_WINDOW';
+    devalSpeedRisk = 30;
+    maxVesHoldMinutes = 30;
+    spreadAdjustmentPct = 0.45;
+    tacticalDirective = `ALERTA VENTANA CAMBIARIA BCV: Inminente inyección de divisas estimada en $${input.estimatedWeeklyBcvInjectionUsd ? (input.estimatedWeeklyBcvInjectionUsd / 1e6).toFixed(0) : '50'}M USD. No retener bolívares por más de 30 minutos; expandir spread de compra (+0.45%) para absorber posibles retrocesos del paralelo.`;
+  } else if (rateGapPct > 22) {
+    regime = 'PARALLEL_GAP_EXPANSION';
+    devalSpeedRisk = 85;
+    maxVesHoldMinutes = 15;
+    spreadAdjustmentPct = 0.8;
+    tacticalDirective = `BRECHA CAMBIARIA CRÍTICA (${rateGapPct}%): Presión severa de devaluación en paralelo. Drenar bolívares a USDT de inmediato (Hold máx: 15 min). Ajustar puntas vendedoras agresivamente.`;
+  } else if (rateGapPct > 15) {
+    regime = 'EXTREME_DEVALUATION_PRESSURE';
+    devalSpeedRisk = 60;
+    maxVesHoldMinutes = 30;
+    spreadAdjustmentPct = 0.35;
+    tacticalDirective = `Presión moderada de devaluación. Ajustar spread +0.35% y priorizar rotación rápida de compras.`;
+  }
+
+  return {
+    regime,
+    rateGapPct,
+    interventionProbabilityPct: interventionProb,
+    devaluationSpeedRiskScore: devalSpeedRisk,
+    recommendedVesHoldMaxMinutes: maxVesHoldMinutes,
+    makerSpreadAdjustmentPct: spreadAdjustmentPct,
+    tacticalDirective,
+    provenance,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ==========================================
+// 8. SMART TREASURY YIELD MAXIMIZER
+// ==========================================
+
+export type MarketVelocityLevel = 'LOW_OFFPEAK' | 'NORMAL_FLOW' | 'HIGH_SURGE';
+
+export interface TreasuryYieldParams {
+  totalUsdtInventory: number;
+  currentlyCommittedUsdt: number;
+  marketVelocity: MarketVelocityLevel;
+  flexibleApyPct?: number;
+  apyProvenance?: 'LIVE_EXCHANGE_FEED' | 'ESTIMATED_BENCHMARK';
+  minimumSafetyBufferUsd?: number;
+}
+
+export interface TreasuryAllocationPlan {
+  totalInventoryUsd: number;
+  availableIdleUsdt: number;
+  recommendedSweepAmountUsd: number;
+  retainedSafetyBufferUsd: number;
+  flexibleApyPct: number;
+  apyProvenance: 'LIVE_EXCHANGE_FEED' | 'ESTIMATED_BENCHMARK';
+  projectedDailyInterestUsd: number;
+  projectedMonthlyInterestUsd: number;
+  projectedAnnualInterestUsd: number;
+  actionDirective: 'EXECUTE_SWEEP_DEPOSIT' | 'MAINTAIN_CURRENT_ALLOCATION' | 'TRIGGER_INSTANT_REDEMPTION';
+  redemptionThresholdNotice: string;
+  timestamp: string;
+}
+
+export function calculateTreasuryYieldAllocation(
+  params: TreasuryYieldParams,
+): TreasuryAllocationPlan {
+  const total = Math.max(0, params.totalUsdtInventory);
+  const committed = Math.max(0, params.currentlyCommittedUsdt);
+  const idle = Math.max(0, total - committed);
+
+  const apy = params.flexibleApyPct && params.flexibleApyPct > 0 ? params.flexibleApyPct : 10.5;
+  const apyProvenance = params.apyProvenance ?? (params.flexibleApyPct ? 'LIVE_EXCHANGE_FEED' : 'ESTIMATED_BENCHMARK');
+  const defaultBuffer = params.minimumSafetyBufferUsd ?? 2500;
+
+  let bufferRequired = defaultBuffer;
+  let sweepAmount = 0;
+  let directive: 'EXECUTE_SWEEP_DEPOSIT' | 'MAINTAIN_CURRENT_ALLOCATION' | 'TRIGGER_INSTANT_REDEMPTION' =
+    'MAINTAIN_CURRENT_ALLOCATION';
+
+  if (params.marketVelocity === 'LOW_OFFPEAK') {
+    bufferRequired = Math.min(1000, idle * 0.15);
+    sweepAmount = Math.max(0, idle - bufferRequired);
+    if (sweepAmount >= 500) {
+      directive = 'EXECUTE_SWEEP_DEPOSIT';
+    }
+  } else if (params.marketVelocity === 'HIGH_SURGE') {
+    bufferRequired = total;
+    sweepAmount = 0;
+    directive = 'TRIGGER_INSTANT_REDEMPTION';
+  } else {
+    bufferRequired = defaultBuffer;
+    sweepAmount = Math.max(0, idle - bufferRequired);
+    if (sweepAmount >= 1000) {
+      directive = 'EXECUTE_SWEEP_DEPOSIT';
+    }
+  }
+
+  const principalAllocated = directive === 'EXECUTE_SWEEP_DEPOSIT' ? sweepAmount : 0;
+  const annualInterest = (principalAllocated * apy) / 100;
+  const dailyInterest = annualInterest / 365;
+  const monthlyInterest = annualInterest / 12;
+
+  let notice = 'Liquidez óptima en spot para atender flujo de órdenes.';
+  if (directive === 'EXECUTE_SWEEP_DEPOSIT') {
+    notice = `Baja actividad detectada: Barrer $${sweepAmount.toFixed(2)} USDT hacia Flexible Earn (${apy}% APY). Redención instantánea configurada si la reserva cae de $${bufferRequired.toFixed(2)} USDT.`;
+  } else if (directive === 'TRIGGER_INSTANT_REDEMPTION') {
+    notice = `ALERTA PICO DE OPERACIONES: Rescatar fondos depositados en Simple Earn inmediatamente para garantizar liquidez en anuncios P2P.`;
+  }
+
+  return {
+    totalInventoryUsd: roundMoney(total, 2),
+    availableIdleUsdt: roundMoney(idle, 2),
+    recommendedSweepAmountUsd: roundMoney(principalAllocated, 2),
+    retainedSafetyBufferUsd: roundMoney(bufferRequired, 2),
+    flexibleApyPct: apy,
+    apyProvenance,
+    projectedDailyInterestUsd: roundMoney(dailyInterest, 2),
+    projectedMonthlyInterestUsd: roundMoney(monthlyInterest, 2),
+    projectedAnnualInterestUsd: roundMoney(annualInterest, 2),
+    actionDirective: directive,
+    redemptionThresholdNotice: notice,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ==========================================
+// 9. BROWSER-USE AUTONOMOUS OPERATOR BRIDGE
+// ==========================================
+
+export type FinancialPortalSite =
+  | 'BANESCO_PANAMA'
+  | 'FACEBANK'
+  | 'SIMLY'
+  | 'MERCANTIL_PANAMA'
+  | 'BINANCE_P2P';
+
+export type OperatorActionType =
+  | 'FETCH_RECENT_TRANSACTIONS'
+  | 'DOWNLOAD_ACCOUNT_STATEMENT'
+  | 'VERIFY_TRANSFER_REFERENCE'
+  | 'CHECK_BALANCE';
+
+export interface BrowserNavigationStep {
+  stepIndex: number;
+  action: 'NAVIGATE' | 'TYPE_TEXT' | 'CLICK_ELEMENT' | 'WAIT_SELECTOR' | 'EXTRACT_TEXT' | 'CAPTURE_SCREENSHOT';
+  selector?: string;
+  payloadValue?: string;
+  description: string;
+}
+
+export interface BrowserOperatorTaskInput {
+  targetSite: FinancialPortalSite;
+  action: OperatorActionType;
+  referenceToVerify?: string;
+  expectedAmount?: number;
+  headless?: boolean;
+}
+
+export interface CompiledBrowserOperatorTask {
+  taskId: string;
+  targetPortal: FinancialPortalSite;
+  action: OperatorActionType;
+  requiresMfaHumanIntervention: boolean;
+  mfaChannelNotice: string;
+  steps: BrowserNavigationStep[];
+  successAssertionSelector: string;
+  timestamp: string;
+}
+
+export function compileBrowserOperatorTask(
+  input: BrowserOperatorTaskInput,
+): CompiledBrowserOperatorTask {
+  const steps: BrowserNavigationStep[] = [];
+  let requiresMfa = false;
+  let mfaNotice = 'No requiere MFA para navegación de lectura.';
+  let successSelector = 'div.account-balance-card';
+
+  switch (input.targetSite) {
+    case 'BANESCO_PANAMA':
+      requiresMfa = true;
+      mfaNotice = 'Requiere Token Móvil / Clave de operaciones para login corporativo.';
+      steps.push(
+        { stepIndex: 1, action: 'NAVIGATE', payloadValue: 'https://panama.banesco.com', description: 'Abrir portal Banesco Panamá Empresas' },
+        { stepIndex: 2, action: 'TYPE_TEXT', selector: '#txtUsuario', payloadValue: '${BANESCO_USER}', description: 'Ingresar usuario institucional' },
+        { stepIndex: 3, action: 'TYPE_TEXT', selector: '#txtPassword', payloadValue: '${BANESCO_PASS}', description: 'Ingresar contraseña enmascarada' },
+        { stepIndex: 4, action: 'CLICK_ELEMENT', selector: '#btnIngresar', description: 'Hacer click en Entrar' },
+        { stepIndex: 5, action: 'WAIT_SELECTOR', selector: '.dashboard-accounts-table', description: 'Esperar resolución de MFA y carga de cuentas' },
+      );
+      if (input.action === 'VERIFY_TRANSFER_REFERENCE' && input.referenceToVerify) {
+        steps.push(
+          { stepIndex: 6, action: 'NAVIGATE', payloadValue: 'https://panama.banesco.com/movimientos', description: 'Abrir historial de movimientos' },
+          { stepIndex: 7, action: 'TYPE_TEXT', selector: '#inputSearchRef', payloadValue: input.referenceToVerify, description: `Filtrar por referencia ${input.referenceToVerify}` },
+          { stepIndex: 8, action: 'EXTRACT_TEXT', selector: 'table.movimientos-table tr.selected', description: 'Extraer comprobante y verificar coincidencia' },
+        );
+      }
+      break;
+
+    case 'FACEBANK':
+      steps.push(
+        { stepIndex: 1, action: 'NAVIGATE', payloadValue: 'https://online.facebank.pr', description: 'Abrir banca online Facebank' },
+        { stepIndex: 2, action: 'WAIT_SELECTOR', selector: '#login-container', description: 'Esperar contenedor de autenticación' },
+        { stepIndex: 3, action: 'CAPTURE_SCREENSHOT', description: 'Guardar captura forense de movimientos' },
+      );
+      break;
+
+    case 'SIMLY':
+      steps.push(
+        { stepIndex: 1, action: 'NAVIGATE', payloadValue: 'https://app.simly.io/login', description: 'Abrir dashboard de Simly Neobank' },
+        { stepIndex: 2, action: 'WAIT_SELECTOR', selector: '[data-testid="transactions-feed"]', description: 'Esperar feed de transferencias' },
+        { stepIndex: 3, action: 'EXTRACT_TEXT', selector: '[data-testid="balance-display"]', description: 'Extraer balance disponible en USD' },
+      );
+      break;
+
+    default:
+      steps.push(
+        { stepIndex: 1, action: 'NAVIGATE', payloadValue: `https://${input.targetSite.toLowerCase()}.com`, description: 'Navegar al portal financiero' },
+        { stepIndex: 2, action: 'WAIT_SELECTOR', selector: 'body', description: 'Esperar carga del documento' },
+      );
+  }
+
+  return {
+    taskId: `TASK-NAV-${input.targetSite.substring(0, 4)}-${Date.now().toString(36).toUpperCase()}`,
+    targetPortal: input.targetSite,
+    action: input.action,
+    requiresMfaHumanIntervention: requiresMfa,
+    mfaChannelNotice: mfaNotice,
+    steps,
+    successAssertionSelector: successSelector,
+    timestamp: new Date().toISOString(),
+  };
+}
+

@@ -3,7 +3,7 @@ import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './agent-skills';
 
 describe('Agent Skills & Function Calling Declarations', () => {
   it('should expose the financial skills schemas for Gemini', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(43);
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(63);
     const names = GEMINI_FINANCIAL_SKILLS.map((s) => s.name);
     expect(names).toContain('audit_and_risk_analytics');
     expect(names).toContain('scan_triangular_arbitrage');
@@ -50,6 +50,27 @@ describe('Agent Skills & Function Calling Declarations', () => {
     expect(names).toContain('audit_sop_compliance_enforcement');
     expect(names).toContain('sync_google_sheets_live_ledger');
     expect(names).toContain('forecast_cash_flow_and_reconciliation');
+    // 20 Strategic Operational Skills
+    expect(names).toContain('scan_synthetic_stable_arbitrage');
+    expect(names).toContain('audit_distressed_liquidity_sniper');
+    expect(names).toContain('query_otc_darkpool_spread');
+    expect(names).toContain('route_fintech_payroll_settlement');
+    expect(names).toContain('recommend_counterparty_yield_price');
+    expect(names).toContain('process_concierge_inquiry');
+    expect(names).toContain('predict_bcv_macro_regime');
+    expect(names).toContain('optimize_treasury_idle_yield');
+    expect(names).toContain('compile_browser_operator_task');
+    expect(names).toContain('execute_maker_laddering_plan');
+    expect(names).toContain('balance_cross_exchange_inventory');
+    expect(names).toContain('enforce_depeg_delta_hedge');
+    expect(names).toContain('audit_chargeback_shield');
+    expect(names).toContain('classify_and_price_client_tier');
+    expect(names).toContain('negotiate_whatsapp_order_intake');
+    expect(names).toContain('bundle_corporate_b2b_dossier');
+    expect(names).toContain('compile_fast_dispute_evidence');
+    expect(names).toContain('quote_instant_remittance_corridor');
+    expect(names).toContain('execute_preemptive_bcv_drain');
+    expect(names).toContain('evaluate_emergency_killswitch');
 
     // All should have parameters of type OBJECT with properties
     for (const skill of GEMINI_FINANCIAL_SKILLS) {
@@ -397,6 +418,265 @@ describe('Agent Skills & Function Calling Declarations', () => {
       expect(data.dossier.operatorStanding).toBe('DISCIPLINED');
       expect(data.dossier.goldenRuleComplianceScore).toBe(100);
       expect(data.dossier.disciplineAudit.compliantOperationsCount).toBe(2);
+    });
+
+    describe('20 Strategic Operational Skills execution', () => {
+      it('executes scan_synthetic_stable_arbitrage via dispatcher', () => {
+        const res = executeFinancialSkill('scan_synthetic_stable_arbitrage', {
+          pairs: [
+            { sourceAsset: 'USDT', targetAsset: 'USDC', exchangeRate: 0.9985, feePct: 0.05, reverseExchangeRate: 1.002, reverseFeePct: 0.05 },
+          ],
+          minNetSpreadPct: 0.1,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.opportunities).toBeDefined();
+      });
+
+      it('executes audit_distressed_liquidity_sniper via dispatcher', () => {
+        const res = executeFinancialSkill('audit_distressed_liquidity_sniper', {
+          ads: [
+            { advId: 'AD-1', merchantName: 'TraderFast', price: 79.0, availableAmountCrypto: 500, minLimitFiat: 1000, maxLimitFiat: 40000, paymentMethods: ['Banesco'], orderType: 'SELL' },
+          ],
+          fairMarketRate: 85.0,
+          side: 'SELL',
+          minDislocationPct: 0.8,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.snipingOpportunitiesCount).toBeGreaterThan(0);
+      });
+
+      it('executes query_otc_darkpool_spread via dispatcher', () => {
+        const res = executeFinancialSkill('query_otc_darkpool_spread', {
+          quotes: [
+            { venueId: 'V1', venueName: 'Binance P2P', venueType: 'BINANCE_P2P', currencyPair: 'USDT/VES', buyRate: 84.5, sellRate: 86.0, minTradeVolumeUsd: 100, maxTradeVolumeUsd: 10000 },
+            { venueId: 'V2', venueName: 'Caracas Cash Desk', venueType: 'PHYSICAL_CASH_DESK', currencyPair: 'USDT/VES', buyRate: 83.0, sellRate: 88.0, minTradeVolumeUsd: 1000, maxTradeVolumeUsd: 50000 },
+          ],
+          volumeUsd: 10000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.routes).toBeDefined();
+        expect(data.volumeUsd).toBe(10000);
+      });
+
+      it('executes route_fintech_payroll_settlement via dispatcher', () => {
+        const res = executeFinancialSkill('route_fintech_payroll_settlement', {
+          sourcePlatform: 'DEEL',
+          amountUsd: 2500,
+          targetDestination: 'VES_BANESCO',
+          urgency: 'HIGH',
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.netProceedsUsd).toBeGreaterThan(0);
+        expect(data.chargebackRiskTier).toBeDefined();
+      });
+
+      it('executes recommend_counterparty_yield_price via dispatcher', () => {
+        const res = executeFinancialSkill('recommend_counterparty_yield_price', {
+          counterpartyId: 'CP-SLOW-1',
+          marketBasePrice: 85.0,
+          orderSide: 'BUY',
+          averageReleaseMinutes: 28,
+          completedTradesCount: 15,
+          disputeCount: 2,
+          monthlyVolumeUsd: 3000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.tier).toBe('HIGH_RISK_SURCHARGE');
+        expect(data.adjustedRate).toBeLessThan(85.0);
+      });
+
+      it('executes process_concierge_inquiry via dispatcher', () => {
+        const res = executeFinancialSkill('process_concierge_inquiry', {
+          message: 'Hola buenas tardes a cuanto tienen la tasa de USDT para comprar 500?',
+          currentBcvRate: 80.0,
+          currentParallelRate: 86.0,
+          deskBuyRate: 85.0,
+          deskSellRate: 87.0,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.parsedInquiry.intent).toBe('QUOTE_REQUEST');
+        expect(data.formattedReplyMessage).toContain('87.00');
+      });
+
+      it('executes predict_bcv_macro_regime via dispatcher', () => {
+        const res = executeFinancialSkill('predict_bcv_macro_regime', {
+          bcvOfficialRate: 80.0,
+          parallelRate: 92.0,
+          daysSinceLastIntervention: 6,
+          estimatedInterventionAmountUsd: 60000000,
+          currentHourVET: 10,
+          currentDayOfWeek: 1,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.regime).toBe('BCV_INTERVENTION_WINDOW');
+        expect(data.interventionProbabilityPct).toBeGreaterThan(50);
+      });
+
+      it('executes optimize_treasury_idle_yield via dispatcher', () => {
+        const res = executeFinancialSkill('optimize_treasury_idle_yield', {
+          totalTreasuryUsdt: 25000,
+          operationalReserveUsdt: 5000,
+          minYieldApyPct: 4.0,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.availableIdleUsdt).toBe(20000);
+        expect(data.projectedMonthlyInterestUsd).toBeGreaterThan(0);
+      });
+
+      it('executes compile_browser_operator_task via dispatcher', () => {
+        const res = executeFinancialSkill('compile_browser_operator_task', {
+          targetSite: 'BANESCO_PANAMA',
+          action: 'VERIFY_TRANSFER_REFERENCE',
+          referenceToVerify: 'TX-998877',
+          expectedAmount: 1250,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.taskId).toContain('TASK-NAV');
+        expect(data.steps.length).toBeGreaterThan(0);
+      });
+
+      it('executes execute_maker_laddering_plan via dispatcher', () => {
+        const res = executeFinancialSkill('execute_maker_laddering_plan', {
+          midPrice: 85.0,
+          currentInventoryUsdt: 6000,
+          targetInventoryUsdt: 5000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.makerQuotes).toBeDefined();
+        expect(data.makerQuotes.reservationPrice).toBeLessThan(85.0);
+      });
+
+      it('executes balance_cross_exchange_inventory via dispatcher', () => {
+        const res = executeFinancialSkill('balance_cross_exchange_inventory', {
+          binanceBalanceUsdt: 10000,
+          bybitBalanceUsdt: 2000,
+          onchainBalanceUsdt: 3000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.rebalanceNeeded).toBe(true);
+        expect(data.rebalanceInstructions.length).toBeGreaterThan(0);
+      });
+
+      it('executes enforce_depeg_delta_hedge via dispatcher', () => {
+        const res = executeFinancialSkill('enforce_depeg_delta_hedge', {
+          inventoryVes: 500000,
+          currentPrice: 85.0,
+          hedgeRatioPct: 80,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.action).toBe('OPEN_SHORT_PERP_HEDGE');
+        expect(data.recommendedShortFuturesUsd).toBeGreaterThan(0);
+      });
+
+      it('executes audit_chargeback_shield via dispatcher', () => {
+        const res = executeFinancialSkill('audit_chargeback_shield', {
+          platform: 'PAYPAL',
+          amountUsd: 1500,
+          isVerifiedContractor: false,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.riskLevel).toBe('HIGH');
+        expect(data.verdict).toBe('REJECT_OR_ESCROW_48H');
+      });
+
+      it('executes classify_and_price_client_tier via dispatcher', () => {
+        const res = executeFinancialSkill('classify_and_price_client_tier', {
+          counterpartyId: 'VIP-TRADER',
+          averageReleaseMinutes: 2,
+          completedTradesCount: 350,
+          disputeCount: 0,
+          monthlyVolumeUsd: 45000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.tier).toBe('VIP_INSTITUTIONAL');
+      });
+
+      it('executes negotiate_whatsapp_order_intake via dispatcher', () => {
+        const res = executeFinancialSkill('negotiate_whatsapp_order_intake', {
+          customerMessage: 'Quiero cambiar 250 USDT a Banesco',
+          activeRate: 85.5,
+          bankName: 'Banesco',
+          accountDetails: '0134-XXXX-XXXX-XXXX a nombre de P2P Desk',
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.orderAmountUsdt).toBe(250);
+        expect(data.confirmationMessage).toContain('COTIZACIÓN CONFIRMADA');
+      });
+
+      it('executes bundle_corporate_b2b_dossier via dispatcher', () => {
+        const res = executeFinancialSkill('bundle_corporate_b2b_dossier', {
+          clientName: 'ACME Latam Corp',
+          taxId: 'J-12345678-9',
+          amountUsd: 12000,
+          serviceCategory: 'SOFTWARE_LICENSING',
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.status).toBe('COMPLIANCE_READY');
+        expect(data.complianceChecklist.length).toBeGreaterThan(0);
+      });
+
+      it('executes compile_fast_dispute_evidence via dispatcher', () => {
+        const res = executeFinancialSkill('compile_fast_dispute_evidence', {
+          orderId: 'ORD-DISPUTE-999',
+          counterpartyName: 'SuspectSeller',
+          disputeReason: 'Pago no liberado tras transferencia confirmada',
+          claimedAmount: 45000,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.caseId).toContain('ORD-DISPUTE-999');
+        expect(data.severity).toBe('CRITICAL');
+      });
+
+      it('executes quote_instant_remittance_corridor via dispatcher', () => {
+        const res = executeFinancialSkill('quote_instant_remittance_corridor', {
+          corridorId: 'USD_ZELLE_TO_VES',
+          sendAmount: 100,
+          deskSpreadPct: 2.5,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.whatsappFormattedMessage).toBeDefined();
+        expect(data.destPayoutAmount).toBeGreaterThan(0);
+      });
+
+      it('executes execute_preemptive_bcv_drain via dispatcher', () => {
+        const res = executeFinancialSkill('execute_preemptive_bcv_drain', {
+          currentVesBalance: 850000,
+          bcvInterventionProbabilityPct: 88,
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.urgency).toBe('CRITICAL');
+        expect(data.recommendedDrainVes).toBeGreaterThan(700000);
+      });
+
+      it('executes evaluate_emergency_killswitch via dispatcher', () => {
+        const res = executeFinancialSkill('evaluate_emergency_killswitch', {
+          reason: 'Divergencia anómala del spread > 15%',
+          anomalySeverity: 'CRITICAL',
+        });
+        expect(res.success).toBe(true);
+        const data = res.data as any;
+        expect(data.killswitchActivated).toBe(true);
+        expect(data.actionsTriggered).toContain('PAUSE_ALL_P2P_ADS');
+      });
     });
   });
 });
