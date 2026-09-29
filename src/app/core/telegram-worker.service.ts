@@ -3,7 +3,7 @@ import { ToastService } from './toast.service';
 import { BinanceP2pService } from './binance-p2p.service';
 import { BinanceRepricerService } from './binance-repricer.service';
 import { AccountsService } from './accounts.service';
-import { CotizaveService } from './cotizave.service';
+import { CotizaveService, describeCotizaveProvenance } from './cotizave.service';
 import { MarketHistoryService } from './market-history.service';
 import { CredentialStoreService } from './credential-store.service';
 import {
@@ -842,6 +842,15 @@ export class TelegramWorkerService implements OnDestroy {
 
         const intel = getBcvMarketIntelligence(parallel, bcv);
 
+        // La línea de reloj de este reporte es de BCV, así que la fuente del reloj
+        // tiene que ser Cotizave. Con el reloj de Binance el mensaje mentía en dos
+        // direcciones: "— — —" cuando Binance no había polled (aunque BCV sí
+        // tuviera dato), y una hora de Binance sobre un número de BCV.
+        const bcvOrigin = describeCotizaveProvenance(this.cotizave.ratesProvenance());
+        const bcvClock = `🕐 BCV: \`${this.formatFetchTime(this.cotizave.lastFetched())}\` (${bcvOrigin})`;
+        const binanceClock = depth?.bestBuyPrice
+          ? ` · Libro Binance: \`${this.formatFetchTime(this.binance.lastFetched())}\``
+          : '';
         const msg =
           formatBcvIntelligenceTelegramMessage({
             parallelRate: intel.gap.parallelRate,
@@ -854,7 +863,7 @@ export class TelegramWorkerService implements OnDestroy {
             probabilityPct: intel.window.probabilityPct,
             actionLabel: intel.recommendation.actionLabel,
             timingNotice: intel.recommendation.timingNotice,
-          }) + `\n🕐 Actualizado: \`${this.formatFetchTime(this.binance.lastFetched())}\``;
+          }) + `\n${bcvClock}${binanceClock}`;
 
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/bcv', action: 'BCV', status: 'SUCCESS' });

@@ -9,7 +9,11 @@ import { ToastService } from '../../core/toast.service';
 import { AuditLoggerService } from '../../core/audit-logger.service';
 import { fmtVes, fmtUsd, FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
-import { CotizaveService } from '../../core/cotizave.service';
+import {
+  CotizaveService,
+  describeCotizaveProvenance,
+  formatCotizaveDataAge,
+} from '../../core/cotizave.service';
 import { McpService } from '../../core/mcp.service';
 import {
   computeDashboard,
@@ -171,6 +175,22 @@ export class Dashboard implements OnInit, OnDestroy {
     const bcv = rates['bcv']?.mid || rates['oficial']?.mid || this.manualBcvRate();
     return getBcvMarketIntelligence(parallel, bcv);
   });
+
+  /**
+   * Edad y procedencia de las tasas de Cotizave. `bcvIntelligence` se apoya en
+   * `ratesByMarket()` para la brecha, así que se leen juntas: la marca de tiempo
+   * del panel tiene que ser la de ESE dato. Sin esto, un número restaurado del
+   * disco se lee igual que uno descargado hace un segundo, y la brecha se
+   * interpreta como una oportunidad de mercado cuando puede ser información vieja.
+   */
+  readonly cotizaveDataAge = computed(() => {
+    this.cotizaveService.ratesByMarket();
+    return formatCotizaveDataAge(this.cotizaveService.lastFetched());
+  });
+
+  readonly cotizaveProvenanceLabel = computed(() =>
+    describeCotizaveProvenance(this.cotizaveService.ratesProvenance()),
+  );
 
   /** Daily income target (USD) — read from income calculator storage if available. */
   readonly dailyTarget = signal<number>(this.storage.get<number>('p2p.daily-target') ?? 20);

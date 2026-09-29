@@ -487,6 +487,14 @@
             @if (mcpBcvRates()?.date) {
               <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
             }
+            <!-- La brecha se calcula con las tasas de Cotizave cuando no hay MCP. Sin la edad y la
+                 procedencia, el operador no puede distinguir una cifra recién descargada de una
+                 restaurada del disco: la pantalla se ve igual y la conclusión también. -->
+            @if (cotizaveDataAge()) {
+              <span class="macro-sub-date font-mono"
+                >{{ cotizaveDataAge() }} · {{ cotizaveProvenanceLabel() }}</span
+              >
+            }
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CotizaveService } from './cotizave.service';
+import { CotizaveService, COTIZAVE_CACHE_MAX_AGE_MS } from './cotizave.service';
 import { CredentialStoreService } from './credential-store.service';
 import { ToastService } from './toast.service';
 import { P2P_STORAGE, StorageService } from './storage';
@@ -268,7 +268,10 @@ describe('CotizaveService', () => {
   });
 
   it('hydrates the rates from the persisted cache on a fresh instance, before any network call', async () => {
-    const fetchedAt = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    // Dentro del TTL: una caché de más de 15 min ya no se hidrata (ver el test
+    // de descarte). La de 2 h que se usaba antes acá era un dato que la app
+    //ractableba como si fuera actual para operar.
+    const fetchedAt = new Date(Date.now() - 4 * 60_000).toISOString();
     storage.set<PersistedRates>(RATES_STORAGE_KEY, {
       rates: {
         binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
@@ -284,16 +287,43 @@ describe('CotizaveService', () => {
     expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
     expect(fresh.ratesByMarket()['binance']).toBeDefined();
     expect(fresh.lastFetched()).toEqual(new Date(fetchedAt));
+    // Y el consumidor tiene que poder distinguir esto de una descarga en vivo.
+    expect(fresh.ratesProvenance()).toBe('restored');
   });
 
-  it('serves the persisted cache when the network path fails and warns with the cache age', async () => {
-    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000);
+  it('descarta la cache persistida mas vieja que 15 min y la saca del almacenamiento', async () => {
+    expect(COTIZAVE_CACHE_MAX_AGE_MS).toBe(15 * 60_000);
+    const tooOld = new Date(Date.now() - COTIZAVE_CACHE_MAX_AGE_MS - 60_000).toISOString();
     storage.set<PersistedRates>(RATES_STORAGE_KEY, {
       rates: {
         binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
         oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
       },
-      fetchedAt: twoHoursAgo.toISOString(),
+      fetchedAt: tooOld,
+    });
+
+    const fresh = await newServiceOver(mem);
+
+    // No hidrata: una brecha vieja no puede alimentar una decisión de trade.
+    expect(Object.keys(fresh.ratesByMarket())).toHaveLength(0);
+    // Y no queda una `lastFetched` vieja que parezca sana.
+    expect(fresh.lastFetched()).toBeNull();
+    expect(fresh.ratesProvenance()).toBe('none');
+    // Se borra del storage: ignorada, volvería a hidratar en el próximo arranque.
+    expect(storage.get(RATES_STORAGE_KEY)).toBeNull();
+    // Y el operador se entera de por qué la app arrancó sin rates.
+    expect(fresh.error()).toContain('descartada');
+    expect(toast.warn).toHaveBeenCalled();
+  });
+
+  it('serves the persisted cache when the network path fails and warns with the cache age', async () => {
+    const fourMinutesAgo = new Date(Date.now() - 4 * 60_000);
+    storage.set<PersistedRates>(RATES_STORAGE_KEY, {
+      rates: {
+        binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+        oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
+      },
+      fetchedAt: fourMinutesAgo.toISOString(),
     });
 
     const fresh = await newServiceOver(mem);
@@ -309,9 +339,46 @@ describe('CotizaveService', () => {
     expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
     expect(fresh.ratesByMarket()['binance']).toBeDefined();
     // ...y se anuncia con su edad real, nunca como dato fresco.
-    expect(fresh.lastFetched()).toEqual(twoHoursAgo);
+    expect(fresh.lastFetched()).toEqual(fourMinutesAgo);
     const warnMsg = toast.warn.mock.calls.at(-1)?.[0] as string | undefined;
-    expect(warnMsg).toContain('hace 2 h');
+    expect(warnMsg).toContain('hace 4 min');
+    // Servir la caché no convierte un dato restaurado en una descarga en vivo.
+    expect(fresh.ratesProvenance()).toBe('restored');
+  });
+
+  it('marks the rates as live only when they come from a network fetch', async () => {
+    expect(svc.ratesProvenance()).toBe('none');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD)),
+    );
+
+    await svc.fetchRates();
+
+    expect(svc.ratesProvenance()).toBe('live');
+    // Un fetch en vivo sí es lo que se persiste, y una app nueva lo hidrata como
+    // restaurado: la procedencia cambia de vereda al cruzar el almacenamiento.
+    const fresh = await newServiceOver(mem);
+    expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
+    expect(fresh.ratesProvenance()).toBe('restored');
+  });
+
+  it('keeps the real network cause in error() instead of overwriting it with the generic CORS text', async () => {
+    // Camino navegador: la API directa y el puente local fallan con el mismo
+    // `Failed to fetch`. Ese texto viaja ADEMÁS dentro del diagnóstico, así que
+    // el `catch` no puede seguir matcheándolo a ciegas.
+    vi.stubGlobal('fetch', vi.fn<FetchLike>().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await svc.fetchRates();
+
+    expect(svc.error()).toContain('Servidor Cotizave no accesible');
+    // La causa cruda no se pierde...
+    expect(svc.error()).toContain('Failed to fetch');
+    // ...y la orientación de CORS/puente local sigue ahí, ahora dentro del
+    // diagnóstico correcto en vez de tapándolo.
+    expect(svc.error()).toContain('puente local de cotizaciones');
+    // Antes esto era el texto genérico, que era lo que se veía.
+    expect(svc.error()).not.toMatch(/^Error de red\/CORS al conectar/);
   });
 
   it('treats a 200 JSON payload with no recognizable rates as a failure and keeps the existing cache', async () => {
@@ -334,5 +401,27 @@ describe('CotizaveService', () => {
     expect(svc.ratesByMarket()).toEqual(goodCache);
     const persisted = storage.get<PersistedRates>(RATES_STORAGE_KEY);
     expect(persisted?.rates).toEqual(goodCache);
+  });
+
+  it('counts a 200 that normalizes to nothing as a breaker failure and opens the circuit on the third', async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => jsonResponse({ unexpected: 'shape' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await svc.fetchRates();
+    await svc.fetchRates();
+    await svc.fetchRates();
+
+    // Antes de esta corrección el breaker había visto tres EXITOES: el chequeo de
+    // payload vacío corría después de `recordSuccess()`, así que el circuito
+    // jamás podía abrirse para este modo de fallo.
+    const metrics = svc.circuitBreaker.getMetrics();
+    expect(metrics.totalFailures).toBe(3);
+    expect(metrics.totalSuccesses).toBe(0);
+    expect(metrics.state).toBe('OPEN');
+
+    // Cuarta llamada: fast-fail sin volver a pegarle a la red.
+    await svc.fetchRates();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(svc.error()?.toLowerCase()).toContain('circuito');
   });
 });

@@ -6,7 +6,7 @@ import {
   type ExchangeLeg,
 } from '@p2p/core';
 import { BinanceP2pService } from './binance-p2p.service';
-import { CotizaveService } from './cotizave.service';
+import { CotizaveService, type CotizaveRatesProvenance } from './cotizave.service';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
 
@@ -37,6 +37,14 @@ export interface LiveMarketRatesSnapshot {
   copPerVes: number; // Cruce derivado COP por VES
   zinliUsdPerUsdt: number; // Venta digital Zinli/Wally
   timestamp: string;
+  /**
+   * Procedencia de la parte del snapshot que salió de Cotizave. Va aparte de
+   * `source` porque esa marca de CUÁNDO respondió la herramienta no dice si el
+   * número se acaba de descargar o se restauró del disco al arrancar.
+   * Ausente cuando no se puede afirmar: atribuir una procedencia a una fuente
+   * que no intervino, o remapear 'none' a 'live', sería inventar el linaje.
+   */
+  provenance?: Exclude<CotizaveRatesProvenance, 'none'>;
   source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK';
 }
 
@@ -285,14 +293,18 @@ export class TriangulationIntelligenceService {
 
       // 5. Fallback/Complemento de CotizaveService si está conectado
       const cotizaveRates = this.cotizave.ratesByMarket();
+      let usedCotizave = false;
       if (cotizaveRates['binance']?.mid && cotizaveRates['binance'].mid > 0) {
         binanceVesSell = cotizaveRates['binance'].mid;
+        usedCotizave = true;
       }
       if (cotizaveRates['paralelo']?.mid && cotizaveRates['paralelo'].mid > 0) {
         parallelAvg = cotizaveRates['paralelo'].mid;
+        usedCotizave = true;
       }
       if (cotizaveRates['bcv']?.mid && cotizaveRates['bcv'].mid > 0) {
         bcvUsd = cotizaveRates['bcv'].mid;
+        usedCotizave = true;
       }
 
       // 6. Cálculo de brecha cambiaria y cruce derivado COP/VES
@@ -300,6 +312,14 @@ export class TriangulationIntelligenceService {
         bcvUsd > 0 ? Math.round(((parallelAvg - bcvUsd) / bcvUsd) * 10000) / 100 : 16.11;
       const copPerVes =
         binanceVesSell > 0 ? Math.round((copPerUsdt / binanceVesSell) * 100) / 100 : 51.3;
+
+      // El reloj del snapshot es el del DATO, no el del tick. Estampar `new Date()`
+      // acá convertía cada restore del disco en un número rec sticker de "recién
+      // cotizado", y es justamente el consumidor el que lo lee como timestamp de
+      // mercado. Un reloj de Cotizave adelantado (desincronización de máquina) no
+      // puede empujar el snapshot al futuro, así que se cae a `now` en ese caso.
+      const cotizaveAt = usedCotizave ? this.cotizave.lastFetched() : null;
+      const producedAt = cotizaveAt && cotizaveAt.getTime() < Date.now() ? cotizaveAt : new Date();
 
       const snapshot: LiveMarketRatesSnapshot = {
         binanceVesBuy,
@@ -311,7 +331,8 @@ export class TriangulationIntelligenceService {
         copPerUsdt,
         copPerVes,
         zinliUsdPerUsdt,
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: producedAt.toLocaleTimeString(),
+        ...this.snapshotProvenance(usedCotizave),
         source,
       };
 
@@ -321,6 +342,18 @@ export class TriangulationIntelligenceService {
     } finally {
       this.isSyncingMarket.set(false);
     }
+  }
+
+  /**
+   * Procedencia que se adjunta al snapshot. `none` con rates en pantalla es un
+   * estado inconsistente (solo posible si alguien escribe las tasas por fuera
+   * del servicio), y la respuesta honesta es no declarar procedencia, no
+   * promoting a 'live'.
+   */
+  private snapshotProvenance(usedCotizave: boolean): Pick<LiveMarketRatesSnapshot, 'provenance'> {
+    if (!usedCotizave) return {};
+    const provenance = this.cotizave.ratesProvenance();
+    return provenance === 'none' ? {} : { provenance };
   }
 
   /**

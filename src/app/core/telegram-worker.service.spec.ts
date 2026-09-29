@@ -184,6 +184,8 @@ const toast = {
 let fetchMarketDepth: ReturnType<typeof vi.fn<() => Promise<BinanceP2pMarketDepth | null>>>;
 let usages: ReturnType<typeof vi.fn<() => unknown[]>>;
 let ratesByMarket: ReturnType<typeof vi.fn<() => Record<string, unknown>>>;
+let cotizaveLastFetched: ReturnType<typeof vi.fn<() => Date | null>>;
+let cotizaveProvenance: ReturnType<typeof vi.fn<() => 'none' | 'live' | 'restored'>>;
 let buyAdPrice: ReturnType<typeof signal<number>>;
 let sellAdPrice: ReturnType<typeof signal<number>>;
 let marketHistory: ReturnType<typeof vi.fn<() => unknown[]>>;
@@ -245,6 +247,8 @@ function workerProviders(): unknown[] {
       useValue: {
         fetchRates: vi.fn(async () => undefined),
         ratesByMarket,
+        lastFetched: cotizaveLastFetched,
+        ratesProvenance: cotizaveProvenance,
       },
     },
     { provide: MarketHistoryService, useValue: { history: marketHistory } },
@@ -256,6 +260,8 @@ function resetSharedMocks(): void {
   fetchMarketDepth = vi.fn(async (): Promise<BinanceP2pMarketDepth | null> => null);
   usages = vi.fn((): unknown[] => []);
   ratesByMarket = vi.fn((): Record<string, unknown> => ({}));
+  cotizaveLastFetched = vi.fn((): Date | null => null);
+  cotizaveProvenance = vi.fn((): 'none' | 'live' | 'restored' => 'none');
   marketHistory = vi.fn((): unknown[] => []);
   buyAdPrice = signal(0);
   sellAdPrice = signal(0);
@@ -1569,6 +1575,43 @@ describe('TelegramWorkerService', () => {
       expect(text).toContain('`1.06%`');
       expect(text).toMatch(/libro en vivo/i);
       expect(text).not.toMatch(/promedio.*historial/i);
+    });
+
+    it('BCV fecha el dato de BCV con el reloj de Cotizave, no con el de Binance', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      // El reloj de Binance es `null` a propósito: el mensaje no puede caer
+      // "— — —" por usar el reloj equivocado. Y Cotizave dice venir del disco,
+      // así que el operador tiene que poder leer esa condición desde Telegram.
+      ratesByMarket.mockReturnValue({
+        binance: { market: 'binance', type: 'p2p', ask: 84.8, mid: 84.7 },
+        bcv: { market: 'bcv', type: 'oficial', ask: 85.15, mid: 85.1 },
+      });
+      cotizaveLastFetched.mockReturnValue(new Date(2026, 8, 29, 8, 5, 0));
+      cotizaveProvenance.mockReturnValue('restored');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/bcv'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('08:05');
+      expect(text).toMatch(/restaurada del disco/i);
+    });
+
+    it('BCV dice "en vivo" cuando Cotizave vino de la red', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      ratesByMarket.mockReturnValue({
+        binance: { market: 'binance', type: 'p2p', ask: 84.8, mid: 84.7 },
+        bcv: { market: 'bcv', type: 'oficial', ask: 85.15, mid: 85.1 },
+      });
+      cotizaveLastFetched.mockReturnValue(new Date(2026, 8, 29, 9, 0, 0));
+      cotizaveProvenance.mockReturnValue('live');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/bcv'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('09:00');
+      expect(text).toMatch(/Cotizave en vivo/i);
     });
 
     it('MACRO says so honestly when the BCV reference rate is unavailable', async () => {

@@ -1,9 +1,11 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { signal } from '@angular/core';
 import { RouterTestingModule } from '@angular/router/testing';
 import { Dashboard } from './dashboard';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
+import { CotizaveService } from '../../core/cotizave.service';
 import type { Operation } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -110,5 +112,37 @@ describe('Dashboard', () => {
     expect(c.forensicDossier()).toBeDefined();
     expect(f.nativeElement.textContent).toContain('Auditoría Forense & Disciplina Operativa');
     expect(f.nativeElement.textContent).toContain('Regla de Oro');
+  });
+
+  it('muestra la edad y la procedencia de los datos de Cotizave que alimentan la brecha', () => {
+    // La brecha se deriva de `ratesByMarket()`. Si el panel no dice de cuándo es
+    // ese dato, un número restaurado del disco se lee igual que uno descargado
+    // hace un segundo.
+    TestBed.overrideProvider(CotizaveService, {
+      useValue: {
+        ratesByMarket: signal({
+          binance: { market: 'binance', type: 'p2p', ask: 815, bid: 810, mid: 812.5 },
+          oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2, mid: 36.35 },
+        }),
+        lastFetched: signal(new Date(Date.now() - 20 * 60_000)),
+        ratesProvenance: signal('restored'),
+        apiKey: signal('test-key'),
+        loading: signal(false),
+        error: signal(null),
+        autoRefresh: signal(false),
+        circuitBreaker: { getState: () => 'CLOSED', options: {} },
+        fetchRates: vi.fn(),
+        setApiKey: vi.fn(),
+        startAutoRefresh: vi.fn(),
+        stopAutoRefresh: vi.fn(),
+      },
+    });
+
+    const f = create();
+    f.detectChanges();
+    const text = String(f.nativeElement.textContent);
+
+    expect(text).toContain('hace 20 min');
+    expect(text).toMatch(/restaurada del disco/i);
   });
 });

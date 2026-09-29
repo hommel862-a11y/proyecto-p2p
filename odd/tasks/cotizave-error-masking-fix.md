@@ -131,3 +131,165 @@ Runner: `ng test` (Angular 22 + vitest 4.1.11). **`ng test` sin nombre de proyec
 ## Next step
 
 Push / PR / merge = decisión del usuario. La deuda preexistente (21 errores de lint, 5 tests rojos en p2p, 1 en core) queda registrada en `odd/tasks/codebase-remediation.md` y fuera de este workstream.
+
+---
+
+# Workstream 2 — La app dice que tiene dato fresco cuando no lo tiene
+
+Continuación del bugfix de arriba, sobre el mismo commit base. El workstream 1 arregló
+**por qué** el mensaje era falso; este arregla **qué** se afirma cuando el mensaje es cierto:
+una tasa puede llevar días guardada y las tres superficies que la muestran la presentan
+como recién descargada.
+
+## Objective
+
+Que ninguna superficie (dashboard, triangulación, Telegram) pueda afirmar que un número de
+Cotizave está al día sin que el reloj y la procedencia del dato voyageen con él, y que la app
+deje de tirar el diagnóstico real a la basura cuando el transporte y el breaker cuentan la misma falla.
+
+## Problem
+
+- **W1 — la caché persistida no caduca.** D3 grudó la persistencia, pero `readPersistedRates()`
+  hidrata lo que encuentre en `p2p.cotizave.rates` sin mirar la edad. Una entrada de hace 400
+  días hidrata igual que una de hace un minuto: la app arranca mostrando una brecha cambiaria
+  calculada con datos de hace más de un año como si fuera operable.
+- **W2 — no existe el concepto de procedencia.** `lastFetched()` dice _cuándo_ se recogió el
+  dato, no _de dónde_ salió. Un `restore` del disco y un fetch en vivo producen el mismo estado
+  observable, así que el consumidor no puede diferenciarlos ni aunque quiera.
+- **W3 — los tres consumidores mienten o calculan el reloj sobre el dato equivocado.** El
+  dashboard no muestra ninguna edad para la brecha; el snapshot de
+  `TriangulationIntelligenceService` se estampa con `new Date()` en cada llamada, así que
+  restaurar del disco genera un número con timestamp de "recién cotizado"; y el reporte `/bcv`
+  de Telegram fecha el dato de BCV con `this.binance.lastFetched()`.
+- **W4 — el diagnóstico clasificado se pisa.** El patrón `NETWORK_CAUSE` matchea el substring
+  `Failed to fetch` sobre el mensaje del `catch`, así que también matchea el `Failed to fetch`
+  que ya viaja **dentro** del diagnóstico clasificado y lo reemplaza por el texto genérico de
+  CORS/puente local. La causa real se descarta exactamente cuando se la clasificó bien.
+- **W5 — el payload vacío se cuenta como éxito del breaker.** La guarda de (d) corre fuera de la
+  operación, después de que `execute()` ya llamó `recordSuccess()`. Tres 200 con forma no
+  reconocida dejan el breaker en `totalSuccesses: 3` / `totalFailures: 0`: el circuito nunca abre
+  para el modo de fallo que más de una app en producción ve.
+- **W6 — el corte por `AbortSignal` del puente no se distingue de un timeout.** Sin el cambio
+  upstream, la app no puede decir "cortado" vs "venció".
+
+## Scope
+
+- `src/app/core/cotizave.service.ts` — TTL de 15 min, `ratesProvenance`, descarte con aviso,
+  helpers compartidos de edad y procedencia, clasificación de errores, guarda de payload
+  vacío adentro del breaker, comentario de la limitación de cancelación.
+- `src/app/core/cotizave.service.spec.ts` — regresiones permanentes de W1, W2, W4 y W5, y
+  actualización de los 2 tests preexistentes que sembraban una caché de 2 h.
+- `src/app/core/triangulation-intelligence.service.ts` + `.spec.ts` (nuevo) — reloj del dato y
+  procedencia en el snapshot (W3).
+- `src/app/core/telegram-worker.service.ts` + `.spec.ts` — reloj y procedencia del dato de BCV,
+  con el reloj de Binance conservado y etiquetado como lo que es (W3).
+- `src/app/features/dashboard/dashboard.ts` / `.html` / `.spec.ts` — edad y procedencia de las
+  tasas que alimentan la brecha (W3).
+- `odd/tasks/cotizave-error-masking-fix.md` — este documento.
+
+## Out of scope
+
+- Todo lo del workstream 1: `requestTimeoutMs`, ramas 401/403, `stateBefore`, persistencia.
+- `electron/main/ipc/handlers.ts`: la distinción cancelación/timeout del puente se documenta, no
+  se implementa (W6).
+- `src/app/features/triangulation/triangulation.ts`: este workstream arregla de dónde viene el
+  reloj del snapshot, no su presentación.
+- Tocar `LiveMarketRatesSnapshot.timestamp` más allá del servicio que lo produce.
+
+## Constraints
+
+- El TTL se declara con una constante exportada: 15 min no es un número mágico y 15_000 sería
+  indistinguible del `requestTimeoutMs` de 20 ms del workstream 1.
+- Servir la caché en el fallback **no** cambia la procedencia a `live`: no hubo red.
+- La procedencia se declara solo si se puede probar. `none` con tasas en pantalla es un estado
+  inconsistente y la respuesta honesta es omitirla, no promoverla a `live`.
+- El texto genérico de CORS/puente local **no se borra**: se conserva dentro del diagnóstico
+  clasificado, que es donde el operador lo necesita y donde antes quedaba tapado.
+- `formatCotizaveDataAge` y `describeCotizaveProvenance` viven en el servicio y se importan en
+  los tres consumidores: "restaurado del disco" tiene que significar lo mismo en las tres
+  superficies.
+- La edad y la procedencia se derivan de las **mismas** signals que usa el número al que se
+  atribuyen, en el mismo `computed`.
+- TDD estricto por ítem: reproducción observada en rojo antes de tocar la implementación.
+
+## Tasks
+
+- [x] **T8** W1 + W2: `COTIZAVE_CACHE_MAX_AGE_MS` (15 min), descarte con borrado de la entrada
+      persistida, `ratesProvenance` y los dos helpers compartidos.
+  - Evidencia RED: throwaway `cotizave.repro.spec.ts` → `Test Files 1 failed (1)` /
+    `Tests 4 failed (4)`; W1 `expected [ 'binance' ] to have a length of +0 but got 1`; W2
+    `TypeError: s.ratesProvenance is not a function`. GREEN: `Tests 4 passed (4)`, exit 0.
+- [x] **T9** W4: el diagnóstico clasificado gana en el `catch`; el genérico queda como red de
+      seguridad para un fallo de transporte **sin clasificar**.
+  - Evidencia RED: `expected 'Error de red/CORS al conectar con Cotizave. Abrí la app de
+escritorio…' to contain 'Servidor Cotizave no accesible'`. GREEN: el mensaje contiene
+    `Servidor Cotizave no accesible` **y** `Failed to fetch` **y** `puente local de cotizaciones`,
+    y ya no arranca con `Error de red/CORS al conectar`.
+- [x] **T10** W5: la guarda de payload vacío corre dentro de la operación del breaker.
+  - Evidencia RED: con tres 200 de forma irreconocible, `totalFailures` era `0` y
+    `totalSuccesses` `3`. GREEN: `totalFailures: 3`, `totalSuccesses: 0`, `state: 'OPEN'`, y la
+    cuarta llamada no toca la red.
+- [x] **T11** W3 RED: 5 tests del snapshot de mercado, 1 del dashboard y 2 de Telegram.
+  - Evidencia RED: `Tests 6 failed | 83 passed (89)`, exit 1. Fallos literales: `expected '3:29:34
+p. m.' to be '8:30:00 a. m.'`; `expected undefined to be 'restored'`; `expected undefined to
+be 'live'`; `expected 'Centro de ControlApple Pro EditionTer…' to contain 'hace 20 min'`;
+    `expected '🏛️ *INTELIGENCIA CAMBIARIA BCV* 🏛️…' to contain '08:05'` y el de `09:00`. **0
+    regresiones**: los 83 restantes pasaron en la misma corrida.
+- [x] **T12** W3 GREEN: reloj del dato + procedencia en los tres consumidores.
+  - Evidencia: `Tests 104 passed (104)` en los 4 specs afectados.
+- [x] **T13** W6: comentario en el camino del puente registrando que `AbortSignal` no distingue
+      cancelación de timeout y que el corte se lee como timeout.
+- [x] **T14** Verificación completa y commit work-unit único.
+
+## Verificación (workstream 2)
+
+| Check                    | Comando                                                               | Resultado observado                                                                                 |
+| ------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Baseline antes de editar | `npx ng test p2p --include='**/cotizave.service.spec.ts' …`           | `Tests 11 passed (11)`, exit 0                                                                      |
+| RED core (T8-T10)        | `npx ng test p2p --include='**/cotizave.repro.spec.ts' --watch=false` | `Tests 4 failed (4)`, exit 1                                                                        |
+| GREEN core (T8-T10)      | ídem                                                                  | `Tests 4 passed (4)`, exit 0                                                                        |
+| RED consumidores (T11)   | 3 `--include` (triangulation, dashboard, telegram)                    | `Tests 6 failed \| 83 passed (89)`, exit 1                                                          |
+| GREEN final (T12)        | 4 `--include` (cotizave, triangulation, dashboard, telegram)          | `Test Files 4 passed (4)` / `Tests 104 passed (104)`, exit 0                                        |
+| Typecheck                | `npx tsc --noEmit`                                                    | exit 0                                                                                              |
+| Formato                  | `npx prettier --check` (los 9 archivos del workstream)                | `All matched files use Prettier code style!`                                                        |
+| Lint                     | `npm run lint`                                                        | `21 problems (21 errors, 0 warnings)` — **distribución idéntica a la línea base**: 0 errores nuevos |
+
+### Los 2 tests preexistentes que hubo que cambiar, y por qué
+
+`hydrates the rates from the persisted cache…` y `serves the persisted cache when the network
+path fails…` sembraban `fetchedAt` con **2 horas** de antigüedad y el segundotcassertaba
+`toContain('hace 2 h')`. Con W1 esos dos tests describen un comportamiento que el fix prohíbe a
+propósito: sembrar una caché expirada y esperar que la app la use. Se cambiaron a 4 min
+(dentro del TTL) y la aserción a `hace 4 min`. La cobertura que antes probaba "una caché vieja se
+sirve igual" ahora la cubre el test nuevo de descarte, que es la garantía correcta.
+
+### 3 tests que pasan en rojo y por qué están igual
+
+Dos del snapshot ("usa la hora actual solo cuando Cotizave no aportó" y "no fecha en el futuro un
+reloj adelantado") más el de que la procedencia no se declara cuando no se puede probar: fijan
+comportamiento que ya era correcto y que este workstream no cambia. Se dejaron como guarda contra
+una regresión futura, no como prueba de un defecto.
+
+### La red de seguridad genérica quedó muerta por diseño
+
+Con W4, todo lo que llega al `catch` pasa por el fallback y sale clasificado, así que la rama del
+texto genérico de CORS no es alcanzable hoy. Se conserva a propósito (una ruta futura que lance
+un fallo de transporte sin clasificar la encontraría) y el comentario lo dice explícitamente en
+lugar de fingir que está viva.
+
+### Ruido preexistente en la corrida
+
+`node.exe : + FullyQualifiedErrorId : NativeCommandError` aparece en la salida de `ng test` en
+todas las corridas, incluida la línea base: es ruido de PowerShell sobre el aviso de Node, no un
+fallo.
+
+## Cambios preexistentes del working tree
+
+Además de los ya registrados en el workstream 1, el árbol trae `electron/main/gemini-orchestrator.spec.ts`
+modificado. Sigue siendo ajeno a este trabajo: nunca stageado, revertido ni commiteado.
+
+## Next step (workstream 2)
+
+Push / PR / merge = decisión del usuario. Sigue abierta y **fuera** de scope: la distinción
+cancelación/timeout del puente IPC (W6), que requiere el cambio upstream en
+`electron/main/ipc/handlers.ts`.
