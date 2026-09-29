@@ -161,6 +161,10 @@ describe('Binance Fills & Ingestion Engine (T1/T2)', () => {
       modeledSpreadPct: 1.5,
       reason: 'Top maker bid',
       safetyFlags: [],
+      observedObi: 0.1,
+      observedBidUsd: 88.5,
+      observedAskUsd: 89.8,
+      observedStale: false,
       createdAt: 1774879000000, // 1000s before fill
     };
 
@@ -176,6 +180,10 @@ describe('Binance Fills & Ingestion Engine (T1/T2)', () => {
       modeledSpreadPct: 1.5,
       reason: 'Top maker ask',
       safetyFlags: [],
+      observedObi: -0.1,
+      observedBidUsd: 88.5,
+      observedAskUsd: 89.8,
+      observedStale: false,
       createdAt: 1774879500000,
     };
 

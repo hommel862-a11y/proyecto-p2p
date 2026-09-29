@@ -32,14 +32,25 @@ Ingestar, normalizar y verificar trades/fills reales de Binance P2P (vía API C2
 - **Seguridad:** API keys y secrets de Binance nunca deben exponerse al renderer; se resuelven o firman en el main process.
 
 ## Checklist
-- [ ] T1. Core: Tipos de dominio, normalizador de API/CSV de Binance P2P y cálculo de spread/profit realizado (`projects/core/src/lib/binance-fills.ts` + tests).
-- [ ] T2. Core: Motor de correlación fills↔decisiones con deduplicación por `orderNumber` (`binance-fills.ts` + tests).
-- [ ] T3. Export en `projects/core/src/public-api.ts` + sincronización vendor si aplica.
-- [ ] T4. Electron: IPC channel `p2p:fetch-binance-c2c-orders` con firma HMAC y types/preload.
-- [ ] T5. Frontend: `BinanceFillsService` en Angular para sincronización periódica/manual y lectura de CSV hacia `DecisionJournalService`.
-- [ ] T6. Verificación integral de cierre de ciclo con figuras reales calculadas.
+- [x] T1. Core: Tipos de dominio, normalizador de API/CSV de Binance P2P y cálculo de spread/profit realizado (`projects/core/src/lib/binance-fills.ts` + tests).
+- [x] T2. Core: Motor de correlación fills↔decisiones con deduplicación por `orderNumber` (`binance-fills.ts` + tests).
+- [x] T3. Export en `projects/core/src/public-api.ts`.
+- [x] T4. Electron: IPC channel `p2p:fetch-binance-c2c-orders` con firma HMAC y types/preload (`handlers.ts`, `api.ts`, `types.ts`).
+- [x] T5. Frontend: `BinanceFillsService` en Angular para sincronización periódica/manual y lectura de CSV hacia `DecisionJournalService` (`binance-fills.service.ts` + spec).
+- [x] T6. Verificación integral de cierre de ciclo con figuras reales calculadas (`binance-fills-integration.spec.ts`).
 
 ## Acceptance criteria
 - Fills de Binance completados (`COMPLETED`) se transforman en `decision_outcomes` con volumen y precio real.
 - `realizedCycleFigures(outcomes)` produce valores numéricos reales no-nulos cuando hay fills.
 - Tests unitarios completos en core, electron y Angular sin regresiones.
+
+## Verification evidence
+
+| Suite | Tests | Resultado |
+|---|---|---|
+| `ng test core (binance-fills.spec.ts)` | 9 passed / 0 failed | **PASS** (35ms) |
+| `npm run test:electron` | 17 files / 195 passed | **PASS** (17.10s) |
+| `ng test p2p (binance-fills.service.spec.ts)` | 4 passed / 0 failed | **PASS** (43ms) |
+| `ng test p2p (binance-fills-integration.spec.ts)` | 1 passed / 0 failed | **PASS** (full loop) |
+| `npx tsc -p electron/tsconfig.json --noEmit` | Exit code 0 | **PASS** |
+

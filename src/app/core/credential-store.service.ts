@@ -5,6 +5,7 @@ import { SecureVaultService } from './secure-vault.service';
 const VAULT_TELEGRAM = 'p2p.secure.telegram';
 const VAULT_COTIZAVE = 'p2p.secure.cotizave';
 const VAULT_BYBIT = 'p2p.secure.bybit';
+const VAULT_BINANCE = 'p2p.secure.binance';
 const VAULT_ELDORADO = 'p2p.secure.eldorado';
 
 const LEGACY_TELEGRAM = 'p2p.telegram_config';
@@ -15,6 +16,11 @@ export interface TelegramConfigPayload {
   chatId: string;
   alertsEnabled: boolean;
   pollingEnabled?: boolean;
+}
+
+export interface BinanceCredentials {
+  apiKey: string;
+  apiSecret: string;
 }
 
 export interface BybitCredentials {
@@ -126,6 +132,24 @@ export class CredentialStoreService {
   async setBybitCredentials(cfg: BybitCredentials): Promise<void> {
     await this.migrateOnce();
     await this.vault.storeSecret(VAULT_BYBIT, JSON.stringify(cfg));
+  }
+
+  async getBinanceCredentials(): Promise<BinanceCredentials | null> {
+    await this.migrateOnce();
+    const json = await this.vault.getSecret(VAULT_BINANCE);
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json) as BinanceCredentials;
+      if (!parsed.apiKey || !parsed.apiSecret) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async setBinanceCredentials(cfg: BinanceCredentials): Promise<void> {
+    await this.migrateOnce();
+    await this.vault.storeSecret(VAULT_BINANCE, JSON.stringify(cfg));
   }
 
   async getElDoradoCredentials(): Promise<ElDoradoCredentials | null> {

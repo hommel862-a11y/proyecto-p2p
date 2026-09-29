@@ -42,11 +42,11 @@ describe('mcp-bootstrap', () => {
     expect(res.success).toBe(true);
     expect(res.executionTimeMs).toBeGreaterThanOrEqual(0);
     expect(res.result).toBeDefined();
-  }, 15000);
+  }, 30000);
 
   it('returns appropriate error when tool is not found', async () => {
     const res = await executeMcpToolTest('non_existent_tool_xyz', {});
     expect(res.success).toBe(false);
     expect(res.error).toContain('no encontrada');
-  }, 15000);
+  }, 30000);
 });

@@ -3,6 +3,7 @@ import { createHmac } from 'crypto';
 import type {
   P2PIpcChannels,
   BinanceSearchParams,
+  BinanceC2cOrdersFetchRequest,
   CotizaveRequest,
   BybitP2pFetchRequest,
   ElDoradoQuoteRequest,
@@ -107,6 +108,81 @@ export function registerIpcHandlers(): void {
             'Servidor de Binance P2P no accesible (sin conexión o DNS no disponible)',
             { cause: err },
           );
+        }
+        throw new Error(message, { cause: err });
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:fetch-binance-c2c-orders');
+  ipcMain.handle(
+    'p2p:fetch-binance-c2c-orders',
+    async (_event: IpcMainInvokeEvent, req: BinanceC2cOrdersFetchRequest): Promise<unknown> => {
+      if (
+        !req ||
+        typeof req.apiKey !== 'string' ||
+        req.apiKey.trim().length === 0 ||
+        typeof req.apiSecret !== 'string' ||
+        req.apiSecret.trim().length === 0
+      ) {
+        throw new Error('Binance API key and secret are required for C2C trade history');
+      }
+
+      const tradeType = req.tradeType ?? 'BUY';
+      const page = req.page ?? 1;
+      const rows = req.rows ?? 100;
+      const timestamp = Date.now().toString();
+      const recvWindow = '10000';
+
+      const queryParts = [
+        `tradeType=${encodeURIComponent(tradeType)}`,
+        `page=${page}`,
+        `rows=${rows}`,
+      ];
+
+      if (req.startTimestamp) {
+        queryParts.push(`startTimestamp=${req.startTimestamp}`);
+      }
+      if (req.endTimestamp) {
+        queryParts.push(`endTimestamp=${req.endTimestamp}`);
+      }
+      queryParts.push(`recvWindow=${recvWindow}`);
+      queryParts.push(`timestamp=${timestamp}`);
+
+      const queryString = queryParts.join('&');
+      const signature = createHmac('sha256', req.apiSecret.trim())
+        .update(queryString)
+        .digest('hex');
+
+      const fullUrl = `https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?${queryString}&signature=${signature}`;
+
+      try {
+        const response = await net.fetch(fullUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            'X-MBX-APIKEY': req.apiKey.trim(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Binance C2C API HTTP Error ${response.status}`);
+        }
+
+        return await response.json();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error('Servidor Binance C2C no accesible (sin conexión o timeout)', {
+            cause: err,
+          });
         }
         throw new Error(message, { cause: err });
       }

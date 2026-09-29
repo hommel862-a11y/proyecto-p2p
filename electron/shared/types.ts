@@ -10,6 +10,16 @@ export interface BinanceSearchParams {
   rows?: number;
 }
 
+export interface BinanceC2cOrdersFetchRequest {
+  apiKey: string;
+  apiSecret: string;
+  tradeType: 'BUY' | 'SELL';
+  page?: number;
+  rows?: number;
+  startTimestamp?: number;
+  endTimestamp?: number;
+}
+
 export interface CotizaveRequest {
   apiKey: string;
   endpoint: 'rates';
@@ -137,6 +147,10 @@ export interface P2PIpcChannels {
   };
   'p2p:fetch-binance': {
     request: BinanceSearchParams;
+    response: unknown;
+  };
+  'p2p:fetch-binance-c2c-orders': {
+    request: BinanceC2cOrdersFetchRequest;
     response: unknown;
   };
   'p2p:fetch-cotizave': {
@@ -414,6 +428,7 @@ export interface TreasurySnapshotDto {
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
+  fetchBinanceC2cOrders(req: BinanceC2cOrdersFetchRequest): Promise<unknown>;
   fetchCotizave(req: CotizaveRequest): Promise<unknown>;
   fetchBybitP2p(req: BybitP2pFetchRequest): Promise<unknown>;
   fetchElDoradoQuote(req: ElDoradoQuoteRequest): Promise<unknown>;
