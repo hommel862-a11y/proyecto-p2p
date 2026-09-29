@@ -1,4 +1,5 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Guide } from './guide';
 
@@ -7,7 +8,10 @@ describe('Guide', () => {
   let component: Guide;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [Guide] });
+    TestBed.configureTestingModule({
+      imports: [Guide],
+      providers: [provideRouter([])],
+    });
     fixture = TestBed.createComponent(Guide);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -32,7 +36,7 @@ describe('Guide', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Monitor de Spread');
     expect(text).toContain('Calculadora de Ingresos');
-    expect(text).toContain('Registro de Operaciones');
+    expect(text).toContain('Registro Contable (Ledger)');
     expect(text).toContain('Reglas de Riesgo');
     expect(text).toContain('Estadísticas');
   });
