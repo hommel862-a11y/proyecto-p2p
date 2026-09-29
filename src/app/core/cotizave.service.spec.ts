@@ -3,6 +3,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CotizaveService } from './cotizave.service';
 import { CredentialStoreService } from './credential-store.service';
 import { ToastService } from './toast.service';
+import { P2P_STORAGE, StorageService } from './storage';
+import { IndexedDbStorageService } from './indexed-db-storage.service';
+import { MemoryStorage } from './memory-storage';
+import type { CotizaveRate } from '@p2p/core';
+
+/** Clave de persistencia de la caché de rates (convención `p2p.<dominio>.<sujeto>`). */
+const RATES_STORAGE_KEY = 'p2p.cotizave.rates';
+
+interface PersistedRates {
+  rates: Record<string, CotizaveRate>;
+  fetchedAt: string;
+}
 
 const RATES_PAYLOAD = {
   country: 'VE',
@@ -26,6 +38,8 @@ function jsonResponse(payload: unknown): Response {
 
 describe('CotizaveService', () => {
   let svc: CotizaveService;
+  let mem: MemoryStorage;
+  let storage: StorageService;
   const toast = {
     success: vi.fn(),
     info: vi.fn(),
@@ -33,11 +47,27 @@ describe('CotizaveService', () => {
     warn: vi.fn(),
   };
 
+  /**
+   * `StorageService` consulta la capa IndexedDB (memoria + espejo a `localStorage`)
+   * antes del adapter. En jsdom `localStorage` es global y sobrevive entre tests
+   * (y entre archivos, con `--isolate` en false), así que un `set` de un test
+   * anterior envenenaría la caché de uno nuevo. Este stub deja el `IndexedDbStorageService`
+   * fuera del camino: el contrato se ejercita sobre el `WebStorageAdapter` real
+   * backed por `MemoryStorage`.
+   */
+  const idbStub = {
+    get: () => null,
+    set: () => undefined,
+    remove: () => undefined,
+  };
+
   beforeEach(async () => {
     toast.success.mockReset();
     toast.info.mockReset();
     toast.error.mockReset();
     toast.warn.mockReset();
+
+    mem = new MemoryStorage();
 
     TestBed.configureTestingModule({
       providers: [
@@ -49,10 +79,13 @@ describe('CotizaveService', () => {
           },
         },
         { provide: ToastService, useValue: toast },
+        { provide: P2P_STORAGE, useValue: mem },
+        { provide: IndexedDbStorageService, useValue: idbStub },
       ],
     });
 
     delete (window as unknown as Record<string, unknown>)['electron'];
+    storage = TestBed.inject(StorageService);
     svc = TestBed.inject(CotizaveService);
     // hydrate() corre en el constructor; espera a que la key mockeada quede seteada.
     await vi.waitFor(() => expect(svc.apiKey()).toBe('test-key'));
@@ -63,6 +96,31 @@ describe('CotizaveService', () => {
     vi.unstubAllGlobals();
     TestBed.resetTestingModule();
   });
+
+  /**
+   * Instancia nueva del servicio sobre el mismo backend de storage: simula un
+   * reinicio de la app, donde solo sobrevive lo que está persistido.
+   */
+  async function newServiceOver(backend: Storage): Promise<CotizaveService> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: CredentialStoreService,
+          useValue: {
+            getCotizaveApiKey: vi.fn(async () => 'test-key'),
+            setCotizaveApiKey: vi.fn(async () => undefined),
+          },
+        },
+        { provide: ToastService, useValue: toast },
+        { provide: P2P_STORAGE, useValue: backend },
+        { provide: IndexedDbStorageService, useValue: idbStub },
+      ],
+    });
+    const fresh = TestBed.inject(CotizaveService);
+    await vi.waitFor(() => expect(fresh.apiKey()).toBe('test-key'));
+    return fresh;
+  }
 
   it('populates ratesByMarket and sets lastFetched when the direct fetch succeeds', async () => {
     const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
@@ -148,5 +206,133 @@ describe('CotizaveService', () => {
     expect(Object.keys(svc.ratesByMarket()).length).toBeGreaterThan(0);
     expect(svc.ratesByMarket()['binance']).toBeDefined();
     expect(toast.warn).toHaveBeenCalled();
+  });
+
+  it('configures a circuit-breaker timeout that outlives the slowest transport (15s in the Electron IPC handler)', () => {
+    // Si el breaker expira antes que el transporte, el fallback corre con
+    // `lastError === null` y el diagnóstico real se pierde (la inversión de D1).
+    expect(svc.circuitBreaker.options.requestTimeoutMs).toBeGreaterThan(15_000);
+  });
+
+  it('surfaces the real transport error when the desktop IPC tarpits longer than the breaker timeout', async () => {
+    const REAL = 'Servidor Cotizave no accesible (sin conexión o timeout)';
+    // El upstream con key sospechosa entra en tarpit y recién responde cuando
+    // dispara el abort del handler (15s). Un breaker de 10s expiraría antes y
+    // devolvería el fallback sin `lastError`.
+    (window as unknown as Record<string, unknown>)['electron'] = {
+      fetchCotizave: vi.fn(
+        () =>
+          new Promise((_resolve, reject) => {
+            setTimeout(() => reject(new Error(REAL)), 15_000);
+          }),
+      ),
+    };
+
+    vi.useFakeTimers();
+    try {
+      const pending = svc.fetchRates();
+      await vi.advanceTimersByTimeAsync(25_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(svc.error()).not.toBeNull();
+    expect(svc.error()).toContain(REAL);
+    expect(svc.error()).not.toBe('Cotizave no disponible y sin caché previa');
+    expect(toast.error.mock.calls[0]?.[0] as string).toContain(REAL);
+  });
+
+  it('reports the open circuit honestly when three attempts have already failed and no cache exists', async () => {
+    (window as unknown as Record<string, unknown>)['electron'] = {
+      fetchCotizave: vi.fn(async () => {
+        throw new Error('Cotizave HTTP Error 403');
+      }),
+    };
+
+    // Tres `fetchRates()` fallidos seguidos abren el circuito
+    // (failureThreshold: 3, cooldownPeriodMs: 25_000).
+    await svc.fetchRates();
+    await svc.fetchRates();
+    await svc.fetchRates();
+    expect(svc.circuitBreaker.getMetrics().state).toBe('OPEN');
+
+    // La cuarta llamada ni siquiera invoca la operación: el fast-fail no tiene
+    // diagnóstico propio, y antes caía en el genérico "sin caché previa".
+    await svc.fetchRates();
+
+    expect(svc.error()).not.toBeNull();
+    expect(svc.error()?.toLowerCase()).toContain('circuito');
+    expect(svc.error()).toContain('abierto');
+    expect(svc.error()).not.toContain('no disponible y sin caché');
+  });
+
+  it('hydrates the rates from the persisted cache on a fresh instance, before any network call', async () => {
+    const fetchedAt = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    storage.set<PersistedRates>(RATES_STORAGE_KEY, {
+      rates: {
+        binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+        oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
+      },
+      fetchedAt,
+    });
+
+    // Instancia nueva = arranque de la app. `MemoryStorage` es el mismo backend
+    // que sobrevive al reinicio; nada de red debería ser necesario.
+    const fresh = await newServiceOver(mem);
+
+    expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
+    expect(fresh.ratesByMarket()['binance']).toBeDefined();
+    expect(fresh.lastFetched()).toEqual(new Date(fetchedAt));
+  });
+
+  it('serves the persisted cache when the network path fails and warns with the cache age', async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000);
+    storage.set<PersistedRates>(RATES_STORAGE_KEY, {
+      rates: {
+        binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+        oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
+      },
+      fetchedAt: twoHoursAgo.toISOString(),
+    });
+
+    const fresh = await newServiceOver(mem);
+    (window as unknown as Record<string, unknown>)['electron'] = {
+      fetchCotizave: vi.fn(async () => {
+        throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)');
+      }),
+    };
+
+    await fresh.fetchRates();
+
+    // La caché sobrevive al fallo...
+    expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
+    expect(fresh.ratesByMarket()['binance']).toBeDefined();
+    // ...y se anuncia con su edad real, nunca como dato fresco.
+    expect(fresh.lastFetched()).toEqual(twoHoursAgo);
+    const warnMsg = toast.warn.mock.calls.at(-1)?.[0] as string | undefined;
+    expect(warnMsg).toContain('hace 2 h');
+  });
+
+  it('treats a 200 JSON payload with no recognizable rates as a failure and keeps the existing cache', async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+    vi.stubGlobal('fetch', fetchMock);
+    await svc.fetchRates();
+    expect(Object.keys(svc.ratesByMarket()).length).toBeGreaterThan(0);
+    const goodCache = { ...svc.ratesByMarket() };
+
+    // 200 OK con una forma que `normalizeCotizaveRates` no reconoce → `{}`.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<FetchLike>(async () => jsonResponse({ unexpected: 'shape' })),
+    );
+    await svc.fetchRates();
+
+    expect(svc.error()).not.toBeNull();
+    expect(svc.error()?.toLowerCase()).toContain('sin datos');
+    // No se pisa la caché previa ni se persiste una caché vacía.
+    expect(svc.ratesByMarket()).toEqual(goodCache);
+    const persisted = storage.get<PersistedRates>(RATES_STORAGE_KEY);
+    expect(persisted?.rates).toEqual(goodCache);
   });
 });
