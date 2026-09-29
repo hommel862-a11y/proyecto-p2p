@@ -48,6 +48,7 @@ import type {
   RepricerExecutionMode,
   VerificationSummary,
 } from './decision-journal';
+import { VERIFIABLE_DECISION_ACTIONS } from './decision-journal';
 
 /** Filter for `listCycles`. */
 export interface DecisionCyclesFilter {
@@ -104,9 +105,20 @@ export interface DecisionJournalRepository {
   appendOutcome(input: RecordOutcomeInput): Promise<DecisionOutcome>;
   /** Outcomes of a decision, in insertion order. */
   listOutcomesByDecision(decisionId: number): Promise<DecisionOutcome[]>;
-  /** `decision_performance` read model: decisions LEFT JOINed with their outcomes. */
+  /**
+   * `decision_performance` read model: decisions LEFT JOINed with their outcomes,
+   * restricted to the actions that can carry one. See
+   * `VERIFIABLE_DECISION_ACTIONS` and the implementation.
+   */
   getDecisionPerformance(filter?: DecisionPerformanceFilter): Promise<DecisionPerformanceRow[]>;
-  /** Verification coverage and stale-data exposure for the same filter. */
+  /**
+   * Verification coverage and stale-data exposure for the same filter.
+   *
+   * Not a second slice of the same population: the verification counts cover only
+   * the actions that can carry an outcome, the staleness counts cover every
+   * decision the filter matches. See `VerificationSummary` and
+   * `VERIFIABLE_DECISION_ACTIONS` for why one filter cannot serve both.
+   */
   getVerificationSummary(filter?: DecisionPerformanceFilter): Promise<VerificationSummary>;
 }
 
@@ -372,9 +384,20 @@ export class InMemoryDecisionJournalRepository implements DecisionJournalReposit
   async getDecisionPerformance(
     filter?: DecisionPerformanceFilter,
   ): Promise<DecisionPerformanceRow[]> {
+    // The performance read model covers the decisions that could have been EXECUTED, and
+    // only those. A KEEP or a PAUSE has no publication attempt behind it, so all four of
+    // its outcome columns are structurally empty: four guaranteed nulls per row, plus a
+    // `modeledSpreadPct` (0 for a PAUSE fired by a missing book) that would drag the
+    // modeled-vs-realized medians toward "we modeled nothing". They are not lost — they
+    // stay in the journal and are readable through `listDecisionsByCycle`/`getDecision`;
+    // what they are not is performance.
+    //
+    // This is also what keeps `rows.length === totalDecisions` in `buildDecisionSelfAudit`
+    // true for a filter that contains KEEPs and PAUSEs.
     const verifiedIds = verifiedDecisionIds(this.outcomes);
     const rows: DecisionPerformanceRow[] = [];
     for (const decision of this.decisions) {
+      if (!VERIFIABLE_DECISION_ACTIONS.includes(decision.action)) continue;
       if (!matchesPerformanceFilter(decision, filter, verifiedIds)) continue;
       rows.push(toPerformanceRow(decision, this.outcomes));
     }
@@ -385,20 +408,44 @@ export class InMemoryDecisionJournalRepository implements DecisionJournalReposit
     filter?: DecisionPerformanceFilter,
   ): Promise<VerificationSummary> {
     const verifiedIds = verifiedDecisionIds(this.outcomes);
-    const decisions = this.decisions.filter((decision) =>
+    // TWO slices, deliberately. The verification question ("of the decisions that
+    // could have produced a publication attempt, how many did?") and the staleness
+    // question ("how often did the engine decide on a book it knew was stale?") have
+    // different populations, and forcing them to share one filter is how a summary
+    // ends up quietly lying about one of them:
+    //
+    //  - One filter over the verifiable actions only: `verificationRate` becomes
+    //    honest, and `staleDecisions` silently starts excluding every KEEP and PAUSE.
+    //    Those are decided on stale books too — a PAUSE fired by a cached book is the
+    //    case an operator most needs surfaced — so the staleness signal would shrink
+    //    precisely where the engine is most likely to be wrong.
+    //  - One filter over everything: the verification rate decays toward 0 for the
+    //    rest of the session with no failure to explain it, and `decisionsAwaitingOutcome`
+    //    counts rows nobody will ever fill.
+    //
+    // So verification is counted over the verifiable actions and staleness over
+    // everything, and both denominators are reported (see `VERIFIABLE_DECISION_ACTIONS`).
+    const journaled = this.decisions.filter((decision) =>
       matchesPerformanceFilter(decision, filter, verifiedIds),
     );
-    const totalDecisions = decisions.length;
-    const verifiedDecisions = decisions.filter((decision) => verifiedIds.has(decision.id)).length;
-    const staleDecisions = decisions.filter((decision) => decision.observedStale).length;
+    const verifiable = journaled.filter((decision) =>
+      VERIFIABLE_DECISION_ACTIONS.includes(decision.action),
+    );
+    const totalDecisions = verifiable.length;
+    const verifiedDecisions = verifiable.filter((decision) => verifiedIds.has(decision.id))
+      .length;
+    const journaledDecisions = journaled.length;
+    const staleDecisions = journaled.filter((decision) => decision.observedStale).length;
 
     return {
       totalDecisions,
       verifiedDecisions,
       verificationRate:
         totalDecisions === 0 ? 0 : roundRatio(verifiedDecisions / totalDecisions),
+      journaledDecisions,
       staleDecisions,
-      staleRate: totalDecisions === 0 ? 0 : roundRatio(staleDecisions / totalDecisions),
+      staleRate:
+        journaledDecisions === 0 ? 0 : roundRatio(staleDecisions / journaledDecisions),
       openCycles: countOpenCycles(this.cycles, filter),
       decisionsAwaitingOutcome: totalDecisions - verifiedDecisions,
     };

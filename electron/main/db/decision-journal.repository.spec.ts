@@ -360,6 +360,98 @@ describe('Decision Journal — SQLite adapter parity', () => {
     expect(sqlite.reads.cyclesByOrigin).toEqual(memory.reads.cyclesByOrigin);
   });
 
+  /**
+   * Parity alone is not enough for the two populations: two adapters that agree on a
+   * wrong number still agree. This pins the VALUES on both adapters for a write sequence
+   * that mixes the three actions and puts two of the decisions on stale data.
+   *
+   *   d1 UPDATE fresh (1 fill)  -> the only verifiable decision, and it is verified
+   *   d2 PAUSE  stale (no fill)  -> unverifiable, and decided on stale data
+   *   d3 KEEP   stale (no fill)  -> same
+   *
+   *   totalDecisions 1, verifiedDecisions 1, journaledDecisions 3, staleDecisions 2,
+   *   staleRate 0.6667, awaiting 0 (nothing pending: d1 already reported)
+   */
+  it('agrees on the two populations of a mixed-action run, by value and not only by parity', async () => {
+    const mixed = async (r: CoreDecisionJournalRepository) => {
+      const fresh = await r.appendMarketSnapshot({
+        obi: 0.1, bidUsd: 1, askUsd: 2, nBids: 1, nAsks: 1, stale: false,
+      });
+      const stale = await r.appendMarketSnapshot({
+        obi: 0.1, bidUsd: 1, askUsd: 2, nBids: 1, nAsks: 1, stale: true,
+      });
+      const cycle = await r.openCycle({ origin: 'AUTO_ENGINE', capitalReservedUsdt: 1 });
+      const d1 = await r.appendDecision({
+        cycleId: cycle.id, snapshotId: fresh.id, side: 'BUY', decisionPrice: 1,
+        origin: 'AUTO_ENGINE', executionMode: 'PUBLISHING', action: 'UPDATE',
+        modeledSpreadPct: 1, reason: 'r',
+      });
+      await r.appendOutcome({
+        decisionId: d1.id, source: 'MANUAL', success: true, filledAmountUsdt: 10,
+      });
+      for (const action of ['PAUSE', 'KEEP'] as const) {
+        await r.appendDecision({
+          cycleId: cycle.id, snapshotId: stale.id, side: 'BUY', decisionPrice: 1,
+          origin: 'AUTO_ENGINE', executionMode: 'READ_ONLY', action,
+          modeledSpreadPct: 1, reason: 'r',
+        });
+      }
+      return r.getVerificationSummary();
+    };
+
+    const expected: VerificationSummary = {
+      totalDecisions: 1,
+      verifiedDecisions: 1,
+      verificationRate: 1,
+      journaledDecisions: 3,
+      staleDecisions: 2,
+      staleRate: 0.6667,
+      openCycles: 1,
+      decisionsAwaitingOutcome: 0,
+    };
+
+    expect(await mixed(repo)).toEqual(expected);
+    expect(await mixed(reference)).toEqual(expected);
+  });
+
+  /**
+   * A decision that could not be executed is a durable row, not a read-model row. The
+   * read model is the performance report; the journal is the record. Both adapters have to
+   * agree on that split, and the record has to stay reachable.
+   */
+  it('keeps a non-publishable decision in the journal and out of the read model, on both adapters', async () => {
+    const check = async (r: CoreDecisionJournalRepository) => {
+      const snapshot = await r.appendMarketSnapshot({
+        obi: 0.1, bidUsd: 1, askUsd: 2, nBids: 1, nAsks: 1, stale: false,
+      });
+      const cycle = await r.openCycle({ origin: 'AUTO_ENGINE', capitalReservedUsdt: 1 });
+      const updatable = await r.appendDecision({
+        cycleId: cycle.id, snapshotId: snapshot.id, side: 'BUY', decisionPrice: 1,
+        origin: 'AUTO_ENGINE', executionMode: 'PUBLISHING', action: 'UPDATE',
+        modeledSpreadPct: 1, reason: 'r',
+      });
+      const paused = await r.appendDecision({
+        cycleId: cycle.id, snapshotId: snapshot.id, side: 'BUY', decisionPrice: 1,
+        origin: 'AUTO_ENGINE', executionMode: 'READ_ONLY', action: 'PAUSE',
+        modeledSpreadPct: 0, reason: 'Regla de seguridad',
+      });
+
+      // The read model reports performance: only the decision that could be executed.
+      expect((await r.getDecisionPerformance()).map((row) => row.decisionId)).toEqual([
+        updatable.id,
+      ]);
+      // The journal keeps both, with the rule that stopped the engine on the PAUSE.
+      expect(await r.listDecisionsByCycle(cycle.id)).toHaveLength(2);
+      await expect(r.getDecision(paused.id)).resolves.toMatchObject({
+        action: 'PAUSE',
+        reason: 'Regla de seguridad',
+      });
+    };
+
+    await check(repo);
+    await check(reference);
+  });
+
   it('rejects the same invalid writes with the same flat errors', async () => {
     /**
      * Every rejection the port promises, as a thunk so each one can be replayed twice
@@ -1456,7 +1548,9 @@ describe('Decision Journal — decision_performance read model', () => {
         decisionPrice: price,
         origin: 'OPERATOR',
         executionMode: 'READ_ONLY',
-        action: 'KEEP',
+        // UPDATE, not KEEP: the read model enumerates the decisions that could have been
+        // executed. This test is about ORDER, so it uses an action that reaches the view.
+        action: 'UPDATE',
         modeledSpreadPct: 1,
         reason: `r${price}`,
       });
@@ -1588,6 +1682,7 @@ describe('Decision Journal — getVerificationSummary', () => {
       totalDecisions: 0,
       verifiedDecisions: 0,
       verificationRate: 0,
+      journaledDecisions: 0,
       staleDecisions: 0,
       staleRate: 0,
       openCycles: 0,
@@ -1598,29 +1693,46 @@ describe('Decision Journal — getVerificationSummary', () => {
   it('rounds rates to 4 decimals and counts the verification backlog', async () => {
     await runScenario(repo);
 
-    // 3 decisions; d1 and d2 have outcomes, d3 has none; only d2 is stale;
-    // cycle1 is CLOSED and cycle2 is OPEN.
+    // runScenario writes d1 UPDATE (2 fills + 1 failed publish), d2 PAUSE (on the stale
+    // snapshot, with one outcome) and d3 KEEP (no outcome); cycle1 is CLOSED, cycle2 OPEN.
+    //
+    // Two populations, and this scenario separates them on purpose: totalDecisions 1 (d1,
+    // the only action that reaches a publisher) against journaledDecisions 3, and
+    // staleDecisions 1 — the PAUSE, and the only decision taken on stale data. Under a
+    // single action filter that stale figure would read 0, and this run would claim it
+    // never touched stale data. The backlog is 0, not 2: d2 and d3 were never awaiting an
+    // outcome, so counting them would be a backlog nobody can ever clear.
     expect(await repo.getVerificationSummary()).toEqual({
-      totalDecisions: 3,
-      verifiedDecisions: 2,
-      verificationRate: 0.6667,
+      totalDecisions: 1,
+      verifiedDecisions: 1,
+      verificationRate: 1,
+      journaledDecisions: 3,
       staleDecisions: 1,
       staleRate: 0.3333,
       openCycles: 1,
-      decisionsAwaitingOutcome: 1,
+      decisionsAwaitingOutcome: 0,
     });
   });
 
   it('keeps openCycles bound to the cycle filters only', async () => {
     const { cycle1, cycle2 } = await runScenario(repo);
 
-    // 1/1 and 1/1 are exact ratios: no rounding noise.
-    expect((await repo.getVerificationSummary({ staleOnly: true })).verificationRate).toBe(1);
-    expect((await repo.getVerificationSummary({ staleOnly: true })).staleRate).toBe(1);
+    // The only stale decision in the scenario is a PAUSE, so `staleOnly` slices down to a
+    // set with no verifiable decision in it. That is a real, well-defined answer — the
+    // stale exposure is 1/1 because staleness is asked of every decision — while the
+    // verification figures for that slice are 0/0 rather than NaN.
+    const staleOnly = await repo.getVerificationSummary({ staleOnly: true });
+    expect(staleOnly.staleRate).toBe(1);
+    expect(staleOnly.journaledDecisions).toBe(1);
+    expect(staleOnly.totalDecisions).toBe(0);
+    expect(staleOnly.verificationRate).toBe(0);
+    expect(staleOnly.decisionsAwaitingOutcome).toBe(0);
 
     // `side` addresses decisions only: it must NOT change the open-cycle count.
+    // d1 is the sole UPDATE, and it is a BUY.
     const bySide = await repo.getVerificationSummary({ side: 'SELL' });
-    expect(bySide.totalDecisions).toBe(1);
+    expect(bySide.totalDecisions).toBe(0);
+    expect(bySide.journaledDecisions).toBe(1);
     expect(bySide.openCycles).toBe(1);
 
     // `origin` describes a cycle too, so it does filter openCycles.
@@ -2062,7 +2174,9 @@ describe('Decision Journal — P2PDatabaseService wiring', () => {
       decisionPrice: 1,
       origin: 'OPERATOR',
       executionMode: 'READ_ONLY',
-      action: 'KEEP',
+      // UPDATE so the decision shows up in the read model this assertion reads: the
+      // point of the test is that the purge leaves the citing decision alone.
+      action: 'UPDATE',
       modeledSpreadPct: 1,
       reason: 'r',
     });

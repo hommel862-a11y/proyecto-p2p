@@ -760,21 +760,32 @@ describe('BinanceRepricerService', () => {
       expect(svc.logs()[0].message).toContain('Publicación rechazada por el publicador');
     });
 
-    it('no graba el PAUSE de seguridad como decisión publicable', async () => {
-      // Un PAUSE nunca llega a `publishOrLog`: no hay anuncio que escribir. Si se
-      // journaliza igual entra al denominador de "decisiones con intento de
-      // publicación" y por construcción no puede tener intento, así que el ratio
-      // decae sin que exista un solo fallo real. Ver el bloque "denominador de
-      // verificación" para la métrica completa.
+    it('graba el PAUSE de seguridad sin contarlo como decisión publicable', async () => {
+      // Un PAUSE nunca llega a `publishOrLog`: no hay anuncio que escribir. Por eso NO
+      // puede entrar al denominador de "decisiones con intento de publicación" —una fila
+      // así decae el ratio sin que exista un solo fallo real—, y sin embargo SÍ se
+      // journaliza. Antes estas dos propiedades se confundían: se cumplía la primera
+      // descartando la fila. Ahora la primera la resuelve el filtro de
+      // `getVerificationSummary`, no la pérdida de evidencia. Ver el bloque
+      // "denominador de verificación" para la métrica completa.
       svc.minSpreadVes.set(10_000);
 
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
+      // El denominador de verificación sigue en cero...
       expect((await journal.getVerificationSummary()).totalDecisions).toBe(0);
-      expect(harness.decisionInputs).toHaveLength(0);
-      // El rastro de que el motor decidió pausar NO se pierde: queda en el log
-      // del motor, con la regla de seguridad que lo disparó.
+      // ...pero la decisión está escrita, una fila por lado, con su acción real.
+      expect(harness.decisionInputs).toHaveLength(2);
+      expect(harness.decisionInputs.map((input) => input.action)).toEqual(['PAUSE', 'PAUSE']);
+      // Y la fila es recuperable con la regla de seguridad que la disparó, que es lo que
+      // el operador necesita para responder "¿por qué el motor se detuvo?".
+      const open = await journal.listCycles({ status: 'OPEN' });
+      const rows = await journal.listDecisionsByCycle(open[0].id);
+      expect(rows).toHaveLength(2);
+      expect(rows.every((row) => row.action === 'PAUSE')).toBe(true);
+      expect(rows.every((row) => row.safetyFlags.includes('SPREAD_BELOW_MINIMUM'))).toBe(true);
+      // El rastro sigue estando también en el log del motor.
       expect(svc.logs()[0].action).toBe('PAUSE');
       expect(svc.logs()[0].message).toMatch(/menor al mínimo requerido/i);
     });
@@ -881,19 +892,30 @@ describe('BinanceRepricerService', () => {
       expect(harness.decisionInputs).toHaveLength(0);
     });
 
-    it('no registra nada en los ciclos donde el motor no decide (KEEP)', async () => {
+    it('registra el KEEP como decisión sin contarlo entre las publicables', async () => {
       fetchDepth.mockResolvedValue(liveFetch());
 
       await svc.executeCycle();
-      const afterDecision = (await journal.getVerificationSummary()).totalDecisions;
-      expect(afterDecision).toBe(2);
+      const afterDecision = await journal.getVerificationSummary();
+      expect(afterDecision.totalDecisions).toBe(2);
 
       const second = await svc.executeCycle();
 
-      // KEEP no es una decisión: journalizarlo infla el conteo de decisiones.
+      // Un KEEP ES una decisión —el motor evaluó yASMintió que los precios ya estaban
+      // donde debían— y queda registrada. Lo que NO cuenta es entre las publicables, y eso
+      // lo decide `getVerificationSummary`, no el hecho de no escribir la fila.
       expect(second?.action).toBe('KEEP');
-      expect((await journal.getVerificationSummary()).totalDecisions).toBe(afterDecision);
-      expect(harness.snapshotInputs).toHaveLength(1);
+      const afterKeep = await journal.getVerificationSummary();
+      expect(afterKeep.totalDecisions).toBe(afterDecision.totalDecisions);
+      expect(afterKeep.journaledDecisions).toBe(afterDecision.journaledDecisions + 2);
+      // Un snapshot nuevo y dos filas nuevas: el ciclo se registró entero.
+      expect(harness.snapshotInputs).toHaveLength(2);
+      expect(harness.decisionInputs.map((input) => input.action)).toEqual([
+        'UPDATE',
+        'UPDATE',
+        'KEEP',
+        'KEEP',
+      ]);
     });
   });
 
@@ -976,30 +998,42 @@ describe('BinanceRepricerService', () => {
   // denominador filas que por construcción no pueden tener intento: el ratio
   // decae de forma monótona sin que exista un solo fallo real, y
   // `decisionsAwaitingOutcome` cuenta como backlog algo que nadie forgot.
+  //
+  // ESTOS TESTS CAMBIARON DE SIGNIFICADO CON EL ARREGLO, y esa es la parte
+  // importante: el defecto nunca fue que la métrica contara mal, fue que se
+  // arregló DESCARTANDO evidencia. `KEEP` y `PAUSE` son decisiones que el motor
+  // tomó, con la razón por la que las tomó, y el operador las necesita para
+  // responder "¿por qué no pasó nada?". La métrica deja de contar mal porque ahora
+  // excluye esas filas POR DISEÑO en `getVerificationSummary` (que mira
+  // `VERIFIABLE_DECISION_ACTIONS`), no porque el motor deje de guardarlas.
+  //
+  // Lo que se verifica acá es que las dos propiedades se sostengan a la vez: la
+  // cifra de verificación no se mueve, y el registro sigue existiendo.
   // -------------------------------------------------------------------------
   describe('denominador de verificación (PAUSE y las no publicables)', () => {
     /** Todas las acciones que el motor puede terminar journalizando. */
     const journaledActions = (): string[] => harness.decisionInputs.map((input) => input.action);
 
-    it('no journaliza el PAUSE por regla de seguridad (spread insuficiente)', async () => {
+    it('journaliza el PAUSE por regla de seguridad (spread insuficiente)', async () => {
       svc.minSpreadVes.set(10_000);
 
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
-      expect(journaledActions()).toEqual([]);
+      // Una fila por lado, como cualquier UPDATE: el journal no distingue acciones.
+      expect(journaledActions()).toEqual(['PAUSE', 'PAUSE']);
     });
 
-    it('no journaliza el PAUSE por límites bancarios agotados', async () => {
+    it('journaliza el PAUSE por límites bancarios agotados', async () => {
       buildService(() => [{ isOverLimit: true }]);
 
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
-      expect(journaledActions()).toEqual([]);
+      expect(journaledActions()).toEqual(['PAUSE', 'PAUSE']);
     });
 
-    it('no journaliza el PAUSE por profundidad de mercado insuficiente', async () => {
+    it('journaliza el PAUSE por profundidad de mercado insuficiente', async () => {
       fetchDepth.mockResolvedValue(
         liveFetch({ ...DEPTH, bestSellPrice: 0, sellOffers: [], spreadVes: 0, spreadPct: 0 }),
       );
@@ -1007,10 +1041,10 @@ describe('BinanceRepricerService', () => {
       const decision = await svc.executeCycle();
 
       expect(decision?.action).toBe('PAUSE');
-      expect(journaledActions()).toEqual([]);
+      expect(journaledActions()).toEqual(['PAUSE', 'PAUSE']);
     });
 
-    it('un PAUSE no infla el denominador ni el backlog de outcomes', async () => {
+    it('no mueve NINGUNA cifra de verificación, pero sí cuenta como journalizada', async () => {
       const publish = vi.fn(async (): Promise<boolean> => true);
       registerRepricerPublisher({ publish });
 
@@ -1029,14 +1063,17 @@ describe('BinanceRepricerService', () => {
       const afterPause = await journal.getVerificationSummary();
       // Ni el denominador se mueve, ni el ratio decae, ni aparece un backlog
       // fantasma: una decisión sin intento posible no es un fallo de verificación.
+      // ESTO es lo que se arregló, y ahora se consigue sin tirar la fila.
       expect(afterPause.totalDecisions).toBe(afterUpdate.totalDecisions);
       expect(afterPause.verificationRate).toBe(afterUpdate.verificationRate);
       expect(afterPause.decisionsAwaitingOutcome).toBe(afterUpdate.decisionsAwaitingOutcome);
+      // ...pero la fila existe, y el summary la cuenta como journalizada.
+      expect(afterPause.journaledDecisions).toBe(afterUpdate.journaledDecisions + 2);
       // Y el publicador no se llamó: el PAUSE no publica.
       expect(publish).toHaveBeenCalledTimes(1);
     });
 
-    it('deja constancia de la pausa en el log del motor aunque no la journalice', async () => {
+    it('deja constancia de la pausa en el log del motor y en el journal', async () => {
       svc.minSpreadVes.set(10_000);
 
       await svc.executeCycle();
@@ -1044,9 +1081,35 @@ describe('BinanceRepricerService', () => {
       const entry = svc.logs()[0];
       expect(entry.action).toBe('PAUSE');
       expect(entry.message).toMatch(/Spread proyectado/);
-      // Y el motivo queda en la decisión que el operador puede inspeccionar.
+      // Y el motivo queda en la decisión que el operador puede inspeccionar...
       expect(svc.lastDecision()?.safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
       expect(svc.lastDecision()?.reason).toMatch(/menor al mínimo requerido/i);
+
+      // ...y ahora también en el journal durable, con la acción y el motivo. Antes
+      // este era el hueco exacto del defecto: la evidencia de por qué el motor se
+      // detuvo vivía solo en memoria y en un log de texto.
+      const cycle = await journal.listCycles({ status: 'OPEN' });
+      expect(cycle).toHaveLength(1);
+      const journaled = await journal.listDecisionsByCycle(cycle[0].id);
+      expect(journaled).toHaveLength(2);
+      for (const record of journaled) {
+        expect(record.action).toBe('PAUSE');
+        expect(record.reason).toBeTruthy();
+        expect(record.safetyFlags).toContain('SPREAD_BELOW_MINIMUM');
+      }
+
+      // Y el performance read model NO los muestra: un PAUSE no se ejecutó, así que
+      // no tiene performance que reportar. Journalizado no es lo mismo que medido,
+      // que es justo la distinción que hace posible el filtro.
+      const { buildDecisionSelfAudit } = await import('@p2p/core');
+      const rows = await journal.getDecisionPerformance();
+      const summary = await journal.getVerificationSummary();
+      expect(rows).toHaveLength(0);
+      expect(summary.totalDecisions).toBe(0);
+      expect(summary.journaledDecisions).toBe(2);
+      // La invariante del audit se sostiene: el read model y el denominador de
+      // verificación cuentan lo mismo, porque salen del mismo filtro.
+      expect(() => buildDecisionSelfAudit(rows, summary)).not.toThrow();
     });
   });
 

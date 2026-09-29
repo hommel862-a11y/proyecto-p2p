@@ -177,8 +177,9 @@ describe('Decision Journal domain contract', () => {
         totalDecisions: 4,
         verifiedDecisions: 3,
         verificationRate: 0.75,
+        journaledDecisions: 5,
         staleDecisions: 1,
-        staleRate: 0.25,
+        staleRate: 0.2,
         openCycles: 1,
         decisionsAwaitingOutcome: 1,
       };

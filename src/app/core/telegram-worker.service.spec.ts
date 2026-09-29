@@ -157,11 +157,16 @@ const BACKTEST_SUMMARY = {
  * Journal audit exactly as `getVerificationSummary` returns it: 1042 decisions,
  * 12 with at least one publication attempt on record, 31 taken on a book the
  * engine had already flagged as stale.
+ *
+ * `journaledDecisions` equals `totalDecisions` here because this fixture describes a run
+ * that contained only UPDATEs. The two diverge as soon as a KEEP or a PAUSE is journaled,
+ * which is the normal case; see `binance-repricer.service.spec.ts`.
  */
 const JOURNAL_SUMMARY: VerificationSummary = {
   totalDecisions: 1042,
   verifiedDecisions: 12,
   verificationRate: 12 / 1042,
+  journaledDecisions: 1042,
   staleDecisions: 31,
   staleRate: 31 / 1042,
   openCycles: 1,
@@ -1156,6 +1161,7 @@ describe('TelegramWorkerService', () => {
         totalDecisions: 0,
         verifiedDecisions: 0,
         verificationRate: 0,
+        journaledDecisions: 0,
         staleDecisions: 0,
         staleRate: 0,
         decisionsAwaitingOutcome: 0,

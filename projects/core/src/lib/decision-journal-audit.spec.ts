@@ -26,6 +26,7 @@ const summary = (overrides: Partial<VerificationSummary> = {}): VerificationSumm
   totalDecisions: 0,
   verifiedDecisions: 0,
   verificationRate: 0,
+  journaledDecisions: 0,
   staleDecisions: 0,
   staleRate: 0,
   openCycles: 0,
@@ -33,11 +34,21 @@ const summary = (overrides: Partial<VerificationSummary> = {}): VerificationSumm
   ...overrides,
 });
 
-/** Folds rows and the summary of the *same* filter, the way the facade does. */
+/**
+ * Folds rows and the summary of the *same* filter, the way the facade does.
+ *
+ * `totalDecisions` tracks the rows because the read model enumerates exactly the
+ * verifiable decisions. `journaledDecisions` defaults to the same number unless a test
+ * says otherwise, so tests that only care about verification do not have to restate it.
+ */
 const auditFor = (
   rows: readonly DecisionPerformanceRow[],
   overrides: Partial<VerificationSummary> = {},
-) => buildDecisionSelfAudit(rows, summary({ totalDecisions: rows.length, ...overrides }));
+) =>
+  buildDecisionSelfAudit(
+    rows,
+    summary({ totalDecisions: rows.length, journaledDecisions: rows.length, ...overrides }),
+  );
 
 describe('buildDecisionSelfAudit', () => {
   it('reports both sides even when the journal is empty', () => {
@@ -148,6 +159,29 @@ describe('buildDecisionSelfAudit', () => {
       decisionsOnStaleMarket: 1,
       staleRate: 0.5,
     });
+  });
+
+  it('counts the stale-data exposure over every journaled decision, not the verifiable ones', () => {
+    // The trap, at the audit layer. One UPDATE row is the whole read model, but the
+    // journal behind it holds three decisions and two of them were taken on a stale
+    // book. Both KEEP/PAUSE rows are invisible here, so the ONLY way this audit can
+    // report the engine's real stale exposure is by taking its denominator from
+    // `journaledDecisions`.
+    const audit = auditFor([row()], {
+      totalDecisions: 1,
+      journaledDecisions: 3,
+      staleDecisions: 2,
+      staleRate: 2 / 3,
+    });
+
+    expect(audit.staleExposure).toEqual({
+      totalDecisions: 3,
+      decisionsOnStaleMarket: 2,
+      staleRate: 2 / 3,
+    });
+    // ...while verification keeps its narrower denominator, so the two blocks of the
+    // same audit are allowed to disagree about how many decisions exist.
+    expect(audit.verification.totalDecisions).toBe(1);
   });
 
   it('refuses to mix rows and summary that came from different filters', () => {

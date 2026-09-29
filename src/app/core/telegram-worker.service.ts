@@ -60,8 +60,13 @@ import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-jou
  * tasa de verificación, que SÍ son reales— por un `n/d` que el formateador ya sabe
  * declarar solo.
  *
- * Un journal con 0 decisiones SÍ pasa: el formateador tiene su propio texto para eso y
- * no imprime ninguna cifra, así que no hay nada que proteger.
+ * Un resumen SIN denominador de verificación SÍ pasa, y eso incluye el caso
+ * `totalDecisions === 0` con decisiones registradas: ese cero ya no significa "journal
+ * vacío" —significa "nada de lo que se registró era publicable"— y el formateador tiene
+ * texto propio para las dos cosas. Ojo con la justificación que se escribía antes acá:
+ * "no imprime ninguna cifra" ya no es cierto, porque en ese caso la línea imprime el
+ * conteo journaleado y la exposición a libro viejo. Lo que este guard protege es una
+ * sola cosa: que no le llegue al operador un porcentaje que no se puede calcular.
  */
 function isPrintableAudit(summary: VerificationSummary | null | undefined): summary is VerificationSummary {
   if (summary === null || typeof summary !== 'object') return false;

@@ -34,6 +34,26 @@ export type OutcomeSource = 'LOCAL_SIGNAL' | 'BINANCE_MERCHANT' | 'CSV_IMPORT' |
 export type RepricerExecutionMode = 'READ_ONLY' | 'PUBLISHING';
 export type DecisionAction = 'UPDATE' | 'KEEP' | 'PAUSE';
 
+/**
+ * The actions that can EVER carry an outcome, i.e. the verification denominator.
+ *
+ * Mirrored verbatim from `projects/core/src/lib/decision-journal.ts`, which cannot be
+ * imported here (see the file header). The parity spec replays the same summaries
+ * through both adapters, so a divergence in this list fails the suite instead of
+ * shipping a summary that differs by backend.
+ *
+ * Only `UPDATE` reaches the ad publisher, so only `UPDATE` can produce the publication
+ * attempt an outcome row records. `KEEP` and `PAUSE` are journaled — they are real
+ * decisions and the durable record of a PAUSE is the record of the engine stopping —
+ * but they can never be verified, so counting them in `totalDecisions` would cap
+ * `verificationRate` below 1 forever with no failure to explain the gap.
+ *
+ * Staleness is NOT filtered by this list: it is counted over every journaled decision,
+ * because a KEEP or a PAUSE taken on a stale book is exactly the case the staleness
+ * signal exists to surface.
+ */
+const VERIFIABLE_DECISION_ACTIONS: readonly DecisionAction[] = ['UPDATE'];
+
 export interface MarketSnapshot {
   readonly id: number;
   readonly obi: number;
@@ -115,9 +135,15 @@ export interface DecisionPerformanceRow {
 }
 
 export interface VerificationSummary {
+  /**
+   * Decisions whose action could carry an outcome (see `VERIFIABLE_DECISION_ACTIONS`).
+   * The verification denominator — NOT every journaled decision.
+   */
   readonly totalDecisions: number;
   readonly verifiedDecisions: number;
   readonly verificationRate: number;
+  /** Every decision matching the filter, whatever its action. The staleness denominator. */
+  readonly journaledDecisions: number;
   readonly staleDecisions: number;
   readonly staleRate: number;
   readonly openCycles: number;
@@ -729,27 +755,50 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
   async getDecisionPerformance(
     filter?: DecisionPerformanceFilter,
   ): Promise<DecisionPerformanceRow[]> {
-    const { where, params } = buildPerformanceFilter(filter);
+    // Same restriction as the reference adapter: the performance read model only covers
+    // decisions that could have been executed, so its count equals the summary's
+    // `totalDecisions` for the same filter. A KEEP or a PAUSE stays in the journal and
+    // is still readable by `getDecision`/`listDecisionsByCycle`; it just has no
+    // performance to report, and a `modeledSpreadPct` of 0 on a PAUSE fired by a missing
+    // book would otherwise pull the modeled-spread median toward zero.
+    const { conditions, params } = buildPerformanceFilter(filter);
     const rows = this.db
-      .prepare(`SELECT * FROM decision_performance${where} ORDER BY decision_id ASC`)
-      .all(...params) as Row[];
+      .prepare(
+        `SELECT * FROM decision_performance
+          WHERE action IN (${sqlPlaceholders(VERIFIABLE_DECISION_ACTIONS.length)})
+            ${conditions.map((condition) => `AND ${condition}`).join('\n            ')}
+          ORDER BY decision_id ASC`,
+      )
+      .all(...VERIFIABLE_DECISION_ACTIONS, ...params) as Row[];
     return rows.map(mapPerformanceRow);
   }
 
   async getVerificationSummary(filter?: DecisionPerformanceFilter): Promise<VerificationSummary> {
-    // Same filters as the read model, aggregated: the summary is a fold over exactly
-    // the decisions `getDecisionPerformance` would return, never a second definition.
-    const { where, params } = buildPerformanceFilter(filter);
+    // Same filters as the read model, aggregated in ONE pass: the summary is a fold over
+    // exactly the decisions `getDecisionPerformance` would return, never a second definition.
+    //
+    // Two populations inside that one pass, because the two rates are different questions:
+    // `total_decisions`/`verified_decisions` count only the actions that can carry an
+    // outcome, while `journaled_decisions`/`stale_decisions` count every decision the
+    // filter matched. Sharing one filter would make `verificationRate` honest only by
+    // making the staleness count stop including the KEEPs and PAUSEs — a staleness signal
+    // that shrinks exactly where the engine is deciding on a book it knows is old.
+    const { conditions, params } = buildPerformanceFilter(filter);
     const row = this.db
       .prepare(
         `SELECT
-           COUNT(*) AS total_decisions,
-           SUM(CASE WHEN fill_count > 0 THEN 1 ELSE 0 END) AS verified_decisions,
+           COUNT(*) AS journaled_decisions,
+           SUM(CASE WHEN action IN (${sqlPlaceholders(VERIFIABLE_DECISION_ACTIONS.length)})
+                    THEN 1 ELSE 0 END) AS total_decisions,
+           SUM(CASE WHEN action IN (${sqlPlaceholders(VERIFIABLE_DECISION_ACTIONS.length)})
+                     AND fill_count > 0 THEN 1 ELSE 0 END) AS verified_decisions,
            SUM(CASE WHEN observed_stale THEN 1 ELSE 0 END) AS stale_decisions
-         FROM decision_performance${where}`,
+         FROM decision_performance
+         ${conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''}`,
       )
-      .get(...params) as Row;
+      .get(...VERIFIABLE_DECISION_ACTIONS, ...VERIFIABLE_DECISION_ACTIONS, ...params) as Row;
 
+    const journaledDecisions = num(row, 'journaled_decisions');
     const totalDecisions = num(row, 'total_decisions');
     const verifiedDecisions = num(row, 'verified_decisions');
     const staleDecisions = num(row, 'stale_decisions');
@@ -759,12 +808,19 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
       verifiedDecisions,
       verificationRate:
         totalDecisions === 0 ? 0 : roundRatio(verifiedDecisions / totalDecisions),
+      journaledDecisions,
       staleDecisions,
-      staleRate: totalDecisions === 0 ? 0 : roundRatio(staleDecisions / totalDecisions),
+      staleRate:
+        journaledDecisions === 0 ? 0 : roundRatio(staleDecisions / journaledDecisions),
       openCycles: countOpenCycles(this.db, filter),
       decisionsAwaitingOutcome: totalDecisions - verifiedDecisions,
     };
   }
+}
+
+/** `?, ?, ...` — one placeholder per value, for an `IN` list built from a constant. */
+function sqlPlaceholders(count: number): string {
+  return new Array(count).fill('?').join(', ');
 }
 
 // ---------------------------------------------------------------------------
@@ -802,12 +858,20 @@ export function purgeMarketSnapshotsBefore(db: DatabaseSync, cutoff: number): nu
 // Query building
 // ---------------------------------------------------------------------------
 
+/**
+ * Conditions and their bound values, for a `WHERE` clause the caller assembles.
+ *
+ * `conditions` is exposed (not just a pre-joined `where`) because the two summary reads
+ * compose different restrictions on top of the same filter: the performance read model
+ * narrows to the verifiable actions, the verification summary counts over the whole
+ * slice and narrows inside the aggregate instead.
+ */
 interface BuiltFilter {
-  readonly where: string;
+  readonly conditions: readonly string[];
   readonly params: (string | number)[];
 }
 
-function buildCyclesFilter(filter?: DecisionCyclesFilter): BuiltFilter {
+function buildCyclesFilter(filter?: DecisionCyclesFilter): { where: string; params: (string | number)[] } {
   const conditions: string[] = [];
   const params: (string | number)[] = [];
   if (filter?.status) {
@@ -831,8 +895,12 @@ function buildCyclesFilter(filter?: DecisionCyclesFilter): BuiltFilter {
 
 /**
  * Filters over the `decision_performance` view. `verifiedOnly` maps to `fill_count > 0`
- * because a decision is verifiable exactly when it has at least one outcome — an
- * unverifiable decision is never dropped, only filtered out when explicitly asked for.
+ * because a decision is verifiable exactly when it has at least one outcome.
+ *
+ * The action is NOT part of this filter: `getDecisionPerformance` restricts to
+ * `VERIFIABLE_DECISION_ACTIONS` itself, and `getVerificationSummary` needs the UNRESTRICTED
+ * slice to count staleness. Keeping the restriction at the call site is what lets one
+ * builder serve two different populations without either query inventing its own filter.
  */
 function buildPerformanceFilter(filter?: DecisionPerformanceFilter): BuiltFilter {
   const conditions: string[] = [];
@@ -867,7 +935,7 @@ function buildPerformanceFilter(filter?: DecisionPerformanceFilter): BuiltFilter
   if (filter?.verifiedOnly) {
     conditions.push('fill_count > 0');
   }
-  return { where: conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '', params };
+  return { conditions, params };
 }
 
 /**

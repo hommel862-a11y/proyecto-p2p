@@ -31,27 +31,30 @@ export const REPRICER_EXECUTION_MODES = {
 export type RepricerExecutionMode =
   (typeof REPRICER_EXECUTION_MODES)[keyof typeof REPRICER_EXECUTION_MODES];
 
-/**
- * Acciones que el motor journaliza.
- *
- * El denominador de la métrica de verificación son las decisiones que PUEDEN
- * tener un intento de publicación, así que solo entran las que llegan al
- * publicador. `KEEP` no decide nada ("los precios ya están donde deben"), y
- * `PAUSE` decide no hacer nada: ni una ni otra van a producir un outcome, y
- * contarlas infla el denominador con filas que no pueden tener intento.
- *
- * Lo que se pierde al no journalizar un PAUSE —el registro durable de que el
- * motor se detuvo— no se pierde del todo: queda en `logs()` con la regla que lo
- * disparó. La solución de fondo (que el resumen excluya por `action`) exige
- * tocar el cálculo del resumen, que hoy vive fuera de la propiedad de este
- * archivo.
- */
-const JOURNALLED_ACTIONS: ReadonlySet<RepricerDecision['action']> = new Set(['UPDATE']);
-
-/** ¿Esta decisión puede llegar a un intento de publicación? */
-function canAttemptPublication(action: RepricerDecision['action']): boolean {
-  return JOURNALLED_ACTIONS.has(action);
-}
+// ---------------------------------------------------------------------------
+// Política de journal: las TRES acciones se registran
+//
+// `KEEP` y `PAUSE` son decisiones reales, no ruido: `PAUSE` es el registro durable
+// de que el motor se detuvo y por qué regla, que es justamente la fila que el
+// operador necesita cuando pregunta por qué no pasó nada. Descartarla —que es lo
+// que se hacía para que el denominador de la métrica de verificación quedara
+// limpio— borraba la evidencia en vez de arreglar la métrica.
+//
+// La métrica se arregla del otro lado, en `getVerificationSummary` de `@p2p/core`:
+// su `totalDecisions` cuenta solo las decisiones que PODÍAN llevar un intento de
+// publicación (`VERIFIABLE_DECISION_ACTIONS`, o sea solo `UPDATE`, la única acción
+// que llega al publicador), mientras que `staleDecisions` y `staleRate` cuentan
+// sobre TODAS las decisiones journalizadas. Son dos preguntas con dos poblaciones
+// distintas y por eso no comparten filtro: un `KEEP` tomado sobre un libro de caché
+// viejo es justo el caso que la señal de libro viejo existe para surfacer, y
+// excluirlo la haría callar precisamente donde el motor más probablemente se está
+// equivocando.
+//
+// Por eso no existe un `canAttemptPublication` acá: el publicador solo se invoca en
+// la rama `UPDATE` de `executeCycle`, así que los ids que se le mandan son siempre
+// de esa acción — que es exactamente el conjunto que el journal usa como
+// denominador de verificación. Un solo lugar decide qué es publicable.
+// ---------------------------------------------------------------------------
 
 /** Precios que el motor quiere dejar publicados en los anuncios del operador. */
 export interface RepricerPublishRequest {
@@ -301,16 +304,13 @@ export class BinanceRepricerService implements OnDestroy {
     // decisión tiene que existir cuando la publicación ocurra, para que el
     // outcome (éxito o fallo) se pueda colgar de ella.
     //
-    // Solo se journalizan las decisiones que pueden PUBLICAR. `KEEP` no decide
-    // nada ("los precios ya están donde deben") y `PAUSE` decide no hacer nada:
-    // ninguno de los dos llega a `publishOrLog`, así que ninguno puede tener
-    // un outcome. Contarlos metería filas en el denominador de verificación que
-    // por construcción no pueden acertar, y el ratio decaería sin que exista un
-    // solo fallo. Ver `JOURNALLED_ACTIONS`.
-    let journaledDecisionIds: Partial<Record<DecisionSide, number>> | null = null;
-    if (canAttemptPublication(decision.action)) {
-      journaledDecisionIds = await this.recordInJournal(decision, fetched);
-    }
+    // Se journaliza SIEMPRE, sin importar la acción. `KEEP` ("los precios ya están
+    // donde deben") y `PAUSE` ("no hago nada, y esta es la razón") son decisiones
+    // que el motor tomó y que el operador tiene que poder leer después. Lo que sí
+    // cambia downstream es qué se cuenta: el resumen del journal excluye `KEEP` y
+    // `PAUSE` del denominador de verificación por `action`, así que registrarlas no
+    // puede degradar `verificationRate` ni inventar backlog. Ver la nota de arriba.
+    const journaledDecisionIds = await this.recordInJournal(decision, fetched);
 
     if (decision.action === 'UPDATE') {
       this.currentBuyAdPrice.set(decision.suggestedBuyPrice);

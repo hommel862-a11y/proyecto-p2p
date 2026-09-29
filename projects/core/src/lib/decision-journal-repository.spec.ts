@@ -621,6 +621,7 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
         totalDecisions: 0,
         verifiedDecisions: 0,
         verificationRate: 0,
+        journaledDecisions: 0,
         staleDecisions: 0,
         staleRate: 0,
         openCycles: 0,
@@ -645,6 +646,7 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
 
       const summary = await port.getVerificationSummary();
       expect(summary.totalDecisions).toBe(3);
+      expect(summary.journaledDecisions).toBe(3);
       expect(summary.verifiedDecisions).toBe(1);
       expect(summary.verificationRate).toBeCloseTo(1 / 3, 4);
       expect(summary.staleDecisions).toBe(1);
@@ -679,6 +681,119 @@ describe('DecisionJournalRepository (Hexagonal Architecture Port & Adapter)', ()
       expect(summary.verificationRate).toBe(0);
       expect(summary.decisionsAwaitingOutcome).toBe(1);
       expect(summary.openCycles).toBe(1);
+    });
+
+    // Two rates, two questions, two populations. Every test below FAILS against a
+    // summary that applies ONE action filter to the whole slice — which is the trap: the
+    // naive "exclude KEEP/PAUSE by action" fix makes the verification rate honest only by
+    // making `staleDecisions` stop counting the KEEPs and PAUSEs, and staleness is the
+    // signal the engine most needs to keep.
+    describe('a decision that can never be verified', () => {
+      /** Cycle + one fresh and one stale snapshot, ready to receive a mix of actions. */
+      async function scaffoldMixed() {
+        const cycleId = (await port.openCycle({ origin: 'AUTO_ENGINE', capitalReservedUsdt: 0 })).id;
+        const fresh = await port.appendMarketSnapshot(marketInput());
+        const stale = await port.appendMarketSnapshot(marketInput({ stale: true }));
+        return { cycleId, fresh, stale };
+      }
+
+      it('does not damage the verification rate of the decisions that can be verified', async () => {
+        const { cycleId, fresh } = await scaffoldMixed();
+
+        const updatable = await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'UPDATE' }),
+        );
+        await port.appendOutcome(outcomeInput({ decisionId: updatable.id }));
+        const before = await port.getVerificationSummary();
+
+        // Two real decisions, neither of which can ever carry an outcome.
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'KEEP' }),
+        );
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'PAUSE' }),
+        );
+        const after = await port.getVerificationSummary();
+
+        // 1/1 before, 1/1 after: the rate cannot decay for a reason that is not a failure.
+        expect(before.verificationRate).toBe(1);
+        expect(after.verificationRate).toBe(1);
+        expect(after.verifiedDecisions).toBe(1);
+        // ...and they are counted as journaled, which is the whole point of storing them.
+        expect(after.journaledDecisions).toBe(3);
+        expect(after.totalDecisions).toBe(1);
+        // Nor do they invent a backlog nobody can ever clear.
+        expect(after.decisionsAwaitingOutcome).toBe(0);
+      });
+
+      it('still shows up in the staleness figure, which is asked of every decision', async () => {
+        const { cycleId, fresh, stale } = await scaffoldMixed();
+
+        // `evaluateRepricer` can return a PAUSE or a KEEP on cached data exactly as it can
+        // return an UPDATE, so staleness has to be asked of all three.
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'UPDATE' }),
+        );
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: stale.id, action: 'PAUSE' }),
+        );
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: stale.id, action: 'KEEP' }),
+        );
+
+        const summary = await port.getVerificationSummary();
+
+        // THE TRAP: one action filter would report 0 here, because both stale decisions are
+        // non-publishable. The engine would read "always fresh" on a run where two of its
+        // three decisions were taken on a book it already knew was old.
+        expect(summary.staleDecisions).toBe(2);
+        expect(summary.staleRate).toBeCloseTo(2 / 3, 4);
+        // Two different denominators, on purpose and by name.
+        expect(summary.totalDecisions).toBe(1);
+        expect(summary.journaledDecisions).toBe(3);
+      });
+
+      it('keeps the record retrievable, and out of the performance read model', async () => {
+        const { cycleId, fresh } = await scaffoldMixed();
+        const pause = await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'PAUSE', reason: 'Sin profundidad' }),
+        );
+        const keep = await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'KEEP' }),
+        );
+
+        // The durable record is the point: a PAUSE is retrievable, with the rule that
+        // stopped the engine attached to it.
+        await expect(port.getDecision(pause.id)).resolves.toMatchObject({
+          action: 'PAUSE',
+          reason: 'Sin profundidad',
+          cycleId,
+        });
+        await expect(port.getDecision(keep.id)).resolves.toMatchObject({ action: 'KEEP' });
+        expect(await port.listDecisionsByCycle(cycleId)).toHaveLength(2);
+
+        // What they are NOT is performance: a decision that could not be executed has no
+        // fill and no realized spread to report, so it is not a read-model row.
+        expect(await port.getDecisionPerformance()).toEqual([]);
+      });
+
+      it('never lets the verification figures exceed the journaled ones', async () => {
+        const { cycleId, fresh, stale } = await scaffoldMixed();
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: fresh.id, action: 'UPDATE' }),
+        );
+        await port.appendDecision(
+          decisionInput({ cycleId, snapshotId: stale.id, action: 'KEEP' }),
+        );
+
+        const s = await port.getVerificationSummary();
+
+        // The invariants a reader of the panel relies on, asserted together.
+        expect(s.totalDecisions).toBeLessThanOrEqual(s.journaledDecisions);
+        expect(s.staleDecisions).toBeLessThanOrEqual(s.journaledDecisions);
+        expect(s.verifiedDecisions).toBeLessThanOrEqual(s.totalDecisions);
+        expect(s.decisionsAwaitingOutcome).toBe(s.totalDecisions - s.verifiedDecisions);
+      });
     });
   });
 

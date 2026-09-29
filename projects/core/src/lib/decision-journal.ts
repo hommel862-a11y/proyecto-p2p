@@ -89,6 +89,29 @@ export const OUTCOME_SOURCES = [
   'MANUAL',
 ] as const satisfies readonly OutcomeSource[];
 
+/**
+ * The actions that can EVER carry an outcome, i.e. the verification denominator.
+ *
+ * Only `UPDATE` reaches the ad publisher, so only `UPDATE` can produce the publication
+ * attempt an outcome row records. `KEEP` ("the prices are already where they should be")
+ * and `PAUSE` ("do nothing, and here is why") are real decisions and the journal stores
+ * them — losing the durable record of a PAUSE loses the record of the engine stopping,
+ * which is exactly the row an operator needs when asking why nothing happened. But
+ * neither can ever be verified, so counting them in the denominator of `verificationRate`
+ * would cap the rate below 1 forever, with no failure anywhere to explain the gap.
+ *
+ * The two populations are separated ON PURPOSE and must not be collapsed into one filter:
+ * staleness is asked of *every* journaled decision, because a KEEP taken on a
+ * three-minute-old cached book is precisely the case the staleness signal exists to
+ * surface. `VerificationSummary` therefore carries both denominators — `totalDecisions`
+ * (this set) and `journaledDecisions` (all of it).
+ *
+ * Mirrored verbatim in `electron/main/db/decision-journal.repository.ts`, which cannot
+ * import from `projects/core`; the parity spec replays the same summaries through both
+ * adapters to keep them identical.
+ */
+export const VERIFIABLE_DECISION_ACTIONS: readonly DecisionAction[] = ['UPDATE'];
+
 // ---------------------------------------------------------------------------
 // Append-only records
 // ---------------------------------------------------------------------------
@@ -264,9 +287,35 @@ export interface DecisionPerformanceRow {
 /**
  * How much of what the engine decided can actually be verified, and how much of
  * it was taken on stale data. Rates are 0..1 ratios, never percentages.
+ *
+ * **Two populations, on purpose.** The two rates answer different questions and
+ * are divided by different denominators, because the questions have different
+ * populations:
+ *
+ * - "Of the decisions that could have produced a publication attempt, how many
+ *   did?" -> `verifiedDecisions / totalDecisions`, where `totalDecisions` counts
+ *   only {@link VERIFIABLE_DECISION_ACTIONS}.
+ * - "How often did the engine decide on a book it already knew was stale?" ->
+ *   `staleDecisions / journaledDecisions`, over EVERY journaled decision. A KEEP
+ *   or a PAUSE is just as capable of being taken on stale data as an UPDATE is;
+ *   dividing this one by the verification denominator would quietly shrink the
+ *   one signal that exists to catch a stale-book run.
+ *
+ * `totalDecisions` is the narrower number on purpose, and the name is legacy. The
+ * Telegram audit line prints `verifiedDecisions / totalDecisions` next to
+ * `verificationRate` as a single fraction, so the two have to share a denominator
+ * for the panel not to contradict itself. Use `journaledDecisions` when the
+ * question is "how much did the engine record?".
  */
 export interface VerificationSummary {
-  /** Decisions matching the filter. */
+  /**
+   * Verifiable decisions matching the filter — the ones whose action is in
+   * {@link VERIFIABLE_DECISION_ACTIONS}. This is the denominator of
+   * `verificationRate` and `decisionsAwaitingOutcome`, and it is the row count of
+   * `getDecisionPerformance` for the same filter.
+   *
+   * NOT every journaled decision: use `journaledDecisions` for that.
+   */
   readonly totalDecisions: number;
   /**
    * Decisions with at least one recorded outcome — a publication attempt,
@@ -278,15 +327,24 @@ export interface VerificationSummary {
    * this number must label it as an attempt.
    */
   readonly verifiedDecisions: number;
-  /** `verifiedDecisions / totalDecisions`; 0 when there are no decisions. */
+  /** `verifiedDecisions / totalDecisions`; 0 when there are no verifiable decisions. */
   readonly verificationRate: number;
-  /** Decisions whose referenced snapshot was already stale. */
+  /** Decisions matching the filter, whatever their action. The staleness denominator. */
+  readonly journaledDecisions: number;
+  /** Decisions whose referenced snapshot was already stale, out of every journaled one. */
   readonly staleDecisions: number;
-  /** `staleDecisions / totalDecisions`; 0 when there are no decisions. */
+  /** `staleDecisions / journaledDecisions`; 0 when nothing was journaled. */
   readonly staleRate: number;
   /** Cycles still OPEN, restricted to the `cycleId`/`origin` filter when present. */
   readonly openCycles: number;
-  /** Decisions with zero outcomes, i.e. the verification backlog. */
+  /**
+   * Verifiable decisions with zero outcomes, i.e. the verification backlog.
+   *
+   * Scoped to `totalDecisions` on purpose: a KEEP or a PAUSE nobody will ever
+   * record an outcome for is not backlog, it is a decision that was never
+   * waiting for one. Counting it would grow a number forever with nobody able to
+   * shrink it.
+   */
   readonly decisionsAwaitingOutcome: number;
 }
 

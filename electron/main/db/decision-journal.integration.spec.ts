@@ -221,11 +221,15 @@ describe('Decision Journal — end-to-end on real SQLite (production wiring)', (
     expect(sellRow.realizedProfitUsdt).toBeNull();
 
     // --- verification summary ----------------------------------------------
+    // This run wrote only UPDATEs, so both populations coincide: journaledDecisions and
+    // totalDecisions are the same 2. The split only shows up on a run that contains a
+    // KEEP or a PAUSE, which `decision-journal.repository.spec.ts` covers.
     const summary = await journal.getVerificationSummary();
     expect(summary).toEqual({
       totalDecisions: 2,
       verifiedDecisions: 1,
       verificationRate: 0.5,
+      journaledDecisions: 2,
       staleDecisions: 1,
       staleRate: 0.5,
       openCycles: 1,

@@ -535,6 +535,11 @@ function formatSignedMetric(value: number, decimals = 2): string {
   return `+${escapeMarkdownV2(value.toFixed(decimals))}`;
 }
 
+/** Un conteo que se puede mostrar tal cual: número finito y no negativo. */
+function isReadableCount(value: number): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 /**
  * Una línea con la auditoría del decision journal.
  *
@@ -544,9 +549,20 @@ function formatSignedMetric(value: number, decimals = 2): string {
  * ni un fill. Decir "verificadas" le mentiría al operador sobre lo que el sistema
  * sabe, así que el rótulo dice exactamente lo que el número es.
  *
- * Tres casos, tres textos distintos, porque no son lo mismo:
+ * El resumen trae DOS denominadores porque hay DOS poblaciones: `totalDecisions`
+ * cuenta solo las acciones publicables y `journaledDecisions` cuenta todo lo que
+ * se registró. Por eso "se registró algo" se decide con el segundo y "hay algo que
+ * medir" con el primero. Un slice de KEEP y PAUSE tiene denominador 0 con decisiones
+ * de sobra, así que decidir con `totalDecisions` que no se registró nada mentiría por
+ * partida doble: borraría lo que el motor decidió y taparía la exposición a libro
+ * viejo, que es justo el dato que un slice así existe para mostrar.
+ *
+ * Cuatro casos, cuatro textos distintos, porque no son lo mismo:
  * - `null`: no se pudo leer el journal → "no disponible".
- * - denominador 0 o no finito: no hay decisiones → "sin decisiones registradas".
+ * - nada journaleado: no se registró ninguna decisión → "sin decisiones registradas".
+ * - journaleado pero sin denominador de verificación: se decidió, y ninguna de esas
+ *   decisiones podía llegar a publicar → dice cuántas se registraron y NO un
+ *   porcentaje, porque no hay división que lo respalde.
  * - tasas no finitas: hay datos parciales → "n/d" en vez de inventar un porcentaje.
  */
 export function formatJournalAuditLine(summary: VerificationSummary | null): string {
@@ -554,22 +570,38 @@ export function formatJournalAuditLine(summary: VerificationSummary | null): str
     return `🗒️ *Auditoría de decisiones:* ${escapeMarkdownV2('no disponible')}`;
   }
 
-  const total = summary.totalDecisions;
-  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) {
+  // El journal vacío se decide sobre `journaledDecisions`, nunca sobre `totalDecisions`:
+  // el segundo está en cero para cualquier slice sin UPDATEs, y afirmar ahí que no se
+  // registró nada es afirmar lo contrario de lo que el sistema sabe.
+  const journaled = summary.journaledDecisions;
+  if (!isReadableCount(journaled) || journaled <= 0) {
     return `🗒️ *Auditoría de decisiones:* ${escapeMarkdownV2('sin decisiones registradas todavía')}`;
   }
 
-  const counts = `${formatCount(summary.verifiedDecisions)}/${formatCount(total)}`;
-  const rate = formatMetric(summary.verificationRate * 100, 1);
-  const head =
-    `🗒️ *Auditoría de decisiones:* \`${counts}\` ` +
-    `${escapeMarkdownV2('decisiones con intento de publicación')} • \`${rate}%\``;
+  const total = summary.totalDecisions;
+  const measurable = isReadableCount(total) && total > 0;
+  // Sin denominador no hay fracción ni tasa que imprimir. Un denominador en cero SÍ es
+  // una afirmación: dice que de lo registrado ninguna decisión era publicable, y eso
+  // vale la pena mostrar. Un denominador ilegible (NaN, Infinity) no afirma nada, así
+  // que en ese caso la línea dice únicamente cuántas decisiones hay.
+  const head = measurable
+    ? `🗒️ *Auditoría de decisiones:* \`${formatCount(summary.verifiedDecisions)}/${formatCount(total)}\` ` +
+      `${escapeMarkdownV2('decisiones con intento de publicación')} • \`${formatMetric(summary.verificationRate * 100, 1)}%\``
+    : `🗒️ *Auditoría de decisiones:* \`${formatCount(journaled)}\` ` +
+      `${escapeMarkdownV2('decisiones registradas')}` +
+      (isReadableCount(total) ? `, ${escapeMarkdownV2('ninguna con intento de publicación')}` : '');
 
-  // La porción de libro viejo solo aparece cuando hubo decisiones sobre un libro
-  // viejo: un 0% sin contexto es ruido, no información.
+  // La porción de libro viejo aparece siempre que hubo decisiones tomadas sobre un
+  // libro viejo, y NO depende del denominador de verificación: un 0% sin contexto es
+  // ruido, no información, pero callar la exposición cuando lo único del slice son
+  // KEEP y PAUSE es esconder la única métrica real que el repositorio calculó bien.
+  // Sin fracción de la que colgar el relativo, la porción lleva su propio sujeto.
   const stale = summary.staleDecisions;
-  if (typeof stale === 'number' && Number.isFinite(stale) && stale > 0) {
-    return `${head} ${escapeMarkdownV2('decididas sobre libro viejo')} \`${formatMetric(summary.staleRate * 100, 1)}%\``;
+  if (isReadableCount(stale) && stale > 0) {
+    const rate = `\`${formatMetric(summary.staleRate * 100, 1)}%\``;
+    return measurable
+      ? `${head} ${escapeMarkdownV2('decididas sobre libro viejo')} ${rate}`
+      : `${head} • \`${formatCount(stale)}\` ${escapeMarkdownV2('sobre libro viejo')} ${rate}`;
   }
 
   return head;

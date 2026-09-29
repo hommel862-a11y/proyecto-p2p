@@ -85,6 +85,7 @@ const SUMMARY: VerificationSummary = {
   totalDecisions: 1042,
   verifiedDecisions: 12,
   verificationRate: 12 / 1042,
+  journaledDecisions: 1042,
   staleDecisions: 31,
   staleRate: 31 / 1042,
   openCycles: 1,
@@ -1166,6 +1167,33 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expectParseableMarkdownV2(msg);
     });
 
+    it('no se come la línea cuando el slice no tiene nada publicable', () => {
+      // El panel entrega el resumen al formateador siempre que el resumen haya llegado, y
+      // un slice de KEEP y PAUSE tiene un resumen perfectamente legible: se registró algo. La
+      // línea tiene que sobrevivir al mensaje completo —con su exposición a libro viejo
+      // incluida— y no solo al formateador suelto. `undefined` (nunca consultado) es lo
+      // único que el panel omite.
+      const msg = formatPanelTelegramMessage({
+        ...FULL_REPORT,
+        journalAudit: {
+          ...SUMMARY,
+          totalDecisions: 0,
+          verifiedDecisions: 0,
+          verificationRate: 0,
+          journaledDecisions: 7,
+          staleDecisions: 3,
+          staleRate: 3 / 7,
+          decisionsAwaitingOutcome: 0,
+        },
+      });
+      const visible = plain(msg);
+
+      expect(visible).toContain('Auditoría de decisiones');
+      expect(visible).toMatch(/`3` sobre libro viejo `42\.9%`/);
+      expect(visible).not.toContain('sin decisiones registradas');
+      expectParseableMarkdownV2(msg);
+    });
+
     it('declara la auditoría no disponible cuando el journal no respondió', () => {
       const msg = formatPanelTelegramMessage({ ...FULL_REPORT, journalAudit: null });
 
@@ -1354,14 +1382,19 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expectParseableMarkdownV2(line);
     });
 
-    it('declara que no hay decisiones registradas cuando el denominador no sirve', () => {
+    it('declara que no hay decisiones registradas cuando el journal está vacío', () => {
       // 0, NaN e Infinity son los tres finales de un resumen vacío o corrupto.
       // Ninguno puede llegar al teléfono como 0/0, NaN o Infinity.
+      //
+      // El journal vacío se declara con `journaledDecisions` y NO con `totalDecisions`:
+      // el segundo está en cero para cualquier slice sin UPDATEs, así que exigirlo
+      // para decir "nada registrado" borraría decisiones que sí existen.
       [0, Number.NaN, Number.POSITIVE_INFINITY].forEach((totalDecisions) => {
         const line = formatJournalAuditLine({
           ...SUMMARY,
           totalDecisions,
           verificationRate: Number.NaN,
+          journaledDecisions: 0,
           staleDecisions: 0,
           staleRate: Number.NaN,
         });
@@ -1401,6 +1434,64 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
 
     it('es determinista: el mismo resumen produce la misma línea', () => {
       expect(formatJournalAuditLine(SUMMARY)).toBe(formatJournalAuditLine(SUMMARY));
+    });
+
+    // Un slice con KEEPs y PAUSEs pero ningún UPDATE tiene `journaledDecisions > 0` y
+    // `totalDecisions === 0`, porque el denominador de verificación cuenta solo
+    // acciones publicables. Son dos poblaciones distintas, y por eso la línea decide
+    // "se registró algo" con la primera y "hay algo que medir" con la segunda.
+    it('dice cuántas decisiones se registraron cuando ninguna podía publicarse', () => {
+      const line = formatJournalAuditLine({
+        ...SUMMARY,
+        totalDecisions: 0,
+        verifiedDecisions: 0,
+        verificationRate: 0,
+        journaledDecisions: 7,
+        staleDecisions: 0,
+        staleRate: 0,
+        decisionsAwaitingOutcome: 0,
+      });
+      const visible = plain(line);
+
+      // 7 decisiones SÍ se registraron: eso es lo que se afirma, con el número a la vista
+      // y sin el rótulo de una tasa que no existe.
+      expect(visible).toContain('`7` decisiones registradas');
+      expect(visible).toContain('ninguna con intento de publicación');
+      expect(visible).not.toContain('sin decisiones registradas');
+      // Sin denominador no hay división: ni fracción ni porcentaje, en vez de un 0.0%
+      // inventado. El rótulo de la tasa tampoco aparece, porque no hay tasa.
+      expect(visible).not.toMatch(/\d+\/\d+/);
+      expect(visible).not.toMatch(/\d+(\.\d+)?%/);
+      expect(visible).not.toMatch(/NaN|Infinity|n\/d/);
+      expectParseableMarkdownV2(line);
+    });
+
+    it('revela la exposición a libro viejo aunque nada de eso sea publicable', () => {
+      // El segundo agujero del mismo `return` temprano: la porción de libro viejo quedaba
+      // inalcanzable, así que un ciclo que decidió sobre un libro viejo no leSayba NADA al
+      // operador. La métrica se calculaba bien y se perdía en el render, que es la clase de
+      // defecto que este trabajo existe para eliminar: un número honesto que nadie ve.
+      const line = formatJournalAuditLine({
+        ...SUMMARY,
+        totalDecisions: 0,
+        verifiedDecisions: 0,
+        verificationRate: 0,
+        journaledDecisions: 7,
+        staleDecisions: 3,
+        staleRate: 3 / 7,
+        decisionsAwaitingOutcome: 0,
+      });
+      const visible = plain(line);
+
+      // 3 sobre 7, con conteo y tasa, y el denominador 7 a la vista para que el operador
+      // pueda comprobar la división. La exposición no depende del denominador de
+      // verificación: se decide sobre el libro, no sobre si se pudo publicar.
+      expect(visible).toMatch(/`3` sobre libro viejo `42\.9%`/);
+      expect(visible).toContain('`7` decisiones registradas');
+      expect(visible).not.toContain('sin decisiones registradas');
+      // El rótulo de la tasa de intentos no aparece: no hay ninguna que mostrar.
+      expect(visible).not.toContain('decisiones con intento de publicación');
+      expectParseableMarkdownV2(line);
     });
   });
 });

@@ -50,20 +50,33 @@ export interface SideSpreadAudit {
 
 /** How much of the engine's work is backed by a recorded execution attempt. */
 export interface VerificationAudit {
+  /**
+   * Decisions that COULD have carried a publication attempt, i.e. the ones whose
+   * action is in `VERIFIABLE_DECISION_ACTIONS`. This is the denominator of
+   * `recordedAttemptRate`, and it is deliberately narrower than the row count of
+   * the performance read model.
+   */
   readonly totalDecisions: number;
   /**
    * Decisions with at least one recorded outcome. This is a publication attempt,
    * not a fill: see the module doc.
    */
   readonly decisionsWithRecordedAttempt: number;
-  /** `decisionsWithRecordedAttempt / totalDecisions`; 0 when there are no decisions. */
+  /** `decisionsWithRecordedAttempt / totalDecisions`; 0 when there are no such decisions. */
   readonly recordedAttemptRate: number;
   /** Decisions still waiting for their first outcome. */
   readonly decisionsAwaitingOutcome: number;
   readonly openCycles: number;
 }
 
-/** How much of the engine's work was taken on data it already flagged as stale. */
+/**
+ * How much of the engine's work was taken on data it already flagged as stale.
+ *
+ * Denominated over EVERY journaled decision, not over the verifiable ones: a KEEP
+ * or a PAUSE taken on a stale book is exactly what this audit exists to catch, so
+ * the number would be actively misleading if the publication-eligible decisions
+ * were used as its base.
+ */
 export interface StaleExposureAudit {
   readonly totalDecisions: number;
   readonly decisionsOnStaleMarket: number;
@@ -116,6 +129,13 @@ function sideAudit(side: DecisionSide, rows: readonly DecisionPerformanceRow[]):
  * would create a second definition of "verified" that can silently drift from the
  * one the verification screen uses, so the two inputs must describe the same set —
  * enforced below.
+ *
+ * "The same set" is the VERIFIABLE decisions, because that is what the read model
+ * enumerates: `totalDecisions`, not `journaledDecisions`. A KEEP or a PAUSE is in
+ * the journal and reachable through `listDecisionsByCycle`, but it never reached a
+ * publisher, so it has no realized spread to compare a modeled one against — and a
+ * PAUSE fired by a missing book carries a modeled spread of 0, which would pull the
+ * median toward "we modeled no spread" for a decision that modeled none on purpose.
  */
 export function buildDecisionSelfAudit(
   rows: readonly DecisionPerformanceRow[],
@@ -138,7 +158,8 @@ export function buildDecisionSelfAudit(
       openCycles: verification.openCycles,
     },
     staleExposure: {
-      totalDecisions: verification.totalDecisions,
+      // The WIDE population: every journaled decision, whatever its action.
+      totalDecisions: verification.journaledDecisions,
       decisionsOnStaleMarket: verification.staleDecisions,
       staleRate: verification.staleRate,
     },

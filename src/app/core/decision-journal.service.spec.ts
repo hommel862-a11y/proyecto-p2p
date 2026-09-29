@@ -458,6 +458,7 @@ describe('DecisionJournalService — journal availability', () => {
       totalDecisions: 7,
       verifiedDecisions: 3,
       verificationRate: 3 / 7,
+      journaledDecisions: 9,
       staleDecisions: 0,
       staleRate: 0,
       openCycles: 0,
@@ -468,7 +469,11 @@ describe('DecisionJournalService — journal availability', () => {
 
     // Same numbers the bridge returned: a service that quietly swapped in its own store
     // would report its own empty journal and call it persistence.
-    await expect(journal.getVerificationSummary()).resolves.toMatchObject({ totalDecisions: 7 });
+    await expect(journal.getVerificationSummary()).resolves.toMatchObject({
+      totalDecisions: 7,
+      // The wide population crosses the bridge too, not just the narrow one.
+      journaledDecisions: 9,
+    });
     expect(journal.availability.degraded).toBe(false);
   });
 });
