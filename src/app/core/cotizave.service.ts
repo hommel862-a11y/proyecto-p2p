@@ -30,6 +30,12 @@ interface PersistedCotizaveRates {
  * momentos distintos y el número mentiría aunque cada parte por separado pareciera
  * defendible. 15 min cubre un ciclo de sincronización con margen y descarta todo
  * lo que no se pueda defender frente a un operador.
+ *
+ * Y NO ES SOLO UNA PUERTA DE ARRANQUE: el límite corre en vivo. Los rates que
+ * están en memoria son un dato viejo en cuanto pasan los 15 min, se hydraten del
+ * disco o los bajara la red, y una app abierta cuatro horas tiene que seguir
+ * mirando los 15 min, no "los 15 min contados desde que arrancó el proceso". Quien
+ * vigila el TTL es `armExpiry()`, no el constructor.
  */
 export const COTIZAVE_CACHE_MAX_AGE_MS = 15 * 60_000;
 
@@ -149,6 +155,7 @@ export class CotizaveService implements OnDestroy {
   });
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // `StorageService.get` es síncrono: la caché persistida se hidrata antes de
@@ -160,6 +167,88 @@ export class CotizaveService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stopAutoRefresh();
+    this.clearExpiry();
+  }
+
+  /**
+   * Programa el vencimiento de los rates que hay en memoria AHORA.
+   *
+   * POR QUÉ UN TIMER Y NO UNA VISTA DERIVADA: la alternativa era no usar reloj y
+   * calcular un "rates efectivos" que quedara vacío al detectarse viejo. Se
+   * descartó porque la política no se cumple con una vista: `provenance` y
+   * `error()` son señales mutables que el resto de la app ya lee, y vaciar la
+   * vista sin vaciar la señal deja al operador mirando un panel que dice
+   * "restaurada del disco" sobre datos que además ya no puede leer nadie, o un
+   * `error()` viejo que explica otra cosa. Un vencimiento real borra las tres
+   * cosas juntas y una sola vez, y `ngOnDestroy` lo limpia sin dejar nada vivo.
+   *
+   * El reloj queda ADEMÁS dentro del timer: el temporizador dispara el aviso pero
+   * la edad se vuelve a medir contra `Date.now()` antes de tirar el dato. Un
+   * temporizador disparado temprano (reloj del sistema adelantado, suspensión del
+   * proceso) no puede convertir en fresco lo que ya venció, y uno disparado tarde
+   * sigue siendo correcto porque la edad se recalcula.
+   */
+  private armExpiry(at: Date | null): void {
+    this.clearExpiry();
+    if (!at || Number.isNaN(at.getTime())) return;
+
+    const remainingMs = COTIZAVE_CACHE_MAX_AGE_MS - (Date.now() - at.getTime());
+    // Un `setTimeout` con un remanente negativo dispara en el próximo tick: es lo
+    // mismo que expirar ya, y el handler vuelve a medir la edad de todas formas.
+    this.expiryTimer = setTimeout(() => {
+      this.expiryTimer = null;
+      this.expireRatesAt(at);
+    }, Math.max(0, remainingMs));
+  }
+
+  private clearExpiry(): void {
+    if (this.expiryTimer !== null) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+    }
+  }
+
+  /**
+   * Vence los rates en memoria y lo dice. Solo actúa si los rates que siguen en
+   * pantalla son exactamente los que nacieron en `at` y ya superaron el TTL: un
+   * fetch más nuevo re-armó el timer con su propia marca, así que un vencimiento
+   * viejo no puede pisar datos frescos.
+   */
+  private expireRatesAt(at: Date): void {
+    const current = this.lastFetched();
+    if (!current || current.getTime() !== at.getTime()) return;
+    if (Date.now() - current.getTime() < COTIZAVE_CACHE_MAX_AGE_MS) {
+      // Todavía no venció (temporizador disparado antes de tiempo): se rearma.
+      this.armExpiry(current);
+      return;
+    }
+
+    const age = formatCotizaveDataAge(current);
+    this.ratesByMarket.set({});
+    this.ratesProvenance.set('none');
+    this.lastFetched.set(null);
+    // La copia persistida se borra junto con la de memoria: si el proceso
+    // muriera ahora mismo, el próximo arranque no puede resucitarla.
+    this.removePersistedRatesIfSameFetch(current);
+
+    const msg =
+      `Caché de Cotizave vencida: las tasas en memoria tienen ${age} ` +
+      `(máximo ${COTIZAVE_CACHE_MAX_AGE_MS / 60_000} min) y ya no alimentan la app. ` +
+      `Sincronizá las rates para trabajar con datos actuales.`;
+    this.error.set(msg);
+    this.toast.warn(msg, 'Cotizave');
+  }
+
+  /**
+   * Borra del storage SOLO si lo persistido es el mismo fetch que está venciendo.
+   * Sin esa comprobación, un vencimiento podría borrar en el disco una caché que
+   * otro camino acaba de escribir más nueva.
+   */
+  private removePersistedRatesIfSameFetch(at: Date): void {
+    const persisted = this.readPersistedRates();
+    if (!persisted || typeof persisted !== 'object') return;
+    if (persisted.fetchedAt !== at.toISOString()) return;
+    this.removePersistedRates();
   }
 
   /**
@@ -191,6 +280,10 @@ export class CotizaveService implements OnDestroy {
     if (at) {
       this.lastFetched.set(at);
     }
+    // Hidratar no es una excepción al TTL: lo que entra por el disco arranca su
+    // propia cuenta regresiva, así que la ventana se cierra sola aunque la app
+    // nunca vuelva a pedir rates.
+    this.armExpiry(at);
   }
 
   /**
@@ -394,6 +487,9 @@ export class CotizaveService implements OnDestroy {
         this.lastFetched.set(fetchedAt);
         this.ratesProvenance.set('live');
         this.persistRates(rates, fetchedAt);
+        // Un dato bajado de la red también envejece: la política no distingue
+        // "restaurado" de "live", dice "viejo a los 15 min".
+        this.armExpiry(fetchedAt);
       }
       // Si vino del fallback, la app no se actualizó: solo se sirvió lo viejo.
       // `ratesByMarket` ya la tiene y `lastFetched` no se toca, para que la

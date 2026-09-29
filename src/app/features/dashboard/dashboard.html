@@ -487,13 +487,15 @@
             @if (mcpBcvRates()?.date) {
               <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
             }
-            <!-- La brecha se calcula con las tasas de Cotizave cuando no hay MCP. Sin la edad y la
-                 procedencia, el operador no puede distinguir una cifra recién descargada de una
-                 restaurada del disco: la pantalla se ve igual y la conclusión también. -->
-            @if (cotizaveDataAge()) {
-              <span class="macro-sub-date font-mono"
-                >{{ cotizaveDataAge() }} · {{ cotizaveProvenanceLabel() }}</span
-              >
+            <!-- La línea de linaje SOLO se dibuja cuando hay tasas de Cotizave detrás de la
+                 brecha. `bcvIntelligence()` cae a `manualBcvRate()`/`manualParallelRate()`
+                 (685 / 815) cuando no hay MCP ni Cotizave, así que rotular ese caso como
+                 "Cotizave" mentiría: el número no salió de Cotizave. Y cuando SÍ hay
+                 Cotizave, sin edad ni procedencia el operador no puede distinguir una cifra
+                 recién descargada de una restaurada del disco: la pantalla se ve igual y la
+                 conclusión también. Por eso el guard mira la procedencia real. -->
+            @if (cotizaveDataAge(); as age) {
+              <span class="macro-sub-date font-mono">{{ age }} · {{ cotizaveProvenanceLabel() }}</span>
             }
           </div>
         </div>

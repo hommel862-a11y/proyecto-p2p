@@ -822,10 +822,9 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'BCV': {
-        const [depth] = await Promise.all([
-          this.getFreshMarketDepth(),
-          this.cotizave.fetchRates().catch(() => undefined),
-        ]);
+        // Mismo criterio que `/macro`: `fetchRates()` no rechaza, así que el
+        // `.catch()` que estaba acá era código muerto.
+        const [depth] = await Promise.all([this.getFreshMarketDepth(), this.cotizave.fetchRates()]);
         const rates = this.cotizave.ratesByMarket();
         const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
         const bcv = rates['bcv']?.mid || rates['oficial']?.mid;
@@ -1018,9 +1017,14 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'MACRO': {
+        // Sin `.catch()` a propósito: `fetchRates()` nunca rechaza, reporta cada
+        // fallo por `error()` y por toast, así que el `catch` era código muerto
+        // que aparentaba ser una red de seguridad. Este comando no lee el
+        // resultado de la llamada sino el estado del servicio, así que espera la
+        // promesa y después mira `ratesByMarket()` / `ratesProvenance()`.
         const [depth] = await Promise.all([
           this.getFreshMarketDepth(),
-          this.cotizave.fetchRates().catch(() => undefined),
+          this.cotizave.fetchRates(),
         ]);
         const rates = this.cotizave.ratesByMarket();
         const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
@@ -1067,11 +1071,20 @@ export class TelegramWorkerService implements OnDestroy {
           forecastNote: `${forecast.level} · ${forecast.direction} · ${escapeMarkdownV2(forecast.actionableGuidance)} (${history.length} snapshots)`,
         };
 
+        // La referencia BCV y el spread salen de la misma lectura de Cotizave, así
+        // que el reporte declara su reloj y su procedencia igual que hace `/bcv`.
+        // Sin esto, una caché restaurada del disco entraba al reporte macro como
+        // si fuera una lectura de mercado vigente, y el pronóstico de 2 h se
+        // calculaba sobre un número viejo sin que el operador lo supiera.
+        const macroOrigin = describeCotizaveProvenance(this.cotizave.ratesProvenance());
+        const macroClock = `🕐 BCV: \`${this.formatFetchTime(this.cotizave.lastFetched())}\` (${macroOrigin})`;
+
         await this.sendTelegramMessage(
           token,
           chatId,
           formatMacroTelegramMessage(snapshot) +
-            `\nℹ️ ${escapeMarkdownV2(`Spread: ${spread.source} · Velo 2h: ${MACRO_VOLATILITY_WINDOW_HOURS}h · índice ${forecast.volatilityIndex.toFixed(0)}/100 · confianza ${forecast.confidenceScorePct.toFixed(0)}%`)}`,
+            `\nℹ️ ${escapeMarkdownV2(`Spread: ${spread.source} · Velo 2h: ${MACRO_VOLATILITY_WINDOW_HOURS}h · índice ${forecast.volatilityIndex.toFixed(0)}/100 · confianza ${forecast.confidenceScorePct.toFixed(0)}%`)}` +
+            `\n${macroClock}`,
         );
         this.addLog({
           time: timeStr,

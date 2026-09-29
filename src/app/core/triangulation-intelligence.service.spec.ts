@@ -126,4 +126,28 @@ describe('TriangulationIntelligenceService — procedencia y reloj del snapshot'
       snapshot.timestamp,
     );
   });
+
+  it('califica de qué fuente es el reloj cuando el snapshot mezcla piernas', async () => {
+    // El snapshot embebe piernas de Binance Y de Cotizave. `provenance` califica
+    // la parte de Cotizave, pero `timestamp` sin más se lee como la hora de
+    // mercado de TODO el snapshot: el reloj de Cotizave puesto sobre un número de
+    // Binance no califica la pierna de Binance.
+    const producedAt = new Date('2026-09-29T08:30:00');
+    cotizaveRates.set({ bcv: { market: 'bcv', mid: 36.1 } });
+    cotizaveLastFetched.set(producedAt);
+    cotizaveProvenance.set('restored');
+
+    const snapshot = await svc.fetchLiveMarketRates();
+
+    expect(snapshot.timestampSource).toBe('cotizave');
+    expect(snapshot.timestamp).toBe(producedAt.toLocaleTimeString());
+  });
+
+  it('declara el reloj del panel cuando ninguna pierna viene de Cotizave', async () => {
+    // Sin Cotizave el snapshot es defaults + MCP: el reloj es el del tick, y
+    // decirlo evita que un lector lo tome por la hora de un dato de mercado.
+    const snapshot = await svc.fetchLiveMarketRates();
+
+    expect(snapshot.timestampSource).toBe('panel');
+  });
 });

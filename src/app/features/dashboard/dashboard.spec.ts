@@ -145,4 +145,35 @@ describe('Dashboard', () => {
     expect(text).toContain('hace 20 min');
     expect(text).toMatch(/restaurada del disco/i);
   });
+
+  it('no afirma linaje de Cotizave cuando la brecha sale de constantes fijas', () => {
+    // `bcvIntelligence()` cae a `manualBcvRate()`/`manualParallelRate()` (685/815)
+    // cuando no hay MCP ni Cotizave. Rotular ese caso como "Cotizave" mentiría:
+    // el número no salió de Cotizave, y el guard viejo (`@if (cotizaveDataAge())`)
+    // era vacuo porque ese helper devuelve un string para `lastFetched() === null`.
+    TestBed.overrideProvider(CotizaveService, {
+      useValue: {
+        ratesByMarket: signal({}),
+        lastFetched: signal(null),
+        ratesProvenance: signal('none'),
+        apiKey: signal(''),
+        loading: signal(false),
+        error: signal(null),
+        autoRefresh: signal(false),
+        circuitBreaker: { getState: () => 'CLOSED', options: {} },
+        fetchRates: vi.fn(),
+        setApiKey: vi.fn(),
+        startAutoRefresh: vi.fn(),
+        stopAutoRefresh: vi.fn(),
+      },
+    });
+
+    const f = create();
+    f.detectChanges();
+    const text = String(f.nativeElement.textContent);
+
+    expect(f.componentInstance.cotizaveDataAge()).toBeNull();
+    expect(text).not.toContain('una sesión anterior · Cotizave sin datos');
+    expect(text).not.toMatch(/Cotizave (en vivo|restaurada)/i);
+  });
 });

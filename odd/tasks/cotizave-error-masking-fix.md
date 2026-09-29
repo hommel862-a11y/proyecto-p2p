@@ -293,3 +293,232 @@ modificado. Sigue siendo ajeno a este trabajo: nunca stageado, revertido ni comm
 Push / PR / merge = decisión del usuario. Sigue abierta y **fuera** de scope: la distinción
 cancelación/timeout del puente IPC (W6), que requiere el cambio upstream en
 `electron/main/ipc/handlers.ts`.
+
+---
+
+# Workstream 3 — El TTL era solo una puerta de arranque (D1–D7)
+
+Workstream 1/legalgó **por qué** el mensaje era falso; el 2 **qué** se afirma cuando el mensaje
+es cierto. Este cierra los siete huecos que quedaron: el TTL solo se evaluaba al arrancar, la
+bóveda de credenciales es asíncrona y nadie lo esperaba, y tres superficies seguían atribuuyendo
+un número a Cotizave sin declarar su reloj.
+
+## Objective
+
+Que ninguna tasa de Cotizave pueda alimentar la app fuera de su ventana de 15 min —**tampoco
+después de haber estado abierta seis horas**— y que la procedencia de un número viaje con él hasta
+la última superficie que lo muestra.
+
+## Problem
+
+- **D1 — el TTL era solo una puerta de arranque.** `readPersistedRates()` miraba la edad al
+  hidratar y ahí terminaba. Una app abierta a las 09:00 seguía sirviendo a las 15:00 el mismo
+  `restored` como si fuera operable. El descarte existía; la caducidad en vivo no.
+- **D2 — el auto-refresh nunca arrancaba con la key guardada.** `SpreadMonitor.ngOnInit()` hacía
+  `if (this.cotizave.apiKey())`. Pero `apiKey` se hidrata **asíncronamente** desde la bóveda de
+  credenciales, así que en `ngOnInit` vale `''` aunque el operador tenga la key guardada. La
+  decisión era una carrera contra el microtask: se ganaba o se perdía, y **perder significaba
+  auto-refresh apagado para toda la sesión** — con la cache envejeciendo en silencio, que es
+  exactamente lo que D1 dejaba pasar.
+- **D3 — `/macro` no declaraba ni reloj ni procedencia.** `/bcv` ya fechaba con Cotizave;
+  `/macro` armaba la misma inteligencia sin ninguna de las dos. Una caché restaurada entraba al
+  pronóstico de 2 h como lectura de mercado vigente. Además llevaba
+  `this.cotizave.fetchRates().catch(() => undefined)`: `fetchRates()` **nunca rechaza** (reporta
+  por `error()` y por toast), así que el `.catch()` era código muerto que aparentaba ser una red
+  de seguridad. Mismo defecto en `/bcv`.
+- **D4 — la triangulación no decía de dónde salía el número.** Los gaps se calculan sobre
+  `ratesByMarket()`, que no dice nada del origen. La única marca por fila era `rate.updated_at`,
+  que es el sello del upstream **por tasa** y llega `undefined` cuando Cotizave lo omite. Un fetch
+  de hace una hora puede traer tasas "actualizadas" al segundo: son dos relojes distintos y la
+  tabla mostraba el equivocado.
+- **D5 — el panel rotulaba un número que no era de Cotizave.** `bcvIntelligence()` cae a
+  `manualBcvRate()`/`manualParallelRate()` (**685 / 815**, constantes fijas) cuando no hay MCP ni
+  Cotizave. Con la línea de procedencia al lado, el panel afirmaba linaje de Cotizave sobre dos
+  números literales.
+- **D6 — el guard era vacuo.** `@if (cotizaveDataAge())` con un helper que devuelve
+  `'una sesión anterior'` para `lastFetched() === null` **siempre era verdadero**. La condición no
+  filtraba nada; el texto sí.
+- **D7 — el snapshot mezclaba relojes sin declararlo.** `LiveMarketRatesSnapshot` es una MEZCLA
+  (piernas de Binance por MCP, de Cotizave del servicio de rates, defaults). `timestamp` sin
+  calificar ponía el reloj de Cotizave encima de un número de Binance: esa pierna quedaba fechada
+  y las otras se leían igual de frescas.
+
+## Scope
+
+- `src/app/core/cotizave.service.ts` — temporizador de vencimiento revalidado contra `Date.now()`.
+- `src/app/core/cotizave.service.spec.ts` — regresiones permanentes de D1 y tabla de
+  `formatCotizaveDataAge`.
+- `src/app/features/spread-monitor/spread-monitor.ts` / `.html` — D2 (efecto reactivo) y D4
+  (procedencia + edad en la tabla).
+- `src/app/features/spread-monitor/spread-monitor.spec.ts` — regresiones de D2 y D4.
+- `src/app/core/telegram-worker.service.ts` / `.spec.ts` — D3 (reloj + procedencia en `/macro`,
+  `.catch()` muerto fuera de `/macro` y `/bcv`).
+- `src/app/features/dashboard/dashboard.ts` / `.html` — D5 y D6 (guard sobre la procedencia real).
+- `src/app/features/dashboard/dashboard.spec.ts` — regresión de D5/D6.
+- `src/app/core/triangulation-intelligence.service.ts` / `.spec.ts` — D7 (`timestampSource`).
+- `odd/tasks/cotizave-error-masking-fix.md` — este documento.
+
+## Out of scope
+
+- `src/app/core/binance-p2p.service.ts`: D2 arregla la decisión en el componente, no la fuente.
+- Cambiar el default de 5 min del auto-refresh: 300 000 ms contra 900 000 ms de TTL ya deja tres
+  ventanas de margen, y el comentario lo dice.
+- Cancelar el TTL desde afuera: el servicio es dueño de su reloj.
+- Todo lo del workstream 1 y del 2.
+
+## Constraints
+
+- El vencimiento se implementa con un **temporizador revalidado** contra `Date.now()`, no con una
+  vista derivada: la app tiene que **dejar de poder leer** el dato, no solo dejar de mostrarlo.
+  Una vista derivada habría dejado `ratesByMarket()`Readable y el `error()` sano.
+- Al vencer se borra rates, procedencia y reloj, y se deja un error honesto: el operador tiene que
+  ver por qué la pantalla se vació.
+- La copia persistida se borra **solo si es la misma** que se está sirviendo, para no pisar un
+  fetch concurrente que ya escribió rates frescos.
+- El temporizador se limpia en `ngOnDestroy()`: un `setTimeout` vivo en un servicio destruido
+  escribe sobre señales de una instancia muerta.
+- D2 no puede consultar la key una vez. Un `effect` sobre la señal no pierde la carrera.
+- La procedencia se declara solo si se puede probar: `none` con tasas en pantalla no se promueve.
+- `timestampSource` es **obligatorio**, no opcional: omitir la calificación en un snapshot mezclado
+  es el defecto mismo.
+- TDD estricto: cada D se reprodujo en rojo con un throwaway antes de tocar la implementación.
+  Los throwaways se borran; las aserciones viven en los specs canónicos.
+
+## Tasks
+
+- [x] **T15** D1 RED: throwaway `cotizave-ttl-repro.spec.ts` → `Tests 3 failed (3)`, exit 1.
+  - Fallos literales: `expected [ 'binance', 'oficial' ] to have a length of +0 but got 2`; el
+    mismo en la ruta de fetch en vivo; y `ngOnDestroy` sin temporizador que limpiar.
+- [x] **T16** D1 GREEN: `expiryTimer` + `armExpiry()` / `clearExpiry()` / `expireRatesAt()` /
+  `removePersistedRatesIfSameFetch()`.
+  - Evidencia: `hydrateRatesFromStorage()` y el `fetchRates()` exitoso arman el vencimiento; al
+    vencer quedan `ratesByMarket()` vacío, `provenance: 'none'`, `lastFetched(): null`, un error
+    que menciona los 15 min y la entrada persistida borrada. `ngOnDestroy` deja
+    `vi.getTimerCount() === 0`.
+- [x] **T17** D2 RED: throwaway `spread-monitor-cotizave-repro.spec.ts` → `Tests 4 failed (4)`,
+  exit 1. Literal: `expected "startAutoRefresh" to be called at least once`.
+- [x] **T18** D2 GREEN: `effect` sobre `apiKey()` + `activeMode()`; sin key, `stopAutoRefresh()`.
+  - Evidencia: la aserción clave mira `expect(cotizave.apiKey()).toBe('')` en el primer
+    `detectChanges()` para **documentar la carrera** antes de que la bóveda resuelva.
+- [x] **T19** D4 GREEN: `provenance`, `fetchedAt` y `dataAge` por fila + `triangulationLineage` para
+  la línea de la plantilla.
+- [x] **T20** D3 RED: `Tests 1 failed | 78 passed (79)`, exit 1. Literal: `/macro` sin `08:05` ni
+  `restaurada del disco`.
+- [x] **T21** D3 GREEN: reloj y procedencia de Cotizave en `/macro`; `.catch()` muerto eliminado de
+  `/macro` y `/bcv` con el motivo en el comentario.
+- [x] **T22** D5/D6 RED: throwaway `dashboard-lineage-repro.spec.ts` → `Tests 2 failed (2)`, exit 1.
+  Literal: el DOM contenía `una sesión anterior · Cotizave sin datos` sin un solo dato de Cotizave.
+- [x] **T23** D5/D6 GREEN: `cotizaveDataAge()` devuelve `null` con `provenance === 'none'`, así que
+  el guard deja de ser vacuo; el comentario de la plantilla aclara que con Cotizave real la línea
+  **sí** es obligatoria.
+- [x] **T24** D7 RED: `TS2339: Property 'timestampSource' does not exist`, y con casts
+  temporales `Tests 2 failed | 5 passed (7)`, exit 1. Literales: `expected undefined to be
+  'cotizave'`; `expected undefined to be 'panel'`.
+- [x] **T25** D7 GREEN: `timestampSource: 'cotizave' | 'panel'` obligatorio, más `timestampSource:
+  'panel'` en el estado inicial (constantes de arranque, sin fetch detrás). Casts temporales
+  eliminados.
+- [x] **T26** Cobertura de `formatCotizaveDataAge`: tabla de 10 casos (sub-minuto, minutos, el
+  corte 59 min → 1 h, horas, el corte 23 h → 1 d, días) con `now` explícito, reloj adelantado y
+  `null`/`undefined`/`Invalid Date`. Se **eliminó** `expect(COTIZAVE_CACHE_MAX_AGE_MS).toBe(15 *
+  60_000)`: tautología, no probaba nada.
+- [x] **T27** Throwaways borrados; las aserciones viven en los specs canónicos.
+- [x] **T28** Verificación completa y commit work-unit único.
+
+## Verificación (workstream 3)
+
+| Check                    | Comando                                                                              | Resultado observado                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Baseline antes de editar | `npx ng test p2p --include='**/cotizave.service.spec.ts' --watch=false`              | `Tests 15 passed (15)`, exit 0                                                                |
+| RED D1 (T15)             | `npx ng test p2p --include='**/cotizave-ttl-repro.spec.ts' --watch=false`           | `Tests 3 failed (3)`, exit 1                                                                  |
+| GREEN D1 (T16)           | ídem                                                                                 | `Tests 3 passed (3)`, exit 0                                                                  |
+| RED D2/D4 (T17)          | `npx ng test p2p --include='**/spread-monitor-cotizave-repro.spec.ts' …`            | `Tests 4 failed (4)`, exit 1                                                                  |
+| GREEN D2/D4              | ídem                                                                                 | `Tests 4 passed (4)`, exit 0                                                                  |
+| RED D5/D6 (T22)          | `npx ng test p2p --include='**/dashboard-lineage-repro.spec.ts' …`                  | `Tests 2 failed (2)`, exit 1                                                                  |
+| GREEN D5/D6              | ídem                                                                                 | `Tests 2 passed (2)`, exit 0                                                                  |
+| RED D3 (T20)             | `npx ng test p2p --include='**/telegram-worker.service.spec.ts' …`                   | `Tests 1 failed \| 78 passed (79)`, exit 1                                                   |
+| RED D7 (T24)             | `npx ng test p2p --include='**/triangulation-intelligence.service.spec.ts' …`        | `TS2339` (compilación); con casts, `Tests 2 failed \| 5 passed (7)`, exit 1                 |
+| GREEN `cotizave.service` | `npx ng test p2p --include='**/cotizave.service.spec.ts' --watch=false`              | `Test Files 1 passed (1)` / `Tests 32 passed (32)`, exit 0                                   |
+| GREEN `spread-monitor`   | `npx ng test p2p --include='**/spread-monitor.spec.ts' --watch=false`                | `Test Files 1 passed (1)` / `Tests 12 passed (12)`, exit 0                                   |
+| GREEN `triangulation`    | `npx ng test p2p --include='**/triangulation-intelligence.service.spec.ts' …`       | `Test Files 1 passed (1)` / `Tests 7 passed (7)`, exit 0                                     |
+| GREEN `telegram-worker`  | `npx ng test p2p --include='**/telegram-worker.service.spec.ts' …`                  | `Test Files 1 passed (1)` / `Tests 79 passed (79)`, exit 0                                    |
+| GREEN `dashboard`        | `npx ng test p2p --include='**/dashboard.spec.ts' --watch=false`                    | `Test Files 1 passed (1)` / `Tests 7 passed (7)`, exit 0                                     |
+| GREEN `binance-p2p`      | `npx ng test p2p --include='**/binance-p2p.service.spec.ts' --watch=false`          | `Test Files 1 passed (1)` / `Tests 6 passed (6)`, exit 0                                     |
+| Typecheck                | `npx tsc --noEmit`                                                                    | exit 0                                                                                       |
+| Lint                     | `npm run lint`                                                                        | exit 1, `21 problems` (core) + `37 problems` (app) — **idéntico con el workstream stash-archivado** |
+| Throwaways               | `Get-ChildItem -Recurse -Filter '*repro*.spec.ts'`                                    | `REMAINING=0`                                                                                |
+| Formato                  | `npx prettier --check` (los 13 archivos)                                              | `Code style issues found in 13 files` — **preexistente**, ver abajo                             |
+
+### Los errores de lint y su distribución
+
+`npm run lint` corre **dos** targets (el de `core` y el de `app`) y cada uno imprime su propio
+total: **21** en `core` y **37** en `app`. Los dos son **preexistentes** y se comprobaron
+empíricamente, no por inspección:
+
+- Con los 12 archivos de este workstream en un stash
+  (`git stash push -m "cotizave-d1-d7" -- <12 rutas>`) y el árbol por lo tanto en el estado previo
+  al fix, la corrida da **exactamente los mismos dos totales**: 21 y 37. Stash restaurado con
+  `git stash pop`.
+- Los únicos errores de lint en archivos que este workstream toca son
+  `consistent-type-definitions` en `telegram-worker.service.spec.ts` (4 ocurrencias, las mismas
+  cuatro en HEAD) y `label-has-associated-control` en `dashboard.html` (2 ocurrencias, las mismas
+  dos en HEAD). Ninguno cae en una línea agregada por este cambio.
+- Un error propio sí apareció y se corrigió antes de commitear:
+  `array-type` en `cotizave.service.spec.ts:515` por `ReadonlyArray<T>`, reemplazado por
+  `readonly T[]`.
+
+### Un test_canónico quedó con el nombre del comando equivocado
+
+`BCV dice "en vivo" cuando Cotizave vino de la red` despacha `/bcv`; el título decía `MACRO`. Se
+corrigió el título. Vale registrarlo porque un título mentiroso en un spec de regresión es
+precisamente la clase de defecto que este workstream existe para eliminar.
+
+### `prettier --check` falla en los 13 archivos, y es preexistente
+
+`npx prettier --check` marca los 13 archivos de este workstream. **No se corrió `--write`**, y
+la razón es que el incumplimiento no lo introduce este cambio: con los 13 archivos en un stash y
+el árbol en el estado de HEAD, `prettier --check` marca **los mismos 13**. Stash restaurado con
+`git stash pop`. Además `src/app/features/operation-log/invoice-modal.component.ts`, que este
+workstream no toca, también falla el check.
+
+`prettier --write` habría reescrito líneas ajenas a este trabajo en los 12 archivos de código,
+mezclando un reformateo masivo con un fix de correctitud: el diff dejaría de ser revisable. El
+contrato de este workstream es "cambios mínimos y dirigidos", así que el formato queda como deuda
+preexistente y registrada, no como algo que se "cuela" en el commit.
+
+De los 13, tres ya salen formateados si se compara la salida de `prettier` contra el archivo:
+`triangulation-intelligence.service.ts`, `triangulation-intelligence.service.spec.ts` y
+`spread-monitor.ts`.
+
+### `ng test` con varios `--include` no funciona
+
+`--include='a,b'` no matchea nada en este runner: hay que pasar **un patrón por corrida**. Además
+`ng test` sin nombre de proyecto intenta el target de `core` con el mismo `--include` y aborta con
+`No tests found matching the following patterns`, así que el scoping `npx ng test p2p --include=…`
+es obligatorio.
+
+### La prueba de D4 falla si el sub-tab no se abre
+
+La tabla de triangulación vive dentro de `@else if (analyticsSubTab() === 'triangulation')`, y el
+sub-tab arranca en `microstructure`. Una aserción de DOM sobre esa tabla tiene que **abrir el
+sub-tab**: si no, el `textContent` está completo y verde, y el test pasa por la razón equivocada.
+
+### El estado imposible `provenance: 'none'` con tasas en pantalla
+
+El primer borrador del test de D4 sembraba `ratesByMarket()` con una tasa y `ratesProvenance()` en
+`none` a la vez, y fallaba. Ese estado no existe en el servicio real: `none` significa cache
+vacía. El test se corrigió para sembrar `noData: true` (sin tasas y sin reloj). La moraleja: un
+stub que se contradice prueba el stub, no el componente.
+
+## Cambios preexistentes del working tree
+
+Además de los ya registrados, el árbol trae `angular.json` modificado (un target `lint` para
+`projects/core`), `electron/main/gemini-orchestrator.spec.ts`, `electron/shared/types.ts` y
+`projects/core/src/lib/agent-skills.ts`. Todos ajenos a este trabajo: nunca stageados, revertidos
+ni commiteados. `npx ng test` escribe en `angular.json` durante las corridas, así que su estado se
+verificó justo antes del staging.
+
+## Next step (workstream 3)
+
+Push / PR / merge = decisión del usuario. Sigue abierta y **fuera** de scope: la distinción
+cancelación/timeout del puente IPC (W6), que requiere el cambio upstream en
+`electron/main/ipc/handlers.ts`.

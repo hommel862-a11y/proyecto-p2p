@@ -46,7 +46,11 @@ import { AccountsService } from '../../core/accounts.service';
 import { MarketHistoryService } from '../../core/market-history.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { SpreadQualityService } from '../../core/spread-quality.service';
-import { CotizaveService } from '../../core/cotizave.service';
+import {
+  CotizaveService,
+  describeCotizaveProvenance,
+  formatCotizaveDataAge,
+} from '../../core/cotizave.service';
 import { McpService } from '../../core/mcp.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 import { MicrostructureShield } from './components/microstructure-shield.component';
@@ -196,10 +200,24 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     return map;
   });
 
+  /**
+   * Brecha por mercado contra el libro de Binance.
+   *
+   * Cada fila lleva `provenance`, `dataAge` y `fetchedAt` porque los gaps se
+   * calculan sobre `ratesByMarket()` y ese objeto no dice de dónde salió: la
+   * única marca de tiempo que venía por fila era `rate.updated_at`, que es el
+   * sello del upstream POR TASA (y viene `undefined` cuando Cotizave lo omite),
+   * no la edad del fetch. Son dos cosas distintas: un fetch de hace una hora
+   * puede traer tasas "actualizadas" al segundo, y al revés. La edad del fetch
+   * es la que decide si la brecha sirve para operar hoy.
+   */
   readonly triangulationData = computed(() => {
     const depth = this.binance.marketDepth();
     const rates = this.cotizave.ratesByMarket();
     if (!depth || Object.keys(rates).length === 0) return [];
+
+    const provenance = this.cotizave.ratesProvenance();
+    const fetchedAt = this.cotizave.lastFetched();
 
     return Object.entries(rates)
       .filter(([market]) => market !== 'binance')
@@ -212,10 +230,26 @@ export class SpreadMonitor implements OnInit, OnDestroy {
           bid: rate.bid,
           mid: rate.mid,
           updated_at: rate.updated_at,
+          // Linaje del FETCH que produjo todas las filas, no de cada tasa.
+          provenance,
+          fetchedAt,
+          dataAge: formatCotizaveDataAge(fetchedAt),
           gapForward,
           gapReverse,
         };
       });
+  });
+
+  /**
+   * Linaje del fetch de Cotizave que hay detrás de la tabla de triangulación.
+   * Sale de la primera fila porque todas las filas comparten el mismo fetch: el
+   * linaje es del dato, no del mercado.
+   */
+  readonly triangulationLineage = computed(() => {
+    const rows = this.triangulationData();
+    if (rows.length === 0) return null;
+    const { provenance, dataAge } = rows[0];
+    return { provenance, dataAge, label: describeCotizaveProvenance(provenance) };
   });
 
   readonly triangulationAlert = computed(() => {
@@ -796,6 +830,28 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       }
     });
 
+    // Cotizave NO se decide en `ngOnInit`: `apiKey` es una señal que el servicio
+    // hidrata de forma ASÍNCRONA desde la bóveda de credenciales, así que al
+    // correr `ngOnInit` todavía vale `''` aunque el operador tenga la key
+    // guardada. Preguntar una vez era una carrera contra la hidratación: se
+    // ganaba o se perdía según cuándo llegara el microtask, y perder significaba
+    // auto-refresh apagado para toda la sesión —con la cache envejeciendo sin que
+    // nadie la vuelva a llenar—. Un `effect` sobre la señal no pierde: cuando la
+    // key llega, la dependencia cambia y el auto-refresh arranca solo.
+    effect(() => {
+      const hasKey = !!this.cotizave.apiKey();
+      const repricer = this.activeMode() === 'repricer';
+      if (hasKey && !repricer) {
+        // 5 min de intervalo contra 15 min de TTL: cada ciclo renueva el dato
+        // con tres ventanas de margen, así que el vencimiento en vivo de
+        // `CotizaveService` solo llega si la red deja de responder, y en ese caso
+        // es lo correcto.
+        this.cotizave.startAutoRefresh();
+      } else {
+        this.cotizave.stopAutoRefresh();
+      }
+    });
+
     this.hotkeys.register('SYNC', () => {
       void this.syncBinancePrices();
     });
@@ -831,9 +887,6 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       void this.syncMcpIntelligence();
     }
     this.mcpSyncTimerId = window.setInterval(() => void this.syncMcpIntelligence(), 30_000);
-    if (this.cotizave.apiKey() && this.activeMode() !== 'repricer') {
-      this.cotizave.startAutoRefresh();
-    }
   }
 
   ngOnDestroy(): void {

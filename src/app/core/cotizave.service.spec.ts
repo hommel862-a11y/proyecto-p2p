@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CotizaveService, COTIZAVE_CACHE_MAX_AGE_MS } from './cotizave.service';
+import {
+  CotizaveService,
+  COTIZAVE_CACHE_MAX_AGE_MS,
+  formatCotizaveDataAge,
+} from './cotizave.service';
 import { CredentialStoreService } from './credential-store.service';
 import { ToastService } from './toast.service';
 import { P2P_STORAGE, StorageService } from './storage';
@@ -292,7 +296,6 @@ describe('CotizaveService', () => {
   });
 
   it('descarta la cache persistida mas vieja que 15 min y la saca del almacenamiento', async () => {
-    expect(COTIZAVE_CACHE_MAX_AGE_MS).toBe(15 * 60_000);
     const tooOld = new Date(Date.now() - COTIZAVE_CACHE_MAX_AGE_MS - 60_000).toISOString();
     storage.set<PersistedRates>(RATES_STORAGE_KEY, {
       rates: {
@@ -423,5 +426,122 @@ describe('CotizaveService', () => {
     await svc.fetchRates();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(svc.error()?.toLowerCase()).toContain('circuito');
+  });
+
+  describe('vencimiento en vivo (no solo al arrancar)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('deja de servir la cache restaurada cuando el reloj pasa los 15 min DESPUES de hidratar', async () => {
+      // Semilla dentro del TTL: a los ojos del arranque la cache es válida, que es
+      // justamente el hueco que el descarte de arranque no cubría.
+      storage.set<PersistedRates>(RATES_STORAGE_KEY, {
+        rates: {
+          binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+          oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
+        },
+        fetchedAt: new Date(Date.now() - (COTIZAVE_CACHE_MAX_AGE_MS - 60_000)).toISOString(),
+      });
+
+      // Reloj falso ANTES de hidratar: el vencimiento tiene que quedar armado en el
+      // mismo reloj que el test adelanta, si no el test no puede observar nada.
+      vi.useFakeTimers();
+      const fresh = await newServiceOver(mem);
+
+      // Punto de partida observable: hidratada, restaurada y legible.
+      expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
+      expect(fresh.ratesProvenance()).toBe('restored');
+      expect(fresh.error()).toBeNull();
+
+      // Seis horas después: la cache tiene 6 h 1 min de antigüedad.
+      await vi.advanceTimersByTimeAsync(6 * 3_600_000);
+
+      expect(Object.keys(fresh.ratesByMarket())).toHaveLength(0);
+      expect(fresh.ratesProvenance()).toBe('none');
+      expect(fresh.lastFetched()).toBeNull();
+      expect(fresh.error()).not.toBeNull();
+      expect(fresh.error()).toContain('15');
+      // La copia persistida no se resucita en el próximo arranque.
+      expect(storage.get(RATES_STORAGE_KEY)).toBeNull();
+    });
+
+    it('vence igual una cache que envejece en memoria despues de un fetch en vivo', async () => {
+      vi.useFakeTimers();
+      const fresh = await newServiceOver(mem);
+
+      vi.stubGlobal('fetch', vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD)));
+      await fresh.fetchRates();
+      expect(fresh.ratesProvenance()).toBe('live');
+      expect(Object.keys(fresh.ratesByMarket()).length).toBeGreaterThan(0);
+
+      await vi.advanceTimersByTimeAsync(COTIZAVE_CACHE_MAX_AGE_MS + 60_000);
+
+      expect(Object.keys(fresh.ratesByMarket())).toHaveLength(0);
+      expect(fresh.ratesProvenance()).toBe('none');
+    });
+
+    it('ngOnDestroy limpia el temporizador de vencimiento', async () => {
+      // Sin rates en memoria no hay temporizador que limpiar: hay que hidratar
+      // primero para que la cuenta regresiva exista.
+      storage.set<PersistedRates>(RATES_STORAGE_KEY, {
+        rates: {
+          binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+          oficial: { market: 'oficial', type: 'reference', ask: 36.5, bid: 36.2 },
+        },
+        fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      vi.useFakeTimers();
+      const fresh = await newServiceOver(mem);
+
+      expect(vi.getTimerCount()).toBe(1);
+      fresh.ngOnDestroy();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  /**
+   * `formatCotizaveDataAge` se muestra al operador en el dashboard, la
+   * triangulación y Telegram, así que sus saltos de escala son parte del
+   * diagnóstico: un minuto redondeado a 0, una hora mostrada como 60 min o un
+   * reloj adelantado leído como una antigüedad negativa cambian lo que el
+   * operador cree que está operando. Se cubre la escala completa con `now`
+   * explícito, sin depender del reloj real ni de fake timers.
+   */
+  describe('formatCotizaveDataAge', () => {
+    const NOW = new Date('2026-09-29T12:00:00.000Z').getTime();
+    const at = (msAgo: number) => new Date(NOW - msAgo);
+
+    const cases: readonly { readonly msAgo: number; readonly expected: string }[] = [
+      { msAgo: 0, expected: 'hace menos de 1 min' },
+      { msAgo: 59_999, expected: 'hace menos de 1 min' },
+      { msAgo: 60_000, expected: 'hace 1 min' },
+      { msAgo: 4 * 60_000, expected: 'hace 4 min' },
+      // 59.9 min: sigue siendo minutos, todavía no "1 h".
+      { msAgo: 3_599_000, expected: 'hace 59 min' },
+      { msAgo: 3_600_000, expected: 'hace 1 h' },
+      { msAgo: 5 * 3_600_000, expected: 'hace 5 h' },
+      { msAgo: 23 * 3_600_000 + 59 * 60_000, expected: 'hace 23 h' },
+      { msAgo: 86_400_000, expected: 'hace 1 d' },
+      { msAgo: 3 * 86_400_000, expected: 'hace 3 d' },
+    ];
+
+    it.each(cases)('traduce $msAgo ms a "$expected"', ({ msAgo, expected }) => {
+      expect(formatCotizaveDataAge(at(msAgo), NOW)).toBe(expected);
+    });
+
+    it('no inventa una edad futura cuando el reloj de Cotizave va adelantado', () => {
+      // Reloj de máquina desincronizado: `now - from` sale negativo y un `Math.floor`
+      // sin tope imprimiría "hace -3 min", que el operador leería como dato del futuro.
+      expect(formatCotizaveDataAge(new Date(NOW + 3 * 60_000), NOW)).toBe('hace menos de 1 min');
+    });
+
+    it.each([
+      { label: 'null', value: null },
+      { label: 'undefined', value: undefined },
+      { label: 'Invalid Date', value: new Date(Number.NaN) },
+    ])('devuelve el texto de sesión anterior para $label', ({ value }) => {
+      expect(formatCotizaveDataAge(value, NOW)).toBe('una sesión anterior');
+    });
   });
 });

@@ -184,7 +184,13 @@ export class Dashboard implements OnInit, OnDestroy {
    * interpreta como una oportunidad de mercado cuando puede ser información vieja.
    */
   readonly cotizaveDataAge = computed(() => {
-    this.cotizaveService.ratesByMarket();
+    // El guard debe leer la verdad: solo existe edad cuando hay un fetch real de
+    // Cotizave que alimenta la pantalla. Si la procedencia es `none`, el dato que
+    // se está viendo puede venir de constantes fijas, así que NO se debe rotular
+    // como "una sesión anterior · Cotizave sin datos": eso inventa un linaje.
+    if (this.cotizaveService.ratesProvenance() === 'none') {
+      return null;
+    }
     return formatCotizaveDataAge(this.cotizaveService.lastFetched());
   });
 

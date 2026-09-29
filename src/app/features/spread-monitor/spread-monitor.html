@@ -1399,8 +1399,15 @@
                   <p class="text-muted" style="margin: 8px 0 0; font-size: 0.78rem; color: #f87171;">{{ errMsg }}</p>
                 }
 
-                @if (triangulationData().length > 0) {
+                @if (triangulationLineage(); as lin) {
                   <div class="triangulation-threshold-row">
+                    <!-- Los gaps se calculan sobre `ratesByMarket()`, así que la edad
+                         y la procedencia van de la tabla entera, no de cada tasa:
+                         `rate.updated_at` es el sello del upstream por tasa y no
+                         dice nada sobre cuándo se hizo el fetch. -->
+                    <span class="text-muted font-mono" style="font-size: 0.74rem;">
+                      Tasas de Cotizave: {{ lin.dataAge }} · {{ lin.label }}
+                    </span>
                     <label style="display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--muted);">
                       Umbral brecha (VES):
                       <input

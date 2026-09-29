@@ -1614,6 +1614,28 @@ describe('TelegramWorkerService', () => {
       expect(text).toMatch(/Cotizave en vivo/i);
     });
 
+    it('MACRO declara la procedencia de Cotizave: una cache restaurada no se lee como mercado en vivo', async () => {
+      // `/bcv` ya fecha su número con el reloj y la procedencia de Cotizave.
+      // `/macro` armaba la misma inteligencia sin ninguna de las dos: un número
+      // restaurado del disco salía como lectura de mercado vigente.
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      ratesByMarket.mockReturnValue({
+        binance: { market: 'binance', type: 'p2p', ask: 84.8, mid: 84.7 },
+        bcv: { market: 'bcv', type: 'oficial', ask: 85.15, mid: 85.1 },
+      });
+      cotizaveLastFetched.mockReturnValue(new Date(2026, 8, 29, 8, 5, 0));
+      cotizaveProvenance.mockReturnValue('restored');
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/macro'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('08:05');
+      expect(text).toMatch(/restaurada del disco/i);
+      // Y no puede disfrazarse de mercado en vivo.
+      expect(text).not.toMatch(/Cotizave en vivo/i);
+    });
+
     it('MACRO says so honestly when the BCV reference rate is unavailable', async () => {
       fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
       ratesByMarket.mockReturnValue({

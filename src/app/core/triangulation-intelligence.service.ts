@@ -38,6 +38,19 @@ export interface LiveMarketRatesSnapshot {
   zinliUsdPerUsdt: number; // Venta digital Zinli/Wally
   timestamp: string;
   /**
+   * De qué reloj es `timestamp`. El snapshot es una MEZCLA: las piernas de
+   * Binance vienen por MCP, las de Cotizave del servicio de rates y el resto son
+   * defaults. `provenance` califica la parte de Cotizave, así que un `timestamp`
+   * sin calificar se leía como la hora de mercado de TODO el snapshot: el reloj de
+   * Cotizave puesto encima de un número de Binance calibra una pierna y deja las
+   * otras creyendo que están igual de frescas.
+   *
+   * - `cotizave`: el reloj es el del fetch de Cotizave; para las piernas de
+   *   Binance hay que mirar `source`, no este campo.
+   * - `panel`: el reloj es el del tick, porque no hubo dato de Cotizave que fechar.
+   */
+  timestampSource: 'cotizave' | 'panel';
+  /**
    * Procedencia de la parte del snapshot que salió de Cotizave. Va aparte de
    * `source` porque esa marca de CUÁNDO respondió la herramienta no dice si el
    * número se acaba de descargar o se restauró del disco al arrancar.
@@ -79,6 +92,9 @@ export class TriangulationIntelligenceService {
     copPerVes: 51.3,
     zinliUsdPerUsdt: 0.985,
     timestamp: 'Inicializado',
+    // Estado inicial: son constantes de arranque, sin fetch detrás. Decirlo evita
+    // que el rótulo se lea como la hora de un dato de mercado.
+    timestampSource: 'panel',
     source: 'CACHE',
   });
 
@@ -332,6 +348,9 @@ export class TriangulationIntelligenceService {
         copPerVes,
         zinliUsdPerUsdt,
         timestamp: producedAt.toLocaleTimeString(),
+        // El reloj se declara siempre, y no como opcional: cuando el snapshot
+        // mezcla fuentes, omitir la calificación es exactamente el defecto.
+        timestampSource: producedAt === cotizaveAt && cotizaveAt !== null ? 'cotizave' : 'panel',
         ...this.snapshotProvenance(usedCotizave),
         source,
       };
