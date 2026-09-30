@@ -128,3 +128,155 @@ Eso fabrica un spread de **+1.65%** y devuelve `isGoldenSpread: true` con `recom
 - `cotizave.service.ts` y la normalización de claves viven en `projects/core/src/lib/cotizave.ts`, fuera de este cambio.
 - El patrón puede reaparecer: la defensa es la convención (`readMarketRate` + `rateUnavailableFields`) y una revisión que busque `\|\|` y `??` sobre variables de tasa, no solo `??`.
 - Un default "razonable" (digamos 950) seguiría mintiendo. **Las pruebas deben usar tasas reales**, o no están probando nada.
+
+---
+
+# Segunda vuelta: precios, libro y anuncios
+
+El inventario de arriba señalaba 13 sitios del mismo patrón en `mcp-fallbacks.ts` y
+dejaba el más grave, `calculate_spread`, sin tocar. Esta vuelta cierra los 13 y
+encuentra que el problema era bastante más amplio de lo que decía el conteo.
+
+## Por qué faltaban 13 y eran 17
+
+El conteo inicial venía de un grep de defaults de **tasa**. Las herramientas que
+fabrican **precios, profundidades de libro, quotes de venues y anuncios** no
+aparecían, porque sus defaults no se llamaban `bcvRate`. El barrido se repitió por
+categoría de lectura, y por eso el alcance real fue 17 herramientas y no 13:
+
+| Categoría de lectura | Herramientas |
+| --- | --- |
+| Precios de mercado | `calculate_spread`, `detect_usdt_depeg` |
+| Profundidad de libro | `forecast_volatility_window`, `analyze_orderbook_pressure`, `recommend_competitive_pricing` |
+| Quotes de venues | `fetch_cross_exchange_spread`, `scan_synthetic_stable_arbitrage`, `audit_distressed_liquidity_sniper`, `query_otc_darkpool_spread` |
+| Anuncios P2P | `evaluate_ad_repricing`, `publish_ad_price`, `audit_ad_competitiveness` |
+| Liquidación y contraparte | `route_fintech_payroll_settlement`, `recommend_counterparty_yield_price` |
+| Texto al cliente | `process_concierge_inquiry` |
+| Clasificación macro | `predict_bcv_macro_regime` |
+| Ledger | `add_operation_entry` |
+
+## Los tres casos que cambian el criterio
+
+**1. Publicar un precio inventado no es un default: es una escritura confirmada.**
+`publish_ad_price` con `dryRun: false` devolvía `status: 'PUBLISHED_LIVE'` desde el
+navegador. No había publicación, pero la respuesta afirmaba que la había, y el
+`adId` que inventaba (`'AD-1001'`) no es un default inocuo: es el identificador de
+un anuncio real. El default `newPrice: 78.85` además entraba al recibo firmado. Ahora
+`newPrice` es obligatorio (como en `PublishAdPriceInputSchema`), y **con** precio
+la respuesta sigue siendo `SIMULATED_SUCCESS` / `merchantConfirmed: false`. La
+función no publica en el exchange; no debe decirlo nunca.
+
+**2. El concierge era el peor caso de la familia.** `process_concierge_inquiry` no
+inventaba un número en un panel: lo metía **dentro del texto que se le mandaba al
+cliente**. Con `deskRatePerUsd` ausente respondía "USD/VES Exchange Rate: 87.00
+VES" a una persona. Un default inventado que llega al usuario final no es un
+problema de datos, es un problema de confianza con el usuario. Ahora, sin tasa, no
+se redacta respuesta: se devuelve el inquiry parseado para que un operador lo
+conteste.
+
+**3. Defaults de contrato ≠ supuestos.** La revisión contra los schemas encontró
+dos defaults del bloque que contradecían el contrato real:
+
+| Campo | Default del fallback | Default del schema | Efecto |
+| --- | --- | --- | --- |
+| `evaluate_ad_repricing.targetRank` | `TOP_1` | `TOP_2` | Apuntaba al líder cuando el daemon iba a apuntar al segundo: dos filas de distancia entre el precio simulado y el que se publicaría. |
+| `route_fintech_payroll_settlement.clientTier` | `RECURRENT_REMOTE` | `STANDARD` | Comisión de mesa distinta a la del bridge. |
+| `route_fintech_payroll_settlement.isVerifiedContractor` | `true` | `false` | **Apagaba la clasificación de riesgo.** Una nómina de 10.000 USDT de un contratista sin verificar salía `chargebackRiskTier: 'LOW'`, `holdHoursRequired: 0` y el texto *"Liquidación Inmediata: Sí (Fondos Verificados)"*. |
+
+El tercero es el peor default de todo este trabajo, y no era una tasa: era una
+afirmación de cumplimiento. **Fabricar una verificación KYC no es un default, es
+una mentira con consecuencias regulatorias.**
+
+La regla que sale de acá: cuando el schema declara un default, se copia el del
+schema; cuando no lo declara, el campo es obligatorio y la ausencia se declara. Un
+supuesto propio donde hay contrato es un default disfrazado de decisión.
+
+## Qué se replica del daemon y qué no
+
+`evaluate_ad_repricing` ahora replica los circuit breakers del daemon
+(`accountSaturationPct >= 100` → `PAUSE_AD`, `bcvInterventionActive` →
+`HOLD_OR_WIDEN`) y el filtro anti-spoofing, para que la simulación sea la misma
+decisión que ejecutaría el bridge y no una tercera versión inventada.
+
+Con una salvedad deliberada: **`accountSaturationPct` se devuelve en `null` cuando
+el llamante no lo informa.** El estado de saturación de una cuenta bancaria y el
+estado de una intervención del BCV son hechos externos; el fallback no puede
+observarlos. Replicar el default del schema es necesario para no divergir de la
+decisión del bridge, pero **reportar `0%` de saturación sería afirmar un hecho que
+nadie midió**. La divergencia se acepta a propósito en una sola dirección: el
+fallback puede subestimar un freno, nunca anunciarlo.
+
+## El error espejo de esta vuelta: ausencia parcial
+
+La primera vuelta documenta `rateStatus: 'UNAVAILABLE_NO_LIVE_SOURCE'` para
+ausencia total. El barrido de precios reveló el caso contrario: respuestas
+que **sí** traen lecturas reales y aun así no pueden afirmar un campo derivado.
+
+`forecast_volatility_window` con las dos tasas reales pero sin libro de órdenes:
+la brecha **sí** es medible (`gapPct`), y `suggestedAction` no. Declarar
+`UNAVAILABLE_NO_LIVE_SOURCE` ahí sería afirmar que no hay dato de mercado cuando la
+tasa está en la misma respuesta, y el LMC descartaría la brecha real. Se agregó
+`missingReadingFields()`, que emite `unavailableReason`, `expectedSource` y
+`actionable: false` **sin `rateStatus`**. Declarar ausencia de más rompe tan fuerte
+como declarar de menos.
+
+## Qué sobrevive, y por qué es legítimo
+
+Quedan ~55 defaults numéricos en el archivo. Ninguno es una lectura de mercado:
+
+- **Capital de cuenta**: `usdtCapital ?? 8000`, `vesCapital ?? 160000`,
+  `tradeAmountUsdt ?? 500`. Son la cartera de la mesa, no el mercado. Son lo
+  primero que se configura en una cuenta nueva.
+- **Parámetros de política**: fees del exchange (`makerFeePct ?? 0.35`), umbrales
+  dorados (`0.5`), ventanas anti-spoofing (`finishRate >= 90`), capital de
+  seguridad, APY flexible del exchange. El schema los declara con default, así que
+  son contrato.
+- **Contexto temporal**: `daysSinceLastIntervention ?? 4`, `currentDayOfWeek ?? 1`,
+  `hourlyTransactionCount ?? 4`. No son mercado; son el reloj y la carga de la
+  cuenta. La fecha sí viaja en el args.
+- **Métricas de contraparte**: `completedTradesCount ?? 120`, `monthlyVolumeUsd ??
+  30000`, `disputeCount ?? 0`. Defaults declarados por
+  `calculateDynamicCounterpartyPricing`. La **base** sí era lectura y se corrigió.
+
+El criterio para separarlos: *¿el número describe el mundo externo o la
+configuración de quien opera?* Si es el mundo, ausente. Si es la configuración,
+default documentado.
+
+Un resto menor quedó marcado pero no se tocó: `finishRate ?? 1` y
+`surplusAmount ?? 9999` en el filtro anti-spoofing (líneas ~1520) coinciden con el
+daemon, y tratarlos exigiría cambiar el schema. Queda anotado.
+
+## Verificación de esta vuelta
+
+| Comando | Resultado |
+| --- | --- |
+| `mcp-fallbacks.spec.ts` | **73/73** |
+| `tsc -p tsconfig.app.json --noEmit` | exit `0` |
+| `tsc -p tsconfig.spec.json --noEmit` | exit `0` |
+| `eslint mcp-fallbacks.ts mcp-fallbacks.spec.ts` | exit `0` |
+| `prettier --check` (ambos) | exit `0` |
+
+Las 73 pruebas cubren cada herramienta del barrido en dos direcciones: **sin dato**
+el campo dependiente va en `null` y el veredicto no se emite, y **con el dato
+real** el número real sale. La segunda mitad es la que importa: sin ella, "arreglar"
+el bug apagando la herramienta entera también daría verde.
+
+Además hay dos redes de contención sobre las 17 herramientas con el input vacío,
+con la lista acumulativa de los ~48 números que el archivo solía emitir
+(`NUMEROS_INVENTADOS`). Usan regex con límite numérico: `:8000` no matchea
+`:80000`, que es el `unhedgedVesAmount` legítimo que sale del capital de cuenta.
+
+## Fuera de alcance, y sigue vivo
+
+Nada de esto se modificó:
+
+| Ubicación | Default | Nota |
+| --- | --- | --- |
+| `packages/mcp-server/src/tools/scan_synthetic_stable_arbitrage.ts` | `defaultQuotes` | Curva sintética completa en el daemon. |
+| `packages/mcp-server/src/tools/query_otc_darkpool_spread.ts` | `defaultVenues` | 3 venues P2P ficticias. |
+| `packages/mcp-server/src/tools/evaluate_trade_risk.ts` | `counterpartyScore ?? 98` | Sobreviviente puntual. |
+| `projects/core/src/lib/fintech-settlement-routing.ts` (línea 89) | `85.0` | El fallback ya no depende de él: se pasa `undefined` explícito para rails sin VES. |
+| `projects/core/src/lib/agent-skills.ts` | ~24 defaults con `\|\|` | Sin cambios. El `\|\|` además traga ceros legítimos. |
+
+El primero y el segundo son los serios: son curvas y venues enteras provistas,
+no un número suelto.

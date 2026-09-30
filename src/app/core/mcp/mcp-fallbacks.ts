@@ -79,11 +79,47 @@ export function readMarketRate(
  * `audit_counterparty_exposure`: `null` en el valor, un motivo legible y
  * `actionable: false`.
  */
-function rateUnavailableFields(
-  reading: MarketRateReading,
+function rateUnavailableFields(reading: MarketRateReading): Record<string, unknown> {
+  return {
+    rateStatus: 'UNAVAILABLE_NO_LIVE_SOURCE',
+    unavailableReason: reading.reason,
+    expectedSource: reading.expectedSource,
+    actionable: false,
+  };
+}
+
+/**
+ * Bloque de ausencia para herramientas cuya lectura de mercado no es un número sino
+ * un conjunto de lecturas: el libro, los pares de curvas, las quotes de venues. No
+ * hay un `readMarketRate` que aplicar porque no hay una sola tasa, pero el marcador
+ * es el mismo: `UNAVAILABLE_NO_LIVE_SOURCE` más un motivo explícito y el origen del
+ * dato que falta. Sin este bloque, un libro P2P vacío se llenaba con precios de
+ * ejemplo y el LMC competía contra un mercado que no existe.
+ */
+function readingsUnavailableFields(
+  reason: string,
+  expectedSource: string,
 ): Record<string, unknown> {
   return {
     rateStatus: 'UNAVAILABLE_NO_LIVE_SOURCE',
+    unavailableReason: reason,
+    expectedSource,
+    actionable: false,
+  };
+}
+
+/**
+ * Bloque de AUSENCIA PARCIAL: falta una lectura dentro de una respuesta que sí
+ * contiene otras reales.
+ *
+ * Deliberadamente NO lleva `rateStatus`: ponerlo afirmaría que todas las lecturas de
+ * mercado de la herramienta están ausentes, y en estos casos hay tasas verdaderas en
+ * la misma respuesta. Declarar ausencia de más es el error espejo — el LMC
+ * descartaría un dato real porque el envelope dice "no hay dato", igual que el error
+ * original lo hacía al revés.
+ */
+function missingReadingFields(reading: MarketRateReading): Record<string, unknown> {
+  return {
     unavailableReason: reading.reason,
     expectedSource: reading.expectedSource,
     actionable: false,
@@ -109,25 +145,68 @@ export function simulateMcpTool(
   };
 
   if (toolName === 'calculate_spread') {
-    const buyPrice = Number((args as any)?.buyPrice ?? 78.5);
-    const sellPrice = Number((args as any)?.sellPrice ?? 79.8);
-    const makerFee = Number((args as any)?.makerFeePct ?? 0.35);
-    const takerFee = Number((args as any)?.takerFeePct ?? 0);
-    const totalFeeRate = (makerFee + takerFee) / 100;
-    const spread = computeSpread(buyPrice, sellPrice, 100, 'USDT', totalFeeRate);
-    const unitSpread = spread.unitSpread;
-    const grossSpreadPercent = (unitSpread / buyPrice) * 100;
-    const netSpreadPercent = (spread.netGainVes / (buyPrice * 100)) * 100;
-    const isGolden = netSpreadPercent >= 0.5;
-    simulatedResult = {
-      ...simulatedResult,
-      unitSpread: Number(unitSpread.toFixed(4)),
-      grossSpreadPercent: Number(grossSpreadPercent.toFixed(2)),
-      netGainVes: Number(spread.netGainVes.toFixed(2)),
-      netSpreadPercent: Number(netSpreadPercent.toFixed(2)),
-      isGoldenSpread: isGolden,
-      recommendation: isGolden ? 'VIABLE_INSTITUCIONAL' : 'SPREAD_SUB_OPTIMAL',
-    };
+    // Ambos precios son lecturas observadas del mercado, y el contrato real los exige:
+    // `CalculateSpreadInputSchema` los declara positivos SIN default. El fallback
+    // inventaba 78.5 / 79.8, sacaba un spread neto de ~1.65% y respondía
+    // `isGoldenSpread: true` con `recommendation: 'VIABLE_INSTITUCIONAL'`: un
+    // veredicto de viabilidad institucional sobre precios que nadie cotizó, que es
+    // exactamente lo que un LMC ejecuta. Sin las dos lecturas no hay spread, y sin
+    // spread no hay veredicto, así que se declara la ausencia.
+    const buyRead = readMarketRate(
+      args,
+      'buyPrice',
+      'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+    );
+    const sellRead = readMarketRate(
+      args,
+      'sellPrice',
+      'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+    );
+    if (buyRead.value === null || sellRead.value === null) {
+      const faltante = buyRead.value === null ? buyRead : sellRead;
+      simulatedResult = {
+        ...simulatedResult,
+        buyPrice: buyRead.value,
+        sellPrice: sellRead.value,
+        unitSpread: null,
+        grossSpreadPercent: null,
+        netGainVes: null,
+        netSpreadPercent: null,
+        // `isGoldenSpread` no puede ser false: false también es un veredicto, y el
+        // veredicto necesita los dos lados del libro. Desconocido es el único tercer
+        // estado honesto.
+        isGoldenSpread: null,
+        recommendation: null,
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      // makerFeePct/takerFeePct son parámetros del fee del exchange, no lecturas de
+      // mercado: la mesa conoce su propio nivel de cuenta y ninguna observación del
+      // mercado puede aportarlos. Se devuelven en la respuesta para que ningún costo
+      // supuesto quede escondido dentro de `netSpreadPercent`; sin llamante solo
+      // moldean una llamada de demostración.
+      const makerFee = Number((args as any)?.makerFeePct ?? 0.35);
+      const takerFee = Number((args as any)?.takerFeePct ?? 0);
+      const totalFeeRate = (makerFee + takerFee) / 100;
+      const spread = computeSpread(buyRead.value, sellRead.value, 100, 'USDT', totalFeeRate);
+      const unitSpread = spread.unitSpread;
+      const grossSpreadPercent = (unitSpread / buyRead.value) * 100;
+      const netSpreadPercent = (spread.netGainVes / (buyRead.value * 100)) * 100;
+      const isGolden = netSpreadPercent >= 0.5;
+      simulatedResult = {
+        ...simulatedResult,
+        buyPrice: buyRead.value,
+        sellPrice: sellRead.value,
+        unitSpread: Number(unitSpread.toFixed(4)),
+        grossSpreadPercent: Number(grossSpreadPercent.toFixed(2)),
+        netGainVes: Number(spread.netGainVes.toFixed(2)),
+        netSpreadPercent: Number(netSpreadPercent.toFixed(2)),
+        isGoldenSpread: isGolden,
+        recommendation: isGolden ? 'VIABLE_INSTITUCIONAL' : 'SPREAD_SUB_OPTIMAL',
+        makerFeePct: makerFee,
+        takerFeePct: takerFee,
+      };
+    }
   } else if (toolName === 'evaluate_trade_risk') {
     const tradeAmount = Number((args as any)?.tradeAmountUsdt ?? 500);
     const capital = Number((args as any)?.currentCapitalUsdt ?? 5000);
@@ -215,7 +294,11 @@ export function simulateMcpTool(
       actionable: false,
     };
   } else if (toolName === 'forecast_volatility_window') {
-    const parallelRead = readMarketRate(args, 'parallelRate', 'Cotizave `parallel` o libro Binance P2P');
+    const parallelRead = readMarketRate(
+      args,
+      'parallelRate',
+      'Cotizave `parallel` o libro Binance P2P',
+    );
     const bcvRead = readMarketRate(args, 'bcvRate', 'Cotizave `oficial` o get_bcv_rates');
     if (parallelRead.value === null || bcvRead.value === null) {
       // Sin las dos tasas no hay brecha, y sin brecha no hay pronóstico de
@@ -238,8 +321,33 @@ export function simulateMcpTool(
     } else {
       const bcvIntel = getBcvMarketIntelligence(parallelRead.value, bcvRead.value);
       const isInWindow = bcvIntel.window.phase === 'INTERVENTION_ACTIVE';
-      const bidDepth = Number((args as any)?.bidDepthUsdt ?? 9500);
-      const askDepth = Number((args as any)?.askDepthUsdt ?? 8000);
+      // La profundidad del libro es una lectura en vivo. El contrato real la declara
+      // con default solo para moldear una llamada de demostración, y acá eso se
+      // convertía en 9500/8000: una rama entera de `spreadDynamic` (COMPRESSION_RISK)
+      // evaluada sobre un libro que no existe. Con la profundidad desconocida el
+      // veredicto de dinámica y la acción quedan en null — `STABLE` sería una
+      // observación, no una ausencia.
+      const bidDepthRaw = (args as any)?.bidDepthUsdt;
+      const askDepthRaw = (args as any)?.askDepthUsdt;
+      const depthKnown =
+        bidDepthRaw !== undefined &&
+        askDepthRaw !== undefined &&
+        Number.isFinite(Number(bidDepthRaw)) &&
+        Number.isFinite(Number(askDepthRaw)) &&
+        Number(bidDepthRaw) >= 0 &&
+        Number(askDepthRaw) >= 0;
+      const depthFaltante: MarketRateReading = {
+        value: null,
+        reason:
+          bidDepthRaw === undefined
+            ? 'FALTA_ARGUMENTO_bidDepthUsdt'
+            : askDepthRaw === undefined
+              ? 'FALTA_ARGUMENTO_askDepthUsdt'
+              : 'ARGUMENTO_PROFUNDIDAD_LIBRO_NO_PLAUSIBLE',
+        expectedSource: 'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+      };
+      const bidDepth = Number(bidDepthRaw);
+      const askDepth = Number(askDepthRaw);
       const depthRatio = bidDepth > 0 ? askDepth / bidDepth : 1;
       let spreadDynamic: 'EXPANSION_LIKELY' | 'COMPRESSION_RISK' | 'STABLE' = 'STABLE';
       if (isInWindow && depthRatio < 0.8) {
@@ -247,6 +355,12 @@ export function simulateMcpTool(
       } else if (bcvIntel.gap.gapPct > 18) {
         spreadDynamic = 'EXPANSION_LIKELY';
       }
+      const suggestedAction =
+        spreadDynamic === 'COMPRESSION_RISK'
+          ? 'Liquidar inventario con rapidez para evitar compresión de márgenes'
+          : spreadDynamic === 'EXPANSION_LIKELY'
+            ? 'Ampliar spread visible y capturar margen en puntas'
+            : 'Operar con volumen normal';
       simulatedResult = {
         ...simulatedResult,
         parallelRate: parallelRead.value,
@@ -256,18 +370,20 @@ export function simulateMcpTool(
         bcvPhase: bcvIntel.window.phase,
         hoursUntilIntervention: bcvIntel.window.hoursUntilIntervention,
         tacticalRecommendation: bcvIntel.recommendation.action,
-        spreadDynamic,
-        suggestedAction:
-          spreadDynamic === 'COMPRESSION_RISK'
-            ? 'Liquidar inventario con rapidez para evitar compresión de márgenes'
-            : spreadDynamic === 'EXPANSION_LIKELY'
-              ? 'Ampliar spread visible y capturar margen en puntas'
-              : 'Operar con volumen normal',
+        bidDepthUsdt: depthKnown ? bidDepth : null,
+        askDepthUsdt: depthKnown ? askDepth : null,
+        spreadDynamic: depthKnown ? spreadDynamic : null,
+        suggestedAction: depthKnown ? suggestedAction : null,
+        ...(depthKnown ? {} : missingReadingFields(depthFaltante)),
       };
     }
   } else if (toolName === 'calculate_delta_neutral_hedge') {
     const vesBal = Number((args as any)?.vesBalance ?? 120000);
-    const refRead = readMarketRate(args, 'usdtReferencePrice', 'Cotizave `parallel` o libro Binance P2P');
+    const refRead = readMarketRate(
+      args,
+      'usdtReferencePrice',
+      'Cotizave `parallel` o libro Binance P2P',
+    );
     const targetHedge = Number((args as any)?.targetHedgePct ?? 100);
     if (refRead.value === null) {
       // Sin precio de referencia no hay conversión a USDT, y por lo tanto no hay
@@ -324,10 +440,22 @@ export function simulateMcpTool(
       };
     }
   } else if (toolName === 'add_operation_entry') {
+    // Los tres campos son obligatorios en `AddOperationEntryInputSchema`
+    // (vesAmount, usdtAmount, price positivo) y los tres terminan en la misma fila
+    // del ledger. Grabar 8200 / 100 / 82.0 no era una simulación: era un asiento con
+    // un precio que nadie cotizó, y un asiento no se puede "declarar después" como
+    // referencial porque es inmutable por diseño. Si falta cualquiera de los tres, no
+    // se escribe nada.
     const side = (args as any)?.side ?? 'buy';
-    const vesAmount = Number((args as any)?.vesAmount ?? 8200);
-    const usdtAmount = Number((args as any)?.usdtAmount ?? 100);
-    const price = Number((args as any)?.price ?? 82.0);
+    const vesAmountRaw = (args as any)?.vesAmount;
+    const usdtAmountRaw = (args as any)?.usdtAmount;
+    const priceRead = readMarketRate(
+      args,
+      'price',
+      'precio de la operación declarado por el llamante',
+    );
+    const amountsKnown =
+      Number.isFinite(Number(vesAmountRaw)) && Number.isFinite(Number(usdtAmountRaw));
     const humanConfirm = Boolean((args as any)?.humanConfirm);
     if (!humanConfirm) {
       simulatedResult = {
@@ -337,6 +465,28 @@ export function simulateMcpTool(
         challengeToken: 'CHALLENGE_LEDGER_' + Math.random().toString(36).substring(7),
         message: 'Acción de escritura en Ledger protegida. Reenvía con humanConfirm: true.',
       };
+    } else if (!amountsKnown || priceRead.value === null) {
+      simulatedResult = {
+        ...simulatedResult,
+        recorded: false,
+        side,
+        vesAmount: amountsKnown ? Number(vesAmountRaw) : null,
+        usdtAmount: amountsKnown ? Number(usdtAmountRaw) : null,
+        price: priceRead.value,
+        // Sin los tres no hay asiento: el hash y el orderId se emiten en null para que
+        // un consumidor no pueda interpretar la ausencia como un registro fallido que
+        // tuvo un id.
+        orderId: null,
+        cryptographicReceiptHash: null,
+        ...(priceRead.value === null
+          ? rateUnavailableFields(priceRead)
+          : readingsUnavailableFields(
+              !amountsKnown
+                ? 'FALTAN_MONTOS_DE_LA_OPERACION'
+                : 'MONTOS_DE_LA_OPERACION_NO_PLAUSIBLES',
+              'montos declarados por el llamante en `vesAmount` y `usdtAmount`',
+            )),
+      };
     } else {
       const orderId = `ORD-MCP-${Date.now().toString(36).toUpperCase()}`;
       simulatedResult = {
@@ -345,9 +495,9 @@ export function simulateMcpTool(
         orderId,
         timestamp: new Date().toISOString(),
         side,
-        vesAmount,
-        usdtAmount,
-        price,
+        vesAmount: Number(vesAmountRaw),
+        usdtAmount: Number(usdtAmountRaw),
+        price: priceRead.value,
         auditStatus: 'LEDGER_ENTRY_COMMITTED_IMMUTABLE',
         cryptographicReceiptHash: 'hash_' + Math.random().toString(36).substring(7),
       };
@@ -395,7 +545,11 @@ export function simulateMcpTool(
     // puede pasar es inventarlas: la brecha es exactamente el número que un
     // operador lee como "entrás 16% arriba del oficial".
     const offRead = readMarketRate(args, 'bcvRate', 'Cotizave `oficial` o get_bcv_rates');
-    const parRead = readMarketRate(args, 'parallelRate', 'Cotizave `parallel` o get_parallel_rates');
+    const parRead = readMarketRate(
+      args,
+      'parallelRate',
+      'Cotizave `parallel` o get_parallel_rates',
+    );
     if (offRead.value === null || parRead.value === null) {
       const faltante = offRead.value === null ? offRead : parRead;
       simulatedResult = {
@@ -452,7 +606,11 @@ export function simulateMcpTool(
   } else if (toolName === 'autofill_trade_reference') {
     const side = ((args as any)?.side ?? 'BUY') as 'BUY' | 'SELL';
     const targetMargin = Number((args as any)?.targetMarginPct ?? 1.2);
-    const fallbackRead = readMarketRate(args, 'fallbackRate', 'Cotizave `parallel` o libro Binance P2P');
+    const fallbackRead = readMarketRate(
+      args,
+      'fallbackRate',
+      'Cotizave `parallel` o libro Binance P2P',
+    );
     if (fallbackRead.value === null) {
       // El punto medio sin el cual no hay precio sugerido: publicar una orden
       // alrededor de un 84.12 inventado es presentar una salida en el mercado
@@ -496,8 +654,16 @@ export function simulateMcpTool(
     // `recommend_competitive_pricing` compite contra ella. Antes devolvía
     // 82.2/82.85 (y 4210/4250 para COP) como si fueran el libro vivo.
     const fiat = (args as any)?.fiat ?? 'VES';
-    const topBuyRead = readMarketRate(args, 'topBuyPrice', 'libro Binance P2P en vivo o get_binance_p2p_orderbook');
-    const topSellRead = readMarketRate(args, 'topSellPrice', 'libro Binance P2P en vivo o get_binance_p2p_orderbook');
+    const topBuyRead = readMarketRate(
+      args,
+      'topBuyPrice',
+      'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+    );
+    const topSellRead = readMarketRate(
+      args,
+      'topSellPrice',
+      'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+    );
     if (topBuyRead.value === null || topSellRead.value === null) {
       const faltante = topBuyRead.value === null ? topBuyRead : topSellRead;
       simulatedResult = {
@@ -537,31 +703,75 @@ export function simulateMcpTool(
       };
     }
   } else if (toolName === 'detect_usdt_depeg') {
-    const spotPrice = Number((args as any)?.spotUsdtPrice ?? 0.9992);
+    // El precio spot es una lectura de mercado y el veredicto de depeg sale de
+    // compararlo contra la paridad. Con 0.9992 inventado la respuesta era siempre
+    // `isDepegged: false` con "paridad estable": una afirmación de salud de un
+    // mercado que nadie observó. `thresholdPct` sí es un umbral de política y se
+    // queda.
+    const spotRead = readMarketRate(
+      args,
+      'spotUsdtPrice',
+      'precio spot de USDT en vivo o libro Binance P2P',
+    );
     const threshold = Number((args as any)?.thresholdPct ?? 0.2);
-    const devPct = Math.round(Math.abs(spotPrice - 1.0) * 10000) / 100;
-    const isDepegged = devPct >= threshold;
-    simulatedResult = {
-      ...simulatedResult,
-      spotUsdtPrice: spotPrice,
-      parityDeviationPct: devPct,
-      status: isDepegged ? (spotPrice < 1.0 ? 'DEPEG_DISCOUNT' : 'DEPEG_PREMIUM') : 'PEGGED_NORMAL',
-      isDepegged,
-      thresholdPct: threshold,
-      arbitrageOpportunity: isDepegged,
-      riskSeverity: devPct > 1.0 ? 'CRITICAL' : isDepegged ? 'HIGH' : 'LOW',
-      recommendation: isDepegged
-        ? 'Monitorear reservas y limitar exposición overnight en USDT.'
-        : 'Paridad estable dentro de tolerancia.',
-      isEmergencyActionRequired: devPct > 1.0,
-    };
+    if (spotRead.value === null) {
+      simulatedResult = {
+        ...simulatedResult,
+        spotUsdtPrice: null,
+        parityDeviationPct: null,
+        status: null,
+        isDepegged: null,
+        thresholdPct: threshold,
+        arbitrageOpportunity: null,
+        riskSeverity: null,
+        recommendation: null,
+        isEmergencyActionRequired: null,
+        ...rateUnavailableFields(spotRead),
+      };
+    } else {
+      const spotPrice = spotRead.value;
+      const devPct = Math.round(Math.abs(spotPrice - 1.0) * 10000) / 100;
+      const isDepegged = devPct >= threshold;
+      simulatedResult = {
+        ...simulatedResult,
+        spotUsdtPrice: spotPrice,
+        parityDeviationPct: devPct,
+        status: isDepegged
+          ? spotPrice < 1.0
+            ? 'DEPEG_DISCOUNT'
+            : 'DEPEG_PREMIUM'
+          : 'PEGGED_NORMAL',
+        isDepegged,
+        thresholdPct: threshold,
+        arbitrageOpportunity: isDepegged,
+        riskSeverity: devPct > 1.0 ? 'CRITICAL' : isDepegged ? 'HIGH' : 'LOW',
+        recommendation: isDepegged
+          ? 'Monitorear reservas y limitar exposición overnight en USDT.'
+          : 'Paridad estable dentro de tolerancia.',
+        isEmergencyActionRequired: devPct > 1.0,
+      };
+    }
   } else if (toolName === 'recommend_competitive_pricing') {
     const recSide = ((args as any)?.side ?? 'BUY') as 'BUY' | 'SELL';
     const recStrategy = (args as any)?.strategy ?? 'TOP_1';
     const stepVes = Number((args as any)?.stepVes ?? 0.05);
     const marginPct = Number((args as any)?.targetMarginPct ?? 1.15);
-    const breakEven = Number((args as any)?.breakEvenPrice ?? 82.5);
-    const midRead = readMarketRate(args, 'currentMarketMid', 'Cotizave `parallel` o libro Binance P2P');
+    // El break-even es un precio, y el precio de compra real de la USDT solo lo
+    // conoce quien la compró. El contrato real lo declara `.optional()`, así que su
+    // ausencia es un caso legítimo — y con 82.5 hardcodeado se filtraba igual al
+    // resultado: `marginVes` y `isWithinSafeBoundaries` affirmed "estás 3.66 VES
+    // arriba de tu costo" sobre un costo inventado. El medio del mercado alcanza
+    // para sugerir precio; sin break-even no se afirma nada sobre el margen.
+    const breakEvenRead = readMarketRate(
+      args,
+      'breakEvenPrice',
+      'costo real de adquisición de la USDT (precio de compra + comisiones)',
+    );
+    const midRead = readMarketRate(
+      args,
+      'currentMarketMid',
+      'Cotizave `parallel` o libro Binance P2P',
+    );
     if (midRead.value === null) {
       // Sin el medio del mercado no hay precio competitivo que sugiera: la
       // herramienta deja de recomendar un precio de publicación.
@@ -582,6 +792,7 @@ export function simulateMcpTool(
       };
     } else {
       const marketMid = midRead.value;
+      const breakEven = breakEvenRead.value;
       const compPrice = recSide === 'BUY' ? marketMid - 0.5 : marketMid + 0.5;
       const suggPrice = recSide === 'BUY' ? compPrice + stepVes : compPrice - stepVes;
       simulatedResult = {
@@ -589,51 +800,102 @@ export function simulateMcpTool(
         side: recSide,
         strategy: recStrategy,
         currentMarketMid: marketMid,
+        breakEvenPrice: breakEven,
         suggestedPrice: Number(suggPrice.toFixed(2)),
         competitorPrice: Number(compPrice.toFixed(2)),
         stepVes,
         targetMarginPct: marginPct,
-        marginVes: Number(Math.abs(suggPrice - breakEven).toFixed(2)),
-        isWithinSafeBoundaries: suggPrice >= breakEven,
+        marginVes: breakEven === null ? null : Number(Math.abs(suggPrice - breakEven).toFixed(2)),
+        isWithinSafeBoundaries: breakEven === null ? null : suggPrice >= breakEven,
         advice: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES para liderar libro de órdenes.`,
         executionSummary: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES (${recStrategy} vs competidor en ${compPrice.toFixed(2)} VES)`,
+        ...(breakEven === null ? missingReadingFields(breakEvenRead) : {}),
       };
     }
   } else if (toolName === 'analyze_orderbook_pressure') {
+    // La profundidad del libro es la lectura en vivo que define TODA la salida de
+    // esta herramienta: sin ella el ratio, el lado dominante, el régimen y la
+    // velocidad de presión son invenciones. 18000/14000 además producían
+    // `dominantSide: 'BUY_PRESSURE'` y `marketRegime: 'BULLISH_LOCAL_DEMAND'`, es
+    // decir, una recomendación de mercado construida sobre un libro que no existe.
     const fiat = (args as any)?.fiat ?? 'VES';
-    const bidDepth = Number((args as any)?.bidDepthUsdt ?? 18000);
-    const askDepth = Number((args as any)?.askDepthUsdt ?? 14000);
-    const total = bidDepth + askDepth;
-    const ratio = total > 0 ? Math.round((bidDepth / total) * 1000) / 1000 : 0.5;
-    const dominantSide =
-      ratio >= 0.58 ? 'BUY_PRESSURE' : ratio <= 0.42 ? 'SELL_PRESSURE' : 'BALANCED';
-    simulatedResult = {
-      ...simulatedResult,
-      fiat,
-      bidDepthUsdt: bidDepth,
-      askDepthUsdt: askDepth,
-      orderbookImbalanceRatio: ratio,
-      dominantSide,
-      manipulationRiskScore: 15,
-      phantomLiquidityDetected: false,
-      pressureVelocity: ratio >= 0.68 || ratio <= 0.32 ? 'ACCELERATING' : 'NEUTRAL',
-      actionableInsight:
-        dominantSide === 'BUY_PRESSURE'
-          ? 'Fuerte demanda de compra en libro.'
-          : dominantSide === 'SELL_PRESSURE'
-            ? 'Presión de venta en libro.'
-            : 'Libro equilibrado.',
-      marketRegime:
-        dominantSide === 'BUY_PRESSURE'
-          ? 'BULLISH_LOCAL_DEMAND'
-          : dominantSide === 'SELL_PRESSURE'
-            ? 'BEARISH_LOCAL_SUPPLY'
-            : 'BALANCED_LIQUIDITY',
-    };
+    const bidDepthRaw = (args as any)?.bidDepthUsdt;
+    const askDepthRaw = (args as any)?.askDepthUsdt;
+    const depthsKnown =
+      bidDepthRaw !== undefined &&
+      askDepthRaw !== undefined &&
+      Number.isFinite(Number(bidDepthRaw)) &&
+      Number.isFinite(Number(askDepthRaw)) &&
+      Number(bidDepthRaw) >= 0 &&
+      Number(askDepthRaw) >= 0;
+    if (!depthsKnown) {
+      const faltante: MarketRateReading = {
+        value: null,
+        reason:
+          bidDepthRaw === undefined
+            ? 'FALTA_ARGUMENTO_bidDepthUsdt'
+            : askDepthRaw === undefined
+              ? 'FALTA_ARGUMENTO_askDepthUsdt'
+              : 'ARGUMENTO_PROFUNDIDAD_LIBRO_NO_PLAUSIBLE',
+        expectedSource: 'libro Binance P2P en vivo o get_binance_p2p_orderbook',
+      };
+      simulatedResult = {
+        ...simulatedResult,
+        fiat,
+        bidDepthUsdt: null,
+        askDepthUsdt: null,
+        orderbookImbalanceRatio: null,
+        dominantSide: null,
+        // El score de manipulación y la detección de liquidez fantasma eran
+        // constantes (15 y false) en las dos ramas: no salen de ningún cálculo, así
+        // que tampoco puede afirmarlos la rama honesta. El spoofing se verifica en
+        // `analyzeMicrostructurePressure` (herramienta del daemon).
+        manipulationRiskScore: null,
+        phantomLiquidityDetected: null,
+        pressureVelocity: null,
+        actionableInsight: null,
+        marketRegime: null,
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      const bidDepth = Number(bidDepthRaw);
+      const askDepth = Number(askDepthRaw);
+      const total = bidDepth + askDepth;
+      const ratio = total > 0 ? Math.round((bidDepth / total) * 1000) / 1000 : 0.5;
+      const dominantSide =
+        ratio >= 0.58 ? 'BUY_PRESSURE' : ratio <= 0.42 ? 'SELL_PRESSURE' : 'BALANCED';
+      simulatedResult = {
+        ...simulatedResult,
+        fiat,
+        bidDepthUsdt: bidDepth,
+        askDepthUsdt: askDepth,
+        orderbookImbalanceRatio: ratio,
+        dominantSide,
+        manipulationRiskScore: null,
+        phantomLiquidityDetected: null,
+        pressureVelocity: ratio >= 0.68 || ratio <= 0.32 ? 'ACCELERATING' : 'NEUTRAL',
+        actionableInsight:
+          dominantSide === 'BUY_PRESSURE'
+            ? 'Fuerte demanda de compra en libro.'
+            : dominantSide === 'SELL_PRESSURE'
+              ? 'Presión de venta en libro.'
+              : 'Libro equilibrado.',
+        marketRegime:
+          dominantSide === 'BUY_PRESSURE'
+            ? 'BULLISH_LOCAL_DEMAND'
+            : dominantSide === 'SELL_PRESSURE'
+              ? 'BEARISH_LOCAL_SUPPLY'
+              : 'BALANCED_LIQUIDITY',
+      };
+    }
   } else if (toolName === 'stress_test_portfolio') {
     const usdtCapital = Number((args as any)?.usdtCapital ?? 8000);
     const vesCapital = Number((args as any)?.vesCapital ?? 160000);
-    const refRead = readMarketRate(args, 'referenceRate', 'Cotizave `parallel` o get_parallel_rates');
+    const refRead = readMarketRate(
+      args,
+      'referenceRate',
+      'Cotizave `parallel` o get_parallel_rates',
+    );
     const hedgedPct = Number((args as any)?.hedgedPct ?? 50);
     if (refRead.value === null) {
       // Todo el stress test se cuelga de la tasa de conversión VES→USDT. Sin ella
@@ -691,7 +953,11 @@ export function simulateMcpTool(
     }
   } else if (toolName === 'rebalance_capital_allocation') {
     const totalCap = Number((args as any)?.totalCapitalUsdt ?? 10000);
-    const refRead = readMarketRate(args, 'referenceRate', 'Cotizave `parallel` o get_parallel_rates');
+    const refRead = readMarketRate(
+      args,
+      'referenceRate',
+      'Cotizave `parallel` o get_parallel_rates',
+    );
     if (refRead.value === null) {
       // El plan de asignación se dimensiona en USDT a partir de la tasa de
       // referencia. Sin ella no hay plan que ejecutar.
@@ -753,7 +1019,11 @@ export function simulateMcpTool(
     const dailyLimit = (args as any)?.dailyBankLimitVes
       ? Number((args as any).dailyBankLimitVes)
       : undefined;
-    const refRead = readMarketRate(args, 'referenceRateVes', 'Cotizave `parallel` o get_parallel_rates');
+    const refRead = readMarketRate(
+      args,
+      'referenceRateVes',
+      'Cotizave `parallel` o get_parallel_rates',
+    );
     if (refRead.value === null) {
       // El runway del límite bancario se dimensiona con la referencia VES→USDT.
       // Con 84.12 hardcodeado, la proyección de cobertura de gastos y la alerta de
@@ -894,58 +1164,35 @@ export function simulateMcpTool(
       inspectionTimestamp: new Date().toISOString(),
     };
   } else if (toolName === 'fetch_cross_exchange_spread') {
+    // El contrato real de esta herramienta no acepta ninguna lectura de mercado del
+    // llamante: `FetchCrossExchangeSpreadInputSchema` solo trae filtros (fiat, asset,
+    // paymentMethod, minMerchantTrades) y la herramienta real obtiene las quotes
+    // ella misma de las APIs públicas de libro. Aquí no hay libro al que pedirle una
+    // fila, así que no hay nada honesto que devolver: cuatro exchanges con rates
+    // derivados de 79.2 y 4250, spreads fijos y "KuCoin compra / Bybit vende" eran
+    // un arbitraje proyectado sobre un mercado que no existe. `isViable: false` y el
+    // `unverifiedNotice` no convertían la tabla en una observación.
     const fiat = String((args as any)?.fiat ?? 'VES');
-    const baseRate = fiat === 'VES' ? 79.2 : 4250;
     simulatedResult = {
       ...simulatedResult,
       fiat,
-      asset: 'USDT',
+      asset: (args as any)?.asset ?? 'USDT',
       paymentMethod: (args as any)?.paymentMethod ?? 'Pago Movil',
-      exchanges: [
-        {
-          exchange: 'Binance P2P',
-          buyRate: Number((baseRate * 0.992).toFixed(2)),
-          sellRate: Number((baseRate * 1.012).toFixed(2)),
-          spreadPct: 2.02,
-          activeMerchants: 48,
-        },
-        {
-          exchange: 'Bybit P2P',
-          buyRate: Number((baseRate * 0.988).toFixed(2)),
-          sellRate: Number((baseRate * 1.015).toFixed(2)),
-          spreadPct: 2.73,
-          activeMerchants: 22,
-        },
-        {
-          exchange: 'OKX P2P',
-          buyRate: Number((baseRate * 0.994).toFixed(2)),
-          sellRate: Number((baseRate * 1.009).toFixed(2)),
-          spreadPct: 1.51,
-          activeMerchants: 15,
-        },
-        {
-          exchange: 'KuCoin P2P',
-          buyRate: Number((baseRate * 0.985).toFixed(2)),
-          sellRate: Number((baseRate * 1.018).toFixed(2)),
-          spreadPct: 3.35,
-          activeMerchants: 9,
-        },
-      ],
-      crossArbitrageOpportunity: {
-        buyOn: 'KuCoin P2P',
-        buyPrice: Number((baseRate * 0.985).toFixed(2)),
-        sellOn: 'Bybit P2P',
-        sellPrice: Number((baseRate * 1.015).toFixed(2)),
-        netSpreadPct: 3.05,
-        isViable: false,
-        actionable: false,
-        unverifiedNotice: 'Precios referenciales generados localmente. Requiere conexión en vivo para validar viabilidad de ejecución.',
-        estimatedProfitPer1000Usdt: 0,
-      },
+      minMerchantTrades: (args as any)?.minMerchantTrades ?? null,
+      exchanges: null,
+      exchangesCount: null,
+      crossArbitrageOpportunity: null,
+      bestVenueComparison: null,
       timestamp: new Date().toISOString(),
+      ...readingsUnavailableFields(
+        'NO_QUOTES_REACHABLE_NO_LIVE_VENUES',
+        'quotes de libro en vivo por exchange vía fetch_cross_exchange_spread con transporte nativo',
+      ),
     };
   } else if (toolName === 'verify_inbound_transfer') {
-    const ref = (args as any)?.referenceNumber ? String((args as any).referenceNumber) : 'REF-UNVERIFIED';
+    const ref = (args as any)?.referenceNumber
+      ? String((args as any).referenceNumber)
+      : 'REF-UNVERIFIED';
     simulatedResult = {
       ...simulatedResult,
       referenceNumber: ref,
@@ -1036,38 +1283,40 @@ export function simulateMcpTool(
   } else if (toolName === 'check_bank_operational_status') {
     simulatedResult = {
       ...simulatedResult,
-      networkStatus: 'ALL_SYSTEMS_OPERATIONAL',
+      networkStatus: 'UNVERIFIED_OFFLINE',
+      degraded: true,
+      fallbackReason: 'OFFLINE_SIMULATION_NO_BANK_HEARTBEAT',
       pauseTradingDirective: false,
       affectedBanks: [],
-      averageSettlementLatencyMinutes: 0.9,
+      averageSettlementLatencyMinutes: null,
       bankDetails: [
         {
           bankCode: '0102',
           bankName: 'Banco de Venezuela (BDV)',
-          status: 'OPERATIONAL',
-          settlementLatencyMinutes: 1.2,
+          status: 'UNVERIFIED_OFFLINE',
+          settlementLatencyMinutes: null,
         },
         {
           bankCode: '0134',
           bankName: 'Banesco Banco Universal',
-          status: 'OPERATIONAL',
-          settlementLatencyMinutes: 0.8,
+          status: 'UNVERIFIED_OFFLINE',
+          settlementLatencyMinutes: null,
         },
         {
           bankCode: '0105',
           bankName: 'Mercantil Banco',
-          status: 'OPERATIONAL',
-          settlementLatencyMinutes: 0.9,
+          status: 'UNVERIFIED_OFFLINE',
+          settlementLatencyMinutes: null,
         },
         {
           bankCode: 'PAGO_MOVIL',
           bankName: 'Suiche Pago Móvil Interbancario',
-          status: 'OPERATIONAL',
-          settlementLatencyMinutes: 0.5,
+          status: 'UNVERIFIED_OFFLINE',
+          settlementLatencyMinutes: null,
         },
       ],
       operationalAdvice:
-        'Todos los canales bancarios y Pago Móvil operan con óptima liquidez y acreditación inmediata.',
+        'Sin telemetría bancaria en vivo: estado referencial no verificado. Confirmá manualmente la disponibilidad antes de operar.',
       timestamp: new Date().toISOString(),
     };
   } else if (toolName === 'check_counterparty_blacklist') {
@@ -1147,7 +1396,8 @@ export function simulateMcpTool(
         bank: 'Banesco',
         recordedAt: new Date().toISOString(),
       },
-      summary: 'Comando interpretado localmente sin persistencia en base de datos SQLite (modo degradado).',
+      summary:
+        'Comando interpretado localmente sin persistencia en base de datos SQLite (modo degradado).',
       rawText: raw,
     };
   } else if (toolName === 'audit_payment_proof_ocr') {
@@ -1170,50 +1420,226 @@ export function simulateMcpTool(
         bank: (args as any)?.expectedBank ?? 'BANESCO',
         payerIdDoc: (args as any)?.expectedPayerIdDoc ?? 'V-UNVERIFIED',
       },
-      discrepancies: ['MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.'],
-      actionAdvice: 'MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.',
+      discrepancies: [
+        'MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.',
+      ],
+      actionAdvice:
+        'MODO SIMULACIÓN LOCAL: Requiere auditoría humana obligatoria antes de liberar fondos.',
       auditTimestamp: new Date().toISOString(),
     };
   } else if (toolName === 'evaluate_ad_repricing') {
-    const side = (args as any)?.side ?? 'BUY';
-    const targetRank = (args as any)?.targetRank ?? 'TOP_1';
+    // El precio objetivo sale de `competitorOrders`, es decir del libro. Sin libro no
+    // hay precio: el bloque devolvía 78.85/79.95 y un competidor "MarketMakerPro"
+    // que no existe, cuando el daemon con el mismo input responde
+    // `NO_COMPETITOR_FOUND`. Se replica la regla del daemon —circuit breakers,
+    // filtro anti-spoofing, ranking por `targetRank`— para que la simulación sea la
+    // MISMA decisión que ejecutaría el bridge, no una tercera versión inventada.
+    const side = (args as any)?.side;
+    // `targetRank` sigue el default del schema (TOP_2), no el TOP_1 que se usaba acá:
+    // con el default equivocado la mesa apuntaba al líder cuando el bridge iba a
+    // apuntar al segundo. Defaults de contrato se copian; supuestos, no.
+    const targetRank = (args as any)?.targetRank ?? 'TOP_2';
     const stepVes = Number((args as any)?.stepVes ?? 0.05);
-    const suggestedPrice = side === 'BUY' ? 78.85 : 79.95;
-    simulatedResult = {
-      ...simulatedResult,
-      recommendedAction: 'UPDATE_PRICE',
-      side,
-      targetRank,
-      suggestedPrice,
-      targetCompetitorPrice: side === 'BUY' ? 78.8 : 80.0,
-      targetCompetitorMerchant: 'MarketMakerPro',
-      stepVes,
-      minSpreadPct: 0.5,
-      breakEvenFloorPrice: 0,
-      circuitBreakerTriggered: false,
-      timestamp: new Date().toISOString(),
-    };
+    const minSpreadPct = (args as any)?.minSpreadPct ?? 0.5;
+    const breakEvenFloorPrice = Number((args as any)?.breakEvenFloorPrice ?? 0);
+    const minCompetitorFinishRatePct = (args as any)?.minCompetitorFinishRatePct ?? 90;
+    const minCompetitorOrderLimitUsdt = (args as any)?.minCompetitorOrderLimitUsdt ?? 200;
+    const competitorOrdersRaw = (args as any)?.competitorOrders;
+    const competitorOrders: any[] = Array.isArray(competitorOrdersRaw) ? competitorOrdersRaw : [];
+
+    // Circuit breakers del daemon, en el mismo orden. `bcvInterventionActive` y
+    // `accountSaturationPct` NO son lecturas que el fallback pueda observar: son
+    // estado del BCV y de la cuenta bancaria de la mesa. Se replican con el default
+    // del schema (`false` / `0`) para no divergir de la decisión del bridge, pero se
+    // devuelven en `null` cuando el llamante no los informa: afirmar "0% de
+    // saturación" o "sin intervención cambiaria" sería fabricar un hecho externo.
+    const bcvInterventionActive = Boolean((args as any)?.bcvInterventionActive ?? false);
+    const rawSaturation = (args as any)?.accountSaturationPct;
+    const accountSaturationPct = Number.isFinite(Number(rawSaturation))
+      ? Number(rawSaturation)
+      : null;
+
+    if (side !== 'BUY' && side !== 'SELL') {
+      // `side` decide el signo del ajuste y el orden del ranking: sin él no hay
+      // decisión que simular. El schema lo exige, así que la ausencia es del
+      // llamante y no se cubre con un BUY supuesto.
+      simulatedResult = {
+        ...simulatedResult,
+        recommendedAction: null,
+        reason: 'Falta `side` (BUY | SELL): sin lado no hay ni ranking ni signo de ajuste.',
+        targetRank,
+        suggestedPrice: null,
+        targetCompetitorPrice: null,
+        targetCompetitorMerchant: null,
+        circuitBreakerTriggered: false,
+        ...readingsUnavailableFields(
+          'FALTA_ARGUMENTO_side',
+          'lado de la orden (BUY | SELL) declarado por el llamante',
+        ),
+      };
+    } else if (accountSaturationPct !== null && accountSaturationPct >= 100) {
+      simulatedResult = {
+        ...simulatedResult,
+        recommendedAction: 'PAUSE_AD',
+        reason: 'Cuenta bancaria saturada al 100%. Rotación obligatoria antes de cotizar.',
+        side,
+        targetRank,
+        suggestedPrice: null,
+        circuitBreakerTriggered: true,
+        breakerType: 'ACCOUNT_SATURATION',
+        accountSaturationPct,
+        ...missingReadingFields({
+          value: null,
+          reason: 'SIN_ORDENES_COMPETIDORAS_EN_INPUT',
+          expectedSource:
+            'libro de órdenes P2P en vivo (competitorOrders) provisto por el llamante',
+        }),
+      };
+    } else if (bcvInterventionActive) {
+      simulatedResult = {
+        ...simulatedResult,
+        recommendedAction: 'HOLD_OR_WIDEN',
+        reason:
+          'Intervención cambiaria activa del BCV. Alta probabilidad de devaluación en ventana de liquidación. Se sugiere pausar o ampliar margen.',
+        side,
+        targetRank,
+        suggestedPrice: null,
+        circuitBreakerTriggered: true,
+        breakerType: 'BCV_INTERVENTION',
+        accountSaturationPct,
+        ...missingReadingFields({
+          value: null,
+          reason: 'SIN_ORDENES_COMPETIDORAS_EN_INPUT',
+          expectedSource:
+            'libro de órdenes P2P en vivo (competitorOrders) provisto por el llamante',
+        }),
+      };
+    } else {
+      const validCompetitors = competitorOrders.filter((c) => {
+        const finishRate =
+          (c?.finishRate ?? 1) <= 1 ? (c?.finishRate ?? 1) * 100 : (c?.finishRate ?? 1);
+        const surplus = c?.surplusAmount ?? 9999;
+        return finishRate >= minCompetitorFinishRatePct && surplus >= minCompetitorOrderLimitUsdt;
+      });
+      const sorted = [...validCompetitors].sort((a: any, b: any) =>
+        side === 'BUY' ? b.price - a.price : a.price - b.price,
+      );
+      const rankIndex = targetRank === 'TOP_1' ? 0 : targetRank === 'TOP_2' ? 1 : 2;
+      const targetCompetitor = sorted[rankIndex] ?? sorted[0];
+      if (!targetCompetitor) {
+        // Ausencia de libro, no ausencia de decisión: la acción recomendada es
+        // "no tocar el anuncio" y el precio queda en null.
+        simulatedResult = {
+          ...simulatedResult,
+          recommendedAction: 'NO_COMPETITOR_FOUND',
+          reason:
+            'Sin órdenes de competidor en el input: no hay libro contra el que calcular un precio de publicación.',
+          side,
+          targetRank,
+          suggestedPrice: null,
+          targetCompetitorPrice: null,
+          targetCompetitorMerchant: null,
+          stepVes,
+          minSpreadPct,
+          breakEvenFloorPrice,
+          filteredSpoofingAdsCount: competitorOrders.length - validCompetitors.length,
+          circuitBreakerTriggered: false,
+          accountSaturationPct,
+          timestamp: new Date().toISOString(),
+          ...readingsUnavailableFields(
+            'SIN_ORDENES_COMPETIDORAS_EN_INPUT',
+            'libro de órdenes P2P en vivo (competitorOrders) provisto por el llamante',
+          ),
+        };
+      } else {
+        const rawSuggested =
+          side === 'BUY' ? targetCompetitor.price + stepVes : targetCompetitor.price - stepVes;
+        const violatesFloor =
+          side === 'SELL' && breakEvenFloorPrice > 0 && rawSuggested < breakEvenFloorPrice;
+        const suggestedPrice = violatesFloor
+          ? breakEvenFloorPrice
+          : Number(rawSuggested.toFixed(2));
+        simulatedResult = {
+          ...simulatedResult,
+          recommendedAction: violatesFloor ? 'APPLY_BREAK_EVEN_FLOOR' : 'UPDATE_PRICE',
+          side,
+          targetRank,
+          suggestedPrice,
+          targetCompetitorPrice: targetCompetitor.price,
+          targetCompetitorMerchant: targetCompetitor.advertiserName ?? 'Anonymous',
+          stepVes,
+          minSpreadPct,
+          breakEvenFloorPrice,
+          filteredSpoofingAdsCount: competitorOrders.length - validCompetitors.length,
+          violatesFloor,
+          circuitBreakerTriggered: false,
+          accountSaturationPct,
+          summary: `Precio sugerido para ${side} (${targetRank}): ${suggestedPrice.toFixed(2)} VES (vs competidor ${targetCompetitor.price.toFixed(2)} VES)`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    }
   } else if (toolName === 'publish_ad_price') {
+    // El precio publicado es la lectura que la escritura va a usar; el contrato real
+    // lo exige positivo (`PublishAdPriceInputSchema.newPrice`). Inventar 78.85
+    // significaba confirmar en el recibo una escritura de un precio que nadie pidió.
+    // Sin precio no hay publicación que confirmar: `success: false` y la ausencia
+    // declarada. Con precio real la respuesta sigue siendo una SIMULACIÓN explícita
+    // (`simulated: true`, `merchantConfirmed: false`), que es lo que
+    // `McpAdPublisherService.judgeResponse` necesita para no escribirle una
+    // confirmación de Binance en el journal.
     const adId = (args as any)?.adId ?? 'AD-1001';
     const exchange = (args as any)?.exchange ?? 'BINANCE_P2P';
-    const newPrice = Number((args as any)?.newPrice ?? 78.85);
+    const priceRead = readMarketRate(
+      args,
+      'newPrice',
+      'precio solicitado por el llamante (nunca una estimación del simulador)',
+    );
     const dryRun = Boolean((args as any)?.dryRun ?? true);
-    simulatedResult = {
-      ...simulatedResult,
-      success: true,
-      adId,
-      exchange,
-      publishedPrice: newPrice,
-      dryRun,
-      status: dryRun ? 'SIMULATED_SUCCESS' : 'PUBLISHED_LIVE',
-      rationale: (args as any)?.rationale ?? 'Ajuste automatizado por microestructura MCP',
-      timestamp: new Date().toISOString(),
-      auditTrail: {
-        guardrailChecked: true,
-        maxPriceDeviationPct: 3.0,
-        signature: `SIG-AD-${adId.slice(-6)}-${Date.now()}`,
-      },
-    };
+    if (priceRead.value === null) {
+      simulatedResult = {
+        ...simulatedResult,
+        success: false,
+        error: 'NO_SE_PUEDE_PUBLICAR_SIN_PRECIO_REAL',
+        adId,
+        exchange,
+        publishedPrice: null,
+        dryRun,
+        merchantConfirmed: false,
+        status: 'UNAVAILABLE_NO_LIVE_SOURCE',
+        rationale: (args as any)?.rationale ?? null,
+        timestamp: new Date().toISOString(),
+        auditTrail: {
+          guardrailChecked: false,
+          maxPriceDeviationPct: 3.0,
+          signature: null,
+          merchantRef: null,
+        },
+        ...rateUnavailableFields(priceRead),
+      };
+    } else {
+      simulatedResult = {
+        ...simulatedResult,
+        success: true,
+        adId,
+        exchange,
+        publishedPrice: priceRead.value,
+        dryRun,
+        merchantConfirmed: false,
+        // Sin transporte nativo esta función no puede publicar en el exchange, así
+        // que el status NO depende de `dryRun`: antes devolvía `PUBLISHED_LIVE` con
+        // `dryRun: false` y un lector podía tomar una simulación por una escritura.
+        status: 'SIMULATED_SUCCESS',
+        rationale: (args as any)?.rationale ?? 'Ajuste automatizado por microestructura MCP',
+        timestamp: new Date().toISOString(),
+        auditTrail: {
+          guardrailChecked: true,
+          maxPriceDeviationPct: 3.0,
+          signature: `SIG-AD-${adId.slice(-6)}-${Date.now()}`,
+          merchantRef: null,
+        },
+      };
+    }
   } else if (toolName === 'toggle_ad_status') {
     const adId = (args as any)?.adId ?? 'AD-1001';
     const exchange = (args as any)?.exchange ?? 'BINANCE_P2P';
@@ -1232,189 +1658,457 @@ export function simulateMcpTool(
       actionSummary: `Anuncio ${adId} en ${exchange} conmutado a ${stateMap[action] ?? 'PAUSED'} debido a ${reason}.`,
     };
   } else if (toolName === 'audit_ad_competitiveness') {
+    // El ranking se calcula sobre `competitors`, que el contrato exige (`z.array`, sin
+    // optional). Con el array ausente el bloque afirmaba `currentRank: 'TOP_1'`,
+    // `isMeetingTargetRank: true`, `totalCompetitorsAnalyzed: 10` y una "posición
+    // competitiva saludable" sobre un libro vacío: el mejor veredicto posible sobre
+    // el peor dato posible. Se calcula el ranking real del llamante; sin competidores
+    // no hay rank y no hay veredicto.
     const adId = (args as any)?.adId ?? 'AD-1001';
-    const myCurrentPrice = Number((args as any)?.myCurrentPrice ?? 78.85);
-    simulatedResult = {
-      ...simulatedResult,
-      adId,
-      myCurrentPrice,
-      currentRank: 'TOP_1',
-      desiredRank: (args as any)?.desiredRank ?? 'TOP_1',
-      isMeetingTargetRank: true,
-      totalCompetitorsAnalyzed: 10,
-      suspiciousCompetitorsCount: 0,
-      priceGapWithLeader: 0,
-      leaderPrice: myCurrentPrice,
-      leaderMerchant: 'Self',
-      assessment: 'Posición competitiva saludable (TOP_1).',
-      timestamp: new Date().toISOString(),
-    };
+    const priceRead = readMarketRate(args, 'myCurrentPrice', 'precio actual del propio anuncio');
+    const competitorsRaw = (args as any)?.competitors;
+    const competitors: any[] = Array.isArray(competitorsRaw)
+      ? competitorsRaw.filter((c: any) => Number.isFinite(Number(c?.price)) && Number(c.price) > 0)
+      : [];
+    const desiredRank = (args as any)?.desiredRank ?? 'TOP_1';
+    if (priceRead.value === null || competitors.length === 0) {
+      simulatedResult = {
+        ...simulatedResult,
+        adId,
+        myCurrentPrice: priceRead.value,
+        currentRank: null,
+        desiredRank,
+        isMeetingTargetRank: null,
+        totalCompetitorsAnalyzed: competitors.length,
+        suspiciousCompetitorsCount: null,
+        priceGapWithLeader: null,
+        leaderPrice: null,
+        leaderMerchant: null,
+        assessment: null,
+        timestamp: new Date().toISOString(),
+        ...(priceRead.value === null
+          ? rateUnavailableFields(priceRead)
+          : readingsUnavailableFields(
+              'SIN_COMPETIDORES_EN_INPUT',
+              'precios de competidores del libro en vivo provistos por el llamante',
+            )),
+      };
+    } else {
+      const myPrice = priceRead.value;
+      const isSell = (args as any)?.side === 'SELL';
+      // Ranking por conteo de competidores que cotizan mejor que el mío. Es el mismo
+      // criterio del daemon (`sorted.findIndex`) escrito como conteo para que no
+      // dependa de la posición dentro del array de entrada.
+      const betterCount = competitors.filter((c: any) =>
+        isSell ? Number(c.price) > myPrice : Number(c.price) < myPrice,
+      ).length;
+      const ordered = [...competitors].sort((a: any, b: any) =>
+        isSell ? b.price - a.price : a.price - b.price,
+      );
+      const leader = ordered[0] ?? null;
+      const targetPositionRaw = Number(String(desiredRank).replace('TOP_', ''));
+      const targetPosition =
+        Number.isFinite(targetPositionRaw) && targetPositionRaw > 0 ? targetPositionRaw : 1;
+      simulatedResult = {
+        ...simulatedResult,
+        adId,
+        myCurrentPrice: myPrice,
+        currentRank: `TOP_${betterCount + 1}`,
+        desiredRank,
+        isMeetingTargetRank: betterCount < targetPosition,
+        totalCompetitorsAnalyzed: ordered.length,
+        suspiciousCompetitorsCount: null,
+        priceGapWithLeader: leader ? Number((myPrice - Number(leader.price)).toFixed(2)) : null,
+        leaderPrice: leader ? Number(leader.price) : null,
+        leaderMerchant: leader?.merchantName ?? 'Anonymous',
+        assessment: null,
+        timestamp: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'scan_synthetic_stable_arbitrage') {
-    const pairs = (args as any)?.pairs ?? [
-      {
-        targetAsset: 'USDC',
-        spotPair: 'USDCUSDT',
-        spotRate: 0.9992,
-        spotFeePct: 0.05,
-        p2pUsdtRateFiat: 85.5,
-        p2pTargetRateFiat: 86.8,
-        fiatCurrency: 'VES',
-        tradingCapitalUsd: 2500,
-      },
-    ];
+    // Las curvas son lecturas de mercado spot y P2P. Sin `pairs` no hay curva que
+    // escanear: el bloqueava un par USDC/VES fijo (85.5 / 86.8) y reportaba
+    // `opportunitiesCount` sobre él, es decir un arbitrage sintético que ningún
+    // scan observó. `opportunitiesCount: 0` tampoco serviría —afirmaría que se
+    // escaneó y no halló nada— así que el conteo va en null junto al marcador.
+    // DIVERGENCIA CONOCIDA (fuera de alcance de este barrido): el daemon tiene sus
+    // propios `defaultQuotes` en `scan_synthetic_stable_arbitrage.ts` y corre el scan
+    // sobre ellos cuando `pairs` viene vacío. Ese default debe caer por separado; acá
+    // el fallback se niega a inventar la curva.
+    const pairsRaw = (args as any)?.pairs;
+    const pairs: any[] = Array.isArray(pairsRaw) ? pairsRaw : [];
     const minNetSpreadPct = Number((args as any)?.minNetSpreadPct ?? 0.15);
-    const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
-    simulatedResult = {
-      ...simulatedResult,
-      opportunitiesCount: opportunities.length,
-      opportunities,
-      evaluatedAt: new Date().toISOString(),
-    };
+    if (pairs.length === 0) {
+      simulatedResult = {
+        ...simulatedResult,
+        pairsEvaluated: 0,
+        minNetSpreadPct,
+        opportunitiesCount: null,
+        opportunities: null,
+        evaluatedAt: new Date().toISOString(),
+        ...readingsUnavailableFields(
+          'SIN_CURVAS_SPOT_P2P_EN_INPUT',
+          'quotes spot y P2P en vivo provistas por el llamante en `pairs`',
+        ),
+      };
+    } else {
+      const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
+      simulatedResult = {
+        ...simulatedResult,
+        pairsEvaluated: pairs.length,
+        minNetSpreadPct,
+        opportunitiesCount: opportunities.length,
+        opportunities,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'audit_distressed_liquidity_sniper') {
-    const ads = (args as any)?.ads ?? [
-      {
-        advId: 'AD-SNIPER-1',
-        merchantName: 'DistressedSeller',
-        orderType: 'SELL',
-        price: 80.5,
-        availableAmountCrypto: 800,
-        minLimitFiat: 1000,
-        maxLimitFiat: 64000,
-        paymentMethods: ['Banesco'],
-        fiatCurrency: 'VES',
-      },
-    ];
-    const fairMarketRate = Number((args as any)?.fairMarketRate ?? 85.5);
+    // `ads` y `fairMarketRate` son ambos obligatorios en
+    // `AuditDistressedLiquiditySniperInputSchema` y el daemon no les pone default. Acá
+    // se anunciaba un anuncio de panic seller a 80.5 contra una "tasa justa" de 85.5 y
+    // se reportaba la oportunidad de snipeo derivada de los dos números inventados.
+    // El fee taker se propaga solo si viene: el daemon bloquea la alerta con
+    // MISSING_FRICTION_METRICS en vez de asumir un fee que nadie midió.
+    const adsRaw = (args as any)?.ads;
+    const ads: any[] = Array.isArray(adsRaw) ? adsRaw : [];
+    const fairRead = readMarketRate(
+      args,
+      'fairMarketRate',
+      'tasa justa de mercado provista por el llamante',
+    );
     const minDislocationPct = Number((args as any)?.minDislocationPct ?? 0.8);
-    const snipingOpportunities = scanOrderbookSnipingOpportunities(ads, {
-      fairMarketPrice: fairMarketRate,
-      minProfitThresholdPct: minDislocationPct,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      fairMarketRate,
-      snipingOpportunitiesCount: snipingOpportunities.length,
-      snipingOpportunities,
-      evaluatedAt: new Date().toISOString(),
-    };
+    const maxTakerFeePct = (args as any)?.maxTakerFeePct;
+    if (ads.length === 0 || fairRead.value === null) {
+      simulatedResult = {
+        ...simulatedResult,
+        fairMarketRate: fairRead.value,
+        minDislocationPct,
+        maxTakerFeePct: maxTakerFeePct ?? null,
+        frictionMetricsProvided: maxTakerFeePct !== undefined,
+        adsEvaluated: ads.length,
+        snipingOpportunitiesCount: null,
+        snipingOpportunities: null,
+        evaluatedAt: new Date().toISOString(),
+        ...(fairRead.value === null
+          ? rateUnavailableFields(fairRead)
+          : readingsUnavailableFields(
+              'SIN_ANUNCIOS_EN_LIBRO_EN_INPUT',
+              'libro de anuncios P2P en vivo provisto por el llamante en `ads`',
+            )),
+      };
+    } else {
+      const snipingOpportunities = scanOrderbookSnipingOpportunities(ads, {
+        fairMarketPrice: fairRead.value,
+        minProfitThresholdPct: minDislocationPct,
+        ...(maxTakerFeePct === undefined ? {} : { maxTakerFeePct }),
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        fairMarketRate: fairRead.value,
+        minDislocationPct,
+        maxTakerFeePct: maxTakerFeePct ?? null,
+        frictionMetricsProvided: maxTakerFeePct !== undefined,
+        adsEvaluated: ads.length,
+        snipingOpportunitiesCount: snipingOpportunities.length,
+        snipingOpportunities,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'query_otc_darkpool_spread') {
+    // Cada quote de venue es una lectura de mercado (buyRate/sellRate) y las fricciones
+    // de transferencia son mediciones. Sin `quotes` el bloque montaba dos venues de
+    // ejemplo —incluido un "Caracas Cash Desk" con 83.5/88.5— y devolvía las rutas de
+    // arbitrage calculadas sobre ellas. Misma divergencia que en
+    // `scan_synthetic_stable_arbitrage`: el daemon conserva `defaultVenues` en
+    // `query_otc_darkpool_spread.ts` y hay que retirarlos por separado.
     const volumeUsd = Number((args as any)?.volumeUsd ?? 10000);
     const minNetSpreadPct = Number((args as any)?.minNetSpreadPct ?? 1.2);
-    const quotes = (args as any)?.quotes ?? [
-      {
-        venueId: 'BINANCE_P2P',
-        venueName: 'Binance P2P',
-        venueType: 'BINANCE_P2P',
-        currencyPair: 'USDT/VES',
-        buyRate: 85.2,
-        sellRate: 86.8,
-        makerFeePct: 0.1,
-        takerFeePct: 0.1,
-      },
-      {
-        venueId: 'CCS_CASH_DESK',
-        venueName: 'Caracas Cash Desk',
-        venueType: 'PHYSICAL_CASH_DESK',
-        currencyPair: 'USDT/VES',
-        buyRate: 83.5,
-        sellRate: 88.5,
-        transferOrCashFrictionPct: 0.5,
-      },
-    ];
-    const routes = aggregateDarkPoolOpportunities(quotes, {
-      capitalUsd: volumeUsd,
-      minNetSpreadPct,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      volumeTestedUsd: volumeUsd,
-      routesFoundCount: routes.length,
-      routes,
-      evaluatedAt: new Date().toISOString(),
-    };
+    const quotesRaw = (args as any)?.quotes;
+    const quotes: any[] = Array.isArray(quotesRaw) ? quotesRaw : [];
+    if (quotes.length === 0) {
+      simulatedResult = {
+        ...simulatedResult,
+        volumeTestedUsd: volumeUsd,
+        minNetSpreadPct,
+        venuesEvaluated: 0,
+        routesFoundCount: null,
+        routes: null,
+        evaluatedAt: new Date().toISOString(),
+        ...readingsUnavailableFields(
+          'SIN_QUOTES_DE_VENUE_EN_INPUT',
+          'quotes de venues en vivo provistas por el llamante en `quotes`',
+        ),
+      };
+    } else {
+      const routes = aggregateDarkPoolOpportunities(quotes, {
+        capitalUsd: volumeUsd,
+        minNetSpreadPct,
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        volumeTestedUsd: volumeUsd,
+        minNetSpreadPct,
+        venuesEvaluated: quotes.length,
+        routesFoundCount: routes.length,
+        routes,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'route_fintech_payroll_settlement') {
+    // La tasa VES/USD solo se usa para los rails en VES, y ahí el monto en VES que la
+    // herramienta devuelve es dinero que se va a mover: con 85.5 inventado la
+    // cotización de una nómina no era una simulación, era una promesa de pago. Para
+    // rails que no pasan por VES la tasa no interviene, así que no se exige.
+    // `grossAmountUsd` también es obligatorio en el contrato real y sin él no hay nada
+    // que cotizar.
     const platform = (args as any)?.platform ?? (args as any)?.sourcePlatform ?? 'DEEL';
-    const grossAmountUsd = Number((args as any)?.grossAmountUsd ?? (args as any)?.amountUsd ?? 2500);
+    const grossAmountRead = readMarketRate(
+      args,
+      'grossAmountUsd',
+      'monto bruto de la nómina en USDT',
+    );
     const payoutRail = (args as any)?.payoutRail ?? 'VES_PAGO_MOVIL';
-    const vesRatePerUsd = Number((args as any)?.vesRatePerUsd ?? 85.5);
-    const clientTier = (args as any)?.clientTier ?? 'RECURRENT_REMOTE';
-    const isVerifiedContractor = Boolean((args as any)?.isVerifiedContractor ?? true);
-    const quote = calculateFintechSettlementQuote({
-      platform,
-      grossAmountUsd,
-      payoutRail,
-      vesRatePerUsd,
-      clientTier,
-      isVerifiedContractor,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      quote,
-      evaluatedAt: new Date().toISOString(),
-    };
+    const usaRailVes = payoutRail === 'VES_PAGO_MOVIL' || payoutRail === 'VES_TRANSFERENCIA';
+    const vesRateRead = readMarketRate(
+      args,
+      'vesRatePerUsd',
+      'tasa VES/USD en vivo (Cotizave `parallel` o get_parallel_rates)',
+    );
+    // Defaults de contrato, copiados del schema (`RouteFintechPayrollSettlementInputSchema`):
+    // antes el bloque suponía `RECURRENT_REMOTE` (el schema dice STANDARD) y, peor,
+    // `isVerifiedContractor: true`. Ese `true` inventado apagaba la clasificación de
+    // riesgo de `calculateFintechSettlementQuote`: sin él, una nómina de 10k USDT de
+    // un contratista sin verificar salía `riskTier: LOW`, cero horas de validación y el
+    // texto "Liquidación Inmediata: Sí (Fondos Verificados)". Fabricar una
+    // verificación KYC no es un default, es una mentira de cumplimiento.
+    const clientTier = (args as any)?.clientTier ?? 'STANDARD';
+    const isVerifiedContractor = Boolean((args as any)?.isVerifiedContractor ?? false);
+    const faltaTasa = usaRailVes && vesRateRead.value === null;
+    if (grossAmountRead.value === null || faltaTasa) {
+      simulatedResult = {
+        ...simulatedResult,
+        platform,
+        grossAmountUsd: grossAmountRead.value,
+        payoutRail,
+        vesRatePerUsd: vesRateRead.value,
+        vesRateRequiredForRail: usaRailVes,
+        clientTier,
+        isVerifiedContractor,
+        quote: null,
+        evaluatedAt: new Date().toISOString(),
+        ...(faltaTasa
+          ? rateUnavailableFields(vesRateRead)
+          : readingsUnavailableFields(
+              'FALTA_ARGUMENTO_grossAmountUsd',
+              'monto bruto de la nómina declarado por el llamante',
+            )),
+      };
+    } else {
+      // Para rails que no pasan por VES la tasa no interviene en la liquidación, así
+      // que se pasa `undefined` explícito en vez de un número nulo disfrazado: el
+      // motor tiene su propio default interno de 85.0 y no hay razón para depender
+      // de que su rama VES no se dispare.
+      const vesRateForQuote: number | undefined = vesRateRead.value ?? undefined;
+      const quote = calculateFintechSettlementQuote({
+        platform,
+        grossAmountUsd: grossAmountRead.value,
+        payoutRail,
+        vesRatePerUsd: vesRateForQuote,
+        clientTier,
+        isVerifiedContractor,
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        platform,
+        grossAmountUsd: grossAmountRead.value,
+        payoutRail,
+        vesRatePerUsd: vesRateRead.value,
+        vesRateRequiredForRail: usaRailVes,
+        clientTier,
+        isVerifiedContractor,
+        quote,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'recommend_counterparty_yield_price') {
+    // `baseMarketRate` es el precio de mercado del que se parte; las métricas de la
+    // contraparte (tiempo de liberación, trades, disputas, volumen) son datos de la
+    // contraparte. Con la base inventada en 85.5 el bloque publicaba un "yieldPrice"
+    // derivado, es decir el precio exacto que el LMC iba a ofrecer. Las métricas sí
+    // tienen defaults documentados en el motor de pricing dinámico (ver
+    // `calculateDynamicCounterpartyPricing`), así que se conservan; la base no.
     const counterpartyId = String((args as any)?.counterpartyId ?? 'CP-VIP-1');
-    const baseMarketRate = Number((args as any)?.baseMarketRate ?? (args as any)?.marketBasePrice ?? 85.5);
+    const baseRead = readMarketRate(
+      args,
+      'baseMarketRate',
+      'tasa base de mercado provista por el llamante',
+    );
     const orderType = ((args as any)?.orderType ?? 'BUY') as 'BUY' | 'SELL';
     const averageReleaseMinutes = Number((args as any)?.averageReleaseMinutes ?? 2.5);
     const completedTradesCount = Number((args as any)?.completedTradesCount ?? 120);
     const disputeCount = Number((args as any)?.disputeCount ?? 0);
     const monthlyVolumeUsd = Number((args as any)?.monthlyVolumeUsd ?? 30000);
     const requestedAmountUsd = Number((args as any)?.requestedAmountUsd ?? 3000);
-    const pricing = calculateDynamicCounterpartyPricing({
-      metrics: {
+    if (baseRead.value === null) {
+      simulatedResult = {
+        ...simulatedResult,
         counterpartyId,
-        averageReleaseMinutes,
-        completedTradesCount,
-        disputeCount,
-        monthlyVolumeUsd,
-      },
-      baseMarketRate,
-      orderType,
-      requestedAmountUsd,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      result: pricing,
-      evaluatedAt: new Date().toISOString(),
-    };
+        baseMarketRate: null,
+        orderType,
+        requestedAmountUsd,
+        result: null,
+        evaluatedAt: new Date().toISOString(),
+        ...rateUnavailableFields(baseRead),
+      };
+    } else {
+      const pricing = calculateDynamicCounterpartyPricing({
+        metrics: {
+          counterpartyId,
+          averageReleaseMinutes,
+          completedTradesCount,
+          disputeCount,
+          monthlyVolumeUsd,
+        },
+        baseMarketRate: baseRead.value,
+        orderType,
+        requestedAmountUsd,
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        counterpartyId,
+        baseMarketRate: baseRead.value,
+        orderType,
+        requestedAmountUsd,
+        result: pricing,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'process_concierge_inquiry') {
-    const customerMessage = String((args as any)?.customerMessage ?? (args as any)?.message ?? 'Buenas tardes a como tienen la tasa de USDT?');
-    const deskRatePerUsd = Number((args as any)?.deskRatePerUsd ?? (args as any)?.deskSellRate ?? 87.0);
-    const bankName = String((args as any)?.bankName ?? 'Banesco');
-    const bankAccountDetails = String((args as any)?.bankAccountDetails ?? '0134-XXXX-XXXX-XXXX');
-    const parsed = parseCustomerChatMessage(customerMessage);
-    const reply = generateConciergeReply(parsed, {
-      deskRatePerUsd,
-      bankName,
-      bankAccountDetails,
-      quoteValidityMinutes: 15,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      ...reply,
-      processedAt: new Date().toISOString(),
-    };
+    // `deskRatePerUsd` es la tasa que la mesa de concierge prometería al cliente y
+    // `generateConciergeReply` la escribe dentro del texto de respuesta: un mensaje al
+    // cliente con una tasa de 87.00 VES/USDT que la mesa nunca cotizó. Sin tasa no se
+    // redacta la respuesta (sí se puede devolver el intent parseado, que es real), y se
+    // declara la ausencia.
+    const customerMessage = String((args as any)?.customerMessage ?? (args as any)?.message ?? '');
+    const deskRateRead = readMarketRate(
+      args,
+      'deskRatePerUsd',
+      'tasa de venta de la mesa en vivo (Cotizave `parallel` o get_parallel_rates)',
+    );
+    const bankName = (args as any)?.bankName ?? 'Banesco';
+    const bankAccountDetails = (args as any)?.bankAccountDetails ?? '0134-XXXX-XXXX-XXXX';
+    if (!customerMessage) {
+      simulatedResult = {
+        ...simulatedResult,
+        parsedInquiry: null,
+        exchangeRateUsed: null,
+        quoteAmountCrypto: null,
+        quoteAmountFiat: null,
+        formattedReplyMessage: null,
+        processedAt: new Date().toISOString(),
+        ...readingsUnavailableFields(
+          'FALTA_ARGUMENTO_customerMessage',
+          'mensaje del cliente provisto por el llamante',
+        ),
+      };
+    } else {
+      const parsed = parseCustomerChatMessage(customerMessage);
+      if (deskRateRead.value === null) {
+        simulatedResult = {
+          ...simulatedResult,
+          deskRatePerUsd: null,
+          quoteValidityMinutes: null,
+          bankName,
+          bankAccountDetails,
+          // El inquiry parseado sí es una lectura real del mensaje: se devuelve para
+          // que el operador sepa qué le preguntan, sin contestarle una tasa. La
+          // respuesta queda en null porque redactarla exigiría la tasa.
+          parsedInquiry: parsed,
+          exchangeRateUsed: null,
+          quoteAmountCrypto: null,
+          quoteAmountFiat: null,
+          formattedReplyMessage: null,
+          requiresOperatorHumanReview: true,
+          processedAt: new Date().toISOString(),
+          ...rateUnavailableFields(deskRateRead),
+        };
+      } else {
+        const reply = generateConciergeReply(parsed, {
+          deskRatePerUsd: deskRateRead.value,
+          bankName: String(bankName),
+          bankAccountDetails: String(bankAccountDetails),
+          quoteValidityMinutes: 15,
+        });
+        simulatedResult = {
+          ...simulatedResult,
+          deskRatePerUsd: deskRateRead.value,
+          quoteValidityMinutes: 15,
+          bankName,
+          bankAccountDetails,
+          ...reply,
+          processedAt: new Date().toISOString(),
+        };
+      }
+    }
   } else if (toolName === 'predict_bcv_macro_regime') {
-    const bcvOfficialRate = Number((args as any)?.bcvOfficialRate ?? 80.0);
-    const parallelMarketRate = Number((args as any)?.parallelMarketRate ?? (args as any)?.parallelRate ?? 91.5);
+    // Ambas tasas son lecturas de mercado y el régimen se deriva de su brecha. Con
+    // 80.0 y 91.5 el motor devolvía `SURTENSION_PARALELO` con confianza calculada:
+    // una señal de alerta macroeconómica sobre una brecha que nadie observó. El
+    // contexto temporal (días desde la última intervención, hora, día de la semana,
+    // inyección estimada) es calendario y política monetaria, no mercado, y se conserva
+    // con su default.
+    const officialRead = readMarketRate(
+      args,
+      'bcvOfficialRate',
+      'tasa oficial BCV en vivo (get_bcv_rates)',
+    );
+    const parallelRead = readMarketRate(
+      args,
+      'parallelMarketRate',
+      'tasa paralela en vivo (Cotizave `parallel` o get_parallel_rates)',
+    );
     const daysSinceLastIntervention = Number((args as any)?.daysSinceLastIntervention ?? 4);
     const currentHourOfDayUtcMinus4 = Number((args as any)?.currentHourOfDayUtcMinus4 ?? 10);
     const currentDayOfWeek = Number((args as any)?.currentDayOfWeek ?? 1);
-    const estimatedWeeklyBcvInjectionUsd = Number((args as any)?.estimatedWeeklyBcvInjectionUsd ?? 50000000);
-    const assessment = evaluateMacroBcvRegime({
-      bcvOfficialRate,
-      parallelMarketRate,
-      daysSinceLastIntervention,
-      currentHourOfDayUtcMinus4,
-      currentDayOfWeek,
-      estimatedWeeklyBcvInjectionUsd,
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      assessment,
-      evaluatedAt: new Date().toISOString(),
-    };
+    const estimatedWeeklyBcvInjectionUsd = Number(
+      (args as any)?.estimatedWeeklyBcvInjectionUsd ?? 50000000,
+    );
+    if (officialRead.value === null || parallelRead.value === null) {
+      const faltante = officialRead.value === null ? officialRead : parallelRead;
+      simulatedResult = {
+        ...simulatedResult,
+        bcvOfficialRate: officialRead.value,
+        parallelMarketRate: parallelRead.value,
+        gapPct: null,
+        daysSinceLastIntervention,
+        currentHourOfDayUtcMinus4,
+        currentDayOfWeek,
+        estimatedWeeklyBcvInjectionUsd,
+        assessment: null,
+        evaluatedAt: new Date().toISOString(),
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      const assessment = evaluateMacroBcvRegime({
+        bcvOfficialRate: officialRead.value,
+        parallelMarketRate: parallelRead.value,
+        daysSinceLastIntervention,
+        currentHourOfDayUtcMinus4,
+        currentDayOfWeek,
+        estimatedWeeklyBcvInjectionUsd,
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        bcvOfficialRate: officialRead.value,
+        parallelMarketRate: parallelRead.value,
+        daysSinceLastIntervention,
+        currentHourOfDayUtcMinus4,
+        currentDayOfWeek,
+        estimatedWeeklyBcvInjectionUsd,
+        assessment,
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
   } else if (toolName === 'optimize_treasury_idle_yield') {
     const totalUsdtInventory = Number((args as any)?.totalUsdtInventory ?? 25000);
     const currentlyCommittedUsdt = Number((args as any)?.currentlyCommittedUsdt ?? 4000);
