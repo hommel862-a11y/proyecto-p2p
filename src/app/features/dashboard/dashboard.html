@@ -841,8 +841,9 @@
 
           <!-- Mental State / Anti-Tilt selector -->
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <label style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Estado Emocional del Trader:</label>
+            <label for="preflight-mental-state" style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Estado Emocional del Trader:</label>
             <select
+              id="preflight-mental-state"
               style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 8px 12px; color: #ffffff; font-size: 0.85rem;"
               [ngModel]="preflightMentalState()"
               (ngModelChange)="preflightMentalState.set($event)"
@@ -856,10 +857,11 @@
 
           <!-- Daily Loss Limit -->
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Límite de Pérdida Diaria (Stop-Loss):</label>
+            <label for="preflight-daily-loss" style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Límite de Pérdida Diaria (Stop-Loss):</label>
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 0.82rem; color: #94a3b8;">$</span>
               <input
+                id="preflight-daily-loss"
                 type="number"
                 style="width: 80px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 8px; color: #ffffff; font-size: 0.85rem; font-weight: 700;"
                 [ngModel]="preflightDailyLossLimit()"

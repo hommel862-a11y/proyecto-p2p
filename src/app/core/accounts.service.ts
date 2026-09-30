@@ -41,7 +41,7 @@ export type TreasurySnapshotAccount = TreasuryAccountSnapshotDto;
  * account array is widened to a readonly view because the renderer never mutates it either.
  */
 export interface TreasurySnapshot extends Omit<TreasurySnapshotDto, 'accounts'> {
-  accounts: ReadonlyArray<TreasurySnapshotAccount>;
+  accounts: readonly TreasurySnapshotAccount[];
 }
 
 const DEFAULT_ACCOUNTS: BankAccount[] = [

@@ -44,7 +44,7 @@
     <div class="parameters-panel">
       <!-- Mode Toggle -->
       <div class="mode-toggle-card">
-        <label class="toggle-label">Modo de Cotización:</label>
+        <span class="toggle-label">Modo de Cotización:</span>
         <div class="mode-buttons">
           <button
             type="button"
@@ -68,7 +68,7 @@
       <!-- Main Input Amount -->
       <div class="input-card">
         <div class="input-header">
-          <label class="input-label">
+          <label class="input-label" for="remittance-input-amount">
             {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en VES' }}
           </label>
           <span class="currency-tag">
@@ -77,6 +77,7 @@
         </div>
         <div class="amount-input-wrapper">
           <input
+            id="remittance-input-amount"
             type="number"
             class="amount-input"
             [ngModel]="inputAmount()"
@@ -94,8 +95,9 @@
         <div class="tuning-grid">
           <!-- Origin Rate -->
           <div class="tuning-field">
-            <label>Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
+            <label for="origin-crypto-rate">Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
             <input
+              id="origin-crypto-rate"
               type="number"
               class="tuning-input"
               [ngModel]="originCryptoRate()"
@@ -107,10 +109,11 @@
           <!-- Destination Rate (VES/USDT) -->
           <div class="tuning-field">
             <div class="field-label-row">
-              <label>Tasa Salida (VES/USDT)</label>
+              <label for="dest-crypto-rate">Tasa Salida (VES/USDT)</label>
               <span class="live-tag">P2P En Vivo</span>
             </div>
             <input
+              id="dest-crypto-rate"
               type="number"
               class="tuning-input"
               [ngModel]="destCryptoRate()"
@@ -121,9 +124,10 @@
 
           <!-- Operator Margin -->
           <div class="tuning-field">
-            <label>Margen de la Mesa (%)</label>
+            <label for="operator-margin-pct">Margen de la Mesa (%)</label>
             <div class="input-with-suffix">
               <input
+                id="operator-margin-pct"
                 type="number"
                 class="tuning-input"
                 [ngModel]="operatorMarginPct()"
@@ -138,9 +142,10 @@
 
           <!-- Banking Friction (e.g. 4x1000) -->
           <div class="tuning-field">
-            <label>Fricción Bancaria / 4x1000 (%)</label>
+            <label for="banking-fee-pct">Fricción Bancaria / 4x1000 (%)</label>
             <div class="input-with-suffix">
               <input
+                id="banking-fee-pct"
                 type="number"
                 class="tuning-input"
                 [ngModel]="bankingFeePct()"
@@ -156,8 +161,9 @@
         <!-- Customization for WhatsApp -->
         <div class="custom-branding-grid">
           <div class="tuning-field">
-            <label>Nombre de tu Mesa / Negocio</label>
+            <label for="desk-name">Nombre de tu Mesa / Negocio</label>
             <input
+              id="desk-name"
               type="text"
               class="tuning-input text-input"
               [ngModel]="deskName()"
@@ -166,9 +172,10 @@
             />
           </div>
           <div class="tuning-field">
-            <label>Validez de la Cotización</label>
+            <label for="validity-minutes">Validez de la Cotización</label>
             <div class="input-with-suffix">
               <input
+                id="validity-minutes"
                 type="number"
                 class="tuning-input"
                 [ngModel]="validityMinutes()"

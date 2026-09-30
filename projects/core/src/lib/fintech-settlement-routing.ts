@@ -94,7 +94,7 @@ export function calculateFintechSettlementQuote(
   // Chargeback & KYC risk classification
   let riskTier: 'LOW' | 'MODERATE' | 'HIGH_HOLD_REQUIRED' = 'LOW';
   let holdHours = 0;
-  let complianceDocRequired = gross >= 2000;
+  const complianceDocRequired = gross >= 2000;
 
   if (req.platform === 'PAYPAL') {
     riskTier = 'HIGH_HOLD_REQUIRED';

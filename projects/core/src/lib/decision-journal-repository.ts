@@ -40,7 +40,6 @@ import type {
   DecisionSide,
   MarketSnapshot,
   OpenDecisionCycleInput,
-  OutcomeSource,
   RecordDecisionInput,
   RecordMarketSnapshotInput,
   RecordOutcomeInput,

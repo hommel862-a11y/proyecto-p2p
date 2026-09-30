@@ -155,13 +155,13 @@ export function calculateRemittanceQuote(request: RemittanceQuoteRequest): Remit
   const originRate = Math.max(0.000001, request.originCryptoRate);
   const destRate = Math.max(0.000001, request.destCryptoRate);
 
-  let grossOrigin = 0;
-  let bankingFee = 0;
-  let netOrigin = 0;
-  let cryptoBase = 0;
-  let operatorUsdt = 0;
-  let clientUsdt = 0;
-  let destPayout = 0;
+  let grossOrigin: number;
+  let bankingFee: number;
+  let netOrigin: number;
+  let cryptoBase: number;
+  let operatorUsdt: number;
+  let clientUsdt: number;
+  let destPayout: number;
 
   if (request.calculationMode === 'BY_SEND_AMOUNT') {
     grossOrigin = Math.max(0, request.amount);

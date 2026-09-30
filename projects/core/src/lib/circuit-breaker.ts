@@ -8,7 +8,7 @@ export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 export class CircuitBreakerOpenError extends Error {
   readonly state = 'OPEN' as const;
   constructor(
-    message: string = 'Circuit breaker is OPEN. Fast-failing request to protect downstream service.',
+    message = 'Circuit breaker is OPEN. Fast-failing request to protect downstream service.',
   ) {
     super(message);
     this.name = 'CircuitBreakerOpenError';

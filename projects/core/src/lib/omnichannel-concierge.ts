@@ -123,7 +123,7 @@ export function generateConciergeReply(
 
   let quoteCrypto: number | undefined;
   let quoteFiat: number | undefined;
-  let replyText = '';
+  let replyText: string;
   let requiresReview = false;
 
   if (inquiry.intent === 'GREETING') {

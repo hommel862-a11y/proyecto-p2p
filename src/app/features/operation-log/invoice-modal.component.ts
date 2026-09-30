@@ -32,8 +32,8 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
   template: `
     <div
       class="modal-backdrop"
-      (click)="$event.target === $event.currentTarget && close.emit()"
-      (keydown.escape)="close.emit()"
+      (click)="$event.target === $event.currentTarget && closeModal.emit()"
+      (keydown.escape)="closeModal.emit()"
       tabindex="0"
       role="button"
       aria-label="Cerrar modal de facturación">
@@ -54,7 +54,7 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
               Genera facturas PDF en lote por servicios intangibles (Marketing, IT, Consultoría) sin referencias cripto para justificar fondos ante bancos y neobancos (Banesco, Mercantil Panamá, Simly, Facebank).
             </p>
           </div>
-          <button type="button" class="btn btn-ghost" (click)="close.emit()" style="padding: 2px 8px; font-size: 1.1rem;">✕</button>
+          <button type="button" class="btn btn-ghost" (click)="closeModal.emit()" style="padding: 2px 8px; font-size: 1.1rem;">✕</button>
         </div>
 
         <!-- Mode selector: App operations vs CSV Upload -->
@@ -199,8 +199,9 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
           </div>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
             <div>
-              <label class="terminal-label"><span>Razón Social / Nombre</span></label>
+              <label class="terminal-label" for="issuer-biz-name"><span>Razón Social / Nombre</span></label>
               <input
+                id="issuer-biz-name"
                 type="text"
                 class="terminal-input"
                 [value]="issuer().businessName"
@@ -209,8 +210,9 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
               />
             </div>
             <div>
-              <label class="terminal-label"><span>RIF / ID Fiscal</span></label>
+              <label class="terminal-label" for="issuer-tax-id"><span>RIF / ID Fiscal</span></label>
               <input
+                id="issuer-tax-id"
                 type="text"
                 class="terminal-input"
                 [value]="issuer().taxId"
@@ -219,8 +221,9 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
               />
             </div>
             <div>
-              <label class="terminal-label"><span>Dirección Fiscal</span></label>
+              <label class="terminal-label" for="issuer-address"><span>Dirección Fiscal</span></label>
               <input
+                id="issuer-address"
                 type="text"
                 class="terminal-input"
                 [value]="issuer().address"
@@ -229,8 +232,9 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
               />
             </div>
             <div>
-              <label class="terminal-label"><span>Concepto de Servicio</span></label>
+              <label class="terminal-label" for="issuer-concept"><span>Concepto de Servicio</span></label>
               <select
+                id="issuer-concept"
                 class="terminal-select"
                 [value]="selectedConceptId()"
                 (change)="selectedConceptId.set($any($event.target).value)">
@@ -316,7 +320,7 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
 
         <!-- Footer Actions -->
         <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center;">
-          <button type="button" class="btn btn-ghost" (click)="close.emit()">
+          <button type="button" class="btn btn-ghost" (click)="closeModal.emit()">
             Cerrar
           </button>
           <div style="display: flex; gap: 8px;">
@@ -336,7 +340,7 @@ const ISSUER_STORAGE_KEY = 'p2p.invoice_engine.issuer_profile';
 })
 export class InvoiceModalComponent {
   readonly operations = input<readonly Operation[]>([]);
-  readonly close = output<void>();
+  readonly closeModal = output<void>();
 
   private readonly toast = inject(ToastService);
 

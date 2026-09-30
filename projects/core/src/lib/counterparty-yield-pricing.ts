@@ -120,15 +120,12 @@ export function calculateDynamicCounterpartyPricing(
   // Direction adjustment:
   // If we SELL crypto to client: we want a higher fiat price (rate * (1 + spread%))
   // If we BUY crypto from client: we want a lower fiat price (rate * (1 - spread%))
-  let adjustedRate = baseRate;
-  if (req.orderType === 'SELL') {
-    adjustedRate = baseRate * (1 + spreadAdjustmentPct / 100);
-  } else {
-    adjustedRate = baseRate * (1 - spreadAdjustmentPct / 100);
-  }
+  const adjustedRate =
+    req.orderType === 'SELL'
+      ? baseRate * (1 + spreadAdjustmentPct / 100)
+      : baseRate * (1 - spreadAdjustmentPct / 100);
 
   const roundedRate = roundMoney(adjustedRate, 2);
-  const deltaFromBase = Math.abs(roundedRate - baseRate);
   const projectedAlphaUsd = roundMoney((amount * Math.abs(spreadAdjustmentPct)) / 100, 2);
 
   return {

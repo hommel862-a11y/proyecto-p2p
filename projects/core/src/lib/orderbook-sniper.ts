@@ -74,23 +74,12 @@ export function evaluateSnipingOpportunity(
     return null; // Dust order, ignore
   }
 
-  let divergencePct = 0;
-  let isUnderpricedSell = false;
-  let isOverpricedBuy = false;
+  const divergencePct =
+    ad.orderType === 'SELL'
+      ? ((fair - ad.price) / fair) * 100
+      : ((ad.price - fair) / fair) * 100;
 
-  if (ad.orderType === 'SELL') {
-    // A merchant is selling crypto to us below fair market price
-    // e.g. fair = 86.0 Bs, ad = 83.5 Bs -> price is cheaper by 2.9%
-    divergencePct = ((fair - ad.price) / fair) * 100;
-    isUnderpricedSell = divergencePct >= minThreshold;
-  } else {
-    // A merchant is buying crypto from us above fair market price
-    // e.g. fair = 85.0 Bs, ad = 87.5 Bs -> merchant pays more by 2.9%
-    divergencePct = ((ad.price - fair) / fair) * 100;
-    isOverpricedBuy = divergencePct >= minThreshold;
-  }
-
-  if (!isUnderpricedSell && !isOverpricedBuy) {
+  if (divergencePct < minThreshold) {
     return null; // Normal order, no anomaly
   }
 

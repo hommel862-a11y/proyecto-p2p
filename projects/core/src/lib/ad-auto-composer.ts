@@ -166,7 +166,7 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     ? Math.max(0, selectedAccount.dailyLimitVes - selectedAccount.currentVolumeVes)
     : 0;
 
-  let bankCapacitySafe = remainingCupo > 0;
+  const bankCapacitySafe = remainingCupo > 0;
   if (!bankCapacitySafe) {
     flags.push('NO_ACTIVE_BANK_CAPACITY');
   }

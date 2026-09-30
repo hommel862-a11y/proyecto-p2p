@@ -84,12 +84,10 @@ import {
   type ForensicOperationRecord,
 } from './audit-analytics';
 import {
-  calculateSyntheticStableOpportunity,
   scanSyntheticStableCurves,
   type StableCrossQuote,
 } from './synthetic-stable-arbitrage';
 import {
-  evaluateSnipingOpportunity,
   scanOrderbookSnipingOpportunities,
   type P2pOrderbookAdItem,
 } from './orderbook-sniper';
@@ -99,12 +97,10 @@ import {
 } from './otc-darkpool-aggregator';
 import {
   calculateFintechSettlementQuote,
-  type FintechSettlementRequest,
 } from './fintech-settlement-routing';
 import {
   calculateDynamicCounterpartyPricing,
   classifyCounterpartyTier,
-  type DynamicPricingRequest,
 } from './counterparty-yield-pricing';
 import {
   parseCustomerChatMessage,
@@ -112,20 +108,16 @@ import {
 } from './omnichannel-concierge';
 import {
   evaluateMacroBcvRegime,
-  type MacroTelemetryInput,
 } from './macro-bcv-intelligence';
 import {
   calculateTreasuryYieldAllocation,
-  type TreasuryYieldParams,
 } from './smart-treasury-yield';
 import {
   compileBrowserOperatorTask,
-  type BrowserOperatorTaskInput,
 } from './browser-operator-bridge';
 import {
   calculateRemittanceQuote,
   formatRemittanceWhatsAppMessage,
-  type RemittanceQuoteRequest,
 } from './remittance-corridor';
 
 export interface AgentSkillParameterSchema {
@@ -3332,6 +3324,8 @@ export interface StrategyPlanCard {
   assignedOperatorName?: string;
   rationale: string;
   status: 'PROPOSED' | 'APPROVED' | 'EXECUTED' | 'CANCELLED' | 'REJECTED';
+  esSimulado?: boolean;
+  isSimulated?: boolean;
 }
 
 export interface CopilotChatMessage {
@@ -3341,9 +3335,25 @@ export interface CopilotChatMessage {
   plan?: StrategyPlanCard;
 }
 
+export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';
+
+export interface ProvenanceMetadata {
+  source: ExecutionProvenance;
+  model?: string;
+  provenanceId: string;
+  timestamp: number;
+  fallbackReason?: string;
+  liveMarketFeedConnected?: boolean;
+  esSimulado?: boolean;
+  stepsCount?: number;
+  maxSteps?: number;
+  apiCallsCount?: number;
+}
+
 export interface CopilotResponse {
   reply: string;
   suggestedPlan?: StrategyPlanCard;
   skillsExecuted?: string[];
   learningsGenerated?: string[];
+  provenance?: ProvenanceMetadata;
 }

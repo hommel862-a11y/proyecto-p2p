@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
 import { DecisionJournalService } from './decision-journal.service';

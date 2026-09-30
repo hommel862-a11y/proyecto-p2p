@@ -225,9 +225,9 @@ export function calculateSyntheticStableOpportunity(
     legsB,
   );
 
-  let direction: 'CONVERT_SPOT_AND_SELL_P2P' | 'BUY_P2P_AND_CONVERT_SPOT' | 'NO_OPPORTUNITY' = 'NO_OPPORTUNITY';
-  let chosenResult: TriangularArbitrageResult = resultA;
-  let grossSpreadPct = 0;
+  let direction: 'CONVERT_SPOT_AND_SELL_P2P' | 'BUY_P2P_AND_CONVERT_SPOT' | 'NO_OPPORTUNITY';
+  let chosenResult: TriangularArbitrageResult;
+  let grossSpreadPct: number;
 
   if (resultA.roiPct > resultB.roiPct && resultA.roiPct > 0) {
     direction = 'CONVERT_SPOT_AND_SELL_P2P';

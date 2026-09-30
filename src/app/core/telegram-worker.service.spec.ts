@@ -795,7 +795,7 @@ describe('TelegramWorkerService', () => {
 
   describe('panel editable (/panel)', () => {
     type EditOutcome = 'EDITED' | 'UNCHANGED' | 'NOT_FOUND' | 'FAILED';
-    type PanelWorkerApi = {
+    interface PanelWorkerApi {
       answerCallbackQuery: (
         token: string,
         callbackQueryId: string | undefined,
@@ -1088,7 +1088,7 @@ describe('TelegramWorkerService', () => {
 
   describe('auditoría del journal en el panel y en /status', () => {
     type EditOutcome = 'EDITED' | 'UNCHANGED' | 'NOT_FOUND' | 'FAILED';
-    type PanelWorkerApi = {
+    interface PanelWorkerApi {
       answerCallbackQuery: (
         token: string,
         callbackQueryId: string | undefined,
@@ -1223,7 +1223,7 @@ describe('TelegramWorkerService', () => {
      * New worker internals, reached through a cast so this spec compiles before
      * the implementation exists (the assertions are what must fail first).
      */
-    type WorkerV2Api = {
+    interface WorkerV2Api {
       answerCallbackQuery: (
         token: string,
         callbackQueryId: string | undefined,
@@ -1751,7 +1751,7 @@ describe('TelegramWorkerService', () => {
  * esperada.
  */
 describe('TelegramWorkerService sin puente de journal (build web)', () => {
-  type EditApi = {
+  interface EditApi {
     editTelegramMessage: (
       token: string,
       chatId: number | string,

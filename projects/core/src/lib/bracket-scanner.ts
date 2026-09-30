@@ -191,10 +191,10 @@ export function detectOtcWhaleBlocks(
   if (whaleDetected) {
     if (totalWhaleVolumeUsd >= 250000) {
       recommendedAction = 'PAUSE_BUYS_PHANTOM_CORRECTION';
-      rationale = `Irrupción de súper-bloques institucionales (${whaleBlocks.length} órdenes, \$${roundMoney(totalWhaleVolumeUsd, 0).toLocaleString()} USD). Alta probabilidad de liquidez fantasma o absorción violenta. Pausar compras y esperar corrección.`;
+      rationale = `Irrupción de súper-bloques institucionales (${whaleBlocks.length} órdenes, $${roundMoney(totalWhaleVolumeUsd, 0).toLocaleString()} USD). Alta probabilidad de liquidez fantasma o absorción violenta. Pausar compras y esperar corrección.`;
     } else {
       recommendedAction = 'ANTICIPATE_PRICE_SURGE';
-      rationale = `Detección de absorción institucional por \$${roundMoney(totalWhaleVolumeUsd, 0).toLocaleString()} USD. Anticipar subida temporal de precio y ajustar postura de venta en picos.`;
+      rationale = `Detección de absorción institucional por $${roundMoney(totalWhaleVolumeUsd, 0).toLocaleString()} USD. Anticipar subida temporal de precio y ajustar postura de venta en picos.`;
     }
   }
 

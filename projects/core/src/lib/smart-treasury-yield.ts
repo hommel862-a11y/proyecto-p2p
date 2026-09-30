@@ -48,8 +48,8 @@ export function calculateTreasuryYieldAllocation(
   const apyProvenance = params.apyProvenance ?? (params.flexibleApyPct ? 'LIVE_EXCHANGE_FEED' : 'ESTIMATED_BENCHMARK');
   const defaultBuffer = params.minimumSafetyBufferUsd ?? 2500;
 
-  let bufferRequired = defaultBuffer;
-  let sweepAmount = 0;
+  let bufferRequired: number;
+  let sweepAmount: number;
   let directive: 'EXECUTE_SWEEP_DEPOSIT' | 'MAINTAIN_CURRENT_ALLOCATION' | 'TRIGGER_INSTANT_REDEMPTION' =
     'MAINTAIN_CURRENT_ALLOCATION';
 

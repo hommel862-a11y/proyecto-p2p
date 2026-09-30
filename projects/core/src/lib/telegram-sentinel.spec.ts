@@ -28,7 +28,7 @@ import type { VerificationSummary } from './decision-journal';
 
 // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
 // aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
-const NON_STRUCTURAL_RESERVED = /[\[\]()~>#+=|{}.!\-]/;
+const NON_STRUCTURAL_RESERVED = /[\][()~>#+=|{}.!-]/;
 
 function expectParseableMarkdownV2(markdown: string): void {
   const tokens = markdown.split('`');
@@ -1284,7 +1284,7 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
     });
 
     it('rutea los botones del panel a PANEL, KILLSWITCH y RESUME', () => {
-      const cases: Array<[string, string]> = [
+      const cases: [string, string][] = [
         [PANEL_CALLBACKS.REFRESH, 'PANEL'],
         [PANEL_CALLBACKS.REPRICER_STOP, 'KILLSWITCH'],
         [PANEL_CALLBACKS.REPRICER_START, 'RESUME'],

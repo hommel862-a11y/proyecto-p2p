@@ -63,7 +63,7 @@ export class InMemoryBankAccountRepository implements BankAccountRepository {
 export class WebStorageBankAccountRepository implements BankAccountRepository {
   constructor(
     private readonly storage: StoragePort,
-    private readonly storageKey: string = 'p2p.bank-accounts',
+    private readonly storageKey = 'p2p.bank-accounts',
   ) {}
 
   async getAll(filter?: BankAccountFilter): Promise<BankAccount[]> {
