@@ -16,6 +16,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
   let originalKey: string | undefined;
 
   beforeEach(() => {
+    resetKillswitch();
     originalKey = process.env['GEMINI_API_KEY'];
     delete process.env['GEMINI_API_KEY'];
 
@@ -33,6 +34,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
   });
 
   afterEach(() => {
+    resetKillswitch();
     if (originalKey !== undefined) {
       process.env['GEMINI_API_KEY'] = originalKey;
     }
@@ -229,6 +231,40 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       ).toBe(true);
     });
 
+    it('con el kill-switch ACTIVO en el proceso main, sendMessage rechaza la solicitud sin emitir respuesta (F2)', async () => {
+      triggerKillswitch('Emergencia de seguridad detectada por centinela', 'SECURITY_SENTINEL');
+
+      await expect(
+        guarded.sendMessage({
+          prompt: '¿Cuál es la mejor ruta para arbitrar Banesco y Binance P2P hoy?',
+        }),
+      ).rejects.toThrow(/KILLSWITCH_ACTIVE/);
+
+      // Ni respuesta heurística ni de Gemini se emite, y ningún plan es generado
+      const plans = guarded.getPlans(10);
+      expect(plans.filter((p) => p.title.includes('Banesco'))).toHaveLength(0);
+    });
+
+    it('con el kill-switch ACTIVO y API Key configurada, sendMessage rechaza inmediatamente sin llamadas de red (F2)', async () => {
+      guarded.setApiKey('test-dummy-api-key');
+      triggerKillswitch('Pánico de mercado', 'MANUAL_OVERRIDE');
+
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      try {
+        await expect(
+          guarded.sendMessage({
+            prompt: 'Consulta ejecutiva de tesorería',
+          }),
+        ).rejects.toThrow(/KILLSWITCH_ACTIVE/);
+
+        expect(mockFetch).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it.each([
       ['over-limit', { overLimitCount: 1 }],
       ['saturada', { saturatedCount: 1 }],
@@ -296,6 +332,209 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       expect(second.success).toBe(false);
       expect(second.error).toContain('Segundo intento');
       expect(dispatchPlanExecution).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Bucle Agéntico ReAct Multi-Paso & Conexión de Herramientas Cuantitativas', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch as unknown as typeof fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('encadena múltiples herramientas secuencialmente en el bucle ReAct (Pass 1 -> Pass 2 -> Texto)', async () => {
+      const apiKey = 'AIzaSyFakeKeyForReActTesting123';
+      const reactOrchestrator = new GeminiOrchestrator(dbService, apiKey);
+
+      // Turn 1: Gemini decides to call predict_bcv_market_intelligence
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'predict_bcv_market_intelligence',
+                      args: { parallelRate: 85.5, bcvRate: 64.2 },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      // Turn 2: Gemini receives the BCV intelligence data and decides to evaluate golden spread
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'evaluate_golden_spread',
+                      args: { netSpreadPct: 1.15 },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      // Turn 3: Gemini finishes tool calling and returns full analytical synthesis
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: 'Análisis multi-paso completado: la brecha del BCV está bajo control y el spread neto del 1.15% cumple con la regla de oro institucional.',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      const res = await reactOrchestrator.sendMessage({
+        prompt: 'Audita la brecha BCV y el spread proyectado para vender hoy en Banesco.',
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(res.reply).toContain('Análisis multi-paso completado');
+      expect(res.skillsExecuted).toEqual([
+        'predict_bcv_market_intelligence',
+        'evaluate_golden_spread',
+      ]);
+    });
+
+    it('ejecuta herramientas MCP nativas durante el bucle ReAct cuando no están en el registro local', async () => {
+      const apiKey = 'AIzaSyFakeKeyForMcpReAct123';
+      const reactOrchestrator = new GeminiOrchestrator(dbService, apiKey);
+
+      // Turn 1: Gemini calls MCP tool scan_synthetic_stable_arbitrage
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'scan_synthetic_stable_arbitrage',
+                      args: {
+                        initialAmount: 1000,
+                        fiatCurrency: 'VES',
+                        buyLegPrice: 85.0,
+                        sellLegPrice: 86.5,
+                        transferOrCashFrictionPct: 0.1,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      // Turn 2: Gemini synthesizes response based on MCP tool output
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: 'Oportunidad de arbitraje sintético detectada y validada mediante el servidor MCP.',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      const res = await reactOrchestrator.sendMessage({
+        prompt: 'Escanea arbitraje sintético USDT/VES.',
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(res.skillsExecuted).toContain('scan_synthetic_stable_arbitrage');
+      expect(res.reply).toContain('arbitraje sintético');
+    });
+
+    it('respeta el guardarraíl de MAX_REACT_STEPS (5) y ejecuta la síntesis final si el modelo no frena', async () => {
+      const apiKey = 'AIzaSyFakeKeyForInfiniteLoopGuard';
+      const reactOrchestrator = new GeminiOrchestrator(dbService, apiKey);
+
+      // Simulate 5 consecutive function calls (max steps)
+      for (let i = 0; i < 5; i++) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      functionCall: {
+                        name: 'evaluate_golden_spread',
+                        args: { netSpreadPct: 0.8 },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        });
+      }
+
+      // 6th call: synthesis fallback
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: 'Síntesis ejecutiva forzada tras alcanzar el límite seguro de 5 pasos ReAct.',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      });
+
+      const res = await reactOrchestrator.sendMessage({
+        prompt: 'Bucle iterativo infinito simulado',
+      });
+
+      // 5 tool steps + 1 synthesis step = 6 calls total
+      expect(mockFetch).toHaveBeenCalledTimes(6);
+      expect(res.skillsExecuted).toHaveLength(5);
+      expect(res.reply).toContain('Síntesis ejecutiva forzada');
     });
   });
 });

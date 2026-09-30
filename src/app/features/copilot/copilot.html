@@ -188,7 +188,7 @@
           <!-- Centinela Card -->
           <div class="sidebar-box">
             <div class="box-header">
-              <span class="box-title">🤖 CENTINELA AUTÓNOMO</span>
+              <span class="box-title">🤖 CENTINELA DE MERCADO</span>
               <span class="box-badge">{{ watcherStatus().scanCount }} scans</span>
             </div>
             <div class="watcher-controls-row">
@@ -395,6 +395,11 @@
                   <div class="strategy-card">
                     <div class="card-header">
                       <span class="card-tag">PLAN DE ACCIÓN RECOMENDADO</span>
+                      @if (msg.plan.esSimulado || msg.plan.isSimulated) {
+                        <span class="card-simulated-badge" title="Valores derivados sin feed directo de mercado">
+                          ⚠️ SIMULADO
+                        </span>
+                      }
                       <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
                         {{ msg.plan.status }}
                       </span>
@@ -502,6 +507,35 @@
                         <span class="badge-approved">✓ APROBADA Y ENVIADA A MESA</span>
                       }
                     </div>
+                  </div>
+                }
+
+                <!-- Provenance & Metering Bar (F1 / F4) -->
+                @if (msg.role === 'assistant' && msg.provenance) {
+                  <div class="provenance-metering-bar">
+                    @if (msg.provenance.esSimulado || msg.plan?.esSimulado || msg.plan?.isSimulated) {
+                      <span class="provenance-badge simulated-warning" title="Sin feed de mercado Binance P2P en vivo conectado. Valores heurísticos o referenciales.">
+                        ⚠️ [SIMULADO]
+                      </span>
+                    } @else {
+                      <span class="provenance-badge live-success" title="Feed de mercado en tiempo real activo">
+                        🟢 [MERCADO EN VIVO]
+                      </span>
+                    }
+                    <span class="provenance-source">
+                      Origen: {{ msg.provenance.source }}
+                      @if (msg.provenance.model) { ({{ msg.provenance.model }}) }
+                    </span>
+                    @if (msg.provenance.stepsCount !== undefined) {
+                      <span class="provenance-steps">
+                        Pasos ReAct: {{ msg.provenance.stepsCount }}/{{ msg.provenance.maxSteps || 5 }}
+                      </span>
+                    }
+                    @if (msg.provenance.apiCallsCount !== undefined) {
+                      <span class="provenance-calls">
+                        Llamadas API: {{ msg.provenance.apiCallsCount }}
+                      </span>
+                    }
                   </div>
                 }
               </div>
@@ -1231,7 +1265,7 @@
   @if (activeTab() === 'config') {
     <div class="config-layout">
       <h3>Configuración de Conexión de Inteligencia Artificial</h3>
-      <p class="section-desc">Gestioná la credencial y el estado del orquestador de Google Gemini para planificación autónoma.</p>
+      <p class="section-desc">Gestioná la credencial y el estado del orquestador de Google Gemini para asistencia y análisis estratégico.</p>
 
       <div class="config-card">
         <div class="config-status-row">

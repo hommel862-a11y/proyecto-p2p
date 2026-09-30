@@ -62,7 +62,9 @@ describe('McpHub Component', () => {
     component.selectTool({ name: 'screen_wallet_address', description: 'AML check' });
     await component.runToolTest();
     expect(component.testExecutionResult()?.success).toBe(true);
-    expect((component.testExecutionResult()?.result as any)?.riskLevel).toBe('LOW_RISK');
+    expect((component.testExecutionResult()?.result as any)?.riskLevel).toBe(
+      'UNVERIFIED_OFFLINE',
+    );
 
     component.selectTool({ name: 'fetch_cross_exchange_spread', description: 'Arbitrage' });
     await component.runToolTest();

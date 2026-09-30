@@ -336,6 +336,7 @@ export interface CopilotChatMessage {
   content: string;
   timestamp?: number;
   plan?: StrategyPlanCard;
+  provenance?: ProvenanceMetadata;
 }
 
 export interface StrategyPlanCard {
@@ -349,6 +350,8 @@ export interface StrategyPlanCard {
   assignedOperatorName?: string;
   rationale: string;
   status: 'PROPOSED' | 'APPROVED' | 'EXECUTED' | 'CANCELLED' | 'REJECTED';
+  esSimulado?: boolean;
+  isSimulated?: boolean;
 }
 
 export interface AlphaWatcherConfigDto {
@@ -368,11 +371,27 @@ export interface AlphaWatcherStatus {
   lastOpportunity: { time: number; netSpreadPct: number; route: string } | null;
 }
 
+export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';
+
+export interface ProvenanceMetadata {
+  source: ExecutionProvenance;
+  model?: string;
+  provenanceId: string;
+  timestamp: number;
+  fallbackReason?: string;
+  liveMarketFeedConnected?: boolean;
+  esSimulado?: boolean;
+  stepsCount?: number;
+  maxSteps?: number;
+  apiCallsCount?: number;
+}
+
 export interface CopilotResponse {
   reply: string;
   suggestedPlan?: StrategyPlanCard;
   skillsExecuted?: string[];
   learningsGenerated?: string[];
+  provenance?: ProvenanceMetadata;
 }
 
 /**

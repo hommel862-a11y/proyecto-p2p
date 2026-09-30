@@ -3333,6 +3333,7 @@ export interface CopilotChatMessage {
   content: string;
   timestamp?: number;
   plan?: StrategyPlanCard;
+  provenance?: ProvenanceMetadata;
 }
 
 export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';

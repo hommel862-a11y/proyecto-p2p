@@ -369,10 +369,13 @@ export class Copilot implements OnInit, OnDestroy {
 
     for (const model of candidateModels) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
           body: JSON.stringify(requestBody),
         });
 
@@ -795,7 +798,7 @@ export class Copilot implements OnInit, OnDestroy {
     }
     this.actionSuccessNotice.set(
       newEnabled
-        ? '🟢 CENTINELA AUTÓNOMO ACTIVADO: Escaneando libro cada 30s.'
+        ? '🟢 CENTINELA DE MERCADO ACTIVADO: Escaneando libro cada 30s.'
         : '⏸ CENTINELA PAUSADO: Monitoreo en segundo plano detenido.',
     );
     setTimeout(() => this.actionSuccessNotice.set(null), 4000);
@@ -1015,41 +1018,28 @@ export class Copilot implements OnInit, OnDestroy {
       }
 
       try {
-        const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-        let verifiedModel: string | null = null;
-        let lastErrMsg = '';
+        const testRes = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': savedKey,
+            },
+          },
+        );
 
-        for (const model of candidateModels) {
-          try {
-            const testRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${savedKey}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
-              },
-            );
-            if (testRes.ok) {
-              verifiedModel = model;
-              break;
-            } else {
-              const errData = (await testRes.json().catch(() => ({}))) as {
-                error?: { message?: string };
-              };
-              lastErrMsg = errData?.error?.message || `HTTP ${testRes.status}`;
-            }
-          } catch (e: unknown) {
-            lastErrMsg = e instanceof Error ? e.message : String(e);
-          }
-        }
-
-        if (verifiedModel) {
+        if (testRes.ok) {
           this.connectionStatus.set({
             connected: true,
-            model: verifiedModel,
-            message: `¡Conexión verificada exitosamente con Google Gemini (${verifiedModel})!`,
+            model: 'gemini-flash',
+            message: '¡Conexión verificada exitosamente con Google Gemini! [0 tokens consumidos]',
           });
         } else {
+          const errData = (await testRes.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          const lastErrMsg = errData?.error?.message || `HTTP ${testRes.status}`;
           this.connectionStatus.set({
             connected: false,
             model: 'error',
@@ -1239,6 +1229,7 @@ export class Copilot implements OnInit, OnDestroy {
             role: 'assistant',
             content: response.reply,
             plan: response.suggestedPlan,
+            provenance: response.provenance,
             timestamp: Date.now(),
           },
         ]);
@@ -1280,10 +1271,13 @@ export class Copilot implements OnInit, OnDestroy {
             for (const model of models) {
               try {
                 const res = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
                   {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-goog-api-key': apiKey,
+                    },
                     body: JSON.stringify({
                       system_instruction: systemInstruction,
                       contents: historyContents,
@@ -1318,6 +1312,16 @@ export class Copilot implements OnInit, OnDestroy {
                 role: 'assistant',
                 content: replyText,
                 timestamp: Date.now(),
+                provenance: {
+                  source: 'gemini',
+                  model: 'gemini-flash',
+                  provenanceId: `web-${Date.now()}`,
+                  timestamp: Date.now(),
+                  esSimulado: false,
+                  stepsCount: 1,
+                  maxSteps: 1,
+                  apiCallsCount: 1,
+                },
               },
             ]);
             this.scrollToBottom();
@@ -1347,18 +1351,34 @@ export class Copilot implements OnInit, OnDestroy {
               role: 'assistant',
               content: noKeyText,
               timestamp: Date.now(),
+              provenance: {
+                source: 'simulated',
+                provenanceId: `web-sim-${Date.now()}`,
+                timestamp: Date.now(),
+                esSimulado: true,
+              },
             },
           ]);
           this.scrollToBottom();
         }
       }
     } catch (err: unknown) {
+      const isKillswitch = err instanceof Error && err.message.includes('KILLSWITCH_ACTIVE');
       this.messages.update((msgs) => [
         ...msgs,
         {
           role: 'assistant',
-          content: `Hubo un error al consultar el servicio de orquestación: ${err instanceof Error ? err.message : String(err)}`,
+          content: isKillswitch
+            ? '🚨 KILL-SWITCH ACTIVO: La mesa de operaciones ha bloqueado preventivamente toda respuesta y ejecución del Copiloto IA.'
+            : `Hubo un error al consultar el servicio de orquestación: ${err instanceof Error ? err.message : String(err)}`,
           timestamp: Date.now(),
+          provenance: {
+            source: 'deterministic',
+            provenanceId: `error-${Date.now()}`,
+            timestamp: Date.now(),
+            fallbackReason: isKillswitch ? 'KILLSWITCH_ACTIVE' : 'ERROR',
+            esSimulado: false,
+          },
         },
       ]);
       this.scrollToBottom();

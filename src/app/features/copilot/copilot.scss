@@ -716,6 +716,47 @@
           color: #f1f5f9;
           border-bottom-left-radius: 4px;
           box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+          .provenance-metering-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 0.5px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.72rem;
+            color: var(--muted, rgba(235, 235, 245, 0.6));
+
+            .provenance-badge {
+              font-weight: 700;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 0.68rem;
+              letter-spacing: 0.02em;
+
+              &.simulated-warning {
+                background: rgba(255, 159, 10, 0.15);
+                color: #ff9f0a;
+                border: 0.5px solid rgba(255, 159, 10, 0.35);
+              }
+
+              &.live-success {
+                background: rgba(48, 209, 88, 0.15);
+                color: #30d158;
+                border: 0.5px solid rgba(48, 209, 88, 0.35);
+              }
+            }
+
+            .provenance-source,
+            .provenance-steps,
+            .provenance-calls {
+              background: rgba(255, 255, 255, 0.04);
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-family: var(--font-mono, monospace);
+            }
+          }
         }
       }
 
@@ -965,6 +1006,17 @@
       font-weight: 800;
       color: var(--gold, #ffd60a);
       letter-spacing: 0.05em;
+    }
+
+    .card-simulated-badge {
+      font-size: 0.65rem;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 159, 10, 0.18);
+      color: #ff9f0a;
+      border: 0.5px solid rgba(255, 159, 10, 0.4);
+      letter-spacing: 0.03em;
     }
 
     .card-status {

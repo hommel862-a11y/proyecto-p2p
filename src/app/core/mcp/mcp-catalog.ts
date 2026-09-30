@@ -13,7 +13,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'master',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 17,
+    toolCount: 15,
     resourceCount: 5,
     uptimeSeconds: 3600,
     tools: [
@@ -31,16 +31,8 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
         description: 'Simula el impacto de la orden en la liquidez y límites diarios.',
       },
       {
-        name: 'consult_zk_market_mesh',
-        description: 'Consulta listas negras federadas con hashes ciegos (Zero-Knowledge).',
-      },
-      {
         name: 'forecast_volatility_window',
         description: 'Predice dinámica de spread a 2h con ciclos de intervención del BCV.',
-      },
-      {
-        name: 'calculate_delta_neutral_hedge',
-        description: 'Calcula la cobertura corta sintética para inventarios en bolívares.',
       },
       {
         name: 'trigger_killswitch',
@@ -84,7 +76,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
       },
       {
         name: 'execute_browser_operator_task',
-        description: 'Compila tareas de navegación web autónoma para conciliación bancaria y extracción de estados.',
+        description: 'Compila tareas de navegación web para conciliación bancaria y extracción de estados.',
       },
     ],
     resources: [
@@ -101,7 +93,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
     category: 'seguridad',
     status: 'ONLINE',
     transport: 'stdio',
-    toolCount: 4,
+    toolCount: 5,
     resourceCount: 2,
     uptimeSeconds: 3600,
     tools: [
@@ -123,6 +115,11 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
         name: 'register_blacklisted_entity',
         description:
           'Registra entidades sospechosas o fraudulentas en la lista negra local (Human-in-the-Loop).',
+      },
+      {
+        name: 'audit_and_risk_analytics',
+        description:
+          'Audita expediente forense integral de riesgo y genera dictamen institucional de cumplimiento.',
       },
     ],
     resources: [

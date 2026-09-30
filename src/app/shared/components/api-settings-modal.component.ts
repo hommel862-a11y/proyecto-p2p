@@ -650,39 +650,30 @@ export class ApiSettingsModalComponent {
 
     this.isTestingGemini.set(true);
     try {
-      const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-      let verifiedModel: string | null = null;
-      let lastErrMsg = '';
+      // Endpoint de metadatos con header de autorización: 0 tokens de inferencia, sin clave en query string (F4)
+      const res = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key,
+          },
+        },
+      );
 
-      for (const model of candidateModels) {
-        try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] }),
-            },
-          );
-          if (res.ok) {
-            verifiedModel = model;
-            break;
-          } else {
-            const errData = (await res.json().catch(() => ({}))) as {
-              error?: { message?: string };
-            };
-            lastErrMsg = errData?.error?.message || `HTTP ${res.status}`;
-          }
-        } catch (e: unknown) {
-          lastErrMsg = e instanceof Error ? e.message : String(e);
-        }
-      }
-
-      if (verifiedModel) {
-        this.toast.success(`Google Gemini (${verifiedModel}) verificado y listo.`, 'Gemini AI');
+      if (res.ok) {
+        this.toast.success('Google Gemini verificado y listo (0 tokens consumidos).', 'Gemini AI');
       } else {
+        const errData = (await res.json().catch(() => ({}))) as {
+          error?: { message?: string };
+        };
+        const lastErrMsg = errData?.error?.message || `HTTP ${res.status}`;
         this.toast.error(`Error al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
       }
+    } catch (e: unknown) {
+      const lastErrMsg = e instanceof Error ? e.message : String(e);
+      this.toast.error(`Error de red al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
     } finally {
       this.isTestingGemini.set(false);
     }
