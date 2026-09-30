@@ -196,6 +196,24 @@
       font-weight: 700;
     }
 
+    /*
+      Estado sin dato. Deliberadamente NO es un gris neutro: se lee como una señal
+      de que al operador le falta algo, no como un valor más. La píldora de brecha
+      sin dato no usa el ámbar de la de mercado porque el ámbar significa "hay
+      una brecha medida".
+    */
+    .chip-absent {
+      color: var(--muted, rgba(235, 235, 245, 0.45));
+      font-style: italic;
+    }
+
+    .gap-pill-absent {
+      background: rgba(142, 142, 147, 0.15);
+      color: var(--muted, rgba(235, 235, 245, 0.5));
+      font-style: italic;
+      font-weight: 500;
+    }
+
     .cross-rate {
       font-size: 0.70rem;
       color: var(--muted, rgba(235, 235, 245, 0.5));

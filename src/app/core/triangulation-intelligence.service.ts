@@ -26,24 +26,99 @@ export interface DeltaHedgeAdvice {
   reason: string;
 }
 
+/**
+ * Una tasa del snapshot, con su ausencia explícita.
+ *
+ * `value` es `number | null`, y `null` significa SIEMPRE "no hay dato genuino".
+ * Nunca `0`: una tasa de cambio no puede ser 0, así que un 0 acá no es un dato
+ * viejo, es un bug. Como el tipo obliga a mirar `status` antes de formatear, el
+ * consumidor ya no puede convertir un hueco en un número con `| number`.
+ *
+ * El motivo de que esto sea una unión y no un `number | null` pelado es que un
+ * `null` sin explicación es indistinguible de un bug de cableado, y el operador
+ * no puede saber qué herramienta reintentar. `expectedSource` siempre dice de
+ * dónde habría salido el número.
+ */
+export interface LiveRate {
+  readonly value: number | null;
+  readonly status: 'live' | 'unavailable';
+  /** Fuente real del número. Solo cuando `status === 'live'`. */
+  readonly source?: string;
+  /** De dónde sale o habría salido el número. Se declara siempre. */
+  readonly expectedSource: string;
+  /** Por qué no hay número. Solo cuando `status === 'unavailable'`. */
+  readonly unavailableReason?: string;
+}
+
+/** Razón genérica de ausencia: no se consultó ninguna fuente real. */
+const RATE_ABSENT = 'SIN_DATO_DE_MERCADO';
+
+const BINANCE_P2P_SOURCE = 'MCP get_binance_p2p_orderbook o BinanceP2pService';
+const BCV_USD_SOURCE = 'Cotizave market `oficial` o MCP get_bcv_rates';
+const BCV_EUR_SOURCE = 'Cotizave market `eur_reference` o MCP get_bcv_rates';
+const PARALLEL_SOURCE = 'Cotizave market `parallel` o MCP get_parallel_rates';
+const GAP_SOURCE = 'derivado de bcvUsd y parallelAvg';
+const COP_PER_USDT_SOURCE = 'sin fuente: no hay mercado COP/USDT en vivo conectado';
+const COP_PER_VES_SOURCE = 'derivado de copPerUsdt y binanceVesSell';
+const ZINLI_SOURCE = 'sin fuente: no hay mesa digital en vivo conectada';
+
+/**
+ * Envuelve un número que viene de una fuente real. Un valor no finito o no
+ * positivo NO se publica: se degrada a ausencia, porque `toNum` del parser y los
+ * guards `> 0` de esta clase garantizan que una tasa válida siempre es > 0, y un
+ * 0 acá se leería como un tipo de cambio real.
+ */
+function liveRate(value: number, source: string, expectedSource: string): LiveRate {
+  if (!Number.isFinite(value) || value <= 0) {
+    return unavailableRate(expectedSource, 'VALOR_NO_PLAUSIBLE');
+  }
+  return { value, status: 'live', source, expectedSource };
+}
+
+/**
+ * Igual que `liveRate` pero para un valor DERIVADO, donde el 0 SÍ es un dato
+ * legítimo: un paralelo exactamente en la tasa oficial es una brecha MEDIDA de
+ * 0.00%, no una ausencia. Aplicar el invariante "> 0" de los niveles a un delta
+ * destruiría el único caso en el que se puede afirmar que no hay brecha, que es
+ * justamente el que el operador necesita distinguir del "no sé".
+ *
+ * Lo que nunca es válido en un delta es un NaN o un infinito, y eso es lo único
+ * que se degrada a ausencia.
+ */
+function liveDelta(value: number, source: string, expectedSource: string): LiveRate {
+  if (!Number.isFinite(value)) {
+    return unavailableRate(expectedSource, 'VALOR_NO_FINITO');
+  }
+  return { value, status: 'live', source, expectedSource };
+}
+
+function unavailableRate(expectedSource: string, reason: string = RATE_ABSENT): LiveRate {
+  return { value: null, status: 'unavailable', expectedSource, unavailableReason: reason };
+}
+
+/** Presentación de una tasa que nunca disguise la ausencia como un número. */
+export function formatLiveRate(rate: LiveRate, digits = 2): string {
+  return rate.value === null ? 'no disponible' : rate.value.toFixed(digits);
+}
+
 export interface LiveMarketRatesSnapshot {
-  binanceVesBuy: number; // Precio al que compran USDT en P2P
-  binanceVesSell: number; // Precio al que venden USDT en P2P
-  bcvUsd: number; // Tasa oficial BCV USD
-  bcvEur: number; // Tasa oficial BCV EUR
-  parallelAvg: number; // Promedio paralelo (CotizaVe / EnParalelo)
-  rateGapPct: number; // Brecha oficial vs paralelo %
-  copPerUsdt: number; // Tasa Binance P2P COP/USDT
-  copPerVes: number; // Cruce derivado COP por VES
-  zinliUsdPerUsdt: number; // Venta digital Zinli/Wally
+  binanceVesBuy: LiveRate; // Precio al que compran USDT en P2P
+  binanceVesSell: LiveRate; // Precio al que venden USDT en P2P
+  bcvUsd: LiveRate; // Tasa oficial BCV USD
+  bcvEur: LiveRate; // Tasa oficial BCV EUR
+  parallelAvg: LiveRate; // Promedio paralelo (CotizaVe / EnParalelo)
+  rateGapPct: LiveRate; // Brecha oficial vs paralelo %
+  copPerUsdt: LiveRate; // Tasa Binance P2P COP/USDT
+  copPerVes: LiveRate; // Cruce derivado COP por VES
+  zinliUsdPerUsdt: LiveRate; // Venta digital Zinli/Wally
   timestamp: string;
   /**
    * De qué reloj es `timestamp`. El snapshot es una MEZCLA: las piernas de
-   * Binance vienen por MCP, las de Cotizave del servicio de rates y el resto son
-   * defaults. `provenance` califica la parte de Cotizave, así que un `timestamp`
-   * sin calificar se leía como la hora de mercado de TODO el snapshot: el reloj de
-   * Cotizave puesto encima de un número de Binance calibra una pierna y deja las
-   * otras creyendo que están igual de frescas.
+   * Binance vienen por MCP, las de Cotizave del servicio de rates y el resto
+   * puede no existir. `provenance` califica la parte de Cotizave, así que un
+   * `timestamp` sin calificar se leía como la hora de mercado de TODO el
+   * snapshot: el reloj de Cotizave puesto encima de un número de Binance calibra
+   * una pierna y deja las otras creyendo que están igual de frescas.
    *
    * - `cotizave`: el reloj es el del fetch de Cotizave; para las piernas de
    *   Binance hay que mirar `source`, no este campo.
@@ -58,6 +133,14 @@ export interface LiveMarketRatesSnapshot {
    * que no intervino, o remapear 'none' a 'live', sería inventar el linaje.
    */
   provenance?: Exclude<CotizaveRatesProvenance, 'none'>;
+  /**
+   * De dónde salieron las piernas de Binance.
+   *
+   * `FALLBACK` ya no significa "rellenamos con constantes": significa que no hubo
+   * fuente real y las tasas quedan marcadas como `unavailable`. Es el nombre que
+   * le corresponde al estado honesto, y su valor ya no descansa en ningún número
+   * inventado.
+   */
   source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK';
 }
 
@@ -81,21 +164,29 @@ export class TriangulationIntelligenceService {
   readonly lastSyncTimestamp = signal<string | null>(null);
   readonly mcpCallCount = signal<number>(0);
 
+  /**
+   * Estado inicial: TODO ausente.
+   *
+   * Antes arrancaba con 72.45 / 84.12 / 16.11 / 51.3 / 4250 / 0.985, y el panel
+   * pintaba una brecha de +16.1% y un BCV de 72.45 VES en pantalla antes de que
+   * existiera una sola llamada de red. Eso no era un valor de arranque
+   * provisional: era una oportunidad de mercado inexistente declarada como dato.
+   * Sin fetch detrás no hay nada que mostrar, y "no disponible" es la única
+   * versión honesta.
+   */
   readonly liveRates = signal<LiveMarketRatesSnapshot>({
-    binanceVesBuy: 82.2,
-    binanceVesSell: 82.85,
-    bcvUsd: 72.45,
-    bcvEur: 78.6,
-    parallelAvg: 84.12,
-    rateGapPct: 16.11,
-    copPerUsdt: 4250,
-    copPerVes: 51.3,
-    zinliUsdPerUsdt: 0.985,
-    timestamp: 'Inicializado',
-    // Estado inicial: son constantes de arranque, sin fetch detrás. Decirlo evita
-    // que el rótulo se lea como la hora de un dato de mercado.
+    binanceVesBuy: unavailableRate(BINANCE_P2P_SOURCE, 'SIN_SINCRONIZAR'),
+    binanceVesSell: unavailableRate(BINANCE_P2P_SOURCE, 'SIN_SINCRONIZAR'),
+    bcvUsd: unavailableRate(BCV_USD_SOURCE, 'SIN_SINCRONIZAR'),
+    bcvEur: unavailableRate(BCV_EUR_SOURCE, 'SIN_SINCRONIZAR'),
+    parallelAvg: unavailableRate(PARALLEL_SOURCE, 'SIN_SINCRONIZAR'),
+    rateGapPct: unavailableRate(GAP_SOURCE, 'SIN_SINCRONIZAR'),
+    copPerUsdt: unavailableRate(COP_PER_USDT_SOURCE),
+    copPerVes: unavailableRate(COP_PER_VES_SOURCE, 'SIN_SINCRONIZAR'),
+    zinliUsdPerUsdt: unavailableRate(ZINLI_SOURCE),
+    timestamp: 'Sin sincronizar',
     timestampSource: 'panel',
-    source: 'CACHE',
+    source: 'FALLBACK',
   });
 
   /**
@@ -244,13 +335,22 @@ export class TriangulationIntelligenceService {
   async fetchLiveMarketRates(): Promise<LiveMarketRatesSnapshot> {
     this.isSyncingMarket.set(true);
 
-    let binanceVesBuy = 82.2;
-    let binanceVesSell = 82.85;
-    let bcvUsd = 72.45;
-    let bcvEur = 78.6;
-    let parallelAvg = 84.12;
-    const copPerUsdt = 4250;
-    const zinliUsdPerUsdt = 0.985;
+    // Cada campo arranca AUSENTE y solo se llena si una fuente real lo aporta.
+    // Antes arrancaban en constantes (72.45 / 84.12 / 82.2 / 4250) y el paso 6
+    // devolvía 16.11 y 51.3 cuando faltaba el dato: una brecha y un cruce con
+    // forma de mercado y sin nada detrás. 51.3 era 4250 / 82.85, o sea las mismas
+    // constantes de arranque disfrazadas de un cruce derivado.
+    let binanceVesBuy = unavailableRate(BINANCE_P2P_SOURCE, 'MCP_SIN_RESPUESTA');
+    let binanceVesSell = unavailableRate(BINANCE_P2P_SOURCE, 'MCP_SIN_RESPUESTA');
+    let bcvUsd = unavailableRate(BCV_USD_SOURCE, 'MCP_SIN_RESPUESTA');
+    let bcvEur = unavailableRate(BCV_EUR_SOURCE, 'MCP_SIN_RESPUESTA');
+    let parallelAvg = unavailableRate(PARALLEL_SOURCE, 'MCP_SIN_RESPUESTA');
+    // Estas dos no tienen ninguna fuente real detrás en el path de sincronización
+    // (no hay mercado COP/USDT ni mesa digital consultada acá). Antes valían 4250
+    // y 0.985, y 4250 es la mitad del problema del 51.3: era el numerador del
+    // cruce derivado. Se declaran ausentes y `const` a propósito.
+    const copPerUsdt = unavailableRate(COP_PER_USDT_SOURCE);
+    const zinliUsdPerUsdt = unavailableRate(ZINLI_SOURCE);
     let source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK' = 'FALLBACK';
 
     try {
@@ -265,11 +365,19 @@ export class TriangulationIntelligenceService {
       if (p2pRes.success && p2pRes.result) {
         const data = p2pRes.result as Record<string, unknown>;
         if (typeof data['topBuyPrice'] === 'number' && data['topBuyPrice'] > 0) {
-          binanceVesBuy = data['topBuyPrice'];
+          binanceVesBuy = liveRate(
+            data['topBuyPrice'],
+            'MCP get_binance_p2p_orderbook',
+            BINANCE_P2P_SOURCE,
+          );
           source = 'MCP_LIVE';
         }
         if (typeof data['topSellPrice'] === 'number' && data['topSellPrice'] > 0) {
-          binanceVesSell = data['topSellPrice'];
+          binanceVesSell = liveRate(
+            data['topSellPrice'],
+            'MCP get_binance_p2p_orderbook',
+            BINANCE_P2P_SOURCE,
+          );
           source = 'MCP_LIVE';
         }
       }
@@ -280,11 +388,11 @@ export class TriangulationIntelligenceService {
       if (bcvRes.success && bcvRes.result) {
         const data = bcvRes.result as Record<string, unknown>;
         if (typeof data['usd'] === 'number' && data['usd'] > 0) {
-          bcvUsd = data['usd'];
+          bcvUsd = liveRate(data['usd'], 'MCP get_bcv_rates', BCV_USD_SOURCE);
           source = 'MCP_LIVE';
         }
         if (typeof data['eur'] === 'number' && data['eur'] > 0) {
-          bcvEur = data['eur'];
+          bcvEur = liveRate(data['eur'], 'MCP get_bcv_rates', BCV_EUR_SOURCE);
         }
       }
 
@@ -294,7 +402,7 @@ export class TriangulationIntelligenceService {
       if (parallelRes.success && parallelRes.result) {
         const data = parallelRes.result as Record<string, unknown>;
         if (typeof data['average'] === 'number' && data['average'] > 0) {
-          parallelAvg = data['average'];
+          parallelAvg = liveRate(data['average'], 'MCP get_parallel_rates', PARALLEL_SOURCE);
           source = 'MCP_LIVE';
         }
       }
@@ -302,32 +410,67 @@ export class TriangulationIntelligenceService {
       // 4. Fallback/Complemento de BinanceP2pService si tiene datos en vivo en memoria
       const depth = this.binanceP2p.marketDepth();
       if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
-        binanceVesBuy = depth.bestBuyPrice;
-        binanceVesSell = depth.bestSellPrice;
+        binanceVesBuy = liveRate(depth.bestBuyPrice, 'BinanceP2pService', BINANCE_P2P_SOURCE);
+        binanceVesSell = liveRate(depth.bestSellPrice, 'BinanceP2pService', BINANCE_P2P_SOURCE);
         source = 'MCP_LIVE';
       }
 
-      // 5. Fallback/Complemento de CotizaveService si está conectado
+      // 5. Fallback/Complemento de CotizaveService si está conectado.
+      //
+      // Las claves tienen que ser las que produce `normalizeMarketKey` en
+      // `projects/core/src/lib/cotizave.ts`, que mapea el market `reference` del
+      // API a `'oficial'` y deja `parallel` tal cual. Este bloque leía
+      // `['paralelo']` y `['bcv']`, dos claves que el parser no puede emitir
+      // nunca: ambas lecturas daban `undefined`, el guard las descartaba en
+      // silencio, y para BCV y paralelo este "complemento" no había aportado
+      // nada en su vida. Con las claves reales, Cotizave sí puede complementar.
       const cotizaveRates = this.cotizave.ratesByMarket();
       let usedCotizave = false;
-      if (cotizaveRates['binance']?.mid && cotizaveRates['binance'].mid > 0) {
-        binanceVesSell = cotizaveRates['binance'].mid;
+      const binanceMid = cotizaveRates['binance']?.mid;
+      if (binanceMid != null && binanceMid > 0) {
+        binanceVesSell = liveRate(binanceMid, 'Cotizave market `binance`', BINANCE_P2P_SOURCE);
         usedCotizave = true;
       }
-      if (cotizaveRates['paralelo']?.mid && cotizaveRates['paralelo'].mid > 0) {
-        parallelAvg = cotizaveRates['paralelo'].mid;
+      const parallelMid = cotizaveRates['parallel']?.mid;
+      if (parallelMid != null && parallelMid > 0) {
+        parallelAvg = liveRate(parallelMid, 'Cotizave market `parallel`', PARALLEL_SOURCE);
         usedCotizave = true;
       }
-      if (cotizaveRates['bcv']?.mid && cotizaveRates['bcv'].mid > 0) {
-        bcvUsd = cotizaveRates['bcv'].mid;
+      // `reference` es el ancla oficial que el API publica como `oficial`, y su
+      // `mid` es el mismo valor que el propio API reporta en
+      // `index.components.bcv`.
+      const oficialMid = cotizaveRates['oficial']?.mid;
+      if (oficialMid != null && oficialMid > 0) {
+        bcvUsd = liveRate(oficialMid, 'Cotizave market `oficial`', BCV_USD_SOURCE);
+        usedCotizave = true;
+      }
+      const eurRefMid = cotizaveRates['eur_reference']?.mid;
+      if (eurRefMid != null && eurRefMid > 0) {
+        bcvEur = liveRate(eurRefMid, 'Cotizave market `eur_reference`', BCV_EUR_SOURCE);
         usedCotizave = true;
       }
 
-      // 6. Cálculo de brecha cambiaria y cruce derivado COP/VES
+      // 6. Cálculo de brecha cambiaria y cruce derivado COP/VES.
+      //
+      // Un valor derivado sin sus dos insumos NO es un 0 ni un default: es
+      // ausencia. Se propaga como tal para que un hueco no se lea como una brecha
+      // de 0% (que sí sería una afirmación de mercado).
       const rateGapPct =
-        bcvUsd > 0 ? Math.round(((parallelAvg - bcvUsd) / bcvUsd) * 10000) / 100 : 16.11;
+        bcvUsd.value !== null && parallelAvg.value !== null && bcvUsd.value > 0
+          ? liveDelta(
+              Math.round(((parallelAvg.value - bcvUsd.value) / bcvUsd.value) * 10000) / 100,
+              'derivado de Cotizave `oficial` y `parallel`',
+              GAP_SOURCE,
+            )
+          : unavailableRate(GAP_SOURCE, 'FALTA_BCV_O_PARALELO');
       const copPerVes =
-        binanceVesSell > 0 ? Math.round((copPerUsdt / binanceVesSell) * 100) / 100 : 51.3;
+        copPerUsdt.value !== null && binanceVesSell.value !== null && binanceVesSell.value > 0
+          ? liveDelta(
+              Math.round((copPerUsdt.value / binanceVesSell.value) * 100) / 100,
+              'derivado de copPerUsdt y binanceVesSell',
+              COP_PER_VES_SOURCE,
+            )
+          : unavailableRate(COP_PER_VES_SOURCE, 'FALTA_COP_USDT_O_BINANCE_P2P');
 
       // El reloj del snapshot es el del DATO, no el del tick. Estampar `new Date()`
       // acá convertía cada restore del disco en un número rec sticker de "recién
@@ -376,7 +519,13 @@ export class TriangulationIntelligenceService {
   }
 
   /**
-   * Aplica las tasas de mercado consolidadas a los tres tramos de una ruta triangular
+   * Aplica las tasas de mercado consolidadas a los tres tramos de una ruta triangular.
+   *
+   * Un tramo SOLO se reescribe si su tasa tiene dato genuino. `ExchangeLeg.price`
+   * es un `number` y no tiene cómo representar "no hay dato": cuando la tasa está
+   * ausente se deja el precio declarado del preset y no se lo viste de "en vivo".
+   * Es la diferencia entre una suposición explícita del operador y una tasa de
+   * mercado que el snapshot nunca tuvo.
    */
   applyLiveRatesToLegs(
     legs: [ExchangeLeg, ExchangeLeg, ExchangeLeg],
@@ -387,39 +536,44 @@ export class TriangulationIntelligenceService {
     const l2 = { ...legs[1] };
     const l3 = { ...legs[2] };
 
+    /** Asigna el precio solo si la tasa existe; si no, conserva el del tramo. */
+    const apply = (leg: ExchangeLeg, rate: LiveRate): void => {
+      if (rate.value !== null) leg.price = rate.value;
+    };
+
     if (
       presetId === 'route-ves-usdt-cop' ||
       (l1.fromCurrency === 'VES' && l2.toCurrency === 'COP')
     ) {
       // Tramo 1: VES -> USDT (Comprar USDT en P2P con VES: tasa sell/ask)
-      l1.price = rates.binanceVesSell;
+      apply(l1, rates.binanceVesSell);
       // Tramo 2: USDT -> COP (Venta de USDT recibiendo COP)
-      l2.price = rates.copPerUsdt;
+      apply(l2, rates.copPerUsdt);
       // Tramo 3: COP -> VES (Retorno de COP a VES vía mesa o giro directo)
-      l3.price = rates.copPerVes;
+      apply(l3, rates.copPerVes);
     } else if (
       presetId === 'route-usdt-usd-ves' ||
       (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USD')
     ) {
       // Tramo 1: USDT -> USD (Zinli / Wally)
-      l1.price = rates.zinliUsdPerUsdt;
+      apply(l1, rates.zinliUsdPerUsdt);
       // Tramo 2: USD -> VES (Remesa o cambio a paralelo)
-      l2.price = rates.parallelAvg;
+      apply(l2, rates.parallelAvg);
       // Tramo 3: VES -> USDT (Recompra de USDT con VES en P2P)
-      l3.price = rates.binanceVesSell;
+      apply(l3, rates.binanceVesSell);
     } else {
       // Regla universal según las divisas de cada tramo
       for (const leg of [l1, l2, l3]) {
         if (leg.fromCurrency === 'VES' && leg.toCurrency === 'USDT') {
-          leg.price = rates.binanceVesSell;
+          apply(leg, rates.binanceVesSell);
         } else if (leg.fromCurrency === 'USDT' && leg.toCurrency === 'VES') {
-          leg.price = rates.binanceVesBuy;
+          apply(leg, rates.binanceVesBuy);
         } else if (leg.fromCurrency === 'USD' && leg.toCurrency === 'VES') {
-          leg.price = rates.parallelAvg;
+          apply(leg, rates.parallelAvg);
         } else if (leg.fromCurrency === 'USDT' && leg.toCurrency === 'COP') {
-          leg.price = rates.copPerUsdt;
+          apply(leg, rates.copPerUsdt);
         } else if (leg.fromCurrency === 'COP' && leg.toCurrency === 'VES') {
-          leg.price = rates.copPerVes;
+          apply(leg, rates.copPerVes);
         }
       }
     }
@@ -437,10 +591,22 @@ export class TriangulationIntelligenceService {
     try {
       const snapshot = await this.fetchLiveMarketRates();
       const updatedLegs = this.applyLiveRatesToLegs(activeLegs, snapshot, presetId);
+      // El toast declara lo que falta: un "éxito" que lista 72.45 y 84.12 cuando
+      // no llegó ninguna de las dos tasas es peor que un aviso de dato faltante,
+      // porque el operador lee que la sincronización funcionó.
+      const faltantes = (['binanceVesSell', 'parallelAvg', 'bcvUsd'] as const)
+        .filter((campo) => snapshot[campo].value === null)
+        .map((campo) => snapshot[campo].expectedSource);
       this.toast.success(
-        `Tasas de mercado actualizadas vía MCP (VES/USDT: ${snapshot.binanceVesSell.toFixed(2)} · Paralelo: ${snapshot.parallelAvg.toFixed(2)} · BCV: ${snapshot.bcvUsd.toFixed(2)}).`,
+        `Tasas de mercado actualizadas vía MCP (VES/USDT: ${formatLiveRate(snapshot.binanceVesSell)} · Paralelo: ${formatLiveRate(snapshot.parallelAvg)} · BCV: ${formatLiveRate(snapshot.bcvUsd)}).`,
         'Sincronización MCP',
       );
+      if (faltantes.length > 0) {
+        this.toast.warn(
+          `Sin dato real para ${faltantes.length} de las tasas. No se muestra ningún valor estimado.`,
+          'Tasas no disponibles',
+        );
+      }
       return updatedLegs;
     } catch {
       this.toast.warn(

@@ -16,7 +16,9 @@ import { ToastService } from '../../core/toast.service';
 import { AccountsService } from '../../core/accounts.service';
 import {
   TriangulationIntelligenceService,
+  formatLiveRate,
   type McpTacticalReport,
+  type LiveRate,
 } from '../../core/triangulation-intelligence.service';
 
 const OPS_KEY = 'p2p.operations';
@@ -36,6 +38,28 @@ export class Triangulation implements OnInit, OnDestroy {
 
   readonly presets = DEFAULT_TRIANGULAR_PRESETS;
   readonly selectedPresetId = signal<string>(this.presets[0].id);
+
+  /**
+   * Render de una tasa del snapshot. Delega en `formatLiveRate` para que el
+   * número y su ausencia se formateen en un solo lugar: si el template vuelve a
+   * usar `| number` sobre un `LiveRate`, el compilador lo rechaza porque `.value`
+   * es `number | null`.
+   */
+  formatRate(rate: LiveRate, digits = 2): string {
+    return formatLiveRate(rate, digits);
+  }
+
+  /**
+   * Tooltip de una tasa ausente. Sin esto el chip dice "no disponible" y no dice
+   * QUÉ hay que reconectar, que es la mitad del trabajo cuando algo se cayó.
+   */
+  absentHint(rate: LiveRate): string | null {
+    if (rate.value !== null) {
+      return rate.source ? `Fuente: ${rate.source}` : null;
+    }
+    const reason = rate.unavailableReason ? ` (${rate.unavailableReason})` : '';
+    return `Sin dato: se tomaría de ${rate.expectedSource}${reason}`;
+  }
 
   readonly initialAmount = signal<number>(10000);
   readonly isSettling = signal<boolean>(false);

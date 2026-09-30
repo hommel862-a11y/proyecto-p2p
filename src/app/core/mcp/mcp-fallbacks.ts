@@ -34,6 +34,62 @@ const DEGRADED_MCP_AVAILABILITY: McpFallbackAvailability = Object.freeze({
   reason: MCP_FALLBACK_DEGRADED_REASON,
 });
 
+/** Cómo se declara una tasa de mercado que no se pudo obtener de verdad. */
+export interface MarketRateReading {
+  readonly value: number | null;
+  /** Por qué no hay valor. `null` cuando sí lo hay. */
+  readonly reason: string | null;
+  /** De dónde habría salido el número. Se declara siempre. */
+  readonly expectedSource: string;
+}
+
+/**
+ * Lee una tasa de mercado de los argumentos de la herramienta.
+ *
+ * Esta función no existía y su ausencia es la causa de las tasas inventadas: cada
+ * herramienta hacía `Number(args?.bcvRate ?? 72.45)` y, cuando el agente no pasaba
+ * la tasa, devolvía un número con forma de mercado. Peor: 72.45 y 84.12 están más
+ * de 10x lejos de las tasas reales observadas (857.8876 y 958.580188), así que no
+ * eran ni defaults tolerables ni números redondeados: describían un mercado que
+ * no existe, y para el LMC eso es una oportunidad de entrada.
+ *
+ * Con el argumento presente y plausible, la tasa es real y se usa. Sin él, la
+ * ausencia se propaga como `null` y la herramienta lo declara.
+ */
+export function readMarketRate(
+  args: unknown,
+  key: string,
+  expectedSource: string,
+): MarketRateReading {
+  const raw = (args as Record<string, unknown> | null | undefined)?.[key];
+  const value = Number(raw);
+  if (raw != null && Number.isFinite(value) && value > 0) {
+    return { value, reason: null, expectedSource };
+  }
+  return {
+    value: null,
+    reason: raw == null ? `FALTA_ARGUMENTO_${key}` : `ARGUMENTO_${key}_NO_PLAUSIBLE`,
+    expectedSource,
+  };
+}
+
+/**
+ * Bloque de ausencia que se agrega al resultado de una herramienta que necesita
+ * una tasa de mercado. Sigue la convención que ya usa
+ * `audit_counterparty_exposure`: `null` en el valor, un motivo legible y
+ * `actionable: false`.
+ */
+function rateUnavailableFields(
+  reading: MarketRateReading,
+): Record<string, unknown> {
+  return {
+    rateStatus: 'UNAVAILABLE_NO_LIVE_SOURCE',
+    unavailableReason: reading.reason,
+    expectedSource: reading.expectedSource,
+    actionable: false,
+  };
+}
+
 /**
  * Simula la ejecución de herramientas MCP en modo web cuando no hay conexión nativa de Electron.
  */
@@ -159,52 +215,92 @@ export function simulateMcpTool(
       actionable: false,
     };
   } else if (toolName === 'forecast_volatility_window') {
-    const parallel = Number((args as any)?.parallelRate ?? 84.12);
-    const bcv = Number((args as any)?.bcvRate ?? 72.45);
-    const bcvIntel = getBcvMarketIntelligence(parallel, bcv);
-    const isInWindow = bcvIntel.window.phase === 'INTERVENTION_ACTIVE';
-    const bidDepth = Number((args as any)?.bidDepthUsdt ?? 9500);
-    const askDepth = Number((args as any)?.askDepthUsdt ?? 8000);
-    const depthRatio = bidDepth > 0 ? askDepth / bidDepth : 1;
-    let spreadDynamic: 'EXPANSION_LIKELY' | 'COMPRESSION_RISK' | 'STABLE' = 'STABLE';
-    if (isInWindow && depthRatio < 0.8) {
-      spreadDynamic = 'COMPRESSION_RISK';
-    } else if (bcvIntel.gap.gapPct > 18) {
-      spreadDynamic = 'EXPANSION_LIKELY';
+    const parallelRead = readMarketRate(args, 'parallelRate', 'Cotizave `parallel` o libro Binance P2P');
+    const bcvRead = readMarketRate(args, 'bcvRate', 'Cotizave `oficial` o get_bcv_rates');
+    if (parallelRead.value === null || bcvRead.value === null) {
+      // Sin las dos tasas no hay brecha, y sin brecha no hay pronóstico de
+      // volatilidad. Antes devolvía 72.45/84.12 y de ahí una recomendación de
+      // acción que el LMC leía como ventana real.
+      const faltante = parallelRead.value === null ? parallelRead : bcvRead;
+      simulatedResult = {
+        ...simulatedResult,
+        parallelRate: parallelRead.value,
+        bcvRate: bcvRead.value,
+        gapPct: null,
+        isInBcvInterventionWindow: null,
+        bcvPhase: null,
+        hoursUntilIntervention: null,
+        tacticalRecommendation: null,
+        spreadDynamic: null,
+        suggestedAction: null,
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      const bcvIntel = getBcvMarketIntelligence(parallelRead.value, bcvRead.value);
+      const isInWindow = bcvIntel.window.phase === 'INTERVENTION_ACTIVE';
+      const bidDepth = Number((args as any)?.bidDepthUsdt ?? 9500);
+      const askDepth = Number((args as any)?.askDepthUsdt ?? 8000);
+      const depthRatio = bidDepth > 0 ? askDepth / bidDepth : 1;
+      let spreadDynamic: 'EXPANSION_LIKELY' | 'COMPRESSION_RISK' | 'STABLE' = 'STABLE';
+      if (isInWindow && depthRatio < 0.8) {
+        spreadDynamic = 'COMPRESSION_RISK';
+      } else if (bcvIntel.gap.gapPct > 18) {
+        spreadDynamic = 'EXPANSION_LIKELY';
+      }
+      simulatedResult = {
+        ...simulatedResult,
+        parallelRate: parallelRead.value,
+        bcvRate: bcvRead.value,
+        gapPct: Number(bcvIntel.gap.gapPct.toFixed(2)),
+        isInBcvInterventionWindow: isInWindow,
+        bcvPhase: bcvIntel.window.phase,
+        hoursUntilIntervention: bcvIntel.window.hoursUntilIntervention,
+        tacticalRecommendation: bcvIntel.recommendation.action,
+        spreadDynamic,
+        suggestedAction:
+          spreadDynamic === 'COMPRESSION_RISK'
+            ? 'Liquidar inventario con rapidez para evitar compresión de márgenes'
+            : spreadDynamic === 'EXPANSION_LIKELY'
+              ? 'Ampliar spread visible y capturar margen en puntas'
+              : 'Operar con volumen normal',
+      };
     }
-    simulatedResult = {
-      ...simulatedResult,
-      gapPct: Number(bcvIntel.gap.gapPct.toFixed(2)),
-      isInBcvInterventionWindow: isInWindow,
-      bcvPhase: bcvIntel.window.phase,
-      hoursUntilIntervention: bcvIntel.window.hoursUntilIntervention,
-      tacticalRecommendation: bcvIntel.recommendation.action,
-      spreadDynamic,
-      suggestedAction:
-        spreadDynamic === 'COMPRESSION_RISK'
-          ? 'Liquidar inventario con rapidez para evitar compresión de márgenes'
-          : spreadDynamic === 'EXPANSION_LIKELY'
-            ? 'Ampliar spread visible y capturar margen en puntas'
-            : 'Operar con volumen normal',
-    };
   } else if (toolName === 'calculate_delta_neutral_hedge') {
     const vesBal = Number((args as any)?.vesBalance ?? 120000);
-    const refPrice = Number((args as any)?.usdtReferencePrice ?? 84.12);
+    const refRead = readMarketRate(args, 'usdtReferencePrice', 'Cotizave `parallel` o libro Binance P2P');
     const targetHedge = Number((args as any)?.targetHedgePct ?? 100);
-    const usdtVal = vesBal / refPrice;
-    const reqHedge = (usdtVal * targetHedge) / 100;
-    simulatedResult = {
-      ...simulatedResult,
-      vesBalance: vesBal,
-      usdtReferencePrice: refPrice,
-      usdtValueEquivalent: Number(usdtVal.toFixed(2)),
-      targetHedgePct: targetHedge,
-      requiredShortHedgeUsdt: Number(reqHedge.toFixed(2)),
-      projectedLossIfUnhedged5PctUsd: Number((usdtVal * 0.05).toFixed(2)),
-      recommendedInstrument: 'Perpetual Futures 1x Short o Aave Variable Debt',
-      humanInTheLoopNotice:
-        'Requiere confirmación explícita del operador antes de abrir posición en protocolo de derivados.',
-    };
+    if (refRead.value === null) {
+      // Sin precio de referencia no hay conversión a USDT, y por lo tanto no hay
+      // ni tamaño de cobertura ni pérdida proyectada. Antes ambos salían de
+      // 84.12 y eran recommendations accionables sobre un precio inexistente.
+      simulatedResult = {
+        ...simulatedResult,
+        vesBalance: vesBal,
+        usdtReferencePrice: null,
+        usdtValueEquivalent: null,
+        targetHedgePct: targetHedge,
+        requiredShortHedgeUsdt: null,
+        projectedLossIfUnhedged5PctUsd: null,
+        recommendedInstrument: null,
+        humanInTheLoopNotice: null,
+        ...rateUnavailableFields(refRead),
+      };
+    } else {
+      const usdtVal = vesBal / refRead.value;
+      const reqHedge = (usdtVal * targetHedge) / 100;
+      simulatedResult = {
+        ...simulatedResult,
+        vesBalance: vesBal,
+        usdtReferencePrice: refRead.value,
+        usdtValueEquivalent: Number(usdtVal.toFixed(2)),
+        targetHedgePct: targetHedge,
+        requiredShortHedgeUsdt: Number(reqHedge.toFixed(2)),
+        projectedLossIfUnhedged5PctUsd: Number((usdtVal * 0.05).toFixed(2)),
+        recommendedInstrument: 'Perpetual Futures 1x Short o Aave Variable Debt',
+        humanInTheLoopNotice:
+          'Requiere confirmación explícita del operador antes de abrir posición en protocolo de derivados.',
+      };
+    }
   } else if (toolName === 'trigger_killswitch') {
     const reason = String((args as any)?.reason ?? 'Parada de emergencia');
     const source = String((args as any)?.source ?? 'UI');
@@ -257,43 +353,77 @@ export function simulateMcpTool(
       };
     }
   } else if (toolName === 'get_bcv_rates') {
+    // Sin daemon no hay BCV. La firma de la herramienta (`McpService.getBcvRates`)
+    // ni siquiera acepta una tasa como argumento, así que acá no hay ningún
+    // camino real hacia un número: devolver 72.45 era inventar el ancla oficial
+    // de un mercado que cotiza en 857.8876.
+    const lectura = readMarketRate(args, 'usd', 'Cotizave `oficial` o el daemon MCP de Electron');
     simulatedResult = {
       ...simulatedResult,
-      usd: 72.45,
-      eur: 78.6,
-      cny: 10.15,
-      rub: 0.78,
-      effectiveDate: new Date().toISOString().slice(0, 10),
-      source: 'BCV Oficial',
-      isFallback: false,
+      usd: lectura.value,
+      eur: null,
+      cny: null,
+      rub: null,
+      effectiveDate: null,
+      source: lectura.value === null ? 'SIN_FUENTE_EN_VIVO' : 'ARGUMENTO_RECIBIDO',
+      isFallback: lectura.value === null,
+      // La ausencia se declara SOLO cuando hay ausencia. Declararla
+      // incondicionalmente sería el error espejo: el LMC descartaría una tasa
+      // real porque el envelope dice "no hay dato".
+      ...(lectura.value === null ? rateUnavailableFields(lectura) : {}),
     };
   } else if (toolName === 'get_parallel_rates') {
+    // Mismo caso: la firma (`McpService.getParallelRates`) no acepta tasas. Los
+    // cuatro valores por venue eran inventados uno por uno, y el `average` que
+    // colgaba de ellos era la suma de la invención.
+    const lectura = readMarketRate(
+      args,
+      'average',
+      'Cotizave `parallel` o el daemon MCP de Electron',
+    );
     simulatedResult = {
       ...simulatedResult,
-      enparalelovzla: 84.2,
-      cotizave: 84.05,
-      criptonoticias: 84.1,
-      average: 84.12,
-      spreadOverBcvPct: 16.11,
+      enparalelovzla: null,
+      cotizave: null,
+      criptonoticias: null,
+      average: lectura.value,
+      spreadOverBcvPct: null,
+      ...(lectura.value === null ? rateUnavailableFields(lectura) : {}),
     };
   } else if (toolName === 'calculate_rate_gap') {
-    const offBcv = Number((args as any)?.bcvRate ?? 72.45);
-    const parAvg = Number((args as any)?.parallelRate ?? 84.12);
-    const gapVes = Math.round((parAvg - offBcv) * 100) / 100;
-    const gapPct = Math.round(((parAvg - offBcv) / offBcv) * 10000) / 100;
-    simulatedResult = {
-      ...simulatedResult,
-      officialBcv: offBcv,
-      parallelAverage: parAvg,
-      gapVes,
-      gapPct,
-      riskClassification:
-        gapPct > 20
-          ? 'SEVERE_DISTORTION'
-          : gapPct > 10
-            ? 'MODERATE_DISTORTION'
-            : 'NORMAL_EQUILIBRIUM',
-    };
+    // Estas dos SÍ llegan por argumento, y cuando llegan son reales. Lo que no
+    // puede pasar es inventarlas: la brecha es exactamente el número que un
+    // operador lee como "entrás 16% arriba del oficial".
+    const offRead = readMarketRate(args, 'bcvRate', 'Cotizave `oficial` o get_bcv_rates');
+    const parRead = readMarketRate(args, 'parallelRate', 'Cotizave `parallel` o get_parallel_rates');
+    if (offRead.value === null || parRead.value === null) {
+      const faltante = offRead.value === null ? offRead : parRead;
+      simulatedResult = {
+        ...simulatedResult,
+        officialBcv: offRead.value,
+        parallelAverage: parRead.value,
+        gapVes: null,
+        gapPct: null,
+        riskClassification: null,
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      const gapVes = Math.round((parRead.value - offRead.value) * 100) / 100;
+      const gapPct = Math.round(((parRead.value - offRead.value) / offRead.value) * 10000) / 100;
+      simulatedResult = {
+        ...simulatedResult,
+        officialBcv: offRead.value,
+        parallelAverage: parRead.value,
+        gapVes,
+        gapPct,
+        riskClassification:
+          gapPct > 20
+            ? 'SEVERE_DISTORTION'
+            : gapPct > 10
+              ? 'MODERATE_DISTORTION'
+              : 'NORMAL_EQUILIBRIUM',
+      };
+    }
   } else if (toolName === 'check_bcv_intervention_window') {
     const evalDate = (args as any)?.testTimestamp
       ? new Date((args as any).testTimestamp)
@@ -322,40 +452,90 @@ export function simulateMcpTool(
   } else if (toolName === 'autofill_trade_reference') {
     const side = ((args as any)?.side ?? 'BUY') as 'BUY' | 'SELL';
     const targetMargin = Number((args as any)?.targetMarginPct ?? 1.2);
-    const fallbackRate = Number((args as any)?.fallbackRate ?? 84.12);
-    const marginVes = Math.round(fallbackRate * (targetMargin / 100) * 100) / 100;
-    const suggestedPrice =
-      side === 'BUY'
-        ? Math.round((fallbackRate - marginVes) * 100) / 100
-        : Math.round((fallbackRate + marginVes) * 100) / 100;
-    simulatedResult = {
-      ...simulatedResult,
-      side,
-      referenceMidRate: fallbackRate,
-      targetMarginPct: targetMargin,
-      suggestedPrice,
-      marginVes,
-      executionAdvice:
+    const fallbackRead = readMarketRate(args, 'fallbackRate', 'Cotizave `parallel` o libro Binance P2P');
+    if (fallbackRead.value === null) {
+      // El punto medio sin el cual no hay precio sugerido: publicar una orden
+      // alrededor de un 84.12 inventado es presentar una salida en el mercado
+      // que el LMC firmaría.
+      simulatedResult = {
+        ...simulatedResult,
+        side,
+        referenceMidRate: null,
+        targetMarginPct: targetMargin,
+        suggestedPrice: null,
+        marginVes: null,
+        executionAdvice: null,
+        formattedSummary: null,
+        ...rateUnavailableFields(fallbackRead),
+      };
+    } else {
+      const fallbackRate = fallbackRead.value;
+      const marginVes = Math.round(fallbackRate * (targetMargin / 100) * 100) / 100;
+      const suggestedPrice =
         side === 'BUY'
-          ? 'Publicar orden de compra por debajo del punto medio para capturar margen taker.'
-          : 'Publicar orden de venta por encima del punto medio.',
-      formattedSummary: `${side} USDT @ ${suggestedPrice.toFixed(2)} VES (Mid: ${fallbackRate.toFixed(2)}, Margen: ${targetMargin}%)`,
-    };
+          ? Math.round((fallbackRate - marginVes) * 100) / 100
+          : Math.round((fallbackRate + marginVes) * 100) / 100;
+      simulatedResult = {
+        ...simulatedResult,
+        side,
+        referenceMidRate: fallbackRate,
+        targetMarginPct: targetMargin,
+        suggestedPrice,
+        marginVes,
+        executionAdvice:
+          side === 'BUY'
+            ? 'Publicar orden de compra por debajo del punto medio para capturar margen taker.'
+            : 'Publicar orden de venta por encima del punto medio.',
+        formattedSummary: `${side} USDT @ ${suggestedPrice.toFixed(2)} VES (Mid: ${fallbackRate.toFixed(2)}, Margen: ${targetMargin}%)`,
+      };
+    }
   } else if (toolName === 'get_binance_p2p_orderbook') {
-    simulatedResult = {
-      ...simulatedResult,
-      fiat: (args as any)?.fiat ?? 'VES',
-      asset: (args as any)?.asset ?? 'USDT',
-      timestamp: new Date().toISOString(),
-      topBuyPrice: (args as any)?.fiat === 'COP' ? 4210 : 82.2,
-      topSellPrice: (args as any)?.fiat === 'COP' ? 4250 : 82.85,
-      spreadVes: (args as any)?.fiat === 'COP' ? 40 : 0.65,
-      spreadPct: (args as any)?.fiat === 'COP' ? 0.95 : 0.79,
-      totalBuyDepthUsdt: 21600,
-      totalSellDepthUsdt: 24500,
-      buyOffersCount: 5,
-      sellOffersCount: 5,
-    };
+    // Un libro de órdenes inventado es el peor caso posible de esta función:
+    // no es un dato de contexto, ES la afirmación "estas son las ofertas que
+    // tenés en el mercado ahora". El LMC la lee como competencia real y
+    // `recommend_competitive_pricing` compite contra ella. Antes devolvía
+    // 82.2/82.85 (y 4210/4250 para COP) como si fueran el libro vivo.
+    const fiat = (args as any)?.fiat ?? 'VES';
+    const topBuyRead = readMarketRate(args, 'topBuyPrice', 'libro Binance P2P en vivo o get_binance_p2p_orderbook');
+    const topSellRead = readMarketRate(args, 'topSellPrice', 'libro Binance P2P en vivo o get_binance_p2p_orderbook');
+    if (topBuyRead.value === null || topSellRead.value === null) {
+      const faltante = topBuyRead.value === null ? topBuyRead : topSellRead;
+      simulatedResult = {
+        ...simulatedResult,
+        fiat,
+        asset: (args as any)?.asset ?? 'USDT',
+        timestamp: new Date().toISOString(),
+        topBuyPrice: topBuyRead.value,
+        topSellPrice: topSellRead.value,
+        spreadVes: null,
+        spreadPct: null,
+        totalBuyDepthUsdt: null,
+        totalSellDepthUsdt: null,
+        buyOffersCount: null,
+        sellOffersCount: null,
+        ...rateUnavailableFields(faltante),
+      };
+    } else {
+      const spreadVes = Math.round((topSellRead.value - topBuyRead.value) * 100) / 100;
+      const spreadPct =
+        topBuyRead.value > 0
+          ? Math.round(((topSellRead.value - topBuyRead.value) / topBuyRead.value) * 10000) / 100
+          : null;
+      simulatedResult = {
+        ...simulatedResult,
+        fiat,
+        asset: (args as any)?.asset ?? 'USDT',
+        timestamp: new Date().toISOString(),
+        topBuyPrice: topBuyRead.value,
+        topSellPrice: topSellRead.value,
+        spreadVes,
+        spreadPct,
+        totalBuyDepthUsdt: (args as any)?.totalBuyDepthUsdt ?? null,
+        totalSellDepthUsdt: (args as any)?.totalSellDepthUsdt ?? null,
+        buyOffersCount: (args as any)?.buyOffersCount ?? null,
+        sellOffersCount: (args as any)?.sellOffersCount ?? null,
+      };
+    }
   } else if (toolName === 'detect_usdt_depeg') {
     const spotPrice = Number((args as any)?.spotUsdtPrice ?? 0.9992);
     const threshold = Number((args as any)?.thresholdPct ?? 0.2);
@@ -381,22 +561,44 @@ export function simulateMcpTool(
     const stepVes = Number((args as any)?.stepVes ?? 0.05);
     const marginPct = Number((args as any)?.targetMarginPct ?? 1.15);
     const breakEven = Number((args as any)?.breakEvenPrice ?? 82.5);
-    const marketMid = Number((args as any)?.currentMarketMid ?? 84.12);
-    const compPrice = recSide === 'BUY' ? marketMid - 0.5 : marketMid + 0.5;
-    const suggPrice = recSide === 'BUY' ? compPrice + stepVes : compPrice - stepVes;
-    simulatedResult = {
-      ...simulatedResult,
-      side: recSide,
-      strategy: recStrategy,
-      suggestedPrice: Number(suggPrice.toFixed(2)),
-      competitorPrice: Number(compPrice.toFixed(2)),
-      stepVes,
-      targetMarginPct: marginPct,
-      marginVes: Number(Math.abs(suggPrice - breakEven).toFixed(2)),
-      isWithinSafeBoundaries: suggPrice >= breakEven,
-      advice: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES para liderar libro de órdenes.`,
-      executionSummary: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES (${recStrategy} vs competidor en ${compPrice.toFixed(2)} VES)`,
-    };
+    const midRead = readMarketRate(args, 'currentMarketMid', 'Cotizave `parallel` o libro Binance P2P');
+    if (midRead.value === null) {
+      // Sin el medio del mercado no hay precio competitivo que sugiera: la
+      // herramienta deja de recomendar un precio de publicación.
+      simulatedResult = {
+        ...simulatedResult,
+        side: recSide,
+        strategy: recStrategy,
+        currentMarketMid: null,
+        suggestedPrice: null,
+        competitorPrice: null,
+        stepVes,
+        targetMarginPct: marginPct,
+        marginVes: null,
+        isWithinSafeBoundaries: null,
+        advice: null,
+        executionSummary: null,
+        ...rateUnavailableFields(midRead),
+      };
+    } else {
+      const marketMid = midRead.value;
+      const compPrice = recSide === 'BUY' ? marketMid - 0.5 : marketMid + 0.5;
+      const suggPrice = recSide === 'BUY' ? compPrice + stepVes : compPrice - stepVes;
+      simulatedResult = {
+        ...simulatedResult,
+        side: recSide,
+        strategy: recStrategy,
+        currentMarketMid: marketMid,
+        suggestedPrice: Number(suggPrice.toFixed(2)),
+        competitorPrice: Number(compPrice.toFixed(2)),
+        stepVes,
+        targetMarginPct: marginPct,
+        marginVes: Number(Math.abs(suggPrice - breakEven).toFixed(2)),
+        isWithinSafeBoundaries: suggPrice >= breakEven,
+        advice: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES para liderar libro de órdenes.`,
+        executionSummary: `Colocar anuncio ${recSide} a ${suggPrice.toFixed(2)} VES (${recStrategy} vs competidor en ${compPrice.toFixed(2)} VES)`,
+      };
+    }
   } else if (toolName === 'analyze_orderbook_pressure') {
     const fiat = (args as any)?.fiat ?? 'VES';
     const bidDepth = Number((args as any)?.bidDepthUsdt ?? 18000);
@@ -431,53 +633,92 @@ export function simulateMcpTool(
   } else if (toolName === 'stress_test_portfolio') {
     const usdtCapital = Number((args as any)?.usdtCapital ?? 8000);
     const vesCapital = Number((args as any)?.vesCapital ?? 160000);
-    const refRate = Number((args as any)?.referenceRate ?? 84.12);
+    const refRead = readMarketRate(args, 'referenceRate', 'Cotizave `parallel` o get_parallel_rates');
     const hedgedPct = Number((args as any)?.hedgedPct ?? 50);
-    const vesExpUsdt = Math.round((vesCapital / refRate) * 100) / 100;
-    const baseValUsdt = Math.round((usdtCapital + vesExpUsdt) * 100) / 100;
-    const scenarios = [5, 10, 20].map((d) => {
-      const newRate = Math.round(refRate * (1 + d / 100) * 100) / 100;
-      const loss =
-        Math.round(
-          ((vesCapital * (1 - hedgedPct / 100)) / refRate -
-            (vesCapital * (1 - hedgedPct / 100)) / newRate) *
-            100,
-        ) / 100;
-      return {
-        devaluationPct: d,
-        newRate,
-        lossUsdt: loss,
-        postStressPortfolioValueUsdt: Math.round((baseValUsdt - loss) * 100) / 100,
-        portfolioDrawdownPct: Math.round((loss / baseValUsdt) * 10000) / 100,
-        solvencyStatus: loss > baseValUsdt * 0.08 ? 'CRITICAL_EQUITY_RISK' : 'HEALTHY',
+    if (refRead.value === null) {
+      // Todo el stress test se cuelga de la tasa de conversión VES→USDT. Sin ella
+      // no hay exposición, ni escenarios de devaluación, ni veredicto de
+      // solvencia: emitirlos habría sido una sentencia de riesgo sobre un
+      // número inventado.
+      simulatedResult = {
+        ...simulatedResult,
+        referenceRate: null,
+        baselinePortfolioValueUsdt: null,
+        vesExposureUsdt: null,
+        vesExposurePct: null,
+        hedgedPct,
+        unhedgedVesAmount: vesCapital * (1 - hedgedPct / 100),
+        scenariosCount: null,
+        scenarios: null,
+        recommendedHedgeUsdt: null,
+        institutionalSummary: null,
+        ...rateUnavailableFields(refRead),
       };
-    });
-    simulatedResult = {
-      ...simulatedResult,
-      baselinePortfolioValueUsdt: baseValUsdt,
-      vesExposureUsdt: vesExpUsdt,
-      vesExposurePct: Math.round((vesExpUsdt / baseValUsdt) * 10000) / 100,
-      hedgedPct,
-      unhedgedVesAmount: vesCapital * (1 - hedgedPct / 100),
-      scenariosCount: scenarios.length,
-      scenarios,
-      recommendedHedgeUsdt: Math.round(vesExpUsdt * (1 - hedgedPct / 100) * 100) / 100,
-      institutionalSummary: `Exposición a VES: $${vesExpUsdt} USDT. Cobertura actual: ${hedgedPct}%.`,
-    };
+    } else {
+      const refRate = refRead.value;
+      const vesExpUsdt = Math.round((vesCapital / refRate) * 100) / 100;
+      const baseValUsdt = Math.round((usdtCapital + vesExpUsdt) * 100) / 100;
+      const scenarios = [5, 10, 20].map((d) => {
+        const newRate = Math.round(refRate * (1 + d / 100) * 100) / 100;
+        const loss =
+          Math.round(
+            ((vesCapital * (1 - hedgedPct / 100)) / refRate -
+              (vesCapital * (1 - hedgedPct / 100)) / newRate) *
+              100,
+          ) / 100;
+        return {
+          devaluationPct: d,
+          newRate,
+          lossUsdt: loss,
+          postStressPortfolioValueUsdt: Math.round((baseValUsdt - loss) * 100) / 100,
+          portfolioDrawdownPct: Math.round((loss / baseValUsdt) * 10000) / 100,
+          solvencyStatus: loss > baseValUsdt * 0.08 ? 'CRITICAL_EQUITY_RISK' : 'HEALTHY',
+        };
+      });
+      simulatedResult = {
+        ...simulatedResult,
+        referenceRate: refRate,
+        baselinePortfolioValueUsdt: baseValUsdt,
+        vesExposureUsdt: vesExpUsdt,
+        vesExposurePct: Math.round((vesExpUsdt / baseValUsdt) * 10000) / 100,
+        hedgedPct,
+        unhedgedVesAmount: vesCapital * (1 - hedgedPct / 100),
+        scenariosCount: scenarios.length,
+        scenarios,
+        recommendedHedgeUsdt: Math.round(vesExpUsdt * (1 - hedgedPct / 100) * 100) / 100,
+        institutionalSummary: `Exposición a VES: $${vesExpUsdt} USDT. Cobertura actual: ${hedgedPct}%.`,
+      };
+    }
   } else if (toolName === 'rebalance_capital_allocation') {
     const totalCap = Number((args as any)?.totalCapitalUsdt ?? 10000);
-    const refRate = Number((args as any)?.referenceRate ?? 84.12);
-    const plan = buildPortfolioAllocationPlan(totalCap, [], refRate);
-    simulatedResult = {
-      ...simulatedResult,
-      totalCapitalUsdt: plan.totalCapitalUsdt,
-      referenceRate: plan.referenceRateVes,
-      riskMode: (args as any)?.riskMode ?? 'BALANCED',
-      allocations: plan.allocations,
-      dynamicLimits: plan.limitsRecommendation,
-      strategicNotes: plan.strategicNotes,
-      activeChannelsCount: plan.allocations.length,
-    };
+    const refRead = readMarketRate(args, 'referenceRate', 'Cotizave `parallel` o get_parallel_rates');
+    if (refRead.value === null) {
+      // El plan de asignación se dimensiona en USDT a partir de la tasa de
+      // referencia. Sin ella no hay plan que ejecutar.
+      simulatedResult = {
+        ...simulatedResult,
+        totalCapitalUsdt: totalCap,
+        referenceRate: null,
+        riskMode: (args as any)?.riskMode ?? 'BALANCED',
+        allocations: null,
+        dynamicLimits: null,
+        strategicNotes: null,
+        activeChannelsCount: null,
+        ...rateUnavailableFields(refRead),
+      };
+    } else {
+      const plan = buildPortfolioAllocationPlan(totalCap, [], refRead.value);
+      simulatedResult = {
+        ...simulatedResult,
+        totalCapitalUsdt: plan.totalCapitalUsdt,
+        referenceRate: plan.referenceRateVes,
+        riskMode: (args as any)?.riskMode ?? 'BALANCED',
+        allocations: plan.allocations,
+        dynamicLimits: plan.limitsRecommendation,
+        strategicNotes: plan.strategicNotes,
+        activeChannelsCount: plan.allocations.length,
+      };
+    }
   } else if (toolName === 'audit_counterparty_exposure') {
     const alias = (args as any)?.counterpartyAlias ?? null;
     const count = (args as any)?.historicalTradesCount ?? null;
@@ -512,30 +753,53 @@ export function simulateMcpTool(
     const dailyLimit = (args as any)?.dailyBankLimitVes
       ? Number((args as any).dailyBankLimitVes)
       : undefined;
-    const runway = simulateCompoundGrowth({
-      initialCapitalUsdt: initCap,
-      netMarginPctPerCycle: netMargin,
-      cyclesPerDay: cycles,
-      operationalDays: days,
-      reinvestmentRatePct: reinvest,
-      dailyBankLimitVes: dailyLimit,
-      referenceRateVes: 84.12,
-    });
-    const coverageMonths =
-      fixedExp > 0 ? Number((runway.totalNetProfitUsdt / fixedExp).toFixed(1)) : 12;
-    simulatedResult = {
-      ...simulatedResult,
-      initialCapitalUsdt: runway.initialCapitalUsdt,
-      projectedFinalCapitalUsdt: runway.finalWorkingCapitalUsdt,
-      totalNetProfitUsdt: runway.totalNetProfitUsdt,
-      totalReturnPct: runway.totalReturnPct,
-      operationalDays: days,
-      milestones: runway.milestones,
-      bankingWallAlert: runway.bankingWallAlert,
-      monthlyRunwayCoverageMonths: coverageMonths,
-      hasReachedBankingWall: Boolean(runway.bankingWallAlert),
-      executiveSummary: `Proyección a ${days} días: Capital proyectado $${runway.finalWorkingCapitalUsdt.toLocaleString()} USDT (+${runway.totalReturnPct}%). Ganancia neta: $${runway.totalNetProfitUsdt.toLocaleString()} USDT. Cobertura de gastos: ${coverageMonths} meses.`,
-    };
+    const refRead = readMarketRate(args, 'referenceRateVes', 'Cotizave `parallel` o get_parallel_rates');
+    if (refRead.value === null) {
+      // El runway del límite bancario se dimensiona con la referencia VES→USDT.
+      // Con 84.12 hardcodeado, la proyección de cobertura de gastos y la alerta de
+      // "banking wall"-salían de una tasa que difiere de la real en más de 10x.
+      simulatedResult = {
+        ...simulatedResult,
+        initialCapitalUsdt: initCap,
+        referenceRateVes: null,
+        projectedFinalCapitalUsdt: null,
+        totalNetProfitUsdt: null,
+        totalReturnPct: null,
+        operationalDays: days,
+        milestones: null,
+        bankingWallAlert: null,
+        monthlyRunwayCoverageMonths: null,
+        hasReachedBankingWall: null,
+        executiveSummary: null,
+        ...rateUnavailableFields(refRead),
+      };
+    } else {
+      const runway = simulateCompoundGrowth({
+        initialCapitalUsdt: initCap,
+        netMarginPctPerCycle: netMargin,
+        cyclesPerDay: cycles,
+        operationalDays: days,
+        reinvestmentRatePct: reinvest,
+        dailyBankLimitVes: dailyLimit,
+        referenceRateVes: refRead.value,
+      });
+      const coverageMonths =
+        fixedExp > 0 ? Number((runway.totalNetProfitUsdt / fixedExp).toFixed(1)) : 12;
+      simulatedResult = {
+        ...simulatedResult,
+        initialCapitalUsdt: runway.initialCapitalUsdt,
+        referenceRateVes: refRead.value,
+        projectedFinalCapitalUsdt: runway.finalWorkingCapitalUsdt,
+        totalNetProfitUsdt: runway.totalNetProfitUsdt,
+        totalReturnPct: runway.totalReturnPct,
+        operationalDays: days,
+        milestones: runway.milestones,
+        bankingWallAlert: runway.bankingWallAlert,
+        monthlyRunwayCoverageMonths: coverageMonths,
+        hasReachedBankingWall: Boolean(runway.bankingWallAlert),
+        executiveSummary: `Proyección a ${days} días: Capital proyectado $${runway.finalWorkingCapitalUsdt.toLocaleString()} USDT (+${runway.totalReturnPct}%). Ganancia neta: $${runway.totalNetProfitUsdt.toLocaleString()} USDT. Cobertura de gastos: ${coverageMonths} meses.`,
+      };
+    }
   } else if (toolName === 'gdrive_backup_receipt') {
     const tradeId = String((args as any)?.tradeId ?? 'ORD-DEMO-01');
     const counterparty = String((args as any)?.counterparty ?? 'Anónimo');

@@ -72,33 +72,73 @@
 
   <!-- Telemetry Bar & Live MCP Prices Ticker -->
   <div class="telemetry-bar">
+    <!--
+      Cada chip resuelve la ausencia explícitamente. Con `| number` un `null`
+      imprimía 0 (o, antes del fix, la constante de arranque) y el operador leía
+      una tasa de mercado donde no había nada. `formatRate` devuelve el texto de
+      ausencia y el `title` dice de dónde habría salido el dato.
+    -->
     <!-- Live Binance P2P Rate -->
     <div class="telemetry-chip chip-price">
       <span class="chip-dot-live"></span>
       <span class="chip-title">Binance P2P VES:</span>
-      <span class="chip-val font-mono">
-        {{ intelligence.liveRates().binanceVesSell | number: '1.2-2' }} / {{ intelligence.liveRates().binanceVesBuy | number: '1.2-2' }}
+      <span class="chip-val font-mono" [attr.title]="absentHint(intelligence.liveRates().binanceVesSell)">
+        {{ formatRate(intelligence.liveRates().binanceVesSell) }} / {{ formatRate(intelligence.liveRates().binanceVesBuy) }}
       </span>
     </div>
 
     <!-- Parallel Rate -->
     <div class="telemetry-chip chip-price">
       <span class="chip-title">Paralelo:</span>
-      <span class="chip-val font-mono">{{ intelligence.liveRates().parallelAvg | number: '1.2-2' }} VES</span>
+      <span
+        class="chip-val font-mono"
+        [class.chip-absent]="intelligence.liveRates().parallelAvg.value === null"
+        [attr.title]="absentHint(intelligence.liveRates().parallelAvg)"
+        >{{ formatRate(intelligence.liveRates().parallelAvg) }} VES</span
+      >
     </div>
 
     <!-- BCV Official Rate & Gap -->
     <div class="telemetry-chip chip-price">
       <span class="chip-title">BCV:</span>
-      <span class="chip-val font-mono">{{ intelligence.liveRates().bcvUsd | number: '1.2-2' }} VES</span>
-      <span class="gap-pill font-mono">+{{ intelligence.liveRates().rateGapPct | number: '1.1-1' }}%</span>
+      <span
+        class="chip-val font-mono"
+        [class.chip-absent]="intelligence.liveRates().bcvUsd.value === null"
+        [attr.title]="absentHint(intelligence.liveRates().bcvUsd)"
+        >{{ formatRate(intelligence.liveRates().bcvUsd) }} VES</span
+      >
+      @if (intelligence.liveRates().rateGapPct.value !== null) {
+        <span
+          class="gap-pill font-mono"
+          [attr.title]="'Fuente: ' + intelligence.liveRates().rateGapPct.expectedSource"
+          >+{{ intelligence.liveRates().rateGapPct.value | number: '1.1-1' }}%</span
+        >
+      } @else {
+        <!-- La píldora de brecha no se renderiza: un "+0.0%" sería una afirmación
+             de mercado, y un hueco sin rótulo no dice si falta el BCV o el paralelo. -->
+        <span
+          class="gap-pill gap-pill-absent font-mono"
+          [attr.title]="absentHint(intelligence.liveRates().rateGapPct)"
+          >brecha n/d</span
+        >
+      }
     </div>
 
     <!-- COP Rates -->
     <div class="telemetry-chip chip-price">
       <span class="chip-title">COP/USDT:</span>
-      <span class="chip-val font-mono">{{ intelligence.liveRates().copPerUsdt | number: '1.0-0' }}</span>
-      <span class="cross-rate font-mono">({{ intelligence.liveRates().copPerVes | number: '1.2-2' }} COP/VES)</span>
+      <span
+        class="chip-val font-mono"
+        [class.chip-absent]="intelligence.liveRates().copPerUsdt.value === null"
+        [attr.title]="absentHint(intelligence.liveRates().copPerUsdt)"
+        >{{ formatRate(intelligence.liveRates().copPerUsdt, 0) }}</span
+      >
+      <span
+        class="cross-rate font-mono"
+        [class.chip-absent]="intelligence.liveRates().copPerVes.value === null"
+        [attr.title]="absentHint(intelligence.liveRates().copPerVes)"
+        >({{ formatRate(intelligence.liveRates().copPerVes) }} COP/VES)</span
+      >
     </div>
 
     <!-- BCV Status -->
