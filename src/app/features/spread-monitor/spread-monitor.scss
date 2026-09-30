@@ -2108,4 +2108,291 @@
   }
 }
 
+/* ============================================================
+   Apple Pro Liquid Glass & OLED Midnight Architecture
+   Consolidated across all Spread Monitor Cards & Surfaces
+   ============================================================ */
+:host-context([data-theme="apple-dark"]) {
+  /* Desk Main Header */
+  .desk-main-header {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+  }
+
+  /* Primary Input & Configuration Cards */
+  .terminal-input-card {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .terminal-card-header {
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+    }
+
+    .terminal-card-footer {
+      border-top-color: rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* Input Controls: Crisp OLED input surface */
+  .input-control-wrap {
+    background: #14141a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+
+    &:focus-within {
+      border-color: var(--gold, #ffd60a);
+      box-shadow: 0 0 0 1px var(--gold, #ffd60a), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    .input-prefix,
+    .input-suffix {
+      border-color: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(235, 235, 245, 0.6);
+    }
+  }
+
+  .terminal-input,
+  .terminal-select {
+    color: var(--text, #ffffff);
+
+    option {
+      background: #111116;
+      color: #ffffff;
+    }
+  }
+
+  /* P2P Radar Card (Right Column) */
+  .p2p-radar-card {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &::before {
+      display: none;
+    }
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .radar-header {
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* Market Depth Ticker Tiles (Clean, unblurred HIG look) */
+  .depth-tile {
+    background: rgba(22, 22, 28, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+    &::after {
+      display: none;
+    }
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    &.depth-ask {
+      border-left: 3px solid #30d158;
+      .depth-value {
+        color: #30d158;
+        text-shadow: none;
+      }
+    }
+
+    &.depth-bid {
+      border-left: 3px solid #0a84ff;
+      .depth-value {
+        color: #0a84ff;
+        text-shadow: none;
+      }
+    }
+
+    &.depth-spread {
+      border-left: 3px solid var(--gold, #ffd60a);
+      background: rgba(255, 214, 10, 0.05);
+      .depth-value {
+        color: var(--gold, #ffd60a);
+        text-shadow: none;
+      }
+    }
+  }
+
+  /* Bank Filter Pills */
+  .bank-pill {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--muted, rgba(235, 235, 245, 0.6));
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: #ffffff;
+    }
+
+    &.active {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  /* Arbitrage Output & Calculation Result Card */
+  .arbitrage-result-card {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &::before {
+      display: none;
+    }
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    .out > div {
+      background: rgba(22, 22, 28, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+      &:hover {
+        border-color: rgba(255, 255, 255, 0.16);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+      }
+    }
+  }
+
+  /* Profit Banner Card */
+  .profit-highlight-tile {
+    background: rgba(48, 209, 88, 0.1);
+    border: 1px solid rgba(48, 209, 88, 0.25);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    &::before {
+      display: none;
+    }
+
+    .profit-amount {
+      color: #30d158;
+      text-shadow: none;
+
+      &.negative {
+        color: #ff453a;
+      }
+    }
+  }
+
+  /* Bank Treasury, Trading Windows, Triangulation, Johnson Cards */
+  .bank-treasury-card,
+  .trading-windows-card,
+  .triangulation-card,
+  .johnson-depth-card,
+  .analytics-subconsole,
+  .mcp-publisher-card,
+  .sqs-indicator-box {
+    background: rgba(17, 17, 22, 0.85) !important;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &::before {
+      display: none;
+    }
+  }
+
+  .bank-usage-mini-tile,
+  .window-item,
+  .triangulation-empty,
+  .triangulation-table-wrap {
+    background: rgba(20, 20, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .triangulation-key-input,
+  .triangulation-threshold-input {
+    background: #14141a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+
+    &:focus {
+      border-color: var(--gold, #ffd60a);
+      box-shadow: 0 0 0 1px var(--gold, #ffd60a);
+    }
+  }
+
+  /* MCP Intelligence Drawer & Widgets */
+  .mcp-hud-drawer {
+    background: rgba(17, 17, 22, 0.92);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .mcp-hud-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    &.hud-alert {
+      border-color: rgba(255, 69, 58, 0.35);
+      background: rgba(255, 69, 58, 0.08);
+    }
+  }
+
+  .analytics-subconsole {
+    .analytics-subnav {
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+
+      .subnav-btn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .subnav-btn.active {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+    }
+  }
+}
+
+
 
