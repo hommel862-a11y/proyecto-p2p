@@ -204,7 +204,7 @@ export class BinanceRepricerService implements OnDestroy {
   readonly executionModeDetail = computed<string>(() =>
     this.executionMode() === REPRICER_EXECUTION_MODES.READ_ONLY
       ? 'Calcula y registra precios. No publica anuncios: este proyecto no tiene capa de escritura contra la API de merchant de Binance.'
-      : 'Publica los precios calculados contra la API de merchant de Binance.',
+      : 'Publica los precios calculados vía publicador MCP registrado (sin capa de escritura directa a la API de merchant de Binance).',
   );
 
   /** Prefijo de cada línea de log. Nunca dice "en vivo" por construcción. */

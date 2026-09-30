@@ -184,7 +184,7 @@ export class McpAdPublisherService implements RepricerAdPublisher {
     }
 
     const mode = registrable
-      ? 'PRODUCCIÓN EN VIVO'
+      ? 'DESPACHO MCP (sin API merchant)'
       : this.isDryRun()
         ? 'SIMULACIÓN (Dry-Run)'
         : 'SIMULACIÓN (sin puente MCP nativo)';
