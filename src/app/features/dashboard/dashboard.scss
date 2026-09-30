@@ -1324,4 +1324,235 @@
   }
 }
 
+/* ============================================================
+   Apple Pro Liquid Glass & OLED Midnight Architecture
+   Consolidated across all Centro de Control (Dashboard) Cards
+   ============================================================ */
+:host-context([data-theme="apple-dark"]) {
+  /* Main Header & Dynamic Island */
+  .apple-main-header {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+  }
+
+  .apple-dynamic-island {
+    background: rgba(12, 12, 16, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &.island-active {
+      background: rgba(12, 12, 16, 0.85);
+      border-color: rgba(48, 209, 88, 0.35);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* Segmented Navigation Bar */
+  .apple-segmented-bar {
+    background: rgba(10, 10, 14, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+
+    .apple-segmented-tab.active {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  /* Bento KPI Cards */
+  .apple-kpi-card {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg, 18px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .apple-kpi-val {
+      &.positive {
+        color: #30d158;
+      }
+      &.negative {
+        color: #ff453a;
+      }
+    }
+  }
+
+  /* Section Containers */
+  .apple-card-section {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  /* Multi-Bank Treasury Cards */
+  .apple-bank-card {
+    background: rgba(22, 22, 28, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(26, 26, 34, 0.8);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    &.card-recommended {
+      border-color: var(--gold, #ffd60a);
+      background: rgba(255, 214, 10, 0.05);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 214, 10, 0.25);
+    }
+
+    &.card-alert {
+      border-color: rgba(255, 69, 58, 0.4);
+      background: rgba(255, 69, 58, 0.06);
+    }
+
+    .apple-bank-velocity-capsule {
+      background: rgba(14, 14, 18, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* Multi-Agent Swarm Tiles */
+  .apple-agent-tile {
+    background: rgba(22, 22, 28, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(26, 26, 34, 0.8);
+    }
+
+    .agent-status-badge {
+      background: rgba(48, 209, 88, 0.12);
+      border-color: rgba(48, 209, 88, 0.25);
+
+      .agent-pulse-dot {
+        background: #30d158;
+      }
+
+      .agent-status-text {
+        color: #30d158;
+      }
+    }
+  }
+
+  /* Macro & Regulatory Tiles */
+  .apple-macro-tile {
+    background: rgba(22, 22, 28, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  }
+
+  .apple-macro-callout {
+    background: rgba(20, 20, 26, 0.7);
+    border-left: 3px solid var(--gold, #ffd60a);
+  }
+
+  /* Subcards: Motor de Riesgo & Resumen Operativo */
+  .apple-subcard {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+  }
+
+  .apple-risk-verdict-box {
+    background: rgba(20, 20, 26, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+
+    &.allow {
+      border-color: rgba(48, 209, 88, 0.35);
+      .verdict-dot { background: #30d158; box-shadow: 0 0 8px #30d158; }
+      .verdict-label { color: #30d158; }
+    }
+
+    &.deny {
+      border-color: rgba(255, 69, 58, 0.35);
+      .verdict-dot { background: #ff453a; box-shadow: 0 0 8px #ff453a; }
+      .verdict-label { color: #ff453a; }
+    }
+
+    &.pause {
+      border-color: rgba(255, 159, 10, 0.35);
+      .verdict-dot { background: #ff9f0a; box-shadow: 0 0 8px #ff9f0a; }
+      .verdict-label { color: #ff9f0a; }
+    }
+  }
+
+  .apple-stats-mini-grid .stats-mini-item {
+    background: rgba(20, 20, 26, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+
+    .stats-mini-val.positive {
+      color: #30d158;
+    }
+  }
+
+  /* Chart & Tables */
+  .apple-chart-container {
+    background: rgba(14, 14, 18, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .apple-chart-tooltip {
+    background: rgba(17, 17, 22, 0.95);
+    border: 1px solid var(--gold, #ffd60a);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .apple-table tbody tr {
+    background: rgba(20, 20, 26, 0.5);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+  }
+
+  /* Modal Dialog */
+  .apple-modal-dialog {
+    background: rgba(17, 17, 22, 0.95);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+}
+
+
 
