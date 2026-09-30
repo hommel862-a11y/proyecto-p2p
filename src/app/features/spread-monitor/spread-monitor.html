@@ -1400,6 +1400,28 @@
                 }
 
                 @if (triangulationLineage(); as lin) {
+                  <!-- Las dos patas de una brecha ejecutable. Se declaran arriba de
+                       la tabla porque sin verlas el número de la fila no significa
+                       nada: "pagás acá, recibís allá" es el libro entero. -->
+                  <div class="triangulation-books-row">
+                    <span class="triangulation-book-leg">
+                      <span class="triangulation-book-venue">binance (libro)</span>
+                      @if (binanceBook(); as bb) {
+                        <span class="font-mono">pagás {{ bb.payPrice | num }} Bs · recibís {{ bb.receivePrice | num }} Bs</span>
+                      } @else {
+                        <span class="font-mono">sin libro en vivo</span>
+                      }
+                    </span>
+                    <span class="triangulation-book-leg">
+                      <span class="triangulation-book-venue">bybit (libro)</span>
+                      @if (bybitBook().leg; as ob) {
+                        <span class="font-mono">pagás {{ ob.payPrice | num }} Bs · recibís {{ ob.receivePrice | num }} Bs</span>
+                      } @else {
+                        <span class="font-mono">{{ executableGapReason() }}</span>
+                      }
+                    </span>
+                  </div>
+
                   <div class="triangulation-threshold-row">
                     <!-- Los gaps se calculan sobre `ratesByMarket()`, así que la edad
                          y la procedencia van de la tabla entera, no de cada tasa:
@@ -1422,12 +1444,19 @@
                   </div>
 
                   <div class="triangulation-table-wrap">
+                    <!-- Cada columna nombra de dónde sale SU número. `Cotizave` solo
+                         publica `mid`: no hay ask ni bid en el payload, así que
+                         una columna de "precio" alimentada con un mid sería una
+                         etiqueta falsa sobre un número que no es un precio de
+                         libro. -->
                     <table class="triangulation-table">
                       <thead>
                         <tr>
                           <th>Exchange</th>
-                          <th>Ask</th>
-                          <th>Bid</th>
+                          <th>Qué es</th>
+                          <th>Pagás</th>
+                          <th>Recibís</th>
+                          <th>Mid (Cotizave)</th>
                           <th>Gap (VES)</th>
                           <th>Gap (%)</th>
                           <th>Estado</th>
@@ -1438,13 +1467,27 @@
                           @let bestGap = row.gapForward.gapVes !== null && (row.gapReverse.gapVes === null || row.gapForward.gapVes >= row.gapReverse.gapVes) ? row.gapForward : row.gapReverse;
                           @let bestGapPct = bestGap.gapPct;
                           @let bestGapVes = bestGap.gapVes;
-                          @let isOpportunity = bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
-                          <tr>
+                          @let isOpportunity = row.kind === 'executable' && bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
+                          <tr [attr.data-market]="row.market" [attr.data-kind]="row.kind">
                             <td>
                               <span class="font-mono" style="text-transform: capitalize;">{{ row.market }}</span>
                             </td>
-                            <td class="font-mono">{{ row.ask ? (row.ask | num) : '--' }}</td>
-                            <td class="font-mono">{{ row.bid ? (row.bid | num) : '--' }}</td>
+                            <td>
+                              @switch (row.kind) {
+                                @case ('executable') {
+                                  <span class="triangulation-chip triangulation-chip-green">Libro en vivo</span>
+                                }
+                                @case ('reference') {
+                                  <span class="triangulation-chip triangulation-chip-gray">Tasa de referencia</span>
+                                }
+                                @default {
+                                  <span class="triangulation-chip triangulation-chip-gray">Ancla indicativa</span>
+                                }
+                              }
+                            </td>
+                            <td class="font-mono">{{ row.payPrice !== null ? (row.payPrice | num) : '--' }}</td>
+                            <td class="font-mono">{{ row.receivePrice !== null ? (row.receivePrice | num) : '--' }}</td>
+                            <td class="font-mono">{{ row.mid !== null ? (row.mid | num) : '--' }}</td>
                             <td class="font-mono" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
                               {{ bestGapVes !== null ? (bestGapVes | num) : '--' }}
                             </td>
@@ -1454,9 +1497,15 @@
                             <td>
                               @if (isOpportunity) {
                                 <span class="triangulation-chip triangulation-chip-green">OPORTUNIDAD ≥ {{ triangulationThresholdVes() }} VES</span>
+                              } @else if (row.kind === 'executable') {
+                                <span class="triangulation-chip triangulation-chip-gray">Sin brecha ≥ umbral</span>
                               } @else {
                                 <span class="triangulation-chip triangulation-chip-gray">Sin brecha</span>
                               }
+                              <!-- Por qué no hay brecha. Una fila sin número y sin
+                                   motivo parece un fallo de la app; con el motivo,
+                                   es una decisión. -->
+                              <span class="triangulation-row-note">{{ row.label }}</span>
                             </td>
                           </tr>
                         }

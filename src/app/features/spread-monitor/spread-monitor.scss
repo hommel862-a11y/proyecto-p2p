@@ -851,6 +851,42 @@
   color: var(--muted);
 }
 
+/* Las dos patas del cruce. Sin esto a la vista, el número de una fila dice
+   "cuánto hay" sin decir "entre qué dos puntas medido". */
+.triangulation-books-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.triangulation-book-leg {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.triangulation-book-venue {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.66rem;
+  color: var(--gold);
+}
+
+/* El motivo por el que una fila no tiene brecha. Sin esto, "--" y "Sin brecha"
+   son indistinguibles de un dato que todavía no llegó. */
+.triangulation-row-note {
+  display: block;
+  margin-top: 4px;
+  max-width: 34ch;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 /* ══════════════════════════════════════════════════════════════
    Trading Windows Estratégicas
    ══════════════════════════════════════════════════════════════ */

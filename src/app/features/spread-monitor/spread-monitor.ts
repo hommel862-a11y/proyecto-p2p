@@ -12,7 +12,6 @@ import {
   computeSpread,
   calculateBreakEven,
   clampMoney as sharedClampMoney,
-  computeTriangulationGap,
   buildPortfolioAllocationPlan,
   evaluateGoldenSpread,
   type AmountUnit,
@@ -38,6 +37,7 @@ import { Router } from '@angular/router';
 import { TradeTimerService, type TradePreset } from '../../core/trade-timer.service';
 import { DatePipe } from '@angular/common';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { BybitP2pService } from '../../core/bybit-p2p.service';
 import { BinanceRepricerService } from '../../core/binance-repricer.service';
 import { McpAdPublisherService } from '../../core/mcp-ad-publisher.service';
 import { AdComposerService } from '../../core/ad-composer.service';
@@ -54,6 +54,15 @@ import {
 import { McpService } from '../../core/mcp.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 import { MicrostructureShield } from './components/microstructure-shield.component';
+import {
+  buildTriangulationRow,
+  computeExecutableGaps,
+  resolveBybitBook,
+  type LiveBookLeg,
+  type TriangulationGaps,
+  type TriangulationRow,
+  type VenueBooks,
+} from './executable-gaps';
 
 interface TradingWindow {
   id: string;
@@ -83,6 +92,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly hotkeys = inject(HotkeysService);
   readonly binance = inject(BinanceP2pService);
+  readonly bybit = inject(BybitP2pService);
   readonly repricer = inject(BinanceRepricerService);
   readonly accountsService = inject(AccountsService);
   readonly marketHistory = inject(MarketHistoryService);
@@ -201,44 +211,92 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   });
 
   /**
-   * Brecha por mercado contra el libro de Binance.
+   * Veredicto de la pata de Bybit: libro real o motivo por el que no lo hay.
    *
-   * Cada fila lleva `provenance`, `dataAge` y `fetchedAt` porque los gaps se
-   * calculan sobre `ratesByMarket()` y ese objeto no dice de dónde salió: la
-   * única marca de tiempo que venía por fila era `rate.updated_at`, que es el
-   * sello del upstream POR TASA (y viene `undefined` cuando Cotizave lo omite),
-   * no la edad del fetch. Son dos cosas distintas: un fetch de hace una hora
-   * puede traer tasas "actualizadas" al segundo, y al revés. La edad del fetch
-   * es la que decide si la brecha sirve para operar hoy.
+   * Se resuelve desde las OFERTAS (`bestSellOffer`/`bestBuyOffer`) y no desde
+   * `buyPrice`/`sellPrice`, que arrancan en 808.5 / 813.0 como constantes de
+   * demo. Con los defaults como entrada, una brecha "en vivo" saldría de un
+   * número que nadie cotizó. Ver `resolveBybitBook`.
    */
-  readonly triangulationData = computed(() => {
+  readonly bybitBook = computed(() =>
+    resolveBybitBook({
+      mode: this.bybit.mode(),
+      bestSellOffer: this.bybit.bestSellOffer(),
+      bestBuyOffer: this.bybit.bestBuyOffer(),
+      lastFetched: this.bybit.lastFetched(),
+    }),
+  );
+
+  /**
+   * Los dos únicos libros de órdenes de la app, ya traducidos a "pago" /
+   * "recibo". Cualquiera de los dos puede faltar, y en ese caso no hay brecha.
+   */
+  private readonly venueBooks = computed<VenueBooks>(() => {
     const depth = this.binance.marketDepth();
+    const binance: LiveBookLeg | null =
+      depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0
+        ? { payPrice: depth.bestBuyPrice, receivePrice: depth.bestSellPrice }
+        : null;
+    return { binance, bybit: this.bybitBook().leg };
+  });
+
+  /** Por qué la fila de Bybit no tiene brecha, cuando no la tiene. Nunca vacía. */
+  readonly executableGapReason = computed<string>(() => {
+    const bybitReason = this.bybitBook().reason;
+    if (this.venueBooks().binance) return bybitReason;
+    return (
+      'Binance no tiene libro de órdenes en vivo, así que no hay dos puntas que cruzar. ' +
+      bybitReason
+    );
+  });
+
+  /** El libro de Binance, que es la otra pata de toda brecha ejecutable. */
+  readonly binanceBook = computed<LiveBookLeg | null>(() => this.venueBooks().binance);
+
+  /**
+   * Brecha por mercado. Solo Binance ↔ Bybit puede tener una, y solo con los dos
+   * libros reales: el resto de los venues son un `mid` de Cotizave y salen como
+   * anclas indicativas, sin número de brecha. El detalle de por qué está en
+   * `executable-gaps.ts`.
+   *
+   * Cada fila lleva `provenance`, `dataAge` y `fetchedAt` porque las tasas vienen
+   * de `ratesByMarket()` y ese objeto no dice de dónde salió: la única marca de
+   * tiempo que venía por fila era `rate.updated_at`, que es el sello del upstream
+   * POR TASA (y viene `undefined` cuando Cotizave lo omite), no la edad del
+   * fetch. Son dos cosas distintas: un fetch de hace una hora puede traer tasas
+   * "actualizadas" al segundo, y al revés. La edad del fetch es la que decide si
+   * la brecha sirve para operar hoy.
+   *
+   * La tabla ya NO se vacía cuando falta el libro de Binance: las anclas y las
+   * tasas de referencia siguen siendo información real aunque no haya con quién
+   * cruzarlas.
+   */
+  readonly triangulationData = computed<TriangulationRow[]>(() => {
     const rates = this.cotizave.ratesByMarket();
-    if (!depth || Object.keys(rates).length === 0) return [];
+    if (Object.keys(rates).length === 0) return [];
 
     const provenance = this.cotizave.ratesProvenance();
     const fetchedAt = this.cotizave.lastFetched();
+    const books = this.venueBooks();
+    const gapReason = this.executableGapReason();
+    const lineage = {
+      provenance,
+      fetchedAt,
+      dataAge: formatCotizaveDataAge(fetchedAt),
+    };
 
     return Object.entries(rates)
+      // `binance` no es un venue a comparar: es el libro contra el que se mide
+      // todo lo demás, y se muestra arriba de la tabla con su propia etiqueta.
       .filter(([market]) => market !== 'binance')
-      .map(([market, rate]) => {
-        const gapForward = computeTriangulationGap({ bid: depth.bestBuyPrice }, { ask: rate.bid });
-        const gapReverse = computeTriangulationGap({ bid: rate.bid }, { ask: depth.bestSellPrice });
-        return {
-          market,
-          ask: rate.ask,
-          bid: rate.bid,
-          mid: rate.mid,
-          updated_at: rate.updated_at,
-          // Linaje del FETCH que produjo todas las filas, no de cada tasa.
-          provenance,
-          fetchedAt,
-          dataAge: formatCotizaveDataAge(fetchedAt),
-          gapForward,
-          gapReverse,
-        };
-      });
+      .map(([market, rate]) => buildTriangulationRow(market, rate, books, gapReason, lineage));
   });
+
+  /** Las dos brechas ejecutables del par, o `null` si no se pueden medir. */
+  readonly executableGaps = computed<{
+    gapForward: TriangulationGaps;
+    gapReverse: TriangulationGaps;
+  }>(() => computeExecutableGaps(this.venueBooks()));
 
   /**
    * Linaje del fetch de Cotizave que hay detrás de la tabla de triangulación.
@@ -258,6 +316,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     let best: { market: string; gapVes: number } | null = null;
 
     for (const row of data) {
+      // Segunda red además de los gaps nulos: una ancla de Cotizave o una tasa
+      // de referencia no encienden la señal de oportunidad ni aunque un bug
+      // futuro les fabricara un número. Solo hay dos libros reales detrás.
+      if (row.kind !== 'executable') continue;
       if (row.gapForward.gapVes != null && row.gapForward.gapVes >= thr) {
         if (!best || row.gapForward.gapVes > best.gapVes) {
           best = { market: row.market, gapVes: row.gapForward.gapVes };
