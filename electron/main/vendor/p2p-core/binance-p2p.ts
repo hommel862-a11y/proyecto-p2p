@@ -64,6 +64,9 @@ export const BINANCE_PAY_METHODS: Record<string, string> = {
   BDV: 'BancoDeVenezuela',
   PROVINCIAL: 'BBVAProvincial',
   BANCAMIGA: 'Bancamiga',
+  BNC: 'BancoNacionalDeCredito',
+  BANCARIBE: 'Bancaribe',
+  BANPLUS: 'Banplus',
 };
 
 /**

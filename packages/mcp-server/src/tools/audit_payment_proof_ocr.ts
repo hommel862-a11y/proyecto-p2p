@@ -28,6 +28,12 @@ export const auditPaymentProofOcrTool = {
       detectedBank = 'PROVINCIAL';
     } else if (lower.includes('bancamiga')) {
       detectedBank = 'BANCAMIGA';
+    } else if (lower.includes('bnc') || lower.includes('nacional de credito') || lower.includes('nacional de crédito')) {
+      detectedBank = 'BNC';
+    } else if (lower.includes('bancaribe')) {
+      detectedBank = 'BANCARIBE';
+    } else if (lower.includes('banplus')) {
+      detectedBank = 'BANPLUS';
     } else if (lower.includes('pago movil') || lower.includes('pagomovil')) {
       detectedBank = 'PAGO_MOVIL';
     }

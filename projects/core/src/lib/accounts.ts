@@ -7,7 +7,16 @@
 import { type Operation } from './log';
 import { roundMoney } from './money';
 
-export type BankCode = 'BANESCO' | 'MERCANTIL' | 'BDV' | 'BANCAMIGA' | 'PROVINCIAL' | 'OTRO';
+export type BankCode =
+  | 'BANESCO'
+  | 'MERCANTIL'
+  | 'BDV'
+  | 'BANCAMIGA'
+  | 'PROVINCIAL'
+  | 'BNC'
+  | 'BANCARIBE'
+  | 'BANPLUS'
+  | 'OTRO';
 export type AccountRail = 'PAGO_MOVIL' | 'TRANSFERENCIA' | 'MIXTO';
 /**
  * Manual lifecycle state of a bank account. A DISABLED account keeps its

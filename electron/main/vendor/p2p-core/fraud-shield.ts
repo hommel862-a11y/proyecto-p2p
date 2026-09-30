@@ -330,6 +330,36 @@ export function validateBankReference(
         reason: isDigits ? undefined : `Referencia Bancamiga inválida: "${reference}".`,
       };
     }
+    case 'BNC': {
+      const isDigits = /^\d{6,12}$/.test(reference);
+      return {
+        isValid: isDigits,
+        bank,
+        reference,
+        expectedFormat: '6 a 12 dígitos numéricos',
+        reason: isDigits ? undefined : `Referencia BNC inválida: "${reference}".`,
+      };
+    }
+    case 'BANCARIBE': {
+      const isDigits = /^\d{6,12}$/.test(reference);
+      return {
+        isValid: isDigits,
+        bank,
+        reference,
+        expectedFormat: '6 a 12 dígitos numéricos',
+        reason: isDigits ? undefined : `Referencia Bancaribe inválida: "${reference}".`,
+      };
+    }
+    case 'BANPLUS': {
+      const isDigits = /^\d{6,12}$/.test(reference);
+      return {
+        isValid: isDigits,
+        bank,
+        reference,
+        expectedFormat: '6 a 12 dígitos numéricos',
+        reason: isDigits ? undefined : `Referencia Banplus inválida: "${reference}".`,
+      };
+    }
     case 'NEQUI': {
       // Usually starts with M or has 8-12 digits
       const isValidNequi = /^[M|m]?\d{6,12}$/.test(reference);

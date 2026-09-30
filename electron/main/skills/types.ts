@@ -47,6 +47,9 @@ export function normalizeBankToType(bankName: string): BankType {
   if (norm.includes('BANCODEVENEZUELA') || norm.includes('BDV')) return 'BDV';
   if (norm.includes('PROVINCIAL')) return 'PROVINCIAL';
   if (norm.includes('BANCAMIGA')) return 'BANCAMIGA';
+  if (norm.includes('BNC') || norm.includes('NACIONALDECREDITO')) return 'BNC';
+  if (norm.includes('BANCARIBE')) return 'BANCARIBE';
+  if (norm.includes('BANPLUS')) return 'BANPLUS';
   if (norm.includes('BANCOLOMBIA')) return 'BANCOLOMBIA';
   if (norm.includes('NEQUI')) return 'NEQUI';
   if (norm.includes('ZINLI')) return 'ZINLI';

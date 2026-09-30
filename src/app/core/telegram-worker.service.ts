@@ -171,6 +171,9 @@ const BANK_QUERY_TOKENS: Readonly<Record<string, readonly string[]>> = {
   MERCANTIL: ['MERCANTIL'],
   BANCAMIGA: ['BANCAMIGA'],
   PROVINCIAL: ['PROVINCIAL', 'BBVA'],
+  BNC: ['BNC', 'BANCONACIONALDECREDITO'],
+  BANCARIBE: ['BANCARIBE'],
+  BANPLUS: ['BANPLUS'],
   PAGOMOVIL: ['PAGOMOVIL'],
 };
 
@@ -183,6 +186,9 @@ function resolveBankCode(raw: string): string | null {
   if (norm.includes('BANCAMIGA')) return 'BANCAMIGA';
   if (norm.includes('PROVINCIAL') || norm.includes('BBVA')) return 'PROVINCIAL';
   if (norm.includes('BANCODELAVENEZUELA') || norm.includes('BDV')) return 'BDV';
+  if (norm.includes('BNC') || norm.includes('BANCONACIONALDECREDITO')) return 'BNC';
+  if (norm.includes('BANCARIBE')) return 'BANCARIBE';
+  if (norm.includes('BANPLUS')) return 'BANPLUS';
   return null;
 }
 

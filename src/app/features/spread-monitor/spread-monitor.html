@@ -1142,6 +1142,26 @@
               <span class="bank-indicator"></span>
               BDV
             </button>
+            <button type="button" class="bank-pill bank-provincial" [class.active]="binance.selectedBank() === 'PROVINCIAL'" (click)="selectBank('PROVINCIAL')">
+              <span class="bank-indicator"></span>
+              Provincial
+            </button>
+            <button type="button" class="bank-pill bank-bancamiga" [class.active]="binance.selectedBank() === 'BANCAMIGA'" (click)="selectBank('BANCAMIGA')">
+              <span class="bank-indicator"></span>
+              Bancamiga
+            </button>
+            <button type="button" class="bank-pill bank-bnc" [class.active]="binance.selectedBank() === 'BNC'" (click)="selectBank('BNC')">
+              <span class="bank-indicator"></span>
+              BNC
+            </button>
+            <button type="button" class="bank-pill bank-bancaribe" [class.active]="binance.selectedBank() === 'BANCARIBE'" (click)="selectBank('BANCARIBE')">
+              <span class="bank-indicator"></span>
+              Bancaribe
+            </button>
+            <button type="button" class="bank-pill bank-banplus" [class.active]="binance.selectedBank() === 'BANPLUS'" (click)="selectBank('BANPLUS')">
+              <span class="bank-indicator"></span>
+              Banplus
+            </button>
           </div>
 
           @if (binance.marketDepth(); as depth) {

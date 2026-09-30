@@ -194,7 +194,17 @@ export interface JohnsonBankConfig {
 }
 
 export const DEFAULT_JOHNSON_BANK_CONFIG: JohnsonBankConfig = {
-  bankCodes: ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL', 'OTRO'],
+  bankCodes: [
+    'BANESCO',
+    'MERCANTIL',
+    'BDV',
+    'BANCAMIGA',
+    'PROVINCIAL',
+    'BNC',
+    'BANCARIBE',
+    'BANPLUS',
+    'OTRO',
+  ],
   buyRole: 'TAKER',
   sellRole: 'TAKER',
   isInterbank: false,

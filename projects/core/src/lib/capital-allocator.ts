@@ -97,6 +97,9 @@ export function buildPortfolioAllocationPlan(
     BDV: { pct: 25, role: 'Captación de liquidez rápida minorista (No pernoctar bolívares)' },
     BANCAMIGA: { pct: 0, role: 'Cuenta auxiliar de apoyo' },
     PROVINCIAL: { pct: 0, role: 'Cuenta auxiliar de apoyo' },
+    BNC: { pct: 0, role: 'Cuenta comercial e institucional de apoyo' },
+    BANCARIBE: { pct: 0, role: 'Cuenta de procesamiento alternativo' },
+    BANPLUS: { pct: 0, role: 'Cuenta de nicho empresarial y custodia' },
     OTRO: { pct: 0, role: 'Cuenta auxiliar' },
   };
 
@@ -137,6 +140,21 @@ export function buildPortfolioAllocationPlan(
       priorityRole: defaultWeights.BDV.role,
     },
   ];
+
+  const auxBanks: BankCode[] = ['BANCAMIGA', 'PROVINCIAL', 'BNC', 'BANCARIBE', 'BANPLUS', 'OTRO'];
+  for (const aux of auxBanks) {
+    const customPct = customWeights?.[aux];
+    if (customPct != null && customPct > 0) {
+      allocations.push({
+        bankCode: aux,
+        recommendedPct: customPct,
+        allocatedCapitalUsdt: Math.round((totalCapitalUsdt * customPct) / 100),
+        allocatedCapitalVes: Math.round(((totalCapitalUsdt * customPct) / 100) * referenceRateVes),
+        maxRecommendedTickets: 4,
+        priorityRole: defaultWeights[aux].role,
+      });
+    }
+  }
 
   const limitsRecommendation = computeDynamicOrderLimits(
     totalCapitalUsdt,

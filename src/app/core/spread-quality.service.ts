@@ -34,7 +34,10 @@ export class SpreadQualityService {
       bankFilter === 'MERCANTIL' ||
       bankFilter === 'BDV' ||
       bankFilter === 'BANCAMIGA' ||
-      bankFilter === 'PROVINCIAL'
+      bankFilter === 'PROVINCIAL' ||
+      bankFilter === 'BNC' ||
+      bankFilter === 'BANCARIBE' ||
+      bankFilter === 'BANPLUS'
         ? bankFilter
         : 'BANESCO';
 

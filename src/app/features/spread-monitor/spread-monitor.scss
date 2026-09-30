@@ -375,6 +375,56 @@
       box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
     }
   }
+
+  &.bank-provincial {
+    .bank-indicator { background: #0284c7; }
+    &.active {
+      background: rgba(2, 132, 199, 0.16);
+      border-color: #0284c7;
+      color: #38bdf8;
+      box-shadow: 0 0 12px rgba(2, 132, 199, 0.25);
+    }
+  }
+
+  &.bank-bancamiga {
+    .bank-indicator { background: #0d9488; }
+    &.active {
+      background: rgba(13, 148, 136, 0.16);
+      border-color: #0d9488;
+      color: #2dd4bf;
+      box-shadow: 0 0 12px rgba(13, 148, 136, 0.25);
+    }
+  }
+
+  &.bank-bnc {
+    .bank-indicator { background: #10b981; }
+    &.active {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: #10b981;
+      color: #34d399;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+  }
+
+  &.bank-bancaribe {
+    .bank-indicator { background: #6366f1; }
+    &.active {
+      background: rgba(99, 102, 241, 0.16);
+      border-color: #6366f1;
+      color: #818cf8;
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+    }
+  }
+
+  &.bank-banplus {
+    .bank-indicator { background: #f59e0b; }
+    &.active {
+      background: rgba(245, 158, 11, 0.16);
+      border-color: #f59e0b;
+      color: #fbbf24;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+    }
+  }
 }
 
 /* Market Depth Ticker Grid */

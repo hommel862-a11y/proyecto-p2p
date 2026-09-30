@@ -9,7 +9,7 @@ import { roundMoney } from './money';
 import type { Operation } from './log';
 
 export type BankIdentifier =
-  'MERCANTIL' | 'BANCAMIGA' | 'BANESCO' | 'PROVINCIAL' | 'BDV' | 'BANPLUS' | 'UNKNOWN';
+  'MERCANTIL' | 'BANCAMIGA' | 'BANESCO' | 'PROVINCIAL' | 'BDV' | 'BANPLUS' | 'BNC' | 'BANCARIBE' | 'UNKNOWN';
 
 export interface ParsedBankNotification {
   bank: BankIdentifier;
@@ -237,6 +237,43 @@ export function parseBankNotification(text: string): ParsedBankNotification {
   if (upper.includes('BANPLUS') || upper.includes('PAGOPLUS')) {
     baseResult.bank = 'BANPLUS';
     baseResult.bankName = 'Banplus';
+
+    const amtMatch = rawText.match(/(?:por|monto|Bs\.?)\s*([0-9.,]+)/i);
+    if (amtMatch) baseResult.amountVes = parseVesAmount(amtMatch[0]);
+
+    const refMatch = rawText.match(/(?:ref(?:erencia)?[:.\s#]*)([0-9]{4,12})/i);
+    if (refMatch) baseResult.reference = refMatch[1];
+
+    baseResult.senderId = extractIdentityDoc(rawText);
+    baseResult.isParsed = baseResult.amountVes > 0;
+    return baseResult;
+  }
+
+  // 7. Banco Nacional de Crédito (BNC)
+  if (
+    upper.includes('BNC') ||
+    upper.includes('NACIONAL DE CREDITO') ||
+    upper.includes('NACIONAL DE CRÉDITO') ||
+    upper.includes('BNCNET')
+  ) {
+    baseResult.bank = 'BNC';
+    baseResult.bankName = 'Banco Nacional de Crédito';
+
+    const amtMatch = rawText.match(/(?:por|monto|Bs\.?)\s*([0-9.,]+)/i);
+    if (amtMatch) baseResult.amountVes = parseVesAmount(amtMatch[0]);
+
+    const refMatch = rawText.match(/(?:ref(?:erencia)?[:.\s#]*)([0-9]{4,12})/i);
+    if (refMatch) baseResult.reference = refMatch[1];
+
+    baseResult.senderId = extractIdentityDoc(rawText);
+    baseResult.isParsed = baseResult.amountVes > 0;
+    return baseResult;
+  }
+
+  // 8. Bancaribe (Mi Pago Bancaribe)
+  if (upper.includes('BANCARIBE') || upper.includes('MI PAGO BANCARIBE')) {
+    baseResult.bank = 'BANCARIBE';
+    baseResult.bankName = 'Bancaribe';
 
     const amtMatch = rawText.match(/(?:por|monto|Bs\.?)\s*([0-9.,]+)/i);
     if (amtMatch) baseResult.amountVes = parseVesAmount(amtMatch[0]);

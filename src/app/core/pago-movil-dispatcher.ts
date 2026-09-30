@@ -22,6 +22,8 @@ export const BANK_CODES: Record<string, { code: string; name: string }> = {
   PROVINCIAL: { code: '0108', name: 'BBVA Provincial' },
   BDV: { code: '0102', name: 'Banco de Venezuela' },
   BANPLUS: { code: '0174', name: 'Banplus' },
+  BNC: { code: '0191', name: 'Banco Nacional de Crédito' },
+  BANCARIBE: { code: '0114', name: 'Bancaribe' },
 };
 
 /**

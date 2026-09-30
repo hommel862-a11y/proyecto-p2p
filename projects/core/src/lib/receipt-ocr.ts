@@ -11,6 +11,9 @@ export type BankType =
   | 'MERCANTIL'
   | 'PROVINCIAL'
   | 'BANCAMIGA'
+  | 'BNC'
+  | 'BANCARIBE'
+  | 'BANPLUS'
   | 'BANCOLOMBIA'
   | 'NEQUI'
   | 'ZINLI'
@@ -42,6 +45,9 @@ const BANK_NAMES: Record<BankType, string> = {
   MERCANTIL: 'Mercantil Banco',
   PROVINCIAL: 'BBVA Provincial',
   BANCAMIGA: 'Bancamiga',
+  BNC: 'Banco Nacional de Crédito',
+  BANCARIBE: 'Bancaribe',
+  BANPLUS: 'Banplus',
   BANCOLOMBIA: 'Bancolombia',
   NEQUI: 'Nequi Colombia',
   ZINLI: 'Zinli Wallet',
@@ -104,6 +110,14 @@ export function detectBankType(text: string): BankType {
   if (lower.includes('mercantil')) return 'MERCANTIL';
   if (lower.includes('provincial') || lower.includes('bbva')) return 'PROVINCIAL';
   if (lower.includes('bancamiga')) return 'BANCAMIGA';
+  if (
+    lower.includes('bnc') ||
+    lower.includes('nacional de credito') ||
+    lower.includes('nacional de crédito')
+  )
+    return 'BNC';
+  if (lower.includes('bancaribe')) return 'BANCARIBE';
+  if (lower.includes('banplus')) return 'BANPLUS';
   if (lower.includes('bancolombia')) return 'BANCOLOMBIA';
   if (lower.includes('nequi')) return 'NEQUI';
   if (lower.includes('zinli')) return 'ZINLI';

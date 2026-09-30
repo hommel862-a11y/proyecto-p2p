@@ -391,7 +391,16 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly johnsonQuality = computed<JohnsonMarketQuality | null>(() => {
     const depth = this.binance.marketDepth();
     if (!depth || !depth.bestBuyPrice || !depth.bestSellPrice) return null;
-    const banks = ['BANESCO', 'MERCANTIL', 'BDV', 'BANCAMIGA', 'PROVINCIAL'];
+    const banks = [
+      'BANESCO',
+      'MERCANTIL',
+      'BDV',
+      'BANCAMIGA',
+      'PROVINCIAL',
+      'BNC',
+      'BANCARIBE',
+      'BANPLUS',
+    ];
     return buildJohnsonMarketQuality(depth, banks, DEFAULT_JOHNSON_REQUIREMENTS, {
       bankCodes: banks,
       buyRole: this.buyRole(),
