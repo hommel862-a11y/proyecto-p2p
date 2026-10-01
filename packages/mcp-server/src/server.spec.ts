@@ -53,16 +53,30 @@ describe('P2P MCP Server Suite', () => {
         currentCapitalUsdt: 5000,
         fiatCurrency: 'VES',
         counterpartyScore: 95,
+        // Engine state is caller-reported. Without these the tool answers
+        // INSUFFICIENT_DATA instead of guessing a clean day.
+        currentSpreadPct: 1.25,
+        openOps: 1,
+        dailyLossPct: 0.4,
+        consecutiveErrors: 0,
       });
 
       expect(safeTrade.decision).toBe('ALLOW');
       expect(safeTrade.isCounterpartyAcceptable).toBe(true);
+      expect(safeTrade.unmeasuredInputs).toEqual([]);
 
       const riskyTrade = evaluateTradeRiskTool.execute({
         tradeAmountUsdt: 2500, // 50% of capital -> exceeds 20% limit
         currentCapitalUsdt: 5000,
         fiatCurrency: 'VES',
-        counterpartyScore: 40,
+        // 95, not 40: this case exists to exercise rule 1. A counterparty of 40 is
+        // now refused by the counterparty gate before the engine runs, which is the
+        // correct precedence but would leave rule 1 untested here.
+        counterpartyScore: 95,
+        currentSpreadPct: 1.25,
+        openOps: 1,
+        dailyLossPct: 0.4,
+        consecutiveErrors: 0,
       });
 
       expect(riskyTrade.decision).toBe('DENY');

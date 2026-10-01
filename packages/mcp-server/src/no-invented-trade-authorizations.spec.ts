@@ -111,12 +111,16 @@ describe('sin dato antes que dato inventado: evaluate_trade_risk', () => {
   });
 
   describe('con evidencia completa el veredicto sigue siendo real', () => {
-    it('permite un trade con contraparte y capital medidos', () => {
+    it('permite un trade con contraparte, capital y estado del motor medidos', () => {
       const res = evaluateTradeRiskTool.execute({
         tradeAmountUsdt: 500,
         currentCapitalUsdt: 5000,
         counterpartyScore: 95,
         fiatCurrency: 'VES',
+        currentSpreadPct: 1.25,
+        openOps: 1,
+        dailyLossPct: 0.4,
+        consecutiveErrors: 0,
       });
 
       // 500/5000 = 10%, under the 20% per-trade limit.
@@ -125,6 +129,8 @@ describe('sin dato antes que dato inventado: evaluate_trade_risk', () => {
       expect(res.isCounterpartyAcceptable).toBe(true);
       expect(res.actionable).toBe(true);
       expect(res.unavailableReason).toBeNull();
+      // Nothing left unmeasured, so nothing left to disclaim.
+      expect(res.unmeasuredInputs).toEqual([]);
     });
 
     it('rechaza un trade grande con capital medido', () => {
@@ -133,6 +139,10 @@ describe('sin dato antes que dato inventado: evaluate_trade_risk', () => {
         currentCapitalUsdt: 5000,
         counterpartyScore: 95,
         fiatCurrency: 'VES',
+        currentSpreadPct: 1.25,
+        openOps: 1,
+        dailyLossPct: 0.4,
+        consecutiveErrors: 0,
       });
 
       expect(res.decision).toBe('DENY');
@@ -154,22 +164,30 @@ describe('sin dato antes que dato inventado: evaluate_trade_risk', () => {
       // `currentSpread: 1.25`, `minSpread: 0.5`, `openOps: 1`, `dailyLossPct: 0`
       // were hardcoded in the RuleContext. `dailyLossPct: 0` is the same crime as
       // `currentExposureUsdt: 0`: it asserts a clean day on a day never measured.
-      expect(res.unmeasuredInputs).toContain('currentSpread');
-      expect(res.unmeasuredInputs).toContain('minSpread');
+      //
+      // Each constant sat on the safe side of its own threshold, so rules 2-5 were
+      // unreachable rather than merely wrong. They are now caller-reported, and the
+      // tool refuses to run the engine without them.
+      expect(res.unmeasuredInputs).toContain('currentSpreadPct');
       expect(res.unmeasuredInputs).toContain('openOps');
       expect(res.unmeasuredInputs).toContain('dailyLossPct');
+      expect(res.unmeasuredInputs).toContain('consecutiveErrors');
+      expect(res.decision).toBe('INSUFFICIENT_DATA');
+      expect(res.actionable).toBe(false);
     });
 
-    it('declara las entradas ausentes del motor en vez de omitirlas', () => {
-      const res = evaluateTradeRiskTool.execute({
+    it('declara sólo lo que falta, no una lista fija', () => {
+      const partial = evaluateTradeRiskTool.execute({
         tradeAmountUsdt: 500,
         currentCapitalUsdt: 5000,
         counterpartyScore: 95,
         fiatCurrency: 'VES',
+        currentSpreadPct: 1.25,
+        openOps: 2,
       });
 
-      expect(Array.isArray(res.unmeasuredInputs)).toBe(true);
-      expect(res.unmeasuredInputs.length).toBeGreaterThan(0);
+      expect(partial.unmeasuredInputs).toEqual(['dailyLossPct', 'consecutiveErrors']);
+      expect(partial.decision).toBe('INSUFFICIENT_DATA');
     });
   });
 });
@@ -359,16 +377,35 @@ describe('sin dato antes que dato inventado: el camino real, parseo y ejecucion'
     expect(res.projectedExposureUsdt).toBe(1500);
   });
 
-  it('un riesgo con contraparte y capital parseados se puede permitir', () => {
+  it('un riesgo con contraparte, capital y estado del motor parseados se puede permitir', () => {
     const parsed = EvaluateTradeRiskInputSchema.parse({
       tradeAmountUsdt: 500,
       currentCapitalUsdt: 5000,
       counterpartyScore: 95,
+      currentSpreadPct: 1.25,
+      openOps: 1,
+      dailyLossPct: 0.4,
+      consecutiveErrors: 0,
     });
 
     const res = evaluateTradeRiskTool.execute(parsed);
 
     expect(res.decision).toBe('ALLOW');
     expect(res.actionable).toBe(true);
+  });
+
+  it('el schema no fabrica el estado del motor que evalua() necesita', () => {
+    // No defaults here either: a fabricated 0 for the daily loss is what made rule 2
+    // unreachable, so the schema must not hand the tool one.
+    const parsed = EvaluateTradeRiskInputSchema.parse({
+      tradeAmountUsdt: 500,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 95,
+    });
+
+    expect(parsed.currentSpreadPct).toBeUndefined();
+    expect(parsed.openOps).toBeUndefined();
+    expect(parsed.dailyLossPct).toBeUndefined();
+    expect(parsed.consecutiveErrors).toBeUndefined();
   });
 });

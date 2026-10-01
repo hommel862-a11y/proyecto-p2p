@@ -33,6 +33,29 @@ export const EvaluateTradeRiskInputSchema = z.object({
   fiatCurrency: z.enum(['VES', 'COP', 'USD']).default('VES'),
   counterpartyScore: z.number().min(0).max(100).optional(),
   currentCapitalUsdt: z.number().positive().optional(),
+
+  // Engine state, measured by the caller. No defaults here on purpose.
+  //
+  // `evaluate()` runs five rules. Only rule 1 (`tradeRiskPct`) was ever fed a real
+  // number from this tool; the other four read hardcoded constants:
+  // `dailyLossPct: 0` vs a cap of 10, `consecutiveErrors` capped at 2 vs a limit of
+  // 3, `currentSpread: 1.25` vs a floor of 0.5, `openOps: 1` vs a cap of 3. Every one
+  // of those constants sits on the safe side of its threshold, so rules 2-5 could
+  // not fire at all and the tool answered ALLOW while asserting a clean day nobody
+  // measured. `dailyLossPct: 0` on a day that lost 40% was the exact mirror of
+  // `currentExposureUsdt: 0` in `SimulateTradeImpact`.
+  //
+  // These four are therefore caller-reported state. Without them the tool says it
+  // cannot run the engine, instead of running it on invented numbers.
+  //
+  // Unit note: `currentSpreadPct` is compared against the desk's `minSpread` floor
+  // with no conversion, so it must already be in that unit (VES per USDT). A pct
+  // versus an absolute rate is a pre-existing ambiguity in this codebase, not
+  // something this schema resolves by guessing.
+  currentSpreadPct: z.number().min(0).optional(),
+  openOps: z.number().int().min(0).optional(),
+  dailyLossPct: z.number().min(0).optional(),
+  consecutiveErrors: z.number().int().min(0).optional(),
 });
 export type EvaluateTradeRiskInput = z.infer<typeof EvaluateTradeRiskInputSchema>;
 
