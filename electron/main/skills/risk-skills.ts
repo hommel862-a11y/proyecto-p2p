@@ -323,10 +323,37 @@ export function dispatchRiskSkill(
     }
 
     case 'forecast_market_volatility_2h': {
-      const spreadPct = Number(args['currentSpreadPct'] || 1.2);
+      // El spread no se inventa. Antes `|| 1.2` lo fabricaba, y como
+      // `recordVolatilityTick` lo convierte en un precio de compra
+      // (`parallel * (1 - spread/100)`), ese 1.2 entraba al buffer circular de 40
+      // ticks. No era una mentira puntual: contaminaba `recentTicks` de todos los
+      // pronósticos posteriores. El `||` también se comía un 0 legítimo, que es un
+      // hecho del libro (paralelo y oficial al mismo precio).
+      const rawSpread = args['currentSpreadPct'];
+      const spreadPct =
+        rawSpread === undefined || rawSpread === null || rawSpread === ''
+          ? null
+          : Number(rawSpread);
+
+      if (spreadPct === null || !Number.isFinite(spreadPct)) {
+        return {
+          success: false,
+          skillName,
+          data: null,
+          error: 'Falta currentSpreadPct medido: no se puede derivar el precio de compra sin inventarlo.',
+          unavailableReason: 'missing_evidence:currentSpreadPct',
+          expectedSource:
+            'spread paralelo-oficial observado en vivo (MCP get_bcv_rates / get_parallel_rates)',
+          actionable: false,
+          executedAt: now,
+        };
+      }
+
       const parallel = Number(args['parallelRate'] || 0);
       const bcv = Number(args['bcvRate'] || 0);
-      recordVolatilityTick(parallel || undefined, spreadPct);
+      // Con el spread medido pero sin tasa paralela no hay precio de compra que
+      // derivar. `recordVolatilityTick` cae al libro real; nunca a un default.
+      recordVolatilityTick(parallel > 0 ? parallel : undefined, spreadPct);
 
       const bcvGap = parallel > 0 && bcv > 0 ? calculateBcvGap(parallel, bcv) : undefined;
       const bcvWindow = predictBcvIntervention();

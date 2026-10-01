@@ -80,6 +80,82 @@ export function getFinancialSkillMarketData(): {
   };
 }
 
+/**
+ * A book older than this is not "live". P2P quotes go stale in minutes, so a
+ * twelve-hour-old snapshot must never be reported as a connected live feed.
+ */
+export const MARKET_FEED_MAX_AGE_MS = 5 * 60 * 1000;
+
+export type MarketFeedReason = 'LIVE' | 'NO_BOOK' | 'STALE_BOOK' | 'INCOMPLETE_BOOK';export interface ResolvedMarketFeed {
+  /** True only when a fresh, complete book exists. Never infer this from anything else. */
+  live: boolean;
+  reason: MarketFeedReason;
+  updatedAt?: number;
+  ageMs?: number;
+  bestBuyPrice?: number;
+  bestSellPrice?: number;
+  midPrice?: number;
+  bidDepthUsdt?: number;
+  askDepthUsdt?: number;
+}
+
+/**
+ * Single source of truth for "do we have a live market feed?".
+ *
+ * This replaces hand-written copies of the same predicate that were duplicated
+ * across the orchestrator and drifted apart. Callers that need to know whether
+ * a number is real must use this, and must report `live: false` otherwise.
+ */
+export function resolveMarketFeed(
+  maxAgeMs: number = MARKET_FEED_MAX_AGE_MS,
+  now: number = Date.now(),
+): ResolvedMarketFeed {
+  if (!marketBook) {
+    return { live: false, reason: 'NO_BOOK' };
+  }
+
+  const ageMs = now - marketBook.updatedAt;
+  if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) {
+    return { live: false, reason: 'STALE_BOOK', updatedAt: marketBook.updatedAt, ageMs };
+  }
+
+  const hasBothSides =
+    typeof marketBook.bestBuyPrice === 'number' &&
+    marketBook.bestBuyPrice > 0 &&
+    typeof marketBook.bestSellPrice === 'number' &&
+    marketBook.bestSellPrice > 0;
+
+  if (!hasBothSides) {
+    return { live: false, reason: 'INCOMPLETE_BOOK', updatedAt: marketBook.updatedAt, ageMs };
+  }
+
+  return {
+    live: true,
+    reason: 'LIVE',
+    updatedAt: marketBook.updatedAt,
+    ageMs,
+    bestBuyPrice: marketBook.bestBuyPrice,
+    bestSellPrice: marketBook.bestSellPrice,
+    midPrice: (marketBook.bestBuyPrice + marketBook.bestSellPrice) / 2,
+    bidDepthUsdt: marketBook.bidDepthUsdt,
+    askDepthUsdt: marketBook.askDepthUsdt,
+  };
+}
+
+/** Human-readable provenance suffix. Fails loudly rather than decorating a fabrication. */
+export function describeMarketFeed(feed: ResolvedMarketFeed): string {
+  switch (feed.reason) {
+    case 'LIVE':
+      return `[en vivo · libro de ${Math.round((feed.ageMs ?? 0) / 1000)}s]`;
+    case 'NO_BOOK':
+      return '[sin feed: no hay libro cargado]';
+    case 'STALE_BOOK':
+      return `[sin feed: libro vencido (${Math.round((feed.ageMs ?? 0) / 60000)} min)]`;
+    case 'INCOMPLETE_BOOK':
+      return '[sin feed: libro incompleto]';
+  }
+}
+
 export function getMarketBook(): P2pBookSnapshot | null {
   return marketBook;
 }
@@ -92,13 +168,33 @@ export function getVolatilityTicks(): PriceTick[] {
   return volatilityTicks;
 }
 
+/**
+ * Registra un tick de precio para la serie de volatilidad.
+ *
+ * `currentSpreadPct` admite `null`: sin un spread medido no se puede derivar el
+ * precio de compra a partir de la tasa paralela, y la caída honesta es al libro
+ * real. Antes el caller rellenaba un 1.2 inventado que entraba al buffer circular
+ * de 40 ticks y contaminaba los pronósticos posteriores.
+ *
+ * Un spread de `0` es un hecho del libro, no una ausencia: paralelo y oficial al
+ * mismo precio. Por eso la comprobación es `> 0` sobre el valor medido y no una
+ * guarda de presencia.
+ */
 export function recordVolatilityTick(
   parallelRate: number | undefined,
-  currentSpreadPct: number,
+  currentSpreadPct: number | null,
 ): void {
   let buy = 0;
   let sell = 0;
-  if (parallelRate && parallelRate > 0 && currentSpreadPct > 0) {
+  // La guarda distingue `null` (no medido) de `0` (medido, y válido): con tasa
+  // paralela conocida y spread 0% el precio de compra es igual al de venta, y ese
+  // tick es un hecho del libro. Rejectear el 0 descartaba una medición válida.
+  if (
+    parallelRate &&
+    parallelRate > 0 &&
+    currentSpreadPct !== null &&
+    Number.isFinite(currentSpreadPct)
+  ) {
     sell = parallelRate;
     buy = parallelRate * (1 - currentSpreadPct / 100);
   } else if (marketBook && marketBook.bestBuyPrice > 0 && marketBook.bestSellPrice > 0) {
