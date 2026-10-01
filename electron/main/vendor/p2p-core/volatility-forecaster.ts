@@ -22,7 +22,8 @@ export interface PriceTick {
 
 export interface VolatilityForecastInput {
   recentTicks: PriceTick[];
-  currentSpreadPct: number;
+  /** `null` when no measured spread is available. Never defaulted to a plausible value. */
+  currentSpreadPct: number | null;
   bcvGap?: BcvGapAnalysis;
   bcvWindow?: BcvPredictorWindow;
   spoofReport?: SpoofReport;
@@ -176,12 +177,15 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
 
   // 4. BCV Gap Zone
   if (input.bcvGap) {
-    if (input.bcvGap.zone === 'CRITICAL_DISPERSION') {
+    // La zona sólo alcanza CRITICAL_DISPERSION o ELEVATED con una brecha medida,
+    // pero se comprueba la medición antes de usarla: una zona sin `gapPct` no
+    // describe el mercado y no puede puntuar un score de riesgo.
+    const gapPct = input.bcvGap.gapPct;
+
+    if (gapPct !== null && input.bcvGap.zone === 'CRITICAL_DISPERSION') {
       score += 25;
-      drivers.push(
-        `Brecha Paralelo vs BCV en dispersión crítica (${input.bcvGap.gapPct.toFixed(1)}%)`,
-      );
-    } else if (input.bcvGap.zone === 'ELEVATED') {
+      drivers.push(`Brecha Paralelo vs BCV en dispersión crítica (${gapPct.toFixed(1)}%)`);
+    } else if (gapPct !== null && input.bcvGap.zone === 'ELEVATED') {
       score += 10;
       drivers.push(`Brecha cambiaria por encima del promedio histórico`);
     }

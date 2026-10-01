@@ -17,15 +17,24 @@ export type InterventionPhase =
   | 'QUIET_ACCUMULATION';
 
 export type TreasuryAction =
-  'ACCUMULATE_VES_HIGH' | 'BUY_USDT_DIP' | 'HOLD_USDT' | 'AGGRESSIVE_CYCLE_VES' | 'DEFENSIVE_HEDGE';
+  | 'ACCUMULATE_VES_HIGH'
+  | 'BUY_USDT_DIP'
+  | 'HOLD_USDT'
+  | 'AGGRESSIVE_CYCLE_VES'
+  | 'DEFENSIVE_HEDGE'
+  | 'UNAVAILABLE';
 
 export interface BcvGapAnalysis {
-  parallelRate: number;
-  bcvRate: number;
-  gapVes: number;
-  gapPct: number;
-  zone: BcvGapZone;
+  parallelRate: number | null;
+  bcvRate: number | null;
+  /** `null` when either side is missing. A zero gap is a claim about the world. */
+  gapVes: number | null;
+  gapPct: number | null;
+  zone: BcvGapZone | 'UNAVAILABLE';
   description: string;
+  /** A gap nobody measured is not a gap you can act on. */
+  actionable: boolean;
+  unavailableReason: string | null;
 }
 
 export interface BcvPredictorWindow {
@@ -44,6 +53,8 @@ export interface BcvRecommendation {
   actionLabel: string;
   timingNotice: string;
   rationale: string;
+  /** `false` when there is nothing measured to base an instruction on. */
+  actionable: boolean;
 }
 
 export interface BcvMarketIntelligence {
@@ -55,17 +66,39 @@ export interface BcvMarketIntelligence {
 
 /**
  * Calcula la brecha cambiaria (spread) entre la tasa Paralela y la tasa Oficial BCV.
+ *
+ * Falla cerrado. Antes devolvía `gapPct: 0`, `gapVes: 0` y `zone: 'NORMAL'`
+ * cuando una tasa faltaba o no era positiva, y eso se lee como "no hay brecha":
+ * una afirmación sobre el mercado. Un 0% de brecha y una zona NORMAL son
+ * precisamente la forma que un agente lee como permiso para operar. Cuando falta
+ * una de las dos tasas, la brecha se desconoce y se dice por qué.
  */
-export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAnalysis {
-  if (bcvRate <= 0 || parallelRate <= 0) {
-    return {
-      parallelRate,
-      bcvRate,
-      gapVes: 0,
-      gapPct: 0,
-      zone: 'NORMAL',
-      description: 'Tasas no disponibles o inválidas.',
-    };
+export function calculateBcvGap(
+  parallelRate: number | null,
+  bcvRate: number | null,
+): BcvGapAnalysis {
+  const unavailable = (reason: string): BcvGapAnalysis => ({
+    // Se conserva la tasa que sí existe para que el operador vea qué se midió.
+    parallelRate: Number.isFinite(parallelRate) ? parallelRate : null,
+    bcvRate: Number.isFinite(bcvRate) ? bcvRate : null,
+    gapVes: null,
+    gapPct: null,
+    zone: 'UNAVAILABLE',
+    description:
+      'Brecha indeterminada: falta al menos una de las dos tasas. No se emite zona de riesgo porque no hay medición.',
+    actionable: false,
+    unavailableReason: reason,
+  });
+
+  // Una tasa en cero o negativa no es una tasa pequeña: es un dato corrupto o una
+  // ausencia. El dispatcher coerce los rates ausentes a 0, así que el 0 es
+  // exactamente la forma en que la falta de dato llega hasta acá.
+  if (parallelRate == null || !Number.isFinite(parallelRate) || parallelRate <= 0) {
+    return unavailable('TASA_PARALELA_NO_DISPONIBLE');
+  }
+
+  if (bcvRate == null || !Number.isFinite(bcvRate) || bcvRate <= 0) {
+    return unavailable('TASA_BCV_NO_DISPONIBLE');
   }
 
   const gapVes = roundMoney(parallelRate - bcvRate);
@@ -98,6 +131,8 @@ export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAn
     gapPct,
     zone,
     description,
+    actionable: true,
+    unavailableReason: null,
   };
 }
 
@@ -190,6 +225,28 @@ export function recommendBcvTreasuryAction(
   gap: BcvGapAnalysis,
   window: BcvPredictorWindow,
 ): BcvRecommendation {
+  // Una brecha sin medir no puede(positionar) una posición, así que se comprueba
+  // antes que cualquier otro branch. `gap.gapPct` es `null` en este caso y todos
+  // los branches de abajo leen ese número para emitir una orden. Dejarlo caer
+  // hasta el branch final ordenaría "rotá intradía, mercado estable" en nombre de
+  // una brecha que nadie midió — y `null >= 22` es `false`, así que el test de
+  // brecha caliente también fallaría en silencio. La ausencia se publica como
+  // recomendación.
+  if (gap.gapPct == null) {
+    const reason = gap.unavailableReason ?? 'TASA_NO_DISPONIBLE';
+    const measured = `Paralelo: ${gap.parallelRate ?? 's/d'} VES · BCV: ${gap.bcvRate ?? 's/d'} VES`;
+    return {
+      action: 'UNAVAILABLE',
+      confidencePct: 0,
+      actionLabel: 'SIN MEDICIÓN — NO OPERAR',
+      timingNotice: 'Sin instrucción hasta disponer de ambas tasas',
+      rationale:
+        `Brecha indeterminada (${reason}): no se emite recomendación táctica porque ` +
+        `no hay medición. ${measured}.`,
+      actionable: false,
+    };
+  }
+
   // Caso de Emergencia: Dispersión Crítica (>35%)
   if (gap.zone === 'CRITICAL_DISPERSION') {
     return {
@@ -199,6 +256,7 @@ export function recommendBcvTreasuryAction(
       timingNotice: 'Inmediata — Alto riesgo cambiario',
       rationale:
         'La brecha supera el 35%. Riesgo inminente de devaluación oficial brusca o descontrol en el paralelo. Mantén el inventario 100% en USDT y minimiza exposición a bolívares.',
+      actionable: true,
     };
   }
 
@@ -214,6 +272,7 @@ export function recommendBcvTreasuryAction(
       timingNotice: `Vender antes de ${window.nextExpectedIntervention}`,
       rationale:
         'La brecha está caliente y el BCV inyectará divisas en breve. Liquida USDT a precios pico del paralelo antes de que la subasta enfríe momentáneamente el mercado.',
+      actionable: true,
     };
   }
 
@@ -226,6 +285,7 @@ export function recommendBcvTreasuryAction(
       timingNotice: 'Próximas 12-24 horas',
       rationale:
         'Aprovecha el freno artificial de precios producido por la inyección bancaria. El mercado suele rebotar con fuerza tras agotarse las divisas de la subasta.',
+      actionable: true,
     };
   }
 
@@ -237,6 +297,7 @@ export function recommendBcvTreasuryAction(
     timingNotice: 'Intradía continuo',
     rationale:
       'Condiciones de mercado estables. Maximiza la rotación de capital completando ciclos de compra/venta en menos de 2 horas sin acumular saldos nocturnos en VES.',
+    actionable: true,
   };
 }
 
@@ -244,8 +305,8 @@ export function recommendBcvTreasuryAction(
  * Inteligencia completa consolidada para el Centro de Control y Monitor de Spread.
  */
 export function getBcvMarketIntelligence(
-  parallelRate: number,
-  bcvRate: number,
+  parallelRate: number | null,
+  bcvRate: number | null,
   now: Date = new Date(),
 ): BcvMarketIntelligence {
   const gap = calculateBcvGap(parallelRate, bcvRate);

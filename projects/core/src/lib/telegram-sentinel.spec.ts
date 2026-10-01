@@ -1494,4 +1494,72 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expectParseableMarkdownV2(line);
     });
   });
+
+  describe('formatBcvIntelligenceTelegramMessage — brecha no medida', () => {
+    function plain(markdown: string): string {
+      return markdown.replace(/\\/g, '');
+    }
+
+    // La brecha BCV pasa a ser nullable porque una tasa ausente no es una brecha de
+    // cero. El mensaje tiene que poder mostrar la ausencia sin mentir: si el
+    // formateador sigue esperando `number`, revienta con un TypeError en el path de
+    // alerta, que es justo cuando el operador más necesita el mensaje.
+    function formatoSinMedicion() {
+      return formatBcvIntelligenceTelegramMessage({
+        parallelRate: null,
+        bcvRate: null,
+        gapPct: null,
+        gapVes: null,
+        zone: 'UNAVAILABLE',
+        phase: 'QUIET_ACCUMULATION',
+        nextExpectedIntervention: 's/d',
+        probabilityPct: 0,
+        actionLabel: 'SIN MEDICIÓN — NO OPERAR',
+        timingNotice: 'Sin instrucción hasta disponer de ambas tasas',
+      });
+    }
+
+    it('no revienta cuando la brecha no se midio', () => {
+      expect(() => formatoSinMedicion()).not.toThrow();
+    });
+
+    it('no imprime 0.00% como si la brecha fuera cero', () => {
+      const visible = plain(formatoSinMedicion());
+
+      expect(visible).not.toMatch(/0\.00%/);
+      expect(visible).not.toMatch(/0\.00 Bs/);
+    });
+
+    it('marca la brecha como no disponible en vez de omitirla', () => {
+      const visible = plain(formatoSinMedicion());
+
+      expect(visible).toMatch(/s\/d|no disponible|indeterminada/i);
+    });
+
+    it('no pinta la zona desconocida de verde', () => {
+      // El icono por defecto del formateador era 🟢, que es el estado más
+      // tranquilo del semáforo para un dato que nadie midió.
+      const msg = formatoSinMedicion();
+
+      expect(msg).not.toContain('🟢');
+    });
+
+    it('sigue mostrando la brecha cuando sí existe', () => {
+      const msg = formatBcvIntelligenceTelegramMessage({
+        parallelRate: 815.0,
+        bcvRate: 685.0,
+        gapPct: 18.98,
+        gapVes: 130.0,
+        zone: 'NORMAL',
+        phase: 'PRE_INTERVENTION_COMPRESSION',
+        nextExpectedIntervention: 'Lunes 09:30 AM VET',
+        probabilityPct: 85,
+        actionLabel: 'VENDER USDT EN MÁXIMOS',
+        timingNotice: 'Antes de las 9:30 AM',
+      });
+
+      expect(msg).toContain('18\\.98%');
+      expect(msg).toContain('130\\.00 Bs');
+    });
+  });
 });

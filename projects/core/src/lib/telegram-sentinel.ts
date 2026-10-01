@@ -225,10 +225,10 @@ export function formatReceiptAuditTelegramMessage(audit: {
  * Formats macro BCV intervention and gap analysis.
  */
 export function formatBcvIntelligenceTelegramMessage(intel: {
-  parallelRate: number;
-  bcvRate: number;
-  gapPct: number;
-  gapVes: number;
+  parallelRate: number | null;
+  bcvRate: number | null;
+  gapPct: number | null;
+  gapVes: number | null;
   zone: string;
   phase: string;
   nextExpectedIntervention: string;
@@ -236,13 +236,31 @@ export function formatBcvIntelligenceTelegramMessage(intel: {
   actionLabel: string;
   timingNotice: string;
 }): string {
+  // Una tasa ausente no es una tasa de cero: se muestra como "s/d" para que el
+  // operador distinga "no lo sé" de "medí cero".
+  const bs = (value: number | null): string => (value == null ? 's/d' : `${value.toFixed(2)} Bs`);
+
+  // El semáforo por defecto era 🟢, el estado más tranquilo del juego, y una zona
+  // sin medir caía ahí. Lo desconocido se muestra como tal.
   const zoneIcon =
-    intel.zone === 'CRITICAL_DISPERSION' ? '🔴' : intel.zone === 'ELEVATED' ? '🟡' : '🟢';
+    intel.zone === 'CRITICAL_DISPERSION'
+      ? '🔴'
+      : intel.zone === 'ELEVATED'
+        ? '🟡'
+        : intel.zone === 'COMPRESSED'
+          ? '🔵'
+          : '⚪';
+
+  const gapLine =
+    intel.gapPct == null
+      ? `⚡ *Brecha:* ${zoneIcon} *no disponible*`
+      : `⚡ *Brecha:* ${zoneIcon} *+${escapeMarkdownV2(intel.gapPct.toFixed(2))}%* \\(\`${escapeMarkdownV2(bs(intel.gapVes))}\`\\)`;
+
   return `🏛️ *INTELIGENCIA CAMBIARIA BCV* 🏛️
 ━━━━━━━━━━━━━━━━━━━━
-📈 *Tasa Paralelo:* \`${escapeMarkdownV2(intel.parallelRate.toFixed(2))} Bs\`
-🏛️ *Tasa Oficial BCV:* \`${escapeMarkdownV2(intel.bcvRate.toFixed(2))} Bs\`
-⚡ *Brecha:* ${zoneIcon} *+${escapeMarkdownV2(intel.gapPct.toFixed(2))}%* \\(\`${escapeMarkdownV2(intel.gapVes.toFixed(2))} Bs\`\\)
+📈 *Tasa Paralelo:* \`${escapeMarkdownV2(bs(intel.parallelRate))}\`
+🏛️ *Tasa Oficial BCV:* \`${escapeMarkdownV2(bs(intel.bcvRate))}\`
+${gapLine}
 📊 *Zona:* \`${escapeMarkdownV2(intel.zone)}\`
 
 ⏱️ *Fase del Ciclo:* \`${escapeMarkdownV2(intel.phase)}\`
@@ -308,8 +326,8 @@ export interface RadarReportOptions {
 
 /** Consolidated macro snapshot backing `/macro`. */
 export interface MacroIntelSnapshot {
-  bcvRef: number;
-  parallelRef: number;
+  bcvRef: number | null;
+  parallelRef: number | null;
   spreadPct: number;
   volatility2hPct: number;
   forecastNote?: string;
@@ -341,7 +359,14 @@ export interface RepriceRequestReport {
 // backslashes so an upstream value can never break out of the span.
 // ---------------------------------------------------------------------------
 
-function formatMetric(value: number, decimals = 2): string {
+/**
+ * Renderiza una métrica para Telegram.
+ *
+ * El tipo admite `null` porque el cuerpo ya devolvía `n/d` para cualquier valor no
+ * numérico: la ausencia se mostraba, pero la firma la prohibía, así que quien
+ * llamaba tenía que inventar un 0 para poder compilar.
+ */
+function formatMetric(value: number | null, decimals = 2): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/d';
   return escapeMarkdownV2(value.toFixed(decimals));
 }

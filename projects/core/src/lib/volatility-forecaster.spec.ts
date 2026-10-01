@@ -69,6 +69,8 @@ describe('Volatility Forecaster (2-Hour Horizon)', () => {
         gapPct: 28.1,
         zone: 'CRITICAL_DISPERSION',
         description: 'Brecha crítica',
+        actionable: true,
+        unavailableReason: null,
       },
       spoofReport: {
         timestampMs: now,
