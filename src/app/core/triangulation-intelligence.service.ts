@@ -166,12 +166,29 @@ export interface McpTacticalReport {
   orderbookLiquidityUsdt: number;
 }
 
+/**
+ * Fuente del reloj, inyectable para que las pruebas puedan fijar la hora.
+ *
+ * `bcvStatus` es un `computed` que consulta `new Date()`. Como el reloj no es una
+ * dependencia de signal, Angular memoiza el primer resultado y `vi.setSystemTime`
+ * no lo invalida: cualquier test que varíe el instante lee el valor del primero y
+ * pasa por casualidad. Además, la rama `catch` que devuelve "sin dato" era
+ * inalcanzable sin una forma de hacer fallar al predictor.
+ */
+@Injectable({ providedIn: 'root' })
+export class VenezuelaClock {
+  now(): Date {
+    return new Date();
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class TriangulationIntelligenceService {
   private readonly binanceP2p = inject(BinanceP2pService);
   private readonly cotizave = inject(CotizaveService);
   private readonly mcp = inject(McpService);
   private readonly toast = inject(ToastService);
+  private readonly clock = inject(VenezuelaClock);
 
   readonly isSyncingMarket = signal<boolean>(false);
   readonly lastSyncTimestamp = signal<string | null>(null);
@@ -207,7 +224,7 @@ export class TriangulationIntelligenceService {
    */
   readonly bcvStatus = computed<BcvInterventionRisk>(() => {
     try {
-      const now = new Date();
+      const now = this.clock.now();
       const pred = predictBcvIntervention(now);
       const isWindow = pred.phase === 'INTERVENTION_ACTIVE';
 
