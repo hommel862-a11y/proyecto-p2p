@@ -127,6 +127,25 @@ function missingReadingFields(reading: MarketRateReading): Record<string, unknow
 }
 
 /**
+ * Lee un número que llega del llamador sin inventar sustituto.
+ *
+ * El patrón `Number(args.x ?? 5000)` que este espejo usaba convertía dos ausencias
+ * distintas en el mismo número. Un valor ausente se converts en `0` con
+ * `Number(undefined)`, y `0` no es un default inofensivo en estos dominios: para
+ * capital significa "no hay tesorería" y para score significa "contraparte
+ * inexistente". Por eso un ausente devuelve `null` explícito, que es lo que
+ * distingue "no medido" de "medido en cero".
+ *
+ * `0` SÍ es un valor de entrada legítimo y se preserva: un contador de pérdidas
+ * consecutivas en cero es un hecho, y una exposición medida en cero también.
+ */
+function numeroODeferenciaAusente(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Simula la ejecución de herramientas MCP en modo web cuando no hay conexión nativa de Electron.
  */
 export function simulateMcpTool(
@@ -208,72 +227,181 @@ export function simulateMcpTool(
       };
     }
   } else if (toolName === 'evaluate_trade_risk') {
-    const tradeAmount = Number((args as any)?.tradeAmountUsdt ?? 500);
-    const capital = Number((args as any)?.currentCapitalUsdt ?? 5000);
-    const score = Number((args as any)?.counterpartyScore ?? 98);
-    const tradeRiskPct = (tradeAmount / capital) * 100;
-    // The spread is an observed market value. Without a caller-supplied reading the
-    // MIN_SPREAD rule cannot be evaluated, so we declare absence instead of inventing a
-    // spread that would silently clear the rule.
+    // Estos defaults son la misma invención que 9200a4f cerró en el servidor MCP, y
+    // en el espejo era peor: no coincidían con los valores del servidor que ya nadie
+    // defendía. Eran 5000, 98, 400 y 2500.
+    //
+    // `actionable: false` ya estaba puesto en toda esta rama, y por eso el defecto
+    // nunca pareció grave. Pero eso encerra la autorización, no la afirmación: el
+    // espejo publicaba `tradeRiskPct: 10.0` calculado sobre una tesorería que nadie
+    // reportó, y `isCounterpartyAcceptable: true` porque el score por defecto era 98
+    // y 98 >= 70 siempre. Ese campo no decía "la contraparte es buena": decía "se
+    // pasó un score".
+    //
+    // `tradeAmountUsdt` es el caso más grave de los cuatro. En
+    // `EvaluateTradeRiskInputSchema` es REQUERIDO: el servidor rechaza la llamada
+    // entera si no llega. El espejo lo rellenaba con 500, así que una llamada
+    // incompleta recibía un veredicto completo sobre un monto que nadie pidió.
+    const tradeAmount = numeroODeferenciaAusente((args as any)?.tradeAmountUsdt);
+    const capital = numeroODeferenciaAusente((args as any)?.currentCapitalUsdt);
+    const score = numeroODeferenciaAusente((args as any)?.counterpartyScore);
+
+    // El spread es una lectura observada del mercado. Without a caller-supplied
+    // reading the MIN_SPREAD rule cannot be evaluated, so we declare absence instead
+    // of inventing a spread that would silently clear the rule.
     const observedSpread = (args as any)?.currentSpreadPct;
     const hasObservedSpread = observedSpread !== undefined && Number(observedSpread) > 0;
-    const ctx: RuleContext = {
-      currentSpread: hasObservedSpread ? Number(observedSpread) : Number.NaN,
-      minSpread: 0.5,
-      openOps: 1,
-      tradeRiskPct,
-      dailyLossPct: 0,
-      consecutiveErrors: score < 50 ? 2 : 0,
-      maxRiskPerTradePct: 20,
-    };
-    const recommendedMaxUsdt = (capital * (ctx.maxRiskPerTradePct ?? 20)) / 100;
 
-    if (!hasObservedSpread) {
+    // El orden es el que un llamador tendría que arreglar: primero el operando
+    // primario, luego el denominador, después la elegibilidad. El guard testean los
+    // valores directamente, no el motivo derivado, para que el compilador estreche
+    // `number | null` a `number` en la rama else.
+    const unavailableReason =
+      tradeAmount == null
+        ? 'missing_evidence:tradeAmountUsdt'
+        : capital == null
+          ? 'missing_evidence:currentCapital'
+          : score == null
+            ? 'missing_evidence:counterpartyScore'
+            : null;
+
+    if (tradeAmount == null || capital == null || score == null) {
+      // Sin denominador no hay porcentaje: 250/5000 leía como 5% de riesgo sobre una
+      // tesorería nunca reportada.
       simulatedResult = {
         ...simulatedResult,
-        decision: 'INSUFFICIENT_DATA',
-        reason: 'MISSING_CURRENT_SPREAD',
-        currentSpreadPct: null,
-        tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+        decision: 'UNAVAILABLE',
+        reason: unavailableReason,
+        currentSpreadPct: hasObservedSpread ? Number(observedSpread) : null,
+        tradeRiskPct: null,
+        // Un tamaño recomendado contra capital no reportado es un número del que se
+        // dimensiona una orden.
         recommendedSizeUsdt: null,
+        // Una contraparte ausente no es una contraparte aceptable.
         isCounterpartyAcceptable: null,
-        violations: ['MISSING_CURRENT_SPREAD'],
+        // No hay regla violada que reportar: no se pudo evaluar ninguna.
+        violations: [],
+        unmeasuredInputs: [
+          ...(tradeAmount == null ? ['tradeAmountUsdt'] : []),
+          ...(capital == null ? ['currentCapitalUsdt'] : []),
+          ...(score == null ? ['counterpartyScore'] : []),
+        ],
+        unavailableReason,
         actionable: false,
       };
     } else {
-      const verdict = evaluate(ctx);
-      simulatedResult = {
-        ...simulatedResult,
-        decision: verdict.decision,
-        reason: verdict.reason,
-        currentSpreadPct: Number(observedSpread),
-        tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
-        recommendedSizeUsdt: Math.min(tradeAmount, recommendedMaxUsdt),
-        isCounterpartyAcceptable: score >= 70,
-        violations: verdict.decision !== 'ALLOW' ? [verdict.reason] : [],
-        actionable: false,
+      const tradeRiskPct = (tradeAmount / capital) * 100;
+      const ctx: RuleContext = {
+        currentSpread: Number(observedSpread),
+        minSpread: 0.5,
+        openOps: 1,
+        tradeRiskPct,
+        dailyLossPct: 0,
+        consecutiveErrors: score < 50 ? 2 : 0,
+        maxRiskPerTradePct: 20,
       };
+      const recommendedMaxUsdt = (capital * (ctx.maxRiskPerTradePct ?? 20)) / 100;
+
+      if (!hasObservedSpread) {
+        simulatedResult = {
+          ...simulatedResult,
+          decision: 'INSUFFICIENT_DATA',
+          reason: 'MISSING_CURRENT_SPREAD',
+          currentSpreadPct: null,
+          tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+          recommendedSizeUsdt: null,
+          isCounterpartyAcceptable: null,
+          violations: ['MISSING_CURRENT_SPREAD'],
+          unavailableReason: null,
+          actionable: false,
+        };
+      } else {
+        const verdict = evaluate(ctx);
+        simulatedResult = {
+          ...simulatedResult,
+          decision: verdict.decision,
+          reason: verdict.reason,
+          currentSpreadPct: Number(observedSpread),
+          tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+          recommendedSizeUsdt: Math.min(tradeAmount, recommendedMaxUsdt),
+          // El score viene del llamador: `score >= 70` es un cálculo sobre un dato
+          // real, no un permiso.
+          isCounterpartyAcceptable: score >= 70,
+          violations: verdict.decision !== 'ALLOW' ? [verdict.reason] : [],
+          unavailableReason: null,
+          actionable: false,
+        };
+      }
     }
   } else if (toolName === 'simulate_trade_impact') {
-    const currentExposure = Number((args as any)?.currentExposureUsdt ?? 400);
-    const proposedTrade = Number((args as any)?.proposedTradeAmountUsdt ?? 600);
-    const maxLimit = Number((args as any)?.maxDailyExposureLimitUsdt ?? 2500);
+    // Aquí el default peligroso era la pareja `maxDailyExposureLimitUsdt: 2500` con
+    // `currentExposureUsdt: 400`. Juntos hacían que cualquier orden bajo el límite
+    // pareciera estar dentro de los límites, y el veredicto era
+    // `SIMULATED_WITHIN_LIMITS`: una licencia para mover dinero, no una lectura.
+    //
+    // Una aritmética de exposición sobre un operando desconocido tampoco es una
+    // medición, así que un operando ausente da `null` en vez de tratar el libro como
+    // vacío. `proposedTradeAmountUsdt` también es REQUERIDO en el schema del
+    // servidor: aquí se rellenaba con 600.
+    const proposedTrade = numeroODeferenciaAusente((args as any)?.proposedTradeAmountUsdt);
+    const currentExposure = numeroODeferenciaAusente((args as any)?.currentExposureUsdt);
+    const maxLimit = numeroODeferenciaAusente((args as any)?.maxDailyExposureLimitUsdt);
+    // `consecutiveLosses: 0` sí es un default defendible: el servidor también lo
+    // declara con `.default(0)` y "no se han registrado pérdidas" es un hecho
+    // observable del contador, no una medición de mercado.
     const losses = Number((args as any)?.consecutiveLosses ?? 0);
-    const projected = currentExposure + proposedTrade;
-    const limitExceeded = projected > maxLimit;
-    const utilization = Number(((projected / maxLimit) * 100).toFixed(1));
+
+    const projected = proposedTrade != null && currentExposure != null ? currentExposure + proposedTrade : null;
+    const limitExceeded = projected != null && maxLimit != null ? projected > maxLimit : null;
+    const utilization =
+      projected != null && maxLimit != null && maxLimit > 0
+        ? Number(((projected / maxLimit) * 100).toFixed(1))
+        : null;
+
     const triggers: string[] = [];
-    if (limitExceeded) triggers.push('DAILY_EXPOSURE_LIMIT_EXCEEDED');
+    if (limitExceeded === true) triggers.push('DAILY_EXPOSURE_LIMIT_EXCEEDED');
+    // Medido sobre input real, así que esta regla dispara por mérito propio.
+    // Suprimirla porque el límite falta sería sobre-corregir: una regla conocida
+    // sobre datos conocidos se sostiene igual.
     if (losses >= 3) triggers.push('MAX_CONSECUTIVE_LOSSES_TRIGGERED');
+
+    // Un límite que nadie eligió es el que producía el falso verde, así que es el
+    // que se reporta primero. El guard testean los valores directamente para que el
+    // compilador estreche.
+    const unavailableReason =
+      proposedTrade == null
+        ? 'missing_evidence:proposedTradeAmount'
+        : maxLimit == null
+          ? 'missing_evidence:maxDailyExposureLimit'
+          : currentExposure == null
+            ? 'missing_evidence:currentExposure'
+            : null;
+
     simulatedResult = {
       ...simulatedResult,
+      // `null` pasa como `null`. Un `0` aquí afirmaría que el libro está vacío.
       currentExposureUsdt: currentExposure,
       projectedExposureUsdt: projected,
       exposureUtilizationPct: utilization,
       limitExceeded,
-      maxSafeRemainingUsdt: Math.max(0, maxLimit - currentExposure),
+      maxSafeRemainingUsdt:
+        maxLimit != null && currentExposure != null ? Math.max(0, maxLimit - currentExposure) : null,
       wouldTrigger: triggers,
-      verdict: triggers.length === 0 ? 'SIMULATED_WITHIN_LIMITS' : 'REQUIRES_REDUCTION',
+      // Un disparo conocido sobre input medido sigue siendo un hallazgo real aunque
+      // la simulación entera no haya podido correr. `REQUIRES_REDUCTION` es una orden
+      // de no crecer, que es la dirección segura.
+      verdict:
+        unavailableReason != null && triggers.length === 0
+          ? 'UNAVAILABLE'
+          : triggers.length === 0
+            ? 'SIMULATED_WITHIN_LIMITS'
+            : 'REQUIRES_REDUCTION',
+      unmeasuredInputs: [
+        ...(proposedTrade == null ? ['proposedTradeAmountUsdt'] : []),
+        ...(currentExposure == null ? ['currentExposureUsdt'] : []),
+        ...(maxLimit == null ? ['maxDailyExposureLimitUsdt'] : []),
+      ],
+      unavailableReason,
       actionable: false,
     };
   } else if (toolName === 'consult_zk_market_mesh') {
