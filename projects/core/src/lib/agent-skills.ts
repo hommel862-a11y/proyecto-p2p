@@ -1801,8 +1801,15 @@ export function executeFinancialSkill(
       case 'inspect_orderbook_liquidity': {
         const offers = (args['offers'] || []) as BinanceOfferSummary[];
         const side = (args['side'] || 'BUY') as 'BUY' | 'SELL';
-        const targetVolumeUsdt =
-          args['targetVolumeUsdt'] !== undefined ? Number(args['targetVolumeUsdt']) : 1000;
+        // This one feeds `fillableUsdt`, which is a claim about the book, so a
+        // default of 1000 would report depth nobody observed. The engine's
+        // `expectedSource` already separates "ask the venue" from "ask the
+        // operator"; here nothing does, so the refusal names the instruction.
+        const targetVolumeUsdt = requiredNumber(
+          args,
+          'targetVolumeUsdt',
+          'volumen objetivo en USDT que el operador ordena trade-ar',
+        );
         const tracker = new OrderPersistenceTracker();
         const result = computeMicrostructureSanitizedDepth(offers, side, targetVolumeUsdt, tracker);
         return {
@@ -2306,10 +2313,10 @@ export function executeFinancialSkill(
       case 'optimize_idle_capital_simple_earn': {
         const capitalUsdt = requiredNumber(args, 'capitalUsdt', SRC_REAL_BALANCE);
         const tier1LimitUsdt =
-          args['tier1LimitUsdt'] !== undefined ? Number(args['tier1LimitUsdt']) : 500;
+          args['tier1LimitUsdt'] !== undefined ? Number(args['tier1LimitUsdt']) : null;
         const tier1AprPct = requiredNumber(args, 'tier1AprPct', SRC_VENUE_PUBLISHED_RATE);
         const tier2AprPct = requiredNumber(args, 'tier2AprPct', SRC_VENUE_PUBLISHED_RATE);
-        const holdingDays = args['holdingDays'] !== undefined ? Number(args['holdingDays']) : 30;
+        const holdingDays = args['holdingDays'] !== undefined ? Number(args['holdingDays']) : null;
 
         const result = optimizeIdleCapitalSimpleEarn({
           capitalUsdt,
@@ -2368,10 +2375,10 @@ export function executeFinancialSkill(
         const usdtFlexibleAprPct = requiredNumber(args, 'usdtFlexibleAprPct', SRC_VENUE_PUBLISHED_RATE);
         const fdusdFlexibleAprPct = requiredNumber(args, 'fdusdFlexibleAprPct', SRC_VENUE_PUBLISHED_RATE);
         const usdtFdusdMarketRate =
-          args['usdtFdusdMarketRate'] !== undefined ? Number(args['usdtFdusdMarketRate']) : 1.0;
-        const swapFeePct = args['swapFeePct'] !== undefined ? Number(args['swapFeePct']) : 0;
+          args['usdtFdusdMarketRate'] !== undefined ? Number(args['usdtFdusdMarketRate']) : null;
+        const swapFeePct = args['swapFeePct'] !== undefined ? Number(args['swapFeePct']) : null;
         const plannedHorizonDays =
-          args['plannedHorizonDays'] !== undefined ? Number(args['plannedHorizonDays']) : 30;
+          args['plannedHorizonDays'] !== undefined ? Number(args['plannedHorizonDays']) : null;
 
         const result = calculateUsdtFdusdYieldArbitrage({
           usdtBalance,
@@ -2418,7 +2425,9 @@ export function executeFinancialSkill(
           2.0,
         );
         const alternativeEarnAprPct =
-          args['alternativeEarnAprPct'] !== undefined ? Number(args['alternativeEarnAprPct']) : 2.5;
+          args['alternativeEarnAprPct'] !== undefined
+            ? Number(args['alternativeEarnAprPct'])
+            : null;
 
         const result = modelLaunchpoolCapitalParking({
           capitalUsdt,
@@ -2450,7 +2459,7 @@ export function executeFinancialSkill(
         const locked30dAprPct = requiredNumber(args, 'locked30dAprPct', SRC_VENUE_PUBLISHED_RATE);
         const locked60dAprPct = requiredNumber(args, 'locked60dAprPct', SRC_VENUE_PUBLISHED_RATE);
         const safetyBufferPct =
-          args['safetyBufferPct'] !== undefined ? Number(args['safetyBufferPct']) : 30;
+          args['safetyBufferPct'] !== undefined ? Number(args['safetyBufferPct']) : null;
 
         const result = optimizeLockedVsFlexibleLiquidityLadder({
           totalTreasuryUsdt,
@@ -2548,8 +2557,12 @@ export function executeFinancialSkill(
         const tier1LimitPerAccountUsdt =
           args['tier1LimitPerAccountUsdt'] !== undefined
             ? Number(args['tier1LimitPerAccountUsdt'])
-          : 500;
-      const tier1AprPct = requiredNumber(args, 'tier1AprPct', SRC_VENUE_PUBLISHED_RATE);
+            : null;
+        // Venue-published APRs refuse rather than declare: a Tier forecast without
+        // both rates is not a partial answer, it is no answer. The tier *limit*
+        // below is different — a missing limit is a measurable gap, so it passes
+        // through as absent and the engine declares it.
+        const tier1AprPct = requiredNumber(args, 'tier1AprPct', SRC_VENUE_PUBLISHED_RATE);
         const tier2AprPct = requiredNumber(args, 'tier2AprPct', SRC_VENUE_PUBLISHED_RATE);
         const availableSubaccountsCount =
           args['availableSubaccountsCount'] !== undefined
@@ -2612,13 +2625,15 @@ export function executeFinancialSkill(
         const dailyInstantQuotaUsdt =
           args['dailyInstantQuotaUsdt'] !== undefined
             ? Number(args['dailyInstantQuotaUsdt'])
-            : 1000000;
+            : null;
         const dailyQuotaConsumedUsdt =
-          args['dailyQuotaConsumedUsdt'] !== undefined ? Number(args['dailyQuotaConsumedUsdt']) : 0;
+          args['dailyQuotaConsumedUsdt'] !== undefined
+            ? Number(args['dailyQuotaConsumedUsdt'])
+            : null;
         const averageSlippageOrDelayHours =
           args['averageSlippageOrDelayHours'] !== undefined
             ? Number(args['averageSlippageOrDelayHours'])
-            : 0.1;
+            : null;
 
         const result = simulateEarnInstantRedemptionLatency({
           redemptionAmountUsdt,
