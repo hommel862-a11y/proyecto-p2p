@@ -12,9 +12,40 @@ import {
 } from './index.js';
 
 describe('9 High-Impact Strategic Quantitative & Operational MCP Tools', () => {
-  it('scan_synthetic_stable_arbitrage scans opportunities', () => {
+  // This test used to call the tool with no `pairs` and assert
+  // `opportunitiesCount > 0`. It was asserting the bug: the tool carried its own
+  // fixed USDC/VES curve (85.5 / 86.8) and scanned it, so a synthetic arbitrage
+  // was reported that no scan ever observed. A count over an invented curve is
+  // the same fabricated number as a fabricated rate — one layer up.
+  it('scan_synthetic_stable_arbitrage no escanea una curva que no le enviaron', () => {
     const res = scanSyntheticStableArbitrageTool.execute({
       minNetSpreadPct: 0.1,
+    });
+    // Not 0: that would assert "we scanned and found nothing". The count of a
+    // search that never happened is null, with the missing source named.
+    expect(res.success).toBe(false);
+    expect(res.opportunitiesCount).toBeNull();
+    expect(res.reason).toBe('NO_MEASURED_CURVE');
+    expect(res.requiredSource).toContain('p2pUsdtRateFiat');
+  });
+
+  it('scan_synthetic_stable_arbitrage counts only the measured curves it receives', () => {
+    const res = scanSyntheticStableArbitrageTool.execute({
+      minNetSpreadPct: 0.1,
+      pairs: [
+        {
+          targetAsset: 'USDC',
+          spotPair: 'USDCUSDT',
+          spotRate: 0.9992,
+          spotFeePct: 0.05,
+          p2pMakerFeePct: 0,
+          transferOrCashFrictionPct: 0,
+          p2pUsdtRateFiat: 950,
+          p2pTargetRateFiat: 968,
+          fiatCurrency: 'VES',
+          tradingCapitalUsd: 2500,
+        },
+      ],
     });
     expect(res.success).toBe(true);
     expect(res.opportunitiesCount).toBeGreaterThan(0);

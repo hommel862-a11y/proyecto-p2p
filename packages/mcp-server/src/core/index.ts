@@ -2951,8 +2951,12 @@ export function parseCustomerChatMessage(message: string): ConciergeParsedInquir
 
   let detectedAmount: number | undefined;
   const numMatch = clean.match(/(\d+([\.,]\d+)?)/);
-  if (numMatch) {
-    const rawNum = numMatch[1].replace(',', '.');
+  // `noUncheckedIndexedAccess` widens a `string | undefined`; the regex always
+  // captures group 1 when it matches, so this narrows it back rather than
+  // defaulting to a number.
+  const captured = numMatch?.[1];
+  if (captured !== undefined) {
+    const rawNum = captured.replace(',', '.');
     const parsedVal = parseFloat(rawNum);
     if (!isNaN(parsedVal) && parsedVal > 0) {
       detectedAmount = parsedVal;

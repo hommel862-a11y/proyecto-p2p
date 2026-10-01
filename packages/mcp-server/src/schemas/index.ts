@@ -485,16 +485,34 @@ export type AuditAdCompetitivenessInput = z.infer<typeof AuditAdCompetitivenessI
 // 9 HIGH-VALUE QUANTITATIVE & OPERATIONAL TOOLS
 // ==========================================
 
+/**
+ * A synthetic-stable curve: spot leg plus P2P leg, both measured.
+ *
+ * This schema previously described an FX currency-pair engine (`sourceAsset` /
+ * `reverseExchangeRate` / `reverseFeePct`) — a shape nothing in this repo sends
+ * and that `scanSyntheticStableCurves` cannot consume. Because it was optional,
+ * a phantom quote passed the boundary and then read `spotRate` /
+ * `p2pUsdtRateFiat` as `undefined`, yielding `NaN` cost and a zero-spread
+ * "no opportunity" verdict on a route that was never measured.
+ *
+ * Every leg the engine reads is required here. A missing leg is not a zero
+ * spread: the curve has to be rejected so the caller learns it, instead of
+ * being priced with invented numbers.
+ */
 export const ScanSyntheticStableArbitrageInputSchema = z.object({
   pairs: z
     .array(
       z.object({
-        sourceAsset: z.string(),
-        targetAsset: z.string(),
-        exchangeRate: z.number().positive(),
-        feePct: z.number().min(0).default(0),
-        reverseExchangeRate: z.number().positive(),
-        reverseFeePct: z.number().min(0).default(0),
+        targetAsset: z.enum(['USDT', 'USDC', 'FDUSD', 'EURC', 'PYUSD']),
+        spotPair: z.string().min(1),
+        spotRate: z.number().positive(),
+        spotFeePct: z.number().min(0).optional(),
+        p2pMakerFeePct: z.number().min(0).optional(),
+        transferOrCashFrictionPct: z.number().min(0).optional(),
+        p2pUsdtRateFiat: z.number().positive(),
+        p2pTargetRateFiat: z.number().positive(),
+        fiatCurrency: z.string().min(1).optional(),
+        tradingCapitalUsd: z.number().positive().optional(),
       }),
     )
     .optional(),

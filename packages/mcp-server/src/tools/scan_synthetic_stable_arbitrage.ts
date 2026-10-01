@@ -1,6 +1,5 @@
 import {
   scanSyntheticStableCurves,
-  type StableCrossQuote,
 } from '../core/index.js';
 import {
   ScanSyntheticStableArbitrageInputSchema,
@@ -13,34 +12,28 @@ export const scanSyntheticStableArbitrageTool = {
     'Rastrea oportunidades de arbitraje sintético entre pares de stablecoins (USDT/USDC/FDUSD/EURC/PYUSD) y los libros P2P locales (VES/COP).',
   inputSchema: ScanSyntheticStableArbitrageInputSchema,
   execute: (input: ScanSyntheticStableArbitrageInput) => {
-    const pairs = (input.pairs as StableCrossQuote[]) || [];
     const minNetSpreadPct = input.minNetSpreadPct ?? 0.15;
 
-    const defaultQuotes: StableCrossQuote[] = [
-      {
-        targetAsset: 'USDC',
-        spotPair: 'USDCUSDT',
-        spotRate: 0.9992,
-        spotFeePct: 0.05,
-        p2pUsdtRateFiat: 85.5,
-        p2pTargetRateFiat: 86.8,
-        fiatCurrency: 'VES',
-        tradingCapitalUsd: 2500,
-      },
-      {
-        targetAsset: 'FDUSD',
-        spotPair: 'FDUSDUSDT',
-        spotRate: 0.9998,
-        spotFeePct: 0.0,
-        p2pUsdtRateFiat: 85.5,
-        p2pTargetRateFiat: 86.4,
-        fiatCurrency: 'VES',
-        tradingCapitalUsd: 2500,
-      },
-    ];
+    // No `defaultQuotes`. The renderer fallback already refused to scan an
+    // invented curve (see `mcp-fallbacks.ts`); this daemon side kept a second
+    // copy of a fixed USDC/VES pair (85.5 / 86.8) and reported
+    // `opportunitiesCount` over it — an arbitrage synthetic no scan ever
+    // observed. `0` would be just as false, since it asserts "we scanned and
+    // found nothing". Without a measured curve there is no count.
+    const pairs = input.pairs ?? [];
+    if (pairs.length === 0) {
+      return {
+        success: false,
+        opportunities: [],
+        opportunitiesCount: null,
+        reason: 'NO_MEASURED_CURVE',
+        requiredSource:
+          'Measured spot rate and measured P2P VES rate per route (spotPair, spotRate, p2pUsdtRateFiat, p2pTargetRateFiat)',
+        evaluatedAt: new Date().toISOString(),
+      };
+    }
 
-    const quotesToEvaluate = pairs.length > 0 ? pairs : defaultQuotes;
-    const opportunities = scanSyntheticStableCurves(quotesToEvaluate, minNetSpreadPct);
+    const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
 
     return {
       success: true,
