@@ -97,7 +97,9 @@ describe('P2P MCP Server Suite', () => {
       const forecast = forecastVolatilityWindowTool.execute({
         parallelRate: 88.5,
         bcvRate: 72.0,
-        currentSpreadPct: 1.4,
+        // `currentSpreadPct` used to be passed here. The handler never read it, so
+        // the caller's "real" spread was discarded while the schema advertised a
+        // `1.2` default for it. The spread is derived from the two rates above.
         askDepthUsdt: 6000,
         bidDepthUsdt: 3000,
       });

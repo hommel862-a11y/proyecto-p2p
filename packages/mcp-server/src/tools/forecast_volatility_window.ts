@@ -14,8 +14,20 @@ export const forecastVolatilityWindowTool = {
     const gapPct = bcvIntel.gap.gapPct;
 
     const isInWindow = bcvIntel.window.phase === 'INTERVENTION_ACTIVE';
-    const depthRatio = input.bidDepthUsdt > 0 ? input.askDepthUsdt / input.bidDepthUsdt : 1;
+
+    // The depth ratio is only a number when the book was measured.
+    //
+    // It used to be `bidDepthUsdt > 0 ? askDepthUsdt / bidDepthUsdt : 1`, and the
+    // `1` was invented: a zero or absent bid produced a "neutral" ratio that looks
+    // like a computed result. `null` keeps the absence visible, and the missing
+    // depth makes the forecast unavailable instead of falsely calm.
+    const hasDepth = input.askDepthUsdt != null && input.bidDepthUsdt != null && input.bidDepthUsdt > 0;
+    const depthRatio: number | null = hasDepth
+      ? input.askDepthUsdt! / input.bidDepthUsdt!
+      : null;
+
     let spreadDynamic: 'EXPANSION_LIKELY' | 'COMPRESSION_RISK' | 'STABLE' | 'UNAVAILABLE';
+    let unavailableReason: string | null = null;
 
     if (gapPct == null) {
       // Declared, not defaulted. `gapPct > 18` on a `null` is `false`, which would
@@ -24,6 +36,14 @@ export const forecastVolatilityWindowTool = {
       // window phase is still reported (it comes from the clock, not from rates),
       // but the spread dynamic is an absence.
       spreadDynamic = 'UNAVAILABLE';
+      unavailableReason = bcvIntel.gap.unavailableReason;
+    } else if (depthRatio == null) {
+      // The gap is measured, so an expansion call would be legitimate — but this
+      // tool's edge over a plain gap reading is the order book, and it was not
+      // measured. A directional forecast built on half the inputs is how a
+      // fabricated default turns into a trade.
+      spreadDynamic = 'UNAVAILABLE';
+      unavailableReason = 'missing_evidence:bookDepth';
     } else if (isInWindow && depthRatio < 0.8) {
       spreadDynamic = 'COMPRESSION_RISK';
     } else if (gapPct > 18) {
@@ -37,19 +57,20 @@ export const forecastVolatilityWindowTool = {
       // as "parallel and official are identical".
       gapPct: gapPct == null ? null : Number(gapPct.toFixed(2)),
       gapStatus: gapPct == null ? 'UNAVAILABLE' : 'MEASURED',
-      unavailableReason: bcvIntel.gap.unavailableReason,
+      // Null passes through as null too. An absent book is not a balanced book.
+      depthRatio: depthRatio == null ? null : Number(depthRatio.toFixed(4)),
+      unavailableReason,
       isInBcvInterventionWindow: isInWindow,
       bcvPhase: bcvIntel.window.phase,
       hoursUntilIntervention: bcvIntel.window.hoursUntilIntervention,
       tacticalRecommendation: bcvIntel.recommendation.action,
       recommendationRationale: bcvIntel.recommendation.rationale,
       spreadDynamic,
-      // A 2h spread forecast has no gap behind it, so the depth ratio alone
-      // cannot produce a directional call.
-      actionable: gapPct != null,
+      // A directional call needs both the gap and the book measured.
+      actionable: gapPct != null && depthRatio != null,
       suggestedAction:
         spreadDynamic === 'UNAVAILABLE'
-          ? `Sin pronóstico de dinámica de spread: brecha indeterminada (${bcvIntel.gap.unavailableReason ?? 'TASA_NO_DISPONIBLE'}).`
+          ? `Sin pronóstico de dinámica de spread: ${unavailableReason ?? 'EVIDENCIA_INSUFICIENTE'}.`
           : spreadDynamic === 'COMPRESSION_RISK'
             ? 'Liquidar inventario con rapidez para evitar compresión de márgenes'
             : spreadDynamic === 'EXPANSION_LIKELY'

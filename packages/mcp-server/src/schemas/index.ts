@@ -38,9 +38,24 @@ export type ConsultZkMarketMeshInput = z.infer<typeof ConsultZkMarketMeshInputSc
 export const ForecastVolatilityWindowInputSchema = z.object({
   parallelRate: z.number().positive(),
   bcvRate: z.number().positive(),
-  currentSpreadPct: z.number().default(1.2),
-  askDepthUsdt: z.number().min(0).default(5000),
-  bidDepthUsdt: z.number().min(0).default(4500),
+  // No defaults here on purpose.
+  //
+  // `currentSpreadPct` was `z.number().default(1.2)` and it was ALSO dead: the
+  // handler never read it. So the default did not merely invent a measurement, it
+  // advertised to the agent a parameter it could fill with a real spread and have
+  // it discarded silently. The spread this tool reasons about is derived from
+  // `parallelRate` vs `bcvRate`, which are both required.
+  //
+  // `askDepthUsdt`/`bidDepthUsdt` were `default(5000)`/`default(4500)` and those
+  // ARE read, to build the depth ratio. A fabricated book makes a thin market look
+  // deep, which is fail-silent in the dangerous direction.
+  //
+  // Depth is optional in the schema but required for a directional forecast: see
+  // the `missing_evidence:bookDepth` branch in the handler. That is deliberate —
+  // an agent must be able to call this tool and be told "I can't forecast that"
+  // instead of being handed a verdict on a book it never measured.
+  askDepthUsdt: z.number().min(0).optional(),
+  bidDepthUsdt: z.number().min(0).optional(),
 });
 export type ForecastVolatilityWindowInput = z.infer<typeof ForecastVolatilityWindowInputSchema>;
 
