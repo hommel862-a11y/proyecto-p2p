@@ -12,8 +12,21 @@ import { ToastService } from './toast.service';
 
 export interface BcvInterventionRisk {
   inWindow: boolean;
+  /**
+   * Derived from the calendar phase, NOT from a probability.
+   *
+   * It used to be `probabilityPct >= 80 ? 'EXTREME' : ...`. With the probability
+   * correctly absent, every comparison against `null` is false, so the whole
+   * ladder would silently collapse to `'LOW'` — including during an open auction
+   * window. That is fail-silent in the dangerous direction, so intensity now
+   * reads the phase and never the percentage.
+   */
   intensity: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
-  probabilityPct: number;
+  /**
+   * Always null: there is no probabilistic BCV intervention model, so this panel
+   * reports the calendar phase and refuses to publish a likelihood.
+   */
+  probabilityPct: number | null;
   message: string;
 }
 
@@ -197,27 +210,32 @@ export class TriangulationIntelligenceService {
       const now = new Date();
       const pred = predictBcvIntervention(now);
       const isWindow = pred.phase === 'INTERVENTION_ACTIVE';
-      const prob = pred.probabilityPct;
 
+      // Intensity reads the calendar phase. The old version derived it from
+      // `probabilityPct`, which is now (correctly) null: every `null >= n` is
+      // false, so the ladder collapsed to 'LOW' even with an auction open.
       let intensity: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME' = 'LOW';
-      if (prob >= 80) intensity = 'EXTREME';
-      else if (prob >= 60) intensity = 'HIGH';
-      else if (prob >= 40) intensity = 'MEDIUM';
+      if (pred.phase === 'INTERVENTION_ACTIVE') intensity = 'EXTREME';
+      else if (pred.phase === 'PRE_INTERVENTION_COMPRESSION') intensity = 'HIGH';
+      else if (pred.phase === 'POST_INTERVENTION_REBOUND') intensity = 'MEDIUM';
 
       return {
         inWindow: isWindow,
         intensity,
-        probabilityPct: prob,
+        probabilityPct: pred.probabilityPct,
         message: isWindow
           ? `⚠️ Ventana activa de intervención BCV. ${pred.rationale}`
           : `✅ Fuera de ventana crítica BCV. Próxima fecha esperada: ${pred.nextExpectedIntervention}.`,
       };
     } catch {
+      // The predictor threw, so we know nothing about the window. Publishing
+      // `probabilityPct: 20` and "régimen normal" here claimed a normal regime
+      // on the exact path where the system failed to find out.
       return {
         inWindow: false,
         intensity: 'LOW',
-        probabilityPct: 20,
-        message: 'Monitoreo BCV operando en régimen normal.',
+        probabilityPct: null,
+        message: 'Ventana BCV indeterminada: el predictor no respondió. Sin dato, no hay régimen que declarar.',
       };
     }
   });

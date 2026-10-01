@@ -512,7 +512,7 @@
             </span>
           </div>
           <div class="macro-tile-subtext text-muted">
-            Próxima: {{ mcpBcvIntervention()?.nextExpectedIntervention || bcvIntelligence().window.nextExpectedIntervention }} ({{ mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct }}% prob.)
+            Próxima: {{ mcpBcvIntervention()?.nextExpectedIntervention || bcvIntelligence().window.nextExpectedIntervention }} ({{ (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) !== null ? (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) + '% prob.' : 'calendario; sin modelo probabilístico' }})
           </div>
         </div>
 

@@ -232,7 +232,11 @@ export function formatBcvIntelligenceTelegramMessage(intel: {
   zone: string;
   phase: string;
   nextExpectedIntervention: string;
-  probabilityPct: number;
+  /**
+   * Always null. There is no probabilistic BCV model, so no percentage is
+   * printed next to the next expected auction date.
+   */
+  probabilityPct: number | null;
   actionLabel: string;
   timingNotice: string;
 }): string {
@@ -264,7 +268,7 @@ ${gapLine}
 📊 *Zona:* \`${escapeMarkdownV2(intel.zone)}\`
 
 ⏱️ *Fase del Ciclo:* \`${escapeMarkdownV2(intel.phase)}\`
-📅 *Próxima Inyección:* \`${escapeMarkdownV2(intel.nextExpectedIntervention)}\` \\(${intel.probabilityPct}% prob\\)
+📅 *Próxima Inyección:* \`${escapeMarkdownV2(intel.nextExpectedIntervention)}\` _(calendario; sin modelo probabilístico)_
 ━━━━━━━━━━━━━━━━━━━━
 🎯 *Directiva de Tesorería:*
 👉 *${escapeMarkdownV2(intel.actionLabel)}*

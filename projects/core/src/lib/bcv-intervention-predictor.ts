@@ -41,10 +41,24 @@ export interface BcvPredictorWindow {
   vetDayOfWeek: number; // 0=Dom, 1=Lun, ..., 6=Sab
   vetHour: number; // 0..23
   phase: InterventionPhase;
-  probabilityPct: number;
+  /**
+   * Always `null`. There is no probabilistic BCV intervention model in this system:
+   * no training set, no base rate, no backtest, no intervention history. The
+   * calendar (Monday/Thursday, 09:00-13:00 VET) is a public schedule, not a
+   * predictor, so it cannot yield a probability.
+   *
+   * It used to be 95/85/80/75/40 by day and hour, which travelled unlabelled into
+   * the Telegram panel and the volatility forecaster — where an agent timing
+   * treasury reads "95% probability of injection".
+   */
+  probabilityPct: number | null;
+  /** Marker so a caller cannot mistake the calendar for a calibrated model. */
+  probabilityBasis: 'NO_MODEL';
   nextExpectedIntervention: string;
   hoursUntilIntervention: number;
   rationale: string;
+  /** `false`: there is no model to make the window actionable. */
+  actionable: boolean;
 }
 
 export interface BcvRecommendation {
@@ -165,19 +179,17 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
   // Horario bancario de colocación: 9:00 AM - 1:00 PM VET (09:00 a 13:00)
 
   let phase: InterventionPhase;
-  let probabilityPct: number;
   let nextExpectedIntervention: string;
   let hoursUntilIntervention: number;
-  let rationale: string;
+  let calendarNote: string;
 
   const isInterventionDay = day === 1 || day === 4;
 
   if (isInterventionDay && hour >= 9 && hour <= 13) {
     phase = 'INTERVENTION_ACTIVE';
-    probabilityPct = day === 1 ? 95 : 85;
     nextExpectedIntervention = 'En curso actualmente';
     hoursUntilIntervention = 0;
-    rationale = `Inyección de divisas en curso en la banca comercial (${day === 1 ? 'Lunes principal' : 'Jueves de refuerzo'}). Se registra contención artificial del paralelo.`;
+    calendarNote = 'ventana de subasta bancaria';
   } else if (
     (day === 0 && hour >= 16) ||
     (day === 1 && hour < 9) ||
@@ -185,36 +197,35 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
     (day === 4 && hour < 9)
   ) {
     phase = 'PRE_INTERVENTION_COMPRESSION';
-    probabilityPct = 80;
     nextExpectedIntervention =
       day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
     hoursUntilIntervention = day === 1 || day === 4 ? Math.max(1, 9 - hour) : 12;
-    rationale =
-      'Ventana pre-intervención. Expectativa de inyección de divisas en las próximas horas.';
+    calendarNote = 'ventana previa a subasta';
   } else if ((isInterventionDay && hour > 13) || day === 2 || day === 5) {
     phase = 'POST_INTERVENTION_REBOUND';
-    probabilityPct = 75;
     nextExpectedIntervention = day <= 2 ? 'Jueves 09:30 AM VET' : 'Próximo Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 2 ? 40 : day === 5 ? 65 : 20;
-    rationale =
-      'Ventana post-intervención. Los dólares de la subasta son absorbidos rápidamente y el spread suele rebotar al alza en 24-48h.';
+    calendarNote = 'ventana posterior a subasta';
   } else {
     phase = 'QUIET_ACCUMULATION';
-    probabilityPct = 40;
     nextExpectedIntervention = day === 3 ? 'Jueves 09:30 AM VET' : 'Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 3 ? 18 : 36;
-    rationale =
-      'Mercado fuera de subastas bancarias. Cotizaciones del paralelo operan por oferta y demanda pura de la calle.';
+    calendarNote = 'fuera de subastas bancarias';
   }
 
   return {
     vetDayOfWeek: day,
     vetHour: hour,
     phase,
-    probabilityPct,
+    probabilityPct: null,
+    probabilityBasis: 'NO_MODEL',
     nextExpectedIntervention,
     hoursUntilIntervention,
-    rationale,
+    rationale:
+      `Fase de calendario: ${calendarNote} (${day === 1 ? 'Lunes' : day === 4 ? 'Jueves' : 'día no hábil'}, ` +
+      `${String(hour).padStart(2, '0')}:00 VET). Esta herramienta no hay modelo probabilístico ` +
+      'ni histórico de intervenciones, por lo que no emite probabilidad de intervención.',
+    actionable: false,
   };
 }
 

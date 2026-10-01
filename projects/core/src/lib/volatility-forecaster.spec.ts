@@ -57,10 +57,12 @@ describe('Volatility Forecaster (2-Hour Horizon)', () => {
         vetDayOfWeek: 1, // Monday
         vetHour: 10,
         phase: 'INTERVENTION_ACTIVE',
-        probabilityPct: 85,
+        probabilityPct: null,
+        probabilityBasis: 'NO_MODEL',
         nextExpectedIntervention: 'Hoy lunes',
         hoursUntilIntervention: 0,
         rationale: 'Subasta bancaria en curso',
+        actionable: false,
       },
       bcvGap: {
         parallelRate: 53.8,

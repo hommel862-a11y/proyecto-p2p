@@ -163,9 +163,10 @@ export function predictTwoHourVolatility(input: VolatilityForecastInput): Volati
   if (input.bcvWindow) {
     if (input.bcvWindow.phase === 'INTERVENTION_ACTIVE') {
       score += 25;
-      drivers.push(
-        `Ventana de inyección de divisas BCV activa (${input.bcvWindow.probabilityPct}% prob)`,
-      );
+      // `probabilityPct` is always null: the BCV calendar has no probabilistic
+      // model behind it. Naming the phase is the honest claim here — "the auction
+      // window is open" is calendar, not a 95% forecast.
+      drivers.push('Ventana de inyección de divisas BCV activa (horario de subasta, sin modelo probabilístico)');
     } else if (input.bcvWindow.phase === 'PRE_INTERVENTION_COMPRESSION') {
       score += 10;
       drivers.push(`Fase previa a subasta bancaria: compresión artificial del tipo de cambio`);

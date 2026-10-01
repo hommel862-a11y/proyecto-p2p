@@ -44,7 +44,8 @@ describe('Predictor del Ciclo de Intervención Cambiaria BCV', () => {
       expect(window.vetDayOfWeek).toBe(1); // Lunes
       expect(window.vetHour).toBe(10);
       expect(window.phase).toBe('INTERVENTION_ACTIVE');
-      expect(window.probabilityPct).toBeGreaterThanOrEqual(90);
+      expect(window.probabilityPct).toBeNull();
+      expect(window.probabilityBasis).toBe('NO_MODEL');
     });
 
     it('debe identificar ventana pre-intervención en Lunes a las 06:00 AM VET', () => {
@@ -53,7 +54,8 @@ describe('Predictor del Ciclo de Intervención Cambiaria BCV', () => {
       const window = predictBcvIntervention(preInterventionDate);
 
       expect(window.phase).toBe('PRE_INTERVENTION_COMPRESSION');
-      expect(window.probabilityPct).toBe(80);
+      expect(window.probabilityPct).toBeNull();
+      expect(window.probabilityBasis).toBe('NO_MODEL');
       expect(window.hoursUntilIntervention).toBe(3);
     });
 
