@@ -274,7 +274,7 @@ export const fetchCrossExchangeSpreadTool = {
       buyRate: round2(q.buyRate),
       sellRate: round2(q.sellRate),
       spreadPct: spreadPct(q.buyRate, q.sellRate),
-      source: q.source as const,
+      source: q.source,
     }));
 
     // A single venue is not an arbitrage. The gap between our own bid and ask is
