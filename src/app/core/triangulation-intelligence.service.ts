@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, OnDestroy, inject, signal, computed, type Signal } from '@angular/core';
 import {
   predictBcvIntervention,
   evaluateDeltaHedge,
@@ -167,18 +167,57 @@ export interface McpTacticalReport {
 }
 
 /**
+ * Cada cuánto se relee el reloj del sistema.
+ *
+ * Es el techo de desfase del régimen BCV que muestra el panel: si dejás la app
+ * abierta y cruzás las 09:00, la ventana puede tardar hasta este intervalo en
+ * aparecer. Con 60 s el error máximo es de un minuto sobre una subasta de cuatro
+ * horas, y a cambio no dejamos un `setInterval` despertando el proceso cada
+ * segundo toda la sesión.
+ */
+export const VENEZUELA_CLOCK_REFRESH_MS = 60_000;
+
+/**
  * Fuente del reloj, inyectable para que las pruebas puedan fijar la hora.
  *
- * `bcvStatus` es un `computed` que consulta `new Date()`. Como el reloj no es una
- * dependencia de signal, Angular memoiza el primer resultado y `vi.setSystemTime`
- * no lo invalida: cualquier test que varíe el instante lee el valor del primero y
- * pasa por casualidad. Además, la rama `catch` que devuelve "sin dato" era
- * inalcanzable sin una forma de hacer fallar al predictor.
+ * Antes esto era un método que hacía `return new Date()`, lo que resolvía el
+ * problema de los tests pero dejaba el producto roto. La injectable hacía el
+ * reloj testeable, no el reloj reactivo: un método no es una dependencia de
+ * signal, así que el `computed` que lo consume se memorizaba en la primera
+ * lectura y jamás se recalculaba.
+ *
+ * Consecuencia en pantalla: el panel declara en qué régimen está la ventana de
+ * intervención del BCV (lunes y jueves, 09:00-13:00 VET). Con la app abierta se
+ * cruzaba la frontera de las 09:00 y el panel seguía diciendo "fuera de ventana
+ * crítica" con la subasta efectivamente abierta. En el sentido inverso, seguir
+ * impartiendo la advertencia de una subasta ya cerrada.
+ *
+ * Eso es el mismo defecto que el resto del barrido: un estado declarado que el
+ * sistema no puede respaldar en el momento en que lo publica. Lo único que lo
+ * diferenciaba es que acá laMeasureión era correcta —el calendario del BCV es un
+ * horario público— y aun así la afirmación envejecía sin que nadie se enterara.
+ *
+ * Ahora `now` es un signal y un temporizador lo refresca. El intervalo se limpia
+ * en `ngOnDestroy`: un `setInterval` sin limpiar en un servicio
+ * `providedIn: 'root'` sobrevive al cierre del inyector y sigue despertando al
+ * proceso el resto de la sesión.
  */
 @Injectable({ providedIn: 'root' })
-export class VenezuelaClock {
-  now(): Date {
-    return new Date();
+export class VenezuelaClock implements OnDestroy {
+  private readonly instante = signal<Date>(new Date());
+
+  /**
+   * Instante actual. Deliberadamente un `Signal<Date>` y no un método: leerlo
+   * dentro de un `computed` es lo que registra la dependencia que permite
+   * invalidar el valor cuando el calendario cruza una frontera de fase.
+   */
+  readonly now: Signal<Date> = this.instante.asReadonly();
+
+  private readonly intervalId: ReturnType<typeof setInterval> =
+    setInterval(() => this.instante.set(new Date()), VENEZUELA_CLOCK_REFRESH_MS);
+
+  ngOnDestroy(): void {
+    clearInterval(this.intervalId);
   }
 }
 
@@ -224,6 +263,9 @@ export class TriangulationIntelligenceService {
    */
   readonly bcvStatus = computed<BcvInterventionRisk>(() => {
     try {
+      // Leído como signal: esta llamada es la que registra la dependencia. Si el
+      // reloj volviera a ser un método, el `computed` se congelaría en la primera
+      // lectura y la ventana del BCV envejecería sin avisar.
       const now = this.clock.now();
       const pred = predictBcvIntervention(now);
       const isWindow = pred.phase === 'INTERVENTION_ACTIVE';

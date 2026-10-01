@@ -70,11 +70,11 @@ function leerEn(dow: number, horaVet: number, fijo: Date | 'lanza' = instanteVet
       },
       {
         provide: VenezuelaClock,
+        // Un signal, no un método: el contrato de `VenezuelaClock` es reactivo y
+        // un doble con la firma vieja (un método que devuelve `new Date()`)
+        // dejaría pasar justo el defecto que esta injectable vino a cerrar.
         useValue: {
-          now: () => {
-            if (fijo === 'lanza') throw new Error('reloj caído');
-            return fijo;
-          },
+          now: fijo === 'lanza' ? signal(() => { throw new Error('reloj caído'); }) : signal(fijo),
         },
       },
     ],
