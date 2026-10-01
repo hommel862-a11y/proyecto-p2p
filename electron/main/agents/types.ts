@@ -82,9 +82,16 @@ export interface SentinelSignal {
   netSpreadPct: number;
   bestBid: number;
   bestAsk: number;
-  bcvRate?: number;
-  parallelRate?: number;
-  rateGapPct?: number;
+  /**
+   * Official BCV rate. `null` means "not measured" — never substitute a plausible constant.
+   * No BCV feed is bridged into the Electron process, so `null` is the expected steady state;
+   * `SentinelSignal.notes` then names the missing leg and its required source.
+   */
+  bcvRate?: number | null;
+  /** Parallel P2P rate. `null` means "not measured". */
+  parallelRate?: number | null;
+  /** BCV/parallel gap in percent. `null` unless both rates above are real numbers. */
+  rateGapPct?: number | null;
   isViable: boolean;
   notes: string[];
 }

@@ -241,15 +241,25 @@ export class AlphaWatcher {
         }
       }
 
-      // 2. Proactive Macro Evaluation (BCV Window & Extreme Gap)
-      // Uses approximate benchmark for BCV rate vs P2P parallel price
-      if (bestBuy && bestBuy > 0) {
-        const estimatedBcvRate = 65.5; // Reference anchor
-        this.proactiveEngine.evaluateBcvMacroEvent(bestBuy, estimatedBcvRate);
-      }
-
-      // 3. Proactive Depeg Monitoring (USDT vs USD)
-      this.proactiveEngine.evaluateUsdtDepegEvent(1.0);
+      // 2. Proactive Macro Evaluation (BCV Window & Extreme Gap) — NOT EVALUATED.
+      //
+      // DECLARED ABSENCE. This watcher reads top-of-book Binance P2P prices and nothing else:
+      // there is no BCV official rate and no USDT/USD spot feed wired into the Electron process,
+      // so both legs below are unmeasured. `bestBuy` IS real (measured P2P bid), but pairing it
+      // with `estimatedBcvRate = 65.5` produced a 34.35% "gap" at a live 88.00 bid — past the
+      // engine's own 28% CRITICAL threshold — which persisted a "BRECHA CAMBIARIA CRÍTICA"
+      // Engram observation and an OS notification telling the operator to cut fiat exposure.
+      // That was one invented number away from being true, and entirely invented besides.
+      //
+      // `evaluateUsdtDepegEvent(1.0)` had the mirror problem: 1.0 is USDT's peg, so the depeg
+      // monitor could never fire, yet it reported "checked" every cycle.
+      //
+      // Evaluating with an absent rate is not an option: `macro-skills.ts` coerces missing input
+      // to 0 and the vendored `calculateBcvGap` answers a non-positive rate with
+      // `gapPct: 0, zone: 'NORMAL'` — a measured "no gap". So neither call is made at all.
+      // `recordDeclaredMeasurementAbsence` states the gap once so the operator can see it is
+      // unmonitored rather than assume the watcher is watching it.
+      this.recordDeclaredMeasurementAbsence();
     } catch {
       // Quiet fail on network glitch to avoid noisy polling crashes
     } finally {
@@ -311,6 +321,44 @@ export class AlphaWatcher {
         ? snapshot.totalDailyLimitVes || FALLBACK_DAILY_LIMIT_USDT
         : FALLBACK_DAILY_LIMIT_USDT,
       treasurySnapshot: treasuryContext,
+    });
+  }
+
+  /**
+   * Persists the declared measurement absence, at most once per process.
+   *
+   * The watcher's BCV macro leg and USDT depeg leg are both unmonitored because no feed exists
+   * in this process for either input. Silence would read as "checked and found nothing", so the
+   * gap is stated explicitly, naming the two sources that would satisfy it. Written once, not
+   * once per poll cycle, because `runScanCycle` runs every 30 seconds forever.
+   */
+  private measurementAbsenceRecorded = false;
+
+  private recordDeclaredMeasurementAbsence(): void {
+    if (this.measurementAbsenceRecorded) return;
+    this.measurementAbsenceRecorded = true;
+
+    this.db.saveEngramObservation({
+      topicKey: 'alpha/declared-absence-bcv-spot',
+      type: 'decision',
+      scope: 'project',
+      what:
+        'Vigilancia macro del vigilante NO evaluada (N/D): la tasa oficial BCV y el precio spot USDT/USD no tienen fuente conectada en este proceso.',
+      why:
+        'La brecha cambiaria BCV/paralelo y el despeg de USDT requieren mediciones que este proceso no ' +
+        'recibe. Se declara la ausencia en lugar de estimarlas: una brecha o una paridad inventadas ' +
+        'producirían alertas de riesgo actuales sobre datos que nadie midió.',
+      whereAffected: 'Mesa de operaciones / Libros P2P',
+      learned:
+        'Fuente requerida para la tasa oficial BCV: MCP get_bcv_rates (Cotizave API GET /v1/fx/rates, ' +
+        'market reference→USD oficial). Fuente requerida para el spot USDT/USD: ticker público del ' +
+        'exchange para el par USDTUSD (libro spot). La paridad 1.0 NO es un sustituto: es el valor ' +
+        'del peg de USDT, así que el monitor de despeg contra él nunca puede dispararse. La brecha ' +
+        'tampoco se deriva de un ancla aproximada.',
+      confidenceScore: 0.99,
+      status: 'active',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
   }
 

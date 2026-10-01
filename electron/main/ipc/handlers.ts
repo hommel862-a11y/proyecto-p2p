@@ -769,16 +769,58 @@ export function registerIpcHandlers(): void {
     ) => {
       const watcher = getAlphaWatcher();
       const engine = watcher.getProactiveEngine();
-      const parallel = params?.parallelRate ?? 78.5;
-      const bcv = params?.bcvRate ?? 65.5;
-      const spot = params?.spotUsdt ?? 1.0;
 
-      const macroAlert = engine.evaluateBcvMacroEvent(parallel, bcv);
-      const depegAlert = engine.evaluateUsdtDepegEvent(spot);
+      // DECLARED ABSENCE — a measurement the caller did not send stays `null`.
+      //
+      // `?? 78.5 / ?? 65.5 / ?? 1.0` turned "the renderer has no data right now" into a live
+      // evaluation: a 19.7% BCV gap at an invented 78.5/65.5, plus a depeg check run against
+      // USDT's peg value, which by construction can never fire. The renderer polls this channel,
+      // so those alerts reached the swarm's alerting path as if the rates had been observed.
+      const parallel = params?.parallelRate ?? null;
+      const bcv = params?.bcvRate ?? null;
+      const spot = params?.spotUsdt ?? null;
+
+      // Only evaluate what was actually measured. Each alert needs its own real input: a gap
+      // needs both rates, and the depeg monitor needs a real USDT/USD spot reading.
+      const macroAlert =
+        parallel !== null && bcv !== null ? engine.evaluateBcvMacroEvent(parallel, bcv) : null;
+      const depegAlert = spot !== null ? engine.evaluateUsdtDepegEvent(spot) : null;
+
+      const unavailable: Array<{
+        measurement: 'parallelRate' | 'bcvRate' | 'spotUsdt';
+        reason: string;
+        expectedSource: string;
+      }> = [];
+      if (parallel === null) {
+        unavailable.push({
+          measurement: 'parallelRate',
+          reason: 'El llamador no envió la tasa paralelo P2P.',
+          expectedSource:
+            'MCP get_parallel_rates / libro P2P de Binance (adv/search) para USDT/VES.',
+        });
+      }
+      if (bcv === null) {
+        unavailable.push({
+          measurement: 'bcvRate',
+          reason: 'El llamador no envió la tasa oficial BCV.',
+          expectedSource:
+            'MCP get_bcv_rates (Cotizave API GET /v1/fx/rates, market reference→USD oficial).',
+        });
+      }
+      if (spot === null) {
+        unavailable.push({
+          measurement: 'spotUsdt',
+          reason:
+            'El llamador no envió el precio spot USDT/USD. La paridad 1.0 NO se usa como sustituto: ' +
+            'es el valor del peg, así que un despeg evaluado contra él nunca puede dispararse.',
+          expectedSource: 'Ticker público del exchange para el par USDTUSD (libro spot).',
+        });
+      }
 
       return {
         macroAlert,
         depegAlert,
+        ...(unavailable.length > 0 ? { unavailable } : {}),
       };
     },
   );

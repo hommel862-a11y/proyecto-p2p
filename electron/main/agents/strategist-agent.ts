@@ -128,7 +128,10 @@ export class StrategistAgent {
       expectedProfitUsdt: Number(((requestedCapital * calculatedNetSpread) / 100).toFixed(2)),
       riskLevel: calculatedNetSpread >= 1.2 && mcResult.isSafeForExecution ? 'LOW' : 'MEDIUM',
       assignedOperatorName: 'Operador Principal',
-      rationale: `Brecha BCV en ${signal.rateGapPct?.toFixed(1) ?? '22.9'}% y liquidez profunda. Slippage P95 Monte Carlo: ${mcResult.p95SlippagePct}% (VaR 95%: $${mcResult.var95Usdt} USDT).`,
+      // The rationale is operator-facing text, so a missing gap must read as a missing gap.
+      // `?? '22.9'` published a specific 22.9% gap for a swarm that never measured the BCV leg,
+      // sitting next to real Monte Carlo figures as if both came from the same evidence.
+      rationale: `Brecha BCV en ${typeof signal.rateGapPct === 'number' ? `${signal.rateGapPct.toFixed(1)}%` : 'N/D (tasa oficial BCV sin medir — se requiere MCP get_bcv_rates y get_parallel_rates)'} y liquidez profunda. Slippage P95 Monte Carlo: ${mcResult.p95SlippagePct}% (VaR 95%: $${mcResult.var95Usdt} USDT).`,
       status: 'PROPOSED',
     };
 

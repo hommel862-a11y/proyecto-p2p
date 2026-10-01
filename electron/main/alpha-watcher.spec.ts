@@ -218,3 +218,94 @@ describe('AlphaWatcher — veto institucional antes de persistir (ODD T3 / C1)',
     expect(db.saveStrategyPlan).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Doctrine under test: a missing measurement is `null` plus a declared absence, never a number.
+ *
+ * The scan cycle measured the P2P book but not the official BCV rate, and answered
+ * `const estimatedBcvRate = 65.5; // Reference anchor`. With BUY at 88.00 that invents a 34.35%
+ * gap — past the engine's own 28% CRITICAL threshold — so the watcher pushed a
+ * "BRECHA CAMBIARIA CRÍTICA" native alert telling the operator to shrink the fiat book, on the
+ * strength of a number nobody measured. `// Reference anchor` is what made it read as authority.
+ * The USDT leg had the mirror problem: `evaluateUsdtDepegEvent(1.0)` is the peg, not a reading, so
+ * the depeg monitor could never fire.
+ */
+describe('AlphaWatcher — el monitor macro no mide lo que no midió', () => {
+  let db: Partial<P2PDatabaseService>;
+  let send: ReturnType<typeof vi.fn>;
+  let win: BrowserWindow;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    shownNotifications.length = 0;
+    clearTreasurySnapshot();
+    setTreasurySnapshot(buildSnapshot());
+
+    db = {
+      saveStrategyPlan: vi.fn(),
+      recordMarketLearning: vi.fn(),
+      saveEngramObservation: vi.fn(),
+    };
+    send = vi.fn();
+    win = { isDestroyed: () => false, webContents: { send } } as unknown as BrowserWindow;
+  });
+
+  afterEach(() => {
+    clearTreasurySnapshot();
+  });
+
+  function buildWatcher(): InstanceType<typeof AlphaWatcher> {
+    return new AlphaWatcher(db as P2PDatabaseService, () => win, new RiskGatekeeperAgent());
+  }
+
+  function proactiveAlertPayloads(): Record<string, unknown>[] {
+    return send.mock.calls
+      .filter((call) => call[0] === 'copilot:proactive-event-alert')
+      .map((call) => call[1] as Record<string, unknown>);
+  }
+
+  function evidenceObservations(): { topicKey: string; what: string; learned: string }[] {
+    return (db.saveEngramObservation as ReturnType<typeof vi.fn>).mock.calls
+      .map((call) => call[0] as { topicKey: string; what: string; learned: string })
+      .filter((obs) => obs.topicKey.startsWith('alpha/declared-absence-'));
+  }
+
+  it('NUNCA publica una alerta de brecha BCV construida sobre la tasa oficial inventada', async () => {
+    stubOrderbook('88.00', '89.35');
+
+    await buildWatcher().runScanCycle();
+
+    // 88.00 vs 65.5 = 34.35% >= 28% -> the engine used to raise a CRITICAL gap alert here.
+    expect(proactiveAlertPayloads()).toHaveLength(0);
+    const serialized = JSON.stringify(
+      (db.saveEngramObservation as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]),
+    );
+    expect(serialized).not.toContain('65.5');
+  });
+
+  it('declara la ausencia nombrando las fuentes que la satisfarían', async () => {
+    stubOrderbook('88.00', '89.35');
+
+    await buildWatcher().runScanCycle();
+
+    const absences = evidenceObservations();
+    expect(absences.length).toBe(1);
+    expect(absences[0].learned).toMatch(/get_bcv_rates/);
+    // The USDT leg is a declared absence too: nothing in this process fetches a USDT/USD spot.
+    expect(absences[0].learned).toMatch(/USDTUSD/);
+    // The record itself must read as an absence, not as a result: no number, and the two
+    // sources named so an operator knows what would close the gap.
+    expect(absences[0].what).toContain('N/D');
+  });
+
+  it('sigue reportando el spread que el watcher sí midió en el libro', async () => {
+    // Regression guard on the opposite side: declaring the BCV/spot absence must not silence the
+    // detection the watcher is actually qualified to make.
+    stubOrderbook('88.00', '89.35');
+
+    await buildWatcher().runScanCycle();
+
+    expect(db.saveStrategyPlan).toHaveBeenCalledTimes(1);
+    expect(evidenceObservations().length).toBe(1);
+  });
+});
