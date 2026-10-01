@@ -54,11 +54,24 @@ export interface ForensicOperationRecord {
   errorFree?: boolean;
 }
 
+/**
+ * Whether an assessment had real data behind it.
+ *
+ * `NOT_ASSESSED` is not a grade. It is the absence of one: an operator with no
+ * recorded operations has neither complied nor failed, and reporting either
+ * would be a fabrication. Downstream code must branch on this before reading
+ * any score, because a null score is not comparable to 0 and not comparable to
+ * 100.
+ */
+export type AssessmentStatus = 'ASSESSED' | 'NOT_ASSESSED';
+
 export interface SpreadDisciplineResult {
+  assessmentStatus: AssessmentStatus;
   totalOperationsAnalyzed: number;
   compliantOperationsCount: number;
   nonCompliantOperationsCount: number;
-  complianceRatePct: number;
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  complianceRatePct: number | null;
   minSpreadThresholdPct: number;
   averageSpreadPct: number;
   volumeWeightedAverageSpreadPct: number;
@@ -73,9 +86,12 @@ export interface SpreadDisciplineResult {
 
 export interface ForensicDossier {
   generatedAt: number;
-  operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK';
-  goldenRuleComplianceScore: number; // 0..100
-  riskConcentrationScore: number; // 0..100
+  assessmentStatus: AssessmentStatus;
+  operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' | 'NOT_ASSESSED';
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  goldenRuleComplianceScore: number | null; // 0..100
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  riskConcentrationScore: number | null; // 0..100
   hourlyRisk: HourlyRiskDistributionResult;
   disciplineAudit: SpreadDisciplineResult;
   criticalFindings: string[];
@@ -248,10 +264,14 @@ export function auditTradingDisciplineAndSpreadCompliance(
 ): SpreadDisciplineResult {
   if (operations.length === 0) {
     return {
+      assessmentStatus: 'NOT_ASSESSED',
       totalOperationsAnalyzed: 0,
       compliantOperationsCount: 0,
       nonCompliantOperationsCount: 0,
-      complianceRatePct: 100,
+      // An empty ledger is not a perfect ledger. Returning 100 here made every
+      // downstream comparison land on its best branch and certified an operator
+      // who has never traded as 100% compliant.
+      complianceRatePct: null,
       minSpreadThresholdPct,
       averageSpreadPct: 0,
       volumeWeightedAverageSpreadPct: 0,
@@ -350,6 +370,7 @@ export function auditTradingDisciplineAndSpreadCompliance(
   }
 
   return {
+    assessmentStatus: 'ASSESSED',
     totalOperationsAnalyzed: totalOps,
     compliantOperationsCount: compliantCount,
     nonCompliantOperationsCount: nonCompliantCount,
@@ -378,13 +399,37 @@ export function generateForensicDossier(
   const criticalFindings: string[] = [];
   const preventiveDirectives: string[] = [];
 
+  // Without operations there is nothing to grade. Every branch below compares
+  // `complianceRatePct` against thresholds, so any value chosen for "no data"
+  // silently becomes a verdict — 100 certified an empty track record as
+  // institutionally disciplined. Refuse to produce a rating instead.
+  if (disciplineAudit.assessmentStatus === 'NOT_ASSESSED') {
+    return {
+      generatedAt: Date.now(),
+      assessmentStatus: 'NOT_ASSESSED',
+      operatorStanding: 'NOT_ASSESSED',
+      goldenRuleComplianceScore: null,
+      riskConcentrationScore: null,
+      hourlyRisk,
+      disciplineAudit,
+      criticalFindings,
+      preventiveDirectives,
+      executiveVerdict:
+        disciplineAudit.totalOperationsAnalyzed === 0
+          ? 'SIN CALIFICAR: No hay operaciones registradas. La disciplina operativa no puede evaluarse hasta que exista historial.'
+          : 'SIN CALIFICAR: La muestra de operaciones es insuficiente para emitir una calificación.',
+    };
+  }
+
+  const complianceRatePct = disciplineAudit.complianceRatePct as number;
+
   // Standing calculation
   let operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' = 'DISCIPLINED';
 
-  if (disciplineAudit.complianceRatePct < 80 || disciplineAudit.tiltSeverity === 'SEVERE') {
+  if (complianceRatePct < 80 || disciplineAudit.tiltSeverity === 'SEVERE') {
     operatorStanding = 'CRITICAL_TILT_RISK';
   } else if (
-    disciplineAudit.complianceRatePct < 95 ||
+    complianceRatePct < 95 ||
     disciplineAudit.tiltSeverity === 'MODERATE' ||
     hourlyRisk.highRiskHours.length >= 3
   ) {
@@ -392,13 +437,13 @@ export function generateForensicDossier(
   }
 
   // Findings
-  if (disciplineAudit.complianceRatePct >= 95) {
+  if (complianceRatePct >= 95) {
     criticalFindings.push(
-      `Excelente apego a la Regla de Oro: ${disciplineAudit.complianceRatePct}% de las operaciones cumplieron con el spread neto >= ${disciplineAudit.minSpreadThresholdPct}%.`,
+      `Excelente apego a la Regla de Oro: ${complianceRatePct}% de las operaciones cumplieron con el spread neto >= ${disciplineAudit.minSpreadThresholdPct}%.`,
     );
   } else {
     criticalFindings.push(
-      `Infracción de margen mínimo en ${disciplineAudit.nonCompliantOperationsCount} operaciones (${(100 - disciplineAudit.complianceRatePct).toFixed(1)}% de desvío). Lucro cesante estimado: $${disciplineAudit.estimatedSacrificedProfitUsdt} USDT.`,
+      `Infracción de margen mínimo en ${disciplineAudit.nonCompliantOperationsCount} operaciones (${(100 - complianceRatePct).toFixed(1)}% de desvío). Lucro cesante estimado: $${disciplineAudit.estimatedSacrificedProfitUsdt} USDT.`,
     );
   }
 
@@ -437,7 +482,7 @@ export function generateForensicDossier(
     );
   }
 
-  const goldenRuleComplianceScore = Math.round(disciplineAudit.complianceRatePct);
+  const goldenRuleComplianceScore = Math.round(complianceRatePct);
   // Risk concentration score: lower incident rate and fewer high risk hours means better score
   const riskConcentrationScore = Math.max(
     0,
@@ -460,6 +505,7 @@ export function generateForensicDossier(
 
   return {
     generatedAt: Date.now(),
+    assessmentStatus: 'ASSESSED',
     operatorStanding,
     goldenRuleComplianceScore,
     riskConcentrationScore,

@@ -145,6 +145,17 @@ export interface FinancialSkillResult {
   data?: unknown;
   error?: string;
   executedAt: number;
+  /**
+   * Set when the skill declined to produce a value because the evidence was
+   * missing. `success: false` with `data: null` is not a crash — it is a refusal,
+   * and the caller needs to know which source would have satisfied it.
+   */
+  unavailableReason?: string;
+  /** Where the value would have come from had it been available. */
+  expectedSource?: string;
+  /** `false` whenever this result must not drive an action on its own. */
+  actionable?: boolean;
+  description?: string;
 }
 
 /**
@@ -1606,8 +1617,13 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
         counterpartyName: { type: 'STRING', description: 'Nombre de la contraparte.' },
         disputeReason: { type: 'STRING', description: 'Motivo de la disputa.' },
         claimedAmount: { type: 'NUMBER', description: 'Monto en reclamo.' },
+        parallelRate: {
+          type: 'NUMBER',
+          description:
+            'Tasa paralelo en vivo (VES por USDT) usada para convertir el reclamo a crypto. Es la tasa P2P, no la oficial: una disputa se resuelve a la tasa del libro, no a la del BCV.',
+        },
       },
-      required: ['orderId', 'counterpartyName', 'disputeReason', 'claimedAmount'],
+      required: ['orderId', 'counterpartyName', 'disputeReason', 'claimedAmount', 'parallelRate'],
     },
   },
   {
@@ -1619,8 +1635,13 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
         corridorId: { type: 'STRING', enum: ['COP_BANCOLOMBIA_TO_VES', 'USD_ZELLE_TO_VES', 'EUR_SEPA_TO_VES', 'CLP_BANCOESTADO_TO_VES', 'BRL_PIX_TO_VES'], description: 'Corredor de remesas.' },
         sendAmount: { type: 'NUMBER', description: 'Monto enviado en moneda origen.' },
         deskSpreadPct: { type: 'NUMBER', description: 'Margen de la mesa (por defecto 2.5%).' },
+        activeRate: {
+          type: 'NUMBER',
+          description:
+            'Tasa de venta vigente de la mesa (VES por USD) con la que se promete el pago. Sin tasa real no hay promesa que hacer.',
+        },
       },
-      required: ['corridorId', 'sendAmount'],
+      required: ['corridorId', 'sendAmount', 'activeRate'],
     },
   },
   {
@@ -1652,6 +1673,78 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
 /**
  * Deterministic dispatcher: safely maps a tool invocation to its corresponding core domain logic.
  */
+/**
+ * A skill asked for a number that nobody measured.
+ *
+ * Thrown instead of returning a default, because a default here is not a
+ * fallback: it is an assertion about the world made without a source. The
+ * dispatcher catch converts it into a refusal with `expectedSource`.
+ */
+export class MissingEvidenceError extends Error {
+  constructor(
+    readonly field: string,
+    readonly expectedSource: string,
+  ) {
+    super(`Falta evidencia: '${field}' no fue provisto. Fuente requerida: ${expectedSource}.`);
+    this.name = 'MissingEvidenceError';
+  }
+}
+
+/**
+ * Reads a numeric input that must come from a real measurement.
+ *
+ * Rejects absence AND rejects the old `||` behaviour where a legitimate `0` was
+ * silently replaced by the default. Use `policyNumber` for operator thresholds,
+ * where a default is a rule the operator chose, not a claim about the world.
+ */
+function requiredNumber(
+  args: Record<string, unknown>,
+  keys: string | readonly string[],
+  expectedSource: string,
+): number {
+  const candidates = typeof keys === 'string' ? [keys] : keys;
+  for (const key of candidates) {
+    const raw = args[key];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  throw new MissingEvidenceError(candidates[0], expectedSource);
+}
+
+/**
+ * Reads an operator-chosen threshold, where a default is legitimate policy.
+ * Uses `??` so an explicit `0` survives.
+ */
+function policyNumber(
+  args: Record<string, unknown>,
+  key: string,
+  policyDefault: number,
+): number {
+  const raw = args[key];
+  if (raw === undefined || raw === null || raw === '') return policyDefault;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : policyDefault;
+}
+
+/**
+ * Sources named once, so a refusal always points at the feed that would have
+ * satisfied it. A vague `expectedSource` is worse than none: it sends the
+ * operator looking in the wrong place.
+ */
+const SRC_LIVE_PARALLEL_RATE =
+  'tasa paralelo u oficial en vivo (MCP get_parallel_rates / get_bcv_rates)';
+const SRC_LIVE_P2P_MID = 'punto medio del libro P2P en vivo (API pública de Binance P2P)';
+const SRC_LIVE_SPOT_PRICE = 'precio spot en vivo del activo (API pública del exchange)';
+const SRC_DESK_SELL_RATE =
+  'tasa de venta vigente de la mesa leída por el orquestador (MCP get_parallel_rates)';
+const SRC_VENUE_PUBLISHED_RATE =
+  'tasa vigente publicada por el venue (API pública de Binance Earn/Launchpool)';
+const SRC_COUNTERPARTY_TRACK_RECORD =
+  'registro real y verificable del operador (API pública de la plataforma o historial propio auditado)';
+const SRC_REAL_BALANCE = 'saldo real de la cuenta (API del exchange / on-chain / tesorería)';
+const SRC_LEDGER_ORDER = 'monto real de la orden registrada (ledger de órdenes / Binance P2P)';
+
 export function executeFinancialSkill(
   skillName: string,
   args: Record<string, unknown>,
@@ -1762,10 +1855,10 @@ export function executeFinancialSkill(
       }
 
       case 'evaluate_delta_neutral_hedge': {
-        const vesBalance = Number(args['vesBalance'] || 0);
-        const usdtBalance = Number(args['usdtBalance'] || 0);
-        const currentParallelRate = Number(args['currentParallelRate'] || 1);
-        const vesMaxHoldingTimeMinutes = Number(args['vesMaxHoldingTimeMinutes'] || 0);
+        const vesBalance = requiredNumber(args, 'vesBalance', SRC_REAL_BALANCE);
+        const usdtBalance = requiredNumber(args, 'usdtBalance', SRC_REAL_BALANCE);
+        const currentParallelRate = requiredNumber(args, 'currentParallelRate', SRC_LIVE_PARALLEL_RATE);
+        const vesMaxHoldingTimeMinutes = policyNumber(args, 'vesMaxHoldingTimeMinutes', 0);
         const maxAllowed = args['maxAllowedFiatDeltaRatio']
           ? Number(args['maxAllowedFiatDeltaRatio'])
           : 0.15;
@@ -1794,7 +1887,11 @@ export function executeFinancialSkill(
       }
 
       case 'forecast_market_volatility_2h': {
-        const currentSpreadPct = Number(args['currentSpreadPct'] || 1.0);
+        const currentSpreadPct = requiredNumber(
+          args,
+          'currentSpreadPct',
+          'spread de mercado en vivo observado en el libro P2P (API pública de Binance P2P)',
+        );
         const recentTicks = (args['recentTicks'] || []) as PriceTick[];
         const parallelRate = args['parallelRate'] ? Number(args['parallelRate']) : undefined;
         const bcvRate = args['bcvRate'] ? Number(args['bcvRate']) : undefined;
@@ -1849,8 +1946,8 @@ export function executeFinancialSkill(
 
       case 'generate_dispute_dossier': {
         const orderId = String(args['orderId'] || 'ORD-000');
-        const orderAmountFiat = Number(args['orderAmountFiat'] || 0);
-        const orderAmountCrypto = Number(args['orderAmountCrypto'] || 0);
+        const orderAmountFiat = requiredNumber(args, 'orderAmountFiat', SRC_LEDGER_ORDER);
+        const orderAmountCrypto = requiredNumber(args, 'orderAmountCrypto', SRC_LEDGER_ORDER);
         const counterpartyBinanceName = String(args['counterpartyBinanceName'] || 'Contraparte');
         const bankPayerName = String(args['bankPayerName'] || 'Pagador');
         const bankName = String(args['bankName'] || 'Banco');
@@ -1904,7 +2001,11 @@ export function executeFinancialSkill(
       }
 
       case 'simulate_trade_impact': {
-        const targetAmountUsdt = Number(args['targetAmountUsdt'] || 0);
+        const targetAmountUsdt = requiredNumber(
+          args,
+          'targetAmountUsdt',
+          'monto objetivo real de la orden (plan de órdenes del operador)',
+        );
         const side = (args['side'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
         const availableOffers = (args['availableOffers'] || []) as any[];
 
@@ -1922,11 +2023,23 @@ export function executeFinancialSkill(
         };
       }
 
-      case 'calculate_optimal_spread_avellaneda': {
-        const midPrice = Number(args['midPrice'] || 85.0);
-        const currentInventoryUsdt = Number(args['currentInventoryUsdt'] || 5000);
-        const targetInventoryUsdt = Number(args['targetInventoryUsdt'] || 5000);
-        const volatilityDaily = Number(args['volatilityDaily'] || 0.02);
+    case 'calculate_optimal_spread_avellaneda': {
+      const midPrice = requiredNumber(args, 'midPrice', SRC_LIVE_P2P_MID);
+        const currentInventoryUsdt = requiredNumber(
+          args,
+          'currentInventoryUsdt',
+          'inventario real de la cuenta (API del exchange / tesorería)',
+        );
+        const targetInventoryUsdt = requiredNumber(
+          args,
+          'targetInventoryUsdt',
+          'inventario objetivo declarado por la mesa (declaración del operador, no un valor por defecto)',
+        );
+        const volatilityDaily = requiredNumber(
+          args,
+          'volatilityDaily',
+          'volatilidad diaria medida sobre la serie de precios (klines de la API pública del exchange)',
+        );
         const timeRemainingFraction = Number(args['timeRemainingFraction'] ?? 1.0);
 
         const result = computeAvellanedaStoikovQuotes({
@@ -1947,7 +2060,7 @@ export function executeFinancialSkill(
 
       case 'estimate_adverse_selection_vpin': {
         const buckets = (args['buckets'] || []) as any[];
-        const toxicityThreshold = Number(args['toxicityThreshold'] || 0.25);
+        const toxicityThreshold = policyNumber(args, 'toxicityThreshold', 0.25);
 
         const result = calculateVpinMetric({
           buckets,
@@ -1963,12 +2076,18 @@ export function executeFinancialSkill(
       }
 
       case 'compute_optimal_order_slicing_twap_vwap': {
-        const totalAmountUsdt = Number(args['totalAmountUsdt'] || 5000);
-        const executionDurationMinutes = Number(args['executionDurationMinutes'] || 60);
-        const estimatedMarketVolumePerHourUsdt = Number(
-          args['estimatedMarketVolumePerHourUsdt'] || 50000,
+        const totalAmountUsdt = requiredNumber(
+          args,
+          'totalAmountUsdt',
+          'monto total real que la orden debe ejecutar (plan de órdenes del operador)',
         );
-        const currentMidPrice = Number(args['currentMidPrice'] || 85.0);
+        const executionDurationMinutes = policyNumber(args, 'executionDurationMinutes', 60);
+        const estimatedMarketVolumePerHourUsdt = requiredNumber(
+          args,
+          'estimatedMarketVolumePerHourUsdt',
+          'volumen horario real medido en el libro o en la serie de trades del activo (API pública del exchange)',
+        );
+        const currentMidPrice = requiredNumber(args, 'currentMidPrice', SRC_LIVE_P2P_MID);
         const algorithm = (args['algorithm'] === 'VWAP' ? 'VWAP' : 'TWAP') as 'TWAP' | 'VWAP';
 
         const result = computeOrderSlicingPlan({
@@ -1993,7 +2112,7 @@ export function executeFinancialSkill(
         const recentFillVelocityPerMinuteUsdt = Number(
           args['recentFillVelocityPerMinuteUsdt'] || 100,
         );
-        const targetHorizonMinutes = Number(args['targetHorizonMinutes'] || 15);
+        const targetHorizonMinutes = policyNumber(args, 'targetHorizonMinutes', 15);
 
         const result = calculateMakerFillProbabilityMarkov({
           queuePositionIndex,
@@ -2011,7 +2130,11 @@ export function executeFinancialSkill(
       }
 
       case 'analyze_fx_corridor_efficiency': {
-        const baseAmountUsdt = Number(args['baseAmountUsdt'] || 1000);
+        const baseAmountUsdt = requiredNumber(
+          args,
+          'baseAmountUsdt',
+          'monto base real que el operador intends mover por el corredor (plan de órdenes)',
+        );
         const corridors = (args['corridors'] || []) as any[];
 
         const result = analyzeFxCorridorEfficiency(baseAmountUsdt, corridors);
@@ -2025,7 +2148,11 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_cross_exchange_basis_spread': {
-        const capitalUsdt = Number(args['capitalUsdt'] || 1000);
+        const capitalUsdt = requiredNumber(
+          args,
+          'capitalUsdt',
+          'capital real que la mesa asigna al arbitrage cross-exchange (tesorería)',
+        );
         const platforms = (args['platforms'] || []) as any[];
 
         const result = calculateCrossExchangeBasisSpread(capitalUsdt, platforms);
@@ -2039,10 +2166,14 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_convexity_and_gamma_risk': {
-        const spotParallelRate = Number(args['spotParallelRate'] || 85.0);
-        const vesHoldingAmount = Number(args['vesHoldingAmount'] || 100000);
-        const expectedDevaluationJumpPct = Number(args['expectedDevaluationJumpPct'] || 15);
-        const timeHorizonDays = Number(args['timeHorizonDays'] || 1);
+        const spotParallelRate = requiredNumber(args, 'spotParallelRate', SRC_LIVE_PARALLEL_RATE);
+        const vesHoldingAmount = requiredNumber(
+          args,
+          'vesHoldingAmount',
+          'posición propia en VES (saldo real de la cartera / tesorería)',
+        );
+        const expectedDevaluationJumpPct = policyNumber(args, 'expectedDevaluationJumpPct', 15);
+        const timeHorizonDays = policyNumber(args, 'timeHorizonDays', 1);
 
         const result = calculateConvexityAndGammaRisk({
           spotParallelRate,
@@ -2060,9 +2191,17 @@ export function executeFinancialSkill(
       }
 
       case 'model_perpetual_funding_arbitrage': {
-        const collateralUsdt = Number(args['collateralUsdt'] || 5000);
-        const currentFundingRate8hPct = Number(args['currentFundingRate8hPct'] || 0.01);
-        const holdingPeriodDays = Number(args['holdingPeriodDays'] || 7);
+        const collateralUsdt = requiredNumber(
+          args,
+          'collateralUsdt',
+          'collateral realmente bloqueado en el exchange (API del exchange / on-chain)',
+        );
+        const currentFundingRate8hPct = requiredNumber(
+          args,
+          'currentFundingRate8hPct',
+          'tasa de funding vigente publicada por el exchange (API pública de futuros)',
+        );
+        const holdingPeriodDays = policyNumber(args, 'holdingPeriodDays', 7);
 
         const result = modelPerpetualFundingArbitrage({
           collateralUsdt,
@@ -2079,10 +2218,10 @@ export function executeFinancialSkill(
       }
 
       case 'optimize_capital_allocation_kelly': {
-        const totalCapitalUsdt = Number(args['totalCapitalUsdt'] || 10000);
-        const winRatePct = Number(args['winRatePct'] || 75);
-        const averageProfitPerWinUsdt = Number(args['averageProfitPerWinUsdt'] || 40);
-        const averageLossPerLossUsdt = Number(args['averageLossPerLossUsdt'] || 15);
+        const totalCapitalUsdt = requiredNumber(args, 'totalCapitalUsdt', 'saldo real del operador');
+        const winRatePct = requiredNumber(args, 'winRatePct', 'historial de operaciones del operador');
+        const averageProfitPerWinUsdt = requiredNumber(args, 'averageProfitPerWinUsdt', 'historial de operaciones del operador');
+        const averageLossPerLossUsdt = requiredNumber(args, 'averageLossPerLossUsdt', 'historial de operaciones del operador');
 
         const result = optimizeCapitalAllocationKelly({
           totalCapitalUsdt,
@@ -2103,7 +2242,11 @@ export function executeFinancialSkill(
         const dayOfMonth = Number(args['dayOfMonth'] || new Date().getDate());
         const dayOfWeek = Number(args['dayOfWeek'] ?? new Date().getDay());
         const estimatedSeniatCollectionActive = Boolean(args['estimatedSeniatCollectionActive']);
-        const weeklyBcvInjectionMillionsUsd = Number(args['weeklyBcvInjectionMillionsUsd'] || 40);
+        const weeklyBcvInjectionMillionsUsd = requiredNumber(
+          args,
+          'weeklyBcvInjectionMillionsUsd',
+          'dato oficial de inyección BCV (no hay modelo de liquidez calibrado)',
+        );
 
         const result = forecastCentralBankLiquidityDrain({
           dayOfMonth,
@@ -2121,9 +2264,9 @@ export function executeFinancialSkill(
       }
 
       case 'monitor_fiat_flight_and_dollarization_velocity': {
-        const averageVesHoldingMinutes = Number(args['averageVesHoldingMinutes'] || 30);
-        const merchantUsdtAcceptancePct = Number(args['merchantUsdtAcceptancePct'] || 80);
-        const monthlyInflationEstimatePct = Number(args['monthlyInflationEstimatePct'] || 35);
+        const averageVesHoldingMinutes = requiredNumber(args, 'averageVesHoldingMinutes', 'medición observada de tenencia');
+        const merchantUsdtAcceptancePct = requiredNumber(args, 'merchantUsdtAcceptancePct', 'medición del mercado paralelo');
+        const monthlyInflationEstimatePct = requiredNumber(args, 'monthlyInflationEstimatePct', 'dato macro oficial de inflación');
 
         const result = monitorFiatFlightAndDollarizationVelocity({
           averageVesHoldingMinutes,
@@ -2140,10 +2283,10 @@ export function executeFinancialSkill(
       }
 
       case 'simulate_game_theory_nash_repricing': {
-        const myCurrentPrice = Number(args['myCurrentPrice'] || 85.0);
+        const myCurrentPrice = requiredNumber(args, 'myCurrentPrice', SRC_LIVE_P2P_MID);
         const targetSide = (args['targetSide'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
         const topCompetitors = (args['topCompetitors'] || []) as any[];
-        const minimumSpreadAllowedPct = Number(args['minimumSpreadAllowedPct'] || 0.8);
+        const minimumSpreadAllowedPct = policyNumber(args, 'minimumSpreadAllowedPct', 0.8);
 
         const result = simulateGameTheoryNashRepricing({
           myCurrentPrice,
@@ -2161,11 +2304,11 @@ export function executeFinancialSkill(
       }
 
       case 'optimize_idle_capital_simple_earn': {
-        const capitalUsdt = Number(args['capitalUsdt'] || 0);
+        const capitalUsdt = requiredNumber(args, 'capitalUsdt', SRC_REAL_BALANCE);
         const tier1LimitUsdt =
           args['tier1LimitUsdt'] !== undefined ? Number(args['tier1LimitUsdt']) : 500;
-        const tier1AprPct = Number(args['tier1AprPct'] || 10.0);
-        const tier2AprPct = Number(args['tier2AprPct'] || 2.0);
+        const tier1AprPct = requiredNumber(args, 'tier1AprPct', SRC_VENUE_PUBLISHED_RATE);
+        const tier2AprPct = requiredNumber(args, 'tier2AprPct', SRC_VENUE_PUBLISHED_RATE);
         const holdingDays = args['holdingDays'] !== undefined ? Number(args['holdingDays']) : 30;
 
         const result = optimizeIdleCapitalSimpleEarn({
@@ -2185,11 +2328,23 @@ export function executeFinancialSkill(
       }
 
       case 'evaluate_dual_investment_p2p_exit': {
-        const currentSpotPrice = Number(args['currentSpotPrice'] || 65000);
-        const strikePrice = Number(args['strikePrice'] || 68000);
-        const durationDays = Number(args['durationDays'] || 7);
-        const annualizedAprPct = Number(args['annualizedAprPct'] || 20.0);
-        const investedCapitalUsdt = Number(args['investedCapitalUsdt'] || 1000);
+        const currentSpotPrice = requiredNumber(args, 'currentSpotPrice', SRC_LIVE_SPOT_PRICE);
+        const strikePrice = requiredNumber(
+          args,
+          'strikePrice',
+          'strike contratado en la orden de Dual Investment del exchange (API privada de Binance)',
+        );
+        const durationDays = policyNumber(args, 'durationDays', 7);
+        const annualizedAprPct = requiredNumber(
+          args,
+          'annualizedAprPct',
+          'APR vigente publicado por el exchange para el producto de Dual Investment (términos del producto / API de la cuenta)',
+        );
+        const investedCapitalUsdt = requiredNumber(
+          args,
+          'investedCapitalUsdt',
+          'capital realmente invertido en la orden de Dual Investment (API de la cuenta)',
+        );
 
         const result = evaluateDualInvestmentP2pExit({
           currentSpotPrice,
@@ -2208,10 +2363,10 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_usdt_fdusd_yield_arbitrage': {
-        const usdtBalance = Number(args['usdtBalance'] || 0);
-        const fdusdBalance = Number(args['fdusdBalance'] || 0);
-        const usdtFlexibleAprPct = Number(args['usdtFlexibleAprPct'] || 2.5);
-        const fdusdFlexibleAprPct = Number(args['fdusdFlexibleAprPct'] || 7.0);
+        const usdtBalance = requiredNumber(args, 'usdtBalance', SRC_REAL_BALANCE);
+        const fdusdBalance = requiredNumber(args, 'fdusdBalance', SRC_REAL_BALANCE);
+        const usdtFlexibleAprPct = requiredNumber(args, 'usdtFlexibleAprPct', SRC_VENUE_PUBLISHED_RATE);
+        const fdusdFlexibleAprPct = requiredNumber(args, 'fdusdFlexibleAprPct', SRC_VENUE_PUBLISHED_RATE);
         const usdtFdusdMarketRate =
           args['usdtFdusdMarketRate'] !== undefined ? Number(args['usdtFdusdMarketRate']) : 1.0;
         const swapFeePct = args['swapFeePct'] !== undefined ? Number(args['swapFeePct']) : 0;
@@ -2237,17 +2392,30 @@ export function executeFinancialSkill(
       }
 
       case 'model_launchpool_capital_parking': {
-        const capitalUsdt = Number(args['capitalUsdt'] || 0);
+        const capitalUsdt = requiredNumber(args, 'capitalUsdt', SRC_REAL_BALANCE);
         const stakedAsset = (
           args['stakedAsset'] === 'BNB' || args['stakedAsset'] === 'FDUSD'
             ? args['stakedAsset']
             : 'USDT'
         ) as 'BNB' | 'FDUSD' | 'USDT';
-        const launchpoolDurationDays = Number(args['launchpoolDurationDays'] || 4);
-        const totalPoolStaked = Number(args['totalPoolStaked'] || 100000000);
-        const dailyRewardPoolTokens = Number(args['dailyRewardPoolTokens'] || 200000);
-        const estimatedTokenListingPriceUsdt = Number(
-          args['estimatedTokenListingPriceUsdt'] || 2.0,
+        const launchpoolDurationDays = policyNumber(args, 'launchpoolDurationDays', 4);
+        const totalPoolStaked = requiredNumber(
+          args,
+          'totalPoolStaked',
+          'total realmente stakeado en el pool, publicado por el venue (API pública de Binance Earn/Launchpool)',
+        );
+        const dailyRewardPoolTokens = requiredNumber(
+          args,
+          'dailyRewardPoolTokens',
+          'rewards diarios del pool publicados por el venue (API pública de Binance Launchpool)',
+        );
+        // NOT a measurement: the token has no price until it lists, so there is
+        // no feed that could supply this. It stays a declared operator
+        // assumption instead of an unsatisfiable evidence requirement.
+        const estimatedTokenListingPriceUsdt = policyNumber(
+          args,
+          'estimatedTokenListingPriceUsdt',
+          2.0,
         );
         const alternativeEarnAprPct =
           args['alternativeEarnAprPct'] !== undefined ? Number(args['alternativeEarnAprPct']) : 2.5;
@@ -2271,12 +2439,16 @@ export function executeFinancialSkill(
       }
 
       case 'optimize_locked_vs_flexible_liquidity_ladder': {
-        const totalTreasuryUsdt = Number(args['totalTreasuryUsdt'] || 0);
-        const dailyP2pVolumeUsdt = Number(args['dailyP2pVolumeUsdt'] || 0);
-        const p2pTurnoverDays = Number(args['p2pTurnoverDays'] || 1);
-        const flexibleAprPct = Number(args['flexibleAprPct'] || 2.5);
-        const locked30dAprPct = Number(args['locked30dAprPct'] || 5.0);
-        const locked60dAprPct = Number(args['locked60dAprPct'] || 7.5);
+        const totalTreasuryUsdt = requiredNumber(args, 'totalTreasuryUsdt', SRC_REAL_BALANCE);
+        const dailyP2pVolumeUsdt = requiredNumber(
+          args,
+          'dailyP2pVolumeUsdt',
+          'volumen P2P diario real registrado (ledger de órdenes)',
+        );
+        const p2pTurnoverDays = policyNumber(args, 'p2pTurnoverDays', 1);
+        const flexibleAprPct = requiredNumber(args, 'flexibleAprPct', SRC_VENUE_PUBLISHED_RATE);
+        const locked30dAprPct = requiredNumber(args, 'locked30dAprPct', SRC_VENUE_PUBLISHED_RATE);
+        const locked60dAprPct = requiredNumber(args, 'locked60dAprPct', SRC_VENUE_PUBLISHED_RATE);
         const safetyBufferPct =
           args['safetyBufferPct'] !== undefined ? Number(args['safetyBufferPct']) : 30;
 
@@ -2299,12 +2471,24 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_earn_yield_vs_p2p_hurdle_rate': {
-        const grossP2pSpreadPct = Number(args['grossP2pSpreadPct'] || 1.5);
-        const platformFeePct = Number(args['platformFeePct'] || 0.1);
-        const bankingRiskPremiumPct = Number(args['bankingRiskPremiumPct'] || 0.2);
-        const fxDevaluationRiskPct = Number(args['fxDevaluationRiskPct'] || 0.3);
-        const averageTradeCycleHours = Number(args['averageTradeCycleHours'] || 2);
-        const simpleEarnAprPct = Number(args['simpleEarnAprPct'] || 4.0);
+        const grossP2pSpreadPct = requiredNumber(
+          args,
+          'grossP2pSpreadPct',
+          'spread bruto real promedio de las órdenes ejecutadas (ledger de órdenes / libro P2P en vivo)',
+        );
+        const platformFeePct = requiredNumber(
+          args,
+          'platformFeePct',
+          'comisión real de la plataforma vigente para la operación (tarifario de Binance P2P)',
+        );
+        const bankingRiskPremiumPct = policyNumber(args, 'bankingRiskPremiumPct', 0.2);
+        const fxDevaluationRiskPct = policyNumber(args, 'fxDevaluationRiskPct', 0.3);
+        const averageTradeCycleHours = requiredNumber(
+          args,
+          'averageTradeCycleHours',
+          'ciclo medio real de una operación P2P completada (historial de órdenes medido)',
+        );
+        const simpleEarnAprPct = requiredNumber(args, 'simpleEarnAprPct', SRC_VENUE_PUBLISHED_RATE);
 
         const result = calculateEarnYieldVsP2pHurdleRate({
           grossP2pSpreadPct,
@@ -2324,11 +2508,19 @@ export function executeFinancialSkill(
       }
 
       case 'model_bnb_vault_yield_stacking': {
-        const bnbAmount = Number(args['bnbAmount'] || 0);
-        const bnbPriceUsdt = Number(args['bnbPriceUsdt'] || 600);
-        const simpleEarnAprPct = Number(args['simpleEarnAprPct'] || 1.5);
-        const activeLaunchpoolsCount = Number(args['activeLaunchpoolsCount'] || 1);
-        const averageLaunchpoolAprPct = Number(args['averageLaunchpoolAprPct'] || 12.0);
+        const bnbAmount = requiredNumber(args, 'bnbAmount', SRC_REAL_BALANCE);
+        const bnbPriceUsdt = requiredNumber(args, 'bnbPriceUsdt', SRC_LIVE_SPOT_PRICE);
+        const simpleEarnAprPct = requiredNumber(args, 'simpleEarnAprPct', SRC_VENUE_PUBLISHED_RATE);
+        const activeLaunchpoolsCount = requiredNumber(
+          args,
+          'activeLaunchpoolsCount',
+          'conteo real de Launchpools activos publicados por el venue (API pública de Binance Earn)',
+        );
+        const averageLaunchpoolAprPct = requiredNumber(
+          args,
+          'averageLaunchpoolAprPct',
+          'APR promedio real de los Launchpools activos publicados por el venue (API pública de Binance Earn/Launchpool)',
+        );
         const hodlerAirdropProjectedAprPct =
           args['hodlerAirdropProjectedAprPct'] !== undefined
             ? Number(args['hodlerAirdropProjectedAprPct'])
@@ -2352,13 +2544,13 @@ export function executeFinancialSkill(
       }
 
       case 'forecast_flexible_earn_tier_saturation': {
-        const totalCapitalUsdt = Number(args['totalCapitalUsdt'] || 0);
+        const totalCapitalUsdt = requiredNumber(args, 'totalCapitalUsdt', SRC_REAL_BALANCE);
         const tier1LimitPerAccountUsdt =
           args['tier1LimitPerAccountUsdt'] !== undefined
             ? Number(args['tier1LimitPerAccountUsdt'])
-            : 500;
-        const tier1AprPct = Number(args['tier1AprPct'] || 10.0);
-        const tier2AprPct = Number(args['tier2AprPct'] || 2.0);
+          : 500;
+      const tier1AprPct = requiredNumber(args, 'tier1AprPct', SRC_VENUE_PUBLISHED_RATE);
+        const tier2AprPct = requiredNumber(args, 'tier2AprPct', SRC_VENUE_PUBLISHED_RATE);
         const availableSubaccountsCount =
           args['availableSubaccountsCount'] !== undefined
             ? Number(args['availableSubaccountsCount'])
@@ -2381,8 +2573,12 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_auto_invest_dca_spread_funnel': {
-        const monthlyP2pNetProfitUsdt = Number(args['monthlyP2pNetProfitUsdt'] || 0);
-        const reinvestmentRatioPct = Number(args['reinvestmentRatioPct'] || 25);
+        const monthlyP2pNetProfitUsdt = requiredNumber(
+          args,
+          'monthlyP2pNetProfitUsdt',
+          'utilidad neta P2P real del mes (resultado de órdenes ejecutadas / contabilidad propia)',
+        );
+        const reinvestmentRatioPct = policyNumber(args, 'reinvestmentRatioPct', 25);
         const targetAsset = (args['targetAsset'] || 'BTC') as 'BTC' | 'ETH' | 'BNB' | 'SOL';
         const projectedAnnualAssetGrowthPct =
           args['projectedAnnualAssetGrowthPct'] !== undefined
@@ -2408,7 +2604,11 @@ export function executeFinancialSkill(
       }
 
       case 'simulate_earn_instant_redemption_latency': {
-        const redemptionAmountUsdt = Number(args['redemptionAmountUsdt'] || 0);
+        const redemptionAmountUsdt = requiredNumber(
+          args,
+          'redemptionAmountUsdt',
+          'monto real que el operador intends redimir (saldo de la cuenta Earn)',
+        );
         const dailyInstantQuotaUsdt =
           args['dailyInstantQuotaUsdt'] !== undefined
             ? Number(args['dailyInstantQuotaUsdt'])
@@ -2438,12 +2638,16 @@ export function executeFinancialSkill(
       case 'qualify_direct_lead_and_close': {
         const leadChannel = (args['leadChannel'] || 'WHATSAPP') as
           'WHATSAPP' | 'TELEGRAM' | 'INSTAGRAM_DM';
-        const estimatedWeeklyVolumeUsdt = Number(args['estimatedWeeklyVolumeUsdt'] || 1000);
+        const estimatedWeeklyVolumeUsdt = requiredNumber(
+          args,
+          'estimatedWeeklyVolumeUsdt',
+          'volumen semanal declarado y verificado por el cliente (registro de operaciones del cliente)',
+        );
         const paymentMethodPreferred = String(args['paymentMethodPreferred'] || 'Pago Móvil');
         const isKycVerified = Boolean(args['isKycVerified']);
         const primaryConcern = (args['primaryConcern'] || 'PRICE') as
           'PRICE' | 'SECURITY' | 'SPEED' | 'PAYMENT_LIMITS';
-        const currentParallelRate = Number(args['currentParallelRate'] || 85.0);
+        const currentParallelRate = requiredNumber(args, 'currentParallelRate', SRC_LIVE_PARALLEL_RATE);
 
         const result = qualifyDirectLeadAndClose({
           leadChannel,
@@ -2466,7 +2670,11 @@ export function executeFinancialSkill(
         const targetAudience = (args['targetAudience'] || 'RETAIL_SAVERS') as
           'RETAIL_SAVERS' | 'MERCHANT_IMPORTERS' | 'P2P_ARBITRAGEURS';
         const platform = (args['platform'] || 'INSTAGRAM') as 'INSTAGRAM' | 'TIKTOK' | 'TWITTER_X';
-        const currentBcvGapPct = Number(args['currentBcvGapPct'] || 20.0);
+        const currentBcvGapPct = requiredNumber(
+          args,
+          'currentBcvGapPct',
+          'brecha BCV vs paralelo calculada con tasas en vivo (MCP get_parallel_rates / get_bcv_rates)',
+        );
         const educationalTheme = (args['educationalTheme'] || 'INFLATION_HEDGE') as
           'INFLATION_HEDGE' | 'TRIANGULATION_BASICS' | 'AVOID_BANK_FREEZES';
 
@@ -2486,9 +2694,9 @@ export function executeFinancialSkill(
       }
 
       case 'benchmark_competitor_market_intelligence': {
-        const ourCurrentPrice = Number(args['ourCurrentPrice'] || 85.0);
+        const ourCurrentPrice = requiredNumber(args, 'ourCurrentPrice', SRC_LIVE_P2P_MID);
         const targetSide = (args['targetSide'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-        const ourMinMarginPct = Number(args['ourMinMarginPct'] || 0.8);
+        const ourMinMarginPct = policyNumber(args, 'ourMinMarginPct', 0.8);
         const competitorOffers = (args['competitorOffers'] || []) as any[];
 
         const result = benchmarkCompetitorMarketIntelligence({
@@ -2553,10 +2761,10 @@ export function executeFinancialSkill(
       }
 
       case 'monitor_service_health_and_fallback': {
-        const webSocketLatencyMs = Number(args['webSocketLatencyMs'] || 120);
-        const bankApiUptimePct = Number(args['bankApiUptimePct'] || 99.5);
-        const dbQueryResponseTimeMs = Number(args['dbQueryResponseTimeMs'] || 15);
-        const unresolvedErrorsCount = Number(args['unresolvedErrorsCount'] || 0);
+        const webSocketLatencyMs = requiredNumber(args, 'webSocketLatencyMs', 'latencia medida del websocket');
+        const bankApiUptimePct = requiredNumber(args, 'bankApiUptimePct', 'uptime medido de la API bancaria');
+        const dbQueryResponseTimeMs = requiredNumber(args, 'dbQueryResponseTimeMs', 'tiempo de respuesta medido de la base de datos');
+        const unresolvedErrorsCount = requiredNumber(args, 'unresolvedErrorsCount', 'conteo real de errores sin resolver');
 
         const result = monitorServiceHealthAndFallback({
           webSocketLatencyMs,
@@ -2579,7 +2787,11 @@ export function executeFinancialSkill(
           | 'THIRD_PARTY_PAYMENT'
           | 'PARTIAL_PAYMENT_FRAUD'
           | 'APP_LATENCY_DELAY';
-        const amountAtRiskUsdt = Number(args['amountAtRiskUsdt'] || 0);
+        const amountAtRiskUsdt = requiredNumber(
+          args,
+          'amountAtRiskUsdt',
+          'monto real en riesgo según la orden y el movimiento bancario registrado (ledger de órdenes)',
+        );
         const orderId = args['orderId'] ? String(args['orderId']) : undefined;
         const counterpartyAlias = args['counterpartyAlias']
           ? String(args['counterpartyAlias'])
@@ -2606,7 +2818,11 @@ export function executeFinancialSkill(
         const bankBalanceConfirmedInAvailableFunds = Boolean(
           args['bankBalanceConfirmedInAvailableFunds'],
         );
-        const responseTimeMinutes = Number(args['responseTimeMinutes'] || 5);
+        const responseTimeMinutes = requiredNumber(
+          args,
+          'responseTimeMinutes',
+          'tiempo real de respuesta del operador a la orden (timestamps de la orden / chat)',
+        );
         const fundsReleasedBeforeBankVerification = Boolean(
           args['fundsReleasedBeforeBankVerification'],
         );
@@ -2632,11 +2848,19 @@ export function executeFinancialSkill(
         const orderId = String(args['orderId'] || 'ORD-SHEET');
         const counterpartyAlias = String(args['counterpartyAlias'] || 'Counterparty');
         const tradeType = (args['tradeType'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-        const cryptoAmountUsdt = Number(args['cryptoAmountUsdt'] || 100);
-        const fiatAmountVes = Number(args['fiatAmountVes'] || 8500);
-        const exchangeRate = Number(args['exchangeRate'] || 85.0);
-        const platformFeeUsdt = Number(args['platformFeeUsdt'] || 0.1);
-        const bankTransferFeeVes = Number(args['bankTransferFeeVes'] || 0);
+        const cryptoAmountUsdt = requiredNumber(args, 'cryptoAmountUsdt', SRC_LEDGER_ORDER);
+        const fiatAmountVes = requiredNumber(args, 'fiatAmountVes', SRC_LEDGER_ORDER);
+        const exchangeRate = requiredNumber(args, 'exchangeRate', SRC_LIVE_PARALLEL_RATE);
+        const platformFeeUsdt = requiredNumber(
+          args,
+          'platformFeeUsdt',
+          'comisión realmente cobrada por la plataforma en esa operación (extracto de Binance P2P)',
+        );
+        const bankTransferFeeVes = requiredNumber(
+          args,
+          'bankTransferFeeVes',
+          'comisión bancaria real de esa transferencia (estado de cuenta / recibo)',
+        );
 
         const result = syncGoogleSheetsLiveLedger({
           tradeDate,
@@ -2659,14 +2883,22 @@ export function executeFinancialSkill(
       }
 
       case 'forecast_cash_flow_and_reconciliation': {
-        const fiatBankBalancesTotalUsdtEquiv = Number(
-          args['fiatBankBalancesTotalUsdtEquiv'] || 1000,
+        const fiatBankBalancesTotalUsdtEquiv = requiredNumber(args, 'fiatBankBalancesTotalUsdtEquiv', SRC_REAL_BALANCE);
+        const cryptoExchangeBalancesUsdt = requiredNumber(args, 'cryptoExchangeBalancesUsdt', SRC_REAL_BALANCE);
+        const pendingUnsettledOrdersUsdt = requiredNumber(
+          args,
+          'pendingUnsettledOrdersUsdt',
+          'monto real de órdenes pendientes de liquidar (ledger de órdenes abiertas)',
         );
-        const cryptoExchangeBalancesUsdt = Number(args['cryptoExchangeBalancesUsdt'] || 5000);
-        const pendingUnsettledOrdersUsdt = Number(args['pendingUnsettledOrdersUsdt'] || 500);
-        const dailyProjectedVolumeUsdt = Number(args['dailyProjectedVolumeUsdt'] || 2500);
-        const averageOperationalExpensesDailyUsdt = Number(
-          args['averageOperationalExpensesDailyUsdt'] || 30,
+        const dailyProjectedVolumeUsdt = requiredNumber(
+          args,
+          'dailyProjectedVolumeUsdt',
+          'proyección de volumen diario basada en el volumen real registrado (ledger de órdenes)',
+        );
+        const averageOperationalExpensesDailyUsdt = requiredNumber(
+          args,
+          'averageOperationalExpensesDailyUsdt',
+          'gasto operativo diario real promedio (contabilidad propia / tesorería)',
         );
 
         const result = forecastCashFlowAndReconciliation({
@@ -2686,8 +2918,8 @@ export function executeFinancialSkill(
       }
 
       case 'audit_and_risk_analytics': {
-        const timeframeDays = Number(args['timeframeDays'] || 7);
-        const minSpreadThresholdPct = Number(args['minSpreadThresholdPct'] || 0.5);
+        const timeframeDays = policyNumber(args, 'timeframeDays', 7);
+        const minSpreadThresholdPct = policyNumber(args, 'minSpreadThresholdPct', 0.5);
         const focusArea = String(args['focusArea'] || 'ALL');
         const sampleEvents = (args['sampleEvents'] as ForensicAuditEvent[]) || [];
         const sampleOperations = (args['sampleOperations'] as ForensicOperationRecord[]) || [];
@@ -2713,7 +2945,7 @@ export function executeFinancialSkill(
 
       case 'scan_synthetic_stable_arbitrage': {
         const pairs = (args['pairs'] as StableCrossQuote[]) || [];
-        const minNetSpreadPct = Number(args['minNetSpreadPct'] || 0.15);
+        const minNetSpreadPct = policyNumber(args, 'minNetSpreadPct', 0.15);
         const opportunities = scanSyntheticStableCurves(pairs, minNetSpreadPct);
 
         return {
@@ -2731,7 +2963,7 @@ export function executeFinancialSkill(
         const rawAds = (args['ads'] as any[]) || [];
         const fairMarketRate = Number(args['fairMarketRate'] || 0);
         const side = (args['side'] === 'BUY' ? 'BUY' : 'SELL') as 'BUY' | 'SELL';
-        const minDislocationPct = Number(args['minDislocationPct'] || 0.8);
+        const minDislocationPct = policyNumber(args, 'minDislocationPct', 0.8);
         const ads: P2pOrderbookAdItem[] = rawAds.map((a) => ({
           advId: a.advId || a.advNo || 'AD-0',
           merchantName: a.merchantName || a.advertiserName || 'Anonymous',
@@ -2767,8 +2999,12 @@ export function executeFinancialSkill(
 
       case 'query_otc_darkpool_spread': {
         const quotes = (args['quotes'] as MarketVenueQuote[]) || [];
-        const volumeUsd = Number(args['volumeUsd'] || 10000);
-        const minNetSpreadPct = Number(args['minNetSpreadPct'] || 1.2);
+        const volumeUsd = requiredNumber(
+          args,
+          'volumeUsd',
+          'capital que el operador declara disponible para la ruta (saldo real de tesorería)',
+        );
+        const minNetSpreadPct = policyNumber(args, 'minNetSpreadPct', 1.2);
         const routes = aggregateDarkPoolOpportunities(quotes, {
           capitalUsd: volumeUsd,
           minNetSpreadPct,
@@ -2788,9 +3024,13 @@ export function executeFinancialSkill(
 
       case 'route_fintech_payroll_settlement': {
         const platform = (args['platform'] || args['sourcePlatform'] || 'DEEL') as any;
-        const grossAmountUsd = Number(args['grossAmountUsd'] || args['amountUsd'] || 1000);
+        const grossAmountUsd = requiredNumber(
+          args,
+          ['grossAmountUsd', 'amountUsd'],
+          'monto bruto real de la nómina (invoice de la plataforma de payroll)',
+        );
         const payoutRail = (args['payoutRail'] || (String(args['targetDestination']).includes('BANESCO') ? 'VES_TRANSFERENCIA' : 'USDT_TRC20')) as any;
-        const vesRatePerUsd = Number(args['vesRatePerUsd'] || 85.0);
+        const vesRatePerUsd = requiredNumber(args, 'vesRatePerUsd', SRC_LIVE_PARALLEL_RATE);
         const clientTier = (args['clientTier'] || 'STANDARD') as any;
         const isVerifiedContractor = Boolean(args['isVerifiedContractor']);
 
@@ -2813,13 +3053,17 @@ export function executeFinancialSkill(
 
       case 'recommend_counterparty_yield_price': {
         const counterpartyId = String(args['counterpartyId'] || 'CP-GENERIC');
-        const baseMarketRate = Number(args['marketBasePrice'] || args['baseMarketRate'] || 85.0);
+        const baseMarketRate = requiredNumber(args, ['marketBasePrice', 'baseMarketRate'], SRC_LIVE_P2P_MID);
         const orderType = (args['orderSide'] === 'SELL' || args['orderType'] === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL';
-        const averageReleaseMinutes = Number(args['averageReleaseMinutes'] || 15);
-        const completedTradesCount = Number(args['completedTradesCount'] || 100);
-        const disputeCount = Number(args['disputeCount'] || 0);
-        const monthlyVolumeUsd = Number(args['monthlyVolumeUsd'] || 10000);
-        const requestedAmountUsd = Number(args['requestedAmountUsd'] || 1000);
+        const averageReleaseMinutes = requiredNumber(args, 'averageReleaseMinutes', SRC_COUNTERPARTY_TRACK_RECORD);
+        const completedTradesCount = requiredNumber(args, 'completedTradesCount', SRC_COUNTERPARTY_TRACK_RECORD);
+        const disputeCount = requiredNumber(args, 'disputeCount', SRC_COUNTERPARTY_TRACK_RECORD);
+        const monthlyVolumeUsd = requiredNumber(args, 'monthlyVolumeUsd', SRC_COUNTERPARTY_TRACK_RECORD);
+        const requestedAmountUsd = requiredNumber(
+          args,
+          'requestedAmountUsd',
+          'monto real solicitado por la contraparte (solicitud del cliente)',
+        );
 
         const pricing = calculateDynamicCounterpartyPricing({
           metrics: {
@@ -2845,7 +3089,7 @@ export function executeFinancialSkill(
       case 'process_concierge_inquiry': {
         const message = String(args['message'] || '');
         const customerPhone = args['customerPhone'] ? String(args['customerPhone']) : undefined;
-        const deskRatePerUsd = Number(args['deskSellRate'] || args['deskRatePerUsd'] || 87.0);
+        const deskRatePerUsd = requiredNumber(args, ['deskSellRate', 'deskRatePerUsd'], SRC_DESK_SELL_RATE);
         const bankName = String(args['bankName'] || 'Banesco');
         const bankAccountDetails = String(args['bankAccountDetails'] || '0134-XXXX-XXXX-XXXX a nombre de Inversiones P2P');
 
@@ -2869,12 +3113,50 @@ export function executeFinancialSkill(
       }
 
       case 'predict_bcv_macro_regime': {
-        const bcvOfficialRate = Number(args['bcvOfficialRate'] || 80.0);
-        const parallelMarketRate = Number(args['parallelRate'] || args['parallelMarketRate'] || 85.0);
-        const daysSinceLastIntervention = Number(args['daysSinceLastIntervention'] || 4);
-        const currentHourOfDayUtcMinus4 = Number(args['currentHourVET'] || args['currentHourOfDayUtcMinus4'] || 10);
-        const currentDayOfWeek = Number(args['currentDayOfWeek'] || 1); // 1 = Mon
-        const estimatedWeeklyBcvInjectionUsd = Number(args['estimatedInterventionAmountUsd'] || args['estimatedWeeklyBcvInjectionUsd'] || 50000000);
+        // Fail closed on the two rates.
+        //
+        // These used to be `|| 80.0` and `|| 85.0`. An LMC that asked for the macro
+        // regime without supplying live rates got a confident verdict built on two
+        // invented numbers — and the directive that came back told it to drain
+        // bolivars into USDT. Market rates describe the external world, so they
+        // are never defaulted.
+        const rawBcv = args['bcvOfficialRate'];
+        const rawParallel = args['parallelRate'] ?? args['parallelMarketRate'];
+        const bcvOfficialRate = Number(rawBcv);
+        const parallelMarketRate = Number(rawParallel);
+        const hasLiveRates =
+          Number.isFinite(bcvOfficialRate) &&
+          bcvOfficialRate > 0 &&
+          Number.isFinite(parallelMarketRate) &&
+          parallelMarketRate > 0;
+
+        const daysSinceLastIntervention = Number(args['daysSinceLastIntervention'] ?? 4);
+        const currentHourOfDayUtcMinus4 = Number(args['currentHourVET'] ?? args['currentHourOfDayUtcMinus4'] ?? 10);
+        const currentDayOfWeek = Number(args['currentDayOfWeek'] ?? 1); // 1 = Mon
+        // No `$50M` fallback: an injection amount nobody supplied stays absent.
+        const rawInjection = args['estimatedInterventionAmountUsd'] ?? args['estimatedWeeklyBcvInjectionUsd'];
+        const estimatedWeeklyBcvInjectionUsd = Number.isFinite(Number(rawInjection))
+          ? Number(rawInjection)
+          : undefined;
+
+        if (!hasLiveRates) {
+          const missing = !Number.isFinite(bcvOfficialRate) || bcvOfficialRate <= 0
+            ? 'bcvOfficialRate'
+            : 'parallelMarketRate';
+          return {
+            success: false,
+            skillName,
+            executedAt: now,
+            unavailableReason: `SIN_TASA_EN_VIVO:${missing}`,
+            expectedSource:
+              'bcvOfficialRate: get_bcv_rates (feed oficial en vivo) · parallelMarketRate: get_parallel_rates (monitor leído)',
+            actionable: false,
+            data: null,
+            description:
+              `No se evalúa el régimen macro: falta ${missing} en vivo. Las tasas de mercado no se inventan, ` +
+              'así que este skill no devuelve probabilidad de intervención, score de riesgo ni directivas tácticas.',
+          };
+        }
 
         const regimeAssessment = evaluateMacroBcvRegime({
           bcvOfficialRate,
@@ -2894,11 +3176,15 @@ export function executeFinancialSkill(
       }
 
       case 'optimize_treasury_idle_yield': {
-        const totalUsdtInventory = Number(args['totalUsdtInventory'] || args['totalTreasuryUsdt'] || 20000);
-        const currentlyCommittedUsdt = Number(args['currentlyCommittedUsdt'] || args['operationalReserveUsdt'] || 5000);
+        const totalUsdtInventory = requiredNumber(args, ['totalUsdtInventory', 'totalTreasuryUsdt'], 'saldo real de tesorería');
+        const currentlyCommittedUsdt = requiredNumber(
+          args,
+          ['currentlyCommittedUsdt', 'operationalReserveUsdt'],
+          'saldo realmente comprometido',
+        );
         const marketVelocity = (args['marketVelocity'] || 'LOW_OFFPEAK') as any;
-        const flexibleApyPct = Number(args['flexibleApyPct'] || args['minYieldApyPct'] || 10.5);
-        const minimumSafetyBufferUsd = Number(args['minimumSafetyBufferUsd'] || 2500);
+        const flexibleApyPct = requiredNumber(args, ['flexibleApyPct', 'minYieldApyPct'], 'tasa vigente publicada por la plataforma');
+        const minimumSafetyBufferUsd = policyNumber(args, 'minimumSafetyBufferUsd', 2500);
 
         const allocation = calculateTreasuryYieldAllocation({
           totalUsdtInventory,
@@ -2938,9 +3224,17 @@ export function executeFinancialSkill(
       }
 
       case 'execute_maker_laddering_plan': {
-        const midPrice = Number(args['midPrice'] || 85.0);
-        const currentInventoryUsdt = Number(args['currentInventoryUsdt'] || 5000);
-        const targetInventoryUsdt = Number(args['targetInventoryUsdt'] || 5000);
+        const midPrice = requiredNumber(args, 'midPrice', SRC_LIVE_P2P_MID);
+        const currentInventoryUsdt = requiredNumber(
+          args,
+          'currentInventoryUsdt',
+          'inventario real de la cuenta (API del exchange / tesorería)',
+        );
+        const targetInventoryUsdt = requiredNumber(
+          args,
+          'targetInventoryUsdt',
+          'inventario objetivo declarado por la mesa (declaración del operador, no un valor por defecto)',
+        );
 
         const quotes = computeAvellanedaStoikovQuotes({
           midPrice,
@@ -2964,9 +3258,13 @@ export function executeFinancialSkill(
       }
 
       case 'balance_cross_exchange_inventory': {
-        const binanceBalanceUsdt = Number(args['binanceBalanceUsdt'] || 0);
-        const bybitBalanceUsdt = Number(args['bybitBalanceUsdt'] || 0);
-        const onchainBalanceUsdt = Number(args['onchainBalanceUsdt'] || 0);
+        const binanceBalanceUsdt = requiredNumber(args, 'binanceBalanceUsdt', SRC_REAL_BALANCE);
+        const bybitBalanceUsdt = requiredNumber(args, 'bybitBalanceUsdt', SRC_REAL_BALANCE);
+        const onchainBalanceUsdt = requiredNumber(
+          args,
+          'onchainBalanceUsdt',
+          'saldo real on-chain de la wallet de tesorería (API on-chain)',
+        );
         const total = binanceBalanceUsdt + bybitBalanceUsdt + onchainBalanceUsdt;
         const targetPerVenue = total > 0 ? total / 3 : 0;
 
@@ -3004,9 +3302,9 @@ export function executeFinancialSkill(
       }
 
       case 'enforce_depeg_delta_hedge': {
-        const inventoryVes = Number(args['inventoryVes'] || 0);
-        const currentPrice = Number(args['currentPrice'] || 85.0);
-        const hedgeRatioPct = Number(args['hedgeRatioPct'] || 100);
+        const inventoryVes = requiredNumber(args, 'inventoryVes', SRC_REAL_BALANCE);
+        const currentPrice = requiredNumber(args, 'currentPrice', SRC_LIVE_PARALLEL_RATE);
+        const hedgeRatioPct = policyNumber(args, 'hedgeRatioPct', 100);
 
         const inventoryUsd = currentPrice > 0 ? inventoryVes / currentPrice : 0;
         const targetHedgeUsd = inventoryUsd * (hedgeRatioPct / 100);
@@ -3029,7 +3327,11 @@ export function executeFinancialSkill(
 
       case 'audit_chargeback_shield': {
         const platform = String(args['platform'] || 'DEEL').toUpperCase();
-        const amountUsd = Number(args['amountUsd'] || 1000);
+        const amountUsd = requiredNumber(
+          args,
+          'amountUsd',
+          'monto real de la operación a evaluar (invoice / payout de la plataforma de payroll)',
+        );
         const isVerifiedContractor = Boolean(args['isVerifiedContractor']);
 
         let riskScore = 15;
@@ -3081,10 +3383,10 @@ export function executeFinancialSkill(
 
       case 'classify_and_price_client_tier': {
         const counterpartyId = String(args['counterpartyId'] || 'CP-GENERIC');
-        const averageReleaseMinutes = Number(args['averageReleaseMinutes'] || 15);
-        const completedTradesCount = Number(args['completedTradesCount'] || 100);
-        const disputeCount = Number(args['disputeCount'] || 0);
-        const monthlyVolumeUsd = Number(args['monthlyVolumeUsd'] || 10000);
+        const averageReleaseMinutes = requiredNumber(args, 'averageReleaseMinutes', SRC_COUNTERPARTY_TRACK_RECORD);
+        const completedTradesCount = requiredNumber(args, 'completedTradesCount', SRC_COUNTERPARTY_TRACK_RECORD);
+        const disputeCount = requiredNumber(args, 'disputeCount', SRC_COUNTERPARTY_TRACK_RECORD);
+        const monthlyVolumeUsd = requiredNumber(args, 'monthlyVolumeUsd', SRC_COUNTERPARTY_TRACK_RECORD);
 
         const tier = classifyCounterpartyTier({
           counterpartyId,
@@ -3107,12 +3409,19 @@ export function executeFinancialSkill(
 
       case 'negotiate_whatsapp_order_intake': {
         const customerMessage = String(args['customerMessage'] || '');
-        const activeRate = Number(args['activeRate'] || 85.0);
+        const activeRate = requiredNumber(args, 'activeRate', SRC_DESK_SELL_RATE);
         const bankName = String(args['bankName'] || 'Banesco');
         const accountDetails = String(args['accountDetails'] || '');
 
         const parsed = parseCustomerChatMessage(customerMessage);
-        const orderAmountUsdt = parsed.detectedAmount || 100;
+        // The amount is whatever the customer actually wrote. Falling back to a
+        // round number produced a quote for a trade the customer never asked
+        // for, ready to be copied into WhatsApp.
+        const orderAmountUsdt = requiredNumber(
+          { detectedAmount: parsed.detectedAmount },
+          'detectedAmount',
+          'monto declarado por el cliente en su propio mensaje, o el monto confirmado explícitamente por el operador',
+        );
         const totalVes = Number((orderAmountUsdt * activeRate).toFixed(2));
 
         const confirmationMsg = `✅ *COTIZACIÓN CONFIRMADA DE MESA P2P*\n` +
@@ -3141,7 +3450,11 @@ export function executeFinancialSkill(
       case 'bundle_corporate_b2b_dossier': {
         const clientName = String(args['clientName'] || 'EMPRESA CLIENTE S.A.');
         const taxId = String(args['taxId'] || 'J-00000000-0');
-        const amountUsd = Number(args['amountUsd'] || 0);
+        const amountUsd = requiredNumber(
+          args,
+          'amountUsd',
+          'monto real de la factura (contrato / factura del cliente)',
+        );
         const serviceCategory = String(args['serviceCategory'] || 'SERVICIOS_TECNOLOGICOS_CONSULTORIA');
 
         const invoiceId = `INV-${Date.now().toString(36).toUpperCase()}`;
@@ -3174,12 +3487,17 @@ export function executeFinancialSkill(
         const orderId = String(args['orderId'] || 'P2P-ORD-000');
         const counterpartyName = String(args['counterpartyName'] || 'Contraparte');
         const disputeReason = String(args['disputeReason'] || 'Tercero no autorizado / Falta de pago');
-        const claimedAmount = Number(args['claimedAmount'] || 0);
+        const claimedAmount = requiredNumber(
+          args,
+          'claimedAmount',
+          'monto real reclamado (order en disputa / comprobante del operador)',
+        );
+        const parallelRate = requiredNumber(args, 'parallelRate', SRC_LIVE_PARALLEL_RATE);
 
         const dossier = buildDisputeDossier({
           orderId,
           orderAmountFiat: claimedAmount,
-          orderAmountCrypto: claimedAmount > 0 ? claimedAmount / 85.0 : 0,
+          orderAmountCrypto: claimedAmount / parallelRate,
           fiatCurrency: 'VES',
           cryptoAsset: 'USDT',
           counterpartyBinanceName: counterpartyName,
@@ -3225,15 +3543,25 @@ export function executeFinancialSkill(
 
       case 'quote_instant_remittance_corridor': {
         const corridorId = String(args['corridorId'] || 'USD_ZELLE_TO_VES');
-        const sendAmount = Number(args['sendAmount'] || args['amount'] || 100);
-        const deskSpreadPct = Number(args['deskSpreadPct'] || args['operatorMarginPct'] || 2.5);
+        const sendAmount = requiredNumber(
+          args,
+          ['sendAmount', 'amount'],
+          'monto real que el cliente quiere enviar (solicitud del cliente / orden creada)',
+        );
+        const deskSpreadPct = policyNumber(
+          args,
+          'deskSpreadPct',
+          policyNumber(args, 'operatorMarginPct', 2.5),
+        );
+
+        const activeRate = requiredNumber(args, 'activeRate', SRC_DESK_SELL_RATE);
 
         const quote = calculateRemittanceQuote({
           corridorId,
           calculationMode: 'BY_SEND_AMOUNT',
           amount: sendAmount,
           originCryptoRate: 1.0,
-          destCryptoRate: 85.0,
+          destCryptoRate: activeRate,
           operatorMarginPct: deskSpreadPct,
         });
 
@@ -3251,8 +3579,12 @@ export function executeFinancialSkill(
       }
 
       case 'execute_preemptive_bcv_drain': {
-        const currentVesBalance = Number(args['currentVesBalance'] || 0);
-        const bcvInterventionProbabilityPct = Number(args['bcvInterventionProbabilityPct'] || 80);
+        const currentVesBalance = requiredNumber(args, 'currentVesBalance', 'saldo real en VES del operador');
+        const bcvInterventionProbabilityPct = requiredNumber(
+          args,
+          'bcvInterventionProbabilityPct',
+          'probabilidad de intervención (no hay modelo BCV calibrado en este sistema)',
+        );
 
         const urgency = bcvInterventionProbabilityPct >= 75 ? 'CRITICAL' : bcvInterventionProbabilityPct >= 50 ? 'HIGH' : 'MODERATE';
         const drainRatio = bcvInterventionProbabilityPct >= 75 ? 0.90 : bcvInterventionProbabilityPct >= 50 ? 0.65 : 0.40;
@@ -3264,11 +3596,16 @@ export function executeFinancialSkill(
           data: {
             currentVesBalance,
             bcvInterventionProbabilityPct,
+            probabilityBasis: 'HEURISTIC_UNCALIBRATED',
+            isVerifiedIntervention: false,
             urgency,
             recommendedDrainVes: targetDrainVes,
-            recommendedAction: `Drenar ${targetDrainVes.toLocaleString('es-VE')} VES (${(drainRatio * 100).toFixed(0)}% del balance) comprando USDT de inmediato antes del cierre de mesa BCV.`,
+            recommendedAction: `Escenario simulado: si se asignara ${(drainRatio * 100).toFixed(0)}% del saldo a USDT, serían ${targetDrainVes.toLocaleString('es-VE')} VES. La probabilidad provista es una heurística sin calibrar y NO confirma ninguna intervención del BCV ni cierre de mesa.`,
+            actionable: false,
             preferredChannels: ['PAGO_MOVIL_INMEDIATO', 'BANESCO_TRANSFERENCIA_DIRECTA'],
           },
+          expectedSource: 'probabilidad de intervención (no hay modelo BCV calibrado en este sistema)',
+          actionable: false,
           executedAt: now,
         };
       }
@@ -3304,6 +3641,18 @@ export function executeFinancialSkill(
         };
     }
   } catch (err: unknown) {
+    if (err instanceof MissingEvidenceError) {
+      return {
+        success: false,
+        skillName,
+        data: null,
+        error: err.message,
+        unavailableReason: `missing_evidence:${err.field}`,
+        expectedSource: err.expectedSource,
+        actionable: false,
+        executedAt: now,
+      };
+    }
     return {
       success: false,
       skillName,
@@ -3338,6 +3687,8 @@ export interface CopilotChatMessage {
 
 export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';
 
+export type MarketFeedReason = 'LIVE' | 'NO_BOOK' | 'STALE_BOOK' | 'INCOMPLETE_BOOK';
+
 export interface ProvenanceMetadata {
   source: ExecutionProvenance;
   model?: string;
@@ -3349,6 +3700,16 @@ export interface ProvenanceMetadata {
   stepsCount?: number;
   maxSteps?: number;
   apiCallsCount?: number;
+  /** Why the feed is or is not live. Makes a stale book distinguishable from a missing one. */
+  marketFeedReason?: MarketFeedReason;
+  /** Human-readable provenance shown to the operator, e.g. "[sin feed: libro vencido (12 min)]". */
+  marketFeedNote?: string;
+  /** True when this turn stopped at a turn-level paid-call budget. */
+  budgetExhausted?: boolean;
+  /** Paid Gemini calls made this turn, as an enforced budget rather than a report. */
+  paidCallsThisTurn?: number;
+  /** Hard ceiling for paid calls in a single user turn. */
+  paidCallsBudget?: number;
 }
 
 export interface CopilotResponse {

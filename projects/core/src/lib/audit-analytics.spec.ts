@@ -59,12 +59,17 @@ describe('AuditAnalytics Domain Engine', () => {
   });
 
   describe('auditTradingDisciplineAndSpreadCompliance', () => {
-    it('handles empty operations ledger', () => {
+    it('reports an empty operations ledger as NOT_ASSESSED, never as perfect compliance', () => {
       const res = auditTradingDisciplineAndSpreadCompliance([]);
+      expect(res.assessmentStatus).toBe('NOT_ASSESSED');
       expect(res.totalOperationsAnalyzed).toBe(0);
-      expect(res.complianceRatePct).toBe(100);
+      // The defect: `complianceRatePct: 100` on an empty ledger certified an
+      // operator who has never traded as 100% compliant. No data is not a
+      // passing grade, and `0` would be an equally false accusation.
+      expect(res.complianceRatePct).toBeNull();
       expect(res.tiltDetected).toBe(false);
       expect(res.tiltSeverity).toBe('NONE');
+      expect(res.summary).toBe('Sin operaciones registradas para auditar.');
     });
 
     it('evaluates 100% compliant operations adhering to the Golden Rule (>= 0.50%)', () => {
@@ -145,6 +150,7 @@ describe('AuditAnalytics Domain Engine', () => {
       ]);
 
       const dossier = generateForensicDossier(risk, discipline);
+      expect(dossier.assessmentStatus).toBe('ASSESSED');
       expect(dossier.operatorStanding).toBe('DISCIPLINED');
       expect(dossier.goldenRuleComplianceScore).toBe(100);
       expect(dossier.riskConcentrationScore).toBe(100);
@@ -173,6 +179,28 @@ describe('AuditAnalytics Domain Engine', () => {
           expect.stringContaining('Circuit Breaker'),
         ]),
       );
+    });
+
+    // This is the path a brand-new operator actually takes: the dashboard reads
+    // operations from local storage (`?? []`), so a user who has never traded
+    // reaches `generateForensicDossier` with an empty ledger. Before the fix
+    // that produced `DISCIPLINED` + `100/100` + "Excelente apego a la Regla de
+    // Oro" and the verdict "Operador apto con grado de disciplina
+    // institucional" — certifying an empty track record as institutional-grade
+    // discipline, which `gemini-orchestrator.ts` then printed verbatim.
+    it('does not certify an operator who has never traded', () => {
+      const risk = analyzeHourlyRiskDistribution([]);
+      const discipline = auditTradingDisciplineAndSpreadCompliance([]);
+
+      const dossier = generateForensicDossier(risk, discipline);
+
+      expect(dossier.assessmentStatus).toBe('NOT_ASSESSED');
+      expect(dossier.operatorStanding).toBe('NOT_ASSESSED');
+      expect(dossier.goldenRuleComplianceScore).toBeNull();
+      expect(dossier.riskConcentrationScore).toBeNull();
+      expect(dossier.criticalFindings.join(' ')).not.toContain('Excelente apego');
+      expect(dossier.preventiveDirectives).toHaveLength(0);
+      expect(dossier.executiveVerdict).not.toContain('Operador apto');
     });
   });
 });
