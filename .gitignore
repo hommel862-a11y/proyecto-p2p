@@ -77,7 +77,18 @@ electron-launch.log
 *.sqlite
 *.sqlite3
 *.db
+# SQLite WAL sidecars carry the same data as the .sqlite file, so the rule
+# above does not catch them.
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
 !electron/main/db/schema.sql
 mi_operaciones_binance.csv
 *.pem
 *.key
+
+# Local dependency trees and crash output (not source)
+/src/app/node_modules/
+/electron-crash.log
+*.crash.log
