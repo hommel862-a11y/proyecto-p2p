@@ -681,7 +681,20 @@ describe('simulateMcpTool — sin dato antes que dato inventado', () => {
       clientTier: 'STANDARD',
     });
 
-    expect(conDefault['quote']).toEqual(conMismoTier['quote']);
+    // `quote.timestamp` es `new Date().toISOString()` y `settlementId` se deriva de
+    // `Date.now()`, ambos por llamada. Comparar el objeto entero es flake por
+    // definición: falla cuando el reloj avanza entre las dos llamadas. Lo que
+    // esta prueba afirma es que la decisión de ruteo no cambia.
+    const sinReloj = (q: unknown) => {
+      const { timestamp, settlementId, ...rest } = q as Record<string, unknown>;
+      return rest;
+    };
+    expect(sinReloj(conDefault['quote'])).toEqual(sinReloj(conMismoTier['quote']));
+
+    // La identidad sigue siendo una identidad real, solo que no comparable byte a byte.
+    expect(conDefault['quote']).toMatchObject({
+      settlementId: expect.stringMatching(/^SETTLE-DEEL-[0-9A-Z]+$/),
+    });
   });
 
   it('recommend_counterparty_yield_price NO publica un yieldPrice sobre base inventada', () => {
