@@ -116,13 +116,21 @@ export function getTodayOperations(
 /**
  * Compute the live daily limit usage and balance for a single bank account.
  * Expects `todayOps` to contain only today's operations (caller responsibility).
- * Also computes monthly usage when `account.monthlyLimitVes` is set, filtering by current month internally.
+ * Also computes monthly usage when `account.monthlyLimitVes` is set, filtering by
+ * `monthKey` ('YYYY-MM') internally.
+ *
+ * `monthKey` defaults to the wall clock, so existing two-argument call sites keep
+ * working unchanged — but it is injectable, which matters more than the default:
+ * a month boundary is the one thing a test cannot otherwise pin. The previous
+ * shape read `new Date()` internally, so a monthly-limit test could only ever
+ * assert "this month vs. last month" relative to whenever CI happened to run.
+ * Same contract as `getTodayOperations(allOps, todayDateKey)` above.
  */
 export function computeAccountUsage(
   account: BankAccount,
   todayOps: readonly Operation[],
+  monthKey: string = new Date().toISOString().slice(0, 7), // 'YYYY-MM'
 ): AccountUsage {
-  const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 
   let spentTodayVes = 0;
   let receivedTodayVes = 0;
@@ -193,12 +201,17 @@ export function computeAccountUsage(
 }
 /**
  * Compute total treasury summary across all configured accounts.
+ *
+ * `monthKey` is forwarded to `computeAccountUsage` so the whole summary shares one
+ * month. Defaulting it here as well as there keeps single-account callers working
+ * unchanged, and both defaults read the same wall clock within one tick.
  */
 export function computeTreasurySummary(
   accounts: readonly BankAccount[],
   todayOps: readonly Operation[],
+  monthKey?: string,
 ): TreasurySummary {
-  const accountsUsage = accounts.map((acc) => computeAccountUsage(acc, todayOps));
+  const accountsUsage = accounts.map((acc) => computeAccountUsage(acc, todayOps, monthKey));
 
   let totalBalanceVes = 0;
   let totalSpentTodayVes = 0;
@@ -244,6 +257,12 @@ export function computeTreasurySummary(
  * is provided, only accounts of that bank are considered, which avoids paying
  * interbank fees when the counterparty funds from a specific bank. The parameter is
  * optional and trailing, so existing three-argument call sites keep working unchanged.
+ *
+ * There is deliberately no `monthKey` here. The filter reads daily limit and
+ * balance from `computeAccountUsage`, and `todayOps` arrives already filtered by the
+ * caller — so a month argument could not change which account is returned. It was
+ * added for symmetry, and a test proved it inert. A parameter that cannot alter the
+ * output is a published contract that does not exist.
  */
 export function recommendAccountForTrade(
   accounts: readonly BankAccount[],
