@@ -11,6 +11,107 @@ interface LiveRates {
   sellRate: number;
 }
 
+interface VenueQuote extends LiveRates {
+  exchange: string;
+  source: 'LIVE';
+}
+
+const BINANCE_P2P_URL = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
+
+/**
+ * Where each venue's number would come from. Declared so that a missing reading
+ * names its origin instead of silently defaulting to a price.
+ */
+const EXPECTED_SOURCES = {
+  binance: 'Binance P2P C2C público (p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search)',
+  bybit: 'Bybit P2P (BYBIT_API_KEY + BYBIT_API_SECRET)',
+  eldorado: 'El Dorado (ELDORADO_CLIENT_ID + ELDORADO_REFERRAL_ID)',
+};
+
+/**
+ * Binance C2C public search payload. No credentials required.
+ */
+function buildBinanceSearchPayload(
+  asset: string,
+  fiat: string,
+  tradeType: 'BUY' | 'SELL',
+): Record<string, unknown> {
+  return {
+    asset,
+    fiat,
+    tradeType,
+    page: 1,
+    rows: 20,
+    payTypes: [],
+    countries: [],
+    proMerchantAds: false,
+    shieldMerchantAds: false,
+    filterType: 'all',
+    periods: [],
+  };
+}
+
+/**
+ * Best prices out of a raw Binance C2C response.
+ *
+ * Binance semantics: `tradeType BUY` ads are makers *selling* crypto, so they
+ * are our asks and the cheapest of them is what we would pay. `tradeType SELL`
+ * ads are makers *buying* crypto, so they are our bids and the dearest of them
+ * is what we would receive.
+ */
+function bestBinanceRates(data: unknown): LiveRates | null {
+  const items = Array.isArray(data)
+    ? data
+    : ((data as { data?: unknown[] } | null)?.data ?? null);
+  if (!Array.isArray(items)) return null;
+
+  const prices = items
+    .map((item) => Number((item as { adv?: { price?: string | number } })?.adv?.price))
+    .filter((p) => Number.isFinite(p) && p > 0);
+  if (prices.length === 0) return null;
+
+  // Mixed batch: take the two extremes. The caller splits BUY/SELL, so within a
+  // single response every quote is on one side of the book.
+  return { buyRate: Math.min(...prices), sellRate: Math.max(...prices) };
+}
+
+/**
+ * Reads Binance P2P from the public C2C endpoint. No credentials required, which
+ * is why the previous hardcoded `baseRate: 79.2` had no excuse: a real reading
+ * was available and was not taken.
+ *
+ * Exported so the parallel-rates feed reads the same venue through the same code
+ * instead of growing a second, differently-shaped Binance client.
+ *
+ * Orientation: `buyRate` is the cheapest maker *selling*, which is what we would
+ * pay to acquire — our ask. `sellRate` is the dearest maker *buying*, which is
+ * what we would receive — our bid.
+ */
+export async function fetchBinanceLiveRates(asset: string, fiat: string): Promise<LiveRates | null> {
+  const ask = async (tradeType: 'BUY' | 'SELL'): Promise<LiveRates | null> => {
+    try {
+      const res = await fetch(BINANCE_P2P_URL, {
+        method: 'POST',
+        signal: AbortSignal.timeout(10000),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(buildBinanceSearchPayload(asset, fiat, tradeType)),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { code?: string; data?: unknown };
+      // Binance answers 200 with an application-level error code.
+      if (json.code && json.code !== '000000') return null;
+      return bestBinanceRates(json.data);
+    } catch {
+      return null;
+    }
+  };
+
+  const [asks, bids] = await Promise.all([ask('BUY'), ask('SELL')]);
+  if (!asks || !bids) return null;
+  if (asks.buyRate <= 0 || bids.sellRate <= 0) return null;
+  return { buyRate: asks.buyRate, sellRate: bids.sellRate };
+}
+
 /**
  * Tries to fetch live Bybit P2P top-of-book. Requires BYBIT_API_KEY and
  * BYBIT_API_SECRET env vars; returns null (simulated fallback) otherwise.
@@ -122,91 +223,114 @@ function spreadPct(buyRate: number, sellRate: number): number {
 export const fetchCrossExchangeSpreadTool = {
   name: 'fetch_cross_exchange_spread',
   description:
-    'Compara libros de órdenes P2P en tiempo real entre Binance, Bybit, OKX, KuCoin y El Dorado para detectar discrepancias de precios y oportunidades de arbitraje cruzado.',
+    'Compara libros P2P entre venues para detectar discrepancias de precios. Sólo devuelve veredicto de arbitraje cuando hay al menos dos cotizaciones reales; sin fuente en vivo declara la ausencia en vez de mostrar precios de ejemplo.',
   inputSchema: FetchCrossExchangeSpreadInputSchema,
   execute: async (input: FetchCrossExchangeSpreadInput) => {
     const fiat = input.fiat;
     const asset = input.asset;
     const payment = input.paymentMethod;
+    const timestamp = new Date().toISOString();
 
-    // Realistic baseline price index according to currency
-    const baseRate = fiat === 'VES' ? 79.2 : fiat === 'COP' ? 4250 : 1.0;
-
-    // Live data attempts (best-effort; simulated fallback keeps offline runs deterministic).
-    const [bybitLive, elDoradoLive] = await Promise.all([
+    const [binanceLive, bybitLive, elDoradoLive] = await Promise.all([
+      fetchBinanceLiveRates(asset, fiat),
       fetchBybitLiveRates(asset, fiat),
       fetchElDoradoLiveRates(asset, fiat),
     ]);
 
-    const exchangeQuotes = [
-      {
-        exchange: 'Binance P2P',
-        buyRate: round2(baseRate * 0.992),
-        sellRate: round2(baseRate * 1.012),
-        spreadPct: 2.02,
-        activeMerchants: 48,
-        source: 'SIMULATED' as const,
-      },
-      {
-        exchange: 'Bybit P2P',
-        buyRate: bybitLive ? round2(bybitLive.buyRate) : round2(baseRate * 0.988),
-        sellRate: bybitLive ? round2(bybitLive.sellRate) : round2(baseRate * 1.015),
-        spreadPct: bybitLive ? spreadPct(bybitLive.buyRate, bybitLive.sellRate) : 2.73,
-        activeMerchants: 22,
-        ...(bybitLive ? { source: 'LIVE' as const } : { source: 'SIMULATED' as const }),
-      },
-      {
-        exchange: 'OKX P2P',
-        buyRate: round2(baseRate * 0.994),
-        sellRate: round2(baseRate * 1.009),
-        spreadPct: 1.51,
-        activeMerchants: 15,
-        source: 'SIMULATED' as const,
-      },
-      {
-        exchange: 'KuCoin P2P',
-        buyRate: round2(baseRate * 0.985),
-        sellRate: round2(baseRate * 1.018),
-        spreadPct: 3.35,
-        activeMerchants: 9,
-        source: 'SIMULATED' as const,
-      },
-    ];
+    /**
+     * Only venues that were actually read appear here.
+     *
+     * The previous version synthesised Binance, OKX and KuCoin from a hardcoded
+     * `baseRate` and then ranked those invented quotes together with the live
+     * ones to produce `isViable`. The fabricated venues usually won, so the tool
+     * returned a tradeability verdict for prices nobody quoted. A venue that was
+     * not read is absent, not approximated.
+     */
+    const exchanges: VenueQuote[] = [];
+    if (binanceLive) exchanges.push({ exchange: 'Binance P2P', ...binanceLive, source: 'LIVE' });
+    if (bybitLive) exchanges.push({ exchange: 'Bybit P2P', ...bybitLive, source: 'LIVE' });
+    if (elDoradoLive) exchanges.push({ exchange: 'El Dorado P2P', ...elDoradoLive, source: 'LIVE' });
 
-    if (elDoradoLive) {
-      exchangeQuotes.push({
-        exchange: 'El Dorado P2P',
-        buyRate: round2(elDoradoLive.buyRate),
-        sellRate: round2(elDoradoLive.sellRate),
-        spreadPct: spreadPct(elDoradoLive.buyRate, elDoradoLive.sellRate),
-        activeMerchants: 0,
-        source: 'LIVE' as const,
-      });
+    const expectedSource = `${EXPECTED_SOURCES.binance}; ${EXPECTED_SOURCES.bybit}; ${EXPECTED_SOURCES.eldorado}`;
+
+    // Total absence: no venue was readable.
+    if (exchanges.length === 0) {
+      return {
+        fiat,
+        asset,
+        paymentMethod: payment,
+        exchanges: [],
+        crossArbitrageOpportunity: null,
+        rateStatus: 'UNAVAILABLE_NO_LIVE_SOURCE',
+        unavailableReason: 'SIN_COTIZACIONES_EN_VIVO',
+        expectedSource,
+        actionable: false,
+        timestamp,
+      };
     }
 
-    // Find cross-arbitrage: lowest buy anywhere vs highest sell anywhere
-    const lowestBuy = [...exchangeQuotes].sort((a, b) => a.buyRate - b.buyRate)[0]!;
-    const highestSell = [...exchangeQuotes].sort((a, b) => b.sellRate - a.sellRate)[0]!;
+    const rounded = exchanges.map((q) => ({
+      exchange: q.exchange,
+      buyRate: round2(q.buyRate),
+      sellRate: round2(q.sellRate),
+      spreadPct: spreadPct(q.buyRate, q.sellRate),
+      source: q.source as const,
+    }));
+
+    // A single venue is not an arbitrage. The gap between our own bid and ask is
+    // a cost of crossing, not an opportunity, so it must not be reported as one.
+    if (exchanges.length < 2) {
+      return {
+        fiat,
+        asset,
+        paymentMethod: payment,
+        exchanges: rounded,
+        crossArbitrageOpportunity: null,
+        unavailableReason: 'SOLO_UN_VENUE_EN_VIVO',
+        expectedSource,
+        actionable: false,
+        timestamp,
+      };
+    }
+
+    const lowestBuy = [...exchanges].sort((a, b) => a.buyRate - b.buyRate)[0]!;
+    const highestSell = [...exchanges].sort((a, b) => b.sellRate - a.sellRate)[0]!;
+
+    // Same venue on both legs is a spread, not a cross-venue arbitrage.
+    if (lowestBuy.exchange === highestSell.exchange) {
+      return {
+        fiat,
+        asset,
+        paymentMethod: payment,
+        exchanges: rounded,
+        crossArbitrageOpportunity: null,
+        unavailableReason: 'SIN_DISCREPANCIA_ENTRE_VENUES',
+        expectedSource,
+        actionable: false,
+        timestamp,
+      };
+    }
 
     const crossSpreadVes = round2(highestSell.sellRate - lowestBuy.buyRate);
     const crossSpreadPct = Number(((crossSpreadVes / lowestBuy.buyRate) * 100).toFixed(2));
-    const isArbitrageViable = crossSpreadPct >= 1.5;
 
     return {
       fiat,
       asset,
       paymentMethod: payment,
-      exchanges: exchangeQuotes,
+      exchanges: rounded,
       crossArbitrageOpportunity: {
         buyOn: lowestBuy.exchange,
-        buyPrice: lowestBuy.buyRate,
+        buyPrice: round2(lowestBuy.buyRate),
         sellOn: highestSell.exchange,
-        sellPrice: highestSell.sellRate,
+        sellPrice: round2(highestSell.sellRate),
         netSpreadPct: crossSpreadPct,
-        isViable: isArbitrageViable,
+        isViable: crossSpreadPct >= 1.5,
         estimatedProfitPer1000Usdt: round2(crossSpreadPct * 10),
       },
-      timestamp: new Date().toISOString(),
+      expectedSource,
+      actionable: false,
+      timestamp,
     };
   },
 };

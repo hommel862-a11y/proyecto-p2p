@@ -2,50 +2,81 @@ import {
   CompileDisputeDossierInputSchema,
   type CompileDisputeDossierInput,
 } from '../schemas/index.js';
+import { unverifiedVerdict } from '../core/verdict.js';
 
+/**
+ * A dispute dossier is submitted to a third-party exchange arbitrator. Two
+ * things here were fabrications with legal consequences.
+ *
+ * First, `sha256Digest` was `dossier_sha256_${Date.now()}_${orderId}` — a
+ * timestamp and an order-ID substring wearing the costume of a SHA-256. An
+ * arbitrator comparing that string to the document would find no match, and
+ * the tool's own description promised "sellos criptográficos SHA-256".
+ *
+ * Second, the appeal narratives asserted facts the tool had never checked.
+ * UNRELEASED_CRYPTO claimed "Se verificó la acreditación efectiva y definitiva
+ * de los fondos mediante extracto bancario firmado digitalmente" and
+ * FAKE_RECEIPT claimed "La entidad bancaria confirma que el número de
+ * referencia no existe" — no bank was ever contacted.
+ *
+ * The narrative is retained as a *draft template* with its unproven
+ * assertions removed, and the probability-of-success figure is dropped
+ * entirely.
+ */
 export const compileDisputeDossierTool = {
   name: 'compile_dispute_dossier',
   description:
-    'Genera un expediente forense y dossier de apelación con sellos criptográficos SHA-256 para resolver disputas en Binance/Bybit en menos de 15 minutos.',
+    'Prepara un borrador de expediente forense y dossier de apelación para disputas P2P. Sin evidencia adjunta verificada no genera sello criptográfico, no afirma hechos no comprobados y no estima probabilidad de resolución.',
   inputSchema: CompileDisputeDossierInputSchema,
   execute: (input: CompileDisputeDossierInput) => {
     const orderId = input.orderId;
     const reason = input.disputeReason;
-    const bankRef = input.bankReference || 'REF-UNCONFIRMED';
-    const amountUsdt = input.amountUsdt;
-    const amountVes = input.amountVes;
+    const bankRef = input.bankReference ?? null;
     const nick = input.counterpartyNick;
 
-    const mockSha256 = `dossier_sha256_${Date.now()}_${orderId.slice(-6)}`;
-
-    const legalNarratives: Record<string, string> = {
+    // Draft skeletons. Every clause that previously asserted a verified bank
+    // confirmation is now a field the operator must fill from a real document.
+    const appealDrafts: Record<string, string> = {
       THIRD_PARTY_PAYMENT:
-        'La contraparte realizó el pago desde una cuenta bancaria a nombre de un tercero no titular, violando expresamente los Términos de Servicio de la plataforma P2P (Regla de Pago de Terceros). Se solicita cancelación inmediata y retorno de fondos a la cuenta de origen.',
+        'La contraparte alleges que el pago provino de una cuenta bancaria a nombre de un tercero no titular. [PENDIENTE: adjuntar comprobante bancario y Cédula del titular de la cuenta de destino; sin ese documento esta afirmación no puede sostenerse ante el árbitro.]',
       UNRELEASED_CRYPTO:
-        'Se verificó la acreditación efectiva y definitiva de los fondos en la cuenta receptora mediante extracto bancario firmado digitalmente. La contraparte no ha liberado las criptomonedas dentro del tiempo reglamentario.',
+        'La contraparte no ha liberado las criptomonedas dentro del tiempo reglamentario. [PENDIENTE: adjuntar extracto bancario que acredite la acreditación; no se ha consultado a la entidad financiera.]',
       FAKE_RECEIPT:
-        'El comprobante suministrado por el comprador presenta discrepancias forenses en metadatos y tipografía. La entidad bancaria confirma que el número de referencia no existe en su cámara de compensación.',
+        'El comprobante suministrado por la contraparte fue cuestionado. [PENDIENTE: adjuntar análisis de metadatos y constancia de la entidad financiera sobre la inexistencia de la referencia. Sin esa constancia, no puede afirmarse que la referencia sea falsa.]',
       INCORRECT_AMOUNT:
-        'El monto acreditado no coincide con el total exacto pactado en la orden P2P. Se adjunta desglose contable y extracto bancario.',
+        'El monto acreditado no coincide con el pactado. [PENDIENTE: adjuntar desglose contable y extracto bancario que demuestre la diferencia.]',
     };
 
-    return {
-      orderId,
-      dossierStatus: 'DOSSIER_COMPILED_READY_FOR_SUBMISSION',
-      sha256Digest: mockSha256,
-      disputeReason: reason,
-      recommendedAppealStatement: legalNarratives[reason] || 'Disputa operativa P2P.',
-      evidenceMetadata: {
+    const hasEvidence = !!input.chatLogSummary || !!input.bankReference;
+
+    return unverifiedVerdict(
+      {
         orderId,
-        counterparty: nick,
-        fiatAmountVes: amountVes,
-        cryptoAmountUsdt: amountUsdt,
-        bankReference: bankRef,
-        chatLogSummaryIncluded: !!input.chatLogSummary,
-        bankingProofTimestamp: new Date().toISOString(),
+        dossierStatus: 'DRAFT_UNVERIFIED',
+        sha256Digest: null,
+        sha256Rationale:
+          'Un sello SHA-256 sólo puede calcularse sobre los bytes finales del documento. Esta herramienta redacta contenido; no genera un PDF, por lo que no emite digest.',
+        disputeReason: reason,
+        recommendedAppealStatement: appealDrafts[reason] ?? 'Disputa operativa P2P. [PENDIENTE: documentación.]',
+        evidenceMetadata: {
+          orderId,
+          counterparty: nick,
+          fiatAmountVes: input.amountVes,
+          cryptoAmountUsdt: input.amountUsdt,
+          bankReferenceProvided: bankRef,
+          chatLogSummaryProvided: !!input.chatLogSummary,
+          evidenceAttachmentsVerified: false,
+          evidenceVerifiedBy: null,
+          bankingProofTimestamp: null,
+        },
+        exportFormat: null,
+        resolutionProbabilityPct: null,
+        resolutionProbabilityRationale:
+          'No se estima probabilidad de resolución: no existe base de datos histórica de resultados de disputa que la sustente.',
+        anyEvidenceSupplied: hasEvidence,
       },
-      exportFormat: 'PDF_A_COMPLIANT',
-      resolutionProbabilityPct: 98.4,
-    };
+      'NO_EVIDENCE_ATTACHMENT',
+      'bank statement / signed evidence bundle with verified attachments',
+    );
   },
 };

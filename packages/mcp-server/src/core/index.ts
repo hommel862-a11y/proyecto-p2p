@@ -26,6 +26,29 @@ export function roundMoney(value: number, decimals: number = 2): number {
   return rounded === 0 ? 0 : rounded;
 }
 
+// ─── nd (no disponible) ───────────────────────────────────────────────────────
+
+/**
+ * Renders a nullable measurement inside a human-readable sentence.
+ *
+ * A missing measurement is an absence, not a zero. The two obvious wrong
+ * answers both invent a fact:
+ *
+ * - `value ?? 0` prints `0.00`, which for a gap reads as "the parallel rate and
+ *   the official rate are identical" — a claim about the market that nobody
+ *   measured, and the single most dangerous thing a rates tool can say.
+ * - raw interpolation prints the literal word `null`.
+ *
+ * `N/D` (no disponible) is the honest rendering: it occupies the same slot as a
+ * number and states that the slot is empty.
+ *
+ * Non-finite values (`NaN`, `±Infinity`) are absences too, so they render as
+ * `N/D` rather than as a numeric string that would parse back as a rate.
+ */
+export function nd(value: number | null | undefined, decimals = 2): string {
+  return value == null || !Number.isFinite(value) ? 'N/D' : value.toFixed(decimals);
+}
+
 // ─── Spread Engine ────────────────────────────────────────────────────────────
 
 export interface SpreadResult {
@@ -234,22 +257,36 @@ export type InterventionPhase =
   | 'QUIET_ACCUMULATION';
 
 export interface BcvGapAnalysis {
-  parallelRate: number;
-  bcvRate: number;
-  gapVes: number;
-  gapPct: number;
-  zone: BcvGapZone;
+  parallelRate: number | null;
+  bcvRate: number | null;
+  /** `null` when either side is missing. A zero gap is a claim about the world. */
+  gapVes: number | null;
+  gapPct: number | null;
+  zone: BcvGapZone | 'UNAVAILABLE';
   description: string;
+  /** A gap nobody measured is not a gap you can act on. */
+  actionable: boolean;
+  unavailableReason: string | null;
 }
 
 export interface BcvPredictorWindow {
   vetDayOfWeek: number;
   vetHour: number;
   phase: InterventionPhase;
-  probabilityPct: number;
+  /**
+   * Always `null`.
+   *
+   * This used to be 95 / 85 / 80 / 75, chosen from the day of the week and the
+   * hour. There is no model, no historical series and no intervention record
+   * behind those numbers — they were a calendar dressed up as a forecast, and a
+   * percentage is the single most trusted shape an agent can be handed.
+   */
+  probabilityPct: number | null;
+  probabilityBasis: 'NO_MODEL';
   nextExpectedIntervention: string;
   hoursUntilIntervention: number;
   rationale: string;
+  actionable: false;
 }
 
 export interface BcvRecommendation {
@@ -283,21 +320,38 @@ export function getVenezuelaTimeParts(date: Date = new Date()): {
 
 /**
  * Calcula la brecha cambiaria (spread) entre la tasa Paralela y la tasa Oficial BCV.
+ *
+ * Falla cerrado. Antes devolvía `gapPct: 0` y `zone: 'NORMAL'` cuando una tasa
+ * faltaba, y eso se lee como "no hay brecha" — una afirmación sobre el mercado.
+ * Cuando falta una de las dos tasas, la brecha se desconoce.
  */
-export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAnalysis {
-  if (bcvRate <= 0 || parallelRate <= 0) {
+export function calculateBcvGap(
+  parallelRate: number | null,
+  bcvRate: number | null,
+): BcvGapAnalysis {
+  const missing =
+    parallelRate == null || !Number.isFinite(parallelRate) || parallelRate <= 0
+      ? 'TASA_PARALELA_NO_DISPONIBLE'
+      : bcvRate == null || !Number.isFinite(bcvRate) || bcvRate <= 0
+        ? 'TASA_BCV_NO_DISPONIBLE'
+        : null;
+
+  if (missing) {
     return {
-      parallelRate,
-      bcvRate,
-      gapVes: 0,
-      gapPct: 0,
-      zone: 'NORMAL',
-      description: 'Tasas no disponibles o inválidas.',
+      parallelRate: parallelRate ?? null,
+      bcvRate: bcvRate ?? null,
+      gapVes: null,
+      gapPct: null,
+      zone: 'UNAVAILABLE',
+      description:
+        'Brecha indeterminada: falta al menos una de las dos tasas. No se emite zona de riesgo porque no hay medición.',
+      actionable: false,
+      unavailableReason: missing,
     };
   }
 
-  const gapVes = Math.round((parallelRate - bcvRate) * 100) / 100;
-  const gapPct = Math.round(((parallelRate - bcvRate) / bcvRate) * 10000) / 100;
+  const gapVes = Math.round((parallelRate! - bcvRate!) * 100) / 100;
+  const gapPct = Math.round(((parallelRate! - bcvRate!) / bcvRate!) * 10000) / 100;
 
   let zone: BcvGapZone;
   let description: string;
@@ -326,28 +380,33 @@ export function calculateBcvGap(parallelRate: number, bcvRate: number): BcvGapAn
     gapPct,
     zone,
     description,
+    actionable: true,
+    unavailableReason: null,
   };
 }
 
 /**
- * Predice la fase del ciclo de intervención cambiaria del BCV según la hora de Venezuela (VET).
+ * Describe la fase del ciclo cambiario por reloj de Venezuela.
+ *
+ * Sólo afirma lo observable: qué día y qué hora son en VET, y la fase que el
+ * calendario sugiere. NO emite probabilidad. Las 95/85/80/75 anteriores
+ * salían del día de la semana y la hora, sin modelo, histórico ni registro de
+ * intervenciones — un calendario vestido de pronóstico.
  */
 export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWindow {
   const { day, hour } = getVenezuelaTimeParts(now);
   const isInterventionDay = day === 1 || day === 4; // Lunes principal, Jueves refuerzo
 
   let phase: InterventionPhase;
-  let probabilityPct: number;
   let nextExpectedIntervention: string;
   let hoursUntilIntervention: number;
-  let rationale: string;
+  let calendarNote: string;
 
   if (isInterventionDay && hour >= 9 && hour <= 13) {
     phase = 'INTERVENTION_ACTIVE';
-    probabilityPct = day === 1 ? 95 : 85;
     nextExpectedIntervention = 'En curso actualmente';
     hoursUntilIntervention = 0;
-    rationale = `Inyección de divisas en curso en la banca comercial (${day === 1 ? 'Lunes principal' : 'Jueves de refuerzo'}). Contención artificial de tasas.`;
+    calendarNote = day === 1 ? 'Lunes principal' : 'Jueves de refuerzo';
   } else if (
     (day === 0 && hour >= 16) ||
     (day === 1 && hour < 9) ||
@@ -355,36 +414,35 @@ export function predictBcvIntervention(now: Date = new Date()): BcvPredictorWind
     (day === 4 && hour < 9)
   ) {
     phase = 'PRE_INTERVENTION_COMPRESSION';
-    probabilityPct = 80;
     nextExpectedIntervention =
       day === 1 || day === 0 ? 'Lunes 09:30 AM VET' : 'Jueves 09:30 AM VET';
     hoursUntilIntervention = day === 1 || day === 4 ? Math.max(1, 9 - hour) : 12;
-    rationale =
-      'Ventana pre-intervención. Expectativa de colocación bancaria de divisas en las próximas horas.';
+    calendarNote = 'ventana previa a subasta';
   } else if ((isInterventionDay && hour > 13) || day === 2 || day === 5) {
     phase = 'POST_INTERVENTION_REBOUND';
-    probabilityPct = 75;
     nextExpectedIntervention = day <= 2 ? 'Jueves 09:30 AM VET' : 'Próximo Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 2 ? 40 : day === 5 ? 65 : 20;
-    rationale =
-      'Ventana post-intervención. Las divisas de la subasta son absorbidas y el spread suele rebotar al alza.';
+    calendarNote = 'ventana posterior a subasta';
   } else {
     phase = 'QUIET_ACCUMULATION';
-    probabilityPct = 40;
     nextExpectedIntervention = day === 3 ? 'Jueves 09:30 AM VET' : 'Lunes 09:30 AM VET';
     hoursUntilIntervention = day === 3 ? 18 : 36;
-    rationale =
-      'Mercado fuera de subastas bancarias oficiales. Cotizaciones operan por oferta y demanda pura.';
+    calendarNote = 'fuera de subastas bancarias';
   }
 
   return {
     vetDayOfWeek: day,
     vetHour: hour,
     phase,
-    probabilityPct,
+    probabilityPct: null,
+    probabilityBasis: 'NO_MODEL',
     nextExpectedIntervention,
     hoursUntilIntervention,
-    rationale,
+    rationale:
+      `Fase de calendario: ${calendarNote} (${day === 1 ? 'Lunes' : day === 4 ? 'Jueves' : 'día no hábil'}, ` +
+      `${String(hour).padStart(2, '0')}:00 VET). Esta herramienta no hay modelo probabilístico ni histórico ` +
+      'de intervenciones, por lo que no emite probabilidad de intervención.',
+    actionable: false,
   };
 }
 
@@ -400,10 +458,25 @@ export function getBcvMarketIntelligence(
   const window = predictBcvIntervention(now);
 
   let recommendation: BcvRecommendation;
-  if (gap.zone === 'CRITICAL_DISPERSION') {
+
+  // An unmeasured gap cannot steer a position, so it is checked before every
+  // other branch. `gap.gapPct` is `null` in this case, and each branch below both
+  // reads that number and emits a trade instruction. Letting it fall through to
+  // MAINTAIN_NORMAL would order "rotate intraday as normal" on the strength of a
+  // gap nobody measured — and `null >= 22` is `false`, so the hot-gap test would
+  // also fail silently. The absence is published as the recommendation instead.
+  if (gap.gapPct == null) {
+    recommendation = {
+      action: 'UNAVAILABLE',
+      rationale:
+        `Brecha indeterminada (${gap.unavailableReason ?? 'TASA_NO_DISPONIBLE'}): ` +
+        `no se emite recomendación táctica porque no hay medición. ` +
+        `Paralelo: ${nd(gap.parallelRate)} VES · BCV: ${nd(gap.bcvRate)} VES.`,
+    };
+  } else if (gap.zone === 'CRITICAL_DISPERSION') {
     recommendation = {
       action: 'DEFENSIVE_HEDGE',
-      rationale: `Dispersión crítica (${gap.gapPct}%). Riesgo cambiario inminente. Blindaje 100% USDT.`,
+      rationale: `Dispersión crítica (${nd(gap.gapPct)}%). Riesgo cambiario inminente. Blindaje 100% USDT.`,
     };
   } else if (
     window.phase === 'PRE_INTERVENTION_COMPRESSION' &&
@@ -411,7 +484,7 @@ export function getBcvMarketIntelligence(
   ) {
     recommendation = {
       action: 'EXPAND_SPREAD',
-      rationale: `Brecha caliente (${gap.gapPct}%) previa a subasta. Maximizar captura en puntas altas.`,
+      rationale: `Brecha caliente (${nd(gap.gapPct)}%) previa a subasta. Maximizar captura en puntas altas.`,
     };
   } else if (
     window.phase === 'INTERVENTION_ACTIVE' ||
@@ -425,7 +498,7 @@ export function getBcvMarketIntelligence(
   } else {
     recommendation = {
       action: 'MAINTAIN_NORMAL',
-      rationale: `Brecha (${gap.gapPct}%) en rango operativo normal. Rotación intradía estándar.`,
+      rationale: `Brecha (${nd(gap.gapPct)}%) en rango operativo normal. Rotación intradía estándar.`,
     };
   }
 
@@ -439,35 +512,128 @@ export function getBcvMarketIntelligence(
 
 // ─── Venezuelan Rates Provider (Feeds & Autofill) ─────────────────────────────
 
-export interface OfficialBcvRates {
-  usd: number;
-  eur: number;
-  cny: number;
-  rub: number;
-  effectiveDate: string;
+/**
+ * Una lectura de tasa que alguien realmente fue a buscar.
+ * `null` en cualquier campo significa que ese campo no se pudo leer.
+ */
+export interface BcvLiveReading {
+  usd: number | null;
+  eur: number | null;
+  cny: number | null;
+  rub: number | null;
+  effectiveDate: string | null;
+  /** De dónde salió el número, tal cual lo reportó la fuente. */
   source: string;
+  fetchedAt: string;
+}
+
+export interface OfficialBcvRates {
+  usd: number | null;
+  eur: number | null;
+  cny: number | null;
+  rub: number | null;
+  /** `null` cuando no hay tasa: una fecha de valor sin tasa no describe nada. */
+  effectiveDate: string | null;
+  /** Nunca `BCV_OFFICIAL_FEED` a menos que un feed real haya respondido. */
+  source: string;
+  provenance: 'LIVE' | 'UNAVAILABLE_NO_LIVE_SOURCE';
+  unavailableReason: string | null;
+  expectedSource: string;
+  actionable: boolean;
   isFallback: boolean;
   timestamp: string;
 }
 
 /**
- * Retorna las tasas oficiales publicadas por el Banco Central de Venezuela.
+ * Dónde debería venir la tasa oficial si alguien la fuera a buscar.
  */
-export function getOfficialBcvRates(cacheFallback = true): OfficialBcvRates {
-  const now = new Date();
-  const effectiveDate = now.toISOString().split('T')[0] ?? '2026-09-13';
+export const BCV_EXPECTED_SOURCE =
+  'Cotizave API `GET /v1/fx/rates` (endpoint credentialed, header `X-API-Key`; markets `reference`→USD oficial y `eur_reference`→EUR oficial) · MCP get_bcv_rates';
 
-  // Tasas oficiales calibradas
+/**
+ * Retorna las tasas oficiales publicadas por el Banco Central de Venezuela.
+ *
+ * Antes devolvía un literal — `usd: 68.45, eur: 74.2, cny: 9.42, rub: 0.76` —
+ * con `source: 'BCV_OFFICIAL_FEED'` y un `isFallback` que los llamadores ignoraban.
+ * Eso no era una tasa oficial: era un número escrito a mano con el nombre de una
+ * institución encima. Peor: 68.45 no se parecía a ninguna tasa real observada
+ * (la de la fecha del incidente era 857.8876), así que no era ni un default
+ * tolerable ni un redondeo.
+ *
+ * Ahora la ausencia se propaga como ausencia y la lectura real pasa intacta.
+ */
+export function getOfficialBcvRates(
+  cacheFallback = true,
+  reading: BcvLiveReading | null = null,
+): OfficialBcvRates {
+  const now = new Date().toISOString();
+  const pos = (v: number | null | undefined): number | null =>
+    v != null && Number.isFinite(v) && v > 0 ? v : null;
+
+  if (!reading) {
+    return {
+      usd: null,
+      eur: null,
+      cny: null,
+      rub: null,
+      effectiveDate: null,
+      source: 'SIN_FUENTE_BCV',
+      provenance: 'UNAVAILABLE_NO_LIVE_SOURCE',
+      unavailableReason: 'SIN_FUENTE_BCV_EN_VIVO',
+      expectedSource: BCV_EXPECTED_SOURCE,
+      actionable: false,
+      isFallback: cacheFallback,
+      timestamp: now,
+    };
+  }
+
+  const usd = pos(reading.usd);
+  const eur = pos(reading.eur);
+  const cny = pos(reading.cny);
+  const rub = pos(reading.rub);
+
+  // A live response that carries no usable rate is still an absence.
+  if (usd == null && eur == null && cny == null && rub == null) {
+    return {
+      usd: null,
+      eur: null,
+      cny: null,
+      rub: null,
+      effectiveDate: null,
+      source: reading.source,
+      provenance: 'UNAVAILABLE_NO_LIVE_SOURCE',
+      unavailableReason: 'RESPUESTA_SIN_TASAS_USABLES',
+      expectedSource: BCV_EXPECTED_SOURCE,
+      actionable: false,
+      isFallback: cacheFallback,
+      timestamp: now,
+    };
+  }
+
   return {
-    usd: 68.45,
-    eur: 74.2,
-    cny: 9.42,
-    rub: 0.76,
-    effectiveDate,
-    source: 'BCV_OFFICIAL_FEED',
-    isFallback: cacheFallback,
-    timestamp: now.toISOString(),
+    usd,
+    eur,
+    cny,
+    rub,
+    effectiveDate: reading.effectiveDate,
+    source: reading.source,
+    provenance: 'LIVE',
+    unavailableReason: null,
+    expectedSource: BCV_EXPECTED_SOURCE,
+    actionable: false,
+    isFallback: false,
+    timestamp: now,
   };
+}
+
+/**
+ * Una cotización paralelo que alguien realmente fue a leer de un monitor concreto.
+ */
+export interface ParallelLiveReading {
+  source: string;
+  ask: number;
+  bid: number;
+  fetchedAt: string;
 }
 
 export interface ParallelRateEntry {
@@ -477,69 +643,100 @@ export interface ParallelRateEntry {
   mid: number;
   spreadPct: number;
   updatedAt: string;
+  sourceLabel: 'LIVE';
 }
 
 export interface ParallelRatesFeed {
   timestamp: string;
+  /** Sólo monitores efectivamente leídos. Sin lectura, sin entrada. */
   sources: Record<string, ParallelRateEntry>;
   summary: {
-    averageMid: number;
-    highestAsk: number;
-    lowestBid: number;
-    dispersionPct: number;
+    /** `null` sin al menos una lectura: un mid inventado es peor que ninguno. */
+    averageMid: number | null;
+    highestAsk: number | null;
+    lowestBid: number | null;
+    dispersionPct: number | null;
   };
+  provenance: 'LIVE' | 'UNAVAILABLE_NO_LIVE_SOURCE';
+  unavailableReason: string | null;
+  expectedSource: string;
+  actionable: boolean;
 }
 
 /**
- * Retorna cotizaciones paralelas consolidadas de múltiples monitores (Binance P2P, CotizaVe, EnParalelo, etc.).
+ * Dónde deberían venir las cotizaciones paralelas si alguien las fuera a buscar.
  */
-export function getParallelRatesFeed(requestedSources?: string[]): ParallelRatesFeed {
-  const now = new Date().toISOString();
+export const PARALLEL_EXPECTED_SOURCE =
+  'Binance P2P C2C (endpoint público) · EnParaleloVzla · CriptoNoticias · CotizaVe';
 
-  const baselineData: Record<string, { ask: number; bid: number }> = {
-    binance_p2p: { ask: 79.8, bid: 78.9 },
-    criptonoticias: { ask: 80.2, bid: 79.1 },
-    enparalelovzla: { ask: 80.5, bid: 79.4 },
-    cotizave: { ask: 79.7, bid: 78.8 },
-  };
+/**
+ * Retorna cotizaciones paralelas consolidadas de los monitores que se leyeron.
+ *
+ * Antes publicaba cuatro citas fijas atribuidas a cuatro monitores nombrados
+ * (`binance_p2p`, `criptonoticias`, `enparalelovzla`, `cotizave`) y, cuando no
+ * había ninguna, devolvía 79.5 / 80.5 / 78.8 como resumen. Ninguno de esos
+ * monitores se consultaba. El resultado: una "dispersión de mercado" calculada
+ * sobre números escritos a mano, con el nombre de cuatro fuentes encima.
+ */
+export function getParallelRatesFeed(
+  requestedSources?: string[],
+  readings: ParallelLiveReading[] = [],
+): ParallelRatesFeed {
+  const now = new Date().toISOString();
 
   const sources: Record<string, ParallelRateEntry> = {};
   const mids: number[] = [];
   const asks: number[] = [];
   const bids: number[] = [];
 
-  for (const [key, val] of Object.entries(baselineData)) {
+  for (const reading of readings) {
     if (requestedSources && requestedSources.length > 0) {
-      const match = requestedSources.some((s) => key.toLowerCase().includes(s.toLowerCase()));
+      const match = requestedSources.some((s) =>
+        reading.source.toLowerCase().includes(s.toLowerCase()),
+      );
       if (!match) continue;
     }
+    if (!Number.isFinite(reading.ask) || reading.ask <= 0) continue;
+    if (!Number.isFinite(reading.bid) || reading.bid <= 0) continue;
 
-    const mid = Math.round(((val.ask + val.bid) / 2) * 100) / 100;
-    const spreadPct = Math.round(((val.ask - val.bid) / val.bid) * 10000) / 100;
+    const mid = Math.round(((reading.ask + reading.bid) / 2) * 100) / 100;
+    const spreadPct = Math.round(((reading.ask - reading.bid) / reading.bid) * 10000) / 100;
 
-    sources[key] = {
-      source: key,
-      ask: val.ask,
-      bid: val.bid,
+    sources[reading.source] = {
+      source: reading.source,
+      ask: reading.ask,
+      bid: reading.bid,
       mid,
       spreadPct,
-      updatedAt: now,
+      updatedAt: reading.fetchedAt,
+      sourceLabel: 'LIVE',
     };
 
     mids.push(mid);
-    asks.push(val.ask);
-    bids.push(val.bid);
+    asks.push(reading.ask);
+    bids.push(reading.bid);
   }
 
-  const averageMid =
-    mids.length > 0
-      ? Math.round((mids.reduce((a, b) => a + b, 0) / mids.length) * 100) / 100
-      : 79.5;
+  if (mids.length === 0) {
+    return {
+      timestamp: now,
+      sources: {},
+      summary: {
+        averageMid: null,
+        highestAsk: null,
+        lowestBid: null,
+        dispersionPct: null,
+      },
+      provenance: 'UNAVAILABLE_NO_LIVE_SOURCE',
+      unavailableReason: 'SIN_MONITORES_PARALELOS_EN_VIVO',
+      expectedSource: PARALLEL_EXPECTED_SOURCE,
+      actionable: false,
+    };
+  }
 
-  const highestAsk = asks.length > 0 ? Math.max(...asks) : 80.5;
-  const lowestBid = bids.length > 0 ? Math.min(...bids) : 78.8;
-  const dispersionPct =
-    averageMid > 0 ? Math.round(((highestAsk - lowestBid) / averageMid) * 10000) / 100 : 0;
+  const averageMid = Math.round((mids.reduce((a, b) => a + b, 0) / mids.length) * 100) / 100;
+  const highestAsk = Math.max(...asks);
+  const lowestBid = Math.min(...bids);
 
   return {
     timestamp: now,
@@ -548,46 +745,74 @@ export function getParallelRatesFeed(requestedSources?: string[]): ParallelRates
       averageMid,
       highestAsk,
       lowestBid,
-      dispersionPct,
+      dispersionPct:
+        // Disagreement *between* venues. With a single venue there is nothing to
+        // disagree about: the arithmetic would collapse to 0 and report "every
+        // monitor agrees perfectly" from a sample of one. That is a conclusion
+        // invented from an absence of comparison, so it stays null until a second
+        // venue is actually read.
+        mids.length >= 2 && averageMid > 0
+          ? Math.round(((highestAsk - lowestBid) / averageMid) * 10000) / 100
+          : null,
     },
+    provenance: 'LIVE',
+    unavailableReason: null,
+    expectedSource: PARALLEL_EXPECTED_SOURCE,
+    actionable: false,
   };
 }
 
 export interface AutofillTradeReferenceResult {
   side: 'BUY' | 'SELL';
-  referenceMidRate: number;
+  referenceMidRate: number | null;
   targetMarginPct: number;
-  suggestedPrice: number;
-  marginVes: number;
+  /** `null` sin un mid real: un precio de orden sin libro es un pedido al vacío. */
+  suggestedPrice: number | null;
+  marginVes: number | null;
   executionAdvice: string;
+  actionable: boolean;
+  unavailableReason: string | null;
+  expectedSource: string;
 }
 
 /**
- * Calcula el precio sugerido de apertura de orden P2P optimizado según el margen deseado y el punto medio de mercado.
+ * Calcula el precio sugerido de apertura de orden P2P según el margen deseado.
+ *
+ * Antes tomaba el mid de un feed de cuatro cotizaciones escritas a mano y publicaba
+ * un precio de orden derivado de ahí. Un precio de orden es una instrucción, no una
+ * estimación: si el mid no viene de un libro real, no hay precio que sugerir.
  */
 export function computeAutofillTradePrice(
   side: 'BUY' | 'SELL',
   targetMarginPct = 1.0,
-  fallbackRate?: number,
+  realMidRate?: number | null,
 ): AutofillTradeReferenceResult {
-  const feed = getParallelRatesFeed();
-  const mid = fallbackRate ?? feed.summary.averageMid;
+  const mid =
+    realMidRate != null && Number.isFinite(realMidRate) && realMidRate > 0 ? realMidRate : null;
 
-  let suggestedPrice: number;
-  let marginVes: number;
-  let executionAdvice: string;
-
-  if (side === 'BUY') {
-    // Al comprar USDT (pagando VES), compramos por debajo de la media para revender más caro
-    suggestedPrice = Math.round(mid * (1 - targetMarginPct / 100) * 100) / 100;
-    marginVes = Math.round((mid - suggestedPrice) * 100) / 100;
-    executionAdvice = `Colocar anuncio de compra de USDT a ${suggestedPrice.toFixed(2)} VES (-${targetMarginPct}% respecto al mid ${mid.toFixed(2)} VES).`;
-  } else {
-    // Al vender USDT (recibiendo VES), vendemos por encima de la media
-    suggestedPrice = Math.round(mid * (1 + targetMarginPct / 100) * 100) / 100;
-    marginVes = Math.round((suggestedPrice - mid) * 100) / 100;
-    executionAdvice = `Colocar anuncio de venta de USDT a ${suggestedPrice.toFixed(2)} VES (+${targetMarginPct}% respecto al mid ${mid.toFixed(2)} VES).`;
+  if (mid == null) {
+    return {
+      side,
+      referenceMidRate: null,
+      targetMarginPct,
+      suggestedPrice: null,
+      marginVes: null,
+      executionAdvice:
+        'No se sugiere precio de orden: sin un punto medio de mercado leído en vivo, un precio sería una instrucción enviada al vacío.',
+      actionable: false,
+      unavailableReason: 'SIN_MID_DE_MERCADO_EN_VIVO',
+      expectedSource: 'getParallelRatesFeed (Binance P2P u otro monitor leído)',
+    };
   }
+
+  const suggestedPrice =
+    side === 'BUY'
+      ? Math.round(mid * (1 - targetMarginPct / 100) * 100) / 100
+      : Math.round(mid * (1 + targetMarginPct / 100) * 100) / 100;
+  const marginVes =
+    side === 'BUY'
+      ? Math.round((mid - suggestedPrice) * 100) / 100
+      : Math.round((suggestedPrice - mid) * 100) / 100;
 
   return {
     side,
@@ -595,7 +820,15 @@ export function computeAutofillTradePrice(
     targetMarginPct,
     suggestedPrice,
     marginVes,
-    executionAdvice,
+    executionAdvice:
+      side === 'BUY'
+        ? `Colocar anuncio de compra de USDT a ${suggestedPrice.toFixed(2)} VES (-${targetMarginPct}% respecto al mid ${mid.toFixed(2)} VES).`
+        : `Colocar anuncio de venta de USDT a ${suggestedPrice.toFixed(2)} VES (+${targetMarginPct}% respecto al mid ${mid.toFixed(2)} VES).`,
+    // The price is evidence-based here, so it is usable. That is not the same as
+    // auto-executable: no tool in this system places an order by itself.
+    actionable: true,
+    unavailableReason: null,
+    expectedSource: 'getParallelRatesFeed (Binance P2P u otro monitor leído)',
   };
 }
 
@@ -1510,11 +1743,24 @@ export interface ForensicOperationRecord {
   errorFree?: boolean;
 }
 
+/**
+ * Whether an assessment had real data behind it.
+ *
+ * `NOT_ASSESSED` is not a grade. It is the absence of one: an operator with no
+ * recorded operations has neither complied nor failed, and reporting either
+ * would be a fabrication. Downstream code must branch on this before reading
+ * any score, because a null score is not comparable to 0 and not comparable to
+ * 100.
+ */
+export type AssessmentStatus = 'ASSESSED' | 'NOT_ASSESSED';
+
 export interface SpreadDisciplineResult {
+  assessmentStatus: AssessmentStatus;
   totalOperationsAnalyzed: number;
   compliantOperationsCount: number;
   nonCompliantOperationsCount: number;
-  complianceRatePct: number;
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  complianceRatePct: number | null;
   minSpreadThresholdPct: number;
   averageSpreadPct: number;
   volumeWeightedAverageSpreadPct: number;
@@ -1529,9 +1775,12 @@ export interface SpreadDisciplineResult {
 
 export interface ForensicDossier {
   generatedAt: number;
-  operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK';
-  goldenRuleComplianceScore: number;
-  riskConcentrationScore: number;
+  assessmentStatus: AssessmentStatus;
+  operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' | 'NOT_ASSESSED';
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  goldenRuleComplianceScore: number | null; // 0..100
+  /** `null` when `assessmentStatus` is `NOT_ASSESSED`. */
+  riskConcentrationScore: number | null; // 0..100
   hourlyRisk: HourlyRiskDistributionResult;
   disciplineAudit: SpreadDisciplineResult;
   criticalFindings: string[];
@@ -1686,10 +1935,14 @@ export function auditTradingDisciplineAndSpreadCompliance(
 ): SpreadDisciplineResult {
   if (operations.length === 0) {
     return {
+      assessmentStatus: 'NOT_ASSESSED',
       totalOperationsAnalyzed: 0,
       compliantOperationsCount: 0,
       nonCompliantOperationsCount: 0,
-      complianceRatePct: 100,
+      // An empty ledger is not a perfect ledger. Returning 100 here made every
+      // downstream comparison land on its best branch and certified an operator
+      // who has never traded as 100% compliant.
+      complianceRatePct: null,
       minSpreadThresholdPct,
       averageSpreadPct: 0,
       volumeWeightedAverageSpreadPct: 0,
@@ -1786,6 +2039,7 @@ export function auditTradingDisciplineAndSpreadCompliance(
   }
 
   return {
+    assessmentStatus: 'ASSESSED',
     totalOperationsAnalyzed: totalOps,
     compliantOperationsCount: compliantCount,
     nonCompliantOperationsCount: nonCompliantCount,
@@ -1810,25 +2064,49 @@ export function generateForensicDossier(
   const criticalFindings: string[] = [];
   const preventiveDirectives: string[] = [];
 
+  // Without operations there is nothing to grade. Every branch below compares
+  // `complianceRatePct` against thresholds, so any value chosen for "no data"
+  // silently becomes a verdict — 100 certified an empty track record as
+  // institutionally disciplined. Refuse to produce a rating instead.
+  if (disciplineAudit.assessmentStatus === 'NOT_ASSESSED') {
+    return {
+      generatedAt: Date.now(),
+      assessmentStatus: 'NOT_ASSESSED',
+      operatorStanding: 'NOT_ASSESSED',
+      goldenRuleComplianceScore: null,
+      riskConcentrationScore: null,
+      hourlyRisk,
+      disciplineAudit,
+      criticalFindings,
+      preventiveDirectives,
+      executiveVerdict:
+        disciplineAudit.totalOperationsAnalyzed === 0
+          ? 'SIN CALIFICAR: No hay operaciones registradas. La disciplina operativa no puede evaluarse hasta que exista historial.'
+          : 'SIN CALIFICAR: La muestra de operaciones es insuficiente para emitir una calificación.',
+    };
+  }
+
+  const complianceRatePct = disciplineAudit.complianceRatePct as number;
+
   let operatorStanding: 'DISCIPLINED' | 'MODERATE_DEVIATION' | 'CRITICAL_TILT_RISK' = 'DISCIPLINED';
 
-  if (disciplineAudit.complianceRatePct < 80 || disciplineAudit.tiltSeverity === 'SEVERE') {
+  if (complianceRatePct < 80 || disciplineAudit.tiltSeverity === 'SEVERE') {
     operatorStanding = 'CRITICAL_TILT_RISK';
   } else if (
-    disciplineAudit.complianceRatePct < 95 ||
+    complianceRatePct < 95 ||
     disciplineAudit.tiltSeverity === 'MODERATE' ||
     hourlyRisk.highRiskHours.length >= 3
   ) {
     operatorStanding = 'MODERATE_DEVIATION';
   }
 
-  if (disciplineAudit.complianceRatePct >= 95) {
+  if (complianceRatePct >= 95) {
     criticalFindings.push(
-      `Excelente apego a la Regla de Oro: ${disciplineAudit.complianceRatePct}% de las operaciones cumplieron con el spread neto >= ${disciplineAudit.minSpreadThresholdPct}%.`,
+      `Excelente apego a la Regla de Oro: ${complianceRatePct}% de las operaciones cumplieron con el spread neto >= ${disciplineAudit.minSpreadThresholdPct}%.`,
     );
   } else {
     criticalFindings.push(
-      `Infracción de margen mínimo en ${disciplineAudit.nonCompliantOperationsCount} operaciones (${(100 - disciplineAudit.complianceRatePct).toFixed(1)}% de desvío). Lucro cesante estimado: $${disciplineAudit.estimatedSacrificedProfitUsdt} USDT.`,
+      `Infracción de margen mínimo en ${disciplineAudit.nonCompliantOperationsCount} operaciones (${(100 - complianceRatePct).toFixed(1)}% de desvío). Lucro cesante estimado: $${disciplineAudit.estimatedSacrificedProfitUsdt} USDT.`,
     );
   }
 
@@ -1866,7 +2144,7 @@ export function generateForensicDossier(
     );
   }
 
-  const goldenRuleComplianceScore = Math.round(disciplineAudit.complianceRatePct);
+  const goldenRuleComplianceScore = Math.round(complianceRatePct);
   const riskConcentrationScore = Math.max(
     0,
     Math.min(
@@ -1888,6 +2166,7 @@ export function generateForensicDossier(
 
   return {
     generatedAt: Date.now(),
+    assessmentStatus: 'ASSESSED',
     operatorStanding,
     goldenRuleComplianceScore,
     riskConcentrationScore,
@@ -2782,7 +3061,16 @@ export interface MacroTelemetryInput {
 export interface MacroRegimeAssessment {
   regime: MacroRegimeType;
   rateGapPct: number;
+  /**
+   * A weighted sum of a calendar and a threshold, clamped to [5, 95].
+   *
+   * It is NOT a calibrated probability: there is no training set, no base rate,
+   * no backtest and no outcome data behind those weights. It is retained because
+   * it is part of the agent-facing contract, but it is always published with
+   * `probabilityBasis` so a caller cannot mistake it for a measurement.
+   */
   interventionProbabilityPct: number;
+  probabilityBasis: 'HEURISTIC_UNCALIBRATED';
   devaluationSpeedRiskScore: number;
   recommendedVesHoldMaxMinutes: number;
   makerSpreadAdjustmentPct: number;
@@ -2827,7 +3115,17 @@ export function evaluateMacroBcvRegime(input: MacroTelemetryInput): MacroRegimeA
     devalSpeedRisk = 30;
     maxVesHoldMinutes = 30;
     spreadAdjustmentPct = 0.45;
-    tacticalDirective = `ALERTA VENTANA CAMBIARIA BCV: Inminente inyección de divisas estimada en $${input.estimatedWeeklyBcvInjectionUsd ? (input.estimatedWeeklyBcvInjectionUsd / 1e6).toFixed(0) : '50'}M USD. No retener bolívares por más de 30 minutos; expandir spread de compra (+0.45%) para absorber posibles retrocesos del paralelo.`;
+    // The injection figure is only ever stated when the caller actually supplied
+    // a measured one. It used to fall back to the literal '50', printing a $50M
+    // estimate that nothing in the system had observed.
+    const injection =
+      input.estimatedWeeklyBcvInjectionUsd != null
+        ? ` con una inyección semanal provista de USD ${input.estimatedWeeklyBcvInjectionUsd.toLocaleString('en-US')}`
+        : '';
+    tacticalDirective =
+      `VENTANA DE SUBASTA CALENDARIZADA${injection}: el reloj cae dentro del horario habitual de subasta y la heurística ` +
+      'estimó alta probabilidad de intervención. La probabilidad es una heurística sin calibrar, no una medición; ' +
+      'no retenga bolívares más de 30 minutos por este motivo.';
   } else if (rateGapPct > 22) {
     regime = 'PARALLEL_GAP_EXPANSION';
     devalSpeedRisk = 85;
@@ -2846,6 +3144,7 @@ export function evaluateMacroBcvRegime(input: MacroTelemetryInput): MacroRegimeA
     regime,
     rateGapPct,
     interventionProbabilityPct: interventionProb,
+    probabilityBasis: 'HEURISTIC_UNCALIBRATED',
     devaluationSpeedRiskScore: devalSpeedRisk,
     recommendedVesHoldMaxMinutes: maxVesHoldMinutes,
     makerSpreadAdjustmentPct: spreadAdjustmentPct,

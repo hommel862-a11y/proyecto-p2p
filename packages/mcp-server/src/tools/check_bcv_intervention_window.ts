@@ -7,13 +7,16 @@ import {
 export const checkBcvInterventionWindowTool = {
   name: 'check_bcv_intervention_window',
   description:
-    'Verifica la fase actual del ciclo de intervención cambiaria del BCV (09:00 - 13:00 VET) y estima probabilidad de inyección de divisas en la banca.',
+    'Indica si el momento actual cae dentro de la ventana horaria programada de subasta cambiaria del BCV (09:00 - 13:00 VET, lunes y jueves). Es una lectura de calendario: no estima probabilidad de inyección de divisas, porque no hay modelo ni histórico detrás de esa cifra.',
   inputSchema: CheckBcvInterventionWindowInputSchema,
   execute: (input: CheckBcvInterventionWindowInput) => {
     const evalDate = input.testTimestamp ? new Date(input.testTimestamp) : new Date();
     const window = predictBcvIntervention(evalDate);
 
-    const isInterventionActive = window.phase === 'INTERVENTION_ACTIVE';
+    // "Inside the scheduled window" is a calendar fact. It is NOT evidence that
+    // the BCV placed any currency today, so it is named accordingly and never
+    // treated as an actionable signal.
+    const insideScheduledWindow = window.phase === 'INTERVENTION_ACTIVE';
 
     return {
       evaluatedTimestamp: evalDate.toISOString(),
@@ -21,17 +24,20 @@ export const checkBcvInterventionWindowTool = {
       vetHour: window.vetHour,
       phase: window.phase,
       probabilityPct: window.probabilityPct,
-      isInterventionActive,
+      probabilityBasis: window.probabilityBasis,
+      isInterventionActive: insideScheduledWindow,
+      isVerifiedIntervention: false,
       nextExpectedIntervention: window.nextExpectedIntervention,
       hoursUntilIntervention: window.hoursUntilIntervention,
       rationale: window.rationale,
-      tradingDirectives: isInterventionActive
-        ? 'INTERVENCIÓN EN CURSO: El BCV está colocando divisas. Esperar dip o cotizar spreads amplios ante compresión.'
+      actionable: window.actionable,
+      tradingDirectives: insideScheduledWindow
+        ? 'VENTANA DE SUBASTA PROGRAMADA: el reloj cae dentro del horario habitual de subasta. No hay verificación de que el BCV haya colocado divisas hoy; no actúe sobre esta ventana por sí sola.'
         : window.phase === 'PRE_INTERVENTION_COMPRESSION'
-          ? 'VENTANA PRE-INTERVENCIÓN: Expectativa de inyección. Acelerar venta de USDT en máximos antes de la apertura bancaria.'
+          ? 'VENTANA PRE-SUBASTA PROGRAMADA: proximity horaria a la próxima subasta del calendario. No es una señal de intervención forthcoming.'
           : window.phase === 'POST_INTERVENTION_REBOUND'
-            ? 'VENTANA POST-INTERVENCIÓN: Divisas absorbidas por la banca. Prepararse para rebote del paralelo.'
-            : 'MERCADO LIBRE: Flujo estándar sin influencia directa de subasta cambiaria.',
+            ? 'VENTANA POST-SUBASTA PROGRAMADA: han pasado las horas habituales de subasta. No implica comportamiento observado del paralelo.'
+            : 'FUERA DE VENTANAS DE SUBASTA: horario calendario sin subasta programada.',
     };
   },
 };

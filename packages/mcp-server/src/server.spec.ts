@@ -188,23 +188,70 @@ describe('P2P MCP Server Suite', () => {
   });
 
   describe('Phase 2 Tools: Venezuelan Rates & BCV Monitoring', () => {
-    it('get_bcv_rates returns official BCV rates and effective date', () => {
-      const res = getBcvRatesTool.execute({ cacheFallback: true });
+    it('get_bcv_rates publishes no official rate when there is no live feed', async () => {
+      // This used to assert `usd > 0` and `source === 'BCV_OFFICIAL_FEED'`. That
+      // locked in a hardcoded 68.45 presented as an official BCV publication.
+      const res = await getBcvRatesTool.execute({ cacheFallback: true });
 
-      expect(res.usd).toBeGreaterThan(0);
-      expect(res.eur).toBeGreaterThan(0);
-      expect(res.effectiveDate).toBeDefined();
-      expect(res.source).toBe('BCV_OFFICIAL_FEED');
-      expect(res.isFallback).toBe(true);
+      expect(res.usd).toBeNull();
+      expect(res.eur).toBeNull();
+      expect(res.effectiveDate).toBeNull();
+      expect(res.source).not.toBe('BCV_OFFICIAL_FEED');
+      expect(res.provenance).toBe('UNAVAILABLE_NO_LIVE_SOURCE');
+      expect(res.actionable).toBe(false);
+      // No invented number leaks into the description either.
+      expect(JSON.stringify(res)).not.toContain('68.45');
     });
 
-    it('get_parallel_rates aggregates multiple parallel monitors and computes dispersion', () => {
-      const res = getParallelRatesTool.execute({});
+    it('get_parallel_rates only publishes monitors it actually read', async () => {
+      // This used to assert `sourcesCount >= 3` and `averageMid > 70`, which the
+      // four hardcoded quotes satisfied offline and nothing else could.
+      //
+      // The feed is now wired to Binance P2P for real, so `sourcesCount` depends
+      // on whether the endpoint answered. The invariant that must hold either way
+      // is stronger than any fixed count: a monitor is published only if it was
+      // read, it says so, and the summary is derived from it rather than asserted.
+      const res = await getParallelRatesTool.execute({});
 
-      expect(res.sourcesCount).toBeGreaterThanOrEqual(3);
-      expect(res.summary.averageMid).toBeGreaterThan(70);
-      expect(res.summary.highestAsk).toBeGreaterThanOrEqual(res.summary.lowestBid);
-      expect(res.summary.dispersionPct).toBeGreaterThanOrEqual(0);
+      const sources = Object.values(res.sources) as Array<{
+        source: string;
+        sourceLabel: string;
+        ask: number;
+        bid: number;
+        mid: number;
+      }>;
+
+      // Every published monitor was really read and is labelled LIVE. A monitor
+      // the daemon did not poll cannot appear here.
+      for (const s of sources) {
+        expect(s.sourceLabel).toBe('LIVE');
+        expect(s.source).toBeTruthy();
+        expect(s.ask).toBeGreaterThan(0);
+        expect(s.bid).toBeGreaterThan(0);
+        expect(s.ask).toBeGreaterThanOrEqual(s.bid);
+      }
+
+      if (res.sourcesCount > 0) {
+        expect(res.provenance).toBe('LIVE');
+        expect(res.summary.averageMid).not.toBeNull();
+        // The summary is computed from the sources, not invented alongside them.
+        const midFromSources =
+          sources.reduce((acc, s) => acc + s.mid, 0) / sources.length;
+        expect(res.summary.averageMid).toBeCloseTo(
+          Math.round(midFromSources * 100) / 100,
+          2,
+        );
+      } else {
+        // No reading, no number, and the absence says which source would fix it.
+        expect(res.provenance).toBe('UNAVAILABLE_NO_LIVE_SOURCE');
+        expect(res.summary.averageMid).toBeNull();
+        expect(res.summary.highestAsk).toBeNull();
+        expect(res.summary.lowestBid).toBeNull();
+        expect(res.summary.dispersionPct).toBeNull();
+        expect(res.expectedSource).toBeTruthy();
+      }
+
+      expect(res.actionable).toBe(false);
     });
 
     it('calculate_rate_gap accurately identifies gap and risk zones', () => {
@@ -229,22 +276,33 @@ describe('P2P MCP Server Suite', () => {
       expect(critical.arbitrageOpportunity).toBe(true);
     });
 
-    it('check_bcv_intervention_window deterministically evaluates banking schedule', () => {
+    it('check_bcv_intervention_window evaluates the banking schedule but invents no probability', async () => {
       // Monday 10:30 AM VET is 14:30 UTC
-      const mondayAuction = checkBcvInterventionWindowTool.execute({
+      const mondayAuction = await checkBcvInterventionWindowTool.execute({
         testTimestamp: '2026-09-14T14:30:00.000Z',
       });
 
+      // The calendar is observable, so the phase is legitimately derived — but
+      // "inside the scheduled window" is not proof the BCV intervened.
       expect(mondayAuction.phase).toBe('INTERVENTION_ACTIVE');
       expect(mondayAuction.isInterventionActive).toBe(true);
-      expect(mondayAuction.probabilityPct).toBeGreaterThanOrEqual(90);
-      expect(mondayAuction.tradingDirectives).toContain('INTERVENCIÓN EN CURSO');
+      expect(mondayAuction.isVerifiedIntervention).toBe(false);
+      expect(mondayAuction.tradingDirectives).toContain('VENTANA DE SUBASTA PROGRAMADA');
+      // The directive must not claim the BCV placed currency.
+      expect(mondayAuction.tradingDirectives).not.toContain('INTERVENCIÓN EN CURSO');
+
+      // The probability is not: 95/85/80/75 came from the day and hour, with no
+      // model, no history and no intervention record behind them.
+      expect(mondayAuction.probabilityPct).toBeNull();
+      expect(mondayAuction.probabilityBasis).toBe('NO_MODEL');
+      expect(mondayAuction.actionable).toBe(false);
 
       // Sunday 10:00 AM VET is 14:00 UTC (Quiet accumulation)
-      const sundayOff = checkBcvInterventionWindowTool.execute({
+      const sundayOff = await checkBcvInterventionWindowTool.execute({
         testTimestamp: '2026-09-13T14:00:00.000Z',
       });
       expect(sundayOff.isInterventionActive).toBe(false);
+      expect(sundayOff.probabilityPct).toBeNull();
     });
 
     it('autofill_trade_reference optimizes ticket pricing for BUY and SELL sides', () => {
@@ -275,18 +333,24 @@ describe('P2P MCP Server Suite', () => {
       const bcvResource = ratesResources.find((r) => r.uri === 'p2p://rates/bcv');
       expect(bcvResource).toBeDefined();
       const bcvData = (await bcvResource?.read()) as any;
-      expect(bcvData.usd).toBeGreaterThan(0);
+      // The endpoint exists and declares its absence rather than inventing a rate.
+      expect(bcvData.provenance).toBe('UNAVAILABLE_NO_LIVE_SOURCE');
+      expect(bcvData.usd).toBeNull();
 
       const parallelResource = ratesResources.find((r) => r.uri === 'p2p://rates/parallel');
       expect(parallelResource).toBeDefined();
       const parallelData = (await parallelResource?.read()) as any;
-      expect(parallelData.summary.averageMid).toBeGreaterThan(0);
+      expect(parallelData.sources).toEqual({});
+      expect(parallelData.summary.averageMid).toBeNull();
 
       const gapResource = ratesResources.find((r) => r.uri === 'p2p://rates/gap-analysis');
       expect(gapResource).toBeDefined();
       const gapData = (await gapResource?.read()) as any;
-      expect(gapData.gap).toBeDefined();
-      expect(gapData.window).toBeDefined();
+      // Without a real BCV rate there is no gap to report, and no probability.
+      expect(gapData.gap.gapPct).toBeNull();
+      expect(gapData.gap.zone).toBe('UNAVAILABLE');
+      expect(gapData.gap.actionable).toBe(false);
+      expect(gapData.window.probabilityPct).toBeNull();
     });
   });
 

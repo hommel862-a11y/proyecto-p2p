@@ -8,18 +8,20 @@ import { auditPaymentProofOcrTool } from './audit_payment_proof_ocr.js';
 
 describe('Compliance, Multichannel & Proof Reader MCP Tools Suite', () => {
   describe('check_bank_operational_status', () => {
-    it('evaluates Venezuelan banking status and returns operational latency', () => {
+    it('reports every Venezuelan bank as unverified when telemetry is absent', () => {
       const res = checkBankOperationalStatusTool.execute({
         bankCodes: ['0102', '0134', '0105', 'PAGO_MOVIL'],
         includePaymentNetworks: true,
       });
 
-      expect(res.networkStatus).toBeDefined();
-      expect(res.pauseTradingDirective).toBe(false);
-      expect(res.averageSettlementLatencyMinutes).toBeGreaterThan(0);
+      expect(res.verdict).toBe('UNVERIFIED');
+      expect(res.actionable).toBe(false);
+      expect(res.networkStatus).toBeNull();
+      expect(res.pauseTradingDirective).toBeNull();
+      expect(res.averageSettlementLatencyMinutes).toBeNull();
       expect(res.bankDetails.length).toBe(4);
       expect(res.bankDetails[0].bankCode).toBe('0102');
-      expect(res.operationalAdvice).toContain('canales bancarios');
+      expect(res.bankDetails[0].status).toBe('UNVERIFIED_OFFLINE');
     });
 
     it('defaults to full local banking panel when no bankCodes are provided', () => {
@@ -34,39 +36,44 @@ describe('Compliance, Multichannel & Proof Reader MCP Tools Suite', () => {
   });
 
   describe('check_counterparty_blacklist', () => {
-    it('detects reported triangulation scammer by cédula and returns block decision', () => {
+    it('marks a sample-fixture hit as non-authoritative rather than blocking', () => {
       const res = checkCounterpartyBlacklistTool.execute({
         cedula: 'V-28999888',
       });
 
-      expect(res.isFlagged).toBe(true);
-      expect(res.riskLevel).toBe('CRITICAL');
-      expect(res.decision).toBe('IMMEDIATE_BLOCK_TRANSACTION');
+      // The record store holds synthetic fixtures, so a hit cannot justify a
+      // block. The previous suite asserted isFlagged === true and
+      // decision === 'IMMEDIATE_BLOCK_TRANSACTION' against invented data.
+      expect(res.isFlagged).toBeNull();
+      expect(res.actionable).toBe(false);
+      expect(res.verdict).toBe('UNVERIFIED');
+      expect(res.provenance.source).toBe('INTERNAL_SAMPLE_FIXTURES');
       expect(res.totalMatchesFound).toBe(1);
       expect(res.matchedRecords[0].category).toBe('TRIANGULATION_SCAM');
-      expect(res.actionRequired).toContain('ALERTA ROJA');
+      expect(res.matchedRecords[0].isSampleFixture).toBe(true);
+      expect(res.actionRequired).toMatch(/fixtures de prueba/);
     });
 
-    it('detects reported third party payer by phone number', () => {
+    it('matches a sample fixture by phone number without inventing a person', () => {
       const res = checkCounterpartyBlacklistTool.execute({
         phone: '0414-1234567',
       });
 
-      expect(res.isFlagged).toBe(true);
-      expect(res.decision).toBe('IMMEDIATE_BLOCK_TRANSACTION');
-      expect(res.matchedRecords[0].suspectName).toBe('Carlos Estafa');
+      expect(res.totalMatchesFound).toBe(1);
+      expect(res.matchedRecords[0].category).toBe('THIRD_PARTY_PAYER');
+      expect(res.isFlagged).toBeNull();
     });
 
-    it('returns clean decision for legitimate unknown counterparty', () => {
+    it('does not clear an unknown counterparty merely for absence from fixtures', () => {
       const res = checkCounterpartyBlacklistTool.execute({
         cedula: 'V-15888777',
         phone: '0412-9998877',
         alias: 'HonestMerchant',
       });
 
-      expect(res.isFlagged).toBe(false);
-      expect(res.riskLevel).toBe('CLEAN');
-      expect(res.decision).toBe('CLEAN_TO_PROCEED');
+      expect(res.isFlagged).toBeNull();
+      expect(res.blockDecision).toBeNull();
+      expect(res.verdict).toBe('UNVERIFIED');
       expect(res.totalMatchesFound).toBe(0);
     });
   });

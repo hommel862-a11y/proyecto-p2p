@@ -584,7 +584,15 @@ export const PredictBcvMacroRegimeInputSchema = z.object({
   daysSinceLastIntervention: z.number().min(0).default(3),
   currentHourOfDayUtcMinus4: z.number().min(0).max(23).default(10),
   currentDayOfWeek: z.number().min(1).max(7).default(1),
-  estimatedWeeklyBcvInjectionUsd: z.number().positive().default(50000000),
+  /**
+   * No default on purpose.
+   *
+   * This was `z.number().positive().default(50000000)`. The caller omitted it and
+   * the schema silently asserted that the BCV injects $50M per week, which the
+   * tactical directive then rendered as "Inyección inminente estimada en $50M
+   * USD". A made-up macro figure must never arrive by omission.
+   */
+  estimatedWeeklyBcvInjectionUsd: z.number().positive().optional(),
 });
 export type PredictBcvMacroRegimeInput = z.infer<typeof PredictBcvMacroRegimeInputSchema>;
 

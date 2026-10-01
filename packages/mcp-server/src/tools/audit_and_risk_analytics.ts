@@ -13,7 +13,7 @@ import {
 export const auditAndRiskAnalyticsTool = {
   name: 'audit_and_risk_analytics',
   description:
-    'Interroga el registro forense en SQLite para auditar disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas.',
+    'Audita disciplina de trading, cumplimiento de la Regla de Oro (spread neto >= 0.50%), detector de tilt y ventana horaria de mayor riesgo de alertas. Analiza únicamente los registros que el llamador entrega en sampleEvents y sampleOperations: no consulta ninguna base de datos ni recupera registros por su cuenta.',
   inputSchema: AuditAndRiskAnalyticsInputSchema,
   execute: (input: AuditAndRiskAnalyticsInput) => {
     const timeframeDays = input.timeframeDays ?? 7;

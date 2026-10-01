@@ -2,40 +2,45 @@ import {
   LookupCounterpartyReputationInputSchema,
   type LookupCounterpartyReputationInput,
 } from '../schemas/index.js';
+import { unverifiedVerdict } from '../core/verdict.js';
 
+/**
+ * The previous implementation blacklisted anyone whose document ID contained
+ * `99999`, ended in `000`, or whose phone ended in `0000`; everyone else
+ * received `trustScore: 96`, `riskLevel: 'VERIFIED_CLEAN'` and
+ * `recommendation: 'PROCEED_WITH_TRADE'`.
+ *
+ * It also invented a ZK blind hash with `Math.random()`, so the same
+ * counterparty produced a different "cryptographic" identifier on every call,
+ * and attached a hardcoded chargeback incident dated 2026-03-12 to anyone it
+ * decided to blacklist.
+ *
+ * There is no federated mesh and no reputation ledger. `VERIFIED_CLEAN` and
+ * `PROCEED_WITH_TRADE` were fabrications.
+ */
 export const lookupCounterpartyReputationTool = {
   name: 'lookup_counterparty_reputation',
   description:
-    'Consulta la reputación y reportes de fraude de una contraparte en la red federada ZK antes de aceptar o procesar una orden P2P.',
+    'Consulta la reputación y reportes de fraude de una contraparte en la red federada ZK antes de aceptar o procesar una orden P2P. Sin ledger de reputación conectado devuelve UNVERIFIED y no autoriza avanzar con la orden.',
   inputSchema: LookupCounterpartyReputationInputSchema,
   execute: (input: LookupCounterpartyReputationInput) => {
     const docId = input.documentId.trim().toUpperCase();
-    const phone = input.phoneNumber?.trim();
 
-    // Check against mock blacklist patterns
-    const isMockBlacklisted =
-      docId.includes('99999') || docId.endsWith('000') || (phone && phone.endsWith('0000'));
-
-    const trustScore = isMockBlacklisted ? 12 : 96;
-    const isBlacklisted = trustScore < 50;
-
-    return {
-      documentId: docId,
-      blindHash: `zk_hash_${docId.slice(-4)}_${Math.random().toString(36).substring(7)}`,
-      trustScore,
-      isBlacklisted,
-      riskLevel: isBlacklisted ? 'HIGH_RISK_FRAUD' : 'VERIFIED_CLEAN',
-      historicalIncidents: isBlacklisted
-        ? [
-            {
-              type: 'THIRD_PARTY_PAYMENT_CHARGEBACK',
-              reportedAt: '2026-03-12',
-              source: 'ZK_FEDERATED_MESH',
-            },
-          ]
-        : [],
-      recommendation: isBlacklisted ? 'ABORT_TRADE_REFUSE_COUNTERPARTY' : 'PROCEED_WITH_TRADE',
-      consultedAt: new Date().toISOString(),
-    };
+    return unverifiedVerdict(
+      {
+        documentId: docId,
+        phoneNumberProvided: !!input.phoneNumber,
+        bankAccountProvided: !!input.bankAccountNumber,
+        blindHash: null,
+        trustScore: null,
+        isBlacklisted: null,
+        riskLevel: null,
+        historicalIncidents: null,
+        recommendation: null,
+        consultedAt: new Date().toISOString(),
+      },
+      'NO_COUNTERPARTY_LEDGER',
+      'federated ZK reputation mesh / counterparty incident ledger',
+    );
   },
 };

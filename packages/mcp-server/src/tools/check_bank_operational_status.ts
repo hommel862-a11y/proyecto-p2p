@@ -2,35 +2,44 @@ import {
   CheckBankOperationalStatusInputSchema,
   type CheckBankOperationalStatusInput,
 } from '../schemas/index.js';
+import { unverifiedVerdict } from '../core/verdict.js';
 
 export interface BankHealthDetail {
   bankCode: string;
   bankName: string;
-  status: 'OPERATIONAL' | 'DEGRADED' | 'MAINTENANCE' | 'OUTAGE';
-  settlementLatencyMinutes: number;
-  incidentType?:
-    | 'CLEARING_DELAY'
-    | 'PORTAL_MAINTENANCE'
-    | 'PAGO_MOVIL_SWITCH_SLOWDOWN'
-    | 'SUDEBAN_RESTRICTION'
-    | 'NONE';
+  status: 'UNVERIFIED_OFFLINE';
+  settlementLatencyMinutes: null;
+  incidentType: 'UNKNOWN_NO_TELEMETRY';
   description: string;
-  recommendedAction: 'NORMAL_TRADING' | 'MONITOR_CLOSELY' | 'PAUSE_BANK_ADS';
+  recommendedAction: 'VERIFY_WITH_BANK_STATEMENT';
 }
 
-const KNOWN_BANKS: Record<string, { name: string; baseLatency: number }> = {
-  '0102': { name: 'Banco de Venezuela (BDV)', baseLatency: 1.5 },
-  '0134': { name: 'Banesco Banco Universal', baseLatency: 0.8 },
-  '0105': { name: 'Mercantil Banco', baseLatency: 1.0 },
-  '0108': { name: 'BBVA Provincial', baseLatency: 1.2 },
-  '0172': { name: 'Bancamiga', baseLatency: 0.9 },
-  PAGO_MOVIL: { name: 'Suiche Pago Móvil Interbancario', baseLatency: 0.5 },
+/**
+ * Display names only. The previous table also carried `baseLatency` per bank
+ * (1.5, 0.8, 1.0, 1.2, 0.9, 0.5 minutes) which were invented constants, and a
+ * dead branch `code === '0102' && false` that could never fire, so every bank
+ * always reported `OPERATIONAL` with the advice "Todos los canales bancarios
+ * y Pago Móvil operan con óptima liquidez y acreditación inmediata".
+ *
+ * That sentence is the dangerous part: it authorises continuing to advertise
+ * payout rails that may be down, on the strength of a literal.
+ */
+const KNOWN_BANK_NAMES: Record<string, string> = {
+  '0102': 'Banco de Venezuela (BDV)',
+  '0134': 'Banesco Banco Universal',
+  '0105': 'Mercantil Banco',
+  '0108': 'BBVA Provincial',
+  '0172': 'Bancamiga',
+  '0191': 'Banco Nacional de Crédito (BNC)',
+  '0114': 'Bancaribe',
+  '0174': 'Banplus',
+  PAGO_MOVIL: 'Suiche Pago Móvil Interbancario',
 };
 
 export const checkBankOperationalStatusTool = {
   name: 'check_bank_operational_status',
   description:
-    'Monitorea en tiempo real el estado operativo, latencias de acreditación y fallas en plataformas bancarias (Banesco, Mercantil, BDV, Pago Móvil) y emite directivas automáticas de PAUSA para evitar fondos atrapados.',
+    'Consulta el estado operativo y las latencias de acreditación de plataformas bancarias venezolanas (Banesco, Mercantil, BDV, Provincial, Bancamiga, BNC, Bancaribe, Banplus, Pago Móvil). Sin telemetría bancaria configurada devuelve UNVERIFIED_OFFLINE para todos los códigos: no afirma que un canal esté operativo.',
   inputSchema: CheckBankOperationalStatusInputSchema,
   execute: (input: CheckBankOperationalStatusInput) => {
     const requestedCodes =
@@ -38,57 +47,29 @@ export const checkBankOperationalStatusTool = {
         ? input.bankCodes
         : ['0102', '0134', '0105', '0108', '0172', 'PAGO_MOVIL'];
 
-    const details: BankHealthDetail[] = requestedCodes.map((code) => {
-      const bankInfo = KNOWN_BANKS[code] ?? {
-        name: `Banco Desconocido (${code})`,
-        baseLatency: 2.0,
-      };
+    const details: BankHealthDetail[] = requestedCodes.map((code) => ({
+      bankCode: code,
+      bankName: KNOWN_BANK_NAMES[code] ?? `Banco Desconocido (${code})`,
+      status: 'UNVERIFIED_OFFLINE',
+      settlementLatencyMinutes: null,
+      incidentType: 'UNKNOWN_NO_TELEMETRY',
+      description:
+        'Sin fuente de telemetría bancaria conectada. El estado real de este canal es desconocido para esta herramienta.',
+      recommendedAction: 'VERIFY_WITH_BANK_STATEMENT',
+    }));
 
-      // Deterministic simulation or synthetic health evaluation
-      const isDegradedMock = code === '0102' && false; // BDV regular
-      const status: BankHealthDetail['status'] = isDegradedMock ? 'DEGRADED' : 'OPERATIONAL';
-      const latency = bankInfo.baseLatency;
-
-      return {
-        bankCode: code,
-        bankName: bankInfo.name,
-        status,
-        settlementLatencyMinutes: latency,
-        incidentType: isDegradedMock ? 'CLEARING_DELAY' : 'NONE',
-        description: isDegradedMock
-          ? 'Retrasos intermitentes en la cámara de compensación interbancaria.'
-          : 'Servicio operando con normalidad. Acreditaciones inmediatas.',
-        recommendedAction: isDegradedMock ? 'MONITOR_CLOSELY' : 'NORMAL_TRADING',
-      };
-    });
-
-    const hasCriticalOutage = details.some(
-      (d) => d.status === 'OUTAGE' || d.status === 'MAINTENANCE',
+    return unverifiedVerdict(
+      {
+        timestamp: new Date().toISOString(),
+        networkStatus: null,
+        pauseTradingDirective: null,
+        affectedBanks: null,
+        averageSettlementLatencyMinutes: null,
+        bankDetails: details,
+        operationalAdvice: null,
+      },
+      'NO_BANK_TELEMETRY',
+      'bank interbank-clearing / Suiche telemetry source',
     );
-    const hasDegradedService = details.some((d) => d.status === 'DEGRADED');
-
-    const affectedBanks = details.filter((d) => d.status !== 'OPERATIONAL').map((d) => d.bankName);
-
-    return {
-      timestamp: new Date().toISOString(),
-      networkStatus: hasCriticalOutage
-        ? 'CRITICAL_ALERT'
-        : hasDegradedService
-          ? 'CAUTION_DEGRADED'
-          : 'ALL_SYSTEMS_OPERATIONAL',
-      pauseTradingDirective: hasCriticalOutage,
-      affectedBanks,
-      averageSettlementLatencyMinutes: Number(
-        (details.reduce((acc, b) => acc + b.settlementLatencyMinutes, 0) / details.length).toFixed(
-          1,
-        ),
-      ),
-      bankDetails: details,
-      operationalAdvice: hasCriticalOutage
-        ? `PAUSA AUTOMÁTICA SUGERIDA: Suspender temporalmente anuncios de venta con destino a ${affectedBanks.join(', ')} para evitar demoras en liberación.`
-        : hasDegradedService
-          ? `PRECAUCIÓN: Monitorear tiempos de confirmación en ${affectedBanks.join(', ')}. Exigir captura con código de validación bancaria.`
-          : 'Todos los canales bancarios y Pago Móvil operan con óptima liquidez y acreditación inmediata.',
-    };
   },
 };
