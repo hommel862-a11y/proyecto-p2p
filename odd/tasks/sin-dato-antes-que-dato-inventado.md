@@ -1213,14 +1213,22 @@ a las 566 que ya existian.
 Electron subio de 224 a 244 por el actor concurrente; no es una regresion de esta
 vuelta.
 
-### Nota de alcance: el espejo y `RuleContext`
+### Nota de alcance: el espejo y `RuleContext` — CORREGIDA
 
-`0fefaef` cierra los defaults de medicion del espejo, pero `RuleContext` sigue
-recibiendo constantes que no se miden: `minSpread: 0.5`, `openOps: 1`,
-`dailyLossPct: 0`. Son la **politica** del motor de reglas, no la medicion — el
-mismo criterio que el `targetHedgePct: 100` de la vuelta anterior, donde el
-default es una decision legitima si se declara como tal. Queda anotado como
-decision pendiente, no como bug.
+> **Correccion.** Esta nota estaba mal y su conclusion era comoda. Decia que
+> `minSpread: 0.5`, `openOps: 1` y `dailyLossPct: 0` eran "politica, no medicion" y
+> que quedaba "como decision pendiente, no bug".
+>
+> Solo `minSpread` es politica. `openOps: 1` afirma que hay una posicion abierta y
+> `dailyLossPct: 0` afirma que el dia va limpio: son mediciones, exactamente el mismo
+> crimen que `currentExposureUsdt: 0` en `simulate_trade_impact`. Clasificarlas como
+> politica fue mi manera de no tener que tocar el motor determinista de riesgo.
+>
+> La novena vuelta lo demuestra: con esas constantes, las reglas 2 a 5 no podian
+> dispararse.
+
+`0fefaef` cierra los defaults de medicion del espejo. El `RuleContext` del servidor
+queda fuera de ese commit y se resuelve en `aaf14e2` — ver la novena vuelta.
 
 ## Estado de los pendientes
 
@@ -1238,9 +1246,176 @@ d581297  la ventana BCV se recalcula con el reloj en vez de envejecer en silenci
 | --- | --- |
 | `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
-| `RuleContext` en servidor y espejo | `minSpread: 0.5` / `openOps: 1` / `dailyLossPct: 0` son politica, no medicion — falta declararlos como tal |
+| `RuleContext` del espejo | `openOps: 1` y `dailyLossPct: 0` siguen como constantes; son medicion. Cerrado en el servidor por `aaf14e2`, no en el espejo |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
 | `COTIZAVE_API_KEY` ausente | No hay puente desde `SecretStoreService` al daemon |
 | Segundo venue live | Requiere credenciales Bybit/El Dorado |
-| `packages/mcp-server/dist/index.js` | No regenerado desde `9200a4f` |
 | Worktree `p2p-bridge-build` | Figura `prunable`; no limpiar sin confirmar que no tiene trabajo sin commitear |
+
+# Novena vuelta: los frenos que no podian dispararse
+
+La octava cerro con una nota que decia que las constantes de `RuleContext` eran
+politica y no medicion. Era falso, y la forma en que era falso es el hallazgo.
+
+## Como se encontro
+
+El resumen de la vuelta anterior dejaba `RuleContext` como "pendiente de
+investigar". Investigation fue leer el motor, no el tool:
+
+```
+packages/mcp-server/src/core/index.ts
+  L118  evaluate(ctx)
+  L125  tradeRiskPct > 20      -> DENY     regla 1, la unica con dato real
+  L134  dailyLossPct >= 10     -> PAUSE    regla 2
+  L143  consecutiveErrors >= 3 -> DENY     regla 3
+  L152  currentSpread < 0.5    -> PAUSE    regla 4
+  L161  openOps >= 3           -> PAUSE    regla 5
+```
+
+Y lo que la tool le pasaba:
+
+```
+currentSpread: 1.25     contra un piso de 0.5     -> nunca dispara
+dailyLossPct: 0         contra un tope de 10       -> nunca dispara
+consecutiveErrors: score < 50 ? 2 : 0   contra 3  -> nunca dispara
+openOps: 1              contra un tope de 3        -> nunca dispara
+```
+
+Cada constante caia **del lado seguro de su propio umbral**. Eso no las hacia
+arbitrarias: las hacia inalcanzables. Las reglas 2 a 5 no eran incorrectas, no
+existian. La tool solo podia devolver `ALLOW` o un `DENY` de la regla 1.
+
+## El sintoma, medido
+
+Un throwaway con `counterpartyScore: 0`, el peor valor que el schema acepta:
+
+```json
+{
+  "decision": "ALLOW",
+  "reason": "Todos los parametros dentro de umbrales seguros",
+  "tradeRiskPct": 0.2,
+  "isCounterpartyAcceptable": false,
+  "violations": [],
+  "unmeasuredInputs": ["currentSpread","minSpread","openOps","dailyLossPct"],
+  "actionable": true
+}
+```
+
+Auto-contradiccion en un mismo objeto: "tu contraparte no es aceptable" junto a
+"todo dentro de umbrales seguros" y `actionable: true`. `violations` vacio hacia que
+nada que el llamador evaluara lo frenara — un `ALLOW` que solo se podia refutar
+leyendo un campo decorativo al lado. `dailyLossPct: 0` sobre un dia que habia
+perdido 40% es el mismo crimen que `currentExposureUsdt: 0` en la vuelta septima,
+a una escala peor: no es un default improbable, es el freno desconectado.
+
+## La linea que lo delataba
+
+```ts
+consecutiveErrors: counterpartyScore < 50 ? 2 : 0,
+```
+
+Tope 2 contra umbral 3. Quien escribio eso intento meter la contraparte al motor y
+no pudo: el valor nunca alcanza el umbral. La contraparte **nunca estuvo conectada
+al veredicto**; el gate existia como campo informativo al lado de un `ALLOW`.
+
+## Decision
+
+Se le llevo al usuario con la evidencia, no con una recomendacion de formato. Elgio
+la contenida: anadir los tres (cuatro) estados como inputs opcionales, alinear el
+servidor con el espejo, y que sin estado medido no haya `ALLOW`.
+
+Lo que se descarto y por que:
+
+| Opcion | Por que no |
+| --- | --- |
+| Cambiar `RuleContext` a `number \| null` con `skippedRules[]` | Correcta y mas limpia, pero es un cambio de contrato en un core de 3359 lineas con casi-duplicado en `projects/core/src/lib/rules.ts`. Radio de blast innecesario para este defecto |
+| Arreglar solo `reason` y `actionable` | Dejaba emitiendo `ALLOW` para una contraparte con score 0. Es lo que mas duele |
+
+## aaf14e2 — el servidor se niega a correr el motor sin estado
+
+- Schema: `currentSpreadPct`, `openOps`, `dailyLossPct` y `consecutiveErrors` pasan
+  a ser inputs opcionales declarados por el llamador, sin defaults. Son estado.
+  `minSpread` y `maxRiskPerTradePct` siguen como constantes y ahora estan nombradas
+  `POLICY_*`.
+- **La contraparte manda.** Score bajo 70 produce `DENY` con violacion y
+  `actionable: true`. Precede a `INSUFFICIENT_DATA`: esconder un score de 30 detras de
+  telemetria faltante esconderia un hecho conocido.
+- **Sin estado no hay veredicto.** `INSUFFICIENT_DATA`, `actionable: false`,
+  `violations: []`. `evaluate()` no puede representar "no medido" — toda comparacion
+  contra un campo ausente es falsa, asi que un `0` o un `NaN` responderian `ALLOW`
+  igual que las constantes que este commit elimina.
+- `unmeasuredInputs` deja de ser una constante con las mismas cuatro ausencias y pasa
+  a ser la lista real de lo que falta en esta llamada.
+- `recommendedSizeUsdt` es `null` si el motor no corrio. `tradeRiskPct` sigue real: es
+  un ratio entre numeros medidos y no necesita estado.
+
+## La migracion de tests
+
+Cinco tests afirmaban el comportamiento defectuoso, asi que hubo que migrarlos en vez
+de ajustarlos. Uno merecio atencion: *"rechaza un trade grande con capital medido"*
+usaba `counterpartyScore: 40` y su propio comentario decia que probaba la regla 1
+(50% de capital contra el tope de 20%). Con la puerta nueva, un 40 cortocircuitaba en
+contraparte y la regla 1 quedaba sin probar. Subido a 95: el test ahora prueba lo que
+su comentario dice que prueba. Bajar el score habria sido mas facil y habria dejado
+la regla 1 a oscuras.
+
+## Mutacion
+
+Restauradas las constantes viejas, **12 de 15** tests nuevos quedan en rojo:
+
+- los tres de la puerta de contraparte
+- los cuatro de "sin estado no hay `ALLOW`"
+- los cinco de "las reglas 2 a 5 ahora disparan"
+
+Los 3 que siguen verdes son las propiedades que ya eran ciertas y deben seguir
+siendo: contraparte exactamente en el piso de 70, el ratio de riesgo real, y la
+regla 1 funcionando. Un mutacion que pone todo en rojo no demuestra nada; esta
+demuestra que los tests discriminan exactamente el defecto.
+
+## Verificacion de esta vuelta
+
+```
+mcp-server        248/248 en 17 archivos   (antes 232)
+p2p app           584/584 en 48 archivos
+typecheck         exit 0 en los cinco proyectos
+build del bundle  exit 0, dist 2.2mb
+mutacion          12 de 15 en rojo al restaurar el defecto
+```
+
+**Flake registrado, no escondido.** `add_operation_entry escribe el asiento con los
+montos y el precio reales` fallo en una corrida completa de la suite de la app, y paso
+aislada (73/73) y en dos corridas completas siguientes. Intermitente, en el mismo
+archivo donde ya se excluyo `timestamp`/`settlementId` de comparaciones byte a byte.
+No lo introduce `aaf14e2`: la app no importa `packages/mcp-server`.
+
+## La leccion
+
+Anotar algo como "politica, no medicion" fue mi manera de no tocar el motor de riesgo.
+La distincion era correcta para `minSpread: 0.5` y para `targetHedgePct: 100`, y la
+reutilice a un caso donde no correspondia. **Clasificar un default como decision
+legitima es la forma mas comoda de no arreglarlo** — y por eso hay que exigir el
+umbral, no solo la etiqueta: si una constante esta del lado seguro de su propio
+comparador, no es politica, es un freno desconectado.
+
+## Estado de los pendientes
+
+Commits de esta vuelta:
+
+```
+aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corrieron
+```
+
+| Pendiente | Por que |
+| --- | --- |
+| `RuleContext` del espejo | `openOps: 1` y `dailyLossPct: 0` siguen como constantes ahi. Cerrado en el servidor, no en el espejo |
+| `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
+| `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
+| Flake de `add_operation_entry` | Intermitente, no diagnosticado a fondo. Mismo archivo y clase que el ya corregido |
+| `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
+| `COTIZAVE_API_KEY` ausente | No hay puente desde `SecretStoreService` al daemon |
+| Segundo venue live | Requiere credenciales Bybit/El Dorado |
+| Worktree `p2p-bridge-build` | Figura `prunable`; no limpiar sin confirmar que no tiene trabajo sin commitear |
+
+`packages/mcp-server/dist/index.js` salio de la lista de pendientes: esta gitignored
+(`packages/mcp-server/.gitignore:5`) y es artefacto de build, no versionado. El build
+corre y sale limpio; no era un commit pendiente sino una suposicion mia incorrecta.
