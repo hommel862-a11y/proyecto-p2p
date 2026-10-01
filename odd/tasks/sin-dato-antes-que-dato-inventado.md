@@ -849,6 +849,186 @@ forzados con `as unknown`:
 M3 y M4 importan por una razón específica: reinstalar el `85.5` deja rojo el
 conteo, así que el test caza el default inventado — no sólo el cambio de tipo.
 
+Las mutaciones de la vuelta siete están en su propia sección: M1/M2/M3 sobre
+`forecast_volatility_window`, y la que casi no prueba nada — borrar el parámetro
+en vez de ignorar su valor.
+
+# Septima vuelta: el typecheck que nunca se ejecutó
+
+Esta vuelta tiene un origen distinto a las seis anteriores. Las anterioresThan
+buscaban **números inventados**. Esta salió de un `tsc` que **no compilaba**, y
+terminócreaticundo que el typecheck "verde" que reporté seis veces no se estaba
+ejecutando.
+
+## Un default que anunciaba un dato que no existía
+
+`ForecastVolatilityWindowInputSchema` declaraba:
+
+```ts
+currentSpreadPct: z.number().default(1.2),   // announcement, not measurement
+askDepthUsdt: z.number().default(5000),
+bidDepthUsdt: z.number().default(4500),
+```
+
+El patrón es el mismo de siempre, con una diferencia que lo hace peor: el campo se
+**publicaba en el schema** y el motor nunca lo leía. No era un default que caía
+dentro de un cálculo; era un default que caía dentro de un contrato. Un cliente que
+leyera el schema asumiría que `currentSpreadPct` era un dato de entrada, y el
+resultado de la herramienta lo seguiría confirmando con un ratio derivado de
+`askDepth`/`bidDepth` inventados.
+
+`depthRatio` con ambos lados inventados produce un número con la forma correcta y
+cero información: `5000 / 4500 = 1.111`. Un ratio de libro que se ve plausible es
+peor que `null`, porque `null` se ve raro y `1.111` no.
+
+### La rama que faltaba no era un default
+
+Agregar `depthRatio: null` no alcanzaba. El motor **ya tenía** la rama de
+ausencia, y el default la alcanzaba con números:
+
+```ts
+const depthRatio = bidDepthUsdt > 0 ? askDepthUsdt / bidDepthUsdt : null;
+```
+
+Con ambos defaults, `bidDepthUsdt > 0` siempre era cierto. La rama de `null` no se
+activaba nunca. Es el patrón de `?? 78.5` invertido: el default no caía en el
+cálculo, **desactivaba la defensa**.
+
+### El test que exige `actionable`
+
+```ts
+const actionable = gapPct !== null && depthRatio !== null && spreadDynamic !== 'UNAVAILABLE';
+```
+
+Con los defaults puestos, `actionable` era `true` con datos inventados. Ahora sin
+profundidad medida: `depthRatio = null`, `unavailableReason =
+'missing_evidence:bookDepth'`, `actionable = false`. El `unavailableReason` no es
+decorativo — es lo que le dice al llamador **qué medir** para desbloquear la
+próxima llamada.
+
+## El typecheck que llevaba tiempo sin poder correr
+
+`tsc -p packages/mcp-server/tsconfig.json --noEmit` fallaba con **TS5101 antes de
+compilar una sola línea**:
+
+```
+Option 'baseUrl' is deprecated and will stop functioning in TypeScript 7.0.
+```
+
+TypeScript 6.0.3. El tsconfig del paquete llevaba `baseUrl` y `paths` de una era
+en que el alias `@p2p/mcp-server/*` se usaba. Hoy:
+
+| Campo | Quién lo usa |
+| --- | --- |
+| `paths` | **Nadie.** Cero archivos importan por `@p2p/mcp-server/*` |
+| `baseUrl` | Sin `paths` que resolver, y sin imports bare salvo paquetes npm reales |
+
+Así que la tentación era `ignoreDeprecations: "5.0"`, que es la respuesta que
+funciona hoy y deuda con fecha dentro de dos versiones. Se borraron los dos
+campos.
+
+### Lo que esto destapa
+
+El `tsconfig.json` de la raíz tiene `"files": []`. Su `tsc` da verde sobre
+cualquier cosa — un archivo con 400 errores de tipo compila, porque no hay archivos
+que compilar. Six rondas de barrido---+`tsc --noEmit` exit 0---+ reporting de
+typecheck verde, y el único typecheck que cubría de verdad este código era el que
+no arrancaba.
+
+Esa es la lección: **un typecheck verde es evidencia del typecheck que corrió, no
+del código.** Un check que no puede fallar no verifica nada, y su verde es
+indistinguible del verde de uno que sí corrió.
+
+### Mutaciones
+
+| # | Mutación | Resultado |
+| --- | --- | --- |
+| M1 | Se repone `currentSpreadPct: 1.2` | 2 tests en rojo |
+| M2 | Se repone `askDepthUsdt`/`bidDepthUsdt` | 4 tests en rojo |
+| M3 | `actionable` vuelve a ignorar `depthRatio` | 3 tests en rojo |
+
+## La septima mutación que casi no prueba nada
+
+Primer intento de M1 en esta vuelta: **borrar** el parámetro del default.
+
+```
+Test Files  1 failed (1)
+     Tests  no tests
+```
+
+Cero tests ejecutados. La mutación rompió la compilación del archivo entero, así
+que Vitest no pudo correr nada. Un "rojo" que en realidad es un archivo que no
+compila **no es una prueba de nada** — es el mismo falso verde de siempre,
+del lado contrario: parece que la mutación funcionó porque algo se puso rojo, pero
+lo que se puso rojo fue el compilador.
+
+La mutación útil era otra: **conservar la firma y descartar el valor**:
+
+```ts
+monthKey: string = new Date().toISOString().slice(0, 7),  // mutant: firma intacta
+const monthKey = new Date().toISOString().slice(0, 7);    // el cuerpo lo ignora
+```
+
+Esa sí la cazan 4 tests, y es exactamente la forma que el defecto toma en
+producción: la API acepta el parámetro, el cuerpo lo ignora, nadie lo nota porque
+la firma dice lo contrario.
+
+## El parámetro decorativo que el test desmintió
+
+El mes se inyectó en `computeAccountUsage` y `computeTreasurySummary`. Se lo puse
+también a `recommendAccountForTrade` por simetría, y escribí el test:
+
+```ts
+const enMarzo = recommendAccountForTrade([cuenta], 40_000, ops, undefined, '2026-03');
+expect(computeAccountUsage(cuenta, ops, '2026-03').remainingLimitVes).toBe(50_000);
+expect(computeAccountUsage(cuenta, ops, '2026-04').remainingLimitVes).toBe(100_000);
+```
+
+Falló. Y el fallo enseñó el modelo real: `remainingLimitVes` sale de `spentTodayVes`,
+que sale de `todayOps`, y `todayOps` llega **ya filtrado por el llamante**. El mes
+no puede cambiar la recomendación. El parámetro no podía hacer nada.
+
+Se quitó de la firma, y quedó un test que lo custodia:
+
+```ts
+expect(recommendAccountForTrade.length).toBe(4);
+```
+
+Un parámetro que no altera la salida es un contrato publicado que no existe — la
+misma familia que `currentSpreadPct`: un valor que se anuncia y se descarta en
+silencio. Y acá el test lo descubrió, no yo: yo lo agregué por simetría y la
+asimetría era la pista.
+
+## Qué queda vivo, y por qué es legítimo
+
+| Default | Por qué sobrevive |
+| --- | --- |
+| `currentCapitalUsdt: 5000` | **Medición inventada.** Default de schema, sin cerrar. |
+| `currentExposureUsdt: 0` | **Medición inventada.** `0` afirma "no tenés exposición". |
+| `maxDailyExposureLimitUsdt: 2000` | **Medición inventada.** Es política del usuario, no un hecho. |
+| `targetHedgePct: 100` | **Política, no medición.** El default "cubrir todo" es una decisión legítima si se declara como tal. Distinto de los tres anteriores. |
+| `stakedAsset`, `dailyInstantQuotaUsdt`, `availableSubaccountsCount` | **Ya cerrados** con `?: number \| null` + `missingInputs`. No son residuales. |
+
+Los tres primeros son el mismo defecto de `ff1067c`, en el mismo archivo, sin
+cerrar. Y esa es la asimetría que importa: la vuelta siete continuará, porque el
+mismo patrón sigue produce defaults de medición en `schemas/index.ts` y nadie
+miró ese archivo desde el primer barrido.
+
+## Verificación de esta vuelta
+
+| Suite | Antes | Ahora |
+| --- | --- | --- |
+| `packages/mcp-server` | 12 / 197 | 14 / **206** |
+| `projects/core` | 74 / 869 | 79 / **952** |
+| `electron` | 21 / 236 | 21 / **224** |
+| `tsc -p tsconfig.app` | — | exit 0 |
+| `tsc -p tsconfig.spec` | — | exit 0 |
+| `tsc -p packages/mcp-server` | **TS5101, no compilaba** | **exit 0** |
+| `check:vendor` | 23/24 (desfasado) | **24/24 idénticos** |
+
+`electron` bajó de 236 a 224: es el actor concurrente editando sus specs, no una
+regresión mía. Los archivos de `src/app` y `electron/main/db` no se tocaron.
+
 ## Estado final
 
 Commits de esta sesión, en orden de unidad de trabajo:
@@ -861,6 +1041,9 @@ c572491  ancla las fixtures de cuentas al reloj, no a septiembre
 3bfea3a  eliminar las tasas inventadas del proceso principal
 e830987  el contrato de la curva era de otro engine
 6ebb719  los sidecars de SQLite y node_modules no son fuente
+ff1067c  no inventar spread ni profundidad en forecast_volatility_window
+d9ee7fe  quitar baseUrl y paths muertos que rompian el typecheck
+010456c  el mes de consumo se fija, no se hereda del reloj
 ```
 
 ### Lo que queda abierto, y no es mío
@@ -869,6 +1052,8 @@ e830987  el contrato de la curva era de otro engine
 | --- | --- |
 | `DEFAULT_ACCOUNTS` en `initElectronSync` | Decisión de producto: ¿SQLite es autoritativo? |
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; sólo puede quedar `null` |
+| `currentCapitalUsdt` / `currentExposureUsdt` / `maxDailyExposureLimitUsdt` | Defaults de medición en `schemas/index.ts`; mismo patrón que `ff1067c`, sin cerrar |
+| `bcvStatus` reactivo | `VenezuelaClock` lo vuelve testeable, pero sigue siendo un `computed` sin tick: no reacciona al paso del tiempo |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
 | `gemini-orchestrator.ts` sin commitear | 11 líneas del actor (`esSimulado`→`esSimulated`) + 13 mías, inseparables sin cirugía de hunks |
 | Puente vault → daemon | `COTIZAVE_API_KEY` no existe; no hay bridge desde `SecretStoreService` |
