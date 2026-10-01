@@ -855,9 +855,9 @@ en vez de ignorar su valor.
 
 # Septima vuelta: el typecheck que nunca se ejecutó
 
-Esta vuelta tiene un origen distinto a las seis anteriores. Las anterioresThan
-buscaban **números inventados**. Esta salió de un `tsc` que **no compilaba**, y
-terminócreaticundo que el typecheck "verde" que reporté seis veces no se estaba
+Esta vuelta tiene un origen distinto a las seis anteriores. Las anteriores buscaban
+**números inventados**. Esta salió de un `tsc` que **no compilaba**, y terminó
+descubriendo que el typecheck "verde" que reporté seis veces no se estaba
 ejecutando.
 
 ## Un default que anunciaba un dato que no existía
@@ -931,9 +931,8 @@ campos.
 
 El `tsconfig.json` de la raíz tiene `"files": []`. Su `tsc` da verde sobre
 cualquier cosa — un archivo con 400 errores de tipo compila, porque no hay archivos
-que compilar. Six rondas de barrido---+`tsc --noEmit` exit 0---+ reporting de
-typecheck verde, y el único typecheck que cubría de verdad este código era el que
-no arrancaba.
+que compilar. Seis rondas de barrido, seis reportes de `tsc --noEmit` exit 0, y el
+único typecheck que cubría de verdad este código era el que no arrancaba.
 
 Esa es la lección: **un typecheck verde es evidencia del typecheck que corrió, no
 del código.** Un check que no puede fallar no verifica nada, y su verde es
@@ -1064,3 +1063,184 @@ cuenta el `?? 50000000` (una inyección BCV semanal de $50M afirmada sin fuente)
 `mcp-fallbacks.ts:2075`, dejándolo en `undefined` y propagándolo al resultado.
 El fix es correcto y no se tocó. Queda anotado acá porque es la misma doctrina
 que este barrido, aplicada de forma independiente.
+
+---
+
+# Tercera vuelta: autorizaciones, reloj y Defaults del nucleo
+
+Esta vuelta cierra los tres defaults de medicion que la vuelta anterior dejo
+escritos, y despues dos defectos que ninguno de los barridos anteriores habria
+podido encontrar: el espejo de la app seguia authorizing sobre datos inventados
+despues de que el servidor dejara de hacerlo, y la ventana BCV envejacia en
+silencio.
+
+## 9200a4f — el servidor deja de autorizar sobre lo que nadie midio
+
+Los tres defaults de medicion que quedaron vivos (`currentCapitalUsdt: 5000`,
+`currentExposureUsdt: 0`, `maxDailyExposureLimitUsdt: 2000`) eran el mismo
+defecto de `ff1067c`, en el mismo archivo, sin cerrar. Se cerraron los tres, pero
+el hallazgo real no fue aritmetico: **los tres defaults convertian la ausencia en
+una autorizacion**.
+
+`currentExposureUsdt: 0` es el peor de los tres, y no por su magnitud. Un `0`
+aqui no es "no hay dato": es la afirmacion de que la mesa no tiene exposicion. Con
+ese `0` y `maxDailyExposureLimitUsdt: 2000`, cualquier orden por debajo de 2000
+pasaba el limite y salia `SIMULATED_WITHIN_LIMITS`. No era un default
+inconservador: era un permiso de mover dinero emitido por el silencioso.
+
+La correccion separa dos cosas que los defaults mezclaban. Una exposicion o un
+limite ausentes producen `limitExceeded: null` y `verdict: UNAVAILABLE`; lo que
+queda sin medir va en `unmeasuredInputs`, y `actionable: false` impide que un LMC
+lea un `null` como margen disponible. Un `null` en `limitExceeded` ya no puede
+leerse como `false`, que era la lectura que el default inducía.
+
+En `evaluate_trade_risk` el cierre es mas directo: `isCounterpartyAcceptable`
+podia salir `true` con `counterpartyScore` ausente, porque el schema lo declaraba
+en 98 y `98 >= 70` siempre. Ausente ahora es `null` y el veredicto es
+`UNAVAILABLE` con `missing_evidence:counterpartyScore`.
+
+26 pruebas nuevas en `packages/mcp-server/src/no-invented-trade-authorizations.spec.ts`
+cubren cada rama en dos direcciones: ausente da `null`, y presente da el numero
+real.
+
+## d581297 — la ventana BCV deja de envejecer en silencio
+
+Este defecto no era de datos inventados, pero es el mismo fallo de honestidad con
+otra forma: **`VenezuelaClock.now` era un metodo que leia el reloj una vez**.
+
+`bcvStatus` es un `computed` que deriva una ventana de 7 dias sobre la lectura
+BCV. Con `clock.now()` como metodo, ese `computed` se evaluaba cuando sus
+dependenciasSignal cambian, y como no tenian ninguna — el reloj no era un signal
+— la ventana se calculaba una vez y se quedaba congelada para siempre. El mismo
+operador, cuatro minutos despues, veía exactamente los mismos dias de ventana.
+
+La lectura era correcta; lo que estaba mal era el momento en que se tomaba. Un
+`computed` sin tick no es un valor calculado: es una fotografia.
+
+El fix fue volver `now` un `Signal<Date>` readonly y agregar un intervalo de
+`VENEZELESIA_CLOCK_REFRESH_MS` que lo actualiza, con `ngOnDestroy` limpiandolo.
+El `computed` ahora depende de una dependencia real, asi que el paso del tiempo
+es una entrada legitima al recalculo.
+
+El punto para el que queda escrita la regla: **un valor derivado de un reloj debe
+suscribirse al reloj.** Si un `computed` lee la hora, la hora tiene que ser una
+Signal; si no, el valor no esta derivado, esta congelado, y la diferencia entre
+esas dos cosas no se ve en los tests hasta que alguien mira el reloj.
+
+## 0fefaef — el espejo de la app no hereda la honestidad del servidor
+
+Este es el hallazgo mas importante de la vuelta, y no lo encontro revisando el
+servidor. Lo encontro el stage.
+
+`mcp-fallbacks.ts` es el espejo de `packages/mcp-server` para el modo web de la
+app. Cuando `9200a4f` cerro los defaults de medicion en el servidor, el espejo
+siguio intacto — y con defaults que **no coincidian con los que el servidor ya
+nadie defendia**. Mientras el servidor decia 2000 y 5000, el espejo decia 2500,
+500, 400 y 600. La razon no era una decision de diseno: era deriva. Nadie estaba
+mirando ese archivo porque el trabajo oficial estaba en el servidor.
+
+Peor por la forma. El servidor ahora declara `unmeasuredInputs` y sus defaults
+de riesgo son `number | null`. El espejo seguia aplicando `Number(x ?? default)`
+en las mismas ramas, con el `actionable: false` puesto en toda la rama, asi que
+el defecto no seesia grave: **encerraba la autorizacion pero publicaba la
+afirmacion**. `tradeRiskPct: 10.0` calculado sobre una tesoreria que nadie
+reporto, y `isCounterpartyAcceptable: true` porque 98 >= 70.
+
+La funcion nueva es `numeroODeferenciaAusente`:
+
+```ts
+function numeroODeferenciaAusente(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+```
+
+`Number(undefined)` da `NaN` — pero `Number(args.x ?? 5000)` sobre un ausente no
+llega ahi, porque el `??` ya lo reemplazo por 5000 antes de que `Number` lo viera.
+Ese era el error real: los defaults no fallaban en la aritmetica, se aplicaban
+antes. Y por eso `0` es un valor legitimo que esta funcion preserva: una
+exposicion medida en cero es un hecho, y `consecutiveLosses: 0` es el conteo
+observable del contador, no una medicion de mercado. El servidor tambien lo
+declara con `.default(0)`.
+
+En `simulate_trade_impact` la correccion distingue lo que no se puede calcular de
+lo que si se puede affirmar. Si falta el limite, `projectedExposureUsdt` queda
+`null` — porque `currentExposure + proposedTrade` sin limite sigue siendo un
+calculo valido y reportarlo es informacion. Lo que se pierde es
+`exposureUtilizationPct`, que es una division por un numero que nadie eligio. Y
+una regla conocida sobre datos medidos no se suprime por el hecho de que falte
+otro: `consecutiveLosses >= 3` sigue produciendo `REQUIRES_REDUCTION` aunque el
+limite no exista. `REQUIRES_REDUCTION` es una orden de no crecer, que es la
+direccion segura, asi que sobre-corregirla habria quitado una proteccion real.
+
+## El patron que estos tres commits comparten
+
+Los tres casos son la misma doctrina aplicada a tres capas distintas: el
+**servidor**, la **app espejo** y el **reloj**. En cada una, el defecto era que un
+valor no observaba su propia ausencia:
+
+- El servidor: `Number(x ?? default)` convertia unSchema Optional en
+  autorizacion.
+- El espejo: repetia el mismo patron sobre defaults que ya nadie defendia.
+- El reloj: un `computed` derivaba de una hora que no era un signal, y por eso
+  no se recalculaba.
+
+El denominador comun es que **el valor no tenia un canal por el cual decir "no
+se"**. Un `null` tipado, un `Signal<Date>`, un `unmeasuredInputs` explicito: tres
+formas de darle ese canal. Un `?? default` y un metodo `now()` no lo tienen, y
+por eso ambos pueden mentir sin que nada los contradiga.
+
+## Verificacion de esta vuelta
+
+| Suite | Antes | Ahora |
+| --- | --- | --- |
+| `packages/mcp-server` | 14 / 206 | 16 / **232** |
+| `src/app` (proyecto `p2p`) | 47 / 566 | 48 / **582** |
+| `projects/core` | 79 / 952 | 79 / **952** |
+| `electron` | 21 / 224 | 22 / **244** |
+| `tsc -p packages/mcp-server` | exit 0 | exit 0 |
+| `tsc -p tsconfig.app` | exit 0 | exit 0 |
+| `tsc -p tsconfig.spec` | exit 0 | exit 0 |
+| `tsc -p projects/core/tsconfig.lib` | exit 0 | exit 0 |
+| `tsc -p projects/core/tsconfig.spec` | exit 0 | exit 0 |
+
+Las tres suites nuevas (`mcp-fallbacks-trade-authorization` 16,
+`triangulation-bcv-status-window-reactivity` 7, `no-invented-trade-authorizations`
+26) pasan con la suite completa, no aisladas: la que importa es la que corre junto
+a las 566 que ya existian.
+
+Electron subio de 224 a 244 por el actor concurrente; no es una regresion de esta
+vuelta.
+
+### Nota de alcance: el espejo y `RuleContext`
+
+`0fefaef` cierra los defaults de medicion del espejo, pero `RuleContext` sigue
+recibiendo constantes que no se miden: `minSpread: 0.5`, `openOps: 1`,
+`dailyLossPct: 0`. Son la **politica** del motor de reglas, no la medicion — el
+mismo criterio que el `targetHedgePct: 100` de la vuelta anterior, donde el
+default es una decision legitima si se declara como tal. Queda anotado como
+decision pendiente, no como bug.
+
+## Estado de los pendientes
+
+Commits de esta vuelta, en orden de unidad de trabajo:
+
+```
+9200a4f  el servidor deja de autorizar sobre capital, contraparte y limite que nadie midio
+d581297  la ventana BCV se recalcula con el reloj en vez de envejecer en silencio
+0fefaef  el espejo de la app deja de inventar defaults de riesgo y exposicion
+```
+
+### Lo que queda abierto
+
+| Pendiente | Por que |
+| --- | --- |
+| `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
+| `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
+| `RuleContext` en servidor y espejo | `minSpread: 0.5` / `openOps: 1` / `dailyLossPct: 0` son politica, no medicion — falta declararlos como tal |
+| `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
+| `COTIZAVE_API_KEY` ausente | No hay puente desde `SecretStoreService` al daemon |
+| Segundo venue live | Requiere credenciales Bybit/El Dorado |
+| `packages/mcp-server/dist/index.js` | No regenerado desde `9200a4f` |
+| Worktree `p2p-bridge-build` | Figura `prunable`; no limpiar sin confirmar que no tiene trabajo sin commitear |

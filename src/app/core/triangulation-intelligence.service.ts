@@ -194,7 +194,7 @@ export const VENEZUELA_CLOCK_REFRESH_MS = 60_000;
  *
  * Eso es el mismo defecto que el resto del barrido: un estado declarado que el
  * sistema no puede respaldar en el momento en que lo publica. Lo único que lo
- * diferenciaba es que acá laMeasureión era correcta —el calendario del BCV es un
+  * diferenciaba es que acá la medición era correcta —el calendario del BCV es un
  * horario público— y aun así la afirmación envejecía sin que nadie se enterara.
  *
  * Ahora `now` es un signal y un temporizador lo refresca. El intervalo se limpia

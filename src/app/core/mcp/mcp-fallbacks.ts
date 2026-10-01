@@ -130,8 +130,8 @@ function missingReadingFields(reading: MarketRateReading): Record<string, unknow
  * Lee un número que llega del llamador sin inventar sustituto.
  *
  * El patrón `Number(args.x ?? 5000)` que este espejo usaba convertía dos ausencias
- * distintas en el mismo número. Un valor ausente se converts en `0` con
- * `Number(undefined)`, y `0` no es un default inofensivo en estos dominios: para
+ * distintas en el mismo número. Un valor ausente se convierte en `0` con
+ * `Number(undefined)`, y `0` no es un default inocuo en estos dominios: para
  * capital significa "no hay tesorería" y para score significa "contraparte
  * inexistente". Por eso un ausente devuelve `null` explícito, que es lo que
  * distingue "no medido" de "medido en cero".
