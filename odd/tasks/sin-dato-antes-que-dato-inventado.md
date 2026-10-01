@@ -1066,7 +1066,7 @@ que este barrido, aplicada de forma independiente.
 
 ---
 
-# Tercera vuelta: autorizaciones, reloj y Defaults del nucleo
+# Octava vuelta: autorizaciones, reloj y defaults del nucleo
 
 Esta vuelta cierra los tres defaults de medicion que la vuelta anterior dejo
 escritos, y despues dos defectos que ninguno de los barridos anteriores habria
