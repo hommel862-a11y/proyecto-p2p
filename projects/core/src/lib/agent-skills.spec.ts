@@ -249,11 +249,15 @@ describe('Agent Skills & Function Calling Declarations', () => {
 
   describe('Execution of Newly Registered Quantitative Skills', () => {
     it('executes calculate_optimal_spread_avellaneda via dispatcher', () => {
+      // `timeRemainingFraction` se declara explicitamente. Antes esta prueba
+      // lo omitia y dependia del `?? 1.0` del dispatcher, es decir fijaba como
+      // esperado un pronostico de "sesion completa" que nadie habia medido.
       const res = executeFinancialSkill('calculate_optimal_spread_avellaneda', {
         midPrice: 85.0,
         currentInventoryUsdt: 8000,
         targetInventoryUsdt: 5000,
         volatilityDaily: 0.02,
+        timeRemainingFraction: 1.0,
       });
       expect(res.success).toBe(true);
       const data = res.data as any;

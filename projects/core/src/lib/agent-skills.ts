@@ -2047,7 +2047,13 @@ export function executeFinancialSkill(
           'volatilityDaily',
           'volatilidad diaria medida sobre la serie de precios (klines de la API pública del exchange)',
         );
-        const timeRemainingFraction = Number(args['timeRemainingFraction'] ?? 1.0);
+        // Sus cuatro vecinos exigen medicion declarada; este asumia "sesion
+        // completa", que es un pronostico optimista y ademas invisible.
+        const timeRemainingFraction = requiredNumber(
+          args,
+          'timeRemainingFraction',
+          'fracción real de sesión que queda, medida contra el reloj de la sesión',
+        );
 
         const result = computeAvellanedaStoikovQuotes({
           midPrice,
@@ -2114,10 +2120,25 @@ export function executeFinancialSkill(
       }
 
       case 'calculate_maker_fill_probability_markov': {
-        const queuePositionIndex = Number(args['queuePositionIndex'] || 0);
-        const queueAheadVolumeUsdt = Number(args['queueAheadVolumeUsdt'] || 0);
-        const recentFillVelocityPerMinuteUsdt = Number(
-          args['recentFillVelocityPerMinuteUsdt'] || 100,
+        // Una cola vacia con velocidad real es un hecho del libro. Una cola que
+        // nadie midio es lo mismo para el motor, asi que la distincion tiene que
+        // ocurrir aqui: los tres terminos deciden si el llenado ocurre, y un
+        // default en cualquiera de ellos es un pronostico disfrazado de dato.
+        // Sin ellos la skill devolvia 99.9% de llenado y INSTANT_FILL_PROBABLE.
+        const queuePositionIndex = requiredNumber(
+          args,
+          'queuePositionIndex',
+          'posición real de tu orden maker en la cola del libro (índice 0-based del depth del exchange en vivo)',
+        );
+        const queueAheadVolumeUsdt = requiredNumber(
+          args,
+          'queueAheadVolumeUsdt',
+          'volumen real acumulado por delante de tu orden en la cola, en USDT',
+        );
+        const recentFillVelocityPerMinuteUsdt = requiredNumber(
+          args,
+          'recentFillVelocityPerMinuteUsdt',
+          'velocidad de llenado reciente medida en ese mismo nivel del libro, en USDT por minuto',
         );
         const targetHorizonMinutes = policyNumber(args, 'targetHorizonMinutes', 15);
 
@@ -2976,7 +2997,7 @@ export function executeFinancialSkill(
 
       case 'audit_distressed_liquidity_sniper': {
         const rawAds = (args['ads'] as any[]) || [];
-        const fairMarketRate = Number(args['fairMarketRate'] || 0);
+        const fairMarketRate = requiredNumber(args, 'fairMarketRate', SRC_LIVE_P2P_MID);
         const side = (args['side'] === 'BUY' ? 'BUY' : 'SELL') as 'BUY' | 'SELL';
         const minDislocationPct = policyNumber(args, 'minDislocationPct', 0.8);
         const ads: P2pOrderbookAdItem[] = rawAds.map((a) => ({
