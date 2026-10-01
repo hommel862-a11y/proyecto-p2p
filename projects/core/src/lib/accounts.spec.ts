@@ -7,6 +7,28 @@ import {
 } from './accounts';
 import { type Operation } from './log';
 
+/**
+ * `computeAccountUsage` deriva `monthKey` del reloj real (`new Date().toISOString()`)
+ * y no acepta un reloj inyectado, así que los fixtures se anclan al mes UTC en curso
+ * en lugar de a una fecha fija. Anclarlos a un mes concreto dejaba el spec rojo en
+ * cada cambio de mes sin que nadie hubiera tocado la lógica de producción.
+ *
+ * Se captura una sola vez para que todos los fixtures compartan el mismo mes y la
+ * relación "mes actual vs. mes anterior" sea siempre consistente dentro del archivo.
+ */
+const NOW_MONTH_KEY = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+
+/** Marca de tiempo en UTC dentro de un mes dado, mismo criterio que `monthKey`. */
+function tsInMonth(monthKey: string, day: number, hour = 10): string {
+  return `${monthKey}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00.000Z`;
+}
+
+/** Mes UTC inmediatamente anterior, con rollover correcto de enero -> diciembre del año previo. */
+function previousMonthKey(monthKey: string): string {
+  const [year, month] = monthKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
+}
+
 describe('BankAccount and Treasury Core Logic', () => {
   const banescoPagoMovil: BankAccount = {
     id: 'acc-1',
@@ -30,11 +52,12 @@ describe('BankAccount and Treasury Core Logic', () => {
     monthlyLimitVes: 500000,
   };
 
-  // Ops con fecha de hoy (Septiembre 2026) — usados para cálculos diarios y mensuales
+  // Ops del mes UTC en curso — usados para los cálculos diarios y mensuales.
+  // El día 03 existe en cualquier mes, así que el fixture nunca desborda el calendario.
   const mockOps: Operation[] = [
     {
       id: 'op-1',
-      timestamp: '2026-09-03T10:00:00.000Z',
+      timestamp: tsInMonth(NOW_MONTH_KEY, 3, 10),
       type: 'buy',
       pair: 'USDT',
       vesAmount: 20000,
@@ -48,7 +71,7 @@ describe('BankAccount and Treasury Core Logic', () => {
     },
     {
       id: 'op-2',
-      timestamp: '2026-09-03T11:00:00.000Z',
+      timestamp: tsInMonth(NOW_MONTH_KEY, 3, 11),
       type: 'buy',
       pair: 'USDT',
       vesAmount: 22000,
@@ -62,7 +85,7 @@ describe('BankAccount and Treasury Core Logic', () => {
     },
     {
       id: 'op-3',
-      timestamp: '2026-09-03T12:00:00.000Z',
+      timestamp: tsInMonth(NOW_MONTH_KEY, 3, 12),
       type: 'sell',
       pair: 'USDT',
       vesAmount: 15000,
@@ -76,12 +99,12 @@ describe('BankAccount and Treasury Core Logic', () => {
     },
   ];
 
-  // Ops incluyendo una ops antigua de agosto (fuera del mes actual)
+  // Ops que incluyen una del mes anterior (fuera del mes en curso).
   const opsWithOld: Operation[] = [
     ...mockOps,
     {
       id: 'op-old',
-      timestamp: '2026-08-20T10:00:00.000Z',
+      timestamp: tsInMonth(previousMonthKey(NOW_MONTH_KEY), 20, 10),
       type: 'buy',
       pair: 'USDT',
       vesAmount: 30000,
@@ -113,7 +136,7 @@ describe('BankAccount and Treasury Core Logic', () => {
   it('flags over-limit when spent >= daily limit', () => {
     const heavyOp: Operation = {
       id: 'op-heavy',
-      timestamp: '2026-09-03T14:00:00.000Z',
+      timestamp: tsInMonth(NOW_MONTH_KEY, 3, 14),
       type: 'buy',
       pair: 'USDT',
       vesAmount: 55000,
@@ -153,7 +176,7 @@ describe('BankAccount and Treasury Core Logic', () => {
 
   it('computes monthly usage when monthlyLimitVes is set', () => {
     const usage = computeAccountUsage(banescoPagoMovil, mockOps);
-    // mockOps has 3 ops on 2026-09-03 (current month) -> spentThisMonthVes = 42050
+    // mockOps has 3 ops in the current month -> spentThisMonthVes = 42050
     // monthlyLimitVes = 100000 -> consumed 42050 / 100000 = 42.05% -> 42%
     expect(usage.spentThisMonthVes).toBe(42050);
     expect(usage.consumedMonthlyLimitPct).toBe(42);
@@ -162,11 +185,13 @@ describe('BankAccount and Treasury Core Logic', () => {
   });
 
   it('excludes old August ops from monthly usage', () => {
+    // El nombre histórico dice "August" porque el fixture original fijaba agosto y septiembre.
+    // Ahora "op-old" se deriva como mes actual menos uno, que es la condición que importa.
     const usage = computeAccountUsage(banescoPagoMovil, opsWithOld);
-    // op-old is from August (not September), should NOT count in monthly spent
+    // op-old is from the previous month, should NOT count in monthly spent
     // Daily counts all ops (caller responsibility to filter)
-    expect(usage.spentTodayVes).toBe(72050); // 42050 + 30000 (August op counted in daily)
-    expect(usage.spentThisMonthVes).toBe(42050); // Only September ops
+    expect(usage.spentTodayVes).toBe(72050); // 42050 + 30000 (previous-month op counted in daily)
+    expect(usage.spentThisMonthVes).toBe(42050); // Only current-month ops
     expect(usage.consumedMonthlyLimitPct).toBe(42);
     expect(usage.isNearMonthlyLimit).toBe(false);
     expect(usage.isOverMonthlyLimit).toBe(false);
@@ -178,7 +203,7 @@ describe('BankAccount and Treasury Core Logic', () => {
       ...mockOps,
       {
         id: 'op-monthly-heavy',
-        timestamp: '2026-09-15T10:00:00.000Z',
+        timestamp: tsInMonth(NOW_MONTH_KEY, 15, 10),
         type: 'buy',
         pair: 'USDT',
         vesAmount: 80000,
@@ -343,7 +368,7 @@ describe('Multi-account selection: targetBankCode and DISABLED status', () => {
 
     const ops: Operation[] = Array.from({ length: 3 }, (_, i) => ({
       id: `op-c-${i}`,
-      timestamp: '2026-09-03T10:00:00.000Z',
+      timestamp: tsInMonth(NOW_MONTH_KEY, 3, 10),
       type: 'buy' as const,
       pair: 'USDT',
       vesAmount: 1000,
@@ -373,7 +398,7 @@ describe('Multi-account selection: targetBankCode and DISABLED status', () => {
     const ops: Operation[] = [
       {
         id: 'op-p1',
-        timestamp: '2026-09-03T10:00:00.000Z',
+        timestamp: tsInMonth(NOW_MONTH_KEY, 3, 10),
         type: 'buy',
         pair: 'USDT',
         vesAmount: 42050,
