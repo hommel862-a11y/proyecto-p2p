@@ -29,7 +29,7 @@ import type { Operation } from './log';
 const cuenta: BankAccount = {
   id: 'acc-clock',
   bankName: 'Banesco Pago Móvil',
-  bankCode: '0134',
+  bankCode: 'BANESCO',
   rail: 'PAGO_MOVIL',
   accountNumberMasked: '0414-***1234',
   dailyLimitVes: 100000,

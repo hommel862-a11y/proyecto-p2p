@@ -13,18 +13,33 @@ export const CalculateSpreadInputSchema = z.object({
 });
 export type CalculateSpreadInput = z.infer<typeof CalculateSpreadInputSchema>;
 
+// No measurement defaults here either.
+//
+// These four fields were `.default(5000)`, `.default(100)`, `.default(0)` and
+// `.default(2000)`. Three of them are measurements of the caller's real situation —
+// capital held, exposure carried, counterparty quality — and the fourth is a risk
+// limit the user never chose. `simulate_trade_impact` then answered
+// `verdict: 'SAFE_TO_EXECUTE'` from them, which is not a wrong number but a
+// licence to move money.
+//
+// `consecutiveLosses: 0` stays as a default: it is an event count the caller is
+// expected to track, and "no losses reported" is a defensible reading of silence in
+// a way "you hold no exposure" is not.
+//
+// Optional in the schema, absent at the call site → the handler declares
+// `UNAVAILABLE` with `missing_evidence:*`. See the handlers.
 export const EvaluateTradeRiskInputSchema = z.object({
   tradeAmountUsdt: z.number().positive('El monto a operar debe ser mayor a 0 USDT'),
   fiatCurrency: z.enum(['VES', 'COP', 'USD']).default('VES'),
-  counterpartyScore: z.number().min(0).max(100).default(100),
-  currentCapitalUsdt: z.number().positive().default(5000),
+  counterpartyScore: z.number().min(0).max(100).optional(),
+  currentCapitalUsdt: z.number().positive().optional(),
 });
 export type EvaluateTradeRiskInput = z.infer<typeof EvaluateTradeRiskInputSchema>;
 
 export const SimulateTradeImpactInputSchema = z.object({
   proposedTradeAmountUsdt: z.number().positive('El monto propuesto debe ser mayor a 0'),
-  currentExposureUsdt: z.number().min(0).default(0),
-  maxDailyExposureLimitUsdt: z.number().positive().default(2000),
+  currentExposureUsdt: z.number().min(0).optional(),
+  maxDailyExposureLimitUsdt: z.number().positive().optional(),
   consecutiveLosses: z.number().min(0).default(0),
 });
 export type SimulateTradeImpactInput = z.infer<typeof SimulateTradeImpactInputSchema>;
