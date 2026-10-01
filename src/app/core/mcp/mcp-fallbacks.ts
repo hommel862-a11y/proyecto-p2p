@@ -349,10 +349,14 @@ export function simulateMcpTool(
       const bidDepth = Number(bidDepthRaw);
       const askDepth = Number(askDepthRaw);
       const depthRatio = bidDepth > 0 ? askDepth / bidDepth : 1;
+      const bcvGapPct = bcvIntel.gap.gapPct;
       let spreadDynamic: 'EXPANSION_LIKELY' | 'COMPRESSION_RISK' | 'STABLE' = 'STABLE';
       if (isInWindow && depthRatio < 0.8) {
         spreadDynamic = 'COMPRESSION_RISK';
-      } else if (bcvIntel.gap.gapPct > 18) {
+      } else if (bcvGapPct !== null && bcvGapPct > 18) {
+        // Sólo se espera expansión con una brecha medida. `null > 18` es `false`,
+        // así que sin este guard una brecha sin medir caería en STABLE y el
+        // operador leería "Operar con volumen normal" sobre datos que no existen.
         spreadDynamic = 'EXPANSION_LIKELY';
       }
       const suggestedAction =
@@ -365,7 +369,7 @@ export function simulateMcpTool(
         ...simulatedResult,
         parallelRate: parallelRead.value,
         bcvRate: bcvRead.value,
-        gapPct: Number(bcvIntel.gap.gapPct.toFixed(2)),
+        gapPct: bcvGapPct === null ? null : Number(bcvGapPct.toFixed(2)),
         isInBcvInterventionWindow: isInWindow,
         bcvPhase: bcvIntel.window.phase,
         hoursUntilIntervention: bcvIntel.window.hoursUntilIntervention,

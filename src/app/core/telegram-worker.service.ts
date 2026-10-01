@@ -1060,12 +1060,17 @@ export class TelegramWorkerService implements OnDestroy {
         const velocity = computeTickVelocity(ticks);
         const forecast = predictTwoHourVolatility({
           recentTicks: ticks,
+          // Sin spread medido se propaga `null`: un 0% de spread es una medición
+          // distinta de "no medido", y el forecaster ya acepta la ausencia.
           currentSpreadPct: Number.isFinite(spreadPct) ? spreadPct : intel.gap.gapPct,
           bcvGap: intel.gap,
           bcvWindow: intel.window,
         });
 
         const snapshot: MacroIntelSnapshot = {
+          // Las referencias se propagan como `null` cuando no se midieron. Un `?? 0`
+          // acá publicaba una tasa BCV de cero en el panel, indistinguible de una
+          // medición real. `formatMetric` ya renderiza `n/d` ante la ausencia.
           bcvRef: intel.gap.bcvRate,
           parallelRef: intel.gap.parallelRate,
           spreadPct,
@@ -1097,7 +1102,7 @@ export class TelegramWorkerService implements OnDestroy {
           command: dispatch.command ?? '/macro',
           action: 'MACRO',
           status: 'SUCCESS',
-          details: `gap ${intel.gap.gapPct.toFixed(2)}% · zona ${intel.gap.zone}`,
+          details: `gap ${intel.gap.gapPct !== null ? intel.gap.gapPct.toFixed(2) : 'N/A'}% · zona ${intel.gap.zone}`,
         });
         break;
       }
