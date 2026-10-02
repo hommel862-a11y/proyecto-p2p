@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
  * Doctrine under test: a missing rate is `null` plus a declared absence, never a number.
@@ -13,20 +13,31 @@ const { ipcHandlers } = vi.hoisted(() => ({
   ipcHandlers: new Map<string, (event: unknown, params?: unknown) => unknown>(),
 }));
 
+const isEncryptionAvailableMock = vi.fn(() => false);
+const encryptStringMock = vi.fn((plain: string) => Buffer.from(`enc:${plain}`));
+const decryptStringMock = vi.fn((buf: Buffer) => buf.toString().replace(/^enc:/, ''));
+
 vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, fn: (event: unknown, params?: unknown) => unknown) => {
       ipcHandlers.set(channel, fn);
     },
-    removeHandler: () => {},
+    removeHandler: (channel: string) => {
+      ipcHandlers.delete(channel);
+    },
   },
   app: { getVersion: () => '0.0.0', getPath: () => '.', isPackaged: false },
   net: { fetch: vi.fn() },
-  safeStorage: { isEncryptionAvailable: () => false },
+  safeStorage: {
+    isEncryptionAvailable: () => isEncryptionAvailableMock(),
+    encryptString: (plain: string) => encryptStringMock(plain),
+    decryptString: (buf: Buffer) => decryptStringMock(buf),
+  },
   desktopCapturer: { getSources: async () => [] },
 }));
 
-const { registerIpcHandlers } = await import('./handlers');
+const { registerIpcHandlers, getDbService } = await import('./handlers');
+const { net } = await import('electron');
 
 interface ProactiveEvalResult {
   macroAlert: unknown;
@@ -103,5 +114,81 @@ describe('copilot:trigger-proactive-eval — sin medición no hay número', () =
     // that leg is asserted in the previous test with a fresh gap instead of here.
     const missing = new Set(res.unavailable?.map((u) => u.measurement));
     expect([...missing]).toEqual(['spotUsdt']);
+  });
+});
+
+describe('p2p:fetch-cotizave — puente COTIZAVE_API_KEY y persistencia segura', () => {
+  beforeEach(() => {
+    isEncryptionAvailableMock.mockReturnValue(false);
+    encryptStringMock.mockClear();
+    decryptStringMock.mockClear();
+    delete process.env['COTIZAVE_API_KEY'];
+    registerIpcHandlers();
+  });
+
+  afterEach(() => {
+    delete process.env['COTIZAVE_API_KEY'];
+  });
+
+  function invokeCotizave(req: unknown): Promise<unknown> {
+    const handler = ipcHandlers.get('p2p:fetch-cotizave');
+    if (!handler) throw new Error('p2p:fetch-cotizave no quedó registrado');
+    return handler(null, req) as Promise<unknown>;
+  }
+
+  it('rechaza llamadas sin API key o con clave en blanco', async () => {
+    await expect(invokeCotizave(null)).rejects.toThrow(/Cotizave API key is required/);
+    await expect(invokeCotizave({ apiKey: '   ', endpoint: 'rates' })).rejects.toThrow(
+      /Cotizave API key is required/,
+    );
+  });
+
+  it('rechaza endpoints distintos a "rates"', async () => {
+    await expect(
+      invokeCotizave({ apiKey: 'cz_test_key', endpoint: 'historical' }),
+    ).rejects.toThrow(/Cotizave endpoint must be "rates"/);
+  });
+
+  it('inyecta COTIZAVE_API_KEY en process.env con el valor normalizado (trim)', async () => {
+    const mockJson = { rates: [] };
+    vi.mocked(net.fetch).mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => mockJson,
+    } as unknown as Response);
+
+    const res = await invokeCotizave({ apiKey: '  cz_secret_live_key  ', endpoint: 'rates' });
+    expect(res).toEqual(mockJson);
+    expect(process.env['COTIZAVE_API_KEY']).toBe('cz_secret_live_key');
+  });
+
+  it('persiste la credencial cifrada en SQLite cuando safeStorage está disponible', async () => {
+    isEncryptionAvailableMock.mockReturnValue(true);
+    const mockJson = { rates: [] };
+    vi.mocked(net.fetch).mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => mockJson,
+    } as unknown as Response);
+
+    await invokeCotizave({ apiKey: 'cz_secret_persisted', endpoint: 'rates' });
+
+    const db = getDbService();
+    expect(db.getConfigValue('cotizave_api_key_scheme')).toBe('safeStorage:v1');
+    expect(db.getConfigValue('cotizave_api_key')).not.toContain('cz_secret_persisted');
+    expect(encryptStringMock).toHaveBeenCalledWith('cz_secret_persisted');
+  });
+
+  it('hidrata COTIZAVE_API_KEY al arrancar registerIpcHandlers si estaba persistida', async () => {
+    isEncryptionAvailableMock.mockReturnValue(true);
+    const { encryptSecret } = await import('../db/secret-store');
+    const db = getDbService();
+    db.setConfigValue('cotizave_api_key', encryptSecret('cz_from_disk_123'));
+    db.setConfigValue('cotizave_api_key_scheme', 'safeStorage:v1');
+
+    delete process.env['COTIZAVE_API_KEY'];
+    registerIpcHandlers();
+
+    expect(process.env['COTIZAVE_API_KEY']).toBe('cz_from_disk_123');
   });
 });

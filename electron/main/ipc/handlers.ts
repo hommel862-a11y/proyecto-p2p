@@ -36,6 +36,12 @@ import { getMcpFullStatus, executeMcpToolTest } from '../mcp-bootstrap';
 import { AlphaWatcher } from '../alpha-watcher';
 import { ClipboardWatcherService } from '../services/clipboard-watcher';
 import { createNodeExecutor, resolveAppRoot, runBacktest } from '../services/backtest-runner';
+import {
+  isSecretStorageAvailable,
+  encryptSecret,
+  decryptSecret,
+  SECRET_SCHEME,
+} from '../db/secret-store';
 
 /**
  * Exhaustiveness guard. Taking `never` means a new `DecisionJournalOp` that this file
@@ -54,6 +60,21 @@ function unsupportedDecisionJournalOp(op: never): never {
  * `crypto:*` handlers leverage OS-native DPAPI / Keychain encryption via safeStorage.
  */
 export function registerIpcHandlers(): void {
+  const db = getDbService();
+
+  // Hidratar COTIZAVE_API_KEY en el entorno si fue persistida de forma segura
+  if (!process.env['COTIZAVE_API_KEY'] && isSecretStorageAvailable()) {
+    try {
+      const scheme = db.getConfigValue('cotizave_api_key_scheme');
+      const stored = db.getConfigValue('cotizave_api_key');
+      if (stored && scheme === SECRET_SCHEME) {
+        process.env['COTIZAVE_API_KEY'] = decryptSecret(stored);
+      }
+    } catch (err) {
+      console.warn('[Cotizave] Error descifrando API key almacenada:', err);
+    }
+  }
+
   ipcMain.removeHandler('app:get-version');
   ipcMain.handle('app:get-version', (_event: IpcMainInvokeEvent): string => {
     return app.getVersion();
@@ -199,13 +220,25 @@ export function registerIpcHandlers(): void {
       if (req.endpoint !== 'rates') {
         throw new Error('Cotizave endpoint must be "rates"');
       }
+      const trimmedKey = req.apiKey.trim();
+      process.env['COTIZAVE_API_KEY'] = trimmedKey;
+
+      if (isSecretStorageAvailable()) {
+        try {
+          db.setConfigValue('cotizave_api_key', encryptSecret(trimmedKey));
+          db.setConfigValue('cotizave_api_key_scheme', SECRET_SCHEME);
+        } catch (err) {
+          console.warn('[Cotizave] safeStorage failed to persist API key:', err);
+        }
+      }
+
       try {
         const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
         const response = await net.fetch(url, {
           method: 'GET',
           signal: AbortSignal.timeout(15000),
           headers: {
-            'X-API-Key': req.apiKey,
+            'X-API-Key': trimmedKey,
             Accept: 'application/json',
           },
         });
@@ -399,7 +432,6 @@ export function registerIpcHandlers(): void {
     return safeStorage.decryptString(buffer);
   });
 
-  const db = getDbService();
 
   ipcMain.removeHandler('p2p:db-save-order');
   ipcMain.handle('p2p:db-save-order', (_event: IpcMainInvokeEvent, order: unknown): boolean => {

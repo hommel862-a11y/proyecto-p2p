@@ -1410,7 +1410,6 @@ aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corr
 | `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
-| `COTIZAVE_API_KEY` ausente | No hay puente desde `SecretStoreService` al daemon |
 | Segundo venue live | Requiere credenciales Bybit/El Dorado |
 | Worktree `p2p-bridge-build` | Figura `prunable`; no limpiar sin confirmar que no tiene trabajo sin commitear |
 
@@ -1449,3 +1448,44 @@ medianoche.
 - `ng test core`: 952/952 tests en 79 archivos.
 - `test:electron`: 244/244 tests en 22 archivos.
 - Typechecks `tsconfig.app` y `tsconfig.spec`: exit 0.
+
+# Undécima vuelta: el puente seguro de COTIZAVE_API_KEY hacia el daemon MCP
+
+En la quinta vuelta conectamos `cotizave-official-reader.ts` al endpoint oficial del BCV en
+`https://api.cotizave.com/v1/fx/rates`, el cual requiere la cabecera `X-API-Key` leída desde
+`process.env['COTIZAVE_API_KEY']`. Sin embargo, la app Angular almacenaba y enviaba la clave
+al backend de Electron en cada llamada IPC (`p2p:fetch-cotizave`), pero el proceso principal
+no la inyectaba en el entorno del proceso ni la persistía de forma segura para el daemon MCP.
+
+## Qué se corrigió
+
+1. **Inyección en runtime para el daemon**:
+   - En `electron/main/ipc/handlers.ts`, el handler `p2p:fetch-cotizave` normaliza y valida `req.apiKey`,
+     e inyecta inmediatamente `process.env['COTIZAVE_API_KEY'] = trimmedKey`.
+   - Con esto, tanto el daemon MCP embebido (`loadMcpModule()`) como cualquier subproceso
+     heredan la credencial comercial en vivo y `fetchCotizaveOfficialReading()` puede obtener
+     la tasa oficial real del BCV.
+
+2. **Persistencia protegida por el SO (`safeStorage`)**:
+   - Si el almacén criptográfico del sistema operativo está disponible (`isSecretStorageAvailable()`),
+     la clave se cifra con DPAPI / Keychain y se almacena en SQLite (`app_config_kv`) bajo el esquema
+     `safeStorage:v1`.
+   - Si `safeStorage` no está disponible, no se escribe texto plano en el disco.
+   - Al inicio de la aplicación en `registerIpcHandlers()`, se verifica si existe `cotizave_api_key`
+     cifrada en `app_config_kv`. Si existe y el esquema coincide, se descifra e hidrata
+     `process.env['COTIZAVE_API_KEY']` inmediatamente para que el servidor MCP arranque listo
+     desde el primer segundo.
+
+3. **Pruebas unitarias**:
+   - 5 tests nuevos añadidos a `electron/main/ipc/handlers.spec.ts` (subiendo de 5 a 10 tests):
+     - Rechazo ante clave ausente o en blanco.
+     - Rechazo ante endpoint inválido.
+     - Inyección en `process.env['COTIZAVE_API_KEY']` con normalización `trim`.
+     - Cifrado y persistencia en `app_config_kv` con `safeStorage:v1`.
+     - Hidratación automática en `registerIpcHandlers()` desde el almacenamiento seguro.
+
+## Verificación de esta vuelta
+
+- `test:electron`: **249/249** tests en 22 archivos (10/10 en `handlers.spec.ts`).
+- `mcp:test`: **248/248** tests en 17 archivos.
+- Typechecks `electron/tsconfig.json`: exit 0.
