@@ -162,6 +162,7 @@ export class BinanceRepricerService implements OnDestroy {
 
   readonly isActive = signal<boolean>(false);
   readonly strategy = signal<RepricerStrategy>('TOP_1');
+  readonly merchantLevel = signal<import('@p2p/core').MakerMerchantLevel>('STANDARD');
   readonly stepVes = signal<number>(0.05);
   readonly minSpreadVes = signal<number>(10.0);
   readonly breakEvenFloor = signal<number>(0);
@@ -288,6 +289,7 @@ export class BinanceRepricerService implements OnDestroy {
       minSpreadVes: this.minSpreadVes(),
       breakEvenSellPrice: this.breakEvenFloor(),
       maxBuyPrice: this.maxBuyPrice(),
+      merchantLevel: this.merchantLevel(),
     };
 
     const decision = evaluateRepricer({

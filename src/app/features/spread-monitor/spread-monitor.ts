@@ -26,6 +26,9 @@ import {
   DEFAULT_JOHNSON_REQUIREMENTS,
   type JohnsonMarketQuality,
   type JohnsonBankProfit,
+  computeHighDemandScan,
+  type HighDemandScanResult,
+  type MakerMerchantLevel,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -89,7 +92,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
-  private readonly toast = inject(ToastService);
+  readonly toast = inject(ToastService);
   private readonly hotkeys = inject(HotkeysService);
   readonly binance = inject(BinanceP2pService);
   readonly bybit = inject(BybitP2pService);
@@ -346,9 +349,9 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     maximumFractionDigits: 2,
   });
 
-  /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, repricer bot, cross-exchange, or microstructure */
+  /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, repricer bot, cross-exchange, microstructure, or high-demand radar */
   readonly activeMode = signal<
-    'spread' | 'breakeven' | 'repricer' | 'cross_exchange' | 'microstructure'
+    'spread' | 'breakeven' | 'repricer' | 'cross_exchange' | 'microstructure' | 'high_demand'
   >('spread');
 
   readonly buyPrice = signal<number>(800);
@@ -424,6 +427,21 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     if (net >= this.minSpreadGuardPct()) return 'ok';
     if (net > 0) return 'warn';
     return 'noop';
+  });
+
+  /** Selected merchant level for the high demand radar */
+  readonly selectedMerchantLevel = signal<MakerMerchantLevel>('STANDARD');
+
+  /** High Demand Market Scan evaluated live from Binance orderbook */
+  readonly highDemandScan = computed<HighDemandScanResult>(() => {
+    const depth = this.binance.marketDepth();
+    const bank = this.binance.selectedBank();
+    return computeHighDemandScan(depth, {
+      merchantLevel: this.selectedMerchantLevel(),
+      bankFilter: bank,
+      stepVes: 0.01,
+      breakEvenSellPrice: this.breakEvenResult().breakEvenPrice,
+    });
   });
 
   readonly guardText = computed<string>(() => {

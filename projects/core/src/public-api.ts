@@ -73,3 +73,4 @@ export * from './lib/omnichannel-concierge';
 export * from './lib/macro-bcv-intelligence';
 export * from './lib/smart-treasury-yield';
 export * from './lib/browser-operator-bridge';
+export * from './lib/market-scanner';

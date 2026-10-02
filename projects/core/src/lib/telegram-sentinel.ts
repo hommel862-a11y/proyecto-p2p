@@ -58,6 +58,7 @@ export type SentinelAction =
   | 'DISPUTE_ORDER'
   | 'AUDIT_RECEIPT'
   | 'RADAR_SCAN'
+  | 'RADAR_ALTA_DEMANDA'
   | 'REPRICE_REQUEST'
   | 'REPRICE_EXECUTE'
   | 'REPRICE_CANCEL'
@@ -70,6 +71,13 @@ export type SentinelAction =
 export interface RadarScanParams {
   bank?: string;
   capital?: number;
+}
+
+/** Filters and options accepted by `/radardealtademanda [banco] [1k|2.5k|5k|10k|tramos]`. */
+export interface RadarAltaDemandaParams {
+  bank?: string;
+  tierUsdt?: number;
+  showAllTiers?: boolean;
 }
 
 /** Forced reprice prices, echoed both by `/reprecio` and by the confirm callback. */
@@ -436,6 +444,49 @@ ${header}
 ${header}
 ━━━━━
 ${body}`;
+}
+
+/**
+ * Formats the High-Demand Radar report (/radardealtademanda):
+ * Displays institutional volume tiers (>= 1,000 USDT), deduction of official Maker fees,
+ * net spreads, and micro-undercutting posture.
+ */
+export function formatRadarAltaDemandaTelegramMessage(
+  scan: import('./market-scanner').HighDemandScanResult,
+  bankFilter?: string,
+): string {
+  const bankRaw = bankFilter && bankFilter.trim() ? bankFilter.trim() : 'TODOS';
+  const header = `🔎 *Filtro:* Banco \`${formatCodeSpan(bankRaw)}\` • *Nivel:* \`${formatCodeSpan(scan.merchantLevel)}\` \\(Fee: ${scan.makerFeeRatePct}%\\)`;
+
+  if (!scan.tiers || scan.tiers.length === 0) {
+    return `🎯 *RADAR DE ALTA DEMANDA \\(SIN DATOS\\)* 🎯
+━━━━━━━━━━━━━━━━━━━━
+${header}
+⚠️ ${escapeMarkdownV2('Profundidad de mercado no disponible para evaluar tramos.')}`;
+  }
+
+  const rows = scan.tiers
+    .map((t) => {
+      const icon = t.isActionable ? '🟢' : '⚪';
+      const bestTag = scan.bestOpportunityTier?.tierUsdt === t.tierUsdt ? ' 🏆 *RECOMENDADO*' : '';
+      const netSpreadSign = t.netSpreadPct >= 0 ? '+' : '';
+
+      return `${icon} *Tramo: ${t.tierUsdt.toLocaleString('en-US')} USDT* \\(≈ ${formatMetric(t.tierVes)} Bs\\)${bestTag}
+   • Compra Maker: \`${formatMetric(t.suggestedBuyPrice)} Bs\` \\(Competidor: ${formatMetric(t.bestCompetitorBuyPrice)}\\)
+   • Venta Maker: \`${formatMetric(t.suggestedSellPrice)} Bs\` \\(Competidor: ${formatMetric(t.bestCompetitorSellPrice)}\\)
+   • Spread Bruto: \`${formatMetric(t.grossSpreadPct)}%\` \\(Δ ${formatMetric(t.grossSpreadVes)} Bs\\)
+   • ⚡ *Margen Neto Real:* \`${netSpreadSign}${formatMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
+   • Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\``;
+    })
+    .join('\n\n');
+
+  return `🎯 *RADAR DE ALTA DEMANDA \\(≥ 1\\.000 USDT\\)* 🎯
+━━━━━━━━━━━━━━━━━━━━
+${header}
+━━━━━━━━━━━━━━━━━━━━
+${rows}
+━━━━━━━━━━━━━━━━━━━━
+ℹ️ _Micro\\-ajuste ±0\\.01 Bs sobre el mejor comerciante calificado \\(≥90% comp\\. · ≥50 órdenes\\)_`;
 }
 
 /**
@@ -956,6 +1007,59 @@ export function dispatchTelegramUpdate(
           `📡 *RADAR DE GAPS ACTIVADO* 📡\n\n` +
           `🔎 *Filtro:* banco \`${formatCodeSpan(bank ?? 'todos')}\` ` +
           `• capital \`${formatCodeSpan(capital === undefined ? 'sin filtro' : `${capital} USDT`)}\``,
+      };
+    }
+
+    if (command.name === '/radardealtademanda') {
+      const [first, second] = command.args;
+      let bank: string | undefined;
+      let tierUsdt: number | undefined;
+      let showAllTiers = true;
+
+      const parseTierToken = (t?: string): number | undefined => {
+        if (!t) return undefined;
+        const norm = t.toLowerCase().trim();
+        if (norm === '1k' || norm === '1000') return 1000;
+        if (norm === '2.5k' || norm === '2500') return 2500;
+        if (norm === '5k' || norm === '5000') return 5000;
+        if (norm === '10k' || norm === '10000') return 10000;
+        const n = parseFiniteNumber(norm);
+        return n !== undefined && n >= 1000 ? n : undefined;
+      };
+
+      if (first !== undefined) {
+        const parsedTier = parseTierToken(first);
+        if (parsedTier !== undefined) {
+          tierUsdt = parsedTier;
+          showAllTiers = false;
+        } else if (first.toLowerCase() !== 'tramos') {
+          bank = first;
+        }
+      }
+
+      if (second !== undefined) {
+        const parsedTier = parseTierToken(second);
+        if (parsedTier !== undefined) {
+          tierUsdt = parsedTier;
+          showAllTiers = false;
+        }
+      }
+
+      const params: RadarAltaDemandaParams = {
+        bank,
+        tierUsdt,
+        showAllTiers,
+      };
+
+      return {
+        authorized: true,
+        command: '/radardealtademanda',
+        action: 'RADAR_ALTA_DEMANDA',
+        params,
+        responseMarkdown:
+          `🎯 *RADAR DE ALTA DEMANDA ACTIVADO* 🎯\n\n` +
+          `🔎 *Filtro:* banco \`${formatCodeSpan(bank ?? 'todos')}\` ` +
+          `• tramo \`${formatCodeSpan(tierUsdt !== undefined ? `${tierUsdt} USDT` : 'todos (≥1.000 USDT)')}\``,
       };
     }
 

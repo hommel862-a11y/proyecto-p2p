@@ -7,6 +7,11 @@
 
 import { roundMoney } from './money';
 import type { BinanceP2pMarketDepth, BinanceOfferSummary } from './binance-p2p';
+import {
+  filterQualifiedCompetitors,
+  type MakerMerchantLevel,
+  type CompetitorFilterCriteria,
+} from './market-scanner';
 
 export type RepricerStrategy = 'TOP_1' | 'TOP_2' | 'TOP_3' | 'UNDERCUT' | 'MATCH';
 
@@ -25,6 +30,10 @@ export interface RepricerConfig {
   breakEvenSellPrice: number;
   /** Hard maximum buying price to prevent overpaying */
   maxBuyPrice?: number;
+  /** Merchant level to apply accurate Maker fee calculations (defaults to STANDARD) */
+  merchantLevel?: MakerMerchantLevel;
+  /** Criteria to filter out ghost liquidity or low completion rate competitors */
+  filterCriteria?: CompetitorFilterCriteria;
 }
 
 export interface RepricerEvaluationInput {
@@ -121,15 +130,25 @@ export function evaluateRepricer(input: RepricerEvaluationInput): RepricerDecisi
     };
   }
 
-  // 3. Calculate target prices based on order book
+  // 3. Filter qualified competitors to avoid ghost liquidity
+  const qualifiedBuys = filterQualifiedCompetitors(
+    marketDepth.buyOffers ?? [],
+    config.filterCriteria,
+  );
+  const qualifiedSells = filterQualifiedCompetitors(
+    marketDepth.sellOffers ?? [],
+    config.filterCriteria,
+  );
+
+  // 4. Calculate target prices based on order book
   let targetBuy = calculatePositionPrice(
-    marketDepth.buyOffers,
+    qualifiedBuys.length > 0 ? qualifiedBuys : marketDepth.buyOffers,
     'BUY',
     config.strategy,
     config.stepVes,
   );
   let targetSell = calculatePositionPrice(
-    marketDepth.sellOffers,
+    qualifiedSells.length > 0 ? qualifiedSells : marketDepth.sellOffers,
     'SELL',
     config.strategy,
     config.stepVes,

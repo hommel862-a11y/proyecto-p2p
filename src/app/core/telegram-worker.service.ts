@@ -16,6 +16,7 @@ import {
   getBcvMarketIntelligence,
   escapeMarkdownV2,
   formatRadarTelegramMessage,
+  formatRadarAltaDemandaTelegramMessage,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -26,6 +27,7 @@ import {
   formatJournalAuditLine,
   predictTwoHourVolatility,
   computeTickVelocity,
+  computeHighDemandScan,
   type BinanceP2pMarketDepth,
   type BinanceOfferSummary,
   type BacktestReportResult,
@@ -35,6 +37,7 @@ import {
   type PriceTick,
   type RadarGapRow,
   type RadarScanParams,
+  type RadarAltaDemandaParams,
   type RepriceParams,
   type SentinelActionParams,
   type TelegramInboundUpdate,
@@ -221,6 +224,19 @@ function asRadarScanParams(params: SentinelActionParams | undefined): RadarScanP
   if (typeof bank === 'string' && bank.trim()) out.bank = bank.trim();
   const capital = source?.['capital'];
   if (typeof capital === 'number' && Number.isFinite(capital)) out.capital = capital;
+  return out;
+}
+
+/** Narrow `DispatchResult.params` to `/radardealtademanda` options. */
+function asRadarAltaDemandaParams(params: SentinelActionParams | undefined): RadarAltaDemandaParams {
+  const source = asRecord(params);
+  const out: RadarAltaDemandaParams = {};
+  const bank = source?.['bank'];
+  if (typeof bank === 'string' && bank.trim()) out.bank = bank.trim();
+  const tierUsdt = source?.['tierUsdt'];
+  if (typeof tierUsdt === 'number' && Number.isFinite(tierUsdt)) out.tierUsdt = tierUsdt;
+  const showAllTiers = source?.['showAllTiers'];
+  if (typeof showAllTiers === 'boolean') out.showAllTiers = showAllTiers;
   return out;
 }
 
@@ -944,6 +960,50 @@ export class TelegramWorkerService implements OnDestroy {
           action: 'RADAR_SCAN',
           status: 'SUCCESS',
           details: `${rows.length}/${allRows.length} fila(s) desde ${depth ? 'libro en vivo' : 'sin libro'}`,
+        });
+        break;
+      }
+
+      case 'RADAR_ALTA_DEMANDA': {
+        const params = asRadarAltaDemandaParams(dispatch.params);
+        const depth = await this.getFreshMarketDepth();
+        const scan = computeHighDemandScan(depth, {
+          merchantLevel: 'STANDARD',
+          bankFilter: params.bank,
+          stepVes: 0.01,
+        });
+
+        // If user requested a specific tier, filter rows to that tier
+        if (params.tierUsdt !== undefined) {
+          scan.tiers = scan.tiers.filter((t) => t.tierUsdt === params.tierUsdt);
+        }
+
+        const msg = formatRadarAltaDemandaTelegramMessage(scan, params.bank);
+
+        // Build interactive action keyboard if there's a recommended tier
+        let replyMarkup: TelegramInlineKeyboardMarkup | undefined = undefined;
+        if (scan.bestOpportunityTier && scan.bestOpportunityTier.isActionable) {
+          const buyP = scan.bestOpportunityTier.suggestedBuyPrice;
+          const sellP = scan.bestOpportunityTier.suggestedSellPrice;
+          replyMarkup = {
+            inline_keyboard: [
+              [
+                {
+                  text: `⚡ Reprice Auto (Buy ${buyP} / Sell ${sellP})`,
+                  callback_data: `REPRICE_CONFIRM:${buyP.toFixed(2)}:${sellP.toFixed(2)}`,
+                },
+              ],
+            ],
+          };
+        }
+
+        await this.sendTelegramMessage(token, chatId, msg, replyMarkup);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/radardealtademanda',
+          action: 'RADAR_ALTA_DEMANDA',
+          status: 'SUCCESS',
+          details: `${scan.tiers.length} tramo(s) evaluado(s) desde ${depth ? 'libro en vivo' : 'sin libro'}`,
         });
         break;
       }

@@ -67,6 +67,17 @@
           <span class="tab-icon">🔍</span>
           <span class="tab-text">Microestructura</span>
         </button>
+        <button
+          type="button"
+          class="segmented-tab"
+          [class.active]="activeMode() === 'high_demand'"
+          (click)="activeMode.set('high_demand')"
+          role="tab"
+          [attr.aria-selected]="activeMode() === 'high_demand'"
+        >
+          <span class="tab-icon">🎯</span>
+          <span class="tab-text">Alta Demanda (≥$1k)</span>
+        </button>
       </div>
 
       <div class="desk-quick-buttons">
@@ -101,6 +112,136 @@
   } @else if (activeMode() === 'microstructure') {
     <div style="margin-top: 14px;">
       <app-microstructure-shield />
+    </div>
+  } @else if (activeMode() === 'high_demand') {
+    <!-- ═══════════════════════════════════════════════════
+         RADAR DE ALTA DEMANDA (≥ 1.000 USDT) — VISTA DEDICADA
+         ═══════════════════════════════════════════════════ -->
+    <div style="margin-top: 16px;" class="high-demand-radar-container">
+      <div class="panel" style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 16px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.4rem;">🎯</span>
+              <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">Radar de Alta Demanda</h3>
+              <span class="badge badge-accent">Órdenes ≥ 1.000 USDT</span>
+            </div>
+            <p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--muted, #94a3b8);">
+              Segmentación institucional por tramos de capital, filtro de comerciantes fantasma y cálculo exacto de comisiones Maker.
+            </p>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <label style="font-size: 0.8rem; color: #cbd5e1; display: flex; align-items: center; gap: 6px;">
+              <span>Nivel Maker:</span>
+              <select
+                [value]="selectedMerchantLevel()"
+                (change)="selectedMerchantLevel.set($any($event.target).value)"
+                class="terminal-select"
+                style="padding: 4px 8px; font-size: 0.8rem;"
+              >
+                <option value="STANDARD">Estándar / No verificado (0.25%)</option>
+                <option value="BRONZE">Bronce (0.20%)</option>
+                <option value="SILVER">Plata (0.175%)</option>
+                <option value="GOLD">Oro (0.125%)</option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              class="btn btn-secondary"
+              (click)="syncBinancePrices()"
+              [disabled]="binance.loading()"
+              style="padding: 6px 12px; font-size: 0.8rem;"
+            >
+              🔄 Actualizar Libro
+            </button>
+          </div>
+        </div>
+
+        @if (highDemandScan(); as scan) {
+          @if (scan.tiers.length === 0) {
+            <div style="text-align: center; padding: 40px 20px; color: var(--muted, #94a3b8);">
+              <span style="font-size: 2rem; display: block; margin-bottom: 8px;">📡</span>
+              <p style="margin: 0;">No hay datos de mercado disponibles para evaluar los tramos.</p>
+              <button type="button" class="btn btn-primary" (click)="syncBinancePrices()" style="margin-top: 12px;">
+                Cargar Mercado Binance P2P
+              </button>
+            </div>
+          } @else {
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+              @for (tier of scan.tiers; track tier.tierUsdt) {
+                <div
+                  style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px; position: relative;"
+                  [style.border-color]="scan.bestOpportunityTier?.tierUsdt === tier.tierUsdt ? 'var(--accent, #38bdf8)' : 'rgba(255, 255, 255, 0.08)'"
+                >
+                  @if (scan.bestOpportunityTier?.tierUsdt === tier.tierUsdt) {
+                    <div style="position: absolute; top: -10px; right: 12px; background: var(--accent, #38bdf8); color: #0f172a; font-weight: 700; font-size: 0.68rem; padding: 2px 8px; border-radius: 10px; text-transform: uppercase;">
+                      Mayor Oportunidad
+                    </div>
+                  }
+
+                  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
+                    <div>
+                      <span style="font-size: 1.1rem; font-weight: 700; color: #fff;">{{ tier.tierUsdt | num }} USDT</span>
+                      <span style="display: block; font-size: 0.75rem; color: var(--muted, #94a3b8);">≈ {{ tier.tierVes | ves }}</span>
+                    </div>
+                    <span class="badge" [class.badge-accent]="tier.isActionable" [class.badge-muted]="!tier.isActionable">
+                      {{ tier.isActionable ? 'Operable' : 'Comprimido' }}
+                    </span>
+                  </div>
+
+                  <div style="font-size: 0.82rem; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between;">
+                      <span style="color: var(--muted, #94a3b8);">Compra Maker Sugerida:</span>
+                      <span class="font-mono" style="font-weight: 600; color: #34d399;">{{ tier.suggestedBuyPrice | num }} Bs</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                      <span style="color: var(--muted, #94a3b8);">Venta Maker Sugerida:</span>
+                      <span class="font-mono" style="font-weight: 600; color: #f87171;">{{ tier.suggestedSellPrice | num }} Bs</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px;">
+                      <span style="color: var(--muted, #94a3b8);">Spread Bruto:</span>
+                      <span class="font-mono">{{ tier.grossSpreadPct | num }}% ({{ tier.grossSpreadVes | num }} Bs)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                      <span style="color: var(--muted, #94a3b8);">Comisión Maker (2x):</span>
+                      <span class="font-mono" style="color: #fbbf24;">-{{ tier.totalFeePct }}%</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 8px;">
+                      <span style="color: #fff;">Margen Neto Real:</span>
+                      <span class="font-mono" [style.color]="tier.netSpreadPct > 0 ? '#38bdf8' : '#ef4444'">
+                        {{ tier.netSpreadPct > 0 ? '+' : '' }}{{ tier.netSpreadPct | num }}%
+                      </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
+                      <span style="color: var(--muted, #94a3b8);">Ganancia Ciclo:</span>
+                      <span class="font-mono" style="color: #38bdf8;">+{{ tier.netProfitUsdtPerCycle | num }} USDT</span>
+                    </div>
+                  </div>
+
+                  <div style="margin-top: 14px; pt-2; border-top: 1px solid rgba(255, 255, 255, 0.06);">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted, #94a3b8); margin-bottom: 8px;">
+                      <span>Competidores Calificados:</span>
+                      <span>{{ tier.qualifiedBuyOffersCount }} buy / {{ tier.qualifiedSellOffersCount }} sell</span>
+                    </div>
+                    @if (tier.isActionable) {
+                      <button
+                        type="button"
+                        class="btn btn-primary"
+                        style="width: 100%; font-size: 0.78rem; padding: 6px 10px;"
+                        (click)="buyPrice.set(tier.suggestedBuyPrice); sellPrice.set(tier.suggestedSellPrice); activeMode.set('spread'); toast.success('Precios del tramo ' + tier.tierUsdt + ' USDT aplicados a la calculadora.', 'Radar')"
+                      >
+                        ⚡ Cargar en Calculadora
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        }
+      </div>
     </div>
   } @else {
     <!-- ═══════════════════════════════════════════════════

@@ -576,6 +576,32 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       });
     });
 
+    describe('/radardealtademanda', () => {
+      it('despacha RADAR_ALTA_DEMANDA por defecto con showAllTiers true', () => {
+        const res = dispatchTelegramUpdate(message('/radardealtademanda'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.command).toBe('/radardealtademanda');
+        expect(res.action).toBe('RADAR_ALTA_DEMANDA');
+        expect(res.params).toEqual({ bank: undefined, tierUsdt: undefined, showAllTiers: true });
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('parsea banco y tramo 1k o 5k correctamente', () => {
+        const res = dispatchTelegramUpdate(message('/radardealtademanda banesco 5k'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('RADAR_ALTA_DEMANDA');
+        expect(res.params).toEqual({ bank: 'banesco', tierUsdt: 5000, showAllTiers: false });
+        expectParseableMarkdownV2(res.responseMarkdown);
+      });
+
+      it('interpreta tramos mayores o iguales a 1000 USDT', () => {
+        const res = dispatchTelegramUpdate(message('/radardealtademanda 2500'), AUTH_CHAT_ID);
+        expect(res.authorized).toBe(true);
+        expect(res.action).toBe('RADAR_ALTA_DEMANDA');
+        expect(res.params).toEqual({ bank: undefined, tierUsdt: 2500, showAllTiers: false });
+      });
+    });
+
     describe('/reprecio', () => {
       it('despacha REPRICE_REQUEST con los precios parseados y exige confirmación', () => {
         const res = dispatchTelegramUpdate(message('/reprecio 84.5 85.2'), AUTH_CHAT_ID);
