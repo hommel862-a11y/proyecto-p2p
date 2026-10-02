@@ -81,6 +81,68 @@ describe('AccountsService (Desktop SQLite Bridge & LocalStorage Fallback)', () =
     expect(service.accounts()[0].bankName).toBe('Banesco SQLite Custom');
   });
 
+  it('adopts SQLite accounts strictly without resurrecting missing default banks automatically', async () => {
+    const singleAccount: BankAccount = {
+      id: 'banesco-pm-1',
+      bankName: 'Banesco Pago Móvil',
+      bankCode: 'BANESCO',
+      rail: 'PAGO_MOVIL',
+      accountNumberMasked: '0414-***1234',
+      dailyLimitVes: 50000,
+      initialBalanceVes: 10000,
+      status: 'ACTIVE',
+    };
+
+    const mockBridge: ElectronDbBridge = {
+      listBankAccounts: vi.fn().mockResolvedValue([singleAccount]),
+      saveBankAccount: vi.fn().mockResolvedValue(true),
+      getBankAccount: vi.fn().mockResolvedValue(singleAccount),
+      deleteBankAccount: vi.fn().mockResolvedValue(true),
+    };
+
+    await service.initElectronSync(mockBridge);
+
+    // Debe contener únicamente la cuenta que existe en SQLite, sin resucitar las 15 restantes
+    expect(service.accounts()).toHaveLength(1);
+    expect(service.accounts()[0].id).toBe('banesco-pm-1');
+    expect(mockBridge.saveBankAccount).not.toHaveBeenCalled();
+  });
+
+  it('restores missing default banks only upon explicit call to restoreDefaultAccounts()', async () => {
+    const singleAccount: BankAccount = {
+      id: 'banesco-pm-1',
+      bankName: 'Banesco Pago Móvil',
+      bankCode: 'BANESCO',
+      rail: 'PAGO_MOVIL',
+      accountNumberMasked: '0414-***1234',
+      dailyLimitVes: 50000,
+      initialBalanceVes: 10000,
+      status: 'ACTIVE',
+    };
+
+    const mockBridge: ElectronDbBridge = {
+      listBankAccounts: vi.fn().mockResolvedValue([singleAccount]),
+      saveBankAccount: vi.fn().mockResolvedValue(true),
+      getBankAccount: vi.fn().mockResolvedValue(singleAccount),
+      deleteBankAccount: vi.fn().mockResolvedValue(true),
+    };
+
+    await service.initElectronSync(mockBridge);
+    expect(service.accounts()).toHaveLength(1);
+
+    (window as unknown as { electron?: { db?: ElectronDbBridge } }).electron = {
+      db: mockBridge,
+    };
+
+    await service.restoreDefaultAccounts();
+
+    expect(service.accounts().length).toBe(16);
+    expect(service.accounts().some((a) => a.id === 'provincial-pm-1')).toBe(true);
+    expect(mockBridge.saveBankAccount).toHaveBeenCalled();
+
+    delete (window as unknown as { electron?: unknown }).electron;
+  });
+
   it('seeds Electron SQLite with initial accounts when SQLite is empty on startup', async () => {
     const mockBridge: ElectronDbBridge = {
       listBankAccounts: vi.fn().mockResolvedValue([]),
@@ -140,4 +202,43 @@ describe('AccountsService (Desktop SQLite Bridge & LocalStorage Fallback)', () =
 
     delete (window as unknown as { electron?: unknown }).electron;
   });
+
+  describe('injectLiquidity', () => {
+    it('increases account initial balance, logs audit, and preserves existing usage math', () => {
+      const target = service.accounts()[0];
+      const initial = target.initialBalanceVes;
+      const injected = 15000;
+
+      const updated = service.injectLiquidity(target.id, injected, 'Fondeo matutino de prueba');
+
+      expect(updated.initialBalanceVes).toBe(initial + injected);
+      expect(service.accounts().find((a) => a.id === target.id)?.initialBalanceVes).toBe(
+        initial + injected,
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        'CONFIG_CHANGE',
+        expect.stringContaining(`Inyección de liquidez: ${injected} VES`),
+        expect.objectContaining({
+          accountId: target.id,
+          amountVes: injected,
+          referenceNote: 'Fondeo matutino de prueba',
+        }),
+        'info',
+      );
+    });
+
+    it('rejects invalid, negative, or zero injection amounts', () => {
+      const target = service.accounts()[0];
+      expect(() => service.injectLiquidity(target.id, 0)).toThrow('Monto de inyección inválido');
+      expect(() => service.injectLiquidity(target.id, -500)).toThrow('Monto de inyección inválido');
+      expect(() => service.injectLiquidity(target.id, Number.NaN)).toThrow(
+        'Monto de inyección inválido',
+      );
+    });
+
+    it('throws when the targeted account does not exist', () => {
+      expect(() => service.injectLiquidity('non-existent-id', 5000)).toThrow('no encontrada');
+    });
+  });
 });
+

@@ -1407,7 +1407,6 @@ aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corr
 
 | Pendiente | Por que |
 | --- | --- |
-| `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
 | Segundo venue live | Requiere credenciales Bybit/El Dorado |
@@ -1489,3 +1488,37 @@ no la inyectaba en el entorno del proceso ni la persistía de forma segura para 
 - `test:electron`: **249/249** tests en 22 archivos (10/10 en `handlers.spec.ts`).
 - `mcp:test`: **248/248** tests en 17 archivos.
 - Typechecks `electron/tsconfig.json`: exit 0.
+
+# Duodécima vuelta: SQLite como fuente autoritativa de cuentas bancarias (sin resurrección silenciosa)
+
+En la sexta vuelta se detectó que `initElectronSync` y `loadAccounts` en `accounts.service.ts`
+hacían un merge automático de `missingDefaults` contra las 16 cuentas predeterminadas (`DEFAULT_ACCOUNTS`).
+Si un operador borraba 15 cuentas para operar únicamente con una cuenta de Banesco, al reiniciar la
+aplicación el sistema auto-resucitaba las 15 cuentas borradas en la tesorería real del operador.
+Ese comportamiento violaba el principio de "sin dato antes que dato inventado": fabricaba cuentas
+bancarias y saldos que el usuario había descartado deliberadamente.
+
+## Qué se corrigió
+
+1. **SQLite como fuente de verdad estricta**:
+   - En `initElectronSync`, si SQLite contiene cuentas (`records.length > 0`), se adoptan exactamente
+     esas cuentas tal cual existen en la base de datos sin inyectar cuentas faltantes.
+   - Si SQLite está vacío al arrancar en una instalación nueva, se realiza el sembrado inicial (`current`).
+   - En `loadAccounts` (storage web local), si existen cuentas almacenadas se retornan intactas
+     sin reinyectar `missingDefaults`.
+
+2. **Restauración explícita bajo control del operador**:
+   - La re-incorporación de bancos predeterminados faltantes queda confinada exclusivamente a
+     `restoreDefaultAccounts()`, una acción explícita disparada por el usuario desde la interfaz
+     o configuración, nunca como un efecto secundario silencioso del arranque.
+
+3. **Pruebas unitarias**:
+   - Actualizado `src/app/core/accounts.service.spec.ts`:
+     - Test de adopción estricta de cuentas de SQLite verificando que una sola cuenta no resucita las 15 restantes (`expect(service.accounts()).toHaveLength(1)`).
+     - Test de `restoreDefaultAccounts()` verificando que la restauración sólo ocurre tras la llamada explícita.
+
+## Verificación de esta vuelta
+
+- `ng test p2p`: **596/596** tests en 49 archivos (9/9 en `accounts.service.spec.ts`).
+- `test:electron`: **249/249** tests en 22 archivos.
+- Typechecks `tsconfig.app` y `tsconfig.spec`: exit 0.

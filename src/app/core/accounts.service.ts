@@ -73,6 +73,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     initialBalanceVes: 40000,
   },
   {
+    id: 'mercantil-transf-1',
+    bankName: 'Mercantil Transferencia',
+    bankCode: 'MERCANTIL',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0105-***6543',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 100000,
+  },
+  {
     id: 'bdv-pm-1',
     bankName: 'BDV Pago Móvil',
     bankCode: 'BDV',
@@ -80,6 +89,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: '0416-***4321',
     dailyLimitVes: 50000,
     initialBalanceVes: 30000,
+  },
+  {
+    id: 'bdv-transf-1',
+    bankName: 'BDV Transferencia',
+    bankCode: 'BDV',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0102-***8765',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 80000,
   },
   {
     id: 'provincial-pm-1',
@@ -91,6 +109,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     initialBalanceVes: 35000,
   },
   {
+    id: 'provincial-transf-1',
+    bankName: 'BBVA Provincial Transferencia',
+    bankCode: 'PROVINCIAL',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0108-***4321',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 90000,
+  },
+  {
     id: 'bancamiga-pm-1',
     bankName: 'Bancamiga Pago Móvil',
     bankCode: 'BANCAMIGA',
@@ -98,6 +125,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: '0424-***3456',
     dailyLimitVes: 60000,
     initialBalanceVes: 40000,
+  },
+  {
+    id: 'bancamiga-transf-1',
+    bankName: 'Bancamiga Transferencia',
+    bankCode: 'BANCAMIGA',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0172-***5678',
+    dailyLimitVes: 300000,
+    initialBalanceVes: 110000,
   },
   {
     id: 'bnc-pm-1',
@@ -109,6 +145,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     initialBalanceVes: 30000,
   },
   {
+    id: 'bnc-transf-1',
+    bankName: 'BNC Transferencia',
+    bankCode: 'BNC',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0191-***9876',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 85000,
+  },
+  {
     id: 'bancaribe-pm-1',
     bankName: 'Bancaribe Pago Móvil',
     bankCode: 'BANCARIBE',
@@ -118,6 +163,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     initialBalanceVes: 25000,
   },
   {
+    id: 'bancaribe-transf-1',
+    bankName: 'Bancaribe Transferencia',
+    bankCode: 'BANCARIBE',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0114-***8765',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 75000,
+  },
+  {
     id: 'banplus-pm-1',
     bankName: 'Banplus Pago Móvil',
     bankCode: 'BANPLUS',
@@ -125,6 +179,15 @@ const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: '0412-***6789',
     dailyLimitVes: 40000,
     initialBalanceVes: 25000,
+  },
+  {
+    id: 'banplus-transf-1',
+    bankName: 'Banplus Transferencia',
+    bankCode: 'BANPLUS',
+    rail: 'TRANSFERENCIA',
+    accountNumberMasked: '0174-***4321',
+    dailyLimitVes: 250000,
+    initialBalanceVes: 75000,
   },
 ];
 
@@ -158,7 +221,9 @@ export class AccountsService {
 
   /**
    * When running inside Electron, synchronize SQLite accounts with in-memory state.
-   * If SQLite has accounts, adopt them. If SQLite is empty, seed it with the initial accounts.
+   * If SQLite has accounts, adopt them strictly as the source of truth without
+   * resurrecting accounts deleted by the operator.
+   * If SQLite is empty, seed it with the initial accounts.
    */
   async initElectronSync(bridgeOverride?: ElectronDbBridge): Promise<void> {
     const electronDb = bridgeOverride ?? getElectronDb();
@@ -177,6 +242,43 @@ export class AccountsService {
     } catch (err) {
       console.warn('[AccountsService] Failed to sync accounts with Electron SQLite:', err);
     }
+  }
+
+  /**
+   * Asegura que todas las cuentas predeterminadas de los 8 bancos oficiales estén presentes.
+   * Si faltan, las agrega y las persiste en Electron SQLite y en storage local sin pisar saldos existentes.
+   */
+  async restoreDefaultAccounts(): Promise<void> {
+    const current = this.accounts();
+    const existingIds = new Set(current.map((a) => a.id));
+    const missingDefaults = DEFAULT_ACCOUNTS.filter((d) => !existingIds.has(d.id));
+
+    if (missingDefaults.length === 0) return;
+
+    const merged = [...current, ...missingDefaults];
+    this.saveAccounts(merged);
+
+    const electronDb = getElectronDb();
+    if (electronDb?.saveBankAccount) {
+      for (const acc of missingDefaults) {
+        try {
+          await electronDb.saveBankAccount(acc);
+        } catch (err) {
+          console.warn('[AccountsService] Error al guardar cuenta default en SQLite:', acc.id, err);
+        }
+      }
+    }
+  }
+
+  /** Señal reactiva para solicitar la apertura del modal de liquidez desde cualquier componente (ej. Command Palette). */
+  readonly liquidityModalRequest = signal<{ bankId?: string; timestamp: number } | null>(null);
+
+  requestLiquidityModal(bankId?: string): void {
+    this.liquidityModalRequest.set({ bankId, timestamp: Date.now() });
+  }
+
+  clearLiquidityModalRequest(): void {
+    this.liquidityModalRequest.set(null);
   }
 
   readonly rawOperations = computed<Operation[]>(() => {
@@ -306,6 +408,7 @@ export class AccountsService {
       { id: created.id, name: created.bankName },
       'info',
     );
+    void this.announceTreasuryToMain();
     return created;
   }
 
@@ -322,6 +425,7 @@ export class AccountsService {
       { id: updated.id, name: updated.bankName },
       'info',
     );
+    void this.announceTreasuryToMain();
   }
 
   deleteAccount(id: string): void {
@@ -332,6 +436,65 @@ export class AccountsService {
       void electronDb.deleteBankAccount(id);
     }
     this.audit.log('CONFIG_CHANGE', 'Cuenta bancaria eliminada', { id }, 'info');
+    void this.announceTreasuryToMain();
+  }
+
+  /**
+   * Inyecta liquidez en VES a una cuenta bancaria específica.
+   * Incrementa el saldo inicial disponible, persiste en SQLite/LocalStorage,
+   * registra auditoría institucional y notifica al proceso principal de Electron.
+   */
+  injectLiquidity(accountId: string, amountVes: number, referenceNote?: string): BankAccount {
+    if (!Number.isFinite(amountVes) || amountVes <= 0) {
+      throw new Error(`Monto de inyección inválido: ${amountVes}. Debe ser un número positivo.`);
+    }
+    const acc = this.accounts().find((a) => a.id === accountId);
+    if (!acc) {
+      throw new Error(`Cuenta bancaria con id ${accountId} no encontrada.`);
+    }
+
+    const previousInitialBalance = acc.initialBalanceVes;
+    const updated: BankAccount = {
+      ...acc,
+      initialBalanceVes: Math.round((acc.initialBalanceVes + amountVes) * 100) / 100,
+    };
+    this.updateAccount(updated);
+    this.audit.log(
+      'CONFIG_CHANGE',
+      `Inyección de liquidez: ${amountVes} VES a ${acc.bankName}`,
+      {
+        accountId,
+        bankName: acc.bankName,
+        bankCode: acc.bankCode,
+        amountVes,
+        previousInitialBalance,
+        newInitialBalance: updated.initialBalanceVes,
+        referenceNote: referenceNote ?? '',
+      },
+      'info',
+    );
+    return updated;
+  }
+
+  /**
+   * Anuncia el snapshot de tesorería real al proceso principal de Electron vía `p2p:treasury-announce`.
+   */
+  async announceTreasuryToMain(): Promise<void> {
+    // `&&` yields the literal `false` when window is undefined, so the type was
+    // `false | { p2p?: ... }` and TS rejected `.announceTreasury` on `false`.
+    // A ternary narrows to `undefined` instead. Runtime behaviour is identical:
+    // both branches reach the same falsy guard on the next line.
+    const bridge =
+      typeof window !== 'undefined'
+        ? (window as unknown as { p2p?: { announceTreasury?: (s: unknown) => Promise<boolean> } }).p2p
+        : undefined;
+    if (!bridge?.announceTreasury) return;
+    try {
+      const snapshot = this.buildTreasurySnapshot();
+      await bridge.announceTreasury(snapshot);
+    } catch (err: unknown) {
+      console.warn('[AccountsService] Failed to announce treasury to Electron main:', err);
+    }
   }
 
   private saveAccounts(list: BankAccount[]): void {
