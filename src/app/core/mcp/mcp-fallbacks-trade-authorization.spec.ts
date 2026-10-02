@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { simulateMcpTool } from './mcp-fallbacks';
 
 /**
@@ -120,6 +120,134 @@ describe('espejo de evaluate_trade_risk — sin capital ni contraparte inventado
     // El dato existe y es malo. Declararlo ausente sería perder el hallazgo.
     expect(r['isCounterpartyAcceptable']).toBe(false);
     expect(r['unavailableReason']).toBeNull();
+  });
+});
+
+describe('espejo de evaluate_trade_risk — los frenos del motor no se rellenan con constantes', () => {
+  const ENGINE_STATE_SAFE = {
+    currentSpreadPct: 1.25,
+    openOps: 1,
+    dailyLossPct: 0.4,
+    consecutiveErrors: 0,
+  } as const;
+
+  it('un score de contraparte bajo 70 deniega en vez de permitir (la contraparte manda)', () => {
+    const r = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 10,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 0,
+      ...ENGINE_STATE_SAFE,
+    });
+
+    expect(r['decision']).toBe('DENY');
+    expect(r['isCounterpartyAcceptable']).toBe(false);
+    expect(r['violations']).toContain('COUNTERPARTY_BELOW_MIN_SCORE_70');
+  });
+
+  it('no permite un trade cuya contraparte está en 69', () => {
+    const r = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 10,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 69,
+      ...ENGINE_STATE_SAFE,
+    });
+
+    expect(r['decision']).toBe('DENY');
+    expect(r['violations']).toContain('COUNTERPARTY_BELOW_MIN_SCORE_70');
+  });
+
+  it('acepta una contraparte en 70 con estado seguro del motor', () => {
+    const r = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 10,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 70,
+      ...ENGINE_STATE_SAFE,
+    });
+
+    expect(r['decision']).toBe('ALLOW');
+    expect(r['isCounterpartyAcceptable']).toBe(true);
+    expect(r['unmeasuredInputs']).toEqual([]);
+  });
+
+  it('una contraparte mala deniega aunque falte telemetría del motor', () => {
+    const r = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 10,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 40,
+    });
+
+    expect(r['decision']).toBe('DENY');
+    expect(r['isCounterpartyAcceptable']).toBe(false);
+    expect(r['violations']).toContain('COUNTERPARTY_BELOW_MIN_SCORE_70');
+    expect(r['unmeasuredInputs']).toContain('dailyLossPct');
+  });
+
+  it('sin estado del motor responde INSUFFICIENT_DATA sin inventar constantes seguras', () => {
+    const r = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 100,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 90,
+    });
+
+    expect(r['decision']).toBe('INSUFFICIENT_DATA');
+    expect(r['recommendedSizeUsdt']).toBeNull();
+    expect(r['violations']).toEqual([]);
+    expect(r['unmeasuredInputs']).toEqual([
+      'currentSpreadPct',
+      'openOps',
+      'dailyLossPct',
+      'consecutiveErrors',
+    ]);
+  });
+
+  it('las reglas 2 a 5 ahora sí disparan en el espejo y no quedan ocultas tras constantes', () => {
+    // Regla 2: pérdida diaria >= 10%
+    const rLoss = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 100,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 90,
+      currentSpreadPct: 1.25,
+      openOps: 1,
+      dailyLossPct: 15,
+      consecutiveErrors: 0,
+    });
+    expect(rLoss['decision']).toBe('PAUSE');
+
+    // Regla 3: errores consecutivos >= 3
+    const rErrors = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 100,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 90,
+      currentSpreadPct: 1.25,
+      openOps: 1,
+      dailyLossPct: 0.4,
+      consecutiveErrors: 3,
+    });
+    expect(rErrors['decision']).toBe('PAUSE');
+
+    // Regla 4: spread bajo el mínimo de 0.5
+    const rSpread = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 100,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 90,
+      currentSpreadPct: 0.2,
+      openOps: 1,
+      dailyLossPct: 0.4,
+      consecutiveErrors: 0,
+    });
+    expect(rSpread['decision']).toBe('DENY');
+
+    // Regla 5: operaciones concurrentes >= 3
+    const rOps = run('evaluate_trade_risk', {
+      tradeAmountUsdt: 100,
+      currentCapitalUsdt: 5000,
+      counterpartyScore: 90,
+      currentSpreadPct: 1.25,
+      openOps: 3,
+      dailyLossPct: 0.4,
+      consecutiveErrors: 0,
+    });
+    expect(rOps['decision']).toBe('PAUSE');
   });
 });
 

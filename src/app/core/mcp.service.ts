@@ -158,6 +158,10 @@ export class McpService {
     fiatCurrency?: string;
     counterpartyScore?: number;
     currentCapitalUsdt: number;
+    currentSpreadPct?: number;
+    openOps?: number;
+    dailyLossPct?: number;
+    consecutiveErrors?: number;
   }) {
     return this.testTool('evaluate_trade_risk', input);
   }
@@ -296,6 +300,7 @@ export class McpService {
     reinvestmentRatePct: number;
     monthlyFixedExpensesUsdt?: number;
     dailyBankLimitVes?: number;
+    referenceRateVes?: number;
   }) {
     return this.testTool('project_compound_runway', input);
   }

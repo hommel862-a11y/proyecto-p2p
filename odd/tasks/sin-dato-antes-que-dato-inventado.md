@@ -1407,10 +1407,8 @@ aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corr
 
 | Pendiente | Por que |
 | --- | --- |
-| `RuleContext` del espejo | `openOps: 1` y `dailyLossPct: 0` siguen como constantes ahi. Cerrado en el servidor, no en el espejo |
 | `DEFAULT_ACCOUNTS` en `initElectronSync` | Decision de producto: ¿SQLite es autoritativo o las cuentas son solo semilla? |
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
-| Flake de `add_operation_entry` | Intermitente, no diagnosticado a fondo. Mismo archivo y clase que el ya corregido |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
 | `COTIZAVE_API_KEY` ausente | No hay puente desde `SecretStoreService` al daemon |
 | Segundo venue live | Requiere credenciales Bybit/El Dorado |
@@ -1419,3 +1417,35 @@ aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corr
 `packages/mcp-server/dist/index.js` salio de la lista de pendientes: esta gitignored
 (`packages/mcp-server/.gitignore:5`) y es artefacto de build, no versionado. El build
 corre y sale limpio; no era un commit pendiente sino una suposicion mia incorrecta.
+
+# Décima vuelta: el espejo se alinea con el servidor y cae el flake misterioso
+
+La novena vuelta cerró las constantes inalcanzables en `packages/mcp-server`. Esta vuelta
+lleva esa misma honestidad al espejo de la app en `mcp-fallbacks.ts`, cierra el flake
+histórico de `add_operation_entry`, y corrige la proyección de velocidad en el borde de
+medianoche.
+
+## Qué se corrigió
+
+1. **Espejo de `evaluate_trade_risk` sin constantes seguras**:
+   - `mcp-fallbacks.ts` ya no inyecta `openOps: 1`, `dailyLossPct: 0` ni `consecutiveErrors: score < 50 ? 2 : 0`.
+   - Sin estado del motor (`currentSpreadPct`, `openOps`, `dailyLossPct`, `consecutiveErrors`), responde `INSUFFICIENT_DATA` y lista las ausencias en `unmeasuredInputs`.
+   - Contraparte con score menor a 70 deniega de inmediato (`DENY` con `COUNTERPARTY_BELOW_MIN_SCORE_70`) antes de evaluar el motor.
+   - Las reglas 2 a 5 ahora sí disparan en el espejo cuando se suministra el estado completo.
+   - 6 tests nuevos agregados a `mcp-fallbacks-trade-authorization.spec.ts` (subiendo de 16 a 22).
+
+2. **Diagnóstico y fin del flake de `add_operation_entry`**:
+   - El test verificaba `expect(JSON.stringify(result)).not.toContain('82')` para evitar el viejo precio inventado `82.85`.
+   - Al buscar la subcadena `'82'` en el JSON completo, fallaba aleatoriamente cuando el hash criptográfico generado (`cryptographicReceiptHash`) o el `orderId` contenían "82" (ej. `"hash_82plcb"`).
+   - Corregido para comprobar que `result['price']` no sea el default inventado y usar el matcher estructurado `expectNoInventedNumbers`.
+
+3. **Borde de medianoche en `Copilot`**:
+   - En `copilot.ts`, a las 23:59 `minutesLeft` daba < 1 minuto y `Math.round(minutesLeft / remainingTransactions)` redondeaba a 0 minutos por ciclo. Se fijó con `Math.max(1, ...)`.
+
+## Verificación de esta vuelta
+
+- `mcp:test`: 248/248 tests en 17 archivos.
+- `ng test p2p`: 595/595 tests en 49 archivos.
+- `ng test core`: 952/952 tests en 79 archivos.
+- `test:electron`: 244/244 tests en 22 archivos.
+- Typechecks `tsconfig.app` y `tsconfig.spec`: exit 0.

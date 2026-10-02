@@ -242,20 +242,32 @@ export function simulateMcpTool(
     // `EvaluateTradeRiskInputSchema` es REQUERIDO: el servidor rechaza la llamada
     // entera si no llega. El espejo lo rellenaba con 500, así que una llamada
     // incompleta recibía un veredicto completo sobre un monto que nadie pidió.
+    // En la novena vuelta (aaf14e2) se corrigió que el servidor MCP llenaba
+    // RuleContext con constantes del lado seguro de su propio umbral (spread 1.25,
+    // openOps 1, dailyLossPct 0, consecutiveErrors 0/2), haciendo inalcanzables las
+    // reglas 2 a 5. El espejo reproducía ese defecto: sin estado medido del llamador,
+    // el motor de riesgo no debe correr con constantes inventadas que simulen un día limpio.
     const tradeAmount = numeroODeferenciaAusente((args as any)?.tradeAmountUsdt);
     const capital = numeroODeferenciaAusente((args as any)?.currentCapitalUsdt);
     const score = numeroODeferenciaAusente((args as any)?.counterpartyScore);
 
-    // El spread es una lectura observada del mercado. Without a caller-supplied
-    // reading the MIN_SPREAD rule cannot be evaluated, so we declare absence instead
-    // of inventing a spread that would silently clear the rule.
-    const observedSpread = (args as any)?.currentSpreadPct;
-    const hasObservedSpread = observedSpread !== undefined && Number(observedSpread) > 0;
+    const ENGINE_STATE_INPUTS = [
+      'currentSpreadPct',
+      'openOps',
+      'dailyLossPct',
+      'consecutiveErrors',
+    ] as const;
+    type EngineStateInput = (typeof ENGINE_STATE_INPUTS)[number];
 
-    // El orden es el que un llamador tendría que arreglar: primero el operando
-    // primario, luego el denominador, después la elegibilidad. El guard testean los
-    // valores directamente, no el motivo derivado, para que el compilador estreche
-    // `number | null` a `number` en la rama else.
+    const POLICY_MAX_RISK_PER_TRADE_PCT = 20;
+    const POLICY_MIN_SPREAD_VES_PER_USDT = 0.5;
+    const MIN_COUNTERPARTY_SCORE = 70;
+    const COUNTERPARTY_VIOLATION = `COUNTERPARTY_BELOW_MIN_SCORE_${MIN_COUNTERPARTY_SCORE}`;
+
+    const unmeasuredInputs: EngineStateInput[] = ENGINE_STATE_INPUTS.filter(
+      (key) => numeroODeferenciaAusente((args as any)?.[key]) == null,
+    );
+
     const unavailableReason =
       tradeAmount == null
         ? 'missing_evidence:tradeAmountUsdt'
@@ -271,8 +283,8 @@ export function simulateMcpTool(
       simulatedResult = {
         ...simulatedResult,
         decision: 'UNAVAILABLE',
-        reason: unavailableReason,
-        currentSpreadPct: hasObservedSpread ? Number(observedSpread) : null,
+        reason: unavailableReason ?? 'EVIDENCIA_INSUFICIENTE',
+        currentSpreadPct: numeroODeferenciaAusente((args as any)?.currentSpreadPct),
         tradeRiskPct: null,
         // Un tamaño recomendado contra capital no reportado es un número del que se
         // dimensiona una orden.
@@ -281,53 +293,79 @@ export function simulateMcpTool(
         isCounterpartyAcceptable: null,
         // No hay regla violada que reportar: no se pudo evaluar ninguna.
         violations: [],
-        unmeasuredInputs: [
-          ...(tradeAmount == null ? ['tradeAmountUsdt'] : []),
-          ...(capital == null ? ['currentCapitalUsdt'] : []),
-          ...(score == null ? ['counterpartyScore'] : []),
-        ],
+        unmeasuredInputs: unmeasuredInputs.length > 0 ? unmeasuredInputs : [...ENGINE_STATE_INPUTS],
         unavailableReason,
         actionable: false,
       };
     } else {
       const tradeRiskPct = (tradeAmount / capital) * 100;
-      const ctx: RuleContext = {
-        currentSpread: Number(observedSpread),
-        minSpread: 0.5,
-        openOps: 1,
-        tradeRiskPct,
-        dailyLossPct: 0,
-        consecutiveErrors: score < 50 ? 2 : 0,
-        maxRiskPerTradePct: 20,
-      };
-      const recommendedMaxUsdt = (capital * (ctx.maxRiskPerTradePct ?? 20)) / 100;
+      const isCounterpartyAcceptable = score >= MIN_COUNTERPARTY_SCORE;
+      const measuredTradeRiskPct = Number(tradeRiskPct.toFixed(2));
 
-      if (!hasObservedSpread) {
+      // Precedencia: un score bajo el piso (70) deniega de inmediato con DENY y
+      // la violación COUNTERPARTY_BELOW_MIN_SCORE_70. No esconde el hallazgo tras INSUFFICIENT_DATA.
+      if (!isCounterpartyAcceptable) {
+        simulatedResult = {
+          ...simulatedResult,
+          decision: 'DENY',
+          reason: `Counterparty score ${score} is below the minimum ${MIN_COUNTERPARTY_SCORE}`,
+          currentSpreadPct: numeroODeferenciaAusente((args as any)?.currentSpreadPct),
+          tradeRiskPct: measuredTradeRiskPct,
+          recommendedSizeUsdt: 0,
+          isCounterpartyAcceptable: false,
+          violations: [COUNTERPARTY_VIOLATION],
+          unmeasuredInputs,
+          unavailableReason: null,
+          actionable: false,
+        };
+      } else if (unmeasuredInputs.length > 0) {
+        // Sin el estado medido del motor (currentSpreadPct, openOps, dailyLossPct, consecutiveErrors),
+        // no se inventan constantes para fingir que todo está seguro.
         simulatedResult = {
           ...simulatedResult,
           decision: 'INSUFFICIENT_DATA',
-          reason: 'MISSING_CURRENT_SPREAD',
-          currentSpreadPct: null,
-          tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+          reason: `missing_evidence:${unmeasuredInputs.join(',')}`,
+          currentSpreadPct: numeroODeferenciaAusente((args as any)?.currentSpreadPct),
+          tradeRiskPct: measuredTradeRiskPct,
           recommendedSizeUsdt: null,
-          isCounterpartyAcceptable: null,
-          violations: ['MISSING_CURRENT_SPREAD'],
+          isCounterpartyAcceptable: true,
+          violations: [],
+          unmeasuredInputs,
           unavailableReason: null,
           actionable: false,
         };
       } else {
+        const currentSpread = Number((args as any)?.currentSpreadPct);
+        const openOps = Number((args as any)?.openOps);
+        const dailyLossPct = Number((args as any)?.dailyLossPct);
+        const consecutiveErrors = Number((args as any)?.consecutiveErrors);
+
+        const ctx: RuleContext = {
+          currentSpread,
+          minSpread: POLICY_MIN_SPREAD_VES_PER_USDT,
+          openOps,
+          tradeRiskPct,
+          dailyLossPct,
+          consecutiveErrors,
+          maxRiskPerTradePct: POLICY_MAX_RISK_PER_TRADE_PCT,
+          dailyLossCapPct: 10,
+          maxConcurrentOps: 3,
+          maxConsecutiveErrors: 3,
+        };
+
         const verdict = evaluate(ctx);
+        const recommendedMaxUsdt = (capital * POLICY_MAX_RISK_PER_TRADE_PCT) / 100;
+
         simulatedResult = {
           ...simulatedResult,
           decision: verdict.decision,
           reason: verdict.reason,
-          currentSpreadPct: Number(observedSpread),
-          tradeRiskPct: Number(tradeRiskPct.toFixed(2)),
+          currentSpreadPct: currentSpread,
+          tradeRiskPct: measuredTradeRiskPct,
           recommendedSizeUsdt: Math.min(tradeAmount, recommendedMaxUsdt),
-          // El score viene del llamador: `score >= 70` es un cálculo sobre un dato
-          // real, no un permiso.
-          isCounterpartyAcceptable: score >= 70,
+          isCounterpartyAcceptable: true,
           violations: verdict.decision !== 'ALLOW' ? [verdict.reason] : [],
+          unmeasuredInputs: [],
           unavailableReason: null,
           actionable: false,
         };
@@ -1858,15 +1896,14 @@ export function simulateMcpTool(
       };
     }
   } else if (toolName === 'scan_synthetic_stable_arbitrage') {
-    // Las curvas son lecturas de mercado spot y P2P. Sin `pairs` no hay curva que
-    // escanear: el bloqueava un par USDC/VES fijo (85.5 / 86.8) y reportaba
+// Las curvas son lecturas de mercado spot y P2P. Sin `pairs` no hay curva que
+    // escanear: el bloqueaba un par USDC/VES fijo (85.5 / 86.8) y reportaba
     // `opportunitiesCount` sobre él, es decir un arbitrage sintético que ningún
     // scan observó. `opportunitiesCount: 0` tampoco serviría —afirmaría que se
     // escaneó y no halló nada— así que el conteo va en null junto al marcador.
-    // DIVERGENCIA CONOCIDA (fuera de alcance de este barrido): el daemon tiene sus
-    // propios `defaultQuotes` en `scan_synthetic_stable_arbitrage.ts` y corre el scan
-    // sobre ellos cuando `pairs` viene vacío. Ese default debe caer por separado; acá
-    // el fallback se niega a inventar la curva.
+    // El daemon tenía sus propios `defaultQuotes` con esa misma curva fija; ya
+    // no los tiene y devuelve `NO_MEASURED_CURVE` cuando `pairs` viene vacío.
+    // Esta mitad y la del daemon ahora dicen lo mismo.
     const pairsRaw = (args as any)?.pairs;
     const pairs: any[] = Array.isArray(pairsRaw) ? pairsRaw : [];
     const minNetSpreadPct = Number((args as any)?.minNetSpreadPct ?? 0.15);
@@ -2202,9 +2239,14 @@ export function simulateMcpTool(
     const daysSinceLastIntervention = Number((args as any)?.daysSinceLastIntervention ?? 4);
     const currentHourOfDayUtcMinus4 = Number((args as any)?.currentHourOfDayUtcMinus4 ?? 10);
     const currentDayOfWeek = Number((args as any)?.currentDayOfWeek ?? 1);
-    const estimatedWeeklyBcvInjectionUsd = Number(
-      (args as any)?.estimatedWeeklyBcvInjectionUsd ?? 50000000,
-    );
+    // No default: an injection figure nobody supplied must stay absent. This used
+    // to be `?? 50000000`, so omitting the argument asserted a $50M weekly
+    // injection that no source had observed.
+    const estimatedWeeklyBcvInjectionUsd = Number.isFinite(
+      Number((args as any)?.estimatedWeeklyBcvInjectionUsd),
+    )
+      ? Number((args as any)?.estimatedWeeklyBcvInjectionUsd)
+      : undefined;
     if (officialRead.value === null || parallelRead.value === null) {
       const faltante = officialRead.value === null ? officialRead : parallelRead;
       simulatedResult = {
@@ -2275,6 +2317,30 @@ export function simulateMcpTool(
       ...simulatedResult,
       compiledTask,
       executionStatus: 'TASK_COMPILED_READY_FOR_AGENT_RUNNER',
+      evaluatedAt: new Date().toISOString(),
+    };
+  } else if (toolName === 'project_compound_runway') {
+    const initialCapitalUsdt = Math.max(1, Number((args as any)?.initialCapitalUsdt ?? 500));
+    const netMarginPctPerCycle = Math.max(0, Number((args as any)?.netMarginPctPerCycle ?? 0.85));
+    const cyclesPerDay = Math.max(0.1, Number((args as any)?.cyclesPerDay ?? 2));
+    const operationalDays = Math.max(1, Number((args as any)?.operationalDays ?? 90));
+    const reinvestmentRatePct = Math.min(100, Math.max(0, Number((args as any)?.reinvestmentRatePct ?? 100)));
+    const dailyBankLimitVes = (args as any)?.dailyBankLimitVes ? Number((args as any).dailyBankLimitVes) : undefined;
+    const referenceRateVes = (args as any)?.referenceRateVes ? Number((args as any).referenceRateVes) : 60.0;
+
+    const sim = simulateCompoundGrowth({
+      initialCapitalUsdt,
+      netMarginPctPerCycle,
+      cyclesPerDay,
+      operationalDays,
+      reinvestmentRatePct,
+      dailyBankLimitVes,
+      referenceRateVes,
+    });
+
+    simulatedResult = {
+      ...simulatedResult,
+      ...sim,
       evaluatedAt: new Date().toISOString(),
     };
   }

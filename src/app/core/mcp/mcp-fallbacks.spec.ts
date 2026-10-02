@@ -995,7 +995,8 @@ describe('simulateMcpTool — sin dato antes que dato inventado', () => {
     expect(result['price']).toBe(958.580188);
     expect(result['vesAmount']).toBe(958580.188);
     expect(result['usdtAmount']).toBe(1000);
-    expect(JSON.stringify(result)).not.toContain('82');
+    expect(result['price']).not.toBe(82.85);
+    expectNoInventedNumbers(JSON.stringify(result), 'add_operation_entry');
   });
 
   it('calculate_delta_neutral_hedge NO dimensiona una cobertura sobre 84.12', () => {

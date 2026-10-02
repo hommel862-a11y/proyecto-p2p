@@ -236,7 +236,7 @@ function projectMinutesPerCycle(snapshot: TreasurySnapshot, now: number = Date.n
   const endOfDay = new Date(now);
   endOfDay.setHours(24, 0, 0, 0);
   const minutesLeft = Math.max(1, Math.round((endOfDay.getTime() - now) / 60_000));
-  return Math.round(minutesLeft / remainingTransactions);
+  return Math.max(1, Math.round(minutesLeft / remainingTransactions));
 }
 
 @Component({
@@ -1267,8 +1267,14 @@ export class Copilot implements OnInit, OnDestroy {
 
             const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
             let replyText = '';
+            // Measured, not assumed. Previously this block hardcoded
+            // apiCallsCount: 1 / maxSteps: 1 and signed locally generated text
+            // as if Gemini had produced it.
+            let callsMade = 0;
+            let answeredByModel: string | null = null;
 
             for (const model of models) {
+              callsMade++;
               try {
                 const res = await fetch(
                   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -1294,13 +1300,17 @@ export class Copilot implements OnInit, OnDestroy {
                     candidates?: { content?: { parts?: { text?: string }[] } }[];
                   };
                   replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-                  if (replyText) break;
+                  if (replyText) {
+                    answeredByModel = model;
+                    break;
+                  }
                 }
               } catch {
                 // Try fallback model
               }
             }
 
+            const answeredByGemini = answeredByModel !== null;
             if (!replyText) {
               replyText =
                 'No se pudo obtener respuesta de la API de Google Gemini. Verificá que tu API Key sea válida y tenga cuota disponible.';
@@ -1313,14 +1323,20 @@ export class Copilot implements OnInit, OnDestroy {
                 content: replyText,
                 timestamp: Date.now(),
                 provenance: {
-                  source: 'gemini',
-                  model: 'gemini-flash',
+                  // Only claim Gemini when Gemini actually answered.
+                  source: answeredByGemini ? 'gemini' : 'simulated',
+                  ...(answeredByModel ? { model: answeredByModel } : {}),
                   provenanceId: `web-${Date.now()}`,
                   timestamp: Date.now(),
-                  esSimulado: false,
-                  stepsCount: 1,
-                  maxSteps: 1,
-                  apiCallsCount: 1,
+                  // This path has no market feed at all, so nothing here is live data.
+                  esSimulado: true,
+                  liveMarketFeedConnected: false,
+                  marketFeedReason: 'NO_BOOK',
+                  marketFeedNote: '[sin feed: este canal no consulta libro de mercado]',
+                  ...(answeredByGemini ? {} : { fallbackReason: 'GEMINI_UNAVAILABLE' }),
+                  stepsCount: callsMade,
+                  maxSteps: models.length,
+                  apiCallsCount: callsMade,
                 },
               },
             ]);
@@ -1337,6 +1353,17 @@ export class Copilot implements OnInit, OnDestroy {
                 role: 'assistant',
                 content: `Error al consultar Gemini API: ${errorMsg}. Podés verificar tu clave en la pestaña "Conexión Gemini".`,
                 timestamp: Date.now(),
+                provenance: {
+                  // An error message is not a model answer. Reporting it as Gemini
+                  // output with esSimulado: false showed a live badge on a failure.
+                  source: 'simulated',
+                  provenanceId: `web-error-${Date.now()}`,
+                  timestamp: Date.now(),
+                  fallbackReason: 'GEMINI_REQUEST_FAILED',
+                  esSimulado: true,
+                  liveMarketFeedConnected: false,
+                  marketFeedReason: 'NO_BOOK',
+                },
               },
             ]);
             this.scrollToBottom();
@@ -1377,7 +1404,11 @@ export class Copilot implements OnInit, OnDestroy {
             provenanceId: `error-${Date.now()}`,
             timestamp: Date.now(),
             fallbackReason: isKillswitch ? 'KILLSWITCH_ACTIVE' : 'ERROR',
-            esSimulado: false,
+            // An emergency stop is never real data. Claiming esSimulado: false
+            // here rendered a green live badge on a kill-switch block.
+            esSimulado: true,
+            liveMarketFeedConnected: false,
+            marketFeedReason: 'NO_BOOK',
           },
         },
       ]);
