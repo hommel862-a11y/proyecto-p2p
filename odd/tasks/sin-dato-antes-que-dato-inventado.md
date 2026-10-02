@@ -1410,7 +1410,8 @@ aaf14e2  evaluate_trade_risk deja de responder ALLOW sobre frenos que nunca corr
 | `interventionProbabilityPct` | No hay modelo BCV calibrado; solo puede quedar `null` |
 | `evaluateUsdtDepegEvent` dormido | Nunca invocado; necesita ticker real de `USDTUSD` |
 | Segundo venue live | Requiere credenciales Bybit/El Dorado |
-| Worktree `p2p-bridge-build` | Figura `prunable`; no limpiar sin confirmar que no tiene trabajo sin commitear |
+
+Worktree `p2p-bridge-build` podado limpiamente con `git worktree prune` (directorio en `%TEMP%` ya no existía).
 
 `packages/mcp-server/dist/index.js` salio de la lista de pendientes: esta gitignored
 (`packages/mcp-server/.gitignore:5`) y es artefacto de build, no versionado. El build
