@@ -524,6 +524,7 @@ describe('TelegramWorkerService', () => {
         TOKEN,
         CHAT_ID,
         expect.stringContaining('TELEGRAM SENTINEL'),
+        expect.anything(),
       );
       const markdown = sendSpy.mock.calls[0][2] as string;
       expect(markdown).toContain(String(CHAT_ID));
@@ -547,6 +548,7 @@ describe('TelegramWorkerService', () => {
         TOKEN,
         INTRUDER_CHAT_ID,
         expect.stringContaining('TELEGRAM SENTINEL'),
+        expect.anything(),
       );
       const markdown = sendSpy.mock.calls[0][2] as string;
       expect(markdown).toContain('Para autorizar este chat');

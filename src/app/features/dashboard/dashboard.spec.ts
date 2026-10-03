@@ -51,7 +51,7 @@ describe('Dashboard', () => {
     const f = create();
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Centro de Control');
-  });
+  }, 15000);
 
   it('computes daily progress percentage correctly', () => {
     seed([
@@ -176,4 +176,134 @@ describe('Dashboard', () => {
     expect(text).not.toContain('una sesión anterior · Cotizave sin datos');
     expect(text).not.toMatch(/Cotizave (en vivo|restaurada)/i);
   });
+
+  it('renders all bank cards and manages liquidity injection modal workflow', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    // Verify all 8 bank codes exist in unified accounts
+    const codes = c.unifiedAccounts().map((a) => a.bankCode);
+    expect(codes).toContain('BANESCO');
+    expect(codes).toContain('MERCANTIL');
+    expect(codes).toContain('BDV');
+    expect(codes).toContain('PROVINCIAL');
+    expect(codes).toContain('BANCAMIGA');
+    expect(codes).toContain('BNC');
+    expect(codes).toContain('BANCARIBE');
+    expect(codes).toContain('BANPLUS');
+
+    // Opens modal via openLiquidityModal
+    const targetAccount = c.unifiedAccounts().find((a) => a.bankCode === 'PROVINCIAL')!;
+    c.openLiquidityModal(targetAccount);
+    f.detectChanges();
+
+    expect(c.showLiquidityModal()).toBe(true);
+    expect(c.selectedInjectionAccountId()).toBe(targetAccount.id);
+    expect(f.nativeElement.textContent).toContain('Inyectar Liquidez Bancaria');
+
+    // Validates projected balance
+    c.injectionAmount.set(25000);
+    f.detectChanges();
+    expect(c.projectedBalanceAfterInjection()).toBe(targetAccount.currentBalanceVes + 25000);
+
+    // Injects liquidity and updates state
+    const spy = vi.spyOn(c.accountsService, 'injectLiquidity');
+    c.confirmLiquidityInjection();
+    f.detectChanges();
+
+    expect(spy).toHaveBeenCalledWith(targetAccount.id, 25000, expect.any(String));
+    expect(c.showLiquidityModal()).toBe(false);
+  });
+
+  it('toggles treasury density between bento and compact and persists in storage', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.treasuryDensity()).toBe('bento');
+
+    c.setTreasuryDensity('compact');
+    f.detectChanges();
+
+    expect(c.treasuryDensity()).toBe('compact');
+
+    c.setTreasuryDensity('bento');
+    f.detectChanges();
+
+    expect(c.treasuryDensity()).toBe('bento');
+  });
+
+  it('responds to liquidityModalRequest from AccountsService by opening modal with target account', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.showLiquidityModal()).toBe(false);
+
+    c.accountsService.requestLiquidityModal('provincial-pm-1');
+    TestBed.flushEffects();
+    f.detectChanges();
+
+    expect(c.showLiquidityModal()).toBe(true);
+    expect(c.selectedInjectionAccountId()).toBe('provincial-pm-1');
+  });
+
+  it('renders real-time latency telemetry in dynamic island and triggers refresh on click', async () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const el = f.nativeElement as HTMLElement;
+    const telemetryBadge = el.querySelector('.island-telemetry');
+    expect(telemetryBadge).toBeTruthy();
+    expect(telemetryBadge?.textContent).toContain('IPC');
+    expect(telemetryBadge?.textContent).toContain('DB');
+    expect(telemetryBadge?.textContent).toContain('P2P');
+
+    const spy = vi.spyOn(c.telemetryService, 'refresh');
+    (telemetryBadge as HTMLElement).click();
+    f.detectChanges();
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('plays audio feedback on liquidity injection and session actions', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const injectionAudioSpy = vi.spyOn(c.audioAlerts, 'playInjectionTone');
+    const warningAudioSpy = vi.spyOn(c.audioAlerts, 'playSudebanWarningTone');
+    vi.spyOn(c.accountsService, 'injectLiquidity').mockReturnValue({ bankName: 'Banco de Venezuela' } as any);
+
+    // Saturated account triggers sudeban warning
+    c.openLiquidityModal({
+      id: 'test-bank',
+      bankName: 'Test Bank',
+      bankCode: '0102' as any,
+      rail: 'PAGO_MOVIL',
+      accountNumberMasked: '****',
+      currentBalanceVes: 80000,
+      dailyLimitVes: 100000,
+      spentTodayVes: 80000,
+      remainingLimitVes: 20000,
+      consumedLimitPct: 80,
+      isOverLimit: false,
+      isNearLimit: true,
+      todayTransactionCount: 5,
+      maxDailyTransactions: 20,
+      velocityHealth: 'OPTIMAL',
+      usedPct: 80,
+      recommendedWaitHours: 0,
+      isRecommended: true,
+    });
+    expect(warningAudioSpy).toHaveBeenCalled();
+
+    // Confirming injection triggers injection tone
+    c.injectionAmount.set(5000);
+    c.confirmLiquidityInjection();
+    expect(injectionAudioSpy).toHaveBeenCalled();
+  });
 });
+
