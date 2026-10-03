@@ -164,7 +164,7 @@ export const GetBinanceP2POrderbookInputSchema = z.object({
 export type GetBinanceP2POrderbookInput = z.infer<typeof GetBinanceP2POrderbookInputSchema>;
 
 export const DetectUsdtDepegInputSchema = z.object({
-  spotUsdtPrice: z.number().positive().default(1.0),
+  spotUsdtPrice: z.number().positive().optional(),
   thresholdPct: z.number().positive().max(5.0).default(0.2),
 });
 export type DetectUsdtDepegInput = z.infer<typeof DetectUsdtDepegInputSchema>;

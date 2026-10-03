@@ -385,25 +385,38 @@ describe('P2P MCP Server Suite', () => {
       expect(ob.sellOffersCount).toBe(5);
     });
 
-    it('detect_usdt_depeg monitors parity deviations and alerts on critical depegs', () => {
+    it('detect_usdt_depeg monitors parity deviations and alerts on critical depegs', async () => {
       // Normal pegged state ($1.000)
-      const normal = detectUsdtDepegTool.execute({ spotUsdtPrice: 1.0, thresholdPct: 0.2 });
+      const normal = await detectUsdtDepegTool.execute({ spotUsdtPrice: 1.0, thresholdPct: 0.2 });
       expect(normal.status).toBe('PEGGED');
       expect(normal.isDepegged).toBe(false);
       expect(normal.riskSeverity).toBe('NONE');
 
       // Depeg discount ($0.988 -> -1.2%)
-      const discount = detectUsdtDepegTool.execute({ spotUsdtPrice: 0.988, thresholdPct: 0.2 });
+      const discount = await detectUsdtDepegTool.execute({ spotUsdtPrice: 0.988, thresholdPct: 0.2 });
       expect(discount.status).toBe('DEPEG_DISCOUNT');
       expect(discount.isDepegged).toBe(true);
       expect(discount.riskSeverity).toBe('CRITICAL');
       expect(discount.isEmergencyActionRequired).toBe(true);
 
       // Depeg premium ($1.008 -> +0.8%)
-      const premium = detectUsdtDepegTool.execute({ spotUsdtPrice: 1.008, thresholdPct: 0.2 });
+      const premium = await detectUsdtDepegTool.execute({ spotUsdtPrice: 1.008, thresholdPct: 0.2 });
       expect(premium.status).toBe('DEPEG_PREMIUM');
       expect(premium.isDepegged).toBe(true);
       expect(premium.arbitrageOpportunity).toBe(true);
+    });
+
+    it('detect_usdt_depeg consulta ticker spot en vivo o declara ausencia sin inventar 1.0', async () => {
+      const result = await detectUsdtDepegTool.execute({});
+      if (result.spotUsdtPrice !== null) {
+        expect(result.spotUsdtPrice).toBeGreaterThan(0.5);
+        expect(result.spotUsdtPrice).toBeLessThan(1.5);
+        expect(result.source).toMatch(/binance|kraken/i);
+      } else {
+        expect(result.status).toBe('UNAVAILABLE_NO_LIVE_FEED');
+        expect(result.actionable).toBe(false);
+        expect(result.unavailableReason).toBe('missing_evidence:spotUsdtPrice');
+      }
     });
 
     it('recommend_competitive_pricing positions Maker ads optimally with safety boundaries', () => {
@@ -473,8 +486,14 @@ describe('P2P MCP Server Suite', () => {
       const spotResource = cryptoResources.find((r) => r.uri === 'p2p://market/spot/volatility');
       expect(spotResource).toBeDefined();
       const spotData = (await spotResource?.read()) as any;
-      expect(spotData.spotUsdtPrice).toBe(1.0);
-      expect(spotData.status).toBe('PEGGED');
+      if (spotData.spotUsdtPrice !== null) {
+        expect(spotData.spotUsdtPrice).toBeCloseTo(1.0, 1);
+        expect(typeof spotData.status).toBe('string');
+        expect(spotData.source).not.toBe('NONE');
+      } else {
+        expect(spotData.status).toBe('UNAVAILABLE_NO_LIVE_FEED');
+        expect(spotData.source).toBe('NONE');
+      }
     });
   });
 

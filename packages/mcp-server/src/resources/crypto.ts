@@ -3,6 +3,7 @@
  */
 
 import { getBinanceP2POrderbookSnapshot, detectUsdtDepegParity } from '../core/index.js';
+import { fetchLiveUsdtSpotReading } from '../tools/usdt-spot-reader.js';
 
 export interface McpResource {
   uri: string;
@@ -41,8 +42,23 @@ export const cryptoResources: McpResource[] = [
     description:
       'Estado de paridad del USDT contra USD fiat, alertas de despegue y volatilidad spot global',
     mimeType: 'application/json',
-    read: () => {
-      const parity = detectUsdtDepegParity(1.0, 0.2);
+    read: async () => {
+      const live = await fetchLiveUsdtSpotReading();
+      if (live === null) {
+        return {
+          timestamp: new Date().toISOString(),
+          spotUsdtPrice: null,
+          parityDeviationPct: null,
+          status: 'UNAVAILABLE_NO_LIVE_FEED',
+          isDepegged: null,
+          arbitrageOpportunity: false,
+          riskSeverity: 'NONE',
+          recommendation:
+            'Sin feed spot en vivo disponible para USDT. Se declara ausencia de paridad.',
+          source: 'NONE',
+        };
+      }
+      const parity = detectUsdtDepegParity(live.price, 0.2);
       return {
         timestamp: new Date().toISOString(),
         spotUsdtPrice: parity.spotUsdtPrice,
@@ -52,6 +68,7 @@ export const cryptoResources: McpResource[] = [
         arbitrageOpportunity: parity.arbitrageOpportunity,
         riskSeverity: parity.riskSeverity,
         recommendation: parity.recommendation,
+        source: live.source,
       };
     },
   },
