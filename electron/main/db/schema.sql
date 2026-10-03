@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS strategy_plans (
   assigned_operator_name TEXT,
   rationale TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'PROPOSED' CHECK (status IN ('PROPOSED', 'APPROVED', 'EXECUTED', 'CANCELLED', 'REJECTED')),
+  -- Provenance of the numbers. 1 = built from reference values, 0 = built from a live
+  -- feed. Defaults to 1 so the dispatch gate fails closed, including for legacy rows.
+  es_simulated INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

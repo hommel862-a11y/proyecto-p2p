@@ -37,6 +37,12 @@ export interface StrategyPlanRecord {
   assignedOperatorName?: string;
   rationale: string;
   status: 'PROPOSED' | 'APPROVED' | 'EXECUTED' | 'CANCELLED' | 'REJECTED';
+  /**
+   * Whether the plan's numbers came from a live feed. Persisted so dispatch can
+   * refuse simulated plans. Undefined on legacy rows, treated as simulated.
+   */
+  esSimulado?: boolean;
+  isSimulated?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -226,6 +232,10 @@ export class P2PDatabaseService {
           assigned_operator_name TEXT,
           rationale TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'PROPOSED',
+          -- Provenance of the numbers. Persisted so executePlan can refuse to
+          -- dispatch a plan whose figures came from reference values instead of
+          -- a live feed. Absent on legacy rows, which are treated as simulated.
+          es_simulated INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
@@ -256,6 +266,19 @@ export class P2PDatabaseService {
           updated_at INTEGER NOT NULL
         );
       `);
+    }
+
+    // Column migration: strategy_plans gains es_simulated. CREATE TABLE IF NOT
+    // EXISTS does not add columns to an existing table, so an already-created
+    // database needs this explicit ALTER. Legacy rows default to 1 (simulated),
+    // which fails closed at the dispatch gate.
+    const planCols = this.db.prepare(`PRAGMA table_info(strategy_plans)`).all() as {
+      name: string;
+    }[];
+    if (planCols.length > 0 && !planCols.some((c) => c.name === 'es_simulated')) {
+      this.db.exec(
+        `ALTER TABLE strategy_plans ADD COLUMN es_simulated INTEGER NOT NULL DEFAULT 1`,
+      );
     }
 
     // Explicit migration guard: guarantee critical tables and indexes exist on any pre-existing database
@@ -560,8 +583,8 @@ export class P2PDatabaseService {
         id, title, route, asset, fiat, capital_required_usdt,
         expected_net_spread_pct, expected_profit_usdt, risk_level,
         assigned_operator_id, assigned_operator_name, rationale,
-        status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, es_simulated, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         route = excluded.route,
@@ -575,6 +598,7 @@ export class P2PDatabaseService {
         assigned_operator_name = excluded.assigned_operator_name,
         rationale = excluded.rationale,
         status = excluded.status,
+        es_simulated = excluded.es_simulated,
         updated_at = excluded.updated_at
     `);
 
@@ -592,6 +616,8 @@ export class P2PDatabaseService {
       plan.assignedOperatorName ?? null,
       plan.rationale,
       plan.status,
+      // Default to simulated when unknown: fail closed, never assume live.
+      (plan.esSimulado === false || plan.isSimulated === false) ? 0 : 1,
       plan.createdAt,
       plan.updatedAt,
     );
@@ -619,6 +645,9 @@ export class P2PDatabaseService {
       assignedOperatorName: (row['assigned_operator_name'] as string) || undefined,
       rationale: row['rationale'] as string,
       status: row['status'] as StrategyPlanRecord['status'],
+      // Missing column on legacy rows => simulated (fail closed).
+      esSimulado: row['es_simulated'] === undefined ? true : Number(row['es_simulated']) === 1,
+      isSimulated: row['es_simulated'] === undefined ? true : Number(row['es_simulated']) === 1,
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     };
@@ -644,6 +673,8 @@ export class P2PDatabaseService {
       assignedOperatorName: (row['assigned_operator_name'] as string) || undefined,
       rationale: row['rationale'] as string,
       status: row['status'] as StrategyPlanRecord['status'],
+      esSimulado: row['es_simulated'] === undefined ? true : Number(row['es_simulated']) === 1,
+      isSimulated: row['es_simulated'] === undefined ? true : Number(row['es_simulated']) === 1,
       createdAt: Number(row['created_at']),
       updatedAt: Number(row['updated_at']),
     }));
@@ -862,6 +893,14 @@ export class P2PDatabaseService {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `);
     stmt.run(key, value, Date.now());
+  }
+
+  /**
+   * Removes a key-value configuration item. Used to drop credentials that can
+   * no longer be stored securely instead of leaving them readable on disk.
+   */
+  deleteConfigValue(key: string): void {
+    this.db.prepare('DELETE FROM app_config_kv WHERE key = ?').run(key);
   }
 
   /**

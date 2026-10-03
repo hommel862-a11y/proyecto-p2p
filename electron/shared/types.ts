@@ -373,6 +373,8 @@ export interface AlphaWatcherStatus {
 
 export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';
 
+export type MarketFeedReason = 'LIVE' | 'NO_BOOK' | 'STALE_BOOK' | 'INCOMPLETE_BOOK';
+
 export interface ProvenanceMetadata {
   source: ExecutionProvenance;
   model?: string;
@@ -384,6 +386,16 @@ export interface ProvenanceMetadata {
   stepsCount?: number;
   maxSteps?: number;
   apiCallsCount?: number;
+  /** Why the feed is or is not live. Makes a stale book distinguishable from a missing one. */
+  marketFeedReason?: MarketFeedReason;
+  /** Human-readable provenance shown to the operator, e.g. "[sin feed: libro vencido (12 min)]". */
+  marketFeedNote?: string;
+  /** True when this turn stopped at a turn-level paid-call budget. */
+  budgetExhausted?: boolean;
+  /** Paid Gemini calls made this turn, as an enforced budget rather than a report. */
+  paidCallsThisTurn?: number;
+  /** Hard ceiling for paid calls in a single user turn. */
+  paidCallsBudget?: number;
 }
 
 export interface CopilotResponse {

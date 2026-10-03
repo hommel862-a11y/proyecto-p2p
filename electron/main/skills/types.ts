@@ -29,6 +29,9 @@ export interface FinancialSkillResult {
   skillName: string;
   data?: unknown;
   error?: string;
+  unavailableReason?: string;
+  expectedSource?: string;
+  actionable?: boolean;
   executedAt: number;
 }
 

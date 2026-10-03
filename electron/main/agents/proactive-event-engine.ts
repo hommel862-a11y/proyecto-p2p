@@ -74,7 +74,7 @@ export class ProactiveEventEngine {
     const phase = intel.window.phase;
 
     // 1. Extreme Gap Dispersion (>=28% is CRITICAL)
-    if (gapPct >= 28) {
+    if (gapPct !== null && gapPct >= 28) {
       const key = `BCV_GAP_CRITICAL`;
       if (this.shouldTrigger(key)) {
         const alert: ProactiveEventAlert = {

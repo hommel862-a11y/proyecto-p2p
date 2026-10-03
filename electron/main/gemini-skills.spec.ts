@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import {
   executeFinancialSkill,
@@ -451,8 +451,19 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
   });
 
   it('integridad: los motores embebidos son byte-idénticos a projects/core/src/lib', () => {
-    const vendorDir = join(process.cwd(), 'main', 'vendor', 'p2p-core');
-    const libDir = join(process.cwd(), '..', 'projects', 'core', 'src', 'lib');
+    // Walk up to the directory holding package.json instead of trusting
+    // process.cwd() or import.meta.url. The suite runs both from electron/ and
+    // from the repo root with --root, so cwd-relative paths resolved to the
+    // wrong directory and reported a false ENOENT while every file was in fact
+    // byte-identical.
+    let repoRoot = process.cwd();
+    while (!existsSync(join(repoRoot, 'package.json'))) {
+      const parent = dirname(repoRoot);
+      if (parent === repoRoot) throw new Error('no se encontró package.json subiendo desde el cwd');
+      repoRoot = parent;
+    }
+    const vendorDir = join(repoRoot, 'electron', 'main', 'vendor', 'p2p-core');
+    const libDir = join(repoRoot, 'projects', 'core', 'src', 'lib');
     for (const name of VENDORED_CORE_FILES) {
       expect(readFileSync(join(vendorDir, `${name}.ts`), 'utf8'), name).toBe(
         readFileSync(join(libDir, `${name}.ts`), 'utf8'),

@@ -7,6 +7,11 @@ import { GeminiOrchestrator } from './gemini-orchestrator';
 import type { WebhookDispatcher } from './services/webhook-dispatcher';
 import { killswitchState, resetKillswitch, triggerKillswitch } from './ipc/killswitch-state';
 import { clearTreasurySnapshot, setTreasurySnapshot } from './ipc/treasury-snapshot';
+import {
+  clearFinancialSkillMarketData,
+  getMarketBook,
+  seedFinancialSkillMarketData,
+} from './skills/market-state';
 import type { TreasurySnapshotDto } from '../shared/types';
 
 describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
@@ -70,24 +75,26 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
     expect(storedPlan).toBeDefined();
     expect(storedPlan?.status).toBe('PROPOSED');
 
-    // 4. Ejecutar el plan (Acción Human-in-the-Loop "PLAY")
+    // 4. La provenance del plan refleja que NO hay feed en vivo en este escenario,
+    //    así que la Human-in-the-Loop "PLAY" debe rechazarlo en la puerta de despacho.
+    expect(plan.esSimulado).toBe(true);
     const execResult = await orchestrator.executePlan(plan.id);
-    expect(execResult.success).toBe(true);
-    expect(execResult.dispatchSummary).toBeDefined();
-    expect(execResult.dispatchSummary?.planId).toBe(plan.id);
-    expect(execResult.dispatchSummary?.sheets.synced).toBe(true);
+    expect(execResult.success).toBe(false);
+    expect(execResult.error).toMatch(/feed de mercado en vivo/i);
+    expect(execResult.dispatchSummary).toBeUndefined();
 
-    // 5. Validar cambio de estado a APPROVED en SQLite
-    const approvedPlan = dbService.getStrategyPlan(plan.id);
-    expect(approvedPlan?.status).toBe('APPROVED');
+    // 5. El plan queda en PROPOSED: no se aprueba ni despacha nada
+    expect(dbService.getStrategyPlan(plan.id)?.status).toBe('PROPOSED');
 
-    // 6. Validar registro de observación en la memoria persistente Engram
+    // 6. La memoria persistente registra el bloqueo, no una ejecución
     const engramRecords = dbService.listEngramObservations();
-    expect(engramRecords.length).toBeGreaterThan(0);
-    const planObservation = engramRecords.find((r) => r.topicKey === `execution/plan-${plan.id}`);
-    expect(planObservation).toBeDefined();
-    expect(planObservation?.type).toBe('decision');
-    expect(planObservation?.what).toContain(plan.id);
+    const blockedObservation = engramRecords.find((r) =>
+      r.topicKey.startsWith(`execution/blocked-${plan.id}`),
+    );
+    expect(blockedObservation).toBeDefined();
+    expect(
+      engramRecords.find((r) => r.topicKey === `execution/plan-${plan.id}`),
+    ).toBeUndefined();
   });
 
   it('retorna error controlado al intentar ejecutar un plan inexistente', async () => {
@@ -203,6 +210,9 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
         riskLevel: 'LOW',
         rationale: 'Spread neto por encima de la regla de oro.',
         status: 'PROPOSED',
+        // The shared fixture is provenance-clean so each barrier test exercises its
+        // OWN gate. The provenance gate has its own test below.
+        esSimulado: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -229,6 +239,143 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
           .listEngramObservations()
           .some((obs) => obs.topicKey.startsWith(`execution/blocked-${barrierPlanId}`)),
       ).toBe(true);
+    });
+
+    it('NUNCA clasifica un plan sin feed en vivo como riesgo LOW', async () => {
+      const prompts: Array<[string, RegExp]> = [
+        ['Rotación BCV y drenaje fiscal SENIAT', /rotaci|bcv|seniat|macro/i],
+        ['Cobertura delta-neutral y funding arbitrage', /hedge|delta|funding|cobertura/i],
+        ['Concentración de órdenes y book pressure', /book|orden|order|concentrac/i],
+        ['Vuelo de fiat y dollarization', /fiat|dolariz|flight/i],
+        ['Market making con inventario post-trade', /market making|avellaneda|inventario/i],
+        ['Triaje y escalamiento operativo', /triaje|escalamiento|operativ/i],
+      ];
+
+      const seenPlans: string[] = [];
+      for (const [prompt, matcher] of prompts) {
+        const res = await orchestrator.sendMessage({ prompt });
+        const plan = res.suggestedPlan;
+        expect(plan, `sin plan para: ${prompt}`).toBeDefined();
+        if (plan && matcher.test(plan.title + ' ' + plan.rationale)) {
+          seenPlans.push(plan.title);
+          expect(plan.esSimulado, plan.title).toBe(true);
+          // Sin libro de órdenes no existe base para un riesgo "LOW": fail closed a HIGH.
+          expect(plan.riskLevel, plan.title).toBe('HIGH');
+        }
+      }
+      expect(seenPlans.length).toBeGreaterThan(1);
+    });
+
+    it('bloquea la ejecución de un plan SIMULADO: no aprueba ni despacha', async () => {
+      dbService.saveStrategyPlan({
+        id: barrierPlanId,
+        title: 'Plan de la barrera de ejecución',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.4,
+        expectedProfitUsdt: 14,
+        riskLevel: 'LOW',
+        rationale: 'Spread neto por encima de la regla de oro.',
+        status: 'PROPOSED',
+        esSimulado: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      const result = await guarded.executePlan(barrierPlanId);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/feed de mercado en vivo/i);
+      expect(result.dispatchSummary).toBeUndefined();
+      expect(dispatchPlanExecution).not.toHaveBeenCalled();
+      expect(dbService.getStrategyPlan(barrierPlanId)?.status).toBe('PROPOSED');
+      expect(
+        dbService
+          .listEngramObservations()
+          .some((obs) => obs.topicKey.startsWith(`execution/blocked-${barrierPlanId}`)),
+      ).toBe(true);
+    });
+
+    it('persiste esSimulado en SQLite y falla cerrado en filas legacy sin la columna', () => {
+      // The provenance flag must survive a round-trip, otherwise the dispatch gate
+      // can never tell a live plan from a reference-value plan.
+      dbService.saveStrategyPlan({
+        id: 'plan-sim-001',
+        title: 'Plan simulado',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        capitalRequiredUsdt: 800,
+        expectedNetSpreadPct: 1.1,
+        expectedProfitUsdt: 8.8,
+        riskLevel: 'LOW',
+        rationale: 'Generado con parámetros de referencia.',
+        status: 'PROPOSED',
+        esSimulado: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      expect(dbService.getStrategyPlan('plan-sim-001')?.esSimulado).toBe(true);
+
+      dbService.saveStrategyPlan({
+        id: 'plan-live-001',
+        title: 'Plan con feed en vivo',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.4,
+        expectedProfitUsdt: 14,
+        riskLevel: 'LOW',
+        rationale: 'Feed en vivo confirmado.',
+        status: 'PROPOSED',
+        esSimulado: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      const liveRow = dbService.getStrategyPlan('plan-live-001');
+      expect(liveRow).not.toBeNull();
+      // Sanity on the write path before asserting the mapping.
+      expect(liveRow?.esSimulado).toBe(false);
+
+      // Simulating a legacy row (no esSimulated at all) must read back as
+      // simulated, never as live.
+      dbService.saveStrategyPlan({
+        id: 'plan-legacy-001',
+        title: 'Plan legado',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        capitalRequiredUsdt: 500,
+        expectedNetSpreadPct: 0.9,
+        expectedProfitUsdt: 4.5,
+        riskLevel: 'LOW',
+        rationale: 'Fila creada sin el flag de provenance.',
+        status: 'PROPOSED',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      expect(dbService.getStrategyPlan('plan-legacy-001')?.esSimulado).toBe(true);
+    });
+
+    it('despacha un plan marcado esSimulado:false, porque su provenance es live', async () => {
+      dbService.saveStrategyPlan({
+        id: 'plan-live-dispatch-001',
+        title: 'Plan verificado contra el libro real',
+        route: 'BINANCE_P2P -> BANESCO_PM',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.4,
+        expectedProfitUsdt: 14,
+        riskLevel: 'LOW',
+        rationale: 'Feed en vivo confirmado.',
+        status: 'PROPOSED',
+        esSimulado: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      const result = await guarded.executePlan('plan-live-dispatch-001');
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(dispatchPlanExecution).toHaveBeenCalledTimes(1);
+      expect(dbService.getStrategyPlan('plan-live-dispatch-001')?.status).toBe('APPROVED');
     });
 
     it('con el kill-switch ACTIVO en el proceso main, sendMessage rechaza la solicitud sin emitir respuesta (F2)', async () => {
@@ -535,6 +682,209 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       expect(mockFetch).toHaveBeenCalledTimes(6);
       expect(res.skillsExecuted).toHaveLength(5);
       expect(res.reply).toContain('Síntesis ejecutiva forzada');
+    });
+  });
+
+  describe('Gate 0: provenance honesta y presupuesto de llamadas pagas', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch as unknown as typeof fetch;
+      clearFinancialSkillMarketData();
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      clearFinancialSkillMarketData();
+    });
+
+    const textReply = (text: string) => ({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }),
+    });
+
+    it('NUNCA declara feed en vivo cuando no hay libro de mercado cargado', async () => {
+      const apiKey = 'AIzaSyFakeKeyProvenanceTesting123';
+      const orchestrator = new GeminiOrchestrator(dbService, apiKey);
+      mockFetch.mockResolvedValue(textReply('Respuesta sin libro de mercado detrás.'));
+
+      const res = await orchestrator.sendMessage({ prompt: '¿Cómo está el mercado?' });
+
+      expect(res.provenance?.liveMarketFeedConnected).toBe(false);
+      expect(res.provenance?.esSimulado).toBe(true);
+      expect(res.provenance?.marketFeedReason).toBe('NO_BOOK');
+      // The old code hardcoded liveMarketFeedConnected: true here.
+      expect(res.provenance?.liveMarketFeedConnected).not.toBe(true);
+    });
+
+    it('declara feed en vivo sólo con un libro fresco, completo y reciente', async () => {
+      const apiKey = 'AIzaSyFakeKeyProvenanceTesting123';
+      const orchestrator = new GeminiOrchestrator(dbService, apiKey);
+
+      seedFinancialSkillMarketData({
+        buyOffers: [
+          {
+            asset: 'USDT',
+            fiat: 'VES',
+            price: 88.35,
+            maxVes: 100000,
+            minVes: 1000,
+            available: 1,
+            tradeMethods: [],
+            nickname: 'op',
+            orderType: 'BUY',
+          } as never,
+        ],
+        sellOffers: [
+          {
+            asset: 'USDT',
+            fiat: 'VES',
+            price: 89.55,
+            maxVes: 100000,
+            minVes: 1000,
+            available: 1,
+            tradeMethods: [],
+            nickname: 'op',
+            orderType: 'SELL',
+          } as never,
+        ],
+      });
+      mockFetch.mockResolvedValue(textReply('Análisis con libro real.'));
+
+      const res = await orchestrator.sendMessage({ prompt: 'Analizá el spread real.' });
+
+      expect(res.provenance?.liveMarketFeedConnected).toBe(true);
+      expect(res.provenance?.esSimulado).toBe(false);
+      expect(res.provenance?.marketFeedReason).toBe('LIVE');
+    });
+
+    it('un libro VENCIDO no se reporta como mercado en vivo', async () => {
+      const apiKey = 'AIzaSyFakeKeyProvenanceTesting123';
+      const orchestrator = new GeminiOrchestrator(dbService, apiKey);
+      seedFinancialSkillMarketData({
+        buyOffers: [{ price: 88.35, maxVes: 100000 } as never],
+        sellOffers: [{ price: 89.55, maxVes: 100000 } as never],
+      });
+
+      // Age the snapshot past the TTL.
+      const book = getMarketBook();
+      expect(book).not.toBeNull();
+      (book as { updatedAt: number }).updatedAt = Date.now() - 60 * 60 * 1000;
+
+      mockFetch.mockResolvedValue(textReply('Respuesta con libro viejo.'));
+
+      const res = await orchestrator.sendMessage({ prompt: 'Analizá el spread.' });
+
+      expect(res.provenance?.liveMarketFeedConnected).toBe(false);
+      expect(res.provenance?.marketFeedReason).toBe('STALE_BOOK');
+      expect(res.provenance?.esSimulado).toBe(true);
+    });
+
+    it('respeta el presupuesto de llamadas pagas por turno', async () => {
+      const apiKey = 'AIzaSyFakeKeyBudgetTesting12345';
+      const budgeted = new GeminiOrchestrator(dbService, apiKey, undefined, undefined, 3);
+      // Always "ok" so every model in the cascade would otherwise be tried.
+      mockFetch.mockResolvedValue(
+        Object.assign(textReply('sin herramientas'), { status: 200 }),
+      );
+
+      await budgeted.sendMessage({ prompt: 'ping' });
+
+      // Hard ceiling, not a report. The old code had no ceiling at all and
+      // could spend models x (MAX_REACT_STEPS + 1) calls on one turn.
+      expect(mockFetch.mock.calls.length).toBeLessThanOrEqual(3);
+    });
+
+    it('el kill-switch bloquea la transcripción sin gastar una llamada paga', async () => {
+      const apiKey = 'AIzaSyFakeKeyKillswitchTesting12';
+      const guarded = new GeminiOrchestrator(dbService, apiKey);
+      triggerKillswitch('Prueba de transcripción', 'SPEC');
+
+      const result = await guarded.transcribeAudio({
+        audioBase64: 'AAAA',
+        mimeType: 'audio/webm',
+      });
+
+      expect(result.error).toContain('KILLSWITCH_ACTIVE');
+      expect(result.text).toBe('');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Doctrine under test: a missing measurement is `null` plus a declared absence, never a number.
+   *
+   * Three deterministic branches answered `const bcvRate = 72.0;` — an unconditional constant
+   * that never read the input, next to a parallel rate that WAS read from the live feed. So the
+   * skill ran on an invented official rate and the reply printed it beside a real one. Worse,
+   * `macro-skills.ts` coerces an absent rate to 0 and the vendored `calculateBcvGap` answers a
+   * non-positive rate with `gapPct: 0, zone: 'NORMAL'` — a "there is no gap" claim built on
+   * nothing, which is what the branch actually printed once the parallel feed was offline.
+   */
+  describe('tasa oficial BCV: la constante 72.0', () => {
+    /** Seeds a fresh, complete book so the parallel leg is a real measurement. */
+    function seedLiveBook(): void {
+      seedFinancialSkillMarketData({
+        buyOffers: [{ price: 88.35, maxVes: 100000 } as never],
+        sellOffers: [{ price: 89.55, maxVes: 100000 } as never],
+      });
+    }
+
+    afterEach(() => {
+      clearFinancialSkillMarketData();
+    });
+
+    it('CASO 2 (macro BCV) reporta la tasa oficial como N/D y nombra la fuente', async () => {
+      const res = await orchestrator.sendMessage({
+        prompt: '¿Cómo está la brecha cambiaria entre el BCV y el paralelo?',
+      });
+
+      // Proves the CASO 2 branch is the one under test.
+      expect(res.reply).toContain('política monetaria del BCV');
+      expect(res.reply).toContain('**Tasa Oficial BCV**: N/D');
+      expect(res.reply).not.toContain('**Tasa Oficial BCV**: 72');
+      expect(res.reply).toMatch(/get_bcv_rates/);
+    });
+
+    it('CASO 2 no inventa la zona de riesgo de la brecha', async () => {
+      const res = await orchestrator.sendMessage({
+        prompt: '¿Cómo está la brecha cambiaria entre el BCV y el paralelo?',
+      });
+
+      // `bcvData.gap?.riskZone ?? 'ELEVATED'` painted a risk zone on a gap nobody measured.
+      expect(res.reply).not.toContain('Zona de Riesgo: **ELEVATED**');
+      expect(res.reply).toContain('N/D');
+    });
+
+    it('CASO 8 (resumen ejecutivo) reporta ambas tasas como N/D', async () => {
+      const res = await orchestrator.sendMessage({ prompt: 'Dame un resumen ejecutivo del enjambre' });
+
+      expect(res.reply).toContain('Resumen Ejecutivo de la Mesa P2P');
+      expect(res.reply).toContain('BCV: N/D VES/USD');
+      expect(res.reply).not.toContain('BCV: 72.00 VES/USD');
+    });
+
+    it('CASO 11 (triangulación) no imprime una brecha de 0.00%', async () => {
+      const res = await orchestrator.sendMessage({ prompt: 'arbitraje' });
+
+      // Proves the default branch is the one under test.
+      expect(res.reply).toContain('arbitraje triangular institucional');
+      // gapPct 0 was the vendored predictor's answer to a coerced zero rate.
+      expect(res.reply).toContain('**Brecha Cambiaria BCV**: N/D%');
+      expect(res.reply).not.toMatch(/\*\*Brecha Cambiaria BCV\*\*: 0\.00%/);
+    });
+
+    it('con libro en vivo la tasa paralela se reporta y la BCV sigue en N/D', async () => {
+      seedLiveBook();
+
+      const res = await orchestrator.sendMessage({
+        prompt: '¿Cómo está la brecha cambiaria entre el BCV y el paralelo?',
+      });
+
+      expect(res.reply).toMatch(/\*\*Tasa Paralela P2P\*\*: 89\.55/);
+      expect(res.reply).toContain('**Tasa Oficial BCV**: N/D');
     });
   });
 });
