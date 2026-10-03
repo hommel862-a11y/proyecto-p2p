@@ -60,6 +60,8 @@ export interface TierOpportunityRow {
   qualifiedSellOffersCount: number;
   bestCompetitorBuyPrice: number;
   bestCompetitorSellPrice: number;
+  bestCompetitorBuyMerchant?: string;
+  bestCompetitorSellMerchant?: string;
   suggestedBuyPrice: number;
   suggestedSellPrice: number;
   grossSpreadVes: number;
@@ -193,8 +195,22 @@ export function computeHighDemandScan(
     // Sort: SELL side (maker sells / competitor sells) -> lowest price first
     eligibleSells.sort((a, b) => a.price - b.price);
 
-    const bestCompBuy = eligibleBuys.length > 0 ? eligibleBuys[0].price : 0;
-    const bestCompSell = eligibleSells.length > 0 ? eligibleSells[0].price : 0;
+    const hasFullAbsorption = eligibleBuys.length > 0 && eligibleSells.length > 0;
+
+    // If no single ad fully absorbs the tier, take best qualified offers for benchmark pricing
+    const fallbackBuy = eligibleBuys.length === 0 && qualifiedBuys.length > 0
+      ? [...qualifiedBuys].sort((a, b) => b.price - a.price)[0]
+      : null;
+    const fallbackSell = eligibleSells.length === 0 && qualifiedSells.length > 0
+      ? [...qualifiedSells].sort((a, b) => a.price - b.price)[0]
+      : null;
+
+    const bestCompBuy = eligibleBuys.length > 0 ? eligibleBuys[0].price : (fallbackBuy?.price ?? 0);
+    const bestCompSell = eligibleSells.length > 0 ? eligibleSells[0].price : (fallbackSell?.price ?? 0);
+    const bestCompBuyMerchant =
+      eligibleBuys.length > 0 ? eligibleBuys[0].merchantName : (fallbackBuy?.merchantName ?? '');
+    const bestCompSellMerchant =
+      eligibleSells.length > 0 ? eligibleSells[0].merchantName : (fallbackSell?.merchantName ?? '');
 
     let suggestedBuy = bestCompBuy > 0 ? roundMoney(bestCompBuy + stepVes, 2) : 0;
     let suggestedSell = bestCompSell > 0 ? roundMoney(bestCompSell - stepVes, 2) : 0;
@@ -234,9 +250,12 @@ export function computeHighDemandScan(
       netProfitVes = roundMoney(tierUsdt * netSpreadVes, 2);
       netProfitUsdt = roundMoney(netProfitVes / suggestedSell, 2);
 
-      if (netSpreadPct > 0) {
+      if (hasFullAbsorption && netSpreadPct > 0) {
         isActionable = true;
         statusNote = `Spread neto positivo (+${netSpreadPct}%) descontando comisiones Maker (${makerFeeRatePct}% x 2)`;
+      } else if (!hasFullAbsorption && netSpreadPct > 0) {
+        isActionable = false;
+        statusNote = `Referencia orientativa: liquidez del libro no absorbe el 100% del tramo (${tierUsdt} USDT)`;
       } else {
         isActionable = false;
         statusNote = `Spread comprimido: el margen bruto (+${grossSpreadPct}%) no cubre comisiones (${totalFeePct}%)`;
@@ -255,6 +274,8 @@ export function computeHighDemandScan(
       qualifiedSellOffersCount: eligibleSells.length,
       bestCompetitorBuyPrice: bestCompBuy,
       bestCompetitorSellPrice: bestCompSell,
+      bestCompetitorBuyMerchant: bestCompBuyMerchant || undefined,
+      bestCompetitorSellMerchant: bestCompSellMerchant || undefined,
       suggestedBuyPrice: suggestedBuy,
       suggestedSellPrice: suggestedSell,
       grossSpreadVes,

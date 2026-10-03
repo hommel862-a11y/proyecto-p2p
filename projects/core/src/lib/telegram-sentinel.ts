@@ -17,6 +17,16 @@ export interface TelegramInlineKeyboardMarkup {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 }
 
+export interface TelegramKeyboardButton {
+  text: string;
+}
+
+export interface TelegramReplyKeyboardMarkup {
+  keyboard: TelegramKeyboardButton[][];
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+}
+
 export interface TelegramInboundUpdate {
   update_id: number;
   message?: {
@@ -456,7 +466,7 @@ export function formatRadarAltaDemandaTelegramMessage(
   bankFilter?: string,
 ): string {
   const bankRaw = bankFilter && bankFilter.trim() ? bankFilter.trim() : 'TODOS';
-  const header = `🔎 *Filtro:* Banco \`${formatCodeSpan(bankRaw)}\` • *Nivel:* \`${formatCodeSpan(scan.merchantLevel)}\` \\(Fee: ${scan.makerFeeRatePct}%\\)`;
+  const header = `🔎 *Filtro:* Banco \`${formatCodeSpan(bankRaw)}\` • *Nivel:* \`${formatCodeSpan(scan.merchantLevel)}\` \\(Fee: \`${formatMetric(scan.makerFeeRatePct)}%\`\\)`;
 
   if (!scan.tiers || scan.tiers.length === 0) {
     return `🎯 *RADAR DE ALTA DEMANDA \\(SIN DATOS\\)* 🎯
@@ -469,11 +479,17 @@ ${header}
     .map((t) => {
       const icon = t.isActionable ? '🟢' : '⚪';
       const bestTag = scan.bestOpportunityTier?.tierUsdt === t.tierUsdt ? ' 🏆 *RECOMENDADO*' : '';
+      const buyCompTag = t.bestCompetitorBuyMerchant
+        ? ` \\(Comp\\.: ${formatMetric(t.bestCompetitorBuyPrice)} • \`${formatCodeSpan(t.bestCompetitorBuyMerchant)}\`\\)`
+        : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorBuyPrice)}\\)`;
+      const sellCompTag = t.bestCompetitorSellMerchant
+        ? ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)} • \`${formatCodeSpan(t.bestCompetitorSellMerchant)}\`\\)`
+        : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)}\\)`;
       const netSpreadSign = t.netSpreadPct >= 0 ? '+' : '';
 
       return `${icon} *Tramo: ${t.tierUsdt.toLocaleString('en-US')} USDT* \\(≈ ${formatMetric(t.tierVes)} Bs\\)${bestTag}
-   • Compra Maker: \`${formatMetric(t.suggestedBuyPrice)} Bs\` \\(Competidor: ${formatMetric(t.bestCompetitorBuyPrice)}\\)
-   • Venta Maker: \`${formatMetric(t.suggestedSellPrice)} Bs\` \\(Competidor: ${formatMetric(t.bestCompetitorSellPrice)}\\)
+   • Compra Maker: \`${formatMetric(t.suggestedBuyPrice)} Bs\`${buyCompTag}
+   • Venta Maker: \`${formatMetric(t.suggestedSellPrice)} Bs\`${sellCompTag}
    • Spread Bruto: \`${formatMetric(t.grossSpreadPct)}%\` \\(Δ ${formatMetric(t.grossSpreadVes)} Bs\\)
    • ⚡ *Margen Neto Real:* \`${netSpreadSign}${formatMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
    • Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\``;
@@ -814,6 +830,37 @@ export function buildRepriceConfirmationKeyboard(
   };
 }
 
+/**
+ * Builds the persistent reply keyboard for Telegram, allowing the operator
+ * to trigger all core terminal actions with a single tap from their phone.
+ */
+export function buildSentinelReplyKeyboard(): TelegramReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [{ text: '🎯 Radar Alta Demanda' }, { text: '⚡ Spreads en Vivo' }],
+      [{ text: '🏛️ Macro BCV' }, { text: '📊 Cupos Bancarios' }],
+      [{ text: '🤖 Panel Terminal' }, { text: '🚨 Killswitch' }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+/**
+ * Normalizes text received from persistent reply keyboard buttons into canonical slash commands.
+ */
+export function normalizeButtonCommand(text: string): string {
+  const clean = text.trim();
+  if (clean.includes('Radar Alta Demanda') || clean.includes('radar alta demanda')) return '/radardealtademanda';
+  if (clean.includes('Spreads en Vivo') || clean.includes('spreads en vivo')) return '/spreads';
+  if (clean.includes('Macro BCV') || clean.includes('macro bcv')) return '/bcv';
+  if (clean.includes('Cupos Bancarios') || clean.includes('cupos bancarios')) return '/bancos';
+  if (clean.includes('Panel Terminal') || clean.includes('panel terminal')) return '/panel';
+  if (clean.includes('Killswitch') || clean.includes('killswitch')) return '/killswitch';
+  if (clean.includes('Reanudar') || clean.includes('reanudar')) return '/resume';
+  return clean;
+}
+
 function formatRadarUsageMessage(): string {
   return `📡 *RADAR DE GAPS* 📡
 ━━━━━━━━━━━━━━━━━━
@@ -844,10 +891,11 @@ export function dispatchTelegramUpdate(
   // 1. Message Handling
   if (update.message) {
     const fromId = update.message.from.id;
-    const text = (update.message.text || update.message.caption || '').trim();
+    const rawText = (update.message.text || update.message.caption || '').trim();
+    const text = normalizeButtonCommand(rawText);
 
-    // /start is the pairing and discovery handshake: always allow and respond with the Chat ID
-    if (text.startsWith('/start')) {
+    // /start and /menu are discovery & keyboard provisioning handshakes
+    if (text.startsWith('/start') || text.startsWith('/menu')) {
       const isAuth = fromId === authId;
       const pairingInfo = isAuth
         ? escapeMarkdownV2('Tu terminal P2P ya está vinculado a este chat.')
@@ -858,6 +906,7 @@ export function dispatchTelegramUpdate(
         ['/bcv', 'Inteligencia cambiaria y ventana BCV'],
         ['/bancos', 'Cupos bancarios y límites SUDEBAN'],
         ['/radar [banco] [capital]', 'Radar de gaps con filtro por banco y capital'],
+        ['/radardealtademanda [banco] [tramo]', 'Radar de alta demanda (≥1k USDT) con fee Maker y micro-postura'],
         ['/reprecio <buy> <sell>', 'Forzar repricing (requiere confirmación)'],
         ['/macro', 'Reporte macro consolidado: BCV, spread y volatilidad'],
         ['/backtest [par] [temporalidad]', 'Simulación histórica del par'],
