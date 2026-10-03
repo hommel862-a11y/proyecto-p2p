@@ -7,6 +7,7 @@ import {
   formatBcvIntelligenceTelegramMessage,
   formatBankLimitsTelegramMessage,
   formatRadarTelegramMessage,
+  formatRadarAltaDemandaTelegramMessage,
   formatMacroTelegramMessage,
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
@@ -861,6 +862,81 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       const msg = formatRadarTelegramMessage([
         { bank: 'X', price: Number.NaN, maxTc: Number.NaN, volumeUsdt: Number.NaN, spreadPct: Number.NaN },
       ]);
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('formatea radar de alta demanda vacío cumpliendo MarkdownV2', () => {
+      const msg = formatRadarAltaDemandaTelegramMessage({
+        asset: 'USDT',
+        fiat: 'VES',
+        bankFilter: 'TODOS',
+        merchantLevel: 'STANDARD',
+        makerFeeRatePct: 0.25,
+        scannedAt: new Date().toISOString(),
+        tiers: [],
+        bestOpportunityTier: null,
+      });
+      expect(msg).toContain('RADAR DE ALTA DEMANDA');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('formatea radar de alta demanda con tramos cumpliendo MarkdownV2', () => {
+      const msg = formatRadarAltaDemandaTelegramMessage({
+        asset: 'USDT',
+        fiat: 'VES',
+        bankFilter: 'BANESCO',
+        merchantLevel: 'STANDARD',
+        makerFeeRatePct: 0.25,
+        scannedAt: new Date().toISOString(),
+        tiers: [
+          {
+            tierUsdt: 1000,
+            tierVes: 65000,
+            bestCompetitorBuyPrice: 65.4,
+            bestCompetitorSellPrice: 66.8,
+            suggestedBuyPrice: 65.41,
+            suggestedSellPrice: 66.79,
+            grossSpreadVes: 1.38,
+            grossSpreadPct: 2.11,
+            makerFeeBuyPct: 0.25,
+            makerFeeSellPct: 0.25,
+            totalFeePct: 0.5,
+            opportunityScore: 16.1,
+            netSpreadVes: 1.05,
+            netSpreadPct: 1.61,
+            netProfitVesPerCycle: 1050,
+            netProfitUsdtPerCycle: 15.72,
+            qualifiedBuyOffersCount: 3,
+            qualifiedSellOffersCount: 4,
+            isActionable: true,
+            statusNote: 'Spread positivo',
+          },
+        ],
+        bestOpportunityTier: {
+          tierUsdt: 1000,
+          tierVes: 65000,
+          bestCompetitorBuyPrice: 65.4,
+          bestCompetitorSellPrice: 66.8,
+          suggestedBuyPrice: 65.41,
+          suggestedSellPrice: 66.79,
+          grossSpreadVes: 1.38,
+          grossSpreadPct: 2.11,
+          makerFeeBuyPct: 0.25,
+          makerFeeSellPct: 0.25,
+          totalFeePct: 0.5,
+          opportunityScore: 16.1,
+          netSpreadVes: 1.05,
+          netSpreadPct: 1.61,
+          netProfitVesPerCycle: 1050,
+          netProfitUsdtPerCycle: 15.72,
+          qualifiedBuyOffersCount: 3,
+          qualifiedSellOffersCount: 4,
+          isActionable: true,
+          statusNote: 'Spread positivo',
+        },
+      });
+      expect(msg).toContain('Tramo: 1,000 USDT');
+      expect(msg).toContain('RECOMENDADO');
       expectParseableMarkdownV2(msg);
     });
 
