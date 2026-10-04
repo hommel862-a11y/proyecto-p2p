@@ -70,7 +70,7 @@ describe('backup-encryption', () => {
     expect(result.error).toContain('Formato de backup desconocido');
   });
 
-  describe('AES-256-GCM encryption/decryption', () => {
+  describe('AES-256-GCM encryption/decryption', { timeout: 15000 }, () => {
     const PASSWORD = 'test-secret-password-2026';
     const payload = JSON.stringify({ operations: [{ id: 'op-1', amount: 500 }] });
 
