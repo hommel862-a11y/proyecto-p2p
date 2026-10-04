@@ -1086,6 +1086,20 @@ describe('TelegramWorkerService', () => {
       expect(call[2]).toContain('ESTADO DEL TERMINAL P2P');
       expect(call[3]).toBeUndefined();
     });
+
+    it('declares market absence explicitly in /status when market depth is missing instead of rendering 0 Bs', async () => {
+      fetchMarketDepth.mockResolvedValue(null);
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/status'), TOKEN, String(CHAT_ID));
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('ESTADO DEL TERMINAL P2P');
+      expect(text).toContain('no disponible (sin libro)');
+      expect(text).not.toContain('`0 Bs`');
+      expect(text).not.toContain('`0.00 Bs`');
+    });
   });
 
   describe('auditoría del journal en el panel y en /status', () => {

@@ -416,7 +416,7 @@ export class TelegramWorkerService implements OnDestroy {
       botToken: cfg.token ?? '',
       chatId: cfg.chatId ?? '',
       alertsEnabled: cfg.alertsEnabled ?? true,
-      pollingEnabled: cfg.pollingEnabled ?? false,
+      pollingEnabled: cfg.pollingEnabled !== false,
     };
   }
 
@@ -595,7 +595,7 @@ export class TelegramWorkerService implements OnDestroy {
         botToken: cfg.token ?? '',
         chatId: cfg.chatId ?? '',
         alertsEnabled: cfg.alertsEnabled ?? true,
-        pollingEnabled: cfg.pollingEnabled ?? false,
+        pollingEnabled: cfg.pollingEnabled !== false,
       });
     }
     this.restoreOffset();
@@ -803,7 +803,16 @@ export class TelegramWorkerService implements OnDestroy {
         // /status no pueden divergir en el rótulo ni en el escapado. El aviso de
         // journal degradado NO es texto de auditoría, va aparte y también es el
         // mismo en las dos superficies: acá y en el panel.
-        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: \`${depth?.bestBuyPrice ? depth.bestBuyPrice.toFixed(2) : '0'} Bs\`\n• Último Bid: \`${depth?.bestSellPrice ? depth.bestSellPrice.toFixed(2) : '0'} Bs\`\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\n${formatJournalAuditLine(journalAudit)}\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}${this.journalDegradedNotice()}`;
+        const askDisplay =
+          depth && Number.isFinite(depth.bestBuyPrice) && depth.bestBuyPrice > 0
+            ? `\`${depth.bestBuyPrice.toFixed(2)} Bs\``
+            : `_${escapeMarkdownV2('no disponible (sin libro)')}_`;
+        const bidDisplay =
+          depth && Number.isFinite(depth.bestSellPrice) && depth.bestSellPrice > 0
+            ? `\`${depth.bestSellPrice.toFixed(2)} Bs\``
+            : `_${escapeMarkdownV2('no disponible (sin libro)')}_`;
+
+        const msg = `📊 *ESTADO DEL TERMINAL P2P*\n━━━━━━━━━━━━━━━━━━━━\n• Repricer Bot: *${escapeMarkdownV2(repricerState)}*\n• Modo del Repricer: *${escapeMarkdownV2(this.repricer.executionModeLabel())}*\n• Libro Binance: *${escapeMarkdownV2(libroState)}*\n• Último Ask: ${askDisplay}\n• Último Bid: ${bidDisplay}\n🕐 Dato de las \`${this.formatFetchTime(this.binance.lastFetched())}\`\n\n${formatJournalAuditLine(journalAudit)}\n\nℹ️ ${escapeMarkdownV2(this.repricer.executionModeDetail())}${this.journalDegradedNotice()}`;
         await this.sendTelegramMessage(token, chatId, msg);
         this.addLog({ time: timeStr, command: '/status', action: 'STATUS', status: 'SUCCESS' });
         break;
