@@ -10,17 +10,16 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { HotkeysService } from '../../core/hotkeys.service';
-
-type IconId =
-  'dashboard' | 'spread' | 'income' | 'log' | 'risk' | 'stats' | 'guide' | 'theme' | 'hotkeys';
+import { AccountsService } from '../../core/accounts.service';
+import { ToastService } from '../../core/toast.service';
 
 export interface PaletteCommand {
   id: string;
   label: string;
-  icon: IconId | '⌨️';
+  icon: string;
   hint?: string;
   group: string;
-  action: () => void;
+  action: () => void | Promise<void>;
 }
 
 @Component({
@@ -200,6 +199,9 @@ export interface PaletteCommand {
                         }
                         @case ('hotkeys') {
                           <span class="palette-icon-emoji">⌨️</span>
+                        }
+                        @default {
+                          <span class="palette-icon-emoji">{{ cmd.icon }}</span>
                         }
                       }
                     </span>
@@ -403,22 +405,26 @@ export interface PaletteCommand {
 export class CommandPalette {
   private readonly router = inject(Router);
   protected readonly hotkeys = inject(HotkeysService);
+  private readonly accountsService = inject(AccountsService);
+  private readonly toast = inject(ToastService);
   private readonly searchInput = viewChild.required<ElementRef<HTMLInputElement>>('searchInput');
 
   protected readonly query = signal('');
   protected readonly selectedIndex = signal(0);
 
-  private readonly allCommands = this.buildCommands();
+  protected readonly allCommands = computed(() => this.buildCommands());
 
   private readonly flatFiltered = computed(() => {
     const q = this.query().toLowerCase().trim();
+    const all = this.allCommands();
     const list = !q
-      ? this.allCommands.slice()
-      : this.allCommands.filter(
+      ? all.slice()
+      : all.filter(
           (c) =>
             c.label.toLowerCase().includes(q) ||
             c.id.toLowerCase().includes(q) ||
-            (c.hint ?? '').toLowerCase().includes(q),
+            (c.hint ?? '').toLowerCase().includes(q) ||
+            c.group.toLowerCase().includes(q),
         );
     return list.map((c, i) => ({ ...c, _idx: i }));
   });
@@ -477,7 +483,9 @@ export class CommandPalette {
 
   execute(cmd: PaletteCommand): void {
     this.close();
-    queueMicrotask(() => cmd.action());
+    queueMicrotask(() => {
+      void cmd.action();
+    });
   }
 
   close(): void {
@@ -495,16 +503,70 @@ export class CommandPalette {
   }
 
   private buildCommands(): PaletteCommand[] {
-    const groupsOrder = ['MISIÓN', 'PLANIFICACIÓN', 'CONFIG', 'ACCIONES'];
+    const groupsOrder = ['TESORERÍA & BANCOS', 'MISIÓN', 'PLANIFICACIÓN', 'CONFIG', 'ACCIONES'];
+
+    const bankCommands: PaletteCommand[] = this.accountsService.accounts().map((acc) => ({
+      id: `inject-${acc.id}`,
+      label: `Inyectar liquidez en ${acc.bankName}`,
+      icon: '💧',
+      hint: acc.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil',
+      group: 'TESORERÍA & BANCOS',
+      action: () => {
+        this.accountsService.requestLiquidityModal(acc.id);
+        void this.router.navigate(['/dashboard'], { queryParams: { tab: 'treasury' } });
+      },
+    }));
 
     const commands: PaletteCommand[] = [
+      {
+        id: 'action-inject-liquidity',
+        label: 'Inyectar Liquidez Bancaria...',
+        icon: '💧',
+        hint: 'Fondeo rápido',
+        group: 'TESORERÍA & BANCOS',
+        action: () => {
+          this.accountsService.requestLiquidityModal();
+          void this.router.navigate(['/dashboard'], { queryParams: { tab: 'treasury' } });
+        },
+      },
+      {
+        id: 'action-sync-official-banks',
+        label: 'Sincronizar 8 Bancos Oficiales en SQLite',
+        icon: '🔄',
+        hint: 'SQLite',
+        group: 'TESORERÍA & BANCOS',
+        action: async () => {
+          await this.accountsService.restoreDefaultAccounts();
+          this.toast.info(
+            'Catálogo de los 8 bancos oficiales sincronizado y asegurado en SQLite.',
+            'Bancos Sincronizados',
+          );
+        },
+      },
+      {
+        id: 'nav-treasury-tab',
+        label: 'Ver Tesorería & Rotación Anti-SUDEBAN',
+        icon: '🏛️',
+        hint: '/dashboard?tab=treasury',
+        group: 'TESORERÍA & BANCOS',
+        action: () => void this.router.navigate(['/dashboard'], { queryParams: { tab: 'treasury' } }),
+      },
+      ...bankCommands,
       {
         id: 'nav-dashboard',
         label: 'Centro de Control',
         icon: 'dashboard',
         hint: '/dashboard',
         group: 'MISIÓN',
-        action: () => this.router.navigate(['/dashboard']),
+        action: () => void this.router.navigate(['/dashboard']),
+      },
+      {
+        id: 'nav-agents-tab',
+        label: 'Ver Enjambre de Agentes & Riesgo',
+        icon: '🤖',
+        hint: '/dashboard?tab=agents',
+        group: 'MISIÓN',
+        action: () => void this.router.navigate(['/dashboard'], { queryParams: { tab: 'agents' } }),
       },
       {
         id: 'nav-spread',
@@ -512,7 +574,7 @@ export class CommandPalette {
         icon: 'spread',
         hint: '/spread',
         group: 'MISIÓN',
-        action: () => this.router.navigate(['/spread']),
+        action: () => void this.router.navigate(['/spread']),
       },
       {
         id: 'nav-log',
@@ -520,7 +582,7 @@ export class CommandPalette {
         icon: 'log',
         hint: '/log',
         group: 'MISIÓN',
-        action: () => this.router.navigate(['/log']),
+        action: () => void this.router.navigate(['/log']),
       },
       {
         id: 'nav-income',
@@ -528,7 +590,7 @@ export class CommandPalette {
         icon: 'income',
         hint: '/income',
         group: 'PLANIFICACIÓN',
-        action: () => this.router.navigate(['/income']),
+        action: () => void this.router.navigate(['/income']),
       },
       {
         id: 'nav-triangulation',
@@ -536,7 +598,15 @@ export class CommandPalette {
         icon: 'income',
         hint: '/triangulation',
         group: 'PLANIFICACIÓN',
-        action: () => this.router.navigate(['/triangulation']),
+        action: () => void this.router.navigate(['/triangulation']),
+      },
+      {
+        id: 'nav-growth-projector',
+        label: 'Proyector de Crecimiento Compuesto (90D)',
+        icon: 'income',
+        hint: '/growth-projector',
+        group: 'PLANIFICACIÓN',
+        action: () => void this.router.navigate(['/growth-projector']),
       },
       {
         id: 'nav-stats',
@@ -544,7 +614,7 @@ export class CommandPalette {
         icon: 'stats',
         hint: '/stats',
         group: 'PLANIFICACIÓN',
-        action: () => this.router.navigate(['/stats']),
+        action: () => void this.router.navigate(['/stats']),
       },
       {
         id: 'nav-risk',
@@ -552,7 +622,7 @@ export class CommandPalette {
         icon: 'risk',
         hint: '/risk',
         group: 'CONFIG',
-        action: () => this.router.navigate(['/risk']),
+        action: () => void this.router.navigate(['/risk']),
       },
       {
         id: 'nav-guide',
@@ -560,7 +630,15 @@ export class CommandPalette {
         icon: 'guide',
         hint: '/guide',
         group: 'CONFIG',
-        action: () => this.router.navigate(['/guide']),
+        action: () => void this.router.navigate(['/guide']),
+      },
+      {
+        id: 'action-killswitch',
+        label: 'KILL-SWITCH: Apagado Inmediato de Emergencia',
+        icon: '🚨',
+        hint: 'Escape / Pánico',
+        group: 'ACCIONES',
+        action: () => this.hotkeys.trigger('KILL_SWITCH'),
       },
       {
         id: 'action-theme',
