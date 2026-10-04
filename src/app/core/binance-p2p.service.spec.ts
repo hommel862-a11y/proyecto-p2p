@@ -71,24 +71,30 @@ describe('BinanceP2pService', () => {
   });
 
   it('falls back to the local desktop bridge when direct Binance fetch is CORS-blocked', async () => {
-    const fetchMock = vi
-      .fn<FetchLike>()
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce(jsonResponse(BINANCE_PAYLOAD))
-      .mockResolvedValueOnce(jsonResponse(BINANCE_PAYLOAD));
+    const fetchMock = vi.fn<FetchLike>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('p2p.binance.com')) {
+        throw new TypeError('Failed to fetch');
+      }
+      if (url.includes('127.0.0.1:51857')) {
+        return jsonResponse(BINANCE_PAYLOAD);
+      }
+      throw new Error(`Unexpected url: ${url}`);
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     await svc.fetchMarketDepth('USDT', 'VES', true);
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    const bridgeUrl = fetchMock.mock.calls[2][0] as string;
-    expect(bridgeUrl).toBe('http://127.0.0.1:51857/api/binance/p2p');
-    const buyInit = fetchMock.mock.calls[2][1] as RequestInit | undefined;
+    const bridgeCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('127.0.0.1:51857/api/binance/p2p'),
+    );
+    expect(bridgeCalls).toHaveLength(2);
+    const buyInit = bridgeCalls[0][1] as RequestInit | undefined;
     expect(buyInit?.method).toBe('POST');
     const buyBody = JSON.parse(String(buyInit?.body)) as { tradeType: string };
     expect(buyBody.tradeType).toBe('BUY');
-    const sellInit = fetchMock.mock.calls[3][1] as RequestInit | undefined;
+    const sellInit = bridgeCalls[1][1] as RequestInit | undefined;
     const sellBody = JSON.parse(String(sellInit?.body)) as { tradeType: string };
     expect(sellBody.tradeType).toBe('SELL');
     expect(svc.marketDepth()?.bestBuyPrice).toBeGreaterThan(0);
