@@ -33,6 +33,19 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(res).toEqual({ data: [] });
   });
 
+  it('forwards fetchBinanceSpotTicker to the p2p:fetch-binance-spot channel', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve({ symbol: 'USDCUSDT', bidPrice: '0.9998', askPrice: '1.0000' });
+    });
+    const res = await api.fetchBinanceSpotTicker('USDCUSDT');
+    expect(calls).toEqual([
+      { channel: 'p2p:fetch-binance-spot', args: ['USDCUSDT'] },
+    ]);
+    expect(res).toEqual({ symbol: 'USDCUSDT', bidPrice: '0.9998', askPrice: '1.0000' });
+  });
+
   it('forwards fetchBinanceC2cOrders to the p2p:fetch-binance-c2c-orders channel', async () => {
     const calls: { channel: string; args: unknown[] }[] = [];
     const api = createP2PApi((channel, ...args) => {

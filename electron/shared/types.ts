@@ -149,6 +149,10 @@ export interface P2PIpcChannels {
     request: BinanceSearchParams;
     response: unknown;
   };
+  'p2p:fetch-binance-spot': {
+    request: string;
+    response: unknown;
+  };
   'p2p:fetch-binance-c2c-orders': {
     request: BinanceC2cOrdersFetchRequest;
     response: unknown;
@@ -459,6 +463,7 @@ export interface TreasurySnapshotDto {
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
+  fetchBinanceSpotTicker(symbol: string): Promise<unknown>;
   fetchBinanceC2cOrders(req: BinanceC2cOrdersFetchRequest): Promise<unknown>;
   fetchCotizave(req: CotizaveRequest): Promise<unknown>;
   fetchBybitP2p(req: BybitP2pFetchRequest): Promise<unknown>;

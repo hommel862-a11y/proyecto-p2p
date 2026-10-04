@@ -196,6 +196,40 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('p2p:fetch-binance-spot');
+  ipcMain.handle(
+    'p2p:fetch-binance-spot',
+    async (_event: IpcMainInvokeEvent, symbol: string): Promise<unknown> => {
+      const cleanSymbol =
+        typeof symbol === 'string' && symbol.trim() ? symbol.trim().toUpperCase() : 'USDCUSDT';
+      try {
+        const url = `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(cleanSymbol)}`;
+        const response = await net.fetch(url, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) {
+          throw new Error(`Binance Spot HTTP Error ${response.status}`);
+        }
+        return await response.json();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (
+          message.includes('ENOTFOUND') ||
+          message.includes('fetch failed') ||
+          message.includes('aborted') ||
+          message.includes('timeout')
+        ) {
+          throw new Error('Servidor de Binance Spot no accesible (sin conexión o timeout)', {
+            cause: err,
+          });
+        }
+        throw new Error(message, { cause: err });
+      }
+    },
+  );
+
   ipcMain.removeHandler('p2p:fetch-binance-c2c-orders');
   ipcMain.handle(
     'p2p:fetch-binance-c2c-orders',

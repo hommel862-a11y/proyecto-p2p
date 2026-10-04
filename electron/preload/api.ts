@@ -36,6 +36,8 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
   return {
     getVersion: () => ipc('app:get-version') as Promise<string>,
     fetchBinanceP2p: (params) => ipc('p2p:fetch-binance', params) as Promise<unknown>,
+    fetchBinanceSpotTicker: (symbol) =>
+      ipc('p2p:fetch-binance-spot', symbol) as Promise<unknown>,
     fetchBinanceC2cOrders: (req) =>
       ipc('p2p:fetch-binance-c2c-orders', req) as Promise<unknown>,
     fetchCotizave: (req) => ipc('p2p:fetch-cotizave', req) as Promise<unknown>,
@@ -152,6 +154,7 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
 export const EXPOSED_API_KEYS = [
   'getVersion',
   'fetchBinanceP2p',
+  'fetchBinanceSpotTicker',
   'fetchBinanceC2cOrders',
   'fetchCotizave',
   'fetchBybitP2p',
@@ -173,6 +176,7 @@ export const EXPOSED_API_KEYS = [
 export const ALLOWED_CHANNELS = [
   'app:get-version',
   'p2p:fetch-binance',
+  'p2p:fetch-binance-spot',
   'p2p:fetch-binance-c2c-orders',
   'p2p:fetch-cotizave',
   'p2p:fetch-bybit-p2p',
