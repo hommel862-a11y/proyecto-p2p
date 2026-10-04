@@ -1,0 +1,649 @@
+<div class="projector-container">
+  <!-- Cabecera de la Herramienta con Estilo Apple Pro Liquid Glass -->
+  <header class="projector-hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="pulsing-indicator"></span>
+        <span class="badge-text">HERRAMIENTA CUANTITATIVA INSTITUCIONAL</span>
+      </div>
+      <h1 class="hero-title">Proyector de Crecimiento Compuesto</h1>
+      <p class="hero-subtitle">
+        Simula el interés compuesto discreto por ciclos de arbitraje, políticas de cosecha de utilidades y la detección matemática del <strong>Muro Bancario SUDEBAN</strong>.
+      </p>
+    </div>
+
+    <div class="hero-actions">
+      <button
+        type="button"
+        class="action-pill-btn"
+        [class.active]="useMcpLiveRates()"
+        (click)="useMcpLiveRates.set(!useMcpLiveRates())"
+        title="Alternar entre tasas de mercado en vivo o supuestos teóricos"
+      >
+        <span class="pill-dot" [class.live]="useMcpLiveRates()"></span>
+        <span>{{ useMcpLiveRates() ? 'Mercado en Vivo (Cotizave / MCP)' : 'Parámetros Fijos' }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="btn-mcp-audit"
+        [disabled]="isMcpRunning()"
+        (click)="runMcpInstitutionalAudit()"
+        title="Auditar proyección con el Servidor MCP en tiempo real"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+        <span>{{ isMcpRunning() ? 'Auditando...' : 'Auditoría MCP' }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="btn-export-csv"
+        (click)="exportToCsv()"
+        title="Exportar corrida de 90 días a archivo CSV"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        <span>Exportar CSV</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Veredicto o Resumen Ejecutivo MCP si existe -->
+  @if (mcpVerdict()) {
+    <div class="mcp-verdict-banner">
+      <div class="verdict-icon">⚡</div>
+      <div class="verdict-body">
+        <strong>Veredicto Servidor MCP:</strong>
+        <p>{{ mcpVerdict() }}</p>
+      </div>
+      <button type="button" class="btn-dismiss" (click)="mcpVerdict.set(null)">✕</button>
+    </div>
+  }
+
+  <!-- Banner de Alerta Crítica: Muro Bancario SUDEBAN -->
+  @if (simulationResult().bankingWallAlert; as wall) {
+    <div class="banking-wall-banner">
+      <div class="wall-icon">⚠️</div>
+      <div class="wall-info">
+        <h4 class="wall-title">Alerta de Capacidad: Muro Bancario Alcanzado en el Día {{ wall.firstDayExceeded }}</h4>
+        <p class="wall-desc">
+          En el <strong>Día {{ wall.firstDayExceeded }}</strong>, tu volumen diario proyectado alcanzará 
+          <span class="mono-highlight">{{ wall.dailyVolumeAtWallVes | number:'1.0-0' }} VES</span>, sobrepasando el límite diario consolidado de tus cuentas 
+          (<span class="mono-highlight">{{ wall.dailyBankLimitVes | number:'1.0-0' }} VES</span>).
+        </p>
+        <div class="wall-recommendation">
+          <strong>Recomendación Estratégica:</strong> {{ wall.recommendation }}
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Métricas Clave Principales (KPI Cards) -->
+  <section class="kpi-grid">
+    <div class="kpi-card highlight-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Capital Final Proyectado</span>
+        <span class="kpi-tag success">{{ capitalGrowthMultiplier() }}</span>
+      </div>
+      <div class="kpi-value font-mono">
+        <span class="currency-symbol">$</span>
+        <app-animated-counter [value]="simulationResult().finalWorkingCapitalUsdt" />
+        <span class="currency-code">USDT</span>
+      </div>
+      <div class="kpi-sub">
+        Retorno neto total: <strong class="text-success">+{{ simulationResult().totalReturnPct | number:'1.1-1' }}%</strong>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Ganancia Neta Generada</span>
+        <span class="kpi-tag info">Utilidad</span>
+      </div>
+      <div class="kpi-value font-mono">
+        <span class="currency-symbol">$</span>
+        <app-animated-counter [value]="simulationResult().totalNetProfitUsdt" />
+        <span class="currency-code">USDT</span>
+      </div>
+      <div class="kpi-sub">
+        Total cosechado a cuenta: <strong>${{ simulationResult().totalHarvestedUsdt | number:'1.2-2' }} USDT</strong>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Cobertura de Gastos (Runway)</span>
+        <span class="kpi-tag" [class.warning]="monthlyRunwayCoverageMonths() < 3" [class.success]="monthlyRunwayCoverageMonths() >= 6">
+          {{ monthlyRunwayCoverageMonths() >= 6 ? 'Excelente' : 'Ajustado' }}
+        </span>
+      </div>
+      <div class="kpi-value font-mono">
+        <app-animated-counter [value]="monthlyRunwayCoverageMonths()" />
+        <span class="currency-code">Meses</span>
+      </div>
+      <div class="kpi-sub">
+        Basado en gastos mensuales de <strong>${{ monthlyFixedExpensesUsdt() | number:'1.0-0' }} USDT</strong>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span class="kpi-label">Capacidad Bancaria Evaluada</span>
+        <span class="kpi-tag" [class.danger]="simulationResult().bankingWallAlert" [class.success]="!simulationResult().bankingWallAlert">
+          {{ !checkBankingWall() ? 'Modo Libre' : (simulationResult().bankingWallAlert ? 'Muro Activo' : 'Holgado') }}
+        </span>
+      </div>
+      <div class="kpi-value font-mono">
+        @if (checkBankingWall()) {
+          <span class="currency-symbol">Bs.</span>
+          <app-animated-counter [value]="effectiveDailyBankLimitVes() || 0" />
+        } @else {
+          <span class="text-success" style="font-size: 1.35rem;">Sin Techo Ficticio</span>
+        }
+      </div>
+      <div class="kpi-sub">
+        {{ checkBankingWall() ? (bankLimitMode() === 'custom' ? 'Límite bancario personalizado' : '16 cuentas de tesorería') : 'Proyección pura del capital ingresado' }}
+      </div>
+    </div>
+  </section>
+
+  <!-- Gráfico de Curva de Crecimiento & Muro Bancario (SVG Nativo Líquido) -->
+  <section class="chart-section">
+    <div class="chart-header">
+      <div class="chart-titles">
+        <h3 class="chart-title">Curva de Expansión de Capital e Interés Compuesto</h3>
+        <p class="chart-caption">
+          Visualización diaria del capital reinvertido vs cosecha acumulada a lo largo de {{ operationalDays() }} días operativos.
+        </p>
+      </div>
+
+      <div class="chart-legend">
+        <div class="legend-item">
+          <span class="legend-dot capital-dot"></span>
+          <span>Capital Activo en Operación</span>
+        </div>
+        @if (reinvestmentRatePct() < 100) {
+          <div class="legend-item">
+            <span class="legend-dot harvest-dot"></span>
+            <span>Utilidades Cosechadas</span>
+          </div>
+        }
+        @if (simulationResult().bankingWallAlert) {
+          <div class="legend-item">
+            <span class="legend-dot wall-dot"></span>
+            <span>Muro Bancario SUDEBAN</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="svg-container" (mouseleave)="onMouseLeaveChart()">
+      <svg
+        [attr.viewBox]="'0 0 ' + svgWidth + ' ' + svgHeight"
+        class="growth-svg"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <!-- Gradiente para el Capital de Trabajo -->
+          <linearGradient id="capitalGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00d084" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#00d084" stop-opacity="0.0" />
+          </linearGradient>
+
+          <!-- Gradiente para la Cosecha de Utilidades -->
+          <linearGradient id="harvestGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#d8b45c" stop-opacity="0.30" />
+            <stop offset="100%" stop-color="#d8b45c" stop-opacity="0.0" />
+          </linearGradient>
+        </defs>
+
+        <!-- Rejilla horizontal de referencia -->
+        <line x1="60" y1="280" x2="770" y2="280" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+        <line x1="60" y1="200" x2="770" y2="200" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="4 4" />
+        <line x1="60" y1="120" x2="770" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="4 4" />
+        <line x1="60" y1="40" x2="770" y2="40" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="4 4" />
+
+        <!-- Línea Vertical de Muro Bancario SUDEBAN si existe -->
+        @if (bankingWallX(); as wallX) {
+          <line
+            [attr.x1]="wallX"
+            y1="25"
+            [attr.x2]="wallX"
+            y2="280"
+            stroke="#ef4444"
+            stroke-width="2"
+            stroke-dasharray="5 4"
+            class="wall-line"
+          />
+          <text
+            [attr.x]="wallX + 6"
+            y="45"
+            fill="#ef4444"
+            font-size="11"
+            font-family="monospace"
+            font-weight="bold"
+          >
+            MURO BANCOS (Día {{ simulationResult().bankingWallAlert?.firstDayExceeded }})
+          </text>
+        }
+
+        <!-- Áreas de Gráfico -->
+        @if (harvestAreaPath()) {
+          <path [attr.d]="harvestAreaPath()" fill="url(#harvestGradient)" />
+          <path [attr.d]="harvestLinePath()" fill="none" stroke="#d8b45c" stroke-width="2" stroke-linecap="round" />
+        }
+
+        @if (capitalAreaPath()) {
+          <path [attr.d]="capitalAreaPath()" fill="url(#capitalGradient)" />
+          <path [attr.d]="capitalLinePath()" fill="none" stroke="#00d084" stroke-width="2.5" stroke-linecap="round" />
+        }
+
+        <!-- Puntos interactivos con hover -->
+        @for (pt of chartPoints(); track pt.point.day) {
+          <!-- Puntos invisibles más anchos para fácil selección con mouse -->
+          <circle
+            [attr.cx]="pt.x"
+            [attr.cy]="pt.yCapital"
+            r="12"
+            fill="transparent"
+            class="hover-target"
+            (mouseenter)="onPointHover(pt)"
+          />
+
+          <!-- Puntos visibles en hitos o cada 15 días -->
+          @if (pt.point.day === 1 || pt.point.day === 30 || pt.point.day === 60 || pt.point.day === 90 || pt.point.day === operationalDays()) {
+            <circle
+              [attr.cx]="pt.x"
+              [attr.cy]="pt.yCapital"
+              r="4.5"
+              fill="#0f172a"
+              stroke="#00d084"
+              stroke-width="2.5"
+              class="milestone-point"
+            />
+          }
+        }
+      </svg>
+
+      <!-- Tooltip Flotante de Punto Interactivo -->
+      @if (hoveredPoint(); as p) {
+        <div
+          class="chart-tooltip"
+          [style.left.px]="hoveredCoords()?.x"
+          [style.top.px]="hoveredCoords()?.y"
+        >
+          <div class="tooltip-header">Día {{ p.day }}</div>
+          <div class="tooltip-row">
+            <span>Capital activo:</span>
+            <strong>${{ p.endingCapitalUsdt | number:'1.2-2' }} USDT</strong>
+          </div>
+          <div class="tooltip-row">
+            <span>Ganancia del día:</span>
+            <span class="text-success">+${{ p.dailyGrossGainUsdt | number:'1.2-2' }}</span>
+          </div>
+          @if (p.cumulativeHarvestedUsdt > 0) {
+            <div class="tooltip-row">
+              <span>Cosecha acumulada:</span>
+              <span class="text-harvest">${{ p.cumulativeHarvestedUsdt | number:'1.2-2' }}</span>
+            </div>
+          }
+          <div class="tooltip-row">
+            <span>Volumen bancario:</span>
+            <span [class.text-danger]="p.exceedsBankLimit">
+              Bs. {{ p.dailyVolumeVes | number:'1.0-0' }}
+            </span>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- Tarjetas de Hitos Clave: 30, 60 y 90 Días -->
+  <section class="milestones-section">
+    <h3 class="section-title">Hitos Estratégicos de Crecimiento</h3>
+    <div class="milestones-grid">
+      <!-- Hito Día 30 -->
+      <div class="milestone-card">
+        <div class="milestone-badge">MES 1 · DÍA 30</div>
+        <div class="milestone-val font-mono">
+          ${{ simulationResult().milestones.day30CapitalUsdt | number:'1.2-2' }}
+          <span class="unit">USDT</span>
+        </div>
+        <div class="milestone-growth">
+          +{{ ((simulationResult().milestones.day30CapitalUsdt / initialCapitalUsdt() - 1) * 100) | number:'1.1-1' }}% sobre capital inicial
+        </div>
+        <div class="milestone-note">Consolidación de rutinas y ritmo de rotación.</div>
+      </div>
+
+      <!-- Hito Día 60 -->
+      <div class="milestone-card">
+        <div class="milestone-badge">MES 2 · DÍA 60</div>
+        <div class="milestone-val font-mono">
+          ${{ simulationResult().milestones.day60CapitalUsdt | number:'1.2-2' }}
+          <span class="unit">USDT</span>
+        </div>
+        <div class="milestone-growth">
+          +{{ ((simulationResult().milestones.day60CapitalUsdt / initialCapitalUsdt() - 1) * 100) | number:'1.1-1' }}% sobre capital inicial
+        </div>
+        <div class="milestone-note">Punto de aceleración exponencial del capital.</div>
+      </div>
+
+      <!-- Hito Día 90 -->
+      <div class="milestone-card milestone-goal">
+        <div class="milestone-badge gold">MES 3 · DÍA 90 (OBJETIVO)</div>
+        <div class="milestone-val font-mono gold-text">
+          ${{ simulationResult().milestones.day90CapitalUsdt | number:'1.2-2' }}
+          <span class="unit">USDT</span>
+        </div>
+        <div class="milestone-growth">
+          +{{ ((simulationResult().milestones.day90CapitalUsdt / initialCapitalUsdt() - 1) * 100) | number:'1.1-1' }}% sobre capital inicial
+        </div>
+        <div class="milestone-note">Madurez de portafolio y política de cosecha regular.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Panel de Parámetros y Calibración Cuantitativa -->
+  <section class="controls-section">
+    <div class="controls-card">
+      <div class="controls-header">
+        <h3 class="controls-title">Parámetros del Modelo Matemático</h3>
+        <span class="controls-subtitle">Ajusta las variables de ciclo y política de retiros para recalibrar la curva.</span>
+      </div>
+
+      <div class="controls-grid">
+        <!-- Parámetro: Capital Inicial -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label for="initialCapInput">Capital Inicial de Trabajo (USDT)</label>
+            <span class="control-current font-mono">${{ initialCapitalUsdt() | number:'1.0-0' }}</span>
+          </div>
+          <input
+            id="initialCapInput"
+            type="number"
+            min="100"
+            max="100000"
+            step="100"
+            class="control-input font-mono"
+            [value]="initialCapitalUsdt()"
+            (input)="initialCapitalUsdt.set(+$any($event.target).value)"
+          />
+          <div class="presets-row">
+            <button type="button" class="preset-btn" (click)="setInitialCapital(500)">$500</button>
+            <button type="button" class="preset-btn" (click)="setInitialCapital(1000)">$1,000</button>
+            <button type="button" class="preset-btn" (click)="setInitialCapital(2500)">$2,500</button>
+            <button type="button" class="preset-btn" (click)="setInitialCapital(5000)">$5,000</button>
+            <button type="button" class="preset-btn" (click)="setInitialCapital(10000)">$10,000</button>
+            @if (treasuryBalanceUsdt() > 0) {
+              <button
+                type="button"
+                class="preset-btn btn-load-treasury"
+                (click)="loadFromTreasury()"
+                title="Cargar el saldo actual registrado en tesorería"
+              >
+                📥 Saldo en Caja (${{ treasuryBalanceUsdt() | number:'1.0-0' }} USDT)
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Parámetro: Margen Neto por Ciclo -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label for="netMarginInput">Margen Neto por Ciclo (%)</label>
+            <span class="control-current font-mono">{{ netMarginPctPerCycle() | number:'1.2-2' }}%</span>
+          </div>
+          <div class="input-with-action">
+            <input
+              id="netMarginInput"
+              type="number"
+              min="0.1"
+              max="5.0"
+              step="0.05"
+              class="control-input font-mono"
+              [value]="netMarginPctPerCycle()"
+              (input)="netMarginPctPerCycle.set(+$any($event.target).value)"
+            />
+            <button
+              type="button"
+              class="btn-sync-margin"
+              [disabled]="isSyncingMargin()"
+              (click)="applyLiveNetMargin()"
+              title="Cargar el spread neto en vivo desde Binance P2P o MCP"
+            >
+              {{ isSyncingMargin() ? '⏳ Sincronizando...' : '⚡ Usar Binance Live' }}
+            </button>
+          </div>
+          <div class="control-hint">
+            Margen libre de comisiones por vuelta completa de compra y venta.
+          </div>
+        </div>
+
+        <!-- Parámetro: Ciclos por Día (Velocidad de Rotación) -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label for="cyclesInput">Ciclos Completos por Día</label>
+            <span class="control-current font-mono">{{ cyclesPerDay() }} vueltas/día</span>
+          </div>
+          <input
+            id="cyclesInput"
+            type="number"
+            min="0.5"
+            max="8.0"
+            step="0.5"
+            class="control-input font-mono"
+            [value]="cyclesPerDay()"
+            (input)="cyclesPerDay.set(+$any($event.target).value)"
+          />
+          <div class="presets-row">
+            <button type="button" class="preset-btn" (click)="cyclesPerDay.set(1)">1 ciclo</button>
+            <button type="button" class="preset-btn" (click)="cyclesPerDay.set(1.5)">1.5 ciclos</button>
+            <button type="button" class="preset-btn" (click)="cyclesPerDay.set(2)">2 ciclos</button>
+            <button type="button" class="preset-btn" (click)="cyclesPerDay.set(3)">3 ciclos</button>
+          </div>
+        </div>
+
+        <!-- Parámetro: Horizonte Temporal -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label>Horizonte de Proyección</label>
+            <span class="control-current font-mono">{{ operationalDays() }} días</span>
+          </div>
+          <div class="presets-row horizon-presets">
+            <button type="button" class="preset-btn" [class.active]="operationalDays() === 30" (click)="setOperationalDays(30)">30 Días</button>
+            <button type="button" class="preset-btn" [class.active]="operationalDays() === 60" (click)="setOperationalDays(60)">60 Días</button>
+            <button type="button" class="preset-btn" [class.active]="operationalDays() === 90" (click)="setOperationalDays(90)">90 Días</button>
+            <button type="button" class="preset-btn" [class.active]="operationalDays() === 180" (click)="setOperationalDays(180)">180 Días</button>
+          </div>
+        </div>
+
+        <!-- Parámetro: Política de Reinversión vs Cosecha -->
+        <div class="control-group full-width-group">
+          <div class="control-label-row">
+            <label>Política de Cosecha vs Reinversión Compuesta</label>
+            <span class="control-current font-mono">{{ reinvestmentRatePct() }}% Reinvertido / {{ 100 - reinvestmentRatePct() }}% Cosechado</span>
+          </div>
+          <div class="policy-selector">
+            <button
+              type="button"
+              class="policy-card"
+              [class.active]="reinvestmentRatePct() === 100"
+              (click)="setReinvestmentPolicy(100)"
+            >
+              <div class="policy-title">100% Interés Compuesto Puro</div>
+              <div class="policy-desc">Todo el beneficio diario se suma al capital de trabajo para maximizar la curva exponencial.</div>
+            </button>
+
+            <button
+              type="button"
+              class="policy-card"
+              [class.active]="reinvestmentRatePct() === 75"
+              (click)="setReinvestmentPolicy(75)"
+            >
+              <div class="policy-title">75% Crecimiento / 25% Cosecha</div>
+              <div class="policy-desc">Fuerte crecimiento con una toma de beneficios moderada para resguardo de capital.</div>
+            </button>
+
+            <button
+              type="button"
+              class="policy-card"
+              [class.active]="reinvestmentRatePct() === 50"
+              (click)="setReinvestmentPolicy(50)"
+            >
+              <div class="policy-title">50% Equilibrio 50/50</div>
+              <div class="policy-desc">La mitad del beneficio se retira a gastos/ahorros y la mitad alimenta el crecimiento.</div>
+            </button>
+
+            <button
+              type="button"
+              class="policy-card"
+              [class.active]="reinvestmentRatePct() === 0"
+              (click)="setReinvestmentPolicy(0)"
+            >
+              <div class="policy-title">0% Retiro Diario de Ganancias</div>
+              <div class="policy-desc">Capital fijo sin crecimiento; toda la utilidad diaria se cosecha íntegramente.</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Parámetro: Gastos Fijos Mensuales -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label for="fixedExpensesInput">Gastos Fijos Mensuales (USDT)</label>
+            <span class="control-current font-mono">${{ monthlyFixedExpensesUsdt() | number:'1.0-0' }}</span>
+          </div>
+          <input
+            id="fixedExpensesInput"
+            type="number"
+            min="0"
+            max="10000"
+            step="50"
+            class="control-input font-mono"
+            [value]="monthlyFixedExpensesUsdt()"
+            (input)="monthlyFixedExpensesUsdt.set(+$any($event.target).value)"
+          />
+          <div class="control-hint">Utilizado para calcular los meses de cobertura de Runway operativo.</div>
+        </div>
+
+        <!-- Contexto Bancario & Tasa en Vivo -->
+        <div class="control-group">
+          <div class="control-label-row">
+            <label>Restricción Bancaria (SUDEBAN)</label>
+            <button
+              type="button"
+              class="bank-toggle-btn"
+              [class.active]="checkBankingWall()"
+              [class.free]="!checkBankingWall()"
+              (click)="toggleBankingWall()"
+            >
+              {{ checkBankingWall() ? '🛡️ Verificación Activada' : '🚀 Modo Libre (Sin Techo)' }}
+            </button>
+          </div>
+
+          @if (checkBankingWall()) {
+            <div class="presets-row" style="margin-top: 4px;">
+              <button
+                type="button"
+                class="preset-btn"
+                [class.active]="bankLimitMode() === 'accounts'"
+                (click)="bankLimitMode.set('accounts')"
+              >
+                16 Cuentas App (Bs. {{ consolidatedDailyBankLimitVes() | number:'1.0-0' }})
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                [class.active]="bankLimitMode() === 'custom'"
+                (click)="bankLimitMode.set('custom')"
+              >
+                Personalizado
+              </button>
+            </div>
+
+            @if (bankLimitMode() === 'custom') {
+              <div style="margin-top: 6px;">
+                <input
+                  type="number"
+                  min="100000"
+                  step="500000"
+                  class="control-input font-mono"
+                  placeholder="Límite diario en VES"
+                  [value]="customDailyLimitVes()"
+                  (input)="customDailyLimitVes.set(+$any($event.target).value)"
+                />
+              </div>
+            }
+          } @else {
+            <div class="control-hint">
+              El algoritmo proyecta el crecimiento libremente según el capital que ingreses, sin frenar ni emitir alertas de muro bancario.
+            </div>
+          }
+
+          <div class="bank-info-box font-mono" style="margin-top: 8px;">
+            <div>Tasa en Vivo: <strong>1 USDT = {{ referenceRateVes() | number:'1.2-2' }} VES</strong></div>
+            <div>Cuentas conectadas en sistema: <strong>{{ accountsCount() }} cuentas</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tabla Desglosada Día por Día (Colapsable) -->
+  <section class="table-section">
+    <div class="table-header-row" (click)="toggleTable()">
+      <div class="table-titles">
+        <h4 class="table-title">Desglose Numérico Diario (Días 1 a {{ operationalDays() }})</h4>
+        <span class="table-hint">Haz clic para {{ isTableExpanded() ? 'colapsar' : 'expandir los ' + operationalDays() + ' días' }}</span>
+      </div>
+      <button type="button" class="btn-toggle-table">
+        {{ isTableExpanded() ? '▲ Ocultar Tabla' : '▼ Ver Todos los Días' }}
+      </button>
+    </div>
+
+    @if (isTableExpanded()) {
+      <div class="table-container">
+        <table class="daily-table">
+          <thead>
+            <tr>
+              <th>Día</th>
+              <th>Capital Inicial</th>
+              <th>Ganancia del Día</th>
+              <th>Reinvertido</th>
+              <th>Cosechado</th>
+              <th>Capital Final</th>
+              <th>Cosecha Acum.</th>
+              <th>Volumen en VES</th>
+              <th>Alerta Bancaria</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of simulationResult().dailyProjection; track p.day) {
+              <tr [class.row-alert]="p.exceedsBankLimit">
+                <td class="font-mono day-cell">Día {{ p.day }}</td>
+                <td class="font-mono">${{ p.startingCapitalUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono text-success">+${{ p.dailyGrossGainUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono">${{ p.reinvestedGainUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono text-harvest">${{ p.harvestedGainUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono font-bold">${{ p.endingCapitalUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono">${{ p.cumulativeHarvestedUsdt | number:'1.2-2' }}</td>
+                <td class="font-mono">Bs. {{ p.dailyVolumeVes | number:'1.0-0' }}</td>
+                <td>
+                  @if (p.exceedsBankLimit) {
+                    <span class="badge-danger">Excede Límite</span>
+                  } @else {
+                    <span class="badge-ok">Normal</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</div>

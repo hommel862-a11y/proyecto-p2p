@@ -15,11 +15,11 @@ describe('App', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should render a nav with 12 feature links and mobile bottom nav', () => {
+  it('should render a nav with 13 feature links and mobile bottom nav', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(12);
+    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(13);
     expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(4);
   });
 

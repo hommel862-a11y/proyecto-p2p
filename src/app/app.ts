@@ -6,6 +6,7 @@ import { CommandPalette } from './shared/ui/command-palette';
 import { HotkeysService } from './core/hotkeys.service';
 import { ClipboardPaymentBannerComponent } from './shared/components/clipboard-payment-banner.component';
 import { ApiSettingsModalComponent } from './shared/components/api-settings-modal.component';
+import { ProductTourModalComponent } from './shared/components/product-tour-modal.component';
 import { CotizaveService } from './core/cotizave.service';
 import { BinanceP2pService } from './core/binance-p2p.service';
 
@@ -21,6 +22,7 @@ export type AppTheme = 'dark' | 'apple-dark' | 'light';
     CommandPalette,
     ClipboardPaymentBannerComponent,
     ApiSettingsModalComponent,
+    ProductTourModalComponent,
   ],
   selector: 'app-root',
   styleUrl: './app.scss',
@@ -32,6 +34,7 @@ export class App {
   readonly binance = inject(BinanceP2pService);
   readonly mobileDrawerOpen = signal<boolean>(false);
   readonly apiModalOpen = signal<boolean>(false);
+  readonly tourModalOpen = signal<boolean>(false);
 
   readonly hasActiveApis = computed<boolean>(() => {
     return !!this.cotizave.apiKey();
@@ -147,6 +150,15 @@ export class App {
 
   closeApiModal(): void {
     this.apiModalOpen.set(false);
+  }
+
+  openTourModal(): void {
+    this.tourModalOpen.set(true);
+    this.mobileDrawerOpen.set(false);
+  }
+
+  closeTourModal(): void {
+    this.tourModalOpen.set(false);
   }
 
   private listenThemeToggle(): void {

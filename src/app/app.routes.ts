@@ -36,6 +36,12 @@ export const routes: Routes = [
     title: 'Copiloto Estratega IA',
     loadComponent: () => import('./features/copilot/copilot').then((m) => m.Copilot),
   },
+  {
+    path: 'growth-projector',
+    title: 'Proyector de Crecimiento',
+    loadComponent: () =>
+      import('./features/growth-projector/growth-projector').then((m) => m.GrowthProjectorComponent),
+  },
 
   {
     path: 'receipts',
