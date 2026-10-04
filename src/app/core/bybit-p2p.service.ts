@@ -33,10 +33,11 @@ interface BybitElectronBridge {
 export type MarketDataMode = 'live' | 'demo';
 
 /**
- * Reads Bybit P2P top-of-book through the Electron IPC bridge (HMAC-signed requests
- * stay in the main process; secrets never leave the OS-level encrypted vault).
- * Falls back to editable demo values whenever no credentials are configured,
- * the desktop bridge is unavailable, or the live call fails.
+ * Reads Bybit P2P top-of-book through the Electron IPC bridge.
+ * HMAC-signed requests are signed and dispatched in the Electron main process to avoid
+ * CORS restrictions, while API credentials stored in SecureVault are passed over the
+ * desktop IPC bridge. Falls back to editable demo values whenever no credentials are
+ * configured, the desktop bridge is unavailable, or the live call fails.
  */
 @Injectable({ providedIn: 'root' })
 export class BybitP2pService {
