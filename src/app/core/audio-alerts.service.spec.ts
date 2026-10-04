@@ -28,9 +28,15 @@ describe('AudioAlertsService', () => {
   it('should safely execute playOpportunityAlert and playKillSwitchAlert without throwing', () => {
     expect(() => service.playOpportunityAlert()).not.toThrow();
     expect(() => service.playKillSwitchAlert()).not.toThrow();
+    expect(() => service.playConfirmationTone()).not.toThrow();
+    expect(() => service.playInjectionTone()).not.toThrow();
+    expect(() => service.playSudebanWarningTone()).not.toThrow();
 
     service.toggleMute();
     expect(() => service.playOpportunityAlert()).not.toThrow();
     expect(() => service.playKillSwitchAlert()).not.toThrow();
+    expect(() => service.playConfirmationTone()).not.toThrow();
+    expect(() => service.playInjectionTone()).not.toThrow();
+    expect(() => service.playSudebanWarningTone()).not.toThrow();
   });
 });

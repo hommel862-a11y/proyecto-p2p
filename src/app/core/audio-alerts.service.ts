@@ -66,6 +66,68 @@ export class AudioAlertsService {
     }
   }
 
+  playConfirmationTone(): void {
+    if (this.isMuted() || typeof window === 'undefined') return;
+
+    try {
+      const ctx = this.getOrCreateAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      // Crisp harmonic confirmation chime (D5: 587Hz, A5: 880Hz)
+      this.playChimeTone(ctx, 587.33, now, 0.12, 0.08);
+      this.playChimeTone(ctx, 880, now + 0.08, 0.18, 0.1);
+    } catch (err) {
+      console.debug('[AudioAlerts] Confirmation playback suppressed:', err);
+    }
+  }
+
+  playInjectionTone(): void {
+    if (this.isMuted() || typeof window === 'undefined') return;
+
+    try {
+      const ctx = this.getOrCreateAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      // Liquid frequency sweep (330Hz rising to 660Hz)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(330, now);
+      osc.frequency.exponentialRampToValueAtTime(660, now + 0.18);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.09, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } catch (err) {
+      console.debug('[AudioAlerts] Injection playback suppressed:', err);
+    }
+  }
+
+  playSudebanWarningTone(): void {
+    if (this.isMuted() || typeof window === 'undefined') return;
+
+    try {
+      const ctx = this.getOrCreateAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      // Soft institutional caution tone (dual pulse at 349Hz F4 and 311Hz Eb4)
+      this.playChimeTone(ctx, 349.23, now, 0.15, 0.12);
+      this.playChimeTone(ctx, 311.13, now + 0.14, 0.2, 0.14);
+    } catch (err) {
+      console.debug('[AudioAlerts] Warning playback suppressed:', err);
+    }
+  }
+
   private playChimeTone(
     ctx: AudioContext,
     freq: number,
