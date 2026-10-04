@@ -21,6 +21,7 @@ import {
   parseRepriceCallbackData,
   formatJournalAuditLine,
   dispatchTelegramUpdate,
+  normalizeButtonCommand,
   PANEL_CALLBACKS,
   TelegramInboundUpdate,
   type PanelReport,
@@ -1664,4 +1665,49 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(msg).toContain('130\\.00 Bs');
     });
   });
+
+  describe('normalizeButtonCommand & dispatch conversational tolerance', () => {
+    it('normaliza variaciones naturales de radar de alta demanda (incluyendo typos como de manda)', () => {
+      expect(normalizeButtonCommand('radar de alta de manda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('radar de alta demanda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('radar alta demanda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('/radar de alta demanda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('/radar de alta de manda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('🎯 Radar Alta Demanda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('alta demanda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('alta de manda')).toBe('/radardealtademanda');
+      expect(normalizeButtonCommand('radar de alta de manda banesco 1k')).toBe(
+        '/radardealtademanda banesco 1k',
+      );
+    });
+
+    it('despacha update con texto "radar de alta de manda" como RADAR_ALTA_DEMANDA', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 999,
+        message: {
+          message_id: 1,
+          from: { id: 123456, username: 'trader' },
+          chat: { id: 123456, type: 'private' },
+          text: 'radar de alta de manda',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, 123456);
+      expect(res.authorized).toBe(true);
+      expect(res.action).toBe('RADAR_ALTA_DEMANDA');
+      expect(res.command).toBe('/radardealtademanda');
+    });
+
+    it('normaliza otros comandos rápidos conversacionales', () => {
+      expect(normalizeButtonCommand('spreads en vivo')).toBe('/spreads');
+      expect(normalizeButtonCommand('macro bcv')).toBe('/bcv');
+      expect(normalizeButtonCommand('cupos bancarios')).toBe('/bancos');
+      expect(normalizeButtonCommand('panel terminal')).toBe('/panel');
+      expect(normalizeButtonCommand('killswitch')).toBe('/killswitch');
+      expect(normalizeButtonCommand('pausar')).toBe('/killswitch');
+      expect(normalizeButtonCommand('reanudar')).toBe('/resume');
+    });
+  });
 });
+

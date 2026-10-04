@@ -394,6 +394,11 @@ function formatMetric(value: number | null, decimals = 2): string {
   return escapeMarkdownV2(value.toFixed(decimals));
 }
 
+function formatPlainMetric(value: number | null, decimals = 2): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/d';
+  return value.toFixed(decimals);
+}
+
 function formatCount(value: number): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/d';
   return escapeMarkdownV2(String(value));
@@ -492,10 +497,10 @@ ${header}
       const netSpreadSign = t.netSpreadPct >= 0 ? '+' : '';
 
       return `${icon} *Tramo: ${t.tierUsdt.toLocaleString('en-US')} USDT* \\(≈ ${formatMetric(t.tierVes)} Bs\\)${bestTag}
-   • Compra Maker: \`${formatMetric(t.suggestedBuyPrice)} Bs\`${buyCompTag}
-   • Venta Maker: \`${formatMetric(t.suggestedSellPrice)} Bs\`${sellCompTag}
-   • Spread Bruto: \`${formatMetric(t.grossSpreadPct)}%\` \\(Δ ${formatMetric(t.grossSpreadVes)} Bs\\)
-   • ⚡ *Margen Neto Real:* \`${netSpreadSign}${formatMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
+   • Compra Maker: \`${formatPlainMetric(t.suggestedBuyPrice)} Bs\`${buyCompTag}
+   • Venta Maker: \`${formatPlainMetric(t.suggestedSellPrice)} Bs\`${sellCompTag}
+   • Spread Bruto: \`${formatPlainMetric(t.grossSpreadPct)}%\` \\(Δ ${formatMetric(t.grossSpreadVes)} Bs\\)
+   • ⚡ *Margen Neto Real:* \`${netSpreadSign}${formatPlainMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatPlainMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
    • Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\``;
     })
     .join('\n\n');
@@ -851,18 +856,66 @@ export function buildSentinelReplyKeyboard(): TelegramReplyKeyboardMarkup {
 }
 
 /**
- * Normalizes text received from persistent reply keyboard buttons into canonical slash commands.
+ * Normalizes text received from persistent reply keyboard buttons or conversational messages
+ * into canonical slash commands, with tolerance for typos and natural Spanish phrasing.
  */
 export function normalizeButtonCommand(text: string): string {
-  const clean = text.trim();
-  if (clean.includes('Radar Alta Demanda') || clean.includes('radar alta demanda')) return '/radardealtademanda';
-  if (clean.includes('Spreads en Vivo') || clean.includes('spreads en vivo')) return '/spreads';
-  if (clean.includes('Macro BCV') || clean.includes('macro bcv')) return '/bcv';
-  if (clean.includes('Cupos Bancarios') || clean.includes('cupos bancarios')) return '/bancos';
-  if (clean.includes('Panel Terminal') || clean.includes('panel terminal')) return '/panel';
-  if (clean.includes('Killswitch') || clean.includes('killswitch')) return '/killswitch';
-  if (clean.includes('Reanudar') || clean.includes('reanudar')) return '/resume';
-  return clean;
+  const raw = text.trim();
+  if (!raw) return '';
+  if (raw.startsWith('/pausar')) return raw;
+
+  // Quitar acentos y normalizar minúsculas
+  const norm = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Radar de alta demanda:
+  // Cubre: 'radar de alta de manda', 'radar de alta demanda', 'radar alta demanda', 'alta demanda',
+  // '🎯 radar alta demanda', '/radardealtademanda', '/radar_alta_demanda', etc.
+  const highDemandRegex = /^(?:[/]?radar\s*(?:de\s*)?alta\s*(?:de\s*)?manda|[/]?radardealtademanda|[/]?radar_alta_demanda|🎯\s*radar\s*alta\s*demanda|alta\s*(?:de\s*)?manda|radar\s*alta)/i;
+  if (highDemandRegex.test(norm)) {
+    const remaining = raw.replace(highDemandRegex, '').trim();
+    return remaining ? `/radardealtademanda ${remaining}` : '/radardealtademanda';
+  }
+
+  // 2. Spreads en vivo:
+  if (/^(?:⚡\s*)?(?:[/]?spreads?)(?:\s*en\s*vivo)?/i.test(norm)) {
+    return '/spreads';
+  }
+
+  // 3. Macro BCV (botón '🏛️ Macro BCV' o consultas de tasa BCV):
+  // Ojo: '/macro' a secas es el comando de reporte macro consolidado (/macro).
+  if (/^(?:🏛️\s*)?(?:macro\s*bcv|[/]?bcv|tasa\s*bcv)/i.test(norm)) {
+    return '/bcv';
+  }
+
+  // 4. Cupos bancarios:
+  if (/^(?:📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
+    return '/bancos';
+  }
+
+  // 5. Panel terminal:
+  if (/^(?:🤖\s*)?(?:[/]?panel(?:\s*terminal)?)/i.test(norm)) {
+    return '/panel';
+  }
+
+  // 6. Killswitch / Pausar:
+  if (/^(?:🚨\s*)?(?:[/]?killswitch|pausar|parar)/i.test(norm)) {
+    return '/killswitch';
+  }
+
+  // 7. Reanudar / Resume:
+  if (/^(?:▶\s*)?(?:[/]?resume|[/]?reanudar)/i.test(norm)) {
+    return '/resume';
+  }
+
+  // 8. Radar de gaps general:
+  if (/^(?:📡\s*)?(?:[/]?radar(?:\s*gaps)?)$/i.test(norm)) {
+    return '/radar';
+  }
+
+  return raw;
 }
 
 function formatRadarUsageMessage(): string {
