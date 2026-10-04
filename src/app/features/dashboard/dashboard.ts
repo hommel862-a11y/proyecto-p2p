@@ -1,6 +1,6 @@
-import { Component, computed, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, effect, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { StorageService } from '../../core/storage';
 import { RisksService } from '../../core/rules';
 import { SessionService } from '../../core/session.service';
@@ -9,6 +9,8 @@ import { ToastService } from '../../core/toast.service';
 import { AuditLoggerService } from '../../core/audit-logger.service';
 import { fmtVes, fmtUsd, FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { AudioAlertsService } from '../../core/audio-alerts.service';
+import { TelemetryService, type TelemetrySnapshot } from '../../core/telemetry.service';
 import {
   CotizaveService,
   describeCotizaveProvenance,
@@ -34,8 +36,10 @@ import {
   evaluatePreflightDiscipline,
   type MentalState,
   type PreflightEvaluationResult,
+  type BankCode,
 } from '@p2p/core';
 import { FormsModule } from '@angular/forms';
+import { AnimatedCounterComponent } from '../../shared/ui/animated-counter';
 
 export interface McpVolatilityForecastDto {
   windowHours?: number;
@@ -72,6 +76,9 @@ export interface SwarmAgentDto {
 export interface UnifiedAccountView {
   id: string;
   bankName: string;
+  bankCode?: BankCode;
+  rail?: string;
+  accountNumberMasked?: string;
   currentBalanceVes: number;
   dailyLimitVes: number;
   spentTodayVes: number;
@@ -92,12 +99,13 @@ const OPS_KEY = 'p2p.operations';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, ...FORMAT_PIPES],
+  imports: [CommonModule, RouterLink, FormsModule, AnimatedCounterComponent, ...FORMAT_PIPES],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })
 export class Dashboard implements OnInit, OnDestroy {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly storage = inject(StorageService);
   private readonly risks = inject(RisksService);
   private readonly toast = inject(ToastService);
@@ -107,8 +115,46 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly binanceService = inject(BinanceP2pService);
   readonly cotizaveService = inject(CotizaveService);
   readonly mcpService = inject(McpService);
+  readonly audioAlerts = inject(AudioAlertsService);
+  readonly telemetryService = inject(TelemetryService);
+
+  readonly telemetry = this.telemetryService.telemetry;
+
+  refreshTelemetry(): Promise<TelemetrySnapshot> {
+    return this.telemetryService.refresh();
+  }
 
   readonly activeTab = signal<'all' | 'treasury' | 'agents' | 'performance'>('all');
+
+  readonly treasuryDensity = signal<'bento' | 'compact'>(
+    (this.storage.get<'bento' | 'compact'>('p2p.dashboard.treasuryDensity') as 'bento' | 'compact') ||
+      'bento',
+  );
+
+  setTreasuryDensity(density: 'bento' | 'compact'): void {
+    this.treasuryDensity.set(density);
+    this.storage.set('p2p.dashboard.treasuryDensity', density);
+  }
+
+  private readonly liquidityWatcher = effect(() => {
+    const req = this.accountsService.liquidityModalRequest();
+    if (req) {
+      const target = req.bankId
+        ? this.unifiedAccounts().find((a) => a.id === req.bankId)
+        : undefined;
+      this.openLiquidityModal(target);
+      this.accountsService.clearLiquidityModalRequest();
+    }
+  });
+
+  private readonly routeTabWatcher = effect(() => {
+    this.route.queryParamMap.subscribe((params) => {
+      const tab = params.get('tab');
+      if (tab === 'treasury' || tab === 'agents' || tab === 'performance' || tab === 'all') {
+        this.activeTab.set(tab);
+      }
+    });
+  });
 
   readonly swarmAgents = signal<SwarmAgentDto[]>([
     {
@@ -206,6 +252,25 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly closeDisciplineRating = signal<number>(5);
   readonly closeNotes = signal<string>('');
 
+  /** State for Liquidity Injection modal */
+  readonly showLiquidityModal = signal<boolean>(false);
+  readonly selectedInjectionAccountId = signal<string>('');
+  readonly injectionAmount = signal<number | null>(null);
+  readonly injectionNote = signal<string>('');
+  readonly injectionError = signal<string | null>(null);
+
+  readonly selectedAccountForInjection = computed<UnifiedAccountView | null>(() => {
+    const id = this.selectedInjectionAccountId();
+    return this.unifiedAccounts().find((a) => a.id === id) ?? null;
+  });
+
+  readonly projectedBalanceAfterInjection = computed<number>(() => {
+    const acc = this.selectedAccountForInjection();
+    if (!acc) return 0;
+    const add = this.injectionAmount() ?? 0;
+    return acc.currentBalanceVes + (add > 0 ? add : 0);
+  });
+
   private readonly ops = computed<Operation[]>(() => this.storage.get<Operation[]>(OPS_KEY) ?? []);
 
   readonly dashboard = computed(() => computeDashboard(this.ops()));
@@ -265,6 +330,9 @@ export class Dashboard implements OnInit, OnDestroy {
       return {
         id: u.account.id,
         bankName: u.account.bankName,
+        bankCode: u.account.bankCode,
+        rail: u.account.rail,
+        accountNumberMasked: u.account.accountNumberMasked,
         currentBalanceVes: u.currentBalanceVes,
         dailyLimitVes: u.account.dailyLimitVes,
         spentTodayVes: u.spentTodayVes,
@@ -444,6 +512,7 @@ export class Dashboard implements OnInit, OnDestroy {
       return;
     }
     this.sessionService.startSession({ targetOps: 5 });
+    this.audioAlerts.playConfirmationTone();
     this.showPreflightModal.set(false);
     this.toast.success(
       `Sesión Blindada Iniciada (${evalResult.sessionToken}). Ticket máx recomendado: $${evalResult.recommendedMaxSingleTicketUsdt} USDT.`,
@@ -467,11 +536,72 @@ export class Dashboard implements OnInit, OnDestroy {
     this.showCloseModal.set(false);
     this.closeNotes.set('');
     if (closed) {
+      this.audioAlerts.playConfirmationTone();
       this.toast.info(
         'Sesión cerrada y registrada en el historial de estadísticas.',
         'Sesión Cerrada',
       );
     }
+  }
+
+  openLiquidityModal(account?: UnifiedAccountView): void {
+    const accounts = this.unifiedAccounts();
+    const targetId = account?.id ?? (this.selectedInjectionAccountId() || accounts[0]?.id || '');
+    this.selectedInjectionAccountId.set(targetId);
+    this.injectionAmount.set(null);
+    this.injectionNote.set('');
+    this.injectionError.set(null);
+    this.showLiquidityModal.set(true);
+
+    if (account && account.dailyLimitVes > 0 && (account.currentBalanceVes / account.dailyLimitVes) >= 0.75) {
+      this.audioAlerts.playSudebanWarningTone();
+    }
+  }
+
+  cancelLiquidityModal(): void {
+    this.showLiquidityModal.set(false);
+    this.injectionAmount.set(null);
+    this.injectionNote.set('');
+    this.injectionError.set(null);
+  }
+
+  confirmLiquidityInjection(): void {
+    const accountId = this.selectedInjectionAccountId();
+    const amount = Number(this.injectionAmount());
+
+    if (!accountId) {
+      this.injectionError.set('Por favor, selecciona una cuenta bancaria.');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      this.injectionError.set('Ingresa un monto válido en VES mayor a 0.');
+      return;
+    }
+
+    try {
+      const updated = this.accountsService.injectLiquidity(
+        accountId,
+        amount,
+        this.injectionNote().trim() || 'Fondeo de liquidez en Centro de Control',
+      );
+      this.audioAlerts.playInjectionTone();
+      this.toast.success(
+        `Se han inyectado ${fmtVes(amount)} en ${updated.bankName}. Saldo disponible actualizado.`,
+        'Liquidez Inyectada',
+      );
+      this.cancelLiquidityModal();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al inyectar liquidez.';
+      this.injectionError.set(msg);
+    }
+  }
+
+  async syncOfficialBanks(): Promise<void> {
+    await this.accountsService.restoreDefaultAccounts();
+    this.toast.info(
+      'Cuentas bancarias de los 8 bancos oficiales sincronizadas y aseguradas en el sistema.',
+      'Bancos Sincronizados',
+    );
   }
 
   formatDuration(ms?: number): string {

@@ -513,19 +513,41 @@
                 <!-- Provenance & Metering Bar (F1 / F4) -->
                 @if (msg.role === 'assistant' && msg.provenance) {
                   <div class="provenance-metering-bar">
-                    @if (msg.provenance.esSimulado || msg.plan?.esSimulado || msg.plan?.isSimulated) {
-                      <span class="provenance-badge simulated-warning" title="Sin feed de mercado Binance P2P en vivo conectado. Valores heurísticos o referenciales.">
-                        ⚠️ [SIMULADO]
+                    <!--
+                      A green badge requires an affirmative live feed. Previously this
+                      branch fired on `!esSimulado`, which is a statement about the plan's
+                      numbers, not about market connectivity, so plain chat replies with no
+                      market data rendered as [MERCADO EN VIVO].
+                    -->
+                    @if (msg.provenance.liveMarketFeedConnected === true) {
+                      <span class="provenance-badge live-success" title="Feed de libro Binance P2P conectado y vigente">
+                        🟢 [MERCADO EN VIVO]
                       </span>
                     } @else {
-                      <span class="provenance-badge live-success" title="Feed de mercado en tiempo real activo">
-                        🟢 [MERCADO EN VIVO]
+                      <span
+                        class="provenance-badge simulated-warning"
+                        [title]="msg.provenance.marketFeedNote || 'Sin feed de mercado Binance P2P en vivo conectado. Valores heurísticos o referenciales.'"
+                      >
+                        ⚠️ [SIN FEED]
+                      </span>
+                    }
+                    @if (msg.provenance.marketFeedNote) {
+                      <span class="provenance-feed-note">{{ msg.provenance.marketFeedNote }}</span>
+                    }
+                    @if (msg.provenance.budgetExhausted) {
+                      <span class="provenance-budget" title="Se alcanzó el techo de llamadas pagas por turno">
+                        ⛔ [PRESUPUESTO DE TURNO AGOTADO]
                       </span>
                     }
                     <span class="provenance-source">
                       Origen: {{ msg.provenance.source }}
                       @if (msg.provenance.model) { ({{ msg.provenance.model }}) }
                     </span>
+                    @if (msg.provenance.fallbackReason) {
+                      <span class="provenance-fallback">
+                        Motivo de fallback: {{ msg.provenance.fallbackReason }}
+                      </span>
+                    }
                     @if (msg.provenance.stepsCount !== undefined) {
                       <span class="provenance-steps">
                         Pasos ReAct: {{ msg.provenance.stepsCount }}/{{ msg.provenance.maxSteps || 5 }}
@@ -534,6 +556,11 @@
                     @if (msg.provenance.apiCallsCount !== undefined) {
                       <span class="provenance-calls">
                         Llamadas API: {{ msg.provenance.apiCallsCount }}
+                      </span>
+                    }
+                    @if (msg.provenance.paidCallsBudget) {
+                      <span class="provenance-budget-limit">
+                        (techo por turno: {{ msg.provenance.paidCallsBudget }})
                       </span>
                     }
                   </div>
@@ -929,7 +956,7 @@
             </div>
             <div class="metric-row">
               <span class="label">Costo de Oportunidad Ocioso:</span>
-              <span class="value warning">${{ (earnSimpleResult().opportunityCostPerHourUsdt * 24).toFixed(3) }} USDT/día</span>
+              <span class="value warning">${{ ((earnSimpleResult().opportunityCostPerHourUsdt ?? 0) * 24).toFixed(3) }} USDT/día</span>
             </div>
           </div>
 
@@ -956,8 +983,8 @@
           <div class="earn-metrics-table">
             <div class="metric-row">
               <span class="label">Spread Neto P2P por Ciclo:</span>
-              <span class="value" [class.profit]="earnHurdleResult().netP2pCycleReturnPct > 0" [class.danger]="earnHurdleResult().netP2pCycleReturnPct <= 0">
-                {{ earnHurdleResult().netP2pCycleReturnPct }}%
+              <span class="value" [class.profit]="(earnHurdleResult().netP2pCycleReturnPct ?? 0) > 0" [class.danger]="(earnHurdleResult().netP2pCycleReturnPct ?? 0) <= 0">
+                {{ earnHurdleResult().netP2pCycleReturnPct ?? 0 }}%
               </span>
             </div>
             <div class="metric-row">

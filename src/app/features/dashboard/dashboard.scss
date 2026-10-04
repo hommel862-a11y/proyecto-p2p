@@ -137,6 +137,69 @@
     }
   }
 
+  .island-telemetry {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.16);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .telemetry-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #2fd08f;
+      box-shadow: 0 0 6px #2fd08f;
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+    }
+
+    &.status-optimal .telemetry-status-dot {
+      background: #2fd08f;
+      box-shadow: 0 0 6px rgba(47, 208, 143, 0.8);
+    }
+
+    &.status-moderate .telemetry-status-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+    }
+
+    &.status-degraded .telemetry-status-dot {
+      background: #ef4444;
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+    }
+
+    .telemetry-item {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+      color: rgba(255, 255, 255, 0.65);
+
+      strong {
+        color: #ffffff;
+        font-weight: 600;
+      }
+    }
+
+    .telemetry-sep {
+      color: rgba(255, 255, 255, 0.2);
+    }
+  }
+
   .island-actions {
     display: flex;
     align-items: center;
@@ -556,8 +619,75 @@
   }
 
   &.card-alert {
-    border-color: rgba(239, 68, 68, 0.45);
-    background: rgba(239, 68, 68, 0.04);
+    border-color: rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.05);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
+    animation: bankAlertPulse 2.8s ease-in-out infinite;
+  }
+
+  &.card-near {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.04);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.08);
+  }
+
+  @keyframes bankAlertPulse {
+    0%, 100% {
+      border-color: rgba(239, 68, 68, 0.45);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.1);
+    }
+    50% {
+      border-color: rgba(239, 68, 68, 0.85);
+      box-shadow: 0 0 22px rgba(239, 68, 68, 0.25);
+    }
+  }
+
+  &.bank-banesco .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(0, 168, 107, 0.25) 0%, rgba(0, 168, 107, 0.06) 100%);
+    border-color: rgba(0, 168, 107, 0.4);
+    color: #34d399;
+  }
+
+  &.bank-mercantil .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(59, 130, 246, 0.06) 100%);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #60a5fa;
+  }
+
+  &.bank-bdv .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(239, 68, 68, 0.06) 100%);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+  }
+
+  &.bank-provincial .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(2, 132, 199, 0.06) 100%);
+    border-color: rgba(2, 132, 199, 0.4);
+    color: #38bdf8;
+  }
+
+  &.bank-bancamiga .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.25) 0%, rgba(13, 148, 136, 0.06) 100%);
+    border-color: rgba(13, 148, 136, 0.4);
+    color: #2dd4bf;
+  }
+
+  &.bank-bnc .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0.06) 100%);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #34d399;
+  }
+
+  &.bank-bancaribe .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0.06) 100%);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #818cf8;
+  }
+
+  &.bank-banplus .bank-avatar-badge {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(245, 158, 11, 0.06) 100%);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
   }
 
   .apple-bank-card-top {
@@ -583,6 +713,14 @@
         font-weight: 800;
         font-size: 0.8rem;
         color: var(--gold-strong);
+        flex-shrink: 0;
+      }
+
+      .apple-bank-title-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
       }
 
       .apple-bank-name {
@@ -591,9 +729,32 @@
         color: var(--text);
       }
 
+      .apple-rail-pill {
+        font-size: 0.62rem;
+        padding: 1px 6px;
+        border-radius: var(--radius-full);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
       .apple-bank-sub {
         font-size: 0.78rem;
         color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .apple-bank-mask-sep {
+        opacity: 0.4;
+      }
+
+      .apple-bank-mask {
+        color: var(--muted);
+        font-size: 0.74rem;
       }
     }
 
@@ -672,13 +833,88 @@
     }
   }
 
+  .apple-bank-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+
+    .apple-card-action-btn {
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid transparent;
+
+      &.inject-btn {
+        background: rgba(216, 180, 92, 0.12);
+        color: var(--gold-strong);
+        border-color: rgba(216, 180, 92, 0.3);
+
+        &:hover {
+          background: rgba(216, 180, 92, 0.25);
+          border-color: rgba(216, 180, 92, 0.6);
+          transform: translateY(-1px);
+        }
+      }
+    }
+  }
+
   .apple-card-action-hint {
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--gold);
     text-align: right;
-    opacity: 0;
+    opacity: 0.8;
     transition: opacity 0.2s ease;
+  }
+}
+
+.apple-input-select,
+.apple-input-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.88rem;
+  transition: all 0.2s ease;
+  outline: none;
+
+  &:focus {
+    border-color: var(--gold-strong);
+    box-shadow: 0 0 12px rgba(216, 180, 92, 0.25);
+    background: rgba(0, 0, 0, 0.65);
+  }
+
+  & option {
+    background: #121214;
+    color: #fff;
+  }
+}
+
+.btn-close-clean {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: #fff;
   }
 }
 
@@ -1213,6 +1449,12 @@
       }
     }
 
+    .island-telemetry {
+      width: 100%;
+      justify-content: center;
+      padding: 6px 12px;
+    }
+
     .island-actions {
       width: 100%;
 
@@ -1551,6 +1793,163 @@
     -webkit-backdrop-filter: blur(32px);
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ═════════════════════════════════════════════════════════
+   Phase 3: Density Switcher & Compact Institutional Table
+   ═════════════════════════════════════════════════════════ */
+.apple-density-segmented {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 980px;
+  padding: 3px;
+  gap: 2px;
+
+  .apple-density-tab {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 980px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      color: var(--text);
+    }
+
+    &.active {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+  }
+}
+
+.apple-compact-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+
+  .apple-compact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+    text-align: left;
+
+    thead tr {
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+      th {
+        padding: 12px 16px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      &.row-recommended {
+        background: rgba(216, 180, 92, 0.04);
+        &:hover {
+          background: rgba(216, 180, 92, 0.07);
+        }
+      }
+
+      &.row-alert {
+        background: rgba(239, 68, 68, 0.04);
+        &:hover {
+          background: rgba(239, 68, 68, 0.07);
+        }
+      }
+
+      &.row-near {
+        background: rgba(245, 158, 11, 0.03);
+        &:hover {
+          background: rgba(245, 158, 11, 0.06);
+        }
+      }
+
+      td {
+        padding: 10px 16px;
+        vertical-align: middle;
+      }
+    }
+  }
+
+  .compact-bank-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .bank-avatar-badge-micro {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: var(--gold-strong);
+      flex-shrink: 0;
+    }
+
+    .compact-bank-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+  }
+
+  .compact-limit-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .compact-track-bar {
+      width: 64px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 980px;
+      overflow: hidden;
+
+      .compact-track-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #30d158, #34c759);
+        border-radius: 980px;
+
+        &.fill-danger {
+          background: #ff453a;
+        }
+      }
+    }
+
+    .compact-limit-abs {
+      font-size: 0.74rem;
+    }
   }
 }
 

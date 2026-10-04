@@ -34,6 +34,19 @@
             </div>
           </div>
         </div>
+        <div class="island-telemetry"
+             [class.status-optimal]="telemetry().overallStatus === 'optimal'"
+             [class.status-moderate]="telemetry().overallStatus === 'moderate'"
+             [class.status-degraded]="telemetry().overallStatus === 'degraded'"
+             (click)="refreshTelemetry()"
+             title="Telemetría en tiempo real (Click para refrescar)">
+          <span class="telemetry-status-dot"></span>
+          <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>
+          <span class="telemetry-sep">·</span>
+          <span class="telemetry-item font-mono">DB <strong>{{ telemetry().dbMs }}ms</strong></span>
+          <span class="telemetry-sep">·</span>
+          <span class="telemetry-item font-mono">P2P <strong>{{ telemetry().p2pMs }}ms</strong></span>
+        </div>
         <div class="island-actions">
           <button type="button" class="apple-pill-btn apple-btn-danger" (click)="openCloseModal()">
             Cerrar Jornada
@@ -51,6 +64,19 @@
               <span>Registra tu sesión de hoy para medir rotación y disciplina de trading</span>
             </div>
           </div>
+        </div>
+        <div class="island-telemetry"
+             [class.status-optimal]="telemetry().overallStatus === 'optimal'"
+             [class.status-moderate]="telemetry().overallStatus === 'moderate'"
+             [class.status-degraded]="telemetry().overallStatus === 'degraded'"
+             (click)="refreshTelemetry()"
+             title="Telemetría en tiempo real (Click para refrescar)">
+          <span class="telemetry-status-dot"></span>
+          <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>
+          <span class="telemetry-sep">·</span>
+          <span class="telemetry-item font-mono">DB <strong>{{ telemetry().dbMs }}ms</strong></span>
+          <span class="telemetry-sep">·</span>
+          <span class="telemetry-item font-mono">P2P <strong>{{ telemetry().p2pMs }}ms</strong></span>
         </div>
         <div class="island-actions">
           <button type="button" class="apple-pill-btn apple-btn-primary" (click)="startSession()">
@@ -116,7 +142,7 @@
           <span class="apple-kpi-icon">🇻🇪</span>
         </div>
         <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlVes > 0" [class.negative]="dashboard().today.pnlVes < 0">
-          {{ fmtVes(dashboard().today.pnlVes) }}
+          <app-animated-counter [value]="dashboard().today.pnlVes" suffix="VES" />
         </div>
         <div class="apple-kpi-footer">
           <span class="apple-kpi-subtext">Resultado consolidado hoy</span>
@@ -130,7 +156,7 @@
           <span class="apple-kpi-icon">₮</span>
         </div>
         <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlUsdt > 0" [class.negative]="dashboard().today.pnlUsdt < 0">
-          {{ fmtUsd(dashboard().today.pnlUsdt) }}
+          <app-animated-counter [value]="dashboard().today.pnlUsdt" prefix="₮ " [decimals]="2" />
         </div>
         <div class="apple-kpi-footer">
           <span class="apple-kpi-subtext">En divisa dura de arbitraje</span>
@@ -202,7 +228,9 @@
             <span class="apple-kpi-icon">⚖️</span>
           </div>
           <div class="apple-kpi-val font-mono" style="font-size: 19px;">
-            @if (forensicDossier().operatorStanding === 'DISCIPLINED') {
+            @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
+              <span style="color: var(--text-dim);">⚪ Sin calificar</span>
+            } @else if (forensicDossier().operatorStanding === 'DISCIPLINED') {
               <span style="color: var(--accent);">🟢 Disciplinado</span>
             } @else if (forensicDossier().operatorStanding === 'MODERATE_DEVIATION') {
               <span style="color: var(--warn);">🟡 Desvío Moderado</span>
@@ -212,7 +240,9 @@
           </div>
           <div class="apple-kpi-footer">
             <span class="apple-kpi-subtext">
-              @if (forensicDiscipline().tiltDetected) {
+              @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
+                Sin operaciones registradas
+              } @else if (forensicDiscipline().tiltDetected) {
                 ⚠️ Racha de operaciones sub-óptimas
               } @else {
                 Márgenes respetados rigurosamente
@@ -226,13 +256,19 @@
         <div class="apple-kpi-card apple-card-progress" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
           <div class="apple-kpi-header">
             <span class="apple-kpi-title">Regla de Oro (&ge; 0.50%)</span>
-            <span class="apple-pill-mini gold font-mono">{{ forensicDiscipline().complianceRatePct | number:'1.1-1' }}%</span>
+            <span class="apple-pill-mini gold font-mono">
+              @if (forensicDiscipline().complianceRatePct === null) {
+                N/D
+              } @else {
+                {{ forensicDiscipline().complianceRatePct | number:'1.1-1' }}%
+              }
+            </span>
           </div>
           <div class="apple-kpi-val font-mono" style="color: var(--gold-strong); font-size: 19px;">
             {{ forensicDiscipline().averageSpreadPct | number:'1.2-2' }}% <span class="apple-kpi-unit">spread prom.</span>
           </div>
           <div class="apple-track-bar">
-            <div class="apple-track-fill" [style.width.%]="forensicDiscipline().complianceRatePct"></div>
+            <div class="apple-track-fill" [style.width.%]="forensicDiscipline().complianceRatePct ?? 0"></div>
           </div>
           <div class="apple-kpi-footer">
             <span class="apple-kpi-subtext">
@@ -284,16 +320,52 @@
         </div>
 
         <div class="apple-section-actions">
+          <div class="apple-density-segmented" role="group" aria-label="Densidad de visualización de bancos">
+            <button
+              type="button"
+              class="apple-density-tab"
+              [class.active]="treasuryDensity() === 'bento'"
+              (click)="setTreasuryDensity('bento')"
+              title="Vista Bento Cards espaciosa"
+            >
+              🎛️ Bento
+            </button>
+            <button
+              type="button"
+              class="apple-density-tab"
+              [class.active]="treasuryDensity() === 'compact'"
+              (click)="setTreasuryDensity('compact')"
+              title="Vista Grilla Compacta institucional (sin scroll)"
+            >
+              📋 Compacto
+            </button>
+          </div>
+
+          <button type="button" class="apple-pill-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-soft); color: var(--text-primary);" (click)="syncOfficialBanks()" title="Sincronizar y cargar los 8 bancos oficiales de Venezuela en SQLite">
+            🔄 Sincronizar Bancos
+          </button>
+          <button type="button" class="apple-pill-btn apple-btn-primary" (click)="openLiquidityModal()">
+            💧 Inyectar Liquidez
+          </button>
           <span class="apple-treasury-pill font-mono">
-            Liquidez Total: <strong style="color: var(--gold-strong);">{{ fmtVes(accountsService.treasurySummary().totalBalanceVes) }}</strong>
+            Liquidez Total: <app-animated-counter [value]="accountsService.treasurySummary().totalBalanceVes" suffix="VES" style="color: var(--gold-strong); font-weight: 700;" />
           </span>
         </div>
       </div>
 
-      <div class="apple-bank-grid">
+      @if (treasuryDensity() === 'bento') {
+        <div class="apple-bank-grid">
         @for (b of unifiedAccounts(); track b.id) {
           <div
             class="apple-bank-card"
+            [class.bank-banesco]="b.bankCode === 'BANESCO'"
+            [class.bank-mercantil]="b.bankCode === 'MERCANTIL'"
+            [class.bank-bdv]="b.bankCode === 'BDV'"
+            [class.bank-provincial]="b.bankCode === 'PROVINCIAL'"
+            [class.bank-bancamiga]="b.bankCode === 'BANCAMIGA'"
+            [class.bank-bnc]="b.bankCode === 'BNC'"
+            [class.bank-bancaribe]="b.bankCode === 'BANCARIBE'"
+            [class.bank-banplus]="b.bankCode === 'BANPLUS'"
             [class.card-alert]="b.isOverLimit"
             [class.card-near]="b.isNearLimit"
             [class.card-recommended]="b.isRecommended"
@@ -307,8 +379,19 @@
               <div class="apple-bank-id-group">
                 <span class="bank-avatar-badge">{{ b.bankName | slice:0:2 | uppercase }}</span>
                 <div>
-                  <strong class="apple-bank-name">{{ b.bankName }}</strong>
-                  <div class="apple-bank-sub font-mono">Saldo: {{ fmtVes(b.currentBalanceVes) }}</div>
+                  <div class="apple-bank-title-row">
+                    <strong class="apple-bank-name">{{ b.bankName }}</strong>
+                    @if (b.rail) {
+                      <span class="apple-rail-pill font-mono">{{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}</span>
+                    }
+                  </div>
+                  <div class="apple-bank-sub font-mono">
+                    Saldo: <app-animated-counter [value]="b.currentBalanceVes" suffix="VES" />
+                    @if (b.accountNumberMasked) {
+                      <span class="apple-bank-mask-sep">·</span>
+                      <span class="apple-bank-mask">{{ b.accountNumberMasked }}</span>
+                    }
+                  </div>
                 </div>
               </div>
 
@@ -366,10 +449,108 @@
               }
             </div>
 
-            <span class="apple-card-action-hint">Ver transacciones de {{ b.bankName }} →</span>
+            <div class="apple-bank-card-actions">
+              <button
+                type="button"
+                class="apple-card-action-btn inject-btn"
+                (click)="$event.stopPropagation(); openLiquidityModal(b)"
+                title="Inyectar liquidez a {{ b.bankName }}"
+              >
+                💧 Inyectar
+              </button>
+              <span class="apple-card-action-hint">Ver transacciones →</span>
+            </div>
           </div>
         }
-      </div>
+        </div>
+      } @else {
+        <!-- Compact Institutional Data Grid (High-Density No-Scroll View) -->
+        <div class="apple-compact-table-wrap">
+          <table class="apple-compact-table" role="table">
+            <thead>
+              <tr>
+                <th>Banco & Riel</th>
+                <th>Cuenta / Riel</th>
+                <th>Saldo Disponible</th>
+                <th>Cupo Consumido Hoy</th>
+                <th>Velocidad Operativa</th>
+                <th>Estado Anti-SUDEBAN</th>
+                <th style="text-align: right;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (b of unifiedAccounts(); track b.id) {
+                <tr
+                  [class.row-alert]="b.isOverLimit"
+                  [class.row-near]="b.isNearLimit"
+                  [class.row-recommended]="b.isRecommended"
+                  (click)="goToBankLog(b.bankName)"
+                  role="button"
+                  tabindex="0"
+                  (keydown.enter)="goToBankLog(b.bankName)"
+                >
+                  <td>
+                    <div class="compact-bank-cell">
+                      <span class="bank-avatar-badge-micro">{{ b.bankName | slice:0:2 | uppercase }}</span>
+                      <div>
+                        <strong class="compact-bank-name">{{ b.bankName }}</strong>
+                        @if (b.rail) {
+                          <span class="apple-rail-pill font-mono">{{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}</span>
+                        }
+                      </div>
+                    </div>
+                  </td>
+                  <td class="font-mono text-muted">
+                    {{ b.accountNumberMasked || 'Principal' }}
+                  </td>
+                  <td class="font-mono font-bold" style="color: var(--gold-strong);">
+                    <app-animated-counter [value]="b.currentBalanceVes" suffix="VES" />
+                  </td>
+                  <td>
+                    <div class="compact-limit-cell">
+                      <div class="compact-track-bar">
+                        <div
+                          class="compact-track-fill"
+                          [class.fill-danger]="b.consumedLimitPct >= 80"
+                          [style.width.%]="b.consumedLimitPct"
+                        ></div>
+                      </div>
+                      <span class="font-mono font-bold" [class.negative]="b.consumedLimitPct >= 80" [class.positive]="b.consumedLimitPct < 80">
+                        {{ b.consumedLimitPct }}%
+                      </span>
+                      <span class="compact-limit-abs text-muted font-mono">({{ fmtVes(b.spentTodayVes) }})</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="font-mono">{{ b.todayTransactionCount }} / {{ b.maxDailyTransactions }} ops</span>
+                  </td>
+                  <td>
+                    @if (b.isRecommended) {
+                      <span class="apple-pill-mini recommended">⭐ Recomendada</span>
+                    } @else if (b.isOverLimit) {
+                      <span class="apple-pill-mini badge-danger">Límite Superado</span>
+                    } @else if (b.isNearLimit) {
+                      <span class="apple-pill-mini badge-warning">Cupo Crítico</span>
+                    } @else {
+                      <span class="apple-pill-mini badge-accent">Operativo</span>
+                    }
+                  </td>
+                  <td style="text-align: right;" (click)="$event.stopPropagation()">
+                    <button
+                      type="button"
+                      class="apple-pill-btn apple-btn-primary btn-micro"
+                      (click)="openLiquidityModal(b)"
+                      title="Inyectar liquidez inmediata en {{ b.bankName }}"
+                    >
+                      💧 Inyectar
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
 
       <!-- SUDEBAN Global Warnings -->
       @if (velocityAlerts().length > 0) {
@@ -479,11 +660,11 @@
             <span class="macro-tile-title">Brecha Paralelo vs BCV</span>
             <span class="apple-pill-mini muted font-mono">calculate_rate_gap</span>
           </div>
-          <div class="macro-tile-metric font-mono font-bold" [style.color]="(mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) > 25 ? '#ef4444' : 'var(--gold)'">
-            +{{ mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct }}% (+{{ mcpRateGap()?.gapVes ?? bcvIntelligence().gap.gapVes | num }} Bs)
+          <div class="macro-tile-metric font-mono font-bold" [style.color]="((mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) ?? 0) > 25 ? '#ef4444' : 'var(--gold)'">
+            +{{ mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct ?? 0 }}% (+{{ (mcpRateGap()?.gapVes ?? bcvIntelligence().gap.gapVes ?? 0) | num }} Bs)
           </div>
           <div class="macro-tile-subtext text-muted">
-            Paralelo: {{ mcpRateGap()?.parallelRate ?? bcvIntelligence().gap.parallelRate | num }} Bs · BCV: {{ mcpRateGap()?.bcvRate ?? bcvIntelligence().gap.bcvRate | num }} Bs
+            Paralelo: {{ (mcpRateGap()?.parallelRate ?? bcvIntelligence().gap.parallelRate ?? 0) | num }} Bs · BCV: {{ (mcpRateGap()?.bcvRate ?? bcvIntelligence().gap.bcvRate ?? 0) | num }} Bs
             @if (mcpBcvRates()?.date) {
               <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
             }
@@ -884,6 +1065,110 @@
             style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none;"
           >
             🛡️ Confirmar & Abrir Sesión Blindada
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Modal de Inyección de Liquidez Multibanco -->
+  @if (showLiquidityModal()) {
+    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelLiquidityModal()" (keydown.escape)="cancelLiquidityModal()" aria-label="Cerrar modal de inyección de liquidez">
+      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="liquidity-modal-title" style="max-width: 540px; width: 95%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.4rem;">🏛️</span>
+            <div>
+              <h3 id="liquidity-modal-title" style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">Inyectar Liquidez Bancaria</h3>
+              <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--muted);">Fondeo y ajuste de saldo en tiempo real sincronizado con Anti-SUDEBAN y MCP</p>
+            </div>
+          </div>
+          <button type="button" class="btn-close-clean" (click)="cancelLiquidityModal()" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 16px; margin: 20px 0;">
+          <!-- Selector de Cuenta Bancaria -->
+          <div class="form-group-clean">
+            <label for="inject-account-select" style="font-size: 0.82rem; font-weight: 600; color: var(--gold-strong); margin-bottom: 6px; display: block;">
+              Cuenta Bancaria Destino
+            </label>
+            <select
+              id="inject-account-select"
+              class="apple-input-select"
+              [value]="selectedInjectionAccountId()"
+              (change)="selectedInjectionAccountId.set($any($event.target).value)"
+            >
+              @for (acc of unifiedAccounts(); track acc.id) {
+                <option [value]="acc.id">
+                  {{ acc.bankName }} ({{ acc.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}) — Saldo actual: {{ fmtVes(acc.currentBalanceVes) }}
+                </option>
+              }
+            </select>
+          </div>
+
+          <!-- Monto en VES -->
+          <div class="form-group-clean">
+            <label for="inject-amount-input" style="font-size: 0.82rem; font-weight: 600; color: var(--gold-strong); margin-bottom: 6px; display: block;">
+              Monto a Inyectar (VES)
+            </label>
+            <div style="position: relative;">
+              <input
+                id="inject-amount-input"
+                type="number"
+                step="any"
+                min="1"
+                class="apple-input-text font-mono"
+                style="padding-right: 50px; font-size: 1.1rem; font-weight: 700;"
+                placeholder="Ej: 50000.00"
+                [value]="injectionAmount() ?? ''"
+                (input)="injectionAmount.set($any($event.target).value ? +$any($event.target).value : null)"
+              />
+              <span style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; font-weight: 700; color: var(--muted);">VES</span>
+            </div>
+          </div>
+
+          <!-- Referencia / Nota de Fondeo -->
+          <div class="form-group-clean">
+            <label for="inject-note-input" style="font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block;">
+              Nota Operativa / Referencia (Opcional)
+            </label>
+            <input
+              id="inject-note-input"
+              type="text"
+              class="apple-input-text"
+              placeholder="Ej: Fondeo de caja matutino, cobro USDT, recarga de saldo"
+              [value]="injectionNote()"
+              (input)="injectionNote.set($any($event.target).value)"
+            />
+          </div>
+
+          <!-- Preview de Balance Proyectado -->
+          @if (selectedAccountForInjection(); as selAcc) {
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-size: 0.75rem; color: var(--muted); display: block;">Saldo actual</span>
+                <span class="font-mono" style="font-size: 0.95rem; color: #fff;">{{ fmtVes(selAcc.currentBalanceVes) }}</span>
+              </div>
+              <span style="font-size: 1.1rem; color: var(--gold-strong);">➔</span>
+              <div style="text-align: right;">
+                <span style="font-size: 0.75rem; color: var(--gold-strong); font-weight: 600; display: block;">Saldo Proyectado</span>
+                <span class="font-mono" style="font-size: 1.05rem; font-weight: 800; color: #34d399;">{{ fmtVes(projectedBalanceAfterInjection()) }}</span>
+              </div>
+            </div>
+          }
+
+          <!-- Mensaje de Error si aplica -->
+          @if (injectionError()) {
+            <div style="padding: 8px 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.8rem;">
+              ⚠️ {{ injectionError() }}
+            </div>
+          }
+        </div>
+
+        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-ghost" (click)="cancelLiquidityModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" (click)="confirmLiquidityInjection()" [disabled]="!injectionAmount() || (injectionAmount() ?? 0) <= 0">
+            💧 Confirmar Inyección
           </button>
         </div>
       </div>

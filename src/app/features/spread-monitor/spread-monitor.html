@@ -196,10 +196,22 @@
                       <span style="color: var(--muted, #94a3b8);">Compra Maker Sugerida:</span>
                       <span class="font-mono" style="font-weight: 600; color: #34d399;">{{ tier.suggestedBuyPrice | num }} Bs</span>
                     </div>
+                    @if (tier.bestCompetitorBuyMerchant) {
+                      <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted, #94a3b8);">
+                        <span>Comp. Compra ({{ tier.bestCompetitorBuyPrice | num }}):</span>
+                        <span class="font-mono" style="color: #cbd5e1; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👤 {{ tier.bestCompetitorBuyMerchant }}</span>
+                      </div>
+                    }
                     <div style="display: flex; justify-content: space-between;">
                       <span style="color: var(--muted, #94a3b8);">Venta Maker Sugerida:</span>
                       <span class="font-mono" style="font-weight: 600; color: #f87171;">{{ tier.suggestedSellPrice | num }} Bs</span>
                     </div>
+                    @if (tier.bestCompetitorSellMerchant) {
+                      <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted, #94a3b8);">
+                        <span>Vendedor en Libro ({{ tier.bestCompetitorSellPrice | num }}):</span>
+                        <span class="font-mono" style="color: #cbd5e1; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👤 {{ tier.bestCompetitorSellMerchant }}</span>
+                      </div>
+                    }
                     <div style="display: flex; justify-content: space-between; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px;">
                       <span style="color: var(--muted, #94a3b8);">Spread Bruto:</span>
                       <span class="font-mono">{{ tier.grossSpreadPct | num }}% ({{ tier.grossSpreadVes | num }} Bs)</span>
