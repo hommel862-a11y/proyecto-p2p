@@ -21,6 +21,7 @@ import {
   formatBacktestTelegramMessage,
   formatRepriceTelegramMessage,
   buildRepriceConfirmationKeyboard,
+  buildSentinelReplyKeyboard,
   formatPanelTelegramMessage,
   buildPanelKeyboard,
   isPanelCallbackData,
@@ -42,6 +43,7 @@ import {
   type SentinelActionParams,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
+  type TelegramReplyKeyboardMarkup,
   type VerificationSummary,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
@@ -776,9 +778,14 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'STATUS': {
-        if (dispatch.command === '/start') {
-          await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
-          this.addLog({ time: timeStr, command: '/start', action: 'STATUS', status: 'SUCCESS' });
+        if (dispatch.command === '/start' || dispatch.command === '/menu') {
+          await this.sendTelegramMessage(
+            token,
+            chatId,
+            dispatch.responseMarkdown,
+            buildSentinelReplyKeyboard(),
+          );
+          this.addLog({ time: timeStr, command: dispatch.command, action: 'STATUS', status: 'SUCCESS' });
           break;
         }
 
@@ -966,7 +973,8 @@ export class TelegramWorkerService implements OnDestroy {
 
       case 'RADAR_ALTA_DEMANDA': {
         const params = asRadarAltaDemandaParams(dispatch.params);
-        const depth = await this.getFreshMarketDepth();
+        const freshDepth = await this.getFreshMarketDepth();
+        const depth = freshDepth ?? this.binance.marketDepth();
         const scan = computeHighDemandScan(depth, {
           merchantLevel: 'STANDARD',
           bankFilter: params.bank,
@@ -1266,6 +1274,7 @@ export class TelegramWorkerService implements OnDestroy {
         maxTc: caps.get(resolveBankCode(bank) ?? normalizeBank(bank)) ?? DEFAULT_MAX_DAILY_TRANSACTIONS,
         volumeUsdt,
         spreadPct,
+        merchantName: ask.merchantName,
       });
     }
 
@@ -1641,7 +1650,7 @@ export class TelegramWorkerService implements OnDestroy {
     token: string,
     chatId: number | string,
     markdownText: string,
-    keyboard?: TelegramInlineKeyboardMarkup,
+    keyboard?: TelegramInlineKeyboardMarkup | TelegramReplyKeyboardMarkup,
   ): Promise<boolean> {
     try {
       const body: Record<string, unknown> = {
@@ -1659,8 +1668,30 @@ export class TelegramWorkerService implements OnDestroy {
         body: JSON.stringify(body),
       });
 
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`[TelegramWorker] sendMessage falló (HTTP ${res.status}):`, errorText);
+
+        // Fallback resiliente: Si MarkdownV2 falló por entidades, reintenta enviando texto plano
+        if (res.status === 400 && body['parse_mode'] === 'MarkdownV2') {
+          console.warn('[TelegramWorker] Reintentando envío en texto plano sin parse_mode...');
+          const fallbackBody = {
+            ...body,
+            parse_mode: undefined,
+            text: markdownText.replace(/\\([_*[\]()~>#+=|{}.!\\-])/g, '$1'),
+          };
+          const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fallbackBody),
+          });
+          return fallbackRes.ok;
+        }
+      }
+
       return res.ok;
-    } catch {
+    } catch (err) {
+      console.error('[TelegramWorker] Error de red en sendMessage:', err);
       return false;
     }
   }

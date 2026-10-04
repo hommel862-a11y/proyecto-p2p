@@ -53,6 +53,17 @@ function unsupportedDecisionJournalOp(op: never): never {
   throw new Error(`decision_journal: unsupported IPC op "${String(op)}"`);
 }
 
+interface BinanceIpcCacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+
+const binanceIpcCache = new Map<string, BinanceIpcCacheEntry>();
+const BINANCE_CACHE_TTL_MS = 5000;
+const BINANCE_MIN_INTERVAL_MS = 350;
+let lastBinanceNetworkCall = 0;
+let binanceRateLimitedUntil = 0;
+
 /**
  * Typed, allow-listed IPC handlers.
  * `p2p:fetch-binance` allows the app to query Binance P2P public orderbook
@@ -84,6 +95,42 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'p2p:fetch-binance',
     async (_event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
+      const asset = params.asset ?? 'USDT';
+      const fiat = params.fiat ?? 'VES';
+      const tradeType = params.tradeType ?? 'BUY';
+      const payTypes = params.payTypes ?? [];
+      const rows = params.rows ?? 10;
+      const cacheKey = `${asset}:${fiat}:${tradeType}:${payTypes.join(',')}:${rows}`;
+
+      const cached = binanceIpcCache.get(cacheKey);
+      const now = Date.now();
+
+      // 1. Si está fresco en caché (< 5s), devolver sin tocar red
+      if (cached && now - cached.timestamp < BINANCE_CACHE_TTL_MS) {
+        return cached.data;
+      }
+
+      // 2. Si hay rate-limit activo (HTTP 429 previo)
+      if (now < binanceRateLimitedUntil) {
+        if (cached && now - cached.timestamp < 120_000) {
+          console.warn(
+            `[Binance P2P] Rate-limit activo. Retornando caché previo (${Math.round((now - cached.timestamp) / 1000)}s).`,
+          );
+          return cached.data;
+        }
+        const remainingSec = Math.ceil((binanceRateLimitedUntil - now) / 1000);
+        throw new Error(
+          `Binance P2P en enfriamiento por rate-limit (HTTP 429). Reintentando en ${remainingSec}s.`,
+        );
+      }
+
+      // 3. Pacing / serialización mínima para evitar ráfagas simultáneas
+      const timeSinceLast = now - lastBinanceNetworkCall;
+      if (timeSinceLast < BINANCE_MIN_INTERVAL_MS) {
+        await new Promise((r) => setTimeout(r, BINANCE_MIN_INTERVAL_MS - timeSinceLast));
+      }
+      lastBinanceNetworkCall = Date.now();
+
       try {
         const response = await net.fetch(
           'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
@@ -95,14 +142,17 @@ export function registerIpcHandlers(): void {
               'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
               Accept: '*/*',
+              clienttype: 'web',
+              Origin: 'https://p2p.binance.com',
+              'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
             },
             body: JSON.stringify({
-              asset: params.asset ?? 'USDT',
-              fiat: params.fiat ?? 'VES',
-              tradeType: params.tradeType ?? 'BUY',
+              asset,
+              fiat,
+              tradeType,
               page: 1,
-              rows: params.rows ?? 10,
-              payTypes: params.payTypes ?? [],
+              rows,
+              payTypes,
               countries: [],
               proMerchantAds: false,
               shieldMerchantAds: false,
@@ -112,11 +162,22 @@ export function registerIpcHandlers(): void {
           },
         );
 
+        if (response.status === 429) {
+          binanceRateLimitedUntil = Date.now() + 20_000;
+          if (cached) {
+            console.warn('[Binance P2P] HTTP 429 recibido. Usando libro en caché.');
+            return cached.data;
+          }
+          throw new Error('Binance P2P respondió HTTP 429 (Too Many Requests). Enfriamiento activado.');
+        }
+
         if (!response.ok) {
           throw new Error(`Binance P2P respondió HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
+        return data;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         if (

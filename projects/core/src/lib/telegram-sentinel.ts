@@ -338,6 +338,7 @@ export interface RadarGapRow {
   maxTc: number;
   volumeUsdt: number;
   spreadPct: number;
+  merchantName?: string;
 }
 
 /** Filters echoed back in the radar report so the operator sees what was applied. */
@@ -441,8 +442,11 @@ ${header}
       const marker = index === topIndex ? ` 🥇 *${escapeMarkdownV2('TOP GAP')}*` : '';
       const bank =
         typeof row.bank === 'string' && row.bank.trim() ? row.bank.trim() : 'sin banco';
+      const merchantTag = row.merchantName
+        ? `\n   • Vendedor: \`${formatCodeSpan(row.merchantName)}\``
+        : '';
       return `${index + 1}\\. *${formatCodeSpan(bank)}*${marker}
-   • Precio: \`${formatMetric(row.price)}\`
+   • Precio: \`${formatMetric(row.price)}\`${merchantTag}
    • Tope TC: \`${formatCount(row.maxTc)}\`
    • Volumen: \`${formatMetric(row.volumeUsdt, 0)} USDT\`
    • Spread: \`${formatMetric(row.spreadPct)}%\``;
@@ -480,10 +484,10 @@ ${header}
       const icon = t.isActionable ? '🟢' : '⚪';
       const bestTag = scan.bestOpportunityTier?.tierUsdt === t.tierUsdt ? ' 🏆 *RECOMENDADO*' : '';
       const buyCompTag = t.bestCompetitorBuyMerchant
-        ? ` \\(Comp\\.: ${formatMetric(t.bestCompetitorBuyPrice)} • \`${formatCodeSpan(t.bestCompetitorBuyMerchant)}\`\\)`
+        ? ` \\(Comprador: \`${formatCodeSpan(t.bestCompetitorBuyMerchant)}\` • ${formatMetric(t.bestCompetitorBuyPrice)}\\)`
         : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorBuyPrice)}\\)`;
       const sellCompTag = t.bestCompetitorSellMerchant
-        ? ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)} • \`${formatCodeSpan(t.bestCompetitorSellMerchant)}\`\\)`
+        ? ` \\(Vendedor: \`${formatCodeSpan(t.bestCompetitorSellMerchant)}\` • ${formatMetric(t.bestCompetitorSellPrice)}\\)`
         : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)}\\)`;
       const netSpreadSign = t.netSpreadPct >= 0 ? '+' : '';
 

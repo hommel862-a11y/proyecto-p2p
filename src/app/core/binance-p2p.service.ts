@@ -130,6 +130,9 @@ export class BinanceP2pService implements OnDestroy {
     return fetched?.depth ?? null;
   }
 
+  /** Promesa en vuelo activa para deduplicar ráfagas simultáneas del renderer */
+  private inFlightFetch: Promise<BinanceDepthFetch | null> | null = null;
+
   /**
    * Igual que {@link fetchMarketDepth}, pero además declara la procedencia del
    * libro: recién observado (`LIVE`) o re-servido desde la caché (`CACHE`).
@@ -140,6 +143,23 @@ export class BinanceP2pService implements OnDestroy {
    * observación: la caché lo conserva congelado en vez de "refrescarlo".
    */
   async fetchMarketDepthWithSource(
+    asset = 'USDT',
+    fiat = 'VES',
+    silent = false,
+  ): Promise<BinanceDepthFetch | null> {
+    if (this.inFlightFetch) {
+      return this.inFlightFetch;
+    }
+    const fetchPromise = this.doFetchMarketDepthWithSource(asset, fiat, silent);
+    this.inFlightFetch = fetchPromise;
+    try {
+      return await fetchPromise;
+    } finally {
+      this.inFlightFetch = null;
+    }
+  }
+
+  private async doFetchMarketDepthWithSource(
     asset = 'USDT',
     fiat = 'VES',
     silent = false,
@@ -168,29 +188,27 @@ export class BinanceP2pService implements OnDestroy {
             : null;
 
         if (electronWin?.electron?.fetchBinanceP2p) {
-          const [resBuy, resSell] = await Promise.all([
-            electronWin.electron.fetchBinanceP2p({
-              asset,
-              fiat,
-              tradeType: 'BUY',
-              payTypes: binanceMethod ? [binanceMethod] : [],
-              rows: 10,
-            }),
-            electronWin.electron.fetchBinanceP2p({
-              asset,
-              fiat,
-              tradeType: 'SELL',
-              payTypes: binanceMethod ? [binanceMethod] : [],
-              rows: 10,
-            }),
-          ]);
+          const resBuy = await electronWin.electron.fetchBinanceP2p({
+            asset,
+            fiat,
+            tradeType: 'BUY',
+            payTypes: binanceMethod ? [binanceMethod] : [],
+            rows: 20,
+          });
+          await new Promise((r) => setTimeout(r, 200));
+          const resSell = await electronWin.electron.fetchBinanceP2p({
+            asset,
+            fiat,
+            tradeType: 'SELL',
+            payTypes: binanceMethod ? [binanceMethod] : [],
+            rows: 20,
+          });
           buyData = resBuy;
           sellData = resSell;
         } else {
-          const [resBuy, resSell] = await Promise.all([
-            this.fetchViaWeb('BUY', asset, fiat, binanceMethod, signal),
-            this.fetchViaWeb('SELL', asset, fiat, binanceMethod, signal),
-          ]);
+          const resBuy = await this.fetchViaWeb('BUY', asset, fiat, binanceMethod, signal);
+          await new Promise((r) => setTimeout(r, 200));
+          const resSell = await this.fetchViaWeb('SELL', asset, fiat, binanceMethod, signal);
           buyData = resBuy;
           sellData = resSell;
         }
@@ -249,7 +267,7 @@ export class BinanceP2pService implements OnDestroy {
       fiat,
       tradeType,
       page: 1,
-      rows: 10,
+      rows: 20,
       payTypes: payType ? [payType] : [],
       countries: [],
       proMerchantAds: false,
