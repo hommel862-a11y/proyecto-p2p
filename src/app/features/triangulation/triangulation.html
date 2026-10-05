@@ -248,7 +248,7 @@
         <tbody>
           @for (route of scannedRoutes(); track route.routeId) {
             <tr [class.golden-row]="route.routeId === goldenRouteId()" [class.selected-row]="route.routeId === selectedPresetId()">
-              <td>
+              <td class="td-route">
                 <div class="route-name-cell">
                   <strong>{{ route.routeName }}</strong>
                   @if (route.routeId === goldenRouteId()) {
@@ -256,26 +256,26 @@
                   }
                 </div>
               </td>
-              <td>
+              <td class="td-base">
                 <span class="badge font-mono">{{ route.initialCurrency }}</span>
               </td>
-              <td>
+              <td class="td-roi">
                 <span class="font-mono font-bold" [class.positive]="route.roiPct > 0" [class.negative]="route.roiPct <= 0">
                   {{ route.roiPct > 0 ? '+' : '' }}{{ route.roiPct | number: '1.2-2' }}%
                 </span>
               </td>
-              <td>
+              <td class="td-speed">
                 <span class="font-mono font-bold" [class.positive]="route.hourlyRoiPct > 0" [class.negative]="route.hourlyRoiPct <= 0">
                   {{ route.hourlyRoiPct > 0 ? '+' : '' }}{{ route.hourlyRoiPct | number: '1.2-2' }}%/h
                 </span>
               </td>
-              <td>
+              <td class="td-breakeven">
                 <span class="font-mono text-muted">{{ route.breakevenPriceLeg3 | number: '1.2-4' }}</span>
               </td>
-              <td>
+              <td class="td-duration">
                 <span class="text-muted">{{ route.totalDurationMinutes }} min</span>
               </td>
-              <td>
+              <td class="td-risk">
                 <span
                   class="badge"
                   [class.badge-accent]="route.riskLevel === 'LOW'"
@@ -285,7 +285,7 @@
                   {{ route.riskLevel }}
                 </span>
               </td>
-              <td style="text-align: right;">
+              <td class="td-action" style="text-align: right;">
                 <button
                   type="button"
                   class="btn-sm"

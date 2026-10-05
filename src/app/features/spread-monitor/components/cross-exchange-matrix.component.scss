@@ -26,3 +26,51 @@
     border-left: 3px solid var(--accent, #22c55e);
   }
 }
+
+@media (max-width: 640px) {
+  .matrix-table {
+    display: block;
+    width: 100%;
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+
+    tr {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+
+      &.viable-row {
+        border-left: 3px solid var(--accent, #22c55e);
+      }
+    }
+
+    td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      .input-control-wrap {
+        max-width: 140px !important;
+      }
+    }
+  }
+}

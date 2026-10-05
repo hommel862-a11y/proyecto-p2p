@@ -1646,10 +1646,10 @@
                           @let bestGapVes = bestGap.gapVes;
                           @let isOpportunity = row.kind === 'executable' && bestGapVes !== null && bestGapVes >= triangulationThresholdVes();
                           <tr [attr.data-market]="row.market" [attr.data-kind]="row.kind">
-                            <td>
+                            <td class="td-market">
                               <span class="font-mono" style="text-transform: capitalize;">{{ row.market }}</span>
                             </td>
-                            <td>
+                            <td class="td-kind">
                               @switch (row.kind) {
                                 @case ('executable') {
                                   <span class="triangulation-chip triangulation-chip-green">Libro en vivo</span>
@@ -1662,16 +1662,16 @@
                                 }
                               }
                             </td>
-                            <td class="font-mono">{{ row.payPrice !== null ? (row.payPrice | num) : '--' }}</td>
-                            <td class="font-mono">{{ row.receivePrice !== null ? (row.receivePrice | num) : '--' }}</td>
-                            <td class="font-mono">{{ row.mid !== null ? (row.mid | num) : '--' }}</td>
-                            <td class="font-mono" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
+                            <td class="td-pay font-mono" data-label="Pagás">{{ row.payPrice !== null ? (row.payPrice | num) : '--' }}</td>
+                            <td class="td-receive font-mono" data-label="Recibís">{{ row.receivePrice !== null ? (row.receivePrice | num) : '--' }}</td>
+                            <td class="td-mid font-mono" data-label="Mid">{{ row.mid !== null ? (row.mid | num) : '--' }}</td>
+                            <td class="td-gap-ves font-mono" data-label="Gap VES" [class.positive]="bestGapVes !== null && bestGapVes > 0" [class.negative]="bestGapVes !== null && bestGapVes < 0">
                               {{ bestGapVes !== null ? (bestGapVes | num) : '--' }}
                             </td>
-                            <td class="font-mono">
+                            <td class="td-gap-pct font-mono" data-label="Gap %">
                               {{ bestGapPct !== null ? (bestGapPct | num) + '%' : '--' }}
                             </td>
-                            <td>
+                            <td class="td-status">
                               @if (isOpportunity) {
                                 <span class="triangulation-chip triangulation-chip-green">OPORTUNIDAD ≥ {{ triangulationThresholdVes() }} VES</span>
                               } @else if (row.kind === 'executable') {

@@ -2156,6 +2156,102 @@
     min-height: 48px;
     font-size: 0.9rem;
   }
+
+  /* Responsive card-view for dense triangulation table */
+  .triangulation-table-wrap {
+    overflow-x: visible;
+    background: transparent;
+    border: none;
+  }
+
+  .triangulation-table {
+    display: block;
+    width: 100%;
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    tr {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+
+      &[data-kind="executable"] {
+        border-left: 3px solid #10b981;
+      }
+    }
+
+    td {
+      padding: 0;
+      border: none;
+      white-space: normal;
+      background: transparent !important;
+    }
+
+    .td-market {
+      grid-column: 1 / 2;
+      display: flex;
+      align-items: center;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text, #fff);
+    }
+
+    .td-kind {
+      grid-column: 2 / 3;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .td-pay,
+    .td-receive,
+    .td-mid,
+    .td-gap-ves,
+    .td-gap-pct {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+
+      &::before {
+        content: attr(data-label) ": ";
+        color: var(--muted, #94a3b8);
+        font-size: 0.70rem;
+        margin-right: 6px;
+      }
+    }
+
+    .td-gap-pct {
+      font-weight: 700;
+    }
+
+    .td-status {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 4px !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+    }
+  }
 }
 
 /* ============================================================
