@@ -16,8 +16,22 @@ Herramienta de apoyo a la decisión para operaciones de arbitraje P2P en Binance
 | **Triangulación**           | Rates Cotizave por mercado (ADMC/p2p), spread calculado y auto-refresh configurable                                      |
 | **Estadísticas**            | Agregación por día/mes/trimestre (UTC), filtrable por par, con métricas de volumen y fees                                |
 | **Escáner de Recibos**      | OCR (Tesseract.js) de recibos bancarios + escudo anti-fraude (evaluación de riesgo del comprobante)                      |
+| **Proyector de Crecimiento**| Proyección de capital requerido por horizonte y Meta de Ingreso, con comparación de rutas                                |
+| **Remesas**                 | Cálculo de costo real de remesas y comparación de rutas de envío                                                      |
+| **MCP Hub**                 | Catálogo y estado de los servidores MCP disponibles para agentes/IDEs                                                 |
 | **Guía de Uso**             | Documentación de cada módulo + consejos de disciplina y rentabilidad                                                     |
 | **Copilot**                 | Asistente con IA integrado en el shell de escritorio (chat, planes de acción y learnings)                                |
+
+### Capacidades transversales
+
+| Capacidad                | Función                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Detección de depeg**   | Vigilancia de USDT contra el feed spot real dentro del Monitor de Spread; alerta cuando la paridad se desvía                     |
+| **Circuit breaker**      | Servicios de Binance P2P y Cotizave con umbral de fallos, cooldown y reintentos; la UI cae a cache/error en vez de quedar colgada |
+| **Bóveda de secretos**   | Credenciales en el sistema operativo (`safeStorage`), no en texto plano; fail-closed si el SO no puede cifrar                 |
+| **Backtesting**          | Harness de simulación (`scripts/backtest.cjs`) que viaja empaquetado con la app; reportes y datasets versionados               |
+| **Experiencia móvil**    | Nav inferior con 5 accesos rápidos, tablas densas convertidas en tarjetas y Copilot en bottom-sheet                         |
+| **Product tour**         | Recorrido guiado de primer arranque con tarjetas visuales                                                              |
 
 ## Arquitectura
 
@@ -34,22 +48,25 @@ Herramienta de apoyo a la decisión para operaciones de arbitraje P2P en Binance
 │              ┌───────┴───────┐               │
 │              │  @p2p/core    │               │
 │              │  (pure logic) │               │
-│              └───────────────┘               │
-└─────────────────────────────────────────────┘
-         │                          │
-   ┌─────▼─────────────┐    ┌───────▼──────────┐
-   │  Browser/Fetch    │    │ Electron main    │
-   │  (Binance,        │    │ IPC + SQLite +   │
-   │   Cotizave)       │    │ DPAPI vault +    │
-   │                   │    │ Gemini copilot   │
-   └───────────────────┘    └──────────────────┘
-        └───────────────┬────────────────┘
-                        ▼
-              ┌─────────────────────┐
-              │  MCP server (stdio/ │
-              │  SSE) — 8 tools, 17 │
-              │  resources, 5 prom. │
-              └─────────────────────┘
+│              └───────┬───────┘               │
+└──────────────────────┼───────────────────────┘
+                       │
+    ┌──────────────────┼──────────────────┐
+    ▼                  ▼                  ▼
+┌───────────┐   ┌──────────────┐   ┌──────────────┐
+│  Browser/ │   │ Circuit      │   │ Electron main│
+│  Fetch    │   │ Breaker      │   │ IPC + SQLite │
+│           │   │ Binance/Coti │   │ safeStorage  │
+│           │   │ → cache/err  │   │ + Gemini     │
+└─────┬─────┘   └──────────────┘   └──────┬───────┘
+      │                                     │
+      └────────────────┬────────────────────┘
+                       ▼
+             ┌─────────────────────┐
+             │  MCP server (stdio/ │
+             │  SSE) — 8 tools, 17 │
+             │  resources, 5 prom. │
+             └─────────────────────┘
 ```
 
 ### `@p2p/core` — Lógica de Negocio Framework-Agnóstica
@@ -67,8 +84,9 @@ Librería pura, determinista, sin dependencias de Angular/Node/red:
 
 ### Integraciones en vivo
 
-- **Binance P2P** — Order books y prueba de depósito (fetch directo en web; canal `p2p:fetch-binance` en el shell de escritorio).
-- **Cotizave** — API key registrada por el usuario; rates por mercado. En escritorio viaja por `p2p:fetch-cotizave`.
+- **Binance P2P** — Order books y prueba de depósito (fetch directo en web; canal `p2p:fetch-binance` en el shell de escritorio). Incluye **detección de depeg** de USDT contra el feed spot.
+- **Cotizave** — API key registrada por el usuario (persistida en la bóveda del sistema operativo); rates por mercado. En escritorio viaja por `p2p:fetch-cotizave`.
+- **Circuit breaker** — Binance P2P y Cotizave están protegidos con umbral de fallos, cooldown y reintentos acotados: un proveedor caído degrada a cache/error en lugar de bloquear la UI.
 - **Telegram Bot API** — Telegram Sentinel 2.0: worker 24/7 con follow de spreads, kill-switch, estados y auditoría de recibos. Credenciales (token + chat id) encriptadas.
 - **Electron DB (SQLite)** — Órdenes FSM y eventos bancarios con deduplicación (30 días) en el shell de escritorio (`p2p:db-*`).
 - **Copilot** — Canales `copilot:*` en el shell (chat, planes, learnings, conexión con Gemini).
@@ -101,10 +119,10 @@ Seguridad: validación **Zod** en cada input, **rate limiting** por tool (60 lla
 - **Electron:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
 - **IPC:** API de renderer limitada a una lista blanca (`EXPOSED_API_KEYS` en `electron/preload/api.ts`), validada por tests. Fail-closed.
 - **Credenciales encriptadas:** El token de Telegram (bot + chat id) y la API key de Cotizave se guardan **cifrados** mediante `SecureVaultService`:
-  - **Electron:** cifrado del sistema (DPAPI) vía puente `crypto:encrypt`/`crypto:decrypt` del preload.
+  - **Electron:** cifrado nativo del sistema operativo vía `safeStorage` (`electron/main/db/secret-store.ts`). Consulta `isEncryptionAvailable()` y **falla cerrado** si el SO no puede cifrar — nunca persiste en claro como degradación silenciosa.
   - **Web:** WebCrypto (AES-GCM) con fallback in-memory.
   - Las claves legacy en claro (`p2p.telegram_config`, `p2p.cotizave.apiKey`) se migran automáticamente a la bóveda (`p2p.secure.*`, prefijo `p2p_sec_vault:`) y se eliminan solo cuando el cifrado tuvo éxito (fail-closed).
-- **Sin secrets en el repo:** El MCP server lee `COTIZAVE_API_KEY` exclusivamente de `process.env`; ninguna credencial real vive en el código.
+- **Sin secrets en el repo:** El MCP server lee `COTIZAVE_API_KEY` exclusivamente de `process.env`; ninguna credencial real vive en el código ni en el historial.
 
 ## Inicio Rápido
 
@@ -190,7 +208,7 @@ El registro de operaciones se almacena en `localStorage`. Para evitar pérdida:
 │   ├── core/                   # Infraestructura (storage, bóveda de credenciales,
 │   │                           #  vault cifrado, mcp.service desacoplado, Telegram worker…)
 │   │   └── mcp/                # Catálogo modular mcp-catalog.ts y emulación mcp-fallbacks.ts
-│   └── features/               # Feature components (11 vistas)
+│   └── features/               # Feature components (14 vistas)
 ├── projects/core/              # @p2p/core — lógica pura framework-agnostic (23 motores)
 ├── packages/mcp-server/        # MCP server suite — 37 tools en 10 servidores temáticos
 │   └── src/tools/              # Clasificación por dominio y arranque individual vía --server
@@ -211,7 +229,9 @@ GitHub Actions ejecuta automáticamente:
 1. Tests unitarios (app + core + electron)
 2. Build del bundle web
 3. E2E con Playwright
-4. Build del APK Android (debug)
+4. Build de Electron (`electron:build` — incluye `tsc` del shell) + artefactos `electron-installers`
+5. **Publicación automática de GitHub Release** en cada corrida verde, con los `.exe` de Windows adjuntos
+6. Build del APK Android (debug)
 
 ## Licencia
 
