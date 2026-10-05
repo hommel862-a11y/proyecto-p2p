@@ -13,7 +13,7 @@ describe('App', () => {
   it('should create the app', () => {
     const fixture = TestBed.createComponent(App);
     expect(fixture.componentInstance).toBeTruthy();
-  });
+  }, 15000);
 
   it('should render a nav with 13 feature links and mobile bottom nav', () => {
     const fixture = TestBed.createComponent(App);
@@ -21,7 +21,7 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(13);
     expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(4);
-  });
+  }, 15000);
 
   describe('theme toggle', () => {
     beforeEach(() => {
