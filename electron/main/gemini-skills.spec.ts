@@ -36,6 +36,7 @@ import type { BinanceOfferSummary } from '../../projects/core/src/lib/binance-p2
 const VENDORED_CORE_FILES = [
   'money',
   'log',
+  'inventory-accounting',
   'operator-manager',
   'accounts',
   'johnson-depth',

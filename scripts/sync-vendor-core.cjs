@@ -37,6 +37,7 @@ const README_PATH = path.join(DST_DIR, 'README.md');
 const VENDOR_NAMES = [
   'money',
   'log',
+  'inventory-accounting',
   'operator-manager',
   'accounts',
   'johnson-depth',

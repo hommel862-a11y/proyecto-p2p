@@ -109,6 +109,27 @@ describe('computeLogSummary', () => {
     expect(summary.exposure).toBe(0);
     expect(summary.capitalDeployed).toBe(0);
   });
+
+  it('calculates true realized PnL via FIFO on partial fills without false negative cashflow', () => {
+    // Buy 1,000 USDT @ 900 VES = 900,000 VES cost basis
+    // Sell 500 USDT @ 950 VES = 475,000 VES proceeds
+    // Legacy cashflow was 475k - 900k = -425k (falsely indicating a loss)
+    // Institutional FIFO yields (950 - 900) * 500 = +25,000 VES realized profit
+    const ops: Operation[] = [
+      op({ id: 'buy-1', type: 'buy', vesAmount: 900000, usdtAmount: 1000, price: 900 }),
+      op({ id: 'sell-1', type: 'sell', vesAmount: 475000, usdtAmount: 500, price: 950 }),
+    ];
+    const summary = computeLogSummary(ops);
+    expect(summary.pnlVes).toBe(25000);
+    expect(summary.exposure).toBe(500); // 500 USDT held
+    expect(summary.capitalDeployed).toBe(425000); // 425k VES still deployed in inventory
+    expect(summary.fifo).toBeDefined();
+    expect(summary.fifo.realizedPnlVes).toBe(25000);
+    expect(summary.fifo.openInventoryAmount).toBe(500);
+    expect(summary.fifo.openInventoryCostBasisVes).toBe(450000);
+    expect(summary.fifo.openInventoryAvgPriceVes).toBe(900);
+    expect(summary.fifo.winRatePct).toBe(100);
+  });
 });
 
 describe('filterOpsByOperator and computeOperatorSummary', () => {

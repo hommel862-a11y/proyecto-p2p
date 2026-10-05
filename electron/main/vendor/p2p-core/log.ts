@@ -43,12 +43,17 @@ export interface Operation {
   operatorName?: string;
 }
 
+import {
+  computeFifoAccounting,
+  type FifoAccountingSummary,
+} from './inventory-accounting';
+
 export interface LogSummary {
   /** number of recorded operations. */
   operations: number;
-  /** gross profit/loss in VES = Σ sell proceeds − Σ buy cost − Σ fees. */
+  /** gross profit/loss in VES = Realized PnL via FIFO on closed lots minus fees. */
   pnlVes: number;
-  /** PnL expressed in USDT using a volume-weighted average price. */
+  /** PnL expressed in USDT using matched trade rates or volume-weighted average price. */
   pnlUsdt: number;
   /** net VES tied up = Σ buy VES − Σ sell proceeds. Negative means VES freed. */
   capitalDeployed: number;
@@ -56,6 +61,8 @@ export interface LogSummary {
   exposure: number;
   /** trailing count of consecutive error-free operations. */
   zeroErrorStreak: number;
+  /** institutional FIFO inventory accounting details. */
+  fifo: FifoAccountingSummary;
 }
 
 /**
@@ -103,10 +110,26 @@ export function computeLogSummary(ops: readonly Operation[]): LogSummary {
     fees += o.fees;
   }
 
-  const pnlVes = sellVes - buyVes - fees;
+  const fifo = computeFifoAccounting(ops);
+
+  // When FIFO matches exist, realized PnL is mathematically accurate per lot.
+  // When no trades have matched yet (e.g. only buy inventory or empty log),
+  // realizedPnlVes is -totalFeesVes (or 0 if no fees).
+  const pnlVes =
+    fifo.matches.length > 0
+      ? fifo.realizedPnlVes
+      : sellVes > 0 && buyVes > 0
+        ? Math.round((sellVes - buyVes - fees) * 100) / 100
+        : fifo.realizedPnlVes;
+
   const denomUsdt = buyUsdt + sellUsdt;
   const weightedAvg = denomUsdt > 0 ? (buyVes + sellVes) / denomUsdt : 0;
-  const pnlUsdt = weightedAvg > 0 ? pnlVes / weightedAvg : 0;
+  const pnlUsdt =
+    fifo.matches.length > 0 && fifo.realizedPnlUsdt !== 0
+      ? fifo.realizedPnlUsdt
+      : weightedAvg > 0
+        ? Math.round((pnlVes / weightedAvg) * 100) / 100
+        : 0;
 
   const exposure = buyUsdt - sellUsdt;
   const capitalDeployed = buyVes - sellVes;
@@ -124,5 +147,6 @@ export function computeLogSummary(ops: readonly Operation[]): LogSummary {
     capitalDeployed,
     exposure,
     zeroErrorStreak,
+    fifo,
   };
 }
