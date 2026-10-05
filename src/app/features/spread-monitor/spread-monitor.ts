@@ -55,6 +55,7 @@ import {
   formatCotizaveDataAge,
 } from '../../core/cotizave.service';
 import { McpService } from '../../core/mcp.service';
+import { SpotMarketService } from '../../core/spot-market.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 import { MicrostructureShield } from './components/microstructure-shield.component';
 import {
@@ -105,6 +106,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly mcp = inject(McpService);
   readonly mcpPublisher = inject(McpAdPublisherService);
   readonly adComposer = inject(AdComposerService);
+  readonly spotMarket = inject(SpotMarketService);
   protected readonly Math = Math;
 
   private mcpSyncTimerId: number | null = null;
@@ -146,17 +148,19 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   /** MCP Tool: detect_usdt_depeg state */
   readonly mcpDepeg = signal<{
-    spotUsdtPrice: number;
-    parityDeviationPct: number;
+    spotUsdtPrice: number | null;
+    parityDeviationPct: number | null;
     isDepegged: boolean;
     riskSeverity: string;
     status: string;
+    note?: string;
   }>({
-    spotUsdtPrice: 0.9994,
-    parityDeviationPct: 0.06,
+    spotUsdtPrice: null,
+    parityDeviationPct: null,
     isDepegged: false,
-    riskSeverity: 'LOW',
-    status: 'PEGGED_NORMAL',
+    riskSeverity: 'UNKNOWN',
+    status: 'NO_DATA',
+    note: 'Feed Binance Spot no sincronizado',
   });
 
   /** MCP Tool: analyze_orderbook_pressure state */
@@ -514,9 +518,25 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   async syncMcpIntelligence(): Promise<void> {
     this.mcpSyncing.set(true);
     try {
-      const depegRes = await this.mcp.detectUsdtDepeg({ spotUsdtPrice: 0.9994, thresholdPct: 0.2 });
-      if (depegRes.success && depegRes.result) {
-        this.mcpDepeg.set(depegRes.result as ReturnType<typeof this.mcpDepeg>);
+      // Feed Binance Spot real: si no hay cotización en vivo no se inventa paridad
+      const spotTicker = await this.spotMarket.fetchBookTicker('USDCUSDT');
+      if (spotTicker && spotTicker.midPrice > 0) {
+        const depegRes = await this.mcp.detectUsdtDepeg({
+          spotUsdtPrice: spotTicker.midPrice,
+          thresholdPct: 0.2,
+        });
+        if (depegRes.success && depegRes.result) {
+          this.mcpDepeg.set(depegRes.result as ReturnType<typeof this.mcpDepeg>);
+        }
+      } else {
+        this.mcpDepeg.set({
+          spotUsdtPrice: null,
+          parityDeviationPct: null,
+          isDepegged: false,
+          riskSeverity: 'UNKNOWN',
+          status: 'FEED_UNAVAILABLE',
+          note: this.spotMarket.availability().reason || 'Libro Binance Spot no disponible',
+        });
       }
 
       const depth = this.binance.marketDepth();

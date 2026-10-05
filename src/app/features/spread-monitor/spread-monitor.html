@@ -274,10 +274,10 @@
           <span class="island-pulse-dot"></span>
           <span class="island-title font-mono">MCP LIVE</span>
           <div class="island-metrics-capsule">
-            <span class="island-pill" [class.pill-danger]="mcpDepeg().isDepegged" [class.pill-success]="!mcpDepeg().isDepegged">
+            <span class="island-pill" [class.pill-danger]="mcpDepeg().isDepegged" [class.pill-success]="!mcpDepeg().isDepegged && mcpDepeg().spotUsdtPrice !== null">
               <span class="pill-icon">🛡️</span>
-              <span class="pill-val font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</span>
-              <span class="pill-badge font-mono">{{ mcpDepeg().isDepegged ? 'DEPEG' : 'OK' }}</span>
+              <span class="pill-val font-mono">{{ mcpDepeg().spotUsdtPrice !== null ? ('$' + mcpDepeg().spotUsdtPrice!.toFixed(4)) : 'N/D' }}</span>
+              <span class="pill-badge font-mono">{{ mcpDepeg().spotUsdtPrice === null ? 'SIN DATO' : (mcpDepeg().isDepegged ? 'DEPEG' : 'OK') }}</span>
             </span>
 
             <span class="island-pill pill-accent">
@@ -340,15 +340,19 @@
                   <span class="hud-card-icon">🛡️</span>
                   <span class="hud-card-label">USDT Parity Sentinel</span>
                 </div>
-                <span class="badge" [class.badge-danger]="mcpDepeg().isDepegged" [class.badge-success]="!mcpDepeg().isDepegged">
-                  {{ mcpDepeg().isDepegged ? '⚠️ DEPEG' : 'PEGGED OK' }}
+                <span class="badge" [class.badge-danger]="mcpDepeg().isDepegged" [class.badge-success]="!mcpDepeg().isDepegged && mcpDepeg().spotUsdtPrice !== null">
+                  {{ mcpDepeg().spotUsdtPrice === null ? 'SIN DATO' : (mcpDepeg().isDepegged ? '⚠️ DEPEG' : 'PEGGED OK') }}
                 </span>
               </div>
               <div class="hud-card-body">
-                <div class="hud-big-metric font-mono">${{ mcpDepeg().spotUsdtPrice.toFixed(4) }}</div>
+                <div class="hud-big-metric font-mono">{{ mcpDepeg().spotUsdtPrice !== null ? ('$' + mcpDepeg().spotUsdtPrice!.toFixed(4)) : 'No disponible' }}</div>
                 <div class="hud-sub-metric font-mono" [class.text-danger]="mcpDepeg().isDepegged" [class.text-muted]="!mcpDepeg().isDepegged">
-                  Desvío: {{ mcpDepeg().parityDeviationPct > 0 ? '+' : '' }}{{ mcpDepeg().parityDeviationPct }}%
-                  <span class="hud-tag font-mono">{{ mcpDepeg().riskSeverity }} RISK</span>
+                  @if (mcpDepeg().parityDeviationPct !== null) {
+                    Desvío: {{ mcpDepeg().parityDeviationPct! > 0 ? '+' : '' }}{{ mcpDepeg().parityDeviationPct }}%
+                    <span class="hud-tag font-mono">{{ mcpDepeg().riskSeverity }} RISK</span>
+                  } @else {
+                    <span>{{ mcpDepeg().note || 'Sin conexión a libro Binance Spot' }}</span>
+                  }
                 </div>
               </div>
             </div>
