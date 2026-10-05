@@ -429,4 +429,92 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       vi.unstubAllGlobals();
     });
   });
+
+  describe('Standalone Multi-Agent Swarm execution (Mobile & Web)', () => {
+    beforeEach(() => {
+      delete (window as unknown as Record<string, unknown>)['electron'];
+    });
+
+    it('executes 4-agent swarm in standalone mode and approves plan when market and treasury are healthy', async () => {
+      const triangulationService = (component as any).triangulationService;
+      triangulationService.liveRates.set({
+        ...triangulationService.liveRates(),
+        binanceVesBuy: { value: 96.5, status: 'live', source: 'binance', expectedSource: 'binance' },
+        binanceVesSell: { value: 94.5, status: 'live', source: 'binance', expectedSource: 'binance' },
+      });
+
+      const accountsService = (component as any).accountsService;
+      vi.spyOn(accountsService, 'buildTreasurySnapshot').mockReturnValue({
+        accounts: [],
+        totalSpentTodayVes: 5000,
+        totalDailyLimitVes: 50000,
+        overLimitCount: 0,
+        nearLimitCount: 0,
+        disabledCount: 0,
+        saturatedCount: 0,
+        fiatBalanceVes: 25000,
+        hasAccounts: true,
+      });
+
+      await component.triggerSwarmAnalysis();
+
+      const lastMsg = component.messages()[component.messages().length - 1];
+      expect(lastMsg.role).toBe('assistant');
+      expect(lastMsg.content).toContain('Análisis del Enjambre Multi-Agente Completado');
+      expect(lastMsg.content).toContain('🛡 APROBADO POR RIESGO');
+      expect(lastMsg.plan).toBeDefined();
+      expect(lastMsg.plan?.status).toBe('PROPOSED');
+      expect(component.plans().length).toBeGreaterThan(0);
+      expect(component.swarmHealth()[0].opsProcessed).toBeGreaterThan(0);
+    });
+
+    it('vetoes standalone swarm plan when an account exceeds daily limit', async () => {
+      const accountsService = (component as any).accountsService;
+      vi.spyOn(accountsService, 'buildTreasurySnapshot').mockReturnValue({
+        accounts: [],
+        totalSpentTodayVes: 50000,
+        totalDailyLimitVes: 40000,
+        overLimitCount: 1,
+        nearLimitCount: 0,
+        disabledCount: 0,
+        saturatedCount: 0,
+        fiatBalanceVes: 10000,
+        hasAccounts: true,
+      });
+
+      await component.triggerSwarmAnalysis();
+
+      const lastMsg = component.messages()[component.messages().length - 1];
+      expect(lastMsg.content).toContain('⛔ VETADO POR RIESGO');
+      expect(lastMsg.content).toContain('1 cuenta(s) bancaria(s) agotaron su límite diario en VES');
+      expect(lastMsg.plan?.status).toBe('REJECTED');
+    });
+
+    it('blocks standalone plan execution when killswitch is active', async () => {
+      vi.spyOn(component, 'treasuryMetrics').mockReturnValue({
+        totalEquityUsd: 1000,
+        dailyAccumulatedProfitUsdt: 0,
+        nearLimitCount: 0,
+        overLimitCount: 0,
+        totalOperationsToday: 0,
+        killSwitchActive: true,
+      } as any);
+
+      const samplePlan = {
+        id: 'PLAN-TEST-1',
+        title: 'Arbitraje Test',
+        route: 'VES->USDT',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.5,
+        expectedProfitUsdt: 15,
+        riskLevel: 'LOW' as const,
+        status: 'PROPOSED' as const,
+        rationale: 'Test',
+      };
+
+      await component.executePlan(samplePlan);
+      expect(samplePlan.status).toBe('PROPOSED'); // not approved
+      expect(component.actionSuccessNotice()).toContain('Kill-Switch activo');
+    });
+  });
 });
