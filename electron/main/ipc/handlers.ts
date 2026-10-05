@@ -338,7 +338,9 @@ export function registerIpcHandlers(): void {
           },
         });
         if (!response.ok) {
-          throw new Error(`Cotizave HTTP Error ${response.status}`);
+          const retryAfter = response.headers.get('retry-after');
+          const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
+          throw new Error(`Cotizave HTTP Error ${response.status}${retryMsg}`);
         }
         const contentType = response.headers.get('content-type') ?? '';
         if (!contentType.includes('application/json')) {

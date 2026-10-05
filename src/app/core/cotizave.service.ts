@@ -41,6 +41,14 @@ interface PersistedCotizaveRates {
 export const COTIZAVE_CACHE_MAX_AGE_MS = 15 * 60_000;
 
 /**
+ * Intervalo mínimo entre llamadas de red en `fetchRates()`: 2 minutos.
+ * Protege contra ráfagas de sincronizaciones o pulsaciones repetidas
+ * en la interfaz que agoten la cuota de la ventana y disparen HTTP 429.
+ * Si se requiere forzar la consulta independientemente de la edad, se pasa `force = true`.
+ */
+export const COTIZAVE_MIN_FETCH_INTERVAL_MS = 2 * 60_000;
+
+/**
  * De dónde vinieron los rates que hoy están en `ratesByMarket()`. Sin esto, un
  * dato restaurado del disco es indistinguible de uno descargado hace 3 segundos,
  * y el consumidor no tiene forma de ser honesto con el operador.
@@ -61,6 +69,22 @@ export type CotizaveRatesProvenance = 'none' | 'live' | 'restored';
  */
 const NETWORK_CAUSE =
   /failed to fetch|networkerror|cors|fetch failed|enotfound|enoent|econnrefused|econnreset|ehostunreach|enetunreach|abort|timed? ?out|timeout|no accesible/i;
+
+/**
+ * Envoltura que Electron agrega al serializar un rechazo del proceso principal
+ * hacia el renderer: `Error invoking remote method '<canal>': Error: <causa>`.
+ *
+ * POR QUÉ HAY QUE DESVESTIRLA Y NO BUSCAR DENTRO: el canal y el prefijo son
+ * transporte, no diagnóstico. Si la clasificación depende de que la causa
+ * sobreviva como substring, el día que Electron cambie esa forma el mensaje
+ * deja de clasificar sin que nadie lo note, y el texto que ve el operador
+ * arrastra `Error invoking remote method` y el nombre del canal. Se pela la
+ * envoltura primero y se clasifica sobre la causa limpia.
+ */
+const IPC_INVOKE_WRAPPER = /^Error invoking remote method '[^']*':\s*/;
+
+/** Prefijo `Error:` que Electron/Node agregan al serializar la causa anidada. */
+const ERROR_NAME_PREFIX = /^Error:\s*/;
 
 /**
  * Diagnóstico que el servicio YA clasificó. La causa real viaja dentro del
@@ -346,7 +370,113 @@ export class CotizaveService implements OnDestroy {
     }
   }
 
+  /**
+   * In-flight fetches keyed by endpoint, so concurrent callers share one network
+   * round trip instead of firing their own.
+   *
+   * WHY THE CIRCUIT BREAKER ALONE CANNOT DO THIS: `execute()` reads the breaker
+   * state exactly once, at entry, and `maxRetries: 1` makes that a single attempt.
+   * A burst of concurrent `fetchRates()` calls therefore all observe `CLOSED`
+   * before any of them has recorded a failure, so all of them reach the network.
+   * `failureThreshold: 3` only opens the gate on the third failure, by which time
+   * the herd has already been sent. The breaker reacts to a herd after the fact;
+   * this map prevents the herd from ever leaving.
+   *
+   * WHY IT IS KEYED BY ENDPOINT: `endpoint` selects the upstream URL and the
+   * payload shape, so collapsing flights across different endpoints could serve a
+   * `'rates'` caller a promise resolved from a different endpoint's response.
+   * Keying the map by endpoint keeps those flights independent.
+   */
+  private readonly inFlightFetches = new Map<'rates', Promise<void>>();
+
+  /**
+   * Collapses a concurrent burst into the single flight already running.
+   *
+   * The entry is cleared in a `finally`, which is what keeps a failure from
+   * poisoning the service: without it a single failed flight would stay cached
+   * as the in-flight promise and every later call would silently reuse a dead
+   * attempt, so the app could never recover without a restart. Clearing it in
+   * `finally` also means a sequential call after a completed one starts a NEW
+   * flight instead of reusing an already-resolved promise.
+   */
   async fetchRates(endpoint: 'rates' = 'rates'): Promise<void> {
+    const inFlight = this.inFlightFetches.get(endpoint);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+
+    const flight = this.runFetchRates(endpoint);
+    this.inFlightFetches.set(endpoint, flight);
+    try {
+      await flight;
+    } finally {
+      this.inFlightFetches.delete(endpoint);
+    }
+  }
+
+  /**
+   * Consulta las tasas solo si no existen en memoria o si superaron la frescura mínima.
+   * Evita que múltiples llamadas en ráfaga (por ejemplo, desde el monitor de spreads)
+   * quemen la cuota del operador con HTTP 429.
+   */
+  async refreshIfStale(
+    endpoint: 'rates' = 'rates',
+    maxAgeMs = COTIZAVE_MIN_FETCH_INTERVAL_MS,
+  ): Promise<void> {
+    const last = this.lastFetched();
+    const rates = this.ratesByMarket();
+    if (
+      last &&
+      !Number.isNaN(last.getTime()) &&
+      Object.keys(rates).length > 0 &&
+      Date.now() - last.getTime() < maxAgeMs
+    ) {
+      return;
+    }
+    await this.fetchRates(endpoint);
+  }
+
+  /**
+   * Saca la causa real de un mensaje de error que pudo haber cruzado capas de
+   * transporte, dejando limpio lo que sirve tanto para clasificar como para
+   * mostrar al operador.
+   *
+   * POR QUÉ EXISTE: por IPC el mismo 429 llega como
+   * `Error invoking remote method 'p2p:fetch-cotizave': Error: Cotizave HTTP
+   * Error 429`. Clasificar con `includes` sobre ese texto funcionaba por
+   * suerte de substring, no por diseño: dependía de que la causa sobreviviera
+   * intacta detrás de una envoltura ajena, y el mensaje que veía el operador
+   * llevaba el canal interno adelante. Desvistiendo primero, la clasificación
+   * depende de la causa y el texto que sale es el mismo para navegador,
+   * puente local y escritorio.
+   *
+   * DEFENSIVA POR DISEÑO: si no hay envoltura, devuelve la entrada sin tocar.
+   * Un mensaje que no matchea nada tiene que llegar tal cual, porque puede
+   * ser la única evidencia de un fallo que todavía no sabemos clasificar.
+   *
+   * El bucle pela repetidas veces porque Electron puede anidar la envoltura
+   * (un `invoke` que reenvía otro `invoke`), y `MAX` acota el trabajo para que
+   * una cadena patológica no convierta el diagnóstico en un bucle.
+   */
+  private extractUpstreamMessage(raw: string): string {
+    const MAX_UNWRAP_DEPTH = 8;
+    let current = raw.trim();
+
+    for (let depth = 0; depth < MAX_UNWRAP_DEPTH; depth++) {
+      const unwrapped = current
+        .replace(IPC_INVOKE_WRAPPER, '')
+        .replace(ERROR_NAME_PREFIX, '')
+        .trim();
+      // Sin progreso: la entrada no traía envoltura, se devuelve sin cambios.
+      if (unwrapped === current || unwrapped.length === 0) break;
+      current = unwrapped;
+    }
+
+    return current;
+  }
+
+  private async runFetchRates(endpoint: 'rates'): Promise<void> {
     const key = this.apiKey();
     if (!key) {
       this.error.set('Introduce tu Cotizave API key para activar la triangulación');
@@ -447,7 +577,13 @@ export class CotizaveService implements OnDestroy {
           );
         }
 
-        const lastMsg = lastError instanceof Error ? lastError.message : '';
+        // La causa se desviste ANTES de clasificar: si el 429 llega envuelto por
+        // el IPC de Electron, sin esto la clasificación dependería de que el
+        // substring sobreviviera a la envoltura, y el mensaje del operador
+        // llevaría `Error invoking remote method` y el canal interno adelante.
+        const lastMsg = this.extractUpstreamMessage(
+          lastError instanceof Error ? lastError.message : '',
+        );
         if (lastMsg.includes('HTTP Error 401')) {
           throw new CotizaveDiagnosisError(
             'API key de Cotizave inválida o vencida (HTTP 401). Revisá tu key en Ajustes → API Keys.',
@@ -457,6 +593,27 @@ export class CotizaveService implements OnDestroy {
         if (lastMsg.includes('HTTP Error 403')) {
           throw new CotizaveDiagnosisError(
             'Cotizave rechazó el acceso (HTTP 403). Verificá que el plan de tu API key incluya el endpoint /v1/fx.',
+            lastError,
+          );
+        }
+        /**
+         * LÍMITE DE PETICIONES (429). Va con sus ramas hermanas porque es un
+         * cuarto diagnóstico, no una variante del genérico: la key autenticó
+         * bien (si fuera inválida sería 401), el servicio está vivo (si estuviera
+         * caído sería 403 o un fallo de transporte) y lo agotado es la cuota de
+         * la ventana. Decir "no disponible" sería mentira, y mandar a revisar la
+         * key también: un 429 prueba que la key sirve.
+         *
+         * SOBRE LA DURACIÓN CITADA: sale de `cooldownPeriodMs`, el mismo número
+         * que usa el mensaje de circuito abierto. No es un criterio nuevo de
+         * espera — es lo que el breaker efectivamente hace si el fallo se repite.
+         * El mensaje no promete ninguna cuenta regresiva propia: solo dice qué
+         * hacer y qué va a hacer el circuito si el 429 insiste.
+         */
+        if (lastMsg.includes('HTTP Error 429')) {
+          const cooldownS = Math.round(this.circuitBreaker.options.cooldownPeriodMs / 1000);
+          throw new CotizaveDiagnosisError(
+            `Cotizave limitó las solicitudes (HTTP 429): tu API key es válida, pero su cuota de esta ventana está agotada. No es una caída del servicio ni un problema de la key. Una ráfaga anterior puede haberla consumido: esperá y la app reintenta sola. Si el fallo insiste, el circuito frena las llamadas durante ${cooldownS} s.`,
             lastError,
           );
         }
@@ -524,7 +681,7 @@ export class CotizaveService implements OnDestroy {
     }
   }
 
-  startAutoRefresh(intervalMs = 300000): void {
+  startAutoRefresh(intervalMs = 10 * 60_000): void {
     this.stopAutoRefresh();
     this.autoRefresh.set(true);
     void this.fetchRates();
@@ -588,7 +745,10 @@ export class CotizaveService implements OnDestroy {
       return await this.fetchRatesViaLocalBridge(endpoint, key, signal);
     }
     if (!resp.ok) {
-      throw new Error(`Cotizave HTTP Error ${resp.status}`);
+      const retryAfter =
+        typeof resp.headers?.get === 'function' ? resp.headers.get('retry-after') : null;
+      const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
+      throw new Error(`Cotizave HTTP Error ${resp.status}${retryMsg}`);
     }
     return await resp.json();
   }
@@ -605,7 +765,12 @@ export class CotizaveService implements OnDestroy {
       signal,
     });
     if (!bridgeResp.ok) {
-      throw new Error(`Cotizave bridge HTTP Error ${bridgeResp.status}`);
+      const retryAfter =
+        typeof bridgeResp.headers?.get === 'function'
+          ? bridgeResp.headers.get('retry-after')
+          : null;
+      const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
+      throw new Error(`Cotizave bridge HTTP Error ${bridgeResp.status}${retryMsg}`);
     }
     return await bridgeResp.json();
   }

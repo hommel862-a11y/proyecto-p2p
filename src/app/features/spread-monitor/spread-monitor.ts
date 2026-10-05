@@ -717,9 +717,15 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   async syncBinancePrices(): Promise<void> {
+    // Cotizave publica tasas oficiales/referenciales que cambian a lo sumo 1-2 veces al día.
+    // Solo consultamos Cotizave si no hay tasas en memoria (arranque en frío o caché vacía).
+    // Si ya hay tasas, no quemamos cuota en cada sync de Binance P2P.
+    const shouldFetchCotizave =
+      !!this.cotizave.apiKey() && Object.keys(this.cotizave.ratesByMarket()).length === 0;
+
     const [depth] = await Promise.allSettled([
       this.binance.fetchMarketDepth(this.pair(), 'VES'),
-      this.cotizave.apiKey() ? this.cotizave.fetchRates() : Promise.resolve(),
+      shouldFetchCotizave ? this.cotizave.fetchRates() : Promise.resolve(),
     ]);
 
     const marketDepth = depth.status === 'fulfilled' ? depth.value : null;
@@ -951,11 +957,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       const hasKey = !!this.cotizave.apiKey();
       const repricer = this.activeMode() === 'repricer';
       if (hasKey && !repricer) {
-        // 5 min de intervalo contra 15 min de TTL: cada ciclo renueva el dato
-        // con tres ventanas de margen, así que el vencimiento en vivo de
-        // `CotizaveService` solo llega si la red deja de responder, y en ese caso
-        // es lo correcto.
-        this.cotizave.startAutoRefresh();
+        // 10 min de intervalo contra 15 min de TTL: protege la cuota de Cotizave
+        // para no quemar el límite mensual ni provocar HTTP 429 por ráfagas,
+        // renovando el dato antes de que expire la caché en vivo.
+        this.cotizave.startAutoRefresh(10 * 60_000);
       } else {
         this.cotizave.stopAutoRefresh();
       }

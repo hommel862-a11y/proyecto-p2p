@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   CotizaveService,
   COTIZAVE_CACHE_MAX_AGE_MS,
+  COTIZAVE_MIN_FETCH_INTERVAL_MS,
   formatCotizaveDataAge,
 } from './cotizave.service';
 import { CredentialStoreService } from './credential-store.service';
@@ -31,6 +32,15 @@ const RATES_PAYLOAD = {
 };
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+/**
+ * `fetchRates` narrows `endpoint` to the single `'rates'` literal the app uses
+ * today. The in-flight deduplication is keyed by that argument, so proving two
+ * different endpoints are NOT collapsed into one flight requires calling the
+ * method with a second literal. These tests reach it through this widened view
+ * instead of loosening the production signature.
+ */
+type FetchRatesByEndpoint = (endpoint: string) => Promise<void>;
 
 function jsonResponse(payload: unknown): Response {
   return {
@@ -428,6 +438,219 @@ describe('CotizaveService', () => {
     expect(svc.error()?.toLowerCase()).toContain('circuito');
   });
 
+  /**
+   * Un 429 NO es "el servicio no está disponible": la key autenticó bien (si
+   * fuera inválida sería 401), el servicio está vivo (si estuviera caído sería
+   * 403 o un fallo de transporte) y lo que se agotó es la cuota de la ventana.
+   * Cada forma de la causa tiene que caer en el mismo diagnóstico.
+   *
+   * Formas reales que llegan al renderer:
+   * - navegador directo:  `Cotizave HTTP Error 429`
+   * - puente local:       `Cotizave bridge HTTP Error 429`
+   * - IPC de Electron:    `Error invoking remote method 'p2p:fetch-cotizave': Error: Cotizave HTTP Error 429`
+   */
+  describe('clasificación de HTTP 429 (límite de peticiones)', () => {
+    it('reporta el 429 como cuota agotada y no como servicio no disponible', async () => {
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => {
+          throw new Error('Cotizave HTTP Error 429');
+        }),
+      };
+
+      await svc.fetchRates();
+
+      const msg = svc.error();
+      expect(msg).not.toBeNull();
+      expect(msg).toContain('429');
+      expect(msg).toContain('cuota');
+      // Le dice al operador qué hacer: esperar, sin tocar la key ni reiniciar.
+      // Voseo, igual que las ramas hermanas de este mismo handler.
+      expect(msg).toContain('esperá');
+      // Cualquier duración citada sale de la opción del circuito, no de un literal.
+      expect(msg).toContain(
+        `${Math.round(svc.circuitBreaker.options.cooldownPeriodMs / 1000)} s`,
+      );
+      // El diagnóstico anterior mentía: el servicio NO estaba caído...
+      expect(msg).not.toContain('no disponible');
+      // ...y la key NO era inválida. Un 429 prueba lo contrario.
+      expect(msg).not.toContain('inválida');
+      expect(msg).not.toContain('401');
+      expect(toast.error.mock.calls[0]?.[0]).toBe(msg);
+    });
+
+    it('clasifica igual la causa limpia y la envuelta por el IPC de Electron', async () => {
+      // El wrapper de Electron es serialización, no diagnóstico: si la
+      // clasificación dependiera de él, el mensaje al operador llevaría
+      // `Error invoking remote method` y el nombre del canal por delante.
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => {
+          throw new Error(
+            "Error invoking remote method 'p2p:fetch-cotizave': Error: Cotizave HTTP Error 429",
+          );
+        }),
+      };
+      await svc.fetchRates();
+      const wrappedMsg = svc.error();
+
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => {
+          throw new Error('Cotizave HTTP Error 429');
+        }),
+      };
+      await svc.fetchRates();
+      const cleanMsg = svc.error();
+
+      expect(wrappedMsg).not.toBeNull();
+      expect(wrappedMsg).toBe(cleanMsg);
+      expect(wrappedMsg).toContain('429');
+      // Ninguna capa interna puede filtrarse a la UI.
+      expect(wrappedMsg).not.toContain('Error invoking remote method');
+      expect(wrappedMsg).not.toContain('p2p:fetch-cotizave');
+    });
+
+    it('clasifica la forma del puente local del navegador como el mismo límite de peticiones', async () => {
+      // Camino navegador: la API directa se bloquea y el puente local responde 429.
+      const fetchMock = vi
+        .fn<FetchLike>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({ ok: false, status: 429 } as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+
+      const msg = svc.error();
+      expect(msg).not.toBeNull();
+      expect(msg).toContain('429');
+      expect(msg).toContain('cuota');
+      expect(msg).not.toContain('no disponible');
+      expect(msg).not.toContain('inválida');
+    });
+
+    it('conserva el diagnóstico de contrato roto para un 200 sin datos y no lo llama límite de peticiones', async () => {
+      // Regresión: un 200-basura es un upstream que rompió su contrato, no una
+      // cuota agotada. Es un modo de fallo distinto y con otra acción.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<FetchLike>(async () => jsonResponse({ unexpected: 'shape' })),
+      );
+
+      await svc.fetchRates();
+
+      const msg = svc.error();
+      expect(msg).not.toBeNull();
+      expect(msg?.toLowerCase()).toContain('sin datos reconocibles');
+      expect(msg).toContain('200');
+      expect(msg).not.toContain('429');
+      expect(msg?.toLowerCase()).not.toContain('cuota');
+    });
+
+    it('sigue sirviendo la caché y no expone el error de cuota cuando el 429 llega con rates válidos', async () => {
+      vi.stubGlobal('fetch', vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD)));
+      await svc.fetchRates();
+      expect(Object.keys(svc.ratesByMarket()).length).toBeGreaterThan(0);
+
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => {
+          throw new Error('Cotizave HTTP Error 429');
+        }),
+      };
+
+      await svc.fetchRates();
+
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+      const warnMsg = toast.warn.mock.calls.at(-1)?.[0] as string | undefined;
+      expect(warnMsg).toContain('cacheadas');
+      // Con caché manda el aviso de dato viejo: la clasificación no lo reemplaza.
+      expect(svc.error()).toBeNull();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The circuit breaker only gates at ENTRY: `execute()` reads the state once
+   * and, because `maxRetries: 1` means exactly one attempt, N concurrent
+   * `fetchRates()` calls that all observe `CLOSED` each fire their own real
+   * request. The breaker cannot stop a herd it has not seen yet. That is what
+   * collapsed a single app launch into 10 real HTTP 429s from Cotizave.
+   */
+  describe('in-flight deduplication', () => {
+    it('collapses a burst of concurrent fetchRates() calls into a single network request', async () => {
+      // The transport stays unanswered so every concurrent caller is provably
+      // inside the same window, not a sequence of completed round-trips.
+      let answer: ((response: Response) => void) | null = null;
+      const fetchMock = vi.fn<FetchLike>(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const burst = [
+        svc.fetchRates(),
+        svc.fetchRates(),
+        svc.fetchRates(),
+        svc.fetchRates(),
+        svc.fetchRates(),
+      ];
+
+      // All five calls were issued before the first request could answer.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      answer!(jsonResponse(RATES_PAYLOAD));
+      await Promise.all(burst);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // The shared execution still does the real work for every caller.
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+      expect(svc.ratesByMarket()['oficial']).toBeDefined();
+      expect(svc.lastFetched()).not.toBeNull();
+      expect(svc.error()).toBeNull();
+      expect(svc.loading()).toBe(false);
+    });
+
+    it('issues a fresh network request after a shared flight fails', async () => {
+      // A rejected flight must not stay cached as the in-flight promise: if it
+      // did, every later call would silently reuse one dead attempt and the
+      // service would never recover without a restart.
+      const failingMock = vi.fn<FetchLike>().mockRejectedValue(new TypeError('Failed to fetch'));
+      vi.stubGlobal('fetch', failingMock);
+
+      await Promise.all([svc.fetchRates(), svc.fetchRates()]);
+
+      // Direct API plus local bridge, once: the two callers shared one flight.
+      expect(failingMock).toHaveBeenCalledTimes(2);
+      expect(svc.error()).not.toBeNull();
+
+      const recoveringMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+      vi.stubGlobal('fetch', recoveringMock);
+
+      await svc.fetchRates();
+
+      expect(recoveringMock).toHaveBeenCalledTimes(1);
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+      expect(svc.error()).toBeNull();
+    });
+
+    it('keeps concurrent calls to different endpoints on separate network requests', async () => {
+      const requestedUrls: string[] = [];
+      const fetchMock = vi.fn<FetchLike>(async (input) => {
+        requestedUrls.push(String(input));
+        return jsonResponse(RATES_PAYLOAD);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const fetchByEndpoint = svc.fetchRates.bind(svc) as unknown as FetchRatesByEndpoint;
+
+      await Promise.all([fetchByEndpoint('rates'), fetchByEndpoint('other')]);
+
+      // Keying the in-flight map by endpoint is what keeps a 'rates' caller from
+      // being served another endpoint's response.
+      expect(requestedUrls).toContain('https://api.cotizave.com/v1/fx/rates');
+      expect(requestedUrls).toContain('https://api.cotizave.com/v1/fx/other');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('vencimiento en vivo (no solo al arrancar)', () => {
     afterEach(() => {
       vi.useRealTimers();
@@ -542,6 +765,33 @@ describe('CotizaveService', () => {
       { label: 'Invalid Date', value: new Date(Number.NaN) },
     ])('devuelve el texto de sesión anterior para $label', ({ value }) => {
       expect(formatCotizaveDataAge(value, NOW)).toBe('una sesión anterior');
+    });
+  });
+
+  describe('guard de frescura (refreshIfStale)', () => {
+    it('omite la llamada de red si las tasas tienen menos de maxAgeMs', async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // refreshIfStale omite la llamada si el dato es fresco
+      await svc.refreshIfStale('rates', COTIZAVE_MIN_FETCH_INTERVAL_MS);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('ejecuta la llamada de red si las tasas superan maxAgeMs o no existen', async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+      vi.stubGlobal('fetch', fetchMock);
+
+      // Sin rates previos, refreshIfStale siempre consulta
+      await svc.refreshIfStale('rates', COTIZAVE_MIN_FETCH_INTERVAL_MS);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Con maxAgeMs = 0 (forzar expiración)
+      await svc.refreshIfStale('rates', 0);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });
