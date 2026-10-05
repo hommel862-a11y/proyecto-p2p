@@ -82,6 +82,7 @@
                 <input
                   id="calc-capital-usdt"
                   type="number"
+                  inputmode="decimal"
                   min="0"
                   step="10"
                   class="terminal-input font-bold"
@@ -90,6 +91,14 @@
                   placeholder="0.00"
                 />
                 <span class="input-suffix">USDT</span>
+              </div>
+              <div class="mobile-volume-chips">
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(100)">100</button>
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(500)">500</button>
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(1000)">1k</button>
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(2500)">2.5k</button>
+                <button type="button" class="btn-vol-chip chip-add" (click)="capitalUsdt.set(capitalUsdt() + 100)">+100</button>
+                <button type="button" class="btn-vol-chip chip-add" (click)="capitalUsdt.set(capitalUsdt() + 500)">+500</button>
               </div>
             </div>
 
@@ -103,6 +112,7 @@
                 <input
                   id="calc-buy-price"
                   type="number"
+                  inputmode="decimal"
                   min="0"
                   step="0.01"
                   class="terminal-input"
@@ -123,6 +133,7 @@
                 <input
                   id="calc-sell-price"
                   type="number"
+                  inputmode="decimal"
                   min="0"
                   step="0.01"
                   class="terminal-input highlight-sell"

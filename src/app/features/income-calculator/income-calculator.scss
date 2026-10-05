@@ -326,6 +326,43 @@
   }
 }
 
+.mobile-volume-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+
+  .btn-vol-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--muted, #cbd5e1);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    min-height: 26px;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-user-select: none;
+
+    &:hover, &:active {
+      background: rgba(255, 214, 10, 0.15);
+      border-color: var(--gold, #ffd60a);
+      color: var(--gold, #ffd60a);
+    }
+
+    &.chip-add {
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.25);
+
+      &:hover, &:active {
+        background: rgba(56, 189, 248, 0.15);
+      }
+    }
+  }
+}
+
 @media (max-width: 768px) {
   .smart-calc-header {
     flex-direction: column;
@@ -356,6 +393,21 @@
   select {
     min-height: 44px;
     font-size: 0.9rem;
+  }
+
+  .mobile-volume-chips {
+    gap: 8px;
+    margin-top: 8px;
+
+    .btn-vol-chip {
+      flex: 1;
+      min-height: 38px;
+      font-size: 0.78rem;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   }
 }
 
