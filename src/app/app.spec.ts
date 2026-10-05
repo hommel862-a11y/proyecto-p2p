@@ -20,7 +20,7 @@ describe('App', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(13);
-    expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(4);
+    expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(5);
   }, 15000);
 
   describe('theme toggle', () => {
