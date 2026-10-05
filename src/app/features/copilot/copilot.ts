@@ -256,12 +256,33 @@ export class Copilot implements OnInit, OnDestroy {
   sidebarCollapsed = signal<boolean>(
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
   );
+  readonly mobileSheetOpen = signal<boolean>(false);
 
   toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
   }
 
+  toggleMobileSheet(): void {
+    this.mobileSheetOpen.update((v) => !v);
+  }
+
+  closeMobileSheet(): void {
+    this.mobileSheetOpen.set(false);
+  }
+
+  openMobileSheet(): void {
+    this.mobileSheetOpen.set(true);
+  }
+
   async toggleVoiceDictation(): Promise<void> {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(25);
+      } catch {
+        /* sin soporte háptico */
+      }
+    }
+
     if (this.voiceService.isListening()) {
       this.voiceService.stopListening();
       return;
@@ -1442,6 +1463,10 @@ export class Copilot implements OnInit, OnDestroy {
   }
 
   quickPrompt(type: string): void {
+    this.closeMobileSheet();
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      this.sidebarCollapsed.set(true);
+    }
     if (type === 'explicar_triangulacion') {
       this.sendPrompt(
         'Explicame en detalle cómo funciona la triangulación financiera en el mercado P2P venezolano (fiat VES -> USDT -> divisa alternativa -> VES), cuáles son los cuellos de botella de liquidez bancaria y qué precauciones matemáticas debemos tomar según la regla de oro.',

@@ -21,11 +21,18 @@
           <span class="voice-speaker-label">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Hablando...' : 'Voz: ON') : 'Voz: OFF' }}</span>
         </button>
         <button 
-          class="zen-toggle-btn" 
+          class="zen-toggle-btn desktop-only" 
           [class.active]="!sidebarCollapsed()"
           (click)="toggleSidebar()"
           [title]="sidebarCollapsed() ? 'Mostrar panel lateral de controles y métricas' : 'Ocultar panel lateral (Modo Zen de Lectura)'">
           {{ sidebarCollapsed() ? '📊 Mostrar Controles' : '✕ Ocultar Controles' }}
+        </button>
+        <button 
+          type="button"
+          class="mobile-prompts-btn mobile-only"
+          (click)="toggleMobileSheet()"
+          title="Abrir panel de acciones rápidas y métricas">
+          💡 Acciones
         </button>
       }
 
@@ -181,10 +188,28 @@
 
   <!-- TAB: CHAT -->
   @if (activeTab() === 'chat') {
-    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed()">
-      <!-- SIDEBAR CONTROLS (COLUMNA IZQUIERDA 280px) -->
-      @if (!sidebarCollapsed()) {
-        <aside class="copilot-sidebar">
+    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed() && !mobileSheetOpen()">
+      @if (mobileSheetOpen()) {
+        <div
+          class="mobile-sheet-backdrop"
+          role="button"
+          tabindex="0"
+          (click)="closeMobileSheet()"
+          (keydown.escape)="closeMobileSheet()"
+          aria-label="Cerrar panel de acciones rápidas">
+        </div>
+      }
+
+      <!-- SIDEBAR CONTROLS (COLUMNA IZQUIERDA 280px en Desktop / Bottom Sheet en Móvil) -->
+      @if (!sidebarCollapsed() || mobileSheetOpen()) {
+        <aside class="copilot-sidebar" [class.mobile-sheet-active]="mobileSheetOpen()">
+          <div class="mobile-sheet-header mobile-only">
+            <div class="sheet-drag-pill"></div>
+            <div class="sheet-header-title">
+              <span>⚡ Acciones Rápidas & Enjambre</span>
+              <button type="button" class="btn-close-sheet" (click)="closeMobileSheet()">&times;</button>
+            </div>
+          </div>
           <!-- Centinela Card -->
           <div class="sidebar-box">
             <div class="box-header">
@@ -620,6 +645,25 @@
             </div>
           }
 
+          <!-- Mobile Floating Quick Prompt Chips -->
+          <div class="mobile-quick-chips mobile-only">
+            <button type="button" class="quick-chip highlight" (click)="toggleMobileSheet()">
+              💡 Más Acciones
+            </button>
+            <button type="button" class="quick-chip" (click)="quickPrompt('explicar_triangulacion')" [disabled]="isLoading()">
+              🔄 Triangulación
+            </button>
+            <button type="button" class="quick-chip" (click)="quickPrompt('earn_hurdle')" [disabled]="isLoading()">
+              ⚖️ Hurdle Rate
+            </button>
+            <button type="button" class="quick-chip" (click)="quickPrompt('riesgo_bcv')" [disabled]="isLoading()">
+              🏦 Riesgo BCV
+            </button>
+            <button type="button" class="quick-chip" (click)="quickPrompt('resumen_ejecutivo')" [disabled]="isLoading()">
+              📊 Resumen
+            </button>
+          </div>
+
           <form (ngSubmit)="sendPrompt()" class="input-form">
             <button
               type="button"
@@ -637,12 +681,14 @@
 
             <input
               type="text"
-              placeholder="Pedile al estratega que evalúe spreads, triangulaciones o asigne turnos... (o hacé clic en 🎙️ para dictar)"
+              placeholder="Pedile al estratega que evalúe spreads o triangulaciones... (🎙️ para dictar)"
               [ngModel]="inputPrompt()"
               (ngModelChange)="inputPrompt.set($event)"
+              (focus)="scrollToBottom()"
               name="userPrompt"
               [disabled]="isLoading()"
               autocomplete="off"
+              enterkeyhint="send"
             />
             <button type="submit" class="btn-send" [disabled]="!inputPrompt().trim() || isLoading()">
               <span>ENVIAR</span>

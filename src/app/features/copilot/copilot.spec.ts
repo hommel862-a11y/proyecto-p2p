@@ -320,4 +320,31 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       runSwarmAnalysis.mock.invocationCallOrder[0],
     );
   });
+
+  describe('Mobile workspace & bottom sheet ergonomics', () => {
+    it('manages mobile sheet open/close states', () => {
+      expect(component.mobileSheetOpen()).toBe(false);
+
+      component.toggleMobileSheet();
+      expect(component.mobileSheetOpen()).toBe(true);
+
+      component.closeMobileSheet();
+      expect(component.mobileSheetOpen()).toBe(false);
+
+      component.openMobileSheet();
+      expect(component.mobileSheetOpen()).toBe(true);
+    });
+
+    it('closes mobile sheet and collapses sidebar on mobile when quickPrompt is selected', () => {
+      component.openMobileSheet();
+      expect(component.mobileSheetOpen()).toBe(true);
+
+      const sendPromptSpy = vi.spyOn(component, 'sendPrompt').mockImplementation(() => Promise.resolve());
+
+      component.quickPrompt('explicar_triangulacion');
+
+      expect(component.mobileSheetOpen()).toBe(false);
+      expect(sendPromptSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });

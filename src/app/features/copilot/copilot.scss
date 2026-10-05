@@ -1874,41 +1874,93 @@
   }
 }
 
+.mobile-only {
+  display: none !important;
+}
+
+.mobile-sheet-backdrop {
+  display: none;
+}
+
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 /* ============================================================
    Copilot Mobile Vertical Adaptations (<= 768px)
    ============================================================ */
 @media (max-width: 768px) {
+  .mobile-only {
+    display: flex !important;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
   .copilot-container {
     height: calc(100dvh - 52px - 58px - env(safe-area-inset-bottom, 0px));
     max-width: 100%;
-    padding: 6px 8px;
+    padding: 4px 6px;
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .copilot-header {
-    margin-bottom: 6px;
-    padding-bottom: 6px;
-    gap: 8px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    gap: 6px;
 
     .title-area {
       h2 {
-        font-size: 1.05rem;
+        font-size: 1rem;
+        margin: 0;
       }
       .subtitle {
         display: none;
+      }
+      .bot-badge {
+        padding: 2px 8px;
+        font-size: 0.65rem;
       }
     }
 
     .header-right-controls {
       width: 100%;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
       gap: 6px;
 
       .voice-speaker-btn,
-      .zen-toggle-btn {
-        padding: 5px 10px;
-        font-size: 0.72rem;
+      .mobile-prompts-btn {
+        padding: 6px 12px;
+        font-size: 0.74rem;
+        min-height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .mobile-prompts-btn {
+        background: rgba(255, 214, 10, 0.15);
+        border: 1px solid rgba(255, 214, 10, 0.4);
+        color: var(--gold, #ffd60a);
+        font-weight: 700;
+        cursor: pointer;
+
+        &:active {
+          transform: scale(0.96);
+        }
       }
     }
   }
@@ -1920,7 +1972,7 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     gap: 6px;
-    padding-bottom: 2px;
+    padding: 4px 0;
 
     &::-webkit-scrollbar {
       display: none;
@@ -1928,10 +1980,11 @@
 
     .tab-btn {
       flex-shrink: 0;
-      padding: 6px 10px;
-      font-size: 0.72rem;
-      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.74rem;
+      border-radius: 20px;
       white-space: nowrap;
+      min-height: 36px;
     }
   }
 
@@ -1940,7 +1993,8 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding: 6px 8px;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    gap: 8px;
 
     &::-webkit-scrollbar {
       display: none;
@@ -1950,14 +2004,19 @@
       flex-shrink: 0;
       font-size: 0.7rem;
     }
+
+    .ticker-actions .killswitch-pill {
+      padding: 4px 10px;
+      font-size: 0.68rem;
+    }
   }
 
   .swarm-telemetry-bar {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding: 6px 8px;
-    margin-bottom: 6px;
+    padding: 4px 8px;
+    margin-bottom: 4px;
 
     &::-webkit-scrollbar {
       display: none;
@@ -1965,6 +2024,17 @@
 
     .swarm-agents-list {
       flex-shrink: 0;
+      gap: 6px;
+
+      .agent-chip {
+        padding: 3px 8px;
+        font-size: 0.68rem;
+      }
+    }
+
+    .swarm-actions .btn-trigger-swarm {
+      padding: 4px 10px;
+      font-size: 0.68rem;
     }
   }
 
@@ -1973,15 +2043,87 @@
     width: 100%;
     flex: 1;
     min-height: 0;
-    gap: 6px;
+    gap: 0;
+    position: relative;
+    overflow: hidden;
   }
 
   .copilot-sidebar {
-    width: 100% !important;
-    max-height: 200px;
-    overflow-y: auto;
-    flex-shrink: 0;
-    border-radius: 12px;
+    display: none;
+
+    &.mobile-sheet-active {
+      display: flex !important;
+      flex-direction: column;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-height: 82vh;
+      z-index: 1200;
+      background: #111420;
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.75);
+      padding: 10px 14px calc(24px + env(safe-area-inset-bottom, 12px));
+      animation: slideUpSheet 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+
+      .mobile-sheet-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-shrink: 0;
+
+        .sheet-drag-pill {
+          width: 44px;
+          height: 5px;
+          border-radius: 3px;
+          background: rgba(255, 255, 255, 0.3);
+          margin-bottom: 10px;
+        }
+
+        .sheet-header-title {
+          width: 100%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #ffffff;
+
+          .btn-close-sheet {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #ffffff;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+        }
+      }
+
+      .sidebar-box {
+        margin-bottom: 12px;
+      }
+    }
+  }
+
+  .mobile-sheet-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1190;
+    animation: fadeIn 0.2s ease-out;
   }
 
   .copilot-chat-canvas {
@@ -1994,59 +2136,152 @@
     overflow: hidden;
 
     .messages-viewport {
-      padding: 8px 6px;
-      gap: 8px;
+      flex: 1;
+      min-height: 0;
+      padding: 10px 8px;
+      gap: 10px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
 
       .message-row {
-        max-width: 94%;
-        gap: 6px;
+        max-width: 92%;
+        gap: 8px;
 
         .avatar {
-          width: 26px;
-          height: 26px;
-          font-size: 0.7rem;
+          width: 28px;
+          height: 28px;
+          font-size: 0.72rem;
         }
 
         .message-bubble {
-          padding: 8px 12px;
-          font-size: 0.82rem;
-          line-height: 1.4;
-          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 0.85rem;
+          line-height: 1.45;
+          border-radius: 14px;
         }
       }
     }
 
-    .chat-input-bar {
-      padding: 6px 8px;
+    .input-container {
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
       background: #0d111a;
       border-top: 1px solid var(--line);
+      flex-shrink: 0;
+
+      .mobile-quick-chips {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+
+        &::-webkit-scrollbar {
+          display: none;
+        }
+
+        .quick-chip {
+          flex-shrink: 0;
+          padding: 4px 10px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          background: rgba(255, 255, 255, 0.06);
+          border: 0.5px solid rgba(255, 255, 255, 0.12);
+          color: var(--muted, #cbd5e1);
+          border-radius: 14px;
+          white-space: nowrap;
+          cursor: pointer;
+
+          &.highlight {
+            background: rgba(255, 214, 10, 0.14);
+            border-color: rgba(255, 214, 10, 0.4);
+            color: var(--gold, #ffd60a);
+          }
+
+          &:active {
+            transform: scale(0.96);
+          }
+        }
+      }
 
       .input-form {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 4px;
+        padding: 4px 6px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 24px;
 
         .btn-mic {
-          width: 40px;
-          height: 40px;
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          border-radius: 50%;
           flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         input {
           flex: 1;
           font-size: 16px !important;
-          min-height: 40px;
+          min-height: 44px;
           padding: 6px 10px;
+          border: none;
+          background: transparent;
+          color: #ffffff;
+          outline: none;
         }
 
         .btn-send {
-          min-height: 40px;
-          padding: 6px 12px;
+          min-height: 44px;
+          padding: 0 16px;
+          border-radius: 20px;
           font-size: 0.75rem;
           font-weight: 700;
           flex-shrink: 0;
         }
+      }
+    }
+  }
+
+  .strategy-card {
+    padding: 12px 10px;
+    border-radius: 14px;
+
+    .metrics-grid {
+      grid-template-columns: 1fr 1fr !important;
+      gap: 6px;
+
+      .metric {
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+    }
+
+    .strategy-steps {
+      padding: 10px;
+
+      .step-item {
+        font-size: 0.78rem;
+        gap: 8px;
+      }
+    }
+
+    .card-footer {
+      flex-direction: column;
+      gap: 8px;
+
+      .btn-play {
+        width: 100% !important;
+        min-height: 48px;
+        font-size: 0.88rem;
+        justify-content: center;
+        border-radius: 12px;
       }
     }
   }
