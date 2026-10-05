@@ -127,10 +127,27 @@
     <div class="ticker-spacer"></div>
     <div class="ticker-actions">
       <button 
+        type="button"
         class="killswitch-pill" 
         [class.active]="treasuryMetrics().killSwitchActive"
-        (click)="triggerKillSwitch()">
-        {{ treasuryMetrics().killSwitchActive ? '⚠ KILL-SWITCH ACTIVO' : '🛑 KILL-SWITCH' }}
+        [class.holding]="killswitchHolding()"
+        (touchstart)="startKillswitchHold($event)"
+        (touchend)="cancelKillswitchHold()"
+        (touchcancel)="cancelKillswitchHold()"
+        (click)="onKillswitchClick($event)"
+        [title]="treasuryMetrics().killSwitchActive ? 'Kill-switch activo' : 'En móvil mantén presionado 1.2s para activar el kill-switch'">
+        @if (killswitchHolding()) {
+          <span class="hold-fill" [style.width.%]="killswitchHoldProgress()"></span>
+        }
+        <span class="killswitch-text">
+          @if (treasuryMetrics().killSwitchActive) {
+            ⚠ KILL-SWITCH ACTIVO
+          } @else if (killswitchHolding()) {
+            🛑 MANTENÉ ({{ (1.2 * (1 - killswitchHoldProgress() / 100)).toFixed(1) }}s)
+          } @else {
+            🛑 KILL-SWITCH
+          }
+        </span>
       </button>
     </div>
   </div>

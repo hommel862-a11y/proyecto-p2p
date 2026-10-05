@@ -245,6 +245,8 @@
 
   .ticker-actions {
     .killswitch-pill {
+      position: relative;
+      overflow: hidden;
       background: rgba(255, 69, 58, 0.15);
       border: 0.5px solid var(--danger, #ff453a);
       color: #ffa19b;
@@ -255,9 +257,34 @@
       cursor: pointer;
       transition: all 0.2s ease;
       white-space: nowrap;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+
+      .hold-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        background: rgba(255, 69, 58, 0.6);
+        pointer-events: none;
+        transition: width 0.05s linear;
+        border-radius: 4px;
+      }
+
+      .killswitch-text {
+        position: relative;
+        z-index: 1;
+      }
 
       &:hover {
         background: rgba(255, 69, 58, 0.3);
+      }
+
+      &.holding {
+        border-color: #ff453a;
+        transform: scale(0.98);
+        box-shadow: 0 0 10px rgba(255, 69, 58, 0.4);
       }
 
       &.active {
@@ -265,6 +292,10 @@
         color: #ffffff;
         box-shadow: 0 0 12px rgba(255, 69, 58, 0.6);
         animation: pulse-kill 1.5s infinite;
+
+        .hold-fill {
+          display: none;
+        }
       }
     }
   }
@@ -1991,6 +2022,7 @@
   .ticker-bar {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
     scrollbar-width: none;
     padding: 6px 8px;
     margin-bottom: 4px;
@@ -2002,12 +2034,18 @@
 
     .ticker-item {
       flex-shrink: 0;
+      scroll-snap-align: start;
       font-size: 0.7rem;
     }
 
-    .ticker-actions .killswitch-pill {
-      padding: 4px 10px;
-      font-size: 0.68rem;
+    .ticker-actions {
+      scroll-snap-align: end;
+
+      .killswitch-pill {
+        padding: 4px 10px;
+        font-size: 0.68rem;
+        min-height: 32px;
+      }
     }
   }
 

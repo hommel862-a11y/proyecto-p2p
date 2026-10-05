@@ -773,6 +773,12 @@ export class Copilot implements OnInit, OnDestroy {
   /** Real kill-switch state, mirrored from the main process that owns and gates it. */
   readonly killswitchActive = signal<boolean>(false);
 
+  /** Hold-to-confirm progress for mobile tactile safety (0-100%). */
+  readonly killswitchHoldProgress = signal<number>(0);
+  readonly killswitchHolding = signal<boolean>(false);
+  private killswitchHoldTimer: ReturnType<typeof setInterval> | null = null;
+  private isTouchTrigger = false;
+
   /** False until a real snapshot exists: the HUD degrades, it never fabricates. */
   readonly treasuryDataAvailable = computed<boolean>(() => this.treasurySnapshot() !== null);
 
@@ -976,6 +982,58 @@ export class Copilot implements OnInit, OnDestroy {
     setTimeout(() => this.actionSuccessNotice.set(null), 5000);
   }
 
+  startKillswitchHold(event?: TouchEvent): void {
+    if (this.killswitchActive()) return;
+    this.isTouchTrigger = true;
+    this.killswitchHolding.set(true);
+    this.killswitchHoldProgress.set(0);
+
+    const stepMs = 40;
+    const totalMs = 1200;
+    const increment = (stepMs / totalMs) * 100;
+
+    if (this.killswitchHoldTimer) {
+      clearInterval(this.killswitchHoldTimer);
+    }
+
+    this.killswitchHoldTimer = setInterval(() => {
+      const next = this.killswitchHoldProgress() + increment;
+      if (next >= 100) {
+        this.cancelKillswitchHold();
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            navigator.vibrate([50, 50, 150]);
+          } catch {
+            // Ignore unsupported environments
+          }
+        }
+        void this.triggerKillSwitch();
+      } else {
+        this.killswitchHoldProgress.set(Math.min(next, 99));
+      }
+    }, stepMs);
+  }
+
+  cancelKillswitchHold(): void {
+    if (this.killswitchHoldTimer) {
+      clearInterval(this.killswitchHoldTimer);
+      this.killswitchHoldTimer = null;
+    }
+    this.killswitchHolding.set(false);
+    this.killswitchHoldProgress.set(0);
+    setTimeout(() => {
+      this.isTouchTrigger = false;
+    }, 300);
+  }
+
+  onKillswitchClick(event: MouseEvent): void {
+    if (this.isTouchTrigger) {
+      event.preventDefault();
+      return;
+    }
+    void this.triggerKillSwitch();
+  }
+
   private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
@@ -1005,6 +1063,9 @@ export class Copilot implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.autoRefreshTimer) {
       clearInterval(this.autoRefreshTimer);
+    }
+    if (this.killswitchHoldTimer) {
+      clearInterval(this.killswitchHoldTimer);
     }
     this.voiceService.stopListening();
     this.voiceService.stopSpeaking();
