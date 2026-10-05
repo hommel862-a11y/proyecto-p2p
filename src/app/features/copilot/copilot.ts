@@ -13,6 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speech.service';
 import { AccountsService, type TreasurySnapshot } from '../../core/accounts.service';
+import { TriangulationIntelligenceService } from '../../core/triangulation-intelligence.service';
 import { StorageService } from '../../core/storage';
 import {
   type CopilotChatMessage,
@@ -252,6 +253,8 @@ export class Copilot implements OnInit, OnDestroy {
   readonly voiceService = inject(VoiceSpeechService);
   private readonly storage = inject(StorageService);
   private readonly router = inject(Router);
+  private readonly accountsService = inject(AccountsService);
+  private readonly triangulationService = inject(TriangulationIntelligenceService);
 
   sidebarCollapsed = signal<boolean>(
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
@@ -700,7 +703,7 @@ export class Copilot implements OnInit, OnDestroy {
 
   connectionStatus = signal<{ connected: boolean; model: string; message: string }>({
     connected: false,
-    model: 'gemini-3.6-flash',
+    model: 'gemini-2.0-flash',
     message: 'Verificando conexión...',
   });
 
@@ -1284,6 +1287,86 @@ export class Copilot implements OnInit, OnDestroy {
     }
   }
 
+  private buildLiveMarketContextForCopilot(): {
+    contextText: string;
+    hasLiveRates: boolean;
+  } {
+    const rates = this.triangulationService.liveRates();
+    const bcv = this.triangulationService.bcvStatus();
+    const treasury = this.accountsService.buildTreasurySnapshot();
+
+    const lines: string[] = [];
+    let hasLiveRates = false;
+
+    lines.push('--- CONTEXTO DE MERCADO EN VIVO Y TESORERÍA ---');
+
+    const bcvRate =
+      rates.bcvUsd.value !== null ? `${rates.bcvUsd.value} VES/USD` : 'N/D (sin sincronizar)';
+    const parRate =
+      rates.parallelAvg.value !== null
+        ? `${rates.parallelAvg.value} VES/USD`
+        : 'N/D (sin sincronizar)';
+    const gap = rates.rateGapPct.value !== null ? `${rates.rateGapPct.value}%` : 'N/D';
+    const buyP2p = rates.binanceVesBuy.value !== null ? `${rates.binanceVesBuy.value} VES` : 'N/D';
+    const sellP2p =
+      rates.binanceVesSell.value !== null ? `${rates.binanceVesSell.value} VES` : 'N/D';
+
+    if (
+      rates.bcvUsd.value !== null ||
+      rates.parallelAvg.value !== null ||
+      rates.binanceVesBuy.value !== null
+    ) {
+      hasLiveRates = true;
+    }
+
+    lines.push(`• Tasa Oficial BCV: ${bcvRate}`);
+    lines.push(`• Tasa Paralelo Promedio: ${parRate}`);
+    lines.push(`• Brecha Cambiaria BCV/Paralelo: ${gap}`);
+    lines.push(`• Binance P2P Venta (VES recibido por USDT): ${buyP2p}`);
+    lines.push(`• Binance P2P Compra (VES pagado por USDT): ${sellP2p}`);
+    lines.push(
+      `• Ventana Intervención BCV: ${bcv.inWindow ? 'ACTIVA (Alta volatilidad cambiaria)' : 'Inactiva'} (Régimen: ${bcv.intensity})`,
+    );
+
+    lines.push('--- ESTADO DE CUENTAS BANCARIAS Y LÍMITES SUDEBAN ---');
+    lines.push(`• Saldo Total en Bancos: ${treasury.totalBalanceVes.toLocaleString('es-VE')} VES`);
+    lines.push(`• Gastado Hoy: ${treasury.totalSpentTodayVes.toLocaleString('es-VE')} VES`);
+    const activeAccounts = treasury.accounts.filter((a) => a.status !== 'DISABLED');
+    if (activeAccounts.length > 0) {
+      const accSummary = activeAccounts
+        .map(
+          (a) =>
+            `${a.bankName}: límite restante ${a.remainingLimitVes.toLocaleString('es-VE')} VES (${a.todayTransactionCount}/${a.maxDailyTransactions} txs)`,
+        )
+        .join(' | ');
+      lines.push(`• Cuentas activas: ${accSummary}`);
+    } else {
+      lines.push('• Cuentas activas: Ninguna disponible');
+    }
+    if (treasury.rotationRecommendationId) {
+      const recAcc = this.accountsService.getAccountById(treasury.rotationRecommendationId);
+      lines.push(
+        `• Cuenta recomendada para rotar: ${recAcc?.bankName ?? treasury.rotationRecommendationId}`,
+      );
+    }
+
+    lines.push('--- REGLAS ESTRICTAS DE RESPUESTA ---');
+    lines.push(
+      '1. Usá EXCLUSIVAMENTE los datos de mercado listados arriba. Si un dato está como N/D, indicá con rigor técnico que no está disponible y NO inventes números.',
+    );
+    lines.push(
+      '2. Evaluá spreads netos aplicando la regla de oro institucional: >= 0.50% tras comisiones y slippage.',
+    );
+    lines.push(
+      '3. Protegé las cuentas bancarias: sugerí rotación si una cuenta está cerca de su límite diario o saturada.',
+    );
+
+    return {
+      contextText: lines.join('\n'),
+      hasLiveRates,
+    };
+  }
+
   async sendPrompt(text?: string): Promise<void> {
     const promptToSend = text || this.inputPrompt().trim();
     if (!promptToSend || this.isLoading()) return;
@@ -1339,10 +1422,14 @@ export class Copilot implements OnInit, OnDestroy {
                 parts: [{ text: m.content }],
               }));
 
+            const { contextText, hasLiveRates } = this.buildLiveMarketContextForCopilot();
+
             const systemInstruction = {
               parts: [
                 {
-                  text: 'Sos el Copiloto y Estratega de Arbitraje P2P institucional para el mercado de Venezuela. Respondés en español con tono analítico y profesional de banca privada y tesorería. Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias. Sé conciso, analítico y directo.',
+                  text:
+                    'Sos el Copiloto y Estratega de Arbitraje P2P institucional para el mercado de Venezuela. Respondés en español rioplatense (voseo: fijate, mirá, tené en cuenta) con tono analítico y profesional de banca privada y tesorería. Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias. Sé conciso, analítico y directo.\n\n' +
+                    contextText,
                 },
               ],
             };
@@ -1410,11 +1497,12 @@ export class Copilot implements OnInit, OnDestroy {
                   ...(answeredByModel ? { model: answeredByModel } : {}),
                   provenanceId: `web-${Date.now()}`,
                   timestamp: Date.now(),
-                  // This path has no market feed at all, so nothing here is live data.
-                  esSimulado: true,
-                  liveMarketFeedConnected: false,
-                  marketFeedReason: 'NO_BOOK',
-                  marketFeedNote: '[sin feed: este canal no consulta libro de mercado]',
+                  esSimulado: !hasLiveRates,
+                  liveMarketFeedConnected: hasLiveRates,
+                  marketFeedReason: hasLiveRates ? 'LIVE' : 'NO_BOOK',
+                  marketFeedNote: hasLiveRates
+                    ? '[feed en vivo: tasas de radar y snapshot de tesorería inyectados]'
+                    : '[sin feed: tasas de radar sin sincronizar]',
                   ...(answeredByGemini ? {} : { fallbackReason: 'GEMINI_UNAVAILABLE' }),
                   stepsCount: callsMade,
                   maxSteps: models.length,

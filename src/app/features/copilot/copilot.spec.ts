@@ -339,12 +339,87 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       component.openMobileSheet();
       expect(component.mobileSheetOpen()).toBe(true);
 
-      const sendPromptSpy = vi.spyOn(component, 'sendPrompt').mockImplementation(() => Promise.resolve());
+      const sendPromptSpy = vi
+        .spyOn(component, 'sendPrompt')
+        .mockImplementation(() => Promise.resolve());
 
       component.quickPrompt('explicar_triangulacion');
 
       expect(component.mobileSheetOpen()).toBe(false);
       expect(sendPromptSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Standalone web / mobile live market context injection', () => {
+    it('builds live market and treasury context without inventing rates when unavailable', () => {
+      const context = (component as any).buildLiveMarketContextForCopilot();
+      expect(context.contextText).toContain('• Tasa Oficial BCV: N/D');
+      expect(context.contextText).toContain('• Tasa Paralelo Promedio: N/D');
+      expect(context.contextText).toContain('--- ESTADO DE CUENTAS BANCARIAS Y LÍMITES SUDEBAN ---');
+      expect(context.hasLiveRates).toBe(false);
+    });
+
+    it('injects live rates and reports hasLiveRates: true when market rates are present', () => {
+      const triangulationService = (component as any).triangulationService;
+      triangulationService.liveRates.set({
+        ...triangulationService.liveRates(),
+        bcvUsd: { value: 85.15, status: 'live', source: 'bcv', expectedSource: 'Cotizave' },
+        parallelAvg: { value: 95.5, status: 'live', source: 'parallel', expectedSource: 'Cotizave' },
+        rateGapPct: { value: 12.15, status: 'live', source: 'gap', expectedSource: 'gap' },
+        binanceVesBuy: { value: 96.2, status: 'live', source: 'binance', expectedSource: 'binance' },
+        binanceVesSell: { value: 94.8, status: 'live', source: 'binance', expectedSource: 'binance' },
+      });
+
+      const context = (component as any).buildLiveMarketContextForCopilot();
+      expect(context.contextText).toContain('• Tasa Oficial BCV: 85.15 VES/USD');
+      expect(context.contextText).toContain('• Tasa Paralelo Promedio: 95.5 VES/USD');
+      expect(context.contextText).toContain('• Brecha Cambiaria BCV/Paralelo: 12.15%');
+      expect(context.contextText).toContain('• Binance P2P Venta (VES recibido por USDT): 96.2 VES');
+      expect(context.contextText).toContain('• Binance P2P Compra (VES pagado por USDT): 94.8 VES');
+      expect(context.hasLiveRates).toBe(true);
+    });
+
+    it('sends prompt with injected market context and sets provenance to LIVE when rates are active', async () => {
+      const triangulationService = (component as any).triangulationService;
+      triangulationService.liveRates.set({
+        ...triangulationService.liveRates(),
+        bcvUsd: { value: 85.15, status: 'live', source: 'bcv', expectedSource: 'Cotizave' },
+      });
+
+      component.apiKeyInput.set('TEST_GEMINI_KEY');
+
+      let capturedBody: any = null;
+      const fakeFetch = vi.fn().mockImplementation((_url: string, opts: any) => {
+        capturedBody = JSON.parse(opts.body);
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: 'Análisis institucional completado con tasas reales.' }],
+                  },
+                },
+              ],
+            }),
+        });
+      });
+      vi.stubGlobal('fetch', fakeFetch);
+
+      await component.sendPrompt('¿Cómo está el spread hoy?');
+
+      expect(fakeFetch).toHaveBeenCalled();
+      expect(capturedBody.system_instruction.parts[0].text).toContain('85.15 VES/USD');
+
+      const lastMsg = component.messages()[component.messages().length - 1];
+      expect(lastMsg.role).toBe('assistant');
+      expect(lastMsg.content).toBe('Análisis institucional completado con tasas reales.');
+      expect(lastMsg.provenance?.liveMarketFeedConnected).toBe(true);
+      expect(lastMsg.provenance?.esSimulado).toBe(false);
+      expect(lastMsg.provenance?.marketFeedReason).toBe('LIVE');
+
+      vi.unstubAllGlobals();
     });
   });
 });
