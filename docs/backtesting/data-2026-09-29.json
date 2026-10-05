@@ -1,0 +1,29 @@
+{
+  "profiles": [
+    {
+      "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p\\Local Storage\\leveldb",
+      "exists": false,
+      "files": 0,
+      "errors": 0,
+      "decodeFailures": 0,
+      "keysFound": 0
+    },
+    {
+      "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb",
+      "exists": true,
+      "files": 5,
+      "errors": 0,
+      "decodeFailures": 1,
+      "keysFound": 0
+    }
+  ],
+  "marketHistory": [],
+  "operations": [],
+  "stats": {
+    "snapshotTotal": 0,
+    "operationTotal": 0,
+    "sessions": [],
+    "byOrigin": {},
+    "byDay": {}
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "metadata": {
+    "generatedAt": "2026-09-29T19:16:57.789Z",
+    "script": "scripts/backtest.cjs",
+    "enginesMirrored": [
+      "projects/core/src/lib/spread.ts -> computeSpread",
+      "projects/core/src/lib/spread-quality.ts -> computeArbitrageCycle (MAKER/MAKER 0.25%)",
+      "projects/core/src/lib/triangular-arbitrage.ts -> calculateTriangularArbitrage"
+    ],
+    "commissionUsed": {
+      "makerRate": 0.0025,
+      "source": "projects/core/src/lib/spread-quality.ts:180"
+    },
+    "dataSourcesReal": [
+      "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb"
+    ]
+  },
+  "data": {
+    "snapshots": 0,
+    "operations": 0,
+    "sessions": 0,
+    "sessionsDetail": [],
+    "byDay": {},
+    "decodeFailuresLdb": 1,
+    "files": [
+      {
+        "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p\\Local Storage\\leveldb",
+        "exists": false,
+        "files": 0,
+        "errors": 0
+      },
+      {
+        "dir": "C:\\Users\\DELL 3310\\AppData\\Roaming\\p2p-decisor-desktop\\Local Storage\\leveldb",
+        "exists": true,
+        "files": 5,
+        "errors": 0
+      }
+    ]
+  },
+  "spreadEngine": {
+    "pointsEvaluated": 0,
+    "aciertoTeoricoPct": null,
+    "aciertoNetoPct": null,
+    "deviation": {
+      "spreadVesMean": 0,
+      "spreadVesAbsMean": 0,
+      "spreadPctMean": 0,
+      "spreadPctAbsMean": 0
+    },
+    "netSpreadVesPerUnit": {
+      "mean": 0,
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "profitableAfterFeesCount": 0,
+    "coverageNote": "Contraste realizado vs teórico (round trips USDT compra->venta): 0 pares en el ledger. No hay operaciones de round trip USDT reales para contrastar acierto realizado. El único acierto contrastable es el ciclo triangular (ver triangularEngine)."
+  },
+  "triangularEngine": {
+    "cyclesFound": 0,
+    "cycles": [],
+    "asserted": {
+      "predictedProfitUsdt": 1.3933,
+      "predictedRoiPct": 0.14
+    }
+  },
+  "johnsonDepthEngine": {
+    "engine": "johnson-depth.computeVolumeWeightedPrice",
+    "coverage": 0,
+    "note": "Cobertura insuficiente: la app no persiste el order book Binance (solo best buy/best sell por par/bank en p2p.market-history). Motor no ejecutable con datos históricos reales."
+  },
+  "coverage": {
+    "snapshotsUsed": 0,
+    "sessionsValidated": 0,
+    "realVsSynthetic": "Datos 100% reales extraídos del localStorage de 1 perfiles (%APPDATA%\\p2p\\Local Storage\\leveldb, %APPDATA%\\p2p-decisor-desktop\\Local Storage\\leveldb): snapshots y ledger; sin datos sintéticos inyectados.",
+    "limit": "Cobertura limitada a 2026-09-10..13 (0 snapshots, 0 ciclo(s), 0 ops). Ficheros .ldb antiguos (7-9 sep) sin formato decodificable en esta corrida; descartados honestamente y contados."
+  },
+  "run": {
+    "durationMs": 222,
+    "command": "node scripts/backtest.cjs --out \"docs/backtesting\""
+  }
+}
