@@ -608,6 +608,88 @@ export const TOUR_CARDS: TourCard[] = [
       from { transform: translateY(16px) scale(0.98); opacity: 0; }
       to { transform: translateY(0) scale(1); opacity: 1; }
     }
+
+    @media (max-width: 768px) {
+      .tour-backdrop {
+        padding: 0.25rem;
+      }
+
+      .tour-dialog {
+        border-radius: 14px;
+        max-height: 98vh;
+      }
+
+      .tour-header {
+        padding: 0.75rem 1rem 0.5rem;
+        h2 { font-size: 1.1rem; }
+      }
+
+      .tour-tabs {
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 0.5rem 0.75rem;
+        gap: 6px;
+        scrollbar-width: none;
+        &::-webkit-scrollbar { display: none; }
+
+        .tab-btn {
+          flex-shrink: 0;
+          padding: 6px 10px;
+          font-size: 0.75rem;
+        }
+      }
+
+      .tour-body {
+        padding: 0.75rem 1rem;
+
+        .card-hero-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+
+        .card-details {
+          .card-title {
+            font-size: 1.15rem;
+          }
+
+          .metrics-container {
+            grid-template-columns: 1fr;
+            gap: 6px;
+          }
+
+          .card-actions {
+            flex-direction: column;
+            align-items: stretch;
+
+            .btn-live-action {
+              width: 100%;
+              justify-content: center;
+              min-height: 44px;
+              text-align: center;
+            }
+
+            .nav-controls {
+              justify-content: space-between;
+              width: 100%;
+            }
+          }
+        }
+      }
+
+      .tour-footer {
+        padding: 0.5rem 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+
+        .btn-close-footer {
+          width: 100%;
+          text-align: center;
+          min-height: 38px;
+        }
+      }
+    }
   `],
 })
 export class ProductTourModalComponent {

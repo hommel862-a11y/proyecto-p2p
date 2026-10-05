@@ -52,7 +52,7 @@ export class App {
     }
   });
   /** Real app version when running under Electron; falls back to the web build. */
-  readonly version = signal<string>('1.0.0');
+  readonly version = signal<string>('1.4.1');
   readonly hotkeys = inject(HotkeysService);
   readonly isInputFocused = signal<boolean>(false);
   private readonly destroyRef = inject(DestroyRef);
@@ -99,7 +99,7 @@ export class App {
       return;
     }
     try {
-      const webVersion = localStorage.getItem('p2p.version') ?? '1.0.0';
+      const webVersion = localStorage.getItem('p2p.version') ?? '1.4.1';
       this.version.set(webVersion);
     } catch {
       /* sin almacenamiento */

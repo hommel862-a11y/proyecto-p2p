@@ -2072,4 +2072,20 @@ button:active, .btn:active {
   .btn-ghost {
     min-height: 40px;
   }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: inline-flex !important;
+  }
+}
+
+.desktop-only {
+  display: inline-flex;
+}
+
+.mobile-only {
+  display: none !important;
 }

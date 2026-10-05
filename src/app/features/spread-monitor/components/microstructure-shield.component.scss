@@ -111,3 +111,25 @@
   }
 }
 
+@media (max-width: 768px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .micro-card {
+    padding: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .micro-table {
+    font-size: 0.76rem;
+
+    th, td {
+      padding: 6px 8px;
+      white-space: nowrap;
+    }
+  }
+}
+
