@@ -1,4 +1,5 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { NativeHttpService } from './native-http.service';
 import {
   type SpotBookTicker,
   type DataSourceAvailability,
@@ -13,6 +14,8 @@ interface ElectronSpotBridge {
 
 @Injectable({ providedIn: 'root' })
 export class SpotMarketService {
+  private readonly nativeHttp = inject(NativeHttpService, { optional: true });
+
   readonly bookTickers = signal<Map<string, SpotBookTicker>>(new Map());
   readonly availability = signal<DataSourceAvailability>(
     createUnavailableDataSource('Binance Spot', 'Feed spot no consultado todavía'),
@@ -25,7 +28,8 @@ export class SpotMarketService {
    * Fetches top-of-book for a Binance spot trading pair.
    * Priority:
    * 1. Desktop Electron IPC bridge (`electron.fetchBinanceSpotTicker`) to bypass browser CORS.
-   * 2. Direct public REST API fetch to `api.binance.com`.
+   * 2. Native mobile HTTP (`CapacitorHttp`) on Android/iOS to bypass WebView CORS without proxy.
+   * 3. Direct public REST API fetch to `api.binance.com`.
    *
    * Fail-closed: returns `null` and marks availability as UNAVAILABLE if network fails or data is corrupted.
    * Never invents parity or fallback prices (Sin dato antes que dato inventado).
@@ -45,6 +49,9 @@ export class SpotMarketService {
 
       if (bridge?.fetchBinanceSpotTicker) {
         rawData = await bridge.fetchBinanceSpotTicker(cleanSymbol);
+      } else if (this.nativeHttp?.isNative) {
+        const url = `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(cleanSymbol)}`;
+        rawData = await this.nativeHttp.get(url, { timeoutMs: 8000 });
       } else {
         const url = `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(cleanSymbol)}`;
         const res = await fetch(url, {

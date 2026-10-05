@@ -1,15 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TestBed } from '@angular/core/testing';
 import { IndexedDbStorageService } from './indexed-db-storage.service';
 
 describe('IndexedDbStorageService', () => {
   let service: IndexedDbStorageService;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [IndexedDbStorageService],
-    });
-    service = TestBed.inject(IndexedDbStorageService);
+    service = new IndexedDbStorageService();
   });
 
   it('stores and retrieves values with synchronous O(1) reads', () => {

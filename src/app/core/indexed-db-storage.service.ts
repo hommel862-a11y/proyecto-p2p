@@ -109,7 +109,17 @@ export class IndexedDbStorageService {
         };
 
         req.onsuccess = (e) => {
-          resolve((e.target as IDBOpenDBRequest).result);
+          const db = (e.target as IDBOpenDBRequest).result;
+          db.onversionchange = () => {
+            db.close();
+            this.dbPromise = null;
+          };
+          resolve(db);
+        };
+
+        req.onblocked = () => {
+          console.warn('[IndexedDbStorage] IndexedDB open blocked by another tab or connection.');
+          resolve(null);
         };
 
         req.onerror = () => {

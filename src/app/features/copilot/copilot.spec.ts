@@ -191,7 +191,13 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
     await TestBed.configureTestingModule({
       imports: [Copilot],
       providers: [
-        { provide: AccountsService, useValue: { buildTreasurySnapshot: () => snapshot } },
+        {
+          provide: AccountsService,
+          useValue: {
+            buildTreasurySnapshot: () => snapshot,
+            getAccountById: (id: string) => snapshot.accounts.find((a) => a.id === id),
+          },
+        },
       ],
     }).compileComponents();
 
@@ -380,6 +386,7 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
     });
 
     it('sends prompt with injected market context and sets provenance to LIVE when rates are active', async () => {
+      delete (window as unknown as Record<string, unknown>)['electron'];
       const triangulationService = (component as any).triangulationService;
       triangulationService.liveRates.set({
         ...triangulationService.liveRates(),

@@ -2,6 +2,7 @@ import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { CredentialStoreService } from './credential-store.service';
 import { StorageService } from './storage';
+import { NativeHttpService } from './native-http.service';
 import {
   normalizeCotizaveRates,
   buildCotizaveHeaders,
@@ -131,6 +132,7 @@ export class CotizaveService implements OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly credentials = inject(CredentialStoreService);
   private readonly storage = inject(StorageService);
+  private readonly nativeHttp = inject(NativeHttpService, { optional: true });
 
   readonly apiKey = signal<string>('');
   readonly ratesByMarket = signal<Record<string, CotizaveRate>>({});
@@ -566,6 +568,15 @@ export class CotizaveService implements OnDestroy {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = `https://api.cotizave.com/v1/fx/${endpoint}`;
+
+    // 1. En móviles nativos (Capacitor Android/iOS), consultar directamente por socket nativo sin CORS
+    if (this.nativeHttp?.isNative) {
+      return await this.nativeHttp.get(url, {
+        headers: buildCotizaveHeaders(key),
+        signal,
+      });
+    }
+
     let resp: Response;
     try {
       resp = await fetch(url, {

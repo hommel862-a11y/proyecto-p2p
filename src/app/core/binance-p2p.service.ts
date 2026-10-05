@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
+import { NativeHttpService } from './native-http.service';
 import {
   computeMarketDepth,
   BINANCE_PAY_METHODS,
@@ -7,36 +8,18 @@ import {
   CircuitBreaker,
 } from '@p2p/core';
 
-/**
- * De dónde salió un libro de mercado.
- *
- * `adv/search` NO trae marca de tiempo del servidor, así que la edad real del
- * libro no existe como dato: la única marca que hay es la hora en que el
- * proceso parseó la respuesta, y esa da ~2 ms siempre. Calcular "antigüedad"
- * con eso produce un número que no mide nada.
- *
- * Lo que sí se sabe sin inventar nada es si el libro se acaba de observar o se
- * está re-sirviendo desde la caché porque el circuito de Binance está en
- * protección. Eso es lo que declara esta unión, y es la única base honesta
- * para decir "esta decisión se tomó sobre un libro viejo".
- */
 export type BinanceDepthSource = 'LIVE' | 'CACHE';
 
 export interface BinanceDepthFetch {
   readonly depth: BinanceP2pMarketDepth;
   readonly source: BinanceDepthSource;
-  /**
-   * Epoch ms de la ÚLTIMA observación real del libro: esta llamada si el
-   * origen es `LIVE`, o la llamada original que lo produjo si vino de `CACHE`.
-   * Nunca se mueve por re-servir la caché: avanzar el reloj al guardar una
-   * decisión sería fabricar una frescura que nadie midió.
-   */
   readonly fetchedAt: number;
 }
 
 @Injectable({ providedIn: 'root' })
 export class BinanceP2pService implements OnDestroy {
   private readonly toast = inject(ToastService);
+  private readonly nativeHttp = inject(NativeHttpService, { optional: true });
 
   readonly loading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
@@ -277,6 +260,11 @@ export class BinanceP2pService implements OnDestroy {
     };
 
     const targetUrl = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
+
+    // 1. Direct native execution on mobile (Capacitor Android/iOS) without CORS, bridges or proxies
+    if (this.nativeHttp?.isNative) {
+      return await this.nativeHttp.post(targetUrl, payload, { signal });
+    }
 
     try {
       const resp = await fetch(targetUrl, {

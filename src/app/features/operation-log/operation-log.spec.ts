@@ -235,15 +235,17 @@ describe('OperationLog', () => {
       const c = f.componentInstance;
       c.operations.set([
         op({ id: 'u1', type: 'buy', pair: 'USDT', vesAmount: 20000, usdtAmount: 25, price: 800 }),
+        op({ id: 'u2', type: 'sell', pair: 'USDT', vesAmount: 20500, usdtAmount: 25, price: 820 }),
         op({ id: 'e1', type: 'buy', pair: 'EUR', vesAmount: 10000, usdtAmount: 10, price: 1000 }),
+        op({ id: 'e2', type: 'sell', pair: 'EUR', vesAmount: 10200, usdtAmount: 10, price: 1020 }),
       ]);
       c.setPairFilter('EUR');
-      expect(c.summary().operations).toBe(1);
-      expect(c.summary().pnlVes).toBe(-10000);
-      expect(c.summary().exposure).toBe(10);
-      c.setPairFilter('all');
       expect(c.summary().operations).toBe(2);
-      expect(c.summary().pnlVes).toBe(-30000);
+      expect(c.summary().pnlVes).toBe(200);
+      expect(c.summary().exposure).toBe(0);
+      c.setPairFilter('all');
+      expect(c.summary().operations).toBe(4);
+      expect(c.summary().pnlVes).toBe(700);
     });
 
     it('filter control stays visible when the filtered list is empty so the user can switch back', () => {
