@@ -141,6 +141,17 @@
       >
     </div>
 
+    <!-- Binance Spot USDC/USDT Rate -->
+    <div class="telemetry-chip chip-price">
+      <span class="chip-title">Spot USDC/USDT:</span>
+      <span
+        class="chip-val font-mono"
+        [class.chip-absent]="intelligence.liveRates().spotUsdcUsdt.value === null"
+        [attr.title]="absentHint(intelligence.liveRates().spotUsdcUsdt)"
+        >{{ formatRate(intelligence.liveRates().spotUsdcUsdt, 4) }}</span
+      >
+    </div>
+
     <!-- BCV Status -->
     <div
       class="telemetry-chip"

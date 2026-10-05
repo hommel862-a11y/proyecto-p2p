@@ -9,6 +9,7 @@ import { BinanceP2pService } from './binance-p2p.service';
 import { CotizaveService, type CotizaveRatesProvenance } from './cotizave.service';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
+import { SpotMarketService } from './spot-market.service';
 
 export interface BcvInterventionRisk {
   inWindow: boolean;
@@ -74,6 +75,8 @@ const GAP_SOURCE = 'derivado de bcvUsd y parallelAvg';
 const COP_PER_USDT_SOURCE = 'sin fuente: no hay mercado COP/USDT en vivo conectado';
 const COP_PER_VES_SOURCE = 'derivado de copPerUsdt y binanceVesSell';
 const ZINLI_SOURCE = 'sin fuente: no hay mesa digital en vivo conectada';
+const BINANCE_SPOT_USDC_SOURCE = 'Binance Spot bookTicker (USDCUSDT)';
+const BINANCE_SPOT_EUR_SOURCE = 'Binance Spot bookTicker (EURUSDT)';
 
 /**
  * Envuelve un número que viene de una fuente real. Un valor no finito o no
@@ -124,6 +127,8 @@ export interface LiveMarketRatesSnapshot {
   copPerUsdt: LiveRate; // Tasa Binance P2P COP/USDT
   copPerVes: LiveRate; // Cruce derivado COP por VES
   zinliUsdPerUsdt: LiveRate; // Venta digital Zinli/Wally
+  spotUsdcUsdt: LiveRate; // Binance Spot USDC/USDT
+  spotEurUsdt: LiveRate; // Binance Spot EUR/USDT
   timestamp: string;
   /**
    * De qué reloj es `timestamp`. El snapshot es una MEZCLA: las piernas de
@@ -228,6 +233,7 @@ export class TriangulationIntelligenceService {
   private readonly mcp = inject(McpService);
   private readonly toast = inject(ToastService);
   private readonly clock = inject(VenezuelaClock);
+  private readonly spotMarket = inject(SpotMarketService);
 
   readonly isSyncingMarket = signal<boolean>(false);
   readonly lastSyncTimestamp = signal<string | null>(null);
@@ -253,6 +259,8 @@ export class TriangulationIntelligenceService {
     copPerUsdt: unavailableRate(COP_PER_USDT_SOURCE),
     copPerVes: unavailableRate(COP_PER_VES_SOURCE, 'SIN_SINCRONIZAR'),
     zinliUsdPerUsdt: unavailableRate(ZINLI_SOURCE),
+    spotUsdcUsdt: unavailableRate(BINANCE_SPOT_USDC_SOURCE, 'SIN_SINCRONIZAR'),
+    spotEurUsdt: unavailableRate(BINANCE_SPOT_EUR_SOURCE, 'SIN_SINCRONIZAR'),
     timestamp: 'Sin sincronizar',
     timestampSource: 'panel',
     source: 'FALLBACK',
@@ -549,6 +557,44 @@ export class TriangulationIntelligenceService {
             )
           : unavailableRate(COP_PER_VES_SOURCE, 'FALTA_COP_USDT_O_BINANCE_P2P');
 
+      // 7. Feed Binance Spot en vivo (USDC/USDT y EUR/USDT) vía SpotMarketService
+      let spotUsdcUsdt = unavailableRate(
+        BINANCE_SPOT_USDC_SOURCE,
+        this.spotMarket.availability().reason || RATE_ABSENT,
+      );
+      let spotEurUsdt = unavailableRate(
+        BINANCE_SPOT_EUR_SOURCE,
+        this.spotMarket.availability().reason || RATE_ABSENT,
+      );
+
+      try {
+        const tickerUsdc = await this.spotMarket.fetchBookTicker('USDCUSDT');
+        if (tickerUsdc && tickerUsdc.midPrice > 0) {
+          spotUsdcUsdt = liveRate(
+            tickerUsdc.midPrice,
+            'Binance Spot bookTicker (USDCUSDT)',
+            BINANCE_SPOT_USDC_SOURCE,
+          );
+          if (source === 'FALLBACK') source = 'MCP_LIVE';
+        }
+      } catch {
+        // fail-closed: conserva unavailableRate
+      }
+
+      try {
+        const tickerEur = await this.spotMarket.fetchBookTicker('EURUSDT');
+        if (tickerEur && tickerEur.midPrice > 0) {
+          spotEurUsdt = liveRate(
+            tickerEur.midPrice,
+            'Binance Spot bookTicker (EURUSDT)',
+            BINANCE_SPOT_EUR_SOURCE,
+          );
+          if (source === 'FALLBACK') source = 'MCP_LIVE';
+        }
+      } catch {
+        // fail-closed: conserva unavailableRate
+      }
+
       // El reloj del snapshot es el del DATO, no el del tick. Estampar `new Date()`
       // acá convertía cada restore del disco en un número rec sticker de "recién
       // cotizado", y es justamente el consumidor el que lo lee como timestamp de
@@ -567,6 +613,8 @@ export class TriangulationIntelligenceService {
         copPerUsdt,
         copPerVes,
         zinliUsdPerUsdt,
+        spotUsdcUsdt,
+        spotEurUsdt,
         timestamp: producedAt.toLocaleTimeString(),
         // El reloj se declara siempre, y no como opcional: cuando el snapshot
         // mezcla fuentes, omitir la calificación es exactamente el defecto.
@@ -638,6 +686,15 @@ export class TriangulationIntelligenceService {
       apply(l2, rates.parallelAvg);
       // Tramo 3: VES -> USDT (Recompra de USDT con VES en P2P)
       apply(l3, rates.binanceVesSell);
+    } else if (
+      presetId === 'route-usdt-usdc-ves' ||
+      (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USDC')
+    ) {
+      // Tramo 1: USDT -> USDC (Binance Spot)
+      apply(l1, rates.spotUsdcUsdt);
+      // Tramo 2: USDC -> VES (P2P USDC/VES)
+      // Tramo 3: VES -> USDT (Recompra de USDT con VES en Binance P2P)
+      apply(l3, rates.binanceVesSell);
     } else {
       // Regla universal según las divisas de cada tramo
       for (const leg of [l1, l2, l3]) {
@@ -651,6 +708,16 @@ export class TriangulationIntelligenceService {
           apply(leg, rates.copPerUsdt);
         } else if (leg.fromCurrency === 'COP' && leg.toCurrency === 'VES') {
           apply(leg, rates.copPerVes);
+        } else if (
+          (leg.fromCurrency === 'USDT' && leg.toCurrency === 'USDC') ||
+          (leg.fromCurrency === 'USDC' && leg.toCurrency === 'USDT')
+        ) {
+          apply(leg, rates.spotUsdcUsdt);
+        } else if (
+          (leg.fromCurrency === 'EUR' && leg.toCurrency === 'USDT') ||
+          (leg.fromCurrency === 'USDT' && leg.toCurrency === 'EUR')
+        ) {
+          apply(leg, rates.spotEurUsdt);
         }
       }
     }

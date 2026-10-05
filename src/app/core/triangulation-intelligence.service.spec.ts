@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
-import type { ExchangeLeg } from '@p2p/core';
+import { createUnavailableDataSource, type ExchangeLeg, type SpotBookTicker } from '@p2p/core';
 import {
   TriangulationIntelligenceService,
   formatLiveRate,
@@ -10,6 +10,7 @@ import { BinanceP2pService } from './binance-p2p.service';
 import { CotizaveService } from './cotizave.service';
 import { McpService } from './mcp.service';
 import { ToastService } from './toast.service';
+import { SpotMarketService } from './spot-market.service';
 
 /**
  * Estos tests cubren el reloj del snapshot de mercado, no la matemática del
@@ -66,6 +67,13 @@ describe('TriangulationIntelligenceService — procedencia y reloj del snapshot'
         {
           provide: ToastService,
           useValue: { show: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        {
+          provide: SpotMarketService,
+          useValue: {
+            fetchBookTicker: vi.fn(async () => null),
+            availability: () => createUnavailableDataSource('Binance Spot', 'Sin datos en test'),
+          },
         },
       ],
     });
@@ -208,6 +216,10 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
     return { success: false };
   });
 
+  const spotFetchBookTicker = vi.fn<(_symbol?: string) => Promise<SpotBookTicker | null>>(
+    async () => null,
+  );
+
   beforeEach(() => {
     cotizaveRates.set({});
     cotizaveLastFetched.set(new Date('2026-09-29T08:30:00'));
@@ -215,6 +227,8 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
     marketDepth.set(null);
     mcpResult.set(null);
     testTool.mockClear();
+    spotFetchBookTicker.mockReset();
+    spotFetchBookTicker.mockImplementation(async () => null);
 
     TestBed.configureTestingModule({
       providers: [
@@ -236,6 +250,13 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
         {
           provide: ToastService,
           useValue: { show: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        },
+        {
+          provide: SpotMarketService,
+          useValue: {
+            fetchBookTicker: spotFetchBookTicker,
+            availability: () => createUnavailableDataSource('Binance Spot', 'Sin datos en test'),
+          },
         },
       ],
     });
@@ -360,6 +381,8 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
       'copPerUsdt',
       'copPerVes',
       'zinliUsdPerUsdt',
+      'spotUsdcUsdt',
+      'spotEurUsdt',
     ] as const) {
       expect(inicial[campo].value, `campo ${campo}`).toBeNull();
       expect(inicial[campo].status, `campo ${campo}`).toBe('unavailable');
@@ -387,6 +410,8 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
       'copPerUsdt',
       'copPerVes',
       'zinliUsdPerUsdt',
+      'spotUsdcUsdt',
+      'spotEurUsdt',
     ] as const) {
       expect(snapshot[campo].value, `campo ${campo}`).not.toBe(0);
       expect(snapshot[campo].value, `campo ${campo}`).toBeNull();
@@ -451,5 +476,36 @@ describe('TriangulationIntelligenceService — sin dato antes que dato inventado
     );
 
     expect(l1.price).toBe(82.6);
+  });
+
+  it('aplica cotizaciones spot reales en tramos de arbitraje sintético cuando están disponibles', async () => {
+    spotFetchBookTicker.mockImplementation(async (symbol?: string) => {
+      if (symbol === 'USDCUSDT') {
+        return {
+          symbol: 'USDCUSDT',
+          bidPrice: 0.9995,
+          bidQty: 10000,
+          askPrice: 0.9997,
+          askQty: 10000,
+          midPrice: 0.9996,
+          spread: 0.0002,
+          spreadPct: 0.02,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      return null;
+    });
+
+    const snapshot = await svc.fetchLiveMarketRates();
+    expect(snapshot.spotUsdcUsdt.value).toBe(0.9996);
+    expect(snapshot.spotUsdcUsdt.status).toBe('live');
+
+    const [l1] = svc.applyLiveRatesToLegs(
+      [leg('USDT', 'USDC', 1.0), leg('USDC', 'VES', 83.5), leg('VES', 'USDT', 82.5)],
+      snapshot,
+      'route-usdt-usdc-ves',
+    );
+
+    expect(l1.price).toBe(0.9996);
   });
 });
