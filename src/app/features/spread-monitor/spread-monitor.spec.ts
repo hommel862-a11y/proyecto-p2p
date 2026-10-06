@@ -594,4 +594,79 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
     expect(rows.find((r) => r.market === 'bitget')?.mid).toBe(959.2);
     expect(rowText('bitget')).toContain('959,20');
   });
+
+  describe('Radar de Alta Demanda (Apple Pro)', () => {
+    it('renderiza la estructura Apple Pro y controles ejecutivos en modo high_demand', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.activeMode.set('high_demand');
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.apple-radar-panel')).toBeTruthy();
+      expect(el.querySelector('.apple-pro-badge')?.textContent).toContain('Apple Pro Edition');
+      expect(el.querySelector('.apple-radar-select')).toBeTruthy();
+      expect(el.querySelector('.apple-radar-refresh-btn')).toBeTruthy();
+    });
+
+    it('renderiza el estado vacio Apple Pro cuando no hay tramos disponibles', () => {
+      mount({ depth: null, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.activeMode.set('high_demand');
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('.apple-radar-empty')).toBeTruthy();
+      expect(el.querySelector('.apple-btn-sync')).toBeTruthy();
+    });
+
+    it('renderiza tarjetas Apple Pro y destaca la Mayor Oportunidad cuando hay ofertas institucionales', () => {
+      const depthWithInstitutionalOffers: BinanceP2pMarketDepth = {
+        asset: 'USDT',
+        fiat: 'VES',
+        bestBuyPrice: 800,
+        bestSellPrice: 830,
+        spreadVes: 30,
+        spreadPct: 3.75,
+        buyOffers: [
+          {
+            advNo: '101',
+            price: 800,
+            merchantName: 'BanqueroPro',
+            finishRatePct: 98,
+            orderCount: 150,
+            minVes: 1000,
+            maxVes: 10000000,
+            payMethods: ['Banesco'],
+          },
+        ],
+        sellOffers: [
+          {
+            advNo: '202',
+            price: 830,
+            merchantName: 'LiquidezTop',
+            finishRatePct: 99,
+            orderCount: 200,
+            minVes: 1000,
+            maxVes: 10000000,
+            payMethods: ['Banesco'],
+          },
+        ],
+        updatedAt: '2026-10-05T20:00:00.000Z',
+      };
+
+      mount({ depth: depthWithInstitutionalOffers, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.activeMode.set('high_demand');
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const cards = el.querySelectorAll('.apple-tier-card');
+      expect(cards.length).toBeGreaterThan(0);
+      expect(el.querySelector('.tier-best-opportunity')).toBeTruthy();
+      expect(el.querySelector('.apple-opportunity-tag')).toBeTruthy();
+      expect(el.querySelector('.apple-net-box')).toBeTruthy();
+      expect(el.querySelector('.apple-btn-apply')).toBeTruthy();
+    });
+  });
 });
