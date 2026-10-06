@@ -387,7 +387,15 @@ export interface AlphaWatcherStatus {
   lastOpportunity: { time: number; netSpreadPct: number; route: string } | null;
 }
 
-export type ExecutionProvenance = 'gemini' | 'deterministic' | 'heuristic' | 'simulated';
+export type ExecutionProvenance =
+  | 'gemini'
+  | 'openai'
+  | 'anthropic'
+  | 'deepseek'
+  | 'qwen'
+  | 'deterministic'
+  | 'heuristic'
+  | 'simulated';
 
 export type MarketFeedReason = 'LIVE' | 'NO_BOOK' | 'STALE_BOOK' | 'INCOMPLETE_BOOK';
 

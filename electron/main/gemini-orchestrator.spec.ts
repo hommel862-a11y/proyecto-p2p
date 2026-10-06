@@ -685,6 +685,36 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       expect(res.skillsExecuted).toHaveLength(5);
       expect(res.reply).toContain('Síntesis ejecutiva forzada');
     });
+
+    it('dispatches through UniversalAiGateway when activeProvider is openai or deepseek', async () => {
+      const openAiKey = 'sk-proj-TestOpenAiKey123';
+      const multiOrchestrator = new GeminiOrchestrator(dbService);
+      multiOrchestrator.setApiKey(openAiKey, 'openai');
+      multiOrchestrator.setActiveProvider('openai', 'gpt-4o');
+
+      // Mock OpenAI-compatible chat completions response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: '### 🎯 Diagnóstico Situacional\nMercado en calma. Spread neto 1.15% viable.',
+              },
+            },
+          ],
+        }),
+      });
+
+      const res = await multiOrchestrator.sendMessage({
+        prompt: '¿Cómo ves el spread hoy?',
+      });
+
+      expect(mockFetch).toHaveBeenCalled();
+      expect(res.reply).toContain('Diagnóstico Situacional');
+      expect(res.provenance?.source).toBe('openai');
+      expect(res.provenance?.model).toBe('gpt-4o');
+    }, 20000);
   });
 
   describe('Gate 0: provenance honesta y presupuesto de llamadas pagas', () => {

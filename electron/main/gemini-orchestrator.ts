@@ -234,7 +234,10 @@ export class GeminiOrchestrator {
     };
   }
 
+  private inMemoryApiKeys: Partial<Record<AiProviderType, string>> = {};
+
   setApiKey(key: string, provider: AiProviderType = 'gemini'): void {
+    this.inMemoryApiKeys[provider] = key;
     if (provider === 'gemini') {
       this.apiKey = key;
     }
@@ -266,6 +269,9 @@ export class GeminiOrchestrator {
 
   getEffectiveApiKey(provider?: AiProviderType): string | undefined {
     const target = provider || this.getActiveProvider().provider;
+    if (this.inMemoryApiKeys[target]) {
+      return this.inMemoryApiKeys[target];
+    }
     if (target === 'gemini') {
       if (this.apiKey) return this.apiKey;
       if (process.env['GEMINI_API_KEY']) return process.env['GEMINI_API_KEY'];
@@ -402,14 +408,24 @@ export class GeminiOrchestrator {
         )
         .join('\n');
 
-    // 2. Determine execution path (Gemini API with tools or Deterministic Heuristic Engine)
-    const effectiveKey = this.getEffectiveApiKey();
+    // 2. Determine execution path (Universal AI Gateway with tools or Deterministic Heuristic Engine)
+    const { provider, model } = this.getActiveProvider();
+    const effectiveKey = this.getEffectiveApiKey(provider);
     if (effectiveKey) {
       if (Date.now() < this.quotaCooldownUntil) {
         return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
       }
       try {
-        return await this.callGeminiApi(prompt, learningsContext, effectiveKey);
+        if (provider === 'gemini') {
+          return await this.callGeminiApi(prompt, learningsContext, effectiveKey);
+        }
+        return await this.callUniversalAiGateway(
+          prompt,
+          learningsContext,
+          effectiveKey,
+          provider,
+          model,
+        );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         // Budget stop is our own ceiling, not a provider quota problem. Report it as such.
@@ -419,10 +435,10 @@ export class GeminiOrchestrator {
         }
         // Fallback gracefully to core deterministic engine if network or quota issue arises
         if (this.isQuotaError(err)) {
-          console.warn('[GeminiOrchestrator] Quota 429 en Gemini; continuando con motor local.');
+          console.warn(`[GeminiOrchestrator] Quota 429 en ${provider}; continuando con motor local.`);
           return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
         }
-        console.warn('[GeminiOrchestrator] Fallback to deterministic core engine:', err);
+        console.warn(`[GeminiOrchestrator] Fallback to deterministic core engine (${provider}):`, err);
       }
     }
 
@@ -574,6 +590,21 @@ FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
 
 MEMORIA PERSISTENTE ENGRAM ACTIVA:
 ${learningsContext || 'Sin observaciones previas registradas aún.'}
+
+ESTRUCTURA DE RESPUESTA OBLIGATORIA (Cero relleno, números primero):
+Toda respuesta ejecutiva de análisis o recomendación táctica debe organizarse con claridad en:
+### 🎯 Diagnóstico Situacional
+[Dictamen directo, certero y sin rodeos sobre la consulta o mercado.]
+
+### 📊 Desglose Cuantitativo & Regla de Oro
+* Tasa de Entrada / Salida: [Precios en libros reales]
+* Comisiones y Deslizamiento: [Exchange + bancario + slippage]
+* Spread Neto Verificado: [Margen final vs Regla de Oro >= 0.50%]
+* Beneficio / Retorno: [Proyección en USDT]
+
+### ⚡ Plan de Acción Táctico
+* Ruta cronológica y método bancario.
+* Medida de protección de capital.
 
 PAUTAS DE COMUNICACIÓN:
 - Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
@@ -889,6 +920,215 @@ PAUTAS DE COMUNICACIÓN:
     }
 
     throw lastError || new Error('Todos los modelos de Gemini devolvieron cuota agotada.');
+  }
+
+  /**
+   * Executes multi-provider completions via Universal AI Gateway (OpenAI, DeepSeek, Anthropic, Qwen).
+   * Runs the autonomous ReAct function calling loop with financial skills and MCP tools.
+   */
+  private async callUniversalAiGateway(
+    prompt: string,
+    learningsContext: string,
+    apiKey: string,
+    provider: AiProviderType,
+    model: string,
+  ): Promise<CopilotResponse> {
+    const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
+Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
+
+FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
+1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
+2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte enfáticamente.
+3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
+4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
+5. BUCLE DE RAZONAMIENTO REACT: Encadená las herramientas necesarias paso a paso para medir el mercado antes de dictaminar.
+6. COBERTURA TOTAL DE MERCADOS: Dominio de Binance (Spot, P2P, Earn), Bybit (P2P, perpetuos, funding rates), El Dorado y banca venezolana.
+
+MEMORIA PERSISTENTE ENGRAM ACTIVA:
+${learningsContext || 'Sin observaciones previas registradas aún.'}
+
+ESTRUCTURA DE RESPUESTA OBLIGATORIA (Cero relleno, números primero):
+Toda respuesta ejecutiva de análisis o recomendación táctica debe organizarse con claridad en:
+### 🎯 Diagnóstico Situacional
+[Dictamen directo, certero y sin rodeos sobre la consulta o mercado.]
+
+### 📊 Desglose Cuantitativo & Regla de Oro
+* Tasa de Entrada / Salida: [Precios en libros reales]
+* Comisiones y Deslizamiento: [Exchange + bancario + slippage]
+* Spread Neto Verificado: [Margen final vs Regla de Oro >= 0.50%]
+* Beneficio / Retorno: [Proyección en USDT]
+
+### ⚡ Plan de Acción Táctico
+* Ruta cronológica y método bancario.
+* Medida de protección de capital.
+
+PAUTAS DE COMUNICACIÓN:
+- Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
+- Sé riguroso y transparente: mostrá siempre el desglose numérico detrás de cada decisión.`;
+
+    const mcpToolsOnly = MCP_SERVER_REGISTRY.flatMap((srv) => srv.tools)
+      .filter((t) => !GEMINI_FINANCIAL_SKILLS.some((s) => s.name === t.name))
+      .map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: {
+          type: 'OBJECT' as const,
+          properties: {} as Record<string, unknown>,
+          required: [] as string[],
+        },
+      }));
+
+    const toolDeclarations: UniversalToolDefinition[] = [
+      ...GEMINI_FINANCIAL_SKILLS.map((s) => ({
+        name: s.name,
+        description: s.description,
+        parameters: s.parameters as any,
+      })),
+      ...mcpToolsOnly,
+    ];
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: prompt },
+    ];
+
+    const executedSkills: string[] = [];
+    let suggestedPlan: StrategyPlanCard | undefined;
+    let step = 0;
+    const MAX_REACT_STEPS = 5;
+
+    const feed = resolveMarketFeed();
+    const feedLive = feed.live;
+    const planSimulated = !feedLive;
+
+    while (step < MAX_REACT_STEPS) {
+      step++;
+      if (!this.consumePaidCall()) {
+        throw new Error(
+          `BUDGET_EXHAUSTED: se alcanzó el techo de ${this.paidCallsBudget} llamadas pagas por turno.`,
+        );
+      }
+
+      const result = await this.aiGateway.complete(
+        { provider, apiKey, model, temperature: 0.2 },
+        messages,
+        toolDeclarations,
+      );
+
+      if (!result.toolCalls || result.toolCalls.length === 0) {
+        return {
+          reply:
+            result.text ||
+            'He analizado tu consulta con base en las directivas de mercado actuales.',
+          suggestedPlan,
+          skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+          provenance: {
+            source: provider as any,
+            model,
+            provenanceId: `PROV-${provider.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
+            timestamp: Date.now(),
+            stepsCount: step,
+            maxSteps: MAX_REACT_STEPS,
+            apiCallsCount: step,
+            esSimulado: planSimulated,
+            liveMarketFeedConnected: feedLive,
+            marketFeedReason: feed.reason,
+            marketFeedNote: describeMarketFeed(feed),
+            paidCallsThisTurn: this.paidCallsThisTurn,
+            paidCallsBudget: this.paidCallsBudget,
+            budgetExhausted: this.paidCallsRemaining === 0,
+          },
+        };
+      }
+
+      messages.push({
+        role: 'assistant',
+        content: result.text || '',
+        toolCalls: result.toolCalls,
+      });
+
+      for (const call of result.toolCalls) {
+        const name = call.name;
+        const args = call.args || {};
+        executedSkills.push(name);
+
+        let skillData: unknown;
+        let isSuccess = true;
+        let errorMessage: string | undefined;
+
+        const localSkill = executeFinancialSkill(name, args);
+        if (localSkill.success || !localSkill.error?.includes('no reconocida')) {
+          skillData = localSkill.data;
+          isSuccess = localSkill.success;
+          errorMessage = localSkill.error;
+        } else {
+          try {
+            const mcpRes = await executeMcpToolTest(name, args);
+            skillData = mcpRes.result;
+            isSuccess = mcpRes.success;
+            errorMessage = mcpRes.error;
+          } catch (mcpErr: unknown) {
+            isSuccess = false;
+            errorMessage = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+          }
+        }
+
+        const plan = this.generatePlanFromSkill(name, skillData);
+        if (plan) {
+          suggestedPlan = plan;
+          this.db.saveStrategyPlan({
+            ...plan,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+
+          this.db.saveEngramObservation({
+            topicKey: `strategy/${name}`,
+            type: 'discovery',
+            scope: 'project',
+            what: `Estrategia formulada con herramienta ${name}: ${plan.title}`,
+            why: `Validación algorítmica de mercado mediante ${provider} / ${model} (Paso ${step})`,
+            whereAffected: plan.route,
+            learned: `Rendimiento esperado: ${plan.expectedNetSpreadPct}% neto con ticket de ${plan.capitalRequiredUsdt} USDT. Cumple con la regla de oro institucional.`,
+            confidenceScore: 0.95,
+            status: 'active',
+          });
+        }
+
+        messages.push({
+          role: 'tool',
+          content: JSON.stringify(isSuccess ? skillData : { error: errorMessage }),
+          toolResponse: {
+            id: call.id,
+            name: call.name,
+            content: isSuccess ? skillData : { error: errorMessage },
+            isError: !isSuccess,
+          },
+        });
+      }
+    }
+
+    return {
+      reply: `Mirá, ejecuté las herramientas de análisis cuantitativo **[${executedSkills.join(', ')}]** mediante **${model}** para auditar el mercado. Con base en los números, formulé la estrategia correspondiente para resguardar el capital y capturar margen real. Revisá los parámetros de la ficha y dale tu visto bueno con **EJECUTAR** cuando quieras despacharla.`,
+      suggestedPlan,
+      skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+      provenance: {
+        source: provider as any,
+        model,
+        provenanceId: `PROV-${provider.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
+        timestamp: Date.now(),
+        stepsCount: step,
+        maxSteps: MAX_REACT_STEPS,
+        apiCallsCount: step,
+        esSimulado: planSimulated,
+        liveMarketFeedConnected: feedLive,
+        marketFeedReason: feed.reason,
+        marketFeedNote: describeMarketFeed(feed),
+        paidCallsThisTurn: this.paidCallsThisTurn,
+        paidCallsBudget: this.paidCallsBudget,
+        budgetExhausted: this.paidCallsRemaining === 0,
+      },
+    };
   }
 
   /**
