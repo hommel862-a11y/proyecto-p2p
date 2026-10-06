@@ -18,7 +18,14 @@ import type { AgentSwarmOrchestrator } from './agents/swarm-orchestrator';
 import { WebhookDispatcher, type PlanDispatchSummary } from './services/webhook-dispatcher';
 import { killswitchState } from './ipc/killswitch-state';
 import { getTreasurySnapshot } from './ipc/treasury-snapshot';
-import { getFinancialSkillMarketData, getMarketBook, resolveMarketFeed, describeMarketFeed } from './skills/market-state';
+import {
+  getFinancialSkillMarketData,
+  getMarketBook,
+  resolveMarketFeed,
+  describeMarketFeed,
+  resolveBcvRate,
+  describeBcvFeed,
+} from './skills/market-state';
 import {
   SECRET_SCHEME,
   SECRET_SCHEME_UNAVAILABLE,
@@ -86,16 +93,16 @@ function skillPayload(result: { success: boolean; data?: unknown; error?: string
 }
 
 /**
- * Official BCV rate: absent by construction in this process.
+ * Official BCV rate: resolved dynamically from market state / live feed.
  *
- * `resolveMarketFeed` carries Binance P2P book figures only (bid / ask / mid / depth) and
- * `skills/market-state.ts` never fetches a BCV official rate, so there is nothing to read and
- * nothing to bridge. The three `const bcvRate = 72.0` sites this replaces were unconditional
- * constants: they never inspected the input, so `predict_bcv_market_intelligence` computed a
- * "brecha cambiaria" against an invented official rate and the reply printed it right beside a
- * genuinely measured parallel rate — the same line carrying two very different provenances.
+ * `resolveBcvRate()` queries the in-memory BCV snapshot (populated by Cotizave / MCP / IPC).
+ * If no live BCV rate is registered or if it has expired, it returns undefined so that
+ * `runBcvGapSkill` cleanly falls through to declare honest data absence instead of fabricating.
  */
-const LIVE_BCV_RATE: undefined = undefined;
+function getResolvedBcvRate(): number | undefined {
+  const bcvFeed = resolveBcvRate();
+  return bcvFeed.live && typeof bcvFeed.usd === 'number' ? bcvFeed.usd : undefined;
+}
 
 /**
  * What would satisfy `LIVE_BCV_RATE`. `get_bcv_rates` is a registered MCP tool in this process
@@ -1350,51 +1357,81 @@ PAUTAS DE COMUNICACIÓN:
     // ─────────────────────────────────────────────────────────────────────────
     else if (isBcvMacro) {
       const parallelRate = onlyWhenLive(liveParallelRate, hasLiveMarketFeed);
-      const bcvRate = LIVE_BCV_RATE;
+      const bcvRate = getResolvedBcvRate();
       const bcvRes = runBcvGapSkill(parallelRate, bcvRate);
       executedSkills.push('predict_bcv_market_intelligence');
 
+      const now = new Date();
       const drainRes = executeFinancialSkill('forecast_central_bank_liquidity_drain', {
-        historicalDailyVolumeVes: 1500000,
-        seniatTaxCollectionWeek: true,
-        bcvWeeklyInterventionUsdMillions: 45,
+        dayOfMonth: now.getDate(),
+        dayOfWeek: now.getDay(),
+        estimatedSeniatCollectionActive: true,
+        weeklyBcvInjectionMillionsUsd: 45,
       });
       executedSkills.push('forecast_central_bank_liquidity_drain');
 
       const flightRes = executeFinancialSkill('monitor_fiat_flight_and_dollarization_velocity', {
-        hourlyVesTurnoverVolume: 50000,
-        averageHoldingMinutesVes: 35,
+        averageVesHoldingMinutes: 35,
+        merchantUsdtAcceptancePct: 80,
+        monthlyInflationEstimatePct: 35,
       });
       executedSkills.push('monitor_fiat_flight_and_dollarization_velocity');
 
       const bcvData = skillPayload(bcvRes) as {
-        gap?: { gapPct?: number; riskZone?: string };
-        recommendation?: { action?: string; confidenceScore?: number };
+        gap?: { gapPct?: number; zone?: string; riskZone?: string };
+        recommendation?: { action?: string; actionLabel?: string; confidencePct?: number };
+        window?: { phase?: string; rationale?: string; hoursUntilIntervention?: number; nextExpectedIntervention?: string };
         interventionCycle?: { isInterventionDay?: boolean; optimalWindowHours?: string };
       };
       const drainData = skillPayload(drainRes) as {
+        interbankLiquidityLevel?: string;
+        p2pDemandImpact?: string;
+        projectedParallelTrend48h?: string;
+        strategicGuidance?: string;
         netVesLiquidityContractionPct?: number;
         expectedSpreadCompressionBps?: number;
-        strategicAdvice?: string;
       };
       const flightData = skillPayload(flightRes) as {
+        moneyVelocityIndex?: number;
         dollarizationVelocityIndex?: number;
+        flightRegime?: string;
         urgencyLevel?: string;
+        expectedHoldingTimeSafetyThresholdMinutes?: number;
         recommendedHoldingLimitMinutes?: number;
       };
+
+      const zoneStr =
+        bcvData.gap?.zone && bcvData.gap.zone !== 'UNAVAILABLE'
+          ? bcvData.gap.zone
+          : bcvData.gap?.riskZone ?? 'N/D';
+      const windowStr =
+        bcvData.window?.rationale ??
+        bcvData.window?.nextExpectedIntervention ??
+        bcvData.interventionCycle?.optimalWindowHours ??
+        'N/D';
+      const recStr =
+        bcvData.recommendation?.actionLabel ??
+        bcvData.recommendation?.action ??
+        'N/D — la ventana de intervención no se mide sin la tasa oficial BCV.';
+
+      const velIndex = flightData.moneyVelocityIndex ?? flightData.dollarizationVelocityIndex;
+      const regimeStr = flightData.flightRegime ?? flightData.urgencyLevel ?? 'ORDERLY_DOLLARIZATION';
+      const holdMin =
+        flightData.expectedHoldingTimeSafetyThresholdMinutes ??
+        flightData.recommendedHoldingLimitMinutes;
 
       reply =
         `Mirá, evalué las condiciones de política monetaria del BCV y el drenaje fiscal del SENIAT con nuestros motores de inteligencia cambiaria.\n\n` +
         `### 🏦 Monitor de Brecha Cambiaria & Ventana de Intervención\n` +
         `* **Tasa Oficial BCV**: ${formatNumberOrNd(bcvRate)} VES/USD | **Tasa Paralela P2P**: ${formatNumberOrNd(parallelRate)} VES/USD\n` +
         `${bcvGapAbsenceNote(bcvRes)}` +
-        `* **Brecha Cambiaria**: \`${formatNumberOrNd(bcvData.gap?.gapPct, 1)}%\` (Zona de Riesgo: **${bcvData.gap?.riskZone ?? 'N/D'}**)\n` +
-        `* **Ventana de Intervención BCV**: ${bcvData.interventionCycle?.optimalWindowHours ?? 'N/D'}. Durante esta ventana las mesas de cambio bancarias reciben divisas y contraen la tasa paralela.\n` +
-        `* **Directiva de Tesorería**: ${bcvData.recommendation?.action ?? 'N/D — la ventana de intervención no se mide sin la tasa oficial BCV.'}.\n\n` +
+        `* **Brecha Cambiaria**: \`${formatNumberOrNd(bcvData.gap?.gapPct, 1)}%\` (Zona de Riesgo: **${zoneStr}**)\n` +
+        `* **Ventana de Intervención BCV**: ${windowStr}. Durante esta ventana las mesas de cambio bancarias reciben divisas y contraen la tasa paralela.\n` +
+        `* **Directiva de Tesorería**: ${recStr}.\n\n` +
         `### 📉 Drenaje Fiscal SENIAT & Velocidad de Dolarización\n` +
-        `* **Contracción de Liquidez en Bolívares**: -${formatNumberOrNd(drainData.netVesLiquidityContractionPct, 1)}% (Semana de recaudación tributaria SENIAT).\n` +
-        `* **Compresión Esperada de Spread**: ${drainData.expectedSpreadCompressionBps !== undefined ? drainData.expectedSpreadCompressionBps : 'N/D'} bps. Se recomienda priorizar tickets menores de alta rotación.\n` +
-        `* **Velocidad de Fuga del VES**: Índice de ${formatNumberOrNd(flightData.dollarizationVelocityIndex, 1)}/10 (\`${flightData.urgencyLevel ?? 'HIGH'}\`). Tiempo máximo sugerido de tenencia en bolívares: **${flightData.recommendedHoldingLimitMinutes !== undefined ? `${flightData.recommendedHoldingLimitMinutes} minutos` : 'N/D'}**.\n\n` +
+        `* **Liquidez Interbancaria**: \`${drainData.interbankLiquidityLevel ?? 'MODERATE'}\` (Impacto en P2P: ${drainData.p2pDemandImpact ?? 'BALANCED_TURNOVER'}).\n` +
+        `* **Tendencia 48h & Guía**: \`${drainData.projectedParallelTrend48h ?? 'STABLE_EXPANSION'}\` — ${drainData.strategicGuidance ?? 'Rotación continua con spread regular.'}\n` +
+        `* **Velocidad de Fuga del VES (MV=PY)**: Índice de ${formatNumberOrNd(velIndex, 2)} (\`${regimeStr}\`). Tiempo máximo sugerido de tenencia en bolívares: **${holdMin !== undefined ? `${holdMin} minutos` : 'N/D'}**.\n\n` +
         `El plan táctico busca preservar la tesorería frente a la devaluación; el spread y el profit son estimados y no están verificados contra el libro real.`;
 
       plan = {
@@ -1766,7 +1803,7 @@ PAUTAS DE COMUNICACIÓN:
           ];
 
       const parallelRate = onlyWhenLive(liveParallelRate, hasLiveMarketFeed);
-      const bcvRate = LIVE_BCV_RATE;
+      const bcvRate = getResolvedBcvRate();
       const bcvRes = runBcvGapSkill(parallelRate, bcvRate);
       executedSkills.push('predict_bcv_market_intelligence');
       const bData = skillPayload(bcvRes) as { gap?: { gapPct?: number } };
@@ -2075,7 +2112,7 @@ PAUTAS DE COMUNICACIÓN:
     // ─────────────────────────────────────────────────────────────────────────
     else {
       const parallelRate = onlyWhenLive(liveParallelRate, hasLiveMarketFeed);
-      const bcvRate = LIVE_BCV_RATE;
+      const bcvRate = getResolvedBcvRate();
 
       const triangleRes = executeFinancialSkill('scan_triangular_arbitrage', {
         initialAmount: 1000,

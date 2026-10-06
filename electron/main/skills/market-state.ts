@@ -160,6 +160,166 @@ export function getMarketBook(): P2pBookSnapshot | null {
   return marketBook;
 }
 
+export interface BcvRateSnapshot {
+  usd: number;
+  eur?: number | null;
+  cny?: number | null;
+  rub?: number | null;
+  source: string;
+  updatedAt: number;
+  effectiveDate?: string | null;
+}
+
+let bcvSnapshot: BcvRateSnapshot | null = null;
+
+export const BCV_RATE_MAX_AGE_MS = 60 * 60 * 1000;
+
+export type BcvFeedReason = 'LIVE' | 'NO_BCV' | 'STALE_BCV';
+
+export interface ResolvedBcvFeed {
+  live: boolean;
+  reason: BcvFeedReason;
+  usd?: number;
+  eur?: number | null;
+  source?: string;
+  updatedAt?: number;
+  ageMs?: number;
+  effectiveDate?: string | null;
+}
+
+export function seedBcvRate(snapshot: {
+  usd?: number | null;
+  eur?: number | null;
+  cny?: number | null;
+  rub?: number | null;
+  source?: string;
+  updatedAt?: number;
+  effectiveDate?: string | null;
+}): BcvRateSnapshot | null {
+  if (typeof snapshot.usd !== 'number' || !Number.isFinite(snapshot.usd) || snapshot.usd <= 0) {
+    return null;
+  }
+  bcvSnapshot = {
+    usd: snapshot.usd,
+    eur: snapshot.eur ?? null,
+    cny: snapshot.cny ?? null,
+    rub: snapshot.rub ?? null,
+    source: snapshot.source || 'cotizave:reference',
+    updatedAt: snapshot.updatedAt || Date.now(),
+    effectiveDate: snapshot.effectiveDate ?? null,
+  };
+  return bcvSnapshot;
+}
+
+export function clearBcvRate(): void {
+  bcvSnapshot = null;
+}
+
+export function getBcvSnapshot(): BcvRateSnapshot | null {
+  return bcvSnapshot;
+}
+
+export function resolveBcvRate(
+  maxAgeMs: number = BCV_RATE_MAX_AGE_MS,
+  now: number = Date.now(),
+): ResolvedBcvFeed {
+  if (!bcvSnapshot) {
+    return { live: false, reason: 'NO_BCV' };
+  }
+  const ageMs = now - bcvSnapshot.updatedAt;
+  if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) {
+    return { live: false, reason: 'STALE_BCV', updatedAt: bcvSnapshot.updatedAt, ageMs };
+  }
+  return {
+    live: true,
+    reason: 'LIVE',
+    usd: bcvSnapshot.usd,
+    eur: bcvSnapshot.eur,
+    source: bcvSnapshot.source,
+    updatedAt: bcvSnapshot.updatedAt,
+    ageMs,
+    effectiveDate: bcvSnapshot.effectiveDate,
+  };
+}
+
+export function describeBcvFeed(feed: ResolvedBcvFeed): string {
+  switch (feed.reason) {
+    case 'LIVE':
+      return `[BCV en vivo · ${feed.usd?.toFixed(2)} VES · ${feed.source}]`;
+    case 'NO_BCV':
+      return '[sin feed BCV: no hay tasa registrada]';
+    case 'STALE_BCV':
+      return `[sin feed BCV: tasa vencida (${Math.round((feed.ageMs ?? 0) / 60000)} min)]`;
+  }
+}
+
+const OFFICIAL_MARKETS: Record<string, 'usd' | 'eur'> = {
+  reference: 'usd',
+  bcv: 'usd',
+  oficial: 'usd',
+  eur_reference: 'eur',
+};
+
+function toRate(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function rateFromEntry(entry: Record<string, unknown>): number | null {
+  const mid = toRate(entry['mid']);
+  if (mid !== null) return mid;
+  const ask = toRate(entry['ask']);
+  const bid = toRate(entry['bid']);
+  if (ask !== null && bid !== null) return (ask + bid) / 2;
+  if (ask !== null) return ask;
+  if (bid !== null) return bid;
+  return null;
+}
+
+export function parseCotizaveRatesPayload(payload: unknown): {
+  usd: number | null;
+  eur: number | null;
+  source: string;
+  effectiveDate: string | null;
+} | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const raw = payload as Record<string, unknown>;
+  const rates: unknown[] = Array.isArray(raw['rates']) ? raw['rates'] : [];
+  if (rates.length === 0) return null;
+
+  let usd: number | null = null;
+  let eur: number | null = null;
+  const source = new Set<string>();
+  let effectiveDate: string | null = raw['fetched_at'] != null ? String(raw['fetched_at']) : null;
+
+  for (const candidate of rates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const entry = candidate as Record<string, unknown>;
+    const market = String(entry['market'] ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/[-\s]+/g, '_');
+    const currency = OFFICIAL_MARKETS[market];
+    if (!currency) continue;
+    const rate = rateFromEntry(entry);
+    if (rate === null) continue;
+    if (currency === 'usd') usd = rate;
+    else eur = rate;
+    source.add(`cotizave:${market}`);
+    if (effectiveDate === null && entry['updated_at'] != null) {
+      effectiveDate = String(entry['updated_at']);
+    }
+  }
+  if (usd === null && eur === null) return null;
+  return {
+    usd,
+    eur,
+    source: [...source].sort().join(' + '),
+    effectiveDate,
+  };
+}
+
 export function getZkMesh(): ZkMarketMesh {
   return zkMesh;
 }

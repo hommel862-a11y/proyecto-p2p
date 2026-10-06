@@ -11,6 +11,8 @@ import {
   clearFinancialSkillMarketData,
   getMarketBook,
   seedFinancialSkillMarketData,
+  seedBcvRate,
+  clearBcvRate,
 } from './skills/market-state';
 import type { TreasurySnapshotDto } from '../shared/types';
 
@@ -866,6 +868,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
 
     afterEach(() => {
       clearFinancialSkillMarketData();
+      clearBcvRate();
     });
 
     it('CASO 2 (macro BCV) reporta la tasa oficial como N/D y nombra la fuente', async () => {
@@ -917,6 +920,21 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
 
       expect(res.reply).toMatch(/\*\*Tasa Paralela P2P\*\*: 89\.55/);
       expect(res.reply).toContain('**Tasa Oficial BCV**: N/D');
+    });
+
+    it('con libro en vivo y tasa BCV en vivo calcula la brecha y métricas macro reales', async () => {
+      seedLiveBook();
+      seedBcvRate({ usd: 80.0, source: 'cotizave:reference' });
+
+      const res = await orchestrator.sendMessage({
+        prompt: '¿Cómo está la brecha cambiaria entre el BCV y el paralelo?',
+      });
+
+      expect(res.reply).toMatch(/\*\*Tasa Oficial BCV\*\*: 80\.00/);
+      expect(res.reply).toMatch(/\*\*Tasa Paralela P2P\*\*: 89\.55/);
+      expect(res.reply).toContain('**Brecha Cambiaria**: `11.9%`');
+      expect(res.reply).not.toContain('Tasa oficial BCV: N/D');
+      expect(res.reply).toContain('Velocidad de Fuga del VES');
     });
   });
 });

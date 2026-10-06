@@ -42,6 +42,13 @@ import {
   decryptSecret,
   SECRET_SCHEME,
 } from '../db/secret-store';
+import {
+  seedFinancialSkillMarketData,
+  getMarketBook,
+  seedBcvRate,
+  parseCotizaveRatesPayload,
+} from '../skills/market-state';
+import { parseBinanceP2pItems } from '../vendor/p2p-core/binance-p2p';
 
 /**
  * Exhaustiveness guard. Taking `never` means a new `DecisionJournalOp` that this file
@@ -185,6 +192,17 @@ export function registerIpcHandlers(): void {
 
         const data = await response.json();
         binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
+        try {
+          const offers = parseBinanceP2pItems(data);
+          if (asset === 'USDT' && fiat === 'VES' && offers.length > 0) {
+            const currentBook = getMarketBook();
+            const buyOffers = tradeType === 'BUY' ? offers : (currentBook?.buyOffers ?? []);
+            const sellOffers = tradeType === 'SELL' ? offers : (currentBook?.sellOffers ?? []);
+            seedFinancialSkillMarketData({ buyOffers, sellOffers });
+          }
+        } catch {
+          // Ignorar fallo de sincronización de libro
+        }
         return data;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -372,6 +390,20 @@ export function registerIpcHandlers(): void {
         }
         const jsonResult = await response.json();
         cotizaveIpcCache = { data: jsonResult, timestamp: Date.now() };
+        try {
+          const reading = parseCotizaveRatesPayload(jsonResult);
+          if (reading && typeof reading.usd === 'number' && reading.usd > 0) {
+            seedBcvRate({
+              usd: reading.usd,
+              eur: reading.eur,
+              source: reading.source,
+              updatedAt: Date.now(),
+              effectiveDate: reading.effectiveDate,
+            });
+          }
+        } catch {
+          // Ignorar fallo de sincronización BCV
+        }
         return jsonResult;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
