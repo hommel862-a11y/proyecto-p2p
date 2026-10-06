@@ -77,7 +77,7 @@
           class="tab-btn" 
           [class.active]="activeTab() === 'config'" 
           (click)="activeTab.set('config')">
-          ⚙ Conexión Gemini
+          ⚙ Cerebro IA
         </button>
       </div>
     </div>
@@ -1354,15 +1354,15 @@
   <!-- TAB: CONFIGURATION -->
   @if (activeTab() === 'config') {
     <div class="config-layout">
-      <h3>Configuración de Conexión de Inteligencia Artificial</h3>
-      <p class="section-desc">Gestioná la credencial y el estado del orquestador de Google Gemini para asistencia y análisis estratégico.</p>
+      <h3>Configuración de Conexión de Inteligencia Artificial (Gentleman AI)</h3>
+      <p class="section-desc">Gestioná el proveedor soberano de IA (Google Gemini, OpenAI, Anthropic, DeepSeek, Qwen) y las credenciales del orquestador.</p>
 
       <div class="config-card">
         <div class="config-status-row">
           <div class="status-indicator-box" [class.connected]="connectionStatus().connected">
             <span class="indicator-bulb"></span>
             <div>
-              <strong>Estado del Modelo:</strong>
+              <strong>Estado del Modelo Activo:</strong>
               <div class="status-desc">{{ connectionStatus().message }}</div>
             </div>
           </div>
@@ -1375,12 +1375,28 @@
         </div>
 
         <div class="config-field">
-          <label for="geminiKey">Gemini API Key (Almacenamiento Seguro en SQLite):</label>
+          <label for="aiProviderSelect">Proveedor de Inteligencia Artificial:</label>
+          <select
+            id="aiProviderSelect"
+            class="provider-select"
+            [ngModel]="selectedAiProvider()"
+            (ngModelChange)="onProviderChange($event)"
+          >
+            <option value="gemini">Google Gemini (Gemini 2.0 Flash / Pro)</option>
+            <option value="openai">OpenAI (ChatGPT / GPT-4o)</option>
+            <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+            <option value="deepseek">DeepSeek (DeepSeek-V3 / R1)</option>
+            <option value="qwen">Qwen 2.5 (OpenRouter / Local)</option>
+          </select>
+        </div>
+
+        <div class="config-field">
+          <label for="geminiKey">API Key de {{ getProviderDisplayName() }} (Almacenamiento Seguro en SQLite):</label>
           <div class="input-with-action">
             <input 
               id="geminiKey"
               type="password" 
-              placeholder="Ingresá tu API Key de Gemini (ej. AIzaSy... o variable de entorno)" 
+              [placeholder]="getProviderKeyPlaceholder()" 
               [ngModel]="apiKeyInput()" 
               (ngModelChange)="apiKeyInput.set($event)"
             />
@@ -1389,7 +1405,7 @@
             </button>
           </div>
           <small class="field-hint">
-            Si la variable de entorno <code>GEMINI_API_KEY</code> ya está configurada en tu sistema, la aplicación la detecta automáticamente sin necesidad de ingresarla manualmente.
+            La credencial se encripta con DPAPI local antes de almacenarse en SQLite. Si contás con variables de entorno (como <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code> o <code>DEEPSEEK_API_KEY</code>), el orquestador las prioriza de forma automática.
           </small>
         </div>
       </div>

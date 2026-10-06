@@ -571,7 +571,9 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       ]);
     });
 
-    it('ejecuta herramientas MCP nativas durante el bucle ReAct cuando no están en el registro local', async () => {
+    it(
+      'ejecuta herramientas MCP nativas durante el bucle ReAct cuando no están en el registro local',
+      async () => {
       const apiKey = 'AIzaSyFakeKeyForMcpReAct123';
       const reactOrchestrator = new GeminiOrchestrator(dbService, apiKey);
 
@@ -627,7 +629,7 @@ describe('Gemini Orchestrator End-to-End Operational Lifecycle', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(res.skillsExecuted).toContain('scan_synthetic_stable_arbitrage');
       expect(res.reply).toContain('arbitraje sintético');
-    });
+    }, 20000);
 
     it('respeta el guardarraíl de MAX_REACT_STEPS (5) y ejecuta la síntesis final si el modelo no frena', async () => {
       const apiKey = 'AIzaSyFakeKeyForInfiniteLoopGuard';

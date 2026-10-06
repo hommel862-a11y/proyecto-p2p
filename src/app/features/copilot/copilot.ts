@@ -103,6 +103,12 @@ interface ElectronCopilotBridge {
     limit?: number;
   }): Promise<EngramObservationDto[]>;
   setApiKey(params: { apiKey: string }): Promise<boolean>;
+  setProviderConfig?(params: { provider: string; model?: string; apiKey?: string }): Promise<boolean>;
+  getProviderConfig?(): Promise<{
+    activeProvider: string;
+    activeModel: string;
+    configuredProviders: Record<string, boolean>;
+  }>;
   testConnection(): Promise<{ success: boolean; model: string; message: string }>;
   getWatcherStatus(): Promise<AlphaWatcherStatusDto>;
   setWatcherConfig(
@@ -707,7 +713,7 @@ export class Copilot implements OnInit, OnDestroy {
     message: 'Verificando conexión...',
   });
 
-  // Institutional Multi-Agent Swarm (4-Agent Desk Swarm)
+  // Institutional Multi-Agent Swarm (5-Agent Desk Swarm)
   swarmHealth = signal<AgentHealthStatusDto[]>([
     {
       role: 'SENTINEL',
@@ -734,6 +740,14 @@ export class Copilot implements OnInit, OnDestroy {
       description: 'Veto unilateral ante spread <0.50%, límites bancarios o contrapartes.',
     },
     {
+      role: 'EXCHANGE_INTEL',
+      name: 'Exchange Intel Radar',
+      status: 'ONLINE',
+      lastActiveTime: 0,
+      opsProcessed: 0,
+      description: 'Arbitraje cruzado Binance vs Bybit vs El Dorado y ventanas BCV.',
+    },
+    {
       role: 'DISPUTE_AUDITOR',
       name: 'Dispute & Proof Auditor',
       status: 'STANDBY',
@@ -749,8 +763,61 @@ export class Copilot implements OnInit, OnDestroy {
     this.activeAlerts.update((list) => list.filter((a) => a.id !== alertId));
   }
 
-  apiKeyInput = signal<string>('');
+  selectedAiProvider = signal<string>(
+    this.storage.get<string>('p2p.ai.provider') || 'gemini',
+  );
+  apiKeyInput = signal<string>(
+    this.storage.get<string>(`p2p.ai.key.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
+      this.storage.get<string>('p2p.gemini.apiKey') ||
+      '',
+  );
   isTestingConnection = signal<boolean>(false);
+
+  getProviderDisplayName(): string {
+    switch (this.selectedAiProvider()) {
+      case 'openai':
+        return 'OpenAI (ChatGPT)';
+      case 'anthropic':
+        return 'Anthropic Claude';
+      case 'deepseek':
+        return 'DeepSeek AI';
+      case 'qwen':
+        return 'Qwen 2.5';
+      case 'gemini':
+      default:
+        return 'Google Gemini';
+    }
+  }
+
+  getProviderKeyPlaceholder(): string {
+    switch (this.selectedAiProvider()) {
+      case 'openai':
+        return 'sk-proj-...';
+      case 'anthropic':
+        return 'sk-ant-...';
+      case 'deepseek':
+        return 'sk-...';
+      case 'qwen':
+        return 'sk-...';
+      case 'gemini':
+      default:
+        return 'AIzaSy...';
+    }
+  }
+
+  async onProviderChange(provider: string): Promise<void> {
+    this.selectedAiProvider.set(provider);
+    this.storage.set('p2p.ai.provider', provider);
+    const existingKey =
+      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
+    this.apiKeyInput.set(existingKey);
+    const copilot = getElectronCopilot();
+    if (copilot?.setProviderConfig) {
+      await copilot.setProviderConfig({ provider, apiKey: existingKey || undefined });
+    }
+    await this.checkConnection();
+  }
 
   // ---------------------------------------------------------------------------
   // Institutional Treasury HUD — real data only
@@ -1078,10 +1145,15 @@ export class Copilot implements OnInit, OnDestroy {
     const copilot = getElectronCopilot();
     if (copilot) {
       try {
+        const config = copilot.getProviderConfig ? await copilot.getProviderConfig() : null;
+        if (config?.activeProvider) {
+          this.selectedAiProvider.set(config.activeProvider);
+        }
         const res = await copilot.testConnection();
+        const activeName = this.getProviderDisplayName();
         this.connectionStatus.set({
           connected: res.success,
-          model: res.model,
+          model: `${activeName} · ${res.model}`,
           message: res.message,
         });
       } catch (err: unknown) {
@@ -1092,67 +1164,95 @@ export class Copilot implements OnInit, OnDestroy {
         });
       }
     } else {
-      const savedKey = this.storage.get<string>('p2p.gemini.apiKey') || this.apiKeyInput().trim();
+      const provider = this.selectedAiProvider();
+      const savedKey =
+        this.apiKeyInput().trim() ||
+        this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+        (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') : '');
+
       if (!savedKey) {
         this.connectionStatus.set({
           connected: false,
-          model: 'simulated',
-          message: 'Modo navegador web (simulación local sin API Key)',
+          model: 'simulada',
+          message: 'Modo navegador web (simulación local heurística)',
         });
         return;
       }
 
-      try {
-        const testRes = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': savedKey,
+      if (provider === 'gemini') {
+        try {
+          const testRes = await fetch(
+            'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': savedKey,
+              },
             },
-          },
-        );
+          );
 
-        if (testRes.ok) {
-          this.connectionStatus.set({
-            connected: true,
-            model: 'gemini-flash',
-            message: '¡Conexión verificada exitosamente con Google Gemini! [0 tokens consumidos]',
-          });
-        } else {
-          const errData = (await testRes.json().catch(() => ({}))) as {
-            error?: { message?: string };
-          };
-          const lastErrMsg = errData?.error?.message || `HTTP ${testRes.status}`;
+          if (testRes.ok) {
+            this.connectionStatus.set({
+              connected: true,
+              model: 'Gemini · gemini-2.0-flash',
+              message: '¡Conexión verificada exitosamente con Google Gemini! [0 tokens consumidos]',
+            });
+          } else {
+            const errData = (await testRes.json().catch(() => ({}))) as {
+              error?: { message?: string };
+            };
+            const lastErrMsg = errData?.error?.message || `HTTP ${testRes.status}`;
+            this.connectionStatus.set({
+              connected: false,
+              model: 'error',
+              message: `Error de API Key Gemini: ${lastErrMsg}`,
+            });
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
           this.connectionStatus.set({
             connected: false,
             model: 'error',
-            message: `Error de API Key Gemini: ${lastErrMsg}`,
+            message: `Error de red al conectar: ${msg}`,
           });
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } else {
         this.connectionStatus.set({
-          connected: false,
-          model: 'error',
-          message: `Error de red al conectar: ${msg}`,
+          connected: true,
+          model: `${this.getProviderDisplayName()} · activo`,
+          message: `Proveedor ${this.getProviderDisplayName()} configurado para llamadas soberanas.`,
         });
       }
     }
   }
 
   async saveApiKey(): Promise<void> {
+    const provider = this.selectedAiProvider();
     const key = this.apiKeyInput().trim();
     if (!key) return;
 
-    this.storage.set('p2p.gemini.apiKey', key);
+    this.storage.set('p2p.ai.provider', provider);
+    this.storage.set(`p2p.ai.key.${provider}`, key);
+    if (provider === 'gemini') {
+      this.storage.set('p2p.gemini.apiKey', key);
+    }
+
     const copilot = getElectronCopilot();
     if (copilot) {
-      await copilot.setApiKey({ apiKey: key });
-      this.actionSuccessNotice.set('¡API Key guardada en SQLite exitosamente!');
+      if (copilot.setProviderConfig) {
+        await copilot.setProviderConfig({ provider, apiKey: key });
+      }
+      if (provider === 'gemini') {
+        await copilot.setApiKey({ apiKey: key });
+      }
+      this.actionSuccessNotice.set(
+        `¡API Key de ${this.getProviderDisplayName()} guardada en SQLite exitosamente!`,
+      );
     } else {
-      this.actionSuccessNotice.set('¡API Key guardada exitosamente en el navegador!');
+      this.actionSuccessNotice.set(
+        `¡API Key de ${this.getProviderDisplayName()} guardada exitosamente en el navegador!`,
+      );
     }
     setTimeout(() => this.actionSuccessNotice.set(null), 4000);
     await this.checkConnection();

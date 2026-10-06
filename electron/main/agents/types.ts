@@ -6,7 +6,7 @@
 import type { StrategyPlanCard } from '../../shared/types';
 import type { EngramObservationRecord } from '../db/database';
 
-export type AgentRole = 'SENTINEL' | 'STRATEGIST' | 'RISK_GATEKEEPER' | 'DISPUTE_AUDITOR';
+export type AgentRole = 'SENTINEL' | 'STRATEGIST' | 'EXCHANGE_INTEL' | 'RISK_GATEKEEPER' | 'DISPUTE_AUDITOR';
 
 export type RiskVerdictStatus = 'APPROVED' | 'APPROVED_WITH_WARNINGS' | 'VETOED';
 
@@ -27,6 +27,7 @@ export interface AgentHealthStatus {
 export const AGENT_MCP_DOMAINS: Record<AgentRole, string[]> = {
   SENTINEL: ['p2p-macro-predictor', 'p2p-multi-exchange', 'p2p-sudeban-radar'],
   STRATEGIST: ['p2p-arbitrage-engine', 'p2p-orderbook-depth', 'p2p-capital-compounder'],
+  EXCHANGE_INTEL: ['p2p-multi-exchange', 'p2p-arbitrage-engine', 'p2p-macro-predictor'],
   RISK_GATEKEEPER: ['p2p-counterparty-intel', 'p2p-dispute-sentinel'],
   DISPUTE_AUDITOR: ['p2p-evidence-vault', 'p2p-dispute-sentinel'],
 };
@@ -42,6 +43,13 @@ export const AGENT_ASSIGNED_SKILLS: Record<AgentRole, string[]> = {
     'check_bank_operational_status',
     'estimate_adverse_selection_vpin',
     'evaluate_golden_spread',
+  ],
+  EXCHANGE_INTEL: [
+    'calculate_cross_exchange_basis_spread',
+    'query_otc_darkpool_spread',
+    'predict_bcv_macro_regime',
+    'check_bcv_intervention_window',
+    'scan_synthetic_stable_arbitrage',
   ],
   STRATEGIST: [
     'scan_triangular_arbitrage',

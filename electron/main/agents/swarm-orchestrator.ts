@@ -8,6 +8,7 @@ import type { P2PDatabaseService, EngramObservationRecord } from '../db/database
 import { getTreasurySnapshot } from '../ipc/treasury-snapshot';
 import { SentinelAgent } from './sentinel-agent';
 import { StrategistAgent } from './strategist-agent';
+import { ExchangeIntelAgent } from './exchange-intel-agent';
 import { RiskGatekeeperAgent } from './risk-gatekeeper-agent';
 import { DisputeAuditorAgent, type DisputeDossierResult } from './dispute-auditor-agent';
 import { CounterpartyReputationGraph } from './counterparty-graph';
@@ -31,6 +32,7 @@ const FALLBACK_DAILY_LIMIT_USDT = 15000;
 export class AgentSwarmOrchestrator {
   private sentinel: SentinelAgent;
   private strategist: StrategistAgent;
+  private exchangeIntel: ExchangeIntelAgent;
   private riskGatekeeper: RiskGatekeeperAgent;
   private disputeAuditor: DisputeAuditorAgent;
   private counterpartyGraph: CounterpartyReputationGraph;
@@ -38,6 +40,7 @@ export class AgentSwarmOrchestrator {
   constructor(private db: P2PDatabaseService) {
     this.sentinel = new SentinelAgent();
     this.strategist = new StrategistAgent();
+    this.exchangeIntel = new ExchangeIntelAgent();
     this.riskGatekeeper = new RiskGatekeeperAgent();
     this.disputeAuditor = new DisputeAuditorAgent();
     this.counterpartyGraph = new CounterpartyReputationGraph(this.db);
@@ -47,6 +50,10 @@ export class AgentSwarmOrchestrator {
     return this.counterpartyGraph;
   }
 
+  getExchangeIntel(): ExchangeIntelAgent {
+    return this.exchangeIntel;
+  }
+
   /**
    * Returns current health and telemetry status of all agents in the swarm.
    */
@@ -54,6 +61,7 @@ export class AgentSwarmOrchestrator {
     return [
       this.sentinel.getHealth(),
       this.strategist.getHealth(),
+      this.exchangeIntel.getHealth(),
       this.riskGatekeeper.getHealth(),
       this.disputeAuditor.getHealth(),
     ];

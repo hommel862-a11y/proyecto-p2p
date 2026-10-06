@@ -109,7 +109,11 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       getEngramObservations: (params) =>
         ipc('copilot:get-engram-observations', params) as Promise<any>,
       setApiKey: (params) => ipc('copilot:set-api-key', params) as Promise<any>,
-      testConnection: () => ipc('copilot:test-connection') as Promise<any>,
+      setProviderConfig: (params: { provider: string; model?: string; apiKey?: string }) =>
+        ipc('copilot:set-provider-config', params) as Promise<any>,
+      getProviderConfig: () => ipc('copilot:get-provider-config') as Promise<any>,
+      testConnection: (params?: { provider?: string; apiKey?: string }) =>
+        ipc('copilot:test-connection', params) as Promise<any>,
       getWatcherStatus: () => ipc('copilot:get-watcher-status') as Promise<any>,
       setWatcherConfig: (params) => ipc('copilot:set-watcher-config', params) as Promise<any>,
       runSwarmAnalysis: (params) => ipc('copilot:run-swarm-analysis', params) as Promise<any>,
@@ -208,6 +212,8 @@ export const ALLOWED_CHANNELS = [
   'copilot:get-learnings',
   'copilot:get-engram-observations',
   'copilot:set-api-key',
+  'copilot:set-provider-config',
+  'copilot:get-provider-config',
   'copilot:test-connection',
   'copilot:get-watcher-status',
   'copilot:set-watcher-config',

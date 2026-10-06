@@ -254,11 +254,23 @@ export interface P2PIpcChannels {
     }[];
   };
   'copilot:set-api-key': {
-    request: { apiKey: string };
+    request: { apiKey: string; provider?: string };
     response: boolean;
   };
-  'copilot:test-connection': {
+  'copilot:set-provider-config': {
+    request: { provider: string; model?: string; apiKey?: string };
+    response: boolean;
+  };
+  'copilot:get-provider-config': {
     request: void;
+    response: {
+      activeProvider: string;
+      activeModel: string;
+      configuredProviders: Record<string, boolean>;
+    };
+  };
+  'copilot:test-connection': {
+    request: { provider?: string; apiKey?: string } | void;
     response: { success: boolean; model: string; message: string };
   };
   'copilot:get-watcher-status': {

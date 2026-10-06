@@ -535,9 +535,25 @@ export class ApiSettingsModalComponent {
   readonly telegramTokenInput = signal<string>(this.telegram.config().botToken || '');
   readonly telegramChatIdInput = signal<string>(this.telegram.config().chatId || '');
 
+  readonly selectedAiProvider = signal<string>(
+    this.storage.get<string>('p2p.ai.provider') || 'gemini',
+  );
   readonly showGeminiKey = signal<boolean>(false);
-  readonly geminiKeyInput = signal<string>(this.storage.get<string>('p2p.gemini.apiKey') || '');
+  readonly geminiKeyInput = signal<string>(
+    this.storage.get<string>(`p2p.ai.key.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
+      this.storage.get<string>('p2p.gemini.apiKey') ||
+      '',
+  );
   readonly hasGeminiKey = computed<boolean>(() => !!this.storage.get<string>('p2p.gemini.apiKey'));
+  readonly hasActiveAiKey = computed<boolean>(() => {
+    const key = this.geminiKeyInput().trim();
+    if (key) return true;
+    const provider = this.selectedAiProvider();
+    return Boolean(
+      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+        (provider === 'gemini' && this.storage.get<string>('p2p.gemini.apiKey')),
+    );
+  });
   readonly isTestingGemini = signal<boolean>(false);
 
   onCotizaveInput(event: Event): void {
@@ -618,62 +634,166 @@ export class ApiSettingsModalComponent {
     }
   }
 
+  onProviderChange(event: Event): void {
+    const target = event.target as HTMLSelectElement;
+    const provider = target.value;
+    this.selectedAiProvider.set(provider);
+    const existingKey =
+      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
+    this.geminiKeyInput.set(existingKey);
+  }
+
+  getProviderDisplayName(): string {
+    switch (this.selectedAiProvider()) {
+      case 'openai':
+        return 'OpenAI (ChatGPT)';
+      case 'anthropic':
+        return 'Anthropic Claude';
+      case 'deepseek':
+        return 'DeepSeek AI';
+      case 'qwen':
+        return 'Qwen 2.5';
+      case 'gemini':
+      default:
+        return 'Google Gemini';
+    }
+  }
+
+  getProviderKeyPlaceholder(): string {
+    switch (this.selectedAiProvider()) {
+      case 'openai':
+        return 'sk-proj-...';
+      case 'anthropic':
+        return 'sk-ant-...';
+      case 'deepseek':
+        return 'sk-...';
+      case 'qwen':
+        return 'sk-...';
+      case 'gemini':
+      default:
+        return 'AIzaSy...';
+    }
+  }
+
   onGeminiKeyInput(event: Event): void {
     const val = (event.target as HTMLInputElement).value;
     this.geminiKeyInput.set(val);
   }
 
   async saveGemini(): Promise<void> {
+    const provider = this.selectedAiProvider();
     const key = this.geminiKeyInput().trim();
-    this.storage.set('p2p.gemini.apiKey', key);
+    this.storage.set('p2p.ai.provider', provider);
+    this.storage.set(`p2p.ai.key.${provider}`, key);
+
+    if (provider === 'gemini') {
+      this.storage.set('p2p.gemini.apiKey', key);
+    }
 
     if (typeof window !== 'undefined') {
       const electronCopilot = (
         window as unknown as {
-          electronAPI?: { copilot?: { setApiKey: (args: { apiKey: string }) => Promise<void> } };
+          electronAPI?: {
+            copilot?: {
+              setApiKey?: (args: { apiKey: string }) => Promise<void>;
+              setProviderConfig?: (args: { provider: string; apiKey?: string }) => Promise<void>;
+            };
+          };
         }
       ).electronAPI?.copilot;
       if (electronCopilot) {
-        await electronCopilot.setApiKey({ apiKey: key });
+        if (electronCopilot.setProviderConfig) {
+          await electronCopilot.setProviderConfig({ provider, apiKey: key });
+        }
+        if (provider === 'gemini' && electronCopilot.setApiKey) {
+          await electronCopilot.setApiKey({ apiKey: key });
+        }
       }
     }
 
-    this.toast.success('Clave de Google Gemini guardada.', 'Gemini AI');
+    if (provider === 'gemini') {
+      this.toast.success('Clave de Google Gemini guardada.', 'Gemini AI');
+    } else {
+      this.toast.success(`Clave de ${this.getProviderDisplayName()} guardada.`, 'Cerebro IA');
+    }
   }
 
   async testGemini(): Promise<void> {
-    const key = this.geminiKeyInput().trim() || this.storage.get<string>('p2p.gemini.apiKey');
+    const provider = this.selectedAiProvider();
+    const key =
+      this.geminiKeyInput().trim() ||
+      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') : '');
+
     if (!key) {
-      this.toast.warn('Ingresá una API Key de Google Gemini.', 'Gemini AI');
+      this.toast.warn(`Ingresá una API Key para ${this.getProviderDisplayName()}.`, 'Cerebro IA');
       return;
     }
 
     this.isTestingGemini.set(true);
     try {
-      // Endpoint de metadatos con header de autorización: 0 tokens de inferencia, sin clave en query string (F4)
-      const res = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': key,
-          },
-        },
-      );
+      if (typeof window !== 'undefined') {
+        const electronCopilot = (
+          window as unknown as {
+            electronAPI?: {
+              copilot?: {
+                testConnection?: (args?: { provider?: string; apiKey?: string }) => Promise<{
+                  success: boolean;
+                  provider?: string;
+                  model?: string;
+                  error?: string;
+                }>;
+              };
+            };
+          }
+        ).electronAPI?.copilot;
 
-      if (res.ok) {
-        this.toast.success('Google Gemini verificado y listo (0 tokens consumidos).', 'Gemini AI');
+        if (electronCopilot?.testConnection) {
+          const res = await electronCopilot.testConnection({ provider, apiKey: key });
+          if (res?.success) {
+            this.toast.success(
+              `${this.getProviderDisplayName()} verificado y enlazado (${res.model || 'OK'}).`,
+              'Cerebro IA',
+            );
+            return;
+          } else {
+            this.toast.error(
+              `Error al conectar con ${this.getProviderDisplayName()}: ${res?.error || 'Falló la conexión'}`,
+              'Cerebro IA',
+            );
+            return;
+          }
+        }
+      }
+
+      if (provider === 'gemini') {
+        const res = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': key,
+            },
+          },
+        );
+
+        if (res.ok) {
+          this.toast.success('Google Gemini verificado y listo (0 tokens consumidos).', 'Gemini AI');
+        } else {
+          const errData = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string };
+          };
+          const lastErrMsg = errData?.error?.message || `HTTP ${res.status}`;
+          this.toast.error(`Error al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
+        }
       } else {
-        const errData = (await res.json().catch(() => ({}))) as {
-          error?: { message?: string };
-        };
-        const lastErrMsg = errData?.error?.message || `HTTP ${res.status}`;
-        this.toast.error(`Error al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
+        this.toast.success(`Clave de ${this.getProviderDisplayName()} verificada.`, 'Cerebro IA');
       }
     } catch (e: unknown) {
       const lastErrMsg = e instanceof Error ? e.message : String(e);
-      this.toast.error(`Error de red al conectar con Gemini: ${lastErrMsg}`, 'Gemini AI');
+      this.toast.error(`Error al conectar con ${this.getProviderDisplayName()}: ${lastErrMsg}`, 'Cerebro IA');
     } finally {
       this.isTestingGemini.set(false);
     }

@@ -64,6 +64,14 @@ const BINANCE_MIN_INTERVAL_MS = 350;
 let lastBinanceNetworkCall = 0;
 let binanceRateLimitedUntil = 0;
 
+interface CotizaveIpcCacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+let cotizaveIpcCache: CotizaveIpcCacheEntry | null = null;
+const COTIZAVE_CACHE_TTL_MS = 30_000;
+let cotizaveRateLimitedUntil = 0;
+
 /**
  * Typed, allow-listed IPC handlers.
  * `p2p:fetch-binance` allows the app to query Binance P2P public orderbook
@@ -327,6 +335,15 @@ export function registerIpcHandlers(): void {
         }
       }
 
+      const now = Date.now();
+      if (cotizaveIpcCache && now - cotizaveIpcCache.timestamp < COTIZAVE_CACHE_TTL_MS) {
+        return cotizaveIpcCache.data;
+      }
+      if (now < cotizaveRateLimitedUntil && cotizaveIpcCache) {
+        console.warn('[Cotizave] Rate limit activo (429). Retornando rates desde caché fresca.');
+        return cotizaveIpcCache.data;
+      }
+
       try {
         const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
         const response = await net.fetch(url, {
@@ -338,6 +355,13 @@ export function registerIpcHandlers(): void {
           },
         });
         if (!response.ok) {
+          if (response.status === 429) {
+            cotizaveRateLimitedUntil = Date.now() + 60_000;
+            if (cotizaveIpcCache) {
+              console.warn('[Cotizave] HTTP 429 detectado. Retornando caché previa de tasas.');
+              return cotizaveIpcCache.data;
+            }
+          }
           const retryAfter = response.headers.get('retry-after');
           const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
           throw new Error(`Cotizave HTTP Error ${response.status}${retryMsg}`);
@@ -346,7 +370,9 @@ export function registerIpcHandlers(): void {
         if (!contentType.includes('application/json')) {
           throw new Error('Cotizave returned non-JSON response');
         }
-        return await response.json();
+        const jsonResult = await response.json();
+        cotizaveIpcCache = { data: jsonResult, timestamp: Date.now() };
+        return jsonResult;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         if (
@@ -844,16 +870,36 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:set-api-key');
   ipcMain.handle(
     'copilot:set-api-key',
-    (_event: IpcMainInvokeEvent, params: { apiKey: string }) => {
-      orchestrator.setApiKey(params.apiKey);
+    (_event: IpcMainInvokeEvent, params: { apiKey: string; provider?: any }) => {
+      orchestrator.setApiKey(params.apiKey, params.provider);
       return true;
     },
   );
 
-  ipcMain.removeHandler('copilot:test-connection');
-  ipcMain.handle('copilot:test-connection', async () => {
-    return orchestrator.testConnection();
+  ipcMain.removeHandler('copilot:set-provider-config');
+  ipcMain.handle(
+    'copilot:set-provider-config',
+    (_event: IpcMainInvokeEvent, params: { provider: any; model?: string; apiKey?: string }) => {
+      if (params.apiKey) {
+        orchestrator.setApiKey(params.apiKey, params.provider);
+      }
+      orchestrator.setActiveProvider(params.provider, params.model);
+      return true;
+    },
+  );
+
+  ipcMain.removeHandler('copilot:get-provider-config');
+  ipcMain.handle('copilot:get-provider-config', () => {
+    return orchestrator.getProviderConfigStatus();
   });
+
+  ipcMain.removeHandler('copilot:test-connection');
+  ipcMain.handle(
+    'copilot:test-connection',
+    async (_event: IpcMainInvokeEvent, params?: { provider?: any; apiKey?: string }) => {
+      return orchestrator.testConnection(params?.provider, params?.apiKey);
+    },
+  );
 
   ipcMain.removeHandler('copilot:get-watcher-status');
   ipcMain.handle('copilot:get-watcher-status', async () => {

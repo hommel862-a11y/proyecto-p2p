@@ -36,12 +36,13 @@ describe('Institutional Multi-Agent Swarm Orchestrator', () => {
     }
   });
 
-  it('should report health for all 4 specialized agents with assigned MCP domains and skills', () => {
+  it('should report health for all 5 specialized agents with assigned MCP domains and skills', () => {
     const health = swarm.getSwarmHealth();
-    expect(health.length).toBe(4);
+    expect(health.length).toBe(5);
     const roles = health.map((h) => h.role);
     expect(roles).toContain('SENTINEL');
     expect(roles).toContain('STRATEGIST');
+    expect(roles).toContain('EXCHANGE_INTEL');
     expect(roles).toContain('RISK_GATEKEEPER');
     expect(roles).toContain('DISPUTE_AUDITOR');
     health.forEach((h) => {

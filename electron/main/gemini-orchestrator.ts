@@ -26,6 +26,13 @@ import {
   encryptSecret,
   isSecretStorageAvailable,
 } from './db/secret-store';
+import {
+  UniversalAiGateway,
+  DEFAULT_PROVIDER_MODELS,
+  type AiProviderType,
+  type UniversalToolDefinition,
+  type ChatMessage,
+} from './ai-gateway';
 
 const QUOTA_ENGINE_NOTE =
   '\n\n⚠️ *Modo local por cuota agotada: conectá una API Key con plan de pago para restaurar el análisis Gemini en vivo.*';
@@ -185,63 +192,143 @@ export class GeminiOrchestrator {
     this.swarm = swarm;
   }
 
-  setApiKey(key: string): void {
-    this.apiKey = key;
+  private aiGateway = new UniversalAiGateway();
+  private activeProvider: AiProviderType = 'gemini';
+  private customModel?: string;
+
+  setActiveProvider(provider: AiProviderType, model?: string): void {
+    this.activeProvider = provider;
+    if (model) this.customModel = model;
+    this.db.setConfigValue('ai_active_provider', provider);
+    if (model) this.db.setConfigValue(`ai_model_${provider}`, model);
+  }
+
+  getActiveProvider(): { provider: AiProviderType; model: string } {
+    const p =
+      (this.db.getConfigValue('ai_active_provider') as AiProviderType) ||
+      this.activeProvider ||
+      'gemini';
+    const m =
+      this.db.getConfigValue(`ai_model_${p}`) ||
+      this.customModel ||
+      DEFAULT_PROVIDER_MODELS[p] ||
+      'gemini-2.0-flash';
+    return { provider: p, model: m };
+  }
+
+  getProviderConfigStatus(): {
+    activeProvider: AiProviderType;
+    activeModel: string;
+    configuredProviders: Record<AiProviderType, boolean>;
+  } {
+    const { provider, model } = this.getActiveProvider();
+    const providers: AiProviderType[] = ['gemini', 'openai', 'anthropic', 'deepseek', 'qwen'];
+    const configuredProviders = {} as Record<AiProviderType, boolean>;
+    for (const p of providers) {
+      configuredProviders[p] = Boolean(this.getEffectiveApiKey(p));
+    }
+    return {
+      activeProvider: provider,
+      activeModel: model,
+      configuredProviders,
+    };
+  }
+
+  setApiKey(key: string, provider: AiProviderType = 'gemini'): void {
+    if (provider === 'gemini') {
+      this.apiKey = key;
+    }
     // Never persist the raw credential: SQLite lives in user data and was
     // previously readable plaintext by anything with filesystem access.
     if (isSecretStorageAvailable()) {
       try {
-        this.db.setConfigValue('gemini_api_key', encryptSecret(key));
-        this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME);
+        this.db.setConfigValue(`ai_api_key_${provider}`, encryptSecret(key));
+        this.db.setConfigValue(`ai_api_key_scheme_${provider}`, SECRET_SCHEME);
+        if (provider === 'gemini') {
+          this.db.setConfigValue('gemini_api_key', encryptSecret(key));
+          this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME);
+        }
         return;
       } catch (err) {
-        console.warn('[GeminiOrchestrator] safeStorage failed; falling back to memory-only:', err);
+        console.warn(`[GeminiOrchestrator] safeStorage failed to store key for ${provider}:`, err);
       }
     }
-    this.db.deleteConfigValue('gemini_api_key');
-    this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+    this.db.deleteConfigValue(`ai_api_key_${provider}`);
+    this.db.setConfigValue(`ai_api_key_scheme_${provider}`, SECRET_SCHEME_UNAVAILABLE);
+    if (provider === 'gemini') {
+      this.db.deleteConfigValue('gemini_api_key');
+      this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+    }
     console.warn(
-      '[GeminiOrchestrator] OS encryption unavailable: the API key will NOT be persisted to disk.',
+      `[GeminiOrchestrator] OS encryption unavailable: the API key for ${provider} will NOT be persisted to disk.`,
     );
   }
 
-  getEffectiveApiKey(): string | undefined {
-    return (
-      this.apiKey ||
-      process.env['GEMINI_API_KEY'] ||
-      this.readPersistedApiKey() ||
-      undefined
-    );
+  getEffectiveApiKey(provider?: AiProviderType): string | undefined {
+    const target = provider || this.getActiveProvider().provider;
+    if (target === 'gemini') {
+      if (this.apiKey) return this.apiKey;
+      if (process.env['GEMINI_API_KEY']) return process.env['GEMINI_API_KEY'];
+    } else if (target === 'openai' && process.env['OPENAI_API_KEY']) {
+      return process.env['OPENAI_API_KEY'];
+    } else if (target === 'anthropic' && process.env['ANTHROPIC_API_KEY']) {
+      return process.env['ANTHROPIC_API_KEY'];
+    } else if (target === 'deepseek' && process.env['DEEPSEEK_API_KEY']) {
+      return process.env['DEEPSEEK_API_KEY'];
+    } else if (target === 'qwen' && process.env['QWEN_API_KEY']) {
+      return process.env['QWEN_API_KEY'];
+    }
+
+    return this.readPersistedApiKey(target);
   }
 
   /**
    * Reads a previously stored key, accepting only the encrypted scheme.
    * A plaintext legacy row is discarded rather than trusted or returned.
    */
-  private readPersistedApiKey(): string | undefined {
-    const scheme = this.db.getConfigValue('gemini_api_key_scheme');
-    const stored = this.db.getConfigValue('gemini_api_key');
+  private readPersistedApiKey(provider: AiProviderType = 'gemini'): string | undefined {
+    let scheme = this.db.getConfigValue(`ai_api_key_scheme_${provider}`);
+    let stored = this.db.getConfigValue(`ai_api_key_${provider}`);
+
+    if (!stored && provider === 'gemini') {
+      scheme = this.db.getConfigValue('gemini_api_key_scheme');
+      stored = this.db.getConfigValue('gemini_api_key');
+    }
+
     if (!stored) return undefined;
     if (scheme !== SECRET_SCHEME) {
       // Legacy plaintext (or unknown) row: drop it instead of exposing it.
-      this.db.deleteConfigValue('gemini_api_key');
-      this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+      this.db.deleteConfigValue(`ai_api_key_${provider}`);
+      this.db.setConfigValue(`ai_api_key_scheme_${provider}`, SECRET_SCHEME_UNAVAILABLE);
+      if (provider === 'gemini') {
+        this.db.deleteConfigValue('gemini_api_key');
+        this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+      }
       return undefined;
     }
     try {
       return decryptSecret(stored);
     } catch (err) {
-      console.warn('[GeminiOrchestrator] Stored API key could not be decrypted; discarding.', err);
-      this.db.deleteConfigValue('gemini_api_key');
-      this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+      console.warn(`[GeminiOrchestrator] Stored key for ${provider} could not be decrypted; discarding.`, err);
+      this.db.deleteConfigValue(`ai_api_key_${provider}`);
+      this.db.setConfigValue(`ai_api_key_scheme_${provider}`, SECRET_SCHEME_UNAVAILABLE);
+      if (provider === 'gemini') {
+        this.db.deleteConfigValue('gemini_api_key');
+        this.db.setConfigValue('gemini_api_key_scheme', SECRET_SCHEME_UNAVAILABLE);
+      }
       return undefined;
     }
   }
 
-  private getCandidateModels(): string[] {
-    const custom = process.env['GEMINI_MODEL'];
-    if (custom) return [custom];
-    return ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  private getCandidateModels(provider: AiProviderType = this.getActiveProvider().provider): string[] {
+    if (provider === 'gemini') {
+      const custom = process.env['GEMINI_MODEL'];
+      if (custom) return [custom];
+      return ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    }
+    const defaultModel = DEFAULT_PROVIDER_MODELS[provider] || 'gpt-4o';
+    const persisted = this.db.getConfigValue(`ai_model_${provider}`);
+    return [persisted || this.customModel || defaultModel];
   }
 
   private extractRetryDelayMs(errText: string): number {
@@ -263,59 +350,21 @@ export class GeminiOrchestrator {
     return err.message.includes('HTTP 429') || err.message.includes('cuota agotada');
   }
 
-  async testConnection(): Promise<{ success: boolean; model: string; message: string }> {
-    const effectiveKey = this.getEffectiveApiKey();
+  async testConnection(
+    provider?: AiProviderType,
+    key?: string,
+  ): Promise<{ success: boolean; model: string; message: string }> {
+    const targetProvider = provider || this.getActiveProvider().provider;
+    const effectiveKey = key || this.getEffectiveApiKey(targetProvider);
     if (!effectiveKey) {
       return {
         success: false,
         model: 'none',
-        message: 'No se ha detectado ninguna API Key de Gemini configurada.',
+        message: `No se ha detectado ninguna API Key configurada para ${targetProvider.toUpperCase()}.`,
       };
     }
-    const candidateModels = this.getCandidateModels();
-    const primaryModel = candidateModels[0] ?? 'gemini-2.0-flash';
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1';
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': effectiveKey,
-        },
-      });
-
-      if (res.ok) {
-        return {
-          success: true,
-          model: primaryModel,
-          message: `¡Conexión exitosa y credencial validada con Google Gemini (${primaryModel})! [Metadata check sin consumo de inferencia]`,
-        };
-      }
-
-      if (res.status === 429) {
-        return {
-          success: false,
-          model: primaryModel,
-          message:
-            'Cuota de Gemini agotada (HTTP 429). El motor continuará operando en modo heurístico local. Para más capacidad, configurá una API Key con plan de pago en Configuración.',
-        };
-      }
-
-      const errText = await res.text();
-      return {
-        success: false,
-        model: primaryModel,
-        message: `Error al validar credencial de Gemini (HTTP ${res.status}): ${errText}`,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        model: primaryModel,
-        message: `Error de red al conectar con Google Gemini: ${msg}`,
-      };
-    }
+    const model = this.getActiveProvider().model;
+    return this.aiGateway.testConnection(targetProvider, effectiveKey, model);
   }
 
   /**

@@ -11,6 +11,7 @@
 npm-debug.log
 yarn-error.log
 /ng-serve.log
+run*.log
 
 # IDEs and editors
 .idea/
