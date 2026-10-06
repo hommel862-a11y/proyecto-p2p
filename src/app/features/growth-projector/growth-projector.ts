@@ -69,9 +69,7 @@ export class GrowthProjectorComponent implements OnInit {
   ngOnInit(): void {
     // Precarga silenciosa en background para que el spread y las tasas estén frescas
     void this.binanceService.fetchMarketDepth('USDT', 'VES', true).catch(() => {});
-    if (Object.keys(this.cotizaveService.ratesByMarket()).length === 0) {
-      void this.cotizaveService.fetchRates().catch(() => {});
-    }
+    void this.cotizaveService.refreshIfStale().catch(() => {});
   }
 
   // Límites bancarios consolidados reales de las 16 cuentas de AccountsService

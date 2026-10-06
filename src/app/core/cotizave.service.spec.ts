@@ -793,5 +793,21 @@ describe('CotizaveService', () => {
       await svc.refreshIfStale('rates', 0);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+
+    it('omite la llamada de red silenciosamente si el circuito está abierto (OPEN)', async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => {
+        throw new Error('Cotizave HTTP Error 429');
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+      await svc.fetchRates();
+      await svc.fetchRates();
+      expect(svc.circuitBreaker.getMetrics().state).toBe('OPEN');
+
+      const countBefore = fetchMock.mock.calls.length;
+      await svc.refreshIfStale('rates', 0);
+      expect(fetchMock.mock.calls.length).toBe(countBefore);
+    });
   });
 });

@@ -182,6 +182,7 @@ export class CotizaveService implements OnDestroy {
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastAttemptAt = 0;
 
   constructor() {
     // `StorageService.get` es síncrono: la caché persistida se hidrata antes de
@@ -424,13 +425,21 @@ export class CotizaveService implements OnDestroy {
     endpoint: 'rates' = 'rates',
     maxAgeMs = COTIZAVE_MIN_FETCH_INTERVAL_MS,
   ): Promise<void> {
+    if (this.circuitBreaker.getState() === 'OPEN') {
+      return;
+    }
+    const minInterval = Math.min(COTIZAVE_MIN_FETCH_INTERVAL_MS, maxAgeMs);
+    const now = Date.now();
+    if (minInterval > 0 && now - this.lastAttemptAt < minInterval) {
+      return;
+    }
     const last = this.lastFetched();
     const rates = this.ratesByMarket();
     if (
       last &&
       !Number.isNaN(last.getTime()) &&
       Object.keys(rates).length > 0 &&
-      Date.now() - last.getTime() < maxAgeMs
+      now - last.getTime() < maxAgeMs
     ) {
       return;
     }
@@ -677,6 +686,7 @@ export class CotizaveService implements OnDestroy {
       }
       this.toast.error(msg, 'Error Cotizave');
     } finally {
+      this.lastAttemptAt = Date.now();
       this.loading.set(false);
     }
   }

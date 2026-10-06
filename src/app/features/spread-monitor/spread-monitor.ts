@@ -717,18 +717,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   async syncBinancePrices(): Promise<void> {
-    // Cotizave publica tasas oficiales/referenciales que cambian a lo sumo 1-2 veces al día.
-    // Solo consultamos Cotizave si no hay tasas en memoria (arranque en frío o caché vacía).
-    // Si ya hay tasas, no quemamos cuota en cada sync de Binance P2P.
-    const shouldFetchCotizave =
-      !!this.cotizave.apiKey() && Object.keys(this.cotizave.ratesByMarket()).length === 0;
-
-    const [depth] = await Promise.allSettled([
-      this.binance.fetchMarketDepth(this.pair(), 'VES'),
-      shouldFetchCotizave ? this.cotizave.fetchRates() : Promise.resolve(),
-    ]);
-
-    const marketDepth = depth.status === 'fulfilled' ? depth.value : null;
+    const marketDepth = await this.binance.fetchMarketDepth(this.pair(), 'VES');
     if (marketDepth && marketDepth.bestBuyPrice > 0 && marketDepth.bestSellPrice > 0) {
       this.buyPrice.set(marketDepth.bestBuyPrice);
       this.sellPrice.set(marketDepth.bestSellPrice);
