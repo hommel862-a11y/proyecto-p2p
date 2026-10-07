@@ -126,6 +126,11 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         ipc('copilot:record-counterparty-trade', params) as Promise<any>,
       listCounterparties: (params) => ipc('copilot:list-counterparties', params) as Promise<any>,
       runMonteCarlo: (params) => ipc('copilot:run-monte-carlo', params) as Promise<any>,
+      listAgents: () => ipc('copilot:list-agents') as Promise<any>,
+      toggleAgent: (params: { id: string; enabled: boolean }) =>
+        ipc('copilot:toggle-agent', params) as Promise<boolean>,
+      saveAgent: (params: { agent: any }) =>
+        ipc('copilot:save-agent', params) as Promise<boolean>,
     },
     screenPipe: {
       getSources: () => ipc('p2p:screen-pipe-sources') as Promise<any>,
@@ -225,6 +230,9 @@ export const ALLOWED_CHANNELS = [
   'copilot:record-counterparty-trade',
   'copilot:list-counterparties',
   'copilot:run-monte-carlo',
+  'copilot:list-agents',
+  'copilot:toggle-agent',
+  'copilot:save-agent',
   'p2p:screen-pipe-sources',
   'p2p:screen-pipe-capture',
   'p2p:mcp-status',

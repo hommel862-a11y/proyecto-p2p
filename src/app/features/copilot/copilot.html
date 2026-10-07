@@ -83,49 +83,84 @@
     </div>
   </header>
 
-  <!-- COMPACT TOP TICKER (INSTITUTIONAL METRICS) -->
-  <div class="ticker-bar">
-    <div class="ticker-item" title="Capital declarado por el operador en la pestaña Tesorería &amp; Earn. No es equity medido: todavía no hay feed on-chain ni contable que lo confirme.">
-      <span class="t-label">CAPITAL DECLARADO:</span>
-      <span class="t-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
+  <!-- UNIFIED MISSION HUD (LIQUID GLASS TICKER & SWARM BAR) -->
+  <div class="mission-hud">
+    <div class="hud-item hud-brand">
+      <span class="hud-dot"></span>
+      <span class="hud-tag">DESK HUD</span>
     </div>
-    <div class="ticker-sep">|</div>
-    <div class="ticker-item" title="Saldo bancario consolidado en VES de todas las cuentas de la mesa, según el snapshot real de AccountsService. No es P&amp;L: no hay feed de ganancias realizado, por eso no lleva signo ni moneda USDT.">
-      <span class="t-label">SALDO TESORERÍA:</span>
+
+    <div class="hud-item" title="Capital declarado por el operador en Tesorería">
+      <span class="hud-label">EQUITY:</span>
+      <span class="hud-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
+    </div>
+
+    <div class="hud-sep">•</div>
+
+    <div class="hud-item" title="Saldo bancario consolidado en VES de todas las cuentas">
+      <span class="hud-label">TESORERÍA:</span>
       @if (treasuryDataAvailable()) {
-        <span class="t-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
+        <span class="hud-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
       } @else {
-        <span class="t-val profit">-- VES</span>
+        <span class="hud-val profit">-- VES</span>
       }
     </div>
-    <div class="ticker-sep">|</div>
-    <div class="ticker-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo. Rates sembradas por defecto: sin feed en vivo, el porcentaje es tan solo tan real como esas dos tasas.">
-      <span class="t-label">BRECHA BCV:</span>
-      <span class="t-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
+
+    <div class="hud-sep">•</div>
+
+    <div class="hud-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo">
+      <span class="hud-label">BRECHA BCV:</span>
+      <span class="hud-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
         +{{ bcvIntelligence().gap.gapPct }}%
       </span>
-      <span class="t-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
+      <span class="hud-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
     </div>
-    <div class="ticker-sep">|</div>
-    <div class="ticker-item">
-      <span class="t-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
+
+    <div class="hud-sep">•</div>
+
+    <div class="hud-item">
+      <span class="hud-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
         @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
-          🚨 INTERVENCIÓN BCV ACTIVA
+          🚨 BCV ACTIVO
         } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
-          ⏳ PRE-INTERVENCIÓN ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
+          ⏳ PRE-BCV ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
         } @else {
           🟢 MERCADO LIBRE
         }
       </span>
     </div>
-    <div class="ticker-sep">|</div>
-    <div class="ticker-item">
-      <span class="t-status" [class.on]="watcherStatus().enabled">
-        {{ watcherStatus().enabled ? '🟢 Centinela ON (' + watcherStatus().scanCount + ')' : '⏸ Centinela PAUSA' }}
-      </span>
+
+    <div class="hud-sep">•</div>
+
+    <!-- ENJAMBRE 4-AGENTES COMPACTO -->
+    <div class="hud-swarm-cluster" title="Telemetría en vivo del Enjambre de 4 Agentes">
+      <span class="hud-swarm-title">ENJAMBRE:</span>
+      <div class="hud-agent-chips">
+        @for (agent of swarmHealth(); track agent.role) {
+          <span class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'" [title]="agent.name + ': ' + agent.opsProcessed + ' ops'">
+            <span class="agent-dot"></span>
+            {{ agent.name.split(' ')[0] }}
+          </span>
+        }
+      </div>
+      <button 
+        type="button"
+        class="btn-hud-audit" 
+        [disabled]="isSwarmAnalyzing()" 
+        (click)="triggerSwarmAnalysis()"
+        title="Ejecutar auditoría multi-agente en tiempo real">
+        {{ isSwarmAnalyzing() ? '⏳ Auditando...' : '⚡ Auditar' }}
+      </button>
     </div>
-    <div class="ticker-spacer"></div>
-    <div class="ticker-actions">
+
+    <div class="hud-spacer"></div>
+
+    <!-- ACCIONES HUD: Centinela + KillSwitch -->
+    <div class="hud-actions">
+      <span class="hud-watcher" [class.on]="watcherStatus().enabled">
+        {{ watcherStatus().enabled ? '🟢 Centinela ON' : '⏸ Centinela OFF' }}
+      </span>
+
       <button 
         type="button"
         class="killswitch-pill" 
@@ -148,30 +183,6 @@
             🛑 KILL-SWITCH
           }
         </span>
-      </button>
-    </div>
-  </div>
-
-  <!-- MULTI-AGENT SWARM TELEMETRY & CONTROL BAR -->
-  <div class="swarm-telemetry-bar">
-    <div class="swarm-identity">
-      <span class="swarm-title">⚡ ENJAMBRE 4-AGENTES:</span>
-    </div>
-    <div class="swarm-agents-list">
-      @for (agent of swarmHealth(); track agent.role) {
-        <div class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'">
-          <span class="agent-dot"></span>
-          <span class="agent-name">{{ agent.name }}</span>
-          <span class="agent-ops">({{ agent.opsProcessed }} ops)</span>
-        </div>
-      }
-    </div>
-    <div class="swarm-actions">
-      <button 
-        class="btn-trigger-swarm" 
-        [disabled]="isSwarmAnalyzing()" 
-        (click)="triggerSwarmAnalysis()">
-        {{ isSwarmAnalyzing() ? '⏳ Auditando Mesa...' : '⚡ Ejecutar Auditoría Swarm' }}
       </button>
     </div>
   </div>
@@ -205,7 +216,7 @@
 
   <!-- TAB: CHAT -->
   @if (activeTab() === 'chat') {
-    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed() && !mobileSheetOpen()">
+    <div class="copilot-workbench" [class.sidebar-hidden]="sidebarCollapsed() && !mobileSheetOpen()" [class.has-artifact-active]="activeArtifactPlan() !== null">
       @if (mobileSheetOpen()) {
         <div
           class="mobile-sheet-backdrop"
@@ -430,123 +441,68 @@
                 }
               </div>
               <div class="message-bubble">
-                <div class="message-content">{{ msg.content }}</div>
+                <div class="message-content" [innerHTML]="renderMarkdown(msg.content)"></div>
 
-                <!-- Interactive Strategy Card inside Chat -->
+                <!-- Interactive Strategy Card inside Chat (Claude Artifacts Inspiration) -->
                 @if (msg.plan) {
-                  <div class="strategy-card">
-                    <div class="card-header">
-                      <span class="card-tag">PLAN DE ACCIÓN RECOMENDADO</span>
-                      @if (msg.plan.esSimulado || msg.plan.isSimulated) {
-                        <span class="card-simulated-badge" title="Valores derivados sin feed directo de mercado">
-                          ⚠️ SIMULADO
-                        </span>
-                      }
-                      <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
-                        {{ msg.plan.status }}
-                      </span>
-                    </div>
-                    <h4 class="card-title">{{ msg.plan.title }}</h4>
-                    <div class="card-route">
-                      <strong>Ruta:</strong> {{ msg.plan.route }}
-                    </div>
-
-                    <div class="metrics-grid">
-                      <div class="metric">
-                        <span class="label">Capital Req.</span>
-                        <span class="value">${{ msg.plan.capitalRequiredUsdt }} USDT</span>
+                  <div class="artifact-summary-card" [class.active]="activeArtifactPlan()?.id === msg.plan.id">
+                    <div class="artifact-card-head">
+                      <div class="artifact-head-tag">
+                        <span class="artifact-icon">📋</span>
+                        <span class="artifact-label">PLAN DE ARBITRAJE RECOMENDADO</span>
                       </div>
-                      <div class="metric highlight">
-                        <span class="label">Spread Neto</span>
-                        <span class="value">+{{ msg.plan.expectedNetSpreadPct }}%</span>
-                      </div>
-                      <div class="metric success">
-                        <span class="label">Ganancia Neta</span>
-                        <span class="value">+${{ msg.plan.expectedProfitUsdt }} USDT</span>
-                      </div>
-                      <div class="metric">
-                        <span class="label">Nivel de Riesgo</span>
-                        <span class="value badge-risk" [class.low]="msg.plan.riskLevel === 'LOW'">
-                          {{ msg.plan.riskLevel }}
+                      <div class="artifact-badges">
+                        @if (msg.plan.esSimulado || msg.plan.isSimulated) {
+                          <span class="card-simulated-badge" title="Valores derivados sin feed directo de mercado">
+                            ⚠️ SIMULADO
+                          </span>
+                        }
+                        <span class="card-status" [class.approved]="msg.plan.status === 'APPROVED'">
+                          {{ msg.plan.status }}
                         </span>
                       </div>
                     </div>
 
-                    <!-- 3-STEP VISUAL EXECUTION ROADMAP -->
-                    <div class="strategy-steps">
-                      <div class="step-title">🧭 PLAN DE ACCIÓN PASO A PASO:</div>
-                      <div class="step-item">
-                        <span class="step-num">1</span>
-                        <div class="step-content">
-                          <strong>Entrada (Maker Compra):</strong> Abrir orden de compra en Binance P2P por ${{ msg.plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.
-                        </div>
+                    <h4 class="artifact-title">{{ msg.plan.title }}</h4>
+                    <div class="artifact-route">
+                      <strong>Ruta:</strong> <code>{{ msg.plan.route }}</code>
+                    </div>
+
+                    <div class="artifact-kpis-mini">
+                      <div class="kpi-mini">
+                        <span class="label">Capital:</span>
+                        <strong>${{ msg.plan.capitalRequiredUsdt }} USDT</strong>
                       </div>
-                      <div class="step-item">
-                        <span class="step-num">2</span>
-                        <div class="step-content">
-                          <strong>Verificación & Custodia:</strong> Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.
-                        </div>
+                      <div class="kpi-mini highlight">
+                        <span class="label">Spread Neto:</span>
+                        <strong class="spread-val">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
                       </div>
-                      <div class="step-item">
-                        <span class="step-num">3</span>
-                        <div class="step-content">
-                          <strong>Salida & Ganancia (Maker Venta):</strong> Publicar anuncio de venta con markup optimizado para capturar el +{{ msg.plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ msg.plan.expectedProfitUsdt }} USDT).
-                        </div>
+                      <div class="kpi-mini profit">
+                        <span class="label">Ganancia:</span>
+                        <strong>+${{ msg.plan.expectedProfitUsdt }} USDT</strong>
                       </div>
                     </div>
 
-                    <!-- FINANCIAL BREAKDOWN ACCORDION -->
-                    <div class="breakdown-section">
-                      <button class="btn-breakdown" (click)="toggleBreakdown(msg.plan.id)">
-                        {{ isBreakdownOpen(msg.plan.id) ? '▲ Ocultar Desglose Financiero' : '🔍 Ver Desglose Financiero y Comisiones' }}
+                    <div class="artifact-footer-actions">
+                      <button 
+                        type="button" 
+                        class="btn-open-canvas" 
+                        (click)="openPlanArtifact(msg.plan)"
+                        title="Abrir panel lateral de análisis interactivo">
+                        <span>🔍 Abrir en Canvas</span>
+                        <span class="arrow">→</span>
                       </button>
-                      @if (isBreakdownOpen(msg.plan.id)) {
-                        <div class="breakdown-details">
-                          <div class="breakdown-row">
-                            <span>Spread Bruto de Mercado:</span>
-                            <strong>+{{ (msg.plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
-                          </div>
-                          <div class="breakdown-row fee">
-                            <span>Comisión de Comercio Binance (Maker):</span>
-                            <strong>-0.35%</strong>
-                          </div>
-                          <div class="breakdown-row fee">
-                            <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
-                            <strong>0.00% (Sin IGTF)</strong>
-                          </div>
-                          <div class="breakdown-row">
-                            <span>Slippage P95 Estocástico (Monte Carlo 500 it.):</span>
-                            <strong style="color: #60a5fa;">0.12% (VaR 95%: $1.20 USDT)</strong>
-                          </div>
-                          <div class="breakdown-row net">
-                            <span>Margen Neto Limpio en Mano:</span>
-                            <strong class="highlight">+{{ msg.plan.expectedNetSpreadPct }}%</strong>
-                          </div>
-                        </div>
-                      }
-                    </div>
 
-                    <p class="card-rationale">
-                      <strong>Fundamento Algorítmico:</strong> {{ msg.plan.rationale }}
-                    </p>
-
-                    <div class="security-guarantee">
-                      🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
-                    </div>
-
-                    <div class="card-footer">
-                      @if (msg.plan.assignedOperatorName) {
-                        <span class="operator-badge">👤 Asignado a: {{ msg.plan.assignedOperatorName }}</span>
-                      }
-                      
                       @if (msg.plan.status === 'PROPOSED') {
                         <button 
-                          class="btn-play" 
-                          (click)="executePlan(msg.plan)">
-                          ▶ EJECUTAR ESTRATEGIA (PLAY)
+                          type="button"
+                          class="btn-play-quick" 
+                          (click)="executePlan(msg.plan)"
+                          title="Aprobar y despachar estrategia de inmediato">
+                          ▶ EJECUTAR (PLAY)
                         </button>
                       } @else {
-                        <span class="badge-approved">✓ APROBADA Y ENVIADA A MESA</span>
+                        <span class="badge-approved-mini">✓ APROBADA Y EN MESA</span>
                       }
                     </div>
                   </div>
@@ -713,6 +669,118 @@
           </form>
         </div>
       </main>
+
+      <!-- ARTIFACT CANVAS PANEL (CLAUDE ARTIFACTS / CANVAS INSPIRATION) -->
+      @if (activeArtifactPlan(); as plan) {
+        <aside class="copilot-artifact-canvas">
+          <div class="canvas-header">
+            <div class="canvas-title-group">
+              <span class="canvas-tag">ARTEFACTO ESTRATÉGICO</span>
+              <h3>{{ plan.title }}</h3>
+              <p class="canvas-route">Ruta: <code>{{ plan.route }}</code></p>
+            </div>
+            <button type="button" class="btn-close-canvas" (click)="closePlanArtifact()" title="Cerrar panel lateral de Canvas">✕</button>
+          </div>
+
+          <div class="canvas-scroll-content">
+            <!-- Grid de Métricas Principales -->
+            <div class="canvas-kpi-grid">
+              <div class="canvas-kpi-card">
+                <span class="kpi-label">Capital Asignado</span>
+                <span class="kpi-val">${{ plan.capitalRequiredUsdt }} USDT</span>
+              </div>
+              <div class="canvas-kpi-card highlight">
+                <span class="kpi-label">Spread Neto</span>
+                <span class="kpi-val">+{{ plan.expectedNetSpreadPct }}%</span>
+              </div>
+              <div class="canvas-kpi-card profit">
+                <span class="kpi-label">Ganancia Estimada</span>
+                <span class="kpi-val">+${{ plan.expectedProfitUsdt }} USDT</span>
+              </div>
+              <div class="canvas-kpi-card">
+                <span class="kpi-label">Riesgo & Estado</span>
+                <span class="kpi-val badge" [class.approved]="plan.status === 'APPROVED'">{{ plan.status }} ({{ plan.riskLevel }})</span>
+              </div>
+            </div>
+
+            <!-- Procedimiento Operativo Estándar (3 Pasos) -->
+            <div class="canvas-card-section">
+              <div class="section-header">🧭 PROCEDIMIENTO OPERATIVO ESTÁNDAR (SOP)</div>
+              <div class="canvas-steps-list">
+                <div class="step-card">
+                  <span class="step-badge">1</span>
+                  <div class="step-info">
+                    <strong>Entrada (Maker Compra):</strong>
+                    <p>Abrir orden de compra en Binance P2P por ${{ plan.capitalRequiredUsdt }} USDT al mejor precio de compra para absorber liquidez fiat.</p>
+                  </div>
+                </div>
+                <div class="step-card">
+                  <span class="step-badge">2</span>
+                  <div class="step-info">
+                    <strong>Verificación & Custodia:</strong>
+                    <p>Esperar acreditación bancaria, verificar comprobante sin terceros y liberar cripto con score de fraude limpio.</p>
+                  </div>
+                </div>
+                <div class="step-card">
+                  <span class="step-badge">3</span>
+                  <div class="step-info">
+                    <strong>Salida & Ganancia (Maker Venta):</strong>
+                    <p>Publicar anuncio de venta con markup optimizado para capturar el +{{ plan.expectedNetSpreadPct }}% de spread neto en mano (+${{ plan.expectedProfitUsdt }} USDT).</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desglose Financiero Completo -->
+            <div class="canvas-card-section">
+              <div class="section-header">🔍 AUDITORÍA FINANCIERA & COMISIONES</div>
+              <div class="canvas-breakdown-table">
+                <div class="breakdown-row">
+                  <span>Spread Bruto de Mercado:</span>
+                  <strong>+{{ (plan.expectedNetSpreadPct + 0.35).toFixed(2) }}%</strong>
+                </div>
+                <div class="breakdown-row fee">
+                  <span>Comisión Maker Binance:</span>
+                  <strong>-0.35%</strong>
+                </div>
+                <div class="breakdown-row fee">
+                  <span>Fricción Bancaria (Pago Móvil / Banesco):</span>
+                  <strong>0.00% (Sin IGTF)</strong>
+                </div>
+                <div class="breakdown-row var">
+                  <span>Slippage P95 Estocástico (Monte Carlo 500 it.):</span>
+                  <strong>0.12% (VaR 95%: $1.20 USDT)</strong>
+                </div>
+                <div class="breakdown-row net">
+                  <span>Margen Neto Limpio en Mano:</span>
+                  <strong class="highlight">+{{ plan.expectedNetSpreadPct }}%</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fundamento Algorítmico -->
+            <div class="canvas-card-section">
+              <div class="section-header">🧠 FUNDAMENTO ALGORÍTMICO</div>
+              <p class="canvas-rationale-text">{{ plan.rationale }}</p>
+            </div>
+
+            <!-- Custodia y Ejecución -->
+            <div class="canvas-execution-box">
+              <div class="canvas-guarantee">
+                🛡 <strong>Custodia Segura:</strong> Al hacer clic en PLAY, se aprueba la estrategia y se delega al operador en la FSM. <em>Ningún fondo se libera automáticamente sin tu verificación bancaria física.</em>
+              </div>
+
+              @if (plan.status === 'PROPOSED') {
+                <button type="button" class="btn-play-full" (click)="executePlan(plan)">
+                  ▶ EJECUTAR ESTRATEGIA (PLAY)
+                </button>
+              } @else {
+                <div class="badge-approved-full">✓ APROBADA Y ENVIADA A MESA</div>
+              }
+            </div>
+          </div>
+        </aside>
+      }
     </div>
   }
 

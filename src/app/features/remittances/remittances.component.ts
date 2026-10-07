@@ -47,11 +47,16 @@ export class RemittancesComponent {
   readonly copied = signal<boolean>(false);
 
   constructor() {
-    // Automatically bind destination crypto rate from Binance P2P depth if available
+    // Bind the live Binance P2P VES rate to whichever side of the corridor is VES.
+    // VES payout: desk sells USDT for VES (bid). VES intake: desk buys USDT with VES (ask).
     effect(() => {
       const depth = this.binanceService.marketDepth();
-      if (depth && depth.bestSellPrice > 0) {
+      const corridor = this.activeCorridor();
+      if (!depth) return;
+      if (corridor.destCurrency === 'VES' && depth.bestSellPrice > 0) {
         this.destCryptoRate.set(depth.bestSellPrice);
+      } else if (corridor.originCurrency === 'VES' && depth.bestBuyPrice > 0) {
+        this.originCryptoRate.set(depth.bestBuyPrice);
       }
     });
   }
@@ -63,25 +68,43 @@ export class RemittancesComponent {
     );
   });
 
+  /** Which rate input is fed by the live P2P book (the VES side of the corridor). */
+  readonly liveRateSide = computed<'origin' | 'dest' | null>(() => {
+    const c = this.activeCorridor();
+    if (c.destCurrency === 'VES') return 'dest';
+    if (c.originCurrency === 'VES') return 'origin';
+    return null;
+  });
+
+  private static readonly DEFAULT_AMOUNTS: Record<string, number> = {
+    COP: 500000,
+    USD: 100,
+    EUR: 100,
+    CLP: 100000,
+    PEN: 400,
+    VES: 50000,
+  };
+
   selectCorridor(id: string): void {
+    const previousDest = this.activeCorridor().destCurrency;
     this.selectedCorridorId.set(id);
     const corridor = this.activeCorridor();
     this.originCryptoRate.set(corridor.typicalOriginCryptoRate);
+    if (corridor.typicalDestCryptoRate !== undefined) {
+      this.destCryptoRate.set(corridor.typicalDestCryptoRate);
+    } else if (previousDest !== 'VES') {
+      // Leaving a non-VES payout corridor: restore the live VES rate (or a sane fallback).
+      const live = this.binanceService.marketDepth()?.bestSellPrice ?? 0;
+      this.destCryptoRate.set(live > 0 ? live : 98.5);
+    }
     this.bankingFeePct.set(corridor.defaultBankingFeePct);
     this.bankingFixedFee.set(corridor.defaultBankingFixedFee);
     this.operatorMarginPct.set(corridor.defaultOperatorMarginPct);
 
-    if (corridor.originCurrency === 'COP') {
-      this.inputAmount.set(500000);
-    } else if (corridor.originCurrency === 'USD') {
-      this.inputAmount.set(100);
-    } else if (corridor.originCurrency === 'EUR') {
-      this.inputAmount.set(100);
-    } else if (corridor.originCurrency === 'CLP') {
-      this.inputAmount.set(100000);
-    } else {
-      this.inputAmount.set(500);
-    }
+    // In receive mode the amount is in dest currency, otherwise origin currency.
+    const amountCurrency =
+      this.calculationMode() === 'BY_RECEIVE_AMOUNT' ? corridor.destCurrency : corridor.originCurrency;
+    this.inputAmount.set(RemittancesComponent.DEFAULT_AMOUNTS[amountCurrency] ?? 500);
   }
 
   readonly quote = computed<RemittanceQuoteResult>(() => {

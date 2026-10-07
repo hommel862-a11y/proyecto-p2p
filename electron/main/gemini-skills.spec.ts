@@ -89,8 +89,8 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
     clearFinancialSkillMarketData();
   });
 
-  it('registro público intacto: 44 skills y firma de dispatcher estable', () => {
-    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(44);
+  it('registro público intacto: 45 skills y firma de dispatcher estable', () => {
+    expect(GEMINI_FINANCIAL_SKILLS.length).toBe(45);
     expect(executeFinancialSkill).toBeTypeOf('function');
   });
 

@@ -85,4 +85,64 @@ describe('Remittance Corridor Engine', () => {
     expect(msg).toContain('20 minutos');
     expect(msg).toContain('Cero pagos a través de terceros');
   });
+
+  it('should quote Peru (PEN) -> VES by send amount', () => {
+    const quote = calculateRemittanceQuote({
+      corridorId: 'PEN_YAPE_TO_VES',
+      calculationMode: 'BY_SEND_AMOUNT',
+      amount: 375, // 375 PEN
+      originCryptoRate: 3.75, // 100 USDT
+      destCryptoRate: 100,
+      operatorMarginPct: 3.0,
+    });
+
+    expect(quote.originCurrency).toBe('PEN');
+    expect(quote.destCurrency).toBe('VES');
+    expect(quote.bankingFeeTotal).toBe(0);
+    expect(quote.cryptoBaseUsdt).toBeCloseTo(100, 4);
+    expect(quote.clientPayoutUsdt).toBeCloseTo(97, 4);
+    expect(quote.destPayoutAmount).toBeCloseTo(9700, 2);
+  });
+
+  it('should quote Venezuela (VES) -> Peru (PEN) with PEN payout', () => {
+    const quote = calculateRemittanceQuote({
+      corridorId: 'VES_TO_PEN_YAPE',
+      calculationMode: 'BY_SEND_AMOUNT',
+      amount: 10000, // 10,000 VES
+      originCryptoRate: 100, // 100 USDT
+      destCryptoRate: 3.75,
+      operatorMarginPct: 3.0,
+    });
+
+    expect(quote.originCurrency).toBe('VES');
+    expect(quote.destCurrency).toBe('PEN');
+    expect(quote.destPaymentMethod).toContain('Yape');
+    expect(quote.destPayoutAmount).toBeCloseTo(363.75, 2); // 97 USDT * 3.75
+
+    const msg = formatRemittanceWhatsAppMessage(quote);
+    // Tiny VES->PEN rate is shown inverted: 1 PEN = 27.49 VES
+    expect(msg).toContain('1 PEN = 27.49 VES');
+    expect(msg).toContain('PEN');
+  });
+
+  it('should solve VES -> PEN by target PEN amount', () => {
+    const quote = calculateRemittanceQuote({
+      corridorId: 'VES_TO_PEN_YAPE',
+      calculationMode: 'BY_RECEIVE_AMOUNT',
+      amount: 375, // client must receive 375 PEN = 100 USDT
+      originCryptoRate: 100,
+      destCryptoRate: 3.75,
+      operatorMarginPct: 0,
+    });
+
+    expect(quote.destPayoutAmount).toBe(375);
+    expect(quote.grossOriginAmount).toBeCloseTo(10000, 2);
+  });
+
+  it('should expose every corridor with a unique id', () => {
+    const ids = DEFAULT_REMITTANCE_CORRIDORS.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain('PEN_YAPE_TO_VES');
+    expect(ids).toContain('VES_TO_PEN_YAPE');
+  });
 });

@@ -1,8 +1,9 @@
 /**
  * Remittance Corridor & Cross-Border Quotation Engine.
  * Pure domain logic: zero dependencies, framework-agnostic.
- * Models corridors (COP, USD Zelle, EUR SEPA, CLP, BRL) -> VES (Pago Móvil / Banco)
- * and formats instant copy-ready quotes for WhatsApp / Telegram.
+ * Models corridors (COP, USD Zelle, EUR SEPA, CLP, BRL, PEN) -> VES (Pago Móvil / Banco),
+ * the reverse VES -> PEN corridor, and formats instant copy-ready quotes for
+ * WhatsApp / Telegram. Destination currency is corridor-defined, not assumed VES.
  */
 
 import { roundMoney } from './money';
@@ -18,6 +19,8 @@ export interface RemittanceCorridorConfig {
   defaultBankingFixedFee: number; // e.g. 1.0 for SEPA
   defaultOperatorMarginPct: number; // e.g. 2.5%
   typicalOriginCryptoRate: number; // e.g. 4180 COP/USDT
+  /** Reference dest fiat per USDT when dest is not VES (VES is bound to the live P2P book). */
+  typicalDestCryptoRate?: number;
   paymentMethod: string;
   destPaymentMethod: string;
 }
@@ -70,7 +73,7 @@ export const DEFAULT_REMITTANCE_CORRIDORS: RemittanceCorridorConfig[] = [
     name: 'Chile (BancoEstado / RUT) ➔ Venezuela',
     originCurrency: 'CLP',
     destCurrency: 'VES',
-    originFlag: '🇨🇭',
+    originFlag: '🇨🇱',
     destFlag: '🇻🇪',
     defaultBankingFeePct: 0.0,
     defaultBankingFixedFee: 300, // CLP bank transfer fee
@@ -93,14 +96,43 @@ export const DEFAULT_REMITTANCE_CORRIDORS: RemittanceCorridorConfig[] = [
     paymentMethod: 'Pix Instantáneo',
     destPaymentMethod: 'Pago Móvil / Banco',
   },
+  {
+    id: 'PEN_YAPE_TO_VES',
+    name: 'Perú (Yape / Plin / BCP) ➔ Venezuela',
+    originCurrency: 'PEN',
+    destCurrency: 'VES',
+    originFlag: '🇵🇪',
+    destFlag: '🇻🇪',
+    defaultBankingFeePct: 0.0,
+    defaultBankingFixedFee: 0,
+    defaultOperatorMarginPct: 3.0,
+    typicalOriginCryptoRate: 3.75, // PEN/USDT
+    paymentMethod: 'Yape / Plin / BCP',
+    destPaymentMethod: 'Pago Móvil / Banco',
+  },
+  {
+    id: 'VES_TO_PEN_YAPE',
+    name: 'Venezuela ➔ Perú (Yape / Plin / BCP)',
+    originCurrency: 'VES',
+    destCurrency: 'PEN',
+    originFlag: '🇻🇪',
+    destFlag: '🇵🇪',
+    defaultBankingFeePct: 0.0,
+    defaultBankingFixedFee: 0,
+    defaultOperatorMarginPct: 3.0,
+    typicalOriginCryptoRate: 98.5, // VES/USDT fallback; UI binds it to the live P2P book
+    typicalDestCryptoRate: 3.75, // PEN/USDT
+    paymentMethod: 'Pago Móvil / Banco',
+    destPaymentMethod: 'Yape / Plin / BCP',
+  },
 ];
 
 export interface RemittanceQuoteRequest {
   corridorId: string;
   calculationMode: 'BY_SEND_AMOUNT' | 'BY_RECEIVE_AMOUNT';
-  amount: number; // Origin fiat if BY_SEND_AMOUNT, Destination fiat (VES) if BY_RECEIVE_AMOUNT
-  originCryptoRate: number; // Units of origin fiat per 1 USDT (e.g. 4200 COP/USDT or 1 USD/USDT)
-  destCryptoRate: number; // Units of dest fiat per 1 USDT (e.g. 98.50 VES/USDT)
+  amount: number; // Origin fiat if BY_SEND_AMOUNT, destination fiat if BY_RECEIVE_AMOUNT
+  originCryptoRate: number; // Units of origin fiat per 1 USDT (e.g. 4200 COP/USDT or 98.50 VES/USDT)
+  destCryptoRate: number; // Units of dest fiat per 1 USDT (e.g. 98.50 VES/USDT or 3.75 PEN/USDT)
   operatorMarginPct: number; // Desk markup (e.g. 2.5%)
   bankingFeePct?: number; // e.g. 0.4%
   bankingFixedFee?: number; // e.g. 0
@@ -239,10 +271,13 @@ export function formatRemittanceWhatsAppMessage(
   const originFormatted = `${quote.originFlag} ${quote.grossOriginAmount.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quote.originCurrency}`;
   const destFormatted = `${quote.destFlag} ${quote.destPayoutAmount.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${quote.destCurrency}`;
   
+  // VES-origin rates are tiny (1 VES = 0.03 PEN); quote them inverted, the way clients read them.
   const effectiveRateStr =
-    quote.originCurrency === 'COP' || quote.originCurrency === 'CLP'
-      ? `1 ${quote.originCurrency} = ${quote.effectiveRate.toFixed(4)} ${quote.destCurrency}`
-      : `1 ${quote.originCurrency} = ${quote.effectiveRate.toFixed(2)} ${quote.destCurrency}`;
+    quote.originCurrency === 'VES'
+      ? `1 ${quote.destCurrency} = ${quote.inverseRate.toFixed(2)} ${quote.originCurrency}`
+      : quote.originCurrency === 'COP' || quote.originCurrency === 'CLP'
+        ? `1 ${quote.originCurrency} = ${quote.effectiveRate.toFixed(4)} ${quote.destCurrency}`
+        : `1 ${quote.originCurrency} = ${quote.effectiveRate.toFixed(2)} ${quote.destCurrency}`;
 
   let msg = `💸 *COTIZACIÓN DE REMESA EXPRESS* 💸\n`;
   msg += `🏢 Atendido por: ${deskName}\n`;

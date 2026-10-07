@@ -9,6 +9,7 @@ import { ApiSettingsModalComponent } from './shared/components/api-settings-moda
 import { ProductTourModalComponent } from './shared/components/product-tour-modal.component';
 import { CotizaveService } from './core/cotizave.service';
 import { BinanceP2pService } from './core/binance-p2p.service';
+import { TelegramWorkerService } from './core/telegram-worker.service';
 
 export type AppTheme = 'dark' | 'apple-dark' | 'light';
 
@@ -32,6 +33,7 @@ export class App {
   protected readonly title = signal('p2p');
   readonly cotizave = inject(CotizaveService);
   readonly binance = inject(BinanceP2pService);
+  readonly telegram = inject(TelegramWorkerService);
   readonly mobileDrawerOpen = signal<boolean>(false);
   readonly apiModalOpen = signal<boolean>(false);
   readonly tourModalOpen = signal<boolean>(false);

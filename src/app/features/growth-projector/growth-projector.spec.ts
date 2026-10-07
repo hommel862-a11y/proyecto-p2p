@@ -36,6 +36,7 @@ describe('GrowthProjectorComponent', () => {
       bcv: { market: 'bcv', type: 'reference', mid: 58.2, updatedAt: new Date().toISOString() },
     }),
     fetchRates: vi.fn().mockResolvedValue({}),
+    refreshIfStale: vi.fn().mockResolvedValue({}),
   };
 
   const mockBinanceService = {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, net, shell } from 'electron';
+import { app, BrowserWindow, globalShortcut, net, shell, Tray, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -28,11 +28,70 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 
 // Marca temporal del último 'unresponsive' del renderer y ventana de tolerancia
 // para el auto-reload acotado (ver listener en createWindow).
 let lastUnresponsiveAt = 0;
 const UNRESPONSIVE_RELOAD_WINDOW_MS = 60_000;
+
+function getTrayIcon(): nativeImage {
+  const possiblePaths = [
+    path.resolve(__dirname, '../../../dist/p2p/browser/favicon.ico'),
+    path.resolve(__dirname, '../../../public/favicon.ico'),
+    path.resolve(__dirname, '../../../public/assets/icons/icon-72x72.png'),
+    path.resolve(__dirname, '../../public/favicon.ico'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const img = nativeImage.createFromPath(p);
+        if (!img.isEmpty()) return img;
+      } catch {
+        // Fallback
+      }
+    }
+  }
+  return nativeImage.createEmpty();
+}
+
+function createTray(): void {
+  if (tray) return;
+
+  const icon = getTrayIcon();
+  tray = new Tray(icon);
+  tray.setToolTip('P2P Decisor — Centinela & Telegram 24/7');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Abrir P2P Decisor',
+      click: () => {
+        void ensureMainWindow();
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Salir por completo',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    void ensureMainWindow();
+  });
+
+  tray.on('click', () => {
+    void ensureMainWindow();
+  });
+}
 
 /**
  * Recupera la ventana principal si sigue viva o la recrea si el renderer
@@ -467,6 +526,13 @@ async function createWindow(): Promise<void> {
 
   void mainWindow.loadURL(targetUrl);
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -488,6 +554,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     await bootstrapMcpServer();
+    createTray();
     await createWindow();
 
     // Start Autonomous Continuous Alpha Watcher
@@ -502,12 +569,21 @@ if (!gotTheLock) {
   });
 }
 
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform === 'darwin') return;
+  if (isQuitting || !tray) {
     app.quit();
   }
 });

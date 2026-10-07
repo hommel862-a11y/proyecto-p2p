@@ -1094,6 +1094,27 @@ export function registerIpcHandlers(): void {
     },
   );
 
+  ipcMain.removeHandler('copilot:list-agents');
+  ipcMain.handle('copilot:list-agents', async () => {
+    return orchestrator.listAgents();
+  });
+
+  ipcMain.removeHandler('copilot:toggle-agent');
+  ipcMain.handle(
+    'copilot:toggle-agent',
+    async (_event: IpcMainInvokeEvent, params: { id: string; enabled: boolean }) => {
+      return orchestrator.toggleAgent(params.id, params.enabled);
+    },
+  );
+
+  ipcMain.removeHandler('copilot:save-agent');
+  ipcMain.handle(
+    'copilot:save-agent',
+    async (_event: IpcMainInvokeEvent, params: { agent: any }) => {
+      return orchestrator.saveAgent(params.agent);
+    },
+  );
+
   ipcMain.removeHandler('p2p:mcp-status');
   ipcMain.handle('p2p:mcp-status', async () => {
     return getMcpFullStatus();

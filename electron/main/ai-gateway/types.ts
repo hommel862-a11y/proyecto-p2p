@@ -53,6 +53,11 @@ export interface AiGatewayConfig {
   maxTokens?: number;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
 export interface AiCompletionResult {
   text: string;
   toolCalls?: ToolCallRequest[];
@@ -63,6 +68,8 @@ export interface AiCompletionResult {
     completionTokens?: number;
     totalTokens?: number;
   };
+  sources?: GroundingSource[];
+  searchQueries?: string[];
 }
 
 export interface AiProviderConfigStatus {

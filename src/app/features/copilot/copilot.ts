@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speech.service';
 import { AccountsService, type TreasurySnapshot } from '../../core/accounts.service';
@@ -261,6 +262,112 @@ export class Copilot implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly accountsService = inject(AccountsService);
   private readonly triangulationService = inject(TriangulationIntelligenceService);
+  private readonly sanitizer = inject(DomSanitizer);
+
+  readonly activeArtifactPlan = signal<StrategyPlanCard | null>(null);
+
+  openPlanArtifact(plan: StrategyPlanCard): void {
+    this.activeArtifactPlan.set(plan);
+  }
+
+  closePlanArtifact(): void {
+    this.activeArtifactPlan.set(null);
+  }
+
+  formatMarkdown(content: string): string {
+    if (!content) return '';
+    // 1. Escapar caracteres HTML básicos para prevenir XSS
+    let html = content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // 2. Bloques de código con sintaxis pre / code
+    html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_match, lang, code) => {
+      return `<pre class="md-code-block"><div class="md-code-header"><span class="md-code-lang">${lang || 'código'}</span></div><code>${code.trim()}</code></pre>`;
+    });
+
+    // 3. Código inline
+    html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+    // 4. Tablas en Markdown estándar
+    html = html.replace(
+      /((\|[^\n]+\|\r?\n)(\|(?:\s*:?-+:?\s*\|)+\r?\n)((?:\|[^\n]+\|\r?\n?)+))/g,
+      (_match, _fullTable, headerLine, _separatorLine, rowsBlock) => {
+        const headers = headerLine
+          .split('|')
+          .slice(1, -1)
+          .map((h: string) => `<th class="md-th">${h.trim()}</th>`)
+          .join('');
+        const rows = rowsBlock
+          .trim()
+          .split('\n')
+          .map((row: string) => {
+            const cells = row
+              .split('|')
+              .slice(1, -1)
+              .map((c: string) => `<td class="md-td">${c.trim()}</td>`)
+              .join('');
+            return `<tr class="md-tr">${cells}</tr>`;
+          })
+          .join('');
+        return `<div class="md-table-wrapper"><table class="md-table"><thead class="md-thead"><tr class="md-tr">${headers}</tr></thead><tbody class="md-tbody">${rows}</tbody></table></div>`;
+      },
+    );
+
+    // 5. Encabezados jerárquicos
+    html = html.replace(/^#### (.*$)/gim, '<h5 class="md-h4">$1</h5>');
+    html = html.replace(/^### (.*$)/gim, '<h4 class="md-h3">$1</h4>');
+    html = html.replace(/^## (.*$)/gim, '<h3 class="md-h2">$1</h3>');
+    html = html.replace(/^# (.*$)/gim, '<h2 class="md-h1">$1</h2>');
+
+    // 6. Citas / Callouts analíticos
+    html = html.replace(/^\> (.*$)/gim, '<blockquote class="md-quote">$1</blockquote>');
+
+    // 7. Negrita y Cursiva
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // 8. Listas ordenadas y desordenadas
+    html = html.replace(/^([•\-\*])\s+(.*$)/gim, '<li class="md-li">$2</li>');
+    html = html.replace(/(<li class="md-li">[\s\S]*?<\/li>)+/g, '<ul class="md-ul">$&</ul>');
+
+    html = html.replace(/^(\d+)\.\s+(.*$)/gim, '<li class="md-oli">$2</li>');
+    html = html.replace(/(<li class="md-oli">[\s\S]*?<\/li>)+/g, '<ol class="md-ol">$&</ol>');
+
+    // 9. Badges / Chips KPI cuantitativos
+    html = html.replace(/(\+\d+\.?\d*%\s*(?:neto|bruto|spread)?)/gi, '<span class="md-kpi positive">$1</span>');
+    html = html.replace(/(-\d+\.?\d*%\s*(?:fee|comisión|comision)?)/gi, '<span class="md-kpi negative">$1</span>');
+    html = html.replace(/(\$\d+(?:,\d{3})*(?:\.\d+)?\s*USDT)/gi, '<span class="md-kpi usdt">$1</span>');
+    html = html.replace(/(\d+(?:\.\d+)?\s*VES\/USD|\d+(?:,\d{3})*(?:\.\d+)?\s*VES)/gi, '<span class="md-kpi ves">$1</span>');
+
+    // 10. Párrafos
+    const blocks = html.split(/\n{2,}/);
+    html = blocks
+      .map((block) => {
+        const trimmed = block.trim();
+        if (!trimmed) return '';
+        if (
+          trimmed.startsWith('<h') ||
+          trimmed.startsWith('<pre') ||
+          trimmed.startsWith('<div') ||
+          trimmed.startsWith('<ul') ||
+          trimmed.startsWith('<ol') ||
+          trimmed.startsWith('<blockquote')
+        ) {
+          return trimmed;
+        }
+        return `<p class="md-p">${trimmed.replace(/\n/g, '<br>')}</p>`;
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    return html;
+  }
+
+  renderMarkdown(content: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(this.formatMarkdown(content));
+  }
 
   sidebarCollapsed = signal<boolean>(
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
@@ -1672,7 +1779,7 @@ export class Copilot implements OnInit, OnDestroy {
               parts: [
                 {
                   text:
-                    'Sos el Copiloto y Estratega de Arbitraje P2P institucional para el mercado de Venezuela. Respondés en español rioplatense (voseo: fijate, mirá, tené en cuenta) con tono analítico y profesional de banca privada y tesorería. Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias. Sé conciso, analítico y directo.\n\n' +
+                    'Sos el Copiloto Senior y Estratega de Arbitraje P2P Institucional y Tesorería en Venezuela. Respondés en español rioplatense natural (voseo: fijate, mirá, tené en cuenta), de forma fluida, cálida, concisa y ejecutiva (1 o 2 párrafos breves o viñetas cortas, cero relleno ni introducciones ceremoniales, y sin forzar títulos o estructuras rígidas a menos que te pidan un reporte formal). Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias basándote en los datos reales medidos abajo.\n\n' +
                     contextText,
                 },
               ],

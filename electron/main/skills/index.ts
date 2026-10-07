@@ -9,6 +9,7 @@ import { MACRO_SKILLS_DEFINITIONS, dispatchMacroSkill } from './macro-skills';
 import { RISK_SKILLS_DEFINITIONS, dispatchRiskSkill } from './risk-skills';
 import { EARN_SKILLS_DEFINITIONS, dispatchEarnSkill } from './earn-skills';
 import { OPERATIONS_SKILLS_DEFINITIONS, dispatchOperationsSkill } from './operations-skills';
+import { RESEARCH_SKILLS_DEFINITIONS, dispatchResearchSkill } from './research-skills';
 
 export * from './types';
 export * from './market-state';
@@ -17,6 +18,7 @@ export * from './macro-skills';
 export * from './risk-skills';
 export * from './earn-skills';
 export * from './operations-skills';
+export * from './research-skills';
 
 export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
   ...TRADING_SKILLS_DEFINITIONS,
@@ -24,6 +26,7 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
   ...RISK_SKILLS_DEFINITIONS,
   ...EARN_SKILLS_DEFINITIONS,
   ...OPERATIONS_SKILLS_DEFINITIONS,
+  ...RESEARCH_SKILLS_DEFINITIONS,
 ];
 
 /**
@@ -33,16 +36,16 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
 export function executeFinancialSkill(
   skillName: string,
   args: Record<string, unknown>,
+  now: number = Date.now(),
 ): FinancialSkillResult {
-  const now = Date.now();
-
   try {
     const result =
       dispatchTradingSkill(skillName, args, now) ??
       dispatchMacroSkill(skillName, args, now) ??
       dispatchRiskSkill(skillName, args, now) ??
       dispatchEarnSkill(skillName, args, now) ??
-      dispatchOperationsSkill(skillName, args, now);
+      dispatchOperationsSkill(skillName, args, now) ??
+      dispatchResearchSkill(skillName, args, now);
 
     if (result) {
       return result;

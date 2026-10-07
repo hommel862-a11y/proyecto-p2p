@@ -11,8 +11,14 @@ import type {
   MarketLearningRecord,
   EngramObservationRecord,
 } from './db/database';
-import type { CopilotChatMessage, CopilotResponse, StrategyPlanCard } from '../shared/types';
-import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './gemini-skills';
+import type {
+  CopilotChatMessage,
+  CopilotResponse,
+  StrategyPlanCard,
+  GroundingSource,
+} from '../shared/types';
+import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill, executeLiveWebSearch } from './gemini-skills';
+import { AgentRegistry, type RegisteredAgentDto } from './agents/agent-registry';
 import { MCP_SERVER_REGISTRY, executeMcpToolTest } from './mcp-bootstrap';
 import type { AgentSwarmOrchestrator } from './agents/swarm-orchestrator';
 import { WebhookDispatcher, type PlanDispatchSummary } from './services/webhook-dispatcher';

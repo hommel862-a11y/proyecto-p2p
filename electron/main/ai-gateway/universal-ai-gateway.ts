@@ -15,6 +15,7 @@ import type {
   AiCompletionResult,
   ToolCallRequest,
   AiGatewayConfig,
+  GroundingSource,
 } from './types';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
@@ -248,11 +249,18 @@ export class UniversalAiGateway {
       body['systemInstruction'] = systemInstruction;
     }
 
+    const geminiTools: any[] = [];
     if (functionDeclarations.length > 0) {
-      body['tools'] = [{ functionDeclarations }];
+      geminiTools.push({ functionDeclarations });
+    }
+    // Enable real-time Google Search Grounding for live factual intelligence
+    geminiTools.push({ googleSearch: {} });
+
+    if (geminiTools.length > 0) {
+      body['tools'] = geminiTools;
     }
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -260,6 +268,19 @@ export class UniversalAiGateway {
       },
       body: JSON.stringify(body),
     });
+
+    if (!res.ok && res.status === 400 && functionDeclarations.length > 0) {
+      // If the model variant rejects combining functionDeclarations with googleSearch, fallback cleanly
+      body['tools'] = [{ functionDeclarations }];
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+    }
 
     if (!res.ok) {
       const errText = await res.text();
@@ -273,6 +294,10 @@ export class UniversalAiGateway {
             text?: string;
             functionCall?: { name: string; args: Record<string, unknown> };
           }[];
+        };
+        groundingMetadata?: {
+          webSearchQueries?: string[];
+          groundingChunks?: { web?: { uri?: string; title?: string } }[];
         };
       }[];
       usageMetadata?: {
@@ -292,6 +317,22 @@ export class UniversalAiGateway {
         args: p.functionCall!.args || {},
       }));
 
+    const groundingMeta = firstCandidate?.groundingMetadata;
+    const sources: GroundingSource[] = [];
+    if (groundingMeta?.groundingChunks && Array.isArray(groundingMeta.groundingChunks)) {
+      for (const chunk of groundingMeta.groundingChunks) {
+        if (chunk.web?.uri) {
+          sources.push({
+            title: chunk.web.title || chunk.web.uri,
+            uri: chunk.web.uri,
+          });
+        }
+      }
+    }
+    const searchQueries = Array.isArray(groundingMeta?.webSearchQueries)
+      ? groundingMeta.webSearchQueries
+      : undefined;
+
     return {
       text: textPart?.text || '',
       toolCalls: functionCalls.length > 0 ? functionCalls : undefined,
@@ -302,6 +343,8 @@ export class UniversalAiGateway {
         completionTokens: data.usageMetadata?.candidatesTokenCount,
         totalTokens: data.usageMetadata?.totalTokenCount,
       },
+      sources: sources.length > 0 ? sources : undefined,
+      searchQueries,
     };
   }
 

@@ -118,6 +118,7 @@ import {
 import {
   calculateRemittanceQuote,
   formatRemittanceWhatsAppMessage,
+  DEFAULT_REMITTANCE_CORRIDORS,
 } from './remittance-corridor';
 
 export interface AgentSkillParameterSchema {
@@ -1628,17 +1629,23 @@ export const GEMINI_FINANCIAL_SKILLS: AgentSkillDefinition[] = [
   },
   {
     name: 'quote_instant_remittance_corridor',
-    description: 'Genera cotizaciones inmediatas para corredores internacionales de remesas (COP, CLP, BRL, Zelle, SEPA a VES) con formato de WhatsApp.',
+    description: 'Genera cotizaciones inmediatas para corredores internacionales de remesas (COP, CLP, BRL, PEN, Zelle, SEPA a VES, y VES a PEN) con formato de WhatsApp.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        corridorId: { type: 'STRING', enum: ['COP_BANCOLOMBIA_TO_VES', 'USD_ZELLE_TO_VES', 'EUR_SEPA_TO_VES', 'CLP_BANCOESTADO_TO_VES', 'BRL_PIX_TO_VES'], description: 'Corredor de remesas.' },
+        // Derived from the engine so the schema can never drift from the real corridor ids.
+        corridorId: { type: 'STRING', enum: DEFAULT_REMITTANCE_CORRIDORS.map((c) => c.id), description: 'Corredor de remesas.' },
         sendAmount: { type: 'NUMBER', description: 'Monto enviado en moneda origen.' },
         deskSpreadPct: { type: 'NUMBER', description: 'Margen de la mesa (por defecto 2.5%).' },
+        originRate: {
+          type: 'NUMBER',
+          description:
+            'Tasa de entrada vigente: unidades de moneda origen por 1 USDT (ej. 4200 COP/USDT, 3.75 PEN/USDT, 98.5 VES/USDT). Obligatoria salvo en corredores con origen USD.',
+        },
         activeRate: {
           type: 'NUMBER',
           description:
-            'Tasa de venta vigente de la mesa (VES por USD) con la que se promete el pago. Sin tasa real no hay promesa que hacer.',
+            'Tasa de salida vigente de la mesa: unidades de moneda destino por 1 USDT (VES/USDT, o PEN/USDT en VES a PEN) con la que se promete el pago. Sin tasa real no hay promesa que hacer.',
         },
       },
       required: ['corridorId', 'sendAmount', 'activeRate'],
@@ -1744,6 +1751,8 @@ const SRC_COUNTERPARTY_TRACK_RECORD =
   'registro real y verificable del operador (API pública de la plataforma o historial propio auditado)';
 const SRC_REAL_BALANCE = 'saldo real de la cuenta (API del exchange / on-chain / tesorería)';
 const SRC_LEDGER_ORDER = 'monto real de la orden registrada (ledger de órdenes / Binance P2P)';
+const SRC_CORRIDOR_ORIGIN_RATE =
+  'tasa de entrada vigente del corredor en moneda origen por USDT (libro P2P de la moneda origen)';
 
 export function executeFinancialSkill(
   skillName: string,
@@ -3578,7 +3587,23 @@ export function executeFinancialSkill(
       }
 
       case 'quote_instant_remittance_corridor': {
-        const corridorId = String(args['corridorId'] || 'USD_ZELLE_TO_VES');
+        const rawCorridorId = args['corridorId'];
+        if (rawCorridorId === undefined || rawCorridorId === null || rawCorridorId === '') {
+          throw new MissingEvidenceError('corridorId', 'corredor solicitado por el cliente');
+        }
+        const corridorId = String(rawCorridorId);
+        const corridor = DEFAULT_REMITTANCE_CORRIDORS.find((c) => c.id === corridorId);
+        if (!corridor) {
+          // The engine falls back to the first corridor on unknown ids; a client quote
+          // for the wrong country is worse than no quote, so refuse here.
+          return {
+            success: false,
+            skillName,
+            data: null,
+            error: `Corredor desconocido: '${corridorId}'. Válidos: ${DEFAULT_REMITTANCE_CORRIDORS.map((c) => c.id).join(', ')}.`,
+            executedAt: now,
+          };
+        }
         const sendAmount = requiredNumber(
           args,
           ['sendAmount', 'amount'],
@@ -3591,12 +3616,18 @@ export function executeFinancialSkill(
         );
 
         const activeRate = requiredNumber(args, 'activeRate', SRC_DESK_SELL_RATE);
+        // Uses the provided origin rate, or falls back to the corridor's configured reference rate.
+        const originRate = policyNumber(
+          args,
+          'originRate',
+          policyNumber(args, 'originCryptoRate', corridor.typicalOriginCryptoRate),
+        );
 
         const quote = calculateRemittanceQuote({
           corridorId,
           calculationMode: 'BY_SEND_AMOUNT',
           amount: sendAmount,
-          originCryptoRate: 1.0,
+          originCryptoRate: originRate,
           destCryptoRate: activeRate,
           operatorMarginPct: deskSpreadPct,
         });

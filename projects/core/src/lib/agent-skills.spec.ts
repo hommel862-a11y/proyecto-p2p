@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GEMINI_FINANCIAL_SKILLS, executeFinancialSkill } from './agent-skills';
+import { DEFAULT_REMITTANCE_CORRIDORS } from './remittance-corridor';
 
 /**
  * Asserts a skill refuses to produce a value when a required measurement is
@@ -1846,6 +1847,65 @@ describe('Agent Skills & Function Calling Declarations', () => {
         expect(con85.success).toBe(true);
         expect(con90.success).toBe(true);
         expect((con85.data as any).destPayoutAmount).not.toBe((con90.data as any).destPayoutAmount);
+      });
+
+      it('quote_instant_remittance_corridor anuncia exactamente los corredores reales', () => {
+        // Antes el enum decía CLP_BANCOESTADO_TO_VES y el id real es CLP_BANCO_TO_VES.
+        const decl = GEMINI_FINANCIAL_SKILLS.find(
+          (d) => d.name === 'quote_instant_remittance_corridor',
+        ) as any;
+        expect(decl.parameters.properties.corridorId.enum).toEqual(
+          DEFAULT_REMITTANCE_CORRIDORS.map((c) => c.id),
+        );
+      });
+
+      it('quote_instant_remittance_corridor rechaza un corredor desconocido en vez de cotizar Colombia', () => {
+        const res = executeFinancialSkill('quote_instant_remittance_corridor', {
+          corridorId: 'CLP_BANCOESTADO_TO_VES',
+          sendAmount: 100000,
+          originRate: 975,
+          activeRate: 100,
+        });
+        expect(res.success).toBe(false);
+        expect(res.data).toBeNull();
+        expect(res.error).toContain('CLP_BANCO_TO_VES');
+      });
+
+      it('quote_instant_remittance_corridor usa la tasa tipica del corredor si no se pasa originRate', () => {
+        // En vez de rechazar o usar 1.0 (error de 1000x), usa 975 CLP/USDT
+        const res = executeFinancialSkill('quote_instant_remittance_corridor', {
+          corridorId: 'CLP_BANCO_TO_VES',
+          sendAmount: 100000,
+          activeRate: 100,
+          deskSpreadPct: 0,
+        });
+        expect(res.success).toBe(true);
+        expect((res.data as any).destPayoutAmount).toBeCloseTo(10225.64, 1);
+      });
+
+      it('quote_instant_remittance_corridor convierte con la tasa de origen real', () => {
+        const res = executeFinancialSkill('quote_instant_remittance_corridor', {
+          corridorId: 'PEN_YAPE_TO_VES',
+          sendAmount: 375,
+          originRate: 3.75,
+          activeRate: 100,
+          deskSpreadPct: 0,
+        });
+        expect(res.success).toBe(true);
+        expect((res.data as any).destPayoutAmount).toBeCloseTo(10000, 2);
+      });
+
+      it('quote_instant_remittance_corridor cotiza VES -> PEN con salida en PEN', () => {
+        const res = executeFinancialSkill('quote_instant_remittance_corridor', {
+          corridorId: 'VES_TO_PEN_YAPE',
+          sendAmount: 10000,
+          originRate: 100,
+          activeRate: 3.75,
+          deskSpreadPct: 0,
+        });
+        expect(res.success).toBe(true);
+        expect((res.data as any).destCurrency).toBe('PEN');
+        expect((res.data as any).destPayoutAmount).toBeCloseTo(375, 2);
       });
     });
   });

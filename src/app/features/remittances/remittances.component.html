@@ -60,7 +60,7 @@
             [class.active]="calculationMode() === 'BY_RECEIVE_AMOUNT'"
             (click)="calculationMode.set('BY_RECEIVE_AMOUNT')"
           >
-            Monto a Recibir (VES)
+            Monto a Recibir ({{ activeCorridor().destCurrency }})
           </button>
         </div>
       </div>
@@ -69,10 +69,10 @@
       <div class="input-card">
         <div class="input-header">
           <label class="input-label" for="remittance-input-amount">
-            {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en VES' }}
+            {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en ' + activeCorridor().destCurrency }}
           </label>
           <span class="currency-tag">
-            {{ calculationMode() === 'BY_SEND_AMOUNT' ? activeCorridor().originCurrency : 'VES' }}
+            {{ calculationMode() === 'BY_SEND_AMOUNT' ? activeCorridor().originCurrency : activeCorridor().destCurrency }}
           </span>
         </div>
         <div class="amount-input-wrapper">
@@ -95,7 +95,12 @@
         <div class="tuning-grid">
           <!-- Origin Rate -->
           <div class="tuning-field">
-            <label for="origin-crypto-rate">Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
+            <div class="field-label-row">
+              <label for="origin-crypto-rate">Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
+              @if (liveRateSide() === 'origin') {
+                <span class="live-tag">P2P En Vivo</span>
+              }
+            </div>
             <input
               id="origin-crypto-rate"
               type="number"
@@ -106,11 +111,13 @@
             />
           </div>
 
-          <!-- Destination Rate (VES/USDT) -->
+          <!-- Destination Rate -->
           <div class="tuning-field">
             <div class="field-label-row">
-              <label for="dest-crypto-rate">Tasa Salida (VES/USDT)</label>
-              <span class="live-tag">P2P En Vivo</span>
+              <label for="dest-crypto-rate">Tasa Salida ({{ activeCorridor().destCurrency }}/USDT)</label>
+              @if (liveRateSide() === 'dest') {
+                <span class="live-tag">P2P En Vivo</span>
+              }
             </div>
             <input
               id="dest-crypto-rate"
@@ -197,12 +204,16 @@
         <div class="hero-top">
           <span class="hero-label">Liquidación Final al Cliente</span>
           <span class="effective-rate-badge">
-            Tasa: 1 {{ quote().originCurrency }} = {{ quote().effectiveRate }} {{ quote().destCurrency }}
+            @if (quote().originCurrency === 'VES') {
+              Tasa: 1 {{ quote().destCurrency }} = {{ quote().inverseRate | number:'1.2-2' }} {{ quote().originCurrency }}
+            } @else {
+              Tasa: 1 {{ quote().originCurrency }} = {{ quote().effectiveRate }} {{ quote().destCurrency }}
+            }
           </span>
         </div>
         
         <div class="hero-amount-display">
-          <span class="hero-currency">VES</span>
+          <span class="hero-currency">{{ quote().destCurrency }}</span>
           <span class="hero-number">{{ quote().destPayoutAmount | number:'1.2-2' }}</span>
         </div>
 
@@ -217,7 +228,7 @@
           </div>
           <div class="breakdown-stat">
             <span class="stat-name">Ganancia Neta Mesa</span>
-            <span class="stat-value text-success">+{{ quote().operatorMarginUsdt | number:'1.2-2' }} USDT ({{ quote().operatorProfitDestFiat | number:'1.0-0' }} VES)</span>
+            <span class="stat-value text-success">+{{ quote().operatorMarginUsdt | number:'1.2-2' }} USDT ({{ quote().operatorProfitDestFiat | number:'1.0-2' }} {{ quote().destCurrency }})</span>
           </div>
         </div>
       </div>

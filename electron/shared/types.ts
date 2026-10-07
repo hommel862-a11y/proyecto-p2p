@@ -347,12 +347,19 @@ export interface McpStatusDto {
   activeTransport: string;
 }
 
+export interface GroundingSource {
+  title: string;
+  uri: string;
+}
+
 export interface CopilotChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: number;
   plan?: StrategyPlanCard;
   provenance?: ProvenanceMetadata;
+  sources?: GroundingSource[];
+  searchQueries?: string[];
 }
 
 export interface StrategyPlanCard {
@@ -428,6 +435,8 @@ export interface CopilotResponse {
   skillsExecuted?: string[];
   learningsGenerated?: string[];
   provenance?: ProvenanceMetadata;
+  sources?: GroundingSource[];
+  searchQueries?: string[];
 }
 
 /**
