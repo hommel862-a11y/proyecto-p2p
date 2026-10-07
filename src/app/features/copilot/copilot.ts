@@ -985,7 +985,7 @@ export class Copilot implements OnInit, OnDestroy {
     setTimeout(() => this.actionSuccessNotice.set(null), 5000);
   }
 
-  startKillswitchHold(event?: TouchEvent): void {
+  startKillswitchHold(_event?: TouchEvent): void {
     if (this.killswitchActive()) return;
     this.isTouchTrigger = true;
     this.killswitchHolding.set(true);
@@ -1239,8 +1239,7 @@ export class Copilot implements OnInit, OnDestroy {
     const isKillswitchActive = this.treasuryMetrics().killSwitchActive;
 
     // 1. Sentinel Stage: Audit current market depth & spreads
-    let grossSpread = 0;
-    let netSpread = 0;
+    let grossSpread: number;
     let hasLiveFeed = false;
     const bestBuy = rates.binanceVesBuy.value;
     const bestSell = rates.binanceVesSell.value;
@@ -1255,7 +1254,7 @@ export class Copilot implements OnInit, OnDestroy {
     }
 
     // Deduct maker fees (0.35%) and bank frictional overhead
-    netSpread = Math.max(0, Math.round((grossSpread - 0.35) * 100) / 100);
+    const netSpread = Math.max(0, Math.round((grossSpread - 0.35) * 100) / 100);
 
     // 2. Strategist Stage (Gentleman AI): Formulate arbitrage proposal
     const capitalRequiredUsdt = 1000;

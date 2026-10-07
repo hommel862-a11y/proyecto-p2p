@@ -2319,30 +2319,6 @@ export function simulateMcpTool(
       executionStatus: 'TASK_COMPILED_READY_FOR_AGENT_RUNNER',
       evaluatedAt: new Date().toISOString(),
     };
-  } else if (toolName === 'project_compound_runway') {
-    const initialCapitalUsdt = Math.max(1, Number((args as any)?.initialCapitalUsdt ?? 500));
-    const netMarginPctPerCycle = Math.max(0, Number((args as any)?.netMarginPctPerCycle ?? 0.85));
-    const cyclesPerDay = Math.max(0.1, Number((args as any)?.cyclesPerDay ?? 2));
-    const operationalDays = Math.max(1, Number((args as any)?.operationalDays ?? 90));
-    const reinvestmentRatePct = Math.min(100, Math.max(0, Number((args as any)?.reinvestmentRatePct ?? 100)));
-    const dailyBankLimitVes = (args as any)?.dailyBankLimitVes ? Number((args as any).dailyBankLimitVes) : undefined;
-    const referenceRateVes = (args as any)?.referenceRateVes ? Number((args as any).referenceRateVes) : 60.0;
-
-    const sim = simulateCompoundGrowth({
-      initialCapitalUsdt,
-      netMarginPctPerCycle,
-      cyclesPerDay,
-      operationalDays,
-      reinvestmentRatePct,
-      dailyBankLimitVes,
-      referenceRateVes,
-    });
-
-    simulatedResult = {
-      ...simulatedResult,
-      ...sim,
-      evaluatedAt: new Date().toISOString(),
-    };
   }
 
   return simulatedResult;

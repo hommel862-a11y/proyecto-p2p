@@ -68,7 +68,7 @@ describe('CommandPalette', () => {
   });
 
   it('builds commands including liquidity injection and official banks sync', () => {
-    const commands = (component as unknown as { allCommands: () => Array<{ id: string; label: string }> }).allCommands();
+    const commands = (component as unknown as { allCommands: () => { id: string; label: string }[] }).allCommands();
     expect(commands.some((c) => c.id === 'action-inject-liquidity')).toBe(true);
     expect(commands.some((c) => c.id === 'action-sync-official-banks')).toBe(true);
     expect(commands.some((c) => c.id === 'action-killswitch')).toBe(true);
@@ -76,7 +76,7 @@ describe('CommandPalette', () => {
   });
 
   it('requests liquidity modal and navigates to dashboard when bank injection command executes', () => {
-    const commands = (component as unknown as { allCommands: () => Array<{ id: string; action: () => void }> }).allCommands();
+    const commands = (component as unknown as { allCommands: () => { id: string; action: () => void }[] }).allCommands();
     const cmd = commands.find((c) => c.id === 'inject-provincial-pm-1');
     expect(cmd).toBeDefined();
 
@@ -87,7 +87,7 @@ describe('CommandPalette', () => {
   });
 
   it('triggers kill switch when emergency killswitch command is executed', () => {
-    const commands = (component as unknown as { allCommands: () => Array<{ id: string; action: () => void }> }).allCommands();
+    const commands = (component as unknown as { allCommands: () => { id: string; action: () => void }[] }).allCommands();
     const cmd = commands.find((c) => c.id === 'action-killswitch');
     expect(cmd).toBeDefined();
 

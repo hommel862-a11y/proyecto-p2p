@@ -35,10 +35,13 @@
           </div>
         </div>
         <div class="island-telemetry"
+             role="button"
+             tabindex="0"
              [class.status-optimal]="telemetry().overallStatus === 'optimal'"
              [class.status-moderate]="telemetry().overallStatus === 'moderate'"
              [class.status-degraded]="telemetry().overallStatus === 'degraded'"
              (click)="refreshTelemetry()"
+             (keydown.enter)="refreshTelemetry()"
              title="Telemetría en tiempo real (Click para refrescar)">
           <span class="telemetry-status-dot"></span>
           <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>
@@ -66,10 +69,13 @@
           </div>
         </div>
         <div class="island-telemetry"
+             role="button"
+             tabindex="0"
              [class.status-optimal]="telemetry().overallStatus === 'optimal'"
              [class.status-moderate]="telemetry().overallStatus === 'moderate'"
              [class.status-degraded]="telemetry().overallStatus === 'degraded'"
              (click)="refreshTelemetry()"
+             (keydown.enter)="refreshTelemetry()"
              title="Telemetría en tiempo real (Click para refrescar)">
           <span class="telemetry-status-dot"></span>
           <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>

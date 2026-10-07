@@ -451,7 +451,7 @@
         <!-- Parámetro: Horizonte Temporal -->
         <div class="control-group">
           <div class="control-label-row">
-            <label>Horizonte de Proyección</label>
+            <span class="control-label">Horizonte de Proyección</span>
             <span class="control-current font-mono">{{ operationalDays() }} días</span>
           </div>
           <div class="presets-row horizon-presets">
@@ -465,7 +465,7 @@
         <!-- Parámetro: Política de Reinversión vs Cosecha -->
         <div class="control-group full-width-group">
           <div class="control-label-row">
-            <label>Política de Cosecha vs Reinversión Compuesta</label>
+            <span class="control-label">Política de Cosecha vs Reinversión Compuesta</span>
             <span class="control-current font-mono">{{ reinvestmentRatePct() }}% Reinvertido / {{ 100 - reinvestmentRatePct() }}% Cosechado</span>
           </div>
           <div class="policy-selector">
@@ -533,7 +533,7 @@
         <!-- Contexto Bancario & Tasa en Vivo -->
         <div class="control-group">
           <div class="control-label-row">
-            <label>Restricción Bancaria (SUDEBAN)</label>
+            <span class="control-label">Restricción Bancaria (SUDEBAN)</span>
             <button
               type="button"
               class="bank-toggle-btn"
@@ -595,7 +595,11 @@
 
   <!-- Tabla Desglosada Día por Día (Colapsable) -->
   <section class="table-section">
-    <div class="table-header-row" (click)="toggleTable()">
+    <div class="table-header-row"
+         role="button"
+         tabindex="0"
+         (click)="toggleTable()"
+         (keydown.enter)="toggleTable()">
       <div class="table-titles">
         <h4 class="table-title">Desglose Numérico Diario (Días 1 a {{ operationalDays() }})</h4>
         <span class="table-hint">Haz clic para {{ isTableExpanded() ? 'colapsar' : 'expandir los ' + operationalDays() + ' días' }}</span>

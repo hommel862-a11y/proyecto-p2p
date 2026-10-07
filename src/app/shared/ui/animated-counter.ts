@@ -52,14 +52,14 @@ import {
   ],
 })
 export class AnimatedCounterComponent implements OnChanges {
-  @Input({ required: true }) value: number = 0;
-  @Input() prefix: string = '';
-  @Input() suffix: string = '';
-  @Input() decimals: number = 2;
-  @Input() durationMs: number = 600;
+  @Input({ required: true }) value = 0;
+  @Input() prefix = '';
+  @Input() suffix = '';
+  @Input() decimals = 2;
+  @Input() durationMs = 600;
 
   private readonly hostEl = inject(ElementRef);
-  private currentDisplayVal: number = 0;
+  private currentDisplayVal = 0;
   private animFrameId: number | null = null;
   private trendTimeout: ReturnType<typeof setTimeout> | null = null;
 

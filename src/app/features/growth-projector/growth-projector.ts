@@ -9,7 +9,6 @@ import {
 import { CommonModule, DecimalPipe } from '@angular/common';
 import {
   simulateCompoundGrowth,
-  type CompoundSimulationInput,
   type CompoundSimulationResult,
   type DailyProjectionPoint,
 } from '@p2p/core';
@@ -68,9 +67,9 @@ export class GrowthProjectorComponent implements OnInit {
 
   ngOnInit(): void {
     // Precarga silenciosa en background para que el spread y las tasas estén frescas
-    void this.binanceService.fetchMarketDepth('USDT', 'VES', true).catch(() => {});
+    void this.binanceService.fetchMarketDepth('USDT', 'VES', true).catch(() => undefined);
     if (Object.keys(this.cotizaveService.ratesByMarket()).length === 0) {
-      void this.cotizaveService.fetchRates().catch(() => {});
+      void this.cotizaveService.fetchRates().catch(() => undefined);
     }
   }
 

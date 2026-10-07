@@ -74,8 +74,6 @@ export function computeFifoAccounting(ops: readonly Operation[]): FifoAccounting
 
   let totalBuyVes = 0;
   let totalSellVes = 0;
-  let totalBuyUsdt = 0;
-  let totalSellUsdt = 0;
   let totalFeesVes = 0;
 
   // Separate lot queues by trading pair
@@ -106,7 +104,6 @@ export function computeFifoAccounting(ops: readonly Operation[]): FifoAccounting
 
     if (op.type === 'buy') {
       totalBuyVes += effectiveVes;
-      totalBuyUsdt += amount;
 
       let remainingBuy = amount;
 
@@ -157,7 +154,6 @@ export function computeFifoAccounting(ops: readonly Operation[]): FifoAccounting
     } else {
       // op.type === 'sell'
       totalSellVes += effectiveVes;
-      totalSellUsdt += amount;
 
       let remainingSell = amount;
 
