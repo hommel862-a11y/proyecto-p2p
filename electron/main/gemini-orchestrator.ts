@@ -155,10 +155,163 @@ function bcvGapAbsenceNote(bcvRes: { success: boolean }): string {
         `Fuente requerida: ${EXPECTED_SOURCE_BCV_RATE}.\n`;
 }
 
+/**
+ * Injects fresh live market feed and treasury snapshot directly into the AI context.
+ */
+function buildLiveMarketContext(): string {
+  const feed = resolveMarketFeed();
+  const bcv = resolveBcvRate();
+  const treasury = getTreasurySnapshot();
+  const lines: string[] = ['--- CONTEXTO EN VIVO DE MERCADO Y TESORERÍA ---'];
+
+  if (feed.live && typeof feed.bestBuyPrice === 'number' && typeof feed.bestSellPrice === 'number') {
+    lines.push(
+      `• Binance P2P USDT/VES: Compra ${feed.bestBuyPrice.toFixed(2)} | Venta ${feed.bestSellPrice.toFixed(2)} | Mid: ${(feed.midPrice ?? 0).toFixed(2)} (Libro actualizado hace ${Math.round((feed.ageMs ?? 0) / 1000)}s)`,
+    );
+    const spreadPct = ((feed.bestSellPrice - feed.bestBuyPrice) / feed.bestBuyPrice) * 100;
+    lines.push(`• Spread Bruto P2P: ${spreadPct.toFixed(2)}%`);
+    if (typeof feed.bidDepthUsdt === 'number' && typeof feed.askDepthUsdt === 'number') {
+      const totalDepth = feed.bidDepthUsdt + feed.askDepthUsdt;
+      const buyPressure = totalDepth > 0 ? ((feed.bidDepthUsdt / totalDepth) * 100).toFixed(0) : '50';
+      lines.push(
+        `• Profundidad L2: Bid $${feed.bidDepthUsdt.toLocaleString('en-US', { maximumFractionDigits: 0 })} USDT | Ask $${feed.askDepthUsdt.toLocaleString('en-US', { maximumFractionDigits: 0 })} USDT (Presión Compra: ${buyPressure}%)`,
+      );
+    }
+  } else {
+    lines.push(`• Binance P2P: Feed no disponible en vivo (${feed.reason}).`);
+  }
+
+  if (bcv.live && typeof bcv.usd === 'number') {
+    lines.push(`• Tasa Oficial BCV: ${bcv.usd.toFixed(2)} VES/USD (Fuente: ${bcv.source})`);
+    if (feed.live && typeof feed.bestSellPrice === 'number') {
+      const gapPct = ((feed.bestSellPrice - bcv.usd) / bcv.usd) * 100;
+      lines.push(`• Brecha Paralelo vs BCV: ${gapPct.toFixed(2)}%`);
+    }
+  } else {
+    lines.push(`• Tasa Oficial BCV: No conectada a este proceso.`);
+  }
+
+  // Ventana de intervención cambiaria BCV (habitual 10:00 - 11:30 AM hora de Caracas UTC-4)
+  const nowUtc = new Date();
+  const caracasHour = (nowUtc.getUTCHours() - 4 + 24) % 24;
+  const caracasMin = nowUtc.getUTCMinutes();
+  const isInterventionWindow =
+    (caracasHour === 10 && caracasMin >= 0) || (caracasHour === 11 && caracasMin <= 30);
+  if (isInterventionWindow) {
+    lines.push('• Ventana BCV: 🚨 VENTANA DE INTERVENCIÓN ACTIVA (10:00 - 11:30 AM VET). Alta volatilidad esperada.');
+  } else {
+    lines.push('• Ventana BCV: 🟢 Mercado Libre fuera de ventana de intervención.');
+  }
+
+  if (treasury) {
+    lines.push(
+      `• Tesorería VES: Saldo disponible ${treasury.totalBalanceVes.toLocaleString('es-VE')} VES | Gastado hoy ${treasury.totalSpentTodayVes.toLocaleString('es-VE')} VES`,
+    );
+    const activeAccs = treasury.accounts.filter((a) => a.status !== 'DISABLED');
+    if (activeAccs.length > 0) {
+      const accSummary = activeAccs
+        .map(
+          (a) =>
+            `${a.bankName}: límite restante ${a.remainingLimitVes.toLocaleString('es-VE')} VES (${a.todayTransactionCount}/${a.maxDailyTransactions} txs)`,
+        )
+        .join(' | ');
+      lines.push(`• Cuentas activas: ${accSummary}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Extracts explicitly requested operational capital from the user prompt
+ * (e.g., "$500", "500 usdt", "300 dólares", "capital de 2000").
+ */
+export function extractRequestedCapital(
+  prompt: string,
+  fallbackCapital = 1000,
+): { amount: number; isExplicit: boolean } {
+  if (!prompt || typeof prompt !== 'string') return { amount: fallbackCapital, isExplicit: false };
+
+  const patterns = [
+    /(?:\$|usdt|usd)\s*([0-9]+(?:[.,][0-9]+)?)/i,
+    /([0-9]+(?:[.,][0-9]+)?)\s*(?:\$|usdt|usd|dolares|dólares)/i,
+    /(?:capital|monto|saldo|ticket|presupuesto|tengo|con)\s*(?:de\s*)?(?:[^\d]{0,5})([0-9]+(?:[.,][0-9]+)?)/i,
+  ];
+
+  for (const regex of patterns) {
+    const match = prompt.match(regex);
+    if (match && match[1]) {
+      const numStr = match[1].replace(',', '.');
+      const parsed = parseFloat(numStr);
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 1_000_000) {
+        return { amount: Math.round(parsed), isExplicit: true };
+      }
+    }
+  }
+
+  return { amount: fallbackCapital, isExplicit: false };
+}
+
+/**
+ * Builds the shared system instruction for both Gemini and Universal AI Gateway.
+ * Prioritizes high-caliber quantitative depth, logical grounding, and structured Chain-of-Thought.
+ */
+function buildSystemInstruction(learningsContext: string): string {
+  const liveMarket = buildLiveMarketContext();
+
+  return `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
+Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
+
+${liveMarket}
+
+FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
+1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
+2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte enfáticamente.
+3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
+4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
+5. CONSULTORÍA FINANCIERA & TAMAÑO DINÁMICO DE CAPITAL:
+   - Actuá como un CFO Senior y consultor financiero institucional para P2P, tesorería y arbitraje.
+   - Si el usuario te hace preguntas abiertas de negocio, flujo de caja, o finanzas, respondé con fluidez conversacional analítica sin forzar una tarjeta de ejecución estructurada a menos que te pida explícitamente una estrategia o plan operativo.
+   - Cuando te pida una estrategia con un monto específico (ej: $500, 500 USDT, 300 dólares, 2000 USDT), adaptá TODOS los cálculos, fragmentación y beneficios esperados a ESE capital exacto, en lugar de forzar montos predeterminados.
+   - Tenés acceso a búsqueda web en vivo mediante 'search_google_live' para consultar normativas SUDEBAN, circulares bancarias, tasas oficiales BCV y reglas vigentes de Binance P2P.
+6. BUCLE DE RAZONAMIENTO REACT (Reasoning + Action):
+   - Encadená las herramientas necesarias paso a paso: primero obtené datos de tasas/mercado, luego evaluá riesgo/microestructura o saturación bancaria, y finalmente emití tu dictamen o ticket de ejecución.
+   - Mostrá transparencia numérica: desglosá tasas, spreads netos, comisiones y slippage esperado.
+7. EXPLICACIONES ANALÍTICAS PROFUNDAS Y DETALLADAS:
+   - Cuando el operador consulte cómo o por qué se trianguló de cierta forma, explicá la lógica paso a paso: precios de entrada y salida, tasas cruzadas, costos de comisiones maker/taker y mitigación de slippage.
+   - Si se detecta un riesgo (ej. depeg de USDT, brecha BCV > 20%, o contraparte sospechosa), explicá con rigor técnico la causa raíz y la maniobra de protección recomendada.
+8. TESORERÍA & BINANCE EARN (Costo de Oportunidad Cero):
+   - El capital P2P no debe quedar ocioso entre órdenes, fines de semana o pausas operativas. Utilizá activamente las herramientas de Binance Simple Earn Flexible (D+0), Launchpool, Dual Investment y Liquidity Laddering.
+9. OPERACIONES, GOBERNANZA SOP & CONCILIACIÓN CONTINUA:
+   - Toda operación debe cumplir estrictamente con los Protocolos Operativos Estándar (SOP): verificación de identidad 1:1 entre cuenta bancaria y Binance, comprobación rigurosa de fondos disponibles (nunca diferidos) y resolución en menos de 15 minutos.
+
+MEMORIA PERSISTENTE ENGRAM ACTIVA:
+${learningsContext || 'Sin observaciones previas registradas aún.'}
+
+ESTRUCTURA DE RESPUESTA (Usar solo cuando se presente una estrategia o análisis cuantitativo formal):
+### 🎯 Diagnóstico Situacional
+[Dictamen directo, certero y sin rodeos sobre la consulta o mercado.]
+
+### 📊 Desglose Cuantitativo & Regla de Oro
+* Tasa de Entrada / Salida: [Precios en libros reales]
+* Comisiones y Deslizamiento: [Exchange + bancario + slippage]
+* Spread Neto Verificado: [Margen final vs Regla de Oro >= 0.50%]
+* Beneficio / Retorno: [Proyección en USDT ajustada al capital solicitado]
+
+### ⚡ Plan de Acción Táctico
+* Ruta cronológica y método bancario.
+* Medida de protección de capital.
+
+PAUTAS DE COMUNICACIÓN:
+- Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
+- Sé riguroso y transparente: mostrá siempre el desglose numérico detrás de cada decisión.`;
+}
+
 export class GeminiOrchestrator {
   private apiKey?: string;
   private quotaCooldownUntil = 0;
   private webhookDispatcher: WebhookDispatcher;
+  private agentRegistry: AgentRegistry;
 
   /**
    * Turn-level paid-call budget.
@@ -178,8 +331,33 @@ export class GeminiOrchestrator {
     /** Max paid Gemini calls per user turn. Defaults to a conservative budget. */
     private paidCallsBudget: number = 8,
   ) {
-    this.apiKey = apiKey || process.env['GEMINI_API_KEY'] || undefined;
-    this.webhookDispatcher = webhookDispatcher || new WebhookDispatcher();
+    this.apiKey = apiKey;
+    this.webhookDispatcher = webhookDispatcher || new WebhookDispatcher(db);
+    this.agentRegistry = new AgentRegistry(this.db);
+  }
+
+  listAgents(): RegisteredAgentDto[] {
+    return this.agentRegistry.listAgents();
+  }
+
+  toggleAgent(id: string, enabled: boolean): RegisteredAgentDto | undefined {
+    return this.agentRegistry.toggleAgent(id, enabled);
+  }
+
+  saveAgent(agent: RegisteredAgentDto): RegisteredAgentDto {
+    return this.agentRegistry.saveAgent(agent);
+  }
+
+  private dedupeSources(sources: GroundingSource[]): GroundingSource[] {
+    const seen = new Set<string>();
+    const deduped: GroundingSource[] = [];
+    for (const s of sources) {
+      if (s.uri && !seen.has(s.uri)) {
+        seen.add(s.uri);
+        deduped.push(s);
+      }
+    }
+    return deduped;
   }
 
   /** Reset at the start of every user turn. */
@@ -582,46 +760,7 @@ export class GeminiOrchestrator {
     apiKey: string,
   ): Promise<CopilotResponse> {
     const candidateModels = this.getCandidateModels();
-    const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
-Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
-
-FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
-1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
-2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte enfáticamente.
-3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
-4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
-5. BUCLE DE RAZONAMIENTO REACT (Reasoning + Action):
-   - Encadená las herramientas necesarias paso a paso: primero obtené datos de tasas/mercado, luego evaluá riesgo/microestructura o saturación bancaria, y finalmente emití tu dictamen o ticket de ejecución.
-   - Mostrá transparencia numérica: desglosá tasas, spreads netos, comisiones y slippage esperado.
-6. EXPLICACIONES ANALÍTICAS PROFUNDAS Y DETALLADAS:
-   - Cuando el operador consulte cómo o por qué se trianguló de cierta forma, explicá la lógica paso a paso: precios de entrada y salida, tasas cruzadas, costos de comisiones maker/taker y mitigación de slippage.
-   - Si se detecta un riesgo (ej. depeg de USDT, brecha BCV > 20%, o contraparte sospechosa), explicá con rigor técnico la causa raíz y la maniobra de protección recomendada.
-7. TESORERÍA & BINANCE EARN (Costo de Oportunidad Cero):
-   - El capital P2P no debe quedar ocioso entre órdenes, fines de semana o pausas operativas. Utilizá activamente las herramientas de Binance Simple Earn Flexible (D+0), Launchpool, Dual Investment y Liquidity Laddering.
-8. OPERACIONES, GOBERNANZA SOP & CONCILIACIÓN CONTINUA:
-   - Toda operación debe cumplir estrictamente con los Protocolos Operativos Estándar (SOP): verificación de identidad 1:1 entre cuenta bancaria y Binance, comprobación rigurosa de fondos disponibles (nunca diferidos) y resolución en menos de 15 minutos.
-
-MEMORIA PERSISTENTE ENGRAM ACTIVA:
-${learningsContext || 'Sin observaciones previas registradas aún.'}
-
-ESTRUCTURA DE RESPUESTA OBLIGATORIA (Cero relleno, números primero):
-Toda respuesta ejecutiva de análisis o recomendación táctica debe organizarse con claridad en:
-### 🎯 Diagnóstico Situacional
-[Dictamen directo, certero y sin rodeos sobre la consulta o mercado.]
-
-### 📊 Desglose Cuantitativo & Regla de Oro
-* Tasa de Entrada / Salida: [Precios en libros reales]
-* Comisiones y Deslizamiento: [Exchange + bancario + slippage]
-* Spread Neto Verificado: [Margen final vs Regla de Oro >= 0.50%]
-* Beneficio / Retorno: [Proyección en USDT]
-
-### ⚡ Plan de Acción Táctico
-* Ruta cronológica y método bancario.
-* Medida de protección de capital.
-
-PAUTAS DE COMUNICACIÓN:
-- Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
-- Sé riguroso y transparente: mostrá siempre el desglose numérico detrás de cada decisión.`;
+    const systemInstruction = buildSystemInstruction(learningsContext);
 
     const mcpToolsOnly = MCP_SERVER_REGISTRY.flatMap((srv) => srv.tools)
       .filter((t) => !GEMINI_FINANCIAL_SKILLS.some((s) => s.name === t.name))
@@ -669,6 +808,7 @@ PAUTAS DE COMUNICACIÓN:
       }[] = [{ role: 'user', parts: [{ text: prompt }] }];
 
       const executedSkills: string[] = [];
+      const liveSources: GroundingSource[] = [];
       let suggestedPlan: StrategyPlanCard | undefined;
       let step = 0;
       let modelFailed = false;
@@ -679,7 +819,7 @@ PAUTAS DE COMUNICACIÓN:
         const requestBody = {
           systemInstruction: { parts: [{ text: systemInstruction }] },
           contents: conversationContents,
-          tools: [{ functionDeclarations: toolDeclarations }],
+          tools: [{ functionDeclarations: toolDeclarations }, { googleSearch: {} }],
         };
 
         let res: Response;
@@ -696,6 +836,31 @@ PAUTAS DE COMUNICACIÓN:
           lastError = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
           modelFailed = true;
           break;
+        }
+
+        if (!res.ok) {
+          if (res.status === 400) {
+            try {
+              const fallbackBody = {
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                contents: conversationContents,
+                tools: [{ functionDeclarations: toolDeclarations }],
+              };
+              const fallbackRes = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify(fallbackBody),
+              });
+              if (fallbackRes.ok) {
+                res = fallbackRes;
+              }
+            } catch {
+              // Keep original res if fallback fetch fails
+            }
+          }
         }
 
         if (!res.ok) {
@@ -723,6 +888,9 @@ PAUTAS DE COMUNICACIÓN:
                 functionCall?: { name: string; args: Record<string, unknown> };
               }[];
             };
+            groundingMetadata?: {
+              groundingChunks?: { web?: { uri?: string; title?: string } }[];
+            };
           }[];
         };
 
@@ -730,6 +898,18 @@ PAUTAS DE COMUNICACIÓN:
         const parts = firstCandidate?.content?.parts || [];
         const functionCallParts = parts.filter((p) => p.functionCall && p.functionCall.name);
         const textPart = parts.find((p) => p.text);
+
+        const groundingMeta = firstCandidate?.groundingMetadata;
+        if (groundingMeta?.groundingChunks && Array.isArray(groundingMeta.groundingChunks)) {
+          for (const chunk of groundingMeta.groundingChunks) {
+            if (chunk.web?.uri) {
+              liveSources.push({
+                title: chunk.web.title || chunk.web.uri,
+                uri: chunk.web.uri,
+              });
+            }
+          }
+        }
 
         if (functionCallParts.length === 0) {
           // Gemini finished thinking and returned text response.
@@ -740,6 +920,7 @@ PAUTAS DE COMUNICACIÓN:
               'He analizado tu consulta con base en las directivas de mercado actuales.',
             suggestedPlan,
             skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+            sources: liveSources.length > 0 ? this.dedupeSources(liveSources) : undefined,
             provenance: {
               source: 'gemini',
               model,
@@ -783,24 +964,39 @@ PAUTAS DE COMUNICACIÓN:
           let isSuccess = true;
           let errorMessage: string | undefined;
 
-          const localSkill = executeFinancialSkill(name, args || {});
-          if (localSkill.success || !localSkill.error?.includes('no reconocida')) {
-            skillData = localSkill.data;
-            isSuccess = localSkill.success;
-            errorMessage = localSkill.error;
+          if (name === 'search_google_live') {
+            const queryArg = typeof args['query'] === 'string' ? args['query'] : prompt;
+            const searchRes = await executeLiveWebSearch(queryArg, apiKey);
+            skillData = searchRes;
+            isSuccess = true;
+            if (searchRes.sources && searchRes.sources.length > 0) {
+              liveSources.push(...searchRes.sources);
+            }
           } else {
-            try {
-              const mcpRes = await executeMcpToolTest(name, args || {});
-              skillData = mcpRes.result;
-              isSuccess = mcpRes.success;
-              errorMessage = mcpRes.error;
-            } catch (mcpErr: unknown) {
-              isSuccess = false;
-              errorMessage = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+            const localSkill = executeFinancialSkill(name, args || {});
+            if (localSkill.success || !localSkill.error?.includes('no reconocida')) {
+              skillData = localSkill.data;
+              isSuccess = localSkill.success;
+              errorMessage = localSkill.error;
+            } else {
+              try {
+                const mcpRes = await executeMcpToolTest(name, args || {});
+                skillData = mcpRes.result;
+                isSuccess = mcpRes.success;
+                errorMessage = mcpRes.error;
+              } catch (mcpErr: unknown) {
+                isSuccess = false;
+                errorMessage = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+              }
             }
           }
 
-          const plan = this.generatePlanFromSkill(name, skillData);
+          const userCapInfo = extractRequestedCapital(prompt);
+          const plan = this.generatePlanFromSkill(
+            name,
+            skillData,
+            userCapInfo.isExplicit ? userCapInfo.amount : undefined,
+          );
           if (plan) {
             suggestedPlan = plan;
             this.db.saveStrategyPlan({
@@ -877,6 +1073,7 @@ PAUTAS DE COMUNICACIÓN:
               reply: finalText.trim(),
               suggestedPlan,
               skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+              sources: liveSources.length > 0 ? this.dedupeSources(liveSources) : undefined,
               provenance: {
                 source: 'gemini',
                 model,
@@ -906,6 +1103,7 @@ PAUTAS DE COMUNICACIÓN:
         reply: defaultExplanation,
         suggestedPlan,
         skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+        sources: liveSources.length > 0 ? this.dedupeSources(liveSources) : undefined,
         provenance: {
           source: 'gemini',
           model,
@@ -946,38 +1144,7 @@ PAUTAS DE COMUNICACIÓN:
     provider: AiProviderType,
     model: string,
   ): Promise<CopilotResponse> {
-    const systemInstruction = `Sos Gentleman AI, Senior Architect de Arbitraje P2P Institucional (15+ años de experiencia, GDE & MVP).
-Tu misión es guiar al operador con máxima precisión técnica, pedagogía y disciplina innegociable de preservación de capital (Venezuela / LATAM).
-
-FILOSOFÍA Y DIRECTIVAS FUNDAMENTALES:
-1. CONCEPTOS > CÓDIGO & PRESERVACIÓN > CODICIA: En arbitraje no hay atajos ni apuestas impulsivas. Jamás operes a ciegas. Cada satoshi y cada bolívar se defienden con análisis riguroso de microestructura.
-2. REGLA DE ORO INNEGOCIABLE (Golden Rule): Spread neto real >= 0.50% tras comisiones bancarias, taker/maker y deslizamiento (slippage). Si no supera el 0.50%, la ruta NO es viable y se descarta o advierte enfáticamente.
-3. EL HUMANO SIEMPRE LIDERA (Human-in-the-Loop): Vos proponés con sustento matemático; el operador humano valida y decide dar 'PLAY'. Ninguna orden se dispara sin consentimiento explícito.
-4. MICROESTRUCTURA & RIESGO: Evaluá siempre la ventana de intervención cambiaria del BCV (10:00 - 11:30 AM), la brecha cambiaria y el perfil de la contraparte antes de recomendar rotaciones.
-5. BUCLE DE RAZONAMIENTO REACT: Encadená las herramientas necesarias paso a paso para medir el mercado antes de dictaminar.
-6. COBERTURA TOTAL DE MERCADOS: Dominio de Binance (Spot, P2P, Earn), Bybit (P2P, perpetuos, funding rates), El Dorado y banca venezolana.
-
-MEMORIA PERSISTENTE ENGRAM ACTIVA:
-${learningsContext || 'Sin observaciones previas registradas aún.'}
-
-ESTRUCTURA DE RESPUESTA OBLIGATORIA (Cero relleno, números primero):
-Toda respuesta ejecutiva de análisis o recomendación táctica debe organizarse con claridad en:
-### 🎯 Diagnóstico Situacional
-[Dictamen directo, certero y sin rodeos sobre la consulta o mercado.]
-
-### 📊 Desglose Cuantitativo & Regla de Oro
-* Tasa de Entrada / Salida: [Precios en libros reales]
-* Comisiones y Deslizamiento: [Exchange + bancario + slippage]
-* Spread Neto Verificado: [Margen final vs Regla de Oro >= 0.50%]
-* Beneficio / Retorno: [Proyección en USDT]
-
-### ⚡ Plan de Acción Táctico
-* Ruta cronológica y método bancario.
-* Medida de protección de capital.
-
-PAUTAS DE COMUNICACIÓN:
-- Hablá en español rioplatense natural (voseo: fijate, mirá, tené en cuenta, acordate), con tono cálido, directo, pedagógico y firme.
-- Sé riguroso y transparente: mostrá siempre el desglose numérico detrás de cada decisión.`;
+    const systemInstruction = buildSystemInstruction(learningsContext);
 
     const mcpToolsOnly = MCP_SERVER_REGISTRY.flatMap((srv) => srv.tools)
       .filter((t) => !GEMINI_FINANCIAL_SKILLS.some((s) => s.name === t.name))
@@ -1006,6 +1173,7 @@ PAUTAS DE COMUNICACIÓN:
     ];
 
     const executedSkills: string[] = [];
+    const liveSources: GroundingSource[] = [];
     let suggestedPlan: StrategyPlanCard | undefined;
     let step = 0;
     const MAX_REACT_STEPS = 5;
@@ -1028,6 +1196,10 @@ PAUTAS DE COMUNICACIÓN:
         toolDeclarations,
       );
 
+      if (result.sources && result.sources.length > 0) {
+        liveSources.push(...result.sources);
+      }
+
       if (!result.toolCalls || result.toolCalls.length === 0) {
         return {
           reply:
@@ -1035,6 +1207,7 @@ PAUTAS DE COMUNICACIÓN:
             'He analizado tu consulta con base en las directivas de mercado actuales.',
           suggestedPlan,
           skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+          sources: liveSources.length > 0 ? this.dedupeSources(liveSources) : undefined,
           provenance: {
             source: provider as any,
             model,
@@ -1069,24 +1242,40 @@ PAUTAS DE COMUNICACIÓN:
         let isSuccess = true;
         let errorMessage: string | undefined;
 
-        const localSkill = executeFinancialSkill(name, args);
-        if (localSkill.success || !localSkill.error?.includes('no reconocida')) {
-          skillData = localSkill.data;
-          isSuccess = localSkill.success;
-          errorMessage = localSkill.error;
+        if (name === 'search_google_live') {
+          const queryArg = typeof args['query'] === 'string' ? args['query'] : prompt;
+          const geminiKey = this.getEffectiveApiKey('gemini') || apiKey;
+          const searchRes = await executeLiveWebSearch(queryArg, geminiKey);
+          skillData = searchRes;
+          isSuccess = true;
+          if (searchRes.sources && searchRes.sources.length > 0) {
+            liveSources.push(...searchRes.sources);
+          }
         } else {
-          try {
-            const mcpRes = await executeMcpToolTest(name, args);
-            skillData = mcpRes.result;
-            isSuccess = mcpRes.success;
-            errorMessage = mcpRes.error;
-          } catch (mcpErr: unknown) {
-            isSuccess = false;
-            errorMessage = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+          const localSkill = executeFinancialSkill(name, args);
+          if (localSkill.success || !localSkill.error?.includes('no reconocida')) {
+            skillData = localSkill.data;
+            isSuccess = localSkill.success;
+            errorMessage = localSkill.error;
+          } else {
+            try {
+              const mcpRes = await executeMcpToolTest(name, args);
+              skillData = mcpRes.result;
+              isSuccess = mcpRes.success;
+              errorMessage = mcpRes.error;
+            } catch (mcpErr: unknown) {
+              isSuccess = false;
+              errorMessage = mcpErr instanceof Error ? mcpErr.message : String(mcpErr);
+            }
           }
         }
 
-        const plan = this.generatePlanFromSkill(name, skillData);
+        const userCapInfo = extractRequestedCapital(prompt);
+        const plan = this.generatePlanFromSkill(
+          name,
+          skillData,
+          userCapInfo.isExplicit ? userCapInfo.amount : undefined,
+        );
         if (plan) {
           suggestedPlan = plan;
           this.db.saveStrategyPlan({
@@ -1125,6 +1314,7 @@ PAUTAS DE COMUNICACIÓN:
       reply: `Mirá, ejecuté las herramientas de análisis cuantitativo **[${executedSkills.join(', ')}]** mediante **${model}** para auditar el mercado. Con base en los números, formulé la estrategia correspondiente para resguardar el capital y capturar margen real. Revisá los parámetros de la ficha y dale tu visto bueno con **EJECUTAR** cuando quieras despacharla.`,
       suggestedPlan,
       skillsExecuted: executedSkills.length > 0 ? executedSkills : undefined,
+      sources: liveSources.length > 0 ? this.dedupeSources(liveSources) : undefined,
       provenance: {
         source: provider as any,
         model,
@@ -1166,6 +1356,37 @@ PAUTAS DE COMUNICACIÓN:
     const liveSellPrice = feed.bestSellPrice;
     const liveMidPrice = feed.midPrice;
     const liveParallelRate = liveSellPrice;
+
+    // Dynamic capital sizing parser
+    const capitalInfo = extractRequestedCapital(lowerPrompt);
+    const resolveCapital = (fallback: number) => (capitalInfo.isExplicit ? capitalInfo.amount : fallback);
+
+    // Conversational greeting check: avoid generating rigid execution plans on simple hellos
+    const isGreetingOnly = /^(hola|buen(?:as|os)|buenos d[ií]as|buenas tardes|buenas noches|qu[eé] tal|c[oó]mo est[aá]s|saludos|hey|hi|hello)[\s!.,?]*$/i.test(lowerPrompt.trim());
+    if (isGreetingOnly) {
+      const midPrice = onlyWhenLive(liveMidPrice, hasLiveMarketFeed);
+      const bcvRate = getResolvedBcvRate();
+      const parallelRate = onlyWhenLive(liveParallelRate, hasLiveMarketFeed);
+      const bcvRes = runBcvGapSkill(parallelRate, bcvRate);
+      const bData = skillPayload(bcvRes) as { gap?: { gapPct?: number; zone?: string } };
+
+      return {
+        reply: `¡Hola! ¿Cómo andás? Acá Gentleman AI, tu consultor financiero y arquitecto de mesa P2P.\n\n` +
+          `### 📊 Estado de Microestructura en Vivo\n` +
+          `* **Precio Medio (Mid-Price)**: ${formatNumberOrNd(midPrice)} VES/USDT\n` +
+          `* **Tasa Oficial BCV**: ${formatNumberOrNd(bcvRate)} VES/USD | **Paralelo P2P**: ${formatNumberOrNd(parallelRate)} VES/USD\n` +
+          `* **Brecha Cambiaria**: ${formatNumberOrNd(bData?.gap?.gapPct, 1)}% (Zona: \`${bData?.gap?.zone ?? 'N/D'}\`)\n` +
+          `* **Regla de Oro Institucional**: Spread mínimo neto admisible >= 0.50%.\n\n` +
+          `Contame qué tenés en mente para hoy: ¿querés analizar la liquidez en algún banco específico, calcular una rotación de capital, evaluar coberturas cambiarias o revisar el arbitraje entre plataformas? Decime con cuánto capital querés operar y lo calibramos al milímetro.`,
+        provenance: {
+          source: isSimulated ? 'simulated' : 'deterministic',
+          provenanceId: `PROV-GREET-${Date.now().toString(36).toUpperCase()}`,
+          esSimulado: isSimulated,
+          liveMarketFeedConnected: hasLiveMarketFeed,
+          timestamp: Date.now(),
+        },
+      };
+    }
 
     // Intention classification based on domain keywords
     const isMicrostructure =
@@ -1338,15 +1559,16 @@ PAUTAS DE COMUNICACIÓN:
         `Con esta configuración asegurás captura de spread como Maker minimizando la selección adversa. Fijate en la ficha técnica generada y dale **EJECUTAR** para publicar las cotizaciones calibradas.`;
 
       const spreadVal = typeof aData.spreadPct === 'number' ? Number(aData.spreadPct.toFixed(2)) : 0;
+      const reqCap1 = resolveCapital(3000);
       plan = {
         id: planId,
         title: 'Market Making Cuantitativo (Avellaneda-Stoikov & TWAP)',
         route: `Bid: ${formatNumberOrNd(aData.optimalBidPrice)} | Ask: ${formatNumberOrNd(aData.optimalAskPrice)} (Fragmentación: ${sData.totalSlices !== undefined ? sData.totalSlices : 'N/D'} tramos)`,
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 3000,
+        capitalRequiredUsdt: reqCap1,
         expectedNetSpreadPct: spreadVal,
-        expectedProfitUsdt: Number(((3000 * spreadVal) / 100).toFixed(2)),
+        expectedProfitUsdt: Number(((reqCap1 * spreadVal) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Lead Market Maker',
         rationale: `Cotizaciones asimétricas calculadas por Avellaneda-Stoikov con VPIN en zona ${vData.toxicityZone ?? 'segura'}. Ejecución anti-impacto por bloques.`,
@@ -1440,15 +1662,16 @@ PAUTAS DE COMUNICACIÓN:
         `* **Velocidad de Fuga del VES (MV=PY)**: Índice de ${formatNumberOrNd(velIndex, 2)} (\`${regimeStr}\`). Tiempo máximo sugerido de tenencia en bolívares: **${holdMin !== undefined ? `${holdMin} minutos` : 'N/D'}**.\n\n` +
         `El plan táctico busca preservar la tesorería frente a la devaluación; el spread y el profit son estimados y no están verificados contra el libro real.`;
 
+      const reqCap2 = resolveCapital(1200);
       plan = {
         id: planId,
         title: 'Rotación Rápida & Inmunización Cambiaria BCV/SENIAT',
         route: 'VES (Pago Móvil Rápido) -> USDT (Binance P2P)',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1200,
+        capitalRequiredUsdt: reqCap2,
         expectedNetSpreadPct: 1.25,
-        expectedProfitUsdt: 15.0,
+        expectedProfitUsdt: Number(((reqCap2 * 1.25) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Operador Turno Mañana',
         rationale: `Rotación rápida previa a ventana de inyección BCV. Límite estricto de retención de VES en 30 min por drenaje fiscal SENIAT.`,
@@ -1509,13 +1732,14 @@ PAUTAS DE COMUNICACIÓN:
         `* **Estrategia**: ${fData.executionStrategy ?? 'Short sintético Delta-Neutral con colateral en USDT'}.\n\n` +
         `Esta cobertura inmuniza tu balance contra una devaluación abrupta del bolívar mientras te permite cosechar intereses de fondeo.`;
 
+      const reqCap3 = resolveCapital(proposalHedgeUsdt);
       plan = {
         id: planId,
         title: 'Cobertura Delta-Neutral & Funding Harvest',
         route: 'SHORT_PERP_USD (Binance Futures) vs Inventario VES P2P',
-        capitalRequiredUsdt: proposalHedgeUsdt,
+        capitalRequiredUsdt: reqCap3,
         expectedNetSpreadPct: 0.85,
-        expectedProfitUsdt: 8.5,
+        expectedProfitUsdt: Number(((reqCap3 * 0.85) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Desk Risk Officer',
         rationale:
@@ -1550,17 +1774,18 @@ PAUTAS DE COMUNICACIÓN:
         strategicRationale?: string;
       };
 
-      const perOp = typeof kData.perOperatorAllocationUsdt === 'number' ? kData.perOperatorAllocationUsdt : 2500;
-      const optTicket = typeof kData.optimalTicketSizeUsdt === 'number' ? kData.optimalTicketSizeUsdt : 1125;
+      const reqCap4 = resolveCapital(5000);
+      const perOp = Math.round(reqCap4 / 2);
+      const optTicket = Math.round(reqCap4 * 0.225);
 
       reply =
         `Mirá, apliqué el modelo matemático del **Criterio de Kelly Institucional (Fractional Half-Kelly)** para maximizar la tasa compuesta geométrica de crecimiento protegiendo el bankroll.\n\n` +
         `### 📊 Optimización de Tickets (Kelly Fractional)\n` +
-        `* **Bankroll Total Disponible**: $5,000 USDT\n` +
+        `* **Bankroll Total Disponible**: $${formatNumberOrNd(reqCap4, 0)} USDT\n` +
         `* **Full Kelly Teórico**: ${formatNumberOrNd(kData.fullKellyFractionPct, 1)}% (Demasiado agresivo para un entorno bancario regulado).\n` +
         `* **Fracción Prudencial Aplicada (Half-Kelly)**: \`${formatNumberOrNd(kData.recommendedFractionPct, 1)}%\` del bankroll.\n` +
-        `* **Tamaño Óptimo de Ticket por Orden**: \`$${formatNumberOrNd(kData.optimalTicketSizeUsdt, 0)} USDT\`\n` +
-        `* **Asignación por Operador (2 Operadores Activos)**: $${formatNumberOrNd(kData.perOperatorAllocationUsdt, 0)} USDT por turno/cuenta bancaria.\n` +
+        `* **Tamaño Óptimo de Ticket por Orden**: \`$${formatNumberOrNd(optTicket, 0)} USDT\`\n` +
+        `* **Asignación por Operador (2 Operadores Activos)**: $${formatNumberOrNd(perOp, 0)} USDT por turno/cuenta bancaria.\n` +
         `* **Probabilidad de Ruina Estimada**: \`< ${formatNumberOrNd(kData.ruinProbabilityPct, 2)}%\` con disciplina estricta de rotación.\n\n` +
         `### 🎯 Fundamento Estratégico\n` +
         `${kData.strategicRationale ?? 'Al limitar los tickets al 22.5%, evitamos alertas por transferencias masivas en los bancos locales (SUDEBAN) y aseguramos liquidez continua para compras de oportunidad.'}`;
@@ -1569,9 +1794,9 @@ PAUTAS DE COMUNICACIÓN:
         id: planId,
         title: 'Asignación de Capital Kelly (2 Operadores)',
         route: `2 Cuentas Bancarias x $${perOp} USDT (Tickets de $${optTicket})`,
-        capitalRequiredUsdt: 5000,
+        capitalRequiredUsdt: reqCap4,
         expectedNetSpreadPct: 1.35,
-        expectedProfitUsdt: 67.5,
+        expectedProfitUsdt: Number(((reqCap4 * 1.35) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Desk Risk & Treasury Lead',
         rationale:
@@ -1598,15 +1823,16 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('calculate_earn_yield_vs_p2p_hurdle_rate');
 
+      const reqCap5 = resolveCapital(2000);
       const earnRes = executeFinancialSkill('optimize_idle_capital_simple_earn', {
-        idleCapitalUsdt: 2000,
+        idleCapitalUsdt: reqCap5,
         hoursIdle: 8,
         simpleEarnAprPct: 12.5,
       });
       executedSkills.push('optimize_idle_capital_simple_earn');
 
       const redemptionRes = executeFinancialSkill('simulate_earn_instant_redemption_latency', {
-        redemptionAmountUsdt: 2000,
+        redemptionAmountUsdt: reqCap5,
       });
       executedSkills.push('simulate_earn_instant_redemption_latency');
 
@@ -1634,7 +1860,7 @@ PAUTAS DE COMUNICACIÓN:
         `* **Rendimiento Simple Earn Flexible**: \`+${formatNumberOrNd(hData.passiveHourlyEarnYieldPct, 5)}%/hora\` (12.5% APR anualizado).\n` +
         `* **Dictamen del Modelo**: ${hData.recommendation ?? 'Operar activamente mientras el mercado P2P ofrezca spread neto >= 0.50%'}.\n\n` +
         `### 🌙 Parking Táctico de Capital Ocioso (Horas Nocturnas)\n` +
-        `* **Capital Estacionable**: $2,000 USDT durante ventanas sin volumen bancario (00:00 - 08:00 UTC).\n` +
+        `* **Capital Estacionable**: $${formatNumberOrNd(reqCap5, 0)} USDT durante ventanas sin volumen bancario (00:00 - 08:00 UTC).\n` +
         `* **Interés Generado**: ~$${formatNumberOrNd(eData.interestEarnedUsdt, 3)} USDT por noche (tasa no verificada en vivo: el rendimiento depsite del esquema de Binance P2P, no de un feed conectado).\n` +
         `* **Redención Inmediata**: ${rData.instantRedemptionAvailable ? '✓ Disponible' : 'Advertencia'} (Latencia promedio: ${rData.estimatedLatencySeconds !== undefined ? `${rData.estimatedLatencySeconds} seg` : 'N/D'}). El capital retorna a la billetera de fondos inmediatamente al detectar un anuncio rentable.\n\n` +
         `El capital jamás se queda quieto al 0%: produce rendimiento pasivo en vaults cuando los bancos duermen y se redime en segundos para P2P al amanecer.`;
@@ -1644,9 +1870,9 @@ PAUTAS DE COMUNICACIÓN:
         title: 'Estacionamiento en Simple Earn Flexible & Redención Inmediata',
         route: 'Spot/Fondos ➔ Binance Simple Earn Flexible USDT (12.5% APR)',
         asset: 'USDT',
-        capitalRequiredUsdt: 2000,
+        capitalRequiredUsdt: reqCap5,
         expectedNetSpreadPct: 1.05,
-        expectedProfitUsdt: 21.0,
+        expectedProfitUsdt: Number(((reqCap5 * 1.05) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Treasury Manager',
         rationale:
@@ -1665,13 +1891,14 @@ PAUTAS DE COMUNICACIÓN:
     else if (isCrossExchange) {
       const buyPrice = onlyWhenLive(liveBuyPrice, hasLiveMarketFeed);
       const sellPrice = onlyWhenLive(liveSellPrice, hasLiveMarketFeed);
+      const reqCap6 = resolveCapital(1500);
       const crossRes = executeFinancialSkill('calculate_cross_exchange_basis_spread', {
         buyPlatform: 'Binance P2P',
         sellPlatform: 'El Dorado P2P',
         buyPrice,
         sellPrice,
         transferFeeUsdt: 1.0,
-        tradeAmountUsdt: 1500,
+        tradeAmountUsdt: reqCap6,
       });
       executedSkills.push('calculate_cross_exchange_basis_spread');
 
@@ -1684,6 +1911,9 @@ PAUTAS DE COMUNICACIÓN:
         clearingTimeMinutes?: number;
       };
 
+      const netSpread = typeof cData.netSpreadPct === 'number' ? Number(cData.netSpreadPct.toFixed(2)) : 0;
+      const netProfit = Number(((reqCap6 * netSpread) / 100).toFixed(2));
+
       reply =
         `Mirá, evalué el arbitraje espacial de bases entre plataformas cruzadas (**Binance P2P vs El Dorado P2P**).\n\n` +
         `### 🌐 Arbitraje Espacial de Bases (Cross-Exchange)\n` +
@@ -1692,12 +1922,9 @@ PAUTAS DE COMUNICACIÓN:
         `* **Spread Bruto**: ${formatNumberOrNd(cData.grossSpreadPct)}%\n` +
         `* **Costo de Retiro y Red**: -$${formatNumberOrNd(cData.networkFeeDeductionUsdt)} USDT (Vía BSC BEP-20 / Tron TRC-20)\n` +
         `* **Spread Neto Real**: \`+${formatNumberOrNd(cData.netSpreadPct)}%\` (Regla de oro cumplida holgadamente)\n` +
-        `* **Beneficio Neto Proyectado**: \`+$${formatNumberOrNd(cData.netProfitUsdt)} USDT\` por rotación de $1,500 USDT.\n` +
+        `* **Beneficio Neto Proyectado**: \`+$${formatNumberOrNd(netProfit)} USDT\` por rotación de $${formatNumberOrNd(reqCap6, 0)} USDT.\n` +
         `* **Tiempo de Ciclo Completo**: ~${cData.clearingTimeMinutes !== undefined ? `${cData.clearingTimeMinutes} minutos` : 'N/D'}.\n\n` +
         `Ruta altamente líquida aprovechando la prima de compra en plataformas secundarias. Dale **EJECUTAR** para despacharla.`;
-
-      const netSpread = typeof cData.netSpreadPct === 'number' ? Number(cData.netSpreadPct.toFixed(2)) : 0;
-      const netProfit = typeof cData.netProfitUsdt === 'number' ? Number(cData.netProfitUsdt.toFixed(2)) : 0;
 
       plan = {
         id: planId,
@@ -1705,7 +1932,7 @@ PAUTAS DE COMUNICACIÓN:
         route: 'Comprar USDT en Binance P2P (Banesco) ➔ Vender en El Dorado (Pago Móvil)',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1500,
+        capitalRequiredUsdt: reqCap6,
         expectedNetSpreadPct: netSpread,
         expectedProfitUsdt: netProfit,
         riskLevel: resolveRiskLevel('LOW', isSimulated),
@@ -1763,15 +1990,16 @@ PAUTAS DE COMUNICACIÓN:
           ? `La verificación proviene de una fuente conectada; el plan queda marcado con su provenance correspondiente.`
           : `⚠️ *No puedo afirmar cumplimiento bancario: sin fuente conectada, el estado de los canales es \`UNVERIFIED_OFFLINE\` y el plan queda simulado y no despachable.*`);
 
+      const reqCap7 = resolveCapital(1000);
       plan = {
         id: planId,
         title: 'Verificación de Seguridad & Auditoría de Canales Bancarios',
         route: 'Inspección de Banesco / Mercantil / BDV / Suiche Pago Móvil',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: reqCap7,
         expectedNetSpreadPct: 1.15,
-        expectedProfitUsdt: 11.5,
+        expectedProfitUsdt: Number(((reqCap7 * 1.15) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Compliance & Security Officer',
         rationale: bankStatusVerified
@@ -1835,15 +2063,16 @@ PAUTAS DE COMUNICACIÓN:
         `3. Ante órdenes dudosas de terceros, exigir de inmediato comprobante PDF bancario para auditoría OCR.\n\n` +
         `El Enjambre permanece activo 24/7 vigilando la microestructura.`;
 
+      const reqCap8 = resolveCapital(2000);
       plan = {
         id: planId,
         title: 'Plan Maestro de Operaciones P2P del Enjambre',
         route: 'Banesco Pago Móvil ➔ USDT ➔ Liquidación Transferencia Bancaria',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 2000,
+        capitalRequiredUsdt: reqCap8,
         expectedNetSpreadPct: 1.35,
-        expectedProfitUsdt: 27.0,
+        expectedProfitUsdt: Number(((reqCap8 * 1.35) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Operador Principal',
         rationale: 'Estrategia consolidada aprobada unánimemente por el Enjambre Multi-Agente.',
@@ -1981,6 +2210,7 @@ PAUTAS DE COMUNICACIÓN:
       const auditSpread = typeof dAudit?.volumeWeightedAverageSpreadPct === 'number'
         ? Math.max(0.5, dAudit.volumeWeightedAverageSpreadPct)
         : 1.25;
+      const reqCap9 = resolveCapital(1500);
 
       plan = {
         id: planId,
@@ -1988,9 +2218,9 @@ PAUTAS DE COMUNICACIÓN:
         route: `Blindaje en ventana ${hRisk?.peakRiskWindow ?? 'N/D'} ➔ Forzar spread mínimo >= 0.50% en órdenes Maker`,
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1500,
+        capitalRequiredUsdt: reqCap9,
         expectedNetSpreadPct: auditSpread,
-        expectedProfitUsdt: Number(((1500 * auditSpread) / 100).toFixed(2)),
+        expectedProfitUsdt: Number(((reqCap9 * auditSpread) / 100).toFixed(2)),
         riskLevel:
           dossier?.operatorStanding === 'CRITICAL_TILT_RISK'
             ? 'HIGH'
@@ -2029,12 +2259,13 @@ PAUTAS DE COMUNICACIÓN:
       });
       executedSkills.push('triage_incident_and_escalate');
 
+      const reqCap10 = resolveCapital(1200);
       const sheetRes = executeFinancialSkill('sync_google_sheets_live_ledger', {
         tradeDate: new Date().toISOString().split('T')[0],
         orderId: 'ORD-LIVE-AUDIT',
         counterpartyAlias: 'VerifiedMerchant',
         tradeType: 'SELL',
-        cryptoAmountUsdt: 1000,
+        cryptoAmountUsdt: reqCap10,
         fiatAmountVes: 85000,
         exchangeRate: 85.0,
         platformFeeUsdt: 1.0,
@@ -2098,9 +2329,9 @@ PAUTAS DE COMUNICACIÓN:
         route: 'Auditoría Forense SOP ➔ Conciliación RPA de Extractos ➔ Sync Google Sheets Ledger',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1200,
+        capitalRequiredUsdt: reqCap10,
         expectedNetSpreadPct: 1.4,
-        expectedProfitUsdt: 16.8,
+        expectedProfitUsdt: Number(((reqCap10 * 1.4) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Compliance & Operations Lead',
         rationale:
@@ -2119,15 +2350,16 @@ PAUTAS DE COMUNICACIÓN:
     else {
       const parallelRate = onlyWhenLive(liveParallelRate, hasLiveMarketFeed);
       const bcvRate = getResolvedBcvRate();
+      const reqCap11 = resolveCapital(1000);
 
       const triangleRes = executeFinancialSkill('scan_triangular_arbitrage', {
-        initialAmount: 1000,
+        initialAmount: reqCap11,
         initialCurrency: 'USDT',
       });
       executedSkills.push('scan_triangular_arbitrage');
 
       const simRes = executeFinancialSkill('simulate_trade_impact', {
-        targetAmountUsdt: 1000,
+        targetAmountUsdt: reqCap11,
         side: 'BUY',
       });
       executedSkills.push('simulate_trade_impact');
@@ -2154,6 +2386,9 @@ PAUTAS DE COMUNICACIÓN:
       const entryPrice = onlyWhenLive(liveBuyPrice, hasLiveMarketFeed);
       const exitPrice = onlyWhenLive(liveSellPrice, hasLiveMarketFeed);
 
+      const triNetSpread = typeof tData.netSpreadPct === 'number' ? Number(tData.netSpreadPct.toFixed(2)) : 1.35;
+      const triProfit = Number(((reqCap11 * triNetSpread) / 100).toFixed(2));
+
       reply =
         `Mirá, analicé las oportunidades de **arbitraje triangular institucional** en el mercado venezolano con rigor de microestructura y preservación de capital.\n\n` +
         `### 🔄 Desglose de la Ruta Triangular de 3 Piernas\n` +
@@ -2161,19 +2396,17 @@ PAUTAS DE COMUNICACIÓN:
         `* **Pierna 2 (Cruce)**: Convertir USDT ➔ Activo Puente (BTC/FDUSD) en libro spot con cero comisión maker\n` +
         `* **Pierna 3 (Salida)**: Vender en libro P2P VES con transferencia bancaria acreditada (@ ${formatNumberOrNd(exitPrice)} VES/USDT)\n\n` +
         `### 📊 Desglose Numérico & Regla de Oro\n` +
+        `* **Capital de la Estrategia**: $${formatNumberOrNd(reqCap11, 0)} USDT\n` +
         `* **Spread Bruto de Mercado**: 1.75%\n` +
         `* **Comisión Taker/Maker**: -0.10% en Binance\n` +
         `* **Comisión por Transferencia Interbancaria**: -0.30%\n` +
         `* **Deslizamiento (Slippage VWAP)**: -${sData.slippageBps !== undefined ? (sData.slippageBps / 100).toFixed(2) : '0.12'}% (Llenado VWAP a ${formatNumberOrNd(sData.effectiveVwapPrice)} VES)\n` +
-        `* **Retorno Neto Real**: \`+${formatNumberOrNd(tData.netSpreadPct)}%\` (Supera holgadamente el 0.50% de la Regla de Oro)\n` +
-        `* **Beneficio Neto Estimado**: \`+$${formatNumberOrNd(tData.profitInitialCurrency)} USDT\` por cada $1,000 USDT rotados.\n` +
+        `* **Retorno Neto Real**: \`+${formatNumberOrNd(triNetSpread)}%\` (Supera holgadamente el 0.50% de la Regla de Oro)\n` +
+        `* **Beneficio Neto Estimado**: \`+$${formatNumberOrNd(triProfit)} USDT\` por rotación de $${formatNumberOrNd(reqCap11, 0)} USDT.\n` +
         `* **Brecha Cambiaria BCV**: ${formatNumberOrNd(bData.gap?.gapPct, 1)}% (Liquidez profunda antes del mediodía).\n` +
         bcvGapAbsenceNote(bcvRes) +
         `\n` +
         `Fijate en la ficha táctica que generé a continuación. Dale **EJECUTAR** cuando quieras asignársela al operador para comenzar la rotación.`;
-
-      const triNetSpread = typeof tData.netSpreadPct === 'number' ? Number(tData.netSpreadPct.toFixed(2)) : 1.35;
-      const triProfit = typeof tData.profitInitialCurrency === 'number' ? Number(tData.profitInitialCurrency.toFixed(2)) : 13.5;
 
       plan = {
         id: planId,
@@ -2181,7 +2414,7 @@ PAUTAS DE COMUNICACIÓN:
         route: 'VES (Pago Móvil) -> USDT -> BTC -> VES (Transferencia)',
         asset: 'USDT',
         fiat: 'VES',
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: reqCap11,
         expectedNetSpreadPct: triNetSpread,
         expectedProfitUsdt: triProfit,
         riskLevel: resolveRiskLevel('LOW', isSimulated),
@@ -2252,11 +2485,17 @@ PAUTAS DE COMUNICACIÓN:
   /**
    * Helper to transform skill outputs into a unified StrategyPlanCard.
    */
-  private generatePlanFromSkill(skillName: string, data: unknown): StrategyPlanCard | undefined {
+  private generatePlanFromSkill(
+    skillName: string,
+    data: unknown,
+    requestedCapital?: number,
+  ): StrategyPlanCard | undefined {
     const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
     const feed = resolveMarketFeed();
     const hasLiveMarketFeed = feed.live;
     const isSimulated = !hasLiveMarketFeed;
+    const resolveCap = (fallback: number) =>
+      requestedCapital && requestedCapital > 0 ? requestedCapital : fallback;
 
     if (skillName === 'scan_triangular_arbitrage' && data && typeof data === 'object') {
       const d = data as {
@@ -2265,12 +2504,13 @@ PAUTAS DE COMUNICACIÓN:
         isProfitable?: boolean;
       };
       const netSpread = typeof d.netSpreadPct === 'number' ? d.netSpreadPct : 0;
-      const profit = typeof d.profitInitialCurrency === 'number' ? d.profitInitialCurrency : 0;
+      const cap = resolveCap(1000);
+      const profit = Number(((cap * netSpread) / 100).toFixed(2));
       return {
         id: planId,
         title: 'Arbitraje Triangular Validado por Gemini',
         route: '3-Leg Cross Currency Loop',
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: netSpread,
         expectedProfitUsdt: profit,
         riskLevel: resolveRiskLevel(netSpread >= 1.0 ? 'LOW' : 'MEDIUM', isSimulated),
@@ -2290,11 +2530,13 @@ PAUTAS DE COMUNICACIÓN:
         proposals?: { action: string; hedgeAmountUsdt: number; reason: string }[];
       };
       const prop = d.proposals?.[0];
-      const capReq = typeof prop?.hedgeAmountUsdt === 'number'
-        ? prop.hedgeAmountUsdt
-        : typeof d.fiatExposureUsd === 'number'
-          ? Math.round(d.fiatExposureUsd)
-          : 500;
+      const capReq = resolveCap(
+        typeof prop?.hedgeAmountUsdt === 'number'
+          ? prop.hedgeAmountUsdt
+          : typeof d.fiatExposureUsd === 'number'
+            ? Math.round(d.fiatExposureUsd)
+            : 500,
+      );
       return {
         id: planId,
         title: 'Cobertura Sintética Delta-Neutral',
@@ -2319,13 +2561,14 @@ PAUTAS DE COMUNICACIÓN:
         direction?: string;
         suggestedSpreadAdjustmentPct?: { buyMarkupPct: number; sellMarkupPct: number };
       };
+      const cap = resolveCap(1500);
       return {
         id: planId,
         title: 'Reajuste Dinámico de Markups (2 Horas)',
         route: `Ajuste Compra: ${d.suggestedSpreadAdjustmentPct?.buyMarkupPct !== undefined ? d.suggestedSpreadAdjustmentPct.buyMarkupPct : 'N/D'}% | Venta: +${d.suggestedSpreadAdjustmentPct?.sellMarkupPct !== undefined ? d.suggestedSpreadAdjustmentPct.sellMarkupPct : 'N/D'}%`,
-        capitalRequiredUsdt: 1500,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: 1.45,
-        expectedProfitUsdt: 21.75,
+        expectedProfitUsdt: Number(((cap * 1.45) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel(d.level === 'ELEVATED' ? 'MEDIUM' : 'LOW', isSimulated),
         assignedOperatorName: 'Operador Principal',
         rationale: `Proyección a 2 horas: Volatilidad ${d.level ?? 'NORMAL'} y spread ${d.direction ?? 'ESTABLE'}. Ajuste para absorber deslizamiento y capturar margen.`,
@@ -2342,14 +2585,16 @@ PAUTAS DE COMUNICACIÓN:
         slippageBps?: number;
         liquidityHealth?: string;
       };
-      const targetAmt = typeof d.targetAmountUsdt === 'number' ? d.targetAmountUsdt : 1000;
+      const targetAmt = resolveCap(
+        typeof d.targetAmountUsdt === 'number' ? d.targetAmountUsdt : 1000,
+      );
       return {
         id: planId,
         title: 'Ejecución Optimizada por VWAP & Anti-Slippage',
         route: `Llenado VWAP @ ${formatNumberOrNd(d.effectiveVwapPrice)} (Slippage: ${d.slippageBps !== undefined ? d.slippageBps : 'N/D'} bps)`,
         capitalRequiredUsdt: targetAmt,
         expectedNetSpreadPct: 1.15,
-        expectedProfitUsdt: (targetAmt * 1.15) / 100,
+        expectedProfitUsdt: Number(((targetAmt * 1.15) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel(d.liquidityHealth === 'HIGH_LIQUIDITY' ? 'LOW' : 'MEDIUM', isSimulated),
         assignedOperatorName: 'Operador Principal',
         rationale: `Simulación de impacto exitosa. Salud de liquidez: ${d.liquidityHealth ?? 'ACCEPTABLE'} con deslizamiento controlado.`,
@@ -2366,13 +2611,14 @@ PAUTAS DE COMUNICACIÓN:
         reservationPrice?: number;
         recommendedAction?: string;
       };
+      const cap = resolveCap(2500);
       return {
         id: planId,
         title: 'Market Making Cuantitativo (Avellaneda-Stoikov)',
         route: `Bid: ${formatNumberOrNd(d.optimalBidPrice)} | Ask: ${formatNumberOrNd(d.optimalAskPrice)} (Res: ${formatNumberOrNd(d.reservationPrice)})`,
-        capitalRequiredUsdt: 2500,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: 1.25,
-        expectedProfitUsdt: 31.25,
+        expectedProfitUsdt: Number(((cap * 1.25) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Lead Market Maker',
         rationale: `Cotizaciones óptimas calibradas por inventario y volatilidad. Acción sugerida: ${d.recommendedAction ?? 'HOLD'}.`,
@@ -2394,14 +2640,16 @@ PAUTAS DE COMUNICACIÓN:
         expectedMarketImpactPct?: number;
       };
       const slices = typeof d.totalSlices === 'number' ? d.totalSlices : 5;
-      const sliceAmt = typeof d.averageSliceAmountUsdt === 'number' ? d.averageSliceAmountUsdt : 500;
+      const baseTotal = slices * (typeof d.averageSliceAmountUsdt === 'number' ? d.averageSliceAmountUsdt : 500);
+      const totalCap = resolveCap(baseTotal);
+      const sliceAmt = Math.round(totalCap / slices);
       return {
         id: planId,
         title: `Ejecución Algorítmica ${d.executionAlgorithm ?? 'TWAP'} (Anti-Impact)`,
         route: `${slices} Bloques de ~$${formatNumberOrNd(sliceAmt, 0)} USDT`,
-        capitalRequiredUsdt: slices * sliceAmt,
+        capitalRequiredUsdt: totalCap,
         expectedNetSpreadPct: 0.95,
-        expectedProfitUsdt: (slices * sliceAmt * 0.95) / 100,
+        expectedProfitUsdt: Number(((totalCap * 0.95) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Algorithmic Execution Desk',
         rationale: `Fragmentación institucional programada para no mover el libro. Impacto estimado: solo ${formatNumberOrNd(d.expectedMarketImpactPct)}%.`,
@@ -2421,12 +2669,13 @@ PAUTAS DE COMUNICACIÓN:
         sellPrice?: number;
       };
       const netSpread = typeof d.netSpreadPct === 'number' ? d.netSpreadPct : 0;
-      const netProfit = typeof d.netProfitUsdt === 'number' ? d.netProfitUsdt : 0;
+      const cap = resolveCap(1500);
+      const netProfit = Number(((cap * netSpread) / 100).toFixed(2));
       return {
         id: planId,
         title: 'Arbitraje Espacial Cross-Exchange',
         route: `Comprar en ${d.buyPlatform || 'Binance P2P'} @ ${formatNumberOrNd(d.buyPrice)} ➔ Vender en ${d.sellPlatform || 'El Dorado P2P'} @ ${formatNumberOrNd(d.sellPrice)}`,
-        capitalRequiredUsdt: 1500,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: netSpread,
         expectedProfitUsdt: netProfit,
         riskLevel: resolveRiskLevel(netSpread >= 1.0 ? 'LOW' : 'MEDIUM', isSimulated),
@@ -2444,14 +2693,14 @@ PAUTAS DE COMUNICACIÓN:
         recommendedFractionPct?: number;
         strategicRationale?: string;
       };
-      const ticket = typeof d.optimalTicketSizeUsdt === 'number' ? d.optimalTicketSizeUsdt : 1000;
+      const ticket = resolveCap(typeof d.optimalTicketSizeUsdt === 'number' ? d.optimalTicketSizeUsdt : 1000);
       return {
         id: planId,
         title: 'Asignación Óptima de Capital (Kelly Criterion)',
         route: `Ticket Óptimo: $${formatNumberOrNd(ticket, 0)} USDT (${formatNumberOrNd(d.recommendedFractionPct, 1)}% del total)`,
         capitalRequiredUsdt: ticket,
         expectedNetSpreadPct: 1.3,
-        expectedProfitUsdt: (ticket * 1.3) / 100,
+        expectedProfitUsdt: Number(((ticket * 1.3) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Treasury & Risk Officer',
         rationale:
@@ -2470,9 +2719,9 @@ PAUTAS DE COMUNICACIÓN:
         interestEarnedUsdt?: number;
         parkingStrategy?: string;
       };
-      const cap = typeof d.idleCapitalUsdt === 'number' ? d.idleCapitalUsdt : 2000;
+      const cap = resolveCap(typeof d.idleCapitalUsdt === 'number' ? d.idleCapitalUsdt : 2000);
       const apr = typeof d.effectiveAprPct === 'number' ? d.effectiveAprPct : 12.5;
-      const profit = typeof d.interestEarnedUsdt === 'number' ? d.interestEarnedUsdt : 21.0;
+      const profit = Number(((cap * 1.05) / 100).toFixed(2));
       return {
         id: planId,
         title: 'Estacionamiento de Capital Pasivo en Binance Simple Earn',
@@ -2497,13 +2746,14 @@ PAUTAS DE COMUNICACIÓN:
         averageSettlementLatencyMinutes?: number;
         operationalSummary?: string;
       };
+      const cap = resolveCap(1000);
       return {
         id: planId,
         title: 'Protocolo de Seguridad y Monitoreo Bancario',
         route: `Canal Bancario (${d.networkStatus ?? 'UNVERIFIED_OFFLINE'})`,
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: 1.2,
-        expectedProfitUsdt: 12.0,
+        expectedProfitUsdt: Number(((cap * 1.2) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Compliance Officer',
         rationale:
@@ -2528,6 +2778,8 @@ PAUTAS DE COMUNICACIÓN:
       };
       const isOperate = d.verdict === 'OPERATE_P2P';
       const netYield = typeof d.netP2pCycleReturnPct === 'number' ? d.netP2pCycleReturnPct : 0;
+      const cap = resolveCap(1500);
+      const spread = isOperate ? netYield : 0.45;
       return {
         id: planId,
         title: isOperate
@@ -2536,9 +2788,9 @@ PAUTAS DE COMUNICACIÓN:
         route: isOperate
           ? 'Rotación Maker P2P (Spread Superior al Hurdle)'
           : 'Estacionar Capital en Simple Earn Flexible',
-        capitalRequiredUsdt: 1500,
-        expectedNetSpreadPct: isOperate ? netYield : 0.45,
-        expectedProfitUsdt: isOperate ? (1500 * netYield) / 100 : 6.75,
+        capitalRequiredUsdt: cap,
+        expectedNetSpreadPct: spread,
+        expectedProfitUsdt: Number(((cap * spread) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel(isOperate ? 'MEDIUM' : 'LOW', isSimulated),
         assignedOperatorName: isOperate ? 'Lead Market Maker' : 'Chief Treasury Officer',
         rationale:
@@ -2561,7 +2813,7 @@ PAUTAS DE COMUNICACIÓN:
         locked30dUsdt?: number;
         blendedPortfolioAprPct?: number;
       };
-      const total = typeof d.totalTreasuryUsdt === 'number' ? d.totalTreasuryUsdt : 10000;
+      const total = resolveCap(typeof d.totalTreasuryUsdt === 'number' ? d.totalTreasuryUsdt : 10000);
       const blendedApr = typeof d.blendedPortfolioAprPct === 'number' ? d.blendedPortfolioAprPct : 5.2;
       return {
         id: planId,
@@ -2569,7 +2821,7 @@ PAUTAS DE COMUNICACIÓN:
         route: `Buffer Flexible: $${formatNumberOrNd(d.flexibleBufferUsdt, 0)} USDT | Locked 30d: $${formatNumberOrNd(d.locked30dUsdt, 0)} USDT`,
         capitalRequiredUsdt: total,
         expectedNetSpreadPct: blendedApr / 12,
-        expectedProfitUsdt: (total * blendedApr) / 1200,
+        expectedProfitUsdt: Number(((total * blendedApr) / 1200).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Treasury Portfolio Manager',
         rationale: `Escalera de liquidez balanceada: cobertura total para picos de órdenes P2P mientras el remanente captura ${blendedApr}% APR.`,
@@ -2586,7 +2838,7 @@ PAUTAS DE COMUNICACIÓN:
         investedCapitalUsdt?: number;
         recommendation?: string;
       };
-      const cap = typeof d.investedCapitalUsdt === 'number' ? d.investedCapitalUsdt : 2000;
+      const cap = resolveCap(typeof d.investedCapitalUsdt === 'number' ? d.investedCapitalUsdt : 2000);
       const strike = typeof d.strikePrice === 'number' ? d.strikePrice : 70000;
       const apr = typeof d.annualizedAprPct === 'number' ? d.annualizedAprPct : 25.0;
       return {
@@ -2595,7 +2847,7 @@ PAUTAS DE COMUNICACIÓN:
         route: `Strike @ $${strike} | APR: ${apr}%`,
         capitalRequiredUsdt: cap,
         expectedNetSpreadPct: (apr * 7) / 365,
-        expectedProfitUsdt: (cap * apr * 7) / 36500,
+        expectedProfitUsdt: Number(((cap * apr * 7) / 36500).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Derivatives & Hedging Desk',
         rationale: `Estrategia estructurada Sell High. Captura un ${apr}% APR mientras se fija un precio de salida por encima del mercado. Recomendación: ${d.recommendation ?? 'SELL_HIGH_FAVORABLE'}.`,
@@ -2612,13 +2864,14 @@ PAUTAS DE COMUNICACIÓN:
         requiresHumanHandoff?: boolean;
         isolationProtocol?: string;
       };
+      const cap = resolveCap(1000);
       return {
         id: planId,
         title: `Protocolo de Triaje Operativo (${d.severityLevel ?? 'P1_CRITICAL'})`,
         route: `Aislamiento Preventivo de Canales Bancarios | SLA: ${d.maxResolutionSlaMinutes !== undefined ? `${d.maxResolutionSlaMinutes}m` : 'N/D'}`,
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: 1.25,
-        expectedProfitUsdt: 12.5,
+        expectedProfitUsdt: Number(((cap * 1.25) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel(d.severityLevel === 'P1_CRITICAL' ? 'HIGH' : 'MEDIUM', isSimulated),
         assignedOperatorName: 'Chief Security & Operations Officer',
         rationale:
@@ -2637,13 +2890,14 @@ PAUTAS DE COMUNICACIÓN:
         summary?: string;
         disciplinaryAction?: string;
       };
+      const cap = resolveCap(1000);
       return {
         id: planId,
         title: 'Auditoría Forense de Gobernanza SOP',
         route: `Verificación Titular 1:1 & Saldo Disponible (${d.complianceScore !== undefined ? `${d.complianceScore}%` : 'N/D'})`,
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: 1.35,
-        expectedProfitUsdt: 13.5,
+        expectedProfitUsdt: Number(((cap * 1.35) / 100).toFixed(2)),
         riskLevel: resolveRiskLevel('LOW', isSimulated),
         assignedOperatorName: 'Compliance Officer',
         rationale:
@@ -2658,12 +2912,13 @@ PAUTAS DE COMUNICACIÓN:
     if (skillName === 'sync_google_sheets_live_ledger' && data && typeof data === 'object') {
       const d = data as { calculatedGrossProfitUsdt?: number; calculatedNetMarginPct?: number };
       const netMargin = typeof d.calculatedNetMarginPct === 'number' ? d.calculatedNetMarginPct : 0;
-      const grossProfit = typeof d.calculatedGrossProfitUsdt === 'number' ? d.calculatedGrossProfitUsdt : 0;
+      const cap = resolveCap(1000);
+      const grossProfit = Number(((cap * netMargin) / 100).toFixed(2));
       return {
         id: planId,
         title: 'Sincronización Contable en Google Sheets Ledger',
         route: 'Exportación Atómica de Operaciones a Hoja de Balance en Vivo',
-        capitalRequiredUsdt: 1000,
+        capitalRequiredUsdt: cap,
         expectedNetSpreadPct: netMargin,
         expectedProfitUsdt: grossProfit,
         riskLevel: resolveRiskLevel('LOW', isSimulated),

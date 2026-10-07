@@ -1,0 +1,37 @@
+{
+  "name": "@p2p/telegram-daemon",
+  "version": "1.0.0",
+  "description": "Headless Telegram Sentinel 2.0 Daemon for 24/7 Cloud/VPS Execution",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "p2p",
+    "telegram",
+    "bot",
+    "sentinel",
+    "arbitrage",
+    "vps",
+    "daemon"
+  ],
+  "author": "P2P Decisor Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.0"
+  },
+  "engines": {
+    "node": ">=20.18.0 <26.0.0"
+  }
+}

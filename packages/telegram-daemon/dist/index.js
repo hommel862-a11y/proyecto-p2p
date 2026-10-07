@@ -1,0 +1,1741 @@
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+var __commonJS = (cb, mod) => function __require2() {
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
+};
+
+// ../../node_modules/dotenv/package.json
+var require_package = __commonJS({
+  "../../node_modules/dotenv/package.json"(exports, module) {
+    module.exports = {
+      name: "dotenv",
+      version: "16.6.1",
+      description: "Loads environment variables from .env file",
+      main: "lib/main.js",
+      types: "lib/main.d.ts",
+      exports: {
+        ".": {
+          types: "./lib/main.d.ts",
+          require: "./lib/main.js",
+          default: "./lib/main.js"
+        },
+        "./config": "./config.js",
+        "./config.js": "./config.js",
+        "./lib/env-options": "./lib/env-options.js",
+        "./lib/env-options.js": "./lib/env-options.js",
+        "./lib/cli-options": "./lib/cli-options.js",
+        "./lib/cli-options.js": "./lib/cli-options.js",
+        "./package.json": "./package.json"
+      },
+      scripts: {
+        "dts-check": "tsc --project tests/types/tsconfig.json",
+        lint: "standard",
+        pretest: "npm run lint && npm run dts-check",
+        test: "tap run --allow-empty-coverage --disable-coverage --timeout=60000",
+        "test:coverage": "tap run --show-full-coverage --timeout=60000 --coverage-report=text --coverage-report=lcov",
+        prerelease: "npm test",
+        release: "standard-version"
+      },
+      repository: {
+        type: "git",
+        url: "git://github.com/motdotla/dotenv.git"
+      },
+      homepage: "https://github.com/motdotla/dotenv#readme",
+      funding: "https://dotenvx.com",
+      keywords: [
+        "dotenv",
+        "env",
+        ".env",
+        "environment",
+        "variables",
+        "config",
+        "settings"
+      ],
+      readmeFilename: "README.md",
+      license: "BSD-2-Clause",
+      devDependencies: {
+        "@types/node": "^18.11.3",
+        decache: "^4.6.2",
+        sinon: "^14.0.1",
+        standard: "^17.0.0",
+        "standard-version": "^9.5.0",
+        tap: "^19.2.0",
+        typescript: "^4.8.4"
+      },
+      engines: {
+        node: ">=12"
+      },
+      browser: {
+        fs: false
+      }
+    };
+  }
+});
+
+// ../../node_modules/dotenv/lib/main.js
+var require_main = __commonJS({
+  "../../node_modules/dotenv/lib/main.js"(exports, module) {
+    var fs2 = __require("fs");
+    var path2 = __require("path");
+    var os = __require("os");
+    var crypto = __require("crypto");
+    var packageJson = require_package();
+    var version = packageJson.version;
+    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+    function parse(src) {
+      const obj = {};
+      let lines = src.toString();
+      lines = lines.replace(/\r\n?/mg, "\n");
+      let match;
+      while ((match = LINE.exec(lines)) != null) {
+        const key = match[1];
+        let value = match[2] || "";
+        value = value.trim();
+        const maybeQuote = value[0];
+        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
+        if (maybeQuote === '"') {
+          value = value.replace(/\\n/g, "\n");
+          value = value.replace(/\\r/g, "\r");
+        }
+        obj[key] = value;
+      }
+      return obj;
+    }
+    function _parseVault(options) {
+      options = options || {};
+      const vaultPath = _vaultPath(options);
+      options.path = vaultPath;
+      const result = DotenvModule.configDotenv(options);
+      if (!result.parsed) {
+        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
+        err.code = "MISSING_DATA";
+        throw err;
+      }
+      const keys = _dotenvKey(options).split(",");
+      const length = keys.length;
+      let decrypted;
+      for (let i = 0; i < length; i++) {
+        try {
+          const key = keys[i].trim();
+          const attrs = _instructions(result, key);
+          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
+          break;
+        } catch (error) {
+          if (i + 1 >= length) {
+            throw error;
+          }
+        }
+      }
+      return DotenvModule.parse(decrypted);
+    }
+    function _warn(message) {
+      console.log(`[dotenv@${version}][WARN] ${message}`);
+    }
+    function _debug(message) {
+      console.log(`[dotenv@${version}][DEBUG] ${message}`);
+    }
+    function _log(message) {
+      console.log(`[dotenv@${version}] ${message}`);
+    }
+    function _dotenvKey(options) {
+      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+        return options.DOTENV_KEY;
+      }
+      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+        return process.env.DOTENV_KEY;
+      }
+      return "";
+    }
+    function _instructions(result, dotenvKey) {
+      let uri;
+      try {
+        uri = new URL(dotenvKey);
+      } catch (error) {
+        if (error.code === "ERR_INVALID_URL") {
+          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        }
+        throw error;
+      }
+      const key = uri.password;
+      if (!key) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environment = uri.searchParams.get("environment");
+      if (!environment) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
+      const ciphertext = result.parsed[environmentKey];
+      if (!ciphertext) {
+        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
+        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
+        throw err;
+      }
+      return { ciphertext, key };
+    }
+    function _vaultPath(options) {
+      let possibleVaultPath = null;
+      if (options && options.path && options.path.length > 0) {
+        if (Array.isArray(options.path)) {
+          for (const filepath of options.path) {
+            if (fs2.existsSync(filepath)) {
+              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
+            }
+          }
+        } else {
+          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
+        }
+      } else {
+        possibleVaultPath = path2.resolve(process.cwd(), ".env.vault");
+      }
+      if (fs2.existsSync(possibleVaultPath)) {
+        return possibleVaultPath;
+      }
+      return null;
+    }
+    function _resolveHome(envPath) {
+      return envPath[0] === "~" ? path2.join(os.homedir(), envPath.slice(1)) : envPath;
+    }
+    function _configVault(options) {
+      const debug = Boolean(options && options.debug);
+      const quiet = options && "quiet" in options ? options.quiet : true;
+      if (debug || !quiet) {
+        _log("Loading env from encrypted .env.vault");
+      }
+      const parsed = DotenvModule._parseVault(options);
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      DotenvModule.populate(processEnv, parsed, options);
+      return { parsed };
+    }
+    function configDotenv(options) {
+      const dotenvPath = path2.resolve(process.cwd(), ".env");
+      let encoding = "utf8";
+      const debug = Boolean(options && options.debug);
+      const quiet = options && "quiet" in options ? options.quiet : true;
+      if (options && options.encoding) {
+        encoding = options.encoding;
+      } else {
+        if (debug) {
+          _debug("No encoding is specified. UTF-8 is used by default");
+        }
+      }
+      let optionPaths = [dotenvPath];
+      if (options && options.path) {
+        if (!Array.isArray(options.path)) {
+          optionPaths = [_resolveHome(options.path)];
+        } else {
+          optionPaths = [];
+          for (const filepath of options.path) {
+            optionPaths.push(_resolveHome(filepath));
+          }
+        }
+      }
+      let lastError;
+      const parsedAll = {};
+      for (const path3 of optionPaths) {
+        try {
+          const parsed = DotenvModule.parse(fs2.readFileSync(path3, { encoding }));
+          DotenvModule.populate(parsedAll, parsed, options);
+        } catch (e) {
+          if (debug) {
+            _debug(`Failed to load ${path3} ${e.message}`);
+          }
+          lastError = e;
+        }
+      }
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      DotenvModule.populate(processEnv, parsedAll, options);
+      if (debug || !quiet) {
+        const keysCount = Object.keys(parsedAll).length;
+        const shortPaths = [];
+        for (const filePath of optionPaths) {
+          try {
+            const relative = path2.relative(process.cwd(), filePath);
+            shortPaths.push(relative);
+          } catch (e) {
+            if (debug) {
+              _debug(`Failed to load ${filePath} ${e.message}`);
+            }
+            lastError = e;
+          }
+        }
+        _log(`injecting env (${keysCount}) from ${shortPaths.join(",")}`);
+      }
+      if (lastError) {
+        return { parsed: parsedAll, error: lastError };
+      } else {
+        return { parsed: parsedAll };
+      }
+    }
+    function config(options) {
+      if (_dotenvKey(options).length === 0) {
+        return DotenvModule.configDotenv(options);
+      }
+      const vaultPath = _vaultPath(options);
+      if (!vaultPath) {
+        _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
+        return DotenvModule.configDotenv(options);
+      }
+      return DotenvModule._configVault(options);
+    }
+    function decrypt(encrypted, keyStr) {
+      const key = Buffer.from(keyStr.slice(-64), "hex");
+      let ciphertext = Buffer.from(encrypted, "base64");
+      const nonce = ciphertext.subarray(0, 12);
+      const authTag = ciphertext.subarray(-16);
+      ciphertext = ciphertext.subarray(12, -16);
+      try {
+        const aesgcm = crypto.createDecipheriv("aes-256-gcm", key, nonce);
+        aesgcm.setAuthTag(authTag);
+        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
+      } catch (error) {
+        const isRange = error instanceof RangeError;
+        const invalidKeyLength = error.message === "Invalid key length";
+        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
+        if (isRange || invalidKeyLength) {
+          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        } else if (decryptionFailed) {
+          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
+          err.code = "DECRYPTION_FAILED";
+          throw err;
+        } else {
+          throw error;
+        }
+      }
+    }
+    function populate(processEnv, parsed, options = {}) {
+      const debug = Boolean(options && options.debug);
+      const override = Boolean(options && options.override);
+      if (typeof parsed !== "object") {
+        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
+        err.code = "OBJECT_REQUIRED";
+        throw err;
+      }
+      for (const key of Object.keys(parsed)) {
+        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+          if (override === true) {
+            processEnv[key] = parsed[key];
+          }
+          if (debug) {
+            if (override === true) {
+              _debug(`"${key}" is already defined and WAS overwritten`);
+            } else {
+              _debug(`"${key}" is already defined and was NOT overwritten`);
+            }
+          }
+        } else {
+          processEnv[key] = parsed[key];
+        }
+      }
+    }
+    var DotenvModule = {
+      configDotenv,
+      _configVault,
+      _parseVault,
+      config,
+      decrypt,
+      parse,
+      populate
+    };
+    module.exports.configDotenv = DotenvModule.configDotenv;
+    module.exports._configVault = DotenvModule._configVault;
+    module.exports._parseVault = DotenvModule._parseVault;
+    module.exports.config = DotenvModule.config;
+    module.exports.decrypt = DotenvModule.decrypt;
+    module.exports.parse = DotenvModule.parse;
+    module.exports.populate = DotenvModule.populate;
+    module.exports = DotenvModule;
+  }
+});
+
+// ../../node_modules/dotenv/lib/env-options.js
+var require_env_options = __commonJS({
+  "../../node_modules/dotenv/lib/env-options.js"(exports, module) {
+    var options = {};
+    if (process.env.DOTENV_CONFIG_ENCODING != null) {
+      options.encoding = process.env.DOTENV_CONFIG_ENCODING;
+    }
+    if (process.env.DOTENV_CONFIG_PATH != null) {
+      options.path = process.env.DOTENV_CONFIG_PATH;
+    }
+    if (process.env.DOTENV_CONFIG_QUIET != null) {
+      options.quiet = process.env.DOTENV_CONFIG_QUIET;
+    }
+    if (process.env.DOTENV_CONFIG_DEBUG != null) {
+      options.debug = process.env.DOTENV_CONFIG_DEBUG;
+    }
+    if (process.env.DOTENV_CONFIG_OVERRIDE != null) {
+      options.override = process.env.DOTENV_CONFIG_OVERRIDE;
+    }
+    if (process.env.DOTENV_CONFIG_DOTENV_KEY != null) {
+      options.DOTENV_KEY = process.env.DOTENV_CONFIG_DOTENV_KEY;
+    }
+    module.exports = options;
+  }
+});
+
+// ../../node_modules/dotenv/lib/cli-options.js
+var require_cli_options = __commonJS({
+  "../../node_modules/dotenv/lib/cli-options.js"(exports, module) {
+    var re = /^dotenv_config_(encoding|path|quiet|debug|override|DOTENV_KEY)=(.+)$/;
+    module.exports = function optionMatcher(args) {
+      const options = args.reduce(function(acc, cur) {
+        const matches = cur.match(re);
+        if (matches) {
+          acc[matches[1]] = matches[2];
+        }
+        return acc;
+      }, {});
+      if (!("quiet" in options)) {
+        options.quiet = "true";
+      }
+      return options;
+    };
+  }
+});
+
+// ../../node_modules/dotenv/config.js
+(function() {
+  require_main().config(
+    Object.assign(
+      {},
+      require_env_options(),
+      require_cli_options()(process.argv)
+    )
+  );
+})();
+
+// src/index.ts
+import fs from "node:fs";
+import path from "node:path";
+
+// ../../projects/core/src/lib/money.ts
+function roundMoney(v, decimals = 2) {
+  if (!Number.isFinite(v)) return 0;
+  const factor = 10 ** Math.max(0, Math.floor(decimals));
+  const rounded = Math.round((v + Number.EPSILON) * factor) / factor;
+  return rounded === 0 ? 0 : rounded;
+}
+
+// ../../projects/core/src/lib/binance-p2p.ts
+function parseBinanceP2pItems(data) {
+  if (!data) return [];
+  const items = Array.isArray(data) ? data : data?.data;
+  if (!Array.isArray(items)) return [];
+  const offers = [];
+  for (const item of items) {
+    const adv = item?.adv;
+    const advertiser = item?.advertiser;
+    if (!adv || !adv.price) continue;
+    const price = Number(adv.price);
+    if (isNaN(price) || price <= 0) continue;
+    const payMethods = (adv.tradeMethods ?? []).map((m) => m.tradeMethodName ?? m.identifier ?? "").filter((m) => m.length > 0);
+    offers.push({
+      advNo: String(adv.advNo ?? ""),
+      price: roundMoney(price, 2),
+      merchantName: advertiser?.nickName ?? "An\xF3nimo",
+      finishRatePct: Math.round((advertiser?.monthFinishRate ?? 1) * 100),
+      orderCount: advertiser?.monthOrderCount ?? 0,
+      minVes: roundMoney(Number(adv.minSingleTransAmount ?? 0), 2),
+      maxVes: roundMoney(Number(adv.maxSingleTransAmount ?? 0), 2),
+      payMethods
+    });
+  }
+  return offers;
+}
+function filterOffersByPayMethod(offers, methodName) {
+  if (!methodName || methodName.trim().length === 0 || methodName.toUpperCase() === "ALL") {
+    return [...offers];
+  }
+  const norm = methodName.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return offers.filter(
+    (o) => o.payMethods.some(
+      (pm) => pm.toLowerCase().replace(/[^a-z0-9]/g, "").includes(norm)
+    )
+  );
+}
+function computeMarketDepth(buyAdsRaw, sellAdsRaw, asset = "USDT", fiat = "VES", filterMethod) {
+  const buyOffers = filterOffersByPayMethod(parseBinanceP2pItems(buyAdsRaw), filterMethod);
+  const sellOffers = filterOffersByPayMethod(parseBinanceP2pItems(sellAdsRaw), filterMethod);
+  const bestBuyPrice = buyOffers.length > 0 ? Math.min(...buyOffers.map((o) => o.price)) : 0;
+  const bestSellPrice = sellOffers.length > 0 ? Math.max(...sellOffers.map((o) => o.price)) : 0;
+  let spreadVes = 0;
+  let spreadPct = 0;
+  if (bestBuyPrice > 0 && bestSellPrice > 0) {
+    spreadVes = roundMoney(bestSellPrice - bestBuyPrice, 2);
+    spreadPct = roundMoney(spreadVes / bestBuyPrice * 100, 2);
+  }
+  return {
+    asset,
+    fiat,
+    bestBuyPrice,
+    bestSellPrice,
+    spreadVes,
+    spreadPct,
+    buyOffers: buyOffers.slice(0, 5),
+    sellOffers: sellOffers.slice(0, 5),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
+// ../../projects/core/src/lib/market-scanner.ts
+var HIGH_DEMAND_TIERS_USDT = [1e3, 2500, 5e3, 1e4];
+var MAKER_FEE_RATES = {
+  STANDARD: 25e-4,
+  // 0.25% (No verificado / Comerciante estándar)
+  BRONZE: 2e-3,
+  // 0.20%
+  SILVER: 175e-5,
+  // 0.175%
+  GOLD: 125e-5
+  // 0.125%
+};
+function filterQualifiedCompetitors(offers, criteria = {}) {
+  const minRate = criteria.minFinishRatePct ?? 90;
+  const minCount = criteria.minOrderCount ?? 50;
+  return offers.filter((o) => {
+    return o.finishRatePct >= minRate && o.orderCount >= minCount && o.price > 0;
+  });
+}
+function normalizePaymentMethod(method) {
+  return method.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function offerMatchesBank(offer, bankFilter) {
+  if (!bankFilter || bankFilter.toUpperCase() === "ALL" || bankFilter.trim().length === 0) {
+    return true;
+  }
+  const normFilter = normalizePaymentMethod(bankFilter);
+  return offer.payMethods.some((pm) => normalizePaymentMethod(pm).includes(normFilter));
+}
+function offerAbsorbsCapital(offer, targetCapitalVes) {
+  if (targetCapitalVes <= 0) return true;
+  if (offer.maxVes > 0 && offer.maxVes < targetCapitalVes) {
+    return false;
+  }
+  if (offer.minVes > targetCapitalVes) {
+    return false;
+  }
+  return true;
+}
+function computeHighDemandScan(depth, options = {}) {
+  const merchantLevel = options.merchantLevel ?? "STANDARD";
+  const makerFeeRate = MAKER_FEE_RATES[merchantLevel] ?? 25e-4;
+  const makerFeeRatePct = roundMoney(makerFeeRate * 100, 3);
+  const stepVes = options.stepVes && options.stepVes > 0 ? options.stepVes : 0.01;
+  const bankFilter = options.bankFilter?.trim() || "ALL";
+  const emptyResult = {
+    asset: depth?.asset ?? "USDT",
+    fiat: depth?.fiat ?? "VES",
+    bankFilter,
+    merchantLevel,
+    makerFeeRatePct,
+    scannedAt: depth?.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    tiers: [],
+    bestOpportunityTier: null
+  };
+  if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
+    return emptyResult;
+  }
+  const refRate = (depth.bestBuyPrice + depth.bestSellPrice) / 2;
+  const qualifiedBuys = filterQualifiedCompetitors(
+    depth.buyOffers ?? [],
+    options.filterCriteria
+  ).filter((o) => offerMatchesBank(o, bankFilter));
+  const qualifiedSells = filterQualifiedCompetitors(
+    depth.sellOffers ?? [],
+    options.filterCriteria
+  ).filter((o) => offerMatchesBank(o, bankFilter));
+  const tiers = [];
+  for (const tierUsdt of HIGH_DEMAND_TIERS_USDT) {
+    const tierVes = roundMoney(tierUsdt * refRate, 2);
+    const eligibleBuys = qualifiedBuys.filter((o) => offerAbsorbsCapital(o, tierVes));
+    const eligibleSells = qualifiedSells.filter((o) => offerAbsorbsCapital(o, tierVes));
+    eligibleBuys.sort((a, b) => b.price - a.price);
+    eligibleSells.sort((a, b) => a.price - b.price);
+    const hasFullAbsorption = eligibleBuys.length > 0 && eligibleSells.length > 0;
+    const fallbackBuy = eligibleBuys.length === 0 && qualifiedBuys.length > 0 ? [...qualifiedBuys].sort((a, b) => b.price - a.price)[0] : null;
+    const fallbackSell = eligibleSells.length === 0 && qualifiedSells.length > 0 ? [...qualifiedSells].sort((a, b) => a.price - b.price)[0] : null;
+    const bestCompBuy = eligibleBuys.length > 0 ? eligibleBuys[0].price : fallbackBuy?.price ?? 0;
+    const bestCompSell = eligibleSells.length > 0 ? eligibleSells[0].price : fallbackSell?.price ?? 0;
+    const bestCompBuyMerchant = eligibleBuys.length > 0 ? eligibleBuys[0].merchantName : fallbackBuy?.merchantName ?? "";
+    const bestCompSellMerchant = eligibleSells.length > 0 ? eligibleSells[0].merchantName : fallbackSell?.merchantName ?? "";
+    let suggestedBuy = bestCompBuy > 0 ? roundMoney(bestCompBuy + stepVes, 2) : 0;
+    let suggestedSell = bestCompSell > 0 ? roundMoney(bestCompSell - stepVes, 2) : 0;
+    if (options.maxBuyPrice && options.maxBuyPrice > 0 && suggestedBuy > options.maxBuyPrice) {
+      suggestedBuy = roundMoney(options.maxBuyPrice, 2);
+    }
+    if (options.breakEvenSellPrice && options.breakEvenSellPrice > 0 && suggestedSell < options.breakEvenSellPrice) {
+      suggestedSell = roundMoney(options.breakEvenSellPrice, 2);
+    }
+    const hasTwoSidedMarket = suggestedBuy > 0 && suggestedSell > 0;
+    let grossSpreadVes = 0;
+    let grossSpreadPct = 0;
+    let netSpreadVes = 0;
+    let netSpreadPct = 0;
+    let netProfitVes = 0;
+    let netProfitUsdt = 0;
+    let isActionable = false;
+    let statusNote = "Sin liquidez calificada en ambos lados para este tramo";
+    const totalFeePct = roundMoney(makerFeeRatePct * 2, 3);
+    if (hasTwoSidedMarket) {
+      grossSpreadVes = roundMoney(suggestedSell - suggestedBuy, 2);
+      grossSpreadPct = roundMoney(grossSpreadVes / suggestedBuy * 100, 2);
+      netSpreadPct = roundMoney(grossSpreadPct - totalFeePct, 2);
+      netSpreadVes = roundMoney(suggestedBuy * (netSpreadPct / 100), 2);
+      netProfitVes = roundMoney(tierUsdt * netSpreadVes, 2);
+      netProfitUsdt = roundMoney(netProfitVes / suggestedSell, 2);
+      if (hasFullAbsorption && netSpreadPct > 0) {
+        isActionable = true;
+        statusNote = `Spread neto positivo (+${netSpreadPct}%) descontando comisiones Maker (${makerFeeRatePct}% x 2)`;
+      } else if (!hasFullAbsorption && netSpreadPct > 0) {
+        isActionable = false;
+        statusNote = `Referencia orientativa: liquidez del libro no absorbe el 100% del tramo (${tierUsdt} USDT)`;
+      } else {
+        isActionable = false;
+        statusNote = `Spread comprimido: el margen bruto (+${grossSpreadPct}%) no cubre comisiones (${totalFeePct}%)`;
+      }
+    }
+    const velocityFactor = tierUsdt === 1e3 ? 1.3 : tierUsdt === 2500 ? 1.2 : tierUsdt === 5e3 ? 1 : 0.8;
+    const opportunityScore = isActionable ? roundMoney(netSpreadPct * velocityFactor, 2) : 0;
+    tiers.push({
+      tierUsdt,
+      tierVes,
+      qualifiedBuyOffersCount: eligibleBuys.length,
+      qualifiedSellOffersCount: eligibleSells.length,
+      bestCompetitorBuyPrice: bestCompBuy,
+      bestCompetitorSellPrice: bestCompSell,
+      bestCompetitorBuyMerchant: bestCompBuyMerchant || void 0,
+      bestCompetitorSellMerchant: bestCompSellMerchant || void 0,
+      suggestedBuyPrice: suggestedBuy,
+      suggestedSellPrice: suggestedSell,
+      grossSpreadVes,
+      grossSpreadPct,
+      makerFeeBuyPct: makerFeeRatePct,
+      makerFeeSellPct: makerFeeRatePct,
+      totalFeePct,
+      netSpreadVes,
+      netSpreadPct,
+      netProfitVesPerCycle: netProfitVes,
+      netProfitUsdtPerCycle: netProfitUsdt,
+      opportunityScore,
+      isActionable,
+      statusNote
+    });
+  }
+  const actionableTiers = tiers.filter((t) => t.isActionable);
+  actionableTiers.sort((a, b) => b.opportunityScore - a.opportunityScore);
+  const bestOpportunityTier = actionableTiers.length > 0 ? actionableTiers[0] : null;
+  return {
+    ...emptyResult,
+    tiers,
+    bestOpportunityTier
+  };
+}
+
+// ../../projects/core/src/lib/telegram-sentinel.ts
+function escapeMarkdownV2(text) {
+  if (!text) return "";
+  return text.replace(/([_*[\]()~>#+=|{}.!\\-])/g, "\\$1");
+}
+function formatBcvIntelligenceTelegramMessage(intel) {
+  const bs = (value) => value == null ? "s/d" : `${value.toFixed(2)} Bs`;
+  const zoneIcon = intel.zone === "CRITICAL_DISPERSION" ? "\u{1F534}" : intel.zone === "ELEVATED" ? "\u{1F7E1}" : intel.zone === "COMPRESSED" ? "\u{1F535}" : "\u26AA";
+  const gapLine = intel.gapPct == null ? `\u26A1 *Brecha:* ${zoneIcon} *no disponible*` : `\u26A1 *Brecha:* ${zoneIcon} *+${escapeMarkdownV2(intel.gapPct.toFixed(2))}%* \\(\`${escapeMarkdownV2(bs(intel.gapVes))}\`\\)`;
+  return `\u{1F3DB}\uFE0F *INTELIGENCIA CAMBIARIA BCV* \u{1F3DB}\uFE0F
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F4C8} *Tasa Paralelo:* \`${escapeMarkdownV2(bs(intel.parallelRate))}\`
+\u{1F3DB}\uFE0F *Tasa Oficial BCV:* \`${escapeMarkdownV2(bs(intel.bcvRate))}\`
+${gapLine}
+\u{1F4CA} *Zona:* \`${escapeMarkdownV2(intel.zone)}\`
+
+\u23F1\uFE0F *Fase del Ciclo:* \`${escapeMarkdownV2(intel.phase)}\`
+\u{1F4C5} *Pr\xF3xima Inyecci\xF3n:* \`${escapeMarkdownV2(intel.nextExpectedIntervention)}\` _(calendario; sin modelo probabil\xEDstico)_
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F3AF} *Directiva de Tesorer\xEDa:*
+\u{1F449} *${escapeMarkdownV2(intel.actionLabel)}*
+\u23F3 _Timing: ${escapeMarkdownV2(intel.timingNotice)}_`;
+}
+function formatMetric(value, decimals = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/d";
+  return escapeMarkdownV2(value.toFixed(decimals));
+}
+function formatPlainMetric(value, decimals = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/d";
+  return value.toFixed(decimals);
+}
+function formatCount(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/d";
+  return escapeMarkdownV2(String(value));
+}
+function formatCodeSpan(value) {
+  const safe = typeof value === "string" ? value.replace(/[`\\]/g, "") : "";
+  return escapeMarkdownV2(safe);
+}
+function formatRadarTelegramMessage(rows, opts = {}) {
+  const bankRaw = typeof opts.bank === "string" && opts.bank.trim() ? opts.bank.trim() : "todos";
+  const capitalRaw = typeof opts.capital === "number" && Number.isFinite(opts.capital) ? `${opts.capital.toFixed(2)} USDT` : "sin filtro";
+  const header = `\u{1F50E} *Filtro:* banco \`${formatCodeSpan(bankRaw)}\` \u2022 capital \`${formatCodeSpan(capitalRaw)}\``;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return `\u{1F4E1} *RADAR DE GAPS \\(SIN RESULTADOS\\)* \u{1F4E1}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+${header}
+\u26A0\uFE0F ${escapeMarkdownV2("Ninguna oferta cumple el criterio solicitado")}`;
+  }
+  let topIndex = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const candidate = rows[i].spreadPct;
+    const best = rows[topIndex].spreadPct;
+    const candidateOk = typeof candidate === "number" && Number.isFinite(candidate);
+    const bestOk = typeof best === "number" && Number.isFinite(best);
+    if (candidateOk && (!bestOk || candidate > best)) topIndex = i;
+  }
+  const body = rows.map((row, index) => {
+    const marker = index === topIndex ? ` \u{1F947} *${escapeMarkdownV2("TOP GAP")}*` : "";
+    const bank = typeof row.bank === "string" && row.bank.trim() ? row.bank.trim() : "sin banco";
+    const merchantTag = row.merchantName ? `
+   \u2022 Vendedor: \`${formatCodeSpan(row.merchantName)}\`` : "";
+    return `${index + 1}\\. *${formatCodeSpan(bank)}*${marker}
+   \u2022 Precio: \`${formatMetric(row.price)}\`${merchantTag}
+   \u2022 Tope TC: \`${formatCount(row.maxTc)}\`
+   \u2022 Volumen: \`${formatMetric(row.volumeUsdt, 0)} USDT\`
+   \u2022 Spread: \`${formatMetric(row.spreadPct)}%\``;
+  }).join("\n\n");
+  return `\u{1F4E1} *RADAR DE GAPS* \u{1F4E1}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+${header}
+\u2501\u2501\u2501\u2501\u2501
+${body}`;
+}
+function formatRadarAltaDemandaTelegramMessage(scan, bankFilter) {
+  const bankRaw = bankFilter && bankFilter.trim() ? bankFilter.trim() : "TODOS";
+  const header = `\u{1F50E} *Filtro:* Banco \`${formatCodeSpan(bankRaw)}\` \u2022 *Nivel:* \`${formatCodeSpan(scan.merchantLevel)}\` \\(Fee: \`${formatMetric(scan.makerFeeRatePct)}%\`\\)`;
+  if (!scan.tiers || scan.tiers.length === 0) {
+    return `\u{1F3AF} *RADAR DE ALTA DEMANDA \\(SIN DATOS\\)* \u{1F3AF}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+${header}
+\u26A0\uFE0F ${escapeMarkdownV2("Profundidad de mercado no disponible para evaluar tramos.")}`;
+  }
+  const rows = scan.tiers.map((t) => {
+    const icon = t.isActionable ? "\u{1F7E2}" : "\u26AA";
+    const bestTag = scan.bestOpportunityTier?.tierUsdt === t.tierUsdt ? " \u{1F3C6} *RECOMENDADO*" : "";
+    const buyCompTag = t.bestCompetitorBuyMerchant ? ` \\(Comprador: \`${formatCodeSpan(t.bestCompetitorBuyMerchant)}\` \u2022 ${formatMetric(t.bestCompetitorBuyPrice)}\\)` : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorBuyPrice)}\\)`;
+    const sellCompTag = t.bestCompetitorSellMerchant ? ` \\(Vendedor: \`${formatCodeSpan(t.bestCompetitorSellMerchant)}\` \u2022 ${formatMetric(t.bestCompetitorSellPrice)}\\)` : ` \\(Comp\\.: ${formatMetric(t.bestCompetitorSellPrice)}\\)`;
+    const netSpreadSign = t.netSpreadPct >= 0 ? "+" : "";
+    return `${icon} *Tramo: ${t.tierUsdt.toLocaleString("en-US")} USDT* \\(\u2248 ${formatMetric(t.tierVes)} Bs\\)${bestTag}
+   \u2022 Compra Maker: \`${formatPlainMetric(t.suggestedBuyPrice)} Bs\`${buyCompTag}
+   \u2022 Venta Maker: \`${formatPlainMetric(t.suggestedSellPrice)} Bs\`${sellCompTag}
+   \u2022 Spread Bruto: \`${formatPlainMetric(t.grossSpreadPct)}%\` \\(\u0394 ${formatMetric(t.grossSpreadVes)} Bs\\)
+   \u2022 \u26A1 *Margen Neto Real:* \`${netSpreadSign}${formatPlainMetric(t.netSpreadPct)}%\` \\(Neto: \`${formatPlainMetric(t.netProfitUsdtPerCycle)} USDT\`\\)
+   \u2022 Liquidez Calificada: \`${t.qualifiedBuyOffersCount} buys / ${t.qualifiedSellOffersCount} sells\``;
+  }).join("\n\n");
+  return `\u{1F3AF} *RADAR DE ALTA DEMANDA \\(\u2265 1\\.000 USDT\\)* \u{1F3AF}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+${header}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+${rows}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u2139\uFE0F _Micro\\-ajuste \xB10\\.01 Bs sobre el mejor comerciante calificado \\(\u226590% comp\\. \xB7 \u226550 \xF3rdenes\\)_`;
+}
+function formatMacroTelegramMessage(intel) {
+  const rawNote = typeof intel.forecastNote === "string" ? intel.forecastNote.trim() : "";
+  const note = rawNote ? `
+\u{1F9E0} *Pron\xF3stico:* _${formatCodeSpan(rawNote)}_` : "";
+  return `\u{1F30E} *REPORTE MACRO CONSOLIDADO* \u{1F30E}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F3DB}\uFE0F *Referencia BCV:* \`${formatMetric(intel.bcvRef)} Bs\`
+\u{1F4B5} *Paralelo:* \`${formatMetric(intel.parallelRef)} Bs\`
+\u{1F4CA} *Spread promedio:* \`${formatMetric(intel.spreadPct)}%\`
+\u{1F30A} *Volatilidad 2h:* \`${formatMetric(intel.volatility2hPct)}%\`
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501${note}`;
+}
+function formatRepriceTelegramMessage(req) {
+  const buyPrice = typeof req.buyPrice === "number" ? req.buyPrice : Number.NaN;
+  const sellPrice = typeof req.sellPrice === "number" ? req.sellPrice : Number.NaN;
+  const delta = sellPrice - buyPrice;
+  const deltaLine = Number.isFinite(delta) ? `
+\u{1F4D0} *Delta venta \u2212 compra:* \`${formatMetric(delta)} Bs\`` : "";
+  const head = req.confirmed ? "\u2705 *REPRICE APLICADO* \u2705" : "\u26A0\uFE0F *REPRICE \\(CONFIRMACI\xD3N REQUERIDA\\)* \u26A0\uFE0F";
+  const footer = req.confirmed ? `
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F7E2} ${escapeMarkdownV2("Los precios fueron forzados en el motor de repricing")}` : `
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F512} ${escapeMarkdownV2("No se ejecut\xF3 nada: se requiere confirmaci\xF3n expl\xEDcita con el bot\xF3n")}`;
+  return `${head}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u{1F4B5} *Compra \\(Ask\\):* \`${formatMetric(buyPrice)}\`
+\u{1F4B0} *Venta \\(Bid\\):* \`${formatMetric(sellPrice)}\`${deltaLine}${footer}`;
+}
+var PANEL_CALLBACKS = {
+  REFRESH: "PANEL_REFRESH",
+  REPRICER_STOP: "PANEL_REPRICER_STOP",
+  REPRICER_START: "PANEL_REPRICER_START"
+};
+function isPanelCallbackData(data) {
+  return Object.values(PANEL_CALLBACKS).some((value) => value === data);
+}
+var REPRICE_CONFIRM_PREFIX = "REPRICE_CONFIRM:";
+function parseCommand(text) {
+  const tokens = text.trim().split(/\s+/).filter((token) => token.length > 0);
+  return { name: tokens[0] ?? "", args: tokens.slice(1) };
+}
+function parseFiniteNumber(token) {
+  if (token === void 0 || token.length === 0) return void 0;
+  const parsed = Number(token);
+  return Number.isFinite(parsed) ? parsed : void 0;
+}
+function parseRepriceCallbackData(data) {
+  if (typeof data !== "string" || !data.startsWith(REPRICE_CONFIRM_PREFIX)) return void 0;
+  const parts = data.slice(REPRICE_CONFIRM_PREFIX.length).split(":");
+  if (parts.length !== 2) return void 0;
+  const buyPrice = parseFiniteNumber(parts[0]);
+  const sellPrice = parseFiniteNumber(parts[1]);
+  if (buyPrice === void 0 || sellPrice === void 0) return void 0;
+  return { buyPrice, sellPrice };
+}
+function buildSentinelReplyKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "\u{1F3AF} Radar Alta Demanda" }, { text: "\u26A1 Spreads en Vivo" }],
+      [{ text: "\u{1F3DB}\uFE0F Macro BCV" }, { text: "\u{1F4CA} Cupos Bancarios" }],
+      [{ text: "\u{1F916} Panel Terminal" }, { text: "\u{1F6A8} Killswitch" }]
+    ],
+    resize_keyboard: true,
+    is_persistent: true
+  };
+}
+function normalizeButtonCommand(text) {
+  const raw = text.trim();
+  if (!raw) return "";
+  if (raw.startsWith("/pausar")) return raw;
+  const norm = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const highDemandRegex = /^(?:[/]?radar\s*(?:de\s*)?alta\s*(?:de\s*)?manda|[/]?radardealtademanda|[/]?radar_alta_demanda|🎯\s*radar\s*alta\s*demanda|alta\s*(?:de\s*)?manda|radar\s*alta)/i;
+  if (highDemandRegex.test(norm)) {
+    const remaining = raw.replace(highDemandRegex, "").trim();
+    return remaining ? `/radardealtademanda ${remaining}` : "/radardealtademanda";
+  }
+  if (/^(?:⚡\s*)?(?:[/]?spreads?)(?:\s*en\s*vivo)?/i.test(norm)) {
+    return "/spreads";
+  }
+  if (/^(?:🏛️\s*)?(?:macro\s*bcv|[/]?bcv|tasa\s*bcv)/i.test(norm)) {
+    return "/bcv";
+  }
+  if (/^(?:📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
+    return "/bancos";
+  }
+  if (/^(?:🤖\s*)?(?:[/]?panel(?:\s*terminal)?)/i.test(norm)) {
+    return "/panel";
+  }
+  if (/^(?:🚨\s*)?(?:[/]?killswitch|pausar|parar)/i.test(norm)) {
+    return "/killswitch";
+  }
+  if (/^(?:▶\s*)?(?:[/]?resume|[/]?reanudar)/i.test(norm)) {
+    return "/resume";
+  }
+  if (/^(?:📡\s*)?(?:[/]?radar(?:\s*gaps)?)$/i.test(norm)) {
+    return "/radar";
+  }
+  return raw;
+}
+function formatRadarUsageMessage() {
+  return `\u{1F4E1} *RADAR DE GAPS* \u{1F4E1}
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u2139\uFE0F *Formato:* \`/radar [banco] [capital]\`
+\u2022 \`/radar\` ${escapeMarkdownV2("\u2192 todos los bancos, sin filtro de capital")}
+\u2022 \`/radar bcv\` ${escapeMarkdownV2("\u2192 banco bcv, cualquier capital")}
+\u2022 \`/radar bcv 2000\` ${escapeMarkdownV2("\u2192 banco bcv con 2000 USDT de capital")}
+\u26A0\uFE0F ${escapeMarkdownV2("El banco es texto libre y el capital debe ser un n\xFAmero finito")}`;
+}
+function formatRepriceUsageMessage() {
+  return `\u26A0\uFE0F *REPRICE \\(COMANDO DESTRUCTIVO\\)* \u26A0\uFE0F
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u2139\uFE0F *Formato:* \`/reprecio <buy> <sell>\`
+\u2022 ${escapeMarkdownV2("Ejemplo")}: \`/reprecio 84.5 85.2\`
+\u{1F6AB} ${escapeMarkdownV2("Ambos precios son obligatorios y deben ser n\xFAmeros finitos")}`;
+}
+function dispatchTelegramUpdate(update, authorizedChatId) {
+  const authId = Number(authorizedChatId);
+  if (update.message) {
+    const fromId = update.message.from.id;
+    const rawText = (update.message.text || update.message.caption || "").trim();
+    const text = normalizeButtonCommand(rawText);
+    if (text.startsWith("/start") || text.startsWith("/menu")) {
+      const isAuth = fromId === authId;
+      const pairingInfo = isAuth ? escapeMarkdownV2("Tu terminal P2P ya est\xE1 vinculado a este chat.") : `\u2139\uFE0F ${escapeMarkdownV2("Para autorizar este chat, ingres\xE1 este ID")} \`${fromId}\` ${escapeMarkdownV2("en")} *${escapeMarkdownV2("Reglas de Riesgo > Telegram Sentinel")}* ${escapeMarkdownV2("o puls\xE1")} *${escapeMarkdownV2('"Detectar mi Chat ID"')}*`;
+      const availableCommands = [
+        ["/status", "Estado en tiempo real del terminal"],
+        ["/spreads", "Monitoreo de m\xE1rgenes y arbitraje"],
+        ["/bcv", "Inteligencia cambiaria y ventana BCV"],
+        ["/bancos", "Cupos bancarios y l\xEDmites SUDEBAN"],
+        ["/radar [banco] [capital]", "Radar de gaps con filtro por banco y capital"],
+        ["/radardealtademanda [banco] [tramo]", "Radar de alta demanda (\u22651k USDT) con fee Maker y micro-postura"],
+        ["/reprecio <buy> <sell>", "Forzar repricing (requiere confirmaci\xF3n)"],
+        ["/macro", "Reporte macro consolidado: BCV, spread y volatilidad"],
+        ["/backtest [par] [temporalidad]", "Simulaci\xF3n hist\xF3rica del par"],
+        ["/panel", "Panel editable del terminal: se actualiza en el lugar"],
+        ["/killswitch", "Parada de emergencia inmediata"],
+        ["/resume", "Reanudar operaciones"]
+      ].map(([cmd, desc]) => `\u2022 \`${cmd}\` \\- ${escapeMarkdownV2(desc)}`).join("\n");
+      return {
+        authorized: true,
+        command: "/start",
+        action: "STATUS",
+        responseMarkdown: `\u{1F916} *${escapeMarkdownV2("TELEGRAM SENTINEL 2.0 CONECTADO Y OPERATIVO")}* \u{1F6E1}\uFE0F
+
+\u2705 ${escapeMarkdownV2("Tu Telegram Chat ID es")}: \`${fromId}\`
+
+${pairingInfo}
+
+*${escapeMarkdownV2("Comandos disponibles")}:*
+${availableCommands}
+
+\u{1F4F8} *${escapeMarkdownV2("Auditor\xEDa de Comprobantes")}:* ${escapeMarkdownV2("Envi\xE1 una foto de un Pago M\xF3vil o transferencia y la auditar\xE9 al instante.")}`
+      };
+    }
+    if (fromId !== authId) {
+      return {
+        authorized: false,
+        responseMarkdown: escapeMarkdownV2(
+          `\u26D4 ACCESO DENEGADO (USUARIO NO AUTORIZADO): Tu Chat ID es ${fromId}. Configuralo en tu Terminal P2P (Reglas de Riesgo > Telegram Sentinel) para autorizar este chat.`
+        )
+      };
+    }
+    if (update.message.photo && update.message.photo.length > 0) {
+      const bestPhoto = update.message.photo[update.message.photo.length - 1];
+      return {
+        authorized: true,
+        action: "AUDIT_RECEIPT",
+        fileId: bestPhoto.file_id,
+        responseMarkdown: `\u{1F50D} *COMPROBANTE BANCARIO RECIBIDO*
+
+Iniciando extracci\xF3n OCR y validaci\xF3n cruzada con el Escudo Anti\\-Fraude\\.\\.\\.`
+      };
+    }
+    if (update.message.document) {
+      return {
+        authorized: true,
+        action: "AUDIT_RECEIPT",
+        fileId: update.message.document.file_id,
+        responseMarkdown: `\u{1F50D} *DOCUMENTO DE PAGO RECIBIDO*
+
+Iniciando extracci\xF3n OCR y validaci\xF3n cruzada con el Escudo Anti\\-Fraude\\.\\.\\.`
+      };
+    }
+    if (text.startsWith("/killswitch") || text.startsWith("/pausar")) {
+      return {
+        authorized: true,
+        command: text.startsWith("/pausar") ? "/pausar" : "/killswitch",
+        action: "KILLSWITCH",
+        responseMarkdown: `\u{1F6A8} *KILLSWITCH ACTIVADO* \u{1F6A8}
+
+Todos los bots y procesos de repricing han sido detenidos de emergencia\\.`
+      };
+    }
+    if (text.startsWith("/resume")) {
+      return {
+        authorized: true,
+        command: "/resume",
+        action: "RESUME",
+        responseMarkdown: `\u25B6 *BOTS REANUDADOS*
+
+El sistema contin\xFAa operando con las reglas de riesgo activas\\.`
+      };
+    }
+    if (text.startsWith("/status")) {
+      return {
+        authorized: true,
+        command: "/status",
+        action: "STATUS",
+        responseMarkdown: `\u{1F4CA} *ESTADO DEL TERMINAL P2P*
+
+\u2022 Sistema: *ONLINE*
+\u2022 Auditor\xEDa Forense: *ACTIVA*
+\u2022 Criptograf\xEDa: *ENCRIPTADA*`
+      };
+    }
+    if (text.startsWith("/spreads")) {
+      return {
+        authorized: true,
+        command: "/spreads",
+        action: "SPREADS",
+        responseMarkdown: `\u{1F4C8} *RADAR DE MERCADO*
+
+Consulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`
+      };
+    }
+    if (text.startsWith("/bcv")) {
+      return {
+        authorized: true,
+        command: "/bcv",
+        action: "BCV",
+        responseMarkdown: `\u{1F3DB}\uFE0F *CONSULTANDO CICLO CAMBIARIO BCV*\\.\\.\\.`
+      };
+    }
+    if (text.startsWith("/bancos")) {
+      return {
+        authorized: true,
+        command: "/bancos",
+        action: "BANCOS",
+        responseMarkdown: `\u{1F3E6} *CONSULTANDO CUPOS BANCARIOS SUDEBAN*\\.\\.\\.`
+      };
+    }
+    const command = parseCommand(text);
+    if (command.name === "/radar") {
+      const [first, second] = command.args;
+      let bank;
+      let capital;
+      if (first !== void 0) {
+        const asCapital = parseFiniteNumber(first);
+        if (asCapital !== void 0) {
+          capital = asCapital;
+        } else {
+          bank = first;
+        }
+      }
+      if (second !== void 0) {
+        const secondCapital = parseFiniteNumber(second);
+        if (secondCapital === void 0) {
+          return {
+            authorized: true,
+            command: "/radar",
+            responseMarkdown: formatRadarUsageMessage()
+          };
+        }
+        capital = secondCapital;
+      }
+      const params = {};
+      if (bank !== void 0) params.bank = bank;
+      if (capital !== void 0) params.capital = capital;
+      return {
+        authorized: true,
+        command: "/radar",
+        action: "RADAR_SCAN",
+        params,
+        responseMarkdown: `\u{1F4E1} *RADAR DE GAPS ACTIVADO* \u{1F4E1}
+
+\u{1F50E} *Filtro:* banco \`${formatCodeSpan(bank ?? "todos")}\` \u2022 capital \`${formatCodeSpan(capital === void 0 ? "sin filtro" : `${capital} USDT`)}\``
+      };
+    }
+    if (command.name === "/radardealtademanda") {
+      const [first, second] = command.args;
+      let bank;
+      let tierUsdt;
+      let showAllTiers = true;
+      const parseTierToken = (t) => {
+        if (!t) return void 0;
+        const norm = t.toLowerCase().trim();
+        if (norm === "1k" || norm === "1000") return 1e3;
+        if (norm === "2.5k" || norm === "2500") return 2500;
+        if (norm === "5k" || norm === "5000") return 5e3;
+        if (norm === "10k" || norm === "10000") return 1e4;
+        const n = parseFiniteNumber(norm);
+        return n !== void 0 && n >= 1e3 ? n : void 0;
+      };
+      if (first !== void 0) {
+        const parsedTier = parseTierToken(first);
+        if (parsedTier !== void 0) {
+          tierUsdt = parsedTier;
+          showAllTiers = false;
+        } else if (first.toLowerCase() !== "tramos") {
+          bank = first;
+        }
+      }
+      if (second !== void 0) {
+        const parsedTier = parseTierToken(second);
+        if (parsedTier !== void 0) {
+          tierUsdt = parsedTier;
+          showAllTiers = false;
+        }
+      }
+      const params = {
+        bank,
+        tierUsdt,
+        showAllTiers
+      };
+      return {
+        authorized: true,
+        command: "/radardealtademanda",
+        action: "RADAR_ALTA_DEMANDA",
+        params,
+        responseMarkdown: `\u{1F3AF} *RADAR DE ALTA DEMANDA ACTIVADO* \u{1F3AF}
+
+\u{1F50E} *Filtro:* banco \`${formatCodeSpan(bank ?? "todos")}\` \u2022 tramo \`${formatCodeSpan(tierUsdt !== void 0 ? `${tierUsdt} USDT` : "todos (\u22651.000 USDT)")}\``
+      };
+    }
+    if (command.name === "/reprecio") {
+      const buyPrice = parseFiniteNumber(command.args[0]);
+      const sellPrice = parseFiniteNumber(command.args[1]);
+      if (buyPrice === void 0 || sellPrice === void 0) {
+        return {
+          authorized: true,
+          command: "/reprecio",
+          responseMarkdown: formatRepriceUsageMessage()
+        };
+      }
+      return {
+        authorized: true,
+        command: "/reprecio",
+        action: "REPRICE_REQUEST",
+        params: { buyPrice, sellPrice },
+        responseMarkdown: formatRepriceTelegramMessage({ buyPrice, sellPrice, confirmed: false })
+      };
+    }
+    if (command.name === "/macro") {
+      return {
+        authorized: true,
+        command: "/macro",
+        action: "MACRO",
+        responseMarkdown: `\u{1F30E} *CONSULTANDO REPORTE MACRO CONSOLIDADO*\\.\\.\\.`
+      };
+    }
+    if (command.name === "/backtest") {
+      const [pair, timeframe] = command.args;
+      const params = {};
+      if (pair !== void 0) params.pair = pair;
+      if (timeframe !== void 0) params.timeframe = timeframe;
+      const selector = formatCodeSpan(
+        `${pair ?? "par por defecto"} ${timeframe ?? "temporalidad por defecto"}`
+      );
+      return {
+        authorized: true,
+        command: "/backtest",
+        action: "BACKTEST_REQUEST",
+        params,
+        responseMarkdown: `\u{1F9EA} *BACKTEST HIST\xD3RICO EN COLA* \u{1F9EA}
+
+\u2699\uFE0F *Selecci\xF3n:* \`${selector}\`
+\u23F3 ${escapeMarkdownV2("El simulador puede tardar: el resultado arrive como mensaje posterior")}`
+      };
+    }
+    if (command.name === "/panel") {
+      return {
+        authorized: true,
+        command: "/panel",
+        action: "PANEL",
+        responseMarkdown: `\u{1F6E1}\uFE0F *CONSULTANDO PANEL DEL TERMINAL*\\.\\.\\.`
+      };
+    }
+    return {
+      authorized: true,
+      command: text,
+      responseMarkdown: escapeMarkdownV2(
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o env\xEDa una foto de un comprobante bancario.`
+      )
+    };
+  }
+  if (update.callback_query) {
+    const fromId = update.callback_query.from.id;
+    const data = update.callback_query.data || "";
+    if (fromId !== authId) {
+      return {
+        authorized: false,
+        responseMarkdown: escapeMarkdownV2("\u26D4 ACCESO NO AUTORIZADO.")
+      };
+    }
+    if (data.startsWith("DISPUTE_")) {
+      const orderId = data.replace("DISPUTE_", "");
+      return {
+        authorized: true,
+        action: "DISPUTE_ORDER",
+        orderId,
+        responseMarkdown: `\u{1F6A8} *ORDEN ${escapeMarkdownV2(orderId)} BLOQUEADA*
+
+Se ha preparado el reclamo de disputa por terceros no autorizados\\.`
+      };
+    }
+    if (data === "BOT_KILLSWITCH") {
+      return {
+        authorized: true,
+        action: "KILLSWITCH",
+        responseMarkdown: `\u{1F6A8} *KILLSWITCH EJECUTADO DESDE TELEGRAM*`
+      };
+    }
+    if (data === "BOT_RESUME") {
+      return {
+        authorized: true,
+        action: "RESUME",
+        responseMarkdown: `\u25B6 *REANUDADO EXITOSAMENTE*`
+      };
+    }
+    if (data === "BOT_STATUS") {
+      return {
+        authorized: true,
+        action: "STATUS",
+        responseMarkdown: `\u{1F4CA} *ESTADO OPERATIVO VERIFICADO*`
+      };
+    }
+    if (isPanelCallbackData(data)) {
+      if (data === PANEL_CALLBACKS.REFRESH) {
+        return {
+          authorized: true,
+          action: "PANEL",
+          responseMarkdown: `\u{1F504} *PANEL ACTUALIZADO*`
+        };
+      }
+      if (data === PANEL_CALLBACKS.REPRICER_STOP) {
+        return {
+          authorized: true,
+          action: "KILLSWITCH",
+          responseMarkdown: `\u{1F6A8} *MOTOR DE REPRICING DETENIDO DESDE EL PANEL*`
+        };
+      }
+      return {
+        authorized: true,
+        action: "RESUME",
+        responseMarkdown: `\u25B6 *MOTOR DE REPRICING REANUDADO DESDE EL PANEL*`
+      };
+    }
+    const reprice = parseRepriceCallbackData(data);
+    if (reprice) {
+      return {
+        authorized: true,
+        action: "REPRICE_EXECUTE",
+        params: reprice,
+        responseMarkdown: formatRepriceTelegramMessage({
+          buyPrice: reprice.buyPrice,
+          sellPrice: reprice.sellPrice,
+          confirmed: true
+        })
+      };
+    }
+    if (data.startsWith(REPRICE_CONFIRM_PREFIX)) {
+      return {
+        authorized: true,
+        responseMarkdown: formatRepriceUsageMessage()
+      };
+    }
+    if (data === "REPRICE_CANCEL") {
+      return {
+        authorized: true,
+        action: "REPRICE_CANCEL",
+        responseMarkdown: `\u21A9\uFE0F *REPRICE CANCELADO*
+
+No se forz\xF3 ning\xFAn precio\\.`
+      };
+    }
+    if (data === "BACKTEST_RUN") {
+      return {
+        authorized: true,
+        action: "BACKTEST_EXECUTE",
+        responseMarkdown: `\u{1F9EA} *BACKTEST EJECUTADO DESDE TELEGRAM*
+
+\u23F3 ${escapeMarkdownV2("El simulador est\xE1 corriendo: el reporte llegar\xE1 como mensaje posterior")}`
+      };
+    }
+  }
+  return {
+    authorized: false,
+    responseMarkdown: escapeMarkdownV2("Update no reconocido.")
+  };
+}
+
+// ../../projects/core/src/lib/bcv-intervention-predictor.ts
+function calculateBcvGap(parallelRate, bcvRate) {
+  const unavailable = (reason) => ({
+    // Se conserva la tasa que sí existe para que el operador vea qué se midió.
+    parallelRate: Number.isFinite(parallelRate) ? parallelRate : null,
+    bcvRate: Number.isFinite(bcvRate) ? bcvRate : null,
+    gapVes: null,
+    gapPct: null,
+    zone: "UNAVAILABLE",
+    description: "Brecha indeterminada: falta al menos una de las dos tasas. No se emite zona de riesgo porque no hay medici\xF3n.",
+    actionable: false,
+    unavailableReason: reason
+  });
+  if (parallelRate == null || !Number.isFinite(parallelRate) || parallelRate <= 0) {
+    return unavailable("TASA_PARALELA_NO_DISPONIBLE");
+  }
+  if (bcvRate == null || !Number.isFinite(bcvRate) || bcvRate <= 0) {
+    return unavailable("TASA_BCV_NO_DISPONIBLE");
+  }
+  const gapVes = roundMoney(parallelRate - bcvRate);
+  const gapPct = Math.round((parallelRate - bcvRate) / bcvRate * 1e4) / 100;
+  let zone;
+  let description;
+  if (gapPct < 10) {
+    zone = "COMPRESSED";
+    description = "Brecha comprimida (<10%). Fuerte control cambiario o post-inyecci\xF3n masiva de divisas.";
+  } else if (gapPct <= 25) {
+    zone = "NORMAL";
+    description = "Brecha dentro del rango estructural hist\xF3rico (10% - 25%). Operativa est\xE1ndar.";
+  } else if (gapPct <= 35) {
+    zone = "ELEVATED";
+    description = "Brecha elevada (25% - 35%). Alta presi\xF3n en paralelo; alta probabilidad de inyecci\xF3n BCV correctiva.";
+  } else {
+    zone = "CRITICAL_DISPERSION";
+    description = "Dispersi\xF3n cr\xEDtica (>35%). Riesgo cambiario severo; inminente ajuste de tasa oficial o intervenci\xF3n urgente.";
+  }
+  return {
+    parallelRate,
+    bcvRate,
+    gapVes,
+    gapPct,
+    zone,
+    description,
+    actionable: true,
+    unavailableReason: null
+  };
+}
+function getVenezuelaTimeParts(date = /* @__PURE__ */ new Date()) {
+  const utc = date.getTime() + date.getTimezoneOffset() * 6e4;
+  const vetDate = new Date(utc - 4 * 36e5);
+  return {
+    day: vetDate.getDay(),
+    // 0=Domingo, 1=Lunes, ..., 6=Sábado
+    hour: vetDate.getHours(),
+    minute: vetDate.getMinutes()
+  };
+}
+function predictBcvIntervention(now = /* @__PURE__ */ new Date()) {
+  const { day, hour } = getVenezuelaTimeParts(now);
+  let phase;
+  let nextExpectedIntervention;
+  let hoursUntilIntervention;
+  let calendarNote;
+  const isInterventionDay = day === 1 || day === 4;
+  if (isInterventionDay && hour >= 9 && hour <= 13) {
+    phase = "INTERVENTION_ACTIVE";
+    nextExpectedIntervention = "En curso actualmente";
+    hoursUntilIntervention = 0;
+    calendarNote = "ventana de subasta bancaria";
+  } else if (day === 0 && hour >= 16 || day === 1 && hour < 9 || day === 3 && hour >= 18 || day === 4 && hour < 9) {
+    phase = "PRE_INTERVENTION_COMPRESSION";
+    nextExpectedIntervention = day === 1 || day === 0 ? "Lunes 09:30 AM VET" : "Jueves 09:30 AM VET";
+    hoursUntilIntervention = day === 1 || day === 4 ? Math.max(1, 9 - hour) : 12;
+    calendarNote = "ventana previa a subasta";
+  } else if (isInterventionDay && hour > 13 || day === 2 || day === 5) {
+    phase = "POST_INTERVENTION_REBOUND";
+    nextExpectedIntervention = day <= 2 ? "Jueves 09:30 AM VET" : "Pr\xF3ximo Lunes 09:30 AM VET";
+    hoursUntilIntervention = day === 2 ? 40 : day === 5 ? 65 : 20;
+    calendarNote = "ventana posterior a subasta";
+  } else {
+    phase = "QUIET_ACCUMULATION";
+    nextExpectedIntervention = day === 3 ? "Jueves 09:30 AM VET" : "Lunes 09:30 AM VET";
+    hoursUntilIntervention = day === 3 ? 18 : 36;
+    calendarNote = "fuera de subastas bancarias";
+  }
+  return {
+    vetDayOfWeek: day,
+    vetHour: hour,
+    phase,
+    probabilityPct: null,
+    probabilityBasis: "NO_MODEL",
+    nextExpectedIntervention,
+    hoursUntilIntervention,
+    rationale: `Fase de calendario: ${calendarNote} (${day === 1 ? "Lunes" : day === 4 ? "Jueves" : "d\xEDa no h\xE1bil"}, ${String(hour).padStart(2, "0")}:00 VET). Esta herramienta no hay modelo probabil\xEDstico ni hist\xF3rico de intervenciones, por lo que no emite probabilidad de intervenci\xF3n.`,
+    actionable: false
+  };
+}
+function recommendBcvTreasuryAction(gap, window) {
+  if (gap.gapPct == null) {
+    const reason = gap.unavailableReason ?? "TASA_NO_DISPONIBLE";
+    const measured = `Paralelo: ${gap.parallelRate ?? "s/d"} VES \xB7 BCV: ${gap.bcvRate ?? "s/d"} VES`;
+    return {
+      action: "UNAVAILABLE",
+      confidencePct: 0,
+      actionLabel: "SIN MEDICI\xD3N \u2014 NO OPERAR",
+      timingNotice: "Sin instrucci\xF3n hasta disponer de ambas tasas",
+      rationale: `Brecha indeterminada (${reason}): no se emite recomendaci\xF3n t\xE1ctica porque no hay medici\xF3n. ${measured}.`,
+      actionable: false
+    };
+  }
+  if (gap.zone === "CRITICAL_DISPERSION") {
+    return {
+      action: "DEFENSIVE_HEDGE",
+      confidencePct: 92,
+      actionLabel: "BLINDAJE DEFENSIVO (HEDGE USDT M\xC1XIMO)",
+      timingNotice: "Inmediata \u2014 Alto riesgo cambiario",
+      rationale: "La brecha supera el 35%. Riesgo inminente de devaluaci\xF3n oficial brusca o descontrol en el paralelo. Mant\xE9n el inventario 100% en USDT y minimiza exposici\xF3n a bol\xEDvares.",
+      actionable: true
+    };
+  }
+  if (window.phase === "PRE_INTERVENTION_COMPRESSION" && (gap.zone === "ELEVATED" || gap.gapPct >= 22)) {
+    return {
+      action: "ACCUMULATE_VES_HIGH",
+      confidencePct: 88,
+      actionLabel: "VENDER USDT EN M\xC1XIMOS (CAPTURA DE SPREAD)",
+      timingNotice: `Vender antes de ${window.nextExpectedIntervention}`,
+      rationale: "La brecha est\xE1 caliente y el BCV inyectar\xE1 divisas en breve. Liquida USDT a precios pico del paralelo antes de que la subasta enfr\xEDe moment\xE1neamente el mercado.",
+      actionable: true
+    };
+  }
+  if (window.phase === "INTERVENTION_ACTIVE" || window.phase === "POST_INTERVENTION_REBOUND") {
+    return {
+      action: "BUY_USDT_DIP",
+      confidencePct: 85,
+      actionLabel: "COMPRAR USDT EN CORTE / DIP (VENTANA DE ORO)",
+      timingNotice: "Pr\xF3ximas 12-24 horas",
+      rationale: "Aprovecha el freno artificial de precios producido por la inyecci\xF3n bancaria. El mercado suele rebotar con fuerza tras agotarse las divisas de la subasta.",
+      actionable: true
+    };
+  }
+  return {
+    action: "AGGRESSIVE_CYCLE_VES",
+    confidencePct: 80,
+    actionLabel: "CICLO R\xC1PIDO DE ROTACI\xD3N (SAME-DAY CYCLE)",
+    timingNotice: "Intrad\xEDa continuo",
+    rationale: "Condiciones de mercado estables. Maximiza la rotaci\xF3n de capital completando ciclos de compra/venta en menos de 2 horas sin acumular saldos nocturnos en VES.",
+    actionable: true
+  };
+}
+function getBcvMarketIntelligence(parallelRate, bcvRate, now = /* @__PURE__ */ new Date()) {
+  const gap = calculateBcvGap(parallelRate, bcvRate);
+  const window = predictBcvIntervention(now);
+  const recommendation = recommendBcvTreasuryAction(gap, window);
+  return {
+    gap,
+    window,
+    recommendation,
+    timestamp: now.toISOString()
+  };
+}
+
+// src/index.ts
+var BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"]?.trim() || "";
+var AUTHORIZED_CHAT_ID = process.env["TELEGRAM_CHAT_ID"]?.trim() || "";
+var COTIZAVE_API_KEY = process.env["COTIZAVE_API_KEY"]?.trim() || "";
+var POLL_INTERVAL_MS = Number(process.env["POLL_INTERVAL_MS"]) || 2e3;
+var ALPHA_SCAN_INTERVAL_SEC = Number(process.env["ALPHA_SCAN_INTERVAL_SEC"]) || 30;
+var MIN_NET_SPREAD_PCT = Number(process.env["MIN_NET_SPREAD_PCT"]) || 1;
+var OFFSET_FILE = path.resolve(process.cwd(), ".telegram_offset");
+function loadStoredOffset() {
+  try {
+    if (fs.existsSync(OFFSET_FILE)) {
+      const data = fs.readFileSync(OFFSET_FILE, "utf-8").trim();
+      const num = Number(data);
+      if (!Number.isNaN(num) && num > 0) return num;
+    }
+  } catch {
+  }
+  return 0;
+}
+function saveStoredOffset(offset) {
+  try {
+    fs.writeFileSync(OFFSET_FILE, String(offset), "utf-8");
+  } catch {
+  }
+}
+async function fetchBinanceSide(tradeType, asset = "USDT", fiat = "VES", payTypes = ["Banesco", "PagoMovil", "Mercantil"]) {
+  try {
+    const res = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (P2P-Decisor-Cloud-Sentinel/2.0)"
+      },
+      body: JSON.stringify({
+        asset,
+        fiat,
+        tradeType,
+        page: 1,
+        rows: 20,
+        payTypes,
+        publisherType: null
+      })
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!json.data || !Array.isArray(json.data)) return [];
+    return json.data.map((item) => {
+      const adv = item.adv;
+      const advr = item.advertiser;
+      return {
+        advNo: String(adv["advNo"] || ""),
+        price: Number(adv["price"]) || 0,
+        surplusAmount: Number(adv["surplusAmount"]) || 0,
+        minSingleTransAmount: Number(adv["minSingleTransAmount"]) || 0,
+        maxSingleTransAmount: Number(adv["maxSingleTransAmount"]) || 0,
+        tradeType,
+        asset,
+        fiatUnit: fiat,
+        payMethods: Array.isArray(adv["tradeMethods"]) ? adv["tradeMethods"].map((m) => m.tradeMethodName || m.identifier) : [],
+        merchantName: String(advr["nickName"] || "An\xF3nimo"),
+        merchantOrders: Number(advr["monthOrderCount"]) || 0,
+        merchantFinishRate: (Number(advr["monthFinishRate"]) || 0) * 100,
+        isMerchant: advr["userType"] === "merchant"
+      };
+    });
+  } catch (err) {
+    console.error(`[Daemon] Error fetching Binance ${tradeType}:`, err);
+    return [];
+  }
+}
+async function fetchLiveMarketDepth() {
+  try {
+    const [buyOffers, sellOffers] = await Promise.all([
+      fetchBinanceSide("BUY"),
+      fetchBinanceSide("SELL")
+    ]);
+    if (buyOffers.length === 0 && sellOffers.length === 0) return null;
+    return computeMarketDepth(buyOffers, sellOffers);
+  } catch {
+    return null;
+  }
+}
+async function fetchCotizaveRates() {
+  if (!COTIZAVE_API_KEY) return null;
+  try {
+    const res = await fetch("https://api.cotizave.com/v1/fx/rates", {
+      headers: {
+        "X-API-Key": COTIZAVE_API_KEY,
+        Accept: "application/json"
+      }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function sendTelegramMessage(token, chatId, text, replyMarkup) {
+  try {
+    const payload = {
+      chat_id: chatId,
+      text,
+      parse_mode: "MarkdownV2"
+    };
+    if (replyMarkup) {
+      payload["reply_markup"] = replyMarkup;
+    }
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[Daemon] Error sending Telegram message:", err);
+    return false;
+  }
+}
+var isRunning = true;
+var currentOffset = loadStoredOffset();
+var isKillswitchActive = false;
+var lastAlertTimestamp = 0;
+console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+console.log("  P2P DECISOR \u2014 TELEGRAM SENTINEL 2.0 HEADLESS CLOUD DAEMON");
+console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? "S\xCD (" + BOT_TOKEN.slice(0, 8) + "...)" : "NO"}`);
+console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || "TODOS (No restringido)"}`);
+console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? "S\xCD" : "NO"}`);
+console.log(`  Offset Inicial:         ${currentOffset}`);
+console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+if (!BOT_TOKEN) {
+  console.error("[Daemon] FATAL: TELEGRAM_BOT_TOKEN no est\xE1 definido en el archivo .env o variables de entorno.");
+  process.exit(1);
+}
+async function handleUpdate(update) {
+  const chat = update.message?.chat || update.callback_query?.message?.chat;
+  const chatId = chat?.id || AUTHORIZED_CHAT_ID;
+  if (!chatId) return;
+  const dispatch = dispatchTelegramUpdate(update, AUTHORIZED_CHAT_ID);
+  if (!dispatch.authorized) {
+    await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
+    console.warn(`[Daemon] Intento de acceso no autorizado desde Chat ID ${chatId}`);
+    return;
+  }
+  console.log(`[Daemon] Comando recibido: action=${dispatch.action}, rawText="${update.message?.text || update.callback_query?.data || ""}"`);
+  switch (dispatch.action) {
+    case "KILLSWITCH": {
+      isKillswitchActive = true;
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `\u{1F6A8} *KILLSWITCH EJECUTADO EN EL SERVIDOR VPS*
+
+Todos los procesos de monitoreo y alertas autom\xE1ticas fueron pausados inmediatamente\\.`
+      );
+      break;
+    }
+    case "RESUME": {
+      isKillswitchActive = false;
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `\u2705 *CENTINELA REANUDADO EN EL SERVIDOR VPS*
+
+El monitoreo continuo de arbitraje y tasas en vivo est\xE1 activo nuevamente\\.`
+      );
+      break;
+    }
+    case "STATUS": {
+      const depth = await fetchLiveMarketDepth();
+      const bcvRates = await fetchCotizaveRates();
+      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+      const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
+      const spreadPct = depth?.grossSpreadPct || 0;
+      const statusText = `\u{1F4E1} *ESTADO DEL CENTINELA VPS 24/7*
+
+\u2022 *Servidor:* Linux VPS / Cloud Headless
+\u2022 *Estado:* ${isKillswitchActive ? "\u{1F534} PAUSADO (Kill-Switch)" : "\u{1F7E2} OPERATIVO Y MONITOREANDO"}
+\u2022 *Binance P2P Buy:* \`${depth?.bestBuyPrice?.toFixed(2) || "N/D"}\` VES
+\u2022 *Binance P2P Sell:* \`${depth?.bestSellPrice?.toFixed(2) || "N/D"}\` VES
+\u2022 *Spread Bruto:* \`${spreadPct.toFixed(2)}%\`
+\u2022 *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : "N/D"}\` VES
+
+_Escrib\xED /help para ver la lista de comandos disponibles\\._`;
+      await sendTelegramMessage(BOT_TOKEN, chatId, statusText, buildSentinelReplyKeyboard());
+      break;
+    }
+    case "BCV_INTELLIGENCE": {
+      const depth = await fetchLiveMarketDepth();
+      const bcvRates = await fetchCotizaveRates();
+      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+      const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
+      const intel = getBcvMarketIntelligence(bcvRate, parallelRate, /* @__PURE__ */ new Date());
+      const msg = formatBcvIntelligenceTelegramMessage(intel, /* @__PURE__ */ new Date());
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+    case "RADAR_SCAN": {
+      const depth = await fetchLiveMarketDepth();
+      if (!depth) {
+        await sendTelegramMessage(BOT_TOKEN, chatId, "\u26A0\uFE0F *No se pudo obtener el libro de \xF3rdenes en vivo de Binance P2P*\\. Reintent\xE1 en unos segundos\\.");
+        break;
+      }
+      const params = dispatch.params || {
+        filterBank: "TODOS",
+        ticketAmount: 1e3,
+        isCustomTicket: false
+      };
+      const rows = [
+        {
+          paymentMethod: "Banesco",
+          buyPrice: depth.bestBuyPrice,
+          sellPrice: depth.bestSellPrice,
+          grossSpreadPct: depth.grossSpreadPct,
+          netSpreadPct: depth.grossSpreadPct - 0.35,
+          recommendedAction: depth.grossSpreadPct - 0.35 >= 0.5 ? "OPERAR" : "ESPERAR",
+          minTicket: 50,
+          maxTicket: 2500
+        }
+      ];
+      const msg = formatRadarTelegramMessage(rows, params);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+    case "RADAR_ALTA_DEMANDA": {
+      const buyOffers = await fetchBinanceSide("BUY");
+      const sellOffers = await fetchBinanceSide("SELL");
+      const scan = computeHighDemandScan(buyOffers, sellOffers);
+      const params = dispatch.params || {
+        filterBank: "TODOS",
+        ticketAmount: 1e3
+      };
+      const msg = formatRadarAltaDemandaTelegramMessage(scan, params);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+    case "MACRO_INTEL": {
+      const depth = await fetchLiveMarketDepth();
+      const bcvRates = await fetchCotizaveRates();
+      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+      const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
+      const snapshot = {
+        bcvRate,
+        parallelRate,
+        gapPct: bcvRate > 0 ? (parallelRate - bcvRate) / bcvRate * 100 : 0,
+        riskZone: "MODERADO",
+        volatilityTrend: "ESTABLE",
+        liquidityWindow: "ABIERTA",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      const msg = formatMacroTelegramMessage(snapshot);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+    default: {
+      if (dispatch.responseMarkdown) {
+        await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
+      }
+      break;
+    }
+  }
+}
+async function startPolling() {
+  console.log("[Daemon] Iniciando bucle de Long-Polling con Telegram Bot API...");
+  while (isRunning) {
+    try {
+      const url = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${currentOffset}&timeout=20`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn(`[Daemon] Telegram HTTP ${res.status}. Reintentando en 5s...`);
+        await new Promise((r) => setTimeout(r, 5e3));
+        continue;
+      }
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.result)) {
+        for (const update of data.result) {
+          currentOffset = Math.max(currentOffset, update.update_id + 1);
+          saveStoredOffset(currentOffset);
+          await handleUpdate(update);
+        }
+      }
+    } catch (err) {
+      console.error("[Daemon] Error en loop de polling:", err);
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+  }
+}
+async function startAlphaWatcher() {
+  console.log(`[Daemon] Iniciando Centinela de Arbitraje Proactivo (Escaneo cada ${ALPHA_SCAN_INTERVAL_SEC}s)...`);
+  while (isRunning) {
+    await new Promise((r) => setTimeout(r, ALPHA_SCAN_INTERVAL_SEC * 1e3));
+    if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
+    try {
+      const depth = await fetchLiveMarketDepth();
+      if (!depth) continue;
+      const netSpread = depth.grossSpreadPct - 0.35;
+      const now = Date.now();
+      if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 6e5) {
+        lastAlertTimestamp = now;
+        const alertMsg = `\u26A1 *OPORTUNIDAD DE ARBITRAJE DETECTADA POR CENTINELA VPS*
+
+\u2022 *Spread Neto Estimado:* \`${netSpread.toFixed(2)}%\` \\(Regla de Oro \\>= ${MIN_NET_SPREAD_PCT.toFixed(2)}%\\)
+\u2022 *Compra (BUY):* \`${depth.bestBuyPrice.toFixed(2)}\` VES
+\u2022 *Venta (SELL):* \`${depth.bestSellPrice.toFixed(2)}\` VES
+\u2022 *Ruta:* Banesco / Pago M\xF3vil
+
+_Envi\xE1 /radar o /status para consultar los libros completos\\._`;
+        await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, alertMsg);
+        console.log(`[Daemon] Alerta proactiva enviada: Spread Neto ${netSpread.toFixed(2)}%`);
+      }
+    } catch (err) {
+      console.error("[Daemon] Error en ciclo de Alpha Watcher:", err);
+    }
+  }
+}
+function shutdown(signal) {
+  console.log(`
+[Daemon] Recibida se\xF1al ${signal}. Deteniendo servicios de forma segura...`);
+  isRunning = false;
+  saveStoredOffset(currentOffset);
+  process.exit(0);
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+void startPolling();
+void startAlphaWatcher();

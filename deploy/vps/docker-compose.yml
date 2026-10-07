@@ -1,0 +1,17 @@
+services:
+  telegram-sentinel:
+    build:
+      context: ../../
+      dockerfile: deploy/vps/Dockerfile
+    image: p2p-telegram-sentinel:latest
+    container_name: p2p-telegram-sentinel
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

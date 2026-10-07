@@ -35,6 +35,9 @@ export class App {
   readonly binance = inject(BinanceP2pService);
   readonly telegram = inject(TelegramWorkerService);
   readonly mobileDrawerOpen = signal<boolean>(false);
+  readonly sidebarCollapsed = signal<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem('p2p.sidebar_collapsed') === 'true',
+  );
   readonly apiModalOpen = signal<boolean>(false);
   readonly tourModalOpen = signal<boolean>(false);
 

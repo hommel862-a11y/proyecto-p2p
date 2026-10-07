@@ -19,7 +19,7 @@
     "electron:dev": "node scripts/electron-dev.cjs",
     "build:preload": "node electron/build-preload.cjs",
     "electron:build": "npm run build && npm run mcp:build && tsc -p electron/tsconfig.json && npm run build:preload && electron-builder --win --config electron-builder.yml",
-    "test:electron": "cd electron && npx vitest run",
+    "test:electron": "cd electron && npx vitest run --maxWorkers=2",
     "backtest": "node scripts/backtest.cjs",
     "e2e": "playwright test",
     "e2e:electron": "node e2e/electron/e2e.mjs",
@@ -31,6 +31,9 @@
     "mcp:server:arbitrage": "node packages/mcp-server/dist/index.js --server=p2p-arbitrage-engine",
     "sync:vendor": "node scripts/sync-vendor-core.cjs",
     "check:vendor": "node scripts/sync-vendor-core.cjs --check",
+    "telegram:daemon:build": "npm run build --prefix packages/telegram-daemon",
+    "telegram:daemon:dev": "npm run dev --prefix packages/telegram-daemon",
+    "telegram:daemon:start": "node packages/telegram-daemon/dist/index.js",
     "validate:all": "npm run check:vendor && npm run mcp:test && npm run test:electron && npx tsc --noEmit"
   },
   "private": true,
