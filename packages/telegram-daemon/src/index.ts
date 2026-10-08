@@ -105,14 +105,14 @@ async function fetchBinanceSide(
   tradeType: 'BUY' | 'SELL',
   asset = 'USDT',
   fiat = 'VES',
-  payTypes: string[] = ['Banesco', 'PagoMovil', 'Mercantil'],
+  payTypes: string[] = [],
 ): Promise<BinanceOfferSummary[]> {
   try {
     const res = await fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (P2P-Decisor-Cloud-Sentinel/2.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       body: JSON.stringify({
         asset,
@@ -124,7 +124,10 @@ async function fetchBinanceSide(
         publisherType: null,
       }),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[Daemon] Binance HTTP ${res.status} al consultar ${tradeType}`);
+      return [];
+    }
     const json = (await res.json()) as { data?: Array<{ adv: Record<string, unknown>; advertiser: Record<string, unknown> }> };
     if (!json.data || !Array.isArray(json.data)) return [];
 
@@ -205,7 +208,26 @@ async function sendTelegramMessage(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return res.ok;
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.warn(`[Daemon] Telegram API Error: ${res.status} - ${errBody}`);
+      // Fallback: send as plain text without MarkdownV2 if parse error
+      if (errBody.includes("can't parse entities") || res.status === 400) {
+        const plainPayload: Record<string, unknown> = {
+          chat_id: chatId,
+          text: text.replace(/\\/g, '').replace(/[*_`]/g, ''),
+        };
+        if (replyMarkup) plainPayload['reply_markup'] = replyMarkup;
+        const retryRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plainPayload),
+        });
+        return retryRes.ok;
+      }
+      return false;
+    }
+    return true;
   } catch (err) {
     console.error('[Daemon] Error sending Telegram message:', err);
     return false;

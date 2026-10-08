@@ -149,9 +149,9 @@ export function computeHeatmapMatrix(ticks: MarketTick[]): HeatmapMatrix {
 export function formatHeatmapTelegramMessage(matrix: HeatmapMatrix): string {
   if (matrix.totalSamples === 0) {
     return (
-      `📊 *MAPA DE CALOR DE LIQUIDEZ Y SPREAD (24/7)*\n\n` +
+      `📊 *MAPA DE CALOR DE LIQUIDEZ Y SPREAD \\(24/7\\)*\n\n` +
       `_Aún no hay suficientes ticks históricos registrados en el Data Lake del VPS para construir la matriz_\\.\n` +
-      `_El servidor está capturando datos de microestructura de forma continua cada 10s_\\.`
+      `_El servidor está capturando datos de microestructura de forma continua cada 15s_\\.`
     );
   }
 
@@ -159,7 +159,7 @@ export function formatHeatmapTelegramMessage(matrix: HeatmapMatrix): string {
     `🔥 *MAPA DE CALOR: MEJORES HORARIOS DE ARBITRAJE*\n\n` +
     `• *Muestras Analizadas:* \`${matrix.totalSamples}\` ticks\n` +
     `• *Spread Neto Promedio Global:* \`${matrix.overallAvgNetSpreadPct.toFixed(2)}%\`\n\n` +
-    `🏆 *VENTANAS HORARIAS DE MÁXIMO RENDIMIENTO (TOP 5)*\n`;
+    `🏆 *VENTANAS HORARIAS DE MÁXIMO RENDIMIENTO \\(TOP 5\\)*\n`;
 
   if (matrix.peakHours.length === 0) {
     text += `_No se encontraron ventanas con más de 3 muestras aún_\\.\n`;
@@ -168,7 +168,7 @@ export function formatHeatmapTelegramMessage(matrix: HeatmapMatrix): string {
       const p = matrix.peakHours[i];
       const hourStr = `${String(p.hour).padStart(2, '0')}:00`;
       const nextHourStr = `${String((p.hour + 1) % 24).padStart(2, '0')}:00`;
-      text += `*${i + 1}\\.* 🟢 *${p.dayName} ${hourStr}–${nextHourStr}*: Spread \`${p.avgNetSpreadPct.toFixed(2)}%\` neto \\(Máx \`${p.maxNetSpreadPct.toFixed(2)}%\`\\)\n`;
+      text += `*${i + 1}\\.* 🟢 *${escapeMarkdownV2(p.dayName)} \`${hourStr}–${nextHourStr}\`*: Spread \`${p.avgNetSpreadPct.toFixed(2)}%\` neto \\(Máx \`${p.maxNetSpreadPct.toFixed(2)}%\`\\)\n`;
     }
   }
 
@@ -177,7 +177,7 @@ export function formatHeatmapTelegramMessage(matrix: HeatmapMatrix): string {
     for (const d of matrix.deadHours.slice(0, 3)) {
       const hourStr = `${String(d.hour).padStart(2, '0')}:00`;
       const nextHourStr = `${String((d.hour + 1) % 24).padStart(2, '0')}:00`;
-      text += `• 🔴 *${d.dayName} ${hourStr}–${nextHourStr}*: Spread \`${d.avgNetSpreadPct.toFixed(2)}%\` neto\n`;
+      text += `• 🔴 *${escapeMarkdownV2(d.dayName)} \`${hourStr}–${nextHourStr}\`*: Spread \`${d.avgNetSpreadPct.toFixed(2)}%\` neto\n`;
     }
   }
 
