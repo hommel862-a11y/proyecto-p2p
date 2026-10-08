@@ -538,4 +538,77 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       expect(component.actionSuccessNotice()).toContain('Kill-Switch activo');
     });
   });
+
+  describe('Autonomous Agent Manager (Pilar 2.3)', () => {
+    it('initializes registered agents with default fallback list and counts active agents', () => {
+      expect(component.registeredAgents().length).toBeGreaterThanOrEqual(5);
+      expect(component.activeAgentsCount()).toBe(component.registeredAgents().length);
+    });
+
+    it('toggles registered agent state and updates success notice', async () => {
+      const agent = component.registeredAgents()[0];
+      const initialEnabled = agent.enabled;
+
+      await component.toggleRegisteredAgent(agent);
+      const updatedAgent = component.registeredAgents().find((a) => a.id === agent.id);
+      expect(updatedAgent?.enabled).toBe(!initialEnabled);
+      expect(component.actionSuccessNotice()).toContain(agent.name);
+    });
+
+    it('consultAgent switches tab to chat and sends prompt directed to agent', () => {
+      const sendPromptSpy = vi
+        .spyOn(component, 'sendPrompt')
+        .mockImplementation(() => Promise.resolve());
+      const agent = component.registeredAgents()[0];
+
+      component.setMasterArea('agentes');
+      expect(component.activeTab()).toBe('agents');
+
+      component.consultAgent(agent);
+      expect(component.activeTab()).toBe('chat');
+      expect(sendPromptSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`@${agent.id}`),
+      );
+    });
+
+    it('loads registered agents via IPC listAgents during refreshData', async () => {
+      const customAgents = [
+        {
+          id: 'custom-risk',
+          name: 'Custom Risk Bot',
+          role: 'CUSTOM_RISK',
+          avatar: '🤖',
+          description: 'Custom risk agent',
+          tools: ['custom_tool'],
+          systemPromptModifier: 'Audit risk strictly',
+          enabled: true,
+        },
+      ];
+
+      (window as any).electron = {
+        copilot: {
+          listAgents: vi.fn().mockResolvedValue(customAgents),
+          getPlans: vi.fn().mockResolvedValue([]),
+          getLearnings: vi.fn().mockResolvedValue([]),
+        },
+      };
+
+      await component.refreshData();
+      expect(component.registeredAgents()).toEqual(customAgents);
+      expect(component.activeAgentsCount()).toBe(1);
+
+      delete (window as any).electron;
+    });
+
+    it('renders agent cards in DOM when in agentes master area', () => {
+      component.setMasterArea('agentes');
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement;
+      const agentCards = element.querySelectorAll('.agent-manager-card');
+      expect(agentCards.length).toBe(component.registeredAgents().length);
+      expect(element.querySelector('.agents-meta-badge')?.textContent).toContain('activos');
+    });
+  });
 });
+

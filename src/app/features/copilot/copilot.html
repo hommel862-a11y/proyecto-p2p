@@ -810,6 +810,80 @@
     </div>
   }
 
+  <!-- TAB: AGENTS MANAGER (PILAR 2.3) -->
+  @if (masterArea() === 'agentes' || activeTab() === 'agents') {
+    <div class="agents-manager-layout">
+      <div class="agents-manager-header">
+        <div class="header-titles">
+          <h3 class="section-title">Enjambre de Agentes Especialistas (Hermes / OpenClaw)</h3>
+          <p class="section-desc">
+            Directorio y activación de agentes autónomos modulares con IPC soberano y ejecución de herramientas nativas.
+          </p>
+        </div>
+        <div class="agents-meta-badge">
+          <span class="active-count">{{ activeAgentsCount() }} / {{ registeredAgents().length }} activos</span>
+        </div>
+      </div>
+
+      <div class="agents-grid">
+        @for (agent of registeredAgents(); track agent.id) {
+          <div class="agent-manager-card panel-card" [class.disabled]="!agent.enabled">
+            <div class="agent-card-header">
+              <div class="agent-avatar-wrap">
+                <span class="agent-avatar">{{ agent.avatar }}</span>
+                <span class="agent-status-indicator" [class.online]="agent.enabled"></span>
+              </div>
+              <div class="agent-identity">
+                <div class="agent-name-row">
+                  <h4 class="agent-name">{{ agent.name }}</h4>
+                  <span class="agent-role-pill">{{ agent.role }}</span>
+                </div>
+                <span class="agent-id">ID: <code>{{ agent.id }}</code></span>
+              </div>
+              <div class="agent-toggle-wrap">
+                <label class="switch-toggle" [title]="agent.enabled ? 'Desactivar agente' : 'Activar agente'">
+                  <input
+                    type="checkbox"
+                    [checked]="agent.enabled"
+                    (change)="toggleRegisteredAgent(agent)"
+                  />
+                  <span class="slider-round"></span>
+                </label>
+              </div>
+            </div>
+
+            <p class="agent-description">{{ agent.description }}</p>
+
+            <div class="agent-prompt-box">
+              <span class="prompt-label">Directiva de Sistema:</span>
+              <p class="prompt-text">“{{ agent.systemPromptModifier }}”</p>
+            </div>
+
+            <div class="agent-tools-section">
+              <span class="tools-label">Herramientas Autorizadas:</span>
+              <div class="tools-chips-list">
+                @for (tool of agent.tools; track tool) {
+                  <span class="tool-chip">🛠️ {{ tool }}</span>
+                }
+              </div>
+            </div>
+
+            <div class="agent-actions-row">
+              <button
+                type="button"
+                class="btn-consult-agent"
+                [disabled]="!agent.enabled"
+                (click)="consultAgent(agent)"
+              >
+                💬 Consultar Agente
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
   <!-- TAB: PLANS LIST -->
   @if (activeTab() === 'plans') {
     <div class="plans-layout">

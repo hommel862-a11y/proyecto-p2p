@@ -159,7 +159,75 @@ interface ElectronCopilotBridge {
     hadTriangulationAttempt: boolean;
   }): Promise<{ success: boolean }>;
   listCounterparties?(params?: { limit?: number }): Promise<CounterpartyProfileDto[]>;
+  listAgents?(): Promise<RegisteredAgentDto[]>;
+  toggleAgent?(params: { id: string; enabled: boolean }): Promise<boolean>;
+  saveAgent?(params: { agent: RegisteredAgentDto }): Promise<boolean>;
 }
+
+export interface RegisteredAgentDto {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  description: string;
+  tools: string[];
+  systemPromptModifier: string;
+  enabled: boolean;
+  isCustom?: boolean;
+}
+
+export const DEFAULT_FALLBACK_AGENTS: RegisteredAgentDto[] = [
+  {
+    id: 'web-researcher',
+    name: 'Investigador Web & Regulatorio',
+    role: 'WEB_RESEARCHER',
+    avatar: '🌐',
+    description: 'Indaga en tiempo real circulares de SUDEBAN, resoluciones del BCV y anuncios de Binance con Google Search Grounding.',
+    tools: ['search_google_live', 'check_bank_operational_status'],
+    systemPromptModifier: 'Especialista en investigación de hechos y regulación. Cotejá siempre con fuentes oficiales verificadas.',
+    enabled: true,
+  },
+  {
+    id: 'corporate-cfo',
+    name: 'Director Financiero & Tesorero',
+    role: 'CORPORATE_CFO',
+    avatar: '💼',
+    description: 'Asesoría integral en flujo de caja, balance, yield de capital ocioso en Binance Simple Earn y runway de tesorería.',
+    tools: ['optimize_idle_capital_simple_earn', 'calculate_earn_yield_vs_p2p_hurdle_rate', 'forecast_cash_flow_and_reconciliation'],
+    systemPromptModifier: 'Director financiero institucional. Minimizá costos de fricción y garantizá liquidez operativa inmediata.',
+    enabled: true,
+  },
+  {
+    id: 'quant-strategist',
+    name: 'Estratega Cuantitativo P2P',
+    role: 'QUANT_STRATEGIST',
+    avatar: '📐',
+    description: 'Cálculo de arbitraje triangular, cotizaciones asimétricas Avellaneda-Stoikov y métrica VPIN.',
+    tools: ['scan_triangular_arbitrage', 'calculate_optimal_spread_avellaneda', 'compute_optimal_order_slicing_twap_vwap'],
+    systemPromptModifier: 'Estratega cuantitativo de alta frecuencia. Preservación del spread neto superior al 0.50%.',
+    enabled: true,
+  },
+  {
+    id: 'risk-officer',
+    name: 'Oficial de Cumplimiento & Riesgo',
+    role: 'RISK_OFFICER',
+    avatar: '🛡️',
+    description: 'Veto preventivo de operaciones que excedan límites SUDEBAN, cobertura Delta-Neutral y listas negras.',
+    tools: ['evaluate_delta_neutral_hedge', 'audit_zk_mesh_threat', 'check_counterparty_blacklist'],
+    systemPromptModifier: 'Guardián estricto de gobernanza y mitigación de devaluación y fraudes por terceros.',
+    enabled: true,
+  },
+  {
+    id: 'dispute-auditor',
+    name: 'Auditor Forense & Disputas',
+    role: 'DISPUTE_AUDITOR',
+    avatar: '🔍',
+    description: 'Inspección OCR de comprobantes bancarios, detección de adulteración digital y generación de expedientes de arbitraje.',
+    tools: ['audit_payment_proof_ocr', 'generate_dispute_dossier', 'audit_sop_compliance_enforcement'],
+    systemPromptModifier: 'Auditor forense. Verificación rigurosa de fondos disponibles y titularidad 1:1.',
+    enabled: true,
+  },
+];
 
 export interface CounterpartyProfileDto {
   id: string;
@@ -894,6 +962,36 @@ export class Copilot implements OnInit, OnDestroy {
     this.activeAlerts.update((list) => list.filter((a) => a.id !== alertId));
   }
 
+  // ---------------------------------------------------------------------------
+  // Autonomous Agent Manager (Pilar 2.3 - Hermes / OpenClaw)
+  // ---------------------------------------------------------------------------
+  registeredAgents = signal<RegisteredAgentDto[]>(DEFAULT_FALLBACK_AGENTS);
+  activeAgentsCount = computed<number>(() => this.registeredAgents().filter((a) => a.enabled).length);
+
+  async toggleRegisteredAgent(agent: RegisteredAgentDto): Promise<void> {
+    const targetState = !agent.enabled;
+    const copilot = getElectronCopilot();
+    if (copilot?.toggleAgent) {
+      try {
+        await copilot.toggleAgent({ id: agent.id, enabled: targetState });
+      } catch (err) {
+        console.warn('[Copilot] Error toggling agent via IPC:', err);
+      }
+    }
+    this.registeredAgents.update((list) =>
+      list.map((a) => (a.id === agent.id ? { ...a, enabled: targetState } : a)),
+    );
+    this.actionSuccessNotice.set(
+      `Agente "${agent.name}" ${targetState ? 'activado' : 'desactivado'}.`,
+    );
+    setTimeout(() => this.actionSuccessNotice.set(null), 3000);
+  }
+
+  consultAgent(agent: RegisteredAgentDto): void {
+    this.activeTab.set('chat');
+    this.sendPrompt(`@${agent.id}: Por favor, realizá un análisis operativo y recomendaciones estratégicas desde tu rol de ${agent.name}.`);
+  }
+
   selectedAiProvider = signal<string>(
     this.storage.get<string>('p2p.ai.provider') || 'gemini',
   );
@@ -1444,6 +1542,12 @@ export class Copilot implements OnInit, OnDestroy {
           const profiles = await copilot.listCounterparties({ limit: 50 });
           if (profiles && profiles.length > 0) {
             this.counterparties.set(profiles);
+          }
+        }
+        if (copilot.listAgents) {
+          const agents = await copilot.listAgents();
+          if (agents && agents.length > 0) {
+            this.registeredAgents.set(agents);
           }
         }
       } catch (err) {
