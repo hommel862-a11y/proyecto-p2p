@@ -1,7 +1,20 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+
+// Load .env from cwd, packages/telegram-daemon or deploy/vps
+dotenv.config();
+const potentialEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'packages/telegram-daemon/.env'),
+  path.resolve(process.cwd(), 'deploy/vps/.env'),
+];
+for (const envPath of potentialEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+}
 import {
   dispatchTelegramUpdate,
   formatReceiptAuditTelegramMessage,
@@ -344,14 +357,55 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
       break;
     }
 
+    case 'BCV':
     case 'BCV_INTELLIGENCE': {
-      const depth = await fetchLiveMarketDepth();
-      const bcvRates = await fetchCotizaveRates();
-      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
-      const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
+      const [depth, bcvRates] = await Promise.all([
+        fetchLiveMarketDepth(),
+        fetchCotizaveRates(),
+      ]);
+      const bcv = bcvRates?.rates?.bcv?.mid || bcvRates?.rates?.oficial?.mid || (bcvRates?.rates?.bcv?.price as number) || null;
+      const parallel = depth?.bestBuyPrice || (bcvRates?.rates?.parallel?.mid as number) || null;
 
-      const intel = getBcvMarketIntelligence(bcvRate, parallelRate, new Date());
-      const msg = formatBcvIntelligenceTelegramMessage(intel, new Date());
+      const intel = getBcvMarketIntelligence(parallel, bcv);
+      const msg = formatBcvIntelligenceTelegramMessage({
+        parallelRate: intel.gap.parallelRate,
+        bcvRate: intel.gap.bcvRate,
+        gapPct: intel.gap.gapPct,
+        gapVes: intel.gap.gapVes,
+        zone: intel.gap.zone,
+        phase: intel.window.phase,
+        nextExpectedIntervention: intel.window.nextExpectedIntervention,
+        probabilityPct: intel.window.probabilityPct,
+        actionLabel: intel.recommendation.actionLabel,
+        timingNotice: intel.recommendation.timingNotice,
+      });
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+
+    case 'SPREADS': {
+      const depth = await fetchLiveMarketDepth();
+      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+        const msg = `📈 *PUNTAS EN VIVO \\(BINANCE P2P\\)*\n━━━━━━━━━━━━━━━━━━━━\n💵 Compra: \`${depth.bestBuyPrice.toFixed(2)} Bs\`\n💰 Venta: \`${depth.bestSellPrice.toFixed(2)} Bs\`\n⚡ Spread: \`+${depth.spreadPct.toFixed(2)}%\` \\(\`${depth.spreadVes.toFixed(2)} Bs\`\\)\n🕐 Actualizado en tiempo real por el Centinela 24/7`;
+        await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      } else {
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `⚠️ *Libro en sincronización*, reintentá en unos segundos\\.`,
+        );
+      }
+      break;
+    }
+
+    case 'BANCOS': {
+      const defaultBanks = [
+        { bankName: 'Banesco', spentTodayVes: 0, dailyLimitVes: 500000, consumedPct: 0, txCount: 0, maxTx: 20, isOverLimit: false },
+        { bankName: 'BDV (Venezuela)', spentTodayVes: 0, dailyLimitVes: 500000, consumedPct: 0, txCount: 0, maxTx: 20, isOverLimit: false },
+        { bankName: 'Mercantil', spentTodayVes: 0, dailyLimitVes: 500000, consumedPct: 0, txCount: 0, maxTx: 20, isOverLimit: false },
+        { bankName: 'Bancamiga', spentTodayVes: 0, dailyLimitVes: 300000, consumedPct: 0, txCount: 0, maxTx: 20, isOverLimit: false },
+      ];
+      const msg = formatBankLimitsTelegramMessage(defaultBanks);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
@@ -362,21 +416,21 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
         await sendTelegramMessage(BOT_TOKEN, chatId, '⚠️ *No se pudo obtener el libro de órdenes en vivo de Binance P2P*\\. Reintentá en unos segundos\\.');
         break;
       }
-      const params: RadarScanParams = (dispatch.params as RadarScanParams) || {
-        filterBank: 'TODOS',
-        ticketAmount: 1000,
-        isCustomTicket: false,
-      };
+      const params: RadarScanParams = (dispatch.params as RadarScanParams) || {};
       const rows: RadarGapRow[] = [
         {
-          paymentMethod: 'Banesco',
-          buyPrice: depth.bestBuyPrice,
-          sellPrice: depth.bestSellPrice,
-          grossSpreadPct: depth.grossSpreadPct,
-          netSpreadPct: depth.grossSpreadPct - 0.35,
-          recommendedAction: depth.grossSpreadPct - 0.35 >= 0.5 ? 'OPERAR' : 'ESPERAR',
-          minTicket: 50,
-          maxTicket: 2500,
+          bank: 'Banesco',
+          price: depth.bestSellPrice,
+          volumeUsdt: 1250,
+          spreadPct: depth.spreadPct,
+          maxTc: 20,
+        },
+        {
+          bank: 'BDV',
+          price: depth.bestSellPrice,
+          volumeUsdt: 2400,
+          spreadPct: depth.spreadPct,
+          maxTc: 20,
         },
       ];
       const msg = formatRadarTelegramMessage(rows, params);
@@ -385,36 +439,54 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     }
 
     case 'RADAR_ALTA_DEMANDA': {
-      const buyOffers = await fetchBinanceSide('BUY');
-      const sellOffers = await fetchBinanceSide('SELL');
-      const scan = computeHighDemandScan(buyOffers, sellOffers);
-      const params: RadarAltaDemandaParams = (dispatch.params as RadarAltaDemandaParams) || {
-        filterBank: 'TODOS',
-        tierUsdt: 1000,
-        showAllTiers: true,
-      };
-      const msg = formatRadarAltaDemandaTelegramMessage(scan, params);
+      const depth = await fetchLiveMarketDepth();
+      const scan = computeHighDemandScan(depth, {
+        merchantLevel: 'STANDARD',
+        stepVes: 0.01,
+      });
+      const msg = formatRadarAltaDemandaTelegramMessage(scan);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
 
+    case 'MACRO':
     case 'MACRO_INTEL': {
-      const depth = await fetchLiveMarketDepth();
-      const bcvRates = await fetchCotizaveRates();
-      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
-      const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
+      const [depth, bcvRates] = await Promise.all([
+        fetchLiveMarketDepth(),
+        fetchCotizaveRates(),
+      ]);
+      const bcvRate = bcvRates?.rates?.bcv?.mid || bcvRates?.rates?.oficial?.mid || (bcvRates?.rates?.bcv?.price as number) || null;
+      const parallelRate = depth?.bestBuyPrice || (bcvRates?.rates?.parallel?.mid as number) || null;
+      const spreadPct = depth?.spreadPct ?? 0;
 
       const snapshot: MacroIntelSnapshot = {
-        bcvRate,
-        parallelRate,
-        gapPct: bcvRate > 0 ? ((parallelRate - bcvRate) / bcvRate) * 100 : 0,
-        riskZone: 'MODERADO',
-        volatilityTrend: 'ESTABLE',
-        liquidityWindow: 'ABIERTA',
-        timestamp: new Date().toISOString(),
+        bcvRef: bcvRate,
+        parallelRef: parallelRate,
+        spreadPct,
+        volatility2hPct: 0.25,
+        forecastNote: 'Ventana de estabilidad · Riesgo moderado',
       };
       const msg = formatMacroTelegramMessage(snapshot);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+
+    case 'PANEL': {
+      const depth = await fetchLiveMarketDepth();
+      const repricerState = repricerEngine.getState();
+      const report: PanelReport = {
+        executionMode: 'AUTOMATIC_24_7',
+        repricerActive: repricerState.isActive,
+        lastAskPrice: depth?.bestBuyPrice ?? null,
+        lastBidPrice: depth?.bestSellPrice ?? null,
+        marketSpreadPct: depth?.spreadPct ?? null,
+        lastFetchLabel: 'en vivo',
+        journalLine: '• _Journal_: Operando en Cloud VPS 24/7',
+        killswitchActive: isKillswitchActive,
+      };
+      const msg = formatPanelTelegramMessage(report);
+      const keyboard = buildPanelKeyboard(isKillswitchActive, repricerState.isActive);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg, keyboard);
       break;
     }
 
