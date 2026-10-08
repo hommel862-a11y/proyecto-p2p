@@ -610,5 +610,78 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       expect(element.querySelector('.agents-meta-badge')?.textContent).toContain('activos');
     });
   });
+
+  describe('Web Research Dossier in Canvas (Pilar 1.3)', () => {
+    it('opens and closes dossier artifact mutually exclusive with plan artifact', () => {
+      const samplePlan = {
+        id: 'PLAN-1',
+        title: 'Plan Arbitraje',
+        route: 'VES->USDT',
+        capitalRequiredUsdt: 1000,
+        expectedNetSpreadPct: 1.2,
+        expectedProfitUsdt: 12,
+        riskLevel: 'LOW' as const,
+        status: 'PROPOSED' as const,
+        rationale: 'Rationale',
+      };
+      const sampleDossier = {
+        id: 'DOSSIER-1',
+        title: 'Dossier BCV & Circular SUDEBAN',
+        query: 'circular sudeban limites p2p',
+        summary: 'Resumen de normativa vigente para límites en cuentas nacionales.',
+        timestamp: Date.now(),
+        sources: [
+          { title: 'Circular SUDEBAN 2026', uri: 'https://sudeban.gob.ve/circular-2026' },
+        ],
+      };
+
+      component.openPlanArtifact(samplePlan);
+      expect(component.activeArtifactPlan()).toBe(samplePlan);
+      expect(component.activeArtifactDossier()).toBeNull();
+
+      component.openDossierArtifact(sampleDossier);
+      expect(component.activeArtifactDossier()).toBe(sampleDossier);
+      expect(component.activeArtifactPlan()).toBeNull();
+
+      component.closeDossierArtifact();
+      expect(component.activeArtifactDossier()).toBeNull();
+    });
+
+    it('creates and opens dossier in canvas when sendMessage response includes sources', async () => {
+      (window as any).electron = {
+        copilot: {
+          sendMessage: vi.fn().mockResolvedValue({
+            reply: 'Se detectó actualización en la tasa oficial del BCV según la subasta cambiaria.',
+            sources: [
+              { title: 'Banco Central de Venezuela', uri: 'https://bcv.org.ve/tasas' },
+            ],
+            provenance: {
+              source: 'gemini',
+              model: 'gemini-2.0-flash',
+              timestamp: Date.now(),
+              esSimulado: false,
+              liveMarketFeedConnected: true,
+            },
+          }),
+        },
+      };
+
+      await component.sendPrompt('¿Qué informó el BCV hoy sobre la intervención cambiaria?');
+
+      expect(component.activeArtifactDossier()).toBeTruthy();
+      expect(component.activeArtifactDossier()?.sources.length).toBe(1);
+      expect(component.activeArtifactDossier()?.sources[0].uri).toBe('https://bcv.org.ve/tasas');
+
+      fixture.detectChanges();
+      const element: HTMLElement = fixture.nativeElement;
+      const dossierCanvas = element.querySelector('.dossier-canvas');
+      expect(dossierCanvas).toBeTruthy();
+      expect(dossierCanvas?.querySelector('h3')?.textContent).toContain('Dossier Web:');
+      expect(dossierCanvas?.querySelector('.dossier-source-card')?.getAttribute('href')).toBe('https://bcv.org.ve/tasas');
+
+      delete (window as any).electron;
+    });
+  });
 });
+
 

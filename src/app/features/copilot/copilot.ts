@@ -20,6 +20,7 @@ import {
   type CopilotChatMessage,
   type StrategyPlanCard,
   type CopilotResponse,
+  type GroundingSource,
   getBcvMarketIntelligence,
   type BcvMarketIntelligence,
   optimizeIdleCapitalSimpleEarn,
@@ -258,6 +259,15 @@ export interface ProactiveEventAlertDto {
   autoKillswitch?: boolean;
 }
 
+export interface WebResearchDossier {
+  id: string;
+  title: string;
+  query?: string;
+  summary: string;
+  timestamp: number;
+  sources: GroundingSource[];
+}
+
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
   if (typeof window !== 'undefined') {
     return (window as unknown as { electron?: { copilot?: ElectronCopilotBridge } }).electron
@@ -333,13 +343,36 @@ export class Copilot implements OnInit, OnDestroy {
   private readonly sanitizer = inject(DomSanitizer);
 
   readonly activeArtifactPlan = signal<StrategyPlanCard | null>(null);
+  readonly activeArtifactDossier = signal<WebResearchDossier | null>(null);
 
   openPlanArtifact(plan: StrategyPlanCard): void {
+    this.activeArtifactDossier.set(null);
     this.activeArtifactPlan.set(plan);
   }
 
   closePlanArtifact(): void {
     this.activeArtifactPlan.set(null);
+  }
+
+  openDossierArtifact(dossier: WebResearchDossier): void {
+    this.activeArtifactPlan.set(null);
+    this.activeArtifactDossier.set(dossier);
+  }
+
+  closeDossierArtifact(): void {
+    this.activeArtifactDossier.set(null);
+  }
+
+  openSourcesAsDossier(msg: CopilotChatMessage): void {
+    if (!msg.sources || msg.sources.length === 0) return;
+    const dossier: WebResearchDossier = {
+      id: `DOSSIER-${Date.now().toString(36).toUpperCase()}`,
+      title: 'Dossier de Inteligencia y Grounding Web',
+      summary: msg.content,
+      timestamp: msg.timestamp || Date.now(),
+      sources: msg.sources,
+    };
+    this.openDossierArtifact(dossier);
   }
 
   formatMarkdown(content: string): string {
@@ -1867,6 +1900,9 @@ export class Copilot implements OnInit, OnDestroy {
           history: this.messages(),
         });
 
+        const incomingSources =
+          response.sources && response.sources.length > 0 ? response.sources : undefined;
+
         this.messages.update((msgs) => [
           ...msgs,
           {
@@ -1874,10 +1910,23 @@ export class Copilot implements OnInit, OnDestroy {
             content: response.reply,
             plan: response.suggestedPlan,
             provenance: response.provenance,
+            sources: incomingSources,
             timestamp: Date.now(),
           },
         ]);
         this.scrollToBottom();
+
+        if (incomingSources && incomingSources.length > 0) {
+          const dossier: WebResearchDossier = {
+            id: `DOSSIER-${Date.now().toString(36).toUpperCase()}`,
+            title: `Dossier Web: ${promptToSend.slice(0, 40)}${promptToSend.length > 40 ? '...' : ''}`,
+            query: promptToSend,
+            summary: response.reply,
+            timestamp: Date.now(),
+            sources: incomingSources,
+          };
+          this.openDossierArtifact(dossier);
+        }
 
         if (response.suggestedPlan) {
           this.plans.update((p) => [

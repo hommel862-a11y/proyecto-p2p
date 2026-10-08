@@ -807,6 +807,60 @@
           </div>
         </aside>
       }
+
+      <!-- ARTIFACT CANVAS PANEL: WEB RESEARCH DOSSIER (PILAR 1.3) -->
+      @if (activeArtifactDossier(); as dossier) {
+        <aside class="copilot-artifact-canvas dossier-canvas">
+          <div class="canvas-header">
+            <div class="canvas-title-group">
+              <span class="canvas-tag">DOSSIER DE INVESTIGACIÓN WEB</span>
+              <h3>{{ dossier.title }}</h3>
+              @if (dossier.query) {
+                <p class="canvas-route">Consulta: <code>{{ dossier.query }}</code></p>
+              }
+            </div>
+            <button type="button" class="btn-close-canvas" (click)="closeDossierArtifact()" title="Cerrar panel de dossier">✕</button>
+          </div>
+
+          <div class="canvas-scroll-content">
+            <!-- Síntesis verificada -->
+            <div class="canvas-card-section">
+              <div class="section-header">📑 SÍNTESIS DE INTELIGENCIA VERIFICADA</div>
+              <div class="dossier-summary-content" [innerHTML]="renderMarkdown(dossier.summary)"></div>
+            </div>
+
+            <!-- Fuentes Oficiales y Enlaces -->
+            <div class="canvas-card-section">
+              <div class="section-header">🌐 FUENTES OFICIALES CITADAS ({{ dossier.sources.length }})</div>
+              <div class="dossier-sources-list">
+                @for (source of dossier.sources; track source.uri) {
+                  <a
+                    [href]="source.uri"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="dossier-source-card"
+                    [title]="source.uri"
+                  >
+                    <div class="source-card-icon">🔗</div>
+                    <div class="source-card-info">
+                      <span class="source-card-title">{{ source.title || 'Fuente Externa Verificada' }}</span>
+                      <span class="source-card-uri">{{ source.uri }}</span>
+                    </div>
+                    <span class="source-card-external-arrow">↗</span>
+                  </a>
+                }
+              </div>
+            </div>
+
+            <!-- Caja de Garantía y Gobernanza -->
+            <div class="canvas-execution-box">
+              <div class="canvas-guarantee">
+                🛡 <strong>Gobernanza de Información:</strong> Respaldado por Google Search Grounding en tiempo real. Citas directas y enlaces auditables sin alucinaciones de precios ni fuentes.
+              </div>
+            </div>
+          </div>
+        </aside>
+      }
     </div>
   }
 
