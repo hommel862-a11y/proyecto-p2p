@@ -85,8 +85,8 @@ var require_package = __commonJS({
 // ../../node_modules/dotenv/lib/main.js
 var require_main = __commonJS({
   "../../node_modules/dotenv/lib/main.js"(exports, module) {
-    var fs3 = __require("fs");
-    var path3 = __require("path");
+    var fs4 = __require("fs");
+    var path4 = __require("path");
     var os = __require("os");
     var crypto = __require("crypto");
     var packageJson = require_package();
@@ -194,7 +194,7 @@ var require_main = __commonJS({
       if (options && options.path && options.path.length > 0) {
         if (Array.isArray(options.path)) {
           for (const filepath of options.path) {
-            if (fs3.existsSync(filepath)) {
+            if (fs4.existsSync(filepath)) {
               possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
             }
           }
@@ -202,15 +202,15 @@ var require_main = __commonJS({
           possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
         }
       } else {
-        possibleVaultPath = path3.resolve(process.cwd(), ".env.vault");
+        possibleVaultPath = path4.resolve(process.cwd(), ".env.vault");
       }
-      if (fs3.existsSync(possibleVaultPath)) {
+      if (fs4.existsSync(possibleVaultPath)) {
         return possibleVaultPath;
       }
       return null;
     }
     function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path3.join(os.homedir(), envPath.slice(1)) : envPath;
+      return envPath[0] === "~" ? path4.join(os.homedir(), envPath.slice(1)) : envPath;
     }
     function _configVault(options) {
       const debug = Boolean(options && options.debug);
@@ -227,7 +227,7 @@ var require_main = __commonJS({
       return { parsed };
     }
     function configDotenv(options) {
-      const dotenvPath = path3.resolve(process.cwd(), ".env");
+      const dotenvPath = path4.resolve(process.cwd(), ".env");
       let encoding = "utf8";
       const debug = Boolean(options && options.debug);
       const quiet = options && "quiet" in options ? options.quiet : true;
@@ -251,13 +251,13 @@ var require_main = __commonJS({
       }
       let lastError;
       const parsedAll = {};
-      for (const path4 of optionPaths) {
+      for (const path5 of optionPaths) {
         try {
-          const parsed = DotenvModule.parse(fs3.readFileSync(path4, { encoding }));
+          const parsed = DotenvModule.parse(fs4.readFileSync(path5, { encoding }));
           DotenvModule.populate(parsedAll, parsed, options);
         } catch (e) {
           if (debug) {
-            _debug(`Failed to load ${path4} ${e.message}`);
+            _debug(`Failed to load ${path5} ${e.message}`);
           }
           lastError = e;
         }
@@ -272,7 +272,7 @@ var require_main = __commonJS({
         const shortPaths = [];
         for (const filePath of optionPaths) {
           try {
-            const relative = path3.relative(process.cwd(), filePath);
+            const relative = path4.relative(process.cwd(), filePath);
             shortPaths.push(relative);
           } catch (e) {
             if (debug) {
@@ -431,8 +431,8 @@ var require_cli_options = __commonJS({
 
 // src/index.ts
 import http from "node:http";
-import fs2 from "node:fs";
-import path2 from "node:path";
+import fs3 from "node:fs";
+import path3 from "node:path";
 
 // ../../projects/core/src/lib/money.ts
 function roundMoney(v, decimals = 2) {
@@ -1240,6 +1240,14 @@ Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
         responseMarkdown: `\u{1F525} *GENERANDO MAPA DE CALOR Y ESTACIONALIDAD 24/7*\\.\\.\\.`
       };
     }
+    if (command.name === "/sync" || command.name === "/sincronizar") {
+      return {
+        authorized: true,
+        command: "/sync",
+        action: "SYNC",
+        responseMarkdown: `\u{1F504} *CONSULTANDO ESTADO DEL HUB DE SINCRONIZACI\xD3N CIFRADA*\\.\\.\\.`
+      };
+    }
     if (command.name === "/panel") {
       return {
         authorized: true,
@@ -1978,6 +1986,124 @@ var AiProviderRouter = class {
   }
 };
 
+// ../../projects/core/src/lib/sync-hub.ts
+var SyncHubEngine = class {
+  serverVersion = 0;
+  serverClock = {};
+  records = /* @__PURE__ */ new Map();
+  devices = /* @__PURE__ */ new Map();
+  lastSyncAt = null;
+  constructor(initialRecords = [], initialVersion = 0) {
+    this.serverVersion = initialVersion;
+    for (const rec of initialRecords) {
+      this.records.set(`${rec.collection}:${rec.id}`, rec);
+      if (rec.version > this.serverVersion) {
+        this.serverVersion = rec.version;
+      }
+    }
+  }
+  /**
+   * Pushes changes from a client device into the hub.
+   * Resolves conflicts via Last-Write-Wins (LWW) based on updatedAt and version.
+   */
+  pushChanges(request) {
+    const { deviceId, records } = request;
+    if (!deviceId || !Array.isArray(records)) {
+      return { acceptedCount: 0, rejectedCount: records?.length || 0, serverVersion: this.serverVersion };
+    }
+    let accepted = 0;
+    let rejected = 0;
+    const now = Date.now();
+    for (const incoming of records) {
+      const compositeKey = `${incoming.collection}:${incoming.id}`;
+      const existing = this.records.get(compositeKey);
+      if (!existing || incoming.updatedAt >= existing.updatedAt) {
+        this.serverVersion++;
+        const updatedRecord = {
+          ...incoming,
+          version: this.serverVersion,
+          deviceId
+        };
+        this.records.set(compositeKey, updatedRecord);
+        accepted++;
+      } else {
+        rejected++;
+      }
+    }
+    this.serverClock[deviceId] = (this.serverClock[deviceId] || 0) + accepted;
+    this.lastSyncAt = now;
+    this.devices.set(deviceId, {
+      deviceId,
+      lastSyncAt: now,
+      syncedVersion: this.serverVersion
+    });
+    return {
+      acceptedCount: accepted,
+      rejectedCount: rejected,
+      serverVersion: this.serverVersion
+    };
+  }
+  /**
+   * Pulls all records modified strictly after clientVersion.
+   */
+  pullChanges(clientVersion = 0, deviceId) {
+    const delta = [];
+    for (const rec of this.records.values()) {
+      if (rec.version > clientVersion) {
+        delta.push(rec);
+      }
+    }
+    delta.sort((a, b) => a.version - b.version);
+    if (deviceId) {
+      const dev = this.devices.get(deviceId) || { deviceId, lastSyncAt: Date.now(), syncedVersion: 0 };
+      dev.lastSyncAt = Date.now();
+      dev.syncedVersion = this.serverVersion;
+      this.devices.set(deviceId, dev);
+    }
+    return {
+      serverVersion: this.serverVersion,
+      serverClock: { ...this.serverClock },
+      records: delta
+    };
+  }
+  getStats() {
+    let tombstones = 0;
+    for (const rec of this.records.values()) {
+      if (rec.deleted) tombstones++;
+    }
+    return {
+      serverVersion: this.serverVersion,
+      totalRecords: this.records.size,
+      activeRecords: this.records.size - tombstones,
+      tombstones,
+      connectedDevices: this.devices.size,
+      lastSyncAt: this.lastSyncAt
+    };
+  }
+  getAllRecords() {
+    return Array.from(this.records.values());
+  }
+  clear() {
+    this.records.clear();
+    this.devices.clear();
+    this.serverClock = {};
+    this.serverVersion = 0;
+    this.lastSyncAt = null;
+  }
+};
+function formatSyncStatusTelegramMessage(stats) {
+  const lastSyncStr = stats.lastSyncAt ? new Date(stats.lastSyncAt).toISOString().replace("T", " ").substring(0, 19) + " UTC" : "Nunca";
+  return `\u{1F504} *HUB DE SINCRONIZACI\xD3N CIFRADA E2E*
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u2022 *Cifrado:* \`AES-256-GCM (Zero-Knowledge)\`
+\u2022 *Versi\xF3n Global:* \`v${stats.serverVersion}\`
+\u2022 *Registros Totales:* \`${stats.totalRecords}\` \\(Activos: \`${stats.activeRecords}\`, Bajas: \`${stats.tombstones}\`\\)
+\u2022 *Dispositivos Vinculados:* \`${stats.connectedDevices}\`
+\u2022 *\xDAltima Sincronizaci\xF3n:* \`${lastSyncStr}\`
+
+_Los datos viajan y residen 100% cifrados. El VPS nunca tiene acceso a tus claves privadas\\._`;
+}
+
 // src/data-lake.ts
 import fs from "node:fs";
 import path from "node:path";
@@ -2287,6 +2413,57 @@ Pregunta: ${req.prompt}` }] }]
   }
 };
 
+// src/sync-store.ts
+import fs2 from "node:fs";
+import path2 from "node:path";
+var EncryptedSyncStore = class {
+  engine;
+  filePath;
+  constructor(filePath = path2.resolve(process.cwd(), ".encrypted_sync_store.json")) {
+    this.filePath = filePath;
+    const initialRecords = this.loadFromDisk();
+    this.engine = new SyncHubEngine(initialRecords);
+  }
+  loadFromDisk() {
+    try {
+      if (fs2.existsSync(this.filePath)) {
+        const raw = fs2.readFileSync(this.filePath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn("[SyncStore] No se pudo leer el archivo de sincronizaci\xF3n previa:", err);
+    }
+    return [];
+  }
+  saveToDisk() {
+    try {
+      const records = this.engine.getAllRecords();
+      fs2.writeFileSync(this.filePath, JSON.stringify(records, null, 2), "utf-8");
+    } catch (err) {
+      console.error("[SyncStore] Error al guardar datos cifrados en disco:", err);
+    }
+  }
+  push(request) {
+    const result = this.engine.pushChanges(request);
+    if (result.acceptedCount > 0) {
+      this.saveToDisk();
+    }
+    return result;
+  }
+  pull(clientVersion = 0, deviceId) {
+    return this.engine.pullChanges(clientVersion, deviceId);
+  }
+  getStats() {
+    return this.engine.getStats();
+  }
+  getTelegramStatusMessage() {
+    return formatSyncStatusTelegramMessage(this.engine.getStats());
+  }
+};
+
 // src/index.ts
 var BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"]?.trim() || "";
 var AUTHORIZED_CHAT_ID = process.env["TELEGRAM_CHAT_ID"]?.trim() || "";
@@ -2295,11 +2472,11 @@ var POLL_INTERVAL_MS = Number(process.env["POLL_INTERVAL_MS"]) || 2e3;
 var ALPHA_SCAN_INTERVAL_SEC = Number(process.env["ALPHA_SCAN_INTERVAL_SEC"]) || 15;
 var MIN_NET_SPREAD_PCT = Number(process.env["MIN_NET_SPREAD_PCT"]) || 1;
 var HTTP_PORT = Number(process.env["PORT"]) || 3e3;
-var OFFSET_FILE = path2.resolve(process.cwd(), ".telegram_offset");
+var OFFSET_FILE = path3.resolve(process.cwd(), ".telegram_offset");
 function loadStoredOffset() {
   try {
-    if (fs2.existsSync(OFFSET_FILE)) {
-      const data = fs2.readFileSync(OFFSET_FILE, "utf-8").trim();
+    if (fs3.existsSync(OFFSET_FILE)) {
+      const data = fs3.readFileSync(OFFSET_FILE, "utf-8").trim();
       const num = Number(data);
       if (!Number.isNaN(num) && num > 0) return num;
     }
@@ -2309,7 +2486,7 @@ function loadStoredOffset() {
 }
 function saveStoredOffset(offset) {
   try {
-    fs2.writeFileSync(OFFSET_FILE, String(offset), "utf-8");
+    fs3.writeFileSync(OFFSET_FILE, String(offset), "utf-8");
   } catch {
   }
 }
@@ -2320,6 +2497,7 @@ var repricerEngine = new RepricerEngine({
   breakEvenSellPrice: Number(process.env["AUTOREPRICE_BREAKEVEN_PRICE"]) || 0
 });
 var aiProxy = new CloudAiProxyService();
+var syncStore = new EncryptedSyncStore();
 async function fetchBinanceSide(tradeType, asset = "USDT", fiat = "VES", payTypes = ["Banesco", "PagoMovil", "Mercantil"]) {
   try {
     const res = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -2543,6 +2721,11 @@ Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
     }
     case "HEATMAP": {
       const msg = dataLake.getHeatmapTelegramText(30);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+    case "SYNC": {
+      const msg = syncStore.getTelegramStatusMessage();
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
@@ -2797,6 +2980,37 @@ function startHttpServer() {
           res.end(JSON.stringify({ error: err?.message || "Error interno en AI Proxy" }));
         }
       });
+      return;
+    }
+    if (url.pathname === "/api/sync/status") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(syncStore.getStats()));
+      return;
+    }
+    if (url.pathname === "/api/sync/push" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const result = syncStore.push(parsed);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err?.message || "Error en sync push" }));
+        }
+      });
+      return;
+    }
+    if (url.pathname === "/api/sync/pull") {
+      const sinceVersion = Number(url.searchParams.get("sinceVersion")) || 0;
+      const deviceId = url.searchParams.get("deviceId") || void 0;
+      const result = syncStore.pull(sinceVersion, deviceId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
       return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });

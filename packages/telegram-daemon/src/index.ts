@@ -43,6 +43,7 @@ import {
 import { MicrostructureDataLake } from './data-lake';
 import { RepricerEngine } from './repricer-engine';
 import { CloudAiProxyService } from './ai-proxy';
+import { EncryptedSyncStore } from './sync-store';
 
 // Configuration from Environment Variables
 const BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN']?.trim() || '';
@@ -76,7 +77,7 @@ function saveStoredOffset(offset: number): void {
   }
 }
 
-// Instantiate Microstructure Data Lake, Repricer Engine & AI Proxy Service
+// Instantiate Microstructure Data Lake, Repricer Engine, AI Proxy & Encrypted Sync Store
 const dataLake = new MicrostructureDataLake();
 const repricerEngine = new RepricerEngine({
   enabled: process.env['AUTOREPRICE_ENABLED'] === 'true',
@@ -84,6 +85,7 @@ const repricerEngine = new RepricerEngine({
   breakEvenSellPrice: Number(process.env['AUTOREPRICE_BREAKEVEN_PRICE']) || 0,
 });
 const aiProxy = new CloudAiProxyService();
+const syncStore = new EncryptedSyncStore();
 
 // Live Data Fetchers
 async function fetchBinanceSide(
@@ -332,6 +334,12 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
 
     case 'HEATMAP': {
       const msg = dataLake.getHeatmapTelegramText(30);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      break;
+    }
+
+    case 'SYNC': {
+      const msg = syncStore.getTelegramStatusMessage();
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
@@ -617,6 +625,40 @@ function startHttpServer(): void {
           res.end(JSON.stringify({ error: err?.message || 'Error interno en AI Proxy' }));
         }
       });
+      return;
+    }
+
+    if (url.pathname === '/api/sync/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(syncStore.getStats()));
+      return;
+    }
+
+    if (url.pathname === '/api/sync/push' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          const result = syncStore.push(parsed);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'Error en sync push' }));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname === '/api/sync/pull') {
+      const sinceVersion = Number(url.searchParams.get('sinceVersion')) || 0;
+      const deviceId = url.searchParams.get('deviceId') || undefined;
+      const result = syncStore.pull(sinceVersion, deviceId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
       return;
     }
 

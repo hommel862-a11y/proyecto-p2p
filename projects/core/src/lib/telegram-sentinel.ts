@@ -80,6 +80,7 @@ export type SentinelAction =
   | 'BACKTEST_REQUEST'
   | 'BACKTEST_EXECUTE'
   | 'HEATMAP'
+  | 'SYNC'
   | 'PANEL';
 
 /** Filters accepted by `/radar [banco] [capital]`. */
@@ -1316,6 +1317,15 @@ export function dispatchTelegramUpdate(
         command: '/heatmap',
         action: 'HEATMAP',
         responseMarkdown: `🔥 *GENERANDO MAPA DE CALOR Y ESTACIONALIDAD 24/7*\\.\\.\\.`,
+      };
+    }
+
+    if (command.name === '/sync' || command.name === '/sincronizar') {
+      return {
+        authorized: true,
+        command: '/sync',
+        action: 'SYNC',
+        responseMarkdown: `🔄 *CONSULTANDO ESTADO DEL HUB DE SINCRONIZACIÓN CIFRADA*\\.\\.\\.`,
       };
     }
 
