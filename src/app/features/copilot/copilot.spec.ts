@@ -792,6 +792,89 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       expect(items?.length).toBe(component.slashCommands.length);
     });
   });
+
+  describe('Swarm Reasoning Accordion & Markdown Sanitization (P7 / M1)', () => {
+    it('wraps swarm multi-agent deliberations in collapsible details accordion', async () => {
+      delete (window as unknown as Record<string, unknown>)['electron'];
+      const triangulationService = (component as any).triangulationService;
+      triangulationService.liveRates.set({
+        ...triangulationService.liveRates(),
+        binanceVesBuy: { value: 96.5, status: 'live', source: 'binance', expectedSource: 'binance' },
+        binanceVesSell: { value: 94.5, status: 'live', source: 'binance', expectedSource: 'binance' },
+      });
+
+      const accountsService = (component as any).accountsService;
+      vi.spyOn(accountsService, 'buildTreasurySnapshot').mockReturnValue({
+        accounts: [],
+        totalSpentTodayVes: 5000,
+        totalDailyLimitVes: 50000,
+        overLimitCount: 0,
+        nearLimitCount: 0,
+        disabledCount: 0,
+        saturatedCount: 0,
+        fiatBalanceVes: 25000,
+        hasAccounts: true,
+      });
+
+      await component.triggerSwarmAnalysis();
+
+      const lastMsg = component.messages()[component.messages().length - 1];
+      expect(lastMsg.content).toContain('<details class="swarm-reasoning-accordion">');
+      expect(lastMsg.content).toContain('<summary class="swarm-reasoning-summary">');
+      expect(lastMsg.content).toContain('🧠 Ver Razonamiento del Enjambre (APPROVED)');
+      expect(lastMsg.content).toContain('• **Centinela:**');
+      expect(lastMsg.content).toContain('• **Risk Gatekeeper:**');
+
+      const renderedHtml = component.formatMarkdown(lastMsg.content);
+      expect(renderedHtml).toContain('<details class="swarm-reasoning-accordion">');
+      expect(renderedHtml).toContain('<summary class="swarm-reasoning-summary">🧠 Ver Razonamiento del Enjambre (APPROVED)</summary>');
+      expect(renderedHtml).toContain('<div class="swarm-reasoning-content">');
+      expect(renderedHtml).toContain('<strong>Centinela:</strong>');
+      expect(renderedHtml).toContain('<strong>Risk Gatekeeper:</strong>');
+      expect(renderedHtml).not.toContain('<details open'); // Collapsed by default
+    });
+
+    it('transforms LLM <think> blocks into swarm reasoning accordions', () => {
+      const thinkInput = '<think>\nAnalizando profundidad del libro L2 para Banesco...\n</think>\nRecomendación de compra a 95.2 VES';
+      const output = component.formatMarkdown(thinkInput);
+
+      expect(output).toContain('<details class="swarm-reasoning-accordion">');
+      expect(output).toContain('<summary class="swarm-reasoning-summary">🧠 Razonamiento del Enjambre</summary>');
+      expect(output).toContain('<div class="swarm-reasoning-content">Analizando profundidad del libro L2 para Banesco...</div>');
+      expect(output).toContain('Recomendación de compra a 95.2 VES');
+    });
+
+    it('neutralizes malicious XSS script and event handler payloads', () => {
+      const xssInput = 'Mensaje con <script>alert("xss")</script> y <img src="x" onerror="alert(1)">';
+      const output = component.formatMarkdown(xssInput);
+
+      expect(output).not.toContain('<script>');
+      expect(output).not.toContain('onerror=');
+      expect(output).toContain('&lt;script&gt;');
+      expect(output).toContain('&lt;img');
+    });
+
+    it('neutralizes inline ontoggle handlers in details elements', () => {
+      const dangerousDetails = '<details ontoggle="alert(1)"><summary>Exploit</summary>Payload</details>';
+      const output = component.formatMarkdown(dangerousDetails);
+
+      expect(output).not.toContain('ontoggle');
+      expect(output).toContain('<details class="swarm-reasoning-accordion">');
+      expect(output).toContain('<summary class="swarm-reasoning-summary">Exploit</summary>');
+      expect(output).toContain('<div class="swarm-reasoning-content">Payload</div>');
+    });
+
+    it('strips javascript: URIs in markdown links and preserves safe HTTPS links', () => {
+      const badLink = '[Ataque](javascript:alert("pwned"))';
+      const safeLink = '[Binance P2P](https://p2p.binance.com/trade)';
+
+      const badOutput = component.formatMarkdown(badLink);
+      const safeOutput = component.formatMarkdown(safeLink);
+
+      expect(badOutput).not.toContain('<a href="javascript:');
+      expect(safeOutput).toContain('<a href="https://p2p.binance.com/trade" target="_blank" rel="noopener noreferrer" class="md-link">Binance P2P</a>');
+    });
+  });
 });
 
 

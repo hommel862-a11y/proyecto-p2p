@@ -537,6 +537,17 @@ export class Copilot implements OnInit, OnDestroy {
     this.inputPrompt.set('/');
   }
 
+  private sanitizeHtmlOutput(html: string): string {
+    if (!html) return '';
+    return html
+      // Neutralize any raw/injected script, iframe, object, embed, svg or style tags
+      .replace(/<\/?(script|iframe|object|embed|svg|style)[^>]*>/gi, '')
+      // Strip any inline DOM event handlers (onclick, onload, onerror, ontoggle, onmouseover, etc.)
+      .replace(/\s+on[a-zA-Z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '')
+      // Neutralize javascript:, data:, or vbscript: URIs in attributes
+      .replace(/(href|src)\s*=\s*(['"]?)\s*(?:javascript|data|vbscript):/gi, '$1=$2about:blank#blocked');
+  }
+
   formatMarkdown(content: string): string {
     if (!content) return '';
     // 1. Escapar caracteres HTML básicos para prevenir XSS
@@ -604,7 +615,29 @@ export class Copilot implements OnInit, OnDestroy {
     html = html.replace(/(\$\d+(?:,\d{3})*(?:\.\d+)?\s*USDT)/gi, '<span class="md-kpi usdt">$1</span>');
     html = html.replace(/(\d+(?:\.\d+)?\s*VES\/USD|\d+(?:,\d{3})*(?:\.\d+)?\s*VES)/gi, '<span class="md-kpi ves">$1</span>');
 
-    // 10. Párrafos
+    // 10. Links Markdown seguros (exclusivamente esquemas http:// y https://)
+    html = html.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s\)\"\']+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>',
+    );
+
+    // 11. Acordeón de razonamiento Swarm / Think tags
+    // 11a. Tags <think>...</think>
+    html = html.replace(
+      /&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/gi,
+      (_match, reasoning) =>
+        `<details class="swarm-reasoning-accordion"><summary class="swarm-reasoning-summary">🧠 Razonamiento del Enjambre</summary><div class="swarm-reasoning-content">${reasoning.trim()}</div></details>`,
+    );
+
+    // 11b. Bloques estructurados <details>...</details> con <summary>
+    html = html.replace(
+      /&lt;details(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;\s*&lt;summary(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;([\s\S]*?)&lt;\/summary&gt;\s*(?:&lt;div(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;)?([\s\S]*?)(?:&lt;\/div&gt;)?\s*&lt;\/details&gt;/gi,
+      (_match, summaryText, bodyText) => {
+        return `<details class="swarm-reasoning-accordion"><summary class="swarm-reasoning-summary">${summaryText.trim()}</summary><div class="swarm-reasoning-content">${bodyText.trim()}</div></details>`;
+      },
+    );
+
+    // 12. Párrafos
     const blocks = html.split(/\n{2,}/);
     html = blocks
       .map((block) => {
@@ -616,7 +649,8 @@ export class Copilot implements OnInit, OnDestroy {
           trimmed.startsWith('<div') ||
           trimmed.startsWith('<ul') ||
           trimmed.startsWith('<ol') ||
-          trimmed.startsWith('<blockquote')
+          trimmed.startsWith('<blockquote') ||
+          trimmed.startsWith('<details')
         ) {
           return trimmed;
         }
@@ -625,7 +659,7 @@ export class Copilot implements OnInit, OnDestroy {
       .filter(Boolean)
       .join('\n');
 
-    return html;
+    return this.sanitizeHtmlOutput(html);
   }
 
   renderMarkdown(content: string): SafeHtml {
@@ -1923,11 +1957,16 @@ export class Copilot implements OnInit, OnDestroy {
         '### ⚡ Análisis del Enjambre Multi-Agente Completado',
         `**Estado de Auditoría:** \`${statusBadge}\` (Score de Riesgo: ${result.riskVerdict.riskScore}/100)`,
         '',
+        '<details class="swarm-reasoning-accordion">',
+        `<summary class="swarm-reasoning-summary">🧠 Ver Razonamiento del Enjambre (${result.riskVerdict.status})</summary>`,
+        '<div class="swarm-reasoning-content">',
         `• **Centinela:** Spread neto preliminar de ${result.sentinelSignal.netSpreadPct}%`,
         `• **Estratega (Gentleman AI):** ${rationale}`,
         `• **Risk Gatekeeper:** ${result.riskVerdict.recommendedAction}${vetoReason}`,
         '',
         `*${result.executionSummary}*`,
+        '</div>',
+        '</details>',
       ];
 
       this.messages.update((msgs) => [
