@@ -682,6 +682,54 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       delete (window as any).electron;
     });
   });
+
+  describe('Grounding Sources & Citations in Chat (Pilar 1.4)', () => {
+    it('persists sources in assistant message and renders clickable chips in chat bubble', () => {
+      component.messages.set([
+        {
+          role: 'assistant',
+          content: 'Análisis de mercado con citas verificadas.',
+          timestamp: Date.now(),
+          sources: [
+            { title: 'Gaceta Oficial Extraordinaria', uri: 'https://tsj.gob.ve/gaceta' },
+            { title: 'Monitor Dólar Venezuela', uri: 'https://monitordolarvenezuela.com' },
+          ],
+        },
+      ]);
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement;
+      const sourcesContainer = element.querySelector('.grounding-sources-container');
+      expect(sourcesContainer).toBeTruthy();
+      expect(sourcesContainer?.textContent).toContain('Fuentes Verificadas (2)');
+
+      const chips = element.querySelectorAll('.source-bubble-chip');
+      expect(chips.length).toBe(2);
+      expect(chips[0].getAttribute('href')).toBe('https://tsj.gob.ve/gaceta');
+      expect(chips[1].getAttribute('href')).toBe('https://monitordolarvenezuela.com');
+    });
+
+    it('opens sources dossier in canvas when clicking Ver Dossier in chat bubble', () => {
+      const msgWithSources = {
+        role: 'assistant' as const,
+        content: 'Informe de liquidez bancaria',
+        timestamp: Date.now(),
+        sources: [
+          { title: 'Portal SUDEBAN', uri: 'https://sudeban.gob.ve' },
+        ],
+      };
+      component.messages.set([msgWithSources]);
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement;
+      const dossierBtn: HTMLButtonElement | null = element.querySelector('.btn-dossier-link');
+      expect(dossierBtn).toBeTruthy();
+
+      dossierBtn?.click();
+      expect(component.activeArtifactDossier()).toBeTruthy();
+      expect(component.activeArtifactDossier()?.sources[0].uri).toBe('https://sudeban.gob.ve');
+    });
+  });
 });
 
 

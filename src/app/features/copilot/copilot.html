@@ -534,6 +534,40 @@
                   </div>
                 }
 
+                <!-- Grounding Sources & Citations (Pilar 1.4 - M2/M3) -->
+                @if (msg.sources && msg.sources.length > 0) {
+                  <div class="grounding-sources-container">
+                    <div class="grounding-sources-header">
+                      <span class="grounding-title">
+                        <span class="globe-icon">🌐</span> Fuentes Verificadas ({{ msg.sources.length }})
+                      </span>
+                      <button
+                        type="button"
+                        class="btn-dossier-link"
+                        (click)="openSourcesAsDossier(msg)"
+                        title="Abrir dossier de fuentes en el Canvas lateral"
+                      >
+                        📄 Ver Dossier en Canvas →
+                      </button>
+                    </div>
+                    <div class="grounding-sources-chips">
+                      @for (src of msg.sources; track src.uri) {
+                        <a
+                          [href]="src.uri"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="source-bubble-chip"
+                          [title]="src.uri"
+                        >
+                          <span class="chip-pin">📌</span>
+                          <span class="chip-text">{{ src.title || src.uri }}</span>
+                          <span class="chip-arrow">↗</span>
+                        </a>
+                      }
+                    </div>
+                  </div>
+                }
+
                 <!-- Provenance & Metering Bar (F1 / F4) -->
                 @if (msg.role === 'assistant' && msg.provenance) {
                   <div class="provenance-metering-bar">
