@@ -268,6 +268,138 @@ export interface WebResearchDossier {
   sources: GroundingSource[];
 }
 
+export interface SlashCommand {
+  command: string;
+  actionId: string;
+  icon: string;
+  label: string;
+  description: string;
+  category: 'Arbitraje' | 'Riesgo' | 'Tesorería' | 'Operaciones' | 'Auditoría';
+}
+
+export const SLASH_COMMANDS: SlashCommand[] = [
+  {
+    command: '/triangulacion',
+    actionId: 'triangulacion',
+    icon: '⚡',
+    label: 'Triangulación Táctica',
+    description: 'Buscar rutas de arbitraje triangular VES/USDT/Crypto',
+    category: 'Arbitraje',
+  },
+  {
+    command: '/explicar',
+    actionId: 'explicar_triangulacion',
+    icon: '🎓',
+    label: 'Explicar Triangulación',
+    description: 'Clase magistral de arbitraje, ciclo y riesgos',
+    category: 'Arbitraje',
+  },
+  {
+    command: '/resumen',
+    actionId: 'resumen_ejecutivo',
+    icon: '📊',
+    label: 'Resumen Ejecutivo',
+    description: 'Balance de sesión & directivas de mesa de cambio',
+    category: 'Auditoría',
+  },
+  {
+    command: '/forensic',
+    actionId: 'forensic_audit',
+    icon: '🔍',
+    label: 'Auditoría Forense & Disciplina',
+    description: 'Horarios de riesgo & estricto cumplimiento Regla de Oro',
+    category: 'Auditoría',
+  },
+  {
+    command: '/microestructura',
+    actionId: 'microestructura',
+    icon: '📐',
+    label: 'Avellaneda-Stoikov & VPIN',
+    description: 'Cotizaciones óptimas & toxicidad L2 del orderbook',
+    category: 'Arbitraje',
+  },
+  {
+    command: '/bancos',
+    actionId: 'seguridad_bancos',
+    icon: '🏛️',
+    label: 'Status Bancario & Blacklist',
+    description: 'Monitoreo Banesco/BDV/Mercantil/Pago Móvil',
+    category: 'Riesgo',
+  },
+  {
+    command: '/crossexchange',
+    actionId: 'cross_exchange',
+    icon: '🌐',
+    label: 'Cross-Exchange Espacial',
+    description: 'Binance P2P vs El Dorado vs Bybit',
+    category: 'Arbitraje',
+  },
+  {
+    command: '/hurdle',
+    actionId: 'earn_hurdle',
+    icon: '⚖️',
+    label: 'Hurdle Rate: P2P vs Simple Earn',
+    description: 'Comparación de retorno neto vs tasa libre de riesgo',
+    category: 'Tesorería',
+  },
+  {
+    command: '/simpleearn',
+    actionId: 'earn_idle',
+    icon: '💎',
+    label: 'Simple Earn Flexible (D+0)',
+    description: 'Optimizar capital ocioso en tramos Tier 1 y Tier 2',
+    category: 'Tesorería',
+  },
+  {
+    command: '/ladder',
+    actionId: 'earn_ladder',
+    icon: '🪜',
+    label: 'Escalera de Liquidez',
+    description: 'Buffer D+0 vs tramos locked 30d/60d',
+    category: 'Tesorería',
+  },
+  {
+    command: '/bcv',
+    actionId: 'bcv',
+    icon: '🏦',
+    label: 'Auditoría Brecha BCV',
+    description: 'Brecha cambiaria oficial vs paralelo y ventana de intervención',
+    category: 'Riesgo',
+  },
+  {
+    command: '/cobertura',
+    actionId: 'cobertura',
+    icon: '🛡️',
+    label: 'Cobertura Delta-Neutral',
+    description: 'Estrategia de cobertura sintética ante devaluación VES',
+    category: 'Riesgo',
+  },
+  {
+    command: '/volatilidad',
+    actionId: 'volatilidad',
+    icon: '📈',
+    label: 'Volatilidad & Deriva 2H',
+    description: 'Pronóstico de spread y ajuste dinámico de markups',
+    category: 'Arbitraje',
+  },
+  {
+    command: '/disputa',
+    actionId: 'disputa',
+    icon: '⚖️',
+    label: 'Expediente de Disputa & OCR',
+    description: 'Generación de acta arbitral por pagos de terceros',
+    category: 'Operaciones',
+  },
+  {
+    command: '/operadores',
+    actionId: 'operadores',
+    icon: '👥',
+    label: 'Asignación de Capital',
+    description: 'Distribución de cupos entre operadores de mesa',
+    category: 'Operaciones',
+  },
+];
+
 function getElectronCopilot(): ElectronCopilotBridge | undefined {
   if (typeof window !== 'undefined') {
     return (window as unknown as { electron?: { copilot?: ElectronCopilotBridge } }).electron
@@ -373,6 +505,36 @@ export class Copilot implements OnInit, OnDestroy {
       sources: msg.sources,
     };
     this.openDossierArtifact(dossier);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Contextual Slash Command Palette (P6 - v1 Paso 3)
+  // ---------------------------------------------------------------------------
+  readonly slashCommands = SLASH_COMMANDS;
+  readonly isCommandPaletteOpen = computed<boolean>(() => this.inputPrompt().trim().startsWith('/'));
+  readonly commandFilter = computed<string>(() => {
+    const val = this.inputPrompt().trim();
+    return val.startsWith('/') ? val.slice(1).toLowerCase() : '';
+  });
+  readonly filteredCommands = computed<SlashCommand[]>(() => {
+    const filter = this.commandFilter();
+    if (!filter) return this.slashCommands;
+    return this.slashCommands.filter(
+      (cmd) =>
+        cmd.command.toLowerCase().includes(filter) ||
+        cmd.label.toLowerCase().includes(filter) ||
+        cmd.description.toLowerCase().includes(filter) ||
+        cmd.category.toLowerCase().includes(filter),
+    );
+  });
+
+  selectCommand(cmd: SlashCommand): void {
+    this.inputPrompt.set('');
+    this.quickPrompt(cmd.actionId);
+  }
+
+  openSlashMenu(): void {
+    this.inputPrompt.set('/');
   }
 
   formatMarkdown(content: string): string {
@@ -1882,6 +2044,18 @@ export class Copilot implements OnInit, OnDestroy {
   async sendPrompt(text?: string): Promise<void> {
     const promptToSend = text || this.inputPrompt().trim();
     if (!promptToSend || this.isLoading()) return;
+
+    if (promptToSend.startsWith('/')) {
+      const normalizedCmd = promptToSend.split(/\s+/)[0].toLowerCase();
+      const matched = this.slashCommands.find(
+        (c) => c.command.toLowerCase() === normalizedCmd,
+      );
+      if (matched) {
+        this.inputPrompt.set('');
+        this.quickPrompt(matched.actionId);
+        return;
+      }
+    }
 
     this.inputPrompt.set('');
     this.messages.update((msgs) => [

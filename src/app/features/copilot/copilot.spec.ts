@@ -730,6 +730,69 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       expect(component.activeArtifactDossier()?.sources[0].uri).toBe('https://sudeban.gob.ve');
     });
   });
+
+  describe('Contextual Slash Command Palette (P6 - v1 Paso 3)', () => {
+    it('opens command palette when inputPrompt begins with slash', () => {
+      expect(component.isCommandPaletteOpen()).toBe(false);
+
+      component.inputPrompt.set('/');
+      expect(component.isCommandPaletteOpen()).toBe(true);
+      expect(component.commandFilter()).toBe('');
+      expect(component.filteredCommands().length).toBe(component.slashCommands.length);
+
+      component.inputPrompt.set('hola');
+      expect(component.isCommandPaletteOpen()).toBe(false);
+    });
+
+    it('filters commands accurately as user types query', () => {
+      component.inputPrompt.set('/trian');
+      expect(component.isCommandPaletteOpen()).toBe(true);
+      expect(component.commandFilter()).toBe('trian');
+
+      const matches = component.filteredCommands();
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(matches.some((c) => c.command === '/triangulacion')).toBe(true);
+      expect(matches.every((c) =>
+        c.command.includes('trian') ||
+        c.label.toLowerCase().includes('trian') ||
+        c.description.toLowerCase().includes('trian'),
+      )).toBe(true);
+    });
+
+    it('selectCommand clears input and executes quick prompt', () => {
+      const quickSpy = vi.spyOn(component, 'quickPrompt').mockImplementation(() => {});
+      component.inputPrompt.set('/bancos');
+
+      const targetCmd = component.slashCommands.find((c) => c.command === '/bancos')!;
+      component.selectCommand(targetCmd);
+
+      expect(component.inputPrompt()).toBe('');
+      expect(quickSpy).toHaveBeenCalledWith('seguridad_bancos');
+    });
+
+    it('executes matching slash command directly when submitted via sendPrompt', async () => {
+      const quickSpy = vi.spyOn(component, 'quickPrompt').mockImplementation(() => {});
+
+      component.inputPrompt.set('/resumen');
+      await component.sendPrompt();
+
+      expect(component.inputPrompt()).toBe('');
+      expect(quickSpy).toHaveBeenCalledWith('resumen_ejecutivo');
+    });
+
+    it('renders floating palette in DOM when inputPrompt starts with slash', () => {
+      component.inputPrompt.set('/');
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement;
+      const palette = element.querySelector('.slash-command-palette-menu');
+      expect(palette).toBeTruthy();
+
+      const items = palette?.querySelectorAll('.palette-item');
+      expect(items?.length).toBe(component.slashCommands.length);
+    });
+  });
 });
+
 
 

@@ -330,123 +330,24 @@
             </div>
           </div>
 
-          <!-- Quick Prompts Categorized Card -->
-          <div class="sidebar-box quick-prompts-box">
+          <!-- Contextual Slash Command Palette Guide Card (P6 - v1 Paso 3) -->
+          <div class="sidebar-box slash-palette-guide-box">
             <div class="box-header">
-              <span class="box-title">⚡ ACCIONES RÁPIDAS</span>
+              <span class="box-title">⌨️ COMANDOS RÁPIDOS</span>
+              <span class="box-badge">{{ slashCommands.length }} directivas</span>
             </div>
-            <div class="quick-prompts-list">
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('explicar_triangulacion')" [disabled]="isLoading()">
-                <span class="icon">🎓</span>
-                <div class="text-block">
-                  <strong>Explicar Triangulación</strong>
-                  <small>Clase magistral de arbitraje & riesgos</small>
-                </div>
+            <p class="slash-palette-help-text">
+              Escribí <code>/</code> en el chat para buscar y autocompletar directivas de arbitraje, riesgo o tesorería.
+            </p>
+            <div class="slash-quick-sample-chips">
+              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
+                <span>⚡ /triangulacion</span>
               </button>
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('resumen_ejecutivo')" [disabled]="isLoading()">
-                <span class="icon">📊</span>
-                <div class="text-block">
-                  <strong>Resumen Ejecutivo</strong>
-                  <small>Balance de sesión & directivas de mesa</small>
-                </div>
+              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
+                <span>📊 /resumen</span>
               </button>
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('forensic_audit')" [disabled]="isLoading()">
-                <span class="icon">🔍</span>
-                <div class="text-block">
-                  <strong>Auditoría Forense & Disciplina</strong>
-                  <small>Horarios de riesgo & Regla de Oro</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('triangulacion')" [disabled]="isLoading()">
-                <span class="icon">⚡</span>
-                <div class="text-block">
-                  <strong>Triangulación Táctica</strong>
-                  <small>Buscar rutas VES/USDT/Crypto</small>
-                </div>
-              </button>
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('microestructura')" [disabled]="isLoading()">
-                <span class="icon">📐</span>
-                <div class="text-block">
-                  <strong>Avellaneda-Stoikov & VPIN</strong>
-                  <small>Cotizaciones óptimas & toxicidad L2</small>
-                </div>
-              </button>
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('seguridad_bancos')" [disabled]="isLoading()">
-                <span class="icon">🏛️</span>
-                <div class="text-block">
-                  <strong>Status Bancario & Blacklist</strong>
-                  <small>Banesco/BDV/Mercantil/Pago Móvil</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('cross_exchange')" [disabled]="isLoading()">
-                <span class="icon">🌐</span>
-                <div class="text-block">
-                  <strong>Cross-Exchange Espacial</strong>
-                  <small>Binance P2P vs El Dorado / Bybit</small>
-                </div>
-              </button>
-              <button class="quick-action-row highlight-action" (click)="quickPrompt('earn_hurdle')" [disabled]="isLoading()">
-                <span class="icon">⚖️</span>
-                <div class="text-block">
-                  <strong>Hurdle Rate: P2P vs Earn</strong>
-                  <small>¿Conviene operar o parquear?</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('earn_idle')" [disabled]="isLoading()">
-                <span class="icon">💎</span>
-                <div class="text-block">
-                  <strong>Simple Earn Flexible (D+0)</strong>
-                  <small>Optimizar yield en reposo</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('earn_ladder')" [disabled]="isLoading()">
-                <span class="icon">🪜</span>
-                <div class="text-block">
-                  <strong>Escalera de Liquidez</strong>
-                  <small>Buffer D+0 vs Locked 30d</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('riesgo_bcv')" [disabled]="isLoading()">
-                <span class="icon">🏦</span>
-                <div class="text-block">
-                  <strong>Riesgo & Salida BCV</strong>
-                  <small>Escape ante intervención cambiaria</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('bcv')" [disabled]="isLoading()">
-                <span class="icon">🔍</span>
-                <div class="text-block">
-                  <strong>Auditoría Brecha BCV</strong>
-                  <small>Consultar compresión y ventana</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('operadores')" [disabled]="isLoading()">
-                <span class="icon">👥</span>
-                <div class="text-block">
-                  <strong>Asignación de Capital</strong>
-                  <small>Repartir cupos y turnos</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('cobertura')" [disabled]="isLoading()">
-                <span class="icon">🛡</span>
-                <div class="text-block">
-                  <strong>Cobertura Delta-Neutral</strong>
-                  <small>Mitigar devaluación de VES</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('volatilidad')" [disabled]="isLoading()">
-                <span class="icon">📈</span>
-                <div class="text-block">
-                  <strong>Volatilidad 2H</strong>
-                  <small>Pronóstico de spread dinámico</small>
-                </div>
-              </button>
-              <button class="quick-action-row" (click)="quickPrompt('disputa')" [disabled]="isLoading()">
-                <span class="icon">⚖</span>
-                <div class="text-block">
-                  <strong>Expediente Disputa</strong>
-                  <small>Generar acta probatoria OCR</small>
-                </div>
+              <button type="button" class="sample-chip" (click)="openSlashMenu()" [disabled]="isLoading()">
+                <span>🏛️ /bancos</span>
               </button>
             </div>
           </div>
@@ -696,6 +597,42 @@
               📊 Resumen
             </button>
           </div>
+
+          <!-- Contextual Slash Command Palette Popup Menu (P6 - v1 Paso 3) -->
+          @if (isCommandPaletteOpen()) {
+            <div class="slash-command-palette-menu" role="menu">
+              <div class="palette-header">
+                <span class="palette-title">
+                  ⌨️ Comandos Disponibles @if (commandFilter()) { <span>(filtrando: "/{{ commandFilter() }}")</span> }
+                </span>
+                <span class="palette-count">{{ filteredCommands().length }} opciones</span>
+              </div>
+              <div class="palette-items-list">
+                @if (filteredCommands().length === 0) {
+                  <div class="palette-empty">No hay directivas que coincidan con "{{ commandFilter() }}".</div>
+                } @else {
+                  @for (cmd of filteredCommands(); track cmd.command) {
+                    <button
+                      type="button"
+                      class="palette-item"
+                      (click)="selectCommand(cmd)"
+                      role="menuitem"
+                    >
+                      <span class="palette-icon">{{ cmd.icon }}</span>
+                      <div class="palette-details">
+                        <div class="palette-cmd-row">
+                          <span class="palette-cmd-name">{{ cmd.command }}</span>
+                          <span class="palette-label">{{ cmd.label }}</span>
+                          <span class="palette-category">{{ cmd.category }}</span>
+                        </div>
+                        <p class="palette-desc">{{ cmd.description }}</p>
+                      </div>
+                    </button>
+                  }
+                }
+              </div>
+            </div>
+          }
 
           <form (ngSubmit)="sendPrompt()" class="input-form">
             <button
