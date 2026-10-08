@@ -28,6 +28,30 @@
   height: 100vh;
   overflow-y: auto;
   scrollbar-width: thin;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &.collapsed {
+    width: 72px;
+    flex: 0 0 72px;
+    padding: 18px 8px;
+
+    .brand .brand-text,
+    .nav-section-label,
+    .nav a span,
+    .sidebar-foot {
+      display: none;
+    }
+
+    .brand {
+      justify-content: center;
+      padding: 6px 0 14px;
+    }
+
+    .nav a {
+      justify-content: center;
+      padding: 11px 0;
+    }
+  }
 }
 
 /* ============================================================
@@ -198,7 +222,36 @@
   opacity: 0.6;
 }
 
-.header-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.btn-toggle-sidebar {
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: var(--gold);
+    border-color: var(--gold);
+    background: rgba(216, 180, 92, 0.08);
+  }
+
+  .sidebar-toggle-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
 .header-title {
   margin: 0;
   font-family: var(--font-display);

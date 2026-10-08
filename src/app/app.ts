@@ -35,9 +35,7 @@ export class App {
   readonly binance = inject(BinanceP2pService);
   readonly telegram = inject(TelegramWorkerService);
   readonly mobileDrawerOpen = signal<boolean>(false);
-  readonly sidebarCollapsed = signal<boolean>(
-    typeof localStorage !== 'undefined' && localStorage.getItem('p2p.sidebar_collapsed') === 'true',
-  );
+  readonly sidebarCollapsed = signal<boolean>(this.initialSidebarCollapsed());
   readonly apiModalOpen = signal<boolean>(false);
   readonly tourModalOpen = signal<boolean>(false);
 
@@ -138,6 +136,32 @@ export class App {
         /* sin DOM */
       }
     }
+  }
+
+  private initialSidebarCollapsed(): boolean {
+    try {
+      return (
+        typeof localStorage !== 'undefined' &&
+        typeof localStorage.getItem === 'function' &&
+        localStorage.getItem('p2p.sidebar_collapsed') === 'true'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed.update((v) => {
+      const next = !v;
+      try {
+        if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
+          localStorage.setItem('p2p.sidebar_collapsed', String(next));
+        }
+      } catch {
+        /* no storage */
+      }
+      return next;
+    });
   }
 
   toggleMobileDrawer(): void {

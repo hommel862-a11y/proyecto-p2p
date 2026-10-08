@@ -4,6 +4,18 @@ import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
+    const store = new Map<string, string>();
+    (globalThis as Record<string, unknown>)['localStorage'] = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+      key: (i: number) => [...store.keys()][i] ?? null,
+      get length() {
+        return store.size;
+      },
+    } as Storage;
+
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [provideRouter([])],
@@ -114,4 +126,44 @@ describe('App', () => {
       expect(fixture.componentInstance.version()).toBe('1.4.1');
     });
   });
+
+  describe('sidebar collapse', () => {
+    it('toggles sidebarCollapsed and updates CSS classes and localStorage', () => {
+      const store = new Map<string, string>();
+      (globalThis as Record<string, unknown>)['localStorage'] = {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => store.clear(),
+        key: (i: number) => [...store.keys()][i] ?? null,
+        get length() {
+          return store.size;
+        },
+      } as Storage;
+
+      const fixture = TestBed.createComponent(App);
+      const comp = fixture.componentInstance;
+      fixture.detectChanges();
+
+      expect(comp.sidebarCollapsed()).toBe(false);
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.querySelector('.sidebar')?.classList.contains('collapsed')).toBe(false);
+
+      comp.toggleSidebar();
+      fixture.detectChanges();
+
+      expect(comp.sidebarCollapsed()).toBe(true);
+      expect(compiled.querySelector('.sidebar')?.classList.contains('collapsed')).toBe(true);
+      expect(compiled.querySelector('.layout')?.classList.contains('sidebar-collapsed')).toBe(true);
+      expect(store.get('p2p.sidebar_collapsed')).toBe('true');
+
+      comp.toggleSidebar();
+      fixture.detectChanges();
+
+      expect(comp.sidebarCollapsed()).toBe(false);
+      expect(compiled.querySelector('.sidebar')?.classList.contains('collapsed')).toBe(false);
+      expect(store.get('p2p.sidebar_collapsed')).toBe('false');
+    });
+  });
 });
+
