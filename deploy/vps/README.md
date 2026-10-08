@@ -1,28 +1,47 @@
-# Despliegue de Telegram Sentinel 2.0 en VPS / Nube Gratuita
+# Despliegue de P2P Decisor Cloud Sentinel en VPS (4 Módulos 24/7)
 
-Esta guía explica cómo desplegar el microservicio autónomo de **Telegram Sentinel 2.0** en un servidor VPS remoto (en la nube) para que el bot responda preguntas, escanee arbitraje y envíe alertas **las 24 horas del día, los 7 días de la semana, incluso con tu computadora apagada**.
+Esta suite transforma tu servidor VPS en un centro neurálgico institucional que corre **24 horas al día, 7 días a la semana, incluso con tu computadora apagada**.
+
+---
+
+## 🚀 Capacidades Desplegadas en el Servidor
+
+1. **🔥 Data Lake de Microestructura & Heatmap 24/7 (Fase 1)**
+   - Ingesta de ticks cada 15 segundos y cálculo de estacionalidad horaria de arbitraje.
+   - Comandos Telegram: `/heatmap`, `/horarios`.
+   - REST API: `GET /api/market/heatmap`, `GET /api/market/stats`.
+
+2. **⚡ Motor de Reprecio Autónomo & Circuit Breaker (Fase 2)**
+   - Anclaje dinámico de posturas L2 según régimen de volatilidad y saturación bancaria.
+   - Pausa de seguridad automática ante compresión de spread o alertas SUDEBAN.
+   - Comandos Telegram: `/autoreprice on`, `/autoreprice off`, `/autoreprice status`, `/autoreprice config <estrategia> <minSpread>`.
+   - REST API: `GET /api/repricer/status`, `POST /api/repricer/toggle`.
+
+3. **🧠 Gateway Centralizado de IA & Caché Semántico L2 (Fase 3)**
+   - Respuestas instantáneas y ahorro de tokens mediante indexación de consultas frecuentes.
+   - Failover multi-proveedor automático: Gemini 2.0 Flash $\rightarrow$ OpenAI $\rightarrow$ DeepSeek $\rightarrow$ Claude.
+   - Comandos Telegram: `/ask <pregunta>`, `/ai <pregunta>`.
+   - REST API: `POST /api/ai/chat`, `GET /api/ai/stats`, `POST /api/ai/cache/clear`.
+
+4. **🔄 Hub de Sincronización Cifrada E2E Multi-Dispositivo (Fase 4)**
+   - Cifrado Zero-Knowledge AES-256-GCM y resolución de conflictos mediante CRDT (Last-Write-Wins).
+   - Comandos Telegram: `/sync`, `/sincronizar`.
+   - REST API: `GET /api/sync/status`, `POST /api/sync/push`, `GET /api/sync/pull`.
 
 ---
 
 ## 1. Opción Gratuita Recomendada: Oracle Cloud Always Free
 
-Oracle Cloud Infrastructure (OCI) ofrece instancias de cómputo **100% gratuitas de por vida** (Always Free Eligible):
-* **Recursos:** Hasta 4 núcleos ARM Ampere + 24 GB de RAM (o 2 instancias micro AMD x86).
-* **Dirección IP Pública:** Fija y gratuita.
+Oracle Cloud Infrastructure (OCI) ofrece instancias de cómputo **100% gratuitas de por vida** (Always Free):
+* **Recursos:** Hasta 4 núcleos ARM Ampere + 24 GB de RAM (o instancias AMD micro).
+* **Consumo del Daemon:** Menos de **50 MB de RAM**.
 * **Costo:** $0 / mes para siempre.
-
-### Pasos para crear tu VPS en Oracle Cloud:
-1. Registrate en [oracle.com/cloud/free](https://www.oracle.com/cloud/free/).
-2. En la consola de Oracle, andá a **Compute > Instances > Create Instance**.
-3. Seleccioná imagen **Ubuntu 22.04 LTS** o **Ubuntu 24.04**.
-4. Descargá tu clave SSH privada (`.key` o `.pem`) para conectarte.
-5. Hacé clic en **Create**.
 
 ---
 
-## 2. Despliegue en 3 Pasos en tu Servidor Linux
+## 2. Despliegue en 3 Pasos en tu Servidor Linux (Ubuntu / Debian / Oracle Linux)
 
-Conectate a tu VPS por SSH desde tu terminal (o PowerShell):
+Conectate a tu VPS por SSH desde tu terminal o PowerShell:
 
 ```bash
 ssh -i tu_clave_ssh.key ubuntu@TU_IP_PUBLICA
@@ -40,10 +59,11 @@ cd deploy/vps
 cp .env.example .env
 nano .env
 ```
-Completá tus datos en el archivo `.env`:
-* `TELEGRAM_BOT_TOKEN`: Tu token de `@BotFather`.
+Completá tus credenciales en el archivo `.env`:
+* `TELEGRAM_BOT_TOKEN`: Tu token obtenido de `@BotFather`.
 * `TELEGRAM_CHAT_ID`: Tu Chat ID personal de Telegram.
 * `COTIZAVE_API_KEY`: Tu API Key de CotizaVe.
+* `GEMINI_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY`: Opcionales para el Proxy de IA.
 
 *(Presioná `Ctrl + O` y luego `Enter` para guardar, y `Ctrl + X` para salir de nano).*
 
@@ -59,7 +79,7 @@ El script instalará automáticamente Node.js 20 LTS, compilará el daemon de Ty
 
 ## 3. Alternativa con Docker / Docker Compose
 
-Si preferís usar contenedores Docker:
+Si preferís desplegar con Docker:
 
 ```bash
 cd deploy/vps
@@ -68,21 +88,21 @@ docker compose up -d --build
 
 ---
 
-## 4. Comandos Útiles de Mantenimiento
+## 4. Comandos de Monitoreo y Mantenimiento
 
 * **Ver logs del bot en vivo:**
   ```bash
   pm2 logs p2p-telegram-sentinel
   ```
-* **Reiniciar el bot:**
+* **Ver estado de los 4 servicios y consumo de RAM:**
+  ```bash
+  pm2 status
+  ```
+* **Reiniciar el servicio:**
   ```bash
   pm2 restart p2p-telegram-sentinel
   ```
-* **Detener el bot:**
+* **Detener el servicio:**
   ```bash
   pm2 stop p2p-telegram-sentinel
-  ```
-* **Ver estado del proceso y consumo de RAM:**
-  ```bash
-  pm2 status
   ```
