@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -38,14 +39,16 @@ import {
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
 } from '@p2p/core';
+import { MicrostructureDataLake } from './data-lake';
 
 // Configuration from Environment Variables
 const BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN']?.trim() || '';
 const AUTHORIZED_CHAT_ID = process.env['TELEGRAM_CHAT_ID']?.trim() || '';
 const COTIZAVE_API_KEY = process.env['COTIZAVE_API_KEY']?.trim() || '';
 const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS']) || 2000;
-const ALPHA_SCAN_INTERVAL_SEC = Number(process.env['ALPHA_SCAN_INTERVAL_SEC']) || 30;
+const ALPHA_SCAN_INTERVAL_SEC = Number(process.env['ALPHA_SCAN_INTERVAL_SEC']) || 15;
 const MIN_NET_SPREAD_PCT = Number(process.env['MIN_NET_SPREAD_PCT']) || 1.0;
+const HTTP_PORT = Number(process.env['PORT']) || 3000;
 
 const OFFSET_FILE = path.resolve(process.cwd(), '.telegram_offset');
 
@@ -69,6 +72,9 @@ function saveStoredOffset(offset: number): void {
     // Ignore error
   }
 }
+
+// Instantiate Microstructure Data Lake
+const dataLake = new MicrostructureDataLake();
 
 // Live Data Fetchers
 async function fetchBinanceSide(
@@ -182,19 +188,6 @@ async function sendTelegramMessage(
   }
 }
 
-async function answerCallbackQuery(token: string, callbackQueryId?: string, text?: string): Promise<void> {
-  if (!callbackQueryId) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
-    });
-  } catch {
-    // Ignore error
-  }
-}
-
 // Sentinel State
 let isRunning = true;
 let currentOffset = loadStoredOffset();
@@ -202,12 +195,13 @@ let isKillswitchActive = false;
 let lastAlertTimestamp = 0;
 
 console.log('═══════════════════════════════════════════════════════════════════════');
-console.log('  P2P DECISOR — TELEGRAM SENTINEL 2.0 HEADLESS CLOUD DAEMON');
+console.log('  P2P DECISOR — TELEGRAM SENTINEL 2.0 & DATA LAKE CLOUD DAEMON');
 console.log('═══════════════════════════════════════════════════════════════════════');
 console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? 'SÍ (' + BOT_TOKEN.slice(0, 8) + '...)' : 'NO'}`);
 console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || 'TODOS (No restringido)'}`);
 console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? 'SÍ' : 'NO'}`);
-console.log(`  Offset Inicial:         ${currentOffset}`);
+console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
+console.log(`  HTTP API Port:          ${HTTP_PORT}`);
 console.log('───────────────────────────────────────────────────────────────────────');
 
 if (!BOT_TOKEN) {
@@ -258,17 +252,25 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
       const bcvRate = bcvRates?.rates?.bcv?.price || 0;
       const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
       const spreadPct = depth?.grossSpreadPct || 0;
+      const stats = dataLake.getStats();
 
       const statusText = `📡 *ESTADO DEL CENTINELA VPS 24/7*\n\n` +
-        `• *Servidor:* Linux VPS / Cloud Headless\n` +
+        `• *Servidor:* Linux Cloud VPS\n` +
         `• *Estado:* ${isKillswitchActive ? '🔴 PAUSADO (Kill-Switch)' : '🟢 OPERATIVO Y MONITOREANDO'}\n` +
         `• *Binance P2P Buy:* \`${depth?.bestBuyPrice?.toFixed(2) || 'N/D'}\` VES\n` +
         `• *Binance P2P Sell:* \`${depth?.bestSellPrice?.toFixed(2) || 'N/D'}\` VES\n` +
         `• *Spread Bruto:* \`${spreadPct.toFixed(2)}%\`\n` +
-        `• *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : 'N/D'}\` VES\n\n` +
-        `_Escribí /help para ver la lista de comandos disponibles\\._`;
+        `• *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : 'N/D'}\` VES\n` +
+        `• *Data Lake:* \`${stats.totalTicks}\` ticks capturados\n\n` +
+        `_Escribí /heatmap para ver los mejores horarios de arbitraje o /help para ver más comandos\\._`;
 
       await sendTelegramMessage(BOT_TOKEN, chatId, statusText, buildSentinelReplyKeyboard());
+      break;
+    }
+
+    case 'HEATMAP': {
+      const msg = dataLake.getHeatmapTelegramText(30);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
 
@@ -381,12 +383,11 @@ async function startPolling(): Promise<void> {
   }
 }
 
-// Background Proactive Alpha Watcher
+// Background Proactive Alpha Watcher & Data Lake Ingestion
 async function startAlphaWatcher(): Promise<void> {
-  console.log(`[Daemon] Iniciando Centinela de Arbitraje Proactivo (Escaneo cada ${ALPHA_SCAN_INTERVAL_SEC}s)...`);
+  console.log(`[Daemon] Iniciando Data Lake Ingestion y Alpha Watcher (${ALPHA_SCAN_INTERVAL_SEC}s)...`);
   while (isRunning) {
     await new Promise((r) => setTimeout(r, ALPHA_SCAN_INTERVAL_SEC * 1000));
-    if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
 
     try {
       const depth = await fetchLiveMarketDepth();
@@ -394,6 +395,18 @@ async function startAlphaWatcher(): Promise<void> {
 
       const netSpread = depth.grossSpreadPct - 0.35;
       const now = Date.now();
+
+      // Ingest tick into Time-Series Data Lake
+      dataLake.recordTick({
+        timestamp: now,
+        buyPrice: depth.bestBuyPrice,
+        sellPrice: depth.bestSellPrice,
+        grossSpreadPct: depth.grossSpreadPct,
+        netSpreadPct: netSpread,
+        volumeUsdt: depth.totalBuyVolumeUsdt + depth.totalSellVolumeUsdt,
+      });
+
+      if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
 
       // Proactive Alert when spread meets Golden Rule and throttle by 10 minutes
       if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 600_000) {
@@ -404,7 +417,7 @@ async function startAlphaWatcher(): Promise<void> {
           `• *Compra (BUY):* \`${depth.bestBuyPrice.toFixed(2)}\` VES\n` +
           `• *Venta (SELL):* \`${depth.bestSellPrice.toFixed(2)}\` VES\n` +
           `• *Ruta:* Banesco / Pago Móvil\n\n` +
-          `_Enviá /radar o /status para consultar los libros completos\\._`;
+          `_Enviá /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
 
         await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, alertMsg);
         console.log(`[Daemon] Alerta proactiva enviada: Spread Neto ${netSpread.toFixed(2)}%`);
@@ -413,6 +426,52 @@ async function startAlphaWatcher(): Promise<void> {
       console.error('[Daemon] Error en ciclo de Alpha Watcher:', err);
     }
   }
+}
+
+// Native HTTP Server for Microstructure REST API
+function startHttpServer(): void {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (url.pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), isKillswitchActive }));
+      return;
+    }
+
+    if (url.pathname === '/api/market/heatmap') {
+      const days = Number(url.searchParams.get('days')) || 30;
+      const heatmap = dataLake.getHeatmap(days);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(heatmap));
+      return;
+    }
+
+    if (url.pathname === '/api/market/stats') {
+      const stats = dataLake.getStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(stats));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Endpoint no encontrado' }));
+  });
+
+  server.listen(HTTP_PORT, () => {
+    console.log(`[Daemon] HTTP REST API activo en puerto ${HTTP_PORT}`);
+  });
 }
 
 // Graceful Shutdown
@@ -426,6 +485,7 @@ function shutdown(signal: string): void {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-// Launch
+// Launch All Services
+startHttpServer();
 void startPolling();
 void startAlphaWatcher();

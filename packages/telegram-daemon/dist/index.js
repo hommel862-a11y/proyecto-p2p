@@ -85,8 +85,8 @@ var require_package = __commonJS({
 // ../../node_modules/dotenv/lib/main.js
 var require_main = __commonJS({
   "../../node_modules/dotenv/lib/main.js"(exports, module) {
-    var fs2 = __require("fs");
-    var path2 = __require("path");
+    var fs3 = __require("fs");
+    var path3 = __require("path");
     var os = __require("os");
     var crypto = __require("crypto");
     var packageJson = require_package();
@@ -194,7 +194,7 @@ var require_main = __commonJS({
       if (options && options.path && options.path.length > 0) {
         if (Array.isArray(options.path)) {
           for (const filepath of options.path) {
-            if (fs2.existsSync(filepath)) {
+            if (fs3.existsSync(filepath)) {
               possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
             }
           }
@@ -202,15 +202,15 @@ var require_main = __commonJS({
           possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
         }
       } else {
-        possibleVaultPath = path2.resolve(process.cwd(), ".env.vault");
+        possibleVaultPath = path3.resolve(process.cwd(), ".env.vault");
       }
-      if (fs2.existsSync(possibleVaultPath)) {
+      if (fs3.existsSync(possibleVaultPath)) {
         return possibleVaultPath;
       }
       return null;
     }
     function _resolveHome(envPath) {
-      return envPath[0] === "~" ? path2.join(os.homedir(), envPath.slice(1)) : envPath;
+      return envPath[0] === "~" ? path3.join(os.homedir(), envPath.slice(1)) : envPath;
     }
     function _configVault(options) {
       const debug = Boolean(options && options.debug);
@@ -227,7 +227,7 @@ var require_main = __commonJS({
       return { parsed };
     }
     function configDotenv(options) {
-      const dotenvPath = path2.resolve(process.cwd(), ".env");
+      const dotenvPath = path3.resolve(process.cwd(), ".env");
       let encoding = "utf8";
       const debug = Boolean(options && options.debug);
       const quiet = options && "quiet" in options ? options.quiet : true;
@@ -251,13 +251,13 @@ var require_main = __commonJS({
       }
       let lastError;
       const parsedAll = {};
-      for (const path3 of optionPaths) {
+      for (const path4 of optionPaths) {
         try {
-          const parsed = DotenvModule.parse(fs2.readFileSync(path3, { encoding }));
+          const parsed = DotenvModule.parse(fs3.readFileSync(path4, { encoding }));
           DotenvModule.populate(parsedAll, parsed, options);
         } catch (e) {
           if (debug) {
-            _debug(`Failed to load ${path3} ${e.message}`);
+            _debug(`Failed to load ${path4} ${e.message}`);
           }
           lastError = e;
         }
@@ -272,7 +272,7 @@ var require_main = __commonJS({
         const shortPaths = [];
         for (const filePath of optionPaths) {
           try {
-            const relative = path2.relative(process.cwd(), filePath);
+            const relative = path3.relative(process.cwd(), filePath);
             shortPaths.push(relative);
           } catch (e) {
             if (debug) {
@@ -430,8 +430,9 @@ var require_cli_options = __commonJS({
 })();
 
 // src/index.ts
-import fs from "node:fs";
-import path from "node:path";
+import http from "node:http";
+import fs2 from "node:fs";
+import path2 from "node:path";
 
 // ../../projects/core/src/lib/money.ts
 function roundMoney(v, decimals = 2) {
@@ -858,6 +859,9 @@ function normalizeButtonCommand(text) {
   if (/^(?:📡\s*)?(?:[/]?radar(?:\s*gaps)?)$/i.test(norm)) {
     return "/radar";
   }
+  if (/^(?:🔥\s*)?(?:[/]?heatmap|[/]?horarios|mapa\s*(?:de\s*)?calor)/i.test(norm)) {
+    return "/heatmap";
+  }
   return raw;
 }
 function formatRadarUsageMessage() {
@@ -1130,6 +1134,14 @@ Consulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`
 \u23F3 ${escapeMarkdownV2("El simulador puede tardar: el resultado arrive como mensaje posterior")}`
       };
     }
+    if (command.name === "/heatmap" || command.name === "/horarios") {
+      return {
+        authorized: true,
+        command: "/heatmap",
+        action: "HEATMAP",
+        responseMarkdown: `\u{1F525} *GENERANDO MAPA DE CALOR Y ESTACIONALIDAD 24/7*\\.\\.\\.`
+      };
+    }
     if (command.name === "/panel") {
       return {
         authorized: true,
@@ -1142,7 +1154,7 @@ Consulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o env\xEDa una foto de un comprobante bancario.`
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o env\xEDa una foto de un comprobante bancario.`
       )
     };
   }
@@ -1413,18 +1425,213 @@ function getBcvMarketIntelligence(parallelRate, bcvRate, now = /* @__PURE__ */ n
   };
 }
 
+// ../../projects/core/src/lib/heatmap-calculator.ts
+var DAY_NAMES = ["Dom", "Lun", "Mar", "Mi\xE9", "Jue", "Vie", "S\xE1b"];
+function computeHeatmapMatrix(ticks) {
+  const cellMap = /* @__PURE__ */ new Map();
+  for (let d = 0; d < 7; d++) {
+    for (let h = 0; h < 24; h++) {
+      cellMap.set(`${d}-${h}`, {
+        samples: 0,
+        spreadSum: 0,
+        maxSpread: Number.NEGATIVE_INFINITY,
+        minSpread: Number.POSITIVE_INFINITY,
+        goldenCount: 0,
+        volumeSum: 0
+      });
+    }
+  }
+  let totalValidSamples = 0;
+  let totalSpreadSum = 0;
+  for (const tick of ticks) {
+    if (!Number.isFinite(tick.timestamp) || !Number.isFinite(tick.netSpreadPct)) {
+      continue;
+    }
+    const date = new Date(tick.timestamp);
+    const day = date.getDay();
+    const hour = date.getHours();
+    const key = `${day}-${hour}`;
+    const cell = cellMap.get(key);
+    if (!cell) continue;
+    cell.samples++;
+    cell.spreadSum += tick.netSpreadPct;
+    if (tick.netSpreadPct > cell.maxSpread) cell.maxSpread = tick.netSpreadPct;
+    if (tick.netSpreadPct < cell.minSpread) cell.minSpread = tick.netSpreadPct;
+    if (tick.netSpreadPct >= 0.5) cell.goldenCount++;
+    if (tick.volumeUsdt && Number.isFinite(tick.volumeUsdt)) {
+      cell.volumeSum += tick.volumeUsdt;
+    }
+    totalValidSamples++;
+    totalSpreadSum += tick.netSpreadPct;
+  }
+  const cells = [];
+  for (let d = 0; d < 7; d++) {
+    for (let h = 0; h < 24; h++) {
+      const data = cellMap.get(`${d}-${h}`);
+      const samples = data.samples;
+      const avgSpread = samples > 0 ? data.spreadSum / samples : 0;
+      const goldenRatio = samples > 0 ? data.goldenCount / samples : 0;
+      const liquidityScore = Math.min(100, Math.round(samples * 5 + data.volumeSum / 1e3 * 2));
+      const isPeak = samples >= 3 && avgSpread >= 1 && goldenRatio >= 0.7;
+      cells.push({
+        dayOfWeek: d,
+        dayName: DAY_NAMES[d],
+        hour: h,
+        sampleCount: samples,
+        avgNetSpreadPct: Number(avgSpread.toFixed(2)),
+        maxNetSpreadPct: samples > 0 ? Number(data.maxSpread.toFixed(2)) : 0,
+        minNetSpreadPct: samples > 0 ? Number(data.minSpread.toFixed(2)) : 0,
+        goldenSpreadCount: data.goldenCount,
+        goldenSpreadRatio: Number(goldenRatio.toFixed(2)),
+        liquidityScore,
+        isPeakHour: isPeak
+      });
+    }
+  }
+  const populatedCells = cells.filter((c) => c.sampleCount > 0);
+  const peakHours = [...populatedCells].sort((a, b) => b.avgNetSpreadPct - a.avgNetSpreadPct).slice(0, 5);
+  const deadHours = [...populatedCells].sort((a, b) => a.avgNetSpreadPct - b.avgNetSpreadPct).slice(0, 5);
+  const overallAvg = totalValidSamples > 0 ? totalSpreadSum / totalValidSamples : 0;
+  return {
+    cells,
+    peakHours,
+    deadHours,
+    overallAvgNetSpreadPct: Number(overallAvg.toFixed(2)),
+    totalSamples: totalValidSamples
+  };
+}
+function formatHeatmapTelegramMessage(matrix) {
+  if (matrix.totalSamples === 0) {
+    return `\u{1F4CA} *MAPA DE CALOR DE LIQUIDEZ Y SPREAD (24/7)*
+
+_A\xFAn no hay suficientes ticks hist\xF3ricos registrados en el Data Lake del VPS para construir la matriz_\\.
+_El servidor est\xE1 capturando datos de microestructura de forma continua cada 10s_\\.`;
+  }
+  let text = `\u{1F525} *MAPA DE CALOR: MEJORES HORARIOS DE ARBITRAJE*
+
+\u2022 *Muestras Analizadas:* \`${matrix.totalSamples}\` ticks
+\u2022 *Spread Neto Promedio Global:* \`${matrix.overallAvgNetSpreadPct.toFixed(2)}%\`
+
+\u{1F3C6} *VENTANAS HORARIAS DE M\xC1XIMO RENDIMIENTO (TOP 5)*
+`;
+  if (matrix.peakHours.length === 0) {
+    text += `_No se encontraron ventanas con m\xE1s de 3 muestras a\xFAn_\\.
+`;
+  } else {
+    for (let i = 0; i < matrix.peakHours.length; i++) {
+      const p = matrix.peakHours[i];
+      const hourStr = `${String(p.hour).padStart(2, "0")}:00`;
+      const nextHourStr = `${String((p.hour + 1) % 24).padStart(2, "0")}:00`;
+      text += `*${i + 1}\\.* \u{1F7E2} *${p.dayName} ${hourStr}\u2013${nextHourStr}*: Spread \`${p.avgNetSpreadPct.toFixed(2)}%\` neto \\(M\xE1x \`${p.maxNetSpreadPct.toFixed(2)}%\`\\)
+`;
+    }
+  }
+  text += `
+\u2744\uFE0F *HORARIOS DE BAJA LIQUIDEZ / SPREAD COMPRIMIDO*
+`;
+  if (matrix.deadHours.length > 0) {
+    for (const d of matrix.deadHours.slice(0, 3)) {
+      const hourStr = `${String(d.hour).padStart(2, "0")}:00`;
+      const nextHourStr = `${String((d.hour + 1) % 24).padStart(2, "0")}:00`;
+      text += `\u2022 \u{1F534} *${d.dayName} ${hourStr}\u2013${nextHourStr}*: Spread \`${d.avgNetSpreadPct.toFixed(2)}%\` neto
+`;
+    }
+  }
+  text += `
+\u{1F4A1} _Consejo T\xE1ctico: Concentr\xE1 tus anuncios de venta en las ventanas verdes para acelerar la rotaci\xF3n del capital y maximizar el Sharpe Ratio diario\\._`;
+  return text;
+}
+
+// src/data-lake.ts
+import fs from "node:fs";
+import path from "node:path";
+var DATA_LAKE_FILE = path.resolve(process.cwd(), ".data_lake_ticks.json");
+var MAX_IN_MEMORY_TICKS = 5e4;
+var MicrostructureDataLake = class {
+  ticks = [];
+  isLoaded = false;
+  constructor() {
+    this.loadFromDisk();
+  }
+  loadFromDisk() {
+    if (this.isLoaded) return;
+    try {
+      if (fs.existsSync(DATA_LAKE_FILE)) {
+        const raw = fs.readFileSync(DATA_LAKE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.ticks = parsed;
+          console.log(`[DataLake] Cargados ${this.ticks.length} ticks hist\xF3ricos de microestructura.`);
+        }
+      }
+    } catch (err) {
+      console.warn("[DataLake] Error al leer archivo del data lake:", err);
+      this.ticks = [];
+    }
+    this.isLoaded = true;
+  }
+  saveToDisk() {
+    try {
+      if (this.ticks.length > MAX_IN_MEMORY_TICKS) {
+        this.ticks = this.ticks.slice(-MAX_IN_MEMORY_TICKS);
+      }
+      fs.writeFileSync(DATA_LAKE_FILE, JSON.stringify(this.ticks), "utf-8");
+    } catch (err) {
+      console.error("[DataLake] Error al persistir ticks en disco:", err);
+    }
+  }
+  recordTick(tick) {
+    if (!Number.isFinite(tick.timestamp) || !Number.isFinite(tick.netSpreadPct)) {
+      return;
+    }
+    this.ticks.push(tick);
+    if (this.ticks.length % 10 === 0) {
+      this.saveToDisk();
+    }
+  }
+  getTicks(sinceTimestamp) {
+    if (!sinceTimestamp) return [...this.ticks];
+    return this.ticks.filter((t) => t.timestamp >= sinceTimestamp);
+  }
+  getHeatmap(daysBack = 30) {
+    const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1e3;
+    const filtered = this.getTicks(cutoff);
+    return computeHeatmapMatrix(filtered);
+  }
+  getHeatmapTelegramText(daysBack = 30) {
+    const matrix = this.getHeatmap(daysBack);
+    return formatHeatmapTelegramMessage(matrix);
+  }
+  compact(maxDaysToKeep = 30) {
+    const cutoff = Date.now() - maxDaysToKeep * 24 * 60 * 60 * 1e3;
+    const initialCount = this.ticks.length;
+    this.ticks = this.ticks.filter((t) => t.timestamp >= cutoff);
+    this.saveToDisk();
+    return initialCount - this.ticks.length;
+  }
+  getStats() {
+    if (this.ticks.length === 0) {
+      return { totalTicks: 0, oldestTickDate: null, newestTickDate: null };
+    }
+    const oldest = new Date(this.ticks[0].timestamp).toISOString();
+    const newest = new Date(this.ticks[this.ticks.length - 1].timestamp).toISOString();
+    return { totalTicks: this.ticks.length, oldestTickDate: oldest, newestTickDate: newest };
+  }
+};
+
 // src/index.ts
 var BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"]?.trim() || "";
 var AUTHORIZED_CHAT_ID = process.env["TELEGRAM_CHAT_ID"]?.trim() || "";
 var COTIZAVE_API_KEY = process.env["COTIZAVE_API_KEY"]?.trim() || "";
 var POLL_INTERVAL_MS = Number(process.env["POLL_INTERVAL_MS"]) || 2e3;
-var ALPHA_SCAN_INTERVAL_SEC = Number(process.env["ALPHA_SCAN_INTERVAL_SEC"]) || 30;
+var ALPHA_SCAN_INTERVAL_SEC = Number(process.env["ALPHA_SCAN_INTERVAL_SEC"]) || 15;
 var MIN_NET_SPREAD_PCT = Number(process.env["MIN_NET_SPREAD_PCT"]) || 1;
-var OFFSET_FILE = path.resolve(process.cwd(), ".telegram_offset");
+var HTTP_PORT = Number(process.env["PORT"]) || 3e3;
+var OFFSET_FILE = path2.resolve(process.cwd(), ".telegram_offset");
 function loadStoredOffset() {
   try {
-    if (fs.existsSync(OFFSET_FILE)) {
-      const data = fs.readFileSync(OFFSET_FILE, "utf-8").trim();
+    if (fs2.existsSync(OFFSET_FILE)) {
+      const data = fs2.readFileSync(OFFSET_FILE, "utf-8").trim();
       const num = Number(data);
       if (!Number.isNaN(num) && num > 0) return num;
     }
@@ -1434,10 +1641,11 @@ function loadStoredOffset() {
 }
 function saveStoredOffset(offset) {
   try {
-    fs.writeFileSync(OFFSET_FILE, String(offset), "utf-8");
+    fs2.writeFileSync(OFFSET_FILE, String(offset), "utf-8");
   } catch {
   }
 }
+var dataLake = new MicrostructureDataLake();
 async function fetchBinanceSide(tradeType, asset = "USDT", fiat = "VES", payTypes = ["Banesco", "PagoMovil", "Mercantil"]) {
   try {
     const res = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -1536,12 +1744,13 @@ var currentOffset = loadStoredOffset();
 var isKillswitchActive = false;
 var lastAlertTimestamp = 0;
 console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
-console.log("  P2P DECISOR \u2014 TELEGRAM SENTINEL 2.0 HEADLESS CLOUD DAEMON");
+console.log("  P2P DECISOR \u2014 TELEGRAM SENTINEL 2.0 & DATA LAKE CLOUD DAEMON");
 console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
 console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? "S\xCD (" + BOT_TOKEN.slice(0, 8) + "...)" : "NO"}`);
 console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || "TODOS (No restringido)"}`);
 console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? "S\xCD" : "NO"}`);
-console.log(`  Offset Inicial:         ${currentOffset}`);
+console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
+console.log(`  HTTP API Port:          ${HTTP_PORT}`);
 console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
 if (!BOT_TOKEN) {
   console.error("[Daemon] FATAL: TELEGRAM_BOT_TOKEN no est\xE1 definido en el archivo .env o variables de entorno.");
@@ -1587,17 +1796,24 @@ El monitoreo continuo de arbitraje y tasas en vivo est\xE1 activo nuevamente\\.`
       const bcvRate = bcvRates?.rates?.bcv?.price || 0;
       const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
       const spreadPct = depth?.grossSpreadPct || 0;
+      const stats = dataLake.getStats();
       const statusText = `\u{1F4E1} *ESTADO DEL CENTINELA VPS 24/7*
 
-\u2022 *Servidor:* Linux VPS / Cloud Headless
+\u2022 *Servidor:* Linux Cloud VPS
 \u2022 *Estado:* ${isKillswitchActive ? "\u{1F534} PAUSADO (Kill-Switch)" : "\u{1F7E2} OPERATIVO Y MONITOREANDO"}
 \u2022 *Binance P2P Buy:* \`${depth?.bestBuyPrice?.toFixed(2) || "N/D"}\` VES
 \u2022 *Binance P2P Sell:* \`${depth?.bestSellPrice?.toFixed(2) || "N/D"}\` VES
 \u2022 *Spread Bruto:* \`${spreadPct.toFixed(2)}%\`
 \u2022 *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : "N/D"}\` VES
+\u2022 *Data Lake:* \`${stats.totalTicks}\` ticks capturados
 
-_Escrib\xED /help para ver la lista de comandos disponibles\\._`;
+_Escrib\xED /heatmap para ver los mejores horarios de arbitraje o /help para ver m\xE1s comandos\\._`;
       await sendTelegramMessage(BOT_TOKEN, chatId, statusText, buildSentinelReplyKeyboard());
+      break;
+    }
+    case "HEATMAP": {
+      const msg = dataLake.getHeatmapTelegramText(30);
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
     case "BCV_INTELLIGENCE": {
@@ -1701,15 +1917,23 @@ async function startPolling() {
   }
 }
 async function startAlphaWatcher() {
-  console.log(`[Daemon] Iniciando Centinela de Arbitraje Proactivo (Escaneo cada ${ALPHA_SCAN_INTERVAL_SEC}s)...`);
+  console.log(`[Daemon] Iniciando Data Lake Ingestion y Alpha Watcher (${ALPHA_SCAN_INTERVAL_SEC}s)...`);
   while (isRunning) {
     await new Promise((r) => setTimeout(r, ALPHA_SCAN_INTERVAL_SEC * 1e3));
-    if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
     try {
       const depth = await fetchLiveMarketDepth();
       if (!depth) continue;
       const netSpread = depth.grossSpreadPct - 0.35;
       const now = Date.now();
+      dataLake.recordTick({
+        timestamp: now,
+        buyPrice: depth.bestBuyPrice,
+        sellPrice: depth.bestSellPrice,
+        grossSpreadPct: depth.grossSpreadPct,
+        netSpreadPct: netSpread,
+        volumeUsdt: depth.totalBuyVolumeUsdt + depth.totalSellVolumeUsdt
+      });
+      if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
       if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 6e5) {
         lastAlertTimestamp = now;
         const alertMsg = `\u26A1 *OPORTUNIDAD DE ARBITRAJE DETECTADA POR CENTINELA VPS*
@@ -1719,7 +1943,7 @@ async function startAlphaWatcher() {
 \u2022 *Venta (SELL):* \`${depth.bestSellPrice.toFixed(2)}\` VES
 \u2022 *Ruta:* Banesco / Pago M\xF3vil
 
-_Envi\xE1 /radar o /status para consultar los libros completos\\._`;
+_Envi\xE1 /heatmap para consultar la estacionalidad horaria o /status para libros en vivo\\._`;
         await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, alertMsg);
         console.log(`[Daemon] Alerta proactiva enviada: Spread Neto ${netSpread.toFixed(2)}%`);
       }
@@ -1727,6 +1951,42 @@ _Envi\xE1 /radar o /status para consultar los libros completos\\._`;
       console.error("[Daemon] Error en ciclo de Alpha Watcher:", err);
     }
   }
+}
+function startHttpServer() {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (url.pathname === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", uptime: process.uptime(), isKillswitchActive }));
+      return;
+    }
+    if (url.pathname === "/api/market/heatmap") {
+      const days = Number(url.searchParams.get("days")) || 30;
+      const heatmap = dataLake.getHeatmap(days);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(heatmap));
+      return;
+    }
+    if (url.pathname === "/api/market/stats") {
+      const stats = dataLake.getStats();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(stats));
+      return;
+    }
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Endpoint no encontrado" }));
+  });
+  server.listen(HTTP_PORT, () => {
+    console.log(`[Daemon] HTTP REST API activo en puerto ${HTTP_PORT}`);
+  });
 }
 function shutdown(signal) {
   console.log(`
@@ -1737,5 +1997,6 @@ function shutdown(signal) {
 }
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+startHttpServer();
 void startPolling();
 void startAlphaWatcher();

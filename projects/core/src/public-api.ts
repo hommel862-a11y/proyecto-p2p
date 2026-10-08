@@ -76,3 +76,4 @@ export * from './lib/smart-treasury-yield';
 export * from './lib/browser-operator-bridge';
 export * from './lib/market-scanner';
 export * from './lib/spot-feed';
+export * from './lib/heatmap-calculator';

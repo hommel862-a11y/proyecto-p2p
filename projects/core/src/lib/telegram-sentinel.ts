@@ -75,6 +75,7 @@ export type SentinelAction =
   | 'MACRO'
   | 'BACKTEST_REQUEST'
   | 'BACKTEST_EXECUTE'
+  | 'HEATMAP'
   | 'PANEL';
 
 /** Filters accepted by `/radar [banco] [capital]`. */
@@ -915,6 +916,11 @@ export function normalizeButtonCommand(text: string): string {
     return '/radar';
   }
 
+  // 9. Heatmap / Mapa de calor:
+  if (/^(?:🔥\s*)?(?:[/]?heatmap|[/]?horarios|mapa\s*(?:de\s*)?calor)/i.test(norm)) {
+    return '/heatmap';
+  }
+
   return raw;
 }
 
@@ -1220,6 +1226,15 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (command.name === '/heatmap' || command.name === '/horarios') {
+      return {
+        authorized: true,
+        command: '/heatmap',
+        action: 'HEATMAP',
+        responseMarkdown: `🔥 *GENERANDO MAPA DE CALOR Y ESTACIONALIDAD 24/7*\\.\\.\\.`,
+      };
+    }
+
     if (command.name === '/panel') {
       // Un panel se mira, no se scrollea: el worker devuelve UN mensaje con
       // teclado y los botones lo re-renderizan en el lugar.
@@ -1235,7 +1250,7 @@ export function dispatchTelegramUpdate(
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o envía una foto de un comprobante bancario.`,
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o envía una foto de un comprobante bancario.`,
       ),
     };
   }
