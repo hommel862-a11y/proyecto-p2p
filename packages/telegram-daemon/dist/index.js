@@ -841,8 +841,9 @@ function buildSentinelReplyKeyboard() {
   return {
     keyboard: [
       [{ text: "\u{1F3AF} Radar Alta Demanda" }, { text: "\u26A1 Spreads en Vivo" }],
-      [{ text: "\u{1F3DB}\uFE0F Macro BCV" }, { text: "\u{1F4CA} Cupos Bancarios" }],
-      [{ text: "\u{1F916} Panel Terminal" }, { text: "\u{1F6A8} Killswitch" }]
+      [{ text: "\u{1F525} Mapa de Calor 24/7" }, { text: "\u{1F916} Reprecio Aut\xF3nomo" }],
+      [{ text: "\u{1F3DB}\uFE0F Macro BCV" }, { text: "\u{1F3E6} Cupos Bancarios" }],
+      [{ text: "\u{1F504} Sincronizaci\xF3n E2E" }, { text: "\u{1F6A8} Killswitch" }]
     ],
     resize_keyboard: true,
     is_persistent: true
@@ -864,11 +865,17 @@ function normalizeButtonCommand(text) {
   if (/^(?:🏛️\s*)?(?:macro\s*bcv|[/]?bcv|tasa\s*bcv)/i.test(norm)) {
     return "/bcv";
   }
-  if (/^(?:📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
+  if (/^(?:🏦\s*|📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
     return "/bancos";
   }
   if (/^(?:🤖\s*)?(?:[/]?panel(?:\s*terminal)?)/i.test(norm)) {
     return "/panel";
+  }
+  if (/^(?:🤖\s*)?(?:reprecio(?:\s*autonomo)?|autoreprice|auto\s*reprecio)/i.test(norm)) {
+    return "/autoreprice status";
+  }
+  if (/^(?:🔄\s*)?(?:sincronizacion(?:\s*e2e)?|[/]?sync|[/]?sincronizar)/i.test(norm)) {
+    return "/sync";
   }
   if (/^(?:🚨\s*)?(?:[/]?killswitch|pausar|parar)/i.test(norm)) {
     return "/killswitch";

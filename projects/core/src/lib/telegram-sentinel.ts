@@ -864,8 +864,9 @@ export function buildSentinelReplyKeyboard(): TelegramReplyKeyboardMarkup {
   return {
     keyboard: [
       [{ text: '🎯 Radar Alta Demanda' }, { text: '⚡ Spreads en Vivo' }],
-      [{ text: '🏛️ Macro BCV' }, { text: '📊 Cupos Bancarios' }],
-      [{ text: '🤖 Panel Terminal' }, { text: '🚨 Killswitch' }],
+      [{ text: '🔥 Mapa de Calor 24/7' }, { text: '🤖 Reprecio Autónomo' }],
+      [{ text: '🏛️ Macro BCV' }, { text: '🏦 Cupos Bancarios' }],
+      [{ text: '🔄 Sincronización E2E' }, { text: '🚨 Killswitch' }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -888,8 +889,6 @@ export function normalizeButtonCommand(text: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 
   // 1. Radar de alta demanda:
-  // Cubre: 'radar de alta de manda', 'radar de alta demanda', 'radar alta demanda', 'alta demanda',
-  // '🎯 radar alta demanda', '/radardealtademanda', '/radar_alta_demanda', etc.
   const highDemandRegex = /^(?:[/]?radar\s*(?:de\s*)?alta\s*(?:de\s*)?manda|[/]?radardealtademanda|[/]?radar_alta_demanda|🎯\s*radar\s*alta\s*demanda|alta\s*(?:de\s*)?manda|radar\s*alta)/i;
   if (highDemandRegex.test(norm)) {
     const remaining = raw.replace(highDemandRegex, '').trim();
@@ -902,13 +901,12 @@ export function normalizeButtonCommand(text: string): string {
   }
 
   // 3. Macro BCV (botón '🏛️ Macro BCV' o consultas de tasa BCV):
-  // Ojo: '/macro' a secas es el comando de reporte macro consolidado (/macro).
   if (/^(?:🏛️\s*)?(?:macro\s*bcv|[/]?bcv|tasa\s*bcv)/i.test(norm)) {
     return '/bcv';
   }
 
   // 4. Cupos bancarios:
-  if (/^(?:📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
+  if (/^(?:🏦\s*|📊\s*)?(?:[/]?cupos?(?:\s*bancarios?)?|[/]?bancos)/i.test(norm)) {
     return '/bancos';
   }
 
@@ -917,22 +915,32 @@ export function normalizeButtonCommand(text: string): string {
     return '/panel';
   }
 
-  // 6. Killswitch / Pausar:
+  // 6. Reprecio autónomo:
+  if (/^(?:🤖\s*)?(?:reprecio(?:\s*autonomo)?|autoreprice|auto\s*reprecio)/i.test(norm)) {
+    return '/autoreprice status';
+  }
+
+  // 7. Sincronización E2E:
+  if (/^(?:🔄\s*)?(?:sincronizacion(?:\s*e2e)?|[/]?sync|[/]?sincronizar)/i.test(norm)) {
+    return '/sync';
+  }
+
+  // 8. Killswitch / Pausar:
   if (/^(?:🚨\s*)?(?:[/]?killswitch|pausar|parar)/i.test(norm)) {
     return '/killswitch';
   }
 
-  // 7. Reanudar / Resume:
+  // 9. Reanudar / Resume:
   if (/^(?:▶\s*)?(?:[/]?resume|[/]?reanudar)/i.test(norm)) {
     return '/resume';
   }
 
-  // 8. Radar de gaps general:
+  // 10. Radar de gaps general:
   if (/^(?:📡\s*)?(?:[/]?radar(?:\s*gaps)?)$/i.test(norm)) {
     return '/radar';
   }
 
-  // 9. Heatmap / Mapa de calor:
+  // 11. Heatmap / Mapa de calor:
   if (/^(?:🔥\s*)?(?:[/]?heatmap|[/]?horarios|mapa\s*(?:de\s*)?calor)/i.test(norm)) {
     return '/heatmap';
   }
