@@ -78,3 +78,4 @@ export * from './lib/market-scanner';
 export * from './lib/spot-feed';
 export * from './lib/heatmap-calculator';
 export * from './lib/dynamic-spread-anchoring';
+export * from './lib/ai-proxy-gateway';

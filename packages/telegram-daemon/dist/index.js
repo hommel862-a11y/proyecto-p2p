@@ -1828,6 +1828,156 @@ function formatDynamicRepricerTelegramMessage(rec, autoModeActive) {
   return lines.join("\n");
 }
 
+// ../../projects/core/src/lib/ai-proxy-gateway.ts
+function normalizeSemanticPrompt(prompt) {
+  if (!prompt) return "";
+  let norm = prompt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[¿?¡!.,:;()\[\]{}"'_#+\-*\/\\|]/g, " ").trim();
+  const stopWords = [
+    /\b(hola|por favor|buenas|dime|cual es|como esta|que es|explicame|quiero saber)\b/g,
+    /\b(hoy|ahora|actualmente|en este momento|a ver)\b/g
+  ];
+  for (const sw of stopWords) {
+    norm = norm.replace(sw, " ");
+  }
+  norm = norm.replace(/\b(dolar|dolares|usd|tether)\b/g, "usdt").replace(/\b(bolivar|bolivares|bs|bsf|bss)\b/g, "ves").replace(/\b(brecha|diferencia|gap bcv)\b/g, "gap_bcv").replace(/\b(tasa oficial|bcv)\b/g, "bcv").replace(/\b(tasa paralela|paralelo|monitor)\b/g, "paralelo").replace(/\b(libro de ordenes|profundidad|orderbook)\b/g, "orderbook").replace(/\b(margen|spread|ganancia)\b/g, "spread").replace(/\s+/g, " ").trim();
+  return norm;
+}
+var SemanticCache = class {
+  entries = /* @__PURE__ */ new Map();
+  maxEntries;
+  defaultTtlMs;
+  hits = 0;
+  misses = 0;
+  tokensSaved = 0;
+  constructor(maxEntries = 500, defaultTtlMs = 6e4) {
+    this.maxEntries = maxEntries;
+    this.defaultTtlMs = defaultTtlMs;
+  }
+  get(prompt) {
+    const key = normalizeSemanticPrompt(prompt);
+    if (!key) {
+      this.misses++;
+      return null;
+    }
+    const entry = this.entries.get(key);
+    if (!entry) {
+      this.misses++;
+      return null;
+    }
+    const now = Date.now();
+    if (now > entry.expiresAt) {
+      this.entries.delete(key);
+      this.misses++;
+      return null;
+    }
+    entry.hitCount++;
+    this.hits++;
+    this.tokensSaved += entry.estimatedTokensSaved;
+    return entry;
+  }
+  set(prompt, response, ttlMs = this.defaultTtlMs, estimatedTokens = 150) {
+    const key = normalizeSemanticPrompt(prompt);
+    if (!key || !response) return;
+    if (this.entries.size >= this.maxEntries) {
+      const firstKey = this.entries.keys().next().value;
+      if (firstKey) this.entries.delete(firstKey);
+    }
+    const now = Date.now();
+    const entry = {
+      canonicalKey: key,
+      originalPrompt: prompt,
+      response,
+      createdAt: now,
+      expiresAt: now + ttlMs,
+      ttlMs,
+      estimatedTokensSaved: estimatedTokens,
+      hitCount: 0
+    };
+    this.entries.set(key, entry);
+  }
+  getStats() {
+    const totalRequests = this.hits + this.misses;
+    const hitRatioPct = totalRequests > 0 ? Number((this.hits / totalRequests * 100).toFixed(2)) : 0;
+    return {
+      totalEntries: this.entries.size,
+      totalHits: this.hits,
+      totalMisses: this.misses,
+      hitRatioPct,
+      estimatedTokensSaved: this.tokensSaved
+    };
+  }
+  clear() {
+    this.entries.clear();
+    this.hits = 0;
+    this.misses = 0;
+    this.tokensSaved = 0;
+  }
+};
+var AiProviderRouter = class {
+  providers = [];
+  cooldowns = /* @__PURE__ */ new Map();
+  cooldownDurationMs = 3e4;
+  constructor(providers = []) {
+    this.setProviders(providers);
+  }
+  setProviders(providers) {
+    this.providers = [...providers].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+  }
+  getAvailableProviders() {
+    const now = Date.now();
+    return this.providers.filter((p) => {
+      const cd = this.cooldowns.get(p.provider) || 0;
+      return now >= cd;
+    });
+  }
+  tripProviderCooldown(provider) {
+    this.cooldowns.set(provider, Date.now() + this.cooldownDurationMs);
+  }
+  resetCooldowns() {
+    this.cooldowns.clear();
+  }
+  async executeWithFallback(request, callerFn) {
+    const start = Date.now();
+    const available = this.getAvailableProviders();
+    const fallbackChain = [];
+    if (available.length === 0) {
+      return {
+        content: "\u26A0\uFE0F No hay proveedores de IA configurados o disponibles en este momento.",
+        providerUsed: "none",
+        modelUsed: "none",
+        cached: false,
+        latencyMs: Date.now() - start
+      };
+    }
+    for (const config of available) {
+      fallbackChain.push(config.provider);
+      try {
+        const result = await callerFn(config, request);
+        return {
+          content: result,
+          providerUsed: config.provider,
+          modelUsed: config.model || "default",
+          cached: false,
+          latencyMs: Date.now() - start,
+          fallbackChain: fallbackChain.length > 1 ? fallbackChain : void 0,
+          tokensEstimated: Math.round((request.prompt.length + result.length) / 4)
+        };
+      } catch (err) {
+        console.warn(`[AiProviderRouter] Fallo en proveedor ${config.provider}:`, err);
+        this.tripProviderCooldown(config.provider);
+      }
+    }
+    return {
+      content: "\u274C Todos los proveedores de IA configurados fallaron en procesar la solicitud.",
+      providerUsed: "none",
+      modelUsed: "none",
+      cached: false,
+      latencyMs: Date.now() - start,
+      fallbackChain
+    };
+  }
+};
+
 // src/data-lake.ts
 import fs from "node:fs";
 import path from "node:path";
@@ -1999,6 +2149,144 @@ _A\xFAn no se ha realizado ninguna evaluaci\xF3n de mercado en este ciclo\\._`;
   }
 };
 
+// src/ai-proxy.ts
+var CloudAiProxyService = class {
+  cache;
+  router;
+  constructor() {
+    this.cache = new SemanticCache(500, 3e5);
+    const providers = [];
+    if (process.env["GEMINI_API_KEY"]) {
+      providers.push({
+        provider: "gemini",
+        apiKey: process.env["GEMINI_API_KEY"].trim(),
+        model: process.env["GEMINI_MODEL"]?.trim() || "gemini-2.0-flash",
+        priority: 1
+      });
+    }
+    if (process.env["OPENAI_API_KEY"]) {
+      providers.push({
+        provider: "openai",
+        apiKey: process.env["OPENAI_API_KEY"].trim(),
+        model: process.env["OPENAI_MODEL"]?.trim() || "gpt-4o-mini",
+        priority: 2
+      });
+    }
+    if (process.env["DEEPSEEK_API_KEY"]) {
+      providers.push({
+        provider: "deepseek",
+        apiKey: process.env["DEEPSEEK_API_KEY"].trim(),
+        model: process.env["DEEPSEEK_MODEL"]?.trim() || "deepseek-chat",
+        priority: 3,
+        baseUrl: "https://api.deepseek.com/v1"
+      });
+    }
+    if (process.env["ANTHROPIC_API_KEY"]) {
+      providers.push({
+        provider: "anthropic",
+        apiKey: process.env["ANTHROPIC_API_KEY"].trim(),
+        model: process.env["ANTHROPIC_MODEL"]?.trim() || "claude-3-5-sonnet-20241022",
+        priority: 4
+      });
+    }
+    this.router = new AiProviderRouter(providers);
+  }
+  getCacheStats() {
+    return this.cache.getStats();
+  }
+  clearCache() {
+    this.cache.clear();
+  }
+  async ask(prompt, systemInstruction, forceRefresh = false) {
+    const start = Date.now();
+    if (!forceRefresh) {
+      const cached = this.cache.get(prompt);
+      if (cached) {
+        return {
+          content: cached.response,
+          providerUsed: "cache",
+          modelUsed: "semantic-cache",
+          cached: true,
+          latencyMs: Date.now() - start,
+          tokensEstimated: cached.estimatedTokensSaved
+        };
+      }
+    }
+    const request = { prompt, systemInstruction };
+    const response = await this.router.executeWithFallback(request, this.callProvider.bind(this));
+    if (response.providerUsed !== "none" && response.content) {
+      this.cache.set(prompt, response.content, 3e5, response.tokensEstimated || 150);
+    }
+    return response;
+  }
+  async callProvider(config, req) {
+    const system = req.systemInstruction || "Eres Gentleman AI, un asistente de arbitraje financiero P2P.";
+    switch (config.provider) {
+      case "gemini": {
+        const model = config.model || "gemini-2.0-flash";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.apiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${system}
+
+Pregunta: ${req.prompt}` }] }]
+          })
+        });
+        if (!res.ok) throw new Error(`Gemini HTTP ${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "No se obtuvo respuesta del modelo Gemini.";
+      }
+      case "openai":
+      case "deepseek": {
+        const baseUrl = config.baseUrl || "https://api.openai.com/v1";
+        const model = config.model || (config.provider === "openai" ? "gpt-4o-mini" : "deepseek-chat");
+        const res = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: req.prompt }
+            ],
+            temperature: 0.2
+          })
+        });
+        if (!res.ok) throw new Error(`${config.provider} HTTP ${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || `No se obtuvo respuesta del modelo ${config.provider}.`;
+      }
+      case "anthropic": {
+        const model = config.model || "claude-3-5-sonnet-20241022";
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": config.apiKey,
+            "anthropic-version": "2023-06-01"
+          },
+          body: JSON.stringify({
+            model,
+            system,
+            messages: [{ role: "user", content: req.prompt }],
+            max_tokens: 1e3
+          })
+        });
+        if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        return data.content?.[0]?.text || "No se obtuvo respuesta del modelo Claude.";
+      }
+      default:
+        throw new Error(`Proveedor ${config.provider} no soportado.`);
+    }
+  }
+};
+
 // src/index.ts
 var BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"]?.trim() || "";
 var AUTHORIZED_CHAT_ID = process.env["TELEGRAM_CHAT_ID"]?.trim() || "";
@@ -2031,6 +2319,7 @@ var repricerEngine = new RepricerEngine({
   baseMinSpreadPct: Number(process.env["AUTOREPRICE_MIN_SPREAD_PCT"]) || 0.6,
   breakEvenSellPrice: Number(process.env["AUTOREPRICE_BREAKEVEN_PRICE"]) || 0
 });
+var aiProxy = new CloudAiProxyService();
 async function fetchBinanceSide(tradeType, asset = "USDT", fiat = "VES", payTypes = ["Banesco", "PagoMovil", "Mercantil"]) {
   try {
     const res = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -2326,6 +2615,26 @@ Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
       break;
     }
     default: {
+      const raw = (update.message?.text || "").trim();
+      if (raw.startsWith("/ask ") || raw.startsWith("/ai ") || raw.startsWith("/ia ")) {
+        const query = raw.replace(/^\/(ask|ai|ia)\s+/i, "").trim();
+        if (query) {
+          await sendTelegramMessage(BOT_TOKEN, chatId, `\u{1F9E0} *CONSULTANDO A GENTLEMAN AI*\\.\\.\\.`);
+          try {
+            const answer = await aiProxy.ask(query);
+            const badge = answer.cached ? `\u26A1 _Respuesta servida desde Cach\xE9 Sem\xE1ntico_` : `\u{1F916} _Respuesta v\xEDa ${answer.providerUsed} (${answer.latencyMs}ms)_`;
+            const text = `\u{1F4A1} *GENTLEMAN AI*
+
+${escapeMarkdownV2(answer.content)}
+
+${escapeMarkdownV2(badge)}`;
+            await sendTelegramMessage(BOT_TOKEN, chatId, text);
+          } catch (err) {
+            await sendTelegramMessage(BOT_TOKEN, chatId, `\u274C *Error al consultar IA:* ${escapeMarkdownV2(err?.message || "Fallo desconocido")}`);
+          }
+          break;
+        }
+      }
       if (dispatch.responseMarkdown) {
         await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
       }
@@ -2413,7 +2722,7 @@ function startHttpServer() {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
@@ -2450,6 +2759,44 @@ function startHttpServer() {
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(repricerEngine.getState()));
+      return;
+    }
+    if (url.pathname === "/api/ai/stats") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(aiProxy.getCacheStats()));
+      return;
+    }
+    if (url.pathname === "/api/ai/cache/clear" && req.method === "POST") {
+      aiProxy.clearCache();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", message: "Cach\xE9 sem\xE1ntico limpiado exitosamente." }));
+      return;
+    }
+    if (url.pathname === "/api/ai/chat" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          if (!parsed.prompt) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: 'El campo "prompt" es obligatorio.' }));
+            return;
+          }
+          const response = await aiProxy.ask(
+            parsed.prompt,
+            parsed.systemInstruction,
+            Boolean(parsed.forceRefresh)
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(response));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err?.message || "Error interno en AI Proxy" }));
+        }
+      });
       return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });

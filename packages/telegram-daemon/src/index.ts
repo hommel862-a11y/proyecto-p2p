@@ -42,6 +42,7 @@ import {
 } from '@p2p/core';
 import { MicrostructureDataLake } from './data-lake';
 import { RepricerEngine } from './repricer-engine';
+import { CloudAiProxyService } from './ai-proxy';
 
 // Configuration from Environment Variables
 const BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN']?.trim() || '';
@@ -75,13 +76,14 @@ function saveStoredOffset(offset: number): void {
   }
 }
 
-// Instantiate Microstructure Data Lake & Repricer Engine
+// Instantiate Microstructure Data Lake, Repricer Engine & AI Proxy Service
 const dataLake = new MicrostructureDataLake();
 const repricerEngine = new RepricerEngine({
   enabled: process.env['AUTOREPRICE_ENABLED'] === 'true',
   baseMinSpreadPct: Number(process.env['AUTOREPRICE_MIN_SPREAD_PCT']) || 0.6,
   breakEvenSellPrice: Number(process.env['AUTOREPRICE_BREAKEVEN_PRICE']) || 0,
 });
+const aiProxy = new CloudAiProxyService();
 
 // Live Data Fetchers
 async function fetchBinanceSide(
@@ -409,6 +411,24 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     }
 
     default: {
+      const raw = (update.message?.text || '').trim();
+      if (raw.startsWith('/ask ') || raw.startsWith('/ai ') || raw.startsWith('/ia ')) {
+        const query = raw.replace(/^\/(ask|ai|ia)\s+/i, '').trim();
+        if (query) {
+          await sendTelegramMessage(BOT_TOKEN, chatId, `🧠 *CONSULTANDO A GENTLEMAN AI*\\.\\.\\.`);
+          try {
+            const answer = await aiProxy.ask(query);
+            const badge = answer.cached
+              ? `⚡ _Respuesta servida desde Caché Semántico_`
+              : `🤖 _Respuesta vía ${answer.providerUsed} (${answer.latencyMs}ms)_`;
+            const text = `💡 *GENTLEMAN AI*\n\n${escapeMarkdownV2(answer.content)}\n\n${escapeMarkdownV2(badge)}`;
+            await sendTelegramMessage(BOT_TOKEN, chatId, text);
+          } catch (err: any) {
+            await sendTelegramMessage(BOT_TOKEN, chatId, `❌ *Error al consultar IA:* ${escapeMarkdownV2(err?.message || 'Fallo desconocido')}`);
+          }
+          break;
+        }
+      }
       if (dispatch.responseMarkdown) {
         await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
       }
@@ -505,7 +525,7 @@ async function startAlphaWatcher(): Promise<void> {
   }
 }
 
-// Native HTTP Server for Microstructure & Repricer REST API
+// Native HTTP Server for Microstructure, Repricer & AI Proxy REST API
 function startHttpServer(): void {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -513,7 +533,7 @@ function startHttpServer(): void {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -556,6 +576,47 @@ function startHttpServer(): void {
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(repricerEngine.getState()));
+      return;
+    }
+
+    if (url.pathname === '/api/ai/stats') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(aiProxy.getCacheStats()));
+      return;
+    }
+
+    if (url.pathname === '/api/ai/cache/clear' && req.method === 'POST') {
+      aiProxy.clearCache();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', message: 'Caché semántico limpiado exitosamente.' }));
+      return;
+    }
+
+    if (url.pathname === '/api/ai/chat' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', async () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          if (!parsed.prompt) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'El campo "prompt" es obligatorio.' }));
+            return;
+          }
+          const response = await aiProxy.ask(
+            parsed.prompt,
+            parsed.systemInstruction,
+            Boolean(parsed.forceRefresh),
+          );
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(response));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'Error interno en AI Proxy' }));
+        }
+      });
       return;
     }
 
