@@ -657,6 +657,26 @@ function computeHighDemandScan(depth, options = {}) {
   };
 }
 
+// ../../projects/core/src/lib/repricer.ts
+function calculatePositionPrice(offers, side, strategy, stepVes = 0.01) {
+  if (offers.length === 0) return 0;
+  const sorted = [...offers].sort(
+    (a, b) => side === "BUY" ? b.price - a.price : a.price - b.price
+  );
+  let targetIndex = 0;
+  if (strategy === "TOP_2" && sorted.length >= 2) targetIndex = 1;
+  if (strategy === "TOP_3" && sorted.length >= 3) targetIndex = 2;
+  const basePrice = sorted[targetIndex].price;
+  if (strategy === "MATCH") {
+    return roundMoney(basePrice, 2);
+  }
+  if (side === "BUY") {
+    return roundMoney(basePrice + (strategy === "UNDERCUT" ? stepVes : 0), 2);
+  } else {
+    return roundMoney(basePrice - (strategy === "UNDERCUT" ? stepVes : 0), 2);
+  }
+}
+
 // ../../projects/core/src/lib/telegram-sentinel.ts
 function escapeMarkdownV2(text) {
   if (!text) return "";
@@ -1089,7 +1109,85 @@ Consulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`
 \u{1F50E} *Filtro:* banco \`${formatCodeSpan(bank ?? "todos")}\` \u2022 tramo \`${formatCodeSpan(tierUsdt !== void 0 ? `${tierUsdt} USDT` : "todos (\u22651.000 USDT)")}\``
       };
     }
+    if (command.name === "/autoreprice" || command.name === "/autoreprecio") {
+      const mode = (command.args[0] || "status").toLowerCase();
+      if (mode === "on" || mode === "activar") {
+        return {
+          authorized: true,
+          command: command.name,
+          action: "AUTOREPRICE_ON",
+          params: { mode: "on" },
+          responseMarkdown: `\u{1F7E2} *REPRECIO DIN\xC1MICO AUT\xD3NOMO 24/7 ACTIVADO*
+
+El servidor ajustar\xE1 autom\xE1ticamente las posturas en el libro de \xF3rdenes respetando los pisos de seguridad y buffers de volatilidad\\.`
+        };
+      }
+      if (mode === "off" || mode === "pausar" || mode === "detener") {
+        return {
+          authorized: true,
+          command: command.name,
+          action: "AUTOREPRICE_OFF",
+          params: { mode: "off" },
+          responseMarkdown: `\u23F8\uFE0F *REPRECIO DIN\xC1MICO AUT\xD3NOMO PAUSADO*
+
+Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
+        };
+      }
+      if (mode === "config" || mode === "configurar") {
+        const strategy = command.args[1]?.toUpperCase() || "TOP_1";
+        const minSpread = parseFiniteNumber(command.args[2]) || 0.6;
+        return {
+          authorized: true,
+          command: command.name,
+          action: "AUTOREPRICE_CONFIG",
+          params: { mode: "config", strategy, minSpread },
+          responseMarkdown: `\u2699\uFE0F *CONFIGURACI\xD3N DE REPRECIO ACTUALIZADA*
+
+\u2022 Estrategia: \`${strategy}\`
+\u2022 Spread M\xEDnimo: \`${minSpread.toFixed(2)}%\``
+        };
+      }
+      return {
+        authorized: true,
+        command: command.name,
+        action: "AUTOREPRICE_STATUS",
+        params: { mode: "status" },
+        responseMarkdown: `\u{1F4CA} *CONSULTANDO ESTADO DEL REPRECIADOR DIN\xC1MICO 24/7*\\.\\.\\.`
+      };
+    }
     if (command.name === "/reprecio") {
+      if (command.args[0]?.toLowerCase() === "auto") {
+        const subMode = (command.args[1] || "status").toLowerCase();
+        if (subMode === "on") {
+          return {
+            authorized: true,
+            command: "/reprecio",
+            action: "AUTOREPRICE_ON",
+            params: { mode: "on" },
+            responseMarkdown: `\u{1F7E2} *REPRECIO DIN\xC1MICO AUT\xD3NOMO 24/7 ACTIVADO*
+
+El servidor ajustar\xE1 autom\xE1ticamente las posturas en el libro de \xF3rdenes respetando los pisos de seguridad y buffers de volatilidad\\.`
+          };
+        }
+        if (subMode === "off") {
+          return {
+            authorized: true,
+            command: "/reprecio",
+            action: "AUTOREPRICE_OFF",
+            params: { mode: "off" },
+            responseMarkdown: `\u23F8\uFE0F *REPRECIO DIN\xC1MICO AUT\xD3NOMO PAUSADO*
+
+Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
+          };
+        }
+        return {
+          authorized: true,
+          command: "/reprecio",
+          action: "AUTOREPRICE_STATUS",
+          params: { mode: "status" },
+          responseMarkdown: `\u{1F4CA} *CONSULTANDO ESTADO DEL REPRECIADOR DIN\xC1MICO 24/7*\\.\\.\\.`
+        };
+      }
       const buyPrice = parseFiniteNumber(command.args[0]);
       const sellPrice = parseFiniteNumber(command.args[1]);
       if (buyPrice === void 0 || sellPrice === void 0) {
@@ -1542,6 +1640,194 @@ _El servidor est\xE1 capturando datos de microestructura de forma continua cada 
   return text;
 }
 
+// ../../projects/core/src/lib/dynamic-spread-anchoring.ts
+function calculateVolatilitySpreadBuffer(regime = "LOW", bcvGapPct = 0) {
+  let buffer = 0;
+  switch (regime) {
+    case "LOW":
+      buffer = 0;
+      break;
+    case "MEDIUM":
+      buffer = 0.25;
+      break;
+    case "HIGH":
+      buffer = 0.6;
+      break;
+    case "EXTREME":
+      buffer = 1.2;
+      break;
+  }
+  if (bcvGapPct >= 20) {
+    buffer += 0.5;
+  } else if (bcvGapPct >= 15) {
+    buffer += 0.25;
+  }
+  return roundMoney(buffer, 2);
+}
+function calculateInventorySkew(currentUsdt, targetUsdt) {
+  if (currentUsdt === void 0 || targetUsdt === void 0 || targetUsdt <= 0) {
+    return { skew: "BALANCED", adjustmentPct: 0 };
+  }
+  const ratio = currentUsdt / targetUsdt;
+  if (ratio > 1.25) {
+    const excessPct = Math.min((ratio - 1.25) * 0.5, 0.4);
+    return { skew: "HEAVY_CRYPTO", adjustmentPct: roundMoney(excessPct, 2) };
+  }
+  if (ratio < 0.75) {
+    const deficitPct = Math.min((0.75 - ratio) * 0.5, 0.4);
+    return { skew: "HEAVY_FIAT", adjustmentPct: roundMoney(deficitPct, 2) };
+  }
+  return { skew: "BALANCED", adjustmentPct: 0 };
+}
+function computeDynamicSpreadAnchors(input) {
+  const {
+    marketDepth,
+    baseMinSpreadPct,
+    strategy,
+    stepVes = 0.01,
+    breakEvenSellPrice,
+    maxBuyPrice,
+    volatilityRegime = "LOW",
+    bcvGapPct = 0,
+    currentInventoryUsdt,
+    targetInventoryUsdt,
+    bankSaturationPct = 0,
+    currentBuyPrice,
+    currentSellPrice,
+    makerFeePct = 0.35
+  } = input;
+  const safetyFlags = [];
+  if (bankSaturationPct >= 90) {
+    safetyFlags.push("BANK_SATURATION_CRITICAL");
+    return {
+      action: "PAUSE",
+      recommendedBuyPrice: currentBuyPrice ?? 0,
+      recommendedSellPrice: currentSellPrice ?? 0,
+      dynamicMinSpreadPct: baseMinSpreadPct,
+      projectedGrossSpreadPct: 0,
+      projectedNetSpreadPct: 0,
+      spreadVes: 0,
+      volatilityBufferPct: 0,
+      inventorySkew: "BALANCED",
+      skewAdjustmentPct: 0,
+      safetyFlags,
+      isSafe: false,
+      reason: `Saturaci\xF3n bancaria cr\xEDtica (${bankSaturationPct.toFixed(1)}%). Operaciones pausadas para prevenir bloqueos regulatorios.`
+    };
+  }
+  if (marketDepth.bestBuyPrice <= 0 || marketDepth.bestSellPrice <= 0) {
+    safetyFlags.push("INSUFFICIENT_MARKET_DEPTH");
+    return {
+      action: "PAUSE",
+      recommendedBuyPrice: currentBuyPrice ?? 0,
+      recommendedSellPrice: currentSellPrice ?? 0,
+      dynamicMinSpreadPct: baseMinSpreadPct,
+      projectedGrossSpreadPct: 0,
+      projectedNetSpreadPct: 0,
+      spreadVes: 0,
+      volatilityBufferPct: 0,
+      inventorySkew: "BALANCED",
+      skewAdjustmentPct: 0,
+      safetyFlags,
+      isSafe: false,
+      reason: "Profundidad de mercado insuficiente en Binance P2P."
+    };
+  }
+  const volatilityBuffer = calculateVolatilitySpreadBuffer(volatilityRegime, bcvGapPct);
+  const { skew, adjustmentPct } = calculateInventorySkew(currentInventoryUsdt, targetInventoryUsdt);
+  const dynamicMinSpreadPct = roundMoney(baseMinSpreadPct + volatilityBuffer, 2);
+  let targetBuy = calculatePositionPrice(
+    marketDepth.buyOffers,
+    "BUY",
+    strategy,
+    stepVes
+  );
+  let targetSell = calculatePositionPrice(
+    marketDepth.sellOffers,
+    "SELL",
+    strategy,
+    stepVes
+  );
+  if (targetBuy <= 0) targetBuy = marketDepth.bestBuyPrice;
+  if (targetSell <= 0) targetSell = marketDepth.bestSellPrice;
+  if (skew === "HEAVY_CRYPTO" && adjustmentPct > 0) {
+    targetSell = roundMoney(targetSell * (1 - adjustmentPct / 100), 2);
+    targetBuy = roundMoney(targetBuy * (1 - adjustmentPct / 100), 2);
+  } else if (skew === "HEAVY_FIAT" && adjustmentPct > 0) {
+    targetBuy = roundMoney(targetBuy * (1 + adjustmentPct / 100), 2);
+    targetSell = roundMoney(targetSell * (1 + adjustmentPct / 100), 2);
+  }
+  if (targetSell < breakEvenSellPrice) {
+    safetyFlags.push("BREAK_EVEN_VIOLATION");
+    targetSell = roundMoney(breakEvenSellPrice, 2);
+  }
+  if (maxBuyPrice && maxBuyPrice > 0 && targetBuy > maxBuyPrice) {
+    safetyFlags.push("MAX_BUY_PRICE_EXCEEDED");
+    targetBuy = roundMoney(maxBuyPrice, 2);
+  }
+  const spreadVes = roundMoney(targetSell - targetBuy, 2);
+  const grossSpreadPct = targetBuy > 0 ? roundMoney(spreadVes / targetBuy * 100, 2) : 0;
+  const netSpreadPct = roundMoney(grossSpreadPct - makerFeePct, 2);
+  if (netSpreadPct < dynamicMinSpreadPct) {
+    safetyFlags.push("SPREAD_BELOW_DYNAMIC_MINIMUM");
+    return {
+      action: "PAUSE",
+      recommendedBuyPrice: targetBuy,
+      recommendedSellPrice: targetSell,
+      dynamicMinSpreadPct,
+      projectedGrossSpreadPct: grossSpreadPct,
+      projectedNetSpreadPct: netSpreadPct,
+      spreadVes,
+      volatilityBufferPct: volatilityBuffer,
+      inventorySkew: skew,
+      skewAdjustmentPct: adjustmentPct,
+      safetyFlags,
+      isSafe: false,
+      reason: `Spread neto proyectado (${netSpreadPct.toFixed(2)}%) es inferior al m\xEDnimo din\xE1mico exigido (${dynamicMinSpreadPct.toFixed(2)}% con buffer de volatilidad de +${volatilityBuffer.toFixed(2)}%).`
+    };
+  }
+  const buyChanged = currentBuyPrice !== void 0 && Math.abs(currentBuyPrice - targetBuy) >= 0.01;
+  const sellChanged = currentSellPrice !== void 0 && Math.abs(currentSellPrice - targetSell) >= 0.01;
+  const action = buyChanged || sellChanged || currentBuyPrice === void 0 ? "UPDATE" : "KEEP";
+  return {
+    action,
+    recommendedBuyPrice: targetBuy,
+    recommendedSellPrice: targetSell,
+    dynamicMinSpreadPct,
+    projectedGrossSpreadPct: grossSpreadPct,
+    projectedNetSpreadPct: netSpreadPct,
+    spreadVes,
+    volatilityBufferPct: volatilityBuffer,
+    inventorySkew: skew,
+    skewAdjustmentPct: adjustmentPct,
+    safetyFlags,
+    isSafe: true,
+    reason: action === "UPDATE" ? `Precios actualizados para estrategia ${strategy}: Compra ${targetBuy.toFixed(2)} VES / Venta ${targetSell.toFixed(2)} VES (Neto: ${netSpreadPct.toFixed(2)}%).` : "Los precios actuales de los anuncios se mantienen en la postura \xF3ptima del libro."
+  };
+}
+function formatDynamicRepricerTelegramMessage(rec, autoModeActive) {
+  const statusEmoji = autoModeActive ? "\u{1F7E2} AUT\xD3NOMO ACTIVO" : "\u{1F7E1} MANUAL / PAUSADO";
+  const actionEmoji = rec.action === "UPDATE" ? "\u26A1 AJUSTE RECOMENDADO" : rec.action === "KEEP" ? "\u2705 MANTENER" : "\u{1F6D1} PAUSAR ANUNCIOS";
+  const lines = [
+    `\u{1F916} *MOTOR DE REPRECIO DIN\xC1MICO 24/7*`,
+    `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`,
+    `\u2022 *Modo de Operaci\xF3n:* \`${statusEmoji}\``,
+    `\u2022 *Decisi\xF3n del Motor:* \`${actionEmoji}\``,
+    `\u2022 *Compra Sugerida (BUY):* \`${rec.recommendedBuyPrice.toFixed(2)}\` VES`,
+    `\u2022 *Venta Sugerida (SELL):* \`${rec.recommendedSellPrice.toFixed(2)}\` VES`,
+    `\u2022 *Spread VES:* \`${rec.spreadVes.toFixed(2)}\` Bs`,
+    `\u2022 *Spread Neto Estimado:* \`${rec.projectedNetSpreadPct.toFixed(2)}%\``,
+    `\u2022 *Piso Spread Din\xE1mico:* \`${rec.dynamicMinSpreadPct.toFixed(2)}%\` \\(Buffer Vol: \`+${rec.volatilityBufferPct.toFixed(2)}%\`\\)`,
+    `\u2022 *Sesgo de Inventario:* \`${rec.inventorySkew}\` \\(\`${rec.skewAdjustmentPct.toFixed(2)}%\`\\)`
+  ];
+  if (rec.safetyFlags.length > 0) {
+    lines.push(`\u2022 *Banderas de Seguridad:* \`${rec.safetyFlags.join(", ")}\``);
+  }
+  lines.push(`
+\u{1F4DD} _${rec.reason.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&")}_`);
+  return lines.join("\n");
+}
+
 // src/data-lake.ts
 import fs from "node:fs";
 import path from "node:path";
@@ -1619,6 +1905,100 @@ var MicrostructureDataLake = class {
   }
 };
 
+// src/repricer-engine.ts
+var RepricerEngine = class {
+  state;
+  minIntervalBetweenUpdatesMs;
+  constructor(config = {}) {
+    this.minIntervalBetweenUpdatesMs = config.minIntervalBetweenUpdatesMs ?? 6e4;
+    this.state = {
+      isActive: config.enabled ?? false,
+      strategy: config.strategy ?? "TOP_1",
+      baseMinSpreadPct: config.baseMinSpreadPct ?? 0.6,
+      breakEvenSellPrice: config.breakEvenSellPrice ?? 0,
+      maxBuyPrice: config.maxBuyPrice ?? 0,
+      targetInventoryUsdt: config.targetInventoryUsdt ?? 2e3,
+      currentInventoryUsdt: config.currentInventoryUsdt ?? 2e3,
+      bankSaturationPct: config.bankSaturationPct ?? 0,
+      lastDecision: null,
+      lastUpdateTimestamp: 0,
+      totalEvaluations: 0,
+      totalUpdates: 0,
+      circuitBreakerTripped: false,
+      circuitTripReason: null
+    };
+  }
+  getState() {
+    return { ...this.state };
+  }
+  enable() {
+    this.state.isActive = true;
+    this.state.circuitBreakerTripped = false;
+    this.state.circuitTripReason = null;
+  }
+  disable() {
+    this.state.isActive = false;
+  }
+  resetCircuitBreaker() {
+    this.state.circuitBreakerTripped = false;
+    this.state.circuitTripReason = null;
+  }
+  configure(params) {
+    if (params.enabled !== void 0) this.state.isActive = params.enabled;
+    if (params.strategy !== void 0) this.state.strategy = params.strategy;
+    if (params.baseMinSpreadPct !== void 0) this.state.baseMinSpreadPct = params.baseMinSpreadPct;
+    if (params.breakEvenSellPrice !== void 0) this.state.breakEvenSellPrice = params.breakEvenSellPrice;
+    if (params.maxBuyPrice !== void 0) this.state.maxBuyPrice = params.maxBuyPrice;
+    if (params.targetInventoryUsdt !== void 0) this.state.targetInventoryUsdt = params.targetInventoryUsdt;
+    if (params.currentInventoryUsdt !== void 0) this.state.currentInventoryUsdt = params.currentInventoryUsdt;
+    if (params.bankSaturationPct !== void 0) this.state.bankSaturationPct = params.bankSaturationPct;
+  }
+  evaluate(marketDepth, bcvGapPct = 0, volatilityRegime = "LOW") {
+    this.state.totalEvaluations++;
+    const decision = computeDynamicSpreadAnchors({
+      marketDepth,
+      baseMinSpreadPct: this.state.baseMinSpreadPct,
+      strategy: this.state.strategy,
+      breakEvenSellPrice: this.state.breakEvenSellPrice,
+      maxBuyPrice: this.state.maxBuyPrice > 0 ? this.state.maxBuyPrice : void 0,
+      volatilityRegime,
+      bcvGapPct,
+      currentInventoryUsdt: this.state.currentInventoryUsdt,
+      targetInventoryUsdt: this.state.targetInventoryUsdt,
+      bankSaturationPct: this.state.bankSaturationPct,
+      currentBuyPrice: this.state.lastDecision?.recommendedBuyPrice,
+      currentSellPrice: this.state.lastDecision?.recommendedSellPrice
+    });
+    this.state.lastDecision = decision;
+    if (!decision.isSafe && decision.safetyFlags.includes("BANK_SATURATION_CRITICAL")) {
+      this.state.circuitBreakerTripped = true;
+      this.state.circuitTripReason = decision.reason;
+      this.state.isActive = false;
+    }
+    if (decision.action === "UPDATE" && this.state.isActive && !this.state.circuitBreakerTripped) {
+      const now = Date.now();
+      if (now - this.state.lastUpdateTimestamp >= this.minIntervalBetweenUpdatesMs) {
+        this.state.lastUpdateTimestamp = now;
+        this.state.totalUpdates++;
+      }
+    }
+    return decision;
+  }
+  getTelegramStatusMessage() {
+    if (!this.state.lastDecision) {
+      return `\u{1F916} *REPRECIADOR DIN\xC1MICO 24/7*
+
+\u2022 *Estado:* ${this.state.isActive ? "\u{1F7E2} ACTIVO" : "\u{1F534} INACTIVO"}
+\u2022 *Estrategia:* \`${this.state.strategy}\`
+\u2022 *Spread M\xEDnimo Base:* \`${this.state.baseMinSpreadPct.toFixed(2)}%\`
+\u2022 *Evaluaciones:* \`${this.state.totalEvaluations}\`
+
+_A\xFAn no se ha realizado ninguna evaluaci\xF3n de mercado en este ciclo\\._`;
+    }
+    return formatDynamicRepricerTelegramMessage(this.state.lastDecision, this.state.isActive);
+  }
+};
+
 // src/index.ts
 var BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"]?.trim() || "";
 var AUTHORIZED_CHAT_ID = process.env["TELEGRAM_CHAT_ID"]?.trim() || "";
@@ -1646,6 +2026,11 @@ function saveStoredOffset(offset) {
   }
 }
 var dataLake = new MicrostructureDataLake();
+var repricerEngine = new RepricerEngine({
+  enabled: process.env["AUTOREPRICE_ENABLED"] === "true",
+  baseMinSpreadPct: Number(process.env["AUTOREPRICE_MIN_SPREAD_PCT"]) || 0.6,
+  breakEvenSellPrice: Number(process.env["AUTOREPRICE_BREAKEVEN_PRICE"]) || 0
+});
 async function fetchBinanceSide(tradeType, asset = "USDT", fiat = "VES", payTypes = ["Banesco", "PagoMovil", "Mercantil"]) {
   try {
     const res = await fetch("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
@@ -1750,6 +2135,7 @@ console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? "S\xCD (" + BOT_TOKEN.slice
 console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || "TODOS (No restringido)"}`);
 console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? "S\xCD" : "NO"}`);
 console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
+console.log(`  Repreciador Aut\xF3nomo:   ${repricerEngine.getState().isActive ? "ACTIVO" : "INACTIVO"}`);
 console.log(`  HTTP API Port:          ${HTTP_PORT}`);
 console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
 if (!BOT_TOKEN) {
@@ -1770,6 +2156,7 @@ async function handleUpdate(update) {
   switch (dispatch.action) {
     case "KILLSWITCH": {
       isKillswitchActive = true;
+      repricerEngine.disable();
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -1781,6 +2168,7 @@ Todos los procesos de monitoreo y alertas autom\xE1ticas fueron pausados inmedia
     }
     case "RESUME": {
       isKillswitchActive = false;
+      repricerEngine.resetCircuitBreaker();
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -1797,18 +2185,71 @@ El monitoreo continuo de arbitraje y tasas en vivo est\xE1 activo nuevamente\\.`
       const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
       const spreadPct = depth?.grossSpreadPct || 0;
       const stats = dataLake.getStats();
+      const repricerState = repricerEngine.getState();
       const statusText = `\u{1F4E1} *ESTADO DEL CENTINELA VPS 24/7*
 
 \u2022 *Servidor:* Linux Cloud VPS
-\u2022 *Estado:* ${isKillswitchActive ? "\u{1F534} PAUSADO (Kill-Switch)" : "\u{1F7E2} OPERATIVO Y MONITOREANDO"}
+\u2022 *Estado Centinela:* ${isKillswitchActive ? "\u{1F534} PAUSADO (Kill-Switch)" : "\u{1F7E2} OPERATIVO Y MONITOREANDO"}
+\u2022 *Repreciador 24/7:* ${repricerState.isActive ? "\u{1F7E2} ACTIVO" : "\u26AA INACTIVO"}
 \u2022 *Binance P2P Buy:* \`${depth?.bestBuyPrice?.toFixed(2) || "N/D"}\` VES
 \u2022 *Binance P2P Sell:* \`${depth?.bestSellPrice?.toFixed(2) || "N/D"}\` VES
 \u2022 *Spread Bruto:* \`${spreadPct.toFixed(2)}%\`
 \u2022 *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : "N/D"}\` VES
 \u2022 *Data Lake:* \`${stats.totalTicks}\` ticks capturados
 
-_Escrib\xED /heatmap para ver los mejores horarios de arbitraje o /help para ver m\xE1s comandos\\._`;
+_Escrib\xED /heatmap para ver horarios de arbitraje o /autoreprice para gestionar el reprecio aut\xF3nomo\\._`;
       await sendTelegramMessage(BOT_TOKEN, chatId, statusText, buildSentinelReplyKeyboard());
+      break;
+    }
+    case "AUTOREPRICE_ON": {
+      repricerEngine.enable();
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `\u{1F7E2} *REPRECIO DIN\xC1MICO AUT\xD3NOMO 24/7 ACTIVADO*
+
+El servidor ajustar\xE1 autom\xE1ticamente las posturas en el libro de \xF3rdenes respetando los pisos de seguridad y buffers de volatilidad\\.`
+      );
+      break;
+    }
+    case "AUTOREPRICE_OFF": {
+      repricerEngine.disable();
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `\u23F8\uFE0F *REPRECIO DIN\xC1MICO AUT\xD3NOMO PAUSADO*
+
+Las posturas ya no se actualizar\xE1n autom\xE1ticamente\\.`
+      );
+      break;
+    }
+    case "AUTOREPRICE_CONFIG": {
+      const params = dispatch.params;
+      repricerEngine.configure({
+        strategy: params?.strategy,
+        baseMinSpreadPct: params?.minSpread
+      });
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `\u2699\uFE0F *CONFIGURACI\xD3N DE REPRECIO ACTUALIZADA*
+
+\u2022 Estrategia: \`${params?.strategy || "TOP_1"}\`
+\u2022 Spread M\xEDnimo: \`${(params?.minSpread || 0.6).toFixed(2)}%\``
+      );
+      break;
+    }
+    case "AUTOREPRICE_STATUS": {
+      const depth = await fetchLiveMarketDepth();
+      const bcvRates = await fetchCotizaveRates();
+      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+      const parallelRate = depth?.bestBuyPrice || 0;
+      const bcvGapPct = bcvRate > 0 && parallelRate > 0 ? (parallelRate - bcvRate) / bcvRate * 100 : 0;
+      if (depth) {
+        repricerEngine.evaluate(depth, bcvGapPct, "LOW");
+      }
+      const msg = repricerEngine.getTelegramStatusMessage();
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
     case "HEATMAP": {
@@ -1859,7 +2300,8 @@ _Escrib\xED /heatmap para ver los mejores horarios de arbitraje o /help para ver
       const scan = computeHighDemandScan(buyOffers, sellOffers);
       const params = dispatch.params || {
         filterBank: "TODOS",
-        ticketAmount: 1e3
+        tierUsdt: 1e3,
+        showAllTiers: true
       };
       const msg = formatRadarAltaDemandaTelegramMessage(scan, params);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
@@ -1933,6 +2375,20 @@ async function startAlphaWatcher() {
         netSpreadPct: netSpread,
         volumeUsdt: depth.totalBuyVolumeUsdt + depth.totalSellVolumeUsdt
       });
+      if (repricerEngine.getState().isActive && !isKillswitchActive) {
+        const bcvRates = await fetchCotizaveRates();
+        const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+        const bcvGapPct = bcvRate > 0 ? (depth.bestBuyPrice - bcvRate) / bcvRate * 100 : 0;
+        const decision = repricerEngine.evaluate(depth, bcvGapPct, "LOW");
+        if (repricerEngine.getState().circuitBreakerTripped && AUTHORIZED_CHAT_ID) {
+          const tripMsg = `\u{1F6A8} *CIRCUIT BREAKER ACTIVADO EN REPRECIADOR 24/7*
+
+El motor paus\xF3 autom\xE1ticamente las operaciones debido a:
+_${escapeMarkdownV2(decision.reason)}_`;
+          await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, tripMsg);
+          console.warn(`[Daemon] Repricer Circuit Breaker activado: ${decision.reason}`);
+        }
+      }
       if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
       if (netSpread >= MIN_NET_SPREAD_PCT && now - lastAlertTimestamp > 6e5) {
         lastAlertTimestamp = now;
@@ -1956,7 +2412,7 @@ function startHttpServer() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -1979,6 +2435,21 @@ function startHttpServer() {
       const stats = dataLake.getStats();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(stats));
+      return;
+    }
+    if (url.pathname === "/api/repricer/status") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(repricerEngine.getState()));
+      return;
+    }
+    if (url.pathname === "/api/repricer/toggle" && req.method === "POST") {
+      if (repricerEngine.getState().isActive) {
+        repricerEngine.disable();
+      } else {
+        repricerEngine.enable();
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(repricerEngine.getState()));
       return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });

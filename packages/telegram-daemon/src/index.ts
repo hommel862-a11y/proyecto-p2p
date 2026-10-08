@@ -34,12 +34,14 @@ import {
   type RadarScanParams,
   type RadarAltaDemandaParams,
   type RepriceParams,
+  type AutoRepriceParams,
   type SentinelActionParams,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
 } from '@p2p/core';
 import { MicrostructureDataLake } from './data-lake';
+import { RepricerEngine } from './repricer-engine';
 
 // Configuration from Environment Variables
 const BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN']?.trim() || '';
@@ -73,8 +75,13 @@ function saveStoredOffset(offset: number): void {
   }
 }
 
-// Instantiate Microstructure Data Lake
+// Instantiate Microstructure Data Lake & Repricer Engine
 const dataLake = new MicrostructureDataLake();
+const repricerEngine = new RepricerEngine({
+  enabled: process.env['AUTOREPRICE_ENABLED'] === 'true',
+  baseMinSpreadPct: Number(process.env['AUTOREPRICE_MIN_SPREAD_PCT']) || 0.6,
+  breakEvenSellPrice: Number(process.env['AUTOREPRICE_BREAKEVEN_PRICE']) || 0,
+});
 
 // Live Data Fetchers
 async function fetchBinanceSide(
@@ -201,6 +208,7 @@ console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? 'SÍ (' + BOT_TOKEN.slice(0
 console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || 'TODOS (No restringido)'}`);
 console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? 'SÍ' : 'NO'}`);
 console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
+console.log(`  Repreciador Autónomo:   ${repricerEngine.getState().isActive ? 'ACTIVO' : 'INACTIVO'}`);
 console.log(`  HTTP API Port:          ${HTTP_PORT}`);
 console.log('───────────────────────────────────────────────────────────────────────');
 
@@ -228,6 +236,7 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
   switch (dispatch.action) {
     case 'KILLSWITCH': {
       isKillswitchActive = true;
+      repricerEngine.disable();
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -238,6 +247,7 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
 
     case 'RESUME': {
       isKillswitchActive = false;
+      repricerEngine.resetCircuitBreaker();
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -253,18 +263,68 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
       const parallelRate = depth?.bestBuyPrice || bcvRates?.rates?.parallel?.price || 0;
       const spreadPct = depth?.grossSpreadPct || 0;
       const stats = dataLake.getStats();
+      const repricerState = repricerEngine.getState();
 
       const statusText = `📡 *ESTADO DEL CENTINELA VPS 24/7*\n\n` +
         `• *Servidor:* Linux Cloud VPS\n` +
-        `• *Estado:* ${isKillswitchActive ? '🔴 PAUSADO (Kill-Switch)' : '🟢 OPERATIVO Y MONITOREANDO'}\n` +
+        `• *Estado Centinela:* ${isKillswitchActive ? '🔴 PAUSADO (Kill-Switch)' : '🟢 OPERATIVO Y MONITOREANDO'}\n` +
+        `• *Repreciador 24/7:* ${repricerState.isActive ? '🟢 ACTIVO' : '⚪ INACTIVO'}\n` +
         `• *Binance P2P Buy:* \`${depth?.bestBuyPrice?.toFixed(2) || 'N/D'}\` VES\n` +
         `• *Binance P2P Sell:* \`${depth?.bestSellPrice?.toFixed(2) || 'N/D'}\` VES\n` +
         `• *Spread Bruto:* \`${spreadPct.toFixed(2)}%\`\n` +
         `• *Tasa Oficial BCV:* \`${bcvRate ? bcvRate.toFixed(2) : 'N/D'}\` VES\n` +
         `• *Data Lake:* \`${stats.totalTicks}\` ticks capturados\n\n` +
-        `_Escribí /heatmap para ver los mejores horarios de arbitraje o /help para ver más comandos\\._`;
+        `_Escribí /heatmap para ver horarios de arbitraje o /autoreprice para gestionar el reprecio autónomo\\._`;
 
       await sendTelegramMessage(BOT_TOKEN, chatId, statusText, buildSentinelReplyKeyboard());
+      break;
+    }
+
+    case 'AUTOREPRICE_ON': {
+      repricerEngine.enable();
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `🟢 *REPRECIO DINÁMICO AUTÓNOMO 24/7 ACTIVADO*\n\nEl servidor ajustará automáticamente las posturas en el libro de órdenes respetando los pisos de seguridad y buffers de volatilidad\\.`,
+      );
+      break;
+    }
+
+    case 'AUTOREPRICE_OFF': {
+      repricerEngine.disable();
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `⏸️ *REPRECIO DINÁMICO AUTÓNOMO PAUSADO*\n\nLas posturas ya no se actualizarán automáticamente\\.`,
+      );
+      break;
+    }
+
+    case 'AUTOREPRICE_CONFIG': {
+      const params = dispatch.params as AutoRepriceParams;
+      repricerEngine.configure({
+        strategy: params?.strategy as any,
+        baseMinSpreadPct: params?.minSpread,
+      });
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `⚙️ *CONFIGURACIÓN DE REPRECIO ACTUALIZADA*\n\n• Estrategia: \`${params?.strategy || 'TOP_1'}\`\n• Spread Mínimo: \`${(params?.minSpread || 0.6).toFixed(2)}%\``,
+      );
+      break;
+    }
+
+    case 'AUTOREPRICE_STATUS': {
+      const depth = await fetchLiveMarketDepth();
+      const bcvRates = await fetchCotizaveRates();
+      const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+      const parallelRate = depth?.bestBuyPrice || 0;
+      const bcvGapPct = bcvRate > 0 && parallelRate > 0 ? ((parallelRate - bcvRate) / bcvRate) * 100 : 0;
+      if (depth) {
+        repricerEngine.evaluate(depth, bcvGapPct, 'LOW');
+      }
+      const msg = repricerEngine.getTelegramStatusMessage();
+      await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       break;
     }
 
@@ -320,7 +380,8 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
       const scan = computeHighDemandScan(buyOffers, sellOffers);
       const params: RadarAltaDemandaParams = (dispatch.params as RadarAltaDemandaParams) || {
         filterBank: 'TODOS',
-        ticketAmount: 1000,
+        tierUsdt: 1000,
+        showAllTiers: true,
       };
       const msg = formatRadarAltaDemandaTelegramMessage(scan, params);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg);
@@ -406,6 +467,22 @@ async function startAlphaWatcher(): Promise<void> {
         volumeUsdt: depth.totalBuyVolumeUsdt + depth.totalSellVolumeUsdt,
       });
 
+      // Evaluate Autonomous 24/7 Repricer if active
+      if (repricerEngine.getState().isActive && !isKillswitchActive) {
+        const bcvRates = await fetchCotizaveRates();
+        const bcvRate = bcvRates?.rates?.bcv?.price || 0;
+        const bcvGapPct = bcvRate > 0 ? ((depth.bestBuyPrice - bcvRate) / bcvRate) * 100 : 0;
+        const decision = repricerEngine.evaluate(depth, bcvGapPct, 'LOW');
+
+        if (repricerEngine.getState().circuitBreakerTripped && AUTHORIZED_CHAT_ID) {
+          const tripMsg =
+            `🚨 *CIRCUIT BREAKER ACTIVADO EN REPRECIADOR 24/7*\n\n` +
+            `El motor pausó automáticamente las operaciones debido a:\n_${escapeMarkdownV2(decision.reason)}_`;
+          await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, tripMsg);
+          console.warn(`[Daemon] Repricer Circuit Breaker activado: ${decision.reason}`);
+        }
+      }
+
       if (isKillswitchActive || !AUTHORIZED_CHAT_ID) continue;
 
       // Proactive Alert when spread meets Golden Rule and throttle by 10 minutes
@@ -428,14 +505,14 @@ async function startAlphaWatcher(): Promise<void> {
   }
 }
 
-// Native HTTP Server for Microstructure REST API
+// Native HTTP Server for Microstructure & Repricer REST API
 function startHttpServer(): void {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {
@@ -462,6 +539,23 @@ function startHttpServer(): void {
       const stats = dataLake.getStats();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(stats));
+      return;
+    }
+
+    if (url.pathname === '/api/repricer/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(repricerEngine.getState()));
+      return;
+    }
+
+    if (url.pathname === '/api/repricer/toggle' && req.method === 'POST') {
+      if (repricerEngine.getState().isActive) {
+        repricerEngine.disable();
+      } else {
+        repricerEngine.enable();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(repricerEngine.getState()));
       return;
     }
 

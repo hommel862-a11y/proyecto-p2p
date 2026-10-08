@@ -72,6 +72,10 @@ export type SentinelAction =
   | 'REPRICE_REQUEST'
   | 'REPRICE_EXECUTE'
   | 'REPRICE_CANCEL'
+  | 'AUTOREPRICE_STATUS'
+  | 'AUTOREPRICE_ON'
+  | 'AUTOREPRICE_OFF'
+  | 'AUTOREPRICE_CONFIG'
   | 'MACRO'
   | 'BACKTEST_REQUEST'
   | 'BACKTEST_EXECUTE'
@@ -97,6 +101,13 @@ export interface RepriceParams {
   sellPrice: number;
 }
 
+/** Autonomous repricer remote parameters */
+export interface AutoRepriceParams {
+  mode?: 'on' | 'off' | 'status' | 'config';
+  strategy?: string;
+  minSpread?: number;
+}
+
 /** Optional selectors accepted by `/backtest [par] [temporalidad]`. */
 export interface BacktestRequestParams {
   pair?: string;
@@ -107,7 +118,11 @@ export interface BacktestRequestParams {
  * Payload carried by {@link DispatchResult.params}. The concrete shape depends on
  * {@link DispatchResult.action}; narrowing on the action is required to read it.
  */
-export type SentinelActionParams = RadarScanParams | RepriceParams | BacktestRequestParams;
+export type SentinelActionParams =
+  | RadarScanParams
+  | RepriceParams
+  | AutoRepriceParams
+  | BacktestRequestParams;
 
 export interface DispatchResult {
   authorized: boolean;
@@ -1175,7 +1190,76 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (command.name === '/autoreprice' || command.name === '/autoreprecio') {
+      const mode = (command.args[0] || 'status').toLowerCase();
+      if (mode === 'on' || mode === 'activar') {
+        return {
+          authorized: true,
+          command: command.name,
+          action: 'AUTOREPRICE_ON',
+          params: { mode: 'on' },
+          responseMarkdown: `🟢 *REPRECIO DINÁMICO AUTÓNOMO 24/7 ACTIVADO*\n\nEl servidor ajustará automáticamente las posturas en el libro de órdenes respetando los pisos de seguridad y buffers de volatilidad\\.`,
+        };
+      }
+      if (mode === 'off' || mode === 'pausar' || mode === 'detener') {
+        return {
+          authorized: true,
+          command: command.name,
+          action: 'AUTOREPRICE_OFF',
+          params: { mode: 'off' },
+          responseMarkdown: `⏸️ *REPRECIO DINÁMICO AUTÓNOMO PAUSADO*\n\nLas posturas ya no se actualizarán automáticamente\\.`,
+        };
+      }
+      if (mode === 'config' || mode === 'configurar') {
+        const strategy = command.args[1]?.toUpperCase() || 'TOP_1';
+        const minSpread = parseFiniteNumber(command.args[2]) || 0.6;
+        return {
+          authorized: true,
+          command: command.name,
+          action: 'AUTOREPRICE_CONFIG',
+          params: { mode: 'config', strategy, minSpread },
+          responseMarkdown: `⚙️ *CONFIGURACIÓN DE REPRECIO ACTUALIZADA*\n\n• Estrategia: \`${strategy}\`\n• Spread Mínimo: \`${minSpread.toFixed(2)}%\``,
+        };
+      }
+      return {
+        authorized: true,
+        command: command.name,
+        action: 'AUTOREPRICE_STATUS',
+        params: { mode: 'status' },
+        responseMarkdown: `📊 *CONSULTANDO ESTADO DEL REPRECIADOR DINÁMICO 24/7*\\.\\.\\.`,
+      };
+    }
+
     if (command.name === '/reprecio') {
+      if (command.args[0]?.toLowerCase() === 'auto') {
+        const subMode = (command.args[1] || 'status').toLowerCase();
+        if (subMode === 'on') {
+          return {
+            authorized: true,
+            command: '/reprecio',
+            action: 'AUTOREPRICE_ON',
+            params: { mode: 'on' },
+            responseMarkdown: `🟢 *REPRECIO DINÁMICO AUTÓNOMO 24/7 ACTIVADO*\n\nEl servidor ajustará automáticamente las posturas en el libro de órdenes respetando los pisos de seguridad y buffers de volatilidad\\.`,
+          };
+        }
+        if (subMode === 'off') {
+          return {
+            authorized: true,
+            command: '/reprecio',
+            action: 'AUTOREPRICE_OFF',
+            params: { mode: 'off' },
+            responseMarkdown: `⏸️ *REPRECIO DINÁMICO AUTÓNOMO PAUSADO*\n\nLas posturas ya no se actualizarán automáticamente\\.`,
+          };
+        }
+        return {
+          authorized: true,
+          command: '/reprecio',
+          action: 'AUTOREPRICE_STATUS',
+          params: { mode: 'status' },
+          responseMarkdown: `📊 *CONSULTANDO ESTADO DEL REPRECIADOR DINÁMICO 24/7*\\.\\.\\.`,
+        };
+      }
+
       const buyPrice = parseFiniteNumber(command.args[0]);
       const sellPrice = parseFiniteNumber(command.args[1]);
       if (buyPrice === undefined || sellPrice === undefined) {
