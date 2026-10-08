@@ -160,6 +160,44 @@
   }
 }
 
+.artifact-subnav-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  overflow-x: auto;
+  scrollbar-width: thin;
+
+  .subtab-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--muted, #94a3b8);
+    padding: 6px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    &.active {
+      background: rgba(216, 180, 92, 0.15);
+      border-color: var(--gold, #ffd60a);
+      color: var(--gold, #ffd60a);
+      font-weight: 600;
+      box-shadow: 0 0 10px rgba(216, 180, 92, 0.15);
+    }
+  }
+}
+
 /* ============================================================
    Mission HUD - Unified Liquid Glass Ticker & Swarm Bar
    ============================================================ */

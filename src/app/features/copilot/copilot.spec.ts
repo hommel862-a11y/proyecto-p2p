@@ -29,6 +29,27 @@ describe('Copilot', () => {
     expect(component.sidebarCollapsed()).toBe(false);
   });
 
+  it('should manage 3 master areas and artifact sub-tabs cleanly', () => {
+    expect(component.masterArea()).toBe('conversacion');
+    expect(component.activeTab()).toBe('chat');
+
+    component.setMasterArea('agentes');
+    expect(component.masterArea()).toBe('agentes');
+    expect(component.activeTab()).toBe('agents');
+
+    component.setMasterArea('artefactos');
+    expect(component.masterArea()).toBe('artefactos');
+    expect(component.activeTab()).toBe('plans');
+
+    component.setArtifactSubTab('earn');
+    expect(component.masterArea()).toBe('artefactos');
+    expect(component.activeTab()).toBe('earn');
+
+    component.setMasterArea('conversacion');
+    expect(component.masterArea()).toBe('conversacion');
+    expect(component.activeTab()).toBe('chat');
+  });
+
   it('should arm the kill-switch pill when no Electron bridge is present', async () => {
     expect(component.treasuryMetrics().killSwitchActive).toBe(false);
     await component.triggerKillSwitch();

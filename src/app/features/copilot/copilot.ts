@@ -577,8 +577,32 @@ export class Copilot implements OnInit, OnDestroy {
   inputPrompt = signal<string>('');
   isLoading = signal<boolean>(false);
   activeTab = signal<
-    'chat' | 'plans' | 'earn' | 'operations' | 'memory' | 'counterparties' | 'config'
+    'chat' | 'agents' | 'plans' | 'earn' | 'operations' | 'memory' | 'counterparties' | 'config'
   >('chat');
+
+  masterArea = computed<'conversacion' | 'agentes' | 'artefactos'>(() => {
+    const tab = this.activeTab();
+    if (tab === 'chat') return 'conversacion';
+    if (tab === 'agents') return 'agentes';
+    return 'artefactos';
+  });
+
+  artifactSubTab = signal<'plans' | 'earn' | 'operations' | 'memory' | 'counterparties' | 'config'>('plans');
+
+  setMasterArea(area: 'conversacion' | 'agentes' | 'artefactos'): void {
+    if (area === 'conversacion') {
+      this.activeTab.set('chat');
+    } else if (area === 'agentes') {
+      this.activeTab.set('agents');
+    } else {
+      this.activeTab.set(this.artifactSubTab());
+    }
+  }
+
+  setArtifactSubTab(subTab: 'plans' | 'earn' | 'operations' | 'memory' | 'counterparties' | 'config'): void {
+    this.artifactSubTab.set(subTab);
+    this.activeTab.set(subTab);
+  }
 
   // ---------------------------------------------------------------------------
   // Binance Earn & Passive Treasury Reactive State (10 Quantitative Skills)

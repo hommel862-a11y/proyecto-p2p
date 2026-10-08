@@ -36,52 +36,78 @@
         </button>
       }
 
-      <div class="tab-nav">
+      <div class="tab-nav master-tab-nav">
         <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'chat'" 
-          (click)="activeTab.set('chat')">
-          💬 Chat Estratega
+          type="button"
+          class="tab-btn master-tab-btn" 
+          [class.active]="masterArea() === 'conversacion'" 
+          (click)="setMasterArea('conversacion')">
+          💬 Conversación
         </button>
         <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'plans'" 
-          (click)="activeTab.set('plans')">
-          📋 Planes ({{ plans().length }})
+          type="button"
+          class="tab-btn master-tab-btn" 
+          [class.active]="masterArea() === 'agentes'" 
+          (click)="setMasterArea('agentes')">
+          🤖 Agentes
         </button>
         <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'earn'" 
-          (click)="activeTab.set('earn')">
-          💎 Tesorería & Earn (10 Skills)
-        </button>
-        <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'operations'" 
-          (click)="activeTab.set('operations')">
-          🛡️ Operaciones & SOP (10 Skills)
-        </button>
-        <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'memory'" 
-          (click)="activeTab.set('memory')">
-          🧠 Memoria Engram ({{ engramObservations().length }})
-        </button>
-        <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'counterparties'" 
-          (click)="activeTab.set('counterparties')">
-          👥 Contrapartes CRM ({{ counterparties().length }})
-        </button>
-        <button 
-          class="tab-btn" 
-          [class.active]="activeTab() === 'config'" 
-          (click)="activeTab.set('config')">
-          ⚙ Cerebro IA
+          type="button"
+          class="tab-btn master-tab-btn" 
+          [class.active]="masterArea() === 'artefactos'" 
+          (click)="setMasterArea('artefactos')">
+          🏛️ Artefactos
         </button>
       </div>
     </div>
   </header>
+
+  @if (masterArea() === 'artefactos') {
+    <div class="artifact-subnav-bar">
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'plans'" 
+        (click)="setArtifactSubTab('plans')">
+        📋 Planes ({{ plans().length }})
+      </button>
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'earn'" 
+        (click)="setArtifactSubTab('earn')">
+        💎 Tesorería & Earn (10 Skills)
+      </button>
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'operations'" 
+        (click)="setArtifactSubTab('operations')">
+        🛡️ Operaciones & SOP (10 Skills)
+      </button>
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'memory'" 
+        (click)="setArtifactSubTab('memory')">
+        🧠 Memoria Engram ({{ engramObservations().length }})
+      </button>
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'counterparties'" 
+        (click)="setArtifactSubTab('counterparties')">
+        👥 Contrapartes CRM ({{ counterparties().length }})
+      </button>
+      <button 
+        type="button" 
+        class="subtab-btn" 
+        [class.active]="activeTab() === 'config'" 
+        (click)="setArtifactSubTab('config')">
+        ⚙ Cerebro IA
+      </button>
+    </div>
+  }
 
   <!-- UNIFIED MISSION HUD (LIQUID GLASS TICKER & SWARM BAR) -->
   <div class="mission-hud">
