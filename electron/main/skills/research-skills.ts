@@ -41,62 +41,77 @@ export async function executeLiveWebSearch(
   const cleanQuery = (query || '').trim();
 
   if (apiKey && cleanQuery) {
-    try {
-      const url =
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: `Buscá en tiempo real información oficial y fidedigna sobre: "${cleanQuery}". Sintetizá los datos clave, límites numéricos, fechas y normativas vigentes en un reporte ejecutivo breve en español.`,
-                },
-              ],
+    const candidateModels = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const promptText = `Buscá en tiempo real información oficial y fidedigna sobre: "${cleanQuery}". Sintetizá los datos clave, límites numéricos, fechas y normativas vigentes en un reporte ejecutivo breve en español.`;
+        
+        let res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            tools: [{ googleSearch: {} }],
+          }),
+        });
+
+        // Fallback to direct model synthesis if Google Search Grounding is rejected (e.g. 429 quota or 400)
+        if (!res.ok) {
+          res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
             },
-          ],
-          tools: [{ googleSearch: {} }],
-        }),
-      });
-
-      if (res.ok) {
-        const data = (await res.json()) as {
-          candidates?: {
-            content?: { parts?: { text?: string }[] };
-            groundingMetadata?: {
-              groundingChunks?: { web?: { uri?: string; title?: string } }[];
-            };
-          }[];
-        };
-
-        const cand = data.candidates?.[0];
-        const text = cand?.content?.parts?.[0]?.text?.trim() || '';
-        const gm = cand?.groundingMetadata;
-        const sources = (gm?.groundingChunks || [])
-          .filter((c) => c.web?.uri)
-          .map((c) => ({
-            title: c.web?.title || c.web?.uri || 'Fuente Web',
-            uri: c.web!.uri!,
-          }));
-
-        if (text) {
-          return {
-            query: cleanQuery,
-            summary: text,
-            sources: sources.length > 0 ? sources : [
-              { title: 'Google Search Live', uri: `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}` },
-            ],
-          };
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            }),
+          });
         }
+
+        if (res.ok) {
+          const data = (await res.json()) as {
+            candidates?: {
+              content?: { parts?: { text?: string }[] };
+              groundingMetadata?: {
+                groundingChunks?: { web?: { uri?: string; title?: string } }[];
+              };
+            }[];
+          };
+
+          const cand = data.candidates?.[0];
+          const text = cand?.content?.parts?.[0]?.text?.trim() || '';
+          const gm = cand?.groundingMetadata;
+          const sources = (gm?.groundingChunks || [])
+            .filter((c) => c.web?.uri)
+            .map((c) => ({
+              title: c.web?.title || c.web?.uri || 'Fuente Web',
+              uri: c.web!.uri!,
+            }));
+
+          if (text) {
+            return {
+              query: cleanQuery,
+              summary: text,
+              sources:
+                sources.length > 0
+                  ? sources
+                  : [
+                      {
+                        title: 'Google Search Live',
+                        uri: `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}`,
+                      },
+                    ],
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`[ResearchSkills] Error al ejecutar búsqueda con ${model}:`, err);
       }
-    } catch (err) {
-      console.warn('[ResearchSkills] Error al ejecutar Google Search Grounding:', err);
     }
   }
 

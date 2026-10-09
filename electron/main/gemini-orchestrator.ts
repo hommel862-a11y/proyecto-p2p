@@ -403,7 +403,7 @@ export class GeminiOrchestrator {
       this.db.getConfigValue(`ai_model_${p}`) ||
       this.customModel ||
       DEFAULT_PROVIDER_MODELS[p] ||
-      'gemini-2.0-flash';
+      'gemini-flash-latest';
     return { provider: p, model: m };
   }
 
@@ -521,7 +521,13 @@ export class GeminiOrchestrator {
     if (provider === 'gemini') {
       const custom = process.env['GEMINI_MODEL'];
       if (custom) return [custom];
-      return ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+      return [
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+      ];
     }
     const defaultModel = DEFAULT_PROVIDER_MODELS[provider] || 'gpt-4o';
     const persisted = this.db.getConfigValue(`ai_model_${provider}`);
@@ -839,27 +845,25 @@ export class GeminiOrchestrator {
         }
 
         if (!res.ok) {
-          if (res.status === 400) {
-            try {
-              const fallbackBody = {
-                systemInstruction: { parts: [{ text: systemInstruction }] },
-                contents: conversationContents,
-                tools: [{ functionDeclarations: toolDeclarations }],
-              };
-              const fallbackRes = await fetch(url, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-goog-api-key': apiKey,
-                },
-                body: JSON.stringify(fallbackBody),
-              });
-              if (fallbackRes.ok) {
-                res = fallbackRes;
-              }
-            } catch {
-              // Keep original res if fallback fetch fails
+          try {
+            const fallbackBody = {
+              systemInstruction: { parts: [{ text: systemInstruction }] },
+              contents: conversationContents,
+              tools: [{ functionDeclarations: toolDeclarations }],
+            };
+            const fallbackRes = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+              },
+              body: JSON.stringify(fallbackBody),
+            });
+            if (fallbackRes.ok) {
+              res = fallbackRes;
             }
+          } catch {
+            // Keep original res if fallback fetch fails
           }
         }
 

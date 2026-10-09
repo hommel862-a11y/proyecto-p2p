@@ -19,7 +19,7 @@ import type {
 } from './types';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-flash-latest',
   openai: 'gpt-4o',
   anthropic: 'claude-3-5-sonnet-20241022',
   deepseek: 'deepseek-chat',
@@ -36,7 +36,7 @@ export class UniversalAiGateway {
     tools: UniversalToolDefinition[] = [],
   ): Promise<AiCompletionResult> {
     const provider = config.provider;
-    const model = config.model || DEFAULT_PROVIDER_MODELS[provider] || 'gemini-2.0-flash';
+    const model = config.model || DEFAULT_PROVIDER_MODELS[provider] || 'gemini-flash-latest';
 
     switch (provider) {
       case 'gemini':
@@ -269,8 +269,8 @@ export class UniversalAiGateway {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok && res.status === 400 && functionDeclarations.length > 0) {
-      // If the model variant rejects combining functionDeclarations with googleSearch, fallback cleanly
+    if (!res.ok && functionDeclarations.length > 0) {
+      // If the model variant rejects googleSearch or grounding quota is unavailable, fallback cleanly with functionDeclarations
       body['tools'] = [{ functionDeclarations }];
       res = await fetch(url, {
         method: 'POST',
