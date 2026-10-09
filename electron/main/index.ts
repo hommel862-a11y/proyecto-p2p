@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, net, shell, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, globalShortcut, net, shell, Tray, Menu, nativeImage, type NativeImage } from 'electron';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -36,7 +36,7 @@ let isQuitting = false;
 let lastUnresponsiveAt = 0;
 const UNRESPONSIVE_RELOAD_WINDOW_MS = 60_000;
 
-function getTrayIcon(): nativeImage {
+function getTrayIcon(): NativeImage {
   const possiblePaths = [
     path.resolve(__dirname, '../../../dist/p2p/browser/favicon.ico'),
     path.resolve(__dirname, '../../../public/favicon.ico'),

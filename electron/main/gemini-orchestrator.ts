@@ -332,7 +332,7 @@ export class GeminiOrchestrator {
     private paidCallsBudget: number = 8,
   ) {
     this.apiKey = apiKey;
-    this.webhookDispatcher = webhookDispatcher || new WebhookDispatcher(db);
+    this.webhookDispatcher = webhookDispatcher || new WebhookDispatcher();
     this.agentRegistry = new AgentRegistry(this.db);
   }
 
@@ -340,11 +340,11 @@ export class GeminiOrchestrator {
     return this.agentRegistry.listAgents();
   }
 
-  toggleAgent(id: string, enabled: boolean): RegisteredAgentDto | undefined {
+  toggleAgent(id: string, enabled: boolean): boolean {
     return this.agentRegistry.toggleAgent(id, enabled);
   }
 
-  saveAgent(agent: RegisteredAgentDto): RegisteredAgentDto {
+  saveAgent(agent: RegisteredAgentDto): boolean {
     return this.agentRegistry.saveAgent(agent);
   }
 
