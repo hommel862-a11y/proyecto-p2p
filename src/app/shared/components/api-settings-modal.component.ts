@@ -7,6 +7,42 @@ import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
 import { StorageService } from '../../core/storage';
 
+export interface AiModelOption {
+  id: string;
+  label: string;
+  badge?: string;
+  description?: string;
+}
+
+export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
+  gemini: [
+    { id: 'gemini-3.8-flash', label: '🚀 Gemini 3.8 Flash (Recomendado - Búsqueda Web en Vivo)', badge: 'RECOMENDADO' },
+    { id: 'gemini-flash-latest', label: '⚡ Gemini Flash Latest (Auto-actualizable)', badge: 'AUTO-UPDATE' },
+    { id: 'gemini-2.5-pro', label: '🧠 Gemini 2.5 Pro (Razonamiento Profundo Institucional)', badge: 'PRO' },
+    { id: 'gemini-2.5-flash', label: '⚖️ Gemini 2.5 Flash (Balance Velocidad y Contexto)', badge: 'FLASH' },
+    { id: 'gemini-2.0-flash', label: '⚡ Gemini 2.0 Flash (Estable)', badge: 'ESTABLE' },
+  ],
+  anthropic: [
+    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (v2)', badge: 'RECOMENDADO' },
+    { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Híbrido)', badge: 'HÍBRIDO' },
+    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Rápido)', badge: 'RÁPIDO' },
+  ],
+  openai: [
+    { id: 'gpt-4o', label: 'GPT-4o (Omnimodal)', badge: 'RECOMENDADO' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Económico)', badge: 'MINI' },
+    { id: 'o3-mini', label: 'o3-mini (Razonamiento Lógico)', badge: 'REASONING' },
+    { id: 'o1', label: 'o1 (Máximo Razonamiento)', badge: 'REASONING' },
+  ],
+  deepseek: [
+    { id: 'deepseek-chat', label: 'DeepSeek-V3 (Conversacional)', badge: 'RECOMENDADO' },
+    { id: 'deepseek-reasoner', label: 'DeepSeek-R1 (Cadena de Pensamiento)', badge: 'REASONING' },
+  ],
+  qwen: [
+    { id: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen 2.5 72B Instruct', badge: 'RECOMENDADO' },
+    { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B', badge: 'CÓDIGO' },
+  ],
+};
+
 @Component({
   selector: 'app-api-settings-modal',
   standalone: true,
@@ -225,13 +261,42 @@ import { StorageService } from '../../core/storage';
                 (change)="onProviderChange($event)"
                 class="font-mono form-control"
               >
-                <option value="gemini">Google Gemini (Gemini 2.0 Flash / Pro) [Grounding Web]</option>
-                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
-                <option value="openai">OpenAI (ChatGPT / GPT-4o)</option>
+                <option value="gemini">Google Gemini (Gemini 3.8 / Pro / Flash) [Grounding Web]</option>
+                <option value="anthropic">Anthropic (Claude 3.5 Sonnet / 3.7)</option>
+                <option value="openai">OpenAI (ChatGPT / GPT-4o / o3)</option>
                 <option value="deepseek">DeepSeek (DeepSeek-V3 / R1)</option>
                 <option value="qwen">Qwen 2.5 (OpenRouter / Local)</option>
               </select>
             </div>
+
+            <div class="api-input-group">
+              <label for="ai-model-select">Modelo de Inteligencia Artificial (Selector Soberano)</label>
+              <select
+                id="ai-model-select"
+                [value]="selectedAiModel()"
+                (change)="onModelChange($event)"
+                class="font-mono form-control"
+              >
+                @for (m of currentAvailableModels(); track m.id) {
+                  <option [value]="m.id">{{ m.label }}</option>
+                }
+                <option value="custom">✏️ Otro modelo (Personalizado)...</option>
+              </select>
+            </div>
+
+            @if (isCustomModel()) {
+              <div class="api-input-group">
+                <label for="custom-model-input">ID del Modelo Personalizado</label>
+                <input
+                  id="custom-model-input"
+                  type="text"
+                  [value]="customModelInput()"
+                  (input)="onCustomModelInput($event)"
+                  placeholder="ej. gemini-3.8-flash, o3-mini, custom-model-id"
+                  class="font-mono form-control"
+                />
+              </div>
+            }
 
             <div class="api-input-group">
               <label for="gemini-key-input">API Key de {{ getProviderDisplayName() }}</label>
@@ -554,6 +619,24 @@ export class ApiSettingsModalComponent {
   readonly selectedAiProvider = signal<string>(
     this.storage.get<string>('p2p.ai.provider') || 'gemini',
   );
+  readonly selectedAiModel = signal<string>(
+    this.storage.get<string>('p2p.ai.model') ||
+      this.storage.get<string>(`p2p.ai.model.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
+      'gemini-3.8-flash',
+  );
+  readonly customModelInput = signal<string>('');
+
+  readonly currentAvailableModels = computed<AiModelOption[]>(() => {
+    return AI_MODELS_BY_PROVIDER[this.selectedAiProvider()] || [];
+  });
+
+  readonly isCustomModel = computed<boolean>(() => {
+    const current = this.selectedAiModel();
+    if (current === 'custom') return true;
+    const known = this.currentAvailableModels().map((m) => m.id);
+    return !known.includes(current) && current.trim().length > 0;
+  });
+
   readonly showGeminiKey = signal<boolean>(false);
   readonly geminiKeyInput = signal<string>(
     this.storage.get<string>(`p2p.ai.key.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
@@ -659,11 +742,70 @@ export class ApiSettingsModalComponent {
       this.storage.get<string>(`p2p.ai.key.${provider}`) ||
       (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
     this.geminiKeyInput.set(existingKey);
+
+    const available = AI_MODELS_BY_PROVIDER[provider] || [];
+    const defaultModel = available[0]?.id || 'gemini-3.8-flash';
+    const savedModel = this.storage.get<string>(`p2p.ai.model.${provider}`) || defaultModel;
+    this.selectedAiModel.set(savedModel);
+    this.storage.set('p2p.ai.model', savedModel);
+
     if (typeof window !== 'undefined') {
       const win = window as any;
       const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
       if (electronCopilot?.setProviderConfig) {
-        void electronCopilot.setProviderConfig({ provider, apiKey: existingKey || undefined });
+        void electronCopilot.setProviderConfig({
+          provider,
+          model: savedModel,
+          apiKey: existingKey || undefined,
+        });
+      }
+    }
+  }
+
+  onModelChange(event: Event): void {
+    const target = event.target as HTMLSelectElement;
+    const model = target.value;
+    if (model === 'custom') {
+      this.selectedAiModel.set('custom');
+    } else {
+      this.selectedAiModel.set(model);
+      this.storage.set('p2p.ai.model', model);
+      this.storage.set(`p2p.ai.model.${this.selectedAiProvider()}`, model);
+      this.syncProviderConfig();
+    }
+  }
+
+  onCustomModelInput(event: Event): void {
+    const val = (event.target as HTMLInputElement).value.trim();
+    this.customModelInput.set(val);
+    if (val) {
+      this.storage.set('p2p.ai.model', val);
+      this.storage.set(`p2p.ai.model.${this.selectedAiProvider()}`, val);
+      this.syncProviderConfig();
+    }
+  }
+
+  getEffectiveModel(): string {
+    const current = this.selectedAiModel();
+    if (current === 'custom') {
+      return this.customModelInput().trim() || 'gemini-3.8-flash';
+    }
+    return current || 'gemini-3.8-flash';
+  }
+
+  private syncProviderConfig(): void {
+    const provider = this.selectedAiProvider();
+    const model = this.getEffectiveModel();
+    const key = this.geminiKeyInput().trim();
+    if (typeof window !== 'undefined') {
+      const win = window as any;
+      const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
+      if (electronCopilot?.setProviderConfig) {
+        void electronCopilot.setProviderConfig({
+          provider,
+          model,
+          apiKey: key || undefined,
+        });
       }
     }
   }
@@ -708,8 +850,11 @@ export class ApiSettingsModalComponent {
   async saveGemini(): Promise<void> {
     const provider = this.selectedAiProvider();
     const key = this.geminiKeyInput().trim();
+    const model = this.getEffectiveModel();
     this.storage.set('p2p.ai.provider', provider);
     this.storage.set(`p2p.ai.key.${provider}`, key);
+    this.storage.set('p2p.ai.model', model);
+    this.storage.set(`p2p.ai.model.${provider}`, model);
 
     if (provider === 'gemini') {
       this.storage.set('p2p.gemini.apiKey', key);
@@ -720,7 +865,7 @@ export class ApiSettingsModalComponent {
       const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
       if (electronCopilot) {
         if (electronCopilot.setProviderConfig) {
-          await electronCopilot.setProviderConfig({ provider, apiKey: key });
+          await electronCopilot.setProviderConfig({ provider, model, apiKey: key });
         }
         if (provider === 'gemini' && electronCopilot.setApiKey) {
           await electronCopilot.setApiKey({ apiKey: key });
@@ -737,6 +882,7 @@ export class ApiSettingsModalComponent {
 
   async testGemini(): Promise<void> {
     const provider = this.selectedAiProvider();
+    const model = this.getEffectiveModel();
     const key =
       this.geminiKeyInput().trim() ||
       this.storage.get<string>(`p2p.ai.key.${provider}`) ||
@@ -754,10 +900,10 @@ export class ApiSettingsModalComponent {
         const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
 
         if (electronCopilot?.testConnection) {
-          const res = await electronCopilot.testConnection({ provider, apiKey: key });
+          const res = await electronCopilot.testConnection({ provider, model, apiKey: key });
           if (res?.success) {
             this.toast.success(
-              `${this.getProviderDisplayName()} verificado y enlazado (${res.model || 'OK'}).`,
+              `${this.getProviderDisplayName()} verificado y enlazado (${res.model || model}).`,
               'Cerebro IA',
             );
             return;

@@ -928,7 +928,13 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:test-connection');
   ipcMain.handle(
     'copilot:test-connection',
-    async (_event: IpcMainInvokeEvent, params?: { provider?: any; apiKey?: string }) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      params?: { provider?: any; apiKey?: string; model?: string },
+    ) => {
+      if (params?.model && params?.provider) {
+        orchestrator.setActiveProvider(params.provider, params.model);
+      }
       return orchestrator.testConnection(params?.provider, params?.apiKey);
     },
   );

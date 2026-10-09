@@ -521,13 +521,16 @@ export class GeminiOrchestrator {
     if (provider === 'gemini') {
       const custom = process.env['GEMINI_MODEL'];
       if (custom) return [custom];
-      return [
-        'gemini-flash-latest',
+      const selectedModel = this.getActiveProvider().model;
+      const baseModels = [
+        selectedModel,
         'gemini-3.8-flash',
-        'gemini-3.5-flash',
+        'gemini-flash-latest',
+        'gemini-2.5-pro',
         'gemini-2.5-flash',
         'gemini-2.0-flash',
       ];
+      return Array.from(new Set(baseModels.filter(Boolean)));
     }
     const defaultModel = DEFAULT_PROVIDER_MODELS[provider] || 'gpt-4o';
     const persisted = this.db.getConfigValue(`ai_model_${provider}`);
@@ -825,7 +828,11 @@ export class GeminiOrchestrator {
         const requestBody = {
           systemInstruction: { parts: [{ text: systemInstruction }] },
           contents: conversationContents,
-          tools: [{ functionDeclarations: toolDeclarations }, { googleSearch: {} }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2048,
+          },
+          tools: [{ functionDeclarations: toolDeclarations }],
         };
 
         let res: Response;
@@ -842,29 +849,6 @@ export class GeminiOrchestrator {
           lastError = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
           modelFailed = true;
           break;
-        }
-
-        if (!res.ok) {
-          try {
-            const fallbackBody = {
-              systemInstruction: { parts: [{ text: systemInstruction }] },
-              contents: conversationContents,
-              tools: [{ functionDeclarations: toolDeclarations }],
-            };
-            const fallbackRes = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey,
-              },
-              body: JSON.stringify(fallbackBody),
-            });
-            if (fallbackRes.ok) {
-              res = fallbackRes;
-            }
-          } catch {
-            // Keep original res if fallback fetch fails
-          }
         }
 
         if (!res.ok) {
@@ -1034,7 +1018,7 @@ export class GeminiOrchestrator {
         }
 
         conversationContents.push({
-          role: 'tool',
+          role: 'user',
           parts: toolResponseParts,
         });
       }

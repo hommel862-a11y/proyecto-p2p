@@ -112,7 +112,7 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       setProviderConfig: (params: { provider: string; model?: string; apiKey?: string }) =>
         ipc('copilot:set-provider-config', params) as Promise<any>,
       getProviderConfig: () => ipc('copilot:get-provider-config') as Promise<any>,
-      testConnection: (params?: { provider?: string; apiKey?: string }) =>
+      testConnection: (params?: { provider?: string; apiKey?: string; model?: string }) =>
         ipc('copilot:test-connection', params) as Promise<any>,
       getWatcherStatus: () => ipc('copilot:get-watcher-status') as Promise<any>,
       setWatcherConfig: (params) => ipc('copilot:set-watcher-config', params) as Promise<any>,

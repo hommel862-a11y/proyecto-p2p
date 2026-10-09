@@ -21,12 +21,20 @@ describe('Copilot', () => {
     expect(component.activeTab()).toBe('chat');
   });
 
-  it('should toggle sidebar correctly', () => {
-    expect(component.sidebarCollapsed()).toBe(false);
-    component.toggleSidebar();
+  it('should toggle sidebar correctly (starts collapsed for distraction-free UI)', () => {
     expect(component.sidebarCollapsed()).toBe(true);
     component.toggleSidebar();
     expect(component.sidebarCollapsed()).toBe(false);
+    component.toggleSidebar();
+    expect(component.sidebarCollapsed()).toBe(true);
+  });
+
+  it('should toggle mission hud correctly (starts collapsed by default)', () => {
+    expect(component.showMissionHud()).toBe(false);
+    component.toggleMissionHud();
+    expect(component.showMissionHud()).toBe(true);
+    component.toggleMissionHud();
+    expect(component.showMissionHud()).toBe(false);
   });
 
   it('should manage 3 master areas and artifact sub-tabs cleanly', () => {

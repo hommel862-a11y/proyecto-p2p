@@ -21,11 +21,18 @@
           <span class="voice-speaker-label">{{ voiceService.ttsEnabled() ? (voiceService.isSpeaking() ? 'Hablando...' : 'Voz: ON') : 'Voz: OFF' }}</span>
         </button>
         <button 
+          class="zen-toggle-btn" 
+          [class.active]="showMissionHud()"
+          (click)="toggleMissionHud()"
+          [title]="showMissionHud() ? 'Ocultar panel de métricas (Desk HUD)' : 'Mostrar panel de métricas (Desk HUD)'">
+          {{ showMissionHud() ? '✕ Ocultar HUD' : '📊 Métricas HUD' }}
+        </button>
+        <button 
           class="zen-toggle-btn desktop-only" 
           [class.active]="!sidebarCollapsed()"
           (click)="toggleSidebar()"
-          [title]="sidebarCollapsed() ? 'Mostrar panel lateral de controles y métricas' : 'Ocultar panel lateral (Modo Zen de Lectura)'">
-          {{ sidebarCollapsed() ? '📊 Mostrar Controles' : '✕ Ocultar Controles' }}
+          [title]="sidebarCollapsed() ? 'Mostrar panel lateral de controles y radar' : 'Ocultar panel lateral (Modo Zen de Lectura)'">
+          {{ sidebarCollapsed() ? '⚡ Controles & Radar' : '✕ Ocultar Controles' }}
         </button>
         <button 
           type="button"
@@ -119,117 +126,119 @@
   }
 
   <!-- UNIFIED MISSION HUD (LIQUID GLASS TICKER & SWARM BAR) -->
-  <div class="mission-hud">
-    <div class="hud-item hud-brand">
-      <span class="hud-dot"></span>
-      <span class="hud-tag">DESK HUD</span>
-    </div>
+  @if (showMissionHud()) {
+    <div class="mission-hud">
+      <div class="hud-item hud-brand">
+        <span class="hud-dot"></span>
+        <span class="hud-tag">DESK HUD</span>
+      </div>
 
-    <div class="hud-item" title="Capital declarado por el operador en Tesorería">
-      <span class="hud-label">EQUITY:</span>
-      <span class="hud-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
-    </div>
+      <div class="hud-item" title="Capital declarado por el operador en Tesorería">
+        <span class="hud-label">EQUITY:</span>
+        <span class="hud-val">${{ treasuryMetrics().totalEquityUsd.toLocaleString() }} USDT</span>
+      </div>
 
-    <div class="hud-sep">•</div>
+      <div class="hud-sep">•</div>
 
-    <div class="hud-item" title="Saldo bancario consolidado en VES de todas las cuentas">
-      <span class="hud-label">TESORERÍA:</span>
-      @if (treasuryDataAvailable()) {
-        <span class="hud-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
-      } @else {
-        <span class="hud-val profit">-- VES</span>
-      }
-    </div>
-
-    <div class="hud-sep">•</div>
-
-    <div class="hud-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo">
-      <span class="hud-label">BRECHA BCV:</span>
-      <span class="hud-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
-        +{{ bcvIntelligence().gap.gapPct }}%
-      </span>
-      <span class="hud-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
-    </div>
-
-    <div class="hud-sep">•</div>
-
-    <div class="hud-item">
-      <span class="hud-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
-        @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
-          🚨 BCV ACTIVO
-        } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
-          ⏳ PRE-BCV ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
+      <div class="hud-item" title="Saldo bancario consolidado en VES de todas las cuentas">
+        <span class="hud-label">TESORERÍA:</span>
+        @if (treasuryDataAvailable()) {
+          <span class="hud-val profit">{{ treasuryMetrics().dailyAccumulatedProfitUsdt.toFixed(2) }} VES</span>
         } @else {
-          🟢 MERCADO LIBRE
-        }
-      </span>
-    </div>
-
-    <div class="hud-sep">•</div>
-
-    <!-- ENJAMBRE 4-AGENTES COMPACTO -->
-    <div class="hud-swarm-cluster" title="Telemetría en vivo del Enjambre de 4 Agentes">
-      <span class="hud-swarm-title">ENJAMBRE:</span>
-      <div class="hud-agent-chips">
-        @for (agent of swarmHealth(); track agent.role) {
-          <span class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'" [title]="agent.name + ': ' + agent.opsProcessed + ' ops'">
-            <span class="agent-dot"></span>
-            {{ agent.name.split(' ')[0] }}
-          </span>
+          <span class="hud-val profit">-- VES</span>
         }
       </div>
-      <button 
-        type="button"
-        class="btn-hud-audit" 
-        [disabled]="isSwarmAnalyzing()" 
-        (click)="triggerSwarmAnalysis()"
-        title="Ejecutar auditoría multi-agente en tiempo real">
-        {{ isSwarmAnalyzing() ? '⏳ Auditando...' : '⚡ Auditar' }}
-      </button>
-    </div>
 
-    <div class="hud-spacer"></div>
+      <div class="hud-sep">•</div>
 
-    <!-- ACCIONES HUD: Centinela + KillSwitch -->
-    <div class="hud-actions">
-      <button 
-        type="button" 
-        class="hud-ai-pill" 
-        (click)="openAiConfigTab()" 
-        [title]="'Cerebro: ' + getProviderDisplayName() + ' (' + connectionStatus().message + ') · Clic para configurar'">
-        <span class="hud-ai-dot" [class.connected]="connectionStatus().connected"></span>
-        <span class="hud-ai-text">🧠 {{ getProviderDisplayName() }}</span>
-      </button>
+      <div class="hud-item" title="Brecha porcentual calculada sobre las tasas BCV y paralelo">
+        <span class="hud-label">BRECHA BCV:</span>
+        <span class="hud-val gap" [class.danger]="bcvIntelligence().gap.zone === 'CRITICAL_DISPERSION'" [class.warning]="bcvIntelligence().gap.zone === 'ELEVATED'">
+          +{{ bcvIntelligence().gap.gapPct }}%
+        </span>
+        <span class="hud-sub">({{ bcvIntelligence().gap.bcvRate }} / {{ bcvIntelligence().gap.parallelRate }})</span>
+      </div>
 
-      <span class="hud-watcher" [class.on]="watcherStatus().enabled">
-        {{ watcherStatus().enabled ? '🟢 Centinela ON' : '⏸ Centinela OFF' }}
-      </span>
+      <div class="hud-sep">•</div>
 
-      <button 
-        type="button"
-        class="killswitch-pill" 
-        [class.active]="treasuryMetrics().killSwitchActive"
-        [class.holding]="killswitchHolding()"
-        (touchstart)="startKillswitchHold($event)"
-        (touchend)="cancelKillswitchHold()"
-        (touchcancel)="cancelKillswitchHold()"
-        (click)="onKillswitchClick($event)"
-        [title]="treasuryMetrics().killSwitchActive ? 'Kill-switch activo' : 'En móvil mantén presionado 1.2s para activar el kill-switch'">
-        @if (killswitchHolding()) {
-          <span class="hold-fill" [style.width.%]="killswitchHoldProgress()"></span>
-        }
-        <span class="killswitch-text">
-          @if (treasuryMetrics().killSwitchActive) {
-            ⚠ KILL-SWITCH ACTIVO
-          } @else if (killswitchHolding()) {
-            🛑 MANTENÉ ({{ (1.2 * (1 - killswitchHoldProgress() / 100)).toFixed(1) }}s)
+      <div class="hud-item">
+        <span class="hud-pill" [class.active-window]="bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE'">
+          @if (bcvIntelligence().window.phase === 'INTERVENTION_ACTIVE') {
+            🚨 BCV ACTIVO
+          } @else if (bcvIntelligence().window.phase === 'PRE_INTERVENTION_COMPRESSION') {
+            ⏳ PRE-BCV ({{ bcvIntelligence().window.hoursUntilIntervention }}h)
           } @else {
-            🛑 KILL-SWITCH
+            🟢 MERCADO LIBRE
           }
         </span>
-      </button>
+      </div>
+
+      <div class="hud-sep">•</div>
+
+      <!-- ENJAMBRE 4-AGENTES COMPACTO -->
+      <div class="hud-swarm-cluster" title="Telemetría en vivo del Enjambre de 4 Agentes">
+        <span class="hud-swarm-title">ENJAMBRE:</span>
+        <div class="hud-agent-chips">
+          @for (agent of swarmHealth(); track agent.role) {
+            <span class="agent-chip" [class.online]="agent.status === 'ONLINE'" [class.standby]="agent.status === 'STANDBY'" [title]="agent.name + ': ' + agent.opsProcessed + ' ops'">
+              <span class="agent-dot"></span>
+              {{ agent.name.split(' ')[0] }}
+            </span>
+          }
+        </div>
+        <button 
+          type="button"
+          class="btn-hud-audit" 
+          [disabled]="isSwarmAnalyzing()" 
+          (click)="triggerSwarmAnalysis()"
+          title="Ejecutar auditoría multi-agente en tiempo real">
+          {{ isSwarmAnalyzing() ? '⏳ Auditando...' : '⚡ Auditar' }}
+        </button>
+      </div>
+
+      <div class="hud-spacer"></div>
+
+      <!-- ACCIONES HUD: Centinela + KillSwitch -->
+      <div class="hud-actions">
+        <button 
+          type="button" 
+          class="hud-ai-pill" 
+          (click)="openAiConfigTab()" 
+          [title]="'Cerebro: ' + getProviderDisplayName() + ' (' + connectionStatus().message + ') · Clic para configurar'">
+          <span class="hud-ai-dot" [class.connected]="connectionStatus().connected"></span>
+          <span class="hud-ai-text">🧠 {{ getProviderDisplayName() }}</span>
+        </button>
+
+        <span class="hud-watcher" [class.on]="watcherStatus().enabled">
+          {{ watcherStatus().enabled ? '🟢 Centinela ON' : '⏸ Centinela OFF' }}
+        </span>
+
+        <button 
+          type="button"
+          class="killswitch-pill" 
+          [class.active]="treasuryMetrics().killSwitchActive"
+          [class.holding]="killswitchHolding()"
+          (touchstart)="startKillswitchHold($event)"
+          (touchend)="cancelKillswitchHold()"
+          (touchcancel)="cancelKillswitchHold()"
+          (click)="onKillswitchClick($event)"
+          [title]="treasuryMetrics().killSwitchActive ? 'Kill-switch activo' : 'En móvil mantén presionado 1.2s para activar el kill-switch'">
+          @if (killswitchHolding()) {
+            <span class="hold-fill" [style.width.%]="killswitchHoldProgress()"></span>
+          }
+          <span class="killswitch-text">
+            @if (treasuryMetrics().killSwitchActive) {
+              ⚠ KILL-SWITCH ACTIVO
+            } @else if (killswitchHolding()) {
+              🛑 MANTENÉ ({{ (1.2 * (1 - killswitchHoldProgress() / 100)).toFixed(1) }}s)
+            } @else {
+              🛑 KILL-SWITCH
+            }
+          </span>
+        </button>
+      </div>
     </div>
-  </div>
+  }
 
   <!-- PROACTIVE EVENT ALERTS (EVENT-DRIVEN IA) -->
   @if (activeAlerts().length > 0) {
@@ -653,12 +662,12 @@
           }
 
           <div class="chat-ai-status-strip">
-            <div class="ai-status-info" (click)="openAiConfigTab()" role="button" tabindex="0" title="Clic para cambiar proveedor de IA o configurar API Key">
+            <div class="ai-status-info" (click)="openAiConfigTab()" role="button" tabindex="0" title="Clic para cambiar proveedor de IA o modelo">
               <span class="ai-status-dot" [class.connected]="connectionStatus().connected"></span>
               <span class="ai-status-label">Cerebro:</span>
               <strong class="ai-status-provider">{{ getProviderDisplayName() }}</strong>
-              <span class="ai-status-model">({{ connectionStatus().model }})</span>
-              <span class="ai-status-switch">Cambiar ⚙️</span>
+              <span class="ai-status-model">({{ selectedAiModel() }})</span>
+              <span class="ai-status-switch">Cambiar Modelo ⚙️</span>
             </div>
             @if (selectedAiProvider() === 'gemini') {
               <div class="ai-grounding-badge" title="Búsqueda web en vivo con Google Search Grounding activa">
@@ -1608,11 +1617,25 @@
             [ngModel]="selectedAiProvider()"
             (ngModelChange)="onProviderChange($event)"
           >
-            <option value="gemini">Google Gemini (Gemini 2.0 Flash / Pro)</option>
-            <option value="openai">OpenAI (ChatGPT / GPT-4o)</option>
-            <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+            <option value="gemini">Google Gemini (Gemini 3.8 / Pro / Flash) [Grounding Web]</option>
+            <option value="anthropic">Anthropic (Claude 3.5 Sonnet / 3.7)</option>
+            <option value="openai">OpenAI (ChatGPT / GPT-4o / o3)</option>
             <option value="deepseek">DeepSeek (DeepSeek-V3 / R1)</option>
             <option value="qwen">Qwen 2.5 (OpenRouter / Local)</option>
+          </select>
+        </div>
+
+        <div class="config-field">
+          <label for="aiModelSelect">Modelo de Inteligencia Artificial (Selector Soberano):</label>
+          <select
+            id="aiModelSelect"
+            class="provider-select"
+            [ngModel]="selectedAiModel()"
+            (ngModelChange)="onModelChange($event)"
+          >
+            @for (m of currentAvailableModels(); track m.id) {
+              <option [value]="m.id">{{ m.label }}</option>
+            }
           </select>
         </div>
 

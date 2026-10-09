@@ -17,6 +17,10 @@ import { AccountsService, type TreasurySnapshot } from '../../core/accounts.serv
 import { TriangulationIntelligenceService } from '../../core/triangulation-intelligence.service';
 import { StorageService } from '../../core/storage';
 import {
+  AI_MODELS_BY_PROVIDER,
+  type AiModelOption,
+} from '../../shared/components/api-settings-modal.component';
+import {
   type CopilotChatMessage,
   type StrategyPlanCard,
   type CopilotResponse,
@@ -666,13 +670,16 @@ export class Copilot implements OnInit, OnDestroy {
     return this.sanitizer.bypassSecurityTrustHtml(this.formatMarkdown(content));
   }
 
-  sidebarCollapsed = signal<boolean>(
-    typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
-  );
+  sidebarCollapsed = signal<boolean>(true);
+  readonly showMissionHud = signal<boolean>(false);
   readonly mobileSheetOpen = signal<boolean>(false);
 
   toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
+  }
+
+  toggleMissionHud(): void {
+    this.showMissionHud.update((v) => !v);
   }
 
   toggleMobileSheet(): void {
@@ -1229,6 +1236,14 @@ export class Copilot implements OnInit, OnDestroy {
   selectedAiProvider = signal<string>(
     this.storage.get<string>('p2p.ai.provider') || 'gemini',
   );
+  selectedAiModel = signal<string>(
+    this.storage.get<string>('p2p.ai.model') ||
+      this.storage.get<string>(`p2p.ai.model.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
+      'gemini-3.8-flash',
+  );
+  readonly currentAvailableModels = computed<AiModelOption[]>(() => {
+    return AI_MODELS_BY_PROVIDER[this.selectedAiProvider()] || [];
+  });
   apiKeyInput = signal<string>(
     this.storage.get<string>(`p2p.ai.key.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
       this.storage.get<string>('p2p.gemini.apiKey') ||
@@ -1275,9 +1290,39 @@ export class Copilot implements OnInit, OnDestroy {
       this.storage.get<string>(`p2p.ai.key.${provider}`) ||
       (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
     this.apiKeyInput.set(existingKey);
+
+    const models = AI_MODELS_BY_PROVIDER[provider] || [];
+    const defaultModel = models[0]?.id || 'gemini-3.8-flash';
+    const savedModel = this.storage.get<string>(`p2p.ai.model.${provider}`) || defaultModel;
+    this.selectedAiModel.set(savedModel);
+    this.storage.set('p2p.ai.model', savedModel);
+
     const copilot = getElectronCopilot();
     if (copilot?.setProviderConfig) {
-      await copilot.setProviderConfig({ provider, apiKey: existingKey || undefined });
+      await copilot.setProviderConfig({
+        provider,
+        model: savedModel,
+        apiKey: existingKey || undefined,
+      });
+    }
+    await this.checkConnection();
+  }
+
+  async onModelChange(model: string): Promise<void> {
+    this.selectedAiModel.set(model);
+    this.storage.set('p2p.ai.model', model);
+    this.storage.set(`p2p.ai.model.${this.selectedAiProvider()}`, model);
+    const provider = this.selectedAiProvider();
+    const existingKey =
+      this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+      (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
+    const copilot = getElectronCopilot();
+    if (copilot?.setProviderConfig) {
+      await copilot.setProviderConfig({
+        provider,
+        model,
+        apiKey: existingKey || undefined,
+      });
     }
     await this.checkConnection();
   }
@@ -1628,6 +1673,9 @@ export class Copilot implements OnInit, OnDestroy {
         if (config?.activeProvider) {
           this.selectedAiProvider.set(config.activeProvider);
         }
+        if (config?.activeModel) {
+          this.selectedAiModel.set(config.activeModel);
+        }
         const res = await copilot.testConnection();
         const activeName = this.getProviderDisplayName();
         this.connectionStatus.set({
@@ -1674,7 +1722,7 @@ export class Copilot implements OnInit, OnDestroy {
           if (testRes.ok) {
             this.connectionStatus.set({
               connected: true,
-              model: 'Gemini · gemini-2.0-flash',
+              model: `Gemini · ${this.selectedAiModel() || 'gemini-3.8-flash'}`,
               message: '¡Conexión verificada exitosamente con Google Gemini! [0 tokens consumidos]',
             });
           } else {
@@ -1699,7 +1747,7 @@ export class Copilot implements OnInit, OnDestroy {
       } else {
         this.connectionStatus.set({
           connected: true,
-          model: `${this.getProviderDisplayName()} · activo`,
+          model: `${this.getProviderDisplayName()} · ${this.selectedAiModel()}`,
           message: `Proveedor ${this.getProviderDisplayName()} configurado para llamadas soberanas.`,
         });
       }
@@ -1711,8 +1759,12 @@ export class Copilot implements OnInit, OnDestroy {
     const key = this.apiKeyInput().trim();
     if (!key) return;
 
+    const model = this.selectedAiModel();
     this.storage.set('p2p.ai.provider', provider);
     this.storage.set(`p2p.ai.key.${provider}`, key);
+    this.storage.set('p2p.ai.model', model);
+    this.storage.set(`p2p.ai.model.${provider}`, model);
+
     if (provider === 'gemini') {
       this.storage.set('p2p.gemini.apiKey', key);
     }
@@ -1720,17 +1772,17 @@ export class Copilot implements OnInit, OnDestroy {
     const copilot = getElectronCopilot();
     if (copilot) {
       if (copilot.setProviderConfig) {
-        await copilot.setProviderConfig({ provider, apiKey: key });
+        await copilot.setProviderConfig({ provider, model, apiKey: key });
       }
       if (provider === 'gemini') {
         await copilot.setApiKey({ apiKey: key });
       }
       this.actionSuccessNotice.set(
-        `¡API Key de ${this.getProviderDisplayName()} guardada en SQLite exitosamente!`,
+        `¡API Key y modelo (${model}) de ${this.getProviderDisplayName()} guardados en SQLite exitosamente!`,
       );
     } else {
       this.actionSuccessNotice.set(
-        `¡API Key de ${this.getProviderDisplayName()} guardada exitosamente en el navegador!`,
+        `¡API Key y modelo (${model}) de ${this.getProviderDisplayName()} guardados exitosamente en el navegador!`,
       );
     }
     setTimeout(() => this.actionSuccessNotice.set(null), 4000);

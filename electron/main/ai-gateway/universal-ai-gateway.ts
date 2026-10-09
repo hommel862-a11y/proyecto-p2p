@@ -19,7 +19,7 @@ import type {
 } from './types';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
-  gemini: 'gemini-flash-latest',
+  gemini: 'gemini-3.8-flash',
   openai: 'gpt-4o',
   anthropic: 'claude-3-5-sonnet-20241022',
   deepseek: 'deepseek-chat',
