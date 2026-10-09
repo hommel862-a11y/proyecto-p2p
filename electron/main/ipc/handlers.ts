@@ -854,7 +854,16 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler('copilot:send-message');
   ipcMain.handle(
     'copilot:send-message',
-    async (_event: IpcMainInvokeEvent, params: { prompt: string; history?: any[] }) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      params: {
+        prompt: string;
+        history?: any[];
+        apiKey?: string;
+        provider?: any;
+        model?: string;
+      },
+    ) => {
       return orchestrator.sendMessage(params);
     },
   );

@@ -96,7 +96,13 @@ export interface MarketLearningRecord {
 }
 
 interface ElectronCopilotBridge {
-  sendMessage(params: { prompt: string; history?: CopilotChatMessage[] }): Promise<CopilotResponse>;
+  sendMessage(params: {
+    prompt: string;
+    history?: CopilotChatMessage[];
+    apiKey?: string;
+    provider?: string;
+    model?: string;
+  }): Promise<CopilotResponse>;
   transcribeAudio?(params: {
     audioBase64: string;
     mimeType: string;
@@ -1239,7 +1245,7 @@ export class Copilot implements OnInit, OnDestroy {
   selectedAiModel = signal<string>(
     this.storage.get<string>('p2p.ai.model') ||
       this.storage.get<string>(`p2p.ai.model.${this.storage.get<string>('p2p.ai.provider') || 'gemini'}`) ||
-      'gemini-3.8-flash',
+      'gemini-3.7-flash',
   );
   readonly currentAvailableModels = computed<AiModelOption[]>(() => {
     return AI_MODELS_BY_PROVIDER[this.selectedAiProvider()] || [];
@@ -1292,7 +1298,7 @@ export class Copilot implements OnInit, OnDestroy {
     this.apiKeyInput.set(existingKey);
 
     const models = AI_MODELS_BY_PROVIDER[provider] || [];
-    const defaultModel = models[0]?.id || 'gemini-3.8-flash';
+    const defaultModel = models[0]?.id || 'gemini-3.7-flash';
     const savedModel = this.storage.get<string>(`p2p.ai.model.${provider}`) || defaultModel;
     this.selectedAiModel.set(savedModel);
     this.storage.set('p2p.ai.model', savedModel);
@@ -2181,9 +2187,19 @@ export class Copilot implements OnInit, OnDestroy {
     try {
       const copilot = getElectronCopilot();
       if (copilot) {
+        const provider = this.selectedAiProvider();
+        const apiKey =
+          this.apiKeyInput().trim() ||
+          this.storage.get<string>(`p2p.ai.key.${provider}`) ||
+          (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
+        const model = this.selectedAiModel();
+
         const response = await copilot.sendMessage({
           prompt: promptToSend,
           history: this.messages(),
+          apiKey: apiKey || undefined,
+          provider,
+          model,
         });
 
         const incomingSources =

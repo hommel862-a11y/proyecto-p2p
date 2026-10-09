@@ -14,9 +14,12 @@ import { StorageService } from '../../core/storage';
 import { clampAtLeast, clampMoney as sharedClampMoney, formatSpreadAlertMessage } from '@p2p/core';
 import { UiCard } from '../../shared/ui/ui-card';
 import { UiPanelHeader } from '../../shared/ui/ui-panel-header';
+import { Router } from '@angular/router';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { McpService } from '../../core/mcp.service';
+import { AccountsService } from '../../core/accounts.service';
+import { SpotMarketService } from '../../core/spot-market.service';
 
 export interface TelegramConfig {
   botToken: string;
@@ -45,6 +48,9 @@ export class RiskRules implements OnInit {
   readonly telegramWorker = inject(TelegramWorkerService);
   private readonly binance = inject(BinanceP2pService);
   readonly mcpService = inject(McpService);
+  readonly accountsService = inject(AccountsService);
+  readonly spotMarket = inject(SpotMarketService);
+  private readonly router = inject(Router);
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
@@ -84,6 +90,42 @@ export class RiskRules implements OnInit {
   readonly killswitchReason = signal<string>('Parada de emergencia de tesorería');
   readonly killswitchActive = signal<boolean>(false);
   readonly mcpKillswitchLoading = signal<boolean>(false);
+
+  // Punto 7 — MCP Tool: detect_usdt_depeg (Monitor Global de Paridad USDT)
+  readonly depegSpotPrice = signal<number>(1.0);
+  readonly depegThresholdPct = signal<number>(0.2);
+  readonly depegLoadingSpot = signal<boolean>(false);
+  readonly mcpDepegEvaluating = signal<boolean>(false);
+  readonly mcpDepegResult = signal<{
+    spotUsdtPrice?: number;
+    parityDeviationPct?: number;
+    status?: string;
+    isDepegged?: boolean;
+    thresholdPct?: number;
+    arbitrageOpportunity?: boolean;
+    riskSeverity?: string;
+    recommendation?: string;
+    isEmergencyActionRequired?: boolean;
+  } | null>(null);
+
+  // Punto 8 — MCP Tool: evaluate_account_saturation (Escudo Bancario Local & SUDEBAN)
+  readonly accounts = this.accountsService.accounts;
+  readonly selectedBankAccountId = signal<string>('banesco-pm-1');
+  readonly incomingTradeVes = signal<number>(15000);
+  readonly mcpSaturationEvaluating = signal<boolean>(false);
+  readonly mcpSaturationResult = signal<{
+    bankId?: string;
+    currentDailyVes?: number;
+    projectedDailyVes?: number;
+    dailyLimitVes?: number;
+    saturationPercentage?: number;
+    remainingQuotaVes?: number;
+    hourlyOps?: number;
+    riskLevel?: string;
+    recommendBankRotation?: boolean;
+    reason?: string;
+    timestamp?: string;
+  } | null>(null);
 
   // Telegram Sentinel credentials (hydrated asynchronously from secure storage).
   readonly telegramToken = signal<string>('');
@@ -407,6 +449,98 @@ export class RiskRules implements OnInit {
     this.killswitchChallenge.set('');
     this.patch({ apiStatus: 'ok' });
     this.toast.info('Killswitch desactivado. Gateway restablecido a estado OK.');
+  }
+
+  async fetchLiveSpotTickerForDepeg(): Promise<void> {
+    this.depegLoadingSpot.set(true);
+    try {
+      const ticker = await this.spotMarket.fetchBookTicker('USDCUSDT');
+      if (ticker && ticker.bidPrice > 0 && ticker.askPrice > 0) {
+        const mid = (ticker.bidPrice + ticker.askPrice) / 2;
+        const price = Math.round(mid * 10000) / 10000;
+        this.depegSpotPrice.set(price);
+        this.toast.info(`Ticker Spot USDCUSDT recibido: $${price.toFixed(4)}`);
+      } else {
+        this.toast.warn('No se pudo obtener el ticker Spot en vivo; usando valor actual.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al leer ticker spot';
+      this.toast.error(msg);
+    } finally {
+      this.depegLoadingSpot.set(false);
+    }
+  }
+
+  async evaluateDepegRisk(): Promise<void> {
+    this.mcpDepegEvaluating.set(true);
+    try {
+      const res = await this.mcpService.detectUsdtDepeg({
+        spotUsdtPrice: this.depegSpotPrice(),
+        thresholdPct: this.depegThresholdPct(),
+      });
+      if (res.success && res.result) {
+        const result = res.result as NonNullable<ReturnType<typeof this.mcpDepegResult>>;
+        this.mcpDepegResult.set(result);
+        if (result.isEmergencyActionRequired) {
+          this.toast.error('🚨 ALERTA CRÍTICA: Depeg de USDT severo detectado. Se aconseja activar Killswitch.');
+        } else if (result.isDepegged) {
+          this.toast.warn(`⚠️ Aviso de paridad: Desviación de ${result.parityDeviationPct}% detectada.`);
+        } else {
+          this.toast.success('Paridad de USDT estable dentro de los parámetros.');
+        }
+      } else {
+        this.toast.error(res.error || 'Fallo al evaluar depeg de USDT');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error en detectUsdtDepeg';
+      this.toast.error(msg);
+    } finally {
+      this.mcpDepegEvaluating.set(false);
+    }
+  }
+
+  async evaluateBankSaturation(): Promise<void> {
+    const accId = this.selectedBankAccountId();
+    const allAccounts = this.accounts();
+    const acc = allAccounts.find((a) => a.id === accId) ?? allAccounts[0];
+
+    const usages = this.accountsService.usages();
+    const usage = usages.find((u) => u.account.id === acc?.id);
+    const currentDaily = usage?.spentTodayVes ?? 0;
+    const dailyLimit = acc?.dailyLimitVes ?? 100000;
+
+    this.mcpSaturationEvaluating.set(true);
+    try {
+      const res = await this.mcpService.evaluateAccountSaturation({
+        bankId: acc?.id ?? 'banesco-pm-1',
+        currentDailyVes: currentDaily,
+        dailyLimitVes: dailyLimit,
+        incomingAmountVes: this.incomingTradeVes(),
+        hourlyTransactionCount: 4,
+      });
+      if (res.success && res.result) {
+        const result = res.result as NonNullable<ReturnType<typeof this.mcpSaturationResult>>;
+        this.mcpSaturationResult.set(result);
+        if (result.riskLevel === 'CRITICAL') {
+          this.toast.error(`🚨 Cuenta ${acc?.bankName ?? accId} en nivel CRÍTICO (${result.saturationPercentage}%). Rota de cuenta inmediatamente.`);
+        } else if (result.recommendBankRotation) {
+          this.toast.warn(`⚠️ Recomendada rotación bancaria: saturación al ${result.saturationPercentage}%.`);
+        } else {
+          this.toast.info(`Cuenta ${acc?.bankName ?? accId} en rango seguro (${result.saturationPercentage}%).`);
+        }
+      } else {
+        this.toast.error(res.error || 'Error al evaluar saturación de cuenta');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error en evaluateAccountSaturation';
+      this.toast.error(msg);
+    } finally {
+      this.mcpSaturationEvaluating.set(false);
+    }
+  }
+
+  goToReceiptScanner(): void {
+    void this.router.navigate(['/receipts']);
   }
 
   reasonLabel(r: string): string {

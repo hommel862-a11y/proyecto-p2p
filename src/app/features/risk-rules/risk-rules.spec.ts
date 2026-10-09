@@ -7,6 +7,7 @@ import { MemoryStorage } from '../../core/memory-storage';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
+import { SpotMarketService } from '../../core/spot-market.service';
 
 const DEFAULT: RiskConfig = {
   minSpread: 15,
@@ -261,6 +262,73 @@ describe('RiskRules', () => {
     const [message] = toast.error.mock.calls[0] as [string];
     expect(message).toContain('@MockBot');
     expect(message).toContain('Iniciar');
+  });
+
+  it('evaluates USDT depeg risk via detectUsdtDepeg tool and sets result state', async () => {
+    const f = create();
+    const c = f.componentInstance;
+    f.detectChanges();
+
+    c.depegSpotPrice.set(1.0001);
+    c.depegThresholdPct.set(0.2);
+    await c.evaluateDepegRisk();
+
+    expect(c.mcpDepegResult()).not.toBeNull();
+    expect(c.mcpDepegResult()?.isDepegged).toBe(false);
+    expect(c.mcpDepegResult()?.status).toBe('PEGGED_NORMAL');
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('Paridad de USDT estable'),
+    );
+
+    // Test with critical depeg
+    c.depegSpotPrice.set(0.985);
+    await c.evaluateDepegRisk();
+    expect(c.mcpDepegResult()?.isDepegged).toBe(true);
+    expect(c.mcpDepegResult()?.isEmergencyActionRequired).toBe(true);
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('ALERTA CRÍTICA: Depeg de USDT severo'),
+    );
+  });
+
+  it('evaluates bank account saturation via evaluateAccountSaturation tool', async () => {
+    const f = create();
+    const c = f.componentInstance;
+    f.detectChanges();
+
+    c.selectedBankAccountId.set('banesco-pm-1');
+    c.incomingTradeVes.set(10000);
+    await c.evaluateBankSaturation();
+
+    const res = c.mcpSaturationResult();
+    expect(res).not.toBeNull();
+    expect(res?.bankId).toBe('banesco-pm-1');
+    expect(res?.saturationPercentage).toBeGreaterThanOrEqual(0);
+    expect(res?.remainingQuotaVes).toBeDefined();
+  });
+
+  it('fetches live spot ticker and updates depegSpotPrice', async () => {
+    const f = create();
+    const c = f.componentInstance;
+    f.detectChanges();
+
+    const spotMarket = TestBed.inject(SpotMarketService);
+    vi.spyOn(spotMarket, 'fetchBookTicker').mockResolvedValue({
+      symbol: 'USDCUSDT',
+      bidPrice: 0.9998,
+      bidQty: 1000,
+      askPrice: 1.0002,
+      askQty: 1000,
+      midPrice: 1.0,
+      spreadPct: 0.04,
+      timestamp: new Date().toISOString(),
+    });
+
+    await c.fetchLiveSpotTickerForDepeg();
+
+    expect(c.depegSpotPrice()).toBe(1.0);
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining('Ticker Spot USDCUSDT recibido'),
+    );
   });
 });
 

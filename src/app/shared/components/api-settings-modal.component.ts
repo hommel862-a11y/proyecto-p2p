@@ -16,11 +16,11 @@ export interface AiModelOption {
 
 export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
   gemini: [
-    { id: 'gemini-3.8-flash', label: '🚀 Gemini 3.8 Flash (Recomendado - Búsqueda Web en Vivo)', badge: 'RECOMENDADO' },
-    { id: 'gemini-flash-latest', label: '⚡ Gemini Flash Latest (Auto-actualizable)', badge: 'AUTO-UPDATE' },
-    { id: 'gemini-2.5-pro', label: '🧠 Gemini 2.5 Pro (Razonamiento Profundo Institucional)', badge: 'PRO' },
-    { id: 'gemini-2.5-flash', label: '⚖️ Gemini 2.5 Flash (Balance Velocidad y Contexto)', badge: 'FLASH' },
-    { id: 'gemini-2.0-flash', label: '⚡ Gemini 2.0 Flash (Estable)', badge: 'ESTABLE' },
+    { id: 'gemini-3.7-flash', label: '⚡ Gemini 3.7 Flash (Recomendado - Activo & Rápido)', badge: 'RECOMENDADO' },
+    { id: 'gemini-3.8-flash', label: '🚀 Gemini 3.8 Flash (Última Generación)', badge: 'FRONTIER' },
+    { id: 'gemini-3.6-flash', label: '⚖️ Gemini 3.6 Flash (Estable & Fluido)', badge: 'ESTABLE' },
+    { id: 'gemini-3.5-flash', label: '🧠 Gemini 3.5 Flash (Balanceado)', badge: 'BALANCE' },
+    { id: 'gemini-3.1-flash-lite', label: '🌱 Gemini 3.1 Flash Lite (Ultra Rápido)', badge: 'LITE' },
   ],
   anthropic: [
     { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (v2)', badge: 'RECOMENDADO' },
@@ -744,7 +744,7 @@ export class ApiSettingsModalComponent {
     this.geminiKeyInput.set(existingKey);
 
     const available = AI_MODELS_BY_PROVIDER[provider] || [];
-    const defaultModel = available[0]?.id || 'gemini-3.8-flash';
+    const defaultModel = available[0]?.id || 'gemini-3.7-flash';
     const savedModel = this.storage.get<string>(`p2p.ai.model.${provider}`) || defaultModel;
     this.selectedAiModel.set(savedModel);
     this.storage.set('p2p.ai.model', savedModel);
@@ -788,9 +788,9 @@ export class ApiSettingsModalComponent {
   getEffectiveModel(): string {
     const current = this.selectedAiModel();
     if (current === 'custom') {
-      return this.customModelInput().trim() || 'gemini-3.8-flash';
+      return this.customModelInput().trim() || 'gemini-3.7-flash';
     }
-    return current || 'gemini-3.8-flash';
+    return current || 'gemini-3.7-flash';
   }
 
   private syncProviderConfig(): void {

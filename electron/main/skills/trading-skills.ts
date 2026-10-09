@@ -201,13 +201,25 @@ export function dispatchTradingSkill(
         DEFAULT_TRIANGULAR_PRESETS.find((r) => r.initialCurrency === initialCurrency) ||
         DEFAULT_TRIANGULAR_PRESETS[0];
 
+      const marketBuyVes = marketBook && marketBook.bestBuyPrice > 0 ? marketBook.bestBuyPrice : 0;
+      const marketSellVes = marketBook && marketBook.bestSellPrice > 0 ? marketBook.bestSellPrice : 0;
+
       const overriddenLegs = route.legs.map((leg) => {
-        const hasVes = leg.fromCurrency === 'VES' || leg.toCurrency === 'VES';
-        const hasUsdt = leg.fromCurrency === 'USDT' || leg.toCurrency === 'USDT';
-        if (!hasVes || !hasUsdt || !marketBook) return leg;
-        const livePrice =
-          leg.toCurrency === 'USDT' ? marketBook.bestBuyPrice : marketBook.bestSellPrice;
-        return livePrice > 0 && livePrice !== leg.price ? { ...leg, price: livePrice } : leg;
+        if (!marketBook || (marketBuyVes === 0 && marketSellVes === 0)) return leg;
+
+        // Buying crypto with VES (e.g. VES -> USDT)
+        if (leg.fromCurrency === 'VES' && (leg.toCurrency === 'USDT' || leg.toCurrency === 'USDC' || leg.toCurrency === 'USD')) {
+          const price = marketBuyVes > 0 ? marketBuyVes : leg.price;
+          return { ...leg, price };
+        }
+
+        // Selling crypto for VES (e.g. USDT -> VES, USDC -> VES, USD -> VES)
+        if ((leg.fromCurrency === 'USDT' || leg.fromCurrency === 'USDC' || leg.fromCurrency === 'USD') && leg.toCurrency === 'VES') {
+          const price = marketSellVes > 0 ? marketSellVes : leg.price;
+          return { ...leg, price };
+        }
+
+        return leg;
       });
 
       const result = calculateTriangularArbitrage(route.id, route.name, initialAmount, [

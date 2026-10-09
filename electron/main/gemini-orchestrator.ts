@@ -309,9 +309,23 @@ PAUTAS DE COMUNICACIÓN:
 
 export class GeminiOrchestrator {
   private apiKey?: string;
-  private quotaCooldownUntil = 0;
+  private modelCooldowns = new Map<string, number>();
   private webhookDispatcher: WebhookDispatcher;
   private agentRegistry: AgentRegistry;
+
+  isModelCoolingDown(model: string): boolean {
+    const cooldown = this.modelCooldowns.get(model);
+    return cooldown !== undefined && Date.now() < cooldown;
+  }
+
+  setModelCooldown(model: string, retryMs: number): void {
+    const cooldownUntil = Date.now() + Math.max(60_000, Math.min(retryMs || 300_000, 3_600_000));
+    this.modelCooldowns.set(model, cooldownUntil);
+  }
+
+  clearModelCooldowns(): void {
+    this.modelCooldowns.clear();
+  }
 
   /**
    * Turn-level paid-call budget.
@@ -524,11 +538,11 @@ export class GeminiOrchestrator {
       const selectedModel = this.getActiveProvider().model;
       const baseModels = [
         selectedModel,
+        'gemini-3.7-flash',
         'gemini-3.8-flash',
-        'gemini-flash-latest',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
       ];
       return Array.from(new Set(baseModels.filter(Boolean)));
     }
@@ -581,6 +595,9 @@ export class GeminiOrchestrator {
   async sendMessage(params: {
     prompt: string;
     history?: CopilotChatMessage[];
+    apiKey?: string;
+    provider?: AiProviderType;
+    model?: string;
   }): Promise<CopilotResponse> {
     if (killswitchState.isTriggered) {
       const detail = killswitchState.reason
@@ -596,6 +613,17 @@ export class GeminiOrchestrator {
     const lowerPrompt = prompt.toLowerCase();
     this.beginPaidCallTurn();
 
+    if (params.provider) {
+      this.setActiveProvider(params.provider, params.model);
+    } else if (params.model) {
+      this.setActiveProvider(this.getActiveProvider().provider, params.model);
+    }
+    const { provider, model } = this.getActiveProvider();
+
+    if (params.apiKey) {
+      this.setApiKey(params.apiKey, provider);
+    }
+
     // 1. Recover empirical context from SQLite & Engram Persistent Memory
     const recentLearnings = this.db.listMarketLearnings(undefined, 5);
     const engramSummary = this.db.getEngramContextSummary(6);
@@ -609,10 +637,12 @@ export class GeminiOrchestrator {
         .join('\n');
 
     // 2. Determine execution path (Universal AI Gateway with tools or Deterministic Heuristic Engine)
-    const { provider, model } = this.getActiveProvider();
     const effectiveKey = this.getEffectiveApiKey(provider);
     if (effectiveKey) {
-      if (Date.now() < this.quotaCooldownUntil) {
+      const candidateModels = this.getCandidateModels(provider);
+      const allCoolingDown =
+        provider === 'gemini' && candidateModels.every((m) => this.isModelCoolingDown(m));
+      if (allCoolingDown) {
         return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
       }
       try {
@@ -633,12 +663,23 @@ export class GeminiOrchestrator {
           console.warn(`[GeminiOrchestrator] ${message} Continuando con motor local.`);
           return this.runDeterministicStrategist(lowerPrompt, recentLearnings, BUDGET_ENGINE_NOTE);
         }
-        // Fallback gracefully to core deterministic engine if network or quota issue arises
+        // Fallback gracefully to core deterministic engine if quota is exhausted on all models
         if (this.isQuotaError(err)) {
-          console.warn(`[GeminiOrchestrator] Quota 429 en ${provider}; continuando con motor local.`);
+          console.warn(`[GeminiOrchestrator] Quota 429 agotada en todos los modelos de ${provider}; continuando con motor local.`);
           return this.runDeterministicStrategist(lowerPrompt, recentLearnings, QUOTA_ENGINE_NOTE);
         }
-        console.warn(`[GeminiOrchestrator] Fallback to deterministic core engine (${provider}):`, err);
+        console.error(`[GeminiOrchestrator] Error en llamada al proveedor ${provider}:`, err);
+        return {
+          reply: `⚠️ **Error en llamada a ${provider.toUpperCase()} (${model})**:\n\n${message}\n\n*Por favor verificá tu API Key y conexión.*`,
+          provenance: {
+            source: provider,
+            model,
+            provenanceId: `PROV-ERR-${Date.now().toString(36).toUpperCase()}`,
+            timestamp: Date.now(),
+            esSimulado: true,
+            fallbackReason: 'API_ERROR',
+          },
+        };
       }
     }
 
@@ -684,9 +725,9 @@ export class GeminiOrchestrator {
 
     const candidateModels = [
       ...this.getCandidateModels(),
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
+      'gemini-3.7-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
     ];
     const cleanMime = params.mimeType.split(';')[0] || 'audio/webm';
     let lastError = '';
@@ -806,6 +847,9 @@ export class GeminiOrchestrator {
     let budgetExhausted = false;
 
     for (const model of candidateModels) {
+      if (this.isModelCoolingDown(model)) {
+        continue;
+      }
       if (!this.consumePaidCall()) {
         budgetExhausted = true;
         break;
@@ -855,10 +899,7 @@ export class GeminiOrchestrator {
           const errText = await res.text();
           if (res.status === 429) {
             const retryMs = this.extractRetryDelayMs(errText);
-            const target = Date.now() + Math.max(60_000, Math.min(retryMs, 3_600_000));
-            if (target > this.quotaCooldownUntil) {
-              this.quotaCooldownUntil = target;
-            }
+            this.setModelCooldown(model, retryMs);
             lastError = new Error(`Gemini API HTTP 429 (${model}): ${errText}`);
             modelFailed = true;
             break; // Try next model in cascade
@@ -2374,8 +2415,21 @@ export class GeminiOrchestrator {
       const entryPrice = onlyWhenLive(liveBuyPrice, hasLiveMarketFeed);
       const exitPrice = onlyWhenLive(liveSellPrice, hasLiveMarketFeed);
 
-      const triNetSpread = typeof tData.netSpreadPct === 'number' ? Number(tData.netSpreadPct.toFixed(2)) : 1.35;
+      let triNetSpread = typeof tData.netSpreadPct === 'number' ? Number(tData.netSpreadPct.toFixed(2)) : 1.35;
+      if (triNetSpread <= -50 || Number.isNaN(triNetSpread)) {
+        if (exitPrice && entryPrice && entryPrice > 0) {
+          triNetSpread = Number((((exitPrice - entryPrice) / entryPrice) * 100 - 0.40).toFixed(2));
+        } else {
+          triNetSpread = 1.35;
+        }
+      }
       const triProfit = Number(((reqCap11 * triNetSpread) / 100).toFixed(2));
+      const spreadSign = triNetSpread >= 0 ? '+' : '';
+      const profitSign = triProfit >= 0 ? '+$' : '-$';
+      const goldenCompliance =
+        triNetSpread >= 0.5
+          ? '(Supera holgadamente el 0.50% de la Regla de Oro)'
+          : '(⚠️ Margen por debajo del umbral mínimo de seguridad >= 0.50%)';
 
       reply =
         `Mirá, analicé las oportunidades de **arbitraje triangular institucional** en el mercado venezolano con rigor de microestructura y preservación de capital.\n\n` +
@@ -2389,8 +2443,8 @@ export class GeminiOrchestrator {
         `* **Comisión Taker/Maker**: -0.10% en Binance\n` +
         `* **Comisión por Transferencia Interbancaria**: -0.30%\n` +
         `* **Deslizamiento (Slippage VWAP)**: -${sData.slippageBps !== undefined ? (sData.slippageBps / 100).toFixed(2) : '0.12'}% (Llenado VWAP a ${formatNumberOrNd(sData.effectiveVwapPrice)} VES)\n` +
-        `* **Retorno Neto Real**: \`+${formatNumberOrNd(triNetSpread)}%\` (Supera holgadamente el 0.50% de la Regla de Oro)\n` +
-        `* **Beneficio Neto Estimado**: \`+$${formatNumberOrNd(triProfit)} USDT\` por rotación de $${formatNumberOrNd(reqCap11, 0)} USDT.\n` +
+        `* **Retorno Neto Real**: \`${spreadSign}${formatNumberOrNd(triNetSpread)}%\` ${goldenCompliance}\n` +
+        `* **Beneficio Neto Estimado**: \`${profitSign}${formatNumberOrNd(Math.abs(triProfit))} USDT\` por rotación de $${formatNumberOrNd(reqCap11, 0)} USDT.\n` +
         `* **Brecha Cambiaria BCV**: ${formatNumberOrNd(bData.gap?.gapPct, 1)}% (Liquidez profunda antes del mediodía).\n` +
         bcvGapAbsenceNote(bcvRes) +
         `\n` +
@@ -2405,10 +2459,12 @@ export class GeminiOrchestrator {
         capitalRequiredUsdt: reqCap11,
         expectedNetSpreadPct: triNetSpread,
         expectedProfitUsdt: triProfit,
-        riskLevel: resolveRiskLevel('LOW', isSimulated),
+        riskLevel: resolveRiskLevel(triNetSpread >= 0.5 ? 'LOW' : 'HIGH', isSimulated),
         assignedOperatorName: 'Operador Principal',
         rationale:
-          'Brecha cambiaria favorable con liquidez profunda en Banesco y spread neto que supera holgadamente la regla de oro.',
+          triNetSpread >= 0.5
+            ? 'Brecha cambiaria favorable con liquidez profunda en Banesco y spread neto que supera holgadamente la regla de oro.'
+            : 'Spread neto por debajo del mínimo institucional; requiere calibrar cotizaciones antes del despacho.',
         status: 'PROPOSED',
         createdAt: Date.now(),
         updatedAt: Date.now(),

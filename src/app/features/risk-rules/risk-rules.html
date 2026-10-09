@@ -426,6 +426,173 @@
         </div>
       }
     </app-ui-card>
+
+    <!-- Tool 5 (Punto 7): detect_usdt_depeg (Monitor Global de Paridad USDT) -->
+    <app-ui-card>
+      <app-ui-panel-header icon="🌐" title="Monitor Global de Paridad USDT">
+        <span uiHeaderActions class="badge badge-accent font-mono">MCP: detect_usdt_depeg</span>
+      </app-ui-panel-header>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <div class="terminal-field">
+          <label class="terminal-label" for="depeg-price">Precio Spot USDT</label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">$</span>
+            <input
+              id="depeg-price"
+              type="number"
+              step="0.0001"
+              class="terminal-input font-mono"
+              [value]="depegSpotPrice()"
+              (input)="depegSpotPrice.set(+$any($event.target).value)"
+            />
+          </div>
+        </div>
+        <div class="terminal-field">
+          <label class="terminal-label" for="depeg-thresh">Tolerancia (%)</label>
+          <div class="input-control-wrap">
+            <input
+              id="depeg-thresh"
+              type="number"
+              step="0.05"
+              class="terminal-input font-mono"
+              [value]="depegThresholdPct()"
+              (input)="depegThresholdPct.set(+$any($event.target).value)"
+            />
+            <span class="input-suffix">%</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          style="flex: 1;"
+          (click)="fetchLiveSpotTickerForDepeg()"
+          [disabled]="depegLoadingSpot()"
+          title="Consulta el libro Spot de Binance en tiempo real"
+        >
+          {{ depegLoadingSpot() ? 'Leyendo...' : '📡 Leer Spot en Vivo' }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          style="flex: 1.2;"
+          (click)="evaluateDepegRisk()"
+          [disabled]="mcpDepegEvaluating()"
+        >
+          {{ mcpDepegEvaluating() ? 'Auditando...' : '🔍 Evaluar Paridad' }}
+        </button>
+      </div>
+
+      @if (mcpDepegResult(); as dep) {
+        <div
+          style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
+          [style.border-left]="dep.isDepegged ? '3px solid #ef4444' : '3px solid #4ade80'"
+        >
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span class="text-muted">Estado Paridad:</span>
+            <span
+              class="badge"
+              [class.badge-accent]="!dep.isDepegged"
+              [class.badge-danger]="dep.isDepegged"
+              style="font-size: 0.68rem;"
+            >
+              {{ dep.status || 'PEGGED_NORMAL' }}
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Desviación:</span>
+            <strong class="font-mono" [style.color]="dep.isDepegged ? '#ef4444' : '#4ade80'">
+              {{ dep.parityDeviationPct }}%
+            </strong>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
+            {{ dep.recommendation }}
+          </div>
+        </div>
+      }
+    </app-ui-card>
+
+    <!-- Tool 6 (Punto 8): evaluate_account_saturation (Escudo Bancario Local & SUDEBAN) -->
+    <app-ui-card>
+      <app-ui-panel-header icon="🏛️" title="Escudo Bancario Local & SUDEBAN">
+        <span uiHeaderActions class="badge badge-warning font-mono">MCP: account_saturation</span>
+      </app-ui-panel-header>
+
+      <div class="terminal-field" style="margin-bottom: 8px;">
+        <label class="terminal-label" for="bank-acc-select">Cuenta Bancaria Nacional</label>
+        <select
+          id="bank-acc-select"
+          class="terminal-select font-mono"
+          [value]="selectedBankAccountId()"
+          (change)="selectedBankAccountId.set($any($event.target).value)"
+        >
+          @for (acc of accounts(); track acc.id) {
+            <option [value]="acc.id">
+              {{ acc.bankName }} ({{ acc.accountNumberMasked }})
+            </option>
+          }
+        </select>
+      </div>
+
+      <div class="terminal-field" style="margin-bottom: 10px;">
+        <label class="terminal-label" for="incoming-trade-ves">Monto Entrante de Operación (VES)</label>
+        <div class="input-control-wrap">
+          <span class="input-prefix">Bs</span>
+          <input
+            id="incoming-trade-ves"
+            type="number"
+            class="terminal-input font-mono"
+            [value]="incomingTradeVes()"
+            (input)="incomingTradeVes.set(+$any($event.target).value)"
+          />
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          style="flex: 1.2;"
+          (click)="evaluateBankSaturation()"
+          [disabled]="mcpSaturationEvaluating()"
+        >
+          {{ mcpSaturationEvaluating() ? 'Calculando...' : '📊 Evaluar Saturación' }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          style="flex: 1;"
+          (click)="goToReceiptScanner()"
+          title="Abre el escáner OCR para validar comprobantes de Pago Móvil"
+        >
+          📸 Auditar OCR
+        </button>
+      </div>
+
+      @if (mcpSaturationResult(); as sat) {
+        <div
+          style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
+          [style.border-left]="sat.riskLevel === 'CRITICAL' ? '3px solid #ef4444' : sat.riskLevel === 'ELEVATED' ? '3px solid #fbbf24' : '3px solid #4ade80'"
+        >
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span class="text-muted">Saturación Proyectada:</span>
+            <strong class="font-mono" [style.color]="sat.riskLevel === 'CRITICAL' ? '#ef4444' : sat.riskLevel === 'ELEVATED' ? '#fbbf24' : '#4ade80'">
+              {{ sat.saturationPercentage }}%
+            </strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span class="text-muted">Cupo Disponible:</span>
+            <span class="font-mono">Bs {{ sat.remainingQuotaVes | number:'1.2-2' }}</span>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
+            {{ sat.reason }}
+          </div>
+        </div>
+      }
+    </app-ui-card>
   </div>
 
   <div class="section-divider"></div>
