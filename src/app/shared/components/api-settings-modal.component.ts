@@ -203,29 +203,45 @@ import { StorageService } from '../../core/storage';
             </div>
           </section>
 
-          <!-- 4. Google Gemini AI Copilot -->
+          <!-- 4. Universal AI Gateway & Copilot -->
           <section class="api-card">
             <div class="api-card-head">
               <div class="api-title-row">
-                <span class="api-badge" [class.badge-active]="hasGeminiKey()">
-                  {{ hasGeminiKey() ? '🟢 ACTIVO' : '🟡 PENDIENTE' }}
+                <span class="api-badge" [class.badge-active]="hasActiveAiKey()">
+                  {{ hasActiveAiKey() ? '🟢 ACTIVO' : '🟡 PENDIENTE' }}
                 </span>
-                <strong>Google Gemini AI (Copiloto P2P)</strong>
+                <strong>Universal AI Gateway (Copiloto P2P)</strong>
               </div>
               <span class="api-desc">
-                Inteligencia Artificial para análisis de brechas cambiarias, arbitraje y detección de riesgos en tiempo real.
+                Cerebro multi-proveedor: Google Gemini (con Búsqueda Web en tiempo real), Anthropic Claude, OpenAI, DeepSeek y Qwen.
               </span>
             </div>
 
             <div class="api-input-group">
-              <label for="gemini-key-input">API Key de Google Gemini</label>
+              <label for="ai-provider-select">Proveedor de Inteligencia Artificial</label>
+              <select
+                id="ai-provider-select"
+                [value]="selectedAiProvider()"
+                (change)="onProviderChange($event)"
+                class="font-mono form-control"
+              >
+                <option value="gemini">Google Gemini (Gemini 2.0 Flash / Pro) [Grounding Web]</option>
+                <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                <option value="openai">OpenAI (ChatGPT / GPT-4o)</option>
+                <option value="deepseek">DeepSeek (DeepSeek-V3 / R1)</option>
+                <option value="qwen">Qwen 2.5 (OpenRouter / Local)</option>
+              </select>
+            </div>
+
+            <div class="api-input-group">
+              <label for="gemini-key-input">API Key de {{ getProviderDisplayName() }}</label>
               <div class="input-with-action">
                 <input
                   id="gemini-key-input"
                   [type]="showGeminiKey() ? 'text' : 'password'"
                   [value]="geminiKeyInput()"
                   (input)="onGeminiKeyInput($event)"
-                  placeholder="AIzaSy..."
+                  [placeholder]="getProviderKeyPlaceholder()"
                   class="font-mono form-control"
                   autocomplete="off"
                 />
@@ -247,7 +263,7 @@ import { StorageService } from '../../core/storage';
                 (click)="saveGemini()"
                 [disabled]="isTestingGemini()"
               >
-                Guardar Gemini
+                Guardar Clave
               </button>
               <button
                 type="button"
@@ -255,7 +271,7 @@ import { StorageService } from '../../core/storage';
                 (click)="testGemini()"
                 [disabled]="!geminiKeyInput().trim() || isTestingGemini()"
               >
-                {{ isTestingGemini() ? 'Verificando...' : '🧠 Probar IA' }}
+                {{ isTestingGemini() ? 'Verificando...' : '🧠 Probar Conexión' }}
               </button>
             </div>
           </section>
@@ -638,10 +654,18 @@ export class ApiSettingsModalComponent {
     const target = event.target as HTMLSelectElement;
     const provider = target.value;
     this.selectedAiProvider.set(provider);
+    this.storage.set('p2p.ai.provider', provider);
     const existingKey =
       this.storage.get<string>(`p2p.ai.key.${provider}`) ||
       (provider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
     this.geminiKeyInput.set(existingKey);
+    if (typeof window !== 'undefined') {
+      const win = window as any;
+      const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
+      if (electronCopilot?.setProviderConfig) {
+        void electronCopilot.setProviderConfig({ provider, apiKey: existingKey || undefined });
+      }
+    }
   }
 
   getProviderDisplayName(): string {
@@ -692,16 +716,8 @@ export class ApiSettingsModalComponent {
     }
 
     if (typeof window !== 'undefined') {
-      const electronCopilot = (
-        window as unknown as {
-          electronAPI?: {
-            copilot?: {
-              setApiKey?: (args: { apiKey: string }) => Promise<void>;
-              setProviderConfig?: (args: { provider: string; apiKey?: string }) => Promise<void>;
-            };
-          };
-        }
-      ).electronAPI?.copilot;
+      const win = window as any;
+      const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
       if (electronCopilot) {
         if (electronCopilot.setProviderConfig) {
           await electronCopilot.setProviderConfig({ provider, apiKey: key });
@@ -734,20 +750,8 @@ export class ApiSettingsModalComponent {
     this.isTestingGemini.set(true);
     try {
       if (typeof window !== 'undefined') {
-        const electronCopilot = (
-          window as unknown as {
-            electronAPI?: {
-              copilot?: {
-                testConnection?: (args?: { provider?: string; apiKey?: string }) => Promise<{
-                  success: boolean;
-                  provider?: string;
-                  model?: string;
-                  error?: string;
-                }>;
-              };
-            };
-          }
-        ).electronAPI?.copilot;
+        const win = window as any;
+        const electronCopilot = win.electron?.copilot || win.p2p?.copilot || win.electronAPI?.copilot;
 
         if (electronCopilot?.testConnection) {
           const res = await electronCopilot.testConnection({ provider, apiKey: key });
@@ -759,7 +763,7 @@ export class ApiSettingsModalComponent {
             return;
           } else {
             this.toast.error(
-              `Error al conectar con ${this.getProviderDisplayName()}: ${res?.error || 'Falló la conexión'}`,
+              `Error al conectar con ${this.getProviderDisplayName()}: ${res?.error || res?.message || 'Falló la conexión'}`,
               'Cerebro IA',
             );
             return;

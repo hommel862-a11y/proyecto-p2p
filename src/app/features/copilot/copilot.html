@@ -58,6 +58,15 @@
           (click)="setMasterArea('artefactos')">
           🏛️ Artefactos
         </button>
+        <button 
+          type="button" 
+          class="tab-btn master-tab-btn gateway-quick-pill" 
+          (click)="openAiConfigTab()" 
+          [title]="'Universal AI Gateway: ' + getProviderDisplayName() + ' · Clic para configurar'">
+          <span class="gateway-indicator" [class.connected]="connectionStatus().connected"></span>
+          <span class="gateway-title">{{ getProviderDisplayName() }}</span>
+          <span class="gateway-icon">⚙️</span>
+        </button>
       </div>
     </div>
   </header>
@@ -183,6 +192,15 @@
 
     <!-- ACCIONES HUD: Centinela + KillSwitch -->
     <div class="hud-actions">
+      <button 
+        type="button" 
+        class="hud-ai-pill" 
+        (click)="openAiConfigTab()" 
+        [title]="'Cerebro: ' + getProviderDisplayName() + ' (' + connectionStatus().message + ') · Clic para configurar'">
+        <span class="hud-ai-dot" [class.connected]="connectionStatus().connected"></span>
+        <span class="hud-ai-text">🧠 {{ getProviderDisplayName() }}</span>
+      </button>
+
       <span class="hud-watcher" [class.on]="watcherStatus().enabled">
         {{ watcherStatus().enabled ? '🟢 Centinela ON' : '⏸ Centinela OFF' }}
       </span>
@@ -633,6 +651,21 @@
               </div>
             </div>
           }
+
+          <div class="chat-ai-status-strip">
+            <div class="ai-status-info" (click)="openAiConfigTab()" role="button" tabindex="0" title="Clic para cambiar proveedor de IA o configurar API Key">
+              <span class="ai-status-dot" [class.connected]="connectionStatus().connected"></span>
+              <span class="ai-status-label">Cerebro:</span>
+              <strong class="ai-status-provider">{{ getProviderDisplayName() }}</strong>
+              <span class="ai-status-model">({{ connectionStatus().model }})</span>
+              <span class="ai-status-switch">Cambiar ⚙️</span>
+            </div>
+            @if (selectedAiProvider() === 'gemini') {
+              <div class="ai-grounding-badge" title="Búsqueda web en vivo con Google Search Grounding activa">
+                🌐 Google Search Activo
+              </div>
+            }
+          </div>
 
           <form (ngSubmit)="sendPrompt()" class="input-form">
             <button

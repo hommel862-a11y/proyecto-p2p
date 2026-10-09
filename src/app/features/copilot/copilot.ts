@@ -901,6 +901,11 @@ export class Copilot implements OnInit, OnDestroy {
     this.activeTab.set(subTab);
   }
 
+  openAiConfigTab(): void {
+    this.setMasterArea('artefactos');
+    this.setArtifactSubTab('config');
+  }
+
   // ---------------------------------------------------------------------------
   // Binance Earn & Passive Treasury Reactive State (10 Quantitative Skills)
   // ---------------------------------------------------------------------------
@@ -1565,10 +1570,26 @@ export class Copilot implements OnInit, OnDestroy {
   private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async ngOnInit(): Promise<void> {
-    const savedKey = this.storage.get<string>('p2p.gemini.apiKey');
-    if (savedKey && !this.apiKeyInput()) {
-      this.apiKeyInput.set(savedKey);
+    const activeProvider = this.storage.get<string>('p2p.ai.provider') || 'gemini';
+    this.selectedAiProvider.set(activeProvider);
+    const existingKey =
+      this.storage.get<string>(`p2p.ai.key.${activeProvider}`) ||
+      (activeProvider === 'gemini' ? this.storage.get<string>('p2p.gemini.apiKey') || '' : '');
+    if (existingKey) {
+      this.apiKeyInput.set(existingKey);
     }
+    const copilot = getElectronCopilot();
+    if (copilot?.setProviderConfig && (existingKey || activeProvider)) {
+      try {
+        await copilot.setProviderConfig({ provider: activeProvider, apiKey: existingKey || undefined });
+        if (activeProvider === 'gemini' && existingKey && copilot.setApiKey) {
+          await copilot.setApiKey({ apiKey: existingKey });
+        }
+      } catch (err) {
+        console.warn('[Copilot] Could not auto-sync provider config with Electron:', err);
+      }
+    }
+
     await this.refreshData();
     // The kill-switch lives in the main process: read the real state before the pill is shown,
     // so the HUD can never advertise an armed desk that is not actually armed (or vice versa).
