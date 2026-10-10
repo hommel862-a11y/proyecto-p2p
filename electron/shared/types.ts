@@ -140,6 +140,49 @@ export interface BacktestRunResult {
   summary?: unknown;
 }
 
+export interface CustomAgentDto {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  modelProvider: string;
+  modelName: string;
+  temperature: number;
+  isActive: boolean;
+  executionMode: 'on_demand' | 'ambient_daemon';
+  scheduleIntervalSec?: number;
+  skills: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateCustomAgentDto {
+  id?: string;
+  name: string;
+  description?: string;
+  systemPrompt: string;
+  modelProvider?: string;
+  modelName?: string;
+  temperature?: number;
+  isActive?: boolean;
+  executionMode?: 'on_demand' | 'ambient_daemon';
+  scheduleIntervalSec?: number;
+  skills?: string[];
+}
+
+export interface UpdateCustomAgentDto {
+  name?: string;
+  description?: string;
+  systemPrompt?: string;
+  modelProvider?: string;
+  modelName?: string;
+  temperature?: number;
+  isActive?: boolean;
+  executionMode?: 'on_demand' | 'ambient_daemon';
+  scheduleIntervalSec?: number;
+  skills?: string[];
+}
+
 export interface P2PIpcChannels {
   'app:get-version': {
     request: void;
@@ -304,6 +347,30 @@ export interface P2PIpcChannels {
   'p2p:clipboard-watcher-status': {
     request: void;
     response: { enabled: boolean; pollIntervalMs: number; lastDetectedReference?: string };
+  };
+  'agents:list': {
+    request: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon' } | undefined;
+    response: CustomAgentDto[];
+  };
+  'agents:get': {
+    request: { id: string };
+    response: CustomAgentDto | null;
+  };
+  'agents:create': {
+    request: CreateCustomAgentDto;
+    response: CustomAgentDto;
+  };
+  'agents:update': {
+    request: { id: string; dto: UpdateCustomAgentDto };
+    response: CustomAgentDto | null;
+  };
+  'agents:delete': {
+    request: { id: string };
+    response: boolean;
+  };
+  'agents:toggle': {
+    request: { id: string; active?: boolean };
+    response: CustomAgentDto | null;
   };
 }
 
@@ -598,6 +665,14 @@ export interface ElectronAPI {
       lastDetectedReference?: string;
     }>;
     onPaymentDetected(callback: (payload: ClipboardPaymentPayload) => void): () => void;
+  };
+  agents: {
+    list(filter?: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon' }): Promise<CustomAgentDto[]>;
+    get(id: string): Promise<CustomAgentDto | null>;
+    create(dto: CreateCustomAgentDto): Promise<CustomAgentDto>;
+    update(id: string, dto: UpdateCustomAgentDto): Promise<CustomAgentDto | null>;
+    delete(id: string): Promise<boolean>;
+    toggle(id: string, active?: boolean): Promise<CustomAgentDto | null>;
   };
 }
 

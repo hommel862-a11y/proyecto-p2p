@@ -9,6 +9,7 @@ import {
   purgeMarketSnapshotsBefore,
 } from './decision-journal.repository';
 import type { DecisionJournalRepository } from './decision-journal.repository';
+import { CustomAgentRepository } from './custom-agent.repository';
 
 export interface InboundBankEventRecord {
   id?: number;
@@ -140,6 +141,7 @@ export class P2PDatabaseService {
    * rely on `getDecisionJournal()` returning the same object.
    */
   private decisionJournal: DecisionJournalRepository | null = null;
+  private customAgentRepo: CustomAgentRepository | null = null;
 
   constructor(dbFilePath?: string) {
     let targetPath = dbFilePath;
@@ -380,6 +382,31 @@ export class P2PDatabaseService {
       );
       CREATE INDEX IF NOT EXISTS idx_bank_accounts_status ON bank_accounts(status);
       CREATE INDEX IF NOT EXISTS idx_bank_accounts_code ON bank_accounts(bank_code);
+
+      CREATE TABLE IF NOT EXISTS custom_agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        system_prompt TEXT NOT NULL,
+        model_provider TEXT NOT NULL DEFAULT 'gemini',
+        model_name TEXT NOT NULL DEFAULT 'gemini-3.7-flash',
+        temperature REAL NOT NULL DEFAULT 0.1,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        execution_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (execution_mode IN ('on_demand', 'ambient_daemon')),
+        schedule_interval_sec INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_custom_agents_active ON custom_agents(is_active);
+      CREATE INDEX IF NOT EXISTS idx_custom_agents_mode ON custom_agents(execution_mode);
+
+      CREATE TABLE IF NOT EXISTS custom_agent_skills (
+        agent_id TEXT NOT NULL REFERENCES custom_agents(id) ON DELETE CASCADE,
+        skill_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (agent_id, skill_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_custom_agent_skills_agent ON custom_agent_skills(agent_id);
     `);
   }
 
@@ -1199,9 +1226,19 @@ export class P2PDatabaseService {
     };
   }
 
+  getCustomAgentRepo(): CustomAgentRepository {
+    if (!this.customAgentRepo) {
+      this.customAgentRepo = new CustomAgentRepository(this.db);
+      this.customAgentRepo.seedDefaultsIfEmpty();
+    }
+    return this.customAgentRepo;
+  }
+
   close(): void {
     this.decisionJournal = null;
+    this.customAgentRepo = null;
     this.db.close();
   }
 }
+
 

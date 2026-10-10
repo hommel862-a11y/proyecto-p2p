@@ -155,6 +155,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         return onEvent('p2p:clipboard-payment-detected', (payload) => callback(payload));
       },
     },
+    agents: {
+      list: (filter) => ipc('agents:list', filter) as Promise<any>,
+      get: (id) => ipc('agents:get', id) as Promise<any>,
+      create: (dto) => ipc('agents:create', dto) as Promise<any>,
+      update: (id, dto) => ipc('agents:update', { id, dto }) as Promise<any>,
+      delete: (id) => ipc('agents:delete', id) as Promise<boolean>,
+      toggle: (id, active) => ipc('agents:toggle', { id, active }) as Promise<any>,
+    },
   };
 }
 
@@ -178,6 +186,7 @@ export const EXPOSED_API_KEYS = [
   'screenPipe',
   'mcp',
   'clipboard',
+  'agents',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -239,6 +248,12 @@ export const ALLOWED_CHANNELS = [
   'p2p:mcp-test-tool',
   'p2p:clipboard-watcher-toggle',
   'p2p:clipboard-watcher-status',
+  'agents:list',
+  'agents:get',
+  'agents:create',
+  'agents:update',
+  'agents:delete',
+  'agents:toggle',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels

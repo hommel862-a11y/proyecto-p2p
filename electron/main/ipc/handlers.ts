@@ -1161,6 +1161,45 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('p2p:clipboard-watcher-status', async () => {
     return getClipboardWatcher().getStatus();
   });
+
+  // Custom Agent Studio Handlers
+  ipcMain.removeHandler('agents:list');
+  ipcMain.handle(
+    'agents:list',
+    async (_event: IpcMainInvokeEvent, filter?: { activeOnly?: boolean; mode?: 'on_demand' | 'ambient_daemon' }) => {
+      return db.getCustomAgentRepo().listAgents(filter);
+    },
+  );
+
+  ipcMain.removeHandler('agents:get');
+  ipcMain.handle('agents:get', async (_event: IpcMainInvokeEvent, params: { id: string } | string) => {
+    const id = typeof params === 'string' ? params : params.id;
+    return db.getCustomAgentRepo().getAgentById(id);
+  });
+
+  ipcMain.removeHandler('agents:create');
+  ipcMain.handle('agents:create', async (_event: IpcMainInvokeEvent, dto: any) => {
+    return db.getCustomAgentRepo().createAgent(dto);
+  });
+
+  ipcMain.removeHandler('agents:update');
+  ipcMain.handle('agents:update', async (_event: IpcMainInvokeEvent, params: { id: string; dto: any }) => {
+    return db.getCustomAgentRepo().updateAgent(params.id, params.dto);
+  });
+
+  ipcMain.removeHandler('agents:delete');
+  ipcMain.handle('agents:delete', async (_event: IpcMainInvokeEvent, params: { id: string } | string) => {
+    const id = typeof params === 'string' ? params : params.id;
+    return db.getCustomAgentRepo().deleteAgent(id);
+  });
+
+  ipcMain.removeHandler('agents:toggle');
+  ipcMain.handle(
+    'agents:toggle',
+    async (_event: IpcMainInvokeEvent, params: { id: string; active?: boolean }) => {
+      return db.getCustomAgentRepo().toggleAgent(params.id, params.active);
+    },
+  );
 }
 
 let dbInstance: P2PDatabaseService | null = null;
