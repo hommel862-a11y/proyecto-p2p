@@ -446,7 +446,8 @@ async function createWindow(): Promise<void> {
   // como proxy local.
   const port = await startStaticServer();
 
-  let targetUrl = `http://localhost:${port}/#/spread`;
+  const initialRoute = process.env['P2P_INITIAL_ROUTE'] ?? 'spread';
+  let targetUrl = `http://localhost:${port}/#/${initialRoute}`;
   try {
     const isLocalhostUp = await checkUrl('http://localhost:4200/');
     const isIpUp = !isLocalhostUp && (await checkUrl('http://127.0.0.1:4200/'));
