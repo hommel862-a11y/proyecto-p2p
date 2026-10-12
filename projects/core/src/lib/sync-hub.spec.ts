@@ -188,6 +188,6 @@ describe('Zero-Knowledge Multi-Device Sync Hub Engine', () => {
     expect(msg).toContain('HUB DE SINCRONIZACIÓN CIFRADA E2E');
     expect(msg).toContain('AES-256-GCM');
     expect(msg).toContain('v1');
-    expect(msg).toContain('Dispositivos Vinculados: `1`');
+    expect(msg).toContain('*Dispositivos Vinculados:* `1`');
   });
 });

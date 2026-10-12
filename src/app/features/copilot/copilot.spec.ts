@@ -849,7 +849,7 @@ describe('Copilot treasury HUD (real treasury projection)', () => {
       expect(output).toContain('<details class="swarm-reasoning-accordion">');
       expect(output).toContain('<summary class="swarm-reasoning-summary">🧠 Razonamiento del Enjambre</summary>');
       expect(output).toContain('<div class="swarm-reasoning-content">Analizando profundidad del libro L2 para Banesco...</div>');
-      expect(output).toContain('Recomendación de compra a 95.2 VES');
+      expect(output).toContain('Recomendación de compra a <span class="md-kpi ves">95.2 VES</span>');
     });
 
     it('neutralizes malicious XSS script and event handler payloads', () => {

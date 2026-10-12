@@ -4,16 +4,20 @@ import { AuditLoggerService } from './audit-logger.service';
 import { P2P_STORAGE } from './storage';
 import { MemoryStorage } from './memory-storage';
 
+import { StorageService } from './storage';
+
 describe('AuditLoggerService', () => {
   let service: AuditLoggerService;
   let mem: MemoryStorage;
 
   beforeEach(() => {
     mem = new MemoryStorage();
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [AuditLoggerService, { provide: P2P_STORAGE, useValue: mem }],
+      providers: [AuditLoggerService, StorageService, { provide: P2P_STORAGE, useValue: mem }],
     });
     service = TestBed.inject(AuditLoggerService);
+    service.clear();
   });
 
   it('records audit events with timestamps, categories and details', () => {

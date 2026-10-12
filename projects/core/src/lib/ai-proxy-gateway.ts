@@ -68,8 +68,9 @@ export function normalizeSemanticPrompt(prompt: string): string {
 
   // Replace common conversational stop phrases
   const stopWords = [
-    /\b(hola|por favor|buenas|dime|cual es|como esta|que es|explicame|quiero saber)\b/g,
+    /\b(hola|por favor|buenas|dime|cual es el|cual es la|cual es|como esta|que es el|que es la|que es|explicame|quiero saber)\b/g,
     /\b(hoy|ahora|actualmente|en este momento|a ver)\b/g,
+    /\b(del)\b/g,
   ];
   for (const sw of stopWords) {
     norm = norm.replace(sw, ' ');

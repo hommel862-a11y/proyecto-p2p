@@ -3,6 +3,7 @@ import { CredentialStoreService } from './credential-store.service';
 import { SecureVaultService } from './secure-vault.service';
 import { StorageService, P2P_STORAGE } from './storage';
 import { MemoryStorage } from './memory-storage';
+import { IndexedDbStorageService } from './indexed-db-storage.service';
 
 describe('CredentialStoreService', () => {
   let mem: MemoryStorage;
@@ -11,12 +12,23 @@ describe('CredentialStoreService', () => {
   beforeEach(() => {
     mem = new MemoryStorage();
     TestBed.configureTestingModule({
-      providers: [{ provide: P2P_STORAGE, useValue: mem }],
+      providers: [
+        { provide: P2P_STORAGE, useValue: mem },
+        { provide: IndexedDbStorageService, useFactory: () => new IndexedDbStorageService() },
+      ],
     });
     storage = TestBed.inject(StorageService);
+    storage.remove('p2p_sec_vault:p2p.secure.telegram');
+    storage.remove('p2p_sec_vault:p2p.secure.cotizave');
+    storage.remove('p2p.telegram_config');
+    storage.remove('p2p.cotizave.apiKey');
   });
 
   afterEach(() => {
+    storage.remove('p2p_sec_vault:p2p.secure.telegram');
+    storage.remove('p2p_sec_vault:p2p.secure.cotizave');
+    storage.remove('p2p.telegram_config');
+    storage.remove('p2p.cotizave.apiKey');
     TestBed.resetTestingModule();
     delete (window as unknown as Record<string, unknown>)['electron'];
     // Reset the once-per-session migration flag between tests.

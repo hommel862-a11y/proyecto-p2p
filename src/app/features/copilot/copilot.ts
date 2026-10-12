@@ -641,7 +641,7 @@ export class Copilot implements OnInit, OnDestroy {
 
     // 11b. Bloques estructurados <details>...</details> con <summary>
     html = html.replace(
-      /&lt;details(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;\s*&lt;summary(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;([\s\S]*?)&lt;\/summary&gt;\s*(?:&lt;div(?:\s+class=(?:&quot;|")[^"&]*(?:&quot;|"))?&gt;)?([\s\S]*?)(?:&lt;\/div&gt;)?\s*&lt;\/details&gt;/gi,
+      /&lt;details(?:\s+[^&>]*)?&gt;\s*&lt;summary(?:\s+[^&>]*)?&gt;([\s\S]*?)&lt;\/summary&gt;\s*(?:&lt;div(?:\s+[^&>]*)?&gt;)?([\s\S]*?)(?:&lt;\/div&gt;)?\s*&lt;\/details&gt;/gi,
       (_match, summaryText, bodyText) => {
         return `<details class="swarm-reasoning-accordion"><summary class="swarm-reasoning-summary">${summaryText.trim()}</summary><div class="swarm-reasoning-content">${bodyText.trim()}</div></details>`;
       },
@@ -870,7 +870,11 @@ export class Copilot implements OnInit, OnDestroy {
     setTimeout(() => {
       if (this.messagesViewportRef?.nativeElement) {
         const el = this.messagesViewportRef.nativeElement;
-        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        if (typeof el.scrollTo === 'function') {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
       }
     }, 60);
   }
