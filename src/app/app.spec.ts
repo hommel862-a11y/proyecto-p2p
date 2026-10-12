@@ -27,11 +27,11 @@ describe('App', () => {
     expect(fixture.componentInstance).toBeTruthy();
   }, 15000);
 
-  it('should render a nav with 13 feature links and mobile bottom nav', () => {
+  it('should render a nav with 14 feature links and mobile bottom nav', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(13);
+    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(14);
     expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(5);
   }, 15000);
 
@@ -56,7 +56,7 @@ describe('App', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
 
-    it('toggleTheme() flips through the 3 themes and persists the choice', () => {
+    it('toggleTheme() flips through the 4 themes and persists the choice', () => {
       const fixture = TestBed.createComponent(App);
       const c = fixture.componentInstance;
       fixture.detectChanges();
@@ -67,7 +67,13 @@ describe('App', () => {
       expect(localStorage.getItem('p2p.theme')).toBe('apple-dark');
       expect(document.documentElement.getAttribute('data-theme')).toBe('apple-dark');
 
-      // apple-dark -> light
+      // apple-dark -> neon-pink
+      c.toggleTheme();
+      expect(c.theme()).toBe('neon-pink');
+      expect(localStorage.getItem('p2p.theme')).toBe('neon-pink');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('neon-pink');
+
+      // neon-pink -> light
       c.toggleTheme();
       expect(c.theme()).toBe('light');
       expect(localStorage.getItem('p2p.theme')).toBe('light');
@@ -80,10 +86,14 @@ describe('App', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
 
-    it('initialTheme() honors a stored apple-dark or light preference', () => {
+    it('initialTheme() honors a stored apple-dark, neon-pink or light preference', () => {
       localStorage.setItem('p2p.theme', 'apple-dark');
       let fixture = TestBed.createComponent(App);
       expect(fixture.componentInstance.theme()).toBe('apple-dark');
+
+      localStorage.setItem('p2p.theme', 'neon-pink');
+      fixture = TestBed.createComponent(App);
+      expect(fixture.componentInstance.theme()).toBe('neon-pink');
 
       localStorage.setItem('p2p.theme', 'light');
       fixture = TestBed.createComponent(App);

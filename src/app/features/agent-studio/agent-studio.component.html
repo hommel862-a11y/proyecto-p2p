@@ -1,0 +1,479 @@
+<div class="agent-studio-view">
+  <!-- Header & Action Bar -->
+  <header class="studio-header">
+    <div class="header-title-block">
+      <div class="title-with-badge">
+        <h1 class="page-title">Agent Studio</h1>
+        <span class="badge badge-accent">Multi-Agent Swarm</span>
+      </div>
+      <p class="subtitle">
+        Crea, entrena y asigna skills a tu equipo de agentes autónomos para arbitraje institucional P2P.
+      </p>
+    </div>
+
+    <div class="header-actions">
+      <button type="button" class="btn btn-primary" (click)="openCreateModal()">
+        <span class="btn-icon">⚡</span>
+        Nuevo Agente
+      </button>
+    </div>
+  </header>
+
+  <!-- Metrics / KPI Strip -->
+  <section class="kpi-grid">
+    <app-ui-card variant="terminal">
+      <div class="kpi-card-content">
+        <div class="kpi-meta">
+          <span class="kpi-label">TOTAL AGENTES</span>
+          <span class="kpi-value font-mono">{{ studio.totalCount() }}</span>
+        </div>
+        <div class="kpi-icon-wrap">🤖</div>
+      </div>
+    </app-ui-card>
+
+    <app-ui-card variant="terminal">
+      <div class="kpi-card-content">
+        <div class="kpi-meta">
+          <span class="kpi-label">ACTIVOS EN LÍNEA</span>
+          <span class="kpi-value font-mono text-emerald">{{ studio.activeCount() }}</span>
+        </div>
+        <div class="kpi-icon-wrap text-emerald">🟢</div>
+      </div>
+    </app-ui-card>
+
+    <app-ui-card variant="terminal">
+      <div class="kpi-card-content">
+        <div class="kpi-meta">
+          <span class="kpi-label">DAEMONS EN BACKGROUND</span>
+          <span class="kpi-value font-mono text-cyan">{{ studio.daemonsCount() }}</span>
+        </div>
+        <div class="kpi-icon-wrap text-cyan">🔄</div>
+      </div>
+    </app-ui-card>
+
+    <app-ui-card variant="terminal">
+      <div class="kpi-card-content">
+        <div class="kpi-meta">
+          <span class="kpi-label">SKILLS CUANTITATIVAS</span>
+          <span class="kpi-value font-mono text-accent">{{ skillCatalog.length }}</span>
+        </div>
+        <div class="kpi-icon-wrap text-accent">🛠️</div>
+      </div>
+    </app-ui-card>
+  </section>
+
+  <!-- Filter & Search Toolbar -->
+  <section class="toolbar-section">
+    <div class="search-input-wrap">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        class="terminal-input search-input"
+        placeholder="Buscar agente por nombre, rol o skill..."
+        [value]="studio.searchQuery()"
+        (input)="studio.setSearchQuery($any($event.target).value)"
+      />
+    </div>
+
+    <div class="segmented-control">
+      <button
+        type="button"
+        class="segment-btn"
+        [class.active]="studio.filterMode() === 'all'"
+        (click)="studio.setFilterMode('all')"
+      >
+        Todos ({{ studio.totalCount() }})
+      </button>
+      <button
+        type="button"
+        class="segment-btn"
+        [class.active]="studio.filterMode() === 'on_demand'"
+        (click)="studio.setFilterMode('on_demand')"
+      >
+        ⚡ On-Demand
+      </button>
+      <button
+        type="button"
+        class="segment-btn"
+        [class.active]="studio.filterMode() === 'ambient_daemon'"
+        (click)="studio.setFilterMode('ambient_daemon')"
+      >
+        🔄 Daemons
+      </button>
+    </div>
+  </section>
+
+  <!-- Agents Grid -->
+  @if (studio.loading() && studio.agents().length === 0) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Cargando registros del Agent Studio...</p>
+    </div>
+  } @else if (studio.filteredAgents().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">🤖</div>
+      <h3>No se encontraron agentes</h3>
+      <p>Ajusta el filtro de búsqueda o crea tu primer especialista con el botón "Nuevo Agente".</p>
+      <button type="button" class="btn btn-primary btn-sm" (click)="openCreateModal()">
+        Crear Agente Ahora
+      </button>
+    </div>
+  } @else {
+    <section class="agents-grid">
+      @for (agent of studio.filteredAgents(); track agent.id) {
+        <div class="agent-card" [class.is-inactive]="!agent.isActive">
+          <div class="agent-card-header">
+            <div class="agent-identity">
+              <div class="agent-avatar">
+                {{ agent.executionMode === 'ambient_daemon' ? '🔄' : '⚡' }}
+              </div>
+              <div>
+                <h3 class="agent-title">{{ agent.name }}</h3>
+                <span class="agent-slug font-mono">&#64;{{ agent.id }}</span>
+              </div>
+            </div>
+
+            <div class="agent-status-toggle">
+              <label class="switch-control" [title]="agent.isActive ? 'Desactivar agente' : 'Activar agente'">
+                <input
+                  type="checkbox"
+                  [checked]="agent.isActive"
+                  (change)="studio.toggleAgent(agent.id, $any($event.target).checked)"
+                />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="agent-meta-row">
+            <span class="badge" [class.badge-success]="agent.isActive" [class.badge-muted]="!agent.isActive">
+              {{ agent.isActive ? 'ACTIVO' : 'PAUSADO' }}
+            </span>
+            <span class="badge badge-outline">
+              {{ agent.executionMode === 'ambient_daemon' ? 'Daemon (' + (agent.scheduleIntervalSec || 300) + 's)' : 'On-Demand' }}
+            </span>
+            <span class="badge badge-accent font-mono">
+              {{ agent.modelName }}
+            </span>
+          </div>
+
+          <p class="agent-description">
+            {{ agent.description || 'Sin descripción asignada.' }}
+          </p>
+
+          <div class="agent-skills-section">
+            <div class="skills-section-header">
+              <span class="skills-label">SKILLS AUTORIZADAS ({{ agent.skills.length }})</span>
+            </div>
+            <div class="skills-chips-wrap">
+              @if (agent.skills.length === 0) {
+                <span class="text-muted" style="font-size: 0.75rem;">Sin herramientas asignadas (solo chat)</span>
+              } @else {
+                @for (skill of agent.skills.slice(0, 4); track skill) {
+                  <span class="skill-chip font-mono" [title]="skill">
+                    {{ getSkillBadgeName(skill) }}
+                  </span>
+                }
+                @if (agent.skills.length > 4) {
+                  <span class="skill-chip-more font-mono">+{{ agent.skills.length - 4 }} más</span>
+                }
+              }
+            </div>
+          </div>
+
+          <div class="agent-card-footer">
+            <button
+              type="button"
+              class="btn btn-secondary btn-xs"
+              (click)="goToCopilotWithAgent(agent)"
+              title="Abrir Copilot para interactuar con este agente"
+            >
+              💬 Probar
+            </button>
+            <div class="footer-actions-right">
+              <button
+                type="button"
+                class="btn btn-secondary btn-xs"
+                (click)="openEditModal(agent)"
+              >
+                ✏️ Editar
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger btn-xs btn-icon-only"
+                (click)="confirmDelete(agent)"
+                title="Eliminar agente"
+              >
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Modal / Drawer de Creación y Edición -->
+  @if (isEditorOpen()) {
+    <div class="modal-backdrop" (click)="closeModal()">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <header class="modal-header">
+          <div class="modal-title-group">
+            <h2 class="modal-title">
+              {{ isEditing() ? 'Editar Agente Especialista' : 'Crear Nuevo Agente' }}
+            </h2>
+            <p class="modal-subtitle">
+              Configura el rol, inteligencia de razonamiento y herramientas MCP asignadas.
+            </p>
+          </div>
+          <button type="button" class="btn-close" (click)="closeModal()">✕</button>
+        </header>
+
+        <form class="modal-body" (ngSubmit)="saveAgent()">
+          <!-- Identidad Básica -->
+          <fieldset class="form-section">
+            <legend class="section-legend">1. Identidad & Rol</legend>
+            
+            <div class="form-row form-grid-2">
+              <div class="form-field">
+                <label for="agent-name" class="terminal-label">Nombre del Agente *</label>
+                <input
+                  id="agent-name"
+                  type="text"
+                  class="terminal-input"
+                  required
+                  placeholder="Ej. Estratega Banesco VES"
+                  [value]="form().name"
+                  (input)="form().name = $any($event.target).value"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="agent-id" class="terminal-label">Identificador / Slug</label>
+                <input
+                  id="agent-id"
+                  type="text"
+                  class="terminal-input font-mono"
+                  [disabled]="isEditing()"
+                  placeholder="ej. estratega-banesco (opcional)"
+                  [value]="form().id"
+                  (input)="form().id = $any($event.target).value"
+                />
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="agent-desc" class="terminal-label">Descripción Operativa</label>
+              <input
+                id="agent-desc"
+                type="text"
+                class="terminal-input"
+                placeholder="Breve resumen de responsabilidades para el equipo"
+                [value]="form().description"
+                (input)="form().description = $any($event.target).value"
+              />
+            </div>
+
+            <div class="form-row form-grid-2" style="margin-top: 8px;">
+              <div class="form-field">
+                <label for="agent-mode" class="terminal-label">Modo de Ejecución</label>
+                <select
+                  id="agent-mode"
+                  class="terminal-input"
+                  [value]="form().executionMode"
+                  (change)="form().executionMode = $any($event.target).value"
+                >
+                  <option value="on_demand">⚡ On-Demand (Bajo demanda en chat)</option>
+                  <option value="ambient_daemon">🔄 Ambient Daemon (Background continuo)</option>
+                </select>
+              </div>
+
+              @if (form().executionMode === 'ambient_daemon') {
+                <div class="form-field">
+                  <label for="agent-interval" class="terminal-label">Intervalo de Ejecución (segundos)</label>
+                  <input
+                    id="agent-interval"
+                    type="number"
+                    min="10"
+                    max="86400"
+                    class="terminal-input font-mono"
+                    [value]="form().scheduleIntervalSec"
+                    (input)="form().scheduleIntervalSec = +$any($event.target).value"
+                  />
+                </div>
+              }
+            </div>
+          </fieldset>
+
+          <!-- Motor de IA y Modelo -->
+          <fieldset class="form-section">
+            <legend class="section-legend">2. Cerebro & Modelo LLM</legend>
+
+            <div class="form-row form-grid-2">
+              <div class="form-field">
+                <label for="agent-provider" class="terminal-label">Proveedor</label>
+                <select
+                  id="agent-provider"
+                  class="terminal-input"
+                  [value]="form().modelProvider"
+                  (change)="onProviderChange($any($event.target).value)"
+                >
+                  @for (p of availableProviders; track p.id) {
+                    <option [value]="p.id">{{ p.label }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="agent-model" class="terminal-label">Modelo</label>
+                <select
+                  id="agent-model"
+                  class="terminal-input font-mono"
+                  [value]="form().modelName"
+                  (change)="form().modelName = $any($event.target).value"
+                >
+                  @for (m of recommendedModels[form().modelProvider] || []; track m.id) {
+                    <option [value]="m.id">{{ m.name }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <div class="slider-header">
+                <label for="agent-temp" class="terminal-label">Temperatura: {{ form().temperature.toFixed(2) }}</label>
+                <span class="text-muted" style="font-size: 0.75rem;">
+                  {{ form().temperature <= 0.2 ? 'Determinista / Cero Alucinación' : 'Creativo / Exploratorio' }}
+                </span>
+              </div>
+              <input
+                id="agent-temp"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                class="range-slider"
+                [value]="form().temperature"
+                (input)="form().temperature = +$any($event.target).value"
+              />
+            </div>
+          </fieldset>
+
+          <!-- Prompt del Sistema -->
+          <fieldset class="form-section">
+            <legend class="section-legend">3. Prompt del Sistema (Directiva Central)</legend>
+            <div class="form-field">
+              <textarea
+                class="terminal-input font-mono system-prompt-textarea"
+                rows="5"
+                required
+                placeholder="Instrucciones precisas, prioridades de riesgo y restricciones del agente..."
+                [value]="form().systemPrompt"
+                (input)="form().systemPrompt = $any($event.target).value"
+              ></textarea>
+              <span class="field-hint">
+                Define aquí el mandato del agente. Sé específico sobre reglas de negocio (ej. "Veta cualquier orden con ganancia menor a 0.50% neto").
+              </span>
+            </div>
+          </fieldset>
+
+          <!-- Cinturón de Skills MCP -->
+          <fieldset class="form-section">
+            <div class="skills-legend-row">
+              <legend class="section-legend" style="margin-bottom: 0;">
+                4. Cinturón de Skills MCP ({{ form().skills.size }} seleccionadas)
+              </legend>
+              <div class="skills-bulk-actions">
+                <button type="button" class="btn btn-secondary btn-xs" (click)="selectAllCategorySkills()">
+                  Marcar todas
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" (click)="deselectAllCategorySkills()">
+                  Desmarcar todas
+                </button>
+              </div>
+            </div>
+
+            <!-- Category selector -->
+            <div class="skills-category-tabs">
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'ALL'"
+                (click)="selectedSkillCategory.set('ALL')"
+              >
+                Todas ({{ skillCatalog.length }})
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'TRADING'"
+                (click)="selectedSkillCategory.set('TRADING')"
+              >
+                Trading & Mercado
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'RIESGO'"
+                (click)="selectedSkillCategory.set('RIESGO')"
+              >
+                Riesgo & SUDEBAN
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'SEGURIDAD'"
+                (click)="selectedSkillCategory.set('SEGURIDAD')"
+              >
+                Seguridad & OCR
+              </button>
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'CONCILIACION'"
+                (click)="selectedSkillCategory.set('CONCILIACION')"
+              >
+                Conciliación & Cloud
+              </button>
+            </div>
+
+            <!-- Skills List Grid -->
+            <div class="skills-picker-grid">
+              @for (item of filteredSkillsInEditor(); track item.id) {
+                <label
+                  class="skill-picker-card"
+                  [class.is-selected]="form().skills.has(item.id)"
+                >
+                  <input
+                    type="checkbox"
+                    class="skill-checkbox"
+                    [checked]="form().skills.has(item.id)"
+                    (change)="toggleSkillInForm(item.id)"
+                  />
+                  <div class="skill-picker-info">
+                    <span class="skill-picker-title font-mono">{{ item.name }}</span>
+                    <span class="skill-picker-code text-muted font-mono">{{ item.id }}</span>
+                    <p class="skill-picker-desc">{{ item.description }}</p>
+                  </div>
+                </label>
+              }
+            </div>
+          </fieldset>
+
+          <footer class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeModal()">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              [disabled]="!form().name.trim() || !form().systemPrompt.trim()"
+            >
+              {{ isEditing() ? 'Guardar Cambios' : 'Crear Agente' }}
+            </button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+</div>

@@ -1953,5 +1953,164 @@
   }
 }
 
+/* ============================================================
+   Neon Pink (Cyber Neon Rose) Crystal Architecture - Dashboard
+   ============================================================ */
+:host-context([data-theme="neon-pink"]) {
+  /* Main Header & Dynamic Island */
+  .apple-main-header {
+    background: rgba(30, 7, 36, 0.78);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1.5px solid rgba(255, 45, 135, 0.42);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 20px rgba(255, 45, 135, 0.18), inset 0 1px 1px rgba(255, 180, 220, 0.2);
+
+    &:hover {
+      border-color: #ff2d87;
+      box-shadow: 0 12px 38px rgba(0, 0, 0, 0.8), 0 0 28px rgba(255, 45, 135, 0.28);
+    }
+  }
+
+  .apple-dynamic-island {
+    background: rgba(22, 5, 28, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1.5px solid rgba(255, 45, 135, 0.35);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 180, 220, 0.15);
+
+    &.island-active {
+      background: rgba(26, 6, 34, 0.92);
+      border-color: #ff2d87;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 45, 135, 0.3), inset 0 1px 0 rgba(255, 180, 220, 0.2);
+    }
+  }
+
+  /* Segmented Navigation Bar */
+  .apple-segmented-bar {
+    background: rgba(20, 4, 25, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1.5px solid rgba(255, 45, 135, 0.35);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+
+    .apple-segmented-tab.active {
+      background: linear-gradient(135deg, rgba(255, 45, 135, 0.25) 0%, rgba(200, 20, 100, 0.15) 100%);
+      border: 1px solid rgba(255, 45, 135, 0.5);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 45, 135, 0.25), inset 0 1px 0 rgba(255, 180, 220, 0.2);
+      color: #ffffff;
+    }
+  }
+
+  /* Bento KPI Cards */
+  .apple-kpi-card {
+    background: linear-gradient(145deg, rgba(38, 8, 44, 0.78) 0%, rgba(18, 4, 22, 0.88) 100%) !important;
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1.5px solid rgba(255, 45, 135, 0.42) !important;
+    border-radius: var(--radius-lg, 18px);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 18px rgba(255, 45, 135, 0.15), inset 0 1px 1px rgba(255, 180, 220, 0.18);
+
+    &:hover {
+      border-color: #ff2d87 !important;
+      transform: translateY(-2px);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 28px rgba(255, 45, 135, 0.3), inset 0 1px 2px rgba(255, 200, 230, 0.28);
+    }
+
+    .apple-kpi-val {
+      &.positive {
+        color: #00f0ff;
+        text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+      }
+      &.negative {
+        color: #ff2a55;
+        text-shadow: 0 0 10px rgba(255, 42, 85, 0.35);
+      }
+    }
+  }
+
+  /* Section Containers */
+  .apple-card-section {
+    background: linear-gradient(145deg, rgba(38, 8, 44, 0.78) 0%, rgba(18, 4, 22, 0.88) 100%) !important;
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1.5px solid rgba(255, 45, 135, 0.42) !important;
+    border-radius: 20px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 22px rgba(255, 45, 135, 0.18), inset 0 1px 1px rgba(255, 180, 220, 0.2);
+  }
+
+  /* Multi-Bank Treasury Cards */
+  .apple-bank-card {
+    background: rgba(34, 8, 40, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1.5px solid rgba(255, 45, 135, 0.35);
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 45, 135, 0.12), inset 0 1px 0 rgba(255, 180, 220, 0.15);
+
+    &:hover {
+      border-color: #ff2d87;
+      background: rgba(42, 10, 50, 0.85);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 24px rgba(255, 45, 135, 0.25);
+    }
+
+    &.card-recommended {
+      border-color: #ff2d87;
+      background: rgba(255, 45, 135, 0.12);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 45, 135, 0.28), inset 0 0 0 1px rgba(255, 45, 135, 0.4);
+    }
+
+    &.card-alert {
+      border-color: #ff2a55;
+      background: rgba(255, 42, 85, 0.1);
+    }
+
+    .apple-bank-velocity-capsule {
+      background: rgba(20, 4, 25, 0.7);
+      border: 1px solid rgba(255, 45, 135, 0.25);
+    }
+  }
+
+  /* Multi-Agent Swarm Tiles */
+  .apple-agent-tile {
+    background: rgba(34, 8, 40, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1.5px solid rgba(255, 45, 135, 0.35);
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 45, 135, 0.12), inset 0 1px 0 rgba(255, 180, 220, 0.15);
+
+    &:hover {
+      border-color: #ff2d87;
+      background: rgba(42, 10, 50, 0.85);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 24px rgba(255, 45, 135, 0.25);
+    }
+
+    .agent-status-badge {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: rgba(0, 240, 255, 0.35);
+      color: #00f0ff;
+
+      .agent-pulse-dot {
+        background: #00f0ff;
+        box-shadow: 0 0 8px #00f0ff;
+      }
+    }
+  }
+
+  /* Compact Track Fill */
+  .compact-track-bar {
+    background: rgba(255, 45, 135, 0.15);
+
+    .compact-track-fill {
+      background: linear-gradient(90deg, #ff4da6, #ff2d87);
+
+      &.fill-danger {
+        background: #ff2a55;
+      }
+    }
+  }
+}
+
+
 
 

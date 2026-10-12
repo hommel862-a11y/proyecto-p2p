@@ -11,7 +11,7 @@ import { CotizaveService } from './core/cotizave.service';
 import { BinanceP2pService } from './core/binance-p2p.service';
 import { TelegramWorkerService } from './core/telegram-worker.service';
 
-export type AppTheme = 'dark' | 'apple-dark' | 'light';
+export type AppTheme = 'dark' | 'apple-dark' | 'neon-pink' | 'light';
 
 @Component({
   imports: [
@@ -47,6 +47,8 @@ export class App {
     switch (this.theme()) {
       case 'apple-dark':
         return 'Apple Pro';
+      case 'neon-pink':
+        return 'Rosa Neón';
       case 'light':
         return 'Modo claro';
       case 'dark':
@@ -112,7 +114,12 @@ export class App {
   private initialTheme(): AppTheme {
     try {
       const stored = localStorage.getItem('p2p.theme');
-      if (stored === 'apple-dark' || stored === 'light' || stored === 'dark') {
+      if (
+        stored === 'apple-dark' ||
+        stored === 'neon-pink' ||
+        stored === 'light' ||
+        stored === 'dark'
+      ) {
         return stored;
       }
       return 'dark';
@@ -124,7 +131,13 @@ export class App {
   toggleTheme(): void {
     const current = this.theme();
     const next: AppTheme =
-      current === 'dark' ? 'apple-dark' : current === 'apple-dark' ? 'light' : 'dark';
+      current === 'dark'
+        ? 'apple-dark'
+        : current === 'apple-dark'
+          ? 'neon-pink'
+          : current === 'neon-pink'
+            ? 'light'
+            : 'dark';
     this.theme.set(next);
     try {
       localStorage.setItem('p2p.theme', next);

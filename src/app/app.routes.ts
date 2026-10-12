@@ -75,4 +75,10 @@ export const routes: Routes = [
     title: 'Centro de Servidores MCP',
     loadComponent: () => import('./features/mcp-hub/mcp-hub').then((m) => m.McpHub),
   },
+  {
+    path: 'agents',
+    title: 'Agent Studio',
+    loadComponent: () =>
+      import('./features/agent-studio/agent-studio.component').then((m) => m.AgentStudioComponent),
+  },
 ];
