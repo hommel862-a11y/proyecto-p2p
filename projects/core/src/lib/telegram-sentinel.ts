@@ -81,7 +81,11 @@ export type SentinelAction =
   | 'BACKTEST_EXECUTE'
   | 'HEATMAP'
   | 'SYNC'
-  | 'PANEL';
+  | 'PANEL'
+  | 'PLAN'
+  | 'PLAN_APPROVE'
+  | 'PLAN_REJECT'
+  | 'COPILOT_CHAT';
 
 /** Filters accepted by `/radar [banco] [capital]`. */
 export interface RadarScanParams {
@@ -115,6 +119,13 @@ export interface BacktestRequestParams {
   timeframe?: string;
 }
 
+/** Parameters accepted by `/plan [capital] [banco]` or tactical approval callbacks */
+export interface PlanActionParams {
+  capital?: number;
+  bank?: string;
+  planId?: string;
+}
+
 /**
  * Payload carried by {@link DispatchResult.params}. The concrete shape depends on
  * {@link DispatchResult.action}; narrowing on the action is required to read it.
@@ -123,7 +134,8 @@ export type SentinelActionParams =
   | RadarScanParams
   | RepriceParams
   | AutoRepriceParams
-  | BacktestRequestParams;
+  | BacktestRequestParams
+  | PlanActionParams;
 
 export interface DispatchResult {
   authorized: boolean;
@@ -132,7 +144,58 @@ export interface DispatchResult {
   params?: SentinelActionParams;
   orderId?: string;
   fileId?: string;
+  planId?: string;
   responseMarkdown: string;
+}
+
+/** Strategic Plan Representation for Telegram */
+export interface StrategyPlanTelegramCard {
+  id: string;
+  title: string;
+  route: string;
+  capitalRequiredUsdt: number;
+  expectedNetSpreadPct: number;
+  expectedProfitUsdt: number;
+  riskScore?: number;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  assignedOperatorName?: string;
+}
+
+/**
+ * Formats a strategic plan SOP card with MarkdownV2 and risk disclosure for Telegram.
+ */
+export function formatStrategyPlanTelegramMessage(plan: StrategyPlanTelegramCard): string {
+  const riskEmoji = plan.riskLevel === 'LOW' ? '🟢' : plan.riskLevel === 'MEDIUM' ? '🟡' : '🔴';
+  const riskLabel = plan.riskLevel ? `${riskEmoji} ${escapeMarkdownV2(plan.riskLevel)}` : '🟢 BAJO';
+
+  return (
+    `📋 *PLAN TÁCTICO DE ARBITRAJE PROPUESTO* 📋\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🆔 *ID:* \`${formatCodeSpan(plan.id)}\`\n` +
+    `📌 *Título:* *${escapeMarkdownV2(plan.title)}*\n` +
+    `📍 *Ruta:* \`${formatCodeSpan(plan.route)}\`\n` +
+    `💵 *Capital Requerido:* \`${formatPlainMetric(plan.capitalRequiredUsdt)} USDT\`\n` +
+    `📈 *Spread Neto Estimado:* \`+${formatPlainMetric(plan.expectedNetSpreadPct)}%\`\n` +
+    `💰 *Ganancia Estimada:* \`+$${formatPlainMetric(plan.expectedProfitUsdt)} USDT\`\n` +
+    `🛡️ *Nivel de Riesgo:* ${riskLabel}\n` +
+    `👤 *Operador:* ${escapeMarkdownV2(plan.assignedOperatorName || 'Mesa Central')}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `_Pulsá uno de los botones inferiores para autorizar o descartar este despacho en 1 clic\\._`
+  );
+}
+
+/**
+ * Builds the inline keyboard for 1-click Human-in-the-Loop plan approval or rejection.
+ */
+export function buildPlanApprovalKeyboard(planId: string): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: '✅ APROBAR PLAN', callback_data: `PLAN_APPROVE:${planId}` },
+        { text: '❌ RECHAZAR', callback_data: `PLAN_REJECT:${planId}` },
+      ],
+    ],
+  };
 }
 
 /**
@@ -864,7 +927,7 @@ export function buildSentinelReplyKeyboard(): TelegramReplyKeyboardMarkup {
   return {
     keyboard: [
       [{ text: '🎯 Radar Alta Demanda' }, { text: '⚡ Spreads en Vivo' }],
-      [{ text: '🔥 Mapa de Calor 24/7' }, { text: '🤖 Reprecio Autónomo' }],
+      [{ text: '📋 Plan Táctico SOP' }, { text: '🤖 Reprecio Autónomo' }],
       [{ text: '🏛️ Macro BCV' }, { text: '🏦 Cupos Bancarios' }],
       [{ text: '🔄 Sincronización E2E' }, { text: '🚨 Killswitch' }],
     ],
@@ -896,8 +959,17 @@ export function normalizeButtonCommand(text: string): string {
   }
 
   // 2. Spreads en vivo:
-  if (/^(?:⚡\s*)?(?:[/]?spreads?)(?:\s*en\s*vivo)?/i.test(norm)) {
-    return '/spreads';
+  const spreadRegex = /^(?:⚡\s*)?(?:[/]?spreads?)(?:\s*en\s*vivo)?/i;
+  if (spreadRegex.test(norm)) {
+    const remaining = raw.replace(spreadRegex, '').trim();
+    return remaining ? `/spreads ${remaining}` : '/spreads';
+  }
+
+  // 2b. Plan táctico SOP:
+  const planRegex = /^(?:📋\s*)?(?:plan(?:\s*t[aá]ctico)?(?:\s*sop)?|[/]?plan)/i;
+  if (planRegex.test(raw) || planRegex.test(norm)) {
+    const remaining = raw.replace(planRegex, '').trim();
+    return remaining ? `/plan ${remaining}` : '/plan';
   }
 
   // 3. Macro BCV (botón '🏛️ Macro BCV' o consultas de tasa BCV):
@@ -988,8 +1060,9 @@ export function dispatchTelegramUpdate(
         ? escapeMarkdownV2('Tu terminal P2P ya está vinculado a este chat.')
         : `ℹ️ ${escapeMarkdownV2('Para autorizar este chat, ingresá este ID')} \`${fromId}\` ${escapeMarkdownV2('en')} *${escapeMarkdownV2('Reglas de Riesgo > Telegram Sentinel')}* ${escapeMarkdownV2('o pulsá')} *${escapeMarkdownV2('"Detectar mi Chat ID"')}*`;
       const availableCommands = [
-        ['/status', 'Estado en tiempo real del terminal'],
-        ['/spreads', 'Monitoreo de márgenes y arbitraje'],
+        ['/status', 'Estado en tiempo real del terminal y conexión'],
+        ['/spreads [banco]', 'Puntas en vivo y spread neto (opcional por banco)'],
+        ['/plan [capital]', 'Formula plan táctico SOP con botones de aprobación'],
         ['/bcv', 'Inteligencia cambiaria y ventana BCV'],
         ['/bancos', 'Cupos bancarios y límites SUDEBAN'],
         ['/radar [banco] [capital]', 'Radar de gaps con filtro por banco y capital'],
@@ -1000,6 +1073,7 @@ export function dispatchTelegramUpdate(
         ['/panel', 'Panel editable del terminal: se actualiza en el lugar'],
         ['/killswitch', 'Parada de emergencia inmediata'],
         ['/resume', 'Reanudar operaciones'],
+        ['(Texto libre)', 'Consulta conversacional directa al Copiloto IA'],
       ]
         .map(([cmd, desc]) => `• \`${cmd}\` \\- ${escapeMarkdownV2(desc)}`)
         .join('\n');
@@ -1074,12 +1148,58 @@ export function dispatchTelegramUpdate(
       };
     }
 
-    if (text.startsWith('/spreads')) {
+    if (text.startsWith('/spreads') || text.startsWith('/spread')) {
+      const parts = text.split(/\s+/);
+      const bank = parts[1]?.trim();
+      const params: PlanActionParams | undefined = bank ? { bank } : undefined;
       return {
         authorized: true,
-        command: '/spreads',
+        command: text,
         action: 'SPREADS',
-        responseMarkdown: `📈 *RADAR DE MERCADO*\n\nConsulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`,
+        params,
+        responseMarkdown: bank
+          ? `📈 *CONSULTANDO PUNTAS EN VIVO PARA ${formatCodeSpan(bank.toUpperCase())}*\\.\\.\\.`
+          : `📈 *RADAR DE MERCADO*\n\nConsulta el panel de Spread Monitor para ver las mejores ofertas en vivo\\.`,
+      };
+    }
+
+    if (text.startsWith('/plan')) {
+      const parts = text.split(/\s+/);
+      let capital: number | undefined;
+      let bank: string | undefined;
+      if (parts[1]) {
+        const asCap = parseFiniteNumber(parts[1]);
+        if (asCap !== undefined) {
+          capital = asCap;
+        } else {
+          bank = parts[1];
+        }
+      }
+      if (parts[2]) {
+        const asCap = parseFiniteNumber(parts[2]);
+        if (asCap !== undefined) {
+          capital = asCap;
+        } else {
+          bank = parts[2];
+        }
+      }
+      const params: PlanActionParams = {};
+      if (capital !== undefined) params.capital = capital;
+      if (bank !== undefined) params.bank = bank;
+
+      const capLabel = capital ? `${capital} USDT` : 'capital estándar (200 USDT)';
+      const bankLabel = bank ? bank : 'todas las rutas';
+
+      return {
+        authorized: true,
+        command: text,
+        action: 'PLAN',
+        params,
+        responseMarkdown:
+          `🧠 *FORMULANDO PLAN TÁCTICO DE ARBITRAJE SOP* 📋\n\n` +
+          `• Capital: \`${formatCodeSpan(capLabel)}\`\n` +
+          `• Ruta / Banco: \`${formatCodeSpan(bankLabel)}\`\n\n` +
+          `_Consultando libro en vivo de Binance P2P y evaluando límites de tesorería\\.\\.\\._`,
       };
     }
 
@@ -1348,11 +1468,20 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (!text.startsWith('/')) {
+      return {
+        authorized: true,
+        command: text,
+        action: 'COPILOT_CHAT',
+        responseMarkdown: `🧠 *CONSULTANDO AL COPILOTO ESTRATEGA IA*\\.\\.\\.`,
+      };
+    }
+
     return {
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando recibido: "${text}". Comandos disponibles: /status, /spreads, /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o envía una foto de un comprobante bancario.`,
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spread [banco], /plan [capital], /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o escribe una pregunta abierta para el Copiloto IA.`,
       ),
     };
   }
@@ -1464,6 +1593,28 @@ export function dispatchTelegramUpdate(
         authorized: true,
         action: 'BACKTEST_EXECUTE',
         responseMarkdown: `🧪 *BACKTEST EJECUTADO DESDE TELEGRAM*\n\n⏳ ${escapeMarkdownV2('El simulador está corriendo: el reporte llegará como mensaje posterior')}`,
+      };
+    }
+
+    if (data.startsWith('PLAN_APPROVE:')) {
+      const planId = data.replace('PLAN_APPROVE:', '').trim();
+      return {
+        authorized: true,
+        action: 'PLAN_APPROVE',
+        planId,
+        params: { planId },
+        responseMarkdown: `⚡ *PROCESANDO APROBACIÓN DE PLAN ${escapeMarkdownV2(planId)}*\\.\\.\\.`,
+      };
+    }
+
+    if (data.startsWith('PLAN_REJECT:')) {
+      const planId = data.replace('PLAN_REJECT:', '').trim();
+      return {
+        authorized: true,
+        action: 'PLAN_REJECT',
+        planId,
+        params: { planId },
+        responseMarkdown: `❌ *PLAN ${escapeMarkdownV2(planId)} DESCARTADO POR EL OPERADOR*`,
       };
     }
   }

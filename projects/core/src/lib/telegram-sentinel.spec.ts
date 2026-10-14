@@ -24,6 +24,9 @@ import {
   normalizeButtonCommand,
   PANEL_CALLBACKS,
   TelegramInboundUpdate,
+  formatStrategyPlanTelegramMessage,
+  buildPlanApprovalKeyboard,
+  type StrategyPlanTelegramCard,
   type PanelReport,
 } from './telegram-sentinel';
 import type { VerificationSummary } from './decision-journal';
@@ -1707,6 +1710,114 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(normalizeButtonCommand('killswitch')).toBe('/killswitch');
       expect(normalizeButtonCommand('pausar')).toBe('/killswitch');
       expect(normalizeButtonCommand('reanudar')).toBe('/resume');
+    });
+  });
+
+  describe('Human-in-the-Loop Tactical Plan & Copilot Telegram dispatch', () => {
+    it('formatea la tarjeta de plan táctico de arbitraje con MarkdownV2 parseable', () => {
+      const plan: StrategyPlanTelegramCard = {
+        id: 'PLAN-A1B2',
+        title: 'Arbitraje Triangular Banesco',
+        route: 'Banesco ↔ Binance P2P',
+        capitalRequiredUsdt: 500,
+        expectedNetSpreadPct: 1.45,
+        expectedProfitUsdt: 7.25,
+        riskLevel: 'LOW',
+        assignedOperatorName: 'Mesa Central',
+      };
+
+      const msg = formatStrategyPlanTelegramMessage(plan);
+      expect(msg).toContain('PLAN\\-A1B2');
+      expect(msg).toContain('Arbitraje Triangular Banesco');
+      expect(msg).toContain('500');
+      expect(msg).toContain('1.45%');
+      expect(msg).toContain('7.25');
+      expect(msg).toContain('LOW');
+      expectParseableMarkdownV2(msg);
+    });
+
+    it('construye el teclado inline con botones de aprobación y rechazo de 1 clic', () => {
+      const kb = buildPlanApprovalKeyboard('PLAN-XYZ-99');
+      expect(kb.inline_keyboard).toHaveLength(1);
+      expect(kb.inline_keyboard[0]).toHaveLength(2);
+      expect(kb.inline_keyboard[0][0].text).toContain('APROBAR PLAN');
+      expect(kb.inline_keyboard[0][0].callback_data).toBe('PLAN_APPROVE:PLAN-XYZ-99');
+      expect(kb.inline_keyboard[0][1].text).toContain('RECHAZAR');
+      expect(kb.inline_keyboard[0][1].callback_data).toBe('PLAN_REJECT:PLAN-XYZ-99');
+    });
+
+    it('despacha /plan con parámetros opcionales de capital y banco', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 8881,
+        message: {
+          message_id: 10,
+          from: { id: 123456 },
+          chat: { id: 123456, type: 'private' },
+          text: '/plan 450 Banesco',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, 123456);
+      expect(res.authorized).toBe(true);
+      expect(res.action).toBe('PLAN');
+      expect(res.params).toEqual({ capital: 450, bank: 'Banesco' });
+      expectParseableMarkdownV2(res.responseMarkdown);
+    });
+
+    it('despacha callback queries PLAN_APPROVE y PLAN_REJECT', () => {
+      const approveUpdate: TelegramInboundUpdate = {
+        update_id: 8882,
+        callback_query: {
+          id: 'cb-1',
+          from: { id: 123456 },
+          data: 'PLAN_APPROVE:PLAN-TEST-1',
+        },
+      };
+      const approveRes = dispatchTelegramUpdate(approveUpdate, 123456);
+      expect(approveRes.authorized).toBe(true);
+      expect(approveRes.action).toBe('PLAN_APPROVE');
+      expect(approveRes.planId).toBe('PLAN-TEST-1');
+      expectParseableMarkdownV2(approveRes.responseMarkdown);
+
+      const rejectUpdate: TelegramInboundUpdate = {
+        update_id: 8883,
+        callback_query: {
+          id: 'cb-2',
+          from: { id: 123456 },
+          data: 'PLAN_REJECT:PLAN-TEST-1',
+        },
+      };
+      const rejectRes = dispatchTelegramUpdate(rejectUpdate, 123456);
+      expect(rejectRes.authorized).toBe(true);
+      expect(rejectRes.action).toBe('PLAN_REJECT');
+      expect(rejectRes.planId).toBe('PLAN-TEST-1');
+      expectParseableMarkdownV2(rejectRes.responseMarkdown);
+    });
+
+    it('rutea texto conversacional libre hacia COPILOT_CHAT', () => {
+      const update: TelegramInboundUpdate = {
+        update_id: 8884,
+        message: {
+          message_id: 11,
+          from: { id: 123456 },
+          chat: { id: 123456, type: 'private' },
+          text: '¿Cómo viene la brecha del BCV hoy?',
+          date: Date.now(),
+        },
+      };
+
+      const res = dispatchTelegramUpdate(update, 123456);
+      expect(res.authorized).toBe(true);
+      expect(res.action).toBe('COPILOT_CHAT');
+      expect(res.command).toBe('¿Cómo viene la brecha del BCV hoy?');
+      expectParseableMarkdownV2(res.responseMarkdown);
+    });
+
+    it('normaliza botones de plan táctico SOP', () => {
+      expect(normalizeButtonCommand('📋 Plan Táctico SOP')).toBe('/plan');
+      expect(normalizeButtonCommand('plan tactico')).toBe('/plan');
+      expect(normalizeButtonCommand('plan tactico 300 mercantil')).toBe('/plan 300 mercantil');
     });
   });
 });

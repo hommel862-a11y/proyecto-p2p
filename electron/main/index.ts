@@ -9,7 +9,10 @@ import {
   getDbService,
   setAlphaWatcher,
   setClipboardWatcher,
+  getOrchestrator,
 } from './ipc/handlers';
+import { killswitchState, resetKillswitch } from './ipc/killswitch-state';
+import { getTreasurySnapshot } from './ipc/treasury-snapshot';
 import { bootstrapMcpServer } from './mcp-bootstrap';
 import { AlphaWatcher } from './alpha-watcher';
 import { ClipboardWatcherService } from './services/clipboard-watcher';
@@ -321,6 +324,147 @@ function startStaticServer(): Promise<number> {
     }
   }
 
+  const ORCHESTRATOR_CORS = ['GET, POST, OPTIONS', 'content-type'] as const;
+
+  async function handleOrchestratorBridge(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: string,
+  ): Promise<void> {
+    if (req.method === 'OPTIONS') {
+      applyBridgeCors(req, res, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const orchestrator = getOrchestrator();
+
+    if (endpoint === 'status' && req.method === 'GET') {
+      const treasury = getTreasurySnapshot();
+      writeBridgeJson(
+        req,
+        res,
+        200,
+        {
+          status: 'online',
+          killswitchActive: killswitchState.isTriggered,
+          killswitchReason: killswitchState.reason,
+          treasury,
+        },
+        ORCHESTRATOR_CORS[0],
+        ORCHESTRATOR_CORS[1],
+      );
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      writeBridgeJson(req, res, 405, { error: 'Method not allowed' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      return;
+    }
+
+    let payload: any;
+    try {
+      const raw = await new Promise<string>((resolve, reject) => {
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString('utf8');
+          if (body.length > 256 * 1024) {
+            reject(new Error('Payload demasiado grande'));
+          }
+        });
+        req.on('end', () => resolve(body));
+        req.on('error', reject);
+      });
+      payload = JSON.parse(raw || '{}');
+    } catch {
+      writeBridgeJson(req, res, 400, { error: 'Invalid JSON body' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      return;
+    }
+
+    if (endpoint === 'chat') {
+      try {
+        const prompt = String(payload.prompt || '').trim();
+        if (!prompt) {
+          writeBridgeJson(req, res, 400, { error: 'El prompt es requerido' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+          return;
+        }
+        const result = await orchestrator.sendMessage({
+          prompt,
+          history: Array.isArray(payload.history) ? payload.history : undefined,
+          model: payload.model,
+          provider: payload.provider,
+        });
+        writeBridgeJson(
+          req,
+          res,
+          200,
+          { text: result.reply, reply: result.reply, suggestedPlan: result.suggestedPlan },
+          ORCHESTRATOR_CORS[0],
+          ORCHESTRATOR_CORS[1],
+        );
+      } catch (err: any) {
+        writeBridgeJson(req, res, 500, { error: err?.message || 'Error procesando mensaje' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      }
+      return;
+    }
+
+    if (endpoint === 'plan') {
+      try {
+        const capital = Number(payload.capitalUsdt) || 200;
+        const bank = payload.bank ? String(payload.bank).trim() : 'Banesco';
+        const prompt = payload.prompt || `Formula un plan táctico de arbitraje P2P para rotar un capital de ${capital} USDT operando con ${bank}.`;
+        const result = await orchestrator.sendMessage({ prompt });
+        writeBridgeJson(
+          req,
+          res,
+          200,
+          { plan: result.suggestedPlan, analysis: result.reply, text: result.reply },
+          ORCHESTRATOR_CORS[0],
+          ORCHESTRATOR_CORS[1],
+        );
+      } catch (err: any) {
+        writeBridgeJson(req, res, 500, { error: err?.message || 'Error formulando plan' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      }
+      return;
+    }
+
+    if (endpoint === 'execute-plan') {
+      try {
+        const planId = String(payload.planId || '').trim();
+        if (!planId) {
+          writeBridgeJson(req, res, 400, { error: 'planId es requerido' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+          return;
+        }
+        const result = await orchestrator.executePlan(planId);
+        writeBridgeJson(req, res, 200, result, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      } catch (err: any) {
+        writeBridgeJson(req, res, 500, { error: err?.message || 'Error ejecutando plan' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      }
+      return;
+    }
+
+    if (endpoint === 'killswitch') {
+      try {
+        const action = payload.action;
+        if (action === 'trigger') {
+          triggerKillswitch(payload.reason || 'Telegram remote command', 'TELEGRAM_REMOTE');
+        } else if (action === 'reset') {
+          resetKillswitch();
+        }
+        writeBridgeJson(req, res, 200, {
+          success: true,
+          killswitchActive: killswitchState.isTriggered,
+        }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      } catch (err: any) {
+        writeBridgeJson(req, res, 500, { error: err?.message || 'Error gestionando killswitch' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+      }
+      return;
+    }
+
+    writeBridgeJson(req, res, 404, { error: 'Unknown orchestrator endpoint' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
+  }
+
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
 
@@ -332,6 +476,12 @@ function startStaticServer(): Promise<number> {
 
     if (urlPath.startsWith('/api/binance/')) {
       void handleBinanceBridge(req, res);
+      return;
+    }
+
+    if (urlPath.startsWith('/api/orchestrator/')) {
+      const endpoint = decodeURIComponent(urlPath.slice('/api/orchestrator/'.length));
+      void handleOrchestratorBridge(req, res, endpoint);
       return;
     }
 

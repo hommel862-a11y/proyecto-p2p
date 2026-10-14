@@ -49,6 +49,10 @@ import {
   type RepriceParams,
   type AutoRepriceParams,
   type SentinelActionParams,
+  type PlanActionParams,
+  type StrategyPlanTelegramCard,
+  formatStrategyPlanTelegramMessage,
+  buildPlanApprovalKeyboard,
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
@@ -66,6 +70,100 @@ const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS']) || 2000;
 const ALPHA_SCAN_INTERVAL_SEC = Number(process.env['ALPHA_SCAN_INTERVAL_SEC']) || 15;
 const MIN_NET_SPREAD_PCT = Number(process.env['MIN_NET_SPREAD_PCT']) || 1.0;
 const HTTP_PORT = Number(process.env['PORT']) || 3000;
+const ELECTRON_BRIDGE_URL = process.env['ELECTRON_BRIDGE_URL']?.trim() || 'http://127.0.0.1:51857';
+
+const COPILOT_SYSTEM_PROMPT = `Sos el Copiloto Estratega de Arbitraje P2P Institucional (P2P Decisor).
+Tu rol es asistir a operadores profesionales de mesa de cambio con análisis cuantitativo riguroso, microestructura de mercado, arbitraje P2P (VES/USDT), triangulaciones, tasas BCV e identificación de riesgos.
+REGLAS ESTRICTAS:
+1. NUNCA inventes números ni tasas. Si no tenés una cifra de mercado, indicalo claramente ("N/D").
+2. Pensá siempre en términos de disciplina institucional: spread neto (descontando comisiones Maker/Taker de 0.35%), límites bancarios SUDEBAN y preservación de capital.
+3. Sé conciso, profesional y directo.`;
+
+// In-memory cache for proposed strategy plans
+const pendingPlans = new Map<string, StrategyPlanTelegramCard>();
+
+// Helper functions for Electron Orchestrator Bridge
+async function isElectronBridgeOnline(): Promise<boolean> {
+  try {
+    const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/status`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function callElectronChat(prompt: string, history?: any[]): Promise<{ text: string; suggestedPlan?: any } | null> {
+  try {
+    const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, history }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function callElectronPlan(capitalUsdt?: number, bank?: string): Promise<{ plan?: any; analysis?: string } | null> {
+  try {
+    const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capitalUsdt, bank }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function callElectronExecutePlan(planId: string): Promise<{ success: boolean; error?: string; riskWarnings?: string[] } | null> {
+  try {
+    const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/execute-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planId }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function callElectronKillswitch(action: 'trigger' | 'reset', reason?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${ELECTRON_BRIDGE_URL}/api/orchestrator/killswitch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, reason }),
+      signal: AbortSignal.timeout(3000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function mapBankToPayType(bankName: string): string[] {
+  const norm = bankName.toLowerCase().trim();
+  if (norm.includes('banesco')) return ['Banesco'];
+  if (norm.includes('mercantil')) return ['Mercantil'];
+  if (norm.includes('bdv') || norm.includes('venezuela')) return ['BancoDeVenezuela'];
+  if (norm.includes('bancamiga')) return ['Bancamiga'];
+  if (norm.includes('provincial') || norm.includes('bbva')) return ['BBVAProvincial'];
+  if (norm.includes('pago') || norm.includes('movil')) return ['PagoMovil'];
+  if (norm.includes('bnc')) return ['BancoNacionalDeCredito'];
+  return [];
+}
 
 const OFFSET_FILE = path.resolve(process.cwd(), '.telegram_offset');
 
@@ -234,6 +332,19 @@ async function sendTelegramMessage(
   }
 }
 
+async function answerCallbackQuery(token: string, callbackQueryId: string, text?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // Sentinel State
 let isRunning = true;
 let currentOffset = loadStoredOffset();
@@ -276,6 +387,7 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     case 'KILLSWITCH': {
       isKillswitchActive = true;
       repricerEngine.disable();
+      void callElectronKillswitch('trigger', 'Telegram remote killswitch');
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -287,6 +399,7 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     case 'RESUME': {
       isKillswitchActive = false;
       repricerEngine.resetCircuitBreaker();
+      void callElectronKillswitch('reset');
       await sendTelegramMessage(
         BOT_TOKEN,
         chatId,
@@ -406,15 +519,31 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     }
 
     case 'SPREADS': {
-      const depth = await fetchLiveMarketDepth();
+      const bankParam = (dispatch.params as PlanActionParams)?.bank;
+      const payTypes = bankParam ? mapBankToPayType(bankParam) : [];
+      let depth: BinanceP2pMarketDepth | null = null;
+
+      if (payTypes.length > 0) {
+        const [buyOffers, sellOffers] = await Promise.all([
+          fetchBinanceSide('BUY', 'USDT', 'VES', payTypes),
+          fetchBinanceSide('SELL', 'USDT', 'VES', payTypes),
+        ]);
+        if (buyOffers.length > 0 || sellOffers.length > 0) {
+          depth = computeMarketDepth(buyOffers, sellOffers);
+        }
+      } else {
+        depth = await fetchLiveMarketDepth();
+      }
+
       if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
-        const msg = `📈 *PUNTAS EN VIVO \\(BINANCE P2P\\)*\n━━━━━━━━━━━━━━━━━━━━\n💵 Compra: \`${depth.bestBuyPrice.toFixed(2)} Bs\`\n💰 Venta: \`${depth.bestSellPrice.toFixed(2)} Bs\`\n⚡ Spread: \`+${depth.spreadPct.toFixed(2)}%\` \\(\`${depth.spreadVes.toFixed(2)} Bs\`\\)\n🕐 Actualizado en tiempo real por el Centinela 24/7`;
+        const bankTitle = bankParam ? ` \\(${escapeMarkdownV2(bankParam.toUpperCase())}\\)` : '';
+        const msg = `📈 *PUNTAS EN VIVO${bankTitle} \\(BINANCE P2P\\)*\n━━━━━━━━━━━━━━━━━━━━\n💵 Compra: \`${depth.bestBuyPrice.toFixed(2)} Bs\`\n💰 Venta: \`${depth.bestSellPrice.toFixed(2)} Bs\`\n⚡ Spread: \`+${depth.spreadPct.toFixed(2)}%\` \\(\`${depth.spreadVes.toFixed(2)} Bs\`\\)\n🕐 Actualizado en tiempo real por el Centinela 24/7`;
         await sendTelegramMessage(BOT_TOKEN, chatId, msg);
       } else {
         await sendTelegramMessage(
           BOT_TOKEN,
           chatId,
-          `⚠️ *Libro en sincronización*, reintentá en unos segundos\\.`,
+          `⚠️ *Libro en sincronización o sin órdenes para esa ruta*, reintentá en unos segundos\\.`,
         );
       }
       break;
@@ -509,6 +638,189 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
       const msg = formatPanelTelegramMessage(report);
       const keyboard = buildPanelKeyboard(isKillswitchActive, repricerState.isActive);
       await sendTelegramMessage(BOT_TOKEN, chatId, msg, keyboard);
+      break;
+    }
+
+    case 'PLAN': {
+      await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
+      const planParams = (dispatch.params as PlanActionParams) || {};
+      const capital = planParams.capital || 200;
+      const bank = planParams.bank || 'Banesco';
+
+      // 1. Intentar orquestador en Electron si está disponible
+      if (await isElectronBridgeOnline()) {
+        const electronResult = await callElectronPlan(capital, bank);
+        if (electronResult?.plan) {
+          const p = electronResult.plan;
+          const planCard: StrategyPlanTelegramCard = {
+            id: p.planId || p.id || `PLAN-${Date.now().toString(36).toUpperCase()}`,
+            title: p.title || `Arbitraje P2P ${bank}`,
+            route: p.route || `${bank} ↔ Binance P2P`,
+            capitalRequiredUsdt: Number(p.capitalRequiredUsdt || capital),
+            expectedNetSpreadPct: Number(p.expectedNetSpreadPct || 0),
+            expectedProfitUsdt: Number(p.expectedProfitUsdt || 0),
+            riskLevel: p.riskLevel || 'LOW',
+            assignedOperatorName: 'Copiloto IA (Electron)',
+          };
+          pendingPlans.set(planCard.id, planCard);
+          const cardText = formatStrategyPlanTelegramMessage(planCard);
+          const kb = buildPlanApprovalKeyboard(planCard.id);
+          await sendTelegramMessage(BOT_TOKEN, chatId, cardText, kb);
+          break;
+        }
+      }
+
+      // 2. Si Electron no está online o no generó plan, formular con motor local en vivo
+      const depth = await fetchLiveMarketDepth();
+      if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `⚠️ *No se pudo formular el plan*: libro de Binance P2P no disponible en este momento\\.`,
+        );
+        break;
+      }
+
+      const grossSpreadPct = depth.grossSpreadPct;
+      const netSpreadPct = Math.max(0, grossSpreadPct - 0.70); // Descontando comisiones Maker/Taker 0.35% x 2
+      const profitUsdt = Number(((capital * netSpreadPct) / 100).toFixed(2));
+      const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
+
+      const localPlanCard: StrategyPlanTelegramCard = {
+        id: planId,
+        title: `Arbitraje Rápido ${bank}`,
+        route: `${bank} ↔ Binance P2P`,
+        capitalRequiredUsdt: capital,
+        expectedNetSpreadPct: Number(netSpreadPct.toFixed(2)),
+        expectedProfitUsdt: profitUsdt,
+        riskLevel: netSpreadPct >= 0.5 ? 'LOW' : 'MEDIUM',
+        assignedOperatorName: 'Centinela VPS Autónomo',
+      };
+      pendingPlans.set(planId, localPlanCard);
+      const cardText = formatStrategyPlanTelegramMessage(localPlanCard);
+      const kb = buildPlanApprovalKeyboard(planId);
+      await sendTelegramMessage(BOT_TOKEN, chatId, cardText, kb);
+      break;
+    }
+
+    case 'PLAN_APPROVE': {
+      if (update.callback_query?.id) {
+        void answerCallbackQuery(BOT_TOKEN, update.callback_query.id, 'Aprobando plan...');
+      }
+      const planId = dispatch.planId || (dispatch.params as PlanActionParams)?.planId || '';
+      if (!planId) {
+        await sendTelegramMessage(BOT_TOKEN, chatId, '⚠️ *ID de plan no especificado*\\.');
+        break;
+      }
+
+      if (await isElectronBridgeOnline()) {
+        const execRes = await callElectronExecutePlan(planId);
+        if (execRes && execRes.success) {
+          await sendTelegramMessage(
+            BOT_TOKEN,
+            chatId,
+            `✅ *PLAN ${escapeMarkdownV2(planId)} APROBADO Y DESPACHADO EN TERMINAL*\n\n` +
+            `Las instrucciones de despacho operativo se ejecutaron satisfactoriamente en el terminal de escritorio\\.`,
+          );
+          pendingPlans.delete(planId);
+          break;
+        } else if (execRes && !execRes.success) {
+          const errText = execRes.error || (execRes.riskWarnings ? execRes.riskWarnings.join(', ') : 'Veto de riesgo');
+          await sendTelegramMessage(
+            BOT_TOKEN,
+            chatId,
+            `🚫 *PLAN ${escapeMarkdownV2(planId)} BLOQUEADO POR RIESGO*\n\nMotivo: _${escapeMarkdownV2(errText)}_`,
+          );
+          break;
+        }
+      }
+
+      const cached = pendingPlans.get(planId);
+      if (cached) {
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `✅ *PLAN ${escapeMarkdownV2(planId)} AUTORIZADO POR EL OPERADOR*\n\n` +
+          `• *Ruta:* \`${escapeMarkdownV2(cached.route)}\`\n` +
+          `• *Capital:* \`${cached.capitalRequiredUsdt} USDT\`\n` +
+          `• *Spread:* \`+${cached.expectedNetSpreadPct}%\`\n\n` +
+          `_Registrado en la bitácora del Centinela 24/7\\._`,
+        );
+        pendingPlans.delete(planId);
+      } else {
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `✅ *Plan ${escapeMarkdownV2(planId)} autorizado por el operador*\\.`,
+        );
+      }
+      break;
+    }
+
+    case 'PLAN_REJECT': {
+      if (update.callback_query?.id) {
+        void answerCallbackQuery(BOT_TOKEN, update.callback_query.id, 'Plan descartado');
+      }
+      const planId = dispatch.planId || (dispatch.params as PlanActionParams)?.planId || '';
+      if (planId) {
+        pendingPlans.delete(planId);
+      }
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        `❌ *PLAN ${escapeMarkdownV2(planId || 'PROPUESTO')} DESCARTADO POR EL OPERADOR*\n\nNinguna orden fue despachada\\.`,
+      );
+      break;
+    }
+
+    case 'COPILOT_CHAT': {
+      const userText = dispatch.command || update.message?.text || '';
+      if (!userText.trim()) break;
+
+      await sendTelegramMessage(BOT_TOKEN, chatId, `🧠 *CONSULTANDO AL COPILOTO ESTRATEGA IA*\\.\\.\\.`);
+
+      if (await isElectronBridgeOnline()) {
+        const chatRes = await callElectronChat(userText);
+        if (chatRes && chatRes.text) {
+          const textMsg = `🧠 *COPILOTO ESTRATEGA IA* \\(Terminal Conectado\\)\n\n${escapeMarkdownV2(chatRes.text)}`;
+          if (chatRes.suggestedPlan) {
+            const p = chatRes.suggestedPlan;
+            const planCard: StrategyPlanTelegramCard = {
+              id: p.planId || p.id || `PLAN-${Date.now().toString(36).toUpperCase()}`,
+              title: p.title || 'Plan Táctico Propuesto',
+              route: p.route || 'Ruta P2P',
+              capitalRequiredUsdt: Number(p.capitalRequiredUsdt || 200),
+              expectedNetSpreadPct: Number(p.expectedNetSpreadPct || 0),
+              expectedProfitUsdt: Number(p.expectedProfitUsdt || 0),
+              riskLevel: p.riskLevel || 'LOW',
+              assignedOperatorName: 'Copiloto IA',
+            };
+            pendingPlans.set(planCard.id, planCard);
+            const cardText = formatStrategyPlanTelegramMessage(planCard);
+            const kb = buildPlanApprovalKeyboard(planCard.id);
+            await sendTelegramMessage(BOT_TOKEN, chatId, textMsg);
+            await sendTelegramMessage(BOT_TOKEN, chatId, cardText, kb);
+          } else {
+            await sendTelegramMessage(BOT_TOKEN, chatId, textMsg);
+          }
+          break;
+        }
+      }
+
+      try {
+        const answer = await aiProxy.ask(userText, COPILOT_SYSTEM_PROMPT);
+        const badge = answer.cached
+          ? `⚡ _Respuesta servida desde Caché Semántico_`
+          : `🤖 _Respuesta vía ${answer.providerUsed} (${answer.latencyMs}ms)_`;
+        const text = `🧠 *COPILOTO ESTRATEGA IA* \\(Cloud VPS\\)\n\n${escapeMarkdownV2(answer.content)}\n\n${escapeMarkdownV2(badge)}`;
+        await sendTelegramMessage(BOT_TOKEN, chatId, text);
+      } catch (err: any) {
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `❌ *Error al procesar consulta:* ${escapeMarkdownV2(err?.message || 'Fallo de conectividad con proveedores de IA')}`,
+        );
+      }
       break;
     }
 
