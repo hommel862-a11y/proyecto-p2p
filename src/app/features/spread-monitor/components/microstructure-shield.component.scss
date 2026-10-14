@@ -131,5 +131,88 @@
       white-space: nowrap;
     }
   }
+
+  .micro-header-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+
+    .btn {
+      flex: 1;
+      min-height: 40px;
+      font-size: 0.74rem;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-scan-trigger {
+      flex: 1 1 100%;
+    }
+  }
+
+  .obi-gauge-card {
+    padding: 12px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+    margin-top: 12px;
+  }
+
+  .obi-metrics-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+
+    .obi-tilt-label {
+      order: -1;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.78rem;
+      color: var(--muted, #cbd5e1);
+    }
+
+    .obi-sell-label,
+    .obi-buy-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+    }
+
+    .obi-sell-label { color: #ef4444; }
+    .obi-buy-label { color: #10b981; }
+  }
+
+  .obi-guidance-grid {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .bracket-btn-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+
+    .btn {
+      min-height: 38px;
+      font-size: 0.70rem;
+      padding: 4px 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+  }
 }
 

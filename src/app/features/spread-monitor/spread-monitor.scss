@@ -2304,6 +2304,288 @@
       justify-content: center;
     }
   }
+
+  /* ══════════════════════════════════════════════════════════════
+     Android 9:16 Portrait Reflow: P2P Ticker, Depth & Bank Carousel
+     ══════════════════════════════════════════════════════════════ */
+  .p2p-radar-card {
+    padding: 14px 12px;
+    border-radius: 14px;
+
+    .radar-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+
+      .radar-title-group {
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .radar-actions {
+        width: 100%;
+        justify-content: space-between;
+        gap: 6px;
+
+        .btn-sm {
+          flex: 1;
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.78rem;
+        }
+      }
+    }
+
+    /* Single-line horizontal scroll for bank selection on mobile 9:16 */
+    .bank-filter-bar {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding: 4px 2px 8px;
+      gap: 6px;
+      margin-bottom: 12px;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+
+      .bank-filter-label {
+        flex-shrink: 0;
+        font-size: 0.70rem;
+        align-self: center;
+      }
+
+      .bank-pill {
+        flex-shrink: 0;
+        white-space: nowrap;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        min-height: 36px;
+      }
+    }
+
+    /* Depth ticker tiles adapted to narrow screen */
+    .depth-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+
+      .depth-tile {
+        padding: 10px 12px;
+
+        .depth-header {
+          font-size: 0.68rem;
+        }
+
+        .depth-value {
+          font-size: 1.05rem;
+          word-break: break-all;
+        }
+
+        .depth-sub {
+          font-size: 0.68rem;
+        }
+
+        &.depth-spread {
+          grid-column: 1 / -1;
+          background: rgba(216, 180, 92, 0.08);
+          border-left-width: 3.5px;
+        }
+      }
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     High-Demand Radar (≥1k USDT) — Mobile 9:16 Single-Column Stacking
+     ══════════════════════════════════════════════════════════════ */
+  .high-demand-radar-container.apple-radar-panel {
+    padding: 14px 10px;
+    border-radius: 16px;
+    margin-top: 10px;
+
+    .apple-radar-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+
+      .apple-radar-title-group {
+        width: 100%;
+
+        .apple-radar-title-row {
+          gap: 6px;
+
+          .apple-radar-title {
+            font-size: 1.05rem;
+          }
+
+          .apple-pro-badge,
+          .apple-pill-mini {
+            font-size: 0.62rem;
+            padding: 2px 6px;
+          }
+        }
+
+        .apple-radar-subtitle {
+          font-size: 0.70rem;
+          line-height: 1.35;
+        }
+      }
+
+      .apple-radar-controls {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        gap: 8px;
+
+        .apple-control-label {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 4px;
+          width: 100%;
+
+          .control-label-text {
+            font-size: 0.74rem;
+          }
+
+          .apple-select-wrapper {
+            width: 100%;
+          }
+
+          .apple-radar-select {
+            width: 100%;
+            min-height: 44px;
+            font-size: 0.82rem;
+            padding: 8px 12px;
+          }
+        }
+
+        .apple-radar-refresh-btn {
+          width: 100%;
+          min-height: 44px;
+          font-size: 0.82rem;
+          justify-content: center;
+          display: inline-flex;
+          align-items: center;
+        }
+      }
+    }
+
+    /* Force single column vertical layout for tier cards */
+    .apple-radar-grid {
+      grid-template-columns: 1fr !important;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .apple-tier-card {
+      padding: 14px 12px;
+      border-radius: 14px;
+      gap: 12px;
+      width: 100%;
+      box-sizing: border-box;
+
+      .apple-tier-header {
+        .tier-value-group {
+          .tier-usdt-amount {
+            font-size: 1.15rem;
+          }
+          .tier-ves-approx {
+            font-size: 0.72rem;
+          }
+        }
+
+        .apple-status-pill {
+          font-size: 0.65rem;
+          padding: 2px 6px;
+        }
+      }
+
+      .apple-tier-body {
+        gap: 6px;
+
+        .apple-metric-row {
+          font-size: 0.78rem;
+
+          .metric-label {
+            font-size: 0.74rem;
+          }
+
+          .metric-val {
+            font-size: 0.80rem;
+          }
+        }
+
+        .apple-metric-subrow {
+          flex-wrap: wrap;
+          gap: 4px;
+          font-size: 0.70rem;
+
+          .apple-competitor-chip {
+            max-width: 100%;
+            font-size: 0.70rem;
+          }
+        }
+
+        .apple-net-box {
+          padding: 8px 10px;
+          border-radius: 10px;
+
+          .net-row .net-val {
+            font-size: 0.92rem;
+          }
+        }
+      }
+
+      .apple-tier-footer {
+        padding-top: 10px;
+        gap: 8px;
+
+        .apple-btn-apply {
+          min-height: 44px;
+          font-size: 0.82rem;
+        }
+      }
+    }
+
+    .apple-radar-empty {
+      padding: 28px 14px;
+
+      .empty-icon-wrap {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 10px;
+
+        .empty-icon {
+          font-size: 1.5rem;
+        }
+      }
+
+      .empty-title {
+        font-size: 0.95rem;
+      }
+
+      .empty-desc {
+        font-size: 0.75rem;
+        margin-bottom: 14px;
+      }
+
+      .apple-btn-sync {
+        width: 100%;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+  }
 }
 
 /* ============================================================
