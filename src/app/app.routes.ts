@@ -42,6 +42,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/growth-projector/growth-projector').then((m) => m.GrowthProjectorComponent),
   },
+  {
+    path: 'finanzas-360',
+    title: 'Portafolio Financiero & Pyme 360',
+    loadComponent: () =>
+      import('./features/finance-360/finance-360.component').then((m) => m.Finance360Component),
+  },
 
   {
     path: 'receipts',

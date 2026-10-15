@@ -1,0 +1,433 @@
+<section class="finance-360-container">
+  <!-- Chameleon Header Bar -->
+  <header class="chameleon-header">
+    <div class="brand-badge-row">
+      <div class="suite-title">
+        <span class="brand-logo-gem">💎</span>
+        <div>
+          <h2>HOMEL <span class="gold-text">360</span></h2>
+          <p class="subtitle">Portafolio Financiero & Gestión Comercial</p>
+        </div>
+      </div>
+
+      <!-- Chameleon Scope Switch -->
+      <div class="chameleon-pill-group" role="tablist">
+        <button
+          type="button"
+          class="chameleon-pill"
+          [class.active]="financeService.scope() === 'all'"
+          (click)="setScope('all')"
+        >
+          🌐 Todos
+        </button>
+        <button
+          type="button"
+          class="chameleon-pill"
+          [class.active]="financeService.scope() === 'personal'"
+          (click)="setScope('personal')"
+        >
+          👤 Personal
+        </button>
+        <button
+          type="button"
+          class="chameleon-pill"
+          [class.active]="financeService.scope() === 'business'"
+          (click)="setScope('business')"
+        >
+          🏢 Pyme / Negocio
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MASTER CARD: PATRIMONIO CONSOLIDADO (USD & VES) -->
+  <div class="net-worth-banner">
+    <div class="net-worth-label">Patrimonio Neto Consolidado</div>
+    <div class="net-worth-amount-row">
+      <h1 class="net-worth-usd">${{ financeService.netWorthUsd() | number: '1.2-2' }} <span class="currency-tag">USD</span></h1>
+    </div>
+    <div class="net-worth-ves">
+      ≈ Bs {{ financeService.netWorthVes() | number: '1.2-2' }}
+      <span class="rate-badge">BCV: {{ financeService.currentBcvRate() | number: '1.2-2' }}</span>
+    </div>
+
+    <div class="assets-liabilities-chips">
+      <div class="chip chip-assets">
+        <span class="chip-dot dot-green"></span>
+        <span>Activos: ${{ financeService.totalAssetsUsd() | number: '1.2-2' }}</span>
+      </div>
+      <div class="chip chip-liabilities">
+        <span class="chip-dot dot-red"></span>
+        <span>Pasivos: ${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }}</span>
+      </div>
+      <div class="chip chip-vaults">
+        <span>Bóvedas: {{ financeService.assets().length }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 14-DAY LIQUIDITY HEALTH SEMAPHORE -->
+  @let health = financeService.liquidityHealthStatus();
+  <div class="health-semaphore-card" [class.optimal]="health.status === 'optimal'" [class.warning]="health.status === 'warning'" [class.critical]="health.status === 'critical'">
+    <div class="health-icon">
+      @if (health.status === 'optimal') { 🟢 }
+      @else if (health.status === 'warning') { 🟡 }
+      @else { 🚨 }
+    </div>
+    <div class="health-info">
+      <strong class="health-title">{{ health.label }}</strong>
+      <p class="health-desc">
+        @if (health.due14DaysUsd > 0) {
+          Compromisos a 14 días: ${{ health.due14DaysUsd | number: '1.2-2' }} USD
+        } @else {
+          Cero cuotas pendientes en los próximos 14 días. Flujo disponible al 100%.
+        }
+      </p>
+    </div>
+  </div>
+
+  <!-- P2P UNIDIRECTIONAL PROFIT BRIDGE -->
+  @let todaySummary = todayP2pSummary();
+  <div class="p2p-bridge-banner">
+    <div class="bridge-content">
+      <div class="bridge-tag">
+        <span class="pulse-indicator"></span>
+        <span>MESA P2P (AISLADA)</span>
+      </div>
+      <div class="bridge-stats">
+        @if (todaySummary.pnlVes > 0 || todaySummary.pnlUsdt > 0) {
+          <div class="profit-highlight">
+            Ganancia Neta de Hoy: <strong>+${{ todaySummary.pnlUsdt | number: '1.2-2' }} USD</strong>
+            <span class="ves-sub">(+Bs {{ todaySummary.pnlVes | number: '1.2-2' }})</span>
+          </div>
+        } @else {
+          <div class="profit-highlight muted">
+            Sin operaciones con ganancia neta cerrada hoy en la mesa.
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="bridge-action">
+      @if (isP2pProfitImportedToday()) {
+        <span class="badge-synced">✅ Importado Hoy</span>
+      } @else {
+        <button
+          type="button"
+          class="btn-import-p2p"
+          [disabled]="todaySummary.pnlVes <= 0 && todaySummary.pnlUsdt <= 0"
+          (click)="triggerP2pImport()"
+        >
+          💰 Traer Ganancia Neta P2P
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- URGENT UPCOMING COMMITMENTS (7 DAYS) -->
+  @let upcoming = financeService.upcomingLiabilities7Days();
+  @if (upcoming.length > 0) {
+    <div class="upcoming-commitments-section">
+      <div class="section-title-row">
+        <h3>⏳ Próximos Vencimientos (7 Días)</h3>
+        <span class="count-badge">{{ upcoming.length }}</span>
+      </div>
+
+      <div class="commitments-scroll">
+        @for (item of upcoming; track item.id) {
+          <div class="commitment-card">
+            <div class="card-left">
+              <span class="due-tag">{{ item.dueDate }}</span>
+              <strong class="item-title">{{ item.title }}</strong>
+              <span class="item-creditor">{{ item.creditor }}</span>
+            </div>
+            <div class="card-right">
+              <div class="item-amount">${{ item.remainingAmount | number: '1.2-2' }} USD</div>
+              <button
+                type="button"
+                class="btn-quick-pay"
+                (click)="payQuickLiability(item.id, item.remainingAmount)"
+              >
+                Pagar
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- BENTO SUB-MODULES GRID -->
+  <div class="bento-modules-grid">
+    <!-- Tile 1: Cashea Calculator -->
+    <div class="bento-tile" (click)="activeTab.set('cashea')">
+      <div class="tile-header">
+        <span class="tile-icon">⚡</span>
+        <span class="tile-badge">14 Días</span>
+      </div>
+      <h4>Calculadora Cashea</h4>
+      <p>Simula compras, iniciales por nivel y proyecta impacto de cuotas quincenales.</p>
+      <div class="tile-footer">
+        <span>Planes activos: {{ financeService.state().casheaPlans.length }}</span>
+        <span class="tile-arrow">→</span>
+      </div>
+    </div>
+
+    <!-- Tile 2: Pyme Management -->
+    <div class="bento-tile" (click)="activeTab.set('pyme')">
+      <div class="tile-header">
+        <span class="tile-icon">🏢</span>
+        <span class="tile-badge">3 Gavetas</span>
+      </div>
+      <h4>Gestión Pyme & Taller</h4>
+      <p>Directorio de proveedores, semáforo de inventario y cortafuegos de caja comercial.</p>
+      <div class="tile-footer">
+        <span>Proveedores: {{ financeService.state().providers.length }}</span>
+        <span class="tile-arrow">→</span>
+      </div>
+    </div>
+
+    <!-- Tile 3: Quote Builder -->
+    <div class="bento-tile" (click)="activeTab.set('quotes')">
+      <div class="tile-header">
+        <span class="tile-icon">📝</span>
+        <span class="tile-badge">+10% Merma</span>
+      </div>
+      <h4>Generador Presupuestos</h4>
+      <p>Cotizaciones de latonería/pintura y obras por m² con doble PDF para clientes.</p>
+      <div class="tile-footer">
+        <span>Cotizaciones: {{ financeService.state().quotes.length }}</span>
+        <span class="tile-arrow">→</span>
+      </div>
+    </div>
+
+    <!-- Tile 4: Analytics & Statistics -->
+    <div class="bento-tile" (click)="activeTab.set('analytics')">
+      <div class="tile-header">
+        <span class="tile-icon">📊</span>
+        <span class="tile-badge">30/90D</span>
+      </div>
+      <h4>Estadísticas & Analítica</h4>
+      <p>Radiografía mensual de gastos, Burn Rate, mapa de calor y cono predictivo IA.</p>
+      <div class="tile-footer">
+        <span>Salud de caja: Óptima</span>
+        <span class="tile-arrow">→</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECENT MOVEMENTS FEED -->
+  <div class="recent-movements-section">
+    <div class="section-title-row">
+      <h3>📋 Movimientos Recientes</h3>
+      <span class="text-muted" style="font-size: 0.8rem;">Filtrado por: {{ financeService.scope() }}</span>
+    </div>
+
+    @let incomes = financeService.incomes();
+    @let expenses = financeService.expenses();
+
+    @if (incomes.length === 0 && expenses.length === 0) {
+      <div class="empty-state">
+        <span class="empty-icon">📭</span>
+        <p>Aún no hay movimientos registrados en este ámbito.</p>
+        <span class="text-muted">Usa los botones inferiores para registrar tu primer gasto o sueldo.</span>
+      </div>
+    } @else {
+      <div class="movements-list">
+        @for (inc of incomes.slice(0, 5); track inc.id) {
+          <div class="movement-row income-row">
+            <div class="row-icon">🟢</div>
+            <div class="row-details">
+              <strong>{{ inc.title }}</strong>
+              <span class="row-meta">{{ inc.date }} · Canal: {{ inc.channel }}</span>
+            </div>
+            <div class="row-amount income-amount">
+              +${{ inc.triMonetary.amount_usd | number: '1.2-2' }} USD
+            </div>
+          </div>
+        }
+
+        @for (exp of expenses.slice(0, 5); track exp.id) {
+          <div class="movement-row expense-row">
+            <div class="row-icon">🔴</div>
+            <div class="row-details">
+              <strong>{{ exp.title }}</strong>
+              <span class="row-meta">{{ exp.date }} · {{ exp.category }}</span>
+            </div>
+            <div class="row-amount expense-amount">
+              -${{ exp.triMonetary.amount_usd | number: '1.2-2' }} USD
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- MOBILE THUMB ZONE (ACCIONES RÁPIDAS STICKY) -->
+  <div class="thumb-action-zone">
+    <button
+      type="button"
+      class="btn-thumb btn-income"
+      (click)="openQuickModal('income')"
+    >
+      <span class="thumb-icon">➕</span>
+      <span>Ingreso / Sueldo</span>
+    </button>
+
+    <button
+      type="button"
+      class="btn-thumb btn-expense"
+      (click)="openQuickModal('expense')"
+    >
+      <span class="thumb-icon">➖</span>
+      <span>Gasto Rápido</span>
+    </button>
+
+    <button
+      type="button"
+      class="btn-thumb btn-voice"
+      (click)="openQuickModal('audio')"
+    >
+      <span class="thumb-icon">🎙️</span>
+      <span>Voz IA</span>
+    </button>
+  </div>
+
+  <!-- QUICK TRANSACTION MODAL -->
+  @if (quickModalOpen()) {
+    <div class="modal-backdrop" (click)="closeQuickModal()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>
+            @if (quickModalType() === 'income') { 🟢 Registrar Ingreso / Sueldo }
+            @else if (quickModalType() === 'expense') { 🔴 Registrar Gasto Rápido }
+            @else { 🎙️ Dictado de Nota de Voz IA }
+          </h3>
+          <button type="button" class="btn-close" (click)="closeQuickModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          @if (quickModalType() === 'audio') {
+            <div class="voice-recording-box">
+              <div class="recording-pulse" [class.active]="isRecordingAudio()">
+                🎙️
+              </div>
+              <p>
+                @if (isRecordingAudio()) {
+                  Escuchando... "Gasté 15$ en gasolina pagando en bolívares por Pago Móvil"
+                } @else {
+                  Transcripción y clasificación con IA completada.
+                }
+              </p>
+            </div>
+          }
+
+          <div class="form-group">
+            <label>Descripción / Título</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="ej. Sueldo quincenal, Gasolina, Alquiler..."
+              [ngModel]="formTitle()"
+              (ngModelChange)="formTitle.set($event)"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Monto</label>
+              <input
+                type="number"
+                class="form-control font-mono"
+                placeholder="0.00"
+                [ngModel]="formAmount()"
+                (ngModelChange)="formAmount.set($event)"
+              />
+            </div>
+
+            <div class="form-group half">
+              <label>Moneda</label>
+              <select
+                class="form-control"
+                [ngModel]="formCurrency()"
+                (ngModelChange)="formCurrency.set($event)"
+              >
+                <option value="USD">USD ($)</option>
+                <option value="VES">VES (Bs)</option>
+                <option value="USDT">USDT</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Ámbito</label>
+              <select
+                class="form-control"
+                [ngModel]="formScope()"
+                (ngModelChange)="formScope.set($event)"
+              >
+                <option value="personal">👤 Personal</option>
+                <option value="business">🏢 Pyme / Negocio</option>
+              </select>
+            </div>
+
+            <div class="form-group half">
+              <label>Categoría</label>
+              @if (quickModalType() === 'expense') {
+                <select
+                  class="form-control"
+                  [ngModel]="formExpenseCategory()"
+                  (ngModelChange)="formExpenseCategory.set($event)"
+                >
+                  <option value="groceries">🛒 Comida y Mercado</option>
+                  <option value="transport">⛽ Gasolina / Transporte</option>
+                  <option value="housing">🏠 Vivienda y Alquiler</option>
+                  <option value="services">💡 Servicios Públicos</option>
+                  <option value="health">💊 Salud y Medicina</option>
+                  <option value="cashea_installment">⚡ Cuota Cashea</option>
+                  <option value="provider_merchandise">📦 Proveedor / Mercancía</option>
+                  <option value="payroll">👥 Nómina de Personal</option>
+                  <option value="maintenance">🔧 Mantenimiento / Taller</option>
+                  <option value="other">📌 Otro</option>
+                </select>
+              } @else {
+                <select
+                  class="form-control"
+                  [ngModel]="formIncomeCategory()"
+                  (ngModelChange)="formIncomeCategory.set($event)"
+                >
+                  <option value="salary">💼 Sueldo / Salario</option>
+                  <option value="business_sale">🛍️ Venta Comercial</option>
+                  <option value="quote_advance">📝 Anticipo Presupuesto</option>
+                  <option value="freelance">💻 Honorarios / Trabajo</option>
+                  <option value="investment">📈 Inversión</option>
+                  <option value="other">📌 Otro Ingreso</option>
+                </select>
+              }
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Bóveda / Cuenta</label>
+            <select
+              class="form-control"
+              [ngModel]="formVaultId()"
+              (ngModelChange)="formVaultId.set($event)"
+            >
+              <option value="">(Sin debitar / acreditar cuenta específica)</option>
+              @for (vault of financeService.assets(); track vault.id) {
+                <option [value]="vault.id">{{ vault.name }} (Saldo: {{ vault.currency }} {{ vault.balance }})</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="closeQuickModal()">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveQuickTransaction()">Guardar Movimiento</button>
+        </div>
+      </div>
+    </div>
+  }
+</section>
