@@ -16,6 +16,7 @@ import { VoiceSpeechService, normalizeVoicePrompt } from '../../core/voice-speec
 import { AccountsService, type TreasurySnapshot } from '../../core/accounts.service';
 import { TriangulationIntelligenceService } from '../../core/triangulation-intelligence.service';
 import { StorageService } from '../../core/storage';
+import { AgentStudioService } from '../../core/agent-studio.service';
 import {
   AI_MODELS_BY_PROVIDER,
   type AiModelOption,
@@ -480,6 +481,7 @@ export class Copilot implements OnInit, OnDestroy {
   readonly voiceService = inject(VoiceSpeechService);
   private readonly storage = inject(StorageService);
   private readonly router = inject(Router);
+  private readonly agentStudio = inject(AgentStudioService);
   private readonly accountsService = inject(AccountsService);
   private readonly triangulationService = inject(TriangulationIntelligenceService);
   private readonly sanitizer = inject(DomSanitizer);
@@ -1653,7 +1655,23 @@ export class Copilot implements OnInit, OnDestroy {
 
     const url = this.router.parseUrl(this.router.url);
     const prefill = url.queryParams['prefill'];
-    if (prefill) {
+    const mention = url.queryParams['mention'];
+    const agentId = url.queryParams['agentId'];
+    const agentName = url.queryParams['agentName'];
+
+    if (mention || agentId) {
+      this.activeTab.set('chat');
+      const targetId = (agentId || (mention ? String(mention).replace(/^@/, '') : '')).trim();
+      const targetAgent = this.registeredAgents().find(
+        (a) => a.id.toLowerCase() === targetId.toLowerCase() || a.name.toLowerCase().includes(targetId.toLowerCase()),
+      );
+      const displayName = agentName || targetAgent?.name || targetId;
+      const testPrompt = `@${targetId}: Hola ${displayName}, iniciá una sesión de prueba operativa. Describí tus objetivos y analizá el estado de la mesa P2P.`;
+      this.inputPrompt.set(testPrompt);
+      setTimeout(() => {
+        void this.sendPrompt(testPrompt);
+      }, 350);
+    } else if (prefill) {
       this.inputPrompt.set(prefill);
       this.activeTab.set('chat');
     }
@@ -1865,6 +1883,36 @@ export class Copilot implements OnInit, OnDestroy {
       } catch (err) {
         console.warn('Error loading copilot data from Electron IPC:', err);
       }
+    }
+
+    // Always sync custom agents created in Agent Studio (both mobile/web and desktop)
+    try {
+      const studioAgents = this.agentStudio.agents();
+      if (studioAgents && studioAgents.length > 0) {
+        const customList: RegisteredAgentDto[] = studioAgents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          role: a.executionMode === 'ambient_daemon' ? 'DAEMON_AGENT' : 'CUSTOM_AGENT',
+          avatar: '🤖',
+          description: a.description || 'Agente personalizado creado en Agent Studio',
+          tools: a.skills || [],
+          systemPromptModifier: a.systemPrompt,
+          enabled: a.isActive,
+        }));
+
+        this.registeredAgents.update((existing) => {
+          const map = new Map<string, RegisteredAgentDto>();
+          for (const a of existing) {
+            map.set(a.id, a);
+          }
+          for (const c of customList) {
+            map.set(c.id, c);
+          }
+          return Array.from(map.values());
+        });
+      }
+    } catch (err) {
+      console.warn('Error syncing custom agents from AgentStudioService:', err);
     }
   }
 
@@ -2258,12 +2306,31 @@ export class Copilot implements OnInit, OnDestroy {
 
             const { contextText, hasLiveRates } = this.buildLiveMarketContextForCopilot();
 
+            // Detect if prompt targets a specific agent
+            const mentionedMatch = promptToSend.match(/@([a-zA-Z0-9_-]+)/);
+            let agentDirective = '';
+            if (mentionedMatch) {
+              const tid = mentionedMatch[1].toLowerCase();
+              const foundAgent = this.registeredAgents().find(
+                (a) => a.id.toLowerCase() === tid || a.name.toLowerCase().includes(tid),
+              );
+              if (foundAgent) {
+                agentDirective =
+                  `\n\n[ROL ESPECÍFICO ACTIVADO - AGENT STUDIO: ${foundAgent.name}]\n` +
+                  `Descripción del rol: ${foundAgent.description || 'Especialista en arbitraje P2P'}\n` +
+                  `Directiva / System Prompt: ${foundAgent.systemPromptModifier || ''}\n` +
+                  `Skills asignadas: ${(foundAgent.tools || []).join(', ')}\n` +
+                  `INSTRUCCIÓN: Asumí inmediatamente la identidad de este agente especializado, aplicando sus directivas y analizando las métricas de mercado con su perspectiva.`;
+              }
+            }
+
             const systemInstruction = {
               parts: [
                 {
                   text:
                     'Sos el Copiloto Senior y Estratega de Arbitraje P2P Institucional y Tesorería en Venezuela. Respondés en español rioplatense natural (voseo: fijate, mirá, tené en cuenta), de forma fluida, cálida, concisa y ejecutiva (1 o 2 párrafos breves o viñetas cortas, cero relleno ni introducciones ceremoniales, y sin forzar títulos o estructuras rígidas a menos que te pidan un reporte formal). Evaluás brechas cambiarias BCV vs paralelo, spreads netos aplicando la regla de oro (>= 0.50%), prevención de estafas/triangulaciones y rotación segura de cuentas bancarias basándote en los datos reales medidos abajo.\n\n' +
-                    contextText,
+                    contextText +
+                    agentDirective,
                 },
               ],
             };
@@ -2373,9 +2440,28 @@ export class Copilot implements OnInit, OnDestroy {
             this.scrollToBottom();
           }
         } else {
-          // No API key provided: inform the user
-          const noKeyText =
-            'Para chatear con el Copiloto IA en tu teléfono, ingresá tu API Key gratuita de Google Gemini en la pestaña "⚙ Conexión Gemini" o en el panel de APIs del menú superior.';
+          // No API key provided: inform the user or provide agent diagnostics
+          const mentionedMatch = promptToSend.match(/@([a-zA-Z0-9_-]+)/);
+          const tid = mentionedMatch ? mentionedMatch[1].toLowerCase() : '';
+          const targetAgent = this.registeredAgents().find(
+            (a) => a.id.toLowerCase() === tid || a.name.toLowerCase().includes(tid),
+          );
+
+          let noKeyText = '';
+          if (targetAgent) {
+            noKeyText =
+              `🤖 **[Sesión de Prueba de Agente: ${targetAgent.name}]**\n\n` +
+              `¡Hola! Recibí tu solicitud de prueba operativa desde Agent Studio.\n\n` +
+              `• **Identificador**: \`@${targetAgent.id}\`\n` +
+              `• **Rol Asignado**: ${targetAgent.role}\n` +
+              `• **Skills Operativas (${targetAgent.tools.length})**: ${targetAgent.tools.join(', ') || 'Modo analítico / conversación'}\n` +
+              `• **Directiva / System Prompt**: "${targetAgent.systemPromptModifier || targetAgent.description}"\n\n` +
+              `⚠️ **Aviso de IA en Android**: Tus directivas y habilidades están activas y verificadas. Para habilitar respuestas generativas en vivo con IA en tu teléfono, ingresá tu API Key gratuita de Google Gemini en la pestaña **⚙ Conexión Gemini** o en el panel de APIs.`;
+          } else {
+            noKeyText =
+              'Para chatear con el Copiloto IA en tu teléfono, ingresá tu API Key gratuita de Google Gemini en la pestaña "⚙ Conexión Gemini" o en el panel de APIs del menú superior.';
+          }
+
           this.messages.update((msgs) => [
             ...msgs,
             {

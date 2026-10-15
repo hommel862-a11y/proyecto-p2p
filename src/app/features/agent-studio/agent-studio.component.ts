@@ -261,7 +261,11 @@ export class AgentStudioComponent {
 
   goToCopilotWithAgent(agent: CustomAgentDto): void {
     void this.router.navigate(['/copilot'], {
-      queryParams: { mention: `@${agent.id}` },
+      queryParams: {
+        mention: `@${agent.id}`,
+        agentId: agent.id,
+        agentName: agent.name,
+      },
     });
   }
 
