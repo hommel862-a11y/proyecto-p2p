@@ -31,6 +31,90 @@
     </div>
   </div>
 
+  <!-- Destination Mode Router: P2P Mesa vs Portafolio 360 -->
+  <div class="destination-mode-selector" style="margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.1rem;">🧭</span>
+        <strong style="color: var(--text); font-size: 0.95rem;">Destino del Comprobante:</strong>
+      </div>
+      <div class="mode-pills" style="display: flex; gap: 6px;">
+        <button
+          type="button"
+          class="btn-tab"
+          [style.background]="destinationMode() === 'p2p' ? 'var(--gold)' : 'transparent'"
+          [style.color]="destinationMode() === 'p2p' ? '#000' : 'var(--text-muted)'"
+          (click)="destinationMode.set('p2p')"
+          style="padding: 6px 14px; font-weight: 700; font-size: 0.82rem; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);"
+        >
+          ⚡ Mesa P2P (Arbitraje)
+        </button>
+        <button
+          type="button"
+          class="btn-tab"
+          [style.background]="destinationMode() === 'finance360' ? 'var(--gold)' : 'transparent'"
+          [style.color]="destinationMode() === 'finance360' ? '#000' : 'var(--gold)'"
+          (click)="destinationMode.set('finance360')"
+          style="padding: 6px 14px; font-weight: 700; font-size: 0.82rem; border-radius: 6px; cursor: pointer; border: 1px solid var(--gold);"
+        >
+          💼 Portafolio Financiero 360
+        </button>
+      </div>
+    </div>
+
+    @if (destinationMode() === 'finance360') {
+      <div class="finance360-routing-bar" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
+        <!-- Scope -->
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="text-muted" style="font-size: 0.78rem;">Ámbito:</span>
+          <select [ngModel]="financeScope()" (ngModelChange)="financeScope.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+            <option value="personal">👤 Personal (Sueldo / Hogar)</option>
+            <option value="business">🏢 Pyme / Negocio (Taller / Comercio)</option>
+          </select>
+        </div>
+
+        <!-- Pillar -->
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="text-muted" style="font-size: 0.78rem;">Pilar:</span>
+          <select [ngModel]="financePillar()" (ngModelChange)="financePillar.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+            <option value="expense">🔴 Gasto / Salida</option>
+            <option value="income">🟢 Ingreso / Entrada</option>
+            <option value="liability">🟡 Factura por Pagar / Pasivo</option>
+          </select>
+        </div>
+
+        <!-- Category -->
+        @if (financePillar() === 'expense') {
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="text-muted" style="font-size: 0.78rem;">Categoría:</span>
+            <select [ngModel]="financeExpenseCategory()" (ngModelChange)="financeExpenseCategory.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+              <option value="cashea_installment">⚡ Cuota Cashea</option>
+              <option value="groceries">🛒 Comida y Mercado</option>
+              <option value="transport">⛽ Gasolina / Transporte</option>
+              <option value="services">💡 Servicios Públicos</option>
+              <option value="housing">🏠 Vivienda y Alquiler</option>
+              <option value="provider_merchandise">📦 Proveedor / Mercancía</option>
+              <option value="payroll">👥 Nómina de Personal</option>
+              <option value="maintenance">🔧 Mantenimiento / Taller</option>
+              <option value="other">📌 Otro Gasto</option>
+            </select>
+          </div>
+        }
+
+        <!-- Vault -->
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="text-muted" style="font-size: 0.78rem;">Bóveda / Cuenta:</span>
+          <select [ngModel]="selectedVaultId()" (ngModelChange)="selectedVaultId.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+            <option value="">(Sin debitar cuenta)</option>
+            @for (vault of finance360Service.assets(); track vault.id) {
+              <option [value]="vault.id">{{ vault.name }} ({{ vault.currency }})</option>
+            }
+          </select>
+        </div>
+      </div>
+    }
+  </div>
+
   <!-- Privacy & Offline Banner -->
   <div class="section-group" style="border-left: 4px solid var(--gold); display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
     <div style="font-size: 1.3rem; line-height: 1;">🔒</div>
@@ -464,15 +548,36 @@
                         🔍 Forense
                       </button>
                     }
-                    <button
-                      type="button"
-                      class="btn-primary"
-                      (click)="settleToLedger(rec)"
-                      style="font-size: 0.72rem; padding: 4px 8px;"
-                      title="Asentar en bitácora contable"
-                    >
-                      ⚡ Asentar
-                    </button>
+                    @if (destinationMode() === 'finance360') {
+                      <button
+                        type="button"
+                        class="btn-primary"
+                        (click)="settleToFinance360(rec)"
+                        style="font-size: 0.72rem; padding: 4px 8px; font-weight: 700;"
+                        title="Asentar en Portafolio Financiero 360 (Aislado de P2P)"
+                      >
+                        💼 Asentar 360
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-secondary"
+                        (click)="generateCashReceipt(rec)"
+                        style="font-size: 0.72rem; padding: 4px 8px;"
+                        title="Generar e imprimir comprobante formal en PDF/Papel"
+                      >
+                        🖨️ Recibo
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        class="btn-primary"
+                        (click)="settleToLedger(rec)"
+                        style="font-size: 0.72rem; padding: 4px 8px;"
+                        title="Asentar en bitácora P2P"
+                      >
+                        ⚡ Asentar P2P
+                      </button>
+                    }
                     <button
                       type="button"
                       class="btn-ghost"

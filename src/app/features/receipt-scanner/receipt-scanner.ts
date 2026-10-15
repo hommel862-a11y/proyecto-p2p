@@ -14,6 +14,17 @@ import {
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { AccountsService } from '../../core/accounts.service';
+import { CotizaveService } from '../../core/cotizave.service';
+import { Finance360Service } from '../../core/finance-360.service';
+import { FinanceAiIngestorService } from '../../core/services/finance-ai-ingestor.service';
+import { CashReceiptGeneratorService } from '../../core/services/cash-receipt-generator.service';
+import {
+  computeTriMonetaryAmount,
+  type FinanceScope,
+  type ExpenseCategory,
+  type IncomeCategory,
+  type PaymentChannel,
+} from '../../core/models/finance-360.models';
 import Tesseract from 'tesseract.js';
 
 const OPS_KEY = 'p2p.operations';
@@ -29,6 +40,20 @@ export class ReceiptScanner {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
   private readonly accountsService = inject(AccountsService);
+  private readonly cotizaveService = inject(CotizaveService);
+  readonly finance360Service = inject(Finance360Service);
+  private readonly aiIngestor = inject(FinanceAiIngestorService);
+  private readonly cashReceiptService = inject(CashReceiptGeneratorService);
+
+  /** Router destination: 'p2p' (Arbitrage Desk) vs 'finance360' (Isolated 360 Portfolio) */
+  readonly destinationMode = signal<'p2p' | 'finance360'>('p2p');
+
+  /** Finance 360 routing options */
+  readonly financeScope = signal<FinanceScope>('personal');
+  readonly financePillar = signal<'expense' | 'income' | 'liability'>('expense');
+  readonly financeExpenseCategory = signal<ExpenseCategory>('groceries');
+  readonly financeIncomeCategory = signal<IncomeCategory>('business_sale');
+  readonly selectedVaultId = signal<string>('');
 
   readonly isProcessing = signal<boolean>(false);
   readonly progressPct = signal<number>(0);
@@ -50,8 +75,6 @@ export class ReceiptScanner {
 
   /**
    * Listen for clipboard paste (Ctrl+V) across the window.
-   * If an image is pasted, immediately run OCR.
-   * If text is pasted, parse it as receipt text.
    */
   @HostListener('window:paste', ['$event'])
   onPaste(event: ClipboardEvent): void {
@@ -104,26 +127,56 @@ export class ReceiptScanner {
   async processImageFile(file: File): Promise<void> {
     this.isProcessing.set(true);
     this.progressPct.set(10);
-    this.progressStatus.set('Inicializando OCR en segundo plano...');
+    this.progressStatus.set('Inicializando OCR y Visión IA...');
 
     try {
+      // 1. Local OCR extraction via Tesseract
       const result = await Tesseract.recognize(file, 'spa+eng', {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            this.progressPct.set(Math.round((m.progress || 0) * 100));
+            this.progressPct.set(Math.round((m.progress || 0) * 80));
             this.progressStatus.set(`Extrayendo texto del comprobante: ${this.progressPct()}%`);
           }
         },
       });
 
-      const extractedText = result.data.text;
-      if (!extractedText || extractedText.trim().length === 0) {
-        this.toast.error('No se pudo detectar texto legible en la imagen.');
-        return;
+      const extractedText = result.data.text || '';
+
+      // 2. Multimodal AI Analysis with Gemini if destination is finance 360 or if possible
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const base64 = await base64Promise;
+
+      this.progressPct.set(90);
+      this.progressStatus.set('Analizando con IA Multimodal...');
+
+      const aiResult = await this.aiIngestor.analyzeReceiptImage(
+        base64,
+        file.type || 'image/jpeg',
+        extractedText,
+      );
+
+      // Auto-prefill 360 categories if suggested by AI
+      if (aiResult) {
+        if (aiResult.isCashea) {
+          this.destinationMode.set('finance360');
+          this.financeScope.set('personal');
+          this.financePillar.set('expense');
+          this.financeExpenseCategory.set('cashea_installment');
+        } else if (aiResult.scope) {
+          this.financeScope.set(aiResult.scope);
+          this.financePillar.set(aiResult.pillar);
+          if (aiResult.expenseCategory) {
+            this.financeExpenseCategory.set(aiResult.expenseCategory);
+          }
+        }
       }
 
       this.ingestReceiptText(extractedText);
-      this.toast.success('Comprobante analizado con éxito.');
+      this.toast.success('Comprobante digitalizado y analizado con éxito.');
     } catch {
       this.toast.error('Error al ejecutar el reconocimiento OCR local.');
     } finally {
@@ -380,6 +433,9 @@ export class ReceiptScanner {
     }
   }
 
+  /**
+   * Settles to P2P Trading Mesa (Legacy behavior)
+   */
   settleToLedger(record: BankReceiptRecord): void {
     try {
       const now = new Date().toISOString();
@@ -401,9 +457,95 @@ export class ReceiptScanner {
       this.storage.set(OPS_KEY, [newOp, ...currentOps]);
       this.accountsService.refreshLedger();
 
-      this.toast.success(`⚡ Comprobante Ref #${record.reference} asentado en la Bitácora.`);
+      this.toast.success(`⚡ Comprobante Ref #${record.reference} asentado en la Mesa P2P.`);
     } catch {
-      this.toast.error('Error al asentar el comprobante en la bitácora.');
+      this.toast.error('Error al asentar el comprobante en la bitácora P2P.');
     }
+  }
+
+  /**
+   * Settles to Finance 360 Portfolio with frozen rate, completely isolated from P2P!
+   */
+  settleToFinance360(record: BankReceiptRecord): void {
+    try {
+      const bcv = this.cotizaveService.ratesByMarket()['oficial']?.mid ?? 60.0;
+      const par = this.cotizaveService.ratesByMarket()['parallel']?.mid ?? bcv * 1.15;
+      const currency = (record.currency === 'USD' ? 'USD' : 'VES') as 'USD' | 'VES';
+      const tri = computeTriMonetaryAmount(record.amount, currency, bcv, par);
+      const pillar = this.financePillar();
+      const scope = this.financeScope();
+      const vaultId = this.selectedVaultId() || undefined;
+      const channel: PaymentChannel = currency === 'VES' ? 'bs_bank' : 'cash';
+
+      const title = `${record.bankDisplayName}: Ref #${record.reference} (${record.payerName || 'Pago recibido'})`;
+
+      if (pillar === 'expense') {
+        this.finance360Service.addExpense({
+          title,
+          scope,
+          category: this.financeExpenseCategory(),
+          channel,
+          vaultId,
+          triMonetary: tri,
+          date: record.timestamp ? record.timestamp.split('T')[0] : new Date().toISOString().split('T')[0],
+          referenceNumber: record.reference,
+          notes: `Asentado desde Scanner OCR. Beneficiario: ${record.beneficiaryName || 'N/A'}`,
+        });
+        this.toast.success(`💼 Gasto ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
+      } else if (pillar === 'income') {
+        this.finance360Service.addIncome({
+          title,
+          scope,
+          category: this.financeIncomeCategory(),
+          channel,
+          vaultId,
+          triMonetary: tri,
+          date: record.timestamp ? record.timestamp.split('T')[0] : new Date().toISOString().split('T')[0],
+          referenceNumber: record.reference,
+          notes: `Asentado desde Scanner OCR. Pagador: ${record.payerName || 'N/A'}`,
+        });
+        this.toast.success(`💼 Ingreso ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
+      } else {
+        this.finance360Service.addLiability({
+          title,
+          creditor: record.beneficiaryName || record.bankDisplayName,
+          scope,
+          category: 'other',
+          triMonetary: tri,
+          dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+          status: 'pending',
+          amountPaid: 0,
+          remainingAmount: tri.amount_usd,
+          notes: `Factura/Pasivo pendiente asentado desde Scanner.`,
+        });
+        this.toast.success(`💼 Pasivo pendiente ($${tri.amount_usd} USD) agendado a 14 días.`);
+      }
+    } catch {
+      this.toast.error('Error al asentar en el Portafolio 360.');
+    }
+  }
+
+  /**
+   * Generates and prints an internal cash receipt
+   */
+  generateCashReceipt(record: BankReceiptRecord): void {
+    const bcv = this.cotizaveService.ratesByMarket()['oficial']?.mid ?? 60.0;
+    const amountVes = record.currency === 'VES' ? record.amount : record.amount * bcv;
+    const amountUsd = record.currency === 'USD' ? record.amount : record.amount / bcv;
+
+    this.cashReceiptService.printReceipt({
+      receiptNumber: this.cashReceiptService.generateReceiptNumber(),
+      date: new Date().toISOString().split('T')[0],
+      payerName: record.payerName || 'Cliente Particular',
+      payerIdDoc: record.payerId || undefined,
+      receiverName: record.beneficiaryName || 'Administración Homel 360',
+      concept: `Pago por ${record.bankDisplayName} - Ref #${record.reference}`,
+      amountUsd: Math.round(amountUsd * 100) / 100,
+      amountVes: Math.round(amountVes * 100) / 100,
+      bcvRateApplied: bcv,
+      paymentMethod: `${record.bankDisplayName} (Ref: ${record.reference})`,
+      scope: this.financeScope(),
+      businessName: this.financeScope() === 'business' ? 'Operaciones Pyme' : undefined,
+    });
   }
 }
