@@ -15,11 +15,12 @@ import {
   type PaymentChannel,
   computeTriMonetaryAmount,
 } from '../../core/models/finance-360.models';
+import { FinanceAnalyticsComponent } from './components/finance-analytics.component';
 
 @Component({
   selector: 'app-finance-360',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FinanceAnalyticsComponent],
   templateUrl: './finance-360.component.html',
   styleUrls: ['./finance-360.component.scss'],
 })

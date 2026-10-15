@@ -40,6 +40,7 @@
     </div>
   </header>
 
+  @if (activeTab() === 'overview') {
   <!-- MASTER CARD: PATRIMONIO CONSOLIDADO (USD & VES) -->
   <div class="net-worth-banner">
     <div class="net-worth-label">Patrimonio Neto Consolidado</div>
@@ -262,6 +263,20 @@
       </div>
     }
   </div>
+  } @else if (activeTab() === 'analytics') {
+    <div class="submodule-view">
+      <div class="submodule-top-bar">
+        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
+          ← Volver al Resumen
+        </button>
+        <div class="submodule-header-title">
+          <h3>📊 Estadísticas & Analítica</h3>
+          <p>Diagnósticos del CFO Virtual, Proyección de Burn Rate y Radiografía de Gastos</p>
+        </div>
+      </div>
+      <app-finance-analytics />
+    </div>
+  }
 
   <!-- MOBILE THUMB ZONE (ACCIONES RÁPIDAS STICKY) -->
   <div class="thumb-action-zone">

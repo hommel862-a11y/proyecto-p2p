@@ -105,6 +105,7 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
         fees: 0,
         bankAccountId: 'b-1',
         errorFree: true,
+        notes: '',
       };
 
       const mockSell: Operation = {
@@ -119,6 +120,7 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
         fees: 0,
         bankAccountId: 'b-1',
         errorFree: true,
+        notes: '',
       };
 
       mockAccounts.todayOperations.mockReturnValue([mockBuy, mockSell]);
@@ -126,7 +128,7 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
       const result = service.importDailyP2pProfit('personal', 60.0);
       expect(result.success).toBe(true);
       expect(result.profitVes).toBe(3000); // 63000 - 60000 = 3000 VES
-      expect(result.profitUsd).toBe(50); // 3000 / 60 = $50 USD
+      expect(result.profitUsd).toBe(47.62); // 3000 VES / 63 sell price = 47.62 USD
 
       const incomes = service.incomes();
       expect(incomes.length).toBe(1);

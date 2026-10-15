@@ -1,0 +1,149 @@
+<div class="analytics-container">
+  <!-- Horizon Tabs -->
+  <div class="horizon-selector" role="tablist">
+    <button
+      type="button"
+      class="horizon-pill"
+      [class.active]="selectedHorizon() === 'day'"
+      (click)="selectedHorizon.set('day')"
+    >
+      Día a Día
+    </button>
+    <button
+      type="button"
+      class="horizon-pill"
+      [class.active]="selectedHorizon() === 'week'"
+      (click)="selectedHorizon.set('week')"
+    >
+      Semanal (7D)
+    </button>
+    <button
+      type="button"
+      class="horizon-pill"
+      [class.active]="selectedHorizon() === 'month'"
+      (click)="selectedHorizon.set('month')"
+    >
+      Mensual (Burn Rate)
+    </button>
+    <button
+      type="button"
+      class="horizon-pill"
+      [class.active]="selectedHorizon() === 'quarter'"
+      (click)="selectedHorizon.set('quarter')"
+    >
+      Trimestral (90D)
+    </button>
+  </div>
+
+  <!-- RUNWAY & BURN RATE GAUGES -->
+  @let burn = burnRate();
+  <div class="burn-rate-card" [class]="burn.status">
+    <div class="burn-header">
+      <div>
+        <span class="burn-tag">VELOCÍMETRO DE GASTO & RUNWAY</span>
+        <h3 class="burn-status-label">{{ burn.statusLabel }}</h3>
+      </div>
+      <div class="runway-big-badge">
+        <span class="runway-num">{{ burn.runwayDays }}</span>
+        <span class="runway-unit">Días</span>
+      </div>
+    </div>
+
+    <div class="burn-metrics-row">
+      <div class="metric-col">
+        <span class="metric-label">Gasto Diario Promedio</span>
+        <strong class="metric-val">${{ burn.dailyBurnRateUsd | number: '1.2-2' }} <span class="unit">USD/día</span></strong>
+      </div>
+      <div class="metric-col">
+        <span class="metric-label">Ritmo de Gasto Mensual</span>
+        <strong class="metric-val">${{ burn.monthlyBurnRateUsd | number: '1.2-2' }} <span class="unit">USD/mes</span></strong>
+      </div>
+      <div class="metric-col">
+        <span class="metric-label">Supervivencia de Caja</span>
+        <strong class="metric-val">{{ burn.runwayMonths }} <span class="unit">meses</span></strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIRTUAL CFO INTELLIGENT INSIGHTS -->
+  <div class="cfo-section">
+    <div class="cfo-header">
+      <span class="cfo-icon">💼</span>
+      <h4>Diagnósticos del CFO Virtual</h4>
+    </div>
+
+    <div class="cfo-cards-list">
+      @for (insight of cfoInsights(); track insight.title) {
+        <div class="cfo-card" [class]="insight.type">
+          <div class="cfo-badge">
+            @if (insight.type === 'alert') { 🚨 ALERTA CRÍTICA }
+            @else if (insight.type === 'warning') { ⚠️ PRECAUCIÓN }
+            @else if (insight.type === 'tip') { 💡 SUGERENCIA ESTRATÉGICA }
+            @else { 🟢 LUZ VERDE }
+          </div>
+          <strong>{{ insight.title }}</strong>
+          <p class="cfo-message">{{ insight.message }}</p>
+          <div class="cfo-rec">
+            <span>Recomendación:</span> {{ insight.recommendation }}
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- WEEKLY HEATMAP CHART -->
+  @if (selectedHorizon() === 'week' || selectedHorizon() === 'month') {
+    <div class="chart-section">
+      <div class="section-title">
+        <h4>🗓️ Mapa de Calor Semanal (Gastos por Día)</h4>
+      </div>
+
+      <div class="heatmap-bars-grid">
+        @for (day of weeklyHeatmap(); track day.dayNumber) {
+          <div class="heatmap-bar-col">
+            <div class="bar-track">
+              <div
+                class="bar-fill"
+                [style.height.%]="day.intensityPercent"
+                [style.background]="day.totalSpentUsd > 0 ? '#E2B755' : 'rgba(255,255,255,0.05)'"
+              ></div>
+            </div>
+            <span class="bar-amount">${{ day.totalSpentUsd }}</span>
+            <span class="bar-day">{{ day.dayName }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- CATEGORY BREAKDOWN LIST -->
+  <div class="category-breakdown-section">
+    <div class="section-title">
+      <h4>🏷️ Radiografía por Categorías</h4>
+    </div>
+
+    @let categories = categoryBreakdown();
+    @if (categories.length === 0) {
+      <div class="empty-state">
+        <p>No hay gastos registrados para analizar categorías.</p>
+      </div>
+    } @else {
+      <div class="category-bars-list">
+        @for (cat of categories; track cat.category) {
+          <div class="category-row">
+            <div class="cat-info-row">
+              <span class="cat-label">{{ cat.categoryLabel }}</span>
+              <span class="cat-amounts">
+                <strong>${{ cat.totalUsd | number: '1.2-2' }} USD</strong>
+                <span class="cat-pct">({{ cat.percentageOfTotal }}%)</span>
+              </span>
+            </div>
+            <div class="cat-progress-track">
+              <div class="cat-progress-fill" [style.width.%]="cat.percentageOfTotal"></div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>
