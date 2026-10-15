@@ -499,6 +499,99 @@
   }
 }
 
+/* Cloud Sync & Backup Card */
+.cloud-sync-card {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px solid rgba(226, 183, 85, 0.2);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+
+  .sync-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .sync-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .sync-icon {
+      font-size: 1.4rem;
+    }
+
+    h4 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .sync-subtitle {
+      margin: 2px 0 0 0;
+      font-size: 0.72rem;
+      color: var(--text-muted, #8b949e);
+    }
+  }
+
+  .btn-sync-cloud {
+    min-height: 40px;
+    padding: 0 16px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #0E1215;
+    background: linear-gradient(135deg, #E2B755, #cfa03f);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(226, 183, 85, 0.35);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  .backup-actions-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+
+    .btn-backup-export {
+      min-height: 36px;
+      padding: 0 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #E2B755;
+      background: rgba(226, 183, 85, 0.08);
+      border: 1px solid rgba(226, 183, 85, 0.25);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(226, 183, 85, 0.16);
+        border-color: #E2B755;
+      }
+    }
+  }
+}
+
 /* Recent Movements Feed */
 .recent-movements-section {
   display: flex;

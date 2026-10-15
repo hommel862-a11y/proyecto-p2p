@@ -217,6 +217,48 @@
     </div>
   </div>
 
+  <!-- CLOUD SYNC & MASTER LEDGER BACKUP -->
+  <div class="cloud-sync-card">
+    <div class="sync-header">
+      <div class="sync-title">
+        <span class="sync-icon">☁️</span>
+        <div>
+          <h4>Respaldo en la Nube & Libro Maestro</h4>
+          <p class="sync-subtitle">
+            Google Drive & Sheets
+            @if (driveSync.lastSyncTimestamp()) {
+              · Último: {{ driveSync.lastSyncTimestamp() | date: 'short' }}
+            }
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="btn-sync-cloud"
+        [disabled]="driveSync.syncStatus() === 'syncing'"
+        (click)="syncToGoogleDrive()"
+      >
+        @if (driveSync.syncStatus() === 'syncing') {
+          <span class="spinner-sm"></span> Sincronizando...
+        } @else {
+          ☁️ Sincronizar Ahora
+        }
+      </button>
+    </div>
+
+    <div class="backup-actions-row">
+      <button type="button" class="btn-backup-export" (click)="downloadJsonBackup()">
+        📥 JSON Maestro
+      </button>
+      <button type="button" class="btn-backup-export" (click)="downloadCsvExport('expenses')">
+        📊 CSV Gastos
+      </button>
+      <button type="button" class="btn-backup-export" (click)="downloadCsvExport('incomes')">
+        📈 CSV Ingresos
+      </button>
+    </div>
+  </div>
+
   <!-- RECENT MOVEMENTS FEED -->
   <div class="recent-movements-section">
     <div class="section-title-row">

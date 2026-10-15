@@ -104,6 +104,50 @@ export const DEFAULT_BUILTIN_AGENTS: RegisteredAgentDto[] = [
     enabled: true,
     isCustom: false,
   },
+  {
+    id: 'ux-sentinel',
+    name: 'UX & Ergonomics Sentinel',
+    role: 'UX_SENTINEL',
+    avatar: '🎨',
+    description:
+      'Vigila la ergonomía táctil en vista 9:16 Android, áreas mínimas de 44px, fluidez a 60fps y cero desbordamientos.',
+    tools: ['search_google_live'],
+    systemPromptModifier:
+      'Centinela y arquitecto de diseño ergonómico móvil 9:16 y experiencia de usuario limpia y minimalista.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'finance-cfo',
+    name: 'CFO Virtual & Tesorería 360',
+    role: 'FINANCE_CFO',
+    avatar: '💼',
+    description:
+      'Cruce de sueldos fijos, ventas comerciales Pyme, monitoreo de cuotas Cashea a 14 días y proyección de runway anti-quiebre.',
+    tools: [
+      'gdrive_backup_receipt',
+      'gsheets_sync_trade',
+      'gdrive_sync_db_backup',
+      'forecast_cash_flow_and_reconciliation',
+    ],
+    systemPromptModifier:
+      'Director financiero y tesorero 360. Monitoreá liquidez a 14 días, alertá sobre cuotas Cashea y preservá el cortafuegos de 3 gavetas.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'quote-architect',
+    name: 'Cotizador & Presupuestos 360',
+    role: 'QUOTE_ARCHITECT',
+    avatar: '📝',
+    description:
+      'Cotizaciones técnicas de talleres mecánicos/latonería y obras civiles por m² con +10% de merma técnica y exportación de doble PDF.',
+    tools: ['gdrive_backup_receipt', 'gsheets_sync_trade'],
+    systemPromptModifier:
+      'Arquitecto de presupuestos y cotizaciones técnicas. Exigí anticipos que cubran el 100% de materiales y 10% de merma técnica.',
+    enabled: true,
+    isCustom: false,
+  },
 ];
 
 export class AgentRegistry {

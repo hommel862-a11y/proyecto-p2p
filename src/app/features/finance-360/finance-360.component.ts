@@ -5,6 +5,7 @@ import { Finance360Service } from '../../core/finance-360.service';
 import { AccountsService } from '../../core/accounts.service';
 import { CotizaveService } from '../../core/cotizave.service';
 import { FinanceAiIngestorService } from '../../core/services/finance-ai-ingestor.service';
+import { FinanceDriveSyncService } from '../../core/services/finance-drive-sync.service';
 import { ToastService } from '../../core/toast.service';
 import { computeLogSummary } from '@p2p/core';
 import {
@@ -36,6 +37,7 @@ import { QuoteBuilderComponent } from './submodules/quote-builder/quote-builder.
 })
 export class Finance360Component {
   readonly financeService = inject(Finance360Service);
+  readonly driveSync = inject(FinanceDriveSyncService);
   private readonly accountsService = inject(AccountsService);
   private readonly cotizaveService = inject(CotizaveService);
   private readonly aiIngestor = inject(FinanceAiIngestorService);
@@ -186,5 +188,17 @@ export class Finance360Component {
   payQuickLiability(id: string, amountUsd: number): void {
     this.financeService.payLiability(id, amountUsd);
     this.toast.success(`Cuota/Pasivo de $${amountUsd} USD marcado como pagado.`);
+  }
+
+  async syncToGoogleDrive(): Promise<void> {
+    await this.driveSync.triggerCloudSync();
+  }
+
+  downloadJsonBackup(): void {
+    this.driveSync.downloadMasterLedgerJson();
+  }
+
+  downloadCsvExport(type: 'expenses' | 'incomes' | 'liabilities'): void {
+    this.driveSync.downloadCsv(type);
   }
 }

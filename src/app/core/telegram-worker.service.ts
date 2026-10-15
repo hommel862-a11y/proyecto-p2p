@@ -53,6 +53,7 @@ import {
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
+import { FinanceTelegramBridgeService } from './services/finance-telegram-bridge.service';
 
 /**
  * ¿Este resumen se puede imprimir sin que el panel mienta?
@@ -385,6 +386,7 @@ export class TelegramWorkerService implements OnDestroy {
    * el panel tiene que declarar en vez de esconder.
    */
   private readonly journal = inject(DecisionJournalService, { optional: true });
+  private readonly financeBridge = inject(FinanceTelegramBridgeService, { optional: true });
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
@@ -407,6 +409,7 @@ export class TelegramWorkerService implements OnDestroy {
   private pendingBacktest: BacktestRequestParams | null = null;
 
   constructor() {
+    this.financeBridge?.setTelegramWorker(this);
     void this.hydrateAndStart();
   }
 
@@ -715,6 +718,26 @@ export class TelegramWorkerService implements OnDestroy {
         details: 'Intento de acceso desde Chat ID no autorizado',
       });
       return;
+    }
+
+    // Inbound Finance 360 Commands (#gasto, #ingreso, #cashea, #resumen, /finanzas, /360)
+    const rawText = (update.message?.text || update.message?.caption || '').trim();
+    if (
+      this.financeBridge &&
+      (rawText.startsWith('#') || rawText.startsWith('/finanzas') || rawText.startsWith('/360'))
+    ) {
+      const bridgeResult = this.financeBridge.processInboundTelegramCommand(rawText);
+      if (bridgeResult.action !== 'unknown') {
+        await this.sendTelegramMessage(token, chatId, bridgeResult.replyText);
+        this.addLog({
+          time: timeStr,
+          command: rawText.split(' ')[0],
+          action: 'FINANCE_360',
+          status: bridgeResult.success ? 'SUCCESS' : 'ERROR',
+          details: bridgeResult.action,
+        });
+        return;
+      }
     }
 
     // 1. Acciones del Despachador
