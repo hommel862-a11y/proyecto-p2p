@@ -483,6 +483,22 @@ export class Finance360Service {
     };
   }
 
+  calculateCasheaBreakdown(
+    totalPriceUsd: number,
+    level: CasheaLevel = 3,
+    numberOfInstallments: number = 3,
+    startDate: Date = new Date(),
+  ) {
+    const schedule = this.calculateCasheaSchedule(totalPriceUsd, level, numberOfInstallments, startDate);
+    const financedAmountUsd = Math.max(0, totalPriceUsd - schedule.initialPaymentUsd);
+    return {
+      ...schedule,
+      initialPercent: Math.round(schedule.initialPercentage * 100),
+      financedAmountUsd,
+      installmentsCount: numberOfInstallments,
+    };
+  }
+
   addCasheaPlan(plan: Omit<CasheaPlan, 'id' | 'createdAt'>): CasheaPlan {
     const id = `cashea-${Date.now()}`;
     const newPlan: CasheaPlan = {
@@ -522,6 +538,10 @@ export class Finance360Service {
     });
 
     return newPlan;
+  }
+
+  registerCasheaPlan(plan: Omit<CasheaPlan, 'id' | 'createdAt'>): CasheaPlan {
+    return this.addCasheaPlan(plan);
   }
 
   markCasheaInstallmentPaid(
@@ -585,6 +605,11 @@ export class Finance360Service {
     return newProv;
   }
 
+  updateProvider(id: string, partial: Partial<PymeProvider>): void {
+    const updated = this.state().providers.map((p) => (p.id === id ? { ...p, ...partial } : p));
+    this.updateState({ providers: updated });
+  }
+
   addInventoryItem(item: Omit<PymeInventoryItem, 'id' | 'updatedAt' | 'status'>): PymeInventoryItem {
     const id = `inv-${Date.now()}`;
     const status: PymeInventoryItem['status'] =
@@ -604,6 +629,21 @@ export class Finance360Service {
     return newItem;
   }
 
+  updateInventoryItem(id: string, partial: Partial<PymeInventoryItem>): void {
+    const updated = this.state().inventory.map((item) => {
+      if (item.id !== id) return item;
+      const merged = { ...item, ...partial };
+      const status: PymeInventoryItem['status'] =
+        merged.currentStock <= 0
+          ? 'depleted'
+          : merged.currentStock <= merged.minimumStock
+            ? 'low'
+            : 'optimal';
+      return { ...merged, status, updatedAt: new Date().toISOString() };
+    });
+    this.updateState({ inventory: updated });
+  }
+
   // -------------------------------------------------------------
   // SUB-MÓDULO 3: PRESUPUESTOS (OBRAS & TALLER)
   // -------------------------------------------------------------
@@ -617,6 +657,15 @@ export class Finance360Service {
     };
     this.updateState({ quotes: [newQuote, ...this.state().quotes] });
     return newQuote;
+  }
+
+  saveQuote(quote: Omit<BudgetQuote, 'id' | 'createdAt'>): BudgetQuote {
+    return this.addQuote(quote);
+  }
+
+  updateQuoteStatus(id: string, status: BudgetQuote['status']): void {
+    const updated = this.state().quotes.map((q) => (q.id === id ? { ...q, status } : q));
+    this.updateState({ quotes: updated });
   }
 
   // -------------------------------------------------------------

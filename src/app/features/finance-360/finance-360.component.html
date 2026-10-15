@@ -276,6 +276,45 @@
       </div>
       <app-finance-analytics />
     </div>
+  } @else if (activeTab() === 'cashea') {
+    <div class="submodule-view">
+      <div class="submodule-top-bar">
+        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
+          ← Volver al Resumen
+        </button>
+        <div class="submodule-header-title">
+          <h3>⚡ Calculadora Cashea & Cuotas</h3>
+          <p>Simulación quincenal, inicial por nivel y gestión de financiamientos</p>
+        </div>
+      </div>
+      <app-cashea-calculator />
+    </div>
+  } @else if (activeTab() === 'pyme') {
+    <div class="submodule-view">
+      <div class="submodule-top-bar">
+        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
+          ← Volver al Resumen
+        </button>
+        <div class="submodule-header-title">
+          <h3>🏢 Gestión Pyme & Taller</h3>
+          <p>Cortafuegos de 3 gavetas, directorio de proveedores y semáforo de inventario</p>
+        </div>
+      </div>
+      <app-pyme-manager />
+    </div>
+  } @else if (activeTab() === 'quotes') {
+    <div class="submodule-view">
+      <div class="submodule-top-bar">
+        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
+          ← Volver al Resumen
+        </button>
+        <div class="submodule-header-title">
+          <h3>📝 Generador de Presupuestos 360</h3>
+          <p>Latonería, pintura y obras por m² con +10% de merma técnica y doble PDF</p>
+        </div>
+      </div>
+      <app-quote-builder />
+    </div>
   }
 
   <!-- MOBILE THUMB ZONE (ACCIONES RÁPIDAS STICKY) -->

@@ -1,0 +1,307 @@
+<div class="pyme-manager-container">
+  <!-- PYME TABS SELECTOR -->
+  <div class="pyme-tabs-row" role="tablist">
+    <button
+      type="button"
+      class="pyme-tab-pill"
+      [class.active]="activePymeTab() === 'drawers'"
+      (click)="activePymeTab.set('drawers')"
+    >
+      🔒 Cortafuegos 3 Gavetas
+    </button>
+    <button
+      type="button"
+      class="pyme-tab-pill"
+      [class.active]="activePymeTab() === 'providers'"
+      (click)="activePymeTab.set('providers')"
+    >
+      🚚 Directorio Proveedores ({{ providers().length }})
+    </button>
+    <button
+      type="button"
+      class="pyme-tab-pill"
+      [class.active]="activePymeTab() === 'inventory'"
+      (click)="activePymeTab.set('inventory')"
+    >
+      📦 Inventario Semáforo ({{ inventory().length }})
+    </button>
+  </div>
+
+  <!-- TAB 1: 3-DRAWER FIREWALL -->
+  @if (activePymeTab() === 'drawers') {
+    <div class="drawers-section">
+      <div class="pyme-card">
+        <div class="card-header">
+          <span class="pyme-badge">PROTECCIÓN DE CAPITAL PYME</span>
+          <h3>Regla de Oro: Las 3 Gavetas Intocables</h3>
+          <p class="card-subtitle">
+            Nunca mezcles el dinero de reposición de inventario con las ganancias. Simula una venta y divide el flujo automáticamente.
+          </p>
+        </div>
+
+        <div class="sale-sim-row">
+          <div class="form-group flex-1">
+            <label>Monto de la Venta o Cobro ($ USD)</label>
+            <input
+              type="number"
+              class="form-control big-input"
+              placeholder="250"
+              [ngModel]="saleAmount()"
+              (ngModelChange)="saleAmount.set($event)"
+            />
+          </div>
+        </div>
+
+        @let split = drawerSplit();
+        <div class="drawers-grid">
+          <!-- GAVETA 1 -->
+          <div class="drawer-card drawer-replenishment">
+            <div class="drawer-top">
+              <span class="drawer-tag">GAVETA 1 · REPOSICIÓN</span>
+              <span class="drawer-lock">🔒 INTOCABLE</span>
+            </div>
+            <h4>Insumos & Mercancía</h4>
+            <div class="drawer-amount">
+              <strong class="amount-usd">${{ split.drawer1.usd | number: '1.2-2' }} USD</strong>
+              <span class="amount-ves">≈ Bs {{ split.drawer1.ves | number: '1.2-2' }}</span>
+            </div>
+            <p class="drawer-desc">Garantiza que el taller o negocio nunca se descapitalice al reponer insumos.</p>
+            <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la venta</div>
+          </div>
+
+          <!-- GAVETA 2 -->
+          <div class="drawer-card drawer-operational">
+            <div class="drawer-top">
+              <span class="drawer-tag">GAVETA 2 · OPERATIVA</span>
+              <span class="drawer-icon">👥 NÓMINA & FIJOS</span>
+            </div>
+            <h4>Operatividad & Sueldos</h4>
+            <div class="drawer-amount">
+              <strong class="amount-usd">${{ split.drawer2.usd | number: '1.2-2' }} USD</strong>
+              <span class="amount-ves">≈ Bs {{ split.drawer2.ves | number: '1.2-2' }}</span>
+            </div>
+            <p class="drawer-desc">Sueldos de empleados, servicios del local, alquiler y mantenimiento de equipos.</p>
+            <div class="drawer-pct-badge">{{ drawer2Percent() }}% de la venta</div>
+          </div>
+
+          <!-- GAVETA 3 -->
+          <div class="drawer-card drawer-profit">
+            <div class="drawer-top">
+              <span class="drawer-tag">GAVETA 3 · UTILIDAD</span>
+              <span class="drawer-icon">💎 GANANCIA NETA</span>
+            </div>
+            <h4>Ganancia Libre & CAPEX</h4>
+            <div class="drawer-amount">
+              <strong class="amount-usd">${{ split.drawer3.usd | number: '1.2-2' }} USD</strong>
+              <span class="amount-ves">≈ Bs {{ split.drawer3.ves | number: '1.2-2' }}</span>
+            </div>
+            <p class="drawer-desc">Utilidad neta real distribuible a los socios o fondo de reinversión comercial.</p>
+            <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la venta</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- TAB 2: PROVIDERS DIRECTORY -->
+  @if (activePymeTab() === 'providers') {
+    <div class="providers-section">
+      <div class="pyme-card">
+        <div class="card-header-action">
+          <div>
+            <span class="pyme-badge">COMPROMISOS CON TERCEROS</span>
+            <h3>Directorio de Proveedores</h3>
+            <p class="card-subtitle">
+              Deuda total pendiente: <strong class="gold-text">${{ totalProviderDebtUsd() | number: '1.2-2' }} USD</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary-small"
+            (click)="showAddProviderModal.set(true)"
+          >
+            + Nuevo Proveedor
+          </button>
+        </div>
+
+        @if (providers().length === 0) {
+          <div class="empty-list">
+            <p>No tienes proveedores registrados.</p>
+          </div>
+        } @else {
+          <div class="providers-list">
+            @for (prov of providers(); track prov.id) {
+              <div class="provider-row-card">
+                <div class="prov-left">
+                  <strong class="prov-name">{{ prov.name }}</strong>
+                  <span class="prov-category">{{ prov.category }}</span>
+                  @if (prov.phone) {
+                    <span class="prov-phone">📞 {{ prov.phone }}</span>
+                  }
+                </div>
+                <div class="prov-right">
+                  <div class="prov-debt-box">
+                    <span class="debt-label">Saldo Pendiente:</span>
+                    <strong class="debt-val" [class.has-debt]="prov.outstandingDebtUsd > 0">
+                      ${{ prov.outstandingDebtUsd | number: '1.2-2' }} USD
+                    </strong>
+                  </div>
+                  @if (prov.outstandingDebtUsd > 0) {
+                    <button
+                      type="button"
+                      class="btn-pay-provider"
+                      (click)="payProviderDebt(prov, prov.outstandingDebtUsd)"
+                    >
+                      Pagar Total
+                    </button>
+                  } @else {
+                    <span class="settled-badge">Al día ✓</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- TAB 3: INVENTORY SEMAPHORE -->
+  @if (activePymeTab() === 'inventory') {
+    <div class="inventory-section">
+      <div class="pyme-card">
+        <div class="card-header-action">
+          <div>
+            <span class="pyme-badge">STOCK CRÍTICO & CONSUMO</span>
+            <h3>Semáforo de Inventario</h3>
+            <p class="card-subtitle">
+              Alertas de reposición: <strong [class.red-text]="inventoryCriticalCount() > 0">{{ inventoryCriticalCount() }} artículos bajos</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary-small"
+            (click)="showAddItemModal.set(true)"
+          >
+            + Añadir Insumo
+          </button>
+        </div>
+
+        @if (inventory().length === 0) {
+          <div class="empty-list">
+            <p>No hay insumos registrados en el catálogo.</p>
+          </div>
+        } @else {
+          <div class="inventory-list">
+            @for (item of inventory(); track item.id) {
+              @let isCritical = item.currentStock === 0;
+              @let isWarning = item.currentStock > 0 && item.currentStock <= item.minimumStock;
+              <div class="inventory-row-card" [class.critical]="isCritical" [class.warning]="isWarning">
+                <div class="item-left">
+                  <div class="status-indicator">
+                    @if (isCritical) { 🔴 }
+                    @else if (isWarning) { 🟡 }
+                    @else { 🟢 }
+                  </div>
+                  <div>
+                    <strong class="item-name">{{ item.name }}</strong>
+                    <span class="item-meta">{{ item.category }} · Mínimo: {{ item.minimumStock }} unidades</span>
+                    <span class="item-cost">Costo: ${{ item.unitCostUsd | number: '1.2-2' }} | Venta: ${{ item.sellingPriceUsd | number: '1.2-2' }}</span>
+                  </div>
+                </div>
+
+                <div class="item-right">
+                  <div class="stock-stepper">
+                    <button type="button" class="btn-step" (click)="adjustStock(item, -1)">-</button>
+                    <span class="stock-qty">{{ item.currentStock }}</span>
+                    <button type="button" class="btn-step" (click)="adjustStock(item, 1)">+</button>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- MODAL: AGREGAR PROVEEDOR -->
+  @if (showAddProviderModal()) {
+    <div class="modal-backdrop" (click)="showAddProviderModal.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>🚚 Registrar Nuevo Proveedor</h3>
+          <button type="button" class="btn-close" (click)="showAddProviderModal.set(false)">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Nombre de la Empresa o Proveedor</label>
+            <input type="text" class="form-control" [ngModel]="provName()" (ngModelChange)="provName.set($event)" placeholder="ej. Pinturas Dupont, Distribuidora San Martín" />
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <input type="text" class="form-control" [ngModel]="provCategory()" (ngModelChange)="provCategory.set($event)" placeholder="ej. Pinturas, Repuestos, Ferretería" />
+          </div>
+          <div class="form-group">
+            <label>Teléfono de Contacto</label>
+            <input type="text" class="form-control" [ngModel]="provPhone()" (ngModelChange)="provPhone.set($event)" placeholder="0414-1234567" />
+          </div>
+          <div class="form-group">
+            <label>Datos Bancarios / Pago Móvil</label>
+            <input type="text" class="form-control" [ngModel]="provBankDetails()" (ngModelChange)="provBankDetails.set($event)" placeholder="Banesco 0134... C.I. 123456" />
+          </div>
+          <div class="form-group">
+            <label>Saldo Inicial por Pagar ($ USD)</label>
+            <input type="number" class="form-control" [ngModel]="provDebt()" (ngModelChange)="provDebt.set($event)" placeholder="0" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="showAddProviderModal.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveProvider()">Guardar Proveedor</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL: AGREGAR INSUMO -->
+  @if (showAddItemModal()) {
+    <div class="modal-backdrop" (click)="showAddItemModal.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>📦 Añadir Artículo al Inventario</h3>
+          <button type="button" class="btn-close" (click)="showAddItemModal.set(false)">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Descripción del Artículo</label>
+            <input type="text" class="form-control" [ngModel]="itemName()" (ngModelChange)="itemName.set($event)" placeholder="ej. Fondo 2K Poliuretano, Lija de Agua #600" />
+          </div>
+          <div class="form-row-dual">
+            <div class="form-group">
+              <label>Stock Actual</label>
+              <input type="number" class="form-control" [ngModel]="itemStock()" (ngModelChange)="itemStock.set($event)" placeholder="10" />
+            </div>
+            <div class="form-group">
+              <label>Stock Mínimo (Alerta)</label>
+              <input type="number" class="form-control" [ngModel]="itemMinStock()" (ngModelChange)="itemMinStock.set($event)" placeholder="5" />
+            </div>
+          </div>
+          <div class="form-row-dual">
+            <div class="form-group">
+              <label>Costo Unitario ($ USD)</label>
+              <input type="number" class="form-control" [ngModel]="itemCost()" (ngModelChange)="itemCost.set($event)" placeholder="15" />
+            </div>
+            <div class="form-group">
+              <label>Precio Venta ($ USD)</label>
+              <input type="number" class="form-control" [ngModel]="itemPrice()" (ngModelChange)="itemPrice.set($event)" placeholder="25" />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="showAddItemModal.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveInventoryItem()">Guardar Insumo</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

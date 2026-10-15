@@ -16,11 +16,21 @@ import {
   computeTriMonetaryAmount,
 } from '../../core/models/finance-360.models';
 import { FinanceAnalyticsComponent } from './components/finance-analytics.component';
+import { CasheaCalculatorComponent } from './submodules/cashea-calculator/cashea-calculator.component';
+import { PymeManagerComponent } from './submodules/pyme-manager/pyme-manager.component';
+import { QuoteBuilderComponent } from './submodules/quote-builder/quote-builder.component';
 
 @Component({
   selector: 'app-finance-360',
   standalone: true,
-  imports: [CommonModule, FormsModule, FinanceAnalyticsComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    FinanceAnalyticsComponent,
+    CasheaCalculatorComponent,
+    PymeManagerComponent,
+    QuoteBuilderComponent,
+  ],
   templateUrl: './finance-360.component.html',
   styleUrls: ['./finance-360.component.scss'],
 })

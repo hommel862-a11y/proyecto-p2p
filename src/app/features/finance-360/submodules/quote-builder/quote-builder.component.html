@@ -1,0 +1,448 @@
+<div class="quote-builder-container">
+  <!-- MODE SELECTOR PILLS -->
+  <div class="quote-type-pills-row" role="tablist">
+    <button
+      type="button"
+      class="quote-type-pill"
+      [class.active]="quoteType() === 'automotive_bodywork'"
+      (click)="quoteType.set('automotive_bodywork')"
+    >
+      🚗 Latonería & Pintura Automotriz
+    </button>
+    <button
+      type="button"
+      class="quote-type-pill"
+      [class.active]="quoteType() === 'construction_m2'"
+      (click)="quoteType.set('construction_m2')"
+    >
+      🏗️ Obras & Construcción por m²
+    </button>
+  </div>
+
+  <!-- BUILDER CARD -->
+  <div class="quote-card">
+    <div class="card-header">
+      <div class="tag-row">
+        <span class="quote-badge">
+          {{ quoteType() === 'automotive_bodywork' ? 'TALLER AUTOMOTRIZ' : 'CONSTRUCTORA / OBRAS' }}
+        </span>
+        <span class="waste-badge">+10% Merma Técnica Automática</span>
+      </div>
+      <h3>Generador de Presupuestos Técnicos</h3>
+      <p class="card-subtitle">
+        Calcula insumos con factor de desperdicio (+10%), mano de obra y margen comercial congelado en USD/BCV.
+      </p>
+    </div>
+
+    <!-- CLIENT DATA SECTION -->
+    <div class="client-data-grid">
+      <div class="form-group">
+        <label>Nombre del Cliente / Empresa</label>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="Carlos Rodríguez"
+          [ngModel]="clientName()"
+          (ngModelChange)="clientName.set($event)"
+        />
+      </div>
+
+      <div class="form-row-dual">
+        <div class="form-group">
+          <label>Teléfono de Contacto</label>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="0412-5551234"
+            [ngModel]="clientPhone()"
+            (ngModelChange)="clientPhone.set($event)"
+          />
+        </div>
+        <div class="form-group">
+          <label>C.I. / RIF</label>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="V-18456789"
+            [ngModel]="clientDoc()"
+            (ngModelChange)="clientDoc.set($event)"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTOMOTIVE RECIPE -->
+    @if (quoteType() === 'automotive_bodywork') {
+      <div class="recipe-section">
+        <div class="section-title">
+          <h4>🔧 Datos del Vehículo & Piezas a Pintar</h4>
+        </div>
+
+        <div class="form-row-dual">
+          <div class="form-group">
+            <label>Vehículo (Marca / Modelo / Año)</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Toyota Corolla 2012"
+              [ngModel]="vehicleModel()"
+              (ngModelChange)="vehicleModel.set($event)"
+            />
+          </div>
+          <div class="form-group">
+            <label>Color / Código de Pintura</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Gris Plata Metalizado"
+              [ngModel]="vehicleColor()"
+              (ngModelChange)="vehicleColor.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="form-row-triple">
+          <div class="form-group">
+            <label>Cantidad de Piezas</label>
+            <input
+              type="number"
+              class="form-control"
+              min="1"
+              [ngModel]="selectedPiecesCount()"
+              (ngModelChange)="selectedPiecesCount.set($event)"
+            />
+          </div>
+          <div class="form-group">
+            <label>Insumos/Pieza ($ USD)</label>
+            <input
+              type="number"
+              class="form-control"
+              placeholder="35"
+              [ngModel]="costPerPieceMaterialsUsd()"
+              (ngModelChange)="costPerPieceMaterialsUsd.set($event)"
+            />
+          </div>
+          <div class="form-group">
+            <label>Mano de Obra/Pieza ($)</label>
+            <input
+              type="number"
+              class="form-control"
+              placeholder="50"
+              [ngModel]="laborPerPieceUsd()"
+              (ngModelChange)="laborPerPieceUsd.set($event)"
+            />
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- CONSTRUCTION RECIPE -->
+    @if (quoteType() === 'construction_m2') {
+      <div class="recipe-section">
+        <div class="section-title">
+          <h4>🏗️ Especificaciones de la Obra</h4>
+        </div>
+
+        <div class="form-group">
+          <label>Descripción del Trabajo</label>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="Pintura Interior, Friso y Porcelanato"
+            [ngModel]="projectTitle()"
+            (ngModelChange)="projectTitle.set($event)"
+          />
+        </div>
+
+        <div class="form-row-triple">
+          <div class="form-group">
+            <label>Área Total (m²)</label>
+            <input
+              type="number"
+              class="form-control"
+              placeholder="65"
+              [ngModel]="areaSquareMeters()"
+              (ngModelChange)="areaSquareMeters.set($event)"
+            />
+          </div>
+          <div class="form-group">
+            <label>Material/m² ($ USD)</label>
+            <input
+              type="number"
+              class="form-control"
+              placeholder="4.5"
+              [ngModel]="materialCostPerM2()"
+              (ngModelChange)="materialCostPerM2.set($event)"
+            />
+          </div>
+          <div class="form-group">
+            <label>Mano de Obra/m² ($)</label>
+            <input
+              type="number"
+              class="form-control"
+              placeholder="6.0"
+              [ngModel]="laborCostPerM2()"
+              (ngModelChange)="laborCostPerM2.set($event)"
+            />
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- MARGIN ADJUSTMENTS -->
+    <div class="margins-row">
+      <div class="form-group half">
+        <label>Merma Técnica (+%)</label>
+        <input
+          type="number"
+          class="form-control readonly-input"
+          [ngModel]="technicalWastePercent()"
+          readonly
+        />
+      </div>
+      <div class="form-group half">
+        <label>Margen de Ganancia (%)</label>
+        <input
+          type="number"
+          class="form-control"
+          placeholder="25"
+          [ngModel]="profitMarginPercent()"
+          (ngModelChange)="profitMarginPercent.set($event)"
+        />
+      </div>
+    </div>
+
+    <!-- TOTALS BREAKDOWN BOX -->
+    @let totals = currentQuoteTotals();
+    <div class="quote-totals-box">
+      <div class="totals-header">
+        <span>RESUMEN FINANCIERO</span>
+        <span class="rate-tag">Tasa BCV: Bs {{ totals.bcv | number: '1.2-2' }}</span>
+      </div>
+
+      <div class="breakdown-list">
+        <div class="breakdown-row">
+          <span>Materiales Base:</span>
+          <strong>${{ totals.rawMaterials | number: '1.2-2' }} USD</strong>
+        </div>
+        <div class="breakdown-row highlight-waste">
+          <span>+10% Merma Técnica de Insumos:</span>
+          <strong>+${{ totals.waste | number: '1.2-2' }} USD</strong>
+        </div>
+        <div class="breakdown-row">
+          <span>Mano de Obra Calificada:</span>
+          <strong>${{ totals.totalLabor | number: '1.2-2' }} USD</strong>
+        </div>
+        <div class="breakdown-row">
+          <span>Margen de Beneficio ({{ profitMarginPercent() }}%):</span>
+          <strong>+${{ totals.profit | number: '1.2-2' }} USD</strong>
+        </div>
+      </div>
+
+      <div class="grand-total-row">
+        <div class="total-left">
+          <span class="total-tag">PRECIO TOTAL FINAL</span>
+          <h2 class="total-usd">${{ totals.totalUsd | number: '1.2-2' }} <span class="usd-unit">USD</span></h2>
+        </div>
+        <div class="total-right">
+          <span class="ves-tag">Equivalente Oficial BCV</span>
+          <strong class="total-ves">Bs {{ totals.totalVes | number: '1.2-2' }}</strong>
+        </div>
+      </div>
+
+      <div class="quote-actions-row">
+        <button
+          type="button"
+          class="btn-action btn-pdf-client"
+          (click)="openPreview('client')"
+        >
+          📄 Ver PDF Cliente (Formal)
+        </button>
+
+        <button
+          type="button"
+          class="btn-action btn-pdf-internal"
+          (click)="openPreview('internal')"
+        >
+          ⚙️ Ver PDF Taller (Interno)
+        </button>
+
+        <button
+          type="button"
+          class="btn-action btn-save-quote"
+          (click)="saveCurrentQuote()"
+        >
+          💾 Guardar Presupuesto
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVED QUOTES LIST -->
+  <div class="saved-quotes-card">
+    <div class="card-header">
+      <div class="tag-row">
+        <span class="quote-badge">HISTORIAL DE COTIZACIONES</span>
+        <span class="count-badge">{{ savedQuotes().length }} registradas</span>
+      </div>
+      <h3>Presupuestos Emitidos</h3>
+    </div>
+
+    @if (savedQuotes().length === 0) {
+      <div class="empty-quotes">
+        <p>No has generado cotizaciones todavía.</p>
+      </div>
+    } @else {
+      <div class="quotes-list">
+        @for (q of savedQuotes(); track q.id) {
+          <div class="quote-row-item" [class.accepted]="q.status === 'approved'">
+            <div class="q-left">
+              <strong class="q-title">{{ q.description }}</strong>
+              <span class="q-client">Cliente: {{ q.clientName }} ({{ q.quoteNumber }})</span>
+              <span class="q-status-badge" [class]="q.status">
+                {{ q.status === 'approved' ? '✓ Anticipo Cobrado' : '⏳ Pendiente' }}
+              </span>
+            </div>
+            <div class="q-right">
+              <div class="q-amount">${{ q.totalPriceUsd | number: '1.2-2' }} USD</div>
+              <span class="q-ves">Bs {{ q.totalPriceVes | number: '1.2-2' }}</span>
+
+              @if (q.status !== 'approved') {
+                <button
+                  type="button"
+                  class="btn-advance-deposit"
+                  (click)="registerAdvanceDeposit(q)"
+                >
+                  Cobrar Anticipo 50% (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- DUAL PDF PREVIEW MODAL -->
+  @if (previewModalOpen()) {
+    <div class="modal-backdrop" (click)="previewModalOpen.set(false)">
+      <div class="pdf-modal-card" (click)="$event.stopPropagation()">
+        <div class="pdf-modal-bar">
+          <div class="pdf-tabs">
+            <button
+              type="button"
+              class="pdf-tab-btn"
+              [class.active]="previewMode() === 'client'"
+              (click)="previewMode.set('client')"
+            >
+              📄 Versión Cliente (Institucional)
+            </button>
+            <button
+              type="button"
+              class="pdf-tab-btn"
+              [class.active]="previewMode() === 'internal'"
+              (click)="previewMode.set('internal')"
+            >
+              ⚙️ Versión Taller (Costos Internos)
+            </button>
+          </div>
+          <button type="button" class="btn-close" (click)="previewModalOpen.set(false)">✕</button>
+        </div>
+
+        <!-- PRINTABLE SHEET -->
+        <div class="printable-sheet" id="quote-print-area">
+          <div class="sheet-header">
+            <div>
+              <h2 class="company-brand">HOMEL 360 SERVICES</h2>
+              <p class="company-sub">Taller & Obras Especializadas · RIF: J-40812345-0</p>
+            </div>
+            <div class="sheet-badge">
+              <span>PRESUPUESTO</span>
+              <strong>#{{ quoteType() === 'automotive_bodywork' ? 'AUT' : 'OBR' }}-2026</strong>
+            </div>
+          </div>
+
+          <div class="sheet-client-row">
+            <div><strong>Cliente:</strong> {{ clientName() }}</div>
+            <div><strong>C.I./RIF:</strong> {{ clientDoc() || 'No especificado' }}</div>
+            <div><strong>Teléfono:</strong> {{ clientPhone() || 'No especificado' }}</div>
+            <div><strong>Fecha:</strong> {{ '2026-10-15' }}</div>
+          </div>
+
+          <!-- CLIENT VERSION TABLE -->
+          @if (previewMode() === 'client') {
+            <table class="sheet-table">
+              <thead>
+                <tr>
+                  <th>Descripción del Servicio</th>
+                  <th class="text-center">Cant.</th>
+                  <th class="text-right">Total ($ USD)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    @if (quoteType() === 'automotive_bodywork') {
+                      Servicio de Latonería y Pintura Automotriz en {{ selectedPiecesCount() }} piezas ({{ vehicleModel() }}, Color {{ vehicleColor() }}). Incluye preparación, desabollado, fondo 2K, pintura poliuretano y acabado transparente de alta resistencia.
+                    } @else {
+                      Ejecución de obra civil / acabados de {{ projectTitle() }} sobre {{ areaSquareMeters() }} m². Incluye suministro de materiales, preparación de superficies, mano de obra especializada y limpieza.
+                    }
+                  </td>
+                  <td class="text-center">{{ quoteType() === 'automotive_bodywork' ? selectedPiecesCount() : areaSquareMeters() }}</td>
+                  <td class="text-right">${{ currentQuoteTotals().totalUsd | number: '1.2-2' }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="sheet-terms">
+              <strong>Condiciones Comerciales:</strong>
+              <p>• 50% de anticipo para iniciar labores y 50% contra entrega a satisfacción.</p>
+              <p>• Presupuesto válido por 7 días hábiles.</p>
+              <p>• Pago en USD efectivo o en Bolívares a la tasa oficial del Banco Central de Venezuela (BCV) del día.</p>
+            </div>
+          } @else {
+            <!-- INTERNAL WORKSHOP RECIPE -->
+            <div class="internal-recipe-box">
+              <h4>📋 Desglose Técnico & Costos Reales (Uso Exclusivo del Taller)</h4>
+              <div class="internal-row">
+                <span>Costo Materiales Base:</span>
+                <strong>${{ currentQuoteTotals().rawMaterials | number: '1.2-2' }} USD</strong>
+              </div>
+              <div class="internal-row">
+                <span>Merma Técnica (+10% Desperdicio):</span>
+                <strong>${{ currentQuoteTotals().waste | number: '1.2-2' }} USD</strong>
+              </div>
+              <div class="internal-row">
+                <span>Costo Total Insumos:</span>
+                <strong>${{ currentQuoteTotals().totalMaterials | number: '1.2-2' }} USD</strong>
+              </div>
+              <div class="internal-row">
+                <span>Pago a Mecánicos / Obreros:</span>
+                <strong>${{ currentQuoteTotals().totalLabor | number: '1.2-2' }} USD</strong>
+              </div>
+              <div class="internal-row highlight-profit">
+                <span>Utilidad Limpia del Taller ({{ profitMarginPercent() }}%):</span>
+                <strong>${{ currentQuoteTotals().profit | number: '1.2-2' }} USD</strong>
+              </div>
+            </div>
+          }
+
+          <div class="sheet-total-box">
+            <div class="total-line">
+              <span>Total a Cancelar:</span>
+              <strong class="total-usd-print">${{ currentQuoteTotals().totalUsd | number: '1.2-2' }} USD</strong>
+            </div>
+            <div class="total-ves-line">
+              ≈ Bs {{ currentQuoteTotals().totalVes | number: '1.2-2' }} (Tasa BCV: {{ currentQuoteTotals().bcv | number: '1.2-2' }})
+            </div>
+          </div>
+        </div>
+
+        <div class="pdf-modal-footer">
+          <button type="button" class="btn-secondary" (click)="previewModalOpen.set(false)">Cerrar</button>
+          <button type="button" class="btn-primary" (click)="printQuote()">🖨️ Imprimir / Guardar PDF</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

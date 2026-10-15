@@ -1,0 +1,250 @@
+<div class="cashea-calculator-container">
+  <!-- SIMULATOR FORM -->
+  <div class="cashea-card form-card">
+    <div class="card-header">
+      <div class="tag-row">
+        <span class="cashea-badge">⚡ MÓDULO QUINCENAL CASHEA</span>
+        <span class="rate-badge">BCV: {{ calculation().bcvRate | number: '1.2-2' }} Bs/$</span>
+      </div>
+      <h3>Simulador de Compra & Cuotas</h3>
+      <p class="card-subtitle">Calcula tu inicial según nivel, cuotas quincenales y programa tus pasivos.</p>
+    </div>
+
+    <!-- LEVEL SELECTOR -->
+    <div class="level-selector-section">
+      <label class="section-label">Selecciona tu Nivel Cashea</label>
+      <div class="levels-pills-row">
+        <button
+          type="button"
+          class="level-pill"
+          [class.active]="selectedLevel() === 1"
+          (click)="setLevel(1)"
+        >
+          <span class="lvl-num">Nivel 1</span>
+          <span class="lvl-pct">60% Inicial</span>
+        </button>
+        <button
+          type="button"
+          class="level-pill"
+          [class.active]="selectedLevel() === 2"
+          (click)="setLevel(2)"
+        >
+          <span class="lvl-num">Nivel 2</span>
+          <span class="lvl-pct">50% Inicial</span>
+        </button>
+        <button
+          type="button"
+          class="level-pill"
+          [class.active]="selectedLevel() === 3"
+          (click)="setLevel(3)"
+        >
+          <span class="lvl-num">Nivel 3</span>
+          <span class="lvl-pct">40% Inicial</span>
+        </button>
+        <button
+          type="button"
+          class="level-pill"
+          [class.active]="selectedLevel() === 4"
+          (click)="setLevel(4)"
+        >
+          <span class="lvl-num">Nivel 4</span>
+          <span class="lvl-pct">25% Inicial</span>
+        </button>
+        <button
+          type="button"
+          class="level-pill"
+          [class.active]="selectedLevel() === 5"
+          (click)="setLevel(5)"
+        >
+          <span class="lvl-num">Nivel 5</span>
+          <span class="lvl-pct">20% Inicial</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- INPUTS -->
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Producto o Artículo</label>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="ej. Caucho Rin 14, Taladro Percutor, Nevera..."
+          [ngModel]="itemTitle()"
+          (ngModelChange)="itemTitle.set($event)"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Tienda / Comercio</label>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="ej. EPA, Daka, Traki, Farmatodo..."
+          [ngModel]="storeName()"
+          (ngModelChange)="storeName.set($event)"
+        />
+      </div>
+
+      <div class="form-row-dual">
+        <div class="form-group">
+          <label>Monto Total ($ USD)</label>
+          <input
+            type="number"
+            class="form-control"
+            min="1"
+            placeholder="150"
+            [ngModel]="totalAmountUsd()"
+            (ngModelChange)="totalAmountUsd.set($event)"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Número de Cuotas</label>
+          <select
+            class="form-control"
+            [ngModel]="totalInstallments()"
+            (ngModelChange)="totalInstallments.set($event)"
+          >
+            <option [value]="3">3 Cuotas (Estándar 42 Días)</option>
+            <option [value]="6">6 Cuotas (Línea Extendida)</option>
+            <option [value]="9">9 Cuotas (Línea Especial)</option>
+            <option [value]="12">12 Cuotas (Grandes Compras)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Fecha de la 1era Cuota</label>
+        <input
+          type="date"
+          class="form-control"
+          [ngModel]="firstDueDate()"
+          (ngModelChange)="firstDueDate.set($event)"
+        />
+      </div>
+    </div>
+
+    <!-- CALCULATION PREVIEW BOX -->
+    @let calc = calculation();
+    <div class="calc-results-box">
+      <div class="calc-result-header">
+        <span>DESGLOSE DE PAGO</span>
+        <span class="zero-interest-tag">0% Interés · Tasa Oficial BCV</span>
+      </div>
+
+      <div class="results-cards-grid">
+        <div class="result-card initial-card">
+          <span class="result-type">PAGO INICIAL (HOY)</span>
+          <strong class="result-usd">${{ calc.initialPaymentUsd | number: '1.2-2' }} USD</strong>
+          <span class="result-ves">≈ Bs {{ calc.initialVes | number: '1.2-2' }}</span>
+          <span class="result-note">{{ calc.initialPercentage }}% del total</span>
+        </div>
+
+        <div class="result-card installment-card">
+          <span class="result-type">CADA 14 DÍAS ({{ totalInstallments() }} CUOTAS)</span>
+          <strong class="result-usd">${{ calc.installmentAmountUsd | number: '1.2-2' }} USD</strong>
+          <span class="result-ves">≈ Bs {{ calc.installmentVes | number: '1.2-2' }}</span>
+          <span class="result-note">Saldo financiado: ${{ (totalAmountUsd() ?? 0) - calc.initialPaymentUsd | number: '1.2-2' }}</span>
+        </div>
+      </div>
+
+      <!-- PROJECTED DATES TIMELINE -->
+      <div class="projected-timeline">
+        <div class="timeline-title">🗓️ Calendario de Pagos Quincenales</div>
+        <div class="timeline-items">
+          @for (item of projectedDates(); track item.number) {
+            <div class="timeline-item">
+              <div class="item-circle">{{ item.number }}</div>
+              <div class="item-details">
+                <span class="item-date">{{ item.dateStr }}</span>
+                <span class="item-val">${{ item.amountUsd | number: '1.2-2' }} USD (Bs {{ item.amountVes | number: '1.2-2' }})</span>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="btn-save-plan"
+        (click)="savePlan()"
+      >
+        ⚡ Registrar Plan & Generar Cuotas en Pasivos
+      </button>
+    </div>
+  </div>
+
+  <!-- ACTIVE PLANS SECTION -->
+  <div class="active-plans-card">
+    <div class="card-header">
+      <div class="tag-row">
+        <span class="cashea-badge">PLANES REGISTRADOS</span>
+        <span class="plans-count-badge">{{ activePlans().length }} activos</span>
+      </div>
+      <h3>Tus Compras a Plazos</h3>
+    </div>
+
+    @if (activePlans().length === 0) {
+      <div class="empty-plans">
+        <span class="empty-icon">🛍️</span>
+        <p>No tienes compras Cashea registradas aún.</p>
+        <span class="empty-hint">Usa el simulador de arriba para proyectar y registrar una compra.</span>
+      </div>
+    } @else {
+      <div class="plans-list">
+        @for (plan of activePlans(); track plan.id) {
+          @let paidCount = getPaidCount(plan);
+          @let totalCount = plan.numberOfInstallments;
+          @let pct = (paidCount / totalCount) * 100;
+
+          <div class="plan-item-card" [class.completed]="plan.status === 'completed'">
+            <div class="plan-top-row">
+              <div class="plan-meta">
+                <strong class="plan-title">{{ plan.productName }}</strong>
+                <span class="plan-store">{{ plan.storeName }} · {{ plan.initialPercentage }}% Inicial</span>
+              </div>
+              <div class="plan-amounts">
+                <strong class="plan-total">${{ plan.totalPriceUsd | number: '1.2-2' }} USD</strong>
+                <span class="plan-status-pill" [class]="plan.status">
+                  {{ plan.status === 'completed' ? 'Completado' : 'Activo' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="plan-progress-box">
+              <div class="progress-labels">
+                <span>Cuotas pagadas: {{ paidCount }} de {{ totalCount }}</span>
+                <span>{{ pct | number: '1.0-0' }}%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-bar-fill" [style.width.%]="pct"></div>
+              </div>
+            </div>
+
+            <div class="plan-footer-row">
+              <span class="plan-next-due">
+                @if (plan.status === 'active') {
+                  Próxima cuota: ${{ plan.installmentAmountUsd | number: '1.2-2' }} USD
+                } @else {
+                  🎉 Todas las cuotas canceladas
+                }
+              </span>
+
+              @if (plan.status === 'active') {
+                <button
+                  type="button"
+                  class="btn-pay-installment"
+                  (click)="payNextInstallment(plan)"
+                >
+                  Pagar Cuota #{{ paidCount + 1 }}
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>
