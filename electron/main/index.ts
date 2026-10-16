@@ -25,6 +25,8 @@ try {
   // Ignore fallback
 }
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
 // Renderer crashes reportados en Windows (Electron 44, Chromium 140) tras
 // ~30-70s de vida; fallback a rasterización por software estabiliza el
 // renderer en equipos con drivers GPU problemáticos.
