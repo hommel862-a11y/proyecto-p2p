@@ -274,15 +274,25 @@
                 }
               </span>
 
-              @if (plan.status === 'active') {
+              <div style="display: flex; gap: 8px; align-items: center;">
+                @if (plan.status === 'active') {
+                  <button
+                    type="button"
+                    class="btn-pay-installment"
+                    (click)="payNextInstallment(plan)"
+                  >
+                    Pagar Cuota #{{ paidCount + 1 }}
+                  </button>
+                }
                 <button
                   type="button"
-                  class="btn-pay-installment"
-                  (click)="payNextInstallment(plan)"
+                  style="background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.38); color: #f87171; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.78rem; font-weight: 700; transition: all 0.2s ease;"
+                  title="Eliminar este plan y anular sus cuotas asociadas en Pasivos"
+                  (click)="deletePlan(plan)"
                 >
-                  Pagar Cuota #{{ paidCount + 1 }}
+                  🗑️ Eliminar
                 </button>
-              }
+              </div>
             </div>
           </div>
         }

@@ -1020,18 +1020,20 @@
   }
 
   .btn-delete-mov {
-    background: transparent;
-    border: none;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #f87171;
     cursor: pointer;
-    opacity: 0.45;
-    font-size: 0.88rem;
-    padding: 4px 6px;
+    opacity: 0.85;
+    font-size: 0.82rem;
+    padding: 3px 6px;
     border-radius: 6px;
-    transition: opacity 0.15s ease, background 0.15s ease;
+    transition: all 0.15s ease;
 
     &:hover {
       opacity: 1;
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba(239, 68, 68, 0.22);
+      border-color: rgba(239, 68, 68, 0.55);
     }
   }
 }
@@ -1750,3 +1752,151 @@
     cursor: pointer;
   }
 }
+
+/* =========================================================
+   VENEZUELAN BANK FEE SELECTOR PILLS
+   ========================================================= */
+.fee-selector-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  .fee-pill {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    &.active {
+      background: rgba(226, 183, 85, 0.15);
+      border-color: #e2b755;
+      color: #facc15;
+      box-shadow: 0 0 12px rgba(226, 183, 85, 0.2);
+    }
+  }
+}
+
+/* =========================================================
+   WEALTH GOALS & RESERVE FUNDS SECTION
+   ========================================================= */
+.wealth-goals-section {
+  background: linear-gradient(145deg, rgba(20, 25, 33, 0.95), rgba(13, 17, 23, 0.98));
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  .goals-scroll-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 290px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .goal-item-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+      border-color: rgba(250, 204, 21, 0.35);
+    }
+
+    &.goal-achieved {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.05);
+
+      .goal-fill {
+        background: linear-gradient(90deg, #10b981, #34d399);
+      }
+    }
+  }
+
+  .goal-top-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+
+    .goal-name {
+      color: #f1f5f9;
+      font-size: 0.85rem;
+      display: block;
+    }
+
+    .goal-deadline {
+      font-size: 0.68rem;
+      color: #94a3b8;
+    }
+
+    .goal-progress-badge {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #facc15;
+      background: rgba(250, 204, 21, 0.12);
+      border: 1px solid rgba(250, 204, 21, 0.3);
+      padding: 2px 7px;
+      border-radius: 999px;
+
+      &.badge-completed {
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.15);
+        border-color: rgba(16, 185, 129, 0.35);
+      }
+    }
+  }
+
+  .goal-track {
+    width: 100%;
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .goal-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e2b755, #f59e0b);
+    transition: width 0.35s ease;
+  }
+
+  .goal-bottom-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+
+    .goal-amounts {
+      font-size: 0.76rem;
+      color: #f8fafc;
+      font-family: monospace;
+
+      .muted {
+        color: #64748b;
+        margin-left: 3px;
+      }
+    }
+  }
+}
+

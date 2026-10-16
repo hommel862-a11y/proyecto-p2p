@@ -280,6 +280,18 @@ export interface BudgetQuote {
   createdAt: string;
 }
 
+export interface WealthGoal {
+  id: string;
+  title: string;
+  targetAmountUsd: number;
+  currentAmountUsd: number;
+  scope: FinanceScope;
+  deadline?: string;
+  category?: 'emergency' | 'equipment' | 'savings' | 'real_estate' | 'other';
+  icon?: string;
+  createdAt: string;
+}
+
 // -------------------------------------------------------------
 // ESTADO CONSOLIDADO DEL LEDGER 360
 // -------------------------------------------------------------
@@ -293,5 +305,6 @@ export interface Finance360LedgerState {
   providers: PymeProvider[];
   inventory: PymeInventoryItem[];
   quotes: BudgetQuote[];
+  goals?: WealthGoal[];
   lastUpdated: string;
 }

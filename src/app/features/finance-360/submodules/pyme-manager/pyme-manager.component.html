@@ -256,9 +256,27 @@
                       >
                         Liquidar Total
                       </button>
+                      <button
+                        type="button"
+                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
+                        title="Eliminar proveedor"
+                        (click)="deleteProvider(prov)"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   } @else {
-                    <span class="settled-badge">Al día ✓</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                      <span class="settled-badge">Al día ✓</span>
+                      <button
+                        type="button"
+                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
+                        title="Eliminar proveedor"
+                        (click)="deleteProvider(prov)"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   }
                 </div>
               </div>
@@ -340,6 +358,15 @@
                     <span class="stock-qty">{{ item.currentStock }}</span>
                     <button type="button" class="btn-step" (click)="adjustStock(item, 1)">+</button>
                   </div>
+
+                  <button
+                    type="button"
+                    style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
+                    title="Eliminar insumo del catálogo"
+                    (click)="deleteInventoryItem(item)"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
             }

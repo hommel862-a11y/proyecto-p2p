@@ -14,15 +14,35 @@
       </div>
 
       <div class="header-controls-right">
-        <!-- Quick Demo Seeder Button -->
-        <button
-          type="button"
-          class="btn-demo-seed"
-          title="Cargar movimientos realistas de demostración para explorar gráficas y analíticas"
-          (click)="loadDemoPortfolio()"
-        >
-          ✨ Demo Ejecutiva
-        </button>
+        <!-- Demo Seeder & Purge Controls -->
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <button
+            type="button"
+            class="btn-demo-seed"
+            title="Cargar movimientos realistas de demostración para explorar gráficas y analíticas"
+            (click)="loadDemoPortfolio()"
+          >
+            ✨ Demo
+          </button>
+          <button
+            type="button"
+            class="btn-demo-seed"
+            style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5;"
+            title="Eliminar únicamente las transacciones y pasivos demo generados"
+            (click)="clearDemoPortfolio()"
+          >
+            🧹 Limpiar Demo
+          </button>
+          <button
+            type="button"
+            class="btn-demo-seed"
+            style="background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.45); color: #fda4af;"
+            title="Vaciar completamente todo el portafolio y reiniciar libro a cero"
+            (click)="resetFullPortfolio()"
+          >
+            🔄 Vaciar Todo
+          </button>
+        </div>
 
         <!-- Chameleon Scope Switch -->
         <div class="chameleon-pill-group" role="tablist">
@@ -235,7 +255,7 @@
                   </span>
                 </div>
 
-                <!-- Balance Display or Inline Edit -->
+                <!-- Balance Display, Inline Edit, or Arqueo Reconcile -->
                 @if (editingVaultId() === vault.id) {
                   <div class="vault-inline-edit">
                     <input
@@ -251,6 +271,28 @@
                     <button type="button" class="btn-inline-cancel" (click)="cancelEditVaultBalance()">
                       ✕
                     </button>
+                  </div>
+                } @else if (reconcilingVaultId() === vault.id) {
+                  <div class="vault-inline-edit" style="border: 1px solid rgba(56, 189, 248, 0.45); background: rgba(15, 23, 42, 0.85); padding: 6px; border-radius: 8px;">
+                    <div style="font-size: 0.7rem; color: #38bdf8; font-weight: 700; width: 100%; margin-bottom: 4px;">
+                      ⚖️ Saldo Real Físico / Banco (Arqueo):
+                    </div>
+                    <div style="display: flex; gap: 4px; width: 100%;">
+                      <input
+                        type="number"
+                        class="vault-edit-input"
+                        style="flex: 1;"
+                        [ngModel]="reconcileActualBalance()"
+                        (ngModelChange)="reconcileActualBalance.set($event)"
+                        placeholder="Saldo real"
+                      />
+                      <button type="button" class="btn-inline-save" style="background: #0284c7; color: #fff; padding: 0 8px;" (click)="saveReconcileVault(vault)">
+                        ✓ Ajustar
+                      </button>
+                      <button type="button" class="btn-inline-cancel" (click)="cancelReconcileVault()">
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 } @else {
                   <div class="vault-balance-block">
@@ -286,6 +328,14 @@
                     <button
                       type="button"
                       class="btn-card-mini"
+                      title="Arqueo: verificar saldo real y asentar descuadre automáticamente"
+                      (click)="startReconcileVault(vault)"
+                    >
+                      ⚖️ Arqueo
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-card-mini"
                       title="Ajustar saldo manual"
                       (click)="startEditVaultBalance(vault)"
                     >
@@ -298,6 +348,15 @@
                       (click)="openTransferModal(vault.id)"
                     >
                       🔄 Mover
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-card-mini"
+                      style="color: #f87171; border-color: rgba(239, 68, 68, 0.35);"
+                      title="Eliminar esta bóveda"
+                      (click)="deleteVault(vault)"
+                    >
+                      🗑️
                     </button>
                   </div>
                 </div>
@@ -375,38 +434,91 @@
                     @if (item.type === 'income') { ↗ } @else { ↘ }
                   </div>
 
-                  <div class="row-details">
-                    <div class="row-title-line">
-                      <strong>{{ item.title }}</strong>
-                      <span class="row-cat-pill">{{ item.categoryLabel }}</span>
-                      <span class="row-scope-pill">
-                        {{ item.scope === 'business' ? '🏢 Pyme' : '👤 Personal' }}
-                      </span>
+                  @if (editingMovementId() === item.id) {
+                    <div style="flex: 1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0;">
+                      <input
+                        type="text"
+                        class="form-control"
+                        style="flex: 2; min-width: 140px; padding: 4px 8px; font-size: 0.8rem;"
+                        [ngModel]="editingMovementTitle()"
+                        (ngModelChange)="editingMovementTitle.set($event)"
+                        placeholder="Descripción"
+                      />
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="font-size: 0.8rem; color: #94a3b8;">$</span>
+                        <input
+                          type="number"
+                          class="form-control font-mono"
+                          style="width: 85px; padding: 4px 6px; font-size: 0.8rem;"
+                          [ngModel]="editingMovementAmountUsd()"
+                          (ngModelChange)="editingMovementAmountUsd.set($event)"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div style="display: flex; gap: 4px;">
+                        <button
+                          type="button"
+                          class="btn-inline-save"
+                          style="padding: 4px 8px; font-size: 0.75rem;"
+                          title="Guardar cambios"
+                          (click)="saveEditMovement(item)"
+                        >
+                          ✓ Guardar
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-inline-cancel"
+                          style="padding: 4px 8px; font-size: 0.75rem;"
+                          (click)="cancelEditMovement()"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                    <div class="row-meta">
-                      <span>📅 {{ item.date }}</span>
-                      <span>· 🏦 {{ item.vaultName }}</span>
-                      <span>· Tasa BCV: {{ item.bcvRateApplied | number: '1.2-2' }}</span>
+                  } @else {
+                    <div class="row-details">
+                      <div class="row-title-line">
+                        <strong>{{ item.title }}</strong>
+                        <span class="row-cat-pill">{{ item.categoryLabel }}</span>
+                        <span class="row-scope-pill">
+                          {{ item.scope === 'business' ? '🏢 Pyme' : '👤 Personal' }}
+                        </span>
+                      </div>
+                      <div class="row-meta">
+                        <span>📅 {{ item.date }}</span>
+                        <span>· 🏦 {{ item.vaultName }}</span>
+                        <span>· Tasa BCV: {{ item.bcvRateApplied | number: '1.2-2' }}</span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="row-right-block">
-                    <div class="row-amount" [class.income-amount]="item.type === 'income'" [class.expense-amount]="item.type === 'expense'">
-                      {{ item.type === 'income' ? '+' : '-' }}${{ item.amountUsd | number: '1.2-2' }} USD
+                    <div class="row-right-block">
+                      <div class="row-amount" [class.income-amount]="item.type === 'income'" [class.expense-amount]="item.type === 'expense'">
+                        {{ item.type === 'income' ? '+' : '-' }}${{ item.amountUsd | number: '1.2-2' }} USD
+                      </div>
+                      <div class="row-ves-sub">
+                        Bs {{ item.amountVes | number: '1.2-2' }}
+                      </div>
                     </div>
-                    <div class="row-ves-sub">
-                      Bs {{ item.amountVes | number: '1.2-2' }}
-                    </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    class="btn-delete-mov"
-                    title="Eliminar movimiento y revertir saldo en bóveda"
-                    (click)="removeMovement(item)"
-                  >
-                    🗑️
-                  </button>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                      <button
+                        type="button"
+                        style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #cbd5e1; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 0.75rem;"
+                        title="Editar concepto y monto de este movimiento"
+                        (click)="startEditMovement(item)"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-delete-mov"
+                        title="Eliminar movimiento y revertir saldo en bóveda"
+                        (click)="removeMovement(item)"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  }
                 </div>
               }
             </div>
@@ -532,13 +644,98 @@
                   </div>
                   <div class="card-right">
                     <div class="item-amount">${{ item.remainingAmount | number: '1.2-2' }} USD</div>
-                    <button
-                      type="button"
-                      class="btn-quick-pay"
-                      (click)="payQuickLiability(item.id, item.remainingAmount)"
-                    >
-                      Liquidar Cuota
-                    </button>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                      <button
+                        type="button"
+                        class="btn-quick-pay"
+                        (click)="payQuickLiability(item.id, item.remainingAmount)"
+                      >
+                        Liquidar Cuota
+                      </button>
+                      <button
+                        type="button"
+                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 0.75rem;"
+                        title="Eliminar este compromiso del calendario"
+                        (click)="deleteLiabilityItem(item)"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- WEALTH GOALS & RESERVE FUNDS -->
+        @let goalsList = financeService.goals();
+        <div class="wealth-goals-section">
+          <div class="section-title-row">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3>🎯 Metas &amp; Fondos Blindados</h3>
+              <span class="count-badge">{{ goalsList.length }}</span>
+            </div>
+            <button
+              type="button"
+              class="btn-vault-util primary"
+              style="padding: 5px 10px; font-size: 0.72rem;"
+              (click)="openNewGoalModal()"
+            >
+              + Nueva Meta
+            </button>
+          </div>
+
+          @if (goalsList.length === 0) {
+            <div class="no-commitments-box">
+              <span>🎯 Define una meta de ahorro o reserva de emergencia para blindar tu patrimonio.</span>
+            </div>
+          } @else {
+            <div class="goals-scroll-list">
+              @for (goal of goalsList; track goal.id) {
+                @let pct = goal.targetAmountUsd > 0 ? (goal.currentAmountUsd / goal.targetAmountUsd) * 100 : 0;
+                @let isDone = goal.currentAmountUsd >= goal.targetAmountUsd;
+                <div class="goal-item-card" [class.goal-achieved]="isDone">
+                  <div class="goal-top-line">
+                    <div class="goal-info">
+                      <strong class="goal-name">{{ goal.title }}</strong>
+                      <span class="goal-deadline">📅 Meta: {{ goal.deadline || 'Indefinido' }}</span>
+                    </div>
+                    <div class="goal-progress-badge" [class.badge-completed]="isDone">
+                      {{ pct | number: '1.0-0' }}%
+                    </div>
+                  </div>
+
+                  <!-- Goal Progress Bar -->
+                  <div class="goal-track">
+                    <div class="goal-fill" [style.width.%]="pct > 100 ? 100 : pct"></div>
+                  </div>
+
+                  <div class="goal-bottom-line">
+                    <div class="goal-amounts">
+                      <strong>${{ goal.currentAmountUsd | number: '1.0-0' }}</strong>
+                      <span class="muted">de ${{ goal.targetAmountUsd | number: '1.0-0' }} USD</span>
+                    </div>
+
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                      <button
+                        type="button"
+                        class="btn-card-mini"
+                        style="color: #facc15; border-color: rgba(250, 204, 21, 0.4);"
+                        title="Abonar fondos desde una bóveda"
+                        (click)="openContributeGoalModal(goal)"
+                      >
+                        💰 Abonar
+                      </button>
+                      <button
+                        type="button"
+                        style="background: transparent; border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-size: 0.72rem;"
+                        title="Eliminar meta"
+                        (click)="deleteGoal(goal)"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 </div>
               }
@@ -933,6 +1130,44 @@
               />
             </div>
           </div>
+
+          <!-- VENEZUELAN BANK FEE SWITCH (0%, +0.3% PAGO MÓVIL, +3% IGTF) -->
+          @if (quickModalType() === 'expense' || quickModalType() === 'audio') {
+            <div class="form-group" style="margin-top: 10px;">
+              <label>Comisión Bancaria Venezolana (Opcional)</label>
+              <div class="fee-selector-pills" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button
+                  type="button"
+                  class="fee-pill"
+                  [class.active]="feeRatePct() === 0"
+                  (click)="feeRatePct.set(0)"
+                >
+                  0% Sin Comisión
+                </button>
+                <button
+                  type="button"
+                  class="fee-pill"
+                  [class.active]="feeRatePct() === 0.3"
+                  (click)="feeRatePct.set(0.3)"
+                >
+                  ⚡ +0.3% Pago Móvil
+                </button>
+                <button
+                  type="button"
+                  class="fee-pill"
+                  [class.active]="feeRatePct() === 3"
+                  (click)="feeRatePct.set(3)"
+                >
+                  🏛️ +3.0% IGTF Divisas
+                </button>
+              </div>
+              @if (feeRatePct() > 0 && formAmount()) {
+                <div style="font-size: 0.74rem; color: #facc15; margin-top: 5px;">
+                  ℹ️ Se debitará un total de {{ formCurrency() }} {{ (formAmount()! * (1 + feeRatePct() / 100)) | number: '1.2-2' }} (monto base + {{ (formAmount()! * feeRatePct() / 100) | number: '1.2-2' }} de comisión).
+                </div>
+              }
+            </div>
+          }
         </div>
 
         <div class="modal-footer">
@@ -1206,5 +1441,149 @@
         </div>
       </div>
     </div>
+  }
+
+  <!-- ========================================================= -->
+  <!-- MODAL 5: CREATE NEW WEALTH GOAL                           -->
+  <!-- ========================================================= -->
+  @if (newGoalModalOpen()) {
+    <div class="modal-backdrop" (click)="newGoalModalOpen.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>🎯 Nueva Meta Patrimonial o Fondo de Reserva</h3>
+          <button type="button" class="btn-close" (click)="newGoalModalOpen.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Nombre de la Meta / Fondo</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Ej. Fondo de Emergencia 6 Meses, Compra Compresor..."
+              [ngModel]="newGoalTitle()"
+              (ngModelChange)="newGoalTitle.set($event)"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Monto Objetivo ($ USD)</label>
+              <input
+                type="number"
+                class="form-control font-mono"
+                placeholder="1000.00"
+                [ngModel]="newGoalTargetUsd()"
+                (ngModelChange)="newGoalTargetUsd.set($event)"
+              />
+            </div>
+            <div class="form-group half">
+              <label>Fondo Inicial Acreditado ($ USD)</label>
+              <input
+                type="number"
+                class="form-control font-mono"
+                placeholder="0.00"
+                [ngModel]="newGoalCurrentUsd()"
+                (ngModelChange)="newGoalCurrentUsd.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Fecha Límite Deseada</label>
+              <input
+                type="date"
+                class="form-control"
+                [ngModel]="newGoalDeadline()"
+                (ngModelChange)="newGoalDeadline.set($event)"
+              />
+            </div>
+            <div class="form-group half">
+              <label>Categoría</label>
+              <select
+                class="form-control"
+                [ngModel]="newGoalCategory()"
+                (ngModelChange)="newGoalCategory.set($event)"
+              >
+                <option value="emergency">🛡️ Reserva de Emergencia</option>
+                <option value="equipment">🔧 Maquinaria y Equipos</option>
+                <option value="savings">💰 Ahorro Personal</option>
+                <option value="real_estate">🏠 Bienes Raíces</option>
+                <option value="other">📌 Otro Propósito</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="newGoalModalOpen.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveNewGoal()">Crear Meta</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================= -->
+  <!-- MODAL 6: CONTRIBUTE TO WEALTH GOAL                        -->
+  <!-- ========================================================= -->
+  @if (contributeGoalModalOpen()) {
+    @let g = targetGoalForContribution();
+    @if (g) {
+      <div class="modal-backdrop" (click)="contributeGoalModalOpen.set(false)">
+        <div class="modal-card" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>💰 Abonar a Meta: {{ g.title }}</h3>
+            <button type="button" class="btn-close" (click)="contributeGoalModalOpen.set(false)">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08);">
+              <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 6px;">
+                <span>Progreso Actual:</span>
+                <strong>${{ g.currentAmountUsd | number: '1.2-2' }} / ${{ g.targetAmountUsd | number: '1.2-2' }} USD</strong>
+              </div>
+              <div style="font-size: 0.76rem; color: #94a3b8;">
+                Faltan: ${{ (g.targetAmountUsd - g.currentAmountUsd) | number: '1.2-2' }} USD para completar el 100%.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Monto a Abonar ($ USD)</label>
+              <input
+                type="number"
+                class="form-control font-mono"
+                placeholder="50.00"
+                [ngModel]="contributeAmountUsd()"
+                (ngModelChange)="contributeAmountUsd.set($event)"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>Debitar de Bóveda (Opcional)</label>
+              <select
+                class="form-control"
+                [ngModel]="contributeVaultId()"
+                (ngModelChange)="contributeVaultId.set($event)"
+              >
+                <option value="">(Solo registrar aporte · Sin debitar bóveda)</option>
+                @for (vault of financeService.state().assets; track vault.id) {
+                  <option [value]="vault.id">
+                    {{ getVaultIcon(vault) }} {{ vault.name }} — {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="contributeGoalModalOpen.set(false)">Cancelar</button>
+            <button type="button" class="btn-primary" (click)="saveGoalContribution()">
+              Confirmar Aporte
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   }
 </section>

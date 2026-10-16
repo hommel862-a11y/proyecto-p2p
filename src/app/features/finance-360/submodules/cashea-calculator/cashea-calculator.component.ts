@@ -165,4 +165,9 @@ export class CasheaCalculatorComponent {
   getPaidCount(plan: CasheaPlan): number {
     return plan.installments.filter((i) => i.status === 'paid').length;
   }
+
+  deletePlan(plan: CasheaPlan): void {
+    this.financeService.deleteCasheaPlan(plan.id);
+    this.toast.info(`Plan "${plan.productName}" y sus cuotas asociadas eliminados.`);
+  }
 }

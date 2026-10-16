@@ -14,6 +14,7 @@ import {
   type PymeProvider,
   type PymeInventoryItem,
   type BudgetQuote,
+  type WealthGoal,
   type Finance360LedgerState,
   type FinanceScope,
   type CurrencyCode,
@@ -161,6 +162,14 @@ export class Finance360Service {
     const all = this.state().expenses;
     if (currentScope === 'all') return all;
     return all.filter((e) => e.scope === 'all' || e.scope === currentScope);
+  });
+
+  /** Filtered wealth goals based on the active scope */
+  readonly goals = computed<WealthGoal[]>(() => {
+    const currentScope = this.scope();
+    const all = this.state().goals ?? [];
+    if (currentScope === 'all') return all;
+    return all.filter((g) => g.scope === 'all' || g.scope === currentScope);
   });
 
   /** Total Consolidated Assets in USD */
@@ -668,7 +677,7 @@ export class Finance360Service {
   }
 
   /**
-   * Deletes an income or expense entry and reverses its vault impact if applicable.
+   * Deletes an income or expense entry and reverses its vault and liability/Cashea impact in cascade.
    */
   deleteMovement(id: string, type: 'income' | 'expense'): void {
     if (type === 'income') {
@@ -684,10 +693,298 @@ export class Finance360Service {
       if (target?.vaultId) {
         this.creditVault(target.vaultId, target.triMonetary.amount_usd);
       }
+
+      let updatedLiabilities = this.state().liabilities;
+      let updatedCasheaPlans = this.state().casheaPlans;
+
+      // If expense was linked to a liability or Cashea installment, restore its pending balance
+      if (target?.liabilityId) {
+        updatedLiabilities = updatedLiabilities.map((l) => {
+          if (l.id !== target.liabilityId) return l;
+          const restoredPaid = Math.max(
+            0,
+            Math.round((l.amountPaid - target.triMonetary.amount_usd) * 100) / 100,
+          );
+          const restoredRemaining = Math.max(
+            0,
+            Math.round((l.triMonetary.amount_usd - restoredPaid) * 100) / 100,
+          );
+          return {
+            ...l,
+            amountPaid: restoredPaid,
+            remainingAmount: restoredRemaining,
+            status: restoredPaid > 0 ? ('partially_paid' as const) : ('pending' as const),
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        if (target.liabilityId.startsWith('liab-cashea-')) {
+          const linkedLiab = this.state().liabilities.find((l) => l.id === target.liabilityId);
+          if (linkedLiab?.casheaPlanId) {
+            const instNum = Number(target.liabilityId.split('-').pop() || '0');
+            updatedCasheaPlans = updatedCasheaPlans.map((plan) => {
+              if (plan.id !== linkedLiab.casheaPlanId) return plan;
+              return {
+                ...plan,
+                status: 'active' as const,
+                installments: plan.installments.map((inst) =>
+                  inst.number === instNum
+                    ? { ...inst, status: 'pending' as const, paidAt: undefined, paidVes: undefined }
+                    : inst,
+                ),
+              };
+            });
+          }
+        }
+      }
+
       this.updateState({
         expenses: this.state().expenses.filter((e) => e.id !== id),
+        liabilities: updatedLiabilities,
+        casheaPlans: updatedCasheaPlans,
       });
     }
+  }
+
+  /**
+   * Updates an existing income or expense entry and adjusts the affected vault delta.
+   */
+  updateMovement(
+    id: string,
+    type: 'income' | 'expense',
+    patch: { title: string; amountUsd: number },
+  ): void {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const cleanAmount = Math.max(0.01, Math.round(patch.amountUsd * 100) / 100);
+
+    if (type === 'income') {
+      const target = this.state().incomes.find((i) => i.id === id);
+      if (!target) return;
+      const deltaUsd = cleanAmount - target.triMonetary.amount_usd;
+      if (target.vaultId && Math.abs(deltaUsd) > 0.001) {
+        if (deltaUsd > 0) this.creditVault(target.vaultId, deltaUsd);
+        else this.debitVault(target.vaultId, Math.abs(deltaUsd));
+      }
+      const updatedIncomes = this.state().incomes.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              title: patch.title.trim() || i.title,
+              triMonetary: computeTriMonetaryAmount(cleanAmount, 'USD', bcv, par),
+            }
+          : i,
+      );
+      this.updateState({ incomes: updatedIncomes });
+    } else {
+      const target = this.state().expenses.find((e) => e.id === id);
+      if (!target) return;
+      const deltaUsd = cleanAmount - target.triMonetary.amount_usd;
+      if (target.vaultId && Math.abs(deltaUsd) > 0.001) {
+        if (deltaUsd > 0) this.debitVault(target.vaultId, deltaUsd);
+        else this.creditVault(target.vaultId, Math.abs(deltaUsd));
+      }
+      const updatedExpenses = this.state().expenses.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              title: patch.title.trim() || e.title,
+              triMonetary: computeTriMonetaryAmount(cleanAmount, 'USD', bcv, par),
+            }
+          : e,
+      );
+      this.updateState({ expenses: updatedExpenses });
+    }
+  }
+
+  /**
+   * Deletes a liability item directly.
+   */
+  deleteLiability(id: string): void {
+    this.updateState({
+      liabilities: this.state().liabilities.filter((l) => l.id !== id),
+    });
+  }
+
+  /**
+   * Deletes a Cashea plan and removes all of its associated liabilities in cascade.
+   */
+  deleteCasheaPlan(planId: string): void {
+    this.updateState({
+      casheaPlans: this.state().casheaPlans.filter((p) => p.id !== planId),
+      liabilities: this.state().liabilities.filter((l) => l.casheaPlanId !== planId),
+    });
+  }
+
+  /**
+   * Deletes a Pyme provider and any unpaid liabilities linked to it.
+   */
+  deleteProvider(providerId: string): void {
+    this.updateState({
+      providers: this.state().providers.filter((p) => p.id !== providerId),
+      liabilities: this.state().liabilities.filter((l) => l.providerId !== providerId),
+    });
+  }
+
+  /**
+   * Deletes an inventory item from the Pyme catalog.
+   */
+  deleteInventoryItem(itemId: string): void {
+    this.updateState({
+      inventory: this.state().inventory.filter((i) => i.id !== itemId),
+    });
+  }
+
+  /**
+   * Deletes a saved quote from the Quote Builder history.
+   */
+  deleteQuote(quoteId: string): void {
+    this.updateState({
+      quotes: this.state().quotes.filter((q) => q.id !== quoteId),
+    });
+  }
+
+  /**
+   * Reconciles a vault's theoretical balance against the real bank/cash balance,
+   * automatically creating an audited adjustment entry in the Chronological Ledger.
+   */
+  reconcileVaultBalance(
+    vaultId: string,
+    actualBalanceInVaultCurrency: number,
+  ): { success: boolean; deltaInCurrency: number; deltaUsd: number } {
+    const vault = this.state().assets.find((v) => v.id === vaultId);
+    if (!vault || actualBalanceInVaultCurrency < 0) {
+      return { success: false, deltaInCurrency: 0, deltaUsd: 0 };
+    }
+
+    const deltaInCurrency =
+      Math.round((actualBalanceInVaultCurrency - vault.balance) * 100) / 100;
+    if (Math.abs(deltaInCurrency) < 0.01) {
+      return { success: true, deltaInCurrency: 0, deltaUsd: 0 };
+    }
+
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const absDeltaCurrency = Math.abs(deltaInCurrency);
+    const tri = computeTriMonetaryAmount(absDeltaCurrency, vault.currency, bcv, par);
+    const today = new Date().toISOString().split('T')[0];
+
+    if (deltaInCurrency > 0) {
+      this.addIncome({
+        title: `Ajuste Positivo de Arqueo: ${vault.name}`,
+        scope: vault.scope === 'all' ? 'personal' : vault.scope,
+        category: 'other',
+        channel: vault.channel,
+        vaultId: vault.id,
+        triMonetary: tri,
+        date: today,
+        notes: `Conciliación de saldo real (${vault.currency} ${actualBalanceInVaultCurrency.toLocaleString()})`,
+      });
+    } else {
+      this.addExpense({
+        title: `Ajuste / Comisión de Arqueo: ${vault.name}`,
+        scope: vault.scope === 'all' ? 'personal' : vault.scope,
+        category: 'other',
+        channel: vault.channel,
+        vaultId: vault.id,
+        triMonetary: tri,
+        date: today,
+        notes: `Conciliación por diferencia o comisiones bancarias (${vault.currency} ${actualBalanceInVaultCurrency.toLocaleString()})`,
+      });
+    }
+
+    return {
+      success: true,
+      deltaInCurrency,
+      deltaUsd: deltaInCurrency > 0 ? tri.amount_usd : -tri.amount_usd,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // WEALTH GOALS (METAS PATRIMONIALES & FONDOS BLINDADOS)
+  // -------------------------------------------------------------
+
+  addWealthGoal(goal: Omit<WealthGoal, 'id' | 'createdAt'>): WealthGoal {
+    const newGoal: WealthGoal = {
+      ...goal,
+      id: `goal-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    const existing = this.state().goals ?? [];
+    this.updateState({ goals: [...existing, newGoal] });
+    return newGoal;
+  }
+
+  contributeToWealthGoal(goalId: string, amountUsd: number, debitVaultId?: string): boolean {
+    if (amountUsd <= 0) return false;
+    const existing = this.state().goals ?? [];
+    const targetGoal = existing.find((g) => g.id === goalId);
+    if (!targetGoal) return false;
+
+    const updatedGoals = existing.map((g) =>
+      g.id === goalId
+        ? {
+            ...g,
+            currentAmountUsd: Math.round((g.currentAmountUsd + amountUsd) * 100) / 100,
+          }
+        : g,
+    );
+
+    this.updateState({ goals: updatedGoals });
+
+    if (debitVaultId) {
+      const bcv = this.currentBcvRate();
+      const par = this.currentParallelRate();
+      const vault = this.state().assets.find((v) => v.id === debitVaultId);
+      this.addExpense({
+        title: `Aporte a Meta Patrimonial: ${targetGoal.title}`,
+        scope: targetGoal.scope === 'all' ? 'personal' : targetGoal.scope,
+        category: 'other',
+        channel: vault?.channel ?? 'zelle',
+        vaultId: debitVaultId,
+        triMonetary: computeTriMonetaryAmount(amountUsd, 'USD', bcv, par),
+        date: new Date().toISOString().split('T')[0],
+        notes: `Fondo acumulado: $${Math.round(targetGoal.currentAmountUsd + amountUsd)} / $${targetGoal.targetAmountUsd} USD`,
+      });
+    }
+
+    return true;
+  }
+
+  deleteWealthGoal(goalId: string): void {
+    const existing = this.state().goals ?? [];
+    this.updateState({ goals: existing.filter((g) => g.id !== goalId) });
+  }
+
+  /**
+   * Purges all demo-seeded items while keeping user-created vaults and records intact.
+   */
+  clearDemoData(): void {
+    this.updateState({
+      incomes: this.state().incomes.filter((i) => !i.id.startsWith('inc-demo-')),
+      expenses: this.state().expenses.filter((e) => !e.id.startsWith('exp-demo-')),
+      casheaPlans: this.state().casheaPlans.filter((p) => p.id !== 'cashea-demo-1'),
+      liabilities: this.state().liabilities.filter(
+        (l) => !l.id.startsWith('liab-cashea-cashea-demo-1-'),
+      ),
+      goals: (this.state().goals ?? []).filter((g) => !g.id.startsWith('goal-demo-')),
+    });
+  }
+
+  /**
+   * Resets all movements, liabilities, plans, quotes, providers, inventory, and goals for a clean start.
+   */
+  resetLedgerToZero(): void {
+    this.updateState({
+      liabilities: [],
+      incomes: [],
+      expenses: [],
+      casheaPlans: [],
+      providers: [],
+      inventory: [],
+      quotes: [],
+      goals: [],
+    });
   }
 
   /**
@@ -856,6 +1153,27 @@ export class Finance360Service {
       updatedAt: new Date().toISOString(),
     }));
 
+    const demoGoals: WealthGoal[] = [
+      {
+        id: 'goal-demo-1',
+        title: 'Fondo de Reserva Patrimonial (6 Meses)',
+        targetAmountUsd: 2000,
+        currentAmountUsd: 850,
+        scope: 'personal',
+        icon: '🛡️',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'goal-demo-2',
+        title: 'Cabina de Pintura Presurizada Taller',
+        targetAmountUsd: 1500,
+        currentAmountUsd: 620,
+        scope: 'business',
+        icon: '🏢',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
     this.updateState({
       incomes: [...demoIncomes, ...this.state().incomes.filter((i) => !i.id.startsWith('inc-demo-'))],
       expenses: [...demoExpenses, ...this.state().expenses.filter((e) => !e.id.startsWith('exp-demo-'))],
@@ -863,6 +1181,10 @@ export class Finance360Service {
       liabilities: [
         ...demoLiabilities,
         ...this.state().liabilities.filter((l) => !l.id.startsWith('liab-cashea-cashea-demo-1-')),
+      ],
+      goals: [
+        ...demoGoals,
+        ...(this.state().goals ?? []).filter((g) => !g.id.startsWith('goal-demo-')),
       ],
     });
   }

@@ -260,4 +260,9 @@ export class QuoteBuilderComponent {
       this.toast.info(`Resumen listo: Total $${totalUsd.toFixed(2)} USD`);
     }
   }
+
+  deleteSavedQuote(quote: BudgetQuote): void {
+    this.financeService.deleteQuote(quote.id);
+    this.toast.info(`Cotización #${quote.quoteNumber} eliminada.`);
+  }
 }

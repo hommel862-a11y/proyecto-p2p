@@ -247,4 +247,14 @@ export class PymeManagerComponent {
       `💸 Desembolso de $${amountUsd} USD ejecutado desde Gaveta #${drawerNumber} y asentado en Libro Mayor.`,
     );
   }
+
+  deleteProvider(prov: PymeProvider): void {
+    this.financeService.deleteProvider(prov.id);
+    this.toast.info(`Proveedor "${prov.name}" eliminado.`);
+  }
+
+  deleteInventoryItem(item: PymeInventoryItem): void {
+    this.financeService.deleteInventoryItem(item.id);
+    this.toast.info(`Artículo "${item.name}" eliminado del catálogo.`);
+  }
 }

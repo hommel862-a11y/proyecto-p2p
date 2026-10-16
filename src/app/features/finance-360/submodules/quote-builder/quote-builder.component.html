@@ -351,6 +351,15 @@
                     🏁 Liquidar 50% Final + 3 Gavetas (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
                   </button>
                 }
+
+                <button
+                  type="button"
+                  style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 0.78rem;"
+                  title="Eliminar cotización"
+                  (click)="deleteSavedQuote(q)"
+                >
+                  🗑️
+                </button>
               </div>
             </div>
           </div>

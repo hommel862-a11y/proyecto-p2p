@@ -602,7 +602,7 @@ async function createWindow(): Promise<void> {
     const isLocalhostUp = await checkUrl('http://localhost:4200/');
     const isIpUp = !isLocalhostUp && (await checkUrl('http://127.0.0.1:4200/'));
     if (isLocalhostUp || isIpUp) {
-      targetUrl = 'http://localhost:4200/#/spread';
+      targetUrl = `http://localhost:4200/#/${initialRoute}`;
     }
   } catch {
     // fallback to static server

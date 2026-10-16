@@ -15,6 +15,8 @@ import {
   type FinanceScope,
   type IncomeCategory,
   type PaymentChannel,
+  type LiabilityItem,
+  type WealthGoal,
   computeTriMonetaryAmount,
 } from '../../core/models/finance-360.models';
 import { FinanceAnalyticsComponent } from './components/finance-analytics.component';
@@ -85,6 +87,28 @@ export class Finance360Component {
 
   readonly editingVaultId = signal<string | null>(null);
   readonly editingVaultBalance = signal<number | null>(null);
+  readonly reconcilingVaultId = signal<string | null>(null);
+  readonly reconcileActualBalance = signal<number | null>(null);
+
+  /** Movement Inline Editing State */
+  readonly editingMovementId = signal<string | null>(null);
+  readonly editingMovementTitle = signal<string>('');
+  readonly editingMovementAmountUsd = signal<number | null>(null);
+
+  /** Venezuelan Bank Fee Switch (0%, +0.3% Pago Móvil, +3% IGTF) */
+  readonly feeRatePct = signal<0 | 0.3 | 3>(0);
+
+  /** Wealth Goals State */
+  readonly newGoalModalOpen = signal<boolean>(false);
+  readonly newGoalTitle = signal<string>('');
+  readonly newGoalTargetUsd = signal<number | null>(null);
+  readonly newGoalCurrentUsd = signal<number | null>(0);
+  readonly newGoalDeadline = signal<string>('');
+  readonly newGoalCategory = signal<'emergency' | 'equipment' | 'savings' | 'real_estate' | 'other'>('emergency');
+  readonly contributeGoalModalOpen = signal<boolean>(false);
+  readonly targetGoalForContribution = signal<WealthGoal | null>(null);
+  readonly contributeAmountUsd = signal<number | null>(50);
+  readonly contributeVaultId = signal<string>('vault-zelle');
 
   /** Manual Liability Creation & Payment Vault State */
   readonly newLiabilityModalOpen = signal<boolean>(false);
@@ -299,20 +323,180 @@ export class Finance360Component {
     this.toast.success(`Bóveda "${name}" (${currency}) creada exitosamente.`);
   }
 
+  deleteVault(vault: AssetVault): void {
+    this.financeService.deleteAssetVault(vault.id);
+    this.toast.info(`Bóveda "${vault.name}" eliminada.`);
+  }
+
+  startReconcileVault(vault: AssetVault): void {
+    this.reconcilingVaultId.set(vault.id);
+    this.reconcileActualBalance.set(vault.balance);
+  }
+
+  saveReconcileVault(vault: AssetVault): void {
+    const actualBal = this.reconcileActualBalance();
+    if (actualBal === null || actualBal < 0) {
+      this.toast.warn('Ingresa un saldo real auditado válido.');
+      return;
+    }
+    const res = this.financeService.reconcileVaultBalance(vault.id, actualBal);
+    this.reconcilingVaultId.set(null);
+    this.reconcileActualBalance.set(null);
+    if (res.deltaInCurrency === 0) {
+      this.toast.info(`⚖️ Arqueo de "${vault.name}": Saldo auditado coincide exactamente. Sin descuadre.`);
+    } else {
+      const sign = res.deltaInCurrency > 0 ? '+' : '';
+      this.toast.success(
+        `⚖️ Arqueo de "${vault.name}" completado: Ajuste de ${sign}${res.deltaInCurrency.toLocaleString()} ${vault.currency} asentado en Libro Mayor.`,
+      );
+    }
+  }
+
+  cancelReconcileVault(): void {
+    this.reconcilingVaultId.set(null);
+    this.reconcileActualBalance.set(null);
+  }
+
   // -------------------------------------------------------------
-  // DEMO PORTFOLIO SEEDER & MOVEMENT DELETION
+  // DEMO PORTFOLIO SEEDER, PURGE & TOTAL RESET
   // -------------------------------------------------------------
 
   loadDemoPortfolio(): void {
     this.financeService.seedDemoPortfolio();
     this.toast.success(
-      '✨ Portafolio Demo Ejecutivo cargado: ingresos, gastos, Cashea y pasivos listos para explorar.',
+      '✨ Portafolio Demo Ejecutivo cargado: ingresos, gastos, Cashea, metas y pasivos listos para explorar.',
     );
+  }
+
+  clearDemoPortfolio(): void {
+    this.financeService.clearDemoData();
+    this.toast.info('🧹 Datos de demostración eliminados. Tus registros reales se mantienen.');
+  }
+
+  resetFullPortfolio(): void {
+    this.financeService.resetLedgerToZero();
+    this.toast.warn('🔄 Portafolio reiniciado a cero: todas las bóvedas, movimientos y pasivos han sido vaciados.');
+  }
+
+  // -------------------------------------------------------------
+  // MOVEMENT EDIT & DELETION
+  // -------------------------------------------------------------
+
+  startEditMovement(item: UnifiedMovementItem): void {
+    this.editingMovementId.set(item.id);
+    this.editingMovementTitle.set(item.title);
+    this.editingMovementAmountUsd.set(item.amountUsd);
+  }
+
+  saveEditMovement(item: UnifiedMovementItem): void {
+    const newTitle = this.editingMovementTitle().trim();
+    const newAmount = this.editingMovementAmountUsd();
+    if (!newTitle || !newAmount || newAmount <= 0) {
+      this.toast.warn('Ingresa un título y un monto válido en USD.');
+      return;
+    }
+
+    this.financeService.updateMovement(item.id, item.type, {
+      title: newTitle,
+      amountUsd: newAmount,
+    });
+
+    this.editingMovementId.set(null);
+    this.editingMovementTitle.set('');
+    this.editingMovementAmountUsd.set(null);
+    this.toast.success(`Movimiento "${newTitle}" ($${newAmount} USD) actualizado correctamente.`);
+  }
+
+  cancelEditMovement(): void {
+    this.editingMovementId.set(null);
+    this.editingMovementTitle.set('');
+    this.editingMovementAmountUsd.set(null);
   }
 
   removeMovement(item: UnifiedMovementItem): void {
     this.financeService.deleteMovement(item.id, item.type);
     this.toast.info(`Movimiento "${item.title}" eliminado y saldo de bóveda revertido.`);
+  }
+
+  deleteLiabilityItem(item: LiabilityItem): void {
+    this.financeService.deleteLiability(item.id);
+    this.toast.info(`Compromiso "${item.title}" eliminado del calendario.`);
+  }
+
+  // -------------------------------------------------------------
+  // WEALTH GOALS & RESERVE FUNDS
+  // -------------------------------------------------------------
+
+  openNewGoalModal(): void {
+    this.newGoalTitle.set('');
+    this.newGoalTargetUsd.set(null);
+    this.newGoalCurrentUsd.set(0);
+    this.newGoalDeadline.set(
+      new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    );
+    this.newGoalCategory.set('emergency');
+    this.newGoalModalOpen.set(true);
+  }
+
+  saveNewGoal(): void {
+    const title = this.newGoalTitle().trim();
+    const target = this.newGoalTargetUsd();
+    if (!title || !target || target <= 0) {
+      this.toast.warn('Ingresa el nombre y un monto meta válido en USD.');
+      return;
+    }
+
+    const currentScope = this.financeService.scope();
+    this.financeService.addWealthGoal({
+      title,
+      targetAmountUsd: target,
+      currentAmountUsd: Math.max(0, this.newGoalCurrentUsd() ?? 0),
+      scope: currentScope === 'all' ? 'personal' : currentScope,
+      deadline: this.newGoalDeadline(),
+      category: this.newGoalCategory(),
+    });
+
+    this.newGoalModalOpen.set(false);
+    this.toast.success(`🎯 Meta patrimonial "${title}" ($${target} USD) creada.`);
+  }
+
+  deleteGoal(goal: WealthGoal): void {
+    this.financeService.deleteWealthGoal(goal.id);
+    this.toast.info(`Meta "${goal.title}" eliminada.`);
+  }
+
+  openContributeGoalModal(goal: WealthGoal): void {
+    this.targetGoalForContribution.set(goal);
+    this.contributeAmountUsd.set(50);
+    const vaults = this.financeService.assets();
+    this.contributeVaultId.set(vaults.length > 0 ? vaults[0].id : '');
+    this.contributeGoalModalOpen.set(true);
+  }
+
+  saveGoalContribution(): void {
+    const goal = this.targetGoalForContribution();
+    const amount = this.contributeAmountUsd();
+    if (!goal || !amount || amount <= 0) {
+      this.toast.warn('Ingresa un monto de aporte válido.');
+      return;
+    }
+
+    const success = this.financeService.contributeToWealthGoal(
+      goal.id,
+      amount,
+      this.contributeVaultId() || undefined,
+    );
+
+    this.contributeGoalModalOpen.set(false);
+    this.targetGoalForContribution.set(null);
+    if (success) {
+      const newTotal = goal.currentAmountUsd + amount;
+      if (newTotal >= goal.targetAmountUsd) {
+        this.toast.success(`🎉 ¡Felicidades! Meta "${goal.title}" alcanzada al 100%.`);
+      } else {
+        this.toast.success(`💰 Aporte de $${amount} USD registrado a favor de "${goal.title}".`);
+      }
+    }
   }
 
   // -------------------------------------------------------------
@@ -346,6 +530,7 @@ export class Finance360Component {
     this.formCurrency.set('USD');
     this.formReferenceNumber.set('');
     this.formNotes.set('');
+    this.feeRatePct.set(0);
     this.smartCommandText.set('');
     this.scannedReceiptName.set('');
     this.isScanningReceipt.set(false);
@@ -528,7 +713,18 @@ export class Finance360Component {
     const bcv = this.financeService.currentBcvRate();
     const parallel = this.financeService.currentParallelRate();
     const currency = this.formCurrency();
-    const tri = computeTriMonetaryAmount(amount, currency, bcv, parallel);
+    const feePct = this.feeRatePct();
+    let finalAmount = amount;
+    let feeNote = '';
+
+    if ((this.quickModalType() === 'expense' || this.quickModalType() === 'audio') && feePct > 0) {
+      const feeAmount = Number(((amount * feePct) / 100).toFixed(2));
+      finalAmount = Number((amount + feeAmount).toFixed(2));
+      const feeLabel = feePct === 0.3 ? 'Pago Móvil (+0.3%)' : 'IGTF (+3.0%)';
+      feeNote = ` · [Comisión Bancaria: ${feeLabel} +${currency} ${feeAmount.toLocaleString()}]`;
+    }
+
+    const tri = computeTriMonetaryAmount(finalAmount, currency, bcv, parallel);
     const scope = this.formScope();
     const vaultId = this.formVaultId() || undefined;
     const referenceNumber = this.formReferenceNumber().trim() || undefined;
@@ -547,9 +743,9 @@ export class Finance360Component {
         triMonetary: tri,
         date,
         referenceNumber,
-        notes: this.formNotes().trim() || undefined,
+        notes: (this.formNotes().trim() + feeNote).trim() || undefined,
       });
-      this.toast.success(`Gasto registrado: $${tri.amount_usd} USD`);
+      this.toast.success(`Gasto registrado: $${tri.amount_usd} USD${feeNote ? ' (incluye comisión)' : ''}`);
     } else {
       const title = this.formTitle().trim() || 'Ingreso Rápido';
       this.financeService.addIncome({
