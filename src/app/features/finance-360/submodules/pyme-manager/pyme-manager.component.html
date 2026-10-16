@@ -32,46 +32,177 @@
     <div class="drawers-section">
       <div class="pyme-card">
         <div class="card-header">
-          <span class="pyme-badge">PROTECCIÓN DE CAPITAL PYME</span>
+          <div class="header-badges-row">
+            <span class="pyme-badge">PROTECCIÓN DE CAPITAL PYME</span>
+            <span class="bcv-badge">Tasa BCV: Bs {{ financeService.currentBcvRate() | number: '1.2-2' }}</span>
+          </div>
           <h3>Regla de Oro: Las 3 Gavetas Intocables</h3>
           <p class="card-subtitle">
-            Nunca mezcles el dinero de reposición de inventario con las ganancias. Simula una venta y divide el flujo automáticamente.
+            Blindá tu negocio separando cada dólar que entra. Garantizá el dinero para recomprar insumos y pagar nómina antes de calcular ganancias.
           </p>
         </div>
 
-        <div class="sale-sim-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
-          <div class="form-group" style="flex: 2; min-width: 200px;">
-            <label>Concepto de la Venta / Orden de Trabajo</label>
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Ej. Pintura General Guardafango, Venta Repuestos..."
-              [ngModel]="saleConcept()"
-              (ngModelChange)="saleConcept.set($event)"
-            />
+        <!-- INFLOW PANEL: VENTA VS INYECCIÓN DE CAPITAL -->
+        <div class="inflow-panel">
+          <div class="inflow-type-selector">
+            <button
+              type="button"
+              class="type-pill"
+              [class.active]="inflowType() === 'sale'"
+              (click)="inflowType.set('sale')"
+            >
+              💼 Venta Comercial / Orden de Trabajo
+            </button>
+            <button
+              type="button"
+              class="type-pill"
+              [class.active]="inflowType() === 'capital_injection'"
+              (click)="inflowType.set('capital_injection')"
+            >
+              💰 Inyección de Capital / Fondeo Directo
+            </button>
           </div>
-          <div class="form-group" style="flex: 1; min-width: 140px;">
-            <label>Monto Cobrado ($ USD)</label>
-            <input
-              type="number"
-              class="form-control big-input"
-              placeholder="250"
-              [ngModel]="saleAmount()"
-              (ngModelChange)="saleAmount.set($event)"
-            />
+
+          <div class="sale-sim-row">
+            <div class="form-group flex-2">
+              <label>
+                {{ inflowType() === 'sale' ? 'Concepto de la Venta / Orden de Trabajo' : 'Motivo del Fondeo / Aporte' }}
+              </label>
+              <input
+                type="text"
+                class="form-control"
+                [placeholder]="inflowType() === 'sale' ? 'Ej. Reparación y Pintura Guardafango, Venta Repuestos...' : 'Ej. Aporte para fondo de nómina y compra de pintura...'"
+                [ngModel]="saleConcept()"
+                (ngModelChange)="saleConcept.set($event)"
+              />
+            </div>
+
+            <div class="form-group flex-1">
+              <label>Monto ($ USD)</label>
+              <div class="input-with-sub">
+                <input
+                  type="number"
+                  class="form-control big-input"
+                  placeholder="250"
+                  [ngModel]="saleAmount()"
+                  (ngModelChange)="saleAmount.set($event)"
+                />
+                <span class="sub-conversion">
+                  ≈ Bs {{ ((saleAmount() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label>Bóveda Receptora</label>
+              <select
+                class="form-control"
+                [ngModel]="targetVaultId()"
+                (ngModelChange)="targetVaultId.set($event)"
+              >
+                @for (v of financeService.state().assets; track v.id) {
+                  <option [value]="v.id">
+                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
+                  </option>
+                }
+              </select>
+            </div>
           </div>
-          <button
-            type="button"
-            class="btn-primary-small"
-            style="min-height: 44px; padding: 0 18px; font-weight: 800;"
-            (click)="settleSaleInLedger()"
-          >
-            💾 Asentar Venta en Caja Pyme
-          </button>
+
+          <!-- DRAWER PRESETS & SLIDERS -->
+          <div class="presets-container">
+            <div class="presets-header">
+              <span class="presets-title">⚙️ Modelo de Reparto para las 3 Gavetas:</span>
+              <div class="presets-pills">
+                @for (preset of drawerPresets; track preset.id) {
+                  <button
+                    type="button"
+                    class="preset-btn"
+                    [class.active]="activePreset() === preset.id"
+                    [title]="preset.description"
+                    (click)="applyPreset(preset)"
+                  >
+                    {{ preset.label }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="sliders-row">
+              <div class="slider-item">
+                <div class="slider-label">
+                  <span class="d-label d1-c">Gaveta 1 · Insumos:</span>
+                  <strong>{{ drawer1Percent() }}%</strong>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  class="range-slider d1-slider"
+                  [ngModel]="drawer1Percent()"
+                  (ngModelChange)="setCustomPercent(1, $event)"
+                />
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-label">
+                  <span class="d-label d2-c">Gaveta 2 · Nómina & Fijos:</span>
+                  <strong>{{ drawer2Percent() }}%</strong>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  class="range-slider d2-slider"
+                  [ngModel]="drawer2Percent()"
+                  (ngModelChange)="setCustomPercent(2, $event)"
+                />
+              </div>
+
+              <div class="slider-item">
+                <div class="slider-label">
+                  <span class="d-label d3-c">Gaveta 3 · Utilidad & CAPEX:</span>
+                  <strong>{{ drawer3Percent() }}%</strong>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  class="range-slider d3-slider"
+                  [ngModel]="drawer3Percent()"
+                  (ngModelChange)="setCustomPercent(3, $event)"
+                />
+              </div>
+
+              <div class="slider-status">
+                @if (percentSum() === 100) {
+                  <span class="badge-valid">✓ 100% Repartido</span>
+                } @else {
+                  <span class="badge-invalid">⚠️ Suma: {{ percentSum() }}% (debe ser 100%)</span>
+                }
+              </div>
+            </div>
+
+            <div class="inflow-action-row">
+              <button
+                type="button"
+                class="btn-settle-inflow"
+                [disabled]="percentSum() !== 100 || (saleAmount() || 0) <= 0"
+                (click)="settleSaleInLedger()"
+              >
+                {{ inflowType() === 'sale' ? '💾 Asentar Venta y Distribuir en Gavetas' : '💰 Acreditar Fondeo y Distribuir en Gavetas' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         @let split = drawerSplit();
         @let liveDrawers = financeService.pymeDrawersTelemetry();
+
+        <!-- THE 3 DRAWERS GRID -->
         <div class="drawers-grid">
           <!-- GAVETA 1 -->
           <div class="drawer-card drawer-replenishment">
@@ -84,26 +215,35 @@
               <strong class="amount-usd">${{ split.drawer1.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer1.ves | number: '1.2-2' }}</span>
             </div>
-            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.76rem;">
-              <div style="display: flex; justify-content: space-between; color: #93c5fd;">
+
+            <!-- TELEMETRY TELEGRAPH -->
+            <div class="telemetry-box box-blue">
+              <div class="telemetry-row highlight">
                 <span>Fondo Real Disponible:</span>
                 <strong>${{ liveDrawers.drawer1AvailableUsd | number: '1.2-2' }} USD</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
+              <div class="telemetry-row sub">
+                <span>Total Asignado:</span>
+                <span>${{ liveDrawers.drawer1AllocatedUsd | number: '1.2-2' }} USD</span>
+              </div>
+              <div class="telemetry-row sub">
                 <span>Ejecutado en Insumos:</span>
                 <span>${{ liveDrawers.merchExpensesUsd | number: '1.2-2' }} USD</span>
               </div>
             </div>
-            <p class="drawer-desc">Garantiza que el taller o negocio nunca se descapitalice al reponer insumos.</p>
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
-              <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la venta</div>
+
+            <p class="drawer-desc">
+              Garantiza que el negocio nunca se descapitalice al comprar materia prima, pintura o reponer inventario.
+            </p>
+
+            <div class="drawer-bottom-actions">
+              <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la entrada</div>
               <button
                 type="button"
-                class="btn-pay-provider"
-                style="font-size: 0.72rem; padding: 5px 10px;"
-                (click)="executeDrawerExpense(1, 45)"
+                class="btn-drawer-action btn-d1"
+                (click)="openDisbursementModal(1)"
               >
-                💸 Ejecutar Compra ($45)
+                📦 Comprar Insumos
               </button>
             </div>
           </div>
@@ -119,26 +259,41 @@
               <strong class="amount-usd">${{ split.drawer2.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer2.ves | number: '1.2-2' }}</span>
             </div>
-            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(245, 158, 11, 0.25); font-size: 0.76rem;">
-              <div style="display: flex; justify-content: space-between; color: #fcd34d;">
+
+            <!-- TELEMETRY TELEGRAPH -->
+            <div class="telemetry-box box-amber">
+              <div class="telemetry-row highlight">
                 <span>Fondo Real Disponible:</span>
-                <strong>${{ liveDrawers.drawer2AvailableUsd | number: '1.2-2' }} USD</strong>
+                <strong class="gold-text">${{ liveDrawers.drawer2AvailableUsd | number: '1.2-2' }} USD</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
-                <span>Ejecutado en Operativa:</span>
+              <div class="telemetry-row sub">
+                <span>Total Asignado:</span>
+                <span>${{ liveDrawers.drawer2AllocatedUsd | number: '1.2-2' }} USD</span>
+              </div>
+              <div class="telemetry-row sub">
+                <span>Pagado en Nómina y Fijos:</span>
                 <span>${{ liveDrawers.opsExpensesUsd | number: '1.2-2' }} USD</span>
               </div>
             </div>
-            <p class="drawer-desc">Sueldos de empleados, servicios del local, alquiler y mantenimiento de equipos.</p>
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
-              <div class="drawer-pct-badge">{{ drawer2Percent() }}% de la venta</div>
+
+            <p class="drawer-desc">
+              Sueldos de operarios, quincenas, alquiler, electricidad, internet y servicios básicos del local.
+            </p>
+
+            <div class="drawer-bottom-actions dual-actions">
               <button
                 type="button"
-                class="btn-pay-provider"
-                style="font-size: 0.72rem; padding: 5px 10px;"
-                (click)="executeDrawerExpense(2, 60)"
+                class="btn-drawer-action btn-payroll-main"
+                (click)="openPayrollModal()"
               >
-                💸 Pagar Nómina ($60)
+                👥 Pagar Nómina
+              </button>
+              <button
+                type="button"
+                class="btn-drawer-action btn-d2-sub"
+                (click)="openDisbursementModal(2)"
+              >
+                ⚡ Gasto Fijo
               </button>
             </div>
           </div>
@@ -154,29 +309,96 @@
               <strong class="amount-usd">${{ split.drawer3.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer3.ves | number: '1.2-2' }}</span>
             </div>
-            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.76rem;">
-              <div style="display: flex; justify-content: space-between; color: #6ee7b7;">
+
+            <!-- TELEMETRY TELEGRAPH -->
+            <div class="telemetry-box box-emerald">
+              <div class="telemetry-row highlight">
                 <span>Fondo Real Disponible:</span>
-                <strong>${{ liveDrawers.drawer3AvailableUsd | number: '1.2-2' }} USD</strong>
+                <strong class="green-text">${{ liveDrawers.drawer3AvailableUsd | number: '1.2-2' }} USD</strong>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
-                <span>Invertido en CAPEX:</span>
+              <div class="telemetry-row sub">
+                <span>Total Asignado:</span>
+                <span>${{ liveDrawers.drawer3AllocatedUsd | number: '1.2-2' }} USD</span>
+              </div>
+              <div class="telemetry-row sub">
+                <span>Invertido en CAPEX / Retiros:</span>
                 <span>${{ liveDrawers.capexExpensesUsd | number: '1.2-2' }} USD</span>
               </div>
             </div>
-            <p class="drawer-desc">Utilidad neta real distribuible a los socios o fondo de reinversión comercial.</p>
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
-              <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la venta</div>
+
+            <p class="drawer-desc">
+              Utilidad neta real distribuible a los socios o fondo de reinversión para comprar maquinaria y herramientas.
+            </p>
+
+            <div class="drawer-bottom-actions">
+              <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la entrada</div>
               <button
                 type="button"
-                class="btn-pay-provider"
-                style="font-size: 0.72rem; padding: 5px 10px;"
-                (click)="executeDrawerExpense(3, 40)"
+                class="btn-drawer-action btn-d3"
+                (click)="openDisbursementModal(3)"
               >
-                💎 Invertir CAPEX ($40)
+                💎 Retiro / CAPEX
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- RECENT DRAWER MOVEMENTS AUDIT TABLE -->
+        <div class="drawer-audit-section">
+          <div class="audit-header">
+            <h4>📋 Auditoría de Desembolsos Recientes (Salidas de Gavetas)</h4>
+            <span class="audit-badge">{{ recentDrawerMovements().length }} movimientos</span>
+          </div>
+
+          @if (recentDrawerMovements().length === 0) {
+            <div class="empty-audit">
+              <p>Aún no has registrado desembolsos desde las gavetas. Asentá un pago de nómina o compra para auditarlo acá.</p>
+            </div>
+          } @else {
+            <div class="audit-table-wrapper">
+              <table class="audit-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Gaveta</th>
+                    <th>Concepto / Destinatario</th>
+                    <th>Cuenta de Salida</th>
+                    <th>Monto USD</th>
+                    <th>Equivalente VES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (mov of recentDrawerMovements(); track mov.id) {
+                    <tr>
+                      <td class="date-col">{{ mov.date }}</td>
+                      <td>
+                        @if (mov.drawerAllocation === 'drawer_operations' || mov.category === 'payroll') {
+                          <span class="pill-badge pill-amber">Gaveta 2 · Nómina</span>
+                        } @else if (mov.drawerAllocation === 'drawer_merchandise' || mov.category === 'provider_merchandise') {
+                          <span class="pill-badge pill-blue">Gaveta 1 · Insumos</span>
+                        } @else {
+                          <span class="pill-badge pill-emerald">Gaveta 3 · CAPEX</span>
+                        }
+                      </td>
+                      <td class="desc-col">
+                        <strong>{{ mov.title }}</strong>
+                        @if (mov.notes) {
+                          <span class="mov-notes">{{ mov.notes }}</span>
+                        }
+                      </td>
+                      <td>{{ getVaultName(mov.vaultId) }}</td>
+                      <td class="amount-usd-col">
+                        ${{ mov.triMonetary.amount_usd | number: '1.2-2' }}
+                      </td>
+                      <td class="amount-ves-col">
+                        Bs {{ mov.triMonetary.amount_ves | number: '1.2-2' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -238,46 +460,22 @@
                     </strong>
                   </div>
                   @if (prov.outstandingDebtUsd > 0) {
-                    <div style="display: flex; gap: 6px;">
-                      @if (prov.outstandingDebtUsd >= 20) {
-                        <button
-                          type="button"
-                          class="btn-pay-provider"
-                          style="background: rgba(99, 102, 241, 0.16); border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc;"
-                          (click)="payProviderDebt(prov, +(prov.outstandingDebtUsd * 0.5).toFixed(2))"
-                        >
-                          Abonar 50%
-                        </button>
-                      }
-                      <button
-                        type="button"
-                        class="btn-pay-provider"
-                        (click)="payProviderDebt(prov, prov.outstandingDebtUsd)"
-                      >
-                        Liquidar Total
-                      </button>
-                      <button
-                        type="button"
-                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
-                        title="Eliminar proveedor"
-                        (click)="deleteProvider(prov)"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  } @else {
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                      <span class="settled-badge">Al día ✓</span>
-                      <button
-                        type="button"
-                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
-                        title="Eliminar proveedor"
-                        (click)="deleteProvider(prov)"
-                      >
-                        🗑️
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      class="btn-pay-provider"
+                      (click)="payProviderDebt(prov, Math.min(50, prov.outstandingDebtUsd))"
+                    >
+                      Abonar $50
+                    </button>
                   }
+                  <button
+                    type="button"
+                    class="btn-trash"
+                    title="Eliminar proveedor"
+                    (click)="deleteProvider(prov)"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </div>
             }
@@ -287,16 +485,16 @@
     </div>
   }
 
-  <!-- TAB 3: INVENTORY SEMAPHORE -->
+  <!-- TAB 3: INVENTORY SEMÁFORO -->
   @if (activePymeTab() === 'inventory') {
     <div class="inventory-section">
       <div class="pyme-card">
         <div class="card-header-action">
           <div>
-            <span class="pyme-badge">STOCK CRÍTICO & CONSUMO</span>
-            <h3>Semáforo de Inventario</h3>
+            <span class="pyme-badge">CONTROL DE INSUMOS & STOCK</span>
+            <h3>Inventario Semáforo</h3>
             <p class="card-subtitle">
-              Alertas de reposición: <strong [class.red-text]="inventoryCriticalCount() > 0">{{ inventoryCriticalCount() }} artículos bajos</strong>
+              Artículos críticos con stock mínimo o agotado: <strong class="red-text">{{ inventoryCriticalCount() }}</strong>
             </p>
           </div>
           <button
@@ -304,49 +502,62 @@
             class="btn-primary-small"
             (click)="showAddItemModal.set(true)"
           >
-            + Añadir Insumo
+            + Nuevo Insumo
           </button>
         </div>
 
         @if (inventory().length === 0) {
           <div class="empty-list">
-            <p>No hay insumos registrados en el catálogo.</p>
+            <p>No hay artículos registrados en el catálogo de inventario.</p>
           </div>
         } @else {
-          <div class="inventory-list">
+          <div class="inventory-grid">
             @for (item of inventory(); track item.id) {
-              @let isCritical = item.currentStock === 0;
-              @let isWarning = item.currentStock > 0 && item.currentStock <= item.minimumStock;
-              <div class="inventory-row-card" [class.critical]="isCritical" [class.warning]="isWarning">
-                <div class="item-left">
-                  <div class="status-indicator">
-                    @if (isCritical) { 🔴 }
-                    @else if (isWarning) { 🟡 }
-                    @else { 🟢 }
-                  </div>
+              <div class="inv-card" [class.border-critical]="item.currentStock <= item.minimumStock">
+                <div class="inv-card-header">
                   <div>
-                    <strong class="item-name">{{ item.name }}</strong>
-                    <span class="item-meta">{{ item.category }} · Mínimo: {{ item.minimumStock }} u. · Óptimo: {{ item.optimalStock }} u.</span>
-                    <span class="item-cost">Costo: ${{ item.unitCostUsd | number: '1.2-2' }} | Venta: ${{ item.sellingPriceUsd | number: '1.2-2' }}</span>
+                    <strong class="inv-title">{{ item.name }}</strong>
+                    <span class="inv-category">{{ item.category }}</span>
+                  </div>
+                  <span
+                    class="status-chip"
+                    [class.chip-optimal]="item.currentStock > item.minimumStock"
+                    [class.chip-low]="item.currentStock <= item.minimumStock && item.currentStock > 0"
+                    [class.chip-depleted]="item.currentStock <= 0"
+                  >
+                    {{ item.currentStock <= 0 ? 'AGOTADO' : (item.currentStock <= item.minimumStock ? 'BAJO' : 'ÓPTIMO') }}
+                  </span>
+                </div>
+
+                <div class="inv-metrics-row">
+                  <div class="metric-col">
+                    <span class="metric-lbl">Costo Unit.:</span>
+                    <strong>${{ item.unitCostUsd | number: '1.2-2' }} USD</strong>
+                  </div>
+                  <div class="metric-col">
+                    <span class="metric-lbl">Precio Venta:</span>
+                    <strong>${{ item.sellingPriceUsd | number: '1.2-2' }} USD</strong>
+                  </div>
+                  <div class="metric-col">
+                    <span class="metric-lbl">Stock Mínimo:</span>
+                    <span>{{ item.minimumStock }} u.</span>
                   </div>
                 </div>
 
-                <div class="item-right" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                  <div style="display: flex; gap: 6px;">
+                <div class="inv-card-footer">
+                  <div class="restock-actions">
                     <button
                       type="button"
-                      class="btn-pay-provider"
-                      style="font-size: 0.72rem; padding: 5px 9px;"
-                      title="Comprar lote de reposición descontando de Caja Operativa Pyme"
+                      class="btn-restock btn-restock-cash"
+                      title="Reponer stock con débito de bóveda en libro mayor"
                       (click)="restockItem(item, 'vault')"
                     >
-                      🔄 Reponer (Caja)
+                      📦 De Contado
                     </button>
                     <button
                       type="button"
-                      class="btn-pay-provider"
-                      style="font-size: 0.72rem; padding: 5px 9px; background: rgba(99, 102, 241, 0.14); border-color: rgba(99, 102, 241, 0.35); color: #a5b4fc;"
-                      title="Ingresar lote a crédito con vencimiento a 14 días en Proveedores"
+                      class="btn-restock btn-restock-credit"
+                      title="Reponer stock con pasivo de crédito comercial a 14 días"
                       (click)="restockItem(item, 'provider_credit')"
                     >
                       🚚 A Crédito
@@ -361,7 +572,7 @@
 
                   <button
                     type="button"
-                    style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 5px 8px; cursor: pointer; font-size: 0.8rem;"
+                    class="btn-trash"
                     title="Eliminar insumo del catálogo"
                     (click)="deleteInventoryItem(item)"
                   >
@@ -372,6 +583,237 @@
             }
           </div>
         }
+      </div>
+    </div>
+  }
+
+  <!-- ============================================================ -->
+  <!-- MODAL 1: PAGO DE NÓMINA (GAVETA 2)                          -->
+  <!-- ============================================================ -->
+  @if (showPayrollModal()) {
+    <div class="modal-backdrop" (click)="closePayrollModal()">
+      <div class="modal-card modal-lg" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-box">
+            <span class="modal-tag amber-tag">GAVETA 2 · OPERATIVA</span>
+            <h3>👥 Liquidación de Nómina y Sueldos</h3>
+          </div>
+          <button type="button" class="btn-close" (click)="closePayrollModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-alert-box">
+            <span>Fondo Disponible en Gaveta 2:</span>
+            <strong class="gold-text">
+              ${{ financeService.pymeDrawersTelemetry().drawer2AvailableUsd | number: '1.2-2' }} USD
+            </strong>
+          </div>
+
+          <div class="form-row-dual">
+            <div class="form-group flex-2">
+              <label>Nombre del Colaborador / Cargo *</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Carlos Gómez - Mecánico Líder"
+                [ngModel]="payrollEmployeeName()"
+                (ngModelChange)="payrollEmployeeName.set($event)"
+              />
+            </div>
+            <div class="form-group flex-1">
+              <label>Período de Pago</label>
+              <select
+                class="form-control"
+                [ngModel]="payrollPeriod()"
+                (ngModelChange)="payrollPeriod.set($event)"
+              >
+                <option value="Quincena 1">Quincena 1</option>
+                <option value="Quincena 2">Quincena 2</option>
+                <option value="Semanal">Semanal</option>
+                <option value="Mensual">Mensual</option>
+                <option value="Bono Producción">Bono Producción</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-dual">
+            <div class="form-group flex-1">
+              <label>Monto a Liquidar ($ USD) *</label>
+              <div class="input-with-sub">
+                <input
+                  type="number"
+                  class="form-control big-input"
+                  placeholder="80"
+                  [ngModel]="payrollAmountUsd()"
+                  (ngModelChange)="payrollAmountUsd.set($event)"
+                />
+                <span class="sub-conversion">
+                  ≈ Bs {{ ((payrollAmountUsd() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label>Cuenta / Bóveda de Salida *</label>
+              <select
+                class="form-control"
+                [ngModel]="payrollVaultId()"
+                (ngModelChange)="payrollVaultId.set($event)"
+              >
+                @for (v of financeService.state().assets; track v.id) {
+                  <option [value]="v.id">
+                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-dual">
+            <div class="form-group flex-1">
+              <label>N° Referencia Bancaria / Pago Móvil (Opcional)</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. 984521"
+                [ngModel]="payrollRef()"
+                (ngModelChange)="payrollRef.set($event)"
+              />
+            </div>
+            <div class="form-group flex-1">
+              <label>Notas / Observaciones</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Liquidación horas extras pintura"
+                [ngModel]="payrollNotes()"
+                (ngModelChange)="payrollNotes.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="closePayrollModal()">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            style="background: #f59e0b; color: #020617; border-color: #f59e0b;"
+            [disabled]="!payrollEmployeeName() || (payrollAmountUsd() || 0) <= 0"
+            (click)="confirmPayrollDisbursement()"
+          >
+            👥 Confirmar y Pagar Nómina
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ============================================================ -->
+  <!-- MODAL 2: DESEMBOLSO GENERAL DE GAVETA (1, 2 ó 3)            -->
+  <!-- ============================================================ -->
+  @if (showDisbursementModal()) {
+    <div class="modal-backdrop" (click)="closeDisbursementModal()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-box">
+            <span
+              class="modal-tag"
+              [class.blue-tag]="disburseDrawer() === 1"
+              [class.amber-tag]="disburseDrawer() === 2"
+              [class.emerald-tag]="disburseDrawer() === 3"
+            >
+              GAVETA {{ disburseDrawer() }} · {{ disburseDrawer() === 1 ? 'REPOSICIÓN' : (disburseDrawer() === 2 ? 'OPERATIVA' : 'CAPEX / UTILIDAD') }}
+            </span>
+            <h3>💸 Registrar Desembolso</h3>
+          </div>
+          <button type="button" class="btn-close" (click)="closeDisbursementModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Concepto del Desembolso *</label>
+            <input
+              type="text"
+              class="form-control"
+              [placeholder]="disburseDrawer() === 1 ? 'Ej. Compra de thinner, lijas y pintura' : (disburseDrawer() === 2 ? 'Ej. Pago luz comercial o alquiler' : 'Ej. Compra de compresor o retiro socio')"
+              [ngModel]="disburseTitle()"
+              (ngModelChange)="disburseTitle.set($event)"
+            />
+          </div>
+
+          <div class="form-row-dual">
+            <div class="form-group flex-1">
+              <label>Monto ($ USD) *</label>
+              <div class="input-with-sub">
+                <input
+                  type="number"
+                  class="form-control big-input"
+                  placeholder="50"
+                  [ngModel]="disburseAmountUsd()"
+                  (ngModelChange)="disburseAmountUsd.set($event)"
+                />
+                <span class="sub-conversion">
+                  ≈ Bs {{ ((disburseAmountUsd() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label>Cuenta / Bóveda de Salida *</label>
+              <select
+                class="form-control"
+                [ngModel]="disburseVaultId()"
+                (ngModelChange)="disburseVaultId.set($event)"
+              >
+                @for (v of financeService.state().assets; track v.id) {
+                  <option [value]="v.id">
+                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-dual">
+            <div class="form-group flex-1">
+              <label>N° Referencia (Opcional)</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Transferencia 1042"
+                [ngModel]="disburseRef()"
+                (ngModelChange)="disburseRef.set($event)"
+              />
+            </div>
+            <div class="form-group flex-1">
+              <label>Notas / Factura</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Factura N° 4501"
+                [ngModel]="disburseNotes()"
+                (ngModelChange)="disburseNotes.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="closeDisbursementModal()">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            [disabled]="!disburseTitle() || (disburseAmountUsd() || 0) <= 0"
+            (click)="confirmDisbursement()"
+          >
+            💸 Confirmar Desembolso
+          </button>
+        </div>
       </div>
     </div>
   }
@@ -428,21 +870,21 @@
             <input type="text" class="form-control" [ngModel]="itemName()" (ngModelChange)="itemName.set($event)" placeholder="ej. Fondo 2K Poliuretano, Lija de Agua #600" />
           </div>
           <div class="form-row-dual">
-            <div class="form-group">
+            <div class="form-group flex-1">
               <label>Stock Actual</label>
               <input type="number" class="form-control" [ngModel]="itemStock()" (ngModelChange)="itemStock.set($event)" placeholder="10" />
             </div>
-            <div class="form-group">
+            <div class="form-group flex-1">
               <label>Stock Mínimo (Alerta)</label>
               <input type="number" class="form-control" [ngModel]="itemMinStock()" (ngModelChange)="itemMinStock.set($event)" placeholder="5" />
             </div>
           </div>
           <div class="form-row-dual">
-            <div class="form-group">
+            <div class="form-group flex-1">
               <label>Costo Unitario ($ USD)</label>
               <input type="number" class="form-control" [ngModel]="itemCost()" (ngModelChange)="itemCost.set($event)" placeholder="15" />
             </div>
-            <div class="form-group">
+            <div class="form-group flex-1">
               <label>Precio Venta ($ USD)</label>
               <input type="number" class="form-control" [ngModel]="itemPrice()" (ngModelChange)="itemPrice.set($event)" placeholder="25" />
             </div>

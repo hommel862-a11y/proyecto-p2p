@@ -8,6 +8,8 @@ import {
   type LiabilityItem,
   type IncomeEntry,
   type ExpenseEntry,
+  type PaymentChannel,
+  type ExpenseCategory,
   type CasheaPlan,
   type CasheaInstallment,
   type CasheaLevel,
@@ -997,21 +999,112 @@ export class Finance360Service {
     drawer1Usd: number;
     drawer2Usd: number;
     drawer3Usd: number;
+    isInitialInjection?: boolean;
+    paymentChannel?: PaymentChannel;
   }): IncomeEntry {
     const bcv = this.currentBcvRate();
     const par = this.currentParallelRate();
     const tri = computeTriMonetaryAmount(params.totalUsd, 'USD', bcv, par);
     const today = new Date().toISOString().split('T')[0];
+    const targetVaultId = params.vaultId || 'vault-pyme-caja';
+    const vault = this.state().assets.find((v) => v.id === targetVaultId);
 
     return this.addIncome({
-      title: params.title || 'Venta Comercial (3 Gavetas)',
+      title: params.title || (params.isInitialInjection ? 'Fondeo de Capital (3 Gavetas)' : 'Venta Comercial (3 Gavetas)'),
       scope: 'business',
-      category: 'business_sale',
-      channel: 'cash',
-      vaultId: params.vaultId || 'vault-pyme-caja',
+      category: params.isInitialInjection ? 'other' : 'business_sale',
+      channel: params.paymentChannel ?? vault?.channel ?? 'cash',
+      vaultId: targetVaultId,
       triMonetary: tri,
       date: today,
+      drawerAllocations: {
+        drawer1Usd: params.drawer1Usd,
+        drawer2Usd: params.drawer2Usd,
+        drawer3Usd: params.drawer3Usd,
+      },
       notes: `Cortafuegos 3 Gavetas: Reposición $${params.drawer1Usd.toFixed(2)} | Operativa $${params.drawer2Usd.toFixed(2)} | Utilidad Libre $${params.drawer3Usd.toFixed(2)}`,
+    });
+  }
+
+  /**
+   * Executes a payroll disbursement charged directly to Drawer 2 (Operativa & Nómina).
+   */
+  executePayrollExpense(params: {
+    employeeName: string;
+    amountUsd: number;
+    vaultId: string;
+    notes?: string;
+    referenceNumber?: string;
+    period?: string;
+  }): ExpenseEntry {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const tri = computeTriMonetaryAmount(params.amountUsd, 'USD', bcv, par);
+    const today = new Date().toISOString().split('T')[0];
+    const vault = this.state().assets.find((v) => v.id === params.vaultId);
+
+    return this.addExpense({
+      title: `Pago Nómina: ${params.employeeName}${params.period ? ' (' + params.period + ')' : ''}`,
+      scope: 'business',
+      category: 'payroll',
+      channel: vault?.channel ?? 'cash',
+      vaultId: params.vaultId,
+      drawerAllocation: 'drawer_operations',
+      triMonetary: tri,
+      date: today,
+      referenceNumber: params.referenceNumber,
+      notes: params.notes || `Desembolso de nómina cargado a Gaveta 2 (Operativa)`,
+    });
+  }
+
+  /**
+   * Executes a general disbursement from any of the 3 Pyme Drawers.
+   */
+  executeDrawerDisbursement(params: {
+    drawer: 1 | 2 | 3;
+    title: string;
+    amountUsd: number;
+    vaultId: string;
+    category?: ExpenseCategory;
+    notes?: string;
+    referenceNumber?: string;
+  }): ExpenseEntry {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const tri = computeTriMonetaryAmount(params.amountUsd, 'USD', bcv, par);
+    const today = new Date().toISOString().split('T')[0];
+    const vault = this.state().assets.find((v) => v.id === params.vaultId);
+
+    const config =
+      params.drawer === 1
+        ? {
+            drawerAlloc: 'drawer_merchandise' as const,
+            defaultCategory: 'provider_merchandise' as const,
+            defaultTitle: 'Compra Insumos / Reposición (Gaveta 1)',
+          }
+        : params.drawer === 2
+          ? {
+              drawerAlloc: 'drawer_operations' as const,
+              defaultCategory: 'services' as const,
+              defaultTitle: 'Gasto Operativo (Gaveta 2)',
+            }
+          : {
+              drawerAlloc: 'drawer_capex' as const,
+              defaultCategory: 'equipment_capex' as const,
+              defaultTitle: 'Inversión CAPEX / Retiro Socios (Gaveta 3)',
+            };
+
+    return this.addExpense({
+      title: params.title || config.defaultTitle,
+      scope: 'business',
+      category: params.category || config.defaultCategory,
+      channel: vault?.channel ?? 'cash',
+      vaultId: params.vaultId,
+      drawerAllocation: config.drawerAlloc,
+      triMonetary: tri,
+      date: today,
+      referenceNumber: params.referenceNumber,
+      notes: params.notes || `Desembolso ejecutado desde Gaveta #${params.drawer}`,
     });
   }
 
@@ -1512,37 +1605,66 @@ export class Finance360Service {
     const pymeVault = state.assets.find((a) => a.id === 'vault-pyme-caja');
     const baseCajaUsd = pymeVault ? pymeVault.balanceUsdEquivalent : 0;
 
-    const bizIncomesUsd = state.incomes
-      .filter((i) => i.scope === 'business')
-      .reduce((acc, i) => acc + i.triMonetary.amount_usd, 0);
+    let totalAllocatedD1 = 0;
+    let totalAllocatedD2 = 0;
+    let totalAllocatedD3 = 0;
+
+    for (const inc of state.incomes) {
+      if (inc.drawerAllocations) {
+        totalAllocatedD1 += inc.drawerAllocations.drawer1Usd;
+        totalAllocatedD2 += inc.drawerAllocations.drawer2Usd;
+        totalAllocatedD3 += inc.drawerAllocations.drawer3Usd;
+      } else if (inc.scope === 'business' || inc.vaultId === 'vault-pyme-caja') {
+        const amount = inc.triMonetary.amount_usd;
+        totalAllocatedD1 += amount * 0.5;
+        totalAllocatedD2 += amount * 0.3;
+        totalAllocatedD3 += amount * 0.2;
+      }
+    }
+
+    if (totalAllocatedD1 + totalAllocatedD2 + totalAllocatedD3 === 0 && baseCajaUsd > 0) {
+      totalAllocatedD1 = baseCajaUsd * 0.5;
+      totalAllocatedD2 = baseCajaUsd * 0.3;
+      totalAllocatedD3 = baseCajaUsd * 0.2;
+    }
 
     const merchExpensesUsd = state.expenses
-      .filter((e) => e.scope === 'business' && e.category === 'provider_merchandise')
+      .filter(
+        (e) =>
+          e.drawerAllocation === 'drawer_merchandise' ||
+          (e.scope === 'business' && e.category === 'provider_merchandise'),
+      )
       .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
 
     const opsExpensesUsd = state.expenses
       .filter(
         (e) =>
-          e.scope === 'business' &&
-          (e.category === 'payroll' ||
-            e.category === 'services' ||
-            e.category === 'rent' ||
-            e.category === 'utilities' ||
-            e.category === 'maintenance'),
+          e.drawerAllocation === 'drawer_operations' ||
+          (e.scope === 'business' &&
+            (e.category === 'payroll' ||
+              e.category === 'services' ||
+              e.category === 'rent' ||
+              e.category === 'utilities' ||
+              e.category === 'maintenance')),
       )
       .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
 
     const capexExpensesUsd = state.expenses
-      .filter((e) => e.scope === 'business' && e.category === 'equipment_capex')
+      .filter(
+        (e) =>
+          e.drawerAllocation === 'drawer_capex' ||
+          (e.scope === 'business' && e.category === 'equipment_capex'),
+      )
       .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
 
-    // BaseCaja + Inflows allocated 50% / 30% / 20% minus each drawer's outflows
-    const poolBase = Math.max(baseCajaUsd, bizIncomesUsd > 0 ? bizIncomesUsd : baseCajaUsd);
-    const drawer1AvailableUsd = Math.max(0, Number((poolBase * 0.5 - merchExpensesUsd * 0.35).toFixed(2)));
-    const drawer2AvailableUsd = Math.max(0, Number((poolBase * 0.3 - opsExpensesUsd * 0.35).toFixed(2)));
-    const drawer3AvailableUsd = Math.max(0, Number((poolBase * 0.2 - capexExpensesUsd * 0.35).toFixed(2)));
+    const drawer1AvailableUsd = Math.max(0, Number((totalAllocatedD1 - merchExpensesUsd).toFixed(2)));
+    const drawer2AvailableUsd = Math.max(0, Number((totalAllocatedD2 - opsExpensesUsd).toFixed(2)));
+    const drawer3AvailableUsd = Math.max(0, Number((totalAllocatedD3 - capexExpensesUsd).toFixed(2)));
 
     return {
+      drawer1AllocatedUsd: Number(totalAllocatedD1.toFixed(2)),
+      drawer2AllocatedUsd: Number(totalAllocatedD2.toFixed(2)),
+      drawer3AllocatedUsd: Number(totalAllocatedD3.toFixed(2)),
       drawer1AvailableUsd,
       drawer1AvailableVes: Number((drawer1AvailableUsd * bcv).toFixed(2)),
       merchExpensesUsd: Number(merchExpensesUsd.toFixed(2)),

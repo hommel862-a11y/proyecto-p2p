@@ -153,6 +153,11 @@ export interface IncomeEntry {
     realizedPnlUsdt: number;
     importedAt: string;
   };
+  drawerAllocations?: {
+    drawer1Usd: number;
+    drawer2Usd: number;
+    drawer3Usd: number;
+  };
   receiptPdfUrl?: string;
   createdAt: string;
 }
