@@ -174,4 +174,77 @@ export class PymeManagerComponent {
       currentStock: newStock,
     });
   }
+
+  /** Restocks an item by +5 units and records either a Vault Expense or Supplier Credit Liability */
+  restockItem(item: PymeInventoryItem, mode: 'vault' | 'provider_credit'): void {
+    const qtyToAdd = Math.max(5, item.optimalStock - item.currentStock);
+    const res = this.financeService.restockInventoryWithAccounting({
+      itemId: item.id,
+      quantityToAdd: qtyToAdd,
+      paymentMode: mode,
+      vaultId: this.selectedProviderVaultId() || 'vault-pyme-caja',
+    });
+
+    if (res.success) {
+      if (mode === 'vault') {
+        this.toast.success(
+          `📦 Stock de "${item.name}" repuesto (+${qtyToAdd} u. → ${res.newStock}). Egreso de $${res.totalCostUsd} USD asentado en Libro Mayor.`,
+        );
+      } else {
+        this.toast.success(
+          `🚚 Stock de "${item.name}" repuesto (+${qtyToAdd} u. → ${res.newStock}) a crédito ($${res.totalCostUsd} USD agendados en Pasivos a 14 días).`,
+        );
+      }
+    }
+  }
+
+  /** Executes a quick expense from one of the 3 Pyme Drawers */
+  executeDrawerExpense(drawerNumber: 1 | 2 | 3, amountUsd: number): void {
+    if (amountUsd <= 0) return;
+    const bcv = this.financeService.currentBcvRate();
+    const par = this.financeService.currentParallelRate();
+    const today = new Date().toISOString().split('T')[0];
+
+    const config =
+      drawerNumber === 1
+        ? {
+            title: 'Compra Insumos / Reposición (Gaveta 1)',
+            category: 'provider_merchandise' as const,
+            drawer: 'drawer_merchandise' as const,
+          }
+        : drawerNumber === 2
+          ? {
+              title: 'Pago Nómina & Operativa Taller (Gaveta 2)',
+              category: 'payroll' as const,
+              drawer: 'drawer_operations' as const,
+            }
+          : {
+              title: 'Inversión CAPEX / Retiro Utilidad (Gaveta 3)',
+              category: 'equipment_capex' as const,
+              drawer: 'drawer_capex' as const,
+            };
+
+    this.financeService.addExpense({
+      title: config.title,
+      scope: 'business',
+      category: config.category,
+      channel: 'zelle',
+      vaultId: 'vault-pyme-caja',
+      drawerAllocation: config.drawer,
+      triMonetary: {
+        amount_original: amountUsd,
+        currency: 'USD',
+        bcv_rate: bcv,
+        parallel_rate: par,
+        amount_usd: amountUsd,
+        amount_ves: Number((amountUsd * bcv).toFixed(2)),
+      },
+      date: today,
+      notes: `Desembolso auditado desde Gaveta #${drawerNumber} Pyme`,
+    });
+
+    this.toast.success(
+      `💸 Desembolso de $${amountUsd} USD ejecutado desde Gaveta #${drawerNumber} y asentado en Libro Mayor.`,
+    );
+  }
 }

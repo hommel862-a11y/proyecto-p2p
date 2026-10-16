@@ -645,6 +645,20 @@ export class Finance360Component {
     this.driveSync.downloadMasterLedgerJson();
   }
 
+  async onRestoreJsonSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const rawText = await file.text();
+      this.driveSync.restoreFromJsonString(rawText);
+    } catch {
+      this.toast.error('No se pudo leer el archivo de respaldo.');
+    } finally {
+      input.value = '';
+    }
+  }
+
   downloadCsvExport(type: 'expenses' | 'incomes' | 'liabilities'): void {
     this.driveSync.downloadCsv(type);
   }

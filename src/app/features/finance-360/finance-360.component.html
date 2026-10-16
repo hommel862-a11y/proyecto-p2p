@@ -639,15 +639,31 @@
             </button>
           </div>
 
-          <div class="backup-actions-row">
+          <div class="backup-actions-row" style="flex-wrap: wrap;">
             <button type="button" class="btn-backup-export" (click)="downloadJsonBackup()">
-              📥 JSON Maestro
+              📥 Exportar JSON
             </button>
+            <label
+              class="btn-backup-export"
+              style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin: 0;"
+              title="Restaurar portafolio completo desde un archivo .json"
+            >
+              📤 Restaurar JSON
+              <input
+                type="file"
+                accept=".json,application/json"
+                style="display: none;"
+                (change)="onRestoreJsonSelected($event)"
+              />
+            </label>
             <button type="button" class="btn-backup-export" (click)="downloadCsvExport('expenses')">
               📊 CSV Gastos
             </button>
             <button type="button" class="btn-backup-export" (click)="downloadCsvExport('incomes')">
               📈 CSV Ingresos
+            </button>
+            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('liabilities')">
+              ⏳ CSV Pasivos
             </button>
           </div>
         </div>

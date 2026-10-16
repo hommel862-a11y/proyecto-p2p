@@ -201,8 +201,9 @@ export class FinanceAnalyticsComponent {
     });
   });
 
-  /** 30-Day Predictive Cashflow & Runway SVG Curve (3 Scenarios: Optimistic, Baseline, Stress) */
+  /** Dynamic Predictive Cashflow & Runway SVG Curve (Adapts to Selected Horizon: 1D, 7D, 30D, 90D) */
   readonly runwayProjectionSvg = computed(() => {
+    const horizon = this.selectedHorizon();
     const startLiquidity = Math.max(100, this.financeService.totalAssetsUsd());
     const dailyBurn = Math.max(5, this.burnRate().dailyBurnRateUsd || 18);
     const dailyIncomeAvg =
@@ -210,14 +211,28 @@ export class FinanceAnalyticsComponent {
         ? this.executiveKpis().totalIncomeUsd / 30
         : dailyBurn * 1.15;
 
-    const steps = [0, 5, 10, 15, 20, 25, 30];
-    const rawPoints = steps.map((day) => {
+    const steps =
+      horizon === 'day'
+        ? [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
+        : horizon === 'week'
+          ? [0, 1, 2, 3, 4, 5, 7]
+          : horizon === 'quarter'
+            ? [0, 15, 30, 45, 60, 75, 90]
+            : [0, 5, 10, 15, 20, 25, 30];
+
+    const rawPoints = steps.map((day, idx) => {
       const baselineUsd = Math.max(0, startLiquidity - dailyBurn * day);
       const optimisticUsd = Math.max(0, startLiquidity + (dailyIncomeAvg - dailyBurn * 0.85) * day);
       const stressUsd = Math.max(0, startLiquidity - dailyBurn * 1.45 * day);
+      const label =
+        day === 0
+          ? 'Hoy'
+          : horizon === 'day'
+            ? `+${idx * 4}h`
+            : `+${day}d`;
       return {
         day,
-        label: day === 0 ? 'Hoy' : `+${day}d`,
+        label,
         optimisticUsd: Number(optimisticUsd.toFixed(0)),
         baselineUsd: Number(baselineUsd.toFixed(0)),
         stressUsd: Number(stressUsd.toFixed(0)),

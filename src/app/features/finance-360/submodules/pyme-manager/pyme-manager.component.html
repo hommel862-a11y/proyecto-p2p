@@ -71,6 +71,7 @@
         </div>
 
         @let split = drawerSplit();
+        @let liveDrawers = financeService.pymeDrawersTelemetry();
         <div class="drawers-grid">
           <!-- GAVETA 1 -->
           <div class="drawer-card drawer-replenishment">
@@ -83,8 +84,28 @@
               <strong class="amount-usd">${{ split.drawer1.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer1.ves | number: '1.2-2' }}</span>
             </div>
+            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(59, 130, 246, 0.25); font-size: 0.76rem;">
+              <div style="display: flex; justify-content: space-between; color: #93c5fd;">
+                <span>Fondo Real Disponible:</span>
+                <strong>${{ liveDrawers.drawer1AvailableUsd | number: '1.2-2' }} USD</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
+                <span>Ejecutado en Insumos:</span>
+                <span>${{ liveDrawers.merchExpensesUsd | number: '1.2-2' }} USD</span>
+              </div>
+            </div>
             <p class="drawer-desc">Garantiza que el taller o negocio nunca se descapitalice al reponer insumos.</p>
-            <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la venta</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
+              <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la venta</div>
+              <button
+                type="button"
+                class="btn-pay-provider"
+                style="font-size: 0.72rem; padding: 5px 10px;"
+                (click)="executeDrawerExpense(1, 45)"
+              >
+                💸 Ejecutar Compra ($45)
+              </button>
+            </div>
           </div>
 
           <!-- GAVETA 2 -->
@@ -98,8 +119,28 @@
               <strong class="amount-usd">${{ split.drawer2.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer2.ves | number: '1.2-2' }}</span>
             </div>
+            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(245, 158, 11, 0.25); font-size: 0.76rem;">
+              <div style="display: flex; justify-content: space-between; color: #fcd34d;">
+                <span>Fondo Real Disponible:</span>
+                <strong>${{ liveDrawers.drawer2AvailableUsd | number: '1.2-2' }} USD</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
+                <span>Ejecutado en Operativa:</span>
+                <span>${{ liveDrawers.opsExpensesUsd | number: '1.2-2' }} USD</span>
+              </div>
+            </div>
             <p class="drawer-desc">Sueldos de empleados, servicios del local, alquiler y mantenimiento de equipos.</p>
-            <div class="drawer-pct-badge">{{ drawer2Percent() }}% de la venta</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
+              <div class="drawer-pct-badge">{{ drawer2Percent() }}% de la venta</div>
+              <button
+                type="button"
+                class="btn-pay-provider"
+                style="font-size: 0.72rem; padding: 5px 10px;"
+                (click)="executeDrawerExpense(2, 60)"
+              >
+                💸 Pagar Nómina ($60)
+              </button>
+            </div>
           </div>
 
           <!-- GAVETA 3 -->
@@ -113,8 +154,28 @@
               <strong class="amount-usd">${{ split.drawer3.usd | number: '1.2-2' }} USD</strong>
               <span class="amount-ves">≈ Bs {{ split.drawer3.ves | number: '1.2-2' }}</span>
             </div>
+            <div style="margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.76rem;">
+              <div style="display: flex; justify-content: space-between; color: #6ee7b7;">
+                <span>Fondo Real Disponible:</span>
+                <strong>${{ liveDrawers.drawer3AvailableUsd | number: '1.2-2' }} USD</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #64748b; margin-top: 2px;">
+                <span>Invertido en CAPEX:</span>
+                <span>${{ liveDrawers.capexExpensesUsd | number: '1.2-2' }} USD</span>
+              </div>
+            </div>
             <p class="drawer-desc">Utilidad neta real distribuible a los socios o fondo de reinversión comercial.</p>
-            <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la venta</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px;">
+              <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la venta</div>
+              <button
+                type="button"
+                class="btn-pay-provider"
+                style="font-size: 0.72rem; padding: 5px 10px;"
+                (click)="executeDrawerExpense(3, 40)"
+              >
+                💎 Invertir CAPEX ($40)
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -247,12 +308,33 @@
                   </div>
                   <div>
                     <strong class="item-name">{{ item.name }}</strong>
-                    <span class="item-meta">{{ item.category }} · Mínimo: {{ item.minimumStock }} unidades</span>
+                    <span class="item-meta">{{ item.category }} · Mínimo: {{ item.minimumStock }} u. · Óptimo: {{ item.optimalStock }} u.</span>
                     <span class="item-cost">Costo: ${{ item.unitCostUsd | number: '1.2-2' }} | Venta: ${{ item.sellingPriceUsd | number: '1.2-2' }}</span>
                   </div>
                 </div>
 
-                <div class="item-right">
+                <div class="item-right" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <div style="display: flex; gap: 6px;">
+                    <button
+                      type="button"
+                      class="btn-pay-provider"
+                      style="font-size: 0.72rem; padding: 5px 9px;"
+                      title="Comprar lote de reposición descontando de Caja Operativa Pyme"
+                      (click)="restockItem(item, 'vault')"
+                    >
+                      🔄 Reponer (Caja)
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-pay-provider"
+                      style="font-size: 0.72rem; padding: 5px 9px; background: rgba(99, 102, 241, 0.14); border-color: rgba(99, 102, 241, 0.35); color: #a5b4fc;"
+                      title="Ingresar lote a crédito con vencimiento a 14 días en Proveedores"
+                      (click)="restockItem(item, 'provider_credit')"
+                    >
+                      🚚 A Crédito
+                    </button>
+                  </div>
+
                   <div class="stock-stepper">
                     <button type="button" class="btn-step" (click)="adjustStock(item, -1)">-</button>
                     <span class="stock-qty">{{ item.currentStock }}</span>

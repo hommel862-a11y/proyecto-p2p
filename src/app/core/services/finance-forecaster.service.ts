@@ -230,7 +230,31 @@ export class FinanceForecasterService {
       }
     }
 
-    // 3. P2P Synergy Tip
+    // 3. VES Devaluation Exposure Diagnostic
+    const vesAssetsUsd = assets
+      .filter((a) => a.currency === 'VES')
+      .reduce((sum, a) => sum + (bcvRate > 0 ? a.balance / bcvRate : 0), 0);
+    const vesSharePct = liquidAssetsUsd > 0 ? Math.round((vesAssetsUsd / liquidAssetsUsd) * 100) : 0;
+
+    if (vesSharePct > 25) {
+      insights.push({
+        type: 'warning',
+        title: `Alta Exposición en Bolívares (${vesSharePct}%)`,
+        message: `Tienes $${Math.round(vesAssetsUsd)} USD equivalentes en cuentas VES expuestos al deslizamiento cambiario BCV.`,
+        recommendation:
+          'Usa el botón "🔄 Transferir Fondos" para convertir el excedente de Bs a USDT o USD y blindar tu poder adquisitivo.',
+      });
+    } else {
+      insights.push({
+        type: 'success',
+        title: `Blindaje Cambiario Sólido (${100 - vesSharePct}% Moneda Dura)`,
+        message: `Solo el ${vesSharePct}% de tu liquidez está en Bolívares ($${Math.round(vesAssetsUsd)} USD).`,
+        recommendation:
+          'Mantén en VES únicamente el capital necesario para gastos operativos de los próximos 5 a 7 días.',
+      });
+    }
+
+    // 4. P2P Synergy Tip
     const p2pIncomes = incomes.filter((i) => i.category === 'p2p_profit');
     if (p2pIncomes.length === 0) {
       insights.push({
@@ -239,7 +263,7 @@ export class FinanceForecasterService {
         message:
           'Aún no has importado ganancias de la Mesa P2P este mes.',
         recommendation:
-          'Cuando tengas una jornada de arbitraje positiva, usa el botón "Traer Ganancia Neta P2P" para alimentar tu fondo de reserva.',
+          'Cuando tengas una jornada de arbitraje positiva, usa el botón "Importar Ganancia Neta P2P" para alimentar tu fondo de reserva.',
       });
     }
 

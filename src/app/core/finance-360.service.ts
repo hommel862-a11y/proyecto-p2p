@@ -1180,6 +1180,146 @@ export class Finance360Service {
     this.updateState({ inventory: updated });
   }
 
+  /**
+   * Computes the real-time accumulated balance across the 3 Pyme Drawers
+   * based on business incomes and categorized business expenses.
+   */
+  readonly pymeDrawersTelemetry = computed(() => {
+    const state = this.state();
+    const bcv = this.currentBcvRate();
+    const pymeVault = state.assets.find((a) => a.id === 'vault-pyme-caja');
+    const baseCajaUsd = pymeVault ? pymeVault.balanceUsdEquivalent : 0;
+
+    const bizIncomesUsd = state.incomes
+      .filter((i) => i.scope === 'business')
+      .reduce((acc, i) => acc + i.triMonetary.amount_usd, 0);
+
+    const merchExpensesUsd = state.expenses
+      .filter((e) => e.scope === 'business' && e.category === 'provider_merchandise')
+      .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
+
+    const opsExpensesUsd = state.expenses
+      .filter(
+        (e) =>
+          e.scope === 'business' &&
+          (e.category === 'payroll' ||
+            e.category === 'services' ||
+            e.category === 'rent' ||
+            e.category === 'utilities' ||
+            e.category === 'maintenance'),
+      )
+      .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
+
+    const capexExpensesUsd = state.expenses
+      .filter((e) => e.scope === 'business' && e.category === 'equipment_capex')
+      .reduce((acc, e) => acc + e.triMonetary.amount_usd, 0);
+
+    // BaseCaja + Inflows allocated 50% / 30% / 20% minus each drawer's outflows
+    const poolBase = Math.max(baseCajaUsd, bizIncomesUsd > 0 ? bizIncomesUsd : baseCajaUsd);
+    const drawer1AvailableUsd = Math.max(0, Number((poolBase * 0.5 - merchExpensesUsd * 0.35).toFixed(2)));
+    const drawer2AvailableUsd = Math.max(0, Number((poolBase * 0.3 - opsExpensesUsd * 0.35).toFixed(2)));
+    const drawer3AvailableUsd = Math.max(0, Number((poolBase * 0.2 - capexExpensesUsd * 0.35).toFixed(2)));
+
+    return {
+      drawer1AvailableUsd,
+      drawer1AvailableVes: Number((drawer1AvailableUsd * bcv).toFixed(2)),
+      merchExpensesUsd: Number(merchExpensesUsd.toFixed(2)),
+      drawer2AvailableUsd,
+      drawer2AvailableVes: Number((drawer2AvailableUsd * bcv).toFixed(2)),
+      opsExpensesUsd: Number(opsExpensesUsd.toFixed(2)),
+      drawer3AvailableUsd,
+      drawer3AvailableVes: Number((drawer3AvailableUsd * bcv).toFixed(2)),
+      capexExpensesUsd: Number(capexExpensesUsd.toFixed(2)),
+      pymeCajaBalanceUsd: Number(baseCajaUsd.toFixed(2)),
+    };
+  });
+
+  /**
+   * Restocks an inventory item and automatically records either a Vault Expense
+   * or a Supplier Credit Liability so inventory and accounting stay 100% in sync.
+   */
+  restockInventoryWithAccounting(params: {
+    itemId: string;
+    quantityToAdd: number;
+    paymentMode: 'vault' | 'provider_credit';
+    vaultId?: string;
+    providerId?: string;
+  }): { success: boolean; totalCostUsd: number; newStock: number } {
+    const item = this.state().inventory.find((i) => i.id === params.itemId);
+    if (!item || params.quantityToAdd <= 0) {
+      return { success: false, totalCostUsd: 0, newStock: 0 };
+    }
+
+    const totalCostUsd = Math.round(item.unitCostUsd * params.quantityToAdd * 100) / 100;
+    const newStock = item.currentStock + params.quantityToAdd;
+    this.updateInventoryItem(item.id, { currentStock: newStock });
+
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const tri = computeTriMonetaryAmount(totalCostUsd, 'USD', bcv, par);
+    const today = new Date().toISOString().split('T')[0];
+
+    if (params.paymentMode === 'vault') {
+      const targetVaultId = params.vaultId || 'vault-pyme-caja';
+      const vault = this.state().assets.find((v) => v.id === targetVaultId);
+      this.addExpense({
+        title: `Reposición Stock (+${params.quantityToAdd} u.): ${item.name}`,
+        scope: 'business',
+        category: 'provider_merchandise',
+        channel: vault?.channel ?? 'zelle',
+        vaultId: targetVaultId,
+        drawerAllocation: 'drawer_merchandise',
+        triMonetary: tri,
+        date: today,
+        notes: `Costo unitario: $${item.unitCostUsd} USD · Stock resultante: ${newStock} u.`,
+      });
+    } else {
+      const providers = this.state().providers;
+      const prov =
+        providers.find((p) => p.id === params.providerId) || providers[0];
+      if (prov) {
+        this.updateProvider(prov.id, {
+          outstandingDebtUsd: Math.round((prov.outstandingDebtUsd + totalCostUsd) * 100) / 100,
+        });
+      }
+      const dueIn14Days = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+      this.addLiability({
+        title: `Factura Reposición (+${params.quantityToAdd} u.): ${item.name}`,
+        creditor: prov ? prov.name : 'Proveedor de Insumos Pyme',
+        scope: 'business',
+        category: 'provider',
+        triMonetary: tri,
+        dueDate: dueIn14Days,
+        status: 'pending',
+        amountPaid: 0,
+        remainingAmount: totalCostUsd,
+        providerId: prov?.id,
+      });
+    }
+
+    return { success: true, totalCostUsd, newStock };
+  }
+
+  /**
+   * Restores a complete Master Ledger state from an imported JSON backup.
+   */
+  restoreLedgerState(importedLedger: Finance360LedgerState): boolean {
+    if (!importedLedger || !Array.isArray(importedLedger.assets)) {
+      return false;
+    }
+    this.updateState({
+      assets: importedLedger.assets,
+      liabilities: importedLedger.liabilities ?? [],
+      incomes: importedLedger.incomes ?? [],
+      expenses: importedLedger.expenses ?? [],
+      casheaPlans: importedLedger.casheaPlans ?? [],
+      providers: importedLedger.providers ?? [],
+      inventory: importedLedger.inventory ?? [],
+      quotes: importedLedger.quotes ?? [],
+    });
+    return true;
+  }
+
   // -------------------------------------------------------------
   // SUB-MÓDULO 3: PRESUPUESTOS (OBRAS & TALLER)
   // -------------------------------------------------------------

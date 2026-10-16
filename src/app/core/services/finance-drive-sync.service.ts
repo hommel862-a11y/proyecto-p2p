@@ -225,6 +225,26 @@ export class FinanceDriveSyncService {
     this.toast.info(`Descargando reporte CSV de ${type}`);
   }
 
+  /**
+   * Restores a complete master ledger snapshot from a JSON file string.
+   */
+  restoreFromJsonString(rawJson: string): boolean {
+    try {
+      const parsed = JSON.parse(rawJson);
+      const ledgerCandidate: Finance360LedgerState = parsed?.ledger ? parsed.ledger : parsed;
+      const ok = this.financeService.restoreLedgerState(ledgerCandidate);
+      if (ok) {
+        this.toast.success('📥 Libro Maestro restaurado exitosamente desde el respaldo JSON.');
+        return true;
+      }
+      this.toast.warn('El archivo JSON no contiene una estructura válida de HOMEL 360.');
+      return false;
+    } catch {
+      this.toast.error('Error al leer el archivo JSON de respaldo.');
+      return false;
+    }
+  }
+
   private downloadBlob(content: string, filename: string, type: string): void {
     if (typeof window === 'undefined') return;
     const blob = new Blob([content], { type });
