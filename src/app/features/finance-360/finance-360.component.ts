@@ -64,8 +64,11 @@ export class Finance360Component {
   readonly formExpenseCategory = signal<ExpenseCategory>('groceries');
   readonly formIncomeCategory = signal<IncomeCategory>('salary');
   readonly formVaultId = signal<string>('');
+  readonly formReferenceNumber = signal<string>('');
   readonly formNotes = signal<string>('');
   readonly isRecordingAudio = signal<boolean>(false);
+  readonly isScanningReceipt = signal<boolean>(false);
+  readonly scannedReceiptName = signal<string>('');
 
   /** Vault Modals State (Transfer, Create, Adjust Balance) */
   readonly transferModalOpen = signal<boolean>(false);
@@ -82,6 +85,20 @@ export class Finance360Component {
 
   readonly editingVaultId = signal<string | null>(null);
   readonly editingVaultBalance = signal<number | null>(null);
+
+  /** Manual Liability Creation & Payment Vault State */
+  readonly newLiabilityModalOpen = signal<boolean>(false);
+  readonly liabTitle = signal<string>('');
+  readonly liabCreditor = signal<string>('');
+  readonly liabAmountUsd = signal<number | null>(null);
+  readonly liabDueDate = signal<string>(
+    new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  );
+  readonly liabCategory = signal<'cashea' | 'provider' | 'loan' | 'fixed_service' | 'tax' | 'other'>(
+    'fixed_service',
+  );
+  readonly liabScope = signal<FinanceScope>('personal');
+  readonly selectedLiabilityVaultId = signal<string>('vault-zelle');
 
   /** Realized P2P profit available today */
   readonly todayP2pSummary = computed(() => {
@@ -327,8 +344,11 @@ export class Finance360Component {
     this.formTitle.set('');
     this.formAmount.set(null);
     this.formCurrency.set('USD');
+    this.formReferenceNumber.set('');
     this.formNotes.set('');
     this.smartCommandText.set('');
+    this.scannedReceiptName.set('');
+    this.isScanningReceipt.set(false);
     const vaults = this.financeService.assets();
     this.formVaultId.set(vaults.length > 0 ? vaults[0].id : '');
     this.quickModalOpen.set(true);
@@ -341,6 +361,94 @@ export class Finance360Component {
   closeQuickModal(): void {
     this.quickModalOpen.set(false);
     this.isRecordingAudio.set(false);
+    this.isScanningReceipt.set(false);
+  }
+
+  /** Handles image/receipt file selection for Gemini Vision / Heuristic OCR */
+  async onReceiptFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    await this.processReceiptFile(file);
+    input.value = '';
+  }
+
+  /** Handles Ctrl+V clipboard paste of a receipt screenshot inside the modal */
+  async onReceiptPaste(event: ClipboardEvent): Promise<void> {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          event.preventDefault();
+          await this.processReceiptFile(file);
+          return;
+        }
+      }
+    }
+  }
+
+  private async processReceiptFile(file: File): Promise<void> {
+    this.isScanningReceipt.set(true);
+    this.scannedReceiptName.set(file.name || 'Captura de Comprobante');
+
+    try {
+      const base64DataUrl = await this.readFileAsDataUrl(file);
+      const base64Clean = base64DataUrl.includes(',')
+        ? base64DataUrl.split(',')[1]
+        : base64DataUrl;
+
+      const parsed = await this.aiIngestor.analyzeReceiptImage(
+        base64Clean,
+        file.type || 'image/jpeg',
+        `${file.name} ${this.smartCommandText()}`,
+      );
+
+      this.quickModalType.set(parsed.pillar === 'income' ? 'income' : 'expense');
+      this.formTitle.set(parsed.title || 'Comprobante Escaneado');
+      if (parsed.amount > 0) {
+        this.formAmount.set(parsed.amount);
+      }
+      this.formCurrency.set(parsed.currency);
+      this.formScope.set(parsed.scope === 'all' ? 'personal' : parsed.scope);
+
+      if (parsed.pillar === 'income' && parsed.incomeCategory) {
+        this.formIncomeCategory.set(parsed.incomeCategory);
+      } else if (parsed.expenseCategory) {
+        this.formExpenseCategory.set(parsed.expenseCategory);
+      }
+
+      if (parsed.referenceNumber) {
+        this.formReferenceNumber.set(parsed.referenceNumber);
+      }
+
+      const matchingVault = this.financeService
+        .assets()
+        .find((v) => v.currency === parsed.currency);
+      if (matchingVault) {
+        this.formVaultId.set(matchingVault.id);
+      }
+
+      this.formNotes.set(
+        `Comprobante procesado por Visión IA (${file.name || 'imagen'})${parsed.referenceNumber ? ' · Ref: ' + parsed.referenceNumber : ''}`,
+      );
+
+      this.toast.success('📸 Comprobante analizado con éxito. Verifica los datos extraídos.');
+    } catch {
+      this.toast.warn('No se pudo leer la imagen del comprobante. Ingresa el monto manualmente.');
+    } finally {
+      this.isScanningReceipt.set(false);
+    }
+  }
+
+  private readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
   }
 
   parseNaturalLanguageCommand(): void {
@@ -390,6 +498,9 @@ export class Finance360Component {
       this.formAmount.set(detectedAmount);
     }
     this.formCurrency.set(parsed.currency);
+    if (parsed.referenceNumber) {
+      this.formReferenceNumber.set(parsed.referenceNumber);
+    }
     const cleanTitle = raw
       .replace(/(?:gast[eé]|pagu[eé]|cobr[eé]|recib[ií]|en|por)\s+/gi, '')
       .replace(/\d+(?:[.,]\d+)?\s*(?:\$|usd|bs\.?|ves|dólares|bolívares)?/gi, '')
@@ -420,6 +531,7 @@ export class Finance360Component {
     const tri = computeTriMonetaryAmount(amount, currency, bcv, parallel);
     const scope = this.formScope();
     const vaultId = this.formVaultId() || undefined;
+    const referenceNumber = this.formReferenceNumber().trim() || undefined;
     const channel: PaymentChannel =
       currency === 'VES' ? 'bs_bank' : currency === 'USDT' ? 'crypto' : 'zelle';
     const date = new Date().toISOString().split('T')[0];
@@ -434,6 +546,7 @@ export class Finance360Component {
         vaultId,
         triMonetary: tri,
         date,
+        referenceNumber,
         notes: this.formNotes().trim() || undefined,
       });
       this.toast.success(`Gasto registrado: $${tri.amount_usd} USD`);
@@ -447,6 +560,7 @@ export class Finance360Component {
         vaultId,
         triMonetary: tri,
         date,
+        referenceNumber,
         notes: this.formNotes().trim() || undefined,
       });
       this.toast.success(`Ingreso registrado: $${tri.amount_usd} USD`);
@@ -467,9 +581,60 @@ export class Finance360Component {
     }, 1600);
   }
 
+  // -------------------------------------------------------------
+  // MANUAL LIABILITY CREATOR & VAULT-LINKED SETTLEMENT
+  // -------------------------------------------------------------
+
+  openNewLiabilityModal(): void {
+    this.liabTitle.set('');
+    this.liabCreditor.set('');
+    this.liabAmountUsd.set(null);
+    this.liabDueDate.set(
+      new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    );
+    const currentScope = this.financeService.scope();
+    this.liabScope.set(currentScope === 'all' ? 'personal' : currentScope);
+    this.liabCategory.set(currentScope === 'business' ? 'provider' : 'fixed_service');
+    this.newLiabilityModalOpen.set(true);
+  }
+
+  saveNewLiability(): void {
+    const title = this.liabTitle().trim();
+    const amount = this.liabAmountUsd();
+    if (!title || !amount || amount <= 0) {
+      this.toast.warn('Ingresa el concepto del compromiso y un monto válido en USD.');
+      return;
+    }
+
+    const bcv = this.financeService.currentBcvRate();
+    const parallel = this.financeService.currentParallelRate();
+    const tri = computeTriMonetaryAmount(amount, 'USD', bcv, parallel);
+
+    this.financeService.addLiability({
+      title,
+      creditor: this.liabCreditor().trim() || 'Compromiso Programado',
+      scope: this.liabScope(),
+      category: this.liabCategory(),
+      triMonetary: tri,
+      dueDate: this.liabDueDate(),
+      status: 'pending',
+      amountPaid: 0,
+      remainingAmount: amount,
+    });
+
+    this.newLiabilityModalOpen.set(false);
+    this.toast.success(`⏳ Compromiso "${title}" ($${amount} USD) agendado en el calendario.`);
+  }
+
   payQuickLiability(id: string, amountUsd: number): void {
-    this.financeService.payLiability(id, amountUsd);
-    this.toast.success(`Cuota/Pasivo de $${amountUsd} USD marcado como pagado.`);
+    const debitVaultId = this.selectedLiabilityVaultId() || undefined;
+    this.financeService.payLiability(id, amountUsd, debitVaultId, true);
+    const vaultName =
+      this.financeService.state().assets.find((v) => v.id === debitVaultId)?.name ||
+      'Registro Contable';
+    this.toast.success(
+      `✅ Pasivo de $${amountUsd} USD liquidado desde "${vaultName}" y asentado en el Libro Mayor.`,
+    );
   }
 
   async syncToGoogleDrive(): Promise<void> {

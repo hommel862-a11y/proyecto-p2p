@@ -485,9 +485,37 @@
         @let upcoming = financeService.upcomingLiabilities7Days();
         <div class="upcoming-commitments-section">
           <div class="section-title-row">
-            <h3>⏳ Vencimientos Próximos (7 Días)</h3>
-            <span class="count-badge">{{ upcoming.length }}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3>⏳ Vencimientos (7 Días)</h3>
+              <span class="count-badge">{{ upcoming.length }}</span>
+            </div>
+            <button
+              type="button"
+              class="btn-vault-util primary"
+              style="padding: 5px 10px; font-size: 0.72rem;"
+              (click)="openNewLiabilityModal()"
+            >
+              + Nuevo Pasivo
+            </button>
           </div>
+
+          @if (upcoming.length > 0) {
+            <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #94a3b8;">
+              <span>Debitar pago de:</span>
+              <select
+                class="form-control"
+                style="padding: 4px 8px; font-size: 0.75rem; flex: 1;"
+                [ngModel]="selectedLiabilityVaultId()"
+                (ngModelChange)="selectedLiabilityVaultId.set($event)"
+              >
+                @for (v of financeService.state().assets; track v.id) {
+                  <option [value]="v.id">
+                    {{ getVaultIcon(v) }} {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
+                  </option>
+                }
+              </select>
+            </div>
+          }
 
           @if (upcoming.length === 0) {
             <div class="no-commitments-box">
@@ -714,7 +742,7 @@
   <!-- ========================================================= -->
   @if (quickModalOpen()) {
     <div class="modal-backdrop" (click)="closeQuickModal()">
-      <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-card" (click)="$event.stopPropagation()" (paste)="onReceiptPaste($event)">
         <div class="modal-header">
           <h3>
             @if (quickModalType() === 'income') { 🟢 Registrar Ingreso / Cobro }
@@ -725,14 +753,33 @@
         </div>
 
         <div class="modal-body">
-          <!-- SMART COMMAND INPUT BAR (ALWAYS AVAILABLE FOR FAST ENTRY) -->
+          <!-- SMART COMMAND INPUT BAR + MULTIMODAL RECEIPT SCANNER -->
           <div class="smart-ai-bar">
-            <label>✨ Entrada Rápida en Lenguaje Natural (IA)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <label style="margin: 0;">✨ Entrada Rápida en Lenguaje Natural o Escáner IA</label>
+              <label
+                style="cursor: pointer; background: rgba(226, 183, 85, 0.14); border: 1px solid rgba(226, 183, 85, 0.38); color: #facc15; padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;"
+                title="Sube una imagen o pega una captura con Ctrl+V"
+              >
+                @if (isScanningReceipt()) {
+                  ⏳ Escaneando factura...
+                } @else {
+                  📸 Escanear Comprobante / Factura (o Ctrl+V)
+                }
+                <input
+                  type="file"
+                  accept="image/*"
+                  style="display: none;"
+                  (change)="onReceiptFileSelected($event)"
+                />
+              </label>
+            </div>
+
             <div class="smart-input-row">
               <input
                 type="text"
                 class="form-control"
-                placeholder='Ej: "Gasté 25$ en gasolina por Pago Móvil" o "Cobré 450$ de taller"'
+                placeholder='Ej: "Gasté 25$ en gasolina por Pago Móvil" o pega captura (Ctrl+V)'
                 [ngModel]="smartCommandText()"
                 (ngModelChange)="smartCommandText.set($event)"
                 (keydown.enter)="parseNaturalLanguageCommand()"
@@ -745,6 +792,11 @@
                 Autocompletar
               </button>
             </div>
+            @if (scannedReceiptName()) {
+              <div style="margin-top: 6px; font-size: 0.75rem; color: #34d399; font-weight: 600;">
+                ✅ Imagen procesada: {{ scannedReceiptName() }}
+              </div>
+            }
             @if (isRecordingAudio()) {
               <div class="voice-status-banner">
                 <span class="pulse-dot"></span> Escuchando dictado de voz y clasificando categoría...
@@ -838,20 +890,32 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label>Bóveda / Cuenta Afectada</label>
-            <select
-              class="form-control"
-              [ngModel]="formVaultId()"
-              (ngModelChange)="formVaultId.set($event)"
-            >
-              <option value="">(Solo registro contable · Sin afectar bóveda)</option>
-              @for (vault of financeService.state().assets; track vault.id) {
-                <option [value]="vault.id">
-                  {{ getVaultIcon(vault) }} {{ vault.name }} — Saldo: {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
-                </option>
-              }
-            </select>
+          <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+              <label>Bóveda / Cuenta Afectada</label>
+              <select
+                class="form-control"
+                [ngModel]="formVaultId()"
+                (ngModelChange)="formVaultId.set($event)"
+              >
+                <option value="">(Solo registro contable · Sin afectar bóveda)</option>
+                @for (vault of financeService.state().assets; track vault.id) {
+                  <option [value]="vault.id">
+                    {{ getVaultIcon(vault) }} {{ vault.name }} — {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
+                  </option>
+                }
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Referencia (Opcional)</label>
+              <input
+                type="text"
+                class="form-control font-mono"
+                placeholder="Ej. #849201"
+                [ngModel]="formReferenceNumber()"
+                (ngModelChange)="formReferenceNumber.set($event)"
+              />
+            </div>
           </div>
         </div>
 
@@ -1025,6 +1089,104 @@
         <div class="modal-footer">
           <button type="button" class="btn-secondary" (click)="newVaultModalOpen.set(false)">Cancelar</button>
           <button type="button" class="btn-primary" (click)="saveNewVault()">Crear Bóveda</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================= -->
+  <!-- MODAL 4: CREATE MANUAL LIABILITY / COMMITMENT              -->
+  <!-- ========================================================= -->
+  @if (newLiabilityModalOpen()) {
+    <div class="modal-backdrop" (click)="newLiabilityModalOpen.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>⏳ Agendar Compromiso o Pasivo</h3>
+          <button type="button" class="btn-close" (click)="newLiabilityModalOpen.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Concepto del Compromiso</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Ej. Alquiler del Taller, Condominio, Factura Insumos..."
+              [ngModel]="liabTitle()"
+              (ngModelChange)="liabTitle.set($event)"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Acreedor / Beneficiario</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Inmobiliaria / SENIAT / Proveedor"
+                [ngModel]="liabCreditor()"
+                (ngModelChange)="liabCreditor.set($event)"
+              />
+            </div>
+
+            <div class="form-group half">
+              <label>Monto Exigible ($ USD)</label>
+              <input
+                type="number"
+                class="form-control font-mono"
+                placeholder="0.00"
+                [ngModel]="liabAmountUsd()"
+                (ngModelChange)="liabAmountUsd.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Fecha de Vencimiento</label>
+              <input
+                type="date"
+                class="form-control"
+                [ngModel]="liabDueDate()"
+                (ngModelChange)="liabDueDate.set($event)"
+              />
+            </div>
+
+            <div class="form-group half">
+              <label>Tipo de Pasivo</label>
+              <select
+                class="form-control"
+                [ngModel]="liabCategory()"
+                (ngModelChange)="liabCategory.set($event)"
+              >
+                <option value="fixed_service">💡 Servicio Fijo / Alquiler</option>
+                <option value="provider">📦 Factura de Proveedor</option>
+                <option value="loan">🏦 Préstamo / Financiamiento</option>
+                <option value="tax">🏛️ Impuestos / Tasas</option>
+                <option value="cashea">⚡ Cuota Cashea</option>
+                <option value="other">📌 Otro Compromiso</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Ámbito Contable</label>
+            <select
+              class="form-control"
+              [ngModel]="liabScope()"
+              (ngModelChange)="liabScope.set($event)"
+            >
+              <option value="personal">👤 Personal / Hogar</option>
+              <option value="business">🏢 Pyme / Taller</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="newLiabilityModalOpen.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveNewLiability()">
+            Agendar en Calendario
+          </button>
         </div>
       </div>
     </div>

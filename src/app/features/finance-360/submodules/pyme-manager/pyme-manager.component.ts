@@ -72,6 +72,7 @@ export class PymeManagerComponent {
   readonly provPhone = signal<string>('');
   readonly provBankDetails = signal<string>('');
   readonly provDebt = signal<number | null>(0);
+  readonly selectedProviderVaultId = signal<string>('vault-pyme-caja');
 
   // New Inventory Item Form
   readonly showAddItemModal = signal<boolean>(false);
@@ -128,13 +129,15 @@ export class PymeManagerComponent {
       return;
     }
 
-    const updatedDebt = Math.max(0, provider.outstandingDebtUsd - amountUsd);
-    this.financeService.updateProvider(provider.id, {
-      outstandingDebtUsd: updatedDebt,
-    });
+    const vaultId = this.selectedProviderVaultId() || undefined;
+    const updatedDebt = Math.max(0, Number((provider.outstandingDebtUsd - amountUsd).toFixed(2)));
+    this.financeService.payProviderWithVault(provider.id, amountUsd, vaultId);
+    const vaultName =
+      this.financeService.state().assets.find((v) => v.id === vaultId)?.name ||
+      'Caja Operativa Pyme';
 
     this.toast.success(
-      `Abono de $${amountUsd} USD registrado a ${provider.name}. Saldo restante: $${updatedDebt} USD.`,
+      `🚚 Pago de $${amountUsd} USD a ${provider.name} debitado de "${vaultName}" y asentado en Libro Mayor. Restante: $${updatedDebt} USD.`,
     );
   }
 

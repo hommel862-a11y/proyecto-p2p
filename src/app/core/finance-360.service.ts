@@ -528,9 +528,9 @@ export class Finance360Service {
       this.debitVault(newEntry.vaultId, newEntry.triMonetary.amount_usd);
     }
 
-    // If attached to a liability, credit the payment
+    // If attached to a liability, credit the payment without duplicating expense
     if (newEntry.liabilityId) {
-      this.payLiability(newEntry.liabilityId, newEntry.triMonetary.amount_usd);
+      this.payLiability(newEntry.liabilityId, newEntry.triMonetary.amount_usd, undefined, false);
     }
 
     this.updateState({ expenses: [newEntry, ...this.state().expenses] });
@@ -549,7 +549,13 @@ export class Finance360Service {
     return newItem;
   }
 
-  payLiability(id: string, amountPaidUsd: number, debitVaultId?: string): void {
+  payLiability(
+    id: string,
+    amountPaidUsd: number,
+    debitVaultId?: string,
+    recordLedgerExpense: boolean = true,
+  ): void {
+    const target = this.state().liabilities.find((l) => l.id === id);
     const updated = this.state().liabilities.map((item) => {
       if (item.id !== id) return item;
       const newPaid = Math.round((item.amountPaid + amountPaidUsd) * 100) / 100;
@@ -570,7 +576,37 @@ export class Finance360Service {
       this.debitVault(debitVaultId, amountPaidUsd);
     }
 
-    this.updateState({ liabilities: updated });
+    let nextExpenses = this.state().expenses;
+    if (recordLedgerExpense && target && amountPaidUsd > 0) {
+      const bcv = this.currentBcvRate();
+      const par = this.currentParallelRate();
+      const vault = debitVaultId
+        ? this.state().assets.find((v) => v.id === debitVaultId)
+        : undefined;
+      const expenseEntry: ExpenseEntry = {
+        id: `exp-liab-${Date.now()}`,
+        title: `Liquidación Pasivo: ${target.title}`,
+        scope: target.scope === 'all' ? 'personal' : target.scope,
+        category:
+          target.category === 'cashea'
+            ? 'cashea_installment'
+            : target.category === 'provider'
+              ? 'provider_merchandise'
+              : target.category === 'tax'
+                ? 'taxes'
+                : 'services',
+        channel: vault?.channel ?? 'bs_bank',
+        vaultId: debitVaultId,
+        liabilityId: target.id,
+        triMonetary: computeTriMonetaryAmount(amountPaidUsd, 'USD', bcv, par),
+        date: new Date().toISOString().split('T')[0],
+        notes: `Acreedor: ${target.creditor}`,
+        createdAt: new Date().toISOString(),
+      };
+      nextExpenses = [expenseEntry, ...nextExpenses];
+    }
+
+    this.updateState({ liabilities: updated, expenses: nextExpenses });
   }
 
   /**
@@ -951,12 +987,19 @@ export class Finance360Service {
     installmentNumber: number,
     paymentRef?: string,
     bcvRateApplied?: number,
+    debitVaultId?: string,
   ): void {
+    let paidAmountUsd = 0;
+    let planTitle = 'Compra Cashea';
+    const bcv = bcvRateApplied ?? this.currentBcvRate();
+    const par = this.currentParallelRate();
+
     const plans = this.state().casheaPlans.map((plan) => {
       if (plan.id !== planId) return plan;
+      planTitle = plan.productName;
       const updatedInstallments = plan.installments.map((inst) => {
         if (inst.number !== installmentNumber) return inst;
-        const bcv = bcvRateApplied ?? this.currentBcvRate();
+        paidAmountUsd = inst.amountUsd;
         return {
           ...inst,
           status: 'paid' as const,
@@ -989,7 +1032,33 @@ export class Finance360Service {
         : l,
     );
 
-    this.updateState({ casheaPlans: plans, liabilities });
+    if (debitVaultId && paidAmountUsd > 0) {
+      this.debitVault(debitVaultId, paidAmountUsd);
+    }
+
+    let nextExpenses = this.state().expenses;
+    if (paidAmountUsd > 0) {
+      const vault = debitVaultId
+        ? this.state().assets.find((v) => v.id === debitVaultId)
+        : undefined;
+      const exp: ExpenseEntry = {
+        id: `exp-cashea-${planId}-${installmentNumber}-${Date.now()}`,
+        title: `Cuota Cashea #${installmentNumber} - ${planTitle}`,
+        scope: 'personal',
+        category: 'cashea_installment',
+        channel: vault?.channel ?? 'bs_bank',
+        vaultId: debitVaultId,
+        liabilityId,
+        triMonetary: computeTriMonetaryAmount(paidAmountUsd, 'USD', bcv, par),
+        date: new Date().toISOString().split('T')[0],
+        referenceNumber: paymentRef,
+        notes: paymentRef ? `Ref: ${paymentRef}` : 'Cuota quincenal Cashea liquidada',
+        createdAt: new Date().toISOString(),
+      };
+      nextExpenses = [exp, ...nextExpenses];
+    }
+
+    this.updateState({ casheaPlans: plans, liabilities, expenses: nextExpenses });
   }
 
   // -------------------------------------------------------------
@@ -1010,6 +1079,71 @@ export class Finance360Service {
   updateProvider(id: string, partial: Partial<PymeProvider>): void {
     const updated = this.state().providers.map((p) => (p.id === id ? { ...p, ...partial } : p));
     this.updateState({ providers: updated });
+  }
+
+  payProviderWithVault(providerId: string, amountUsd: number, debitVaultId?: string): void {
+    const prov = this.state().providers.find((p) => p.id === providerId);
+    if (!prov || amountUsd <= 0) return;
+
+    const updatedDebt = Math.max(0, Math.round((prov.outstandingDebtUsd - amountUsd) * 100) / 100);
+    this.updateProvider(providerId, { outstandingDebtUsd: updatedDebt });
+
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const vault = debitVaultId
+      ? this.state().assets.find((v) => v.id === debitVaultId)
+      : undefined;
+
+    this.addExpense({
+      title: `Pago a Proveedor: ${prov.name}`,
+      scope: 'business',
+      category: 'provider_merchandise',
+      channel: vault?.channel ?? 'zelle',
+      vaultId: debitVaultId,
+      triMonetary: computeTriMonetaryAmount(amountUsd, 'USD', bcv, par),
+      date: new Date().toISOString().split('T')[0],
+      notes: `Rubro: ${prov.category} · Saldo restante: $${updatedDebt.toFixed(2)} USD`,
+    });
+  }
+
+  /**
+   * Simulates the impact of a future BCV exchange rate on VES vaults and BCV-indexed liabilities.
+   */
+  simulateBcvRateImpact(simulatedBcvRate: number): {
+    currentBcv: number;
+    simulatedBcv: number;
+    devaluationPct: number;
+    vesBalanceTotal: number;
+    currentVesInUsd: number;
+    simulatedVesInUsd: number;
+    purchasingPowerDeltaUsd: number;
+    projectedNetWorthUsd: number;
+    projectedNetWorthVes: number;
+  } {
+    const currentBcv = Math.max(1, this.currentBcvRate());
+    const simBcv = Math.max(1, simulatedBcvRate);
+    const vesVaults = this.assets().filter((a) => a.currency === 'VES');
+    const vesBalanceTotal = vesVaults.reduce((s, v) => s + v.balance, 0);
+
+    const currentVesInUsd = Math.round((vesBalanceTotal / currentBcv) * 100) / 100;
+    const simulatedVesInUsd = Math.round((vesBalanceTotal / simBcv) * 100) / 100;
+    const purchasingPowerDeltaUsd = Math.round((simulatedVesInUsd - currentVesInUsd) * 100) / 100;
+    const devaluationPct = Math.round(((simBcv - currentBcv) / currentBcv) * 1000) / 10;
+
+    const projectedNetWorthUsd = Math.round((this.netWorthUsd() + purchasingPowerDeltaUsd) * 100) / 100;
+    const projectedNetWorthVes = Math.round(projectedNetWorthUsd * simBcv * 100) / 100;
+
+    return {
+      currentBcv,
+      simulatedBcv: simBcv,
+      devaluationPct,
+      vesBalanceTotal,
+      currentVesInUsd,
+      simulatedVesInUsd,
+      purchasingPowerDeltaUsd,
+      projectedNetWorthUsd,
+      projectedNetWorthVes,
+    };
   }
 
   addInventoryItem(item: Omit<PymeInventoryItem, 'id' | 'updatedAt' | 'status'>): PymeInventoryItem {

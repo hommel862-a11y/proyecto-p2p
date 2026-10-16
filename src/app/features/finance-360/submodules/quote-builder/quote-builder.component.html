@@ -269,6 +269,15 @@
 
         <button
           type="button"
+          class="btn-action"
+          style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399;"
+          (click)="copyQuoteForWhatsApp()"
+        >
+          📲 Copiar WhatsApp / Telegram
+        </button>
+
+        <button
+          type="button"
           class="btn-action btn-save-quote"
           (click)="saveCurrentQuote()"
         >
@@ -295,27 +304,54 @@
     } @else {
       <div class="quotes-list">
         @for (q of savedQuotes(); track q.id) {
-          <div class="quote-row-item" [class.accepted]="q.status === 'approved'">
+          <div class="quote-row-item" [class.accepted]="q.status === 'approved' || q.status === 'completed'">
             <div class="q-left">
               <strong class="q-title">{{ q.description }}</strong>
               <span class="q-client">Cliente: {{ q.clientName }} ({{ q.quoteNumber }})</span>
               <span class="q-status-badge" [class]="q.status">
-                {{ q.status === 'approved' ? '✓ Anticipo Cobrado' : '⏳ Pendiente' }}
+                @if (q.status === 'completed') {
+                  🏁 100% Liquidado &amp; Entregado
+                } @else if (q.status === 'approved') {
+                  ✓ Anticipo 50% Cobrado (En Ejecución)
+                } @else {
+                  ⏳ Pendiente de Anticipo
+                }
               </span>
             </div>
             <div class="q-right">
               <div class="q-amount">${{ q.totalPriceUsd | number: '1.2-2' }} USD</div>
               <span class="q-ves">Bs {{ q.totalPriceVes | number: '1.2-2' }}</span>
 
-              @if (q.status !== 'approved') {
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-top: 4px;">
                 <button
                   type="button"
                   class="btn-advance-deposit"
-                  (click)="registerAdvanceDeposit(q)"
+                  style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0;"
+                  title="Copiar resumen comercial para enviar por WhatsApp o Telegram"
+                  (click)="copyQuoteForWhatsApp(q)"
                 >
-                  Cobrar Anticipo 50% (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                  📲 WhatsApp
                 </button>
-              }
+
+                @if (q.status === 'draft' || q.status === 'sent') {
+                  <button
+                    type="button"
+                    class="btn-advance-deposit"
+                    (click)="registerAdvanceDeposit(q)"
+                  >
+                    💰 Cobrar Anticipo 50% (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                  </button>
+                } @else if (q.status === 'approved') {
+                  <button
+                    type="button"
+                    class="btn-advance-deposit"
+                    style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none;"
+                    (click)="settleFinalQuoteDelivery(q)"
+                  >
+                    🏁 Liquidar 50% Final + 3 Gavetas (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                  </button>
+                }
+              </div>
             </div>
           </div>
         }

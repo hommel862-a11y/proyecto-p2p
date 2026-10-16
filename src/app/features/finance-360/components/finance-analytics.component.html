@@ -200,6 +200,103 @@
   </div>
 
   <!-- ========================================================= -->
+  <!-- 2B. INTERACTIVE BCV EXCHANGE RATE STRESS-TEST SIMULATOR   -->
+  <!-- ========================================================= -->
+  @let stress = bcvStressSimulation();
+  <div
+    class="donut-panel-card"
+    style="border-color: rgba(226, 183, 85, 0.25); background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.85));"
+  >
+    <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+      <div>
+        <span class="panel-kicker" style="color: #facc15;">SIMULADOR INTERACTIVO DE RIESGO CAMBIARIO</span>
+        <h4>🎛️ Stress-Test de Devaluación BCV sobre Liquidez en Bolívares</h4>
+      </div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button
+          type="button"
+          class="horizon-pill"
+          (click)="setStressRateMultiplier(1.05)"
+        >
+          +5% BCV
+        </button>
+        <button
+          type="button"
+          class="horizon-pill"
+          (click)="setStressRateMultiplier(1.15)"
+        >
+          +15% Moderado
+        </button>
+        <button
+          type="button"
+          class="horizon-pill"
+          (click)="setStressRateMultiplier(1.30)"
+        >
+          +30% Severo
+        </button>
+        <button
+          type="button"
+          class="horizon-pill active"
+          (click)="matchParallelRateInStress()"
+        >
+          ⚡ Igualar Paralelo ({{ financeService.currentParallelRate() | number: '1.2-2' }})
+        </button>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: center;">
+      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
+        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px;">
+          <span>Tasa BCV Hipotética:</span>
+          <strong style="color: #facc15; font-size: 1rem;">
+            Bs {{ activeSimulatedBcvRate() | number: '1.2-2' }} / $
+          </strong>
+        </div>
+        <input
+          type="range"
+          style="width: 100%; accent-color: #e2b755; cursor: pointer;"
+          [min]="+(financeService.currentBcvRate() * 0.9).toFixed(0)"
+          [max]="+(financeService.currentBcvRate() * 2.2).toFixed(0)"
+          step="0.5"
+          [ngModel]="activeSimulatedBcvRate()"
+          (ngModelChange)="customBcvRate.set($event)"
+        />
+        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #64748b; margin-top: 4px;">
+          <span>Actual: Bs {{ stress.currentBcv | number: '1.2-2' }}</span>
+          <span>Variación: {{ stress.devaluationPct >= 0 ? '+' : '' }}{{ stress.devaluationPct }}%</span>
+        </div>
+      </div>
+
+      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
+        <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">
+          Bóvedas en Bolívares (Bs {{ stress.vesBalanceTotal | number: '1.0-0' }})
+        </div>
+        <div style="font-size: 1.25rem; font-weight: 900; color: #f8fafc; margin: 4px 0;">
+          ${{ stress.simulatedVesInUsd | number: '1.2-2' }} <small style="font-size: 0.75rem; color: #94a3b8;">USD</small>
+        </div>
+        <div style="font-size: 0.75rem; color: #64748b;">
+          Hoy equivalen a: <strong>${{ stress.currentVesInUsd | number: '1.2-2' }} USD</strong>
+        </div>
+      </div>
+
+      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.25);">
+        <div style="font-size: 0.72rem; color: #fca5a5; font-weight: 700; text-transform: uppercase;">
+          Impacto en Poder Adquisitivo
+        </div>
+        <div
+          style="font-size: 1.25rem; font-weight: 900; margin: 4px 0;"
+          [style.color]="stress.purchasingPowerDeltaUsd < 0 ? '#f87171' : '#34d399'"
+        >
+          {{ stress.purchasingPowerDeltaUsd >= 0 ? '+' : '' }}${{ stress.purchasingPowerDeltaUsd | number: '1.2-2' }} USD
+        </div>
+        <div style="font-size: 0.75rem; color: #cbd5e1;">
+          Patrimonio Neto Proyectado: <strong>${{ stress.projectedNetWorthUsd | number: '1.2-2' }} USD</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
   <!-- 3. DUAL SVG DONUT CHARTS: ASSET ALLOCATION & CATEGORIES   -->
   <!-- ========================================================= -->
   <div class="dual-donuts-grid">

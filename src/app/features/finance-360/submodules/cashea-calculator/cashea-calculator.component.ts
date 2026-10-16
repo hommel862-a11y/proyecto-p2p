@@ -25,6 +25,9 @@ export class CasheaCalculatorComponent {
   readonly firstDueDate = signal<string>(
     new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   );
+  readonly selectedPaymentVaultId = signal<string>('vault-banco-bs');
+  readonly paymentReference = signal<string>('');
+  readonly debitInitialFromVault = signal<boolean>(true);
 
   /** Real-time calculation based on selected level */
   readonly calculation = computed(() => {
@@ -101,8 +104,31 @@ export class CasheaCalculatorComponent {
       status: 'active',
     });
 
+    if (this.debitInitialFromVault() && calc.initialPaymentUsd > 0) {
+      const bcv = this.financeService.currentBcvRate();
+      const parallel = this.financeService.currentParallelRate();
+      const vaultId = this.selectedPaymentVaultId() || undefined;
+      this.financeService.addExpense({
+        title: `Inicial Cashea (${calc.initialPercentage}%): ${title}`,
+        scope: 'personal',
+        category: 'cashea_installment',
+        channel: 'bs_bank',
+        vaultId,
+        triMonetary: {
+          amount_original: calc.initialPaymentUsd,
+          currency: 'USD',
+          bcv_rate: bcv,
+          parallel_rate: parallel,
+          amount_usd: calc.initialPaymentUsd,
+          amount_ves: Number((calc.initialPaymentUsd * bcv).toFixed(2)),
+        },
+        date: new Date().toISOString().split('T')[0],
+        notes: `Pago inicial en ${store}`,
+      });
+    }
+
     this.toast.success(
-      `Plan "${plan.productName}" registrado. Se crearon ${plan.numberOfInstallments} cuotas automáticas en Pasivos.`,
+      `Plan "${plan.productName}" registrado. Se crearon ${plan.numberOfInstallments} cuotas en Pasivos.`,
     );
 
     // Reset Form
@@ -118,9 +144,21 @@ export class CasheaCalculatorComponent {
       return;
     }
 
-    this.financeService.markCasheaInstallmentPaid(plan.id, pendingInst.number);
+    const vaultId = this.selectedPaymentVaultId() || undefined;
+    const ref = this.paymentReference().trim() || undefined;
+    this.financeService.markCasheaInstallmentPaid(
+      plan.id,
+      pendingInst.number,
+      ref,
+      undefined,
+      vaultId,
+    );
+    this.paymentReference.set('');
+    const vaultName =
+      this.financeService.state().assets.find((v) => v.id === vaultId)?.name ||
+      'Registro Contable';
     this.toast.success(
-      `Cuota #${pendingInst.number} de "${plan.productName}" marcada como pagada.`,
+      `⚡ Cuota #${pendingInst.number} de "${plan.productName}" pagada desde "${vaultName}" y asentada en el Libro Mayor.`,
     );
   }
 

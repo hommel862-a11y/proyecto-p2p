@@ -165,6 +165,27 @@
         </div>
       </div>
 
+      <div style="margin: 12px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.55); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: #cbd5e1; cursor: pointer; margin: 0;">
+          <input
+            type="checkbox"
+            [ngModel]="debitInitialFromVault()"
+            (ngModelChange)="debitInitialFromVault.set($event)"
+          />
+          Debitar Inicial (${{ calc.initialPaymentUsd | number: '1.2-2' }}) hoy de bóveda:
+        </label>
+        <select
+          class="form-control"
+          style="max-width: 240px; padding: 5px 10px; font-size: 0.78rem;"
+          [ngModel]="selectedPaymentVaultId()"
+          (ngModelChange)="selectedPaymentVaultId.set($event)"
+        >
+          @for (v of financeService.state().assets; track v.id) {
+            <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
+          }
+        </select>
+      </div>
+
       <button
         type="button"
         class="btn-save-plan"
@@ -183,6 +204,27 @@
         <span class="plans-count-badge">{{ activePlans().length }} activos</span>
       </div>
       <h3>Tus Compras a Plazos</h3>
+      <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <span style="font-size: 0.76rem; color: #94a3b8;">Bóveda de pago de cuota:</span>
+        <select
+          class="form-control"
+          style="flex: 1; min-width: 170px; padding: 5px 8px; font-size: 0.76rem;"
+          [ngModel]="selectedPaymentVaultId()"
+          (ngModelChange)="selectedPaymentVaultId.set($event)"
+        >
+          @for (v of financeService.state().assets; track v.id) {
+            <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
+          }
+        </select>
+        <input
+          type="text"
+          class="form-control"
+          style="width: 135px; padding: 5px 8px; font-size: 0.76rem;"
+          placeholder="Ref. Pago Móvil"
+          [ngModel]="paymentReference()"
+          (ngModelChange)="paymentReference.set($event)"
+        />
+      </div>
     </div>
 
     @if (activePlans().length === 0) {

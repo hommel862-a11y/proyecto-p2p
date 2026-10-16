@@ -133,13 +133,25 @@
               Deuda total pendiente: <strong class="gold-text">${{ totalProviderDebtUsd() | number: '1.2-2' }} USD</strong>
             </p>
           </div>
-          <button
-            type="button"
-            class="btn-primary-small"
-            (click)="showAddProviderModal.set(true)"
-          >
-            + Nuevo Proveedor
-          </button>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select
+              class="form-control"
+              style="padding: 6px 10px; font-size: 0.78rem; min-width: 190px;"
+              [ngModel]="selectedProviderVaultId()"
+              (ngModelChange)="selectedProviderVaultId.set($event)"
+            >
+              @for (v of financeService.state().assets; track v.id) {
+                <option [value]="v.id">Debitar: {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
+              }
+            </select>
+            <button
+              type="button"
+              class="btn-primary-small"
+              (click)="showAddProviderModal.set(true)"
+            >
+              + Nuevo Proveedor
+            </button>
+          </div>
         </div>
 
         @if (providers().length === 0) {
@@ -154,7 +166,7 @@
                   <strong class="prov-name">{{ prov.name }}</strong>
                   <span class="prov-category">{{ prov.category }}</span>
                   @if (prov.phone) {
-                    <span class="prov-phone">📞 {{ prov.phone }}</span>
+                    <span class="prov-phone">📞 {{ prov.phone }} · {{ prov.bankDetails }}</span>
                   }
                 </div>
                 <div class="prov-right">
@@ -165,13 +177,25 @@
                     </strong>
                   </div>
                   @if (prov.outstandingDebtUsd > 0) {
-                    <button
-                      type="button"
-                      class="btn-pay-provider"
-                      (click)="payProviderDebt(prov, prov.outstandingDebtUsd)"
-                    >
-                      Pagar Total
-                    </button>
+                    <div style="display: flex; gap: 6px;">
+                      @if (prov.outstandingDebtUsd >= 20) {
+                        <button
+                          type="button"
+                          class="btn-pay-provider"
+                          style="background: rgba(99, 102, 241, 0.16); border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc;"
+                          (click)="payProviderDebt(prov, +(prov.outstandingDebtUsd * 0.5).toFixed(2))"
+                        >
+                          Abonar 50%
+                        </button>
+                      }
+                      <button
+                        type="button"
+                        class="btn-pay-provider"
+                        (click)="payProviderDebt(prov, prov.outstandingDebtUsd)"
+                      >
+                        Liquidar Total
+                      </button>
+                    </div>
                   } @else {
                     <span class="settled-badge">Al día ✓</span>
                   }

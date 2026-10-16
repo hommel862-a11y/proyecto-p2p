@@ -1,5 +1,6 @@
 import { Component, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Finance360Service } from '../../../core/finance-360.service';
 import { ToastService } from '../../../core/toast.service';
 import {
@@ -34,7 +35,7 @@ export interface RunwayPoint {
 @Component({
   selector: 'app-finance-analytics',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './finance-analytics.component.html',
   styleUrls: ['./finance-analytics.component.scss'],
 })
@@ -44,6 +45,28 @@ export class FinanceAnalyticsComponent {
   private readonly toast = inject(ToastService);
 
   readonly selectedHorizon = signal<'day' | 'week' | 'month' | 'quarter'>('month');
+
+  /** Interactive BCV Stress-Test Simulator Rate (0 = defaults to current BCV + 10%) */
+  readonly customBcvRate = signal<number | null>(null);
+
+  readonly activeSimulatedBcvRate = computed<number>(() => {
+    const custom = this.customBcvRate();
+    if (custom !== null && custom > 0) return custom;
+    return Number((this.financeService.currentBcvRate() * 1.1).toFixed(2));
+  });
+
+  readonly bcvStressSimulation = computed(() => {
+    return this.financeService.simulateBcvRateImpact(this.activeSimulatedBcvRate());
+  });
+
+  setStressRateMultiplier(multiplier: number): void {
+    const base = this.financeService.currentBcvRate();
+    this.customBcvRate.set(Number((base * multiplier).toFixed(2)));
+  }
+
+  matchParallelRateInStress(): void {
+    this.customBcvRate.set(Number(this.financeService.currentParallelRate().toFixed(2)));
+  }
 
   /** Executive Cashflow KPIs */
   readonly executiveKpis = computed(() => {

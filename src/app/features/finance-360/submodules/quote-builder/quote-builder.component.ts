@@ -198,12 +198,66 @@ export class QuoteBuilderComponent {
       scope: 'business',
       category: 'quote_advance',
       channel: 'bs_bank',
+      vaultId: 'vault-pyme-caja',
       triMonetary: tri,
       date: new Date().toISOString().split('T')[0],
       notes: `Anticipo de cliente ${quote.clientName} (Presupuesto ${quote.quoteNumber})`,
     });
 
     this.financeService.updateQuoteStatus(quote.id, 'approved');
-    this.toast.success(`Anticipo de $${advanceUsd} USD registrado en Tesorería Pyme.`);
+    this.toast.success(
+      `💰 Anticipo de $${advanceUsd} USD acreditado en Caja Operativa Pyme.`,
+    );
+  }
+
+  /** Settles the remaining 50% upon final job delivery using the 3-Drawer Firewall */
+  settleFinalQuoteDelivery(quote: BudgetQuote): void {
+    const remainingUsd = Math.round(quote.totalPriceUsd * 0.5 * 100) / 100;
+    this.financeService.settlePymeSaleWithDrawers({
+      title: `Liquidación Final (50%) Entrega: ${quote.description} (${quote.clientName})`,
+      totalUsd: remainingUsd,
+      vaultId: 'vault-pyme-caja',
+      drawer1Usd: Number((remainingUsd * 0.5).toFixed(2)),
+      drawer2Usd: Number((remainingUsd * 0.3).toFixed(2)),
+      drawer3Usd: Number((remainingUsd * 0.2).toFixed(2)),
+    });
+
+    this.financeService.updateQuoteStatus(quote.id, 'completed');
+    this.toast.success(
+      `🏁 Entrega final liquidada (+$${remainingUsd} USD) en Caja Operativa Pyme con partición de 3 Gavetas.`,
+    );
+  }
+
+  /** Copies a commercial summary ready to paste in WhatsApp or Telegram */
+  async copyQuoteForWhatsApp(savedQuote?: BudgetQuote): Promise<void> {
+    const bcv = this.financeService.currentBcvRate();
+    const client = savedQuote ? savedQuote.clientName : this.clientName().trim() || 'Cliente';
+    const desc = savedQuote
+      ? savedQuote.description
+      : this.quoteType() === 'automotive_bodywork'
+        ? `Latonería y Pintura (${this.vehicleModel()} · ${this.selectedPiecesCount()} pzas)`
+        : `Obra ${this.projectTitle()} (${this.areaSquareMeters()} m²)`;
+    const totalUsd = savedQuote ? savedQuote.totalPriceUsd : this.currentQuoteTotals().totalUsd;
+    const totalVes = totalUsd * bcv;
+    const advanceUsd = totalUsd * 0.5;
+    const quoteRef = savedQuote ? savedQuote.quoteNumber : `COT-${Date.now().toString().slice(-4)}`;
+
+    const text = [
+      `💎 *HOMEL 360 SERVICES · PRESUPUESTO ${quoteRef}*`,
+      `👤 *Cliente:* ${client}`,
+      `🛠️ *Servicio:* ${desc}`,
+      `────────────────────`,
+      `💵 *Total Final:* $${totalUsd.toFixed(2)} USD`,
+      `🏛️ *Equivalente BCV (${bcv.toFixed(2)} Bs/$):* Bs ${totalVes.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      `⚡ *Anticipo 50% para iniciar:* $${advanceUsd.toFixed(2)} USD`,
+      `✅ *Incluye:* Materiales de 1ra + Mano de Obra Calificada + Garantía Técnica.`,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast.success('📲 Resumen comercial copiado al portapapeles (listo para WhatsApp/Telegram).');
+    } catch {
+      this.toast.info(`Resumen listo: Total $${totalUsd.toFixed(2)} USD`);
+    }
   }
 }
