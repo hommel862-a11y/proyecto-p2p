@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal, Optional, type WritableSignal } from '@angular/core';
 import { IndexedDbStorageService } from './indexed-db-storage.service';
 import { AccountsService } from './accounts.service';
 import { CotizaveService } from './cotizave.service';
@@ -17,8 +17,28 @@ import {
   type Finance360LedgerState,
   type FinanceScope,
   type CurrencyCode,
+  type TriMonetaryAmount,
   computeTriMonetaryAmount,
 } from './models/finance-360.models';
+
+export interface UnifiedMovementItem {
+  id: string;
+  type: 'income' | 'expense';
+  title: string;
+  scope: FinanceScope;
+  category: string;
+  categoryLabel: string;
+  channel: string;
+  vaultId?: string;
+  vaultName: string;
+  amountUsd: number;
+  amountVes: number;
+  bcvRateApplied: number;
+  triMonetary: TriMonetaryAmount;
+  date: string;
+  createdAt: string;
+  notes?: string;
+}
 
 export const FINANCE_360_STORAGE_KEY = 'p2p.finance360.ledger';
 const CURRENT_LEDGER_VERSION = 1;
@@ -73,17 +93,25 @@ const DEFAULT_VAULTS: AssetVault[] = [
 
 @Injectable({ providedIn: 'root' })
 export class Finance360Service {
-  private readonly storage = inject(IndexedDbStorageService);
-  private readonly accountsService = inject(AccountsService);
-  private readonly cotizaveService = inject(CotizaveService);
+  private readonly storage: IndexedDbStorageService;
+  private readonly accountsService: AccountsService;
+  private readonly cotizaveService: CotizaveService;
 
   /** Active Chameleon Mode filter: 'all' | 'personal' | 'business' */
   readonly scope = signal<FinanceScope>('all');
 
   /** Reactive in-memory state of the Finance 360 ledger */
-  readonly state = signal<Finance360LedgerState>(this.loadInitialState());
+  readonly state: WritableSignal<Finance360LedgerState>;
 
-  constructor() {
+  constructor(
+    @Optional() storage?: IndexedDbStorageService,
+    @Optional() accountsService?: AccountsService,
+    @Optional() cotizaveService?: CotizaveService,
+  ) {
+    this.storage = storage ?? (inject(IndexedDbStorageService, { optional: true }) as IndexedDbStorageService);
+    this.accountsService = accountsService ?? (inject(AccountsService, { optional: true }) as AccountsService);
+    this.cotizaveService = cotizaveService ?? (inject(CotizaveService, { optional: true }) as CotizaveService);
+    this.state = signal<Finance360LedgerState>(this.loadInitialState());
     this.recomputeEquivalents();
   }
 
@@ -187,6 +215,7 @@ export class Finance360Service {
     label: string;
     ratio: number;
     due14DaysUsd: number;
+    liquidUsd: number;
   }>(() => {
     const now = new Date();
     const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
@@ -206,6 +235,7 @@ export class Finance360Service {
         label: 'LIQUIDEZ BLINDADA (Sin compromisos inmediatos)',
         ratio: 100,
         due14DaysUsd: 0,
+        liquidUsd: liquidAssets,
       };
     }
 
@@ -216,6 +246,7 @@ export class Finance360Service {
         label: `LIQUIDEZ EXCELENTE (Cubre ${Math.round(coverageRatio * 10) / 10}x tus compromisos a 14 días)`,
         ratio: Math.min(100, Math.round(coverageRatio * 50)),
         due14DaysUsd,
+        liquidUsd: liquidAssets,
       };
     } else if (coverageRatio >= 1.0) {
       return {
@@ -223,6 +254,7 @@ export class Finance360Service {
         label: `LIQUIDEZ AJUSTADA (Cubre ${Math.round(coverageRatio * 100)}% de los próximos 14 días)`,
         ratio: Math.round(coverageRatio * 50),
         due14DaysUsd,
+        liquidUsd: liquidAssets,
       };
     } else {
       return {
@@ -230,9 +262,120 @@ export class Finance360Service {
         label: `ALERTA DE DÉFICIT (Faltan $${Math.round((due14DaysUsd - liquidAssets) * 100) / 100} para cubrir compromisos)`,
         ratio: Math.max(10, Math.round(coverageRatio * 50)),
         due14DaysUsd,
+        liquidUsd: liquidAssets,
       };
     }
   });
+
+  /**
+   * VES FX Erosion & Devaluation Exposure Telemetry
+   */
+  readonly vesExposureTelemetry = computed<{
+    vesBalanceTotal: number;
+    vesEquivalentUsd: number;
+    totalVesInUsd: number;
+    exposurePct: number;
+    exposurePercent: number;
+    rateGapPct: number;
+    rateGapPercent: number;
+    erosionLoss5PctUsd: number;
+    purchasingPowerLostOn5PctJumpUsd: number;
+    isHighExposure: boolean;
+  }>(() => {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const totalUsd = this.totalAssetsUsd();
+    const vesVaults = this.assets().filter((a) => a.currency === 'VES');
+    const vesBalanceTotal = vesVaults.reduce((s, v) => s + v.balance, 0);
+    const vesEquivalentUsd = bcv > 0 ? Math.round((vesBalanceTotal / bcv) * 100) / 100 : 0;
+    const exposurePct = totalUsd > 0 ? Math.round((vesEquivalentUsd / totalUsd) * 1000) / 10 : 0;
+    const rateGapPct = bcv > 0 ? Math.round(((par - bcv) / bcv) * 1000) / 10 : 0;
+    const erosionLoss5PctUsd = Math.round(vesEquivalentUsd * 0.0476 * 100) / 100;
+
+    return {
+      vesBalanceTotal,
+      vesEquivalentUsd,
+      totalVesInUsd: vesEquivalentUsd,
+      exposurePct,
+      exposurePercent: exposurePct,
+      rateGapPct,
+      rateGapPercent: rateGapPct,
+      erosionLoss5PctUsd,
+      purchasingPowerLostOn5PctJumpUsd: erosionLoss5PctUsd,
+      isHighExposure: exposurePct > 25,
+    };
+  });
+
+  /**
+   * Chronological Unified Movements Feed (Incomes + Expenses sorted by newest first)
+   */
+  readonly unifiedMovements = computed<UnifiedMovementItem[]>(() => {
+    const vaultMap = new Map(this.state().assets.map((v) => [v.id, v.name]));
+    const catLabels: Record<string, string> = {
+      salary: '💼 Sueldo / Salario',
+      p2p_profit: '⚡ Ganancia Mesa P2P',
+      business_sale: '🏢 Venta Comercial',
+      quote_advance: '📝 Anticipo Presupuesto',
+      freelance: '💻 Honorarios',
+      investment: '📈 Inversión',
+      groceries: '🛒 Comida y Mercado',
+      housing: '🏠 Vivienda y Alquiler',
+      transport: '⛽ Gasolina / Transporte',
+      services: '💡 Servicios Públicos',
+      health: '💊 Salud y Medicina',
+      cashea_installment: '⚡ Cuota Cashea',
+      provider_merchandise: '📦 Proveedor / Mercancía',
+      payroll: '👥 Nómina de Personal',
+      maintenance: '🔧 Mantenimiento / Taller',
+      equipment_capex: '🏗️ Equipos / CAPEX',
+      other: '📌 General',
+    };
+
+    const incItems: UnifiedMovementItem[] = this.incomes().map((inc) => ({
+      id: inc.id,
+      type: 'income' as const,
+      title: inc.title,
+      scope: inc.scope,
+      category: inc.category,
+      categoryLabel: catLabels[inc.category] || inc.category,
+      channel: inc.channel,
+      vaultId: inc.vaultId,
+      vaultName: inc.vaultId ? vaultMap.get(inc.vaultId) || 'Cuenta Externa' : 'Flujo Directo',
+      amountUsd: inc.triMonetary.amount_usd,
+      amountVes: inc.triMonetary.amount_ves,
+      bcvRateApplied: inc.triMonetary.bcv_rate,
+      triMonetary: inc.triMonetary,
+      date: inc.date,
+      createdAt: inc.createdAt,
+      notes: inc.notes,
+    }));
+
+    const expItems: UnifiedMovementItem[] = this.expenses().map((exp) => ({
+      id: exp.id,
+      type: 'expense' as const,
+      title: exp.title,
+      scope: exp.scope,
+      category: exp.category,
+      categoryLabel: catLabels[exp.category] || exp.category,
+      channel: exp.channel,
+      vaultId: exp.vaultId,
+      vaultName: exp.vaultId ? vaultMap.get(exp.vaultId) || 'Cuenta Externa' : 'Flujo Directo',
+      amountUsd: exp.triMonetary.amount_usd,
+      amountVes: exp.triMonetary.amount_ves,
+      bcvRateApplied: exp.triMonetary.bcv_rate,
+      triMonetary: exp.triMonetary,
+      date: exp.date,
+      createdAt: exp.createdAt,
+      notes: exp.notes,
+    }));
+
+    return [...incItems, ...expItems].sort((a, b) => {
+      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  });
+
 
   // -------------------------------------------------------------
   // REGLA DE ORO DE AISLAMIENTO: PUENTE UNIDIRECCIONAL P2P
@@ -429,6 +572,265 @@ export class Finance360Service {
 
     this.updateState({ liabilities: updated });
   }
+
+  /**
+   * Transfers funds between two vaults, converting currencies automatically via BCV rate.
+   */
+  transferBetweenVaults(
+    fromVaultId: string,
+    toVaultId: string,
+    amountInSourceCurrency: number,
+  ): { success: boolean; creditedAmount: number; targetCurrency: CurrencyCode } {
+    if (!fromVaultId || !toVaultId || fromVaultId === toVaultId || amountInSourceCurrency <= 0) {
+      return { success: false, creditedAmount: 0, targetCurrency: 'USD' };
+    }
+
+    const assets = this.state().assets;
+    const fromVault = assets.find((v) => v.id === fromVaultId);
+    const toVault = assets.find((v) => v.id === toVaultId);
+    if (!fromVault || !toVault) {
+      return { success: false, creditedAmount: 0, targetCurrency: 'USD' };
+    }
+
+    const bcv = this.currentBcvRate();
+    const amountUsd =
+      fromVault.currency === 'VES'
+        ? bcv > 0
+          ? amountInSourceCurrency / bcv
+          : 0
+        : amountInSourceCurrency;
+
+    const creditedAmount =
+      toVault.currency === 'VES'
+        ? Math.round(amountUsd * bcv * 100) / 100
+        : Math.round(amountUsd * 100) / 100;
+
+    const updatedAssets = assets.map((v) => {
+      if (v.id === fromVaultId) {
+        return {
+          ...v,
+          balance: Math.max(0, Math.round((v.balance - amountInSourceCurrency) * 100) / 100),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (v.id === toVaultId) {
+        return {
+          ...v,
+          balance: Math.round((v.balance + creditedAmount) * 100) / 100,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return v;
+    });
+
+    this.updateState({ assets: updatedAssets });
+    return {
+      success: true,
+      creditedAmount,
+      targetCurrency: toVault.currency,
+    };
+  }
+
+  /**
+   * Deletes an income or expense entry and reverses its vault impact if applicable.
+   */
+  deleteMovement(id: string, type: 'income' | 'expense'): void {
+    if (type === 'income') {
+      const target = this.state().incomes.find((i) => i.id === id);
+      if (target?.vaultId) {
+        this.debitVault(target.vaultId, target.triMonetary.amount_usd);
+      }
+      this.updateState({
+        incomes: this.state().incomes.filter((i) => i.id !== id),
+      });
+    } else {
+      const target = this.state().expenses.find((e) => e.id === id);
+      if (target?.vaultId) {
+        this.creditVault(target.vaultId, target.triMonetary.amount_usd);
+      }
+      this.updateState({
+        expenses: this.state().expenses.filter((e) => e.id !== id),
+      });
+    }
+  }
+
+  /**
+   * Settles a commercial Pyme sale and records the 3-drawer firewall allocation.
+   */
+  settlePymeSaleWithDrawers(params: {
+    title: string;
+    totalUsd: number;
+    vaultId?: string;
+    drawer1Usd: number;
+    drawer2Usd: number;
+    drawer3Usd: number;
+  }): IncomeEntry {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const tri = computeTriMonetaryAmount(params.totalUsd, 'USD', bcv, par);
+    const today = new Date().toISOString().split('T')[0];
+
+    return this.addIncome({
+      title: params.title || 'Venta Comercial (3 Gavetas)',
+      scope: 'business',
+      category: 'business_sale',
+      channel: 'cash',
+      vaultId: params.vaultId || 'vault-pyme-caja',
+      triMonetary: tri,
+      date: today,
+      notes: `Cortafuegos 3 Gavetas: Reposición $${params.drawer1Usd.toFixed(2)} | Operativa $${params.drawer2Usd.toFixed(2)} | Utilidad Libre $${params.drawer3Usd.toFixed(2)}`,
+    });
+  }
+
+  /**
+   * Seeds realistic institutional demo data for visual inspection and stress testing.
+   */
+  seedDemoPortfolio(): void {
+    const bcv = this.currentBcvRate();
+    const par = this.currentParallelRate();
+    const now = Date.now();
+    const dayMs = 86400000;
+    const fmtDate = (daysAgo: number) => new Date(now - daysAgo * dayMs).toISOString().split('T')[0];
+
+    const demoIncomes: IncomeEntry[] = [
+      {
+        id: `inc-demo-1`,
+        title: 'Anticipo 50% Pintura General Corolla',
+        scope: 'business',
+        category: 'quote_advance',
+        channel: 'zelle',
+        vaultId: 'vault-pyme-caja',
+        triMonetary: computeTriMonetaryAmount(420, 'USD', bcv, par),
+        date: fmtDate(1),
+        createdAt: new Date(now - dayMs).toISOString(),
+        notes: 'Gaveta 1: $231 | Gaveta 2: $105 | Utilidad: $84',
+      },
+      {
+        id: `inc-demo-2`,
+        title: 'Honorarios Consultoría & Gestión',
+        scope: 'personal',
+        category: 'salary',
+        channel: 'zelle',
+        vaultId: 'vault-zelle-pers',
+        triMonetary: computeTriMonetaryAmount(650, 'USD', bcv, par),
+        date: fmtDate(3),
+        createdAt: new Date(now - 3 * dayMs).toISOString(),
+      },
+      {
+        id: `inc-demo-3`,
+        title: 'Entrega Obra Remodelación Drywall',
+        scope: 'business',
+        category: 'business_sale',
+        channel: 'cash',
+        vaultId: 'vault-cash-usd',
+        triMonetary: computeTriMonetaryAmount(380, 'USD', bcv, par),
+        date: fmtDate(5),
+        createdAt: new Date(now - 5 * dayMs).toISOString(),
+      },
+    ];
+
+    const demoExpenses: ExpenseEntry[] = [
+      {
+        id: `exp-demo-1`,
+        title: 'Compra Barniz Automotriz 2K & Lijas',
+        scope: 'business',
+        category: 'provider_merchandise',
+        channel: 'zelle',
+        vaultId: 'vault-pyme-caja',
+        triMonetary: computeTriMonetaryAmount(145, 'USD', bcv, par),
+        date: fmtDate(0),
+        createdAt: new Date(now - 3600000).toISOString(),
+      },
+      {
+        id: `exp-demo-2`,
+        title: 'Mercado Semanal Familiar',
+        scope: 'personal',
+        category: 'groceries',
+        channel: 'bs_bank',
+        vaultId: 'vault-banesco-pers',
+        triMonetary: computeTriMonetaryAmount(85, 'USD', bcv, par),
+        date: fmtDate(1),
+        createdAt: new Date(now - dayMs).toISOString(),
+      },
+      {
+        id: `exp-demo-3`,
+        title: 'Adelanto Nómina Técnico Pintor',
+        scope: 'business',
+        category: 'payroll',
+        channel: 'cash',
+        vaultId: 'vault-pyme-caja',
+        triMonetary: computeTriMonetaryAmount(110, 'USD', bcv, par),
+        date: fmtDate(2),
+        createdAt: new Date(now - 2 * dayMs).toISOString(),
+      },
+      {
+        id: `exp-demo-4`,
+        title: 'Gasolina, Peajes y Logística',
+        scope: 'personal',
+        category: 'transport',
+        channel: 'cash',
+        vaultId: 'vault-cash-usd',
+        triMonetary: computeTriMonetaryAmount(35, 'USD', bcv, par),
+        date: fmtDate(4),
+        createdAt: new Date(now - 4 * dayMs).toISOString(),
+      },
+      {
+        id: `exp-demo-5`,
+        title: 'Internet Fibra & Electricidad Taller',
+        scope: 'business',
+        category: 'services',
+        channel: 'bs_bank',
+        vaultId: 'vault-banesco-pers',
+        triMonetary: computeTriMonetaryAmount(55, 'USD', bcv, par),
+        date: fmtDate(6),
+        createdAt: new Date(now - 6 * dayMs).toISOString(),
+      },
+    ];
+
+    const schedule = this.calculateCasheaSchedule(240, 3, 3, new Date(now - 10 * dayMs));
+    const demoPlan: CasheaPlan = {
+      id: 'cashea-demo-1',
+      productName: 'Compresor Neumático 50L + Pistola HVLP',
+      storeName: 'Ferretería EPA',
+      totalPriceUsd: 240,
+      initialPaymentUsd: schedule.initialPaymentUsd,
+      initialPercentage: schedule.initialPercentage,
+      numberOfInstallments: 3,
+      installmentAmountUsd: schedule.installmentAmountUsd,
+      installmentFrequencyDays: 14,
+      startDate: fmtDate(10),
+      installments: schedule.installments,
+      status: 'active',
+      createdAt: new Date(now - 10 * dayMs).toISOString(),
+    };
+
+    const demoLiabilities: LiabilityItem[] = schedule.installments.map((inst) => ({
+      id: `liab-cashea-cashea-demo-1-${inst.number}`,
+      title: `Cuota Cashea #${inst.number} - Compresor 50L`,
+      creditor: 'Cashea (Ferretería EPA)',
+      scope: 'business',
+      category: 'cashea',
+      triMonetary: computeTriMonetaryAmount(inst.amountUsd, 'USD', bcv, par),
+      dueDate: inst.dueDate,
+      status: 'pending',
+      amountPaid: 0,
+      remainingAmount: inst.amountUsd,
+      casheaPlanId: 'cashea-demo-1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    this.updateState({
+      incomes: [...demoIncomes, ...this.state().incomes.filter((i) => !i.id.startsWith('inc-demo-'))],
+      expenses: [...demoExpenses, ...this.state().expenses.filter((e) => !e.id.startsWith('exp-demo-'))],
+      casheaPlans: [demoPlan, ...this.state().casheaPlans.filter((p) => p.id !== 'cashea-demo-1')],
+      liabilities: [
+        ...demoLiabilities,
+        ...this.state().liabilities.filter((l) => !l.id.startsWith('liab-cashea-cashea-demo-1-')),
+      ],
+    });
+  }
+
 
   // -------------------------------------------------------------
   // SUB-MÓDULO 1: CASHEA & FINANCIAMIENTOS

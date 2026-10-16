@@ -23,6 +23,7 @@ export class PymeManagerComponent {
   readonly activePymeTab = signal<'drawers' | 'providers' | 'inventory'>('drawers');
 
   // 3-Drawer simulation
+  readonly saleConcept = signal<string>('Servicio Latonería y Pintura');
   readonly saleAmount = signal<number | null>(250);
   readonly drawer1Percent = signal<number>(50); // Insumos / Reposición
   readonly drawer2Percent = signal<number>(30); // Operativa & Nómina
@@ -43,6 +44,26 @@ export class PymeManagerComponent {
       drawer3: { usd: d3, ves: d3 * bcv },
     };
   });
+
+  settleSaleInLedger(): void {
+    const amount = this.saleAmount() ?? 0;
+    if (amount <= 0) {
+      this.toast.warn('Ingresa un monto de venta mayor a cero.');
+      return;
+    }
+    const split = this.drawerSplit();
+    this.financeService.settlePymeSaleWithDrawers({
+      title: this.saleConcept().trim() || 'Venta Comercial Pyme',
+      totalUsd: amount,
+      vaultId: 'vault-pyme-caja',
+      drawer1Usd: split.drawer1.usd,
+      drawer2Usd: split.drawer2.usd,
+      drawer3Usd: split.drawer3.usd,
+    });
+    this.toast.success(
+      `🏢 Venta de $${amount} USD asentada en Caja Operativa Pyme con partición de 3 Gavetas.`,
+    );
+  }
 
   // New Provider Form
   readonly showAddProviderModal = signal<boolean>(false);

@@ -1,149 +1,421 @@
 <div class="analytics-container">
-  <!-- Horizon Tabs -->
-  <div class="horizon-selector" role="tablist">
+  <!-- TOP CONTROL BAR: HORIZON PILLS + DEMO LOADER -->
+  <div class="analytics-top-bar">
+    <div class="horizon-selector" role="tablist">
+      <button
+        type="button"
+        class="horizon-pill"
+        [class.active]="selectedHorizon() === 'day'"
+        (click)="selectedHorizon.set('day')"
+      >
+        ⏱️ Pulso Diario
+      </button>
+      <button
+        type="button"
+        class="horizon-pill"
+        [class.active]="selectedHorizon() === 'week'"
+        (click)="selectedHorizon.set('week')"
+      >
+        🗓️ Semanal (7D)
+      </button>
+      <button
+        type="button"
+        class="horizon-pill"
+        [class.active]="selectedHorizon() === 'month'"
+        (click)="selectedHorizon.set('month')"
+      >
+        📈 Mensual (Runway 30D)
+      </button>
+      <button
+        type="button"
+        class="horizon-pill"
+        [class.active]="selectedHorizon() === 'quarter'"
+        (click)="selectedHorizon.set('quarter')"
+      >
+        🏛️ Trimestral (90D)
+      </button>
+    </div>
+
     <button
       type="button"
-      class="horizon-pill"
-      [class.active]="selectedHorizon() === 'day'"
-      (click)="selectedHorizon.set('day')"
+      class="btn-analytics-demo"
+      (click)="seedDemoFromAnalytics()"
     >
-      Día a Día
-    </button>
-    <button
-      type="button"
-      class="horizon-pill"
-      [class.active]="selectedHorizon() === 'week'"
-      (click)="selectedHorizon.set('week')"
-    >
-      Semanal (7D)
-    </button>
-    <button
-      type="button"
-      class="horizon-pill"
-      [class.active]="selectedHorizon() === 'month'"
-      (click)="selectedHorizon.set('month')"
-    >
-      Mensual (Burn Rate)
-    </button>
-    <button
-      type="button"
-      class="horizon-pill"
-      [class.active]="selectedHorizon() === 'quarter'"
-      (click)="selectedHorizon.set('quarter')"
-    >
-      Trimestral (90D)
+      ✨ Simular Datos Ejecutivos
     </button>
   </div>
 
-  <!-- RUNWAY & BURN RATE GAUGES -->
+  <!-- ========================================================= -->
+  <!-- 1. EXECUTIVE KPI STRIP (4 INSTITUTIONAL CARDS)            -->
+  <!-- ========================================================= -->
+  @let kpis = executiveKpis();
+  @let vesExp = financeService.vesExposureTelemetry();
+  <div class="executive-kpi-grid">
+    <!-- KPI 1: Incomes -->
+    <div class="exec-kpi-card income-theme">
+      <div class="kpi-top">
+        <span class="kpi-label">INGRESOS BRUTOS</span>
+        <span class="kpi-badge emerald">+{{ kpis.incomeCount }} ops</span>
+      </div>
+      <div class="kpi-value">${{ kpis.totalIncomeUsd | number: '1.2-2' }} <small>USD</small></div>
+      <div class="kpi-sub">≈ Bs {{ kpis.totalIncomeVes | number: '1.2-2' }}</div>
+    </div>
+
+    <!-- KPI 2: Expenses -->
+    <div class="exec-kpi-card expense-theme">
+      <div class="kpi-top">
+        <span class="kpi-label">EGRESOS ACUMULADOS</span>
+        <span class="kpi-badge crimson">-{{ kpis.expenseCount }} ops</span>
+      </div>
+      <div class="kpi-value">${{ kpis.totalExpenseUsd | number: '1.2-2' }} <small>USD</small></div>
+      <div class="kpi-sub">≈ Bs {{ kpis.totalExpenseVes | number: '1.2-2' }}</div>
+    </div>
+
+    <!-- KPI 3: Net Cashflow & Savings Rate -->
+    <div class="exec-kpi-card net-theme">
+      <div class="kpi-top">
+        <span class="kpi-label">FLUJO DE CAJA NETO</span>
+        <span class="kpi-badge gold">Ahorro: {{ kpis.savingsRatePct }}%</span>
+      </div>
+      <div
+        class="kpi-value"
+        [class.pos]="kpis.netCashflowUsd >= 0"
+        [class.neg]="kpis.netCashflowUsd < 0"
+      >
+        {{ kpis.netCashflowUsd >= 0 ? '+' : '' }}${{ kpis.netCashflowUsd | number: '1.2-2' }}
+        <small>USD</small>
+      </div>
+      <div class="kpi-sub">Margen retenido sobre ingresos</div>
+    </div>
+
+    <!-- KPI 4: Leverage & VES Exposure -->
+    <div class="exec-kpi-card risk-theme">
+      <div class="kpi-top">
+        <span class="kpi-label">APALANCAMIENTO &amp; RIESGO Bs</span>
+        <span class="kpi-badge blue">Exposición Bs: {{ vesExp.exposurePct | number: '1.0-1' }}%</span>
+      </div>
+      <div class="kpi-value">{{ kpis.debtToAssetPct }}% <small>Deuda/Activo</small></div>
+      <div class="kpi-sub">
+        Pasivos: ${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }} USD
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- 2. BURN RATE TELEMETRY & 30-DAY PREDICTIVE RUNWAY SVG     -->
+  <!-- ========================================================= -->
   @let burn = burnRate();
-  <div class="burn-rate-card" [class]="burn.status">
-    <div class="burn-header">
+  @let proj = runwayProjectionSvg();
+  <div class="runway-command-panel" [class]="burn.status">
+    <div class="runway-panel-header">
       <div>
-        <span class="burn-tag">VELOCÍMETRO DE GASTO & RUNWAY</span>
+        <span class="burn-tag">CONO PREDICTIVO DE LIQUIDEZ &amp; VELOCÍMETRO DE GASTO (30 DÍAS)</span>
         <h3 class="burn-status-label">{{ burn.statusLabel }}</h3>
       </div>
-      <div class="runway-big-badge">
-        <span class="runway-num">{{ burn.runwayDays }}</span>
-        <span class="runway-unit">Días</span>
+
+      <div class="burn-kpi-pills">
+        <div class="mini-stat">
+          <span>Burn Rate Diario</span>
+          <strong>${{ burn.dailyBurnRateUsd | number: '1.2-2' }} / día</strong>
+        </div>
+        <div class="mini-stat">
+          <span>Proyección Mensual</span>
+          <strong>${{ burn.monthlyBurnRateUsd | number: '1.2-2' }} / mes</strong>
+        </div>
+        <div class="runway-big-badge">
+          <span class="runway-num">{{ burn.runwayDays }}</span>
+          <span class="runway-unit">Días Runway ({{ burn.runwayMonths }}m)</span>
+        </div>
       </div>
     </div>
 
-    <div class="burn-metrics-row">
-      <div class="metric-col">
-        <span class="metric-label">Gasto Diario Promedio</span>
-        <strong class="metric-val">${{ burn.dailyBurnRateUsd | number: '1.2-2' }} <span class="unit">USD/día</span></strong>
+    <!-- VECTOR SVG TRAJECTORY CHART -->
+    <div class="svg-trajectory-wrapper">
+      <div class="chart-legend-row">
+        <span class="legend-item"><i class="dot emerald"></i> Escenario con Flujo de Ingresos</span>
+        <span class="legend-item"><i class="dot gold"></i> Burn Rate Base (Sin nuevos ingresos)</span>
+        <span class="legend-item"><i class="dot crimson"></i> Escenario Estrés (+45% Gasto/Devaluación)</span>
       </div>
-      <div class="metric-col">
-        <span class="metric-label">Ritmo de Gasto Mensual</span>
-        <strong class="metric-val">${{ burn.monthlyBurnRateUsd | number: '1.2-2' }} <span class="unit">USD/mes</span></strong>
-      </div>
-      <div class="metric-col">
-        <span class="metric-label">Supervivencia de Caja</span>
-        <strong class="metric-val">{{ burn.runwayMonths }} <span class="unit">meses</span></strong>
-      </div>
+
+      <svg class="trajectory-svg" viewBox="0 0 680 215" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="optGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#10b981" stop-opacity="0.28" />
+            <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+          </linearGradient>
+          <linearGradient id="baseGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#e2b755" stop-opacity="0.24" />
+            <stop offset="100%" stop-color="#e2b755" stop-opacity="0.0" />
+          </linearGradient>
+        </defs>
+
+        <!-- Horizontal Reference Grid Lines -->
+        <line x1="50" y1="24" x2="640" y2="24" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 4" />
+        <line x1="50" y1="102" x2="640" y2="102" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 4" />
+        <line x1="50" y1="180" x2="640" y2="180" stroke="rgba(255,255,255,0.12)" />
+
+        <!-- Y-Axis Labels -->
+        <text x="42" y="28" text-anchor="end" class="svg-axis-label">${{ proj.maxVal }}</text>
+        <text x="42" y="106" text-anchor="end" class="svg-axis-label">${{ proj.midVal }}</text>
+        <text x="42" y="184" text-anchor="end" class="svg-axis-label">$0</text>
+
+        <!-- Area Fills -->
+        <polygon [attr.points]="proj.optimisticArea" fill="url(#optGrad)" />
+        <polygon [attr.points]="proj.baselineArea" fill="url(#baseGrad)" />
+
+        <!-- 3 Trajectory Polylines -->
+        <polyline
+          [attr.points]="proj.optimisticPolyline"
+          fill="none"
+          stroke="#10b981"
+          stroke-width="2.6"
+          stroke-linecap="round"
+        />
+        <polyline
+          [attr.points]="proj.baselinePolyline"
+          fill="none"
+          stroke="#e2b755"
+          stroke-width="2.6"
+          stroke-linecap="round"
+        />
+        <polyline
+          [attr.points]="proj.stressPolyline"
+          fill="none"
+          stroke="#ef4444"
+          stroke-width="2"
+          stroke-dasharray="5 4"
+          stroke-linecap="round"
+        />
+
+        <!-- Data Nodes & X-Axis Labels -->
+        @for (pt of proj.points; track pt.day) {
+          <circle [attr.cx]="pt.x" [attr.cy]="pt.yOptimistic" r="4" fill="#10b981" />
+          <circle [attr.cx]="pt.x" [attr.cy]="pt.yBaseline" r="4" fill="#e2b755" />
+          <text [attr.x]="pt.x" y="202" text-anchor="middle" class="svg-axis-label">
+            {{ pt.label }}
+          </text>
+        }
+      </svg>
     </div>
   </div>
 
-  <!-- VIRTUAL CFO INTELLIGENT INSIGHTS -->
-  <div class="cfo-section">
-    <div class="cfo-header">
-      <span class="cfo-icon">💼</span>
-      <h4>Diagnósticos del CFO Virtual</h4>
+  <!-- ========================================================= -->
+  <!-- 3. DUAL SVG DONUT CHARTS: ASSET ALLOCATION & CATEGORIES   -->
+  <!-- ========================================================= -->
+  <div class="dual-donuts-grid">
+    <!-- DONUT 1: ASSET ALLOCATION BY CURRENCY -->
+    <div class="donut-panel-card">
+      <div class="panel-header">
+        <div>
+          <span class="panel-kicker">COMPOSICIÓN DE BÓVEDAS</span>
+          <h4>Estructura Patrimonial por Moneda</h4>
+        </div>
+        <span class="panel-badge">Tri-Monetario</span>
+      </div>
+
+      @let currSegments = currencyDonutSegments();
+      <div class="donut-layout">
+        <div class="svg-donut-box">
+          <svg viewBox="0 0 160 160" class="donut-svg">
+            <circle
+              cx="80"
+              cy="80"
+              r="62"
+              fill="transparent"
+              stroke="rgba(255,255,255,0.06)"
+              stroke-width="16"
+            />
+            @for (seg of currSegments; track seg.label) {
+              <circle
+                cx="80"
+                cy="80"
+                r="62"
+                fill="transparent"
+                [attr.stroke]="seg.color"
+                stroke-width="16"
+                [attr.stroke-dasharray]="seg.dashArray"
+                [attr.stroke-dashoffset]="seg.dashOffset"
+                transform="rotate(-90 80 80)"
+              />
+            }
+          </svg>
+          <div class="donut-center-label">
+            <span class="center-kicker">ACTIVOS</span>
+            <strong>${{ financeService.totalAssetsUsd() | number: '1.0-0' }}</strong>
+            <small>USD</small>
+          </div>
+        </div>
+
+        <div class="donut-legend-list">
+          @for (seg of currSegments; track seg.label) {
+            <div class="donut-legend-row">
+              <div class="leg-left">
+                <span class="leg-color" [style.background]="seg.color"></span>
+                <span class="leg-name">{{ seg.label }}</span>
+              </div>
+              <div class="leg-right">
+                <strong>${{ seg.amountUsd | number: '1.2-2' }}</strong>
+                <span class="leg-pct">{{ seg.percentage }}%</span>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
     </div>
 
-    <div class="cfo-cards-list">
-      @for (insight of cfoInsights(); track insight.title) {
-        <div class="cfo-card" [class]="insight.type">
-          <div class="cfo-badge">
-            @if (insight.type === 'alert') { 🚨 ALERTA CRÍTICA }
-            @else if (insight.type === 'warning') { ⚠️ PRECAUCIÓN }
-            @else if (insight.type === 'tip') { 💡 SUGERENCIA ESTRATÉGICA }
-            @else { 🟢 LUZ VERDE }
+    <!-- DONUT 2: EXPENSE CATEGORY RADIOGRAPHY -->
+    <div class="donut-panel-card">
+      <div class="panel-header">
+        <div>
+          <span class="panel-kicker">DISTRIBUCIÓN DEL GASTO</span>
+          <h4>Radiografía por Categorías</h4>
+        </div>
+        <span class="panel-badge">{{ categoryBreakdown().length }} rubros</span>
+      </div>
+
+      @let catSegments = categoryDonutSegments();
+      @if (catSegments.length === 0) {
+        <div class="empty-chart-box">
+          <p>Aún no hay gastos registrados en este ámbito para graficar el anillo de categorías.</p>
+          <button type="button" class="btn-analytics-demo" (click)="seedDemoFromAnalytics()">
+            ✨ Cargar Datos Demo
+          </button>
+        </div>
+      } @else {
+        <div class="donut-layout">
+          <div class="svg-donut-box">
+            <svg viewBox="0 0 160 160" class="donut-svg">
+              <circle
+                cx="80"
+                cy="80"
+                r="62"
+                fill="transparent"
+                stroke="rgba(255,255,255,0.06)"
+                stroke-width="16"
+              />
+              @for (seg of catSegments; track seg.label) {
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="62"
+                  fill="transparent"
+                  [attr.stroke]="seg.color"
+                  stroke-width="16"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.dashOffset"
+                  transform="rotate(-90 80 80)"
+                />
+              }
+            </svg>
+            <div class="donut-center-label">
+              <span class="center-kicker">EGRESOS</span>
+              <strong>${{ kpis.totalExpenseUsd | number: '1.0-0' }}</strong>
+              <small>USD</small>
+            </div>
           </div>
-          <strong>{{ insight.title }}</strong>
-          <p class="cfo-message">{{ insight.message }}</p>
-          <div class="cfo-rec">
-            <span>Recomendación:</span> {{ insight.recommendation }}
+
+          <div class="donut-legend-list">
+            @for (seg of catSegments; track seg.label) {
+              <div class="donut-legend-row">
+                <div class="leg-left">
+                  <span class="leg-color" [style.background]="seg.color"></span>
+                  <span class="leg-name">{{ seg.label }}</span>
+                </div>
+                <div class="leg-right">
+                  <strong>${{ seg.amountUsd | number: '1.2-2' }}</strong>
+                  <span class="leg-pct">{{ seg.percentage }}%</span>
+                </div>
+              </div>
+            }
           </div>
         </div>
       }
     </div>
   </div>
 
-  <!-- WEEKLY HEATMAP CHART -->
-  @if (selectedHorizon() === 'week' || selectedHorizon() === 'month') {
+  <!-- ========================================================= -->
+  <!-- 4. BOTTOM GRID: WEEKLY HEATMAP + VIRTUAL CFO INSIGHTS     -->
+  <!-- ========================================================= -->
+  <div class="bottom-analytics-grid">
+    <!-- WEEKLY HEATMAP CHART -->
     <div class="chart-section">
-      <div class="section-title">
-        <h4>🗓️ Mapa de Calor Semanal (Gastos por Día)</h4>
+      <div class="section-title-bar">
+        <div>
+          <span class="panel-kicker">INTENSIDAD POR DÍA DE SEMANA</span>
+          <h4>🗓️ Mapa de Calor Semanal</h4>
+        </div>
+        @if (peakSpendingDay(); as peak) {
+          <span class="peak-badge">Pico: {{ peak.dayName }} (${{ peak.totalSpentUsd }})</span>
+        }
       </div>
 
       <div class="heatmap-bars-grid">
         @for (day of weeklyHeatmap(); track day.dayNumber) {
           <div class="heatmap-bar-col">
+            <span class="bar-amount">${{ day.totalSpentUsd | number: '1.0-0' }}</span>
             <div class="bar-track">
               <div
                 class="bar-fill"
-                [style.height.%]="day.intensityPercent"
-                [style.background]="day.totalSpentUsd > 0 ? '#E2B755' : 'rgba(255,255,255,0.05)'"
+                [style.height.%]="day.intensityPercent > 0 ? day.intensityPercent : 6"
+                [class.high-intensity]="day.intensityPercent >= 75"
+                [class.mid-intensity]="day.intensityPercent >= 35 && day.intensityPercent < 75"
+                [class.low-intensity]="day.intensityPercent > 0 && day.intensityPercent < 35"
               ></div>
             </div>
-            <span class="bar-amount">${{ day.totalSpentUsd }}</span>
             <span class="bar-day">{{ day.dayName }}</span>
           </div>
         }
       </div>
-    </div>
-  }
 
-  <!-- CATEGORY BREAKDOWN LIST -->
-  <div class="category-breakdown-section">
-    <div class="section-title">
-      <h4>🏷️ Radiografía por Categorías</h4>
-    </div>
-
-    @let categories = categoryBreakdown();
-    @if (categories.length === 0) {
-      <div class="empty-state">
-        <p>No hay gastos registrados para analizar categorías.</p>
-      </div>
-    } @else {
-      <div class="category-bars-list">
-        @for (cat of categories; track cat.category) {
-          <div class="category-row">
-            <div class="cat-info-row">
-              <span class="cat-label">{{ cat.categoryLabel }}</span>
-              <span class="cat-amounts">
-                <strong>${{ cat.totalUsd | number: '1.2-2' }} USD</strong>
-                <span class="cat-pct">({{ cat.percentageOfTotal }}%)</span>
-              </span>
+      <!-- Detailed Category Progress Bars -->
+      @let categories = categoryBreakdown();
+      @if (categories.length > 0) {
+        <div class="category-bars-list">
+          @for (cat of categories.slice(0, 5); track cat.category) {
+            <div class="category-row">
+              <div class="cat-info-row">
+                <span class="cat-label">{{ cat.categoryLabel }}</span>
+                <span class="cat-amounts">
+                  <strong>${{ cat.totalUsd | number: '1.2-2' }} USD</strong>
+                  <span class="cat-pct">({{ cat.percentageOfTotal }}%)</span>
+                </span>
+              </div>
+              <div class="cat-progress-track">
+                <div class="cat-progress-fill" [style.width.%]="cat.percentageOfTotal"></div>
+              </div>
             </div>
-            <div class="cat-progress-track">
-              <div class="cat-progress-fill" [style.width.%]="cat.percentageOfTotal"></div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- VIRTUAL CFO INTELLIGENT INSIGHTS -->
+    <div class="cfo-section">
+      <div class="cfo-header">
+        <div>
+          <span class="panel-kicker">AUDITORÍA AUTOMATIZADA</span>
+          <h4>💼 Diagnósticos del CFO Virtual</h4>
+        </div>
+        <span class="cfo-count-pill">{{ cfoInsights().length }} hallazgos</span>
+      </div>
+
+      <div class="cfo-cards-list">
+        @for (insight of cfoInsights(); track insight.title) {
+          <div class="cfo-card" [class]="insight.type">
+            <div class="cfo-badge">
+              @if (insight.type === 'alert') { 🚨 ALERTA DE RIESGO }
+              @else if (insight.type === 'warning') { ⚠️ PRECAUCIÓN PATRIMONIAL }
+              @else if (insight.type === 'tip') { 💡 ESTRATEGIA CFO }
+              @else { 🟢 SOLVENCIA ÓPTIMA }
+            </div>
+            <strong>{{ insight.title }}</strong>
+            <p class="cfo-message">{{ insight.message }}</p>
+            <div class="cfo-rec">
+              <span>Acción Sugerida:</span> {{ insight.recommendation }}
             </div>
           </div>
         }
       </div>
-    }
+    </div>
   </div>
 </div>

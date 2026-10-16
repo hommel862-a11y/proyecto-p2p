@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Optional, Inject, InjectionToken } from '@angular/core';
 import { Finance360Service } from '../finance-360.service';
 import {
   type CurrencyCode,
@@ -22,14 +22,16 @@ export interface TelegramMessenger {
   ) => Promise<boolean>;
 }
 
+export const TELEGRAM_MESSENGER = new InjectionToken<TelegramMessenger>('TELEGRAM_MESSENGER');
+
 @Injectable({ providedIn: 'root' })
 export class FinanceTelegramBridgeService {
   private readonly financeService: Finance360Service;
   private telegramWorker: TelegramMessenger | null = null;
 
   constructor(
-    financeService?: Finance360Service,
-    telegramWorker?: TelegramMessenger,
+    @Optional() financeService?: Finance360Service,
+    @Optional() @Inject(TELEGRAM_MESSENGER) telegramWorker?: TelegramMessenger,
   ) {
     if (financeService) {
       this.financeService = financeService;
@@ -315,7 +317,7 @@ export class FinanceTelegramBridgeService {
    * Dispatches a daily automated briefing to the configured Telegram chat.
    */
   async sendDailyBriefingToTelegram(token?: string, chatId?: number | string): Promise<boolean> {
-    if (!token || !chatId) {
+    if (!token || !chatId || !this.telegramWorker) {
       return false;
     }
     const summary = this.handleSummaryCommand();

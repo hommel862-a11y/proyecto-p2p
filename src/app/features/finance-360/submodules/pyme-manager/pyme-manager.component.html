@@ -39,9 +39,19 @@
           </p>
         </div>
 
-        <div class="sale-sim-row">
-          <div class="form-group flex-1">
-            <label>Monto de la Venta o Cobro ($ USD)</label>
+        <div class="sale-sim-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+          <div class="form-group" style="flex: 2; min-width: 200px;">
+            <label>Concepto de la Venta / Orden de Trabajo</label>
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Ej. Pintura General Guardafango, Venta Repuestos..."
+              [ngModel]="saleConcept()"
+              (ngModelChange)="saleConcept.set($event)"
+            />
+          </div>
+          <div class="form-group" style="flex: 1; min-width: 140px;">
+            <label>Monto Cobrado ($ USD)</label>
             <input
               type="number"
               class="form-control big-input"
@@ -50,6 +60,14 @@
               (ngModelChange)="saleAmount.set($event)"
             />
           </div>
+          <button
+            type="button"
+            class="btn-primary-small"
+            style="min-height: 44px; padding: 0 18px; font-weight: 800;"
+            (click)="settleSaleInLedger()"
+          >
+            💾 Asentar Venta en Caja Pyme
+          </button>
         </div>
 
         @let split = drawerSplit();

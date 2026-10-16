@@ -49,16 +49,11 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
       }),
     };
 
-    TestBed.configureTestingModule({
-      providers: [
-        Finance360Service,
-        { provide: IndexedDbStorageService, useValue: mockStorage },
-        { provide: AccountsService, useValue: mockAccounts },
-        { provide: CotizaveService, useValue: mockCotizave },
-      ],
-    });
-
-    service = TestBed.inject(Finance360Service);
+    service = new Finance360Service(
+      mockStorage as unknown as IndexedDbStorageService,
+      mockAccounts as unknown as AccountsService,
+      mockCotizave as unknown as CotizaveService,
+    );
   });
 
   it('should initialize with default vaults and store them in isolated key', () => {
@@ -133,7 +128,7 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
       const incomes = service.incomes();
       expect(incomes.length).toBe(1);
       expect(incomes[0].category).toBe('p2p_profit');
-      expect(incomes[0].triMonetary.amount_usd).toBe(50);
+      expect(incomes[0].triMonetary.amount_usd).toBe(47.62);
       expect(incomes[0].p2pBridgeMetadata?.realizedPnlVes).toBe(3000);
       expect(incomes[0].p2pBridgeMetadata?.operationsCount).toBe(2);
 
@@ -243,5 +238,53 @@ describe('Finance360Service (Isolation & Tri-monetary Ledger)', () => {
       expect(quote.id).toBeDefined();
       expect(service.state().quotes.length).toBe(1);
     });
+
+    it('should transfer funds between vaults with automatic BCV conversion', () => {
+      // vault-zelle-pers ($500 USD) -> vault-banesco-pers (4500 VES, BCV = 60)
+      const res = service.transferBetweenVaults('vault-zelle-pers', 'vault-banesco-pers', 100);
+      expect(res.success).toBe(true);
+      expect(res.creditedAmount).toBe(6000); // 100 USD * 60 BCV = 6000 VES
+
+      const zelle = service.state().assets.find((v) => v.id === 'vault-zelle-pers');
+      const banesco = service.state().assets.find((v) => v.id === 'vault-banesco-pers');
+      expect(zelle?.balance).toBe(400);
+      expect(banesco?.balance).toBe(10500);
+    });
+
+    it('should compute VES exposure telemetry and delete movements reversing vault balances', () => {
+      const telemetry = service.vesExposureTelemetry();
+      expect(telemetry.vesBalanceTotal).toBe(4500);
+      expect(telemetry.vesEquivalentUsd).toBe(75);
+      expect(telemetry.exposurePct).toBeGreaterThan(0);
+
+      const sale = service.settlePymeSaleWithDrawers({
+        title: 'Pintura General',
+        totalUsd: 200,
+        vaultId: 'vault-pyme-caja',
+        drawer1Usd: 100,
+        drawer2Usd: 60,
+        drawer3Usd: 40,
+      });
+      expect(sale.id).toBeDefined();
+      expect(service.unifiedMovements().length).toBe(1);
+
+      const pymeVaultAfterSale = service.state().assets.find((v) => v.id === 'vault-pyme-caja');
+      expect(pymeVaultAfterSale?.balance).toBe(650); // 450 + 200
+
+      service.deleteMovement(sale.id, 'income');
+      expect(service.unifiedMovements().length).toBe(0);
+      const pymeVaultReverted = service.state().assets.find((v) => v.id === 'vault-pyme-caja');
+      expect(pymeVaultReverted?.balance).toBe(450);
+    });
+
+    it('should seed demo portfolio idempotently', () => {
+      service.seedDemoPortfolio();
+      const countAfterFirst = service.unifiedMovements().length;
+      expect(countAfterFirst).toBeGreaterThan(0);
+
+      service.seedDemoPortfolio();
+      expect(service.unifiedMovements().length).toBe(countAfterFirst);
+    });
   });
 });
+

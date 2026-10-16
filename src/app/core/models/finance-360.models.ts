@@ -108,6 +108,7 @@ export interface AssetVault {
   bankCode?: string;
   accountNumberMasked?: string;
   isFixedAsset?: boolean;
+  icon?: string;
   updatedAt: string;
 }
 

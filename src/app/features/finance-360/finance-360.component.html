@@ -1,319 +1,639 @@
 <section class="finance-360-container">
-  <!-- Chameleon Header Bar -->
+  <!-- INSTITUTIONAL HEADER & PERSISTENT NAVIGATION DOCK -->
   <header class="chameleon-header">
     <div class="brand-badge-row">
       <div class="suite-title">
-        <span class="brand-logo-gem">💎</span>
+        <div class="brand-emblem">💎</div>
         <div>
-          <h2>HOMEL <span class="gold-text">360</span></h2>
-          <p class="subtitle">Portafolio Financiero & Gestión Comercial</p>
+          <div class="title-line">
+            <h2>HOMEL <span class="gold-text">360</span></h2>
+            <span class="tier-badge">PRIVATE WEALTH &amp; PYME</span>
+          </div>
+          <p class="subtitle">Centro de Comando Patrimonial Tri-Monetario (USD · USDT · VES)</p>
         </div>
       </div>
 
-      <!-- Chameleon Scope Switch -->
-      <div class="chameleon-pill-group" role="tablist">
+      <div class="header-controls-right">
+        <!-- Quick Demo Seeder Button -->
         <button
           type="button"
-          class="chameleon-pill"
-          [class.active]="financeService.scope() === 'all'"
-          (click)="setScope('all')"
+          class="btn-demo-seed"
+          title="Cargar movimientos realistas de demostración para explorar gráficas y analíticas"
+          (click)="loadDemoPortfolio()"
         >
-          🌐 Todos
+          ✨ Demo Ejecutiva
         </button>
-        <button
-          type="button"
-          class="chameleon-pill"
-          [class.active]="financeService.scope() === 'personal'"
-          (click)="setScope('personal')"
-        >
-          👤 Personal
-        </button>
-        <button
-          type="button"
-          class="chameleon-pill"
-          [class.active]="financeService.scope() === 'business'"
-          (click)="setScope('business')"
-        >
-          🏢 Pyme / Negocio
-        </button>
+
+        <!-- Chameleon Scope Switch -->
+        <div class="chameleon-pill-group" role="tablist">
+          <button
+            type="button"
+            class="chameleon-pill"
+            [class.active]="financeService.scope() === 'all'"
+            (click)="setScope('all')"
+          >
+            🌐 Consolidado
+          </button>
+          <button
+            type="button"
+            class="chameleon-pill"
+            [class.active]="financeService.scope() === 'personal'"
+            (click)="setScope('personal')"
+          >
+            👤 Personal
+          </button>
+          <button
+            type="button"
+            class="chameleon-pill"
+            [class.active]="financeService.scope() === 'business'"
+            (click)="setScope('business')"
+          >
+            🏢 Pyme / Taller
+          </button>
+        </div>
       </div>
     </div>
+
+    <!-- PERSISTENT SUBMODULE NAVIGATION DOCK -->
+    <nav class="module-nav-dock" aria-label="Navegación Portafolio 360">
+      <button
+        type="button"
+        class="dock-tab"
+        [class.active]="activeTab() === 'overview'"
+        (click)="activeTab.set('overview')"
+      >
+        <span class="dock-icon">🏛️</span>
+        <span> Comando 360</span>
+      </button>
+      <button
+        type="button"
+        class="dock-tab"
+        [class.active]="activeTab() === 'analytics'"
+        (click)="activeTab.set('analytics')"
+      >
+        <span class="dock-icon">📊</span>
+        <span>CFO &amp; Estadísticas</span>
+        <span class="dock-pill">PRO</span>
+      </button>
+      <button
+        type="button"
+        class="dock-tab"
+        [class.active]="activeTab() === 'cashea'"
+        (click)="activeTab.set('cashea')"
+      >
+        <span class="dock-icon">⚡</span>
+        <span>Cashea 14D</span>
+        @if (financeService.state().casheaPlans.length > 0) {
+          <span class="dock-count">{{ financeService.state().casheaPlans.length }}</span>
+        }
+      </button>
+      <button
+        type="button"
+        class="dock-tab"
+        [class.active]="activeTab() === 'pyme'"
+        (click)="activeTab.set('pyme')"
+      >
+        <span class="dock-icon">🏢</span>
+        <span>Pyme 3 Gavetas</span>
+        <span class="dock-count">{{ financeService.state().providers.length }}</span>
+      </button>
+      <button
+        type="button"
+        class="dock-tab"
+        [class.active]="activeTab() === 'quotes'"
+        (click)="activeTab.set('quotes')"
+      >
+        <span class="dock-icon">📝</span>
+        <span>Presupuestos</span>
+        @if (financeService.state().quotes.length > 0) {
+          <span class="dock-count">{{ financeService.state().quotes.length }}</span>
+        }
+      </button>
+    </nav>
   </header>
 
   @if (activeTab() === 'overview') {
-  <!-- MASTER CARD: PATRIMONIO CONSOLIDADO (USD & VES) -->
-  <div class="net-worth-banner">
-    <div class="net-worth-label">Patrimonio Neto Consolidado</div>
-    <div class="net-worth-amount-row">
-      <h1 class="net-worth-usd">${{ financeService.netWorthUsd() | number: '1.2-2' }} <span class="currency-tag">USD</span></h1>
-    </div>
-    <div class="net-worth-ves">
-      ≈ Bs {{ financeService.netWorthVes() | number: '1.2-2' }}
-      <span class="rate-badge">BCV: {{ financeService.currentBcvRate() | number: '1.2-2' }}</span>
-    </div>
-
-    <div class="assets-liabilities-chips">
-      <div class="chip chip-assets">
-        <span class="chip-dot dot-green"></span>
-        <span>Activos: ${{ financeService.totalAssetsUsd() | number: '1.2-2' }}</span>
-      </div>
-      <div class="chip chip-liabilities">
-        <span class="chip-dot dot-red"></span>
-        <span>Pasivos: ${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }}</span>
-      </div>
-      <div class="chip chip-vaults">
-        <span>Bóvedas: {{ financeService.assets().length }}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- 14-DAY LIQUIDITY HEALTH SEMAPHORE -->
-  @let health = financeService.liquidityHealthStatus();
-  <div class="health-semaphore-card" [class.optimal]="health.status === 'optimal'" [class.warning]="health.status === 'warning'" [class.critical]="health.status === 'critical'">
-    <div class="health-icon">
-      @if (health.status === 'optimal') { 🟢 }
-      @else if (health.status === 'warning') { 🟡 }
-      @else { 🚨 }
-    </div>
-    <div class="health-info">
-      <strong class="health-title">{{ health.label }}</strong>
-      <p class="health-desc">
-        @if (health.due14DaysUsd > 0) {
-          Compromisos a 14 días: ${{ health.due14DaysUsd | number: '1.2-2' }} USD
-        } @else {
-          Cero cuotas pendientes en los próximos 14 días. Flujo disponible al 100%.
-        }
-      </p>
-    </div>
-  </div>
-
-  <!-- P2P UNIDIRECTIONAL PROFIT BRIDGE -->
-  @let todaySummary = todayP2pSummary();
-  <div class="p2p-bridge-banner">
-    <div class="bridge-content">
-      <div class="bridge-tag">
-        <span class="pulse-indicator"></span>
-        <span>MESA P2P (AISLADA)</span>
-      </div>
-      <div class="bridge-stats">
-        @if (todaySummary.pnlVes > 0 || todaySummary.pnlUsdt > 0) {
-          <div class="profit-highlight">
-            Ganancia Neta de Hoy: <strong>+${{ todaySummary.pnlUsdt | number: '1.2-2' }} USD</strong>
-            <span class="ves-sub">(+Bs {{ todaySummary.pnlVes | number: '1.2-2' }})</span>
-          </div>
-        } @else {
-          <div class="profit-highlight muted">
-            Sin operaciones con ganancia neta cerrada hoy en la mesa.
-          </div>
-        }
-      </div>
-    </div>
-
-    <div class="bridge-action">
-      @if (isP2pProfitImportedToday()) {
-        <span class="badge-synced">✅ Importado Hoy</span>
-      } @else {
-        <button
-          type="button"
-          class="btn-import-p2p"
-          [disabled]="todaySummary.pnlVes <= 0 && todaySummary.pnlUsdt <= 0"
-          (click)="triggerP2pImport()"
-        >
-          💰 Traer Ganancia Neta P2P
-        </button>
-      }
-    </div>
-  </div>
-
-  <!-- URGENT UPCOMING COMMITMENTS (7 DAYS) -->
-  @let upcoming = financeService.upcomingLiabilities7Days();
-  @if (upcoming.length > 0) {
-    <div class="upcoming-commitments-section">
-      <div class="section-title-row">
-        <h3>⏳ Próximos Vencimientos (7 Días)</h3>
-        <span class="count-badge">{{ upcoming.length }}</span>
-      </div>
-
-      <div class="commitments-scroll">
-        @for (item of upcoming; track item.id) {
-          <div class="commitment-card">
-            <div class="card-left">
-              <span class="due-tag">{{ item.dueDate }}</span>
-              <strong class="item-title">{{ item.title }}</strong>
-              <span class="item-creditor">{{ item.creditor }}</span>
+    <div class="command-center-grid">
+      <!-- ==================== LEFT / MAIN COLUMN ==================== -->
+      <div class="cc-main-col">
+        <!-- MASTER CARD: PATRIMONIO CONSOLIDADO (PRIVATE BANKING HERO) -->
+        @let vesExp = financeService.vesExposureTelemetry();
+        <div class="net-worth-banner">
+          <div class="nw-top-row">
+            <div>
+              <div class="net-worth-label">PATRIMONIO NETO CONSOLIDADO</div>
+              <div class="net-worth-amount-row">
+                <h1 class="net-worth-usd">
+                  ${{ financeService.netWorthUsd() | number: '1.2-2' }}
+                  <span class="currency-tag">USD</span>
+                </h1>
+              </div>
+              <div class="net-worth-ves">
+                <span>≈ Bs {{ financeService.netWorthVes() | number: '1.2-2' }}</span>
+                <span class="rate-badge">
+                  🏛️ BCV: {{ financeService.currentBcvRate() | number: '1.2-2' }}
+                </span>
+                <span class="rate-badge rate-parallel">
+                  ⚡ Paralelo: {{ financeService.currentParallelRate() | number: '1.2-2' }}
+                  @if (vesExp.rateGapPct > 0) {
+                    (Brecha {{ vesExp.rateGapPct | number: '1.1-1' }}%)
+                  }
+                </span>
+              </div>
             </div>
-            <div class="card-right">
-              <div class="item-amount">${{ item.remainingAmount | number: '1.2-2' }} USD</div>
-              <button
-                type="button"
-                class="btn-quick-pay"
-                (click)="payQuickLiability(item.id, item.remainingAmount)"
-              >
-                Pagar
+
+            <div class="nw-quick-cta-group">
+              <button type="button" class="btn-hero-action income" (click)="openQuickModal('income')">
+                ➕ Ingreso
+              </button>
+              <button type="button" class="btn-hero-action expense" (click)="openQuickModal('expense')">
+                ➖ Gasto
+              </button>
+              <button type="button" class="btn-hero-action transfer" (click)="openTransferModal()">
+                🔄 Transferir
               </button>
             </div>
           </div>
-        }
-      </div>
-    </div>
-  }
 
-  <!-- BENTO SUB-MODULES GRID -->
-  <div class="bento-modules-grid">
-    <!-- Tile 1: Cashea Calculator -->
-    <div class="bento-tile" (click)="activeTab.set('cashea')">
-      <div class="tile-header">
-        <span class="tile-icon">⚡</span>
-        <span class="tile-badge">14 Días</span>
-      </div>
-      <h4>Calculadora Cashea</h4>
-      <p>Simula compras, iniciales por nivel y proyecta impacto de cuotas quincenales.</p>
-      <div class="tile-footer">
-        <span>Planes activos: {{ financeService.state().casheaPlans.length }}</span>
-        <span class="tile-arrow">→</span>
-      </div>
-    </div>
+          <!-- SOLVENCY & ASSET VS LIABILITY RATIO BAR -->
+          <div class="solvency-meter-box">
+            <div class="solvency-labels">
+              <span class="solv-assets">
+                🟢 Activos Líquidos: <strong>${{ financeService.totalAssetsUsd() | number: '1.2-2' }}</strong>
+              </span>
+              <span class="solv-ratio">Índice de Solvencia: {{ solvencyRatioPercent() }}%</span>
+              <span class="solv-liabilities">
+                🔴 Pasivos Pendientes: <strong>${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }}</strong>
+              </span>
+            </div>
+            <div class="solvency-track">
+              <div class="solvency-fill" [style.width.%]="solvencyRatioPercent()"></div>
+            </div>
+          </div>
 
-    <!-- Tile 2: Pyme Management -->
-    <div class="bento-tile" (click)="activeTab.set('pyme')">
-      <div class="tile-header">
-        <span class="tile-icon">🏢</span>
-        <span class="tile-badge">3 Gavetas</span>
-      </div>
-      <h4>Gestión Pyme & Taller</h4>
-      <p>Directorio de proveedores, semáforo de inventario y cortafuegos de caja comercial.</p>
-      <div class="tile-footer">
-        <span>Proveedores: {{ financeService.state().providers.length }}</span>
-        <span class="tile-arrow">→</span>
-      </div>
-    </div>
-
-    <!-- Tile 3: Quote Builder -->
-    <div class="bento-tile" (click)="activeTab.set('quotes')">
-      <div class="tile-header">
-        <span class="tile-icon">📝</span>
-        <span class="tile-badge">+10% Merma</span>
-      </div>
-      <h4>Generador Presupuestos</h4>
-      <p>Cotizaciones de latonería/pintura y obras por m² con doble PDF para clientes.</p>
-      <div class="tile-footer">
-        <span>Cotizaciones: {{ financeService.state().quotes.length }}</span>
-        <span class="tile-arrow">→</span>
-      </div>
-    </div>
-
-    <!-- Tile 4: Analytics & Statistics -->
-    <div class="bento-tile" (click)="activeTab.set('analytics')">
-      <div class="tile-header">
-        <span class="tile-icon">📊</span>
-        <span class="tile-badge">30/90D</span>
-      </div>
-      <h4>Estadísticas & Analítica</h4>
-      <p>Radiografía mensual de gastos, Burn Rate, mapa de calor y cono predictivo IA.</p>
-      <div class="tile-footer">
-        <span>Salud de caja: Óptima</span>
-        <span class="tile-arrow">→</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- CLOUD SYNC & MASTER LEDGER BACKUP -->
-  <div class="cloud-sync-card">
-    <div class="sync-header">
-      <div class="sync-title">
-        <span class="sync-icon">☁️</span>
-        <div>
-          <h4>Respaldo en la Nube & Libro Maestro</h4>
-          <p class="sync-subtitle">
-            Google Drive & Sheets
-            @if (driveSync.lastSyncTimestamp()) {
-              · Último: {{ driveSync.lastSyncTimestamp() | date: 'short' }}
+          <div class="assets-liabilities-chips">
+            <div class="chip chip-vaults">
+              <span>🏦 Bóvedas Activas: <strong>{{ financeService.assets().length }}</strong></span>
+            </div>
+            <div class="chip" [class.chip-warn]="vesExp.isHighExposure">
+              <span>
+                🛡️ Exposición en Bs: <strong>{{ vesExp.exposurePct | number: '1.1-1' }}%</strong>
+                (${{ vesExp.vesEquivalentUsd | number: '1.2-2' }} USD)
+              </span>
+            </div>
+            @if (vesExp.erosionLoss5PctUsd > 0) {
+              <div class="chip chip-deval">
+                <span>
+                  📉 Salto BCV +5%: <strong>-${{ vesExp.erosionLoss5PctUsd | number: '1.2-2' }} USD</strong>
+                </span>
+              </div>
             }
-          </p>
+          </div>
+        </div>
+
+        <!-- INTERACTIVE METALLIC ASSET VAULTS DECK -->
+        <div class="vaults-deck-section">
+          <div class="section-title-row">
+            <div>
+              <h3>💳 Bóvedas &amp; Liquidez Tri-Monetaria</h3>
+              <p class="section-sub">Tarjetas patrimoniales con conversión BCV en tiempo real y ajuste instantáneo</p>
+            </div>
+            <div class="vault-header-actions">
+              <button type="button" class="btn-vault-util" (click)="openTransferModal()">
+                🔄 Transferir Fondos
+              </button>
+              <button type="button" class="btn-vault-util primary" (click)="openNewVaultModal()">
+                + Nueva Bóveda
+              </button>
+            </div>
+          </div>
+
+          <div class="metallic-vaults-grid">
+            @for (vault of financeService.assets(); track vault.id) {
+              @let sharePct = getVaultSharePercent(vault);
+              <div
+                class="metallic-vault-card"
+                [class.theme-usd]="vault.currency === 'USD'"
+                [class.theme-usdt]="vault.currency === 'USDT'"
+                [class.theme-ves]="vault.currency === 'VES'"
+              >
+                <div class="card-ambient-glow"></div>
+
+                <div class="vault-card-top">
+                  <div class="vault-chip-group">
+                    <span class="emv-chip"></span>
+                    <span class="vault-icon-badge">{{ getVaultIcon(vault) }}</span>
+                    <div>
+                      <strong class="vault-name">{{ vault.name }}</strong>
+                      <span class="vault-scope-tag">
+                        {{ vault.scope === 'business' ? '🏢 Pyme / Taller' : '👤 Personal' }}
+                      </span>
+                    </div>
+                  </div>
+                  <span class="currency-pill" [attr.data-curr]="vault.currency">
+                    {{ vault.currency }}
+                  </span>
+                </div>
+
+                <!-- Balance Display or Inline Edit -->
+                @if (editingVaultId() === vault.id) {
+                  <div class="vault-inline-edit">
+                    <input
+                      type="number"
+                      class="vault-edit-input"
+                      [ngModel]="editingVaultBalance()"
+                      (ngModelChange)="editingVaultBalance.set($event)"
+                      placeholder="Nuevo saldo"
+                    />
+                    <button type="button" class="btn-inline-save" (click)="saveVaultBalance(vault)">
+                      ✓
+                    </button>
+                    <button type="button" class="btn-inline-cancel" (click)="cancelEditVaultBalance()">
+                      ✕
+                    </button>
+                  </div>
+                } @else {
+                  <div class="vault-balance-block">
+                    <div class="primary-balance">
+                      @if (vault.currency === 'VES') {
+                        <span class="curr-sym">Bs</span>
+                        {{ vault.balance | number: '1.2-2' }}
+                      } @else {
+                        <span class="curr-sym">$</span>
+                        {{ vault.balance | number: '1.2-2' }}
+                        <span class="curr-code">{{ vault.currency }}</span>
+                      }
+                    </div>
+                    <div class="secondary-equivalent">
+                      {{ getVaultEquivalentLabel(vault) }}
+                    </div>
+                  </div>
+                }
+
+                <!-- Share bar & VES Inflation Risk Tag -->
+                <div class="vault-card-footer">
+                  <div class="vault-share-bar">
+                    <div class="share-label">
+                      <span>Peso en Cartera</span>
+                      <strong>{{ sharePct }}%</strong>
+                    </div>
+                    <div class="share-track">
+                      <div class="share-fill" [style.width.%]="sharePct"></div>
+                    </div>
+                  </div>
+
+                  <div class="vault-card-actions">
+                    <button
+                      type="button"
+                      class="btn-card-mini"
+                      title="Ajustar saldo manual"
+                      (click)="startEditVaultBalance(vault)"
+                    >
+                      ✏️ Saldo
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-card-mini"
+                      title="Transferir desde esta bóveda"
+                      (click)="openTransferModal(vault.id)"
+                    >
+                      🔄 Mover
+                    </button>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- UNIFIED CHRONOLOGICAL LEDGER FEED -->
+        <div class="recent-movements-section">
+          <div class="ledger-header-bar">
+            <div>
+              <h3>📋 Libro Mayor Cronológico</h3>
+              <span class="section-sub">Auditoría tri-monetaria con tasa BCV histórica congelada</span>
+            </div>
+
+            <div class="ledger-filters">
+              <div class="filter-pills">
+                <button
+                  type="button"
+                  class="filter-pill"
+                  [class.active]="movementFilter() === 'all'"
+                  (click)="movementFilter.set('all')"
+                >
+                  Todos ({{ financeService.unifiedMovements().length }})
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill income"
+                  [class.active]="movementFilter() === 'income'"
+                  (click)="movementFilter.set('income')"
+                >
+                  🟢 Ingresos
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill expense"
+                  [class.active]="movementFilter() === 'expense'"
+                  (click)="movementFilter.set('expense')"
+                >
+                  🔴 Gastos
+                </button>
+              </div>
+
+              <input
+                type="text"
+                class="ledger-search-input"
+                placeholder="🔍 Buscar concepto, categoría o bóveda..."
+                [ngModel]="movementSearch()"
+                (ngModelChange)="movementSearch.set($event)"
+              />
+            </div>
+          </div>
+
+          @let movements = filteredMovements();
+          @if (movements.length === 0) {
+            <div class="empty-state">
+              <span class="empty-icon">📭</span>
+              <h4>Sin movimientos en esta vista</h4>
+              <p>Registra un ingreso/gasto o carga el portafolio ejecutivo de prueba para activar todas las métricas.</p>
+              <div class="empty-cta-row">
+                <button type="button" class="btn-empty-demo" (click)="loadDemoPortfolio()">
+                  ✨ Cargar Portafolio Demo Realista
+                </button>
+                <button type="button" class="btn-empty-add" (click)="openQuickModal('expense')">
+                  ➕ Registrar Movimiento
+                </button>
+              </div>
+            </div>
+          } @else {
+            <div class="movements-list">
+              @for (item of movements.slice(0, 18); track item.id) {
+                <div class="movement-row" [class.income-row]="item.type === 'income'" [class.expense-row]="item.type === 'expense'">
+                  <div class="row-icon-badge" [class.inc]="item.type === 'income'" [class.exp]="item.type === 'expense'">
+                    @if (item.type === 'income') { ↗ } @else { ↘ }
+                  </div>
+
+                  <div class="row-details">
+                    <div class="row-title-line">
+                      <strong>{{ item.title }}</strong>
+                      <span class="row-cat-pill">{{ item.categoryLabel }}</span>
+                      <span class="row-scope-pill">
+                        {{ item.scope === 'business' ? '🏢 Pyme' : '👤 Personal' }}
+                      </span>
+                    </div>
+                    <div class="row-meta">
+                      <span>📅 {{ item.date }}</span>
+                      <span>· 🏦 {{ item.vaultName }}</span>
+                      <span>· Tasa BCV: {{ item.bcvRateApplied | number: '1.2-2' }}</span>
+                    </div>
+                  </div>
+
+                  <div class="row-right-block">
+                    <div class="row-amount" [class.income-amount]="item.type === 'income'" [class.expense-amount]="item.type === 'expense'">
+                      {{ item.type === 'income' ? '+' : '-' }}${{ item.amountUsd | number: '1.2-2' }} USD
+                    </div>
+                    <div class="row-ves-sub">
+                      Bs {{ item.amountVes | number: '1.2-2' }}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="btn-delete-mov"
+                    title="Eliminar movimiento y revertir saldo en bóveda"
+                    (click)="removeMovement(item)"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
-      <button
-        type="button"
-        class="btn-sync-cloud"
-        [disabled]="driveSync.syncStatus() === 'syncing'"
-        (click)="syncToGoogleDrive()"
-      >
-        @if (driveSync.syncStatus() === 'syncing') {
-          <span class="spinner-sm"></span> Sincronizando...
-        } @else {
-          ☁️ Sincronizar Ahora
-        }
-      </button>
-    </div>
 
-    <div class="backup-actions-row">
-      <button type="button" class="btn-backup-export" (click)="downloadJsonBackup()">
-        📥 JSON Maestro
-      </button>
-      <button type="button" class="btn-backup-export" (click)="downloadCsvExport('expenses')">
-        📊 CSV Gastos
-      </button>
-      <button type="button" class="btn-backup-export" (click)="downloadCsvExport('incomes')">
-        📈 CSV Ingresos
-      </button>
-    </div>
-  </div>
+      <!-- ==================== RIGHT / TELEMETRY & MODULES COLUMN ==================== -->
+      <aside class="cc-side-col">
+        <!-- 14-DAY LIQUIDITY HEALTH SEMAPHORE -->
+        @let health = financeService.liquidityHealthStatus();
+        <div
+          class="health-semaphore-card"
+          [class.optimal]="health.status === 'optimal'"
+          [class.warning]="health.status === 'warning'"
+          [class.critical]="health.status === 'critical'"
+        >
+          <div class="health-icon">
+            @if (health.status === 'optimal') { 🟢 }
+            @else if (health.status === 'warning') { 🟡 }
+            @else { 🚨 }
+          </div>
+          <div class="health-info">
+            <div class="semaphore-kicker">SEMÁFORO DE LIQUIDEZ A 14 DÍAS</div>
+            <strong class="health-title">{{ health.label }}</strong>
+            <p class="health-desc">
+              @if (health.due14DaysUsd > 0) {
+                Compromisos próximos 14 días: <strong>${{ health.due14DaysUsd | number: '1.2-2' }} USD</strong>
+                (Liquidez libre: ${{ financeService.totalAssetsUsd() | number: '1.2-2' }} USD)
+              } @else {
+                Cero cuotas exigibles en los próximos 14 días. Liquidez libre al 100%.
+              }
+            </p>
+          </div>
+        </div>
 
-  <!-- RECENT MOVEMENTS FEED -->
-  <div class="recent-movements-section">
-    <div class="section-title-row">
-      <h3>📋 Movimientos Recientes</h3>
-      <span class="text-muted" style="font-size: 0.8rem;">Filtrado por: {{ financeService.scope() }}</span>
-    </div>
-
-    @let incomes = financeService.incomes();
-    @let expenses = financeService.expenses();
-
-    @if (incomes.length === 0 && expenses.length === 0) {
-      <div class="empty-state">
-        <span class="empty-icon">📭</span>
-        <p>Aún no hay movimientos registrados en este ámbito.</p>
-        <span class="text-muted">Usa los botones inferiores para registrar tu primer gasto o sueldo.</span>
-      </div>
-    } @else {
-      <div class="movements-list">
-        @for (inc of incomes.slice(0, 5); track inc.id) {
-          <div class="movement-row income-row">
-            <div class="row-icon">🟢</div>
-            <div class="row-details">
-              <strong>{{ inc.title }}</strong>
-              <span class="row-meta">{{ inc.date }} · Canal: {{ inc.channel }}</span>
+        <!-- P2P UNIDIRECTIONAL PROFIT BRIDGE -->
+        @let todaySummary = todayP2pSummary();
+        <div class="p2p-bridge-banner">
+          <div class="bridge-content">
+            <div class="bridge-tag">
+              <span class="pulse-indicator"></span>
+              <span>PUENTE UNIDIRECCIONAL · MESA P2P AISLADA</span>
             </div>
-            <div class="row-amount income-amount">
-              +${{ inc.triMonetary.amount_usd | number: '1.2-2' }} USD
+            <div class="bridge-stats">
+              @if (todaySummary.pnlVes > 0 || todaySummary.pnlUsdt > 0) {
+                <div class="profit-highlight">
+                  Profit P2P de Hoy: <strong>+${{ todaySummary.pnlUsdt | number: '1.2-2' }} USD</strong>
+                  <span class="ves-sub">(+Bs {{ todaySummary.pnlVes | number: '1.2-2' }})</span>
+                </div>
+              } @else {
+                <div class="profit-highlight muted">
+                  Sin ganancia neta cerrada hoy en la mesa P2P (Capital P2P 100% blindado).
+                </div>
+              }
             </div>
           </div>
-        }
 
-        @for (exp of expenses.slice(0, 5); track exp.id) {
-          <div class="movement-row expense-row">
-            <div class="row-icon">🔴</div>
-            <div class="row-details">
-              <strong>{{ exp.title }}</strong>
-              <span class="row-meta">{{ exp.date }} · {{ exp.category }}</span>
+          <div class="bridge-action">
+            @if (isP2pProfitImportedToday()) {
+              <span class="badge-synced">✅ Profit Importado Hoy</span>
+            } @else {
+              <button
+                type="button"
+                class="btn-import-p2p"
+                [disabled]="todaySummary.pnlVes <= 0 && todaySummary.pnlUsdt <= 0"
+                (click)="triggerP2pImport()"
+              >
+                💰 Importar Ganancia Neta P2P
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- URGENT UPCOMING COMMITMENTS (7 DAYS) -->
+        @let upcoming = financeService.upcomingLiabilities7Days();
+        <div class="upcoming-commitments-section">
+          <div class="section-title-row">
+            <h3>⏳ Vencimientos Próximos (7 Días)</h3>
+            <span class="count-badge">{{ upcoming.length }}</span>
+          </div>
+
+          @if (upcoming.length === 0) {
+            <div class="no-commitments-box">
+              <span>✅ Sin cuotas venciendo esta semana.</span>
             </div>
-            <div class="row-amount expense-amount">
-              -${{ exp.triMonetary.amount_usd | number: '1.2-2' }} USD
+          } @else {
+            <div class="commitments-scroll">
+              @for (item of upcoming; track item.id) {
+                <div class="commitment-card">
+                  <div class="card-left">
+                    <span class="due-tag">📅 Vence: {{ item.dueDate }}</span>
+                    <strong class="item-title">{{ item.title }}</strong>
+                    <span class="item-creditor">{{ item.creditor }}</span>
+                  </div>
+                  <div class="card-right">
+                    <div class="item-amount">${{ item.remainingAmount | number: '1.2-2' }} USD</div>
+                    <button
+                      type="button"
+                      class="btn-quick-pay"
+                      (click)="payQuickLiability(item.id, item.remainingAmount)"
+                    >
+                      Liquidar Cuota
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- BENTO SUB-MODULES GRID -->
+        <div class="bento-section-wrapper">
+          <div class="section-title-row">
+            <h3>🧩 Ecosistema Operativo 360</h3>
+          </div>
+          <div class="bento-modules-grid">
+            <!-- Tile 1: Analytics & Statistics -->
+            <div class="bento-tile featured-tile" (click)="activeTab.set('analytics')">
+              <div class="tile-header">
+                <span class="tile-icon">📊</span>
+                <span class="tile-badge gold">CFO IA · SVG</span>
+              </div>
+              <h4>Estadísticas &amp; Analítica</h4>
+              <p>Curva predictiva de Runway 30D, anillos de distribución patrimonial y Burn Rate.</p>
+              <div class="tile-footer">
+                <span>Diagnósticos en vivo</span>
+                <span class="tile-arrow">→</span>
+              </div>
+            </div>
+
+            <!-- Tile 2: Cashea Calculator -->
+            <div class="bento-tile" (click)="activeTab.set('cashea')">
+              <div class="tile-header">
+                <span class="tile-icon">⚡</span>
+                <span class="tile-badge">14 Días</span>
+              </div>
+              <h4>Calculadora Cashea</h4>
+              <p>Simula compras, iniciales por nivel y cronograma automático de cuotas.</p>
+              <div class="tile-footer">
+                <span>Planes: {{ financeService.state().casheaPlans.length }}</span>
+                <span class="tile-arrow">→</span>
+              </div>
+            </div>
+
+            <!-- Tile 3: Pyme Management -->
+            <div class="bento-tile" (click)="activeTab.set('pyme')">
+              <div class="tile-header">
+                <span class="tile-icon">🏢</span>
+                <span class="tile-badge">3 Gavetas</span>
+              </div>
+              <h4>Gestión Pyme &amp; Taller</h4>
+              <p>Cortafuegos de 3 gavetas con asiento contable, proveedores e inventario.</p>
+              <div class="tile-footer">
+                <span>Proveedores: {{ financeService.state().providers.length }}</span>
+                <span class="tile-arrow">→</span>
+              </div>
+            </div>
+
+            <!-- Tile 4: Quote Builder -->
+            <div class="bento-tile" (click)="activeTab.set('quotes')">
+              <div class="tile-header">
+                <span class="tile-icon">📝</span>
+                <span class="tile-badge">+10% Merma</span>
+              </div>
+              <h4>Generador Presupuestos</h4>
+              <p>Cotizaciones técnicas con +10% de merma y doble PDF (Cliente / Auditoría).</p>
+              <div class="tile-footer">
+                <span>Cotizaciones: {{ financeService.state().quotes.length }}</span>
+                <span class="tile-arrow">→</span>
+              </div>
             </div>
           </div>
-        }
-      </div>
-    }
-  </div>
+        </div>
+
+        <!-- CLOUD SYNC & MASTER LEDGER BACKUP -->
+        <div class="cloud-sync-card">
+          <div class="sync-header">
+            <div class="sync-title">
+              <span class="sync-icon">☁️</span>
+              <div>
+                <h4>Bóveda Cloud &amp; Libro Maestro</h4>
+                <p class="sync-subtitle">
+                  Google Drive &amp; Sheets
+                  @if (driveSync.lastSyncTimestamp()) {
+                    · Sincronizado: {{ driveSync.lastSyncTimestamp() | date: 'short' }}
+                  }
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn-sync-cloud"
+              [disabled]="driveSync.syncStatus() === 'syncing'"
+              (click)="syncToGoogleDrive()"
+            >
+              @if (driveSync.syncStatus() === 'syncing') {
+                <span class="spinner-sm"></span> Sincronizando...
+              } @else {
+                ☁️ Sincronizar
+              }
+            </button>
+          </div>
+
+          <div class="backup-actions-row">
+            <button type="button" class="btn-backup-export" (click)="downloadJsonBackup()">
+              📥 JSON Maestro
+            </button>
+            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('expenses')">
+              📊 CSV Gastos
+            </button>
+            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('incomes')">
+              📈 CSV Ingresos
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
   } @else if (activeTab() === 'analytics') {
     <div class="submodule-view">
       <div class="submodule-top-bar">
         <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver al Resumen
+          ← Volver a Comando 360
         </button>
         <div class="submodule-header-title">
-          <h3>📊 Estadísticas & Analítica</h3>
-          <p>Diagnósticos del CFO Virtual, Proyección de Burn Rate y Radiografía de Gastos</p>
+          <h3>📊 Inteligencia Financiera &amp; Estadísticas CFO</h3>
+          <p>Curva Predictiva de Liquidez 30D, Estructura Patrimonial, Mapa de Calor y Diagnósticos Ejecutivos</p>
         </div>
       </div>
       <app-finance-analytics />
@@ -322,11 +642,11 @@
     <div class="submodule-view">
       <div class="submodule-top-bar">
         <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver al Resumen
+          ← Volver a Comando 360
         </button>
         <div class="submodule-header-title">
-          <h3>⚡ Calculadora Cashea & Cuotas</h3>
-          <p>Simulación quincenal, inicial por nivel y gestión de financiamientos</p>
+          <h3>⚡ Calculadora Cashea &amp; Cuotas Quincenales</h3>
+          <p>Simulación por nivel, pago inicial e inyección automática al calendario de pasivos</p>
         </div>
       </div>
       <app-cashea-calculator />
@@ -335,11 +655,11 @@
     <div class="submodule-view">
       <div class="submodule-top-bar">
         <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver al Resumen
+          ← Volver a Comando 360
         </button>
         <div class="submodule-header-title">
-          <h3>🏢 Gestión Pyme & Taller</h3>
-          <p>Cortafuegos de 3 gavetas, directorio de proveedores y semáforo de inventario</p>
+          <h3>🏢 Gestión Pyme &amp; Taller (Cortafuegos de 3 Gavetas)</h3>
+          <p>Partición de ventas en tiempo real, cuentas por pagar a proveedores y semáforo de stock</p>
         </div>
       </div>
       <app-pyme-manager />
@@ -348,11 +668,11 @@
     <div class="submodule-view">
       <div class="submodule-top-bar">
         <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver al Resumen
+          ← Volver a Comando 360
         </button>
         <div class="submodule-header-title">
           <h3>📝 Generador de Presupuestos 360</h3>
-          <p>Latonería, pintura y obras por m² con +10% de merma técnica y doble PDF</p>
+          <p>Latonería, pintura y obras por m² con +10% de merma técnica y exportación dual PDF</p>
         </div>
       </div>
       <app-quote-builder />
@@ -367,7 +687,7 @@
       (click)="openQuickModal('income')"
     >
       <span class="thumb-icon">➕</span>
-      <span>Ingreso / Sueldo</span>
+      <span>Ingreso / Cobro</span>
     </button>
 
     <button
@@ -385,45 +705,59 @@
       (click)="openQuickModal('audio')"
     >
       <span class="thumb-icon">🎙️</span>
-      <span>Voz IA</span>
+      <span>Comando IA</span>
     </button>
   </div>
 
-  <!-- QUICK TRANSACTION MODAL -->
+  <!-- ========================================================= -->
+  <!-- MODAL 1: QUICK TRANSACTION + SMART NATURAL LANGUAGE IA     -->
+  <!-- ========================================================= -->
   @if (quickModalOpen()) {
     <div class="modal-backdrop" (click)="closeQuickModal()">
       <div class="modal-card" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h3>
-            @if (quickModalType() === 'income') { 🟢 Registrar Ingreso / Sueldo }
-            @else if (quickModalType() === 'expense') { 🔴 Registrar Gasto Rápido }
-            @else { 🎙️ Dictado de Nota de Voz IA }
+            @if (quickModalType() === 'income') { 🟢 Registrar Ingreso / Cobro }
+            @else if (quickModalType() === 'expense') { 🔴 Registrar Gasto Operativo / Personal }
+            @else { 🎙️ Comando Inteligente &amp; Dictado IA }
           </h3>
           <button type="button" class="btn-close" (click)="closeQuickModal()">✕</button>
         </div>
 
         <div class="modal-body">
-          @if (quickModalType() === 'audio') {
-            <div class="voice-recording-box">
-              <div class="recording-pulse" [class.active]="isRecordingAudio()">
-                🎙️
-              </div>
-              <p>
-                @if (isRecordingAudio()) {
-                  Escuchando... "Gasté 15$ en gasolina pagando en bolívares por Pago Móvil"
-                } @else {
-                  Transcripción y clasificación con IA completada.
-                }
-              </p>
+          <!-- SMART COMMAND INPUT BAR (ALWAYS AVAILABLE FOR FAST ENTRY) -->
+          <div class="smart-ai-bar">
+            <label>✨ Entrada Rápida en Lenguaje Natural (IA)</label>
+            <div class="smart-input-row">
+              <input
+                type="text"
+                class="form-control"
+                placeholder='Ej: "Gasté 25$ en gasolina por Pago Móvil" o "Cobré 450$ de taller"'
+                [ngModel]="smartCommandText()"
+                (ngModelChange)="smartCommandText.set($event)"
+                (keydown.enter)="parseNaturalLanguageCommand()"
+              />
+              <button
+                type="button"
+                class="btn-ai-parse"
+                (click)="parseNaturalLanguageCommand()"
+              >
+                Autocompletar
+              </button>
             </div>
-          }
+            @if (isRecordingAudio()) {
+              <div class="voice-status-banner">
+                <span class="pulse-dot"></span> Escuchando dictado de voz y clasificando categoría...
+              </div>
+            }
+          </div>
 
           <div class="form-group">
-            <label>Descripción / Título</label>
+            <label>Descripción / Concepto</label>
             <input
               type="text"
               class="form-control"
-              placeholder="ej. Sueldo quincenal, Gasolina, Alquiler..."
+              placeholder="ej. Sueldo quincenal, Gasolina, Pago Proveedor..."
               [ngModel]="formTitle()"
               (ngModelChange)="formTitle.set($event)"
             />
@@ -442,35 +776,35 @@
             </div>
 
             <div class="form-group half">
-              <label>Moneda</label>
+              <label>Moneda de Origen</label>
               <select
                 class="form-control"
                 [ngModel]="formCurrency()"
                 (ngModelChange)="formCurrency.set($event)"
               >
-                <option value="USD">USD ($)</option>
-                <option value="VES">VES (Bs)</option>
-                <option value="USDT">USDT</option>
+                <option value="USD">USD ($ Dólares)</option>
+                <option value="VES">VES (Bs Bolívares)</option>
+                <option value="USDT">USDT (Tether)</option>
               </select>
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group half">
-              <label>Ámbito</label>
+              <label>Ámbito Contable</label>
               <select
                 class="form-control"
                 [ngModel]="formScope()"
                 (ngModelChange)="formScope.set($event)"
               >
-                <option value="personal">👤 Personal</option>
-                <option value="business">🏢 Pyme / Negocio</option>
+                <option value="personal">👤 Personal / Hogar</option>
+                <option value="business">🏢 Pyme / Taller</option>
               </select>
             </div>
 
             <div class="form-group half">
               <label>Categoría</label>
-              @if (quickModalType() === 'expense') {
+              @if (quickModalType() === 'expense' || quickModalType() === 'audio') {
                 <select
                   class="form-control"
                   [ngModel]="formExpenseCategory()"
@@ -479,13 +813,13 @@
                   <option value="groceries">🛒 Comida y Mercado</option>
                   <option value="transport">⛽ Gasolina / Transporte</option>
                   <option value="housing">🏠 Vivienda y Alquiler</option>
-                  <option value="services">💡 Servicios Públicos</option>
+                  <option value="services">💡 Servicios / Internet</option>
                   <option value="health">💊 Salud y Medicina</option>
                   <option value="cashea_installment">⚡ Cuota Cashea</option>
-                  <option value="provider_merchandise">📦 Proveedor / Mercancía</option>
+                  <option value="provider_merchandise">📦 Proveedor / Insumos</option>
                   <option value="payroll">👥 Nómina de Personal</option>
                   <option value="maintenance">🔧 Mantenimiento / Taller</option>
-                  <option value="other">📌 Otro</option>
+                  <option value="other">📌 Otro Gasto</option>
                 </select>
               } @else {
                 <select
@@ -494,10 +828,10 @@
                   (ngModelChange)="formIncomeCategory.set($event)"
                 >
                   <option value="salary">💼 Sueldo / Salario</option>
-                  <option value="business_sale">🛍️ Venta Comercial</option>
-                  <option value="quote_advance">📝 Anticipo Presupuesto</option>
-                  <option value="freelance">💻 Honorarios / Trabajo</option>
-                  <option value="investment">📈 Inversión</option>
+                  <option value="business_sale">🛍️ Venta Comercial / Taller</option>
+                  <option value="quote_advance">📝 Anticipo de Presupuesto</option>
+                  <option value="freelance">💻 Honorarios Profesionales</option>
+                  <option value="investment">📈 Rendimiento / Inversión</option>
                   <option value="other">📌 Otro Ingreso</option>
                 </select>
               }
@@ -505,15 +839,17 @@
           </div>
 
           <div class="form-group">
-            <label>Bóveda / Cuenta</label>
+            <label>Bóveda / Cuenta Afectada</label>
             <select
               class="form-control"
               [ngModel]="formVaultId()"
               (ngModelChange)="formVaultId.set($event)"
             >
-              <option value="">(Sin debitar / acreditar cuenta específica)</option>
-              @for (vault of financeService.assets(); track vault.id) {
-                <option [value]="vault.id">{{ vault.name }} (Saldo: {{ vault.currency }} {{ vault.balance }})</option>
+              <option value="">(Solo registro contable · Sin afectar bóveda)</option>
+              @for (vault of financeService.state().assets; track vault.id) {
+                <option [value]="vault.id">
+                  {{ getVaultIcon(vault) }} {{ vault.name }} — Saldo: {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
+                </option>
               }
             </select>
           </div>
@@ -521,7 +857,174 @@
 
         <div class="modal-footer">
           <button type="button" class="btn-secondary" (click)="closeQuickModal()">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveQuickTransaction()">Guardar Movimiento</button>
+          <button type="button" class="btn-primary" (click)="saveQuickTransaction()">
+            Asentar Movimiento
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================= -->
+  <!-- MODAL 2: TRANSFER BETWEEN VAULTS (CROSS-CURRENCY BCV)      -->
+  <!-- ========================================================= -->
+  @if (transferModalOpen()) {
+    <div class="modal-backdrop" (click)="transferModalOpen.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>🔄 Transferir Fondos entre Bóvedas</h3>
+          <button type="button" class="btn-close" (click)="transferModalOpen.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Bóveda de Origen (Débito)</label>
+            <select
+              class="form-control"
+              [ngModel]="transferFromId()"
+              (ngModelChange)="transferFromId.set($event)"
+            >
+              @for (v of financeService.state().assets; track v.id) {
+                <option [value]="v.id">
+                  {{ getVaultIcon(v) }} {{ v.name }} (Disponible: {{ v.currency }} {{ v.balance | number: '1.2-2' }})
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Bóveda de Destino (Crédito)</label>
+            <select
+              class="form-control"
+              [ngModel]="transferToId()"
+              (ngModelChange)="transferToId.set($event)"
+            >
+              @for (v of financeService.state().assets; track v.id) {
+                <option [value]="v.id">
+                  {{ getVaultIcon(v) }} {{ v.name }} (Moneda: {{ v.currency }} · Saldo: {{ v.balance | number: '1.2-2' }})
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Monto a Transferir (en moneda de la bóveda origen)</label>
+            <input
+              type="number"
+              class="form-control font-mono"
+              placeholder="0.00"
+              [ngModel]="transferAmount()"
+              (ngModelChange)="transferAmount.set($event)"
+            />
+          </div>
+
+          @let preview = transferPreview();
+          @if (preview) {
+            <div class="transfer-preview-box">
+              <div>
+                <span>Se debitarán:</span>
+                <strong>{{ preview.fromVault.currency }} {{ transferAmount() | number: '1.2-2' }}</strong>
+                de {{ preview.fromVault.name }}
+              </div>
+              <div>
+                <span>Se acreditarán:</span>
+                <strong class="gold-text">{{ preview.toVault.currency }} {{ preview.targetCredit | number: '1.2-2' }}</strong>
+                en {{ preview.toVault.name }} (Tasa BCV: {{ preview.bcv | number: '1.2-2' }})
+              </div>
+            </div>
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="transferModalOpen.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="executeVaultTransfer()">
+            Ejecutar Transferencia
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ========================================================= -->
+  <!-- MODAL 3: CREATE NEW ASSET VAULT                           -->
+  <!-- ========================================================= -->
+  @if (newVaultModalOpen()) {
+    <div class="modal-backdrop" (click)="newVaultModalOpen.set(false)">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>🏦 Crear Nueva Bóveda o Cuenta</h3>
+          <button type="button" class="btn-close" (click)="newVaultModalOpen.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+              <label>Nombre de la Bóveda / Banco</label>
+              <input
+                type="text"
+                class="form-control"
+                placeholder="Ej. Binance Funding, Mercantil Bs, Caja Chica Taller..."
+                [ngModel]="newVaultName()"
+                (ngModelChange)="newVaultName.set($event)"
+              />
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Canal</label>
+              <select
+                class="form-control"
+                [ngModel]="newVaultChannel()"
+                (ngModelChange)="newVaultChannel.set($event)"
+              >
+                <option value="zelle">💳 Zelle</option>
+                <option value="bs_bank">🏦 Banco Bs</option>
+                <option value="cash">💵 Efectivo</option>
+                <option value="crypto">🪙 Crypto</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Moneda Base</label>
+              <select
+                class="form-control"
+                [ngModel]="newVaultCurrency()"
+                (ngModelChange)="newVaultCurrency.set($event)"
+              >
+                <option value="USD">USD ($ Dólares)</option>
+                <option value="USDT">USDT (Cripto)</option>
+                <option value="VES">VES (Bs Bolívares)</option>
+              </select>
+            </div>
+
+            <div class="form-group half">
+              <label>Ámbito</label>
+              <select
+                class="form-control"
+                [ngModel]="newVaultScope()"
+                (ngModelChange)="newVaultScope.set($event)"
+              >
+                <option value="personal">👤 Personal</option>
+                <option value="business">🏢 Pyme / Negocio</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Saldo Inicial</label>
+            <input
+              type="number"
+              class="form-control font-mono"
+              placeholder="0.00"
+              [ngModel]="newVaultBalance()"
+              (ngModelChange)="newVaultBalance.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="newVaultModalOpen.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary" (click)="saveNewVault()">Crear Bóveda</button>
         </div>
       </div>
     </div>
