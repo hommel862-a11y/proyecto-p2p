@@ -243,9 +243,26 @@ export interface PymeDrawerAllocation {
 }
 
 // -------------------------------------------------------------
-// SUB-MÓDULO 3: GENERADOR DE PRESUPUESTOS (OBRAS & TALLER)
+// SUB-MÓDULO 3: GENERADOR DE PRESUPUESTOS MULTI-INDUSTRIA
 // -------------------------------------------------------------
-export type QuoteType = 'automotive_bodywork' | 'construction_m2';
+export type QuoteType =
+  | 'automotive_bodywork'
+  | 'construction_m2'
+  | 'tech_services'
+  | 'commerce_retail'
+  | 'gastronomy_events'
+  | 'custom_universal';
+
+export type QuoteItemCategory = 'material' | 'labor' | 'logistics';
+
+export interface QuoteLineItem {
+  id: string;
+  category: QuoteItemCategory;
+  name: string;
+  quantity: number;
+  unit: string;
+  unitCostUsd: number;
+}
 
 export interface MaterialRecipeItem {
   name: string;
@@ -261,17 +278,23 @@ export interface BudgetQuote {
   quoteNumber: string;
   clientName: string;
   clientPhone?: string;
+  clientDoc?: string;
   type: QuoteType;
   description: string;
   scopeDetails: Record<string, unknown>;
   materials: MaterialRecipeItem[];
+  lineItems?: QuoteLineItem[];
   laborCostUsd: number;
-  laborType: 'commission' | 'm2_rate' | 'daily_fixed';
+  logisticsCostUsd?: number;
+  laborType: 'commission' | 'm2_rate' | 'daily_fixed' | 'hourly_rate' | 'project_fixed' | 'unit_markup';
   totalMaterialsCostUsd: number;
   subtotalCostUsd: number;
   profitMarginPercent: number;
+  technicalWastePercent?: number;
+  discountPercent?: number;
   totalPriceUsd: number;
-  minimumAdvanceUsd: number; // 100% of materials + proportion of labor
+  minimumAdvanceUsd: number; // custom advance (e.g. 50%)
+  advancePercent?: number;
   bcvRateApplied: number;
   totalPriceVes: number;
   status: 'draft' | 'sent' | 'approved' | 'rejected' | 'completed';

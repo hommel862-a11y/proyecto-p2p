@@ -1,22 +1,25 @@
 <div class="quote-builder-container">
-  <!-- MODE SELECTOR PILLS -->
-  <div class="quote-type-pills-row" role="tablist">
-    <button
-      type="button"
-      class="quote-type-pill"
-      [class.active]="quoteType() === 'automotive_bodywork'"
-      (click)="quoteType.set('automotive_bodywork')"
-    >
-      🚗 Latonería & Pintura Automotriz
-    </button>
-    <button
-      type="button"
-      class="quote-type-pill"
-      [class.active]="quoteType() === 'construction_m2'"
-      (click)="quoteType.set('construction_m2')"
-    >
-      🏗️ Obras & Construcción por m²
-    </button>
+  <!-- MULTI-INDUSTRY SECTOR SELECTOR BAR -->
+  <div class="industry-selector-wrapper">
+    <div class="industry-selector-header">
+      <span class="hub-kicker">MOTOR UNIVERSAL MULTI-INDUSTRIA</span>
+      <span class="hub-active-desc">{{ currentPreset().subtitle }}</span>
+    </div>
+
+    <div class="quote-type-pills-row" role="tablist">
+      @for (key of industryKeys; track key) {
+        @let preset = industryPresets[key];
+        <button
+          type="button"
+          class="quote-type-pill"
+          [class.active]="quoteType() === key"
+          (click)="switchIndustry(key)"
+        >
+          <span class="pill-icon">{{ preset.icon }}</span>
+          <span>{{ preset.label }}</span>
+        </button>
+      }
+    </div>
   </div>
 
   <!-- BUILDER CARD -->
@@ -24,31 +27,36 @@
     <div class="card-header">
       <div class="tag-row">
         <span class="quote-badge">
-          {{ quoteType() === 'automotive_bodywork' ? 'TALLER AUTOMOTRIZ' : 'CONSTRUCTORA / OBRAS' }}
+          {{ currentPreset().icon }} {{ currentPreset().badge }}
         </span>
-        <span class="waste-badge">+10% Merma Técnica Automática</span>
+        <span class="waste-badge">
+          @if (currentQuoteTotals().wastePct > 0) {
+            🛡️ +{{ currentQuoteTotals().wastePct }}% Merma / Contingencia Técnica
+          } @else {
+            ✨ Cero Merma (Servicios Puros)
+          }
+        </span>
       </div>
-      <h3>Generador de Presupuestos Técnicos</h3>
+      <h3>Generador de Presupuestos: {{ currentPreset().label }}</h3>
       <p class="card-subtitle">
-        Calcula insumos con factor de desperdicio (+10%), mano de obra y margen comercial congelado en USD/BCV.
+        {{ currentPreset().subtitle }}
       </p>
     </div>
 
-    <!-- CLIENT DATA SECTION -->
+    <!-- CLIENT & PROJECT SCOPE SECTION -->
     <div class="client-data-grid">
-      <div class="form-group">
-        <label>Nombre del Cliente / Empresa</label>
-        <input
-          type="text"
-          class="form-control"
-          placeholder="Carlos Rodríguez"
-          [ngModel]="clientName()"
-          (ngModelChange)="clientName.set($event)"
-        />
-      </div>
-
       <div class="form-row-dual">
-        <div class="form-group">
+        <div class="form-group" style="flex: 2;">
+          <label>Cliente o Razón Social</label>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="Ej. Carlos Rodríguez / Corporación Acme C.A."
+            [ngModel]="clientName()"
+            (ngModelChange)="clientName.set($event)"
+          />
+        </div>
+        <div class="form-group" style="flex: 1;">
           <label>Teléfono de Contacto</label>
           <input
             type="text"
@@ -58,27 +66,44 @@
             (ngModelChange)="clientPhone.set($event)"
           />
         </div>
-        <div class="form-group">
-          <label>C.I. / RIF</label>
+        <div class="form-group" style="flex: 1;">
+          <label>C.I. / RIF / ID Fiscal</label>
           <input
             type="text"
-            class="form-control"
-            placeholder="V-18456789"
+            class="form-control font-mono"
+            placeholder="V-18456789 / J-31245678-0"
             [ngModel]="clientDoc()"
             (ngModelChange)="clientDoc.set($event)"
           />
         </div>
       </div>
-    </div>
 
-    <!-- AUTOMOTIVE RECIPE -->
-    @if (quoteType() === 'automotive_bodywork') {
-      <div class="recipe-section">
-        <div class="section-title">
-          <h4>🔧 Datos del Vehículo & Piezas a Pintar</h4>
+      <div class="form-row-dual">
+        <div class="form-group" style="flex: 2;">
+          <label>Título del Presupuesto / Obra / Orden</label>
+          <input
+            type="text"
+            class="form-control"
+            placeholder="Ej. Mantenimiento General, Obra Civil, Desarrollo de Plataforma..."
+            [ngModel]="projectTitle()"
+            (ngModelChange)="projectTitle.set($event)"
+          />
         </div>
+        <div class="form-group" style="flex: 3;">
+          <label>Observaciones / Alcance del Servicio</label>
+          <input
+            type="text"
+            class="form-control"
+            [placeholder]="currentPreset().scopePlaceholder"
+            [ngModel]="projectScopeDetails()"
+            (ngModelChange)="projectScopeDetails.set($event)"
+          />
+        </div>
+      </div>
 
-        <div class="form-row-dual">
+      <!-- AUTOMOTIVE CONDITIONAL FIELDS -->
+      @if (quoteType() === 'automotive_bodywork') {
+        <div class="form-row-triple automotive-extras-row">
           <div class="form-group">
             <label>Vehículo (Marca / Modelo / Año)</label>
             <input
@@ -99,116 +124,225 @@
               (ngModelChange)="vehicleColor.set($event)"
             />
           </div>
+          <div class="form-group">
+            <label>Placa / Serial</label>
+            <input
+              type="text"
+              class="form-control font-mono"
+              placeholder="AA123BB"
+              [ngModel]="vehiclePlate()"
+              (ngModelChange)="vehiclePlate.set($event)"
+            />
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- DYNAMIC LINE ITEMS (PARTIDAS PRESUPUESTARIAS) -->
+    <div class="line-items-section">
+      <div class="items-toolbar">
+        <div>
+          <h4>📋 Partidas Presupuestarias & Desglose de Costos</h4>
+          <span class="toolbar-sub">Agregá insumos, horas técnicas o logística según el alcance acordado</span>
         </div>
 
-        <div class="form-row-triple">
-          <div class="form-group">
-            <label>Cantidad de Piezas</label>
-            <input
-              type="number"
-              class="form-control"
-              min="1"
-              [ngModel]="selectedPiecesCount()"
-              (ngModelChange)="selectedPiecesCount.set($event)"
-            />
-          </div>
-          <div class="form-group">
-            <label>Insumos/Pieza ($ USD)</label>
-            <input
-              type="number"
-              class="form-control"
-              placeholder="35"
-              [ngModel]="costPerPieceMaterialsUsd()"
-              (ngModelChange)="costPerPieceMaterialsUsd.set($event)"
-            />
-          </div>
-          <div class="form-group">
-            <label>Mano de Obra/Pieza ($)</label>
-            <input
-              type="number"
-              class="form-control"
-              placeholder="50"
-              [ngModel]="laborPerPieceUsd()"
-              (ngModelChange)="laborPerPieceUsd.set($event)"
-            />
-          </div>
+        <div class="items-actions-group">
+          <button
+            type="button"
+            class="btn-add-item material"
+            (click)="addLineItem('material')"
+          >
+            📦 + Insumo / Material
+          </button>
+          <button
+            type="button"
+            class="btn-add-item labor"
+            (click)="addLineItem('labor')"
+          >
+            👷 + Mano de Obra / Servicio
+          </button>
+          <button
+            type="button"
+            class="btn-add-item logistics"
+            (click)="addLineItem('logistics')"
+          >
+            🚚 + Logística / Flete
+          </button>
+          <button
+            type="button"
+            class="btn-preset-reset"
+            title="Recargar partidas recomendadas de la industria"
+            (click)="switchIndustry(quoteType())"
+          >
+            🔄 Recargar Plantilla
+          </button>
         </div>
       </div>
-    }
 
-    <!-- CONSTRUCTION RECIPE -->
-    @if (quoteType() === 'construction_m2') {
-      <div class="recipe-section">
-        <div class="section-title">
-          <h4>🏗️ Especificaciones de la Obra</h4>
-        </div>
+      <!-- ITEMS TABLE -->
+      <div class="items-table-wrapper">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th style="width: 130px;">Tipo Partida</th>
+              <th>Descripción del Concepto / Partida</th>
+              <th style="width: 85px;" class="text-center">Cant.</th>
+              <th style="width: 105px;">Unidad</th>
+              <th style="width: 115px;" class="text-right">Costo Unit. ($)</th>
+              <th style="width: 110px;" class="text-right">Subtotal ($)</th>
+              <th style="width: 44px;" class="text-center"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of lineItems(); track item.id) {
+              @let itemSubtotal = (item.quantity || 0) * (item.unitCostUsd || 0);
+              <tr class="item-table-row" [class]="item.category">
+                <td>
+                  <select
+                    class="form-control-compact category-select"
+                    [ngModel]="item.category"
+                    (ngModelChange)="updateItemCategory(item, $event)"
+                  >
+                    <option value="material">📦 Material</option>
+                    <option value="labor">👷 Servicio</option>
+                    <option value="logistics">🚚 Logística</option>
+                  </select>
+                </td>
 
-        <div class="form-group">
-          <label>Descripción del Trabajo</label>
+                <td>
+                  <input
+                    type="text"
+                    class="form-control-compact text-input"
+                    placeholder="Descripción del insumo o servicio"
+                    [ngModel]="item.name"
+                    (ngModelChange)="item.name = $event"
+                  />
+                </td>
+
+                <td class="text-center">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    class="form-control-compact num-input text-center font-mono"
+                    [ngModel]="item.quantity"
+                    (ngModelChange)="updateItemQty(item, $event)"
+                  />
+                </td>
+
+                <td>
+                  <select
+                    class="form-control-compact unit-select"
+                    [ngModel]="item.unit"
+                    (ngModelChange)="updateItemUnit(item, $event)"
+                  >
+                    <option value="unid">unid</option>
+                    <option value="piezas">piezas</option>
+                    <option value="m²">m²</option>
+                    <option value="horas">horas</option>
+                    <option value="días">días</option>
+                    <option value="kg">kg</option>
+                    <option value="lote">lote</option>
+                    <option value="mes">mes</option>
+                    <option value="platos">platos</option>
+                    <option value="viaje">viaje</option>
+                    <option value="envío">envío</option>
+                    <option value="global">global</option>
+                  </select>
+                </td>
+
+                <td class="text-right">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    class="form-control-compact num-input text-right font-mono"
+                    [ngModel]="item.unitCostUsd"
+                    (ngModelChange)="updateItemCost(item, $event)"
+                  />
+                </td>
+
+                <td class="text-right font-mono font-bold subtotal-cell">
+                  ${{ itemSubtotal | number: '1.2-2' }}
+                </td>
+
+                <td class="text-center">
+                  <button
+                    type="button"
+                    class="btn-row-del"
+                    title="Eliminar partida"
+                    (click)="removeLineItem(item.id)"
+                  >
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FINANCIAL CONTROLS DECK -->
+    <div class="margins-deck-grid">
+      <div class="form-group">
+        <label>Merma / Desperdicio Técnico (+%)</label>
+        <div class="input-unit-group">
           <input
-            type="text"
-            class="form-control"
-            placeholder="Pintura Interior, Friso y Porcelanato"
-            [ngModel]="projectTitle()"
-            (ngModelChange)="projectTitle.set($event)"
+            type="number"
+            min="0"
+            max="30"
+            class="form-control font-mono"
+            [ngModel]="technicalWastePercent()"
+            (ngModelChange)="technicalWastePercent.set($event)"
           />
-        </div>
-
-        <div class="form-row-triple">
-          <div class="form-group">
-            <label>Área Total (m²)</label>
-            <input
-              type="number"
-              class="form-control"
-              placeholder="65"
-              [ngModel]="areaSquareMeters()"
-              (ngModelChange)="areaSquareMeters.set($event)"
-            />
-          </div>
-          <div class="form-group">
-            <label>Material/m² ($ USD)</label>
-            <input
-              type="number"
-              class="form-control"
-              placeholder="4.5"
-              [ngModel]="materialCostPerM2()"
-              (ngModelChange)="materialCostPerM2.set($event)"
-            />
-          </div>
-          <div class="form-group">
-            <label>Mano de Obra/m² ($)</label>
-            <input
-              type="number"
-              class="form-control"
-              placeholder="6.0"
-              [ngModel]="laborCostPerM2()"
-              (ngModelChange)="laborCostPerM2.set($event)"
-            />
-          </div>
+          <span class="unit-tag">%</span>
         </div>
       </div>
-    }
 
-    <!-- MARGIN ADJUSTMENTS -->
-    <div class="margins-row">
-      <div class="form-group half">
-        <label>Merma Técnica (+%)</label>
-        <input
-          type="number"
-          class="form-control readonly-input"
-          [ngModel]="technicalWastePercent()"
-          readonly
-        />
+      <div class="form-group">
+        <label>Margen de Ganancia Neto (%)</label>
+        <div class="input-unit-group">
+          <input
+            type="number"
+            min="5"
+            max="150"
+            class="form-control font-mono"
+            [ngModel]="profitMarginPercent()"
+            (ngModelChange)="profitMarginPercent.set($event)"
+          />
+          <span class="unit-tag">%</span>
+        </div>
       </div>
-      <div class="form-group half">
-        <label>Margen de Ganancia (%)</label>
-        <input
-          type="number"
-          class="form-control"
-          placeholder="25"
-          [ngModel]="profitMarginPercent()"
-          (ngModelChange)="profitMarginPercent.set($event)"
-        />
+
+      <div class="form-group">
+        <label>Anticipo Exigible para Iniciar (%)</label>
+        <div class="input-unit-group">
+          <input
+            type="number"
+            min="10"
+            max="100"
+            class="form-control font-mono"
+            [ngModel]="advancePercent()"
+            (ngModelChange)="advancePercent.set($event)"
+          />
+          <span class="unit-tag">%</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Descuento Comercial Opcional (-%)</label>
+        <div class="input-unit-group">
+          <input
+            type="number"
+            min="0"
+            max="40"
+            class="form-control font-mono"
+            [ngModel]="discountPercent()"
+            (ngModelChange)="discountPercent.set($event)"
+          />
+          <span class="unit-tag">%</span>
+        </div>
       </div>
     </div>
 
@@ -216,37 +350,67 @@
     @let totals = currentQuoteTotals();
     <div class="quote-totals-box">
       <div class="totals-header">
-        <span>RESUMEN FINANCIERO</span>
-        <span class="rate-tag">Tasa BCV: Bs {{ totals.bcv | number: '1.2-2' }}</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>RESUMEN FINANCIERO CONSOLIDADO</span>
+          <span class="sector-tag">{{ currentPreset().icon }} {{ currentPreset().label }}</span>
+        </div>
+        <span class="rate-tag">🏛️ Tasa BCV: Bs {{ totals.bcv | number: '1.2-2' }}</span>
       </div>
 
       <div class="breakdown-list">
         <div class="breakdown-row">
-          <span>Materiales Base:</span>
+          <span>Insumos &amp; Materiales Directos:</span>
           <strong>${{ totals.rawMaterials | number: '1.2-2' }} USD</strong>
         </div>
-        <div class="breakdown-row highlight-waste">
-          <span>+10% Merma Técnica de Insumos:</span>
-          <strong>+${{ totals.waste | number: '1.2-2' }} USD</strong>
-        </div>
+        @if (totals.waste > 0) {
+          <div class="breakdown-row highlight-waste">
+            <span>+{{ totals.wastePct }}% Merma Técnica de Insumos:</span>
+            <strong>+${{ totals.waste | number: '1.2-2' }} USD</strong>
+          </div>
+        }
         <div class="breakdown-row">
-          <span>Mano de Obra Calificada:</span>
+          <span>Mano de Obra &amp; Servicios Técnicos:</span>
           <strong>${{ totals.totalLabor | number: '1.2-2' }} USD</strong>
         </div>
-        <div class="breakdown-row">
-          <span>Margen de Beneficio ({{ profitMarginPercent() }}%):</span>
+        @if (totals.totalLogistics > 0) {
+          <div class="breakdown-row">
+            <span>Logística, Fletes &amp; Transporte:</span>
+            <strong>${{ totals.totalLogistics | number: '1.2-2' }} USD</strong>
+          </div>
+        }
+        <div class="breakdown-row subtotal-row">
+          <span>Costo Base Operativo (Subtotal):</span>
+          <strong>${{ totals.subtotal | number: '1.2-2' }} USD</strong>
+        </div>
+        <div class="breakdown-row highlight-profit">
+          <span>Margen de Beneficio ({{ totals.profitPct }}%):</span>
           <strong>+${{ totals.profit | number: '1.2-2' }} USD</strong>
         </div>
+        @if (totals.discount > 0) {
+          <div class="breakdown-row highlight-discount">
+            <span>Descuento Comercial Concedido (-{{ totals.discountPct }}%):</span>
+            <strong>-${{ totals.discount | number: '1.2-2' }} USD</strong>
+          </div>
+        }
       </div>
 
       <div class="grand-total-row">
         <div class="total-left">
           <span class="total-tag">PRECIO TOTAL FINAL</span>
-          <h2 class="total-usd">${{ totals.totalUsd | number: '1.2-2' }} <span class="usd-unit">USD</span></h2>
+          <h2 class="total-usd">
+            ${{ totals.totalUsd | number: '1.2-2' }}
+            <span class="usd-unit">USD</span>
+          </h2>
+          <div class="total-advance-highlight">
+            ⚡ Anticipo {{ totals.advancePct }}%: <strong>${{ totals.advanceUsd | number: '1.2-2' }} USD</strong>
+            (Bs {{ totals.advanceVes | number: '1.2-2' }})
+          </div>
         </div>
+
         <div class="total-right">
           <span class="ves-tag">Equivalente Oficial BCV</span>
           <strong class="total-ves">Bs {{ totals.totalVes | number: '1.2-2' }}</strong>
+          <span class="bcv-note">Tasa congelada: {{ totals.bcv | number: '1.2-2' }} Bs/$</span>
         </div>
       </div>
 
@@ -256,7 +420,7 @@
           class="btn-action btn-pdf-client"
           (click)="openPreview('client')"
         >
-          📄 Ver PDF Cliente (Formal)
+          📄 PDF Cliente (Formal)
         </button>
 
         <button
@@ -264,16 +428,15 @@
           class="btn-action btn-pdf-internal"
           (click)="openPreview('internal')"
         >
-          ⚙️ Ver PDF Taller (Interno)
+          ⚙️ PDF Auditoría Interna
         </button>
 
         <button
           type="button"
-          class="btn-action"
-          style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399;"
+          class="btn-action btn-whatsapp"
           (click)="copyQuoteForWhatsApp()"
         >
-          📲 Copiar WhatsApp / Telegram
+          📲 Copiar WhatsApp
         </button>
 
         <button
@@ -287,47 +450,78 @@
     </div>
   </div>
 
-  <!-- SAVED QUOTES LIST -->
+  <!-- SAVED QUOTES LIST WITH SECTOR FILTER -->
   <div class="saved-quotes-card">
     <div class="card-header">
       <div class="tag-row">
         <span class="quote-badge">HISTORIAL DE COTIZACIONES</span>
-        <span class="count-badge">{{ savedQuotes().length }} registradas</span>
+        <span class="count-badge">{{ filteredSavedQuotes().length }} emitidas</span>
       </div>
-      <h3>Presupuestos Emitidos</h3>
+      <h3>Presupuestos Emitidos por Área</h3>
+      <p class="card-subtitle">Filtra y gestiona anticipos, entregas finales y exportación comercial</p>
+
+      <!-- Sector Filter Pills -->
+      <div class="saved-filter-pills" role="tablist">
+        <button
+          type="button"
+          class="saved-filter-pill"
+          [class.active]="savedQuoteFilter() === 'all'"
+          (click)="savedQuoteFilter.set('all')"
+        >
+          Todos ({{ savedQuotes().length }})
+        </button>
+        @for (key of industryKeys; track key) {
+          @let preset = industryPresets[key];
+          <button
+            type="button"
+            class="saved-filter-pill"
+            [class.active]="savedQuoteFilter() === key"
+            (click)="savedQuoteFilter.set(key)"
+          >
+            {{ preset.icon }} {{ preset.label }}
+          </button>
+        }
+      </div>
     </div>
 
-    @if (savedQuotes().length === 0) {
+    @let quotes = filteredSavedQuotes();
+    @if (quotes.length === 0) {
       <div class="empty-quotes">
-        <p>No has generado cotizaciones todavía.</p>
+        <span class="empty-icon">📭</span>
+        <p>No se encontraron cotizaciones en esta categoría.</p>
+        <span class="empty-hint">Emití una cotización arriba seleccionando el sector deseado.</span>
       </div>
     } @else {
       <div class="quotes-list">
-        @for (q of savedQuotes(); track q.id) {
+        @for (q of quotes; track q.id) {
           <div class="quote-row-item" [class.accepted]="q.status === 'approved' || q.status === 'completed'">
             <div class="q-left">
-              <strong class="q-title">{{ q.description }}</strong>
-              <span class="q-client">Cliente: {{ q.clientName }} ({{ q.quoteNumber }})</span>
+              <div class="q-header-line">
+                <span class="q-sector-badge">{{ getSectorIcon(q.type) }} {{ getSectorLabel(q.type) }}</span>
+                <strong class="q-title">{{ q.description }}</strong>
+              </div>
+              <span class="q-client">Cliente: {{ q.clientName }} · #{{ q.quoteNumber }}</span>
               <span class="q-status-badge" [class]="q.status">
                 @if (q.status === 'completed') {
                   🏁 100% Liquidado &amp; Entregado
                 } @else if (q.status === 'approved') {
-                  ✓ Anticipo 50% Cobrado (En Ejecución)
+                  ✓ Anticipo Cobrado (En Ejecución)
                 } @else {
-                  ⏳ Pendiente de Anticipo
+                  ⏳ Pendiente de Anticipo ({{ q.advancePercent || 50 }}%)
                 }
               </span>
             </div>
+
             <div class="q-right">
               <div class="q-amount">${{ q.totalPriceUsd | number: '1.2-2' }} USD</div>
               <span class="q-ves">Bs {{ q.totalPriceVes | number: '1.2-2' }}</span>
 
-              <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-top: 4px;">
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-top: 6px;">
                 <button
                   type="button"
                   class="btn-advance-deposit"
                   style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0;"
-                  title="Copiar resumen comercial para enviar por WhatsApp o Telegram"
+                  title="Copiar resumen para enviar por WhatsApp o Telegram"
                   (click)="copyQuoteForWhatsApp(q)"
                 >
                   📲 WhatsApp
@@ -339,7 +533,7 @@
                     class="btn-advance-deposit"
                     (click)="registerAdvanceDeposit(q)"
                   >
-                    💰 Cobrar Anticipo 50% (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                    💰 Cobrar Anticipo (${{ (q.minimumAdvanceUsd || q.totalPriceUsd * 0.5) | number: '1.2-2' }})
                   </button>
                 } @else if (q.status === 'approved') {
                   <button
@@ -348,7 +542,7 @@
                     style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none;"
                     (click)="settleFinalQuoteDelivery(q)"
                   >
-                    🏁 Liquidar 50% Final + 3 Gavetas (${{ q.totalPriceUsd * 0.5 | number: '1.2-2' }})
+                    🏁 Liquidar Final + 3 Gavetas
                   </button>
                 }
 
@@ -388,7 +582,7 @@
               [class.active]="previewMode() === 'internal'"
               (click)="previewMode.set('internal')"
             >
-              ⚙️ Versión Taller (Costos Internos)
+              ⚙️ Versión Auditoría Interna (Costos Reales)
             </button>
           </div>
           <button type="button" class="btn-close" (click)="previewModalOpen.set(false)">✕</button>
@@ -399,11 +593,11 @@
           <div class="sheet-header">
             <div>
               <h2 class="company-brand">HOMEL 360 SERVICES</h2>
-              <p class="company-sub">Taller & Obras Especializadas · RIF: J-40812345-0</p>
+              <p class="company-sub">{{ currentPreset().label }} · RIF: J-40812345-0</p>
             </div>
             <div class="sheet-badge">
               <span>PRESUPUESTO</span>
-              <strong>#{{ quoteType() === 'automotive_bodywork' ? 'AUT' : 'OBR' }}-2026</strong>
+              <strong>#COT-{{ quoteType().substring(0, 3).toUpperCase() }}-2026</strong>
             </div>
           </div>
 
@@ -411,7 +605,7 @@
             <div><strong>Cliente:</strong> {{ clientName() }}</div>
             <div><strong>C.I./RIF:</strong> {{ clientDoc() || 'No especificado' }}</div>
             <div><strong>Teléfono:</strong> {{ clientPhone() || 'No especificado' }}</div>
-            <div><strong>Fecha:</strong> {{ '2026-10-15' }}</div>
+            <div><strong>Sector:</strong> {{ currentPreset().label }}</div>
           </div>
 
           <!-- CLIENT VERSION TABLE -->
@@ -419,66 +613,81 @@
             <table class="sheet-table">
               <thead>
                 <tr>
-                  <th>Descripción del Servicio</th>
+                  <th>Concepto / Partida</th>
                   <th class="text-center">Cant.</th>
+                  <th class="text-center">Unidad</th>
+                  <th class="text-right">Precio Unit. ($)</th>
                   <th class="text-right">Total ($ USD)</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>
-                    @if (quoteType() === 'automotive_bodywork') {
-                      Servicio de Latonería y Pintura Automotriz en {{ selectedPiecesCount() }} piezas ({{ vehicleModel() }}, Color {{ vehicleColor() }}). Incluye preparación, desabollado, fondo 2K, pintura poliuretano y acabado transparente de alta resistencia.
-                    } @else {
-                      Ejecución de obra civil / acabados de {{ projectTitle() }} sobre {{ areaSquareMeters() }} m². Incluye suministro de materiales, preparación de superficies, mano de obra especializada y limpieza.
-                    }
-                  </td>
-                  <td class="text-center">{{ quoteType() === 'automotive_bodywork' ? selectedPiecesCount() : areaSquareMeters() }}</td>
-                  <td class="text-right">${{ currentQuoteTotals().totalUsd | number: '1.2-2' }}</td>
-                </tr>
+                @for (item of lineItems(); track item.id) {
+                  <tr>
+                    <td>{{ item.name }}</td>
+                    <td class="text-center">{{ item.quantity }}</td>
+                    <td class="text-center">{{ item.unit }}</td>
+                    <td class="text-right">${{ item.unitCostUsd | number: '1.2-2' }}</td>
+                    <td class="text-right">${{ (item.quantity * item.unitCostUsd) | number: '1.2-2' }}</td>
+                  </tr>
+                }
               </tbody>
             </table>
 
             <div class="sheet-terms">
               <strong>Condiciones Comerciales:</strong>
-              <p>• 50% de anticipo para iniciar labores y 50% contra entrega a satisfacción.</p>
-              <p>• Presupuesto válido por 7 días hábiles.</p>
-              <p>• Pago en USD efectivo o en Bolívares a la tasa oficial del Banco Central de Venezuela (BCV) del día.</p>
+              <p>• {{ currentQuoteTotals().advancePct }}% de anticipo para iniciar labores (${{ currentQuoteTotals().advanceUsd | number: '1.2-2' }} USD) y resto contra entrega a satisfacción.</p>
+              <p>• Presupuesto válido por 7 días continuos a partir de la emisión.</p>
+              <p>• Pago en USD efectivo o en Bolívares a la tasa oficial del Banco Central de Venezuela (BCV) del día de pago.</p>
+              <p>• Todos los trabajos cuentan con garantía de calidad y respaldo técnico HOMEL 360.</p>
             </div>
           } @else {
             <!-- INTERNAL WORKSHOP RECIPE -->
             <div class="internal-recipe-box">
-              <h4>📋 Desglose Técnico & Costos Reales (Uso Exclusivo del Taller)</h4>
+              <h4>📋 Desglose Técnico & Costos Reales (Uso Exclusivo de Auditoría)</h4>
               <div class="internal-row">
-                <span>Costo Materiales Base:</span>
+                <span>Insumos y Materiales Directos:</span>
                 <strong>${{ currentQuoteTotals().rawMaterials | number: '1.2-2' }} USD</strong>
               </div>
+              @if (currentQuoteTotals().waste > 0) {
+                <div class="internal-row">
+                  <span>Merma Técnica (+{{ currentQuoteTotals().wastePct }}% Desperdicio):</span>
+                  <strong>+${{ currentQuoteTotals().waste | number: '1.2-2' }} USD</strong>
+                </div>
+              }
               <div class="internal-row">
-                <span>Merma Técnica (+10% Desperdicio):</span>
-                <strong>${{ currentQuoteTotals().waste | number: '1.2-2' }} USD</strong>
-              </div>
-              <div class="internal-row">
-                <span>Costo Total Insumos:</span>
+                <span>Total Insumos con Merma:</span>
                 <strong>${{ currentQuoteTotals().totalMaterials | number: '1.2-2' }} USD</strong>
               </div>
               <div class="internal-row">
-                <span>Pago a Mecánicos / Obreros:</span>
+                <span>Mano de Obra / Pago Técnico:</span>
                 <strong>${{ currentQuoteTotals().totalLabor | number: '1.2-2' }} USD</strong>
               </div>
+              @if (currentQuoteTotals().totalLogistics > 0) {
+                <div class="internal-row">
+                  <span>Logística, Fletes y Transporte:</span>
+                  <strong>${{ currentQuoteTotals().totalLogistics | number: '1.2-2' }} USD</strong>
+                </div>
+              }
               <div class="internal-row highlight-profit">
-                <span>Utilidad Limpia del Taller ({{ profitMarginPercent() }}%):</span>
-                <strong>${{ currentQuoteTotals().profit | number: '1.2-2' }} USD</strong>
+                <span>Utilidad Neta Libre del Negocio ({{ currentQuoteTotals().profitPct }}%):</span>
+                <strong>+${{ currentQuoteTotals().profit | number: '1.2-2' }} USD</strong>
               </div>
+              @if (currentQuoteTotals().discount > 0) {
+                <div class="internal-row highlight-discount">
+                  <span>Descuento Comercial (-{{ currentQuoteTotals().discountPct }}%):</span>
+                  <strong>-${{ currentQuoteTotals().discount | number: '1.2-2' }} USD</strong>
+                </div>
+              }
             </div>
           }
 
           <div class="sheet-total-box">
             <div class="total-line">
-              <span>Total a Cancelar:</span>
+              <span>Total Final:</span>
               <strong class="total-usd-print">${{ currentQuoteTotals().totalUsd | number: '1.2-2' }} USD</strong>
             </div>
             <div class="total-ves-line">
-              ≈ Bs {{ currentQuoteTotals().totalVes | number: '1.2-2' }} (Tasa BCV: {{ currentQuoteTotals().bcv | number: '1.2-2' }})
+              ≈ Bs {{ currentQuoteTotals().totalVes | number: '1.2-2' }} (Tasa BCV: {{ currentQuoteTotals().bcv | number: '1.2-2' }} Bs/$)
             </div>
           </div>
         </div>
