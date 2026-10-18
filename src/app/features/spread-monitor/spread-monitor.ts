@@ -29,6 +29,12 @@ import {
   computeHighDemandScan,
   type HighDemandScanResult,
   type MakerMerchantLevel,
+  CAPITAL_BRACKETS,
+  filterOffersByBracket,
+  type BracketId,
+  evaluateSnipingOpportunity,
+  type SnipedOpportunityAlert,
+  type BinanceOfferSummary,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { ToastService } from '../../core/toast.service';
@@ -383,11 +389,306 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   private prevFavorableKind: 'favorable' | 'unfavorable' | null = null;
   private prevSellBelowBreakEven = false;
 
-  /** Effective fee drag on the spread footprint: MAKER legs burn +0.25% each. */
+  /** Selected merchant level for Maker fee calculation and high demand radar */
+  readonly selectedMerchantLevel = signal<MakerMerchantLevel>('STANDARD');
+
+  /** Per-leg Maker fee percentage according to the selected Merchant VIP level. */
+  readonly makerFeePerLegPct = computed<number>(() => {
+    switch (this.selectedMerchantLevel()) {
+      case 'GOLD':
+        return 0.125;
+      case 'SILVER':
+        return 0.175;
+      case 'BRONZE':
+        return 0.2;
+      case 'STANDARD':
+      default:
+        return 0.25;
+    }
+  });
+
+  /** Effective fee drag on the spread footprint from MAKER legs according to VIP level. */
   readonly effectiveFeeDragPct = computed<number>(() => {
     const makers = (this.buyRole() === 'MAKER' ? 1 : 0) + (this.sellRole() === 'MAKER' ? 1 : 0);
-    return makers === 2 ? 0.5 : makers === 1 ? 0.25 : 0;
+    return Number((makers * this.makerFeePerLegPct()).toFixed(3));
   });
+
+  /** Unified total friction percentage (manual commissionPct + role-based Maker fee drag). */
+  readonly totalEffectiveCommissionPct = computed<number>(() =>
+    Number((this.commissionPct() + this.effectiveFeeDragPct()).toFixed(4)),
+  );
+
+  /** Clean Mode Anti-Trap filter toggle (purges <92% finish rate, <30 orders, <$20 dust). */
+  readonly cleanModeEnabled = signal<boolean>(true);
+
+  /** Capital bracket filter for segmenting the live P2P orderbook. */
+  readonly selectedBracket = signal<'ALL' | BracketId>('ALL');
+
+  readonly bracketOptions: readonly { id: 'ALL' | BracketId; label: string; sub: string }[] = [
+    { id: 'ALL', label: 'Todo el Libro', sub: 'Sin filtro de tramo' },
+    {
+      id: 'INFRAMUNDO',
+      label: 'Inframundo',
+      sub: `${CAPITAL_BRACKETS.INFRAMUNDO.minVes.toLocaleString('es-VE')}–${CAPITAL_BRACKETS.INFRAMUNDO.maxVes.toLocaleString('es-VE')} Bs`,
+    },
+    {
+      id: 'MEDIO',
+      label: 'Tramo Medio',
+      sub: `${CAPITAL_BRACKETS.MEDIO.minVes.toLocaleString('es-VE')}–${CAPITAL_BRACKETS.MEDIO.maxVes.toLocaleString('es-VE')} Bs`,
+    },
+    {
+      id: 'INSTITUCIONAL',
+      label: 'Institucional',
+      sub: `${CAPITAL_BRACKETS.INSTITUCIONAL.minVes.toLocaleString('es-VE')}+ Bs`,
+    },
+  ];
+
+  /** Live filtered orderbook combining Clean Mode Anti-Trap rules and Capital Bracket Scanner. */
+  readonly filteredOrderbook = computed(() => {
+    const depth = this.binance.marketDepth();
+    if (!depth) {
+      return {
+        buyOffers: [] as BinanceOfferSummary[],
+        sellOffers: [] as BinanceOfferSummary[],
+        purgedCount: 0,
+        effectiveBestBuy: 0,
+        effectiveBestSell: 0,
+        effectiveSpreadVes: 0,
+        effectiveSpreadPct: 0,
+        vwapBuy5: 0,
+        vwapSell5: 0,
+      };
+    }
+
+    const rawBuy = depth.buyOffers ?? [];
+    const rawSell = depth.sellOffers ?? [];
+    const cleanOn = this.cleanModeEnabled();
+    const bracket = this.selectedBracket();
+    const refRate = depth.bestBuyPrice > 0 ? depth.bestBuyPrice : this.buyPrice() || 800;
+
+    let purgedCount = 0;
+
+    const passCleanMode = (o: BinanceOfferSummary): boolean => {
+      if (!cleanOn) return true;
+      const name = (o.merchantName ?? '').toLowerCase();
+      if (name.includes('promoted') || name.includes('patrocinado')) {
+        purgedCount++;
+        return false;
+      }
+      if (o.finishRatePct > 0 && o.finishRatePct < 92) {
+        purgedCount++;
+        return false;
+      }
+      if (o.orderCount > 0 && o.orderCount < 30) {
+        purgedCount++;
+        return false;
+      }
+      const minCapacityVes = 20 * (o.price > 0 ? o.price : refRate);
+      if (o.maxVes > 0 && o.maxVes < minCapacityVes) {
+        purgedCount++;
+        return false;
+      }
+      return true;
+    };
+
+    let cleanBuys = rawBuy.filter(passCleanMode);
+    let cleanSells = rawSell.filter(passCleanMode);
+
+    if (bracket !== 'ALL') {
+      const bBuy = filterOffersByBracket(cleanBuys, bracket, { exchangeRateVesPerUsd: refRate });
+      const bSell = filterOffersByBracket(cleanSells, bracket, { exchangeRateVesPerUsd: refRate });
+      purgedCount += bBuy.purgedDustCount + bBuy.purgedPromotedCount + bSell.purgedDustCount + bSell.purgedPromotedCount;
+      cleanBuys = bBuy.offers;
+      cleanSells = bSell.offers;
+    }
+
+    const top5Buys = cleanBuys.slice(0, 5);
+    const top5Sells = cleanSells.slice(0, 5);
+
+    const calcVwap = (list: BinanceOfferSummary[], fallback: number): number => {
+      if (list.length === 0) return fallback;
+      let weightedSum = 0;
+      let totalWeight = 0;
+      for (const item of list) {
+        const w = item.maxVes > 0 ? item.maxVes : 1;
+        weightedSum += item.price * w;
+        totalWeight += w;
+      }
+      return totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(2)) : fallback;
+    };
+
+    const effectiveBestBuy = top5Buys[0]?.price ?? depth.bestBuyPrice ?? 0;
+    const effectiveBestSell = top5Sells[0]?.price ?? depth.bestSellPrice ?? 0;
+    const effectiveSpreadVes =
+      effectiveBestBuy > 0 && effectiveBestSell > 0
+        ? Number((effectiveBestSell - effectiveBestBuy).toFixed(2))
+        : depth.spreadVes;
+    const effectiveSpreadPct =
+      effectiveBestBuy > 0 && effectiveBestSell > 0
+        ? Number((((effectiveBestSell - effectiveBestBuy) / effectiveBestBuy) * 100).toFixed(2))
+        : depth.spreadPct;
+
+    return {
+      buyOffers: top5Buys,
+      sellOffers: top5Sells,
+      purgedCount,
+      effectiveBestBuy,
+      effectiveBestSell,
+      effectiveSpreadVes,
+      effectiveSpreadPct,
+      vwapBuy5: calcVwap(top5Buys, effectiveBestBuy),
+      vwapSell5: calcVwap(top5Sells, effectiveBestSell),
+    };
+  });
+
+  /** Live Orderbook Sniper scanning for fat-finger or distressed liquidity dislocations. */
+  readonly snipedAlerts = computed<SnipedOpportunityAlert[]>(() => {
+    const depth = this.binance.marketDepth();
+    if (!depth) return [];
+    const ob = this.filteredOrderbook();
+    const fairBuy = ob.vwapBuy5 > 0 ? ob.vwapBuy5 : depth.bestBuyPrice;
+    const fairSell = ob.vwapSell5 > 0 ? ob.vwapSell5 : depth.bestSellPrice;
+    const alerts: SnipedOpportunityAlert[] = [];
+
+    for (const offer of (depth.buyOffers ?? []).slice(0, 8)) {
+      const capUsdt = offer.maxVes > 0 && offer.price > 0 ? offer.maxVes / offer.price : 100;
+      const alert = evaluateSnipingOpportunity(
+        {
+          advId: offer.advNo,
+          merchantName: offer.merchantName,
+          orderType: 'SELL',
+          price: offer.price,
+          availableAmountCrypto: capUsdt,
+          minLimitFiat: offer.minVes,
+          maxLimitFiat: offer.maxVes,
+          paymentMethods: offer.payMethods,
+        },
+        {
+          fairMarketPrice: fairBuy,
+          minProfitThresholdPct: 0.85,
+          maxTakerFeePct: 0,
+          minLiquidityFloorUsd: 30,
+        },
+      );
+      if (alert) alerts.push(alert);
+    }
+
+    for (const offer of (depth.sellOffers ?? []).slice(0, 8)) {
+      const capUsdt = offer.maxVes > 0 && offer.price > 0 ? offer.maxVes / offer.price : 100;
+      const alert = evaluateSnipingOpportunity(
+        {
+          advId: offer.advNo,
+          merchantName: offer.merchantName,
+          orderType: 'BUY',
+          price: offer.price,
+          availableAmountCrypto: capUsdt,
+          minLimitFiat: offer.minVes,
+          maxLimitFiat: offer.maxVes,
+          paymentMethods: offer.payMethods,
+        },
+        {
+          fairMarketPrice: fairSell,
+          minProfitThresholdPct: 0.85,
+          maxTakerFeePct: 0,
+          minLiquidityFloorUsd: 30,
+        },
+      );
+      if (alert) alerts.push(alert);
+    }
+
+    return alerts.slice(0, 3);
+  });
+
+  /** 1-Click Tactical Positioning controls beneath Buy and Sell price inputs. */
+  applyTacticalPrice(side: 'BUY' | 'SELL', mode: 'TOP1_BEAT' | 'TOP1_MATCH' | 'VWAP5'): void {
+    const ob = this.filteredOrderbook();
+    if (side === 'BUY') {
+      const base = ob.effectiveBestBuy > 0 ? ob.effectiveBestBuy : this.buyPrice();
+      if (base <= 0) return;
+      if (mode === 'TOP1_BEAT') {
+        const next = Number((base + 0.01).toFixed(2));
+        this.buyPrice.set(next);
+        this.buyRole.set('MAKER');
+        this.toast.success(`Compra posicionada +0.01 Bs sobre Top 1 (${next} Bs · Maker).`, 'Táctica Compra');
+      } else if (mode === 'TOP1_MATCH') {
+        this.buyPrice.set(Number(base.toFixed(2)));
+        this.toast.info(`Compra igualada al Top 1 (${base.toFixed(2)} Bs).`, 'Táctica Compra');
+      } else {
+        const vwap = ob.vwapBuy5 > 0 ? ob.vwapBuy5 : base;
+        this.buyPrice.set(vwap);
+        this.toast.info(`Compra ajustada a VWAP Top 5 (${vwap.toFixed(2)} Bs).`, 'VWAP Compra');
+      }
+    } else {
+      const base = ob.effectiveBestSell > 0 ? ob.effectiveBestSell : this.sellPrice();
+      if (base <= 0) return;
+      if (mode === 'TOP1_BEAT') {
+        const next = Number(Math.max(0.01, base - 0.01).toFixed(2));
+        this.sellPrice.set(next);
+        this.sellRole.set('MAKER');
+        this.toast.success(`Venta posicionada -0.01 Bs bajo Top 1 (${next} Bs · Maker).`, 'Táctica Venta');
+      } else if (mode === 'TOP1_MATCH') {
+        this.sellPrice.set(Number(base.toFixed(2)));
+        this.toast.info(`Venta igualada al Top 1 (${base.toFixed(2)} Bs).`, 'Táctica Venta');
+      } else {
+        const vwap = ob.vwapSell5 > 0 ? ob.vwapSell5 : base;
+        this.sellPrice.set(vwap);
+        this.toast.info(`Venta ajustada a VWAP Top 5 (${vwap.toFixed(2)} Bs).`, 'VWAP Venta');
+      }
+    }
+  }
+
+  /** Load an offer directly from the interactive L2 orderbook into Buy or Sell price. */
+  selectOfferFromBook(side: 'BUY' | 'SELL', price: number, beatByCent = false): void {
+    if (price <= 0) return;
+    if (side === 'BUY') {
+      const target = beatByCent ? Number((price + 0.01).toFixed(2)) : Number(price.toFixed(2));
+      this.buyPrice.set(target);
+      if (beatByCent) this.buyRole.set('MAKER');
+      this.toast.success(
+        beatByCent
+          ? `Compra fijada en ${target} Bs (+0.01 Bs sobre oferta seleccionada).`
+          : `Precio de compra cargado desde el libro: ${target} Bs.`,
+        'Libro L2',
+      );
+    } else {
+      const target = beatByCent
+        ? Number(Math.max(0.01, price - 0.01).toFixed(2))
+        : Number(price.toFixed(2));
+      this.sellPrice.set(target);
+      if (beatByCent) this.sellRole.set('MAKER');
+      this.toast.success(
+        beatByCent
+          ? `Venta fijada en ${target} Bs (-0.01 Bs bajo oferta seleccionada).`
+          : `Precio de venta cargado desde el libro: ${target} Bs.`,
+        'Libro L2',
+      );
+    }
+  }
+
+  /** Capture a sniped opportunity directly into the calculator. */
+  applySnipedAlert(alert: SnipedOpportunityAlert): void {
+    if (alert.orderType === 'SELL') {
+      this.buyPrice.set(alert.adPrice);
+      this.buyRole.set('TAKER');
+      this.toast.success(
+        `Snipe de compra cargado a ${alert.adPrice} Bs (${alert.merchantName}).`,
+        'Sniper P2P',
+      );
+    } else {
+      this.sellPrice.set(alert.adPrice);
+      this.sellRole.set('TAKER');
+      this.toast.success(
+        `Snipe de venta cargado a ${alert.adPrice} Bs (${alert.merchantName}).`,
+        'Sniper P2P',
+      );
+    }
+  }
+
+  /** Quick role combination selector (Taker/Taker, Maker/Taker, Taker/Maker, Doble Maker). */
+  setRoleCombination(buy: P2PRole, sell: P2PRole): void {
+    this.buyRole.set(buy);
+    this.sellRole.set(sell);
+  }
 
   /** SQS evaluated with the selected buy/sell roles (backed by the live engine). */
   readonly marketQuality = computed(() =>
@@ -432,9 +733,6 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     if (net > 0) return 'warn';
     return 'noop';
   });
-
-  /** Selected merchant level for the high demand radar */
-  readonly selectedMerchantLevel = signal<MakerMerchantLevel>('STANDARD');
 
   /** High Demand Market Scan evaluated live from Binance orderbook */
   readonly highDemandScan = computed<HighDemandScanResult>(() => {
@@ -741,11 +1039,14 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   applyBinancePrices(): void {
     const depth = this.binance.marketDepth();
-    if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
-      this.buyPrice.set(depth.bestBuyPrice);
-      this.sellPrice.set(depth.bestSellPrice);
+    const ob = this.filteredOrderbook();
+    const bestBuy = ob.effectiveBestBuy > 0 ? ob.effectiveBestBuy : (depth?.bestBuyPrice ?? 0);
+    const bestSell = ob.effectiveBestSell > 0 ? ob.effectiveBestSell : (depth?.bestSellPrice ?? 0);
+    if (bestBuy > 0 && bestSell > 0) {
+      this.buyPrice.set(bestBuy);
+      this.sellPrice.set(bestSell);
       this.toast.success(
-        `Precios aplicados: Compra ${depth.bestBuyPrice} Bs / Venta ${depth.bestSellPrice} Bs.`,
+        `Precios aplicados: Compra ${bestBuy} Bs / Venta ${bestSell} Bs.`,
         'Precios Actualizados',
       );
     } else {
@@ -765,7 +1066,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
         this.sellPrice(),
         this.amount(),
         this.unit(),
-        this.commissionPct() / 100,
+        this.totalEffectiveCommissionPct() / 100,
       );
     } catch {
       return null;
@@ -779,7 +1080,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
         this.sellPrice(),
         this.amount(),
         this.unit(),
-        this.commissionPct() / 100,
+        this.totalEffectiveCommissionPct() / 100,
       );
       return null;
     } catch (e) {
@@ -794,11 +1095,85 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly netVesAfterCommission = computed(() => this.result()?.netVesAfterCommission ?? 0);
   readonly netGainVes = computed(() => this.result()?.netGainVes ?? 0);
 
+  /** Base capital invested in VES for the current operation. */
+  readonly baseInvestedVes = computed<number>(() => {
+    const r = this.result();
+    if (!r || this.buyPrice() <= 0) return 0;
+    return this.unit() === 'VES' ? this.amount() : this.amount() * this.buyPrice();
+  });
+
+  /** Base capital invested in USDT/EUR for the current operation. */
+  readonly baseInvestedCrypto = computed<number>(() => {
+    const r = this.result();
+    if (!r || this.buyPrice() <= 0) return 0;
+    return this.unit() === 'VES' ? this.amount() / this.buyPrice() : this.amount();
+  });
+
+  /** Net profit converted to USDT/EUR at the execution sell price. */
+  readonly netGainUsdt = computed<number>(() => {
+    const r = this.result();
+    const sell = this.sellPrice();
+    if (!r || sell <= 0) return 0;
+    return Number((r.netGainVes / sell).toFixed(2));
+  });
+
+  /** Net Return on Investment (%) per cycle after all role and platform fees. */
+  readonly netRoiPct = computed<number>(() => {
+    const r = this.result();
+    const base = this.baseInvestedVes();
+    if (!r || base <= 0) return 0;
+    return Number(((r.netGainVes / base) * 100).toFixed(2));
+  });
+
+  /** Live break-even sell price required to cover buy price + total effective commission. */
+  readonly liveBreakEvenSellPrice = computed<number>(() => {
+    const buy = this.buyPrice();
+    if (buy <= 0) return 0;
+    const feeRate = this.totalEffectiveCommissionPct() / 100;
+    if (feeRate >= 1) return buy;
+    return Number((buy / (1 - feeRate)).toFixed(2));
+  });
+
+  /** Daily Compound Rotation Matrix (1x, 3x, 5x, 10x cycles per day). */
+  readonly cycleProjections = computed(() => {
+    const capitalCrypto = this.baseInvestedCrypto();
+    const roiPct = this.netRoiPct();
+    const sell = this.sellPrice();
+    const cyclesList = [1, 3, 5, 10];
+    const mult = 1 + roiPct / 100;
+
+    return cyclesList.map((cycles) => {
+      if (capitalCrypto <= 0 || sell <= 0 || mult <= 0) {
+        return {
+          cycles,
+          label: `${cycles}x ${cycles === 1 ? 'Ciclo' : 'Ciclos'}`,
+          profitUsdt: 0,
+          profitVes: 0,
+          finalUsdt: 0,
+          compoundRoiPct: 0,
+        };
+      }
+      const compoundFactor = Math.pow(mult, cycles);
+      const profitUsdt = Number((capitalCrypto * (compoundFactor - 1)).toFixed(2));
+      const profitVes = Number((profitUsdt * sell).toFixed(2));
+      const finalUsdt = Number((capitalCrypto * compoundFactor).toFixed(2));
+      const compoundRoiPct = Number(((compoundFactor - 1) * 100).toFixed(2));
+      return {
+        cycles,
+        label: `${cycles}x ${cycles === 1 ? 'Ciclo' : 'Ciclos'}`,
+        profitUsdt,
+        profitVes,
+        finalUsdt,
+        compoundRoiPct,
+      };
+    });
+  });
+
   /** Net spread percentage evaluated against the Golden Rule (0.50% min). */
   readonly goldenSpread = computed<GoldenSpreadCheck | null>(() => {
     const r = this.result();
     if (!r || this.buyPrice() <= 0) return null;
-    const baseInvested = this.unit() === 'VES' ? this.amount() : this.amount() * this.buyPrice();
+    const baseInvested = this.baseInvestedVes();
     if (baseInvested <= 0) return null;
     const netPct = (r.netGainVes / baseInvested) * 100;
     return evaluateGoldenSpread(netPct);

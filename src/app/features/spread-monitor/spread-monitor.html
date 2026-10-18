@@ -510,9 +510,16 @@
           <div class="terminal-card-header">
             <div class="card-header-title">
               <span class="card-icon">⚡</span>
-              <span class="card-title">Cotización & Precios Base</span>
+              <span class="card-title">Cotización & Posicionamiento Táctico</span>
             </div>
-            <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              @if (liveBreakEvenSellPrice() > 0) {
+                <span class="badge font-mono" style="background: rgba(216, 180, 92, 0.12); color: var(--gold); border: 1px solid rgba(216, 180, 92, 0.3); font-size: 0.7rem;" title="Precio mínimo de venta para no perder tras comisiones">
+                  Piso BE: {{ liveBreakEvenSellPrice() | num }} Bs
+                </span>
+              }
+              <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
+            </div>
           </div>
 
           <div class="terminal-input-grid">
@@ -547,6 +554,32 @@
                   placeholder="0.00"
                 />
               </div>
+              <div class="tactical-pos-bar" role="group" aria-label="Posicionamiento táctico de compra">
+                <button
+                  type="button"
+                  class="tactical-chip chip-beat-buy"
+                  (click)="applyTacticalPrice('BUY', 'TOP1_BEAT')"
+                  title="Superar por +0.01 Bs al mejor comprador limpio y activar modo Maker"
+                >
+                  ⚡ Líder (+0.01)
+                </button>
+                <button
+                  type="button"
+                  class="tactical-chip"
+                  (click)="applyTacticalPrice('BUY', 'TOP1_MATCH')"
+                  title="Igualar al Top 1 del libro de compra"
+                >
+                  🎯 Top 1
+                </button>
+                <button
+                  type="button"
+                  class="tactical-chip"
+                  (click)="applyTacticalPrice('BUY', 'VWAP5')"
+                  title="Precio promedio ponderado por volumen de las mejores 5 ofertas limpias"
+                >
+                  📊 VWAP 5
+                </button>
+              </div>
             </div>
 
             <div class="terminal-field">
@@ -568,6 +601,32 @@
                   placeholder="0.00"
                 />
               </div>
+              <div class="tactical-pos-bar" role="group" aria-label="Posicionamiento táctico de venta">
+                <button
+                  type="button"
+                  class="tactical-chip chip-beat-sell"
+                  (click)="applyTacticalPrice('SELL', 'TOP1_BEAT')"
+                  title="Cotizar -0.01 Bs por debajo del mejor vendedor limpio y activar modo Maker"
+                >
+                  ⚡ Líder (-0.01)
+                </button>
+                <button
+                  type="button"
+                  class="tactical-chip"
+                  (click)="applyTacticalPrice('SELL', 'TOP1_MATCH')"
+                  title="Igualar al Top 1 del libro de venta"
+                >
+                  🎯 Top 1
+                </button>
+                <button
+                  type="button"
+                  class="tactical-chip"
+                  (click)="applyTacticalPrice('SELL', 'VWAP5')"
+                  title="Precio promedio ponderado por volumen de las mejores 5 ofertas limpias"
+                >
+                  📊 VWAP 5
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -576,11 +635,51 @@
           <div class="terminal-card-header">
             <div class="card-header-title">
               <span class="card-icon">⚙️</span>
-              <span class="card-title">Parámetros de Ejecución & Fricción</span>
+              <span class="card-title">Parámetros de Ejecución & Fricción Real</span>
             </div>
             <span class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
-              Fricción: {{ effectiveFeeDragPct() }}%
+              Fricción Total: {{ totalEffectiveCommissionPct() }}%
             </span>
+          </div>
+
+          <!-- Quick Role Combination Matrix -->
+          <div class="role-matrix-bar" role="group" aria-label="Modos rápidos de ejecución Maker y Taker">
+            <button
+              type="button"
+              class="role-preset-pill"
+              [class.active]="buyRole() === 'TAKER' && sellRole() === 'TAKER'"
+              (click)="setRoleCombination('TAKER', 'TAKER')"
+            >
+              <span class="role-pill-title">⚡ Taker / Taker</span>
+              <span class="role-pill-sub font-mono">0.00% Fee</span>
+            </button>
+            <button
+              type="button"
+              class="role-preset-pill"
+              [class.active]="buyRole() === 'MAKER' && sellRole() === 'TAKER'"
+              (click)="setRoleCombination('MAKER', 'TAKER')"
+            >
+              <span class="role-pill-title">🛡️ Maker / Taker</span>
+              <span class="role-pill-sub font-mono">{{ makerFeePerLegPct() }}% Fee</span>
+            </button>
+            <button
+              type="button"
+              class="role-preset-pill"
+              [class.active]="buyRole() === 'TAKER' && sellRole() === 'MAKER'"
+              (click)="setRoleCombination('TAKER', 'MAKER')"
+            >
+              <span class="role-pill-title">🎯 Taker / Maker</span>
+              <span class="role-pill-sub font-mono">{{ makerFeePerLegPct() }}% Fee</span>
+            </button>
+            <button
+              type="button"
+              class="role-preset-pill"
+              [class.active]="buyRole() === 'MAKER' && sellRole() === 'MAKER'"
+              (click)="setRoleCombination('MAKER', 'MAKER')"
+            >
+              <span class="role-pill-title">🏛️ Doble Maker</span>
+              <span class="role-pill-sub font-mono">{{ makerFeePerLegPct() * 2 }}% Fee</span>
+            </button>
           </div>
 
           <div class="terminal-input-grid">
@@ -626,9 +725,29 @@
             </div>
 
             <div class="terminal-field">
+              <label class="terminal-label" for="spread-vip-level">
+                <span>Nivel Comerciante Maker</span>
+                <span class="terminal-subtext">Tarifa Binance P2P</span>
+              </label>
+              <div class="input-control-wrap">
+                <select
+                  id="spread-vip-level"
+                  class="terminal-select"
+                  [value]="selectedMerchantLevel()"
+                  (change)="selectedMerchantLevel.set($any($event.target).value)"
+                >
+                  <option value="STANDARD">Estándar / Verificado (0.25%)</option>
+                  <option value="BRONZE">VIP Bronce (0.20%)</option>
+                  <option value="SILVER">VIP Plata (0.175%)</option>
+                  <option value="GOLD">VIP Oro (0.125%)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
               <label class="terminal-label" for="spread-commission">
-                <span>Comisión Adicional (%)</span>
-                <span class="terminal-subtext">Vendedor / Red</span>
+                <span>Comisión Extra / IGTF (%)</span>
+                <span class="terminal-subtext">Fricción bancaria adicional</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -642,6 +761,30 @@
                   placeholder="0.00"
                 />
                 <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-buy-role">
+                <span>Rol en Compra</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-buy-role" class="terminal-select" [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio — {{ makerFeePerLegPct() }}% fee)</option>
+                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="spread-sell-role">
+                <span>Rol en Venta</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="spread-sell-role" class="terminal-select" [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
+                  <option value="MAKER">Maker (Anuncio — {{ makerFeePerLegPct() }}% fee)</option>
+                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
+                </select>
               </div>
             </div>
 
@@ -666,33 +809,9 @@
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label" for="spread-buy-role">
-                <span>Rol en Compra</span>
-              </label>
-              <div class="input-control-wrap">
-                <select id="spread-buy-role" class="terminal-select" [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
-                  <option value="MAKER">Maker (Anuncio — 0.25% fee)</option>
-                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="spread-sell-role">
-                <span>Rol en Venta</span>
-              </label>
-              <div class="input-control-wrap">
-                <select id="spread-sell-role" class="terminal-select" [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
-                  <option value="MAKER">Maker (Anuncio — 0.25% fee)</option>
-                  <option value="TAKER">Taker (Toma directa — 0.00% fee)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="terminal-field full-width">
               <label class="terminal-label" for="spread-min-guard">
-                <span>Guardia Mínima de Spread Neto (%)</span>
-                <span class="terminal-subtext">Filtro institucional de seguridad</span>
+                <span>Guardia Mínima (%)</span>
+                <span class="terminal-subtext">Spread neto de seguridad</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -730,12 +849,16 @@
 
           <div class="terminal-card-footer">
             <div class="footer-badge">
-              <span class="status-indicator" [class.active]="effectiveFeeDragPct() > 0"></span>
-              <span>Comisión de roles aplicada: <strong>{{ effectiveFeeDragPct() }}%</strong></span>
+              <span class="status-indicator" [class.active]="totalEffectiveCommissionPct() > 0"></span>
+              <span>
+                Fricción calculada en el resultado:
+                <strong>{{ totalEffectiveCommissionPct() }}%</strong>
+                (Roles: {{ effectiveFeeDragPct() }}% + Extra: {{ commissionPct() }}%)
+              </span>
             </div>
             <span class="text-muted" style="font-size: 0.74rem;">
-              @if (effectiveFeeDragPct() > 0) { Descuento directo sobre margen bruto }
-              @else { Operativa sin comisiones (TAKER/TAKER) }
+              @if (totalEffectiveCommissionPct() > 0) { Descontado automáticamente del beneficio neto }
+              @else { Operativa 0% fricción (TAKER/TAKER) }
             </span>
           </div>
         </div>
@@ -1210,50 +1333,111 @@
          ═══════════════════════════════════════════════════ -->
     <div class="desk-column desk-right">
       @if (activeMode() !== 'repricer') {
-        <!-- 1. RESULTADO DE ARBITRAJE / BREAK-EVEN (PRIORITARIO - AL TOPE) -->
+        <!-- 1. RESULTADO DE ARBITRAJE BIMONETARIO + MATRIZ DE ROTACIÓN COMPUESTA -->
         @if (activeMode() === 'spread') {
           @if (result(); as r) {
-            <div class="arbitrage-result-card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Resultado de Arbitraje</span>
-                <span class="font-mono text-muted" style="font-size: 0.78rem;">Spread: <strong [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} Bs</strong></span>
-              </div>
-
-              <div class="out" style="margin: 8px 0 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
-                <div>
-                  <dt>{{ pair() }} recibidos</dt>
-                  <dd>{{ usdtReceived() | usdt }}</dd>
+            <div
+              class="arbitrage-result-card cockpit-hero-card"
+              [class.hero-golden]="goldenSpread()?.alertLevel === 'GOLDEN_ZONE'"
+              [class.hero-healthy]="goldenSpread()?.alertLevel === 'HEALTHY'"
+              [class.hero-caution]="goldenSpread()?.alertLevel === 'MARGINAL_CAUTION'"
+              [class.hero-danger]="netGainVes() <= 0 || goldenSpread()?.alertLevel === 'BELOW_THRESHOLD_PAUSE'"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Resultado Bimonetario de Arbitraje</span>
+                  @if (goldenSpread(); as gs) {
+                    <span
+                      class="badge font-mono"
+                      [class.badge-gold]="gs.alertLevel === 'GOLDEN_ZONE'"
+                      [class.badge-accent]="gs.alertLevel === 'HEALTHY'"
+                      style="font-size: 0.7rem;"
+                    >
+                      {{ gs.alertLevel === 'GOLDEN_ZONE' ? '⭐ GOLDEN SPREAD' : gs.alertLevel === 'HEALTHY' ? '✅ VIABLE' : gs.alertLevel === 'MARGINAL_CAUTION' ? '⚠️ AJUSTADO' : '🚨 PÉRDIDA' }}
+                    </span>
+                  }
                 </div>
-                <div>
-                  <dt>VES recibidos</dt>
-                  <dd>{{ vesReceived() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Spread unitario</dt>
-                  <dd [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
-                </div>
-                <div>
-                  <dt>Ganancia de spread</dt>
-                  <dd [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Recibido neto</dt>
-                  <dd>{{ netVesAfterCommission() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Ganancia neta</dt>
-                  <dd [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
-                </div>
-              </div>
-
-              <div class="profit-highlight-tile">
-                <span class="profit-title">Ganancia Neta Liquidada</span>
-                <span class="profit-amount" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">
-                  {{ netGainVes() | ves }}
+                <span class="font-mono text-muted" style="font-size: 0.78rem;">
+                  Spread: <strong [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} Bs</strong>
+                  · BE: <strong style="color: var(--gold);">{{ liveBreakEvenSellPrice() | num }} Bs</strong>
                 </span>
               </div>
 
-              <div class="actions-bar" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
+              <!-- Bimonetary Primary Hero Banner (+USDT & +VES + Net ROI %) -->
+              <div class="bimonetary-hero-banner" [class.is-profit]="netGainVes() > 0" [class.is-loss]="netGainVes() <= 0">
+                <div class="bimonetary-primary">
+                  <span class="bimonetary-eyebrow">Ganancia Neta por Ciclo ({{ buyRole() }}/{{ sellRole() }})</span>
+                  <div class="bimonetary-usdt-row">
+                    <span class="bimonetary-usdt-val font-mono" [class.positive]="netGainUsdt() > 0" [class.negative]="netGainUsdt() < 0">
+                      {{ netGainUsdt() > 0 ? '+' : '' }}{{ netGainUsdt() | num }} {{ pair() }}
+                    </span>
+                    <span class="bimonetary-roi-pill font-mono" [class.pill-pos]="netRoiPct() > 0" [class.pill-neg]="netRoiPct() <= 0">
+                      {{ netRoiPct() > 0 ? '+' : '' }}{{ netRoiPct() | num }}% ROI
+                    </span>
+                  </div>
+                </div>
+                <div class="bimonetary-secondary">
+                  <span class="bimonetary-eyebrow">Liquidación Neta en Bolívares</span>
+                  <span class="profit-amount font-mono" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">
+                    {{ netGainVes() > 0 ? '+' : '' }}{{ netGainVes() | ves }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="out" style="margin: 12px 0 14px; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px;">
+                <div>
+                  <dt>{{ pair() }} recibidos</dt>
+                  <dd class="font-mono">{{ usdtReceived() | usdt }}</dd>
+                </div>
+                <div>
+                  <dt>VES recibidos</dt>
+                  <dd class="font-mono">{{ vesReceived() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Spread unitario</dt>
+                  <dd class="font-mono" [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
+                </div>
+                <div>
+                  <dt>Ganancia de spread</dt>
+                  <dd class="font-mono" [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Recibido neto</dt>
+                  <dd class="font-mono">{{ netVesAfterCommission() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Ganancia neta</dt>
+                  <dd class="font-mono" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
+                </div>
+              </div>
+
+              <!-- Matriz de Rotación Compuesta Diaria (1x, 3x, 5x, 10x Ciclos) -->
+              <div class="compound-rotation-box">
+                <div class="compound-box-header">
+                  <span class="compound-box-title">🔄 Proyección de Interés Compuesto Diario (Reinvirtiendo Capital + Ganancia)</span>
+                  <span class="compound-box-sub font-mono">Base: {{ baseInvestedCrypto() | num }} {{ pair() }}</span>
+                </div>
+                <div class="compound-cycles-grid">
+                  @for (c of cycleProjections(); track c.cycles) {
+                    <div class="compound-cycle-tile" [class.tile-positive]="c.profitUsdt > 0" [class.tile-highlight]="c.cycles === 5">
+                      <div class="cycle-tile-top">
+                        <span class="cycle-badge font-mono">{{ c.label }}</span>
+                        <span class="cycle-roi font-mono" [class.positive]="c.compoundRoiPct > 0" [class.negative]="c.compoundRoiPct < 0">
+                          {{ c.compoundRoiPct > 0 ? '+' : '' }}{{ c.compoundRoiPct | num }}%
+                        </span>
+                      </div>
+                      <div class="cycle-usdt font-mono" [class.positive]="c.profitUsdt > 0" [class.negative]="c.profitUsdt < 0">
+                        {{ c.profitUsdt > 0 ? '+' : '' }}{{ c.profitUsdt | num }} {{ pair() }}
+                      </div>
+                      <div class="cycle-ves font-mono">
+                        {{ c.profitVes > 0 ? '+' : '' }}{{ c.profitVes | ves }}
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <div class="actions-bar" style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary" (click)="startDirectTrade('buy')">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   Iniciar Compra con Cronómetro
@@ -1310,7 +1494,7 @@
           </div>
         }
 
-        <!-- 2. RADAR DE MERCADO P2P EN VIVO (BINANCE TICKER) -->
+        <!-- 2. RADAR DE MERCADO P2P EN VIVO + CLEAN MODE + BRACKET SCANNER + LIBRO L2 INTERACTIVO -->
         <div class="p2p-radar-card">
           <div class="radar-header">
             <div class="radar-title-group">
@@ -1326,7 +1510,19 @@
               </span>
             </div>
 
-            <div class="radar-actions">
+            <div class="radar-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button
+                type="button"
+                class="clean-mode-toggle-btn"
+                [class.is-active]="cleanModeEnabled()"
+                (click)="cleanModeEnabled.set(!cleanModeEnabled())"
+                title="Purga anuncios cazabobos (<92% completado, <30 órdenes o liquidez polvo <$20)"
+              >
+                <span>🛡️ Clean Mode: {{ cleanModeEnabled() ? 'ON' : 'OFF' }}</span>
+                @if (cleanModeEnabled() && filteredOrderbook().purgedCount > 0) {
+                  <span class="purged-count-pill font-mono">-{{ filteredOrderbook().purgedCount }} trampas</span>
+                }
+              </button>
               <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.76rem; padding: 4px 10px;" title="Actualizar mercado (F2)">
                 ⚡ Actualizar (F2)
               </button>
@@ -1378,28 +1574,155 @@
             </button>
           </div>
 
+          <!-- Escáner de Tramos de Capital (Bracket Scanner) -->
+          <div class="bracket-filter-bar" role="group" aria-label="Filtrar libro por tramo de capital en Bolívares">
+            <span class="bank-filter-label">Tramo:</span>
+            @for (b of bracketOptions; track b.id) {
+              <button
+                type="button"
+                class="bracket-pill"
+                [class.active]="selectedBracket() === b.id"
+                (click)="selectedBracket.set(b.id)"
+                [title]="b.sub"
+              >
+                <span class="bracket-pill-name">{{ b.label }}</span>
+                <span class="bracket-pill-sub font-mono">{{ b.sub }}</span>
+              </button>
+            }
+          </div>
+
+          <!-- Orderbook Sniper Banner (Fat-Finger / Liquidación de Pánico) -->
+          @if (snipedAlerts().length > 0) {
+            <div class="sniper-alerts-strip" role="region" aria-label="Alertas de Orderbook Sniper">
+              @for (snipe of snipedAlerts(); track snipe.advId) {
+                <div class="sniper-alert-banner">
+                  <div class="sniper-banner-left">
+                    <span class="sniper-pulse-badge font-mono">🎯 SNIPE {{ snipe.urgencyScore }}/100</span>
+                    <div class="sniper-banner-text">
+                      <strong>{{ snipe.merchantName }}</strong> cotiza a
+                      <span class="font-mono" style="color: var(--gold); font-weight: 800;">{{ snipe.adPrice | num }} Bs</span>
+                      ({{ snipe.priceDivergencePct | num }}% vs VWAP {{ snipe.fairMarketPrice | num }} Bs)
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="sniper-capture-btn"
+                    (click)="applySnipedAlert(snipe)"
+                  >
+                    ⚡ Capturar Precio
+                  </button>
+                </div>
+              }
+            </div>
+          }
+
           @if (binance.marketDepth(); as depth) {
+            @let ob = filteredOrderbook();
             <div class="depth-grid">
               <div class="depth-tile depth-ask">
-                <span class="depth-label">Mejor Compra (Ask)</span>
-                <div class="depth-value">{{ depth.bestBuyPrice | num }} Bs</div>
+                <span class="depth-label">Mejor Compra {{ cleanModeEnabled() ? '(Limpia)' : '(Ask)' }}</span>
+                <div class="depth-value font-mono">{{ ob.effectiveBestBuy | num }} Bs</div>
+                @if (ob.vwapBuy5 > 0) {
+                  <div class="depth-sub-vwap font-mono">VWAP Top 5: {{ ob.vwapBuy5 | num }} Bs</div>
+                }
               </div>
 
               <div class="depth-tile depth-bid">
-                <span class="depth-label">Mejor Venta (Bid)</span>
-                <div class="depth-value">{{ depth.bestSellPrice | num }} Bs</div>
+                <span class="depth-label">Mejor Venta {{ cleanModeEnabled() ? '(Limpia)' : '(Bid)' }}</span>
+                <div class="depth-value font-mono">{{ ob.effectiveBestSell | num }} Bs</div>
+                @if (ob.vwapSell5 > 0) {
+                  <div class="depth-sub-vwap font-mono">VWAP Top 5: {{ ob.vwapSell5 | num }} Bs</div>
+                }
               </div>
 
               <div class="depth-tile depth-spread">
-                <span class="depth-label">Spread Mercado</span>
-                <div class="depth-value" [class.positive]="depth.spreadVes > 0" [class.negative]="depth.spreadVes <= 0">
-                  {{ depth.spreadVes | num }} Bs ({{ depth.spreadPct }}%)
+                <span class="depth-label">Spread Ejecutable</span>
+                <div class="depth-value font-mono" [class.positive]="ob.effectiveSpreadVes > 0" [class.negative]="ob.effectiveSpreadVes <= 0">
+                  {{ ob.effectiveSpreadVes | num }} Bs ({{ ob.effectiveSpreadPct }}%)
                 </div>
+                @if (cleanModeEnabled() && ob.purgedCount > 0) {
+                  <div class="depth-sub-vwap font-mono" style="color: #34d399;">🛡️ {{ ob.purgedCount }} anuncios filtrados</div>
+                }
               </div>
             </div>
 
+            <!-- Libro de Órdenes L2 Interactivo (Top 5 Compra / Top 5 Venta con 1-Click Sniping) -->
+            @if (ob.buyOffers.length > 0 || ob.sellOffers.length > 0) {
+              <div class="l2-orderbook-container">
+                <div class="l2-book-column l2-col-buy">
+                  <div class="l2-col-header">
+                    <span class="l2-col-title">📗 Top 5 Compra (Punta Ask)</span>
+                    <span class="l2-col-hint">Clic para cargar</span>
+                  </div>
+                  @if (ob.buyOffers.length === 0) {
+                    <div class="l2-empty-row">Sin ofertas en este tramo</div>
+                  } @else {
+                    @for (o of ob.buyOffers; track o.advNo; let idx = $index) {
+                      <div class="l2-offer-row" (click)="selectOfferFromBook('BUY', o.price, false)">
+                        <div class="l2-offer-main">
+                          <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
+                          <div class="l2-merchant-info">
+                            <span class="l2-merchant-name" [title]="o.merchantName">{{ o.merchantName }}</span>
+                            <span class="l2-merchant-stats font-mono">
+                              {{ o.finishRatePct }}% · {{ o.orderCount }} órd · {{ o.minVes | num }}–{{ o.maxVes | num }} Bs
+                            </span>
+                          </div>
+                        </div>
+                        <div class="l2-offer-right">
+                          <span class="l2-price price-buy font-mono">{{ o.price | num }} Bs</span>
+                          <button
+                            type="button"
+                            class="l2-beat-btn"
+                            (click)="$event.stopPropagation(); selectOfferFromBook('BUY', o.price, true)"
+                            title="Superar esta oferta por +0.01 Bs como Maker"
+                          >
+                            +0.01
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+
+                <div class="l2-book-column l2-col-sell">
+                  <div class="l2-col-header">
+                    <span class="l2-col-title">📕 Top 5 Venta (Punta Bid)</span>
+                    <span class="l2-col-hint">Clic para cargar</span>
+                  </div>
+                  @if (ob.sellOffers.length === 0) {
+                    <div class="l2-empty-row">Sin ofertas en este tramo</div>
+                  } @else {
+                    @for (o of ob.sellOffers; track o.advNo; let idx = $index) {
+                      <div class="l2-offer-row" (click)="selectOfferFromBook('SELL', o.price, false)">
+                        <div class="l2-offer-main">
+                          <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
+                          <div class="l2-merchant-info">
+                            <span class="l2-merchant-name" [title]="o.merchantName">{{ o.merchantName }}</span>
+                            <span class="l2-merchant-stats font-mono">
+                              {{ o.finishRatePct }}% · {{ o.orderCount }} órd · {{ o.minVes | num }}–{{ o.maxVes | num }} Bs
+                            </span>
+                          </div>
+                        </div>
+                        <div class="l2-offer-right">
+                          <span class="l2-price price-sell font-mono">{{ o.price | num }} Bs</span>
+                          <button
+                            type="button"
+                            class="l2-beat-btn beat-sell"
+                            (click)="$event.stopPropagation(); selectOfferFromBook('SELL', o.price, true)"
+                            title="Cotizar -0.01 Bs debajo de esta oferta como Maker"
+                          >
+                            -0.01
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+              </div>
+            }
+
             <button type="button" class="btn btn-primary" (click)="applyBinancePrices()" style="width: 100%; font-size: 0.85rem; padding: 10px 16px; margin-top: 8px; font-weight: 600;">
-              📥 Cargar Precios en el Monitor
+              📥 Cargar Precios {{ cleanModeEnabled() ? 'Limpios' : '' }} en el Monitor ({{ ob.effectiveBestBuy | num }} / {{ ob.effectiveBestSell | num }} Bs)
             </button>
           } @else {
             <div class="depth-grid">
