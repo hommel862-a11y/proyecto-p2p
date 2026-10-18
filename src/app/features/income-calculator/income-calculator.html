@@ -1,82 +1,153 @@
 <section class="panel">
   <div class="smart-calc-header">
     <div class="header-left">
-      <h2>Calculadora Inteligente P2P</h2>
-      <p class="calc-subtitle">Simulador de arbitraje real con cascada de comisiones bancarias, velocidad y planificador de metas</p>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h2>Calculadora & Planificador Estratégico P2P</h2>
+        <span class="badge badge-gold font-mono">Desk Suite 360°</span>
+      </div>
+      <p class="calc-subtitle">
+        Motor de rentabilidad por vuelta, ingeniería reversa de 3 vías, interés compuesto con cosecha y delegación de cajeros
+      </p>
     </div>
 
-    <div class="calc-tab-group">
+    <div class="calc-tab-group" role="tablist" aria-label="Modos de la Calculadora P2P">
       <button
         type="button"
         [class.active]="activeMode() === 'cycle'"
         (click)="activeMode.set('cycle')"
       >
-        ⚡ Retorno por Vuelta & Velocidad
+        ⚡ Retorno & Velocidad
       </button>
       <button
         type="button"
         [class.active]="activeMode() === 'reverse'"
         (click)="activeMode.set('reverse')"
       >
-        🎯 Planificador Reverso
+        🎯 Planificador Reverso 360°
       </button>
       <button
         type="button"
         [class.active]="activeMode() === 'compound'"
         (click)="activeMode.set('compound')"
       >
-        📈 Proyector Compuesto ($10k)
+        📈 Proyector Compuesto
       </button>
       <button
         type="button"
         [class.active]="activeMode() === 'team'"
         (click)="activeMode.set('team')"
       >
-        👥 Escalado & Delegación ($1k/día)
+        👥 Desk & Cajeros ($1k/día)
       </button>
       <button
         type="button"
         [class.active]="activeMode() === 'classic'"
         (click)="activeMode.set('classic')"
       >
-        📊 Metas de Capital Anual
+        📊 Benchmark APR vs P2P
       </button>
       <button
         type="button"
         [class.active]="activeMode() === 'mcp-portfolio'"
         (click)="activeMode.set('mcp-portfolio')"
       >
-        🏛️ Suite Institucional MCP
+        🏛️ Suite MCP
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       BARRA GLOBAL DE TELEMETRÍA EN VIVO, NIVEL VIP Y PUENTE DE TESORERÍA
+       ═══════════════════════════════════════════════════════════════════ -->
+  <div class="calc-global-telemetry-bar">
+    <div class="telemetry-left">
+      <div class="telemetry-chip">
+        <span class="chip-label">📡 Mercado P2P:</span>
+        <strong class="font-mono">{{ buyPrice() | num }} Bs</strong>
+        <span class="text-muted">→</span>
+        <strong class="font-mono" style="color: var(--gold-strong);">{{ sellPrice() | num }} Bs</strong>
+      </div>
+
+      <div class="telemetry-chip">
+        <span class="chip-label">📦 FIFO Abierto:</span>
+        @if (treasuryTelemetry().openFifoUsdt > 0) {
+          <strong class="font-mono" style="color: #34d399;">
+            {{ treasuryTelemetry().openFifoUsdt | num }} USDT ({{ treasuryTelemetry().openFifoAvgVes | num }} Bs)
+          </strong>
+        } @else {
+          <span class="text-muted font-mono">Sin lotes abiertos</span>
+        }
+      </div>
+
+      <div class="telemetry-chip">
+        <span class="chip-label">🏦 Cupo Diario Tesorería:</span>
+        <strong class="font-mono">{{ treasuryTelemetry().totalDailyLimitVes | ves }}</strong>
+        <span class="text-muted" style="font-size: 0.7rem;">
+          ({{ treasuryTelemetry().hasRealAccounts ? treasuryTelemetry().activeAccountsCount + ' cuentas' : 'Referencial' }})
+        </span>
+      </div>
+    </div>
+
+    <div class="telemetry-actions">
+      <!-- Selector Global de Nivel VIP Comerciante -->
+      <div class="vip-tier-selector" role="group" aria-label="Nivel VIP de comerciante Binance">
+        <span class="vip-label">Tarifa Maker VIP:</span>
+        @for (lvl of [
+          { id: 'STANDARD', label: 'Estándar 0.25%' },
+          { id: 'BRONZE', label: 'Bronce 0.20%' },
+          { id: 'SILVER', label: 'Plata 0.175%' },
+          { id: 'GOLD', label: 'Oro 0.125%' }
+        ]; track lvl.id) {
+          <button
+            type="button"
+            class="vip-pill font-mono"
+            [class.active]="merchantLevel() === lvl.id"
+            (click)="merchantLevel.set($any(lvl.id))"
+          >
+            {{ lvl.label }}
+          </button>
+        }
+      </div>
+
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm-action"
+        (click)="loadInventoryAndTreasuryCapital()"
+        title="Carga automáticamente tu inventario FIFO abierto o el saldo disponible en Tesorería"
+      >
+        📦 Cargar Capital Real
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-primary btn-sm-action"
+        [disabled]="syncingLive()"
+        (click)="loadBinancePrices()"
+      >
+        {{ syncingLive() ? '⏳ Sincronizando...' : '⚡ Sincronizar Binance en Vivo' }}
       </button>
     </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════
-       MODO A: Retorno por Vuelta (Cycle Profit & Velocity)
+       MODO A: Retorno por Vuelta & Velocidad (Cycle Profit & Velocity)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'cycle') {
-    <div class="sync-bar">
-      <div class="sync-info">
-        💡 Podés sincronizar los precios en vivo directamente desde el radar de Binance P2P.
-      </div>
-      <button type="button" class="btn btn-secondary" (click)="loadBinancePrices()">
-        ⚡ Importar Precios de Binance
-      </button>
-    </div>
-
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Ciclo -->
       <div class="calc-column">
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="⚡" title="Capital & Spread Operativo">
-            <span uiHeaderActions class="badge badge-accent font-mono">USDT / VES</span>
+          <app-ui-panel-header icon="⚡" title="Paso 1 · Capital & Precios del Ciclo">
+            <span uiHeaderActions class="badge badge-accent font-mono">
+              Piso Break-Even: {{ cycleBreakEvenSellPrice() | num }} Bs
+            </span>
           </app-ui-panel-header>
 
           <div class="terminal-input-grid">
             <div class="terminal-field full-width">
               <label class="terminal-label" for="calc-capital-usdt">
-                <span>Capital a Operar</span>
-                <span class="terminal-subtext">Inventario asignado a la vuelta</span>
+                <span>Capital a Operar por Vuelta</span>
+                <span class="terminal-subtext">Inventario rotado en cada ciclo</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -85,27 +156,27 @@
                   inputmode="decimal"
                   min="0"
                   step="10"
-                  class="terminal-input font-bold"
+                  class="terminal-input font-mono font-bold"
                   [value]="capitalUsdt()"
                   (input)="capitalUsdt.set(clampMoney(+$any($event.target).value))"
-                  placeholder="0.00"
+                  placeholder="1000.00"
                 />
                 <span class="input-suffix">USDT</span>
               </div>
               <div class="mobile-volume-chips">
-                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(100)">100</button>
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(250)">250</button>
                 <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(500)">500</button>
                 <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(1000)">1k</button>
                 <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(2500)">2.5k</button>
-                <button type="button" class="btn-vol-chip chip-add" (click)="capitalUsdt.set(capitalUsdt() + 100)">+100</button>
+                <button type="button" class="btn-vol-chip" (click)="capitalUsdt.set(5000)">5k</button>
                 <button type="button" class="btn-vol-chip chip-add" (click)="capitalUsdt.set(capitalUsdt() + 500)">+500</button>
               </div>
             </div>
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-buy-price">
-                <span>Precio de Compra</span>
-                <span class="terminal-subtext">VES por USDT</span>
+                <span>Precio de Compra (Entrada)</span>
+                <span class="terminal-subtext">VES pagados por 1 USDT</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
@@ -115,7 +186,7 @@
                   inputmode="decimal"
                   min="0"
                   step="0.01"
-                  class="terminal-input"
+                  class="terminal-input font-mono font-bold"
                   [value]="buyPrice()"
                   (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -125,8 +196,8 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-sell-price">
-                <span>Precio de Venta</span>
-                <span class="terminal-subtext">VES por USDT</span>
+                <span>Precio de Venta (Salida)</span>
+                <span class="terminal-subtext">VES recibidos por 1 USDT</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
@@ -136,7 +207,7 @@
                   inputmode="decimal"
                   min="0"
                   step="0.01"
-                  class="terminal-input highlight-sell"
+                  class="terminal-input highlight-sell font-mono font-bold"
                   [value]="sellPrice()"
                   (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -144,23 +215,74 @@
               </div>
             </div>
           </div>
+
+          <!-- Asistente Rápido de Fijación de Venta por Margen Neto -->
+          <div class="quick-margin-strip">
+            <span class="strip-label">🎯 Fijar Venta para Margen Limpio:</span>
+            <div class="strip-pills">
+              <button type="button" class="preset-mini-btn" (click)="applyQuickNetMarginTarget(0.6)">+0.6% Mínimo</button>
+              <button type="button" class="preset-mini-btn" (click)="applyQuickNetMarginTarget(1.0)">+1.0% Estándar</button>
+              <button type="button" class="preset-mini-btn" (click)="applyQuickNetMarginTarget(1.5)">+1.5% Zona Oro</button>
+              <button type="button" class="preset-mini-btn" (click)="applyQuickNetMarginTarget(2.2)">+2.2% Expansivo</button>
+              <button type="button" class="preset-mini-btn" (click)="swapBuyAndSellPrices()" title="Intercambiar precio de compra y venta">⇄ Invertir</button>
+            </div>
+          </div>
         </app-ui-card>
 
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="🏛️" title="Estrategia & Canales Bancarios">
+          <app-ui-panel-header icon="🏛️" title="Paso 2 · Roles Operativos & Rieles Bancarios">
             <span uiHeaderActions class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
-              {{ isInterbank() ? '0.30% Fricción Banco' : '0.00% Mismo Banco' }}
+              Maker VIP: {{ makerFeePct() }}% | {{ isInterbank() ? '0.30% Interbancario' : '0.00% Mismo Banco' }}
             </span>
           </app-ui-panel-header>
 
-          <div class="terminal-input-grid">
+          <!-- Píldoras de combinación rápida de Roles -->
+          <div class="quick-margin-strip" style="margin-top: 0; margin-bottom: 10px;">
+            <span class="strip-label">⚡ Combinación Rápida:</span>
+            <div class="strip-pills">
+              <button
+                type="button"
+                class="preset-mini-btn"
+                [class.active]="buyRole() === 'TAKER' && sellRole() === 'MAKER'"
+                (click)="applyRolePreset('TAKER', 'MAKER')"
+              >
+                Taker 0% → Maker ({{ makerFeePct() }}%)
+              </button>
+              <button
+                type="button"
+                class="preset-mini-btn"
+                [class.active]="buyRole() === 'MAKER' && sellRole() === 'MAKER'"
+                (click)="applyRolePreset('MAKER', 'MAKER')"
+              >
+                Doble Maker ({{ makerFeePct() * 2 | num }}%)
+              </button>
+              <button
+                type="button"
+                class="preset-mini-btn"
+                [class.active]="buyRole() === 'MAKER' && sellRole() === 'TAKER'"
+                (click)="applyRolePreset('MAKER', 'TAKER')"
+              >
+                Maker ({{ makerFeePct() }}%) → Taker 0%
+              </button>
+              <button
+                type="button"
+                class="preset-mini-btn"
+                [class.active]="buyRole() === 'TAKER' && sellRole() === 'TAKER'"
+                (click)="applyRolePreset('TAKER', 'TAKER')"
+              >
+                Doble Taker (0%)
+              </button>
+            </div>
+          </div>
+
+          <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
               <label class="terminal-label" for="calc-buy-role">
-                <span>Rol en Compra</span>
+                <span>Rol en Compra (Entrada)</span>
               </label>
               <div class="input-control-wrap">
                 <select id="calc-buy-role" class="terminal-select" [value]="buyRole()" (change)="buyRole.set($any($event.target).value)">
-                  <option value="MAKER">Maker (Anuncio propio — 0.25%)</option>
+                  <option value="MAKER">Maker (Anuncio propio — {{ makerFeePct() }}%)</option>
                   <option value="TAKER">Taker (Orden directa — 0.00%)</option>
                 </select>
               </div>
@@ -168,11 +290,11 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-sell-role">
-                <span>Rol en Venta</span>
+                <span>Rol en Venta (Salida)</span>
               </label>
               <div class="input-control-wrap">
                 <select id="calc-sell-role" class="terminal-select" [value]="sellRole()" (change)="sellRole.set($any($event.target).value)">
-                  <option value="MAKER">Maker (Anuncio propio — 0.25%)</option>
+                  <option value="MAKER">Maker (Anuncio propio — {{ makerFeePct() }}%)</option>
                   <option value="TAKER">Taker (Orden directa — 0.00%)</option>
                 </select>
               </div>
@@ -181,6 +303,7 @@
             <div class="terminal-field">
               <label class="terminal-label" for="calc-source-bank">
                 <span>Banco Emisor (Compra)</span>
+                <span class="terminal-subtext">De donde salen los Bs</span>
               </label>
               <div class="input-control-wrap">
                 <select id="calc-source-bank" class="terminal-select" [value]="sourceBank()" (change)="sourceBank.set($any($event.target).value)">
@@ -198,80 +321,177 @@
             </div>
 
             <div class="terminal-field">
+              <label class="terminal-label" for="calc-target-bank">
+                <span>Banco Receptor (Venta)</span>
+                <span class="terminal-subtext">Donde recibes los Bs</span>
+              </label>
+              <div class="input-control-wrap">
+                <select id="calc-target-bank" class="terminal-select" [value]="targetBank()" (change)="targetBank.set($any($event.target).value)">
+                  <option value="BANESCO">Banesco Banco Universal</option>
+                  <option value="MERCANTIL">Mercantil Banco</option>
+                  <option value="BDV">Banco de Venezuela (BDV)</option>
+                  <option value="BANCAMIGA">Bancamiga</option>
+                  <option value="PROVINCIAL">BBVA Provincial</option>
+                  <option value="BNC">Banco Nacional de Crédito (BNC)</option>
+                  <option value="BANCARIBE">Bancaribe</option>
+                  <option value="BANPLUS">Banplus</option>
+                  <option value="OTRO">Otro Banco</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
               <label class="terminal-label" for="calc-interbank">
-                <span>Compensación / Canal</span>
+                <span>Compensación / Peaje Bancario</span>
               </label>
               <div class="input-control-wrap">
                 <select id="calc-interbank" class="terminal-select" [value]="isInterbank() ? 'true' : 'false'" (change)="isInterbank.set($any($event.target).value === 'true')">
-                  <option value="false">Mismo Banco (0% comisión)</option>
-                  <option value="true">Interbancario / Pago Móvil (0.3% comisión)</option>
+                  <option value="false">Mismo Banco / Intrabancario (0% comisión)</option>
+                  <option value="true">Interbancario / Pago Móvil (0.30% por punta)</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-extra-ves">
+                <span>Cargo Fijo Extra (Bs)</span>
+                <span class="terminal-subtext">Comisión operativa opcional</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="calc-extra-ves"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="terminal-input font-mono"
+                  [value]="extraFixedFeeVes()"
+                  (input)="extraFixedFeeVes.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
               </div>
             </div>
           </div>
         </app-ui-card>
       </div>
 
-      <!-- Columna Derecha: Cascada de Deducción & Ganancia Neta -->
+      <!-- Columna Derecha: Cascada Forense, Regla de Oro & Matriz de Velocidad -->
       <div class="calc-column">
         @if (cycleResult(); as c) {
           <div class="calc-result-card">
             <div class="roi-hero-tile">
               <div>
-                <span class="roi-label">Retorno Neto Efectivo</span>
+                <span class="roi-label">Retorno Neto Efectivo por Vuelta</span>
                 <div class="roi-value" [class.negative]="c.roiCyclePct <= 0">
                   {{ c.roiCyclePct > 0 ? '+' : '' }}{{ c.roiCyclePct | number:'1.2-2' }}%
                 </div>
+                <div class="font-mono" style="font-size: 0.74rem; color: var(--muted); margin-top: 2px;">
+                  Piso Equilibrio (PnL = $0): <strong style="color: #38bdf8;">{{ cycleBreakEvenSellPrice() | num }} Bs</strong>
+                </div>
               </div>
               <div style="text-align: right;">
-                <span class="roi-label">Ganancia Limpia</span>
-                <div class="roi-sub">+{{ c.netGainUsd | usdt }} (~{{ c.netGainVes | ves }})</div>
+                <span class="roi-label">Ganancia Limpia Bimonetaria</span>
+                <div class="roi-sub" style="font-size: 1.15rem;">
+                  {{ c.netGainUsd > 0 ? '+' : '' }}{{ c.netGainUsd | usdt }}
+                </div>
+                <div class="font-mono" style="font-size: 0.82rem; color: var(--text);">
+                  {{ c.netGainVes > 0 ? '+' : '' }}{{ c.netGainVes | ves }}
+                </div>
               </div>
             </div>
 
-            <span class="section-eyebrow" style="margin-bottom: 8px;">Cascada de Deducciones</span>
+            <!-- Semáforo de la Regla de Oro (≥ 0.50% Neto) -->
+            @if (cycleGoldenVerdict(); as gv) {
+              <div
+                class="golden-rule-banner"
+                [class.verdict-gold]="gv.alertLevel === 'GOLDEN_ZONE'"
+                [class.verdict-healthy]="gv.alertLevel === 'HEALTHY'"
+                [class.verdict-caution]="gv.alertLevel === 'MARGINAL_CAUTION'"
+                [class.verdict-danger]="gv.alertLevel === 'BELOW_THRESHOLD_PAUSE'"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <strong>{{ gv.headline }}</strong>
+                  <span class="badge font-mono" style="font-size: 0.7rem;">Spread Nominal: {{ c.spreadNominalPct | number:'1.2-2' }}%</span>
+                </div>
+                <p style="margin: 4px 0 0; font-size: 0.76rem; color: var(--text);">{{ gv.message }}</p>
+              </div>
+            }
+
+            <span class="section-eyebrow" style="margin-bottom: 8px;">Cascada Forense de Deducciones</span>
             <div class="cascade-list">
               <div class="cascade-item">
-                <span class="item-label">Capital invertido</span>
+                <span class="item-label">1. Capital desplegado en compra ({{ buyPrice() | num }} Bs)</span>
                 <span class="item-val">{{ c.capitalVesInvested | ves }} ({{ c.capitalUsdt | usdt }})</span>
               </div>
               <div class="cascade-item fee-item">
-                <span class="item-label">Comisión Binance (Maker/Taker)</span>
-                <span class="item-val fee">-{{ c.binanceFeeUsdt | usdt }}</span>
+                <span class="item-label">2. Comisión Binance ({{ buyRole() }} / {{ sellRole() }} · Nivel {{ merchantLevel() }})</span>
+                <span class="item-val fee">-{{ c.binanceFeeUsdt | usdt }} (Neto vendido: {{ c.netCryptoUsdt | num }} USDT)</span>
               </div>
               <div class="cascade-item fee-item">
-                <span class="item-label">Comisiones Bancarias / Pago Móvil</span>
+                <span class="item-label">3. Peajes Bancarios ({{ sourceBank() }} → {{ targetBank() }})</span>
                 <span class="item-val fee">-{{ c.bankFeesVes | ves }}</span>
               </div>
               <div class="cascade-item gain-item">
-                <span class="item-label">Fricción total (Spread nominal {{ c.spreadNominalPct | number:'1.2-2' }}%)</span>
-                <span class="item-val gain">Drag de comisiones: {{ c.effectiveFeeDragPct | number:'1.2-2' }}%</span>
+                <span class="item-label">4. Fricción total absorbida del spread</span>
+                <span class="item-val gain">Drag total: -{{ c.effectiveFeeDragPct | number:'1.2-2' }}%</span>
               </div>
             </div>
 
-            <span class="section-eyebrow" style="margin-bottom: 8px;">Proyección de Rendimiento por Velocidad</span>
-            <table class="velocity-table" aria-label="Proyección de rendimiento por velocidad operativa">
-              <thead>
-                <tr>
-                  <th scope="col">Rotación</th>
-                  <th scope="col">Ganancia Día</th>
-                  <th scope="col">Semanal</th>
-                  <th scope="col">Mensual</th>
-                  <th scope="col">Volumen Banco</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (p of velocityProjections(); track p.cyclesPerDay) {
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+              <span class="section-eyebrow" style="margin: 0;">Matriz de Velocidad (Lineal vs Compuesto Intradía + Cupo Bancario)</span>
+              <span class="text-muted" style="font-size: 0.7rem;">Haz clic en una fila para enviarla al Planificador Reverso</span>
+            </div>
+            <div style="overflow-x: auto;">
+              <table class="velocity-table" aria-label="Proyección de rendimiento por velocidad operativa">
+                <thead>
                   <tr>
-                    <th scope="row" style="font-weight: normal; text-align: left;"><span class="speed-tag">{{ p.cyclesPerDay }} {{ p.cyclesPerDay === 1 ? 'vuelta' : 'vueltas' }}</span></th>
-                    <td class="positive">+{{ p.dailyGainUsd | usdt }}</td>
-                    <td class="positive">+{{ p.weeklyGainUsd | usdt }}</td>
-                    <td class="positive" style="font-weight: 700;">+{{ p.monthlyGainUsd | usdt }}</td>
-                    <td style="color: var(--muted); font-size: 0.76rem;">{{ p.dailyBankVolumeVes | ves }}</td>
+                    <th scope="col">Rotación</th>
+                    <th scope="col">Día (Lineal)</th>
+                    <th scope="col">Día (Compuesto)</th>
+                    <th scope="col">Mensual (30d)</th>
+                    <th scope="col">Volumen Banco</th>
+                    <th scope="col">Uso de Cupo</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (p of velocityProjections(); track p.cyclesPerDay) {
+                    <tr class="velocity-clickable-row" (click)="bridgeCycleToReverse(p.cyclesPerDay)" title="Haz clic para abrir este ritmo en el Planificador Reverso">
+                      <th scope="row" style="font-weight: normal; text-align: left;">
+                        <span class="speed-tag">{{ p.cyclesPerDay }}x</span>
+                        <span class="text-muted" style="font-size: 0.7rem; margin-left: 4px;">{{ p.label }}</span>
+                      </th>
+                      <td class="positive font-mono">+{{ p.linearDailyUsd | usdt }}</td>
+                      <td class="font-mono" style="color: var(--gold-strong); font-weight: 700;">
+                        +{{ p.compoundDailyUsd | usdt }}
+                        <small style="display: block; font-size: 0.65rem; color: var(--muted);">+{{ p.compoundRoiDayPct | number:'1.2-2' }}%</small>
+                      </td>
+                      <td class="positive font-mono" style="font-weight: 700;">+{{ p.monthlyGainUsd | usdt }}</td>
+                      <td class="font-mono" style="color: var(--muted); font-size: 0.75rem;">{{ p.dailyBankVolumeVes | ves }}</td>
+                      <td>
+                        <span
+                          class="quota-pill font-mono"
+                          [class.quota-safe]="p.quotaStatus === 'SAFE'"
+                          [class.quota-warn]="p.quotaStatus === 'WARNING'"
+                          [class.quota-exceeded]="p.quotaStatus === 'EXCEEDED'"
+                        >
+                          {{ p.bankQuotaUsagePct }}%
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Puentes de Acción 1-Clic hacia los otros módulos -->
+            <div class="calc-bridge-actions">
+              <button type="button" class="btn btn-primary" (click)="bridgeCycleToReverse()">
+                🎯 Llevar al Planificador Reverso 360°
+              </button>
+              <button type="button" class="btn btn-secondary" (click)="bridgeCycleToCompound()">
+                📈 Proyectar Interés Compuesto con este Margen
+              </button>
+            </div>
           </div>
         } @else {
           <p class="error" role="alert">Ingresa un capital y precios de compra/venta válidos.</p>
@@ -281,21 +501,22 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       MODO B: Planificador Reverso de Metas (Reverse Goal Sizing)
+       MODO B: Planificador Reverso 360° (3-Way Reverse Goal Solver)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'reverse') {
     <div class="calc-grid-layout">
+      <!-- Columna Izquierda: Meta, Ritmo y Fricción -->
       <div class="calc-column">
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="🎯" title="Meta Diaria & Capital de Trabajo">
-            <span uiHeaderActions class="badge badge-gold font-mono">Reverso</span>
+          <app-ui-panel-header icon="🎯" title="Paso 1 · Meta Diaria, Capital & Jornada">
+            <span uiHeaderActions class="badge badge-gold font-mono">Ingeniería Reversa 3 Vías</span>
           </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
               <label class="terminal-label" for="calc-target-goal-usd">
                 <span>Meta Diaria Deseada</span>
-                <span class="terminal-subtext">Beneficio neto</span>
+                <span class="terminal-subtext">Ganancia limpia libre de comisiones</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">$</span>
@@ -304,19 +525,31 @@
                   type="number"
                   min="1"
                   step="5"
-                  class="terminal-input highlight-gold font-bold"
+                  class="terminal-input highlight-gold font-mono font-bold"
                   [value]="targetGoalUsd()"
                   (input)="targetGoalUsd.set(clampMoney(+$any($event.target).value))"
-                  placeholder="20.00"
+                  placeholder="35.00"
                 />
-                <span class="input-suffix">USD</span>
+                <span class="input-suffix">USD/día</span>
+              </div>
+              <div class="mobile-volume-chips">
+                @for (goalPreset of [15, 25, 35, 50, 100, 250]; track goalPreset) {
+                  <button
+                    type="button"
+                    class="btn-vol-chip"
+                    [class.active]="targetGoalUsd() === goalPreset"
+                    (click)="targetGoalUsd.set(goalPreset)"
+                  >
+                    ${{ goalPreset }}
+                  </button>
+                }
               </div>
             </div>
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-avail-capital">
-                <span>Capital Disponible</span>
-                <span class="terminal-subtext">Inventario asignado</span>
+                <span>Capital Disponible Actual</span>
+                <span class="terminal-subtext">Tu inventario líquido en USDT</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -324,18 +557,92 @@
                   type="number"
                   min="10"
                   step="50"
-                  class="terminal-input font-bold"
+                  class="terminal-input font-mono font-bold"
                   [value]="availableCapitalGoal()"
                   (input)="availableCapitalGoal.set(clampMoney(+$any($event.target).value))"
                   placeholder="1000"
                 />
                 <span class="input-suffix">USDT</span>
               </div>
+              <div class="mobile-volume-chips">
+                @for (capPreset of [300, 500, 1000, 2000, 5000]; track capPreset) {
+                  <button
+                    type="button"
+                    class="btn-vol-chip"
+                    (click)="availableCapitalGoal.set(capPreset)"
+                  >
+                    {{ capPreset }}
+                  </button>
+                }
+              </div>
             </div>
 
             <div class="terminal-field">
+              <label class="terminal-label" for="calc-desired-cycles">
+                <span>Ritmo Cómodo Deseado</span>
+                <span class="terminal-subtext">Vueltas por día que prefieres dar</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-desired-cycles"
+                  type="number"
+                  min="1"
+                  max="15"
+                  step="1"
+                  class="terminal-input font-mono font-bold"
+                  [value]="desiredCyclesPerDay()"
+                  (input)="desiredCyclesPerDay.set(clampMoney(+$any($event.target).value))"
+                />
+                <span class="input-suffix">vueltas/día</span>
+              </div>
+              <div class="mobile-volume-chips">
+                @for (cyc of [1, 2, 3, 4, 5, 6]; track cyc) {
+                  <button
+                    type="button"
+                    class="btn-vol-chip"
+                    [class.active]="desiredCyclesPerDay() === cyc"
+                    (click)="desiredCyclesPerDay.set(cyc)"
+                  >
+                    {{ cyc }}x
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-shift-hours">
+                <span>Jornada Operativa Diaria</span>
+                <span class="terminal-subtext">Horas activas frente al monitor</span>
+              </label>
+              <div class="input-control-wrap">
+                <select
+                  id="calc-shift-hours"
+                  class="terminal-select"
+                  [value]="operationalShiftHours()"
+                  (change)="operationalShiftHours.set(+$any($event.target).value)"
+                >
+                  <option [value]="4">4 horas (Media jornada)</option>
+                  <option [value]="6">6 horas (Jornada enfocada)</option>
+                  <option [value]="8">8 horas (Jornada estándar)</option>
+                  <option [value]="10">10 horas (Desk extendido)</option>
+                  <option [value]="12">12 horas (Turno completo)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </app-ui-card>
+
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="⚙️" title="Paso 2 · Tasas de Mercado & Fricción del Plan Reverso">
+            <span uiHeaderActions class="badge badge-accent font-mono">
+              VIP {{ merchantLevel() }} ({{ makerFeePct() }}%)
+            </span>
+          </app-ui-panel-header>
+
+          <div class="terminal-input-grid grid-2">
+            <div class="terminal-field">
               <label class="terminal-label" for="calc-rev-buy-price">
-                <span>Precio de Compra</span>
+                <span>Precio de Compra Base</span>
                 <span class="terminal-subtext">VES por USDT</span>
               </label>
               <div class="input-control-wrap">
@@ -345,7 +652,7 @@
                   type="number"
                   min="0"
                   step="0.01"
-                  class="terminal-input"
+                  class="terminal-input font-mono font-bold"
                   [value]="buyPrice()"
                   (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -355,7 +662,7 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-rev-sell-price">
-                <span>Precio de Venta</span>
+                <span>Precio de Venta Actual</span>
                 <span class="terminal-subtext">VES por USDT</span>
               </label>
               <div class="input-control-wrap">
@@ -365,54 +672,219 @@
                   type="number"
                   min="0"
                   step="0.01"
-                  class="terminal-input highlight-sell"
+                  class="terminal-input highlight-sell font-mono font-bold"
                   [value]="sellPrice()"
                   (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
                 />
               </div>
             </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-rev-roles">
+                <span>Estrategia de Roles P2P</span>
+              </label>
+              <div class="input-control-wrap">
+                <select
+                  id="calc-rev-roles"
+                  class="terminal-select"
+                  [value]="buyRole() + '_' + sellRole()"
+                  (change)="applyRolePreset($any($event.target).value.split('_')[0], $any($event.target).value.split('_')[1])"
+                >
+                  <option value="TAKER_MAKER">Compra Taker (0%) → Venta Maker ({{ makerFeePct() }}%)</option>
+                  <option value="MAKER_MAKER">Doble Maker ({{ makerFeePct() }}% + {{ makerFeePct() }}%)</option>
+                  <option value="MAKER_TAKER">Compra Maker ({{ makerFeePct() }}%) → Venta Taker (0%)</option>
+                  <option value="TAKER_TAKER">Doble Taker (0% + 0%)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-rev-interbank">
+                <span>Peaje Bancario</span>
+              </label>
+              <div class="input-control-wrap">
+                <select
+                  id="calc-rev-interbank"
+                  class="terminal-select"
+                  [value]="isInterbank() ? 'true' : 'false'"
+                  (change)="isInterbank.set($any($event.target).value === 'true')"
+                >
+                  <option value="false">Mismo Banco (0% comisión)</option>
+                  <option value="true">Interbancario / Pago Móvil (0.30%)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </app-ui-card>
       </div>
 
+      <!-- Columna Derecha: Matriz de 3 Caminos para Alcanzar la Meta Diaria -->
       <div class="calc-column">
         @if (reverseGoalResult(); as goal) {
-          <div class="calc-result-card">
-            <div class="roi-hero-tile">
-              <div>
-                <span class="roi-label">Vueltas Necesarias / Día</span>
-                <div class="roi-value" [class.negative]="!goal.isFeasible">
-                  {{ goal.requiredCycles }} {{ goal.requiredCycles === 1 ? 'vuelta' : 'vueltas' }}
+          @if (reverseSolverMatrix(); as solver) {
+            <div class="calc-result-card">
+              <span class="section-eyebrow" style="color: var(--gold-strong);">
+                🧭 Matriz de Ingeniería Reversa · 3 Caminos para Ganar +{{ targetGoalUsd() | usdt }}/Día
+              </span>
+
+              <!-- 3 Tarjetas de Resolución Simultánea -->
+              <div class="reverse-three-paths-grid">
+                <!-- Camino 1: Por Velocidad -->
+                <div class="reverse-path-card" [class.path-feasible]="goal.isFeasible" [class.path-infeasible]="!goal.isFeasible">
+                  <div class="path-header">
+                    <span class="path-badge">CAMINO 1 · POR VELOCIDAD</span>
+                    <span class="path-sub">Con tus {{ availableCapitalGoal() | usdt }} y spread actual ({{ goal.roiCyclePct }}%)</span>
+                  </div>
+                  <div class="path-main-val font-mono">
+                    @if (goal.netGainPerCycleUsd > 0) {
+                      {{ solver.exactCycles }} <small>vueltas exactas ({{ goal.requiredCycles }} enteras)</small>
+                    } @else {
+                      <span class="negative">Spread en pérdida</span>
+                    }
+                  </div>
+                  <div class="path-details font-mono">
+                    <div>• Ganancia/vuelta: <strong>+{{ goal.netGainPerCycleUsd | usdt }}</strong></div>
+                    @if (solver.minutesPerCycle > 0) {
+                      <div>• Cadencia: <strong>1 vuelta cada {{ solver.minutesPerCycle }} min</strong> ({{ solver.usdtVolumePerHour | num }} USDT/h)</div>
+                    }
+                  </div>
+                </div>
+
+                <!-- Camino 2: Por Capital Requerido -->
+                <div class="reverse-path-card">
+                  <div class="path-header">
+                    <span class="path-badge">CAMINO 2 · POR CAPITAL</span>
+                    <span class="path-sub">Operando exactamente a {{ desiredCyclesPerDay() }} vueltas/día con spread actual</span>
+                  </div>
+                  <div class="path-main-val font-mono" style="color: #38bdf8;">
+                    @if (solver.requiredCapitalForDesiredCyclesUsdt < 9999999) {
+                      {{ solver.requiredCapitalForDesiredCyclesUsdt | usdt }}
+                    } @else {
+                      <span class="negative">Sube el precio de venta</span>
+                    }
+                  </div>
+                  <div class="path-details font-mono">
+                    @if (solver.capitalGapUsdt === 0) {
+                      <div class="positive">✅ Tu capital actual ({{ availableCapitalGoal() | usdt }}) ya es suficiente</div>
+                    } @else if (solver.capitalGapUsdt < 9999999) {
+                      <div>• Brecha de capital: <strong style="color: var(--gold);">+{{ solver.capitalGapUsdt | usdt }} adicionales</strong></div>
+                      <button type="button" class="path-action-btn" (click)="applyRequiredCapitalToGoal()">
+                        ⚡ Simular con {{ solver.requiredCapitalForDesiredCyclesUsdt | num }} USDT
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                <!-- Camino 3: Por Precio de Venta / Spread -->
+                <div class="reverse-path-card path-highlight">
+                  <div class="path-header">
+                    <span class="path-badge">CAMINO 3 · POR PRECIO DE ANUNCIO</span>
+                    <span class="path-sub">Con tus {{ availableCapitalGoal() | usdt }} dando {{ desiredCyclesPerDay() }} vueltas/día</span>
+                  </div>
+                  <div class="path-main-val font-mono" style="color: var(--gold-strong);">
+                    {{ solver.requiredSellPriceVes | num }} <small>Bs/USDT</small>
+                  </div>
+                  <div class="path-details font-mono">
+                    <div>• Margen limpio requerido: <strong class="positive">+{{ solver.requiredNetRoiPerCyclePct }}% neto/vuelta</strong></div>
+                    <div>• Spread nominal bruto: <strong>{{ solver.requiredNominalSpreadPct }}%</strong> (Compra: {{ buyPrice() | num }} Bs)</div>
+                    <button type="button" class="path-action-btn btn-gold" (click)="applyRequiredSellPriceToCycle()">
+                      🎯 Fijar Venta en {{ solver.requiredSellPriceVes | num }} Bs
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div style="text-align: right;">
-                <span class="roi-label">Ganancia Limpia por Vuelta</span>
-                <div class="roi-sub">+{{ goal.netGainPerCycleUsd | usdt }} ({{ goal.roiCyclePct }}%)</div>
+
+              <!-- Diagnóstico de Capacidad Bancaria y Cupos SUDEBAN -->
+              <div class="reverse-bank-audit-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <div>
+                    <strong style="font-size: 0.82rem; color: var(--text);">
+                      🏦 Diagnóstico de Flujo Bancario Diario (Compra + Venta)
+                    </strong>
+                    <div class="text-muted" style="font-size: 0.74rem;">
+                      Volumen total a movilizar: <strong class="font-mono" style="color: var(--text);">{{ solver.exactDailyBankVolVes | ves }}/día</strong>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <span
+                      class="quota-pill font-mono"
+                      [class.quota-safe]="solver.bankUsagePct <= 75"
+                      [class.quota-warn]="solver.bankUsagePct > 75 && solver.bankUsagePct <= 100"
+                      [class.quota-exceeded]="solver.bankUsagePct > 100"
+                    >
+                      Uso de Cupo: {{ solver.bankUsagePct }}%
+                    </span>
+                    <span class="badge badge-secondary font-mono" style="font-size: 0.72rem;">
+                      Cuentas sugeridas: {{ solver.bankAccountsNeeded }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              @if (goal.warning) {
+                <div class="toast warning" style="position: static; margin-top: 10px; width: 100%; box-sizing: border-box;">
+                  ⚠️ {{ goal.warning }}
+                </div>
+              } @else {
+                <div class="toast info" style="position: static; margin-top: 10px; width: 100%; box-sizing: border-box; background: rgba(16, 185, 129, 0.14); border-color: #10b981; color: #34d399;">
+                  ✅ Meta de +{{ goal.dailyTargetUsd | usdt }}/día 100% viable con tu estructura actual.
+                </div>
+              }
+
+              <!-- Tabla Interactiva de Sensibilidad Reversa (1 a 8 vueltas) -->
+              <div style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span class="section-eyebrow" style="margin: 0;">Escalera de Sensibilidad Reversa (Haz clic para adoptar escenario)</span>
+                  <span class="text-muted" style="font-size: 0.7rem;">Meta fija: +{{ targetGoalUsd() | usdt }}/día</span>
+                </div>
+                <div style="overflow-x: auto;">
+                  <table class="velocity-table" aria-label="Tabla de sensibilidad del planificador reverso">
+                    <thead>
+                      <tr>
+                        <th scope="col">Ritmo</th>
+                        <th scope="col">Capital Necesario</th>
+                        <th scope="col">Precio Venta (Con ${{ availableCapitalGoal() }})</th>
+                        <th scope="col">ROI Neto/Vuelta</th>
+                        <th scope="col">Cadencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (sc of reverseCycleScenarios(); track sc.cycles) {
+                        <tr
+                          class="velocity-clickable-row"
+                          [class.row-selected]="desiredCyclesPerDay() === sc.cycles"
+                          (click)="applyReverseScenarioToCycle(sc)"
+                        >
+                          <th scope="row" style="text-align: left;">
+                            <span class="speed-tag">{{ sc.cycles }}x</span>
+                            <span class="text-muted" style="font-size: 0.7rem; margin-left: 4px;">{{ sc.label }}</span>
+                          </th>
+                          <td class="font-mono">
+                            @if (sc.requiredCapitalUsdt > 0) {
+                              <strong>{{ sc.requiredCapitalUsdt | usdt }}</strong>
+                              @if (sc.isFeasibleWithCurrentCapital) {
+                                <span class="positive" style="font-size: 0.68rem; display: block;">✓ Cubierto</span>
+                              } @else {
+                                <span style="color: var(--gold); font-size: 0.68rem; display: block;">Faltan +{{ sc.capitalGapUsdt | num }}</span>
+                              }
+                            } @else {
+                              <span class="text-muted">—</span>
+                            }
+                          </td>
+                          <td class="font-mono" style="color: var(--gold-strong); font-weight: 700;">
+                            {{ sc.requiredSellPriceVes | num }} Bs
+                          </td>
+                          <td class="positive font-mono">+{{ sc.requiredNetRoiPct }}%</td>
+                          <td class="font-mono text-muted" style="font-size: 0.74rem;">1 c/{{ sc.minutesPerCycle }}m</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-
-            <div class="cascade-list">
-              <div class="cascade-item">
-                <span class="item-label">Meta financiera diaria</span>
-                <span class="item-val positive">+{{ goal.dailyTargetUsd | usdt }}</span>
-              </div>
-              <div class="cascade-item">
-                <span class="item-label">Volumen bancario total a mover por día</span>
-                <span class="item-val">{{ goal.totalDailyBankVolumeVes | ves }}</span>
-              </div>
-            </div>
-
-            @if (goal.warning) {
-              <div class="toast warning" style="position: static; margin-top: 10px; width: 100%; box-sizing: border-box;">
-                ⚠️ {{ goal.warning }}
-              </div>
-            } @else {
-              <div class="toast info" style="position: static; margin-top: 10px; width: 100%; box-sizing: border-box; background: rgba(16, 185, 129, 0.15); border-color: #10b981; color: #34d399;">
-                ✅ Meta operativa alcanzable con un flujo de trabajo disciplinado.
-              </div>
-            }
-          </div>
+          }
         }
       </div>
     </div>
@@ -422,12 +894,21 @@
        MODO C: Proyector de Crecimiento Compuesto ($10k Multi-Ciclo)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'compound') {
+    <div class="sync-bar">
+      <div class="sync-info">
+        📈 Podés importar el capital y el margen neto limpio directamente desde el Modo A (Retorno por Vuelta).
+      </div>
+      <button type="button" class="btn btn-secondary" (click)="bridgeCycleToCompound()">
+        ⚡ Traer Capital y Margen del Ciclo Actual
+      </button>
+    </div>
+
     <div class="calc-grid-layout">
       <!-- Columna Izquierda: Parámetros del Simulador -->
       <div class="calc-column">
         <app-ui-card variant="terminal">
           <app-ui-panel-header icon="📈" title="Capital Inicial & Margen por Ciclo">
-            <span uiHeaderActions class="badge badge-accent font-mono">$10k Compuesto</span>
+            <span uiHeaderActions class="badge badge-accent font-mono">Interés Compuesto P2P</span>
           </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
@@ -442,10 +923,10 @@
                   type="number"
                   min="100"
                   step="500"
-                  class="terminal-input font-bold"
+                  class="terminal-input font-mono font-bold"
                   [value]="compoundInitialCapital()"
                   (input)="compoundInitialCapital.set(clampMoney(+$any($event.target).value))"
-                  placeholder="10000"
+                  placeholder="5000"
                 />
                 <span class="input-suffix">USDT</span>
               </div>
@@ -454,7 +935,7 @@
             <div class="terminal-field">
               <label class="terminal-label" for="calc-comp-net-margin">
                 <span>Spread Neto / Vuelta</span>
-                <span class="terminal-subtext">Margen limpio esperado</span>
+                <span class="terminal-subtext">Margen limpio por ciclo</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -462,10 +943,10 @@
                   type="number"
                   min="0.1"
                   step="0.05"
-                  class="terminal-input highlight-gold font-bold"
+                  class="terminal-input highlight-gold font-mono font-bold"
                   [value]="compoundNetMarginPct()"
                   (input)="compoundNetMarginPct.set(clampMoney(+$any($event.target).value))"
-                  placeholder="0.85"
+                  placeholder="0.95"
                 />
                 <span class="input-suffix">%</span>
               </div>
@@ -481,12 +962,12 @@
                   id="calc-comp-cycles-day"
                   type="number"
                   min="0.5"
-                  max="5"
-                  step="0.1"
-                  class="terminal-input"
+                  max="10"
+                  step="0.5"
+                  class="terminal-input font-mono"
                   [value]="compoundCyclesPerDay()"
                   (input)="compoundCyclesPerDay.set(clampMoney(+$any($event.target).value))"
-                  placeholder="1.5"
+                  placeholder="2.0"
                 />
                 <span class="input-suffix">vueltas</span>
               </div>
@@ -502,7 +983,7 @@
                   <option [value]="30">30 días (1 mes)</option>
                   <option [value]="60">60 días (2 meses)</option>
                   <option [value]="90">90 días (1 trimestre profesional)</option>
-                  <option [value]="180">180 días (Semestre)</option>
+                  <option [value]="180">180 días (Semestre institucional)</option>
                 </select>
               </div>
             </div>
@@ -510,31 +991,32 @@
         </app-ui-card>
 
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="🛡️" title="Política de Cosecha & Retiros (Harvest)">
+          <app-ui-panel-header icon="🛡️" title="Política de Cosecha & Retiros a Frío (Harvest)">
             <span uiHeaderActions class="badge font-mono" style="color: var(--gold); border-color: var(--gold-border);">
-              {{ compoundReinvestmentRate() }}% Reinversión
+              {{ compoundReinvestmentRate() }}% Reinversión / {{ 100 - compoundReinvestmentRate() }}% Cosecha
             </span>
           </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
               <label class="terminal-label" for="calc-comp-reinvest">
-                <span>Distribución de Beneficios</span>
+                <span>Distribución de Beneficios Diarios</span>
               </label>
               <div class="input-control-wrap">
                 <select id="calc-comp-reinvest" class="terminal-select" [value]="compoundReinvestmentRate()" (change)="compoundReinvestmentRate.set(+$any($event.target).value)">
-                  <option [value]="100">100% Reinversión (Interés Compuesto Agresivo)</option>
+                  <option [value]="100">100% Reinversión (Interés Compuesto Puro)</option>
+                  <option [value]="70">70% Capitalización / 30% Cosecha a Frío</option>
                   <option [value]="50">50% Cosecha a Frío / 50% Capitalización (Institucional)</option>
-                  <option [value]="30">70% Cosecha / 30% Capitalización (Conservador)</option>
-                  <option [value]="0">0% Reinversión (Retiro Total Diario)</option>
+                  <option [value]="30">30% Capitalización / 70% Cosecha a Frío</option>
+                  <option [value]="0">0% Reinversión (Retiro Diario 100%)</option>
                 </select>
               </div>
             </div>
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-comp-rate">
-                <span>Tasa Referencial</span>
-                <span class="terminal-subtext">Conversión a bolívares</span>
+                <span>Tasa Referencial (VES/USDT)</span>
+                <span class="terminal-subtext">Para cálculo de muro bancario</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">Bs</span>
@@ -543,88 +1025,105 @@
                   type="number"
                   min="1"
                   step="0.5"
-                  class="terminal-input"
+                  class="terminal-input font-mono"
                   [value]="compoundReferenceRate()"
                   (input)="compoundReferenceRate.set(clampMoney(+$any($event.target).value))"
-                  placeholder="60.00"
+                  placeholder="800.00"
                 />
               </div>
             </div>
           </div>
 
-          <p class="note" style="margin-top: 4px; font-size: 0.78rem;">
-            💡 <strong>Estrategia de Cosecha (Harvest):</strong> Con $10,000 USD, reinvertir el 100% satura rápidamente las cuentas personales. Retirar el 50% de las ganancias diarias a tu hardware wallet elimina el riesgo devaluatorio y bancario.
+          <p class="note" style="margin-top: 8px; font-size: 0.78rem;">
+            💡 <strong>Regla de Tesorería:</strong> Reinvertir el 50% y cosechar el 50% a una billetera fría evita que el crecimiento exponencial reviente el cupo diario de tus cuentas bancarias ({{ treasuryTelemetry().totalDailyLimitVes | ves }}/día).
           </p>
         </app-ui-card>
       </div>
 
-      <!-- Columna Derecha: Resumen de Capital & Hitos -->
+      <!-- Columna Derecha: Resumen de Capital, Muro Bancario & Cronograma -->
       <div class="calc-column">
         @if (compoundResult(); as comp) {
           <div class="calc-result-card">
             <div class="roi-hero-tile">
               <div>
-                <span class="roi-label">Valor Total del Portafolio</span>
+                <span class="roi-label">Valor Total del Portafolio (Día {{ compoundOperationalDays() }})</span>
                 <div class="roi-value" [class.negative]="comp.totalReturnPct <= 0">
                   {{ comp.totalPortfolioValueUsdt | usdt }}
                 </div>
               </div>
               <div style="text-align: right;">
-                <span class="roi-label">Ganancia Neta Limpia</span>
-                <div class="roi-sub" style="color: var(--accent); font-weight: 700;">
+                <span class="roi-label">Ganancia Neta Acumulada</span>
+                <div class="roi-sub" style="color: var(--accent); font-weight: 700; font-size: 1.1rem;">
                   +{{ comp.totalNetProfitUsdt | usdt }} (+{{ comp.totalReturnPct | number:'1.1-1' }}%)
                 </div>
               </div>
             </div>
 
-            <div class="stat-grid" style="margin: 16px 0;">
-              <div class="stat-tile out">
-                <span class="stat-label">Capital Operativo Final</span>
-                <span class="stat-value font-mono">{{ comp.finalWorkingCapitalUsdt | usdt }}</span>
+            <div class="stat-grid" style="margin: 14px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="stat-tile out" style="padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid #38bdf8;">
+                <span class="stat-label" style="display: block; font-size: 0.72rem; color: var(--muted);">Capital Operativo en Trabajo</span>
+                <span class="stat-value font-mono" style="font-size: 1.15rem; font-weight: 800;">{{ comp.finalWorkingCapitalUsdt | usdt }}</span>
               </div>
-              <div class="stat-tile out">
-                <span class="stat-label">Total Cosechado / Retirado</span>
-                <span class="stat-value font-mono" style="color: var(--gold);">{{ comp.totalHarvestedUsdt | usdt }}</span>
-              </div>
-            </div>
-
-            <!-- Milestone Progress Cards -->
-            <span class="section-eyebrow" style="margin-bottom: 8px;">Hitos de Crecimiento</span>
-            <div class="cascade-list" style="margin-bottom: 16px;">
-              <div class="cascade-item">
-                <span class="item-label">Día 30 (Mes 1)</span>
-                <span class="item-val font-mono">{{ comp.milestones.day30CapitalUsdt | usdt }}</span>
-              </div>
-              <div class="cascade-item">
-                <span class="item-label">Día 60 (Mes 2)</span>
-                <span class="item-val font-mono">{{ comp.milestones.day60CapitalUsdt | usdt }}</span>
-              </div>
-              <div class="cascade-item">
-                <span class="item-label">Día 90 (Fin de Trimestre)</span>
-                <span class="item-val font-mono" style="color: var(--accent); font-weight: 700;">
-                  {{ comp.milestones.day90CapitalUsdt | usdt }}
-                </span>
+              <div class="stat-tile out" style="padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid var(--gold);">
+                <span class="stat-label" style="display: block; font-size: 0.72rem; color: var(--muted);">Total Cosechado en Frío (Resguardado)</span>
+                <span class="stat-value font-mono" style="font-size: 1.15rem; font-weight: 800; color: var(--gold-strong);">{{ comp.totalHarvestedUsdt | usdt }}</span>
               </div>
             </div>
 
             <!-- Banking Wall Alert -->
             @if (comp.bankingWallAlert; as wall) {
-              <div class="warning-box" style="background: rgba(255, 95, 109, 0.12); border: 1px solid var(--danger); padding: 12px; border-radius: 8px;">
-                <div style="font-weight: 700; color: var(--danger); margin-bottom: 4px;">
-                  ⚠️ Muro de Capacidad Bancaria Alcanzado (Día {{ wall.firstDayExceeded }})
+              <div class="warning-box" style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; padding: 12px; border-radius: 8px; margin-bottom: 14px;">
+                <div style="font-weight: 700; color: #f87171; margin-bottom: 4px;">
+                  ⚠️ Muro de Capacidad Bancaria Detectado en el Día {{ wall.firstDayExceeded }}
                 </div>
-                <div style="font-size: 0.82rem; color: var(--text);">
-                  Al alcanzar {{ wall.capitalAtWallUsdt | usdt }} de capital, el volumen diario requerido (~{{ wall.dailyVolumeAtWallVes | ves }}) superará el límite bancario registrado ({{ wall.dailyBankLimitVes | ves }}).
+                <div style="font-size: 0.8rem; color: var(--text);">
+                  Al llegar a <strong>{{ wall.capitalAtWallUsdt | usdt }}</strong> de capital activo, moverás <strong>{{ wall.dailyVolumeAtWallVes | ves }}/día</strong>, superando tu cupo bancario actual ({{ wall.dailyBankLimitVes | ves }}).
                 </div>
-                <div style="font-size: 0.78rem; color: var(--muted); margin-top: 6px;">
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
                   {{ wall.recommendation }}
                 </div>
               </div>
             } @else {
-              <div class="note" style="border-left: 3px solid var(--accent); padding-left: 8px; margin: 0;">
-                ✅ El volumen diario proyectado se mantiene dentro de los límites de tesorería registrados.
+              <div class="note" style="border-left: 3px solid var(--accent); padding-left: 8px; margin: 0 0 14px;">
+                ✅ El volumen diario proyectado se mantiene dentro del cupo de tesorería ({{ treasuryTelemetry().totalDailyLimitVes | ves }}/día) durante todo el horizonte.
               </div>
             }
+
+            <!-- Tabla de Cronograma por Hitos -->
+            <span class="section-eyebrow" style="margin-bottom: 8px;">Cronograma de Evolución, Cosecha y Volumen Bancario</span>
+            <div style="overflow-x: auto;">
+              <table class="velocity-table" aria-label="Cronograma de crecimiento compuesto por hitos">
+                <thead>
+                  <tr>
+                    <th scope="col">Día</th>
+                    <th scope="col">Capital Activo</th>
+                    <th scope="col">Ganancia Día</th>
+                    <th scope="col">Cosecha Acum.</th>
+                    <th scope="col">Valor Total</th>
+                    <th scope="col">Volumen VES/Día</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (pt of compoundScheduleRows(); track pt.day) {
+                    <tr [class.row-wall]="pt.exceedsBankLimit">
+                      <th scope="row" style="text-align: left;">
+                        <span class="speed-tag">Día {{ pt.day }}</span>
+                      </th>
+                      <td class="font-mono">{{ pt.endingCapitalUsdt | usdt }}</td>
+                      <td class="positive font-mono">+{{ pt.dailyGrossGainUsdt | usdt }}</td>
+                      <td class="font-mono" style="color: var(--gold);">{{ pt.cumulativeHarvestedUsdt | usdt }}</td>
+                      <td class="font-mono" style="font-weight: 700; color: #34d399;">{{ pt.totalPortfolioValueUsdt | usdt }}</td>
+                      <td class="font-mono" style="font-size: 0.74rem;" [style.color]="pt.exceedsBankLimit ? '#f87171' : 'var(--muted)'">
+                        {{ pt.dailyVolumeVes | ves }}
+                        @if (pt.exceedsBankLimit) {
+                          <span title="Excede cupo bancario">⚠️</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </div>
         }
       </div>
@@ -635,24 +1134,18 @@
        MODO D: Escalado & Delegación de Operadores ($1,000/día)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'team') {
-    <div class="sync-bar">
-      <div class="sync-info">
-        👥 <strong>Modelo de Escalado Institucional (Caso William):</strong> Distribución de capital entre cajeros/operadores, auditorías de 10 días y protección estricta de la Regla de Oro (Spread ≥ 0.50%).
-      </div>
-    </div>
-
     <div class="calc-grid-layout">
-      <!-- Columna Izquierda: Parámetros del Equipo -->
+      <!-- Columna Izquierda: Parámetros del Desk & Roster Editable de Cajeros -->
       <div class="calc-column">
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="👥" title="Capital del Desk & Margen Esperado">
-            <span uiHeaderActions class="badge badge-accent font-mono">Equipo $1k/día</span>
+          <app-ui-panel-header icon="👥" title="Parámetros Globales del Desk">
+            <span uiHeaderActions class="badge badge-accent font-mono">Escalado Multi-Cajero</span>
           </app-ui-panel-header>
 
-          <div class="terminal-input-grid grid-3">
+          <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
               <label class="terminal-label" for="calc-team-capital">
-                <span>Capital del Desk</span>
+                <span>Capital Total del Desk</span>
                 <span class="terminal-subtext">Pool total administrado</span>
               </label>
               <div class="input-control-wrap">
@@ -661,10 +1154,10 @@
                   type="number"
                   min="0"
                   step="500"
-                  class="terminal-input font-bold"
+                  class="terminal-input font-mono font-bold"
                   [value]="teamDeskCapital()"
                   (input)="teamDeskCapital.set(clampMoney(+$any($event.target).value))"
-                  placeholder="20000"
+                  placeholder="10000"
                 />
                 <span class="input-suffix">USDT</span>
               </div>
@@ -672,8 +1165,8 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="calc-team-spread">
-                <span>Spread por Vuelta</span>
-                <span class="terminal-subtext">Promedio del equipo</span>
+                <span>Spread Neto Esperado / Vuelta</span>
+                <span class="terminal-subtext">Promedio limpio por ciclo</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -681,19 +1174,39 @@
                   type="number"
                   min="0.1"
                   step="0.05"
-                  class="terminal-input highlight-gold font-bold"
+                  class="terminal-input highlight-gold font-mono font-bold"
                   [value]="teamExpectedSpreadPct()"
                   (input)="teamExpectedSpreadPct.set(clampMoney(+$any($event.target).value))"
-                  placeholder="0.80"
+                  placeholder="0.90"
                 />
                 <span class="input-suffix">%</span>
               </div>
             </div>
 
             <div class="terminal-field">
+              <label class="terminal-label" for="calc-team-leader-cycles">
+                <span>Vueltas/Día del Dueño (Capital Retenido)</span>
+                <span class="terminal-subtext">Rotación sobre capital no delegado</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-team-leader-cycles"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  class="terminal-input font-mono"
+                  [value]="leaderDailyCycles()"
+                  (input)="leaderDailyCycles.set(clampMoney(+$any($event.target).value))"
+                />
+                <span class="input-suffix">vueltas</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
               <label class="terminal-label" for="calc-team-rate">
-                <span>Tasa Referencial</span>
-                <span class="terminal-subtext">VES por USDT</span>
+                <span>Tasa Referencial (VES/USDT)</span>
+                <span class="terminal-subtext">Para cupos en Bs</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">Bs</span>
@@ -702,39 +1215,97 @@
                   type="number"
                   min="1"
                   step="0.5"
-                  class="terminal-input"
+                  class="terminal-input font-mono"
                   [value]="teamReferenceRate()"
                   (input)="teamReferenceRate.set(clampMoney(+$any($event.target).value))"
-                  placeholder="60.00"
+                  placeholder="800.00"
                 />
               </div>
-            </div>
-          </div>
-
-          <div class="terminal-card-footer">
-            <div class="footer-badge">
-              <span class="status-indicator active"></span>
-              <span>Regla de Oro: <strong>Nadie opera por debajo del 0.50% neto</strong></span>
             </div>
           </div>
         </app-ui-card>
 
         <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="💼" title="Operadores & Cajeros Asignados">
-            <span uiHeaderActions class="badge font-mono">{{ teamOperators().length }} Cajeros</span>
+          <app-ui-panel-header icon="💼" title="Roster Interactivo de Cajeros & Operadores">
+            <button
+              uiHeaderActions
+              type="button"
+              class="preset-mini-btn active"
+              (click)="addTeamOperator()"
+            >
+              + Añadir Cajero
+            </button>
           </app-ui-panel-header>
 
-          <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="operator-roster-list">
             @for (op of teamOperators(); track op.id) {
-              <div style="background: rgba(10, 15, 26, 0.45); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <strong style="color: var(--gold); font-size: 0.9rem;">{{ op.name }}</strong>
-                  <span class="badge badge-accent" style="font-size: 0.72rem;">{{ op.commissionSplitPct }}% Comisión</span>
+              <div class="operator-edit-card" [class.op-inactive]="!op.active">
+                <div class="op-card-top">
+                  <input
+                    type="text"
+                    class="op-name-input"
+                    [value]="op.name"
+                    (input)="updateTeamOperator(op.id, 'name', $any($event.target).value)"
+                    aria-label="Nombre del operador"
+                  />
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button
+                      type="button"
+                      class="preset-mini-btn"
+                      [class.active]="op.active"
+                      (click)="updateTeamOperator(op.id, 'active', !op.active)"
+                    >
+                      {{ op.active ? '🟢 Activo' : '⏸ Pausado' }}
+                    </button>
+                    @if (teamOperators().length > 1) {
+                      <button
+                        type="button"
+                        class="op-del-btn"
+                        (click)="removeTeamOperator(op.id)"
+                        title="Eliminar operador"
+                      >
+                        ✕
+                      </button>
+                    }
+                  </div>
                 </div>
-                <div style="display: flex; gap: 10px; font-size: 0.8rem; color: var(--muted);">
-                  <span>Capital: <strong style="color: var(--text);">{{ op.assignedCapitalUsdt | usdt }}</strong></span>
-                  <span>•</span>
-                  <span>Meta: <strong style="color: var(--text);">{{ op.targetDailyCycles }} vueltas/día</strong></span>
+
+                <div class="op-card-grid">
+                  <div class="op-mini-field">
+                    <label>Capital Asignado (USDT)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      class="terminal-input font-mono"
+                      [value]="op.assignedCapitalUsdt"
+                      (input)="updateTeamOperator(op.id, 'assignedCapitalUsdt', +$any($event.target).value)"
+                    />
+                  </div>
+                  <div class="op-mini-field">
+                    <label>Comisión Cajero (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="90"
+                      step="5"
+                      class="terminal-input font-mono"
+                      [value]="op.commissionSplitPct"
+                      (input)="updateTeamOperator(op.id, 'commissionSplitPct', +$any($event.target).value)"
+                    />
+                  </div>
+                  <div class="op-mini-field">
+                    <label>Meta Vueltas/Día</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="10"
+                      step="0.5"
+                      class="terminal-input font-mono"
+                      [value]="op.targetDailyCycles"
+                      (input)="updateTeamOperator(op.id, 'targetDailyCycles', +$any($event.target).value)"
+                    />
+                  </div>
                 </div>
               </div>
             }
@@ -746,105 +1317,86 @@
       <div class="calc-column">
         @if (teamPlan(); as plan) {
           <div class="calc-result-card">
-            <span class="section-eyebrow" style="color: var(--gold-strong);">Métricas del Desk & Retorno del Dueño</span>
+            <span class="section-eyebrow" style="color: var(--gold-strong);">Métricas Consolidadas del Desk & Split de Ganancias</span>
             <div class="primary-metric">
-              <span class="metric-label">Ganancia Neta Diaria Estimada (Desk)</span>
+              <span class="metric-label">Ganancia Neta Diaria Total del Desk</span>
               <span class="metric-value font-mono" style="color: var(--gold-strong);">
-                {{ plan.totalDailyEstimatedProfitUsdt | usdt }}
+                +{{ plan.totalDailyEstimatedProfitUsdt | usdt }}/día
               </span>
-              <span class="metric-hint">Proyección mensual líder: {{ plan.monthlyProjectedDeskProfitUsdt | usdt }}/mes</span>
+              <span class="metric-hint">Proyección mensual neta para el dueño: <strong>+{{ plan.monthlyProjectedDeskProfitUsdt | usdt }}/mes</strong></span>
             </div>
-
-            <div class="section-divider"></div>
 
             <div class="cascade-flow">
               <div class="cascade-step">
-                <span class="step-name">Ganancia Diaria del Dueño del Desk</span>
+                <span class="step-name">Ganancia Limpia Diaria del Dueño (Retenido + Split)</span>
                 <span class="step-value font-mono positive">+{{ plan.totalDailyOwnerProfitUsdt | usdt }}/día</span>
               </div>
               <div class="cascade-step">
-                <span class="step-name">Total Repartido a Operadores</span>
-                <span class="step-value font-mono" style="color: var(--accent-2);">{{ plan.totalDailyOperatorsProfitUsdt | usdt }}/día</span>
+                <span class="step-name">Comisiones Pagadas a Cajeros</span>
+                <span class="step-value font-mono" style="color: var(--gold);">+{{ plan.totalDailyOperatorsProfitUsdt | usdt }}/día</span>
               </div>
               <div class="cascade-step">
-                <span class="step-name">Capital Operado por el Dueño (Retenido)</span>
-                <span class="step-value font-mono">{{ plan.deskOwnerRetainedCapitalUsdt | usdt }}</span>
+                <span class="step-name">Capital Operado Directamente por el Dueño</span>
+                <span class="step-value font-mono">{{ plan.deskOwnerRetainedCapitalUsdt | usdt }} ({{ leaderDailyCycles() }} vueltas/día)</span>
               </div>
             </div>
 
-            <div class="section-divider"></div>
-
             <div class="data-section">
-              <span class="section-eyebrow">Desglose Individual por Operador</span>
-              <table class="corporate-table" aria-label="Desglose de capital y rentabilidad por operador">
-                <thead>
-                  <tr>
-                    <th scope="col">Operador</th>
-                    <th scope="col">Capital</th>
-                    <th scope="col">Meta Día</th>
-                    <th scope="col">Cajero ($)</th>
-                    <th scope="col">Desk ($)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (alloc of plan.operatorsAllocations; track alloc.operator.id) {
+              <span class="section-eyebrow">Desglose Operativo por Cajero</span>
+              <div style="overflow-x: auto;">
+                <table class="velocity-table" aria-label="Desglose de capital y rentabilidad por operador">
+                  <thead>
                     <tr>
-                      <th scope="row" style="font-weight: 500; text-align: left;">{{ alloc.operator.name }}</th>
-                      <td class="font-mono">{{ alloc.allocatedCapitalUsdt | usdt }}</td>
-                      <td class="font-mono positive">+{{ alloc.targetDailyProfitUsdt | usdt }}</td>
-                      <td class="font-mono" style="color: var(--accent-2);">{{ alloc.operatorDailyTakeUsdt | usdt }}</td>
-                      <td class="font-mono" style="color: var(--gold-strong);">{{ alloc.ownerDailyTakeUsdt | usdt }}</td>
+                      <th scope="col">Operador</th>
+                      <th scope="col">Capital</th>
+                      <th scope="col">Bruto Día</th>
+                      <th scope="col">Pago Cajero</th>
+                      <th scope="col">Neto Dueño</th>
                     </tr>
-                  }
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    @for (alloc of plan.operatorsAllocations; track alloc.operator.id) {
+                      <tr>
+                        <th scope="row" style="font-weight: 600; text-align: left;">{{ alloc.operator.name }}</th>
+                        <td class="font-mono">{{ alloc.allocatedCapitalUsdt | usdt }}</td>
+                        <td class="font-mono positive">+{{ alloc.targetDailyProfitUsdt | usdt }}</td>
+                        <td class="font-mono" style="color: var(--gold);">{{ alloc.operatorDailyTakeUsdt | usdt }} ({{ alloc.operator.commissionSplitPct }}%)</td>
+                        <td class="font-mono positive" style="font-weight: 700;">+{{ alloc.ownerDailyTakeUsdt | usdt }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <!-- 10-Day Operator Performance Audit Diagnostic -->
-            <div class="data-section" style="margin-top: 20px;">
+            <div class="data-section" style="margin-top: 18px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="section-eyebrow" style="margin: 0;">Auditoría de Rendimiento (Ventana 10 Días)</span>
+                <span class="section-eyebrow" style="margin: 0;">Auditoría en Vivo contra Bitácora (Ventana 10 Días)</span>
                 <span class="badge badge-accent" style="font-size: 0.72rem;">Regla de Oro: ≥ 0.50%</span>
               </div>
-              <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 8px;">
                 @for (audit of operatorAudits(); track audit.operatorId) {
-                  <div style="background: rgba(10, 15, 26, 0.45); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                      <span style="font-weight: 700; font-size: 0.86rem; color: var(--text);">
-                        {{ audit.operatorName }}
-                      </span>
+                  <div style="background: rgba(10, 15, 26, 0.45); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <span style="font-weight: 700; font-size: 0.84rem; color: var(--text);">{{ audit.operatorName }}</span>
                       <span
                         class="badge"
                         [class.badge-accent]="audit.status === 'OPTIMAL' || audit.status === 'ACCEPTABLE'"
                         [style.background]="audit.status === 'UNDERPERFORMING' ? '#ef4444' : ''"
                         [style.color]="audit.status === 'UNDERPERFORMING' ? '#fff' : ''"
-                        style="font-size: 0.7rem;"
+                        style="font-size: 0.68rem;"
                       >
                         {{ audit.status }}
                       </span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; font-family: var(--font-mono); margin-bottom: 4px;">
-                      <span class="text-muted">Spread Neto Promedio:</span>
-                      <strong [class.positive]="audit.isMeetingSpreadTarget" [class.negative]="!audit.isMeetingSpreadTarget && audit.totalOperations > 0">
-                        {{ audit.averageNetSpreadPct }}%
-                      </strong>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-family: var(--font-mono);">
+                      <span class="text-muted">Spread Medio Real: <strong>{{ audit.averageNetSpreadPct }}%</strong></span>
+                      <span>Ciclos: {{ audit.completedCycles }} ({{ audit.totalVolumeUsdt | usdt }})</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-family: var(--font-mono); margin-bottom: 4px;">
-                      <span class="text-muted">Ciclos / Volumen:</span>
-                      <span>{{ audit.completedCycles }} vueltas ({{ audit.totalVolumeUsdt | usdt }})</span>
-                    </div>
-                    @for (rec of audit.recommendations; track rec) {
-                      <div class="text-muted" style="font-size: 0.74rem; margin-top: 4px; line-height: 1.3;">
-                        💡 {{ rec }}
-                      </div>
-                    }
                   </div>
                 }
               </div>
-            </div>
-
-            <div class="note" style="margin-top: 16px; font-size: 0.8rem; border-left: 3px solid var(--gold);">
-              💡 <strong>Protocolo de Auditoría Cada 10 Días:</strong> Revisar rotación de cuentas Banesco, volumen en bolívares movido y confirmar que el spread medio no haya descendido del 0.50% neto.
             </div>
           </div>
         }
@@ -853,142 +1405,162 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       MODO E: Metas de Capital Anual (Classic Benchmark)
+       MODO E: Benchmark de Capital Anual (Rentas Pasivas DeFi vs P2P Activo)
        ═══════════════════════════════════════════════════ -->
   @if (activeMode() === 'classic') {
-    <p class="note">Capital = (meta diaria × {{ daysPerYear() }} días) ÷ APR. Base de cálculo fijada en {{ daysPerYear() }} días.</p>
+    <div class="calc-grid-layout">
+      <div class="calc-column">
+        <app-ui-card variant="terminal">
+          <app-ui-panel-header icon="📊" title="Parámetros de Comparación: Renta Pasiva vs Arbitraje P2P">
+            <span uiHeaderActions class="badge font-mono">{{ daysPerYear() }} Días Base</span>
+          </app-ui-panel-header>
 
-    <app-ui-card variant="terminal">
-      <app-ui-panel-header icon="📊" title="Parámetros Clásicos de Capital Anual">
-        <span uiHeaderActions class="badge font-mono">{{ daysPerYear() }} Días Base</span>
-      </app-ui-panel-header>
+          <div class="terminal-input-grid grid-2">
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-classic-target">
+                <span>Meta de Ingreso Diario</span>
+                <span class="terminal-subtext">Flujo de caja diario deseado</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">$</span>
+                <input
+                  id="calc-classic-target"
+                  type="number"
+                  min="1"
+                  step="5"
+                  class="terminal-input highlight-gold font-mono font-bold"
+                  [value]="targetUsd()"
+                  (input)="targetUsd.set(clampMoney(+$any($event.target).value))"
+                  placeholder="35.00"
+                />
+                <span class="input-suffix">USD/día</span>
+              </div>
+            </div>
 
-      <div class="terminal-input-grid grid-4">
-        <div class="terminal-field">
-          <label class="terminal-label" for="calc-classic-target">
-            <span>Meta Diaria</span>
-            <span class="terminal-subtext">Beneficio esperado</span>
-          </label>
-          <div class="input-control-wrap">
-            <span class="input-prefix">$</span>
-            <input
-              id="calc-classic-target"
-              type="number"
-              min="0"
-              step="0.01"
-              class="terminal-input highlight-gold font-bold"
-              [value]="targetUsd()"
-              (input)="targetUsd.set(clampMoney(+$any($event.target).value))"
-              placeholder="10.00"
-            />
-            <span class="input-suffix">USD</span>
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-classic-apr">
+                <span>Tasa Anual Pasiva (APR Referencia)</span>
+                <span class="terminal-subtext">Ej: Binance Earn / Bonos (8% - 20%)</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-classic-apr"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="terminal-input font-mono"
+                  [value]="aprPct()"
+                  (input)="aprPct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="15.00"
+                />
+                <span class="input-suffix">% APR</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-classic-days">
+                <span>Días Operativos / Año</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="calc-classic-days"
+                  type="number"
+                  min="1"
+                  step="5"
+                  class="terminal-input font-mono"
+                  [value]="daysPerYear()"
+                  (input)="daysPerYear.set(clampMoney(+$any($event.target).value))"
+                  placeholder="365"
+                />
+                <span class="input-suffix">días</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
+              <label class="terminal-label" for="calc-classic-rate">
+                <span>Tasa Referencial (VES/USDT)</span>
+              </label>
+              <div class="input-control-wrap">
+                <span class="input-prefix">Bs</span>
+                <input
+                  id="calc-classic-rate"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  class="terminal-input font-mono"
+                  [value]="rate()"
+                  (input)="rate.set(clampMoney(+$any($event.target).value))"
+                  placeholder="800.00"
+                />
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div class="terminal-field">
-          <label class="terminal-label" for="calc-classic-apr">
-            <span>Tasa Anual (APR)</span>
-            <span class="terminal-subtext">Rendimiento porcentual</span>
-          </label>
-          <div class="input-control-wrap">
-            <input
-              id="calc-classic-apr"
-              type="number"
-              min="0"
-              step="0.01"
-              class="terminal-input"
-              [value]="aprPct()"
-              (input)="aprPct.set(clampMoney(+$any($event.target).value))"
-              placeholder="12.00"
-            />
-            <span class="input-suffix">%</span>
-          </div>
-        </div>
-
-        <div class="terminal-field">
-          <label class="terminal-label" for="calc-classic-days">
-            <span>Días Operativos / Año</span>
-          </label>
-          <div class="input-control-wrap">
-            <input
-              id="calc-classic-days"
-              type="number"
-              min="0"
-              step="1"
-              class="terminal-input"
-              [value]="daysPerYear()"
-              (input)="daysPerYear.set(clampMoney(+$any($event.target).value))"
-              placeholder="365"
-            />
-            <span class="input-suffix">días</span>
-          </div>
-        </div>
-
-        <div class="terminal-field">
-          <label class="terminal-label" for="calc-classic-rate">
-            <span>Tasa VES/USDT (Opcional)</span>
-          </label>
-          <div class="input-control-wrap">
-            <span class="input-prefix">Bs</span>
-            <input
-              id="calc-classic-rate"
-              type="number"
-              min="0"
-              step="0.01"
-              class="terminal-input"
-              [value]="rate()"
-              (input)="rate.set(clampMoney(+$any($event.target).value))"
-              placeholder="0.00"
-            />
-          </div>
-        </div>
+        </app-ui-card>
       </div>
-    </app-ui-card>
 
-    @if (result(); as r) {
-      <div class="section-divider"></div>
-      <span class="section-eyebrow">Resultado</span>
-      <div class="out">
-        <div>
-          <dt>Ingreso anual</dt>
-          <dd class="positive">{{ annual() | usdt }}</dd>
-        </div>
-        <div>
-          <dt>Capital requerido</dt>
-          <dd>{{ capital() | usdt }}</dd>
-        </div>
-        <div>
-          <dt>Capital en Bs</dt>
-          <dd>{{ capitalBs() | ves }}</dd>
-        </div>
+      <div class="calc-column">
+        @if (result()) {
+          <div class="calc-result-card">
+            <span class="section-eyebrow" style="color: var(--gold-strong);">
+              Eficiencia de Capital · Staking Pasivo ({{ aprPct() }}% APR) vs Rotación P2P Activa
+            </span>
+
+            <div class="reverse-three-paths-grid" style="grid-template-columns: 1fr 1fr; margin-top: 10px;">
+              <div class="reverse-path-card">
+                <div class="path-header">
+                  <span class="path-badge">🏦 CAPITAL EN RENTA PASIVA ({{ aprPct() }}% APR)</span>
+                  <span class="path-sub">Para ganar +{{ targetUsd() | usdt }}/día ({{ annual() | usdt }}/año)</span>
+                </div>
+                <div class="path-main-val font-mono">
+                  {{ capital() | usdt }}
+                </div>
+                <div class="path-details font-mono">
+                  Equivalente a {{ capitalBs() | ves }} inmovilizados
+                </div>
+              </div>
+
+              <div class="reverse-path-card path-highlight">
+                <div class="path-header">
+                  <span class="path-badge">⚡ CAPITAL EN COMERCIO P2P (2 VUELTAS/DÍA)</span>
+                  <span class="path-sub">Con tu rendimiento activo (~{{ activeP2pComparison().effectiveDailyRoiPct }}%/día)</span>
+                </div>
+                <div class="path-main-val font-mono" style="color: #34d399;">
+                  {{ activeP2pComparison().p2pCapitalNeeded | usdt }}
+                </div>
+                <div class="path-details font-mono">
+                  Requiere <strong>{{ activeP2pComparison().capitalSavedMultiplier }}x menos capital</strong> que el staking pasivo
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 14px;">
+              <span class="section-eyebrow">Matriz de Capital Necesario según APR Anualizado</span>
+              <div style="overflow-x: auto; margin-top: 6px;">
+                <table class="velocity-table" aria-label="Tabla comparativa de disciplina y metas de capital">
+                  <thead>
+                    <tr>
+                      <th scope="col">Meta Diaria</th>
+                      @for (band of bands; track band) {
+                        <th scope="col">{{ band }}% APR</th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of table(); track row.target) {
+                      <tr>
+                        <th scope="row" style="text-align: left;" class="font-mono positive">+{{ row.target | usdt }}/día</th>
+                        @for (cell of row.cells; track $index) {
+                          <td class="font-mono">{{ cell | usdt }}</td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        }
       </div>
-    } @else {
-      <p class="error" role="alert">Ingresa una meta diaria y un APR positivos.</p>
-    }
-
-    <div class="section-divider"></div>
-    <div class="data-section">
-      <span class="section-eyebrow">Tabla Comparativa de Disciplina</span>
-      <table class="corporate-table" aria-label="Tabla comparativa de disciplina y metas de capital">
-        <thead>
-          <tr>
-            <th scope="col">Meta / día</th>
-            @for (band of bands; track band) {
-              <th scope="col">{{ band }}%</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of table(); track row.target) {
-            <tr>
-              <th scope="row">{{ row.target | usdt }}</th>
-              @for (cell of row.cells; track $index) {
-                <td>{{ cell | usdt }}</td>
-              }
-            </tr>
-          }
-        </tbody>
-      </table>
     </div>
   }
 
