@@ -35,8 +35,12 @@ import {
   evaluateSnipingOpportunity,
   type SnipedOpportunityAlert,
   type BinanceOfferSummary,
+  computeFifoAccounting,
+  OPS_KEY,
+  type Operation,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
+import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { FORMAT_PIPES } from '../../core/format';
 import { Capacitor } from '@capacitor/core';
@@ -99,6 +103,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
+  private readonly storage = inject(StorageService);
   readonly toast = inject(ToastService);
   private readonly hotkeys = inject(HotkeysService);
   readonly binance = inject(BinanceP2pService);
@@ -927,22 +932,448 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     }
   }
 
-  /** Break-Even & Maker Ad specific parameters */
+  /** Break-Even & Inventory Defense Cockpit parameters */
+  readonly beCycleDirection = signal<'SELL_INVENTORY' | 'REPLENISH_BUY'>('SELL_INVENTORY');
   readonly buyFeePct = signal<number>(0);
-  readonly sellFeePct = signal<number>(0.2);
+  readonly sellFeePct = signal<number>(0.25);
+  readonly beBankFeePct = signal<number>(0);
   readonly bankFeesVes = signal<number>(0);
   readonly targetRoiPct = signal<number>(1.5);
+  readonly beWacExpanded = signal<boolean>(false);
+  readonly beWacLots = signal<readonly { id: number; amountUsdt: number; priceVes: number }[]>([
+    { id: 1, amountUsdt: 200, priceVes: 800 },
+    { id: 2, amountUsdt: 300, priceVes: 806 },
+  ]);
+
+  /** Weighted Average Cost (WAC) summary across manual multi-lot entries. */
+  readonly beWacSummary = computed(() => {
+    const lots = this.beWacLots();
+    let totalUsdt = 0;
+    let totalVes = 0;
+    for (const l of lots) {
+      if (l.amountUsdt > 0 && l.priceVes > 0) {
+        totalUsdt += l.amountUsdt;
+        totalVes += l.amountUsdt * l.priceVes;
+      }
+    }
+    const wacPrice = totalUsdt > 0 ? Number((totalVes / totalUsdt).toFixed(2)) : 0;
+    return {
+      totalUsdt: Number(totalUsdt.toFixed(2)),
+      totalVes: Number(totalVes.toFixed(2)),
+      wacPrice,
+      validLotsCount: lots.filter((l) => l.amountUsdt > 0 && l.priceVes > 0).length,
+    };
+  });
+
+  /** Real open inventory from Bitácora evaluated via institutional FIFO accounting. */
+  readonly fifoInventorySnapshot = computed(() => {
+    try {
+      const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+      if (!Array.isArray(ops) || ops.length === 0) return null;
+      const fifo = computeFifoAccounting(ops);
+      if (fifo.openInventoryAmount <= 0 || fifo.openInventoryAvgPriceVes <= 0) return null;
+      return {
+        openAmountUsdt: Number(fifo.openInventoryAmount.toFixed(2)),
+        avgPriceVes: Number(fifo.openInventoryAvgPriceVes.toFixed(2)),
+        totalCostVes: Number(fifo.openInventoryCostBasisVes.toFixed(2)),
+        openLotsCount: fifo.openLots.length,
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  /** Synchronize Break-Even buy/sell fees with the selected VIP Merchant level and roles. */
+  syncBeFeesFromVipRoles(buy: P2PRole, sell: P2PRole): void {
+    this.buyRole.set(buy);
+    this.sellRole.set(sell);
+    const vipFee = this.makerFeePerLegPct();
+    this.buyFeePct.set(buy === 'MAKER' ? vipFee : 0);
+    this.sellFeePct.set(sell === 'MAKER' ? vipFee : 0);
+    this.toast.info(
+      `Tarifas sincronizadas (${buy}/${sell}): Compra ${this.buyFeePct()}% · Venta ${this.sellFeePct()}% (Nivel ${this.selectedMerchantLevel()}).`,
+      'Fricción VIP',
+    );
+  }
+
+  /** Apply Venezuelan banking friction presets (Same Bank, Pago Móvil Interbancario 0.30%, Gateway 0.50%, IGTF 3.00%). */
+  applyBankFrictionPreset(preset: 'SAME_BANK' | 'PAGO_MOVIL_INTER' | 'WALLET_GATEWAY' | 'IGTF'): void {
+    switch (preset) {
+      case 'SAME_BANK':
+        this.beBankFeePct.set(0);
+        this.bankFeesVes.set(0);
+        break;
+      case 'PAGO_MOVIL_INTER':
+        this.beBankFeePct.set(0.3);
+        break;
+      case 'WALLET_GATEWAY':
+        this.beBankFeePct.set(0.5);
+        break;
+      case 'IGTF':
+        this.beBankFeePct.set(3.0);
+        break;
+    }
+  }
+
+  /** Hydrate Break-Even inputs from real open FIFO inventory in Bitácora. */
+  loadFifoInventoryIntoBreakEven(): void {
+    const snap = this.fifoInventorySnapshot();
+    if (!snap) {
+      this.toast.warn('No tenés lotes de inventario abiertos registrados en la Bitácora.', 'Inventario FIFO');
+      return;
+    }
+    this.buyPrice.set(snap.avgPriceVes);
+    this.amount.set(snap.openAmountUsdt);
+    this.beCycleDirection.set('SELL_INVENTORY');
+    this.toast.success(
+      `Inventario FIFO cargado: ${snap.openAmountUsdt} ${this.pair()} a costo promedio de ${snap.avgPriceVes} Bs.`,
+      'Inventario Sincronizado',
+    );
+  }
+
+  addWacLot(): void {
+    const current = this.beWacLots();
+    const nextId = current.length > 0 ? Math.max(...current.map((l) => l.id)) + 1 : 1;
+    const refPrice = this.buyPrice() > 0 ? this.buyPrice() : 800;
+    this.beWacLots.set([...current, { id: nextId, amountUsdt: 100, priceVes: refPrice }]);
+  }
+
+  removeWacLot(id: number): void {
+    if (this.beWacLots().length <= 1) return;
+    this.beWacLots.set(this.beWacLots().filter((l) => l.id !== id));
+  }
+
+  updateWacLot(id: number, field: 'amountUsdt' | 'priceVes', value: number): void {
+    const clean = this.clampMoney(value);
+    this.beWacLots.set(
+      this.beWacLots().map((l) => (l.id === id ? { ...l, [field]: clean } : l)),
+    );
+  }
+
+  applyWacToBreakEven(): void {
+    const sum = this.beWacSummary();
+    if (sum.totalUsdt <= 0 || sum.wacPrice <= 0) return;
+    this.buyPrice.set(sum.wacPrice);
+    this.amount.set(sum.totalUsdt);
+    this.beCycleDirection.set('SELL_INVENTORY');
+    this.toast.success(
+      `Costo promedio ponderado aplicado: ${sum.totalUsdt} ${this.pair()} @ ${sum.wacPrice} Bs.`,
+      'Promedio Multi-Lote (WAC)',
+    );
+  }
 
   readonly breakEvenResult = computed<BreakEvenResult>(() => {
+    const baseVes = this.buyPrice() * this.amount();
+    const pctBankFeeVes = baseVes * (this.beBankFeePct() / 100);
     return calculateBreakEven({
       buyPrice: this.buyPrice(),
       amount: this.amount(),
       buyFeeRate: this.buyFeePct() / 100,
       sellFeeRate: this.sellFeePct() / 100,
-      fixedBankFeesVes: this.bankFeesVes(),
+      fixedBankFeesVes: this.bankFeesVes() + pctBankFeeVes,
       targetRoiPct: this.targetRoiPct(),
     });
   });
+
+  /** Reverse Break-Even Engine (Sold crypto first -> calculating max buyback ceiling to replenish + earn target ROI). */
+  readonly reverseBreakEvenResult = computed(() => {
+    const refSell = this.sellPrice() > 0 ? this.sellPrice() : this.buyPrice();
+    const vol = this.amount();
+    const sellFee = this.sellFeePct() / 100;
+    const buyFee = this.buyFeePct() / 100;
+    const bankPct = this.beBankFeePct() / 100;
+    const fixedVes = this.bankFeesVes();
+    const targetRoi = this.targetRoiPct() / 100;
+
+    if (refSell <= 0 || vol <= 0) {
+      return {
+        netProceedsVes: 0,
+        breakEvenBuyCeiling: 0,
+        targetBuyPrice: 0,
+        breakEvenSpread: 0,
+        targetSpread: 0,
+        projectedNetProfitUsdt: 0,
+        projectedNetProfitVes: 0,
+        safetyMarginVes: 0,
+      };
+    }
+
+    const grossProceedsVes = vol * refSell;
+    const netProceedsVes = Math.max(
+      0,
+      grossProceedsVes * (1 - sellFee - bankPct) - fixedVes,
+    );
+    const buyFrictionMult = 1 + buyFee;
+    const breakEvenBuyCeiling = Number((netProceedsVes / (vol * buyFrictionMult)).toFixed(2));
+    const targetBuyPrice = Number(
+      (netProceedsVes / (vol * (1 + targetRoi) * buyFrictionMult)).toFixed(2),
+    );
+    const projectedNetProfitUsdt = Number((vol * targetRoi).toFixed(2));
+    const projectedNetProfitVes = Number((projectedNetProfitUsdt * refSell).toFixed(2));
+
+    return {
+      netProceedsVes: Number(netProceedsVes.toFixed(2)),
+      breakEvenBuyCeiling,
+      targetBuyPrice,
+      breakEvenSpread: Number((refSell - breakEvenBuyCeiling).toFixed(2)),
+      targetSpread: Number((refSell - targetBuyPrice).toFixed(2)),
+      projectedNetProfitUsdt,
+      projectedNetProfitVes,
+      safetyMarginVes: Number(Math.max(0, breakEvenBuyCeiling - targetBuyPrice).toFixed(2)),
+    };
+  });
+
+  /** Projected net profit in USDT/EUR at the Break-Even target price. */
+  readonly beNetProfitUsdt = computed<number>(() => {
+    if (this.beCycleDirection() === 'REPLENISH_BUY') {
+      return this.reverseBreakEvenResult().projectedNetProfitUsdt;
+    }
+    const be = this.breakEvenResult();
+    if (be.targetSellPrice <= 0) return 0;
+    return Number((be.projectedNetProfitVes / be.targetSellPrice).toFixed(2));
+  });
+
+  /** Live Market Executability Thermometer comparing Break-Even & Target vs Binance L2 Top 1. */
+  readonly beMarketVerdict = computed(() => {
+    const ob = this.filteredOrderbook();
+    const dir = this.beCycleDirection();
+    const vol = this.amount();
+
+    if (dir === 'SELL_INVENTORY') {
+      const be = this.breakEvenResult();
+      const top1Sell = ob.effectiveBestSell;
+      const vwapSell = ob.vwapSell5 > 0 ? ob.vwapSell5 : top1Sell;
+      if (top1Sell <= 0 || be.breakEvenPrice <= 0 || vol <= 0) {
+        return {
+          hasMarket: false,
+          status: 'NO_MARKET' as const,
+          marketRefPrice: 0,
+          vwapRefPrice: 0,
+          executableTop1Price: 0,
+          executableTop1RoiPct: 0,
+          executableTop1ProfitVes: 0,
+          executableTop1ProfitUsdt: 0,
+          gapToTargetVes: 0,
+          gapToBreakEvenVes: 0,
+          headline: 'Sincronizá el libro de Binance P2P para evaluar ejecutabilidad en vivo',
+          guidance: 'Al cargar el libro L2, el sistema comparará tu Piso Break-Even contra el Top 1 real.',
+        };
+      }
+
+      const executableTop1Price = Number(Math.max(0.01, top1Sell - 0.01).toFixed(2));
+      const sellMult = Math.max(0.0001, 1 - this.sellFeePct() / 100);
+      const netRevAtTop1 = vol * executableTop1Price * sellMult;
+      const executableTop1ProfitVes = Number((netRevAtTop1 - be.totalCostVes).toFixed(2));
+      const executableTop1ProfitUsdt = Number((executableTop1ProfitVes / executableTop1Price).toFixed(2));
+      const executableTop1RoiPct =
+        be.totalCostVes > 0
+          ? Number(((executableTop1ProfitVes / be.totalCostVes) * 100).toFixed(2))
+          : 0;
+      const gapToTargetVes = Number((executableTop1Price - be.targetSellPrice).toFixed(2));
+      const gapToBreakEvenVes = Number((executableTop1Price - be.breakEvenPrice).toFixed(2));
+
+      if (executableTop1Price >= be.targetSellPrice) {
+        return {
+          hasMarket: true,
+          status: 'SUPERAVIT_TOP1' as const,
+          marketRefPrice: top1Sell,
+          vwapRefPrice: vwapSell,
+          executableTop1Price,
+          executableTop1RoiPct,
+          executableTop1ProfitVes,
+          executableTop1ProfitUsdt,
+          gapToTargetVes,
+          gapToBreakEvenVes,
+          headline: `🟢 Superávit Inmediato: Top 1 paga +${gapToTargetVes.toFixed(2)} Bs sobre tu meta`,
+          guidance: `¡No regales margen cotizando a ${be.targetSellPrice} Bs! Si te posicionás como Líder Top 1 a ${executableTop1Price} Bs (-0.01 Bs), vendés de inmediato con +${executableTop1RoiPct}% ROI (+${executableTop1ProfitUsdt} ${this.pair()}).`,
+        };
+      }
+
+      if (executableTop1Price > be.breakEvenPrice) {
+        return {
+          hasMarket: true,
+          status: 'PROFITABLE_QUEUE' as const,
+          marketRefPrice: top1Sell,
+          vwapRefPrice: vwapSell,
+          executableTop1Price,
+          executableTop1RoiPct,
+          executableTop1ProfitVes,
+          executableTop1ProfitUsdt,
+          gapToTargetVes,
+          gapToBreakEvenVes,
+          headline: `🟡 Zona Rentable en Cola: Top 1 rinde +${executableTop1RoiPct}% ROI (+${gapToBreakEvenVes.toFixed(2)} Bs sobre Break-Even)`,
+          guidance: `Tenés 2 jugadas tácticas: (A) Salir YA en Top 1 a ${executableTop1Price} Bs asegurando +${executableTop1ProfitUsdt} ${this.pair()} (+${executableTop1RoiPct}% ROI), o (B) Publicar en cola a ${be.targetSellPrice} Bs esperando que el libro suba ${Math.abs(gapToTargetVes).toFixed(2)} Bs.`,
+        };
+      }
+
+      return {
+        hasMarket: true,
+        status: 'BELOW_BREAKEVEN' as const,
+        marketRefPrice: top1Sell,
+        vwapRefPrice: vwapSell,
+        executableTop1Price,
+        executableTop1RoiPct,
+        executableTop1ProfitVes,
+        executableTop1ProfitUsdt,
+        gapToTargetVes,
+        gapToBreakEvenVes,
+        headline: `🔴 Alerta de Pérdida: Top 1 (${top1Sell} Bs) está ${Math.abs(gapToBreakEvenVes).toFixed(2)} Bs DEBAJO de tu Break-Even`,
+        guidance: `PROHIBIDO competir en Top 1 ahora (perderías ${executableTop1ProfitVes} Bs / ${executableTop1RoiPct}%). Anclá tu anuncio de defensa en mínimo ${be.breakEvenPrice} Bs o activá el Cortafuegos del Bot.`,
+      };
+    } else {
+      // REPLENISH_BUY
+      const rev = this.reverseBreakEvenResult();
+      const top1Buy = ob.effectiveBestBuy;
+      const vwapBuy = ob.vwapBuy5 > 0 ? ob.vwapBuy5 : top1Buy;
+      if (top1Buy <= 0 || rev.breakEvenBuyCeiling <= 0 || vol <= 0) {
+        return {
+          hasMarket: false,
+          status: 'NO_MARKET' as const,
+          marketRefPrice: 0,
+          vwapRefPrice: 0,
+          executableTop1Price: 0,
+          executableTop1RoiPct: 0,
+          executableTop1ProfitVes: 0,
+          executableTop1ProfitUsdt: 0,
+          gapToTargetVes: 0,
+          gapToBreakEvenVes: 0,
+          headline: 'Sincronizá el libro de Binance P2P para evaluar recompra en vivo',
+          guidance: 'El sistema comparará tu Techo Break-Even contra la mejor punta de compra actual.',
+        };
+      }
+
+      const executableTop1Price = Number((top1Buy + 0.01).toFixed(2));
+      const buyFrictionMult = 1 + this.buyFeePct() / 100;
+      const usdtBoughtAtTop1 = rev.netProceedsVes / (executableTop1Price * buyFrictionMult);
+      const executableTop1ProfitUsdt = Number((usdtBoughtAtTop1 - vol).toFixed(2));
+      const executableTop1ProfitVes = Number((executableTop1ProfitUsdt * executableTop1Price).toFixed(2));
+      const executableTop1RoiPct = Number(((executableTop1ProfitUsdt / vol) * 100).toFixed(2));
+      const gapToTargetVes = Number((rev.targetBuyPrice - executableTop1Price).toFixed(2));
+      const gapToBreakEvenVes = Number((rev.breakEvenBuyCeiling - executableTop1Price).toFixed(2));
+
+      if (executableTop1Price <= rev.targetBuyPrice) {
+        return {
+          hasMarket: true,
+          status: 'SUPERAVIT_TOP1' as const,
+          marketRefPrice: top1Buy,
+          vwapRefPrice: vwapBuy,
+          executableTop1Price,
+          executableTop1RoiPct,
+          executableTop1ProfitVes,
+          executableTop1ProfitUsdt,
+          gapToTargetVes,
+          gapToBreakEvenVes,
+          headline: `🟢 Recompra Inmediata: Top 1 (${executableTop1Price} Bs) está ${gapToTargetVes.toFixed(2)} Bs más barato que tu meta`,
+          guidance: `Podés recomprar en Top 1 a ${executableTop1Price} Bs (+0.01 Bs) y recuperar tus ${vol} ${this.pair()} más +${executableTop1ProfitUsdt} ${this.pair()} netos (+${executableTop1RoiPct}% ROI).`,
+        };
+      }
+
+      if (executableTop1Price < rev.breakEvenBuyCeiling) {
+        return {
+          hasMarket: true,
+          status: 'PROFITABLE_QUEUE' as const,
+          marketRefPrice: top1Buy,
+          vwapRefPrice: vwapBuy,
+          executableTop1Price,
+          executableTop1RoiPct,
+          executableTop1ProfitVes,
+          executableTop1ProfitUsdt,
+          gapToTargetVes,
+          gapToBreakEvenVes,
+          headline: `🟡 Recompra Rentable: Top 1 deja +${executableTop1RoiPct}% ROI (${gapToBreakEvenVes.toFixed(2)} Bs bajo tu techo)`,
+          guidance: `Si recomprás hoy en Top 1 (${executableTop1Price} Bs) ganás +${executableTop1ProfitUsdt} ${this.pair()}. Para lograr tu meta de ${this.targetRoiPct()}% ROI, anclá tu orden de compra en ${rev.targetBuyPrice} Bs.`,
+        };
+      }
+
+      return {
+        hasMarket: true,
+        status: 'BELOW_BREAKEVEN' as const,
+        marketRefPrice: top1Buy,
+        vwapRefPrice: vwapBuy,
+        executableTop1Price,
+        executableTop1RoiPct,
+        executableTop1ProfitVes,
+        executableTop1ProfitUsdt,
+        gapToTargetVes,
+        gapToBreakEvenVes,
+        headline: `🔴 Recompra en Pérdida: Top 1 (${top1Buy} Bs) supera tu Techo Break-Even (${rev.breakEvenBuyCeiling} Bs)`,
+        guidance: `NO recompres a precio Top 1 (perderías ${executableTop1ProfitUsdt} ${this.pair()}). Fijá tu orden de compra con techo máximo en ${rev.breakEvenBuyCeiling} Bs.`,
+      };
+    }
+  });
+
+  /** Interactive 5-tier ROI Scenario Ladder for guided decision making. */
+  readonly beRoiLadder = computed(() => {
+    const tiers = [
+      { roi: 0, tag: 'Piso Defensa (BE)' },
+      { roi: 0.5, tag: 'Mínimo Golden' },
+      { roi: 1.0, tag: 'Rotación Rápida' },
+      { roi: 1.5, tag: 'Meta Estándar' },
+      { roi: 2.2, tag: 'Alta Rentabilidad' },
+    ];
+    const dir = this.beCycleDirection();
+    const ob = this.filteredOrderbook();
+    const baseVes = this.buyPrice() * this.amount();
+    const pctBankFeeVes = baseVes * (this.beBankFeePct() / 100);
+
+    return tiers.map((t) => {
+      if (dir === 'SELL_INVENTORY') {
+        const calc = calculateBreakEven({
+          buyPrice: this.buyPrice(),
+          amount: this.amount(),
+          buyFeeRate: this.buyFeePct() / 100,
+          sellFeeRate: this.sellFeePct() / 100,
+          fixedBankFeesVes: this.bankFeesVes() + pctBankFeeVes,
+          targetRoiPct: t.roi,
+        });
+        const profitUsdt =
+          calc.targetSellPrice > 0
+            ? Number((calc.projectedNetProfitVes / calc.targetSellPrice).toFixed(2))
+            : 0;
+        const isImmediate = ob.effectiveBestSell > 0 && calc.targetSellPrice <= ob.effectiveBestSell;
+        return {
+          roi: t.roi,
+          tag: t.tag,
+          priceVes: calc.targetSellPrice,
+          spreadVes: calc.targetSpread,
+          profitUsdt,
+          profitVes: calc.projectedNetProfitVes,
+          isImmediate,
+          isSelected: Math.abs(this.targetRoiPct() - t.roi) < 0.01,
+        };
+      } else {
+        const rev = this.reverseBreakEvenResult();
+        const vol = this.amount();
+        const buyFrictionMult = 1 + this.buyFeePct() / 100;
+        const priceVes =
+          vol > 0 && rev.netProceedsVes > 0
+            ? Number((rev.netProceedsVes / (vol * (1 + t.roi / 100) * buyFrictionMult)).toFixed(2))
+            : 0;
+        const refSell = this.sellPrice() > 0 ? this.sellPrice() : this.buyPrice();
+        const spreadVes = Number((refSell - priceVes).toFixed(2));
+        const profitUsdt = Number((vol * (t.roi / 100)).toFixed(2));
+        const profitVes = Number((profitUsdt * refSell).toFixed(2));
+        const isImmediate = ob.effectiveBestBuy > 0 && priceVes >= ob.effectiveBestBuy;
+        return {
+          roi: t.roi,
+          tag: t.tag,
+          priceVes,
+          spreadVes,
+          profitUsdt,
+          profitVes,
+          isImmediate,
+          isSelected: Math.abs(this.targetRoiPct() - t.roi) < 0.01,
+        };
+      }
+    });
+  });
+
+  selectRoiLadderStep(roiPct: number, applyToMonitor = false): void {
+    this.targetRoiPct.set(roiPct);
+    if (applyToMonitor) {
+      this.applyTargetSellPrice();
+    }
+  }
 
   /** Recommended ad limits (Sebastian Labastidas rule: filter micro-orders to preserve daily banking limits). */
   readonly recommendedMakerLimits = computed(() => {
@@ -1005,6 +1436,16 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   applyTargetSellPrice(): void {
+    if (this.beCycleDirection() === 'REPLENISH_BUY') {
+      const targetBuy = this.reverseBreakEvenResult().targetBuyPrice;
+      this.buyPrice.set(targetBuy);
+      this.activeMode.set('spread');
+      this.toast.success(
+        `Precio de recompra fijado en ${this.nf.format(targetBuy)} VES/${this.pair()} para +${this.targetRoiPct()}% ROI.`,
+        'Recompra Configurada',
+      );
+      return;
+    }
     const target = this.breakEvenResult().targetSellPrice;
     this.sellPrice.set(target);
     this.activeMode.set('spread');
@@ -1012,6 +1453,52 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       `Precio de venta fijado en ${this.nf.format(target)} VES/${this.pair()} para ${this.targetRoiPct()}% ROI.`,
       'Anuncio Maker Configurado',
     );
+  }
+
+  /** Jump directly to the live executable Top 1 price when it exceeds Break-Even. */
+  applyExecutableTop1FromBreakEven(): void {
+    const v = this.beMarketVerdict();
+    if (!v.hasMarket || v.executableTop1Price <= 0) return;
+    if (this.beCycleDirection() === 'SELL_INVENTORY') {
+      this.sellPrice.set(v.executableTop1Price);
+      this.sellRole.set('MAKER');
+      this.activeMode.set('spread');
+      this.toast.success(
+        `Posicionamiento Top 1 fijado en ${v.executableTop1Price} Bs (ROI real: +${v.executableTop1RoiPct}%).`,
+        'Ejecución Top 1',
+      );
+    } else {
+      this.buyPrice.set(v.executableTop1Price);
+      this.buyRole.set('MAKER');
+      this.activeMode.set('spread');
+      this.toast.success(
+        `Recompra Top 1 fijada en ${v.executableTop1Price} Bs (ROI real: +${v.executableTop1RoiPct}%).`,
+        'Ejecución Top 1',
+      );
+    }
+  }
+
+  /** 1-Click Firewall: Anchor Break-Even floor/ceiling directly into the Repricer Bot and Ad Composer. */
+  anchorBreakEvenToBots(): void {
+    if (this.beCycleDirection() === 'SELL_INVENTORY') {
+      const floor = this.breakEvenResult().breakEvenPrice;
+      if (floor <= 0) return;
+      this.repricer.breakEvenFloor.set(floor);
+      this.adComposer.breakEvenSellPrice.set(floor);
+      this.toast.success(
+        `Cortafuegos activo: Piso Break-Even (${floor} Bs) anclado en el Bot Repricer y en el Publicador de Anuncios.`,
+        'Cortafuegos de Defensa',
+      );
+    } else {
+      const ceiling = this.reverseBreakEvenResult().breakEvenBuyCeiling;
+      if (ceiling <= 0) return;
+      this.repricer.maxBuyPrice.set(ceiling);
+      this.adComposer.maxBuyPrice.set(ceiling);
+      this.toast.success(
+        `Cortafuegos activo: Techo de Recompra (${ceiling} Bs) anclado en el Bot Repricer y en el Publicador de Anuncios.`,
+        'Cortafuegos de Defensa',
+      );
+    }
   }
 
   async syncBinancePrices(): Promise<void> {

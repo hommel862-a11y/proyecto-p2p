@@ -917,20 +917,147 @@
           </p>
         }
       } @else if (activeMode() === 'breakeven') {
-        <!-- Modo Break-Even & Sizing -->
-        <div class="terminal-input-card">
+        <!-- Modo Break-Even & Defensa de Inventario Guiada -->
+        <div class="terminal-input-card be-cockpit-card">
           <div class="terminal-card-header">
             <div class="card-header-title">
               <span class="card-icon">🎯</span>
-              <span class="card-title">Base de Costo & Volumen de Venta</span>
+              <div>
+                <span class="card-title">Paso 1 · Dirección del Ciclo & Costo de Inventario</span>
+                <div class="text-muted" style="font-size: 0.72rem;">Define si estás liquidando USDT comprados o recomprando USDT con bolívares</div>
+              </div>
             </div>
             <span class="badge badge-accent font-mono">{{ pair() }}/VES</span>
           </div>
 
-          <div class="terminal-input-grid">
+          <!-- Selector Bidireccional del Ciclo P2P -->
+          <div class="be-cycle-switcher" role="group" aria-label="Dirección del ciclo de Punto de Equilibrio">
+            <button
+              type="button"
+              class="be-cycle-btn"
+              [class.active]="beCycleDirection() === 'SELL_INVENTORY'"
+              (click)="beCycleDirection.set('SELL_INVENTORY')"
+            >
+              <span class="be-cycle-icon">📈</span>
+              <div class="be-cycle-copy">
+                <strong>Liquidar Inventario (Compré → Vendo)</strong>
+                <span>Calcula tu piso mínimo de venta en Bs para no perder capital</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              class="be-cycle-btn"
+              [class.active]="beCycleDirection() === 'REPLENISH_BUY'"
+              (click)="beCycleDirection.set('REPLENISH_BUY')"
+            >
+              <span class="be-cycle-icon">🔄</span>
+              <div class="be-cycle-copy">
+                <strong>Reposición Inversa (Vendí → Recompro)</strong>
+                <span>Calcula tu techo máximo de recompra en Bs para acumular más USDT</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Hidratación Inteligente: Bitácora FIFO + Calculadora WAC Multi-Lote -->
+          <div class="be-hydration-strip">
+            <div class="be-fifo-pill">
+              <div class="be-fifo-info">
+                <span class="be-fifo-badge">📦 Inventario FIFO</span>
+                @if (fifoInventorySnapshot(); as fifo) {
+                  <span class="font-mono" style="font-size: 0.76rem; color: var(--text);">
+                    <strong>{{ fifo.openAmountUsdt | num }} USDT</strong> a
+                    <strong style="color: var(--gold);">{{ fifo.avgPriceVes | num }} Bs</strong>
+                    ({{ fifo.openLotsCount }} lotes abiertos)
+                  </span>
+                } @else {
+                  <span class="text-muted" style="font-size: 0.74rem;">Sin lotes abiertos en Bitácora — usa el calculador WAC o ingresa manual</span>
+                }
+              </div>
+              <div class="be-hydration-actions">
+                @if (fifoInventorySnapshot()) {
+                  <button type="button" class="be-mini-btn btn-accent" (click)="loadFifoInventoryIntoBreakEven()">
+                    ⚡ Cargar FIFO Real
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="be-mini-btn"
+                  [class.active]="beWacExpanded()"
+                  (click)="beWacExpanded.set(!beWacExpanded())"
+                >
+                  🧮 {{ beWacExpanded() ? 'Ocultar WAC Multi-Lote' : 'Promediar Lotes (WAC)' }}
+                </button>
+              </div>
+            </div>
+
+            @if (beWacExpanded()) {
+              <div class="be-wac-drawer">
+                <div class="be-wac-header">
+                  <div>
+                    <strong>Calculadora de Costo Promedio Ponderado (WAC)</strong>
+                    <span class="text-muted" style="display: block; font-size: 0.72rem;">
+                      Si compraste o vendiste en varios anuncios a distintas tasas, suma aquí tus lotes para hallar tu precio base exacto.
+                    </span>
+                  </div>
+                  <button type="button" class="be-mini-btn" (click)="addWacLot()">+ Añadir Lote</button>
+                </div>
+
+                <div class="be-wac-lots-list">
+                  @for (lot of beWacLots(); track lot.id; let idx = $index) {
+                    <div class="be-wac-lot-row">
+                      <span class="be-wac-lot-idx font-mono">#{{ idx + 1 }}</span>
+                      <div class="be-wac-field">
+                        <label>Volumen ({{ pair() }})</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          class="terminal-input font-mono"
+                          [value]="lot.amountUsdt"
+                          (input)="updateWacLot(lot.id, 'amountUsdt', +$any($event.target).value)"
+                        />
+                      </div>
+                      <span class="be-wac-mult">×</span>
+                      <div class="be-wac-field">
+                        <label>Tasa (VES)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          class="terminal-input font-mono"
+                          [value]="lot.priceVes"
+                          (input)="updateWacLot(lot.id, 'priceVes', +$any($event.target).value)"
+                        />
+                      </div>
+                      <div class="be-wac-subtotal font-mono">
+                        = {{ (lot.amountUsdt * lot.priceVes) | ves }}
+                      </div>
+                      @if (beWacLots().length > 1) {
+                        <button type="button" class="be-wac-del-btn" (click)="removeWacLot(lot.id)" title="Eliminar lote">✕</button>
+                      }
+                    </div>
+                  }
+                </div>
+
+                <div class="be-wac-footer">
+                  <div class="be-wac-summary font-mono">
+                    <span>Total: <strong>{{ beWacSummary().totalUsdt | num }} {{ pair() }}</strong></span>
+                    <span>•</span>
+                    <span>Costo Ponderado WAC: <strong style="color: var(--gold);">{{ beWacSummary().wacPrice | num }} Bs/{{ pair() }}</strong></span>
+                  </div>
+                  <button type="button" class="be-mini-btn btn-gold" (click)="applyWacToBreakEven()">
+                    ⚡ Aplicar WAC al Punto de Equilibrio
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="terminal-input-grid" style="margin-top: 12px;">
             <div class="terminal-field">
               <label class="terminal-label" for="be-pair-select">
                 <span>Par de Comercio</span>
+                <span class="terminal-subtext">Activo cotizado</span>
               </label>
               <div class="input-control-wrap">
                 <select id="be-pair-select" class="terminal-select" [value]="pair()" (change)="setPair($any($event.target).value)">
@@ -940,30 +1067,52 @@
               </div>
             </div>
 
-            <div class="terminal-field">
-              <label class="terminal-label" for="be-buy-price">
-                <span>Precio de Compra Base</span>
-                <span class="terminal-subtext">Costo de inventario</span>
-              </label>
-              <div class="input-control-wrap">
-                <span class="input-prefix">VES</span>
-                <input
-                  id="be-buy-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="terminal-input"
-                  [value]="buyPrice()"
-                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
-                  placeholder="0.00"
-                />
+            @if (beCycleDirection() === 'SELL_INVENTORY') {
+              <div class="terminal-field">
+                <label class="terminal-label" for="be-buy-price">
+                  <span>Precio de Compra Base</span>
+                  <span class="terminal-subtext">Tasa a la que compraste</span>
+                </label>
+                <div class="input-control-wrap">
+                  <span class="input-prefix">VES</span>
+                  <input
+                    id="be-buy-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="terminal-input font-mono font-bold"
+                    [value]="buyPrice()"
+                    (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
-            </div>
+            } @else {
+              <div class="terminal-field">
+                <label class="terminal-label" for="be-executed-sell-price">
+                  <span>Precio al que Vendiste</span>
+                  <span class="terminal-subtext">Tasa de liquidación ejecutada</span>
+                </label>
+                <div class="input-control-wrap">
+                  <span class="input-prefix">VES</span>
+                  <input
+                    id="be-executed-sell-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="terminal-input font-mono font-bold"
+                    [value]="sellPrice()"
+                    (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            }
 
             <div class="terminal-field">
               <label class="terminal-label" for="be-amount">
-                <span>Volumen a Vender</span>
-                <span class="terminal-subtext">Inventario asignado</span>
+                <span>{{ beCycleDirection() === 'SELL_INVENTORY' ? 'Volumen a Vender' : 'Volumen Vendido a Reponer' }}</span>
+                <span class="terminal-subtext">Capital del lote</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -971,7 +1120,7 @@
                   type="number"
                   min="0"
                   step="0.000001"
-                  class="terminal-input font-bold"
+                  class="terminal-input font-mono font-bold"
                   [value]="amount()"
                   (input)="amount.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -982,20 +1131,81 @@
           </div>
         </div>
 
-        <div class="terminal-input-card">
+        <div class="terminal-input-card be-cockpit-card">
           <div class="terminal-card-header">
             <div class="card-header-title">
               <span class="card-icon">📊</span>
-              <span class="card-title">Comisiones, Gastos & ROI Objetivo</span>
+              <div>
+                <span class="card-title">Paso 2 · Estructura de Fricción (Binance VIP + Banca) & Meta ROI</span>
+                <div class="text-muted" style="font-size: 0.72rem;">Sincroniza tus roles Taker/Maker y el peaje bancario real para blindar tu margen</div>
+              </div>
             </div>
-            <span class="badge badge-gold font-mono">Meta: {{ targetRoiPct() }}% ROI</span>
+            <span class="badge badge-gold font-mono">Meta: +{{ targetRoiPct() }}% Neto</span>
           </div>
 
-          <div class="terminal-input-grid">
+          <!-- Sincronizador 1-Clic de Roles VIP Binance -->
+          <div class="be-preset-group">
+            <span class="be-preset-label">⚡ Sincronizar Tarifa VIP ({{ selectedMerchantLevel() }}):</span>
+            <div class="be-preset-pills">
+              <button type="button" class="be-preset-chip" (click)="syncBeFeesFromVipRoles('TAKER', 'MAKER')" title="Compra rápida como Taker (0%) y venta por anuncio como Maker">
+                Taker 0% → Maker ({{ makerFeePerLegPct() }}%)
+              </button>
+              <button type="button" class="be-preset-chip" (click)="syncBeFeesFromVipRoles('MAKER', 'MAKER')" title="Compra por anuncio Maker y venta por anuncio Maker">
+                Doble Maker ({{ makerFeePerLegPct() }}% + {{ makerFeePerLegPct() }}%)
+              </button>
+              <button type="button" class="be-preset-chip" (click)="syncBeFeesFromVipRoles('MAKER', 'TAKER')" title="Compra por anuncio Maker y salida rápida como Taker (0%)">
+                Maker ({{ makerFeePerLegPct() }}%) → Taker 0%
+              </button>
+              <button type="button" class="be-preset-chip" (click)="syncBeFeesFromVipRoles('TAKER', 'TAKER')" title="Ambas puntas ejecutadas como Taker (0% comisión)">
+                Doble Taker (0% + 0%)
+              </button>
+            </div>
+          </div>
+
+          <!-- Presets de Fricción Bancaria Venezolana -->
+          <div class="be-preset-group" style="margin-top: 8px;">
+            <span class="be-preset-label">🏦 Peaje Bancario / Pasarela (%):</span>
+            <div class="be-preset-pills">
+              <button
+                type="button"
+                class="be-preset-chip"
+                [class.active]="beBankFeePct() === 0"
+                (click)="applyBankFrictionPreset('SAME_BANK')"
+              >
+                Mismo Banco (0%)
+              </button>
+              <button
+                type="button"
+                class="be-preset-chip"
+                [class.active]="beBankFeePct() === 0.3"
+                (click)="applyBankFrictionPreset('PAGO_MOVIL_INTER')"
+              >
+                Pago Móvil Interbancario (0.30%)
+              </button>
+              <button
+                type="button"
+                class="be-preset-chip"
+                [class.active]="beBankFeePct() === 0.5"
+                (click)="applyBankFrictionPreset('WALLET_GATEWAY')"
+              >
+                Pasarela / Wally / Zinli (0.50%)
+              </button>
+              <button
+                type="button"
+                class="be-preset-chip"
+                [class.active]="beBankFeePct() === 3.0"
+                (click)="applyBankFrictionPreset('IGTF')"
+              >
+                IGTF Divisas (3.00%)
+              </button>
+            </div>
+          </div>
+
+          <div class="terminal-input-grid" style="margin-top: 10px;">
             <div class="terminal-field">
               <label class="terminal-label" for="be-buy-fee">
-                <span>Comisión de Compra (%)</span>
-                <span class="terminal-subtext">Taker/Maker entrada</span>
+                <span>Comisión Compra (%)</span>
+                <span class="terminal-subtext">Punta de entrada</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -1003,8 +1213,8 @@
                   type="number"
                   min="0"
                   max="10"
-                  step="0.01"
-                  class="terminal-input"
+                  step="0.005"
+                  class="terminal-input font-mono"
                   [value]="buyFeePct()"
                   (input)="buyFeePct.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -1015,8 +1225,8 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="be-sell-fee">
-                <span>Comisión de Venta (Maker %)</span>
-                <span class="terminal-subtext">Tarifa por anuncio</span>
+                <span>Comisión Venta (%)</span>
+                <span class="terminal-subtext">Punta de salida</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -1024,8 +1234,8 @@
                   type="number"
                   min="0"
                   max="10"
-                  step="0.01"
-                  class="terminal-input"
+                  step="0.005"
+                  class="terminal-input font-mono"
                   [value]="sellFeePct()"
                   (input)="sellFeePct.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.25"
@@ -1035,9 +1245,30 @@
             </div>
 
             <div class="terminal-field">
+              <label class="terminal-label" for="be-bank-fee-pct">
+                <span>Peaje Bancario (%)</span>
+                <span class="terminal-subtext">Pago Móvil / IGTF %</span>
+              </label>
+              <div class="input-control-wrap">
+                <input
+                  id="be-bank-fee-pct"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.05"
+                  class="terminal-input font-mono"
+                  [value]="beBankFeePct()"
+                  (input)="beBankFeePct.set(clampMoney(+$any($event.target).value))"
+                  placeholder="0.00"
+                />
+                <span class="input-suffix">%</span>
+              </div>
+            </div>
+
+            <div class="terminal-field">
               <label class="terminal-label" for="be-bank-fees">
-                <span>Gastos Bancarios / IGTF</span>
-                <span class="terminal-subtext">Comisiones fijas</span>
+                <span>Gasto Fijo Extra (Bs)</span>
+                <span class="terminal-subtext">Cargo fijo en VES</span>
               </label>
               <div class="input-control-wrap">
                 <span class="input-prefix">Bs</span>
@@ -1046,7 +1277,7 @@
                   type="number"
                   min="0"
                   step="0.01"
-                  class="terminal-input"
+                  class="terminal-input font-mono"
                   [value]="bankFeesVes()"
                   (input)="bankFeesVes.set(clampMoney(+$any($event.target).value))"
                   placeholder="0.00"
@@ -1056,8 +1287,8 @@
 
             <div class="terminal-field">
               <label class="terminal-label" for="be-target-roi">
-                <span>ROI Objetivo Deseado (%)</span>
-                <span class="terminal-subtext">Ganancia neta esperada</span>
+                <span>ROI Neto Objetivo (%)</span>
+                <span class="terminal-subtext">Margen libre deseado</span>
               </label>
               <div class="input-control-wrap">
                 <input
@@ -1065,12 +1296,24 @@
                   type="number"
                   min="0"
                   step="0.1"
-                  class="terminal-input highlight-gold font-bold"
+                  class="terminal-input highlight-gold font-mono font-bold"
                   [value]="targetRoiPct()"
                   (input)="targetRoiPct.set(clampMoney(+$any($event.target).value))"
                   placeholder="1.0"
                 />
                 <span class="input-suffix">%</span>
+              </div>
+              <div class="be-roi-quick-chips">
+                @for (roiPreset of [0.5, 0.8, 1.2, 1.5, 2.2]; track roiPreset) {
+                  <button
+                    type="button"
+                    class="be-roi-chip font-mono"
+                    [class.active]="targetRoiPct() === roiPreset"
+                    (click)="targetRoiPct.set(roiPreset)"
+                  >
+                    {{ roiPreset }}%
+                  </button>
+                }
               </div>
             </div>
           </div>
@@ -1450,45 +1693,200 @@
             </div>
           }
         } @else {
-          <!-- Resultado de Break-Even & Fijación de Anuncio -->
-          <div class="arbitrage-result-card">
-            <span class="section-eyebrow">Análisis de Break-Even & Fijación de Anuncio</span>
-            <div class="out" style="margin: 12px 0 0; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+          <!-- Resultado de Break-Even Guiado, Termómetro de Mercado & Escalera ROI -->
+          <div class="arbitrage-result-card be-execution-hero">
+            <div class="be-hero-top-bar">
               <div>
-                <dt>Costo Total (VES)</dt>
-                <dd>{{ breakEvenResult().totalCostVes | ves }}</dd>
+                <span class="section-eyebrow" style="margin: 0;">
+                  {{ beCycleDirection() === 'SELL_INVENTORY' ? '🛡️ Defensa de Inventario & Fijación de Venta' : '🔄 Techo de Recompra & Acumulación USDT' }}
+                </span>
+                <div class="text-muted" style="font-size: 0.75rem; margin-top: 2px;">
+                  Paso 3 · Cruza tu punto de equilibrio contra el libro L2 de Binance en vivo antes de publicar
+                </div>
               </div>
-              <div>
-                <dt>Break-Even Mínimo</dt>
-                <dd class="positive font-mono">{{ breakEvenResult().breakEvenPrice | num }} VES/{{ pair() }}</dd>
-              </div>
-              <div>
-                <dt>Spread Mínimo</dt>
-                <dd class="font-mono">{{ breakEvenResult().breakEvenSpread | num }} VES</dd>
-              </div>
-              <div>
-                <dt>Colchón de Seguridad</dt>
-                <dd class="font-mono">{{ breakEvenResult().safetyMarginVes | num }} VES</dd>
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <span class="badge badge-secondary font-mono" style="font-size: 0.72rem;">
+                  Fricción Total: {{ (buyFeePct() + sellFeePct() + beBankFeePct()) | num }}%
+                </span>
+                <span class="badge badge-gold font-mono" style="font-size: 0.72rem;">
+                  Volumen: {{ amount() | num }} {{ pair() }}
+                </span>
               </div>
             </div>
 
-            <div class="profit-highlight-tile">
-              <div>
-                <div class="profit-title">Precio Sugerido Anuncio ({{ targetRoiPct() }}% ROI)</div>
-                <div style="font-size: 0.8rem; color: var(--muted);">Ganancia proyectada: {{ breakEvenResult().projectedNetProfitVes | ves }}</div>
+            <!-- Tarjetas Bimonetarias Principales: Piso/Techo Break-Even vs Precio Meta -->
+            @if (beCycleDirection() === 'SELL_INVENTORY') {
+              <div class="be-dual-hero-grid">
+                <div class="be-hero-kpi-box be-floor-box">
+                  <div class="be-kpi-eyebrow">🛡️ PISO MÍNIMO DE DEFENSA (PNL = $0)</div>
+                  <div class="be-kpi-price font-mono">
+                    {{ breakEvenResult().breakEvenPrice | num }} <small>Bs/{{ pair() }}</small>
+                  </div>
+                  <div class="be-kpi-subrow font-mono">
+                    <span>Spread Mín: +{{ breakEvenResult().breakEvenSpread | num }} Bs</span>
+                    <span>•</span>
+                    <span>Costo Total: {{ breakEvenResult().totalCostVes | ves }}</span>
+                  </div>
+                </div>
+
+                <div class="be-hero-kpi-box be-target-box">
+                  <div class="be-kpi-eyebrow">🎯 PRECIO META SUGERIDO (+{{ targetRoiPct() }}% ROI)</div>
+                  <div class="be-kpi-price gold font-mono">
+                    {{ breakEvenResult().targetSellPrice | num }} <small>Bs/{{ pair() }}</small>
+                  </div>
+                  <div class="be-kpi-subrow font-mono">
+                    <span class="positive">+{{ beNetProfitUsdt() | num }} {{ pair() }}</span>
+                    <span>•</span>
+                    <span class="positive">+{{ breakEvenResult().projectedNetProfitVes | ves }}</span>
+                  </div>
+                </div>
               </div>
-              <span class="profit-amount">
-                {{ breakEvenResult().targetSellPrice | num }} Bs
-              </span>
+            } @else {
+              <div class="be-dual-hero-grid">
+                <div class="be-hero-kpi-box be-floor-box">
+                  <div class="be-kpi-eyebrow">🛡️ TECHO MÁXIMO DE RECOMPRA (PNL = 0 USDT)</div>
+                  <div class="be-kpi-price font-mono">
+                    {{ reverseBreakEvenResult().breakEvenBuyCeiling | num }} <small>Bs/{{ pair() }}</small>
+                  </div>
+                  <div class="be-kpi-subrow font-mono">
+                    <span>Descuento Mín: -{{ reverseBreakEvenResult().breakEvenSpread | num }} Bs</span>
+                    <span>•</span>
+                    <span>Liquidez Neta: {{ reverseBreakEvenResult().netProceedsVes | ves }}</span>
+                  </div>
+                </div>
+
+                <div class="be-hero-kpi-box be-target-box">
+                  <div class="be-kpi-eyebrow">🎯 RECOMPRA META (+{{ targetRoiPct() }}% ACUMULACIÓN)</div>
+                  <div class="be-kpi-price gold font-mono">
+                    {{ reverseBreakEvenResult().targetBuyPrice | num }} <small>Bs/{{ pair() }}</small>
+                  </div>
+                  <div class="be-kpi-subrow font-mono">
+                    <span class="positive">+{{ reverseBreakEvenResult().projectedNetProfitUsdt | num }} {{ pair() }} extra</span>
+                    <span>•</span>
+                    <span class="positive">+{{ reverseBreakEvenResult().projectedNetProfitVes | ves }}</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            <!-- Termómetro de Ejecutabilidad en Vivo vs Libro L2 de Binance -->
+            @if (beMarketVerdict(); as mv) {
+              <div
+                class="be-market-thermometer"
+                [class.status-superavit]="mv.status === 'SUPERAVIT_TOP1'"
+                [class.status-queue]="mv.status === 'PROFITABLE_QUEUE'"
+                [class.status-danger]="mv.status === 'BELOW_BREAKEVEN'"
+              >
+                <div class="be-thermo-header">
+                  <div class="be-thermo-headline">
+                    <strong>{{ mv.headline }}</strong>
+                    <span class="be-thermo-sub">{{ mv.guidance }}</span>
+                  </div>
+                  @if (mv.executableTop1Price > 0) {
+                    <div class="be-thermo-live-pill font-mono">
+                      <span>Si ejecutas en Top 1 ({{ mv.executableTop1Price | num }} Bs):</span>
+                      <strong [class.positive]="mv.executableTop1RoiPct > 0" [class.negative]="mv.executableTop1RoiPct < 0">
+                        {{ mv.executableTop1RoiPct > 0 ? '+' : '' }}{{ mv.executableTop1RoiPct | num }}%
+                        ({{ mv.executableTop1ProfitUsdt > 0 ? '+' : '' }}{{ mv.executableTop1ProfitUsdt | num }} {{ pair() }} /
+                        {{ mv.executableTop1ProfitVes > 0 ? '+' : '' }}{{ mv.executableTop1ProfitVes | ves }})
+                      </strong>
+                    </div>
+                  }
+                </div>
+
+                <!-- Corredor Visual de Precios -->
+                <div class="be-price-corridor font-mono">
+                  <div class="corridor-node">
+                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '1. Costo Base' : '1. Venta Ejecutada' }}</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? buyPrice() : sellPrice()) | num }} Bs</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-floor">
+                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '2. Piso Break-Even' : '2. Techo Recompra' }}</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().breakEvenPrice : reverseBreakEvenResult().breakEvenBuyCeiling) | num }} Bs</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-market">
+                    <span class="node-label">3. Top 1 Binance</span>
+                    <span class="node-val">{{ mv.marketRefPrice > 0 ? (mv.marketRefPrice | num) + ' Bs' : 'Sin datos' }}</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-target">
+                    <span class="node-label">4. Meta ({{ targetRoiPct() }}%)</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().targetSellPrice : reverseBreakEvenResult().targetBuyPrice) | num }} Bs</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            <!-- Escalera Interactiva de Escenarios ROI (5 Escalones) -->
+            <div class="be-ladder-section">
+              <div class="be-ladder-header">
+                <span class="be-ladder-title">🪜 Escalera Táctica de Escenarios ROI (Haz clic en una fila para fijar precio)</span>
+                <span class="text-muted" style="font-size: 0.72rem;">Compara rotación inmediata vs ganancia por espera en cola</span>
+              </div>
+              <div class="be-ladder-table-wrap">
+                <table class="be-ladder-table font-mono">
+                  <thead>
+                    <tr>
+                      <th>Escenario</th>
+                      <th>ROI Neto</th>
+                      <th>{{ beCycleDirection() === 'SELL_INVENTORY' ? 'Precio Venta' : 'Precio Recompra' }}</th>
+                      <th>Brecha Base</th>
+                      <th>Ganancia ({{ pair() }})</th>
+                      <th>Ganancia (VES)</th>
+                      <th>Posición en Libro</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (step of beRoiLadder(); track step.roi) {
+                      <tr
+                        class="be-ladder-row"
+                        [class.row-active]="step.isSelected"
+                        [class.row-executable]="step.isImmediate && step.roi > 0"
+                        (click)="selectRoiLadderStep(step.roi)"
+                      >
+                        <td class="font-sans"><strong>{{ step.tag }}</strong></td>
+                        <td>
+                          <span class="be-roi-pill" [class.pill-zero]="step.roi === 0" [class.pill-pos]="step.roi > 0">
+                            +{{ step.roi }}%
+                          </span>
+                        </td>
+                        <td class="be-ladder-price">{{ step.priceVes | num }} Bs</td>
+                        <td>{{ beCycleDirection() === 'SELL_INVENTORY' ? '+' : '-' }}{{ step.spreadVes | num }} Bs</td>
+                        <td [class.positive]="step.profitUsdt > 0">+{{ step.profitUsdt | num }} {{ pair() }}</td>
+                        <td [class.positive]="step.profitVes > 0">+{{ step.profitVes | ves }}</td>
+                        <td>
+                          <span class="be-exec-badge" [class.exec-now]="step.isImmediate" [class.exec-queue]="!step.isImmediate">
+                            {{ step.isImmediate ? '⚡ Top 1 Inmediato' : '⏳ En Cola' }}
+                          </span>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <div class="actions-bar" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <!-- Barra de Acción 1-Clic y Blindaje de Bots -->
+            <div class="actions-bar be-actions-bar">
               <button type="button" class="btn btn-primary" (click)="applyTargetSellPrice()">
-                Fijar Precio de Venta en el Monitor
+                ⚡ {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Fijar Precio Meta en Monitor' : 'Fijar Recompra Meta en Monitor' }}
               </button>
-              <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Iniciar Venta con Cronómetro
+
+              @if (beMarketVerdict().executableTop1RoiPct > 0) {
+                <button type="button" class="btn btn-gold-action" (click)="applyExecutableTop1FromBreakEven()">
+                  🔥 Salir en Top 1 Rentable ({{ beMarketVerdict().executableTop1Price | num }} Bs · +{{ beMarketVerdict().executableTop1RoiPct | num }}%)
+                </button>
+              }
+
+              <button type="button" class="btn btn-secondary" (click)="anchorBreakEvenToBots()" title="Sincroniza este piso/techo con el Bot Repricer y el Publicador de Anuncios">
+                🛡️ Blindar Piso en Bot Repricer & Publicador
+              </button>
+
+              <button type="button" class="btn btn-secondary" (click)="startDirectTrade(beCycleDirection() === 'SELL_INVENTORY' ? 'sell' : 'buy')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Iniciar Venta con Cronómetro' : 'Iniciar Recompra con Cronómetro' }}
               </button>
             </div>
           </div>
