@@ -616,13 +616,64 @@
               </table>
             </div>
 
-            <!-- Puentes de Acción 1-Clic hacia los otros módulos -->
-            <div class="calc-bridge-actions">
-              <button type="button" class="btn btn-primary" (click)="bridgeCycleToReverse()">
-                🎯 Llevar al Planificador Reverso 360°
+            <!-- Simulador de Poder de Compra BCV vs P2P & Fraccionador Anti-SUDEBAN -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px;">
+              @if (bcvPurchasingPowerBridge(); as bcv) {
+                <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <strong style="font-size: 0.76rem; color: #38bdf8;">🏛️ Poder de Compra BCV vs P2P</strong>
+                    <span class="badge font-mono" style="font-size: 0.66rem; background: rgba(56,189,248,0.15); color: #7dd3fc;">
+                      Brecha: +{{ bcv.gapPct }}%
+                    </span>
+                  </div>
+                  <div class="font-mono" style="font-size: 0.72rem; color: #cbd5e1; line-height: 1.45;">
+                    <div>• Tasa BCV: <strong>{{ bcv.bcvRate | num }} Bs</strong> | Venta P2P: <strong>{{ bcv.p2pSellRate | num }} Bs</strong></div>
+                    <div>• Ganancia limpia equivale a: <strong class="positive">${{ bcv.bcvEquivalentProfitUsd | num }} USD BCV</strong></div>
+                    <div>• Poder de pago formal total: <strong style="color: var(--gold);">${{ bcv.bcvTotalPurchasingPowerUsd | num }} USD BCV</strong> (+${{ bcv.purchasingPowerBonusUsd | num }} extra)</div>
+                  </div>
+                </div>
+              }
+
+              @if (antiSudebanSplitPlan(); as split) {
+                <div style="background: rgba(216, 180, 92, 0.06); border: 1px solid rgba(216, 180, 92, 0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <strong style="font-size: 0.76rem; color: var(--gold);">🛡️ Fraccionador Anti-SUDEBAN</strong>
+                    <span class="badge font-mono" style="font-size: 0.66rem; background: rgba(216,180,92,0.15); color: var(--gold);">
+                      ~{{ split.estimatedOrdersPerCycle }} órdenes/vuelta
+                    </span>
+                  </div>
+                  <div class="font-mono" style="font-size: 0.72rem; color: #cbd5e1; line-height: 1.45;">
+                    <div>• Límites anuncio sugeridos: <strong>{{ split.minTicketVes | num }} - {{ split.maxTicketVes | num }} Bs</strong></div>
+                    <div>• Ticket por orden: <strong>${{ split.minTicketUsdt }} a ${{ split.maxTicketUsdt }} USDT</strong> (anti-pitufeo)</div>
+                    @if (split.bankAllocations.length > 0) {
+                      <div style="color: #94a3b8; margin-top: 2px;">
+                        • Ruteo:
+                        @for (ba of split.bankAllocations; track ba.bankName + ba.alias) {
+                          <span style="margin-right: 6px; color: #e2e8f0;">{{ ba.bankName }}: {{ ba.assignedVes | num }} Bs</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+
+            <!-- Puentes de Acción 1-Clic hacia el Estudio de Anuncios, Bitácora y Módulos -->
+            <div class="calc-bridge-actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" class="btn btn-primary" (click)="sendCycleToAdStudio('SELL')">
+                📣 Armar Anuncio Venta en Estudio P2P ({{ sellPrice() | num }} Bs)
+              </button>
+              <button type="button" class="btn btn-secondary" (click)="sendCycleToAdStudio('BUY')">
+                📣 Armar Anuncio Compra ({{ buyPrice() | num }} Bs)
+              </button>
+              <button type="button" class="btn btn-secondary" (click)="launchCycleInOperationLog('sell')">
+                ⏱️ Lanzar Ciclo en Bitácora
+              </button>
+              <button type="button" class="btn btn-secondary" (click)="bridgeCycleToReverse()">
+                🎯 Planificador Reverso 360°
               </button>
               <button type="button" class="btn btn-secondary" (click)="bridgeCycleToCompound()">
-                📈 Proyectar Interés Compuesto con este Margen
+                📈 Proyectar Interés Compuesto
               </button>
             </div>
           </div>
@@ -1030,6 +1081,24 @@
                   </table>
                 </div>
               </div>
+
+              <!-- Puentes de Ejecución 1-Clic desde Planificador Reverso -->
+              <div class="calc-bridge-actions" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  (click)="sendCycleToAdStudio('SELL', solver.requiredSellPriceVes)"
+                >
+                  📣 Publicar Anuncio a Precio Meta en Estudio P2P ({{ solver.requiredSellPriceVes | num }} Bs)
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  (click)="launchCycleInOperationLog('sell', solver.requiredSellPriceVes)"
+                >
+                  ⏱️ Lanzar Vuelta Meta en Bitácora con Cronómetro
+                </button>
+              </div>
             </div>
           }
         }
@@ -1211,9 +1280,19 @@
                 <span class="stat-label" style="display: block; font-size: 0.72rem; color: var(--muted);">Capital Operativo en Trabajo</span>
                 <span class="stat-value font-mono" style="font-size: 1.15rem; font-weight: 800;">{{ comp.finalWorkingCapitalUsdt | usdt }}</span>
               </div>
-              <div class="stat-tile out" style="padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid var(--gold);">
-                <span class="stat-label" style="display: block; font-size: 0.72rem; color: var(--muted);">Total Cosechado en Frío (Resguardado)</span>
-                <span class="stat-value font-mono" style="font-size: 1.15rem; font-weight: 800; color: var(--gold-strong);">{{ comp.totalHarvestedUsdt | usdt }}</span>
+              <div class="stat-tile out" style="padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 3px solid var(--gold); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div>
+                  <span class="stat-label" style="display: block; font-size: 0.72rem; color: var(--muted);">Total Cosechado en Frío (Resguardado)</span>
+                  <span class="stat-value font-mono" style="font-size: 1.15rem; font-weight: 800; color: var(--gold-strong);">{{ comp.totalHarvestedUsdt | usdt }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="preset-mini-btn active"
+                  (click)="harvestTodayToColdVault()"
+                  title="Transfiere la cosecha diaria de Binance USDT a Bóveda Fría / Caja Fuerte en Finanzas 360°"
+                >
+                  ❄️ Cosechar Hoy a Bóveda Fría
+                </button>
               </div>
             </div>
 

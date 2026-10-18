@@ -145,4 +145,33 @@ describe('ad-auto-composer domain engine', () => {
     expect(draft.guardrails.bankCapacitySafe).toBe(false);
     expect(draft.guardrails.flags).toContain('NO_ACTIVE_BANK_CAPACITY');
   });
+
+  it('allocates full bank cupo (>50,000 VES) and computes L2 queue rank & customPriceVes', () => {
+    const highCapacityAccounts: BankAccountProfile[] = [
+      {
+        bankName: 'Banesco',
+        dailyLimitVes: 1_500_000,
+        currentVolumeVes: 200_000,
+        status: 'ACTIVE',
+        isPagoMovil: true,
+      },
+    ];
+
+    const draft = composeAdDraft({
+      side: 'SELL',
+      marketDepth: mockDepth,
+      activeBankAccounts: highCapacityAccounts,
+      customPriceVes: 80.5, // Behind 79.80 Top 1 sell offer
+      targetAssetAmountUsdt: 1000, // 80,500 VES (> old 50,000 cap)
+      makerFeePct: 0.25,
+    });
+
+    expect(draft.price).toBe(80.5);
+    expect(draft.maxLimitVes).toBe(80500);
+    expect(draft.totalAssetAmountUsdt).toBe(1000);
+    expect(draft.queueRank).toBe(2);
+    expect(draft.competitorsAheadCount).toBe(1);
+    expect(draft.volumeAheadUsdt).toBeGreaterThan(0);
+    expect(draft.netSpreadAfterFeePct).toBeLessThan(draft.expectedNetSpreadPct);
+  });
 });

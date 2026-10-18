@@ -180,6 +180,25 @@ export const BUILT_IN_TEMPLATES: Omit<
       timeWindow: { start: '00:00', end: '23:59' },
     },
   },
+  {
+    name: 'Venta Rápida High Volume',
+    type: 'SELL',
+    status: 'active',
+    title: '🚀 VENTA EXPRESS USDT | {{precio}} Bs | {{banco}} | 24/7',
+    terms:
+      '⚡ VENTA EXPRESS - ALTO VOLUMEN\n\n💰 Límites: {{limiteMin}} - {{limiteMax}} Bs\n🏦 {{banco}} | {{metodoPago}}\n⏱️ Liberación < 5 min tras comprobante en línea\n\n📋 REGLAS:\n✅ Titular directo únicamente (anti-triangulación)\n✅ Adjuntar captura legible con referencia\n❌ Sin palabras cripto en el concepto bancario\n\n🤝 {{usuario}} - Liquidez verificada',
+    autoReply:
+      '⚡ VENTA RÁPIDA: Transfiere por {{metodoPago}} a {{banco}} y envía captura con referencia. Libero tus USDT en < 5 min 🚀',
+    variables: DEFAULT_AD_VARIABLES.filter((v) => v.key !== 'spread'),
+    tags: ['venta', 'high-volume', 'express', '24/7'],
+    metadata: {
+      minSpread: 0.2,
+      maxSpread: 2,
+      preferredBanks: ['Banesco', 'Mercantil', 'Bancamiga', 'Provincial', 'BDV', 'Banplus'],
+      paymentMethods: ['Pago Móvil', 'Transferencia'],
+      timeWindow: { start: '00:00', end: '23:59' },
+    },
+  },
 ];
 
 export function renderTemplate(template: string, data: Partial<AdPreviewData>): string {

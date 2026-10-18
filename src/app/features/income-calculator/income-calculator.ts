@@ -39,9 +39,13 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
 import { DecimalPipe, DatePipe } from '@angular/common';
+import { Router } from '@angular/router';
 import { StorageService } from '../../core/storage';
 import { McpService } from '../../core/mcp.service';
 import { Finance360Service } from '../../core/finance-360.service';
+import { AdComposerService } from '../../core/ad-composer.service';
+import { TradeTimerService } from '../../core/trade-timer.service';
+import { CotizaveService } from '../../core/cotizave.service';
 import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
 
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic' | 'mcp-portfolio';
@@ -158,12 +162,16 @@ function sanitizeCalcUi(raw: CalcUiState | null): CalcUiState | null {
   styleUrl: './income-calculator.scss',
 })
 export class IncomeCalculator {
+  private readonly router = inject(Router);
   readonly binance = inject(BinanceP2pService);
   readonly accounts = inject(AccountsService);
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
   readonly mcpService = inject(McpService);
   readonly finance360 = inject(Finance360Service);
+  readonly adComposer = inject(AdComposerService);
+  private readonly tradeTimer = inject(TradeTimerService);
+  readonly cotizave = inject(CotizaveService);
 
   private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(
     this.storage.get<CalcUiState>(CALC_UI_KEY),
@@ -1171,6 +1179,159 @@ export class IncomeCalculator {
     this.sellPrice.set(solver.requiredSellPriceVes);
     this.toast.success(
       `Precio de venta fijado en ${solver.requiredSellPriceVes.toFixed(2)} Bs (+${solver.requiredNetRoiPerCyclePct}% neto/vuelta).`,
+    );
+  }
+
+  // ─── Fraccionador Inteligente Anti-SUDEBAN & Poder de Compra BCV ───
+  readonly antiSudebanSplitPlan = computed(() => {
+    const cap =
+      this.activeMode() === 'reverse' ? this.availableCapitalGoal() : this.capitalUsdt();
+    const sell =
+      this.activeMode() === 'reverse'
+        ? (this.reverseSolverMatrix()?.requiredSellPriceVes ?? this.sellPrice())
+        : this.sellPrice();
+    if (cap <= 0 || sell <= 0) return null;
+
+    const totalCycleVes = Number((cap * sell).toFixed(2));
+    const minTicketUsdt = Math.max(25, Math.min(100, Math.round(cap * 0.1)));
+    const maxTicketUsdt = Math.max(minTicketUsdt, Math.min(cap, 450));
+    const minTicketVes = Number((minTicketUsdt * sell).toFixed(2));
+    const maxTicketVes = Number((maxTicketUsdt * sell).toFixed(2));
+    const estimatedOrdersPerCycle = Math.max(1, Math.ceil(cap / maxTicketUsdt));
+
+    const activeUsages = this.accounts
+      .usages()
+      .filter((u) => u.account.status !== 'DISABLED' && u.remainingLimitVes > 0);
+
+    const totalRemainingVes = activeUsages.reduce((acc, u) => acc + u.remainingLimitVes, 0);
+    const bankAllocations = activeUsages.map((u) => {
+      const share = totalRemainingVes > 0 ? u.remainingLimitVes / totalRemainingVes : 0;
+      const assignedVes = Number(Math.min(u.remainingLimitVes, totalCycleVes * share).toFixed(2));
+      const assignedUsdt = sell > 0 ? Number((assignedVes / sell).toFixed(2)) : 0;
+      return {
+        bankName: u.account.bankName,
+        alias: u.account.accountNumberMasked,
+        assignedVes,
+        assignedUsdt,
+        remainingAfterVes: Number(Math.max(0, u.remainingLimitVes - assignedVes).toFixed(2)),
+      };
+    });
+
+    return {
+      totalCycleVes,
+      minTicketUsdt,
+      maxTicketUsdt,
+      minTicketVes,
+      maxTicketVes,
+      estimatedOrdersPerCycle,
+      bankAllocations,
+    };
+  });
+
+  readonly bcvPurchasingPowerBridge = computed(() => {
+    const c = this.cycleResult();
+    if (!c || this.sellPrice() <= 0) return null;
+    const cotizaveRates = this.cotizave.ratesByMarket();
+    const oficialRate = cotizaveRates['oficial'];
+    const liveBcv =
+      oficialRate?.mid ??
+      oficialRate?.ask ??
+      oficialRate?.bid ??
+      this.finance360.currentBcvRate();
+    const bcvRate = liveBcv > 0 ? liveBcv : 400;
+    const p2pSell = this.sellPrice();
+    const gapPct = bcvRate > 0 ? Number((((p2pSell - bcvRate) / bcvRate) * 100).toFixed(2)) : 0;
+    const bcvEquivalentProfitUsd =
+      bcvRate > 0 ? Number((c.netGainVes / bcvRate).toFixed(2)) : 0;
+    const bcvTotalPurchasingPowerUsd =
+      bcvRate > 0 ? Number((c.netProceedsVes / bcvRate).toFixed(2)) : 0;
+    const purchasingPowerBonusUsd = Number(
+      Math.max(0, bcvTotalPurchasingPowerUsd - c.capitalUsdt).toFixed(2),
+    );
+
+    return {
+      bcvRate: Number(bcvRate.toFixed(2)),
+      p2pSellRate: Number(p2pSell.toFixed(2)),
+      gapPct,
+      bcvEquivalentProfitUsd,
+      bcvTotalPurchasingPowerUsd,
+      purchasingPowerBonusUsd,
+    };
+  });
+
+  /** 1-Click Bridge: Hydrate the 360 Ad Studio from Mode A or Mode B and navigate to /spread?mode=repricer. */
+  async sendCycleToAdStudio(side: 'BUY' | 'SELL', customPriceOverride?: number): Promise<void> {
+    const isReverse = this.activeMode() === 'reverse';
+    const cap = isReverse ? this.availableCapitalGoal() : this.capitalUsdt();
+    const price =
+      customPriceOverride && customPriceOverride > 0
+        ? customPriceOverride
+        : side === 'BUY'
+          ? this.buyPrice()
+          : isReverse
+            ? (this.reverseSolverMatrix()?.requiredSellPriceVes ?? this.sellPrice())
+            : this.sellPrice();
+    const split = this.antiSudebanSplitPlan();
+
+    await this.adComposer.stageFromExternal({
+      side,
+      customPriceVes: price,
+      breakEvenSellPrice: side === 'SELL' ? this.cycleBreakEvenSellPrice() : undefined,
+      maxBuyPrice: side === 'BUY' ? price : undefined,
+      targetAssetAmountUsdt: cap,
+      minTicketUsdt: split?.minTicketUsdt ?? 25,
+      preferredBank: this.targetBank(),
+      sourceLabel: isReverse
+        ? `Planificador Reverso ($${this.targetGoalUsd()}/día)`
+        : `Calculadora de Ciclos (${cap} USDT)`,
+    });
+    void this.router.navigate(['/spread'], { queryParams: { mode: 'repricer' } });
+  }
+
+  /** 1-Click Bridge: Start trade timer and launch directly in Operation Log (/log). */
+  launchCycleInOperationLog(type: 'buy' | 'sell', customPriceOverride?: number): void {
+    const isReverse = this.activeMode() === 'reverse';
+    const cap = isReverse ? this.availableCapitalGoal() : this.capitalUsdt();
+    const price =
+      customPriceOverride && customPriceOverride > 0
+        ? customPriceOverride
+        : type === 'buy'
+          ? this.buyPrice()
+          : isReverse
+            ? (this.reverseSolverMatrix()?.requiredSellPriceVes ?? this.sellPrice())
+            : this.sellPrice();
+    if (cap <= 0 || price <= 0) return;
+
+    this.tradeTimer.start({
+      pair: 'USDT',
+      type,
+      price: Number(price.toFixed(2)),
+      usdtAmount: Number(cap.toFixed(2)),
+      vesAmount: Number((cap * price).toFixed(2)),
+      merchantNote: isReverse
+        ? `Meta Reversa ($${this.targetGoalUsd()}/día · ${this.desiredCyclesPerDay()} vueltas)`
+        : `Ciclo Calculadora P2P (+${this.cycleResult()?.roiCyclePct.toFixed(2) ?? '0'}% neto)`,
+    });
+    this.toast.success(
+      `Operación ${type === 'buy' ? 'COMPRA' : 'VENTA'} (${cap} USDT @ ${price.toFixed(2)} Bs) enviada a Bitácora con cronómetro activo.`,
+    );
+    void this.router.navigate(['/log']);
+  }
+
+  /** Mode C 1-Click Execution: Transfer today's harvested profit from Binance USDT to Cold/Safe Vault in Finance 360. */
+  harvestTodayToColdVault(): void {
+    const comp = this.compoundResult();
+    if (!comp) return;
+    const day1ProfitUsdt =
+      this.compoundInitialCapital() *
+      (this.compoundNetMarginPct() / 100) *
+      this.compoundCyclesPerDay();
+    const harvestShareFrac = Math.max(0.1, (100 - this.compoundReinvestmentRate()) / 100);
+    const amountUsd = Number(Math.max(1, day1ProfitUsdt * harvestShareFrac).toFixed(2));
+
+    this.finance360.transferBetweenVaults('vault-binance-usdt', 'vault-cash-usd', amountUsd);
+    this.toast.success(
+      `Cosecha Patrimonial ejecutada: $${amountUsd.toFixed(2)} USD transferidos de Capital Operativo (Binance) a Bóveda Fría / Caja Fuerte en Finanzas 360°.`,
     );
   }
 

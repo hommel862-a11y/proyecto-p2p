@@ -1689,6 +1689,12 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   Iniciar Venta con Cronómetro
                 </button>
+                <button type="button" class="btn btn-secondary" (click)="stageFromSpreadToAdStudio('BUY')" title="Enviar precio de compra y lote al Estudio de Anuncios P2P">
+                  📣 Armar Anuncio Compra P2P
+                </button>
+                <button type="button" class="btn btn-secondary" (click)="stageFromSpreadToAdStudio('SELL')" title="Enviar precio de venta y piso de equilibrio al Estudio de Anuncios P2P">
+                  📣 Armar Anuncio Venta P2P
+                </button>
               </div>
             </div>
           }
@@ -1874,8 +1880,12 @@
                 ⚡ {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Fijar Precio Meta en Monitor' : 'Fijar Recompra Meta en Monitor' }}
               </button>
 
+              <button type="button" class="btn btn-gold-action" (click)="stageFromBreakEvenToAdStudio()">
+                📣 Enviar Precio Meta al Estudio de Anuncios P2P
+              </button>
+
               @if (beMarketVerdict().executableTop1RoiPct > 0) {
-                <button type="button" class="btn btn-gold-action" (click)="applyExecutableTop1FromBreakEven()">
+                <button type="button" class="btn btn-secondary" (click)="applyExecutableTop1FromBreakEven()">
                   🔥 Salir en Top 1 Rentable ({{ beMarketVerdict().executableTop1Price | num }} Bs · +{{ beMarketVerdict().executableTop1RoiPct | num }}%)
                 </button>
               }
@@ -2576,92 +2586,362 @@
           }
         </div>
 
-        <!-- Borrador de Anuncio en 1 Clic (Auto-Composer Inteligente) -->
-        <div class="ad-composer-card" style="margin-top: 14px; padding: 14px; border-radius: 8px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(15, 23, 42, 0.95) 100%);">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.3rem;">⚡</span>
+        <!-- Estudio Operativo de Anuncios P2P 360° (Auto-Composer Inteligente + Copiado Quirúrgico + Escudo Anti-Ban TOS) -->
+        <div class="ad-composer-card" style="margin-top: 14px; padding: 16px; border-radius: 10px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(15, 23, 42, 0.96) 100%);">
+          <!-- Cabecera Principal -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 1.4rem;">📣</span>
               <div>
-                <strong style="color: var(--gold); font-size: 0.92rem;">Borrador de Anuncio en 1 Clic</strong>
-                <div style="font-size: 0.74rem; color: #94a3b8;">
-                  Configurado automáticamente con microestructura real y cupos bancarios
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <strong style="color: var(--gold); font-size: 0.96rem;">Estudio Operativo de Anuncios P2P 360°</strong>
+                  @if (adComposer.lastExternalSource(); as src) {
+                    <span class="badge" style="font-size: 0.68rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
+                      🔗 Sincronizado desde: {{ src }}
+                    </span>
+                  }
+                </div>
+                <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 2px;">
+                  Microestructura L2 en vivo, ruteo de cupos bancarios sin sobregiro, plantillas anti-ban TOS y copiado quirúrgico por campo
                 </div>
               </div>
             </div>
 
-            <div style="display: flex; gap: 6px; align-items: center;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
               <!-- Selector Compra / Venta -->
-              <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.4); border-radius: 6px; padding: 2px;">
+              <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.45); border-radius: 6px; padding: 2px; border: 1px solid rgba(255,255,255,0.08);">
                 <button
                   type="button"
                   class="btn"
                   [style.background]="adComposer.side() === 'BUY' ? 'var(--accent)' : 'transparent'"
                   [style.color]="adComposer.side() === 'BUY' ? '#fff' : '#94a3b8'"
-                  style="font-size: 0.72rem; padding: 3px 8px; border: none; font-weight: 600;"
-                  (click)="adComposer.side.set('BUY'); adComposer.composeDraft()"
+                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700;"
+                  (click)="adComposer.setSide('BUY'); adComposer.composeDraft()"
                 >
-                  Comprar USDT
+                  🟢 Comprar USDT
                 </button>
                 <button
                   type="button"
                   class="btn"
                   [style.background]="adComposer.side() === 'SELL' ? 'var(--gold)' : 'transparent'"
                   [style.color]="adComposer.side() === 'SELL' ? '#000' : '#94a3b8'"
-                  style="font-size: 0.72rem; padding: 3px 8px; border: none; font-weight: 600;"
-                  (click)="adComposer.side.set('SELL'); adComposer.composeDraft()"
+                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700;"
+                  (click)="adComposer.setSide('SELL'); adComposer.composeDraft()"
                 >
-                  Vender USDT
+                  🟡 Vender USDT
                 </button>
               </div>
 
               <button
                 type="button"
                 class="btn btn-secondary"
-                style="font-size: 0.74rem; padding: 4px 8px;"
+                style="font-size: 0.75rem; padding: 5px 10px;"
                 (click)="adComposer.composeDraft()"
                 [disabled]="adComposer.isComposing()"
-                title="Recalcular con el libro actual"
+                title="Recalcular con el libro L2 actual"
               >
-                {{ adComposer.isComposing() ? 'Calculando...' : '🔄 Recalcular' }}
+                {{ adComposer.isComposing() ? '⏳ Calculando...' : '🔄 Recalcular Libro' }}
               </button>
             </div>
           </div>
 
+          <!-- Panel de Configuración Operativa del Anuncio -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <!-- 1. Modo de Precio: Estrategia vs Fijo -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">FIJACIÓN DE PRECIO</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost"
+                  style="font-size: 0.66rem; padding: 1px 6px; height: auto;"
+                  (click)="adComposer.useCustomPrice.set(!adComposer.useCustomPrice()); adComposer.composeDraft()"
+                >
+                  {{ adComposer.useCustomPrice() ? '🎯 Precio Fijo' : '🤖 Automático L2' }}
+                </button>
+              </div>
+              @if (adComposer.useCustomPrice()) {
+                <input
+                  type="number"
+                  step="0.01"
+                  class="font-mono"
+                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--gold); background: rgba(0,0,0,0.5); color: var(--gold); font-size: 0.82rem;"
+                  [value]="adComposer.customPriceVes()"
+                  (input)="adComposer.customPriceVes.set(+$any($event.target).value); adComposer.composeDraft()"
+                  placeholder="Precio fijo Bs"
+                />
+              } @else {
+                <select
+                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
+                  [value]="adComposer.strategy()"
+                  (change)="adComposer.strategy.set($any($event.target).value); adComposer.composeDraft()"
+                >
+                  <option value="TOP_1">🥇 Top 1 Líder</option>
+                  <option value="UNDERCUT">⚔️ Superar Top 1 (±Paso)</option>
+                  <option value="MATCH">🤝 Igualar Top 1</option>
+                  <option value="TOP_2">🥈 Top 2 Seguro</option>
+                  <option value="TOP_3">🥉 Top 3 Conservador</option>
+                </select>
+              }
+            </div>
+
+            <!-- 2. Lote Objetivo USDT (0 = Cupo Bancario Total) -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">LOTE OBJETIVO (USDT)</span>
+                <div style="display: flex; gap: 3px;">
+                  @for (preset of [0, 250, 500, 1000]; track preset) {
+                    <button
+                      type="button"
+                      style="font-size: 0.62rem; padding: 1px 4px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #cbd5e1; cursor: pointer;"
+                      [style.border-color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : 'rgba(255,255,255,0.15)'"
+                      [style.color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : '#cbd5e1'"
+                      (click)="adComposer.targetAssetAmountUsdt.set(preset); adComposer.composeDraft()"
+                    >
+                      {{ preset === 0 ? 'Máx' : '$' + preset }}
+                    </button>
+                  }
+                </div>
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                class="font-mono"
+                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.45); color: #38bdf8; font-size: 0.82rem;"
+                [value]="adComposer.targetAssetAmountUsdt()"
+                (input)="adComposer.targetAssetAmountUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
+                placeholder="0 = Cupo Bancario Total"
+              />
+            </div>
+
+            <!-- 3. Ticket Mínimo Anti-Pitufeo -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">TICKET MÍN (ANTI-PITUFEI)</span>
+                <span class="font-mono" style="font-size: 0.66rem; color: #64748b;">USDT</span>
+              </div>
+              <input
+                type="number"
+                min="5"
+                step="5"
+                class="font-mono"
+                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.45); color: #f8fafc; font-size: 0.82rem;"
+                [value]="adComposer.minTicketUsdt()"
+                (input)="adComposer.minTicketUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
+              />
+            </div>
+
+            <!-- 4. Ruteo Bancario Inteligente -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">CUENTA BANCARIA DESTINO</span>
+              </div>
+              <select
+                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
+                [value]="adComposer.preferredBank() ?? ''"
+                (change)="adComposer.preferredBank.set($any($event.target).value || null); adComposer.composeDraft()"
+              >
+                <option value="">⚡ Auto (Mayor Cupo Disponible)</option>
+                @for (b of adComposer.activeBankOptions(); track b.bankName + b.alias) {
+                  <option [value]="b.bankName">
+                    {{ b.bankName }} ({{ b.remainingVes | num }} Bs libres)
+                  </option>
+                }
+              </select>
+            </div>
+
+            <!-- 5. Plantilla Operativa -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">PLANTILLA DE ANUNCIO</span>
+              </div>
+              <select
+                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
+                [value]="adComposer.selectedTemplateName()"
+                (change)="adComposer.applyTemplate($any($event.target).value)"
+              >
+                @for (tpl of adComposer.availableTemplates(); track tpl.name) {
+                  <option [value]="tpl.name">{{ tpl.name }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
           @if (adComposer.currentDraft(); as draft) {
-            <!-- Resumen de Anuncio -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
-              <div>
-                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Precio Óptimo</span>
-                <strong style="font-size: 1.1rem; color: var(--gold);" class="font-mono">{{ draft.priceFormatted }}</strong>
-              </div>
-              <div>
-                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Límites Operación</span>
-                <strong style="font-size: 0.82rem; color: #f1f5f9;" class="font-mono">
-                  {{ draft.minLimitVes | num }} - {{ draft.maxLimitVes | num }} Bs
+            <!-- Matriz de Parámetros Listos para Binance + Copiado Quirúrgico 1-Clic -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.06);">
+              <!-- Precio + Rango en Cola L2 -->
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(216,180,92,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">PRECIO A PUBLICAR</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
+                    (click)="adComposer.copyField('price', 'Precio del anuncio', draft.price)"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'price' ? '✅ Copiado' : '📋 Copiar' }}
+                  </button>
+                </div>
+                <strong style="font-size: 1.15rem; color: var(--gold); display: block; margin-top: 2px;" class="font-mono">
+                  {{ draft.priceFormatted }}
                 </strong>
+                <div style="font-size: 0.68rem; color: #38bdf8; margin-top: 3px;" class="font-mono">
+                  🏆 Puesto #{{ draft.queueRank }} · {{ draft.volumeAheadUsdt | num }} USDT delante
+                </div>
               </div>
-              <div>
-                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Monto Total</span>
-                <strong style="font-size: 0.85rem; color: #38bdf8;" class="font-mono">
-                  ${{ draft.totalAssetAmountUsdt }} USDT
+
+              <!-- Monto Total USDT -->
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(56,189,248,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">MONTO TOTAL USDT</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
+                    (click)="adComposer.copyField('amountUsdt', 'Monto total USDT', draft.totalAssetAmountUsdt)"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'amountUsdt' ? '✅ Copiado' : '📋 Copiar' }}
+                  </button>
+                </div>
+                <strong style="font-size: 1.05rem; color: #38bdf8; display: block; margin-top: 2px;" class="font-mono">
+                  {{ draft.totalAssetAmountUsdt | num }} USDT
                 </strong>
+                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
+                  Cupo libre: {{ draft.selectedAccountCupoRemainingVes | num }} Bs
+                </div>
               </div>
-              <div>
-                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Banco / Método</span>
-                <span class="badge" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
-                  {{ draft.selectedBank }} ({{ draft.paymentMethods.join(', ') }})
+
+              <!-- Límite Mínimo Bs -->
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.07);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">LÍMITE MÍNIMO (BS)</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer;"
+                    (click)="adComposer.copyField('minVes', 'Límite Mínimo Bs', draft.minLimitVes)"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'minVes' ? '✅ Copiado' : '📋 Copiar' }}
+                  </button>
+                </div>
+                <strong style="font-size: 0.96rem; color: #f1f5f9; display: block; margin-top: 2px;" class="font-mono">
+                  {{ draft.minLimitVes | num }} Bs
+                </strong>
+                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
+                  ≈ ${{ draft.minLimitUsdt | num }} USDT por orden
+                </div>
+              </div>
+
+              <!-- Límite Máximo Bs -->
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.07);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">LÍMITE MÁXIMO (BS)</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer;"
+                    (click)="adComposer.copyField('maxVes', 'Límite Máximo Bs', draft.maxLimitVes)"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'maxVes' ? '✅ Copiado' : '📋 Copiar' }}
+                  </button>
+                </div>
+                <strong style="font-size: 0.96rem; color: #f1f5f9; display: block; margin-top: 2px;" class="font-mono">
+                  {{ draft.maxLimitVes | num }} Bs
+                </strong>
+                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
+                  🏦 {{ draft.selectedBank }} ({{ draft.paymentMethods.join(', ') }})
+                </div>
+              </div>
+
+              <!-- Margen Neto Post-Comisión -->
+              <div style="background: rgba(16,185,129,0.06); padding: 8px; border-radius: 6px; border: 1px solid rgba(16,185,129,0.25);">
+                <span style="font-size: 0.68rem; color: #94a3b8; display: block;">RENTABILIDAD NETA CICLO</span>
+                <strong style="font-size: 0.98rem; color: #34d399; display: block; margin-top: 2px;" class="font-mono">
+                  +{{ draft.netSpreadAfterFeePct | num }}% (+${{ draft.expectedNetProfitUsdtPerCycle | num }})
+                </strong>
+                <div style="font-size: 0.68rem; color: #6ee7b7; margin-top: 3px;" class="font-mono">
+                  Bruto: +{{ draft.expectedNetSpreadPct }}% · +{{ draft.expectedProfitVesPerCycle | num }} Bs
+                </div>
+              </div>
+            </div>
+
+            <!-- Vista Previa de Ciclo Espejo (Compra + Venta Emparejada) -->
+            @if (adComposer.mirrorCyclePreview(); as mirror) {
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: rgba(15, 23, 42, 0.75); border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.74rem;">
+                <div>
+                  <strong style="color: #38bdf8;">🔄 Ciclo Espejo Emparejado:</strong>
+                  <span class="font-mono" style="margin-left: 6px; color: #e2e8f0;">
+                    Compra {{ mirror.buyPrice | num }} Bs ➔ Venta {{ mirror.sellPrice | num }} Bs (Brecha: {{ mirror.spreadVes > 0 ? '+' : '' }}{{ mirror.spreadVes | num }} Bs)
+                  </span>
+                </div>
+                <div class="font-mono" style="color: #34d399;">
+                  Neto post-fee ({{ draft.makerFeePct * 2 }}%): <strong>+{{ mirror.netSpreadPct | num }}%</strong> · <strong>+${{ mirror.netProfitUsdt | num }} USDT</strong> ({{ mirror.netProfitVes | num }} Bs)
+                </div>
+              </div>
+            }
+
+            <!-- Editor en Vivo de Condiciones & Auto-Reply + Validador Anti-Ban Binance TOS -->
+            <div style="background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                <span style="font-size: 0.75rem; font-weight: 700; color: #e2e8f0;">
+                  📝 Textos Operativos para Pegar en Binance P2P (Paso 2 y Paso 3)
                 </span>
+                @if (adComposer.liveValidation(); as val) {
+                  @if (val.valid && val.warnings.length === 0) {
+                    <span class="badge" style="font-size: 0.68rem; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35);">
+                      🛡️ Escudo Anti-Ban Binance TOS: TEXTO LIMPIO
+                    </span>
+                  } @else {
+                    <span class="badge" style="font-size: 0.68rem; background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);">
+                      ⚠️ Alerta TOS: {{ val.errors.concat(val.warnings).join(' | ') }}
+                    </span>
+                  }
+                }
               </div>
-              <div>
-                <span style="font-size: 0.7rem; color: #94a3b8; display: block;">Margen Estimado</span>
-                <strong style="font-size: 0.85rem; color: #34d399;" class="font-mono">
-                  +{{ draft.expectedNetSpreadPct }}% (+{{ draft.expectedProfitVesPerCycle | num }} Bs)
-                </strong>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+                <!-- Términos y Condiciones -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.7rem; color: #94a3b8;">Términos y Condiciones ({{ adComposer.editableTerms().length }}/2000)</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
+                      (click)="adComposer.copyField('terms', 'Términos y Condiciones', adComposer.editableTerms())"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'terms' ? '✅ Condiciones Copiadas' : '📋 Copiar Condiciones' }}
+                    </button>
+                  </div>
+                  <textarea
+                    rows="4"
+                    style="width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15,23,42,0.85); color: #e2e8f0; font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
+                    [value]="adComposer.editableTerms()"
+                    (input)="adComposer.editableTerms.set($any($event.target).value)"
+                  ></textarea>
+                </div>
+
+                <!-- Respuesta Automática (Auto-Reply) -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 0.7rem; color: #94a3b8;">Mensaje Automático / Auto-Reply ({{ adComposer.editableAutoReply().length }}/500)</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
+                      (click)="adComposer.copyField('autoReply', 'Mensaje Auto-Reply', adComposer.editableAutoReply())"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'autoReply' ? '✅ Auto-Reply Copiado' : '📋 Copiar Auto-Reply' }}
+                    </button>
+                  </div>
+                  <textarea
+                    rows="4"
+                    style="width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15,23,42,0.85); color: #e2e8f0; font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
+                    [value]="adComposer.editableAutoReply()"
+                    (input)="adComposer.editableAutoReply.set($any($event.target).value)"
+                  ></textarea>
+                </div>
               </div>
             </div>
 
             <!-- Banner de Estado de Seguridad / Guardarraíles -->
-            @if (!draft.readyToPublish) {
+            @if (!adComposer.readyToPublish()) {
               <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 0.75rem; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
                 <span style="font-size: 1rem;">⚠️</span>
                 <span>
@@ -2670,6 +2950,8 @@
                     El spread de mercado es negativo o nulo ({{ draft.expectedNetSpreadPct }}%). El sistema no permite publicar a pérdida.
                   } @else if (draft.guardrails.flags.includes('NO_ACTIVE_BANK_CAPACITY')) {
                     Tus cuentas bancarias activas están saturadas o no tienen cupo diario restante.
+                  } @else if (!adComposer.liveValidation().valid) {
+                    {{ adComposer.liveValidation().errors.join(' · ') }}
                   } @else {
                     {{ draft.guardrails.flags.join(', ') }}
                   }
@@ -2678,22 +2960,22 @@
             } @else {
               <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; font-size: 0.74rem; color: #6ee7b7; display: flex; align-items: center; gap: 6px;">
                 <span>✅</span>
-                <span><strong>Validación aprobada:</strong> Parámetros verificados. Listo para publicar en Binance P2P.</span>
+                <span><strong>Validación aprobada:</strong> Cupo bancario, piso de equilibrio y filtro anti-ban TOS verificados. Listo para publicar en Binance P2P.</span>
               </div>
             }
 
-            <!-- Botones de Acción: Publicar en 1 Clic, Copiar y Abrir Binance -->
+            <!-- Botones de Acción: Publicar en 1 Clic, Copiar Ficha Completa y Abrir Binance -->
             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
               <button
                 type="button"
                 class="btn"
-                [style.background]="draft.readyToPublish ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#ef4444'"
+                [style.background]="adComposer.readyToPublish() ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#ef4444'"
                 style="color: #fff; font-weight: 700; font-size: 0.85rem; padding: 8px 16px; border: none; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
                 [disabled]="adComposer.isPublishing()"
                 (click)="adComposer.publishStagedDraft()"
               >
                 <span>🚀</span>
-                <span>{{ adComposer.isPublishing() ? 'Publicando en Binance...' : (draft.readyToPublish ? 'PUBLICAR ANUNCIO EN 1 CLIC' : 'PUBLICAR (REVISAR ALERTA)') }}</span>
+                <span>{{ adComposer.isPublishing() ? 'Publicando en Binance...' : (adComposer.readyToPublish() ? 'PUBLICAR ANUNCIO EN 1 CLIC' : 'PUBLICAR (REVISAR ALERTA)') }}</span>
               </button>
 
               <button
@@ -2701,9 +2983,9 @@
                 class="btn btn-secondary"
                 style="font-size: 0.8rem; padding: 8px 12px;"
                 (click)="copyDraftClipboard()"
-                title="Copiar datos del anuncio para pegar en Binance"
+                title="Copiar ficha completa del anuncio"
               >
-                📋 Copiar
+                📋 Copiar Ficha Completa
               </button>
 
               <button
@@ -2719,7 +3001,7 @@
           } @else {
             <div style="text-align: center; padding: 14px 8px; color: #94a3b8; font-size: 0.8rem;">
               <button type="button" class="btn btn-primary" (click)="adComposer.composeDraft()" [disabled]="adComposer.isComposing()">
-                ⚡ Generar Borrador Inteligente Ahora
+                ⚡ Generar Borrador Inteligente 360° Ahora
               </button>
             </div>
           }

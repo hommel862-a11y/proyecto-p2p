@@ -46,7 +46,7 @@ import { FORMAT_PIPES } from '../../core/format';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TradeTimerService, type TradePreset } from '../../core/trade-timer.service';
 import { DatePipe } from '@angular/common';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
@@ -101,6 +101,7 @@ interface TradingWindow {
 })
 export class SpreadMonitor implements OnInit, OnDestroy {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly timer = inject(TradeTimerService);
   private readonly risks = inject(RisksService);
   private readonly storage = inject(StorageService);
@@ -1501,6 +1502,51 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     }
   }
 
+  /** 1-Click Bridge: Send Break-Even target price & safety floor directly to the 360 Ad Studio. */
+  async stageFromBreakEvenToAdStudio(): Promise<void> {
+    this.anchorBreakEvenToBots();
+    const lotUsdt = this.baseInvestedCrypto() > 0 ? this.baseInvestedCrypto() : this.amount();
+    if (this.beCycleDirection() === 'SELL_INVENTORY') {
+      const targetPrice = this.breakEvenResult().targetSellPrice;
+      const floor = this.breakEvenResult().breakEvenPrice;
+      this.activeMode.set('repricer');
+      await this.adComposer.stageFromExternal({
+        side: 'SELL',
+        customPriceVes: targetPrice,
+        breakEvenSellPrice: floor,
+        targetAssetAmountUsdt: lotUsdt,
+        sourceLabel: `Punto de Equilibrio · Venta Meta (+${this.targetRoiPct()}% ROI)`,
+      });
+    } else {
+      const targetBuy = this.reverseBreakEvenResult().targetBuyPrice;
+      const ceiling = this.reverseBreakEvenResult().breakEvenBuyCeiling;
+      this.activeMode.set('repricer');
+      await this.adComposer.stageFromExternal({
+        side: 'BUY',
+        customPriceVes: targetBuy,
+        maxBuyPrice: ceiling,
+        targetAssetAmountUsdt: lotUsdt,
+        sourceLabel: `Punto de Equilibrio · Recompra Meta (+${this.targetRoiPct()}% Acumulación)`,
+      });
+    }
+  }
+
+  /** 1-Click Bridge: Send Spread Monitor price & lot directly to the 360 Ad Studio. */
+  async stageFromSpreadToAdStudio(side: 'BUY' | 'SELL'): Promise<void> {
+    const lotUsdt = this.baseInvestedCrypto() > 0 ? this.baseInvestedCrypto() : 500;
+    const price = side === 'BUY' ? this.buyPrice() : this.sellPrice();
+    const floor = this.liveBreakEvenSellPrice() > 0 ? this.liveBreakEvenSellPrice() : 0;
+    this.activeMode.set('repricer');
+    await this.adComposer.stageFromExternal({
+      side,
+      customPriceVes: price,
+      breakEvenSellPrice: side === 'SELL' ? floor : undefined,
+      maxBuyPrice: side === 'BUY' ? price : undefined,
+      targetAssetAmountUsdt: lotUsdt,
+      sourceLabel: `Monitor de Spread · ${side === 'BUY' ? 'Compra' : 'Venta'} Directa`,
+    });
+  }
+
   async syncBinancePrices(): Promise<void> {
     const marketDepth = await this.binance.fetchMarketDepth(this.pair(), 'VES');
     if (marketDepth && marketDepth.bestBuyPrice > 0 && marketDepth.bestSellPrice > 0) {
@@ -1844,6 +1890,17 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    const modeParam = this.route.snapshot.queryParamMap.get('mode');
+    if (
+      modeParam === 'repricer' ||
+      modeParam === 'breakeven' ||
+      modeParam === 'spread' ||
+      modeParam === 'microstructure' ||
+      modeParam === 'cross_exchange' ||
+      modeParam === 'high_demand'
+    ) {
+      this.activeMode.set(modeParam);
+    }
     this.now.set(new Date());
     this.nowTimerId = window.setInterval(() => this.now.set(new Date()), 60_000);
     if (!this.binance.marketDepth()) {

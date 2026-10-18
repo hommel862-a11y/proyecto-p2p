@@ -30,6 +30,12 @@ export interface AdComposerInput {
   preferredBankName?: string;
   minTicketUsdt?: number;
   maxAdLimitVes?: number;
+  targetAssetAmountUsdt?: number;
+  customPriceVes?: number;
+  makerFeePct?: number;
+  templateName?: string;
+  customTerms?: string;
+  customAutoReply?: string;
   merchantName?: string;
   minCompetitorFinishRatePct?: number;
 }
@@ -40,6 +46,7 @@ export interface StagedAdDraft {
   fiat: 'VES';
   price: number;
   priceFormatted: string;
+  oppositeBestPrice: number;
   totalAssetAmountUsdt: number;
   minLimitVes: number;
   maxLimitVes: number;
@@ -49,10 +56,17 @@ export interface StagedAdDraft {
   selectedBank: string;
   selectedAccountCupoRemainingVes: number;
   adTitle: string;
+  templateName: string;
   terms: string;
   autoReply: string;
   expectedNetSpreadPct: number;
+  netSpreadAfterFeePct: number;
   expectedProfitVesPerCycle: number;
+  expectedNetProfitUsdtPerCycle: number;
+  makerFeePct: number;
+  queueRank: number;
+  competitorsAheadCount: number;
+  volumeAheadUsdt: number;
   isGoldenSpread: boolean;
   guardrails: {
     antiSpoofingPassed: boolean;
@@ -64,6 +78,7 @@ export interface StagedAdDraft {
   };
   stagedTimestamp: string;
   readyToPublish: boolean;
+  validationErrors: string[];
   validationWarnings: string[];
 }
 
@@ -87,6 +102,7 @@ export function filterAntiSpoofingOffers(
  * 1. Live market depth (filtered against spoofing).
  * 2. Real bank account capacities (anti-overdraft / SUDEBAN protection).
  * 3. Institutional margins & break-even safety floors.
+ * 4. L2 Orderbook queue rank and volume ahead.
  */
 export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
   const {
@@ -100,7 +116,13 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     activeBankAccounts = [],
     preferredBankName,
     minTicketUsdt = 25,
-    maxAdLimitVes = 50000,
+    maxAdLimitVes,
+    targetAssetAmountUsdt,
+    customPriceVes,
+    makerFeePct = 0.25,
+    templateName,
+    customTerms,
+    customAutoReply,
     merchantName = 'Operador Verificado',
     minCompetitorFinishRatePct = 90,
   } = input;
@@ -115,9 +137,12 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     flags.push('NO_REPUTABLE_COMPETITORS_FOUND');
   }
 
-  // 2. Optimal Price Calculation
+  // 2. Optimal Price Calculation (Strategy or Custom Locked Price)
   const offersToEvaluate = antiSpoofingPassed ? filteredOffers : rawOffers;
-  let targetPrice = calculatePositionPrice(offersToEvaluate, side, strategy, stepVes);
+  let targetPrice =
+    customPriceVes && customPriceVes > 0
+      ? customPriceVes
+      : calculatePositionPrice(offersToEvaluate, side, strategy, stepVes);
 
   if (targetPrice <= 0) {
     targetPrice = side === 'BUY' ? marketDepth.bestBuyPrice : marketDepth.bestSellPrice;
@@ -139,6 +164,23 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
   }
 
   targetPrice = roundMoney(targetPrice, 2);
+
+  // 3b. L2 Queue Rank & Ahead Volume Telemetry
+  const sortedOffers = [...offersToEvaluate].sort((a, b) =>
+    side === 'BUY' ? b.price - a.price : a.price - b.price,
+  );
+  const offersAhead = sortedOffers.filter((o) =>
+    side === 'BUY' ? o.price > targetPrice : o.price < targetPrice,
+  );
+  const competitorsAheadCount = offersAhead.length;
+  const queueRank = competitorsAheadCount + 1;
+  const volumeAheadUsdt = roundMoney(
+    offersAhead.reduce((acc, o) => {
+      const estUsdt = o.price > 0 && o.maxVes > 0 ? o.maxVes / o.price : 0;
+      return acc + estUsdt;
+    }, 0),
+    2,
+  );
 
   // 4. Bank Account Routing & Capacity Allocation
   const eligibleAccounts = activeBankAccounts.filter(
@@ -171,11 +213,16 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     flags.push('NO_ACTIVE_BANK_CAPACITY');
   }
 
-  // 5. Compute Limits and Asset Amounts
-  const effectiveMaxVes = Math.min(
-    remainingCupo > 0 ? remainingCupo : 10000,
-    maxAdLimitVes,
-  );
+  // 5. Compute Limits and Asset Amounts (Dynamic Lot + Full Bank Cupo Support)
+  let desiredMaxVes = remainingCupo > 0 ? remainingCupo : 10000;
+  if (targetAssetAmountUsdt && targetAssetAmountUsdt > 0 && targetPrice > 0) {
+    desiredMaxVes = roundMoney(targetAssetAmountUsdt * targetPrice, 2);
+  } else if (maxAdLimitVes && maxAdLimitVes > 0) {
+    desiredMaxVes = maxAdLimitVes;
+  }
+
+  const effectiveMaxVes =
+    remainingCupo > 0 ? Math.min(remainingCupo, desiredMaxVes) : desiredMaxVes;
   const maxLimitVes = roundMoney(effectiveMaxVes, 2);
 
   // Anti-pitufeo minimum ticket
@@ -196,15 +243,23 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     paymentMethods.splice(0, 1); // Only Bank Transfer
   }
 
-  // 7. Projected Margin & Net Spread
+  // 7. Projected Margin & Net Spread (Gross + Net After Maker Fee)
   const oppositePrice = side === 'BUY' ? marketDepth.bestSellPrice : marketDepth.bestBuyPrice;
   let spreadPct = 0;
+  let netSpreadAfterFeePct = 0;
   let expectedProfitVes = 0;
+  let expectedNetProfitUsdt = 0;
 
   if (targetPrice > 0 && oppositePrice > 0) {
     const spreadVes = side === 'BUY' ? oppositePrice - targetPrice : targetPrice - oppositePrice;
-    spreadPct = roundMoney((spreadVes / (side === 'BUY' ? targetPrice : oppositePrice)) * 100, 2);
+    const baseRef = side === 'BUY' ? targetPrice : oppositePrice;
+    spreadPct = roundMoney((spreadVes / baseRef) * 100, 2);
+    netSpreadAfterFeePct = roundMoney(spreadPct - makerFeePct * 2, 2);
     expectedProfitVes = roundMoney(spreadVes * totalAssetAmountUsdt, 2);
+    expectedNetProfitUsdt = roundMoney(
+      totalAssetAmountUsdt * (netSpreadAfterFeePct / 100),
+      2,
+    );
   }
 
   const isGoldenSpread = spreadPct >= minSpreadPct;
@@ -214,8 +269,11 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
   }
 
   // 8. Template & Terms Rendering
+  const matchingTemplates = BUILT_IN_TEMPLATES.filter((t) => t.type === side);
   const templateObj =
-    BUILT_IN_TEMPLATES.find((t) => t.type === side) ?? BUILT_IN_TEMPLATES[0];
+    (templateName ? BUILT_IN_TEMPLATES.find((t) => t.name === templateName) : undefined) ??
+    matchingTemplates[0] ??
+    BUILT_IN_TEMPLATES[0];
 
   const rendered = generateAdPreview(templateObj as AdTemplate, {
     precio: targetPrice,
@@ -228,7 +286,14 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     referencia: 'Pago Móvil / Titular Directo',
   });
 
-  const validation = validateAd(rendered.title, rendered.terms, rendered.autoReply);
+  const finalTerms =
+    customTerms && customTerms.trim().length > 0 ? customTerms.trim() : rendered.terms;
+  const finalAutoReply =
+    customAutoReply && customAutoReply.trim().length > 0
+      ? customAutoReply.trim()
+      : rendered.autoReply;
+
+  const validation = validateAd(rendered.title, finalTerms, finalAutoReply);
 
   const readyToPublish =
     bankCapacitySafe &&
@@ -243,6 +308,7 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     fiat: 'VES',
     price: targetPrice,
     priceFormatted: `${targetPrice.toFixed(2)} VES`,
+    oppositeBestPrice: roundMoney(oppositePrice, 2),
     totalAssetAmountUsdt,
     minLimitVes,
     maxLimitVes,
@@ -252,10 +318,17 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     selectedBank: bankName,
     selectedAccountCupoRemainingVes: remainingCupo,
     adTitle: rendered.title,
-    terms: rendered.terms,
-    autoReply: rendered.autoReply,
+    templateName: templateObj.name,
+    terms: finalTerms,
+    autoReply: finalAutoReply,
     expectedNetSpreadPct: spreadPct,
+    netSpreadAfterFeePct,
     expectedProfitVesPerCycle: expectedProfitVes,
+    expectedNetProfitUsdtPerCycle: expectedNetProfitUsdt,
+    makerFeePct,
+    queueRank,
+    competitorsAheadCount,
+    volumeAheadUsdt,
     isGoldenSpread,
     guardrails: {
       antiSpoofingPassed,
@@ -267,6 +340,7 @@ export function composeAdDraft(input: AdComposerInput): StagedAdDraft {
     },
     stagedTimestamp: new Date().toISOString(),
     readyToPublish,
+    validationErrors: validation.errors,
     validationWarnings: validation.warnings,
   };
 }
