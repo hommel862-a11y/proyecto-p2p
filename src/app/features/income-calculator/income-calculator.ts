@@ -17,6 +17,7 @@ import {
   evaluateGoldenSpread,
   auditOperatorPerformance,
   computeFifoAccounting,
+  computeDashboard,
   VENEZUELAN_BANK_FEES,
   type BankCode,
   type P2PRole,
@@ -37,14 +38,19 @@ import { FORMAT_PIPES } from '../../core/format';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { AccountsService } from '../../core/accounts.service';
 import { ToastService } from '../../core/toast.service';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { StorageService } from '../../core/storage';
 import { McpService } from '../../core/mcp.service';
+import { Finance360Service } from '../../core/finance-360.service';
+import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
 
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic' | 'mcp-portfolio';
 
 /** Local UI-view key (component-scoped), following the app-wide `p2p.*` storage pattern. */
 const CALC_UI_KEY = 'p2p.income-calculator.ui';
+export const ACTIVE_DAILY_GOAL_KEY = 'p2p.active-daily-goal';
+const DAILY_TARGET_LEGACY_KEY = 'p2p.daily-target';
+const OPERATOR_SETTLEMENTS_KEY = 'p2p.income-calculator.operator-settlements';
 
 const CALC_MODES: readonly CalcViewMode[] = [
   'cycle',
@@ -56,10 +62,39 @@ const CALC_MODES: readonly CalcViewMode[] = [
 ];
 const REINVEST_RATES: readonly number[] = [100, 70, 50, 30, 0];
 
+export interface ActiveDailyGoalState {
+  targetGoalUsd: number;
+  availableCapitalUsdt: number;
+  desiredCyclesPerDay: number;
+  requiredSellPriceVes: number;
+  requiredNetRoiPct: number;
+  updatedAt: string;
+}
+
+export interface OperatorSettlementRecord {
+  id: string;
+  operatorId: string;
+  operatorName: string;
+  commissionSplitPct: number;
+  allocatedCapitalUsdt: number;
+  cycles: number;
+  amountUsd: number;
+  amountVes: number;
+  rateAppliedVes: number;
+  expenseId: string;
+  settledAt: string;
+}
+
 interface CalcUiState {
   activeMode: CalcViewMode;
   compoundReinvestmentRate: number;
   merchantLevel?: MakerMerchantLevel;
+  devaluationSlippagePct?: number;
+  holdHoursInVes?: number;
+  teamDeskCapital?: number;
+  teamExpectedSpreadPct?: number;
+  leaderDailyCycles?: number;
+  teamOperators?: OperatorProfile[];
 }
 
 export interface EnhancedVelocityRow {
@@ -99,6 +134,16 @@ function sanitizeCalcUi(raw: CalcUiState | null): CalcUiState | null {
     activeMode,
     compoundReinvestmentRate,
     merchantLevel: raw.merchantLevel ?? 'STANDARD',
+    devaluationSlippagePct:
+      typeof raw.devaluationSlippagePct === 'number' ? raw.devaluationSlippagePct : 0,
+    holdHoursInVes: typeof raw.holdHoursInVes === 'number' ? raw.holdHoursInVes : 2,
+    teamDeskCapital: typeof raw.teamDeskCapital === 'number' ? raw.teamDeskCapital : 10000,
+    teamExpectedSpreadPct:
+      typeof raw.teamExpectedSpreadPct === 'number' ? raw.teamExpectedSpreadPct : 0.9,
+    leaderDailyCycles: typeof raw.leaderDailyCycles === 'number' ? raw.leaderDailyCycles : 2.0,
+    teamOperators: Array.isArray(raw.teamOperators) && raw.teamOperators.length > 0
+      ? raw.teamOperators
+      : undefined,
   };
 }
 
@@ -108,7 +153,7 @@ function sanitizeCalcUi(raw: CalcUiState | null): CalcUiState | null {
 @Component({
   selector: 'app-income-calculator',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, UiCard, UiPanelHeader, ...FORMAT_PIPES],
+  imports: [DecimalPipe, DatePipe, UiCard, UiPanelHeader, ...FORMAT_PIPES],
   templateUrl: './income-calculator.html',
   styleUrl: './income-calculator.scss',
 })
@@ -118,6 +163,7 @@ export class IncomeCalculator {
   private readonly toast = inject(ToastService);
   private readonly storage = inject(StorageService);
   readonly mcpService = inject(McpService);
+  readonly finance360 = inject(Finance360Service);
 
   private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(
     this.storage.get<CalcUiState>(CALC_UI_KEY),
@@ -158,10 +204,17 @@ export class IncomeCalculator {
   readonly isInterbank = signal<boolean>(false);
   readonly extraFixedFeeVes = signal<number>(0);
 
-  // --- Mode B: 3-Way Reverse Goal Planner Inputs ---
-  readonly targetGoalUsd = signal<number>(35);
-  readonly availableCapitalGoal = signal<number>(1000);
-  readonly desiredCyclesPerDay = signal<number>(2);
+  // --- VES Intraday / Overnight Devaluation Stress Simulator ---
+  readonly devaluationSlippagePct = signal<number>(this.restoredUi?.devaluationSlippagePct ?? 0);
+  readonly holdHoursInVes = signal<number>(this.restoredUi?.holdHoursInVes ?? 2);
+
+  // --- Mode B: 3-Way Reverse Goal Planner Inputs & Active Goal Persistence ---
+  private readonly savedDailyGoal = this.storage.get<ActiveDailyGoalState>(ACTIVE_DAILY_GOAL_KEY);
+  readonly activeDailyGoal = signal<ActiveDailyGoalState | null>(this.savedDailyGoal);
+
+  readonly targetGoalUsd = signal<number>(this.savedDailyGoal?.targetGoalUsd ?? 35);
+  readonly availableCapitalGoal = signal<number>(this.savedDailyGoal?.availableCapitalUsdt ?? 1000);
+  readonly desiredCyclesPerDay = signal<number>(this.savedDailyGoal?.desiredCyclesPerDay ?? 2);
   readonly operationalShiftHours = signal<number>(8);
 
   // --- Mode C: Compound Growth Projector Inputs ---
@@ -175,28 +228,33 @@ export class IncomeCalculator {
   readonly compoundReferenceRate = signal<number>(800.0);
 
   // --- Mode D: Team Delegation & Scaling ($1,000/day Desk) ---
-  readonly teamDeskCapital = signal<number>(10000);
+  readonly teamDeskCapital = signal<number>(this.restoredUi?.teamDeskCapital ?? 10000);
   readonly teamReferenceRate = signal<number>(800.0);
-  readonly teamExpectedSpreadPct = signal<number>(0.9);
-  readonly leaderDailyCycles = signal<number>(2.0);
-  readonly teamOperators = signal<OperatorProfile[]>([
-    {
-      id: 'op-william',
-      name: 'William (Operador Principal)',
-      assignedCapitalUsdt: 5000,
-      commissionSplitPct: 30,
-      targetDailyCycles: 2.5,
-      active: true,
-    },
-    {
-      id: 'op-secondary',
-      name: 'Cajero 2 (Banesco / Mercantil)',
-      assignedCapitalUsdt: 3000,
-      commissionSplitPct: 25,
-      targetDailyCycles: 2.0,
-      active: true,
-    },
-  ]);
+  readonly teamExpectedSpreadPct = signal<number>(this.restoredUi?.teamExpectedSpreadPct ?? 0.9);
+  readonly leaderDailyCycles = signal<number>(this.restoredUi?.leaderDailyCycles ?? 2.0);
+  readonly teamOperators = signal<OperatorProfile[]>(
+    this.restoredUi?.teamOperators ?? [
+      {
+        id: 'op-william',
+        name: 'William (Operador Principal)',
+        assignedCapitalUsdt: 5000,
+        commissionSplitPct: 30,
+        targetDailyCycles: 2.5,
+        active: true,
+      },
+      {
+        id: 'op-secondary',
+        name: 'Cajero 2 (Banesco / Mercantil)',
+        assignedCapitalUsdt: 3000,
+        commissionSplitPct: 25,
+        targetDailyCycles: 2.0,
+        active: true,
+      },
+    ],
+  );
+  readonly operatorSettlements = signal<OperatorSettlementRecord[]>(
+    this.storage.get<OperatorSettlementRecord[]>(OPERATOR_SETTLEMENTS_KEY) ?? [],
+  );
 
   // --- Mode E: Classic & P2P APR Benchmark Inputs ---
   readonly targetUsd = signal<number>(35);
@@ -241,11 +299,51 @@ export class IncomeCalculator {
     };
   });
 
+  /** Live tracker comparing today's closed P2P operations against the Active Daily Goal. */
+  readonly liveDailyGoalTracker = computed(() => {
+    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    const todaySummary = computeDashboard(ops).today;
+    const pinned = this.activeDailyGoal();
+    const goalUsd = pinned ? pinned.targetGoalUsd : this.targetGoalUsd();
+    const targetCycles = pinned ? pinned.desiredCyclesPerDay : this.desiredCyclesPerDay();
+    const targetSellVes = pinned ? pinned.requiredSellPriceVes : this.sellPrice();
+
+    const todayPnlUsdt = Number(todaySummary.pnlUsdt.toFixed(2));
+    const todayPnlVes = Number(todaySummary.pnlVes.toFixed(2));
+    const todayOpsCount = todaySummary.operations;
+    const completedCyclesEst = Number((todayOpsCount / 2).toFixed(1));
+    const progressPct =
+      goalUsd > 0 ? Math.min(100, Math.max(0, Math.round((todayPnlUsdt / goalUsd) * 100))) : 0;
+    const remainingUsd = Number(Math.max(0, goalUsd - todayPnlUsdt).toFixed(2));
+    const isAchieved = goalUsd > 0 && todayPnlUsdt >= goalUsd;
+
+    return {
+      isPinned: pinned !== null,
+      goalUsd,
+      targetCycles,
+      targetSellVes,
+      todayPnlUsdt,
+      todayPnlVes,
+      todayOpsCount,
+      completedCyclesEst,
+      progressPct,
+      remainingUsd,
+      isAchieved,
+      updatedAt: pinned?.updatedAt ?? null,
+    };
+  });
+
   private readonly persistEffect = effect(() => {
     this.storage.set(CALC_UI_KEY, {
       activeMode: this.activeMode(),
       compoundReinvestmentRate: this.compoundReinvestmentRate(),
       merchantLevel: this.merchantLevel(),
+      devaluationSlippagePct: this.devaluationSlippagePct(),
+      holdHoursInVes: this.holdHoursInVes(),
+      teamDeskCapital: this.teamDeskCapital(),
+      teamExpectedSpreadPct: this.teamExpectedSpreadPct(),
+      leaderDailyCycles: this.leaderDailyCycles(),
+      teamOperators: this.teamOperators(),
     });
   });
 
@@ -367,6 +465,54 @@ export class IncomeCalculator {
     const c = this.cycleResult();
     if (!c) return null;
     return evaluateGoldenSpread(c.roiCyclePct);
+  });
+
+  /**
+   * Simulates the real purchasing-power impact (in USDT) if the Bolívar (VES) devalues
+   * by `devaluationSlippagePct`% while the operator holds VES waiting to repurchase USDT.
+   */
+  readonly devaluationStressMetrics = computed(() => {
+    const c = this.cycleResult();
+    const buy = this.buyPrice();
+    const sell = this.sellPrice();
+    if (!c || buy <= 0 || sell <= 0 || c.capitalUsdt <= 0) return null;
+
+    const devalPct = Math.max(0, this.devaluationSlippagePct());
+    const nextRepurchaseRateVes = Number((buy * (1 + devalPct / 100)).toFixed(2));
+    const usdtRepurchasedAfterDeval =
+      nextRepurchaseRateVes > 0 ? c.netProceedsVes / nextRepurchaseRateVes : 0;
+    const realNetGainUsdt = Number((usdtRepurchasedAfterDeval - c.capitalUsdt).toFixed(2));
+    const realRoiAfterDevalPct = Number(((realNetGainUsdt / c.capitalUsdt) * 100).toFixed(2));
+    const erodedUsdt = Number(Math.max(0, c.netGainUsd - realNetGainUsdt).toFixed(2));
+
+    // Exact % rise in buyPrice that wipes out 100% of the cycle's net gain (PnL = 0 USDT)
+    const maxDevalTolerancePct =
+      c.capitalVesInvested > 0
+        ? Number(Math.max(0, (c.netProceedsVes / c.capitalVesInvested - 1) * 100).toFixed(2))
+        : 0;
+
+    // Protected sell price needed to preserve the target margin against expected devaluation
+    const baseTargetSell =
+      this.activeMode() === 'reverse'
+        ? (this.reverseSolverMatrix()?.requiredSellPriceVes ?? sell)
+        : sell;
+    const devalProtectedSellPriceVes = Number((baseTargetSell * (1 + devalPct / 100)).toFixed(2));
+
+    const status: 'SAFE' | 'ERODED' | 'LOSS' =
+      realRoiAfterDevalPct >= 0.5 ? 'SAFE' : realRoiAfterDevalPct > 0 ? 'ERODED' : 'LOSS';
+
+    return {
+      devalPct,
+      holdHours: this.holdHoursInVes(),
+      nextRepurchaseRateVes,
+      usdtRepurchasedAfterDeval: Number(usdtRepurchasedAfterDeval.toFixed(2)),
+      realNetGainUsdt,
+      realRoiAfterDevalPct,
+      erodedUsdt,
+      maxDevalTolerancePct,
+      devalProtectedSellPriceVes,
+      status,
+    };
   });
 
   readonly velocityProjections = computed<EnhancedVelocityRow[]>(() => {
@@ -790,6 +936,100 @@ export class IncomeCalculator {
     );
   }
 
+  /**
+   * Settles a single operator's daily commission directly into Finance 360 (Pyme Drawer 2: Operations & Payroll)
+   * and records an immutable audit receipt in `p2p.income-calculator.operator-settlements`.
+   */
+  settleOperatorCommission(
+    alloc: TeamAllocationPlan['operatorsAllocations'][0],
+    silentToast = false,
+  ): boolean {
+    if (!alloc || alloc.operatorDailyTakeUsdt <= 0) {
+      if (!silentToast) {
+        this.toast.warn('La comisión a liquidar debe ser mayor a $0.00 USDT.');
+      }
+      return false;
+    }
+
+    const bcv = this.finance360.currentBcvRate();
+    const par = this.teamReferenceRate() > 0 ? this.teamReferenceRate() : this.finance360.currentParallelRate();
+    const amountUsd = Number(alloc.operatorDailyTakeUsdt.toFixed(2));
+    const amountVes = Number((amountUsd * par).toFixed(2));
+    const today = new Date().toISOString().split('T')[0];
+
+    const expenseEntry = this.finance360.addExpense({
+      title: `Comisión Cajero P2P: ${alloc.operator.name}`,
+      scope: 'business',
+      category: 'payroll',
+      channel: 'crypto',
+      vaultId: 'vault-pyme-caja',
+      drawerAllocation: 'drawer_operations',
+      triMonetary: computeTriMonetaryAmount(amountUsd, 'USD', bcv, par),
+      date: today,
+      notes: `Split ${alloc.operator.commissionSplitPct}% · Capital operado: $${alloc.allocatedCapitalUsdt} USDT (${alloc.operator.targetDailyCycles} vueltas/día)`,
+    });
+
+    const record: OperatorSettlementRecord = {
+      id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      operatorId: alloc.operator.id,
+      operatorName: alloc.operator.name,
+      commissionSplitPct: alloc.operator.commissionSplitPct,
+      allocatedCapitalUsdt: alloc.allocatedCapitalUsdt,
+      cycles: alloc.operator.targetDailyCycles,
+      amountUsd,
+      amountVes,
+      rateAppliedVes: par,
+      expenseId: expenseEntry.id,
+      settledAt: new Date().toISOString(),
+    };
+
+    const nextList = [record, ...this.operatorSettlements()].slice(0, 30);
+    this.operatorSettlements.set(nextList);
+    this.storage.set(OPERATOR_SETTLEMENTS_KEY, nextList);
+
+    if (!silentToast) {
+      this.toast.success(
+        `Comisión de ${alloc.operator.name} ($${amountUsd.toFixed(2)} USD / ${amountVes.toLocaleString('es-VE')} Bs) imputada a Gaveta 2 (Nómina Pyme).`,
+      );
+    }
+    return true;
+  }
+
+  /** Settles commissions for all active operators in the Desk in a single batch. */
+  settleAllOperatorsCommissions(): void {
+    const plan = this.teamPlan();
+    if (!plan || plan.operatorsAllocations.length === 0) return;
+
+    let count = 0;
+    let totalUsd = 0;
+    for (const alloc of plan.operatorsAllocations) {
+      if (alloc.operatorDailyTakeUsdt > 0 && this.settleOperatorCommission(alloc, true)) {
+        count++;
+        totalUsd += alloc.operatorDailyTakeUsdt;
+      }
+    }
+
+    if (count > 0) {
+      this.toast.success(
+        `Liquidación masiva completada: ${count} cajero(s) por $${totalUsd.toFixed(2)} USD registrados en Finanzas 360° (Gaveta 2 Operación/Nómina).`,
+      );
+    } else {
+      this.toast.info('No hay comisiones pendientes mayores a $0 para liquidar.');
+    }
+  }
+
+  /** Reverses a commission settlement and removes its corresponding expense from Finance 360. */
+  revertOperatorSettlement(recordId: string): void {
+    const target = this.operatorSettlements().find((r) => r.id === recordId);
+    if (!target) return;
+
+    this.finance360.deleteMovement(target.expenseId, 'expense');
+    const nextList = this.operatorSettlements().filter((r) => r.id !== recordId);
+    this.operatorSettlements.set(nextList);
+    this.storage.set(OPERATOR_SETTLEMENTS_KEY, nextList);
+    this.toast.info(`Liquidación de ${target.operatorName} ($${target.amountUsd.toFixed(2)}) revertida de Finanzas 360°.`);
+  }
+
   // --- Computed Mode E: Classic & P2P APR Benchmark Results ---
   readonly bands = [10, 20, 120, 240, 365] as const;
   readonly targets = [15, 35, 50, 100, 250] as const;
@@ -846,7 +1086,40 @@ export class IncomeCalculator {
     })),
   );
 
-  // ─── Cross-Tab Bridges (1-Click Scenario Handoff) ───
+  // ─── Cross-Tab Bridges, Devaluation Shield & Active Daily Goal Pinning ───
+  applyDevalProtectedSellPrice(): void {
+    const stress = this.devaluationStressMetrics();
+    if (!stress || stress.devalProtectedSellPriceVes <= 0) return;
+    this.sellPrice.set(stress.devalProtectedSellPriceVes);
+    this.toast.success(
+      `Precio de venta blindado a ${stress.devalProtectedSellPriceVes.toFixed(2)} Bs contra una devaluación intradía de +${stress.devalPct}%.`,
+    );
+  }
+
+  pinActiveDailyGoal(): void {
+    const solver = this.reverseSolverMatrix();
+    const nextGoal: ActiveDailyGoalState = {
+      targetGoalUsd: this.targetGoalUsd(),
+      availableCapitalUsdt: this.availableCapitalGoal(),
+      desiredCyclesPerDay: this.desiredCyclesPerDay(),
+      requiredSellPriceVes: solver?.requiredSellPriceVes ?? this.sellPrice(),
+      requiredNetRoiPct: solver?.requiredNetRoiPerCyclePct ?? (this.cycleResult()?.roiCyclePct ?? 0.9),
+      updatedAt: new Date().toISOString(),
+    };
+    this.activeDailyGoal.set(nextGoal);
+    this.storage.set(ACTIVE_DAILY_GOAL_KEY, nextGoal);
+    this.storage.set(DAILY_TARGET_LEGACY_KEY, nextGoal.targetGoalUsd);
+    this.toast.success(
+      `Meta diaria activa fijada en $${nextGoal.targetGoalUsd} USD/día (${nextGoal.desiredCyclesPerDay} vueltas @ ${nextGoal.requiredSellPriceVes.toFixed(2)} Bs) y sincronizada con el Centro de Control.`,
+    );
+  }
+
+  clearActiveDailyGoal(): void {
+    this.activeDailyGoal.set(null);
+    this.storage.remove(ACTIVE_DAILY_GOAL_KEY);
+    this.toast.info('Meta diaria personalizada desacoplada.');
+  }
+
   bridgeCycleToReverse(cyclesPerDay?: number): void {
     this.availableCapitalGoal.set(this.capitalUsdt());
     if (cyclesPerDay && cyclesPerDay > 0) {

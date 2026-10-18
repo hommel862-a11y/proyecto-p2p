@@ -244,8 +244,22 @@ export class Dashboard implements OnInit, OnDestroy {
     describeCotizaveProvenance(this.cotizaveService.ratesProvenance()),
   );
 
-  /** Daily income target (USD) — read from income calculator storage if available. */
-  readonly dailyTarget = signal<number>(this.storage.get<number>('p2p.daily-target') ?? 20);
+  /** Active Daily Goal Plan pinned from the Income Calculator (Reverse Planner 360°). */
+  readonly activeDailyGoalPlan = signal<{
+    targetGoalUsd: number;
+    availableCapitalUsdt: number;
+    desiredCyclesPerDay: number;
+    requiredSellPriceVes: number;
+    requiredNetRoiPct: number;
+    updatedAt: string;
+  } | null>(this.storage.get('p2p.active-daily-goal'));
+
+  /** Daily income target (USD) — read from active daily goal or legacy daily-target key. */
+  readonly dailyTarget = computed<number>(() => {
+    const pinned = this.activeDailyGoalPlan();
+    if (pinned && pinned.targetGoalUsd > 0) return pinned.targetGoalUsd;
+    return this.storage.get<number>('p2p.daily-target') ?? 35;
+  });
 
   /** State for closing session modal */
   readonly showCloseModal = signal<boolean>(false);

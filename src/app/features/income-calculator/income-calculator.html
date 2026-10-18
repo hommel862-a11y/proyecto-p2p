@@ -129,6 +129,74 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TRACKER DE META DIARIA ACTIVA EN VIVO (CONECTADO A BITÁCORA & CENTRO DE CONTROL)
+       ═══════════════════════════════════════════════════════════════════ -->
+  @if (liveDailyGoalTracker(); as trk) {
+    <div class="daily-goal-tracker-strip" [class.goal-achieved]="trk.isAchieved">
+      <div class="tracker-main">
+        <div class="tracker-title-row">
+          <span class="badge font-mono" [class.badge-gold]="trk.isPinned" [class.badge-secondary]="!trk.isPinned">
+            {{ trk.isPinned ? '📌 META DIARIA FIJADA' : '🎯 META EN SIMULACIÓN' }}
+          </span>
+          <strong class="font-mono" style="font-size: 0.9rem; color: #fff;">
+            Objetivo: +{{ trk.goalUsd | usdt }}/día
+          </strong>
+          <span class="text-muted font-mono" style="font-size: 0.75rem;">
+            ({{ trk.targetCycles }} vueltas @ {{ trk.targetSellVes | num }} Bs)
+          </span>
+        </div>
+
+        <div class="tracker-metrics font-mono">
+          <span>
+            Hoy en Bitácora:
+            <strong [class.positive]="trk.todayPnlUsdt > 0" [class.negative]="trk.todayPnlUsdt < 0">
+              {{ trk.todayPnlUsdt > 0 ? '+' : '' }}{{ trk.todayPnlUsdt | usdt }}
+            </strong>
+            <small class="text-muted">({{ trk.todayPnlVes | ves }} · {{ trk.todayOpsCount }} órdenes)</small>
+          </span>
+          <span class="tracker-sep">|</span>
+          @if (trk.isAchieved) {
+            <strong class="positive">🏆 ¡Meta diaria superada hoy!</strong>
+          } @else {
+            <span>Faltan: <strong style="color: var(--gold-strong);">{{ trk.remainingUsd | usdt }}</strong></span>
+          }
+        </div>
+      </div>
+
+      <div class="tracker-progress-wrap">
+        <div class="tracker-progress-head font-mono">
+          <span>Avance Real Hoy</span>
+          <strong>{{ trk.progressPct }}%</strong>
+        </div>
+        <div class="tracker-progress-bar">
+          <div class="tracker-progress-fill" [style.width.%]="trk.progressPct"></div>
+        </div>
+      </div>
+
+      <div class="tracker-actions">
+        <button
+          type="button"
+          class="preset-mini-btn active"
+          (click)="pinActiveDailyGoal()"
+          title="Fija la meta actual del Planificador Reverso como objetivo oficial del día en toda la suite"
+        >
+          📌 {{ trk.isPinned ? 'Actualizar Meta Diaria' : 'Fijar Meta del Día' }}
+        </button>
+        @if (trk.isPinned) {
+          <button
+            type="button"
+            class="preset-mini-btn"
+            (click)="clearActiveDailyGoal()"
+            title="Desfijar meta personalizada"
+          >
+            ✕
+          </button>
+        }
+      </div>
+    </div>
+  }
+
   <!-- ═══════════════════════════════════════════════════
        MODO A: Retorno por Vuelta & Velocidad (Cycle Profit & Velocity)
        ═══════════════════════════════════════════════════ -->
@@ -437,6 +505,71 @@
               </div>
             </div>
 
+            <!-- Simulador de Estrés Devaluatorio Intradía / Overnight (Riesgo Bolívares) -->
+            @if (devaluationStressMetrics(); as stress) {
+              <div
+                class="deval-stress-box"
+                [class.deval-safe]="stress.status === 'SAFE'"
+                [class.deval-eroded]="stress.status === 'ERODED'"
+                [class.deval-loss]="stress.status === 'LOSS'"
+              >
+                <div class="deval-head">
+                  <div>
+                    <strong style="font-size: 0.8rem; color: #fff;">
+                      🛡️ Simulador de Estrés Devaluatorio (Exposición en Bolívares)
+                    </strong>
+                    <div class="text-muted" style="font-size: 0.7rem;">
+                      Tolerancia máxima del ciclo antes de entrar en pérdida: <strong class="font-mono" style="color: #38bdf8;">+{{ stress.maxDevalTolerancePct }}%</strong> de subida en recompra
+                    </div>
+                  </div>
+                  <div class="deval-pills">
+                    @for (dv of [
+                      { pct: 0, label: '0% Estable' },
+                      { pct: 0.25, label: '+0.25% Micro' },
+                      { pct: 0.5, label: '+0.50% Mod.' },
+                      { pct: 1.0, label: '+1.0% Fuerte' },
+                      { pct: 2.0, label: '+2.0% Choque' }
+                    ]; track dv.pct) {
+                      <button
+                        type="button"
+                        class="preset-mini-btn font-mono"
+                        [class.active]="devaluationSlippagePct() === dv.pct"
+                        (click)="devaluationSlippagePct.set(dv.pct)"
+                      >
+                        {{ dv.label }}
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                @if (stress.devalPct > 0) {
+                  <div class="deval-metrics-row font-mono">
+                    <div>
+                      <span class="text-muted">Nueva Recompra:</span>
+                      <strong>{{ stress.nextRepurchaseRateVes | num }} Bs</strong>
+                    </div>
+                    <div>
+                      <span class="text-muted">Erosión Cambiaria:</span>
+                      <strong class="negative">-{{ stress.erodedUsdt | usdt }}</strong>
+                    </div>
+                    <div>
+                      <span class="text-muted">ROI Real en USDT:</span>
+                      <strong [class.positive]="stress.realRoiAfterDevalPct > 0" [class.negative]="stress.realRoiAfterDevalPct <= 0">
+                        {{ stress.realRoiAfterDevalPct > 0 ? '+' : '' }}{{ stress.realRoiAfterDevalPct }}% ({{ stress.realNetGainUsdt > 0 ? '+' : '' }}{{ stress.realNetGainUsdt | usdt }})
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      class="preset-mini-btn active"
+                      (click)="applyDevalProtectedSellPrice()"
+                    >
+                      🛡️ Blindar Venta a {{ stress.devalProtectedSellPriceVes | num }} Bs
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
               <span class="section-eyebrow" style="margin: 0;">Matriz de Velocidad (Lineal vs Compuesto Intradía + Cupo Bancario)</span>
               <span class="text-muted" style="font-size: 0.7rem;">Haz clic en una fila para enviarla al Planificador Reverso</span>
@@ -724,9 +857,18 @@
         @if (reverseGoalResult(); as goal) {
           @if (reverseSolverMatrix(); as solver) {
             <div class="calc-result-card">
-              <span class="section-eyebrow" style="color: var(--gold-strong);">
-                🧭 Matriz de Ingeniería Reversa · 3 Caminos para Ganar +{{ targetGoalUsd() | usdt }}/Día
-              </span>
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                <span class="section-eyebrow" style="color: var(--gold-strong); margin: 0;">
+                  🧭 Matriz de Ingeniería Reversa · 3 Caminos para Ganar +{{ targetGoalUsd() | usdt }}/Día
+                </span>
+                <button
+                  type="button"
+                  class="preset-mini-btn active"
+                  (click)="pinActiveDailyGoal()"
+                >
+                  📌 Fijar como Meta Diaria Activa del Desk
+                </button>
+              </div>
 
               <!-- 3 Tarjetas de Resolución Simultánea -->
               <div class="reverse-three-paths-grid">
@@ -788,6 +930,11 @@
                   <div class="path-details font-mono">
                     <div>• Margen limpio requerido: <strong class="positive">+{{ solver.requiredNetRoiPerCyclePct }}% neto/vuelta</strong></div>
                     <div>• Spread nominal bruto: <strong>{{ solver.requiredNominalSpreadPct }}%</strong> (Compra: {{ buyPrice() | num }} Bs)</div>
+                    @if (devaluationStressMetrics(); as stress) {
+                      @if (stress.devalPct > 0) {
+                        <div style="color: #fbbf24;">• Blindado (+{{ stress.devalPct }}% deval): <strong>{{ stress.devalProtectedSellPriceVes | num }} Bs</strong></div>
+                      }
+                    }
                     <button type="button" class="path-action-btn btn-gold" (click)="applyRequiredSellPriceToCycle()">
                       🎯 Fijar Venta en {{ solver.requiredSellPriceVes | num }} Bs
                     </button>
@@ -1342,7 +1489,17 @@
             </div>
 
             <div class="data-section">
-              <span class="section-eyebrow">Desglose Operativo por Cajero</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                <span class="section-eyebrow" style="margin: 0;">Desglose Operativo por Cajero & Liquidación a Finanzas 360°</span>
+                <button
+                  type="button"
+                  class="preset-mini-btn active"
+                  (click)="settleAllOperatorsCommissions()"
+                  title="Imputa el pago de comisiones de todos los cajeros activos directamente a Gaveta 2 (Nómina Pyme) en Finanzas 360°"
+                >
+                  💸 Liquidar Todas Hoy ({{ plan.totalDailyOperatorsProfitUsdt | usdt }})
+                </button>
+              </div>
               <div style="overflow-x: auto;">
                 <table class="velocity-table" aria-label="Desglose de capital y rentabilidad por operador">
                   <thead>
@@ -1352,6 +1509,7 @@
                       <th scope="col">Bruto Día</th>
                       <th scope="col">Pago Cajero</th>
                       <th scope="col">Neto Dueño</th>
+                      <th scope="col">Liquidar</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1362,12 +1520,76 @@
                         <td class="font-mono positive">+{{ alloc.targetDailyProfitUsdt | usdt }}</td>
                         <td class="font-mono" style="color: var(--gold);">{{ alloc.operatorDailyTakeUsdt | usdt }} ({{ alloc.operator.commissionSplitPct }}%)</td>
                         <td class="font-mono positive" style="font-weight: 700;">+{{ alloc.ownerDailyTakeUsdt | usdt }}</td>
+                        <td>
+                          <button
+                            type="button"
+                            class="preset-mini-btn"
+                            (click)="settleOperatorCommission(alloc)"
+                            title="Liquidar comisión a Gaveta 2 (Operación/Nómina Pyme)"
+                          >
+                            💸 Liquidar
+                          </button>
+                        </td>
                       </tr>
                     }
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <!-- Historial de Liquidaciones de Comisiones (Sincronizado con Finanzas 360°) -->
+            @if (operatorSettlements().length > 0) {
+              <div class="data-section" style="margin-top: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span class="section-eyebrow" style="margin: 0; color: #34d399;">
+                    🧾 Historial de Comisiones Liquidadas (Gaveta 2 · Nómina Pyme)
+                  </span>
+                  <span class="text-muted font-mono" style="font-size: 0.7rem;">
+                    {{ operatorSettlements().length }} liquidación(es)
+                  </span>
+                </div>
+                <div style="overflow-x: auto;">
+                  <table class="velocity-table" aria-label="Historial de liquidaciones de comisiones a cajeros">
+                    <thead>
+                      <tr>
+                        <th scope="col">Fecha / Hora</th>
+                        <th scope="col">Cajero</th>
+                        <th scope="col">Split / Vueltas</th>
+                        <th scope="col">Pagado (USD / Bs)</th>
+                        <th scope="col">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (rec of operatorSettlements().slice(0, 8); track rec.id) {
+                        <tr>
+                          <th scope="row" class="font-mono text-muted" style="font-size: 0.72rem; text-align: left;">
+                            {{ rec.settledAt | date:'dd/MM HH:mm' }}
+                          </th>
+                          <td style="text-align: left; font-weight: 600;">{{ rec.operatorName }}</td>
+                          <td class="font-mono text-muted" style="font-size: 0.74rem;">
+                            {{ rec.commissionSplitPct }}% · {{ rec.cycles }}x
+                          </td>
+                          <td class="font-mono" style="color: var(--gold-strong); font-weight: 700;">
+                            {{ rec.amountUsd | usdt }}
+                            <small style="display: block; font-size: 0.66rem; color: var(--muted);">{{ rec.amountVes | ves }}</small>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              class="preset-mini-btn"
+                              (click)="revertOperatorSettlement(rec.id)"
+                              title="Revertir este asiento contable en Finanzas 360°"
+                            >
+                              ↩ Revertir
+                            </button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
 
             <!-- 10-Day Operator Performance Audit Diagnostic -->
             <div class="data-section" style="margin-top: 18px;">

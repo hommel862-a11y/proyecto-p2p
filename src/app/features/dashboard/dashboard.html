@@ -182,7 +182,9 @@
 
       <div class="apple-kpi-card apple-card-progress" (click)="goToIncome()" role="button" tabindex="0" (keydown.enter)="goToIncome()">
         <div class="apple-kpi-header">
-          <span class="apple-kpi-title">Meta Diaria de Ingresos</span>
+          <span class="apple-kpi-title">
+            {{ activeDailyGoalPlan() ? '📌 Meta Diaria Fijada' : 'Meta Diaria de Ingresos' }}
+          </span>
           <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
         </div>
         <div class="apple-kpi-val font-mono" style="color: var(--gold-strong);">
@@ -192,7 +194,13 @@
           <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
         </div>
         <div class="apple-kpi-footer">
-          <span class="apple-kpi-subtext">Avance hacia el objetivo</span>
+          @if (activeDailyGoalPlan(); as plan) {
+            <span class="apple-kpi-subtext font-mono">
+              {{ plan.desiredCyclesPerDay }} vueltas @ {{ plan.requiredSellPriceVes | num }} Bs
+            </span>
+          } @else {
+            <span class="apple-kpi-subtext">Avance hacia el objetivo</span>
+          }
           <span class="apple-kpi-link">Calculadora →</span>
         </div>
       </div>
