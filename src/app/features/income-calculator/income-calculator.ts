@@ -5,6 +5,8 @@ import {
   effect,
   inject,
   signal,
+  OnInit,
+  OnDestroy,
 } from '@angular/core';
 import {
   capitalFromDailyIncome,
@@ -161,7 +163,7 @@ function sanitizeCalcUi(raw: CalcUiState | null): CalcUiState | null {
   templateUrl: './income-calculator.html',
   styleUrl: './income-calculator.scss',
 })
-export class IncomeCalculator {
+export class IncomeCalculator implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   readonly binance = inject(BinanceP2pService);
   readonly accounts = inject(AccountsService);
@@ -179,6 +181,16 @@ export class IncomeCalculator {
 
   readonly activeMode = signal<CalcViewMode>(this.restoredUi?.activeMode ?? 'cycle');
   readonly syncingLive = signal<boolean>(false);
+  readonly autoSyncLiveOrderbook = signal<boolean>(true);
+
+  readonly isLivePricesSynced = computed<boolean>(() => {
+    const depth = this.binance.marketDepth();
+    if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) return false;
+    return (
+      Math.abs(this.buyPrice() - depth.bestBuyPrice) < 0.01 &&
+      Math.abs(this.sellPrice() - depth.bestSellPrice) < 0.01
+    );
+  });
 
   // --- Global Merchant VIP Level ---
   readonly merchantLevel = signal<MakerMerchantLevel>(
@@ -355,6 +367,18 @@ export class IncomeCalculator {
     });
   });
 
+  private readonly liveBookSyncEffect = effect(() => {
+    const isAuto = this.autoSyncLiveOrderbook();
+    const depth = this.binance.marketDepth();
+    if (isAuto && depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+      this.buyPrice.set(depth.bestBuyPrice);
+      this.sellPrice.set(depth.bestSellPrice);
+      this.compoundReferenceRate.set(depth.bestSellPrice);
+      this.teamReferenceRate.set(depth.bestSellPrice);
+      this.rate.set(depth.bestSellPrice);
+    }
+  });
+
   constructor() {
     // Auto-hydrate reference rates if Binance P2P depth is already loaded in memory
     const depth = this.binance.marketDepth();
@@ -367,9 +391,82 @@ export class IncomeCalculator {
     }
   }
 
+  ngOnInit(): void {
+    // Mantener fresco el libro L2 cada 30 segundos
+    this.binance.startAutoRefresh(30_000, 'USDT');
+    const depth = this.binance.marketDepth();
+    if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
+      void this.loadBinancePrices(true);
+    } else if (this.autoSyncLiveOrderbook()) {
+      this.buyPrice.set(depth.bestBuyPrice);
+      this.sellPrice.set(depth.bestSellPrice);
+      this.compoundReferenceRate.set(depth.bestSellPrice);
+      this.teamReferenceRate.set(depth.bestSellPrice);
+      this.rate.set(depth.bestSellPrice);
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.binance.stopAutoRefresh();
+  }
+
   /** Template helper: collapse NaN/empty/negative money entries to 0. */
   clampMoney(v: number): number {
     return sharedClampMoney(v);
+  }
+
+  /** Manual edit handlers: pauses live auto-sync so operator typing is not overwritten. */
+  onBuyPriceManualChange(val: number): void {
+    this.autoSyncLiveOrderbook.set(false);
+    this.buyPrice.set(this.clampMoney(val));
+  }
+
+  onSellPriceManualChange(val: number): void {
+    this.autoSyncLiveOrderbook.set(false);
+    this.sellPrice.set(this.clampMoney(val));
+  }
+
+  /** Direct 1-click button to fix buy price to Binance P2P best buy. */
+  applyLiveBuyPrice(): void {
+    const depth = this.binance.marketDepth();
+    if (depth && depth.bestBuyPrice > 0) {
+      this.buyPrice.set(depth.bestBuyPrice);
+      this.toast.info(`Precio de compra sincronizado con libro L2: ${depth.bestBuyPrice.toFixed(2)} Bs`);
+    } else {
+      void this.loadBinancePrices(true);
+    }
+  }
+
+  /** Direct 1-click button to fix sell price to Binance P2P best sell. */
+  applyLiveSellPrice(): void {
+    const depth = this.binance.marketDepth();
+    if (depth && depth.bestSellPrice > 0) {
+      this.sellPrice.set(depth.bestSellPrice);
+      this.toast.info(`Precio de venta sincronizado con libro L2: ${depth.bestSellPrice.toFixed(2)} Bs`);
+    } else {
+      void this.loadBinancePrices(true);
+    }
+  }
+
+  /** Toggles between live L2 auto-sync and manual simulation modeling. */
+  toggleAutoSyncLiveOrderbook(): void {
+    const next = !this.autoSyncLiveOrderbook();
+    this.autoSyncLiveOrderbook.set(next);
+    if (next) {
+      const depth = this.binance.marketDepth();
+      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+        this.buyPrice.set(depth.bestBuyPrice);
+        this.sellPrice.set(depth.bestSellPrice);
+        this.compoundReferenceRate.set(depth.bestSellPrice);
+        this.teamReferenceRate.set(depth.bestSellPrice);
+        this.rate.set(depth.bestSellPrice);
+        this.toast.success('Auto-sincronización con libro L2 reactivada.');
+      } else {
+        void this.loadBinancePrices(true);
+      }
+    } else {
+      this.toast.info('Auto-sincronización pausada (modo simulación manual activo).');
+    }
   }
 
   /** Quick role preset switcher for Mode A & Mode B. */
@@ -380,6 +477,7 @@ export class IncomeCalculator {
 
   /** Calculates and sets the exact sellPrice needed to earn `targetNetRoiPct` over current `buyPrice` + fees. */
   applyQuickNetMarginTarget(targetNetRoiPct: number): void {
+    this.autoSyncLiveOrderbook.set(false);
     const buy = this.buyPrice();
     if (buy <= 0) return;
     const feeRate = this.makerFeeRate();
@@ -400,6 +498,7 @@ export class IncomeCalculator {
 
   /** Swap buy and sell prices if user inverted them accidentally. */
   swapBuyAndSellPrices(): void {
+    this.autoSyncLiveOrderbook.set(false);
     const b = this.buyPrice();
     const s = this.sellPrice();
     this.buyPrice.set(s);
@@ -1336,25 +1435,26 @@ export class IncomeCalculator {
   }
 
   // ─── Live Binance & Real Treasury Hydration ───
-  async loadBinancePrices(): Promise<void> {
+  async loadBinancePrices(forceFetch = true): Promise<void> {
     this.syncingLive.set(true);
     try {
       let depth = this.binance.marketDepth();
-      if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
-        await this.binance.fetchMarketDepth('USDT', 'VES');
+      if (forceFetch || !depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
+        await this.binance.fetchMarketDepth('USDT', 'VES', true);
         depth = this.binance.marketDepth();
       }
       if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
         this.toast.warn('No se pudo obtener cotización en vivo de Binance P2P en este momento.');
         return;
       }
+      this.autoSyncLiveOrderbook.set(true);
       this.buyPrice.set(depth.bestBuyPrice);
       this.sellPrice.set(depth.bestSellPrice);
       this.compoundReferenceRate.set(depth.bestSellPrice);
       this.teamReferenceRate.set(depth.bestSellPrice);
       this.rate.set(depth.bestSellPrice);
       this.toast.success(
-        `Precios sincronizados en todas las pestañas: Compra ${depth.bestBuyPrice.toFixed(2)} Bs | Venta ${depth.bestSellPrice.toFixed(2)} Bs`,
+        `Precios sincronizados con el libro L2: Compra ${depth.bestBuyPrice.toFixed(2)} Bs | Venta ${depth.bestSellPrice.toFixed(2)} Bs`,
       );
     } finally {
       this.syncingLive.set(false);

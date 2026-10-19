@@ -29,10 +29,10 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
       expect(res!.roiCyclePct).toBeGreaterThan(0);
 
       const projections = c.velocityProjections();
-      expect(projections.length).toBe(4);
+      expect(projections.length).toBe(6);
       expect(projections[0].cyclesPerDay).toBe(1);
-      expect(projections[3].cyclesPerDay).toBe(10);
-      expect(projections[3].dailyGainUsd).toBeCloseTo(projections[0].dailyGainUsd * 10, 1);
+      expect(projections[5].cyclesPerDay).toBe(10);
+      expect(projections[5].linearDailyUsd).toBeCloseTo(projections[0].linearDailyUsd * 10, 1);
     });
   });
 
@@ -132,6 +132,59 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
       expect(audits.length).toBe(2);
       expect(audits[0].operatorId).toBe('op-william');
       expect(audits[0].periodDays).toBe(10);
+    });
+  });
+
+  describe('Live L2 Orderbook Auto-Sync & Manual Simulation Modes', () => {
+    it('has autoSyncLiveOrderbook active by default', () => {
+      const f = create();
+      const c = f.componentInstance;
+      expect(c.autoSyncLiveOrderbook()).toBe(true);
+    });
+
+    it('pauses auto-sync when user manually edits buy or sell price', () => {
+      const f = create();
+      const c = f.componentInstance;
+      c.onBuyPriceManualChange(820.5);
+      expect(c.buyPrice()).toBe(820.5);
+      expect(c.autoSyncLiveOrderbook()).toBe(false);
+
+      c.onSellPriceManualChange(835.0);
+      expect(c.sellPrice()).toBe(835.0);
+      expect(c.autoSyncLiveOrderbook()).toBe(false);
+    });
+
+    it('applies live L2 book prices and reacts to toggleAutoSyncLiveOrderbook', () => {
+      const f = create();
+      const c = f.componentInstance;
+      // Set mock market depth in binance service
+      c.binance.marketDepth.set({
+        asset: 'USDT',
+        fiat: 'VES',
+        bestBuyPrice: 805.5,
+        bestSellPrice: 815.0,
+        spreadVes: 9.5,
+        spreadPct: 1.18,
+        buyOffers: [],
+        sellOffers: [],
+        updatedAt: new Date(),
+      });
+      f.detectChanges();
+
+      // Applying direct L2 fixes
+      c.applyLiveBuyPrice();
+      expect(c.buyPrice()).toBe(805.5);
+
+      c.applyLiveSellPrice();
+      expect(c.sellPrice()).toBe(815.0);
+      expect(c.isLivePricesSynced()).toBe(true);
+
+      // Toggling pauses and resumes
+      c.toggleAutoSyncLiveOrderbook();
+      expect(c.autoSyncLiveOrderbook()).toBe(false);
+
+      c.toggleAutoSyncLiveOrderbook();
+      expect(c.autoSyncLiveOrderbook()).toBe(true);
     });
   });
 });

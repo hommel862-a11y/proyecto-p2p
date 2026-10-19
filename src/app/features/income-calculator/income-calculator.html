@@ -66,6 +66,31 @@
         <strong class="font-mono">{{ buyPrice() | num }} Bs</strong>
         <span class="text-muted">→</span>
         <strong class="font-mono" style="color: var(--gold-strong);">{{ sellPrice() | num }} Bs</strong>
+        @if (autoSyncLiveOrderbook()) {
+          <span
+            class="badge badge-success font-mono live-sync-pill"
+            style="cursor: pointer;"
+            (click)="toggleAutoSyncLiveOrderbook()"
+            title="Auto-sincronizado con libro L2 de Binance cada 30s. Clic para pausar."
+          >
+            🟢 L2 En Vivo
+          </span>
+        } @else {
+          <button
+            type="button"
+            class="badge badge-warning font-mono live-sync-pill"
+            style="cursor: pointer; border: none;"
+            (click)="toggleAutoSyncLiveOrderbook()"
+            title="Sincronización pausada por edición manual. Clic para reanudar precios en vivo."
+          >
+            🟡 Manual (Reconectar)
+          </button>
+        }
+        @if (binance.lastFetched(); as last) {
+          <span class="text-muted font-mono" style="font-size: 0.7rem;" title="Hora del último tick del libro de órdenes">
+            {{ last | date:'HH:mm:ss' }}
+          </span>
+        }
       </div>
 
       <div class="telemetry-chip">
@@ -122,9 +147,9 @@
         type="button"
         class="btn btn-primary btn-sm-action"
         [disabled]="syncingLive()"
-        (click)="loadBinancePrices()"
+        (click)="loadBinancePrices(true)"
       >
-        {{ syncingLive() ? '⏳ Sincronizando...' : '⚡ Sincronizar Binance en Vivo' }}
+        {{ syncingLive() ? '⏳ Sincronizando Libro...' : '⚡ Sincronizar Binance en Vivo' }}
       </button>
     </div>
   </div>
@@ -242,10 +267,25 @@
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label" for="calc-buy-price">
-                <span>Precio de Compra (Entrada)</span>
-                <span class="terminal-subtext">VES pagados por 1 USDT</span>
-              </label>
+              <div class="field-label-row">
+                <label class="terminal-label" for="calc-buy-price">
+                  <span>Precio de Compra (Entrada)</span>
+                  <span class="terminal-subtext">VES pagados por 1 USDT</span>
+                </label>
+                @if (binance.marketDepth(); as depth) {
+                  @if (depth.bestBuyPrice > 0) {
+                    <button
+                      type="button"
+                      class="chip-l2-ref"
+                      [class.chip-active]="buyPrice() === depth.bestBuyPrice"
+                      (click)="applyLiveBuyPrice()"
+                      title="Fijar mejor compra del libro L2 de Binance"
+                    >
+                      ⚡ L2: {{ depth.bestBuyPrice | num }} Bs
+                    </button>
+                  }
+                }
+              </div>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
                 <input
@@ -256,17 +296,32 @@
                   step="0.01"
                   class="terminal-input font-mono font-bold"
                   [value]="buyPrice()"
-                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  (input)="onBuyPriceManualChange(+$any($event.target).value)"
                   placeholder="0.00"
                 />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label" for="calc-sell-price">
-                <span>Precio de Venta (Salida)</span>
-                <span class="terminal-subtext">VES recibidos por 1 USDT</span>
-              </label>
+              <div class="field-label-row">
+                <label class="terminal-label" for="calc-sell-price">
+                  <span>Precio de Venta (Salida)</span>
+                  <span class="terminal-subtext">VES recibidos por 1 USDT</span>
+                </label>
+                @if (binance.marketDepth(); as depth) {
+                  @if (depth.bestSellPrice > 0) {
+                    <button
+                      type="button"
+                      class="chip-l2-ref"
+                      [class.chip-active]="sellPrice() === depth.bestSellPrice"
+                      (click)="applyLiveSellPrice()"
+                      title="Fijar mejor venta del libro L2 de Binance"
+                    >
+                      ⚡ L2: {{ depth.bestSellPrice | num }} Bs
+                    </button>
+                  }
+                }
+              </div>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
                 <input
@@ -277,7 +332,7 @@
                   step="0.01"
                   class="terminal-input highlight-sell font-mono font-bold"
                   [value]="sellPrice()"
-                  (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                  (input)="onSellPriceManualChange(+$any($event.target).value)"
                   placeholder="0.00"
                 />
               </div>
@@ -818,17 +873,47 @@
 
         <app-ui-card variant="terminal">
           <app-ui-panel-header icon="⚙️" title="Paso 2 · Tasas de Mercado & Fricción del Plan Reverso">
-            <span uiHeaderActions class="badge badge-accent font-mono">
-              VIP {{ merchantLevel() }} ({{ makerFeePct() }}%)
-            </span>
+            <div uiHeaderActions style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              @if (autoSyncLiveOrderbook()) {
+                <span class="badge badge-success font-mono" style="font-size: 0.72rem;">🟢 L2 En Vivo</span>
+              } @else {
+                <button
+                  type="button"
+                  class="badge badge-warning font-mono"
+                  style="font-size: 0.72rem; cursor: pointer; border: none;"
+                  (click)="toggleAutoSyncLiveOrderbook()"
+                  title="Clic para volver a sincronizar automáticamente con el libro L2"
+                >
+                  🟡 Manual (Reconectar)
+                </button>
+              }
+              <span class="badge badge-accent font-mono">
+                VIP {{ merchantLevel() }} ({{ makerFeePct() }}%)
+              </span>
+            </div>
           </app-ui-panel-header>
 
           <div class="terminal-input-grid grid-2">
             <div class="terminal-field">
-              <label class="terminal-label" for="calc-rev-buy-price">
-                <span>Precio de Compra Base</span>
-                <span class="terminal-subtext">VES por USDT</span>
-              </label>
+              <div class="field-label-row">
+                <label class="terminal-label" for="calc-rev-buy-price">
+                  <span>Precio de Compra Base</span>
+                  <span class="terminal-subtext">VES por USDT</span>
+                </label>
+                @if (binance.marketDepth(); as depth) {
+                  @if (depth.bestBuyPrice > 0) {
+                    <button
+                      type="button"
+                      class="chip-l2-ref"
+                      [class.chip-active]="buyPrice() === depth.bestBuyPrice"
+                      (click)="applyLiveBuyPrice()"
+                      title="Fijar mejor compra del libro L2 de Binance"
+                    >
+                      ⚡ L2: {{ depth.bestBuyPrice | num }} Bs
+                    </button>
+                  }
+                }
+              </div>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
                 <input
@@ -838,17 +923,32 @@
                   step="0.01"
                   class="terminal-input font-mono font-bold"
                   [value]="buyPrice()"
-                  (input)="buyPrice.set(clampMoney(+$any($event.target).value))"
+                  (input)="onBuyPriceManualChange(+$any($event.target).value)"
                   placeholder="0.00"
                 />
               </div>
             </div>
 
             <div class="terminal-field">
-              <label class="terminal-label" for="calc-rev-sell-price">
-                <span>Precio de Venta Actual</span>
-                <span class="terminal-subtext">VES por USDT</span>
-              </label>
+              <div class="field-label-row">
+                <label class="terminal-label" for="calc-rev-sell-price">
+                  <span>Precio de Venta Actual</span>
+                  <span class="terminal-subtext">VES por USDT</span>
+                </label>
+                @if (binance.marketDepth(); as depth) {
+                  @if (depth.bestSellPrice > 0) {
+                    <button
+                      type="button"
+                      class="chip-l2-ref"
+                      [class.chip-active]="sellPrice() === depth.bestSellPrice"
+                      (click)="applyLiveSellPrice()"
+                      title="Fijar mejor venta del libro L2 de Binance"
+                    >
+                      ⚡ L2: {{ depth.bestSellPrice | num }} Bs
+                    </button>
+                  }
+                }
+              </div>
               <div class="input-control-wrap">
                 <span class="input-prefix">VES</span>
                 <input
@@ -858,7 +958,7 @@
                   step="0.01"
                   class="terminal-input highlight-sell font-mono font-bold"
                   [value]="sellPrice()"
-                  (input)="sellPrice.set(clampMoney(+$any($event.target).value))"
+                  (input)="onSellPriceManualChange(+$any($event.target).value)"
                   placeholder="0.00"
                 />
               </div>
@@ -981,6 +1081,16 @@
                   <div class="path-details font-mono">
                     <div>• Margen limpio requerido: <strong class="positive">+{{ solver.requiredNetRoiPerCyclePct }}% neto/vuelta</strong></div>
                     <div>• Spread nominal bruto: <strong>{{ solver.requiredNominalSpreadPct }}%</strong> (Compra: {{ buyPrice() | num }} Bs)</div>
+                    @if (binance.marketDepth(); as depth) {
+                      @if (depth.bestSellPrice > 0) {
+                        <div class="text-muted" style="font-size: 0.72rem; margin-top: 2px;">
+                          • Mejor Venta Libro L2: <strong class="font-mono" style="color: var(--text);">{{ depth.bestSellPrice | num }} Bs</strong>
+                          <span [style.color]="solver.requiredSellPriceVes > depth.bestSellPrice ? '#f59e0b' : '#34d399'">
+                            ({{ solver.requiredSellPriceVes > depth.bestSellPrice ? '+' : '' }}{{ (solver.requiredSellPriceVes - depth.bestSellPrice) | num }} Bs)
+                          </span>
+                        </div>
+                      }
+                    }
                     @if (devaluationStressMetrics(); as stress) {
                       @if (stress.devalPct > 0) {
                         <div style="color: #fbbf24;">• Blindado (+{{ stress.devalPct }}% deval): <strong>{{ stress.devalProtectedSellPriceVes | num }} Bs</strong></div>
