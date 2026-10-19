@@ -2111,6 +2111,224 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════
+   Apple Pro HUD Bar & Institutional Cockpit Styles
+   ═══════════════════════════════════════════════════ */
+.apple-hud-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(20, 24, 33, 0.8) 0%, rgba(13, 16, 23, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 10px 18px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px);
+  flex-wrap: wrap;
+
+  .hud-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .hud-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .hud-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    font-size: 0.82rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.16);
+      transform: translateY(-1px);
+    }
+
+    &.live {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+
+    &.account {
+      background: rgba(216, 180, 92, 0.08);
+      border-color: rgba(216, 180, 92, 0.2);
+      color: #f1f5f9;
+    }
+
+    &.obi {
+      background: rgba(99, 102, 241, 0.1);
+      border-color: rgba(99, 102, 241, 0.25);
+      color: #a5b4fc;
+      cursor: default;
+    }
+
+    .hud-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+
+    .hud-sub {
+      opacity: 0.8;
+      font-size: 0.78rem;
+    }
+  }
+}
+
+.cockpit-three-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+
+  .cockpit-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: var(--radius-lg);
+  }
+
+  .cockpit-metric-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 12px 0 8px;
+
+    .cockpit-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .cockpit-val {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+    }
+  }
+
+  .cockpit-valuation-box {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    margin-bottom: 10px;
+
+    &.positive {
+      color: #34d399;
+      border-color: rgba(52, 211, 153, 0.25);
+      background: rgba(52, 211, 153, 0.05);
+    }
+
+    &.negative {
+      color: #f87171;
+      border-color: rgba(248, 113, 113, 0.25);
+      background: rgba(248, 113, 113, 0.05);
+    }
+  }
+
+  .obi-gauge-wrap {
+    margin: 12px 0 8px;
+
+    .obi-track-bar {
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      position: relative;
+      overflow: hidden;
+
+      .obi-track-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ef4444 0%, #d8b45c 50%, #10b981 100%);
+        transition: width 0.3s ease;
+      }
+    }
+
+    .obi-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+  }
+
+  .obi-guidance-box {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+
+    .guidance-text {
+      font-size: 0.76rem;
+      color: var(--gold);
+      line-height: 1.35;
+      display: block;
+    }
+  }
+
+  .divergence-info-box {
+    margin: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    .div-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+    }
+  }
+
+  .yield-sweep-box {
+    background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(216, 180, 92, 0.02) 100%);
+    border: 1px solid rgba(216, 180, 92, 0.2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+
+    .yield-header {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--gold-strong);
+      margin-bottom: 4px;
+    }
+
+    .yield-detail {
+      margin: 0;
+      font-size: 0.75rem;
+      color: #f1f5f9;
+    }
+  }
+}
+
 
 
 

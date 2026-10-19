@@ -497,7 +497,7 @@ export class AccountsService {
     }
   }
 
-  private saveAccounts(list: BankAccount[]): void {
+  saveAccounts(list: BankAccount[]): void {
     try {
       this.storage.set(ACCOUNTS_STORAGE_KEY, list);
     } catch {

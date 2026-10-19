@@ -71,25 +71,25 @@ export function computeDashboard(ops: readonly Operation[]): DashboardSummary {
   const todayOps = safe.filter((o) => utcDateKey(o.timestamp) === today);
   const todaySummary = computeLogSummary(todayOps);
 
-  // 7-day activity
-  const dayMap = new Map<string, { operations: number; pnlVes: number; volumeUsdt: number }>();
+  // 7-day activity: aggregate non-assign trading operations
+  const dayOpsMap = new Map<string, Operation[]>();
   for (const o of safe) {
+    if (o.type === 'assign') continue;
     const key = utcDateKey(o.timestamp);
-    const acc = dayMap.get(key) ?? { operations: 0, pnlVes: 0, volumeUsdt: 0 };
-    acc.operations += 1;
-    const ves = vesLeg(o);
-    acc.pnlVes += (o.type === 'sell' ? ves : -ves) - o.fees;
-    acc.volumeUsdt += o.usdtAmount;
-    dayMap.set(key, acc);
+    const list = dayOpsMap.get(key) ?? [];
+    list.push(o);
+    dayOpsMap.set(key, list);
   }
 
   const week: DayActivity[] = last7DayKeys().map((date) => {
-    const acc = dayMap.get(date);
+    const dayOps = dayOpsMap.get(date) ?? [];
+    const sum = computeLogSummary(dayOps);
+    const volumeUsdt = dayOps.reduce((acc, o) => acc + (o.usdtAmount || 0), 0);
     return {
       date,
-      operations: acc?.operations ?? 0,
-      pnlVes: acc?.pnlVes ?? 0,
-      volumeUsdt: acc?.volumeUsdt ?? 0,
+      operations: dayOps.length,
+      pnlVes: sum.pnlVes,
+      volumeUsdt,
     };
   });
 

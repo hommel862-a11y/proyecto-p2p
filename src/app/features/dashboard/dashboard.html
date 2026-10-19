@@ -88,6 +88,38 @@
   </header>
 
   <!-- ═══════════════════════════════════════════════════
+       1.5. HUD de Ejecución Rápida & Radar Operativo
+       ═══════════════════════════════════════════════════ -->
+  <div class="apple-hud-bar">
+    <div class="hud-left">
+      <div class="hud-chip live" (click)="goToSpread()" role="button" tabindex="0" title="Ver profundidad L2 en tiempo real">
+        <span class="hud-dot live"></span>
+        <span class="font-mono font-bold">L2 Spread: {{ binanceService.marketDepth()?.spreadPct ?? 0 }}%</span>
+        <span class="hud-sub font-mono">({{ binanceService.marketDepth()?.spreadVes ?? 0 | num }} Bs)</span>
+      </div>
+      @if (rotationRecommendation(); as rec) {
+        <div class="hud-chip account" (click)="quickOperate(rec.bankName)" role="button" tabindex="0" title="Cuenta recomendada para rotar">
+          <span>🏛️ Sugerida: <strong>{{ rec.bankName }}</strong></span>
+          <span class="apple-pill-mini recommended">Rotar</span>
+        </div>
+      }
+      @if (orderBookImbalance(); as obi) {
+        <div class="hud-chip obi" [title]="obi.makerSellPriceGuidance">
+          <span>⚖️ Presión: <strong>{{ obi.pressureLabel }}</strong></span>
+        </div>
+      }
+    </div>
+    <div class="hud-right">
+      <button type="button" class="apple-pill-btn apple-btn-gold" (click)="quickOperate()">
+        ⚡ Operar Ahora
+      </button>
+      <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="openLiquidityModal()">
+        💧 Inyectar Saldo
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
        2. Apple Segmented Filter Bar
        ═══════════════════════════════════════════════════ -->
   <nav class="apple-segmented-bar" aria-label="Filtro de módulos del Centro de Control">
@@ -187,21 +219,144 @@
           </span>
           <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
         </div>
-        <div class="apple-kpi-val font-mono" style="color: var(--gold-strong);">
-          {{ dailyProgress() }}%
-        </div>
-        <div class="apple-track-bar">
-          <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
-        </div>
+        @if (dailyDrawdownPct() > 0) {
+          <div class="apple-kpi-val font-mono" style="color: #ef4444;">
+            -{{ (dashboard().today.pnlUsdt * -1) | num }} USDT ({{ dailyDrawdownPct() }}% DD)
+          </div>
+          <div class="apple-track-bar">
+            <div class="apple-track-fill fill-danger" [style.width.%]="dailyDrawdownPct()"></div>
+          </div>
+        } @else {
+          <div class="apple-kpi-val font-mono" style="color: var(--gold-strong);">
+            {{ dailyProgress() }}%
+          </div>
+          <div class="apple-track-bar">
+            <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
+          </div>
+        }
         <div class="apple-kpi-footer">
           @if (activeDailyGoalPlan(); as plan) {
             <span class="apple-kpi-subtext font-mono">
               {{ plan.desiredCyclesPerDay }} vueltas @ {{ plan.requiredSellPriceVes | num }} Bs
             </span>
+          } @else if (dailyDrawdownPct() > 0) {
+            <span class="apple-kpi-subtext" style="color: #fca5a5;">Drawdown activo vs límite diario</span>
           } @else {
             <span class="apple-kpi-subtext">Avance hacia el objetivo</span>
           }
           <span class="apple-kpi-link">Calculadora →</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════
+         3.2. Cockpit de Inventario Abierto, Microestructura (OBI) & Yield
+         ═══════════════════════════════════════════════════ -->
+    <section class="apple-card-section institutional-cockpit-section">
+      <div class="apple-section-header">
+        <div class="apple-section-title-wrap">
+          <span class="apple-section-icon">💎</span>
+          <div>
+            <h3 class="apple-section-title">Posición de Inventario FIFO, Microestructura & Yield</h3>
+            <p class="apple-section-subtitle">Valoración Mark-to-Market en tiempo real, desbalance del libro L2 y optimización de capital ocioso</p>
+          </div>
+        </div>
+        <div class="apple-section-actions">
+          <span class="apple-pill-mini font-mono" [class.live]="markToMarketPnL().unrealizedPnlVes >= 0" [class.badge-danger]="markToMarketPnL().unrealizedPnlVes < 0">
+            PnL Flotante: {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
+          </span>
+        </div>
+      </div>
+
+      <div class="cockpit-three-grid">
+        <!-- Tile 1: Inventario Abierto & Mark-to-Market -->
+        <div class="apple-kpi-card cockpit-tile">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Stock Abierto & Costo VWAP</span>
+            <span class="apple-pill-mini gold font-mono">{{ markToMarketPnL().openUsdt | num }} USDT</span>
+          </div>
+          <div class="cockpit-metric-row">
+            <div>
+              <span class="cockpit-label">Costo Promedio (VWAP)</span>
+              <span class="cockpit-val font-mono">{{ markToMarketPnL().avgCostPriceVes | num }} Bs</span>
+            </div>
+            <div class="text-right">
+              <span class="cockpit-label">Salida Mercado (Best Ask)</span>
+              <span class="cockpit-val font-mono" style="color: var(--accent);">{{ markToMarketPnL().bestExitPriceVes | num }} Bs</span>
+            </div>
+          </div>
+          <div class="cockpit-valuation-box" [class.positive]="markToMarketPnL().unrealizedPnlVes >= 0" [class.negative]="markToMarketPnL().unrealizedPnlVes < 0">
+            <span>PnL no realizado (flotante):</span>
+            <strong class="font-mono">
+              {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
+              ({{ markToMarketPnL().unrealizedPnlUsdt >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlUsdt | num }} USDT)
+            </strong>
+          </div>
+          <div class="apple-kpi-footer">
+            <span class="apple-kpi-subtext">Valoración viva contra profundidad Binance L2</span>
+          </div>
+        </div>
+
+        <!-- Tile 2: Order Book Imbalance (OBI) -->
+        <div class="apple-kpi-card cockpit-tile">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Microestructura del Libro (OBI)</span>
+            <span class="apple-pill-mini" [class.live]="(orderBookImbalance()?.gaugePercent ?? 50) >= 50" [class.badge-warning]="(orderBookImbalance()?.gaugePercent ?? 50) < 50">
+              {{ orderBookImbalance()?.classification || 'EQUILIBRADO' }}
+            </span>
+          </div>
+          <div class="obi-gauge-wrap">
+            <div class="obi-track-bar">
+              <div class="obi-track-fill" [style.width.%]="orderBookImbalance()?.gaugePercent ?? 50"></div>
+            </div>
+            <div class="obi-labels font-mono">
+              <span>Venta ({{ orderBookImbalance()?.sellVolumeUsdt ?? 0 | num }} ₮)</span>
+              <span>Compra ({{ orderBookImbalance()?.buyVolumeUsdt ?? 0 | num }} ₮)</span>
+            </div>
+          </div>
+          <div class="obi-guidance-box">
+            <span class="guidance-text">💡 {{ orderBookImbalance()?.makerSellPriceGuidance || 'Colocar anuncios dentro del spread óptimo.' }}</span>
+          </div>
+          <div class="apple-kpi-footer">
+            <span class="apple-kpi-subtext">Desbalance: {{ orderBookImbalance()?.obiPercentage ?? 0 }}% presión</span>
+          </div>
+        </div>
+
+        <!-- Tile 3: Radar de Divergencia & Yield Pasivo -->
+        <div class="apple-kpi-card cockpit-tile">
+          <div class="apple-kpi-header">
+            <span class="apple-kpi-title">Radar de Divergencia & Yield</span>
+            @if (rateDivergence(); as div) {
+              <span class="apple-pill-mini" [class.live]="div.signal === 'BUY_WINDOW'" [class.badge-warning]="div.signal === 'SELL_WINDOW'" [class.muted]="div.signal === 'NEUTRAL'">
+                {{ div.signal }}
+              </span>
+            }
+          </div>
+          <div class="divergence-info-box">
+            <div class="div-row font-mono">
+              <span class="text-muted">Gap P2P vs Paralelo:</span>
+              <strong [class.positive]="(rateDivergence()?.gapPct ?? 0) >= 0" [class.negative]="(rateDivergence()?.gapPct ?? 0) < 0">
+                {{ rateDivergence()?.gapPct ?? 0 }}% ({{ rateDivergence()?.gapVes ?? 0 | num }} Bs)
+              </strong>
+            </div>
+            <div class="div-row font-mono">
+              <span class="text-muted">Inercia Paralelo:</span>
+              <span>{{ rateDivergence()?.rateMomentumPct ?? 0 }}% momentum</span>
+            </div>
+          </div>
+          @if (smartTreasuryYield(); as yld) {
+            <div class="yield-sweep-box">
+              <div class="yield-header">
+                <span>🏦 Rendimiento Pasivo ({{ yld.flexibleApyPct }}% APY)</span>
+              </div>
+              <p class="yield-detail font-mono">
+                Barrer {{ yld.recommendedSweepAmountUsd | num }} USDT &rarr; Proyección: +${{ yld.projectedMonthlyInterestUsd | num }}/mes
+              </p>
+            </div>
+          }
+          <div class="apple-kpi-footer">
+            <span class="apple-kpi-subtext">Protección contra rezago cambiario y costo de oportunidad</span>
+          </div>
         </div>
       </div>
     </section>
@@ -544,14 +699,32 @@
                     }
                   </td>
                   <td style="text-align: right;" (click)="$event.stopPropagation()">
-                    <button
-                      type="button"
-                      class="apple-pill-btn apple-btn-primary btn-micro"
-                      (click)="openLiquidityModal(b)"
-                      title="Inyectar liquidez inmediata en {{ b.bankName }}"
-                    >
-                      💧 Inyectar
-                    </button>
+                    <div style="display: inline-flex; gap: 6px; justify-content: flex-end;">
+                      <button
+                        type="button"
+                        class="apple-pill-btn apple-btn-secondary btn-micro"
+                        (click)="toggleAccountStatus(b, $event)"
+                        [title]="b.status === 'DISABLED' ? 'Reactivar cuenta' : 'Pausar temporalmente (Escudo SUDEBAN)'"
+                      >
+                        {{ b.status === 'DISABLED' ? '▶️ Activar' : '⏸️ Pausar' }}
+                      </button>
+                      <button
+                        type="button"
+                        class="apple-pill-btn apple-btn-gold btn-micro"
+                        (click)="quickOperate(b.bankName)"
+                        title="Operar de inmediato con {{ b.bankName }}"
+                      >
+                        ⚡ Operar
+                      </button>
+                      <button
+                        type="button"
+                        class="apple-pill-btn apple-btn-primary btn-micro"
+                        (click)="openLiquidityModal(b)"
+                        title="Inyectar liquidez inmediata en {{ b.bankName }}"
+                      >
+                        💧 Fondeo
+                      </button>
+                    </div>
                   </td>
                 </tr>
               }

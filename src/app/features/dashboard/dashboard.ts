@@ -37,6 +37,14 @@ import {
   type MentalState,
   type PreflightEvaluationResult,
   type BankCode,
+  computeFifoAccounting,
+  type FifoAccountingSummary,
+  calculateOrderBookImbalance,
+  type OrderBookImbalanceResult,
+  detectRateDivergence,
+  type RateDivergenceResult,
+  calculateTreasuryYieldAllocation,
+  type TreasuryAllocationPlan,
 } from '@p2p/core';
 import { FormsModule } from '@angular/forms';
 import { AnimatedCounterComponent } from '../../shared/ui/animated-counter';
@@ -78,6 +86,7 @@ export interface UnifiedAccountView {
   bankName: string;
   bankCode?: BankCode;
   rail?: string;
+  status?: 'ACTIVE' | 'DISABLED' | 'COOLDOWN';
   accountNumberMasked?: string;
   currentBalanceVes: number;
   dailyLimitVes: number;
@@ -285,12 +294,104 @@ export class Dashboard implements OnInit, OnDestroy {
     return acc.currentBalanceVes + (add > 0 ? add : 0);
   });
 
-  private readonly ops = computed<Operation[]>(() => this.storage.get<Operation[]>(OPS_KEY) ?? []);
+  readonly ops = computed<Operation[]>(() => this.accountsService.rawOperations());
 
   readonly dashboard = computed(() => computeDashboard(this.ops()));
 
-  /** Risk engine live verdict from sample state. */
-  readonly verdict = computed(() => this.risks.evaluate(this.risks.sampleState()));
+  /** Live FIFO Accounting summary across the complete operation ledger. */
+  readonly fifoSummary = computed<FifoAccountingSummary>(() => {
+    return computeFifoAccounting(this.ops());
+  });
+
+  /** Mark-to-Market floating PnL on remaining open inventory against live Binance P2P depth. */
+  readonly markToMarketPnL = computed(() => {
+    const fifo = this.fifoSummary();
+    const depth = this.binanceService.marketDepth();
+    const openUsdt = fifo.openInventoryAmount;
+    if (!depth || openUsdt <= 0) {
+      return {
+        openUsdt: Math.max(0, openUsdt),
+        avgCostPriceVes: fifo.openInventoryAvgPriceVes,
+        unrealizedPnlVes: 0,
+        unrealizedPnlUsdt: 0,
+        currentMarketValueVes: 0,
+        bestExitPriceVes: depth?.bestSellPrice ?? 0,
+      };
+    }
+    const bestExitPriceVes = depth.bestSellPrice;
+    const currentMarketValueVes = openUsdt * bestExitPriceVes;
+    const unrealizedPnlVes = currentMarketValueVes - fifo.openInventoryCostBasisVes;
+    const unrealizedPnlUsdt = bestExitPriceVes > 0 ? unrealizedPnlVes / bestExitPriceVes : 0;
+    return {
+      openUsdt,
+      avgCostPriceVes: fifo.openInventoryAvgPriceVes,
+      unrealizedPnlVes,
+      unrealizedPnlUsdt,
+      currentMarketValueVes,
+      bestExitPriceVes,
+    };
+  });
+
+  /** Order Book Imbalance (OBI) & Market Microstructure Pressure. */
+  readonly orderBookImbalance = computed<OrderBookImbalanceResult | null>(() => {
+    const depth = this.binanceService.marketDepth();
+    if (!depth || !depth.buyOffers || !depth.sellOffers) return null;
+    return calculateOrderBookImbalance(depth.buyOffers, depth.sellOffers);
+  });
+
+  /** Rate Divergence & Momentum Radar between P2P book and parallel market. */
+  readonly rateDivergence = computed<RateDivergenceResult | null>(() => {
+    const depth = this.binanceService.marketDepth();
+    const rates = this.cotizaveService.ratesByMarket();
+    const parallelRate = depth?.bestBuyPrice || rates['binance']?.ask || this.manualParallelRate();
+    const bcvRate = rates['bcv']?.mid || rates['oficial']?.mid || this.manualBcvRate();
+    if (!depth) return null;
+    return detectRateDivergence({
+      depth,
+      bcvRate,
+      parallelRate,
+      windowMinutes: 30,
+    });
+  });
+
+  /** Smart Treasury Yield Maximizer for idle USDT liquidity. */
+  readonly smartTreasuryYield = computed<TreasuryAllocationPlan>(() => {
+    const currentHour = new Date().getHours();
+    const isOffPeak = currentHour >= 22 || currentHour < 7;
+    const inventoryUsdt = Math.max(0, this.fifoSummary().openInventoryAmount);
+    return calculateTreasuryYieldAllocation({
+      totalUsdtInventory: inventoryUsdt,
+      currentlyCommittedUsdt: 0,
+      marketVelocity: isOffPeak ? 'LOW_OFFPEAK' : 'NORMAL_FLOW',
+      flexibleApyPct: 11.5,
+      minimumSafetyBufferUsd: 500,
+    });
+  });
+
+  /** Risk engine live verdict evaluated from real operating state. */
+  readonly verdict = computed(() => {
+    const depth = this.binanceService.marketDepth();
+    const currentSpread = depth ? depth.spreadVes : (this.bcvIntelligence().gap.gapVes ?? 20);
+    const summary = this.dashboard().today;
+    const lossLimit = this.preflightDailyLossLimit();
+
+    const dailyLossPct =
+      summary.pnlUsdt < 0 && lossLimit > 0
+        ? Math.min(100, Math.round((Math.abs(summary.pnlUsdt) / lossLimit) * 100))
+        : 0;
+
+    const openOps = summary.exposure !== 0 ? 1 : 0;
+
+    return this.risks.evaluate({
+      currentSpread,
+      minSpread: this.risks.config().minSpread,
+      openOps,
+      tradeRiskPct: 0.5,
+      dailyLossPct,
+      consecutiveErrors: 0,
+      apiStatus: 'ok',
+    });
+  });
 
   /** Forensic Risk & Hourly Distribution (Skill #44) */
   readonly forensicRiskAnalysis = computed<HourlyRiskDistributionResult>(() => {
@@ -346,6 +447,7 @@ export class Dashboard implements OnInit, OnDestroy {
         bankName: u.account.bankName,
         bankCode: u.account.bankCode,
         rail: u.account.rail,
+        status: u.account.status ?? 'ACTIVE',
         accountNumberMasked: u.account.accountNumberMasked,
         currentBalanceVes: u.currentBalanceVes,
         dailyLimitVes: u.account.dailyLimitVes,
@@ -380,12 +482,21 @@ export class Dashboard implements OnInit, OnDestroy {
     SATURATED: 'Saturada',
   };
 
-  /** Progress toward daily target (0–100). */
+  /** Progress toward daily target (0–100, strictly positive profit). */
   readonly dailyProgress = computed(() => {
     const target = this.dailyTarget();
     if (target <= 0) return 0;
-    const pnlUsdt = Math.abs(this.dashboard().today.pnlUsdt);
+    const pnlUsdt = this.dashboard().today.pnlUsdt;
+    if (pnlUsdt <= 0) return 0; // Losses never count toward goal achievement!
     return Math.min(100, Math.round((pnlUsdt / target) * 100));
+  });
+
+  /** Daily Drawdown percentage against stop-loss limit if today's PnL is negative. */
+  readonly dailyDrawdownPct = computed(() => {
+    const pnlUsdt = this.dashboard().today.pnlUsdt;
+    const lossLimit = this.preflightDailyLossLimit();
+    if (pnlUsdt >= 0 || lossLimit <= 0) return 0;
+    return Math.min(100, Math.round((Math.abs(pnlUsdt) / lossLimit) * 100));
   });
 
   /** Max PnL across the 7-day week for chart bar scaling. */
@@ -407,12 +518,15 @@ export class Dashboard implements OnInit, OnDestroy {
     y: number;
   } | null>(null);
 
-  /** Cumulative PnL curve calculation for high-res SVG chart */
+  /** Cumulative PnL curve calculation for high-res SVG chart (strictly chronological: 6 days ago -> today). */
   readonly cumulativeChart = computed(() => {
-    const week = this.dashboard().week;
-    if (week.length === 0) {
+    const rawWeek = this.dashboard().week;
+    if (rawWeek.length === 0) {
       return { points: [], lineD: '', areaD: '', baselineY: 100, minVal: 0, maxVal: 0 };
     }
+
+    // Reverse week slice so day sequence moves forward in time from left to right
+    const week = rawWeek.slice().reverse();
 
     let cum = 0;
     const series = week.map((w) => {
@@ -525,13 +639,36 @@ export class Dashboard implements OnInit, OnDestroy {
       );
       return;
     }
-    this.sessionService.startSession({ targetOps: 5 });
+    const pinnedPlan = this.activeDailyGoalPlan();
+    const targetOps = pinnedPlan?.desiredCyclesPerDay ? pinnedPlan.desiredCyclesPerDay * 2 : 10;
+    this.sessionService.startSession({ targetOps });
     this.audioAlerts.playConfirmationTone();
     this.showPreflightModal.set(false);
     this.toast.success(
-      `Sesión Blindada Iniciada (${evalResult.sessionToken}). Ticket máx recomendado: $${evalResult.recommendedMaxSingleTicketUsdt} USDT.`,
+      `Sesión Blindada Iniciada (${evalResult.sessionToken}). Meta: ${targetOps} ops | Ticket máx: $${evalResult.recommendedMaxSingleTicketUsdt} USDT.`,
       'Pre-Vuelo Autorizado',
     );
+  }
+
+  toggleAccountStatus(account: UnifiedAccountView, event?: Event): void {
+    event?.stopPropagation();
+    const newStatus = account.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
+    const updated = this.accountsService.accounts().map((a) =>
+      a.id === account.id ? { ...a, status: newStatus as 'ACTIVE' | 'DISABLED' } : a,
+    );
+    this.accountsService.saveAccounts(updated);
+    this.toast.info(
+      `Cuenta ${account.bankName} ${newStatus === 'ACTIVE' ? 'activada' : 'pausada temporalmente (Escudo Anti-Saturación)'}.`,
+      'Gestión de Cuentas',
+    );
+  }
+
+  quickOperate(bankName?: string): void {
+    const queryParams: Record<string, string> = {};
+    if (bankName) queryParams['autoFillBank'] = bankName;
+    const depth = this.binanceService.marketDepth();
+    if (depth?.bestSellPrice) queryParams['autoFillPrice'] = String(depth.bestSellPrice);
+    void this.router.navigate(['/log'], { queryParams });
   }
 
   openCloseModal(): void {
@@ -689,6 +826,8 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    void this.binanceService.fetchMarketDepth('USDT', 'VES', true);
+    void this.cotizaveService.fetchRates();
     await this.syncMcpIntelligence();
     await this.runSwarmHealthCheck();
     this.mcpIntervalId = setInterval(() => {
