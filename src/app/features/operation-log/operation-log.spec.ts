@@ -1,6 +1,12 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { OperationLog, buildOperationsCsv, CSV_HEADER } from './operation-log';
+import {
+  OperationLog,
+  buildOperationsCsv,
+  buildExtendedOperationsCsv,
+  CSV_HEADER,
+  EXTENDED_CSV_HEADER,
+} from './operation-log';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
 import { type Operation } from '@p2p/core';
@@ -340,4 +346,83 @@ describe('buildOperationsCsv (CSV ledger export)', () => {
     expect((csv.match(/;EUR;/g) ?? []).length).toBe(1);
     expect(csv).not.toContain(';USDT;');
   });
+
+  it('buildExtendedOperationsCsv includes bank, payerName, counterparty and duration', () => {
+    const csv = buildExtendedOperationsCsv(
+      [
+        op({
+          id: 'ext1',
+          timestamp: '2026-10-19T10:00:00.000Z',
+          type: 'sell',
+          pair: 'USDT',
+          vesAmount: 100000,
+          usdtAmount: 100,
+          price: 1000,
+          fees: 300,
+          bankAccountId: 'banesco-pm-1',
+          payerName: 'V-18452123',
+          counterpartyId: 'cp-1',
+          durationMs: 120000,
+          errorFree: true,
+          merchantNote: 'Ref: 998877',
+        }),
+      ],
+      (accId) => (accId === 'banesco-pm-1' ? 'Banesco Pago Móvil' : ''),
+      (cpId) => (cpId === 'cp-1' ? 'CriptoVzla_VIP' : ''),
+    );
+    expect(csv).toContain(EXTENDED_CSV_HEADER);
+    expect(csv).toContain('Banesco Pago Móvil;V-18452123;CriptoVzla_VIP;120;sí;Ref: 998877;');
+  });
+
+  it('parseBackup preserves bankAccountId, counterpartyId, payerName, durationMs and sessionId', () => {
+    const f = TestBed.createComponent(OperationLog);
+    const c = f.componentInstance;
+    const richOp = op({
+      id: 'rich-1',
+      bankAccountId: 'mercantil-pm-1',
+      counterpartyId: 'cp-2',
+      payerName: 'V-21334556',
+      durationMs: 95000,
+      sessionId: 'sess-123',
+      vesAmount: 50000,
+      usdtAmount: 50,
+      price: 1000,
+    });
+    c.operations.set([richOp]);
+    const json = c.serializeBackup();
+    const parsed = c.parseBackup(json);
+    expect(parsed[0]).toEqual(richOp);
+  });
+
+  it('detects duplicate bank references (Anti-Replay Guard) and supports cloning/editing operations', () => {
+    const f = TestBed.createComponent(OperationLog);
+    const c = f.componentInstance;
+    const initial = op({
+      id: 'op-1',
+      type: 'buy',
+      vesAmount: 50000,
+      usdtAmount: 50,
+      price: 1000,
+      merchantNote: 'Ref: 77665544',
+    });
+    c.operations.set([initial]);
+
+    // Typing the same reference triggers duplicateRefWarning
+    c.patchForm({ merchantNote: 'Pago Movil Ref: 77665544' });
+    expect(c.duplicateRefWarning()).toContain('77665544');
+
+    // Editing the existing operation itself does not self-trigger duplicate warning
+    c.startEditOperation(initial);
+    expect(c.duplicateRefWarning()).toBeNull();
+    c.patchForm({ vesAmount: 55000, usdtAmount: 55 });
+    c.submitFromUi();
+    expect(c.operations()[0].vesAmount).toBe(55000);
+    expect(c.editingOpId()).toBeNull();
+
+    // Cloning loads data into form without setting editingOpId
+    c.cloneOperation(c.operations()[0]);
+    expect(c.editingOpId()).toBeNull();
+    expect(c.form().vesAmount).toBe(55000);
+  });
 });
+

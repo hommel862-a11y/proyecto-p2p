@@ -52,7 +52,10 @@ export class AutoBackupService {
 
   createSnapshot(dateKey = new Date().toISOString().slice(0, 10), silent = false): void {
     const ops = this.storage.get<unknown[]>('p2p.operations') ?? [];
-    const accounts = this.storage.get<unknown[]>('p2p.accounts') ?? [];
+    const accounts =
+      this.storage.get<unknown[]>('p2p.bank-accounts') ??
+      this.storage.get<unknown[]>('p2p.accounts') ??
+      [];
     const counterparties = this.storage.get<unknown[]>('p2p.counterparties') ?? [];
     const riskRules = this.storage.get<unknown>('p2p.risk-rules') ?? null;
 
@@ -196,7 +199,10 @@ export class AutoBackupService {
 
     try {
       this.storage.set('p2p.operations', payload.operations);
-      if (payload.accounts) this.storage.set('p2p.accounts', payload.accounts);
+      if (payload.accounts) {
+        this.storage.set('p2p.bank-accounts', payload.accounts);
+        this.storage.set('p2p.accounts', payload.accounts);
+      }
       if (payload.counterparties) this.storage.set('p2p.counterparties', payload.counterparties);
       if (payload.riskRules) this.storage.set('p2p.risk-rules', payload.riskRules);
 

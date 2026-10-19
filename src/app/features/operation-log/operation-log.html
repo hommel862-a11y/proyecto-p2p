@@ -1,10 +1,50 @@
 <section class="panel">
-  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
     <div>
       <h2>Registro de Operaciones</h2>
-      <p class="panel-subtitle">Libro mayor local y seguimiento de rendimiento (PnL / Exposición / Disciplina)</p>
+      <p class="panel-subtitle">Libro mayor institucional, motor de inventario FIFO en vivo, conciliación RPA y auditoría de disciplina</p>
     </div>
-    <div style="display: flex; align-items: center; gap: 6px;">
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+      <!-- Control de Turno / Sesión Activa -->
+      @if (sessionService.activeSession(); as activeSess) {
+        <div
+          style="display: flex; align-items: center; gap: 8px; background: rgba(47, 208, 143, 0.12); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: var(--radius); padding: 4px 10px; font-size: 0.76rem;"
+        >
+          <span style="color: var(--accent); font-weight: 700;">
+            🟢 Turno Activo: {{ activeSessionOpsCount() }}/{{ activeSess.targetOps || 20 }} ops ({{ activeSessionProgressPct() }}%)
+          </span>
+          <button
+            type="button"
+            class="btn btn-ghost"
+            style="font-size: 0.7rem; padding: 2px 6px;"
+            [style.color]="onlyActiveSessionFilter() ? 'var(--gold)' : 'var(--text)'"
+            (click)="toggleActiveSessionFilter()"
+          >
+            {{ onlyActiveSessionFilter() ? '🔍 Viendo Solo Turno' : 'Filtrar Turno' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="font-size: 0.7rem; padding: 2px 8px; border-color: var(--danger); color: var(--danger);"
+            (click)="closeShiftSession()"
+          >
+            ⏹ Cerrar Turno
+          </button>
+        </div>
+      } @else {
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="font-size: 0.74rem; padding: 4px 10px; border-color: var(--gold); color: var(--gold);"
+            (click)="startShiftSession()"
+            title="Inicia un turno de operaciones para medir progreso y velocidad"
+          >
+            ▶️ Iniciar Turno ({{ targetOpsDraft() }} ops)
+          </button>
+        </div>
+      }
+
       <span class="badge badge-accent font-mono" style="font-size: 0.7rem;">
         {{ mcpLedgerSynced() ? '🔒 MCP: add_operation_entry (AUDITADO)' : '⏳ MCP: PENDIENTE' }}
       </span>
@@ -18,7 +58,7 @@
   <app-operation-timer-banner />
 
   @if (selectedBank(); as bank) {
-    <div style="display: flex; gap: 8px; margin-top: 10px;">
+    <div style="display: flex; gap: 8px; margin-top: 10px; align-items: center;">
       <button
         type="button"
         style="
@@ -32,7 +72,7 @@
         "
         (click)="clearBankFilter()"
         aria-label="Limpiar filtro de banco">
-        Banco {{ bank }} ✕
+        🏦 Filtrando por Banco: {{ bank }} ✕
       </button>
     </div>
   }
@@ -41,12 +81,16 @@
     [form]="form()"
     [selectedAccountUsage]="selectedAccountUsage()"
     [limitExceededWarning]="limitExceededWarning()"
+    [duplicateRefWarning]="duplicateRefWarning()"
+    [openInventoryAvgPrice]="summary().fifo.openInventoryAvgPriceVes"
+    [editingOpId]="editingOpId()"
     [antiTriangulation]="antiTriangulation()"
     (formChange)="patchForm($event)"
     (counterpartySelect)="selectCounterparty($event)"
-    (submitForm)="add()" />
+    (submitForm)="submitFromUi()"
+    (cancelEdit)="cancelEditOperation()" />
 
-  <div style="display: flex; gap: 8px; margin-top: 10px;">
+  <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
     <button
       type="button"
       class="btn btn-secondary"
@@ -54,6 +98,18 @@
       (click)="toggleTreasuryAssign()">
       💰 {{ showTreasuryAssign() ? 'Cancelar Asignación' : 'Asignar a Tesorería' }}
     </button>
+
+    @if (summary().fifo.openInventoryAmount > 0) {
+      <button
+        type="button"
+        class="btn btn-secondary"
+        style="font-size: 0.82rem; padding: 6px 14px; border-color: var(--gold); color: var(--gold);"
+        (click)="prepareLiquidateOpenInventory()"
+        title="Carga todo tu inventario abierto en el formulario con tasa de salida Break-Even + 1%"
+      >
+        ⚖️ Liquidar Inventario Abierto ({{ summary().fifo.openInventoryAmount | usdt }} @ {{ (summary().fifo.openInventoryAvgPriceVes * 1.01) | num }} Bs)
+      </button>
+    }
   </div>
 
   @if (showTreasuryAssign()) {
@@ -132,7 +188,18 @@
 
   <div class="section-divider"></div>
   <div class="section-group">
-    <span class="section-eyebrow">Resumen</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+      <span class="section-eyebrow" style="margin: 0;">Resumen Contable & Cabina de Inventario FIFO</span>
+      <button
+        type="button"
+        class="btn btn-ghost"
+        style="font-size: 0.75rem; padding: 3px 10px; border: 1px solid var(--border);"
+        (click)="toggleFifoDetails()"
+      >
+        📦 {{ showFifoDetails() ? 'Ocultar Lotes FIFO' : 'Ver Lotes Abiertos y Cruces FIFO' }} ({{ summary().fifo.openLots.length }} abiertos / {{ summary().fifo.matches.length }} cerrados)
+      </button>
+    </div>
+
     <div class="out">
       <div>
         <dt>Operaciones Totales</dt>
@@ -151,14 +218,78 @@
         <dd>{{ summary().capitalDeployed | ves }}</dd>
       </div>
       <div>
-        <dt>Exposición Neta</dt>
+        <dt>Exposición Neta (Inventario)</dt>
         <dd>{{ summary().exposure | usdt }}</dd>
       </div>
       <div>
         <dt>Racha Cero Errores</dt>
         <dd><span class="badge badge-accent">{{ summary().zeroErrorStreak }} ops</span></dd>
       </div>
+      <div>
+        <dt>Costo Promedio FIFO (VWAP)</dt>
+        <dd class="font-mono" style="color: var(--gold);">
+          {{ summary().fifo.openInventoryAvgPriceVes > 0 ? (summary().fifo.openInventoryAvgPriceVes | ves) : '—' }}
+        </dd>
+      </div>
+      <div>
+        <dt>Win Rate / Profit Factor</dt>
+        <dd class="font-mono">
+          {{ summary().fifo.winRatePct }}% · PF {{ summary().fifo.profitFactor === 1 / 0 ? '∞' : summary().fifo.profitFactor }}
+        </dd>
+      </div>
     </div>
+
+    @if (showFifoDetails()) {
+      <div style="margin-top: 14px; background: rgba(15, 23, 42, 0.65); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+          <!-- Lotes Abiertos -->
+          <div>
+            <div style="font-size: 0.76rem; font-weight: 700; color: var(--gold); text-transform: uppercase; margin-bottom: 6px;">
+              🟢 Lotes de Inventario Abiertos ({{ summary().fifo.openLots.length }})
+            </div>
+            @if (summary().fifo.openLots.length === 0) {
+              <p class="text-muted" style="font-size: 0.78rem; margin: 0;">No tenés inventario abierto pendiente de liquidación.</p>
+            } @else {
+              <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
+                @for (lot of summary().fifo.openLots; track lot.id) {
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--panel-2); border-radius: 4px; font-size: 0.76rem;">
+                    <span>
+                      <strong>{{ lot.side }}</strong> {{ lot.remainingAmount | usdt }} ({{ lot.pair }})
+                    </span>
+                    <span class="font-mono" style="color: var(--gold);">
+                      Costo: {{ lot.unitPriceVes | num }} Bs · Break-Even +1%: {{ (lot.unitPriceVes * 1.01) | num }} Bs
+                    </span>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- Emparejamientos Cerrados -->
+          <div>
+            <div style="font-size: 0.76rem; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 6px;">
+              ⚖️ Últimos Ciclos Cerrados FIFO ({{ summary().fifo.matches.length }})
+            </div>
+            @if (summary().fifo.matches.length === 0) {
+              <p class="text-muted" style="font-size: 0.78rem; margin: 0;">Aún no hay ciclos de compra-venta emparejados.</p>
+            } @else {
+              <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
+                @for (m of summary().fifo.matches.slice().reverse().slice(0, 8); track m.closingOpId + m.openingOpId) {
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--panel-2); border-radius: 4px; font-size: 0.76rem;">
+                    <span class="font-mono">
+                      {{ m.matchedAmount }} {{ m.pair }} ({{ m.openingPriceVes | num }} → {{ m.closingPriceVes | num }} Bs)
+                    </span>
+                    <span class="font-mono" [style.color]="m.isWin ? 'var(--accent)' : 'var(--danger)'" style="font-weight: 600;">
+                      {{ m.grossPnlVes > 0 ? '+' : '' }}{{ m.grossPnlVes | ves }} ({{ m.grossPnlUsdt > 0 ? '+' : '' }}{{ m.grossPnlUsdt }} USDT)
+                    </span>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
   </div>
 
   <div class="section-divider"></div>
@@ -166,17 +297,103 @@
     [operations]="operations()"
     [visibleOps]="displayOperations()"
     [pairFilter]="pairFilter()"
+    [typeFilter]="typeFilter()"
+    [searchQuery]="searchQuery()"
+    [onlyTodayFilter]="onlyTodayFilter()"
+    [fifoMatches]="summary().fifo.matches"
     (pairFilterChange)="setPairFilter($event)"
+    (typeFilterChange)="setTypeFilter($event)"
+    (searchQueryChange)="setSearchQuery($event)"
+    (onlyTodayToggle)="toggleOnlyToday()"
+    (cloneRequest)="cloneOperation($event)"
+    (editRequest)="startEditOperation($event)"
     (removeRequest)="requestRemove($event)" />
 
   <div class="section-divider"></div>
   <app-backup-panel
     (downloadJson)="downloadBackup()"
     (openInvoiceModal)="showInvoiceModal.set(true)"
+    (openRpaReconciler)="showRpaModal.set(true)"
     (importFile)="importFile($event)"
+    (importBinanceCsv)="importBinanceCsvFile($event)"
     (downloadCsv)="downloadCsv()"
+    (downloadExtendedCsv)="downloadExtendedCsv()"
     (syncGoogleSheets)="syncAllToGoogleSheets()"
     (backupGoogleDrive)="backupLedgerToGoogleDrive()" />
+
+  <!-- Modal de Conciliación RPA en Lote contra Extracto Bancario -->
+  @if (showRpaModal()) {
+    <div
+      class="modal-backdrop"
+      (click)="$event.target === $event.currentTarget && showRpaModal.set(false)"
+      (keydown.escape)="showRpaModal.set(false)"
+      tabindex="0"
+      role="button"
+      aria-label="Cerrar modal de conciliación RPA">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-rpa-title" style="max-width: 780px; width: 95vw;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <h3 id="modal-rpa-title" style="margin: 0;">🤖 Conciliador RPA de Extractos y SMS Bancarios en Lote</h3>
+          <button type="button" class="btn btn-ghost" (click)="showRpaModal.set(false)">✕</button>
+        </div>
+        <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 10px;">
+          Pega múltiples notificaciones SMS o líneas de tu estado de cuenta (una por línea). El motor RPA cruzará referencias y montos contra tu Libro Mayor para detectar diferencias o abonos huérfanos no registrados.
+        </p>
+
+        <textarea
+          rows="5"
+          class="terminal-input"
+          style="width: 100%; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 10px;"
+          placeholder="Ejemplo:&#10;MERCANTIL: Recibiste Pago Movil por Bs. 20.000,00 de CI: V18450123 Ref: 987654&#10;BANESCO: Pago Movil recibido por Bs. 45.500,00 Ref: 112233 CI: V21334556"
+          [value]="rpaRawStatements()"
+          (input)="rpaRawStatements.set($any($event.target).value)"
+        ></textarea>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px;">
+          <button type="button" class="btn btn-primary" (click)="runRpaBatchReconciliation()">
+            ⚡ Ejecutar Auditoría RPA
+          </button>
+        </div>
+
+        @if (rpaResult(); as rpa) {
+          <div style="background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+              <span class="font-mono" style="font-size: 0.82rem; font-weight: 700;" [style.color]="rpa.status === 'RECONCILIATION_BALANCED' ? 'var(--accent)' : 'var(--gold)'">
+                {{ rpa.status === 'RECONCILIATION_BALANCED' ? '✅ CONCILIACIÓN 100% CUADRADA' : '⚠️ DISCREPANCIAS O ABONOS HUÉRFANOS DETECTADOS' }}
+              </span>
+              <span class="font-mono text-muted" style="font-size: 0.76rem;">
+                Conciliados: {{ rpa.matchedTransactionsCount }}/{{ rpa.totalStatementsParsed }} ({{ rpa.autoReconciliationRatePct }}%) · Huérfanos: {{ rpa.unmatchedOrphanDepositsCount }}
+              </span>
+            </div>
+
+            @if (rpa.discrepanciesDetected.length > 0) {
+              <div style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+                @for (d of rpa.discrepanciesDetected; track d.referenceNumber) {
+                  <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(255, 95, 109, 0.1); border-left: 3px solid var(--danger); border-radius: 4px; font-size: 0.78rem;">
+                    <span>
+                      <strong>Ref #{{ d.referenceNumber }}</strong> — {{ d.issue === 'UNREGISTERED_INBOUND' ? 'Abono no registrado en libro' : 'Diferencia de monto' }}: Banco {{ d.bankAmount | ves }}
+                      @if (d.orderAmount) {
+                        <span> vs Orden {{ d.orderAmount | ves }}</span>
+                      }
+                    </span>
+                    @if (d.issue === 'UNREGISTERED_INBOUND') {
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        style="font-size: 0.72rem; padding: 2px 8px;"
+                        (click)="loadOrphanDiscrepancyIntoForm(d)"
+                      >
+                        ➕ Cargar al Formulario
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
 
   <!-- Modal de confirmación para eliminación -->
   @if (pendingDeleteId()) {
@@ -213,4 +430,3 @@
       (closeModal)="showInvoiceModal.set(false)" />
   }
 </section>
-

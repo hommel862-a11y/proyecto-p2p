@@ -167,7 +167,7 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
         spreadPct: 1.18,
         buyOffers: [],
         sellOffers: [],
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       });
       f.detectChanges();
 
