@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { NativeHttpService } from './native-http.service';
+import { StorageService } from './storage';
 import {
   computeMarketDepth,
   BINANCE_PAY_METHODS,
@@ -16,20 +17,28 @@ export interface BinanceDepthFetch {
   readonly fetchedAt: number;
 }
 
+const LAST_DEPTH_KEY = 'p2p.binance.lastDepth';
+const USE_PROXY_KEY = 'p2p.binance.usePublicCorsProxy';
+
 @Injectable({ providedIn: 'root' })
 export class BinanceP2pService implements OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly nativeHttp = inject(NativeHttpService, { optional: true });
+  private readonly storage = inject(StorageService);
 
   readonly loading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
-  readonly marketDepth = signal<BinanceP2pMarketDepth | null>(null);
+  readonly marketDepth = signal<BinanceP2pMarketDepth | null>(
+    this.storage.get<BinanceP2pMarketDepth>(LAST_DEPTH_KEY) ?? null,
+  );
   readonly selectedBank = signal<string>('ALL');
   readonly autoRefresh = signal<boolean>(false);
   readonly lastFetched = signal<Date | null>(null);
 
-  /** Security policy: public third-party proxies are disabled by default */
-  readonly usePublicCorsProxy = signal<boolean>(false);
+  /** Security policy: public third-party proxies can be enabled in settings */
+  readonly usePublicCorsProxy = signal<boolean>(
+    this.storage.get<boolean>(USE_PROXY_KEY) ?? false,
+  );
   readonly customProxyUrl = signal<string>('');
 
   readonly circuitBreaker = new CircuitBreaker({
@@ -61,6 +70,7 @@ export class BinanceP2pService implements OnDestroy {
 
   setUsePublicProxy(enabled: boolean): void {
     this.usePublicCorsProxy.set(enabled);
+    this.storage.set(USE_PROXY_KEY, enabled);
   }
 
   toggleAutoRefresh(): void {
@@ -219,6 +229,9 @@ export class BinanceP2pService implements OnDestroy {
       if (observedAt !== null) {
         this.liveFetchedAt = observedAt;
       }
+      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+        this.storage.set(LAST_DEPTH_KEY, depth);
+      }
       this.marketDepth.set(depth);
       this.lastFetched.set(new Date());
       return {
@@ -278,7 +291,20 @@ export class BinanceP2pService implements OnDestroy {
       // Direct fetch failed (likely browser CORS restriction)
     }
 
-    // Fallback: bridge local de la app de escritorio
+    // 2. Dev-server proxy (/api/binance-p2p) when running in browser under ng serve
+    try {
+      const devProxyResp = await fetch('/api/binance-p2p', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      if (devProxyResp.ok) return await devProxyResp.json();
+    } catch {
+      // Dev proxy not active or failed
+    }
+
+    // 3. Fallback: bridge local de la app de escritorio
     try {
       const bridgeResp = await fetch('http://127.0.0.1:51857/api/binance/p2p', {
         method: 'POST',

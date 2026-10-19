@@ -48,6 +48,7 @@ import { Finance360Service } from '../../core/finance-360.service';
 import { AdComposerService } from '../../core/ad-composer.service';
 import { TradeTimerService } from '../../core/trade-timer.service';
 import { CotizaveService } from '../../core/cotizave.service';
+import { MarketHistoryService } from '../../core/market-history.service';
 import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
 
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic' | 'mcp-portfolio';
@@ -174,6 +175,7 @@ export class IncomeCalculator implements OnInit, OnDestroy {
   readonly adComposer = inject(AdComposerService);
   private readonly tradeTimer = inject(TradeTimerService);
   readonly cotizave = inject(CotizaveService);
+  readonly marketHistory = inject(MarketHistoryService);
 
   private readonly restoredUi: CalcUiState | null = sanitizeCalcUi(
     this.storage.get<CalcUiState>(CALC_UI_KEY),
@@ -215,8 +217,8 @@ export class IncomeCalculator implements OnInit, OnDestroy {
 
   // --- Mode A: Cycle Arbitrage Inputs ---
   readonly capitalUsdt = signal<number>(1000);
-  readonly buyPrice = signal<number>(800.0);
-  readonly sellPrice = signal<number>(812.5);
+  readonly buyPrice = signal<number>(980.0);
+  readonly sellPrice = signal<number>(1005.0);
   readonly buyRole = signal<P2PRole>('TAKER');
   readonly sellRole = signal<P2PRole>('MAKER');
   readonly sourceBank = signal<BankCode>('BANESCO');
@@ -379,16 +381,49 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     }
   });
 
-  constructor() {
-    // Auto-hydrate reference rates if Binance P2P depth is already loaded in memory
+  /** Resuelve la mejor referencia de precio de mercado disponible (Libro L2 > Historial > Finanzas 360 > Cotizave). */
+  resolveBestAvailableMarketPrices(): { buy: number; sell: number; source: string } {
+    // 1. Profundidad L2 de Binance en memoria o persistida en disco
     const depth = this.binance.marketDepth();
     if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
-      this.buyPrice.set(depth.bestBuyPrice);
-      this.sellPrice.set(depth.bestSellPrice);
-      this.compoundReferenceRate.set(depth.bestSellPrice);
-      this.teamReferenceRate.set(depth.bestSellPrice);
-      this.rate.set(depth.bestSellPrice);
+      return { buy: depth.bestBuyPrice, sell: depth.bestSellPrice, source: 'Binance P2P L2' };
     }
+
+    // 2. Último snapshot registrado en el historial de mercado
+    const history = this.marketHistory.history();
+    if (history.length > 0) {
+      const latest = history[history.length - 1];
+      if (latest.bestBuyPrice > 0 && latest.bestSellPrice > 0) {
+        return { buy: latest.bestBuyPrice, sell: latest.bestSellPrice, source: 'Historial de Mercado' };
+      }
+    }
+
+    // 3. Tasa paralela de Finanzas 360
+    const parallel = this.finance360.currentParallelRate();
+    if (parallel > 0) {
+      const sell = Number((parallel * 1.015).toFixed(2));
+      return { buy: parallel, sell, source: 'Tasa Paralela Finanzas 360' };
+    }
+
+    // 4. Cotizave Binance market rate
+    const cotizaveRates = this.cotizave.ratesByMarket();
+    const binanceRate = cotizaveRates['binance']?.ask || cotizaveRates['binance']?.bid;
+    if (binanceRate && binanceRate > 0) {
+      return { buy: binanceRate, sell: Number((binanceRate * 1.015).toFixed(2)), source: 'Cotizave P2P' };
+    }
+
+    // 5. Fallback por defecto vigente en el mercado venezolano
+    return { buy: 980.0, sell: 1005.0, source: 'Referencia P2P' };
+  }
+
+  constructor() {
+    // Hidratar con la mejor cotización disponible de inmediato
+    const init = this.resolveBestAvailableMarketPrices();
+    this.buyPrice.set(init.buy);
+    this.sellPrice.set(init.sell);
+    this.compoundReferenceRate.set(init.sell);
+    this.teamReferenceRate.set(init.sell);
+    this.rate.set(init.sell);
   }
 
   ngOnInit(): void {
@@ -1440,22 +1475,36 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     try {
       let depth = this.binance.marketDepth();
       if (forceFetch || !depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
-        await this.binance.fetchMarketDepth('USDT', 'VES', true);
+        await this.binance.fetchMarketDepth('USDT', 'VES', false);
         depth = this.binance.marketDepth();
       }
-      if (!depth || depth.bestBuyPrice <= 0 || depth.bestSellPrice <= 0) {
-        this.toast.warn('No se pudo obtener cotización en vivo de Binance P2P en este momento.');
+      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+        this.autoSyncLiveOrderbook.set(true);
+        this.buyPrice.set(depth.bestBuyPrice);
+        this.sellPrice.set(depth.bestSellPrice);
+        this.compoundReferenceRate.set(depth.bestSellPrice);
+        this.teamReferenceRate.set(depth.bestSellPrice);
+        this.rate.set(depth.bestSellPrice);
+        this.toast.success(
+          `Precios sincronizados con el libro L2: Compra ${depth.bestBuyPrice.toFixed(2)} Bs | Venta ${depth.bestSellPrice.toFixed(2)} Bs`,
+        );
         return;
       }
-      this.autoSyncLiveOrderbook.set(true);
-      this.buyPrice.set(depth.bestBuyPrice);
-      this.sellPrice.set(depth.bestSellPrice);
-      this.compoundReferenceRate.set(depth.bestSellPrice);
-      this.teamReferenceRate.set(depth.bestSellPrice);
-      this.rate.set(depth.bestSellPrice);
-      this.toast.success(
-        `Precios sincronizados con el libro L2: Compra ${depth.bestBuyPrice.toFixed(2)} Bs | Venta ${depth.bestSellPrice.toFixed(2)} Bs`,
-      );
+
+      // Si la consulta en vivo no respondió, aplicar la mejor referencia disponible
+      const fallback = this.resolveBestAvailableMarketPrices();
+      if (fallback.buy > 0 && fallback.sell > 0) {
+        this.buyPrice.set(fallback.buy);
+        this.sellPrice.set(fallback.sell);
+        this.compoundReferenceRate.set(fallback.sell);
+        this.teamReferenceRate.set(fallback.sell);
+        this.rate.set(fallback.sell);
+        this.toast.info(
+          `Cotización en vivo temporalmente inaccesible. Precios cargados desde ${fallback.source}: Compra ${fallback.buy.toFixed(2)} Bs | Venta ${fallback.sell.toFixed(2)} Bs`,
+        );
+      } else {
+        this.toast.warn(this.binance.error() || 'No se pudo obtener cotización de Binance P2P en este momento.');
+      }
     } finally {
       this.syncingLive.set(false);
     }

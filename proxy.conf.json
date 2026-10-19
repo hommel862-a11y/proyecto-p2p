@@ -1,0 +1,13 @@
+{
+  "/api/binance-p2p": {
+    "target": "https://p2p.binance.com",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/binance-p2p": "/bapi/c2c/v2/friendly/c2c/adv/search"
+    },
+    "headers": {
+      "Origin": "https://p2p.binance.com"
+    }
+  }
+}
