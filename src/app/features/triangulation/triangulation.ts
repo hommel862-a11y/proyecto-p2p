@@ -21,6 +21,19 @@ import {
   type LiveRate,
 } from '../../core/triangulation-intelligence.service';
 
+export interface FeeWaterfallBreakdown {
+  grossProfit: number;
+  grossRoiPct: number;
+  platformFees: number;
+  bankingFees: number;
+  fixedFees: number;
+  totalFees: number;
+  netProfit: number;
+  netRoiPct: number;
+  platformFeePctShare: number;
+  bankingFeePctShare: number;
+}
+
 const OPS_KEY = 'p2p.operations';
 
 @Component({
@@ -195,6 +208,62 @@ export class Triangulation implements OnInit, OnDestroy {
     };
   });
 
+  /**
+   * Cascada didáctica de costos y fricción operativa.
+   * Desglosa comisiones de plataforma vs impuestos y fricción bancaria (GMF 4x1000).
+   */
+  readonly feeWaterfall = computed<FeeWaterfallBreakdown>(() => {
+    const res = this.calculationResult();
+    const initial = res.initialAmount;
+
+    let platformFees = 0;
+    let bankingFees = 0;
+    let fixedFees = 0;
+
+    for (const step of res.steps) {
+      platformFees += step.percentageFeeAmount;
+      bankingFees += step.bankingFeeAmount;
+      fixedFees += step.fixedFeeAmount;
+    }
+
+    const totalFees = platformFees + bankingFees + fixedFees;
+    const grossProfit = res.netProfit + totalFees;
+    const grossRoiPct = initial > 0 ? (grossProfit / initial) * 100 : 0;
+    const platformFeePctShare = totalFees > 0 ? Math.round((platformFees / totalFees) * 100) : 0;
+    const bankingFeePctShare = totalFees > 0 ? Math.round((bankingFees / totalFees) * 100) : 0;
+
+    return {
+      grossProfit: Math.round(grossProfit * 100) / 100,
+      grossRoiPct: Math.round(grossRoiPct * 100) / 100,
+      platformFees: Math.round(platformFees * 100) / 100,
+      bankingFees: Math.round(bankingFees * 100) / 100,
+      fixedFees: Math.round(fixedFees * 100) / 100,
+      totalFees: Math.round(totalFees * 100) / 100,
+      netProfit: res.netProfit,
+      netRoiPct: res.roiPct,
+      platformFeePctShare,
+      bankingFeePctShare,
+    };
+  });
+
+  /**
+   * Límites y presets dinámicos de capital según la divisa inicial.
+   */
+  readonly capitalLimits = computed(() => {
+    const cur = this.activePreset().initialCurrency;
+    if (cur === 'USDT') {
+      return { min: 100, max: 10000, step: 50, presets: [250, 500, 1000, 2500, 5000] };
+    }
+    if (cur === 'COP') {
+      return { min: 500000, max: 50000000, step: 250000, presets: [1000000, 2500000, 5000000, 10000000, 20000000] };
+    }
+    return { min: 5000, max: 500000, step: 2500, presets: [25000, 50000, 100000, 250000, 500000] };
+  });
+
+  // Cotizador WhatsApp para clientes de remesas / arbitraje
+  readonly showQuoteModal = signal<boolean>(false);
+  readonly quoteExpiryMinutes = signal<number>(15);
+
   readonly flightPlanProgressPct = computed<number>(() => {
     let count = 0;
     if (this.step1Done()) count++;
@@ -260,6 +329,8 @@ export class Triangulation implements OnInit, OnDestroy {
 
     if (p.initialCurrency === 'USDT') {
       this.initialAmount.set(1000);
+    } else if (p.initialCurrency === 'COP') {
+      this.initialAmount.set(5000000);
     } else {
       this.initialAmount.set(50000);
     }
@@ -269,6 +340,42 @@ export class Triangulation implements OnInit, OnDestroy {
 
   setQuickAmount(amount: number): void {
     this.initialAmount.set(amount);
+  }
+
+  generateWhatsAppQuote(): string {
+    const res = this.calculationResult();
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString();
+
+    const initialCur = res.initialCurrency;
+    const targetCur = res.steps[2].toCurrency;
+    const finalAmt = res.finalAmount.toLocaleString('es-VE', { maximumFractionDigits: 2 });
+    const initAmt = res.initialAmount.toLocaleString('es-VE', { maximumFractionDigits: 2 });
+    const effectiveRate = res.initialAmount > 0 ? (res.finalAmount / res.initialAmount).toFixed(4) : '0';
+
+    return `🏛️ *COTIZACIÓN DE CAMBIO - P2P DECISOR*
+📅 *Fecha*: ${dateStr} ${timeStr}
+⏳ *Validez*: ${this.quoteExpiryMinutes()} minutos
+
+🔄 *Operación*: ${res.routeName}
+💵 *Monto a enviar*: ${initAmt} ${initialCur}
+💰 *Monto a recibir*: ${finalAmt} ${targetCur}
+📊 *Tasa Efectiva*: 1 ${initialCur} = ${effectiveRate} ${targetCur}
+
+⚡ *Condiciones*:
+• Liquidación directa e inmediata
+• Cuentas bancarias verificadas
+• Monto final garantizado sin cargos ocultos
+
+_Generado vía P2P Decisor Suite_`;
+  }
+
+  copyWhatsAppQuote(): void {
+    const quote = this.generateWhatsAppQuote();
+    void navigator.clipboard.writeText(quote);
+    this.toast.success('Cotización para cliente copiada al portapapeles.', 'WhatsApp Quote');
+    this.showQuoteModal.set(false);
   }
 
   toggleStep(step: 1 | 2 | 3): void {

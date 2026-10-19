@@ -434,7 +434,7 @@ export class TriangulationIntelligenceService {
     // (no hay mercado COP/USDT ni mesa digital consultada acá). Antes valían 4250
     // y 0.985, y 4250 es la mitad del problema del 51.3: era el numerador del
     // cruce derivado. Se declaran ausentes y `const` a propósito.
-    const copPerUsdt = unavailableRate(COP_PER_USDT_SOURCE);
+    let copPerUsdt = unavailableRate(COP_PER_USDT_SOURCE);
     const zinliUsdPerUsdt = unavailableRate(ZINLI_SOURCE);
     let source: 'MCP_LIVE' | 'CACHE' | 'FALLBACK' = 'FALLBACK';
 
@@ -465,6 +465,30 @@ export class TriangulationIntelligenceService {
           );
           source = 'MCP_LIVE';
         }
+      }
+
+      // 1b. Herramienta MCP: Libro de órdenes Binance P2P COP (para corredores transfronterizos)
+      try {
+        const copRes = await this.mcp.testTool('get_binance_p2p_orderbook', {
+          fiat: 'COP',
+          asset: 'USDT',
+          rows: 5,
+        });
+        this.mcpCallCount.update((c) => c + 1);
+        if (copRes.success && copRes.result) {
+          const copData = copRes.result as Record<string, unknown>;
+          const copPrice =
+            typeof copData['topSellPrice'] === 'number' && copData['topSellPrice'] > 0
+              ? copData['topSellPrice']
+              : typeof copData['topBuyPrice'] === 'number' && copData['topBuyPrice'] > 0
+                ? copData['topBuyPrice']
+                : null;
+          if (copPrice) {
+            copPerUsdt = liveRate(copPrice, 'MCP get_binance_p2p_orderbook (COP)', 'Binance P2P COP/USDT');
+          }
+        }
+      } catch {
+        // fail-soft
       }
 
       // 2. Herramienta MCP: Tasas Oficiales BCV
@@ -688,13 +712,38 @@ export class TriangulationIntelligenceService {
       apply(l3, rates.binanceVesSell);
     } else if (
       presetId === 'route-usdt-usdc-ves' ||
-      (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USDC')
+      (l1.fromCurrency === 'USDT' && l1.toCurrency === 'USDC' && l3.toCurrency === 'USDT')
     ) {
       // Tramo 1: USDT -> USDC (Binance Spot)
       apply(l1, rates.spotUsdcUsdt);
-      // Tramo 2: USDC -> VES (P2P USDC/VES)
+      // Tramo 2: USDC -> VES (P2P USDC/VES con prima)
+      if (rates.binanceVesBuy.value !== null) {
+        l2.price = rates.binanceVesBuy.value;
+      } else if (rates.binanceVesSell.value !== null) {
+        l2.price = Math.round(rates.binanceVesSell.value * 1.012 * 100) / 100;
+      }
       // Tramo 3: VES -> USDT (Recompra de USDT con VES en Binance P2P)
       apply(l3, rates.binanceVesSell);
+    } else if (presetId === 'route-ves-transf-usdt-pm') {
+      // Tramo 1: VES (Transferencia) -> USDT (Binance P2P Maker con descuento ~1.2%)
+      if (rates.binanceVesSell.value !== null) {
+        l1.price = Math.round(rates.binanceVesSell.value * 0.988 * 100) / 100;
+      }
+      // Tramo 2: USDT -> USDC (Binance Spot)
+      apply(l2, rates.spotUsdcUsdt);
+      // Tramo 3: USDC -> VES (Venta Pago Móvil con prima express)
+      if (rates.binanceVesBuy.value !== null) {
+        l3.price = rates.binanceVesBuy.value;
+      } else if (rates.binanceVesSell.value !== null) {
+        l3.price = Math.round(rates.binanceVesSell.value * 1.015 * 100) / 100;
+      }
+    } else if (presetId === 'route-cop-nequi-usdt-ves') {
+      // Tramo 1: COP -> USDT (Comprar USDT en Nequi/Bancolombia)
+      apply(l1, rates.copPerUsdt);
+      // Tramo 2: USDT -> VES (Venta de USDT recibiendo Pago Móvil)
+      apply(l2, rates.binanceVesBuy);
+      // Tramo 3: VES -> COP (Mesa de liquidación / Retorno)
+      apply(l3, rates.copPerVes);
     } else {
       // Regla universal según las divisas de cada tramo
       for (const leg of [l1, l2, l3]) {

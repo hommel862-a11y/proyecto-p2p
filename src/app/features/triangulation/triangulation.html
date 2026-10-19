@@ -47,6 +47,16 @@
         <span>{{ intelligence.isSyncingMarket() ? 'Sincronizando...' : 'Sincronizar Tasas MCP' }}</span>
       </button>
 
+      <!-- WhatsApp Remittance Quote Button -->
+      <button
+        type="button"
+        class="btn-secondary"
+        (click)="showQuoteModal.set(true)"
+        title="Generar cotización comercial para WhatsApp / Cliente OTC"
+      >
+        <span>💬 Cotizar WhatsApp</span>
+      </button>
+
       <!-- Copy Flight Plan Button -->
       <button
         type="button"
@@ -316,32 +326,42 @@
           </div>
         </div>
 
-        <!-- Quick Capital Buttons -->
+        <!-- Quick Capital Buttons & Interactive Range Slider -->
         <div class="capital-selector">
-          <span class="label">Capital Inicial:</span>
-          @if (activePreset().initialCurrency === 'USDT') {
+          <div class="capital-label-row">
+            <span class="label">Capital Inicial:</span>
             <div class="quick-chips">
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 500" (click)="setQuickAmount(500)">500</button>
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 1000" (click)="setQuickAmount(1000)">1,000</button>
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 2500" (click)="setQuickAmount(2500)">2,500</button>
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 5000" (click)="setQuickAmount(5000)">5,000</button>
+              @for (presetVal of capitalLimits().presets; track presetVal) {
+                <button
+                  type="button"
+                  class="btn-chip"
+                  [class.active]="initialAmount() === presetVal"
+                  (click)="setQuickAmount(presetVal)"
+                >
+                  {{ presetVal >= 1000000 ? (presetVal / 1000000) + 'M' : presetVal >= 1000 ? (presetVal / 1000) + 'k' : presetVal }}
+                </button>
+              }
             </div>
-          } @else {
-            <div class="quick-chips">
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 25000" (click)="setQuickAmount(25000)">25k</button>
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 50000" (click)="setQuickAmount(50000)">50k</button>
-              <button type="button" class="btn-chip" [class.active]="initialAmount() === 100000" (click)="setQuickAmount(100000)">100k</button>
-            </div>
-          }
-          <div class="input-inline">
+          </div>
+          <div class="capital-controls-row">
             <input
-              type="number"
-              inputmode="decimal"
-              class="form-control font-mono capital-input"
+              type="range"
+              class="capital-slider"
+              [min]="capitalLimits().min"
+              [max]="capitalLimits().max"
+              [step]="capitalLimits().step"
               [(ngModel)]="initialAmount"
-              min="1"
             />
-            <span class="currency-tag">{{ activePreset().initialCurrency }}</span>
+            <div class="input-inline">
+              <input
+                type="number"
+                inputmode="decimal"
+                class="form-control font-mono capital-input"
+                [(ngModel)]="initialAmount"
+                min="1"
+              />
+              <span class="currency-tag">{{ activePreset().initialCurrency }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -425,6 +445,76 @@
           </div>
           <div class="node-pnl font-mono font-bold" [class.positive]="calculationResult().netProfit > 0" [class.negative]="calculationResult().netProfit <= 0">
             {{ calculationResult().netProfit > 0 ? '+' : '' }}{{ calculationResult().netProfit | number: '1.2-2' }} ({{ calculationResult().roiPct | number: '1.2-2' }}%)
+          </div>
+        </div>
+      </div>
+
+      <!-- Visual Fee & Friction Waterfall (Didactic Cost Breakdown) -->
+      <div class="waterfall-container">
+        <div class="waterfall-header">
+          <div class="waterfall-title">
+            <span class="waterfall-icon">📊</span>
+            <div>
+              <strong>Cascada de Rentabilidad y Fricción Operativa (Waterfall)</strong>
+              <span class="waterfall-subtitle">Desglose didáctico de spread bruto, comisiones de plataformas y fricción bancaria</span>
+            </div>
+          </div>
+          <div class="waterfall-pnl-pill" [class.positive]="feeWaterfall().netProfit > 0" [class.negative]="feeWaterfall().netProfit <= 0">
+            Neto: {{ feeWaterfall().netProfit > 0 ? '+' : '' }}{{ feeWaterfall().netProfit | number: '1.2-2' }} {{ calculationResult().initialCurrency }} ({{ feeWaterfall().netRoiPct | number: '1.2-2' }}%)
+          </div>
+        </div>
+
+        <div class="waterfall-steps">
+          <!-- Step 1: Gross Margin -->
+          <div class="waterfall-bar-step gross">
+            <div class="step-label">
+              <span>Spread Bruto Teórico</span>
+              <strong class="font-mono text-success">+{{ feeWaterfall().grossProfit | number: '1.2-2' }} {{ calculationResult().initialCurrency }} (+{{ feeWaterfall().grossRoiPct | number: '1.2-2' }}%)</strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="bar-fill gross-fill" style="width: 100%"></div>
+            </div>
+            <span class="step-hint">Diferencial teórico del ciclo antes de descontar comisiones e impuestos</span>
+          </div>
+
+          <!-- Step 2: Platform Fees -->
+          <div class="waterfall-bar-step platform-loss">
+            <div class="step-label">
+              <span>- Comisiones de Plataforma (Binance P2P / Spot)</span>
+              <strong class="font-mono text-danger">-{{ feeWaterfall().platformFees | number: '1.2-2' }} ({{ feeWaterfall().platformFeePctShare }}% de la fricción)</strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="bar-fill platform-fill" [style.width.%]="feeWaterfall().grossProfit > 0 ? (feeWaterfall().platformFees / feeWaterfall().grossProfit) * 100 : 0"></div>
+            </div>
+            <span class="step-hint">Tarifas maker/taker y costo de intermediación cripto</span>
+          </div>
+
+          <!-- Step 3: Banking Frictions -->
+          <div class="waterfall-bar-step bank-loss">
+            <div class="step-label">
+              <span>- Fricción Bancaria e Impuestos (GMF 4x1000 / Retiros)</span>
+              <strong class="font-mono text-danger">-{{ feeWaterfall().bankingFees | number: '1.2-2' }} ({{ feeWaterfall().bankingFeePctShare }}% de la fricción)</strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="bar-fill bank-fill" [style.width.%]="feeWaterfall().grossProfit > 0 ? (feeWaterfall().bankingFees / feeWaterfall().grossProfit) * 100 : 0"></div>
+            </div>
+            <span class="step-hint">Gravamen a transferencias interbancarias y costos fijos de rieles fiat</span>
+          </div>
+
+          <!-- Step 4: Net Profit & Breakeven Insight -->
+          <div class="waterfall-bar-step net" [class.net-profitable]="feeWaterfall().netProfit > 0" [class.net-loss]="feeWaterfall().netProfit <= 0">
+            <div class="step-label">
+              <span>= Rendimiento Neto Real</span>
+              <strong class="font-mono" [class.positive]="feeWaterfall().netProfit > 0" [class.negative]="feeWaterfall().netProfit <= 0">
+                {{ feeWaterfall().netProfit > 0 ? '+' : '' }}{{ feeWaterfall().netProfit | number: '1.2-2' }} {{ calculationResult().initialCurrency }} (ROI: {{ feeWaterfall().netRoiPct | number: '1.2-2' }}%)
+              </strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="bar-fill net-fill" [style.width.%]="feeWaterfall().grossProfit > 0 ? (feeWaterfall().netProfit / feeWaterfall().grossProfit) * 100 : 0"></div>
+            </div>
+            <span class="step-hint">
+              🛡️ Breakeven Tramo 3: {{ calculationResult().breakevenPriceLeg3 | number: '1.2-4' }} (Tolerancia a deslizamiento: ±{{ calculationResult().slippageTolerancePct | number: '1.1-2' }}%)
+            </span>
           </div>
         </div>
       </div>
@@ -670,4 +760,49 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal: WhatsApp Quote Generator -->
+  @if (showQuoteModal()) {
+    <div class="modal-backdrop" (click)="showQuoteModal.set(false)">
+      <div class="modal-content quote-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-icon">💬</span>
+            <div>
+              <h3>Cotizador WhatsApp para Clientes / OTC</h3>
+              <p class="modal-subtitle">Genera cotizaciones limpias con tasa efectiva, desglose y límite de validez</p>
+            </div>
+          </div>
+          <button type="button" class="btn-close" (click)="showQuoteModal.set(false)">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="quote-preview-box">
+            <pre class="font-mono">{{ generateWhatsAppQuote() }}</pre>
+          </div>
+          <div class="quote-options-row">
+            <label>
+              <span>Validez de la cotización:</span>
+              <select
+                class="terminal-select"
+                [value]="quoteExpiryMinutes()"
+                (change)="quoteExpiryMinutes.set(+$any($event.target).value)"
+              >
+                <option value="10">10 minutos</option>
+                <option value="15">15 minutos (Recomendado)</option>
+                <option value="30">30 minutos</option>
+                <option value="60">1 hora</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="showQuoteModal.set(false)">Cancelar</button>
+          <button type="button" class="btn-primary btn-copy-quote" (click)="copyWhatsAppQuote()">
+            <span>📋</span>
+            <span>Copiar al Portapapeles</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </section>
