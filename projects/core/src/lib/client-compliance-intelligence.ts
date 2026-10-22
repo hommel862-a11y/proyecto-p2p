@@ -503,14 +503,31 @@ export function compileCrmWorkspaceState(
   deals: PipelineDeal[],
   contacts: CrmContact[],
   banks: CrmBankAccount[],
-  activities: ActivityLogEntry[],
-  activeScope: WorkspaceScope,
-  liveReplacementRate: number,
-  nowTimestamp: number,
+  activitiesOrScope: ActivityLogEntry[] | WorkspaceScope,
+  activeScopeOrLiveRate?: WorkspaceScope | number,
+  liveReplacementRateOrNow?: number,
+  nowTimestamp?: number,
 ): CompiledCrmWorkspaceState {
-  const now = new Date(nowTimestamp);
+  let activities: ActivityLogEntry[] = [];
+  let activeScope: WorkspaceScope = 'P2P_DESK';
+  let liveReplacementRate = 80;
+  let nowMs = Date.now();
+
+  if (Array.isArray(activitiesOrScope)) {
+    activities = activitiesOrScope;
+    activeScope = (activeScopeOrLiveRate as WorkspaceScope) ?? 'P2P_DESK';
+    liveReplacementRate = (liveReplacementRateOrNow as number) ?? 80;
+    nowMs = nowTimestamp ?? Date.now();
+  } else {
+    activeScope = activitiesOrScope;
+    liveReplacementRate = (activeScopeOrLiveRate as number) ?? 80;
+    nowMs = (liveReplacementRateOrNow as number) ?? Date.now();
+    activities = [];
+  }
+
+  const now = new Date(nowMs);
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const burstWindow15Min = nowTimestamp - 15 * 60 * 1000;
+  const burstWindow15Min = nowMs - 15 * 60 * 1000;
 
   // 1. Filter entities strictly by active scope (Zero-Seed & Strict Partitioning)
   const scopedDeals = deals.filter((d) => d.scope === activeScope);
