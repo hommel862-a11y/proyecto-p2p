@@ -100,6 +100,33 @@ export class ComplianceCockpitComponent {
     );
   });
 
+  readonly deskKpis = computed(() => this.deskState().kpis);
+
+  readonly activeBanks = computed<OperationalBankAccount[]>(() => {
+    const scope = this.activeScope();
+    return this.banks().filter((b) => b.scope === scope);
+  });
+
+  readonly bankCards = computed(() => {
+    const telemetryMap = new Map(this.deskState().bankTelemetry.map((t) => [t.bankAccountId, t]));
+    return this.activeBanks().map((b) => ({
+      account: b,
+      telemetry: telemetryMap.get(b.id) ?? {
+        bankAccountId: b.id,
+        bankName: b.bankName,
+        currency: b.currency,
+        currentBalanceFiat: b.currentBalanceFiat,
+        maxDailyCapFiat: b.maxDailyCapFiat,
+        dailyUsedFiat: 0,
+        dailyUsagePct: 0,
+        recent15MinTxCount: 0,
+        maxBurstTxPer15Min: b.maxBurstTxPer15Min,
+        status: 'AVAILABLE' as const,
+        isRecommended: false,
+      },
+    }));
+  });
+
   // Today's date ISO format (YYYY-MM-DD)
   readonly todayDateIso = computed<string>(() => {
     const d = new Date(this.clockTick());

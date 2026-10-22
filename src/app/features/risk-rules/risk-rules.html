@@ -1,605 +1,902 @@
-<section class="panel">
-  <h2>Reglas de Riesgo</h2>
-  <p class="note">Barrera de seguridad únicamente — nunca predice ni ejecuta automáticamente. Por defecto: spread mínimo 15, máx. operaciones concurrentes 3, riesgo máx. por operación 1%, tope de pérdida diaria 4%.</p>
-
-  <app-ui-card>
-    <app-ui-panel-header icon="🛡️" title="Parámetros de Blindaje & Gestión de Riesgo">
-      <span uiHeaderActions class="badge badge-accent font-mono">{{ pair() }}/VES</span>
-    </app-ui-panel-header>
-
-    <div class="terminal-input-grid grid-3">
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-pair-select">
-          <span>Par de Referencia</span>
-        </label>
-        <div class="input-control-wrap">
-          <select id="risk-pair-select" class="terminal-select" [value]="pair()" (change)="setPair($any($event.target).value)">
-            <option value="USDT">USDT / VES</option>
-            <option value="EUR">EUR / VES</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-min-spread">
-          <span>Spread Mínimo Absoluto</span>
-          <span class="terminal-subtext">VES por {{ pair() }}</span>
-        </label>
-        <div class="input-control-wrap">
-          <span class="input-prefix">Bs</span>
-          <input
-            id="risk-min-spread"
-            type="number"
-            min="0"
-            step="0.01"
-            class="terminal-input"
-            [value]="draft().minSpread"
-            (input)="patch({ minSpread: clampMoney(+$any($event.target).value) })"
-            placeholder="15.00"
-          />
-        </div>
-      </div>
-
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-max-concurrent">
-          <span>Máx. Operaciones Simultáneas</span>
-          <span class="terminal-subtext">Límite de concurrencia</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="risk-max-concurrent"
-            type="number"
-            min="1"
-            step="1"
-            class="terminal-input"
-            [value]="draft().maxConcurrentOps"
-            (input)="patch({ maxConcurrentOps: clampCount(+$any($event.target).value) })"
-            placeholder="3"
-          />
-          <span class="input-suffix">ops</span>
-        </div>
-      </div>
-
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-max-risk-trade">
-          <span>Riesgo Máx. por Operación</span>
-          <span class="terminal-subtext">Porcentaje del capital</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="risk-max-risk-trade"
-            type="number"
-            min="0"
-            step="0.01"
-            class="terminal-input"
-            [value]="draft().maxRiskPerTradePct"
-            (input)="patch({ maxRiskPerTradePct: clampMoney(+$any($event.target).value) })"
-            placeholder="1.00"
-          />
-          <span class="input-suffix">%</span>
-        </div>
-      </div>
-
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-loss-cap">
-          <span>Tope de Pérdida Diaria</span>
-          <span class="terminal-subtext">Stop-loss de la jornada</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="risk-loss-cap"
-            type="number"
-            min="0"
-            step="0.01"
-            class="terminal-input"
-            [value]="draft().dailyLossCapPct"
-            (input)="patch({ dailyLossCapPct: clampMoney(+$any($event.target).value) })"
-            placeholder="4.00"
-          />
-          <span class="input-suffix">%</span>
-        </div>
-      </div>
-
-      <div class="terminal-field">
-        <label class="terminal-label" for="risk-max-errors">
-          <span>Máx. Errores Consecutivos</span>
-          <span class="terminal-subtext">Tolerancia de fallas</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="risk-max-errors"
-            type="number"
-            min="1"
-            step="1"
-            class="terminal-input"
-            [value]="draft().maxConsecutiveErrors"
-            (input)="patch({ maxConsecutiveErrors: clampCount(+$any($event.target).value) })"
-            placeholder="2"
-          />
-          <span class="input-suffix">fallas</span>
-        </div>
-      </div>
-
-      <div class="terminal-field full-width">
-        <label class="terminal-label" for="risk-api-status">
-          <span>Estado de Conexión / Gateway API</span>
-          <span class="terminal-subtext">Control manual de salud</span>
-        </label>
-        <div class="input-control-wrap">
-          <select id="risk-api-status" class="terminal-select" [value]="draft().apiStatus" (change)="patch({ apiStatus: $any($event.target).value })">
-            <option value="ok">🟢 OK — Operativa normal permitida</option>
-            <option value="down">🔴 CAÍDA — Pausar operaciones por fallo de conexión</option>
-          </select>
-        </div>
-      </div>
+<div class="risk-cockpit-panel">
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Cockpit Header & Tab Navigation
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <header class="cockpit-header">
+    <div class="header-titles">
+      <h2>
+        <span>🛡️</span>
+        <span>Sentinel Risk & BCV Cockpit</span>
+      </h2>
+      <span class="cockpit-version-tag">INSTITUTIONAL v3.0</span>
     </div>
+    <p class="header-desc">
+      Control unificado de barreras de riesgo, monitoreo macroeconómico BCV en tiempo real, perfiles automatizados y orquestación defensiva P2P.
+    </p>
+  </header>
 
-    <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 6px;">
-      <div class="footer-badge">
-        <span class="status-indicator active"></span>
-        <span>Barrera de seguridad pasiva (0 riesgo de ejecución automática no supervisada)</span>
-      </div>
-      <div class="actions" style="margin: 0; display: flex; gap: 8px;">
-        <button type="button" class="btn btn-primary" (click)="save()">💾 Guardar Reglas</button>
-        <button type="button" class="btn btn-secondary" (click)="reset()">↺ Restablecer</button>
-      </div>
-    </div>
-  </app-ui-card>
+  <nav class="cockpit-tabs-bar" aria-label="Navegación del Cockpit de Riesgo">
+    <button
+      type="button"
+      class="cockpit-tab-btn"
+      [class.active]="activeTab() === 'LIVE_SHIELD'"
+      (click)="selectTab('LIVE_SHIELD')"
+    >
+      <span class="tab-icon">🛡️</span>
+      <span>Escudo en Vivo & Macro</span>
+    </button>
 
-  <app-ui-card style="margin-top: 1.5rem;">
-    <app-ui-panel-header icon="🤖" title="Telegram Sentinel Bot & Dispatcher">
-      <span uiHeaderActions class="badge badge-warning font-mono">24/7 SENTINEL</span>
-    </app-ui-panel-header>
+    <button
+      type="button"
+      class="cockpit-tab-btn"
+      [class.active]="activeTab() === 'BARRIERS'"
+      (click)="selectTab('BARRIERS')"
+    >
+      <span class="tab-icon">⚙️</span>
+      <span>Barreras & Perfiles</span>
+    </button>
 
-    <div class="terminal-input-grid grid-3">
-      <div class="terminal-field">
-        <label class="terminal-label" for="telegram-bot-token">
-          <span>Telegram Bot Token</span>
-          <span class="terminal-subtext">Obtenido de @BotFather</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="telegram-bot-token"
-            type="password"
-            class="terminal-input font-mono"
-            [value]="telegramToken()"
-            (input)="telegramToken.set($any($event.target).value)"
-            placeholder="123456789:ABCdefGhIJKlmNoPQRstUVw"
-          />
+    <button
+      type="button"
+      class="cockpit-tab-btn"
+      [class.active]="activeTab() === 'TELEGRAM'"
+      (click)="selectTab('TELEGRAM')"
+    >
+      <span class="tab-icon">🤖</span>
+      <span>Telegram Sentinel 24/7</span>
+    </button>
+
+    <button
+      type="button"
+      class="cockpit-tab-btn"
+      [class.active]="activeTab() === 'MCP_TOOLS'"
+      (click)="selectTab('MCP_TOOLS')"
+    >
+      <span class="tab-icon">⚡</span>
+      <span>Herramientas Cuantitativas</span>
+    </button>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TAB 1: LIVE SHIELD & MACRO INDICATORS
+       ═══════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'LIVE_SHIELD') {
+    <!-- Macro BCV & P2P Live Banner -->
+    <section class="macro-bcv-banner" aria-label="Indicadores Macroeconómicos BCV">
+      <div class="bcv-left">
+        <span class="bcv-flag" aria-hidden="true">🇻🇪</span>
+        <div class="bcv-info">
+          <span class="bcv-title">Tipo de Cambio Oficial BCV</span>
+          <span class="bcv-rate-text font-mono">
+            <strong>{{ liveBcvRate() | number:'1.2-2' }}</strong> VES/USD • P2P: <strong>{{ liveP2pRate() | number:'1.2-2' }}</strong> VES/USDT
+          </span>
         </div>
       </div>
 
-      <div class="terminal-field">
-        <label class="terminal-label" for="telegram-chat-id">
-          <span>Chat ID / Usuario Autorizado</span>
-          <span class="terminal-subtext">Obtenido de @userinfobot o autodetectado</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="telegram-chat-id"
-            type="text"
-            class="terminal-input font-mono"
-            [value]="telegramChatId()"
-            (input)="telegramChatId.set($any($event.target).value)"
-            placeholder="987654321"
-          />
-        </div>
-        <div style="display: flex; gap: 6px; margin-top: 6px;">
-          <a
-            [href]="'https://t.me/' + (botUsername() || 'P2pTradeServiceBot')"
-            target="_blank"
-            rel="noopener"
-            class="btn btn-primary btn-sm"
-            style="flex: 1; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px; text-decoration: none;"
-            title="Abre tu bot en Telegram para presionar Iniciar"
+      <div class="bcv-center-brecha">
+        <span class="brecha-label">Brecha Cambiaria:</span>
+        <span class="brecha-pill" [class.high]="liveBrechaPct() > 15">
+          +{{ liveBrechaPct() }}%
+        </span>
+      </div>
+
+      <div class="bcv-right-window">
+        <span
+          class="window-status-pill"
+          [class.active]="liveBcvIntervention().inWindow"
+        >
+          {{ liveBcvIntervention().inWindow ? '⚠️ VENTANA BCV ACTIVA' : '🟢 FUERA DE VENTANA BCV' }}
+        </span>
+      </div>
+    </section>
+
+    <!-- Top Risk & Treasury Cards -->
+    <section class="live-shield-grid">
+      <!-- Card 1: Motor Verdict Traffic Light -->
+      <div
+        class="stat-card-surface"
+        [class.verdict-allow]="verdict().decision === 'ALLOW'"
+        [class.verdict-deny]="verdict().decision === 'DENY'"
+        [class.verdict-pause]="verdict().decision === 'PAUSE'"
+      >
+        <div class="stat-card-header">
+          <span class="card-title">Veredicto del Motor</span>
+          <span
+            class="badge"
+            [class.badge-accent]="verdict().decision === 'ALLOW'"
+            [class.badge-warning]="verdict().decision === 'PAUSE'"
+            [class.badge-danger]="verdict().decision === 'DENY'"
           >
-            ✈️ Abrir Bot
-          </a>
+            {{ verdict().decision }}
+          </span>
+        </div>
+        <div class="stat-hero-number font-mono">
+          {{ decisionLabel(verdict().decision) }}
+        </div>
+        <div class="stat-card-footer-info">
+          <span>Motivo: <strong>{{ reasonLabel(verdict().reason) }}</strong></span>
+          <span class="text-muted">Cálculo en tiempo real</span>
+        </div>
+      </div>
+
+      <!-- Card 2: Total Treasury & Trade Risk -->
+      <div class="stat-card-surface">
+        <div class="stat-card-header">
+          <span class="card-title">Capital de Tesorería Activa</span>
+          <span class="badge badge-accent font-mono">USDT + VES</span>
+        </div>
+        <div class="stat-hero-number font-mono">
+          ${{ totalTreasuryCapitalUsdt() | number:'1.0-0' }}
+          <span class="currency-suffix">USDT</span>
+        </div>
+        <div class="stat-card-footer-info">
+          <span>Riesgo máx/trade: <strong>${{ maxRiskPerTradeUsdt() }}</strong> ({{ draft().maxRiskPerTradePct }}%)</span>
+          <span>Máx ops: <strong>{{ draft().maxConcurrentOps }}</strong></span>
+        </div>
+      </div>
+
+      <!-- Card 3: Daily Stop Loss -->
+      <div class="stat-card-surface">
+        <div class="stat-card-header">
+          <span class="card-title">Tope de Pérdida Diaria (Stop)</span>
+          <span class="badge badge-warning font-mono">{{ draft().dailyLossCapPct }}% Capital</span>
+        </div>
+        <div class="stat-hero-number font-mono" style="color: #fbbf24;">
+          ${{ dailyLossCapUsdt() | number:'1.0-0' }}
+          <span class="currency-suffix">USDT</span>
+        </div>
+        <div class="stat-card-footer-info">
+          <span>Equivalente: <strong>Bs {{ dailyLossCapVes() | number:'1.0-0' }}</strong></span>
+          <span>Tolerancia: <strong>{{ draft().maxConsecutiveErrors }} fallas</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Emergency Killswitch Banner Strip -->
+    <section class="killswitch-strip" [class.active]="killswitchActive()" aria-label="Circuito de Parada de Emergencia">
+      <div class="ks-info-area">
+        <span class="ks-icon-badge" aria-hidden="true">{{ killswitchActive() ? '🛑' : '🚨' }}</span>
+        <div class="ks-texts">
+          <h3>Circuito de Desconexión / Killswitch de Tesorería</h3>
+          <p>
+            {{ killswitchActive() ? '¡KILLSWITCH ACTIVADO! Todas las operaciones están pausadas de emergencia.' : 'Parada de seguridad instantánea: congela la orquestación y pone la API en modo CAÍDA.' }}
+          </p>
+        </div>
+      </div>
+
+      <div class="ks-actions-area">
+        @if (!killswitchActive()) {
+          <input
+            type="text"
+            class="ks-input-challenge font-mono"
+            [value]="killswitchChallenge()"
+            (input)="killswitchChallenge.set($any($event.target).value)"
+            placeholder="CONFIRMAR-FREEZE"
+            aria-label="Confirmación para activar killswitch"
+          />
+          <button
+            type="button"
+            class="btn btn-danger btn-sm"
+            [disabled]="mcpKillswitchLoading() || killswitchChallenge() !== 'CONFIRMAR-FREEZE'"
+            (click)="activateKillswitch()"
+          >
+            {{ mcpKillswitchLoading() ? 'Activando...' : '🛑 ACTIVAR KILLSWITCH' }}
+          </button>
+        } @else {
           <button
             type="button"
             class="btn btn-secondary btn-sm"
-            style="flex: 1.3; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
-            [disabled]="detectingChatId()"
-            (click)="detectChatId()"
-            title="Detecta automáticamente tu Chat ID leyendo el último mensaje /start que enviaste a tu bot"
+            (click)="resetKillswitch()"
           >
-            <span>{{ detectingChatId() ? '⏳ Vinculando...' : '🔍 Detectar Chat ID' }}</span>
+            🔄 Restablecer Operatividad
           </button>
-        </div>
-        <div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;">
-          Bot: <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong> • Tocá "Abrir Bot" e "Iniciar" (/start) en Telegram.
-        </div>
+        }
       </div>
+    </section>
+  }
 
-      <div class="terminal-field">
-        <label class="terminal-label" for="telegram-polling-enabled">
-          <span>Worker 24/7 (Long-Polling)</span>
-          <span class="terminal-subtext">Recepción de comandos y fotos</span>
-        </label>
-        <div class="input-control-wrap">
-          <select
-            id="telegram-polling-enabled"
-            class="terminal-select"
-            [value]="telegramPollingEnabled() ? 'yes' : 'no'"
-            (change)="telegramPollingEnabled.set($any($event.target).value === 'yes'); togglePolling()"
-          >
-            <option value="yes">🟢 EN LÍNEA — Escuchar comandos & OCR</option>
-            <option value="no">⚪ DESCONECTADO — Modo pasivo</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- Consola de Comandos Remotos y Auditorías Telegram -->
-    <div style="margin-top: 14px; background: rgba(10, 15, 26, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.04em;">
-          📡 Consola de Comandos y Fotos Recibidas en Vivo
-        </span>
-        <span class="badge" [class.badge-accent]="telegramWorker.isPolling()" style="font-size: 0.68rem;">
-          {{ telegramWorker.isPolling() ? '● POLLING ACTIVO' : '○ INACTIVO' }}
-        </span>
-      </div>
-
-      @if (telegramWorker.recentLogs().length === 0) {
-        <div style="font-size: 0.78rem; color: var(--muted); padding: 12px 0; text-align: center;">
-          El bot está esperando mensajes desde tu Telegram. Envía <code>/status</code>, <code>/bcv</code>, <code>/bancos</code> o una foto de un comprobante bancario para probarlo.
-        </div>
-      } @else {
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
-          <thead>
-            <tr style="border-bottom: 1px solid var(--line); color: var(--muted); text-align: left;">
-              <th style="padding: 4px 6px;">Hora</th>
-              <th style="padding: 4px 6px;">Mensaje / Foto</th>
-              <th style="padding: 4px 6px;">Acción</th>
-              <th style="padding: 4px 6px;">Resultado</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (log of telegramWorker.recentLogs(); track log.time + $index) {
-              <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                <td style="padding: 4px 6px; font-family: var(--font-mono); color: var(--muted);">{{ log.time }}</td>
-                <td style="padding: 4px 6px; font-weight: 600;">{{ log.command }}</td>
-                <td style="padding: 4px 6px;">
-                  <span class="badge badge-accent" style="font-size: 0.65rem;">{{ log.action }}</span>
-                </td>
-                <td style="padding: 4px 6px;">
-                  <span class="badge" [style.color]="log.status === 'SUCCESS' ? '#4ade80' : '#ef4444'" style="font-size: 0.65rem;">
-                    {{ log.status }}
-                  </span>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      }
-    </div>
-
-    <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 6px;">
-      <div class="footer-badge">
-        <span class="status-indicator" [class.active]="telegramWorker.isPolling()"></span>
-        <span>Soporta: 📸 Auditoría OCR por Foto, /bcv, /bancos, /spreads, /status y /killswitch remoto</span>
-      </div>
-      <div class="actions" style="margin: 0; display: flex; gap: 8px;">
-        <button type="button" class="btn btn-secondary" (click)="sendTestTelegramAlert()">⚡ Probar Alerta</button>
-        <button type="button" class="btn btn-primary" (click)="saveTelegramConfig()">💾 Guardar Telegram</button>
-      </div>
-    </div>
-  </app-ui-card>
-
-  <!-- ═══════════════════════════════════════════════════
-       MCP Institutional Risk & Security Suite (4 Tools)
-       ═══════════════════════════════════════════════════ -->
-  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 1.5rem;">
-    <!-- Tool 1: evaluate_trade_risk -->
-    <app-ui-card>
-      <app-ui-panel-header icon="🛡️" title="Evaluación Pre-Flight de Trade">
-        <span uiHeaderActions class="badge badge-accent font-mono">MCP: evaluate_trade_risk</span>
-      </app-ui-panel-header>
-
-      <div class="terminal-field" style="margin-bottom: 12px;">
-        <label class="terminal-label" for="preflight-amount">Monto Propuesto (USDT)</label>
-        <div class="input-control-wrap">
-          <input id="preflight-amount" type="number" class="terminal-input font-mono" [value]="preflightTradeAmountUsdt()" (input)="preflightTradeAmountUsdt.set(+$any($event.target).value)" />
-          <span class="input-suffix">USDT</span>
-        </div>
-      </div>
-
-      <button type="button" class="btn btn-secondary btn-sm" (click)="evaluatePreflightRisk()" [disabled]="mcpPreflightEvaluating()" style="width: 100%; margin-bottom: 12px;">
-        {{ mcpPreflightEvaluating() ? 'Evaluando...' : '🔍 Ejecutar Pre-Flight Check' }}
-      </button>
-
-      @if (mcpPreflightResult(); as res) {
-        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.8rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <strong>Veredicto:</strong>
-            <span class="badge" [class.badge-accent]="res.verdict === 'ALLOW'" [class.badge-warning]="res.verdict === 'PAUSE'" [class.badge-danger]="res.verdict === 'DENY'">
-              {{ res.verdict }}
-            </span>
-          </div>
-          <div><span class="text-muted">Motivo:</span> {{ res.reason }}</div>
-          @if (res.ruleChecks) {
-            <div style="margin-top: 6px; font-size: 0.72rem; color: var(--text-muted);">
-              Reglas verificadas: {{ res.ruleChecks.length || 6 }} controles institucionales.
-            </div>
-          }
-        </div>
-      }
-    </app-ui-card>
-
-    <!-- Tool 2: calculate_delta_neutral_hedge -->
-    <app-ui-card>
-      <app-ui-panel-header icon="⚖️" title="Cobertura Delta Neutral (VES)">
-        <span uiHeaderActions class="badge badge-accent font-mono">MCP: delta_neutral_hedge</span>
-      </app-ui-panel-header>
-
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-        <div class="terminal-field">
-          <label class="terminal-label" for="hedge-ves">Saldo Ocioso VES</label>
-          <input id="hedge-ves" type="number" class="terminal-input font-mono" [value]="hedgeVesBalance()" (input)="hedgeVesBalance.set(+$any($event.target).value)" />
-        </div>
-        <div class="terminal-field">
-          <label class="terminal-label" for="hedge-ref">Tasa USDT</label>
-          <input id="hedge-ref" type="number" class="terminal-input font-mono" [value]="hedgeUsdtRefPrice()" (input)="hedgeUsdtRefPrice.set(+$any($event.target).value)" />
-        </div>
-      </div>
-
-      <button type="button" class="btn btn-secondary btn-sm" (click)="calculateDeltaHedge()" [disabled]="mcpHedgeCalculating()" style="width: 100%; margin-bottom: 12px;">
-        {{ mcpHedgeCalculating() ? 'Calculando...' : '⚡ Calcular Cobertura Corta' }}
-      </button>
-
-      @if (mcpHedgeResult(); as h) {
-        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.8rem;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Short Hedge Requerido:</span>
-            <strong class="font-mono" style="color: var(--gold-strong);">{{ h.shortHedgeUsdt || h.requiredShortUsdt }} USDT</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Instrumento Sugerido:</span>
-            <span>{{ h.recommendedInstrument || 'USDT-M Perpetual / Short Spot' }}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted);">
-            Inmuniza el saldo en bolívares ante devaluación del tipo de cambio.
-          </div>
-        </div>
-      }
-    </app-ui-card>
-
-    <!-- Tool 3: consult_zk_market_mesh -->
-    <app-ui-card>
-      <app-ui-panel-header icon="🔒" title="Consulta Privada ZK Market Mesh">
-        <span uiHeaderActions class="badge badge-accent font-mono">MCP: zk_mesh</span>
-      </app-ui-panel-header>
-
-      <div class="terminal-field" style="margin-bottom: 10px;">
-        <label class="terminal-label" for="zk-query">ID / Teléfono / Alias de Contraparte</label>
-        <input id="zk-query" type="text" class="terminal-input font-mono" [value]="zkCounterpartyQuery()" (input)="zkCounterpartyQuery.set($any($event.target).value)" placeholder="Ej. V-12345678 o @trader_alias" />
-      </div>
-
-      <button type="button" class="btn btn-secondary btn-sm" (click)="queryZkMarketMesh()" [disabled]="mcpZkLoading()" style="width: 100%; margin-bottom: 12px;">
-        {{ mcpZkLoading() ? 'Consultando Malla ZK...' : '🕵️ Verificar Blind Hash' }}
-      </button>
-
-      @if (mcpZkResult(); as zk) {
-        <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #38bdf8; font-size: 0.8rem;">
-          <div style="margin-bottom: 4px; font-size: 0.72rem; word-break: break-all;" class="font-mono text-muted">
-            Blind Hash: {{ zk.blindHash }}
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Score Reputación:</span>
-            <strong class="font-mono" [style.color]="(zk.riskScore ?? 95) > 50 ? '#ef4444' : '#4ade80'">{{ zk.riskScore ?? 95 }}/100</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Recomendación:</span>
-            <span class="badge badge-accent" style="font-size: 0.65rem;">{{ zk.recommendation || 'VERIFICADO_LIMPIO' }}</span>
-          </div>
-        </div>
-      }
-    </app-ui-card>
-
-    <!-- Tool 4: trigger_killswitch -->
-    <app-ui-card>
-      <app-ui-panel-header icon="🚨" title="Killswitch Institucional de Emergencia">
-        <span uiHeaderActions class="badge badge-danger font-mono">MCP: killswitch</span>
-      </app-ui-panel-header>
-
-      @if (!killswitchActive()) {
-        <div class="terminal-field" style="margin-bottom: 8px;">
-          <label class="terminal-label" for="ks-reason">Motivo de Parada</label>
-          <input id="ks-reason" type="text" class="terminal-input" [value]="killswitchReason()" (input)="killswitchReason.set($any($event.target).value)" />
-        </div>
-        <div class="terminal-field" style="margin-bottom: 12px;">
-          <label class="terminal-label" for="ks-challenge">Escribe "CONFIRMAR-FREEZE" para desbloquear</label>
-          <input id="ks-challenge" type="text" class="terminal-input font-mono" [value]="killswitchChallenge()" (input)="killswitchChallenge.set($any($event.target).value)" placeholder="CONFIRMAR-FREEZE" />
-        </div>
-
-        <button type="button" class="btn btn-danger btn-sm" (click)="activateKillswitch()" [disabled]="mcpKillswitchLoading() || killswitchChallenge() !== 'CONFIRMAR-FREEZE'" style="width: 100%;">
-          {{ mcpKillswitchLoading() ? 'Activando...' : '🛑 ACTIVAR KILLSWITCH INMEDIATO' }}
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TAB 2: SAFETY BARRIERS & PRESET PROFILES
+       ═══════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'BARRIERS') {
+    <!-- Institutional Presets Toolbar -->
+    <div class="presets-toolbar-wrap">
+      <span class="presets-label">⚡ Perfiles de Riesgo Institucional:</span>
+      <div class="preset-buttons">
+        <button
+          type="button"
+          class="profile-pill-btn"
+          [class.active]="activeProfileId() === 'DEFENSIVE_BCV'"
+          (click)="applyRiskProfile('DEFENSIVE_BCV')"
+          title="Spread 2.5%, 1 op máx, 0.5% riesgo trade, 2% stop diario. Ideal para días de intervención cambiaria."
+        >
+          🛡️ Defensivo BCV
         </button>
-      } @else {
-        <div style="padding: 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius); text-align: center;">
-          <strong style="color: #ef4444; font-size: 0.95rem; display: block; margin-bottom: 6px;">CIRCUITO DE SEGURIDAD ACTIVADO</strong>
-          <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px;">Todas las operaciones están bloqueadas y la API está en modo CAÍDA.</p>
-          <button type="button" class="btn btn-secondary btn-sm" (click)="resetKillswitch()">
-            Restablecer Operatividad
-          </button>
-        </div>
-      }
-    </app-ui-card>
 
-    <!-- Tool 5 (Punto 7): detect_usdt_depeg (Monitor Global de Paridad USDT) -->
+        <button
+          type="button"
+          class="profile-pill-btn"
+          [class.active]="activeProfileId() === 'BALANCED'"
+          (click)="applyRiskProfile('BALANCED')"
+          title="Spread 1.2%, 3 ops máx, 1.0% riesgo trade, 4% stop diario. Operativa estándar."
+        >
+          ⚖️ Balanceado (Estándar)
+        </button>
+
+        <button
+          type="button"
+          class="profile-pill-btn"
+          [class.active]="activeProfileId() === 'AGGRESSIVE_SCALPER'"
+          (click)="applyRiskProfile('AGGRESSIVE_SCALPER')"
+          title="Spread 0.6%, 5 ops máx, 2.0% riesgo trade, 6% stop diario. Alta rotación intradía."
+        >
+          ⚡ Scalper Agresivo
+        </button>
+      </div>
+    </div>
+
+    <!-- Barriers Editor Form Card -->
     <app-ui-card>
-      <app-ui-panel-header icon="🌐" title="Monitor Global de Paridad USDT">
-        <span uiHeaderActions class="badge badge-accent font-mono">MCP: detect_usdt_depeg</span>
+      <app-ui-panel-header icon="⚙️" title="Configuración de Barreras de Seguridad">
+        <span uiHeaderActions class="badge badge-accent font-mono">{{ pair() }}/VES</span>
       </app-ui-panel-header>
 
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+      <div class="terminal-input-grid grid-3">
+        <!-- Pair Context -->
         <div class="terminal-field">
-          <label class="terminal-label" for="depeg-price">Precio Spot USDT</label>
+          <label class="terminal-label" for="risk-pair-select">
+            <span>Par de Referencia</span>
+          </label>
           <div class="input-control-wrap">
-            <span class="input-prefix">$</span>
+            <select
+              id="risk-pair-select"
+              class="terminal-select"
+              [value]="pair()"
+              (change)="setPair($any($event.target).value)"
+            >
+              <option value="USDT">USDT / VES</option>
+              <option value="EUR">EUR / VES</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Minimum Absolute Spread (VES) -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="risk-min-spread">
+            <span>Spread Mínimo Nominal</span>
+            <span class="terminal-subtext">VES por {{ pair() }}</span>
+          </label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">Bs</span>
             <input
-              id="depeg-price"
+              id="risk-min-spread"
               type="number"
-              step="0.0001"
-              class="terminal-input font-mono"
-              [value]="depegSpotPrice()"
-              (input)="depegSpotPrice.set(+$any($event.target).value)"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="draft().minSpread"
+              (input)="patch({ minSpread: clampMoney(+$any($event.target).value) })"
+              placeholder="15.00"
             />
           </div>
         </div>
+
+        <!-- Minimum Percentage Spread (%) -->
         <div class="terminal-field">
-          <label class="terminal-label" for="depeg-thresh">Tolerancia (%)</label>
+          <label class="terminal-label" for="risk-min-spread-pct">
+            <span>Spread Mínimo Porcentual</span>
+            <span class="terminal-subtext">% neto de ganancia</span>
+          </label>
           <div class="input-control-wrap">
             <input
-              id="depeg-thresh"
+              id="risk-min-spread-pct"
               type="number"
-              step="0.05"
-              class="terminal-input font-mono"
-              [value]="depegThresholdPct()"
-              (input)="depegThresholdPct.set(+$any($event.target).value)"
+              min="0"
+              step="0.1"
+              class="terminal-input"
+              [value]="draft().minSpreadPct ?? 1.2"
+              (input)="patch({ minSpreadPct: clampMoney(+$any($event.target).value) })"
+              placeholder="1.20"
             />
             <span class="input-suffix">%</span>
           </div>
         </div>
-      </div>
 
-      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          style="flex: 1;"
-          (click)="fetchLiveSpotTickerForDepeg()"
-          [disabled]="depegLoadingSpot()"
-          title="Consulta el libro Spot de Binance en tiempo real"
-        >
-          {{ depegLoadingSpot() ? 'Leyendo...' : '📡 Leer Spot en Vivo' }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          style="flex: 1.2;"
-          (click)="evaluateDepegRisk()"
-          [disabled]="mcpDepegEvaluating()"
-        >
-          {{ mcpDepegEvaluating() ? 'Auditando...' : '🔍 Evaluar Paridad' }}
-        </button>
-      </div>
-
-      @if (mcpDepegResult(); as dep) {
-        <div
-          style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
-          [style.border-left]="dep.isDepegged ? '3px solid #ef4444' : '3px solid #4ade80'"
-        >
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span class="text-muted">Estado Paridad:</span>
-            <span
-              class="badge"
-              [class.badge-accent]="!dep.isDepegged"
-              [class.badge-danger]="dep.isDepegged"
-              style="font-size: 0.68rem;"
-            >
-              {{ dep.status || 'PEGGED_NORMAL' }}
-            </span>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Desviación:</span>
-            <strong class="font-mono" [style.color]="dep.isDepegged ? '#ef4444' : '#4ade80'">
-              {{ dep.parityDeviationPct }}%
-            </strong>
-          </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
-            {{ dep.recommendation }}
+        <!-- Max Concurrent Ops -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="risk-max-concurrent">
+            <span>Máx. Operaciones Simultáneas</span>
+            <span class="terminal-subtext">Concurrencia P2P</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="risk-max-concurrent"
+              type="number"
+              min="1"
+              step="1"
+              class="terminal-input"
+              [value]="draft().maxConcurrentOps"
+              (input)="patch({ maxConcurrentOps: clampCount(+$any($event.target).value) })"
+              placeholder="3"
+            />
+            <span class="input-suffix">ops</span>
           </div>
         </div>
-      }
-    </app-ui-card>
 
-    <!-- Tool 6 (Punto 8): evaluate_account_saturation (Escudo Bancario Local & SUDEBAN) -->
+        <!-- Max Risk per Trade (%) -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="risk-max-risk-trade">
+            <span>Riesgo Máx. por Operación</span>
+            <span class="terminal-subtext">% del capital total</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="risk-max-risk-trade"
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="draft().maxRiskPerTradePct"
+              (input)="patch({ maxRiskPerTradePct: clampMoney(+$any($event.target).value) })"
+              placeholder="1.00"
+            />
+            <span class="input-suffix">%</span>
+          </div>
+        </div>
+
+        <!-- Daily Loss Cap (%) -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="risk-loss-cap">
+            <span>Tope de Pérdida Diaria</span>
+            <span class="terminal-subtext">Stop-loss de la jornada</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="risk-loss-cap"
+              type="number"
+              min="0"
+              step="0.01"
+              class="terminal-input"
+              [value]="draft().dailyLossCapPct"
+              (input)="patch({ dailyLossCapPct: clampMoney(+$any($event.target).value) })"
+              placeholder="4.00"
+            />
+            <span class="input-suffix">%</span>
+          </div>
+        </div>
+
+        <!-- Max Consecutive Errors -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="risk-max-errors">
+            <span>Máx. Errores Consecutivos</span>
+            <span class="terminal-subtext">Fallas de pago toleradas</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="risk-max-errors"
+              type="number"
+              min="1"
+              step="1"
+              class="terminal-input"
+              [value]="draft().maxConsecutiveErrors"
+              (input)="patch({ maxConsecutiveErrors: clampCount(+$any($event.target).value) })"
+              placeholder="2"
+            />
+            <span class="input-suffix">fallas</span>
+          </div>
+        </div>
+
+        <!-- API Gateway Status -->
+        <div class="terminal-field full-width">
+          <label class="terminal-label" for="risk-api-status">
+            <span>Estado del Gateway API</span>
+            <span class="terminal-subtext">Interruptor de salud de conexión</span>
+          </label>
+          <div class="input-control-wrap">
+            <select
+              id="risk-api-status"
+              class="terminal-select"
+              [value]="draft().apiStatus"
+              (change)="patch({ apiStatus: $any($event.target).value })"
+            >
+              <option value="ok">🟢 OK — Operativa normal permitida</option>
+              <option value="down">🔴 CAÍDA — Pausar operaciones por fallo o mantenimiento</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="terminal-card-footer" style="padding-top: 16px; margin-top: 10px;">
+        <div class="footer-badge">
+          <span class="status-indicator active"></span>
+          <span>Barrera pasiva estricta (sin ejecución autónoma no supervisada)</span>
+        </div>
+        <div class="actions" style="margin: 0; display: flex; gap: 8px;">
+          <button type="button" class="btn btn-primary" (click)="save()">💾 Guardar Reglas</button>
+          <button type="button" class="btn btn-secondary" (click)="reset()">↺ Restablecer</button>
+        </div>
+      </div>
+    </app-ui-card>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TAB 3: TELEGRAM SENTINEL 24/7
+       ═══════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'TELEGRAM') {
     <app-ui-card>
-      <app-ui-panel-header icon="🏛️" title="Escudo Bancario Local & SUDEBAN">
-        <span uiHeaderActions class="badge badge-warning font-mono">MCP: account_saturation</span>
+      <app-ui-panel-header icon="🤖" title="Telegram Sentinel Bot & Worker Remoto">
+        <span uiHeaderActions class="badge badge-warning font-mono">24/7 SENTINEL</span>
       </app-ui-panel-header>
 
-      <div class="terminal-field" style="margin-bottom: 8px;">
-        <label class="terminal-label" for="bank-acc-select">Cuenta Bancaria Nacional</label>
-        <select
-          id="bank-acc-select"
-          class="terminal-select font-mono"
-          [value]="selectedBankAccountId()"
-          (change)="selectedBankAccountId.set($any($event.target).value)"
-        >
-          @for (acc of accounts(); track acc.id) {
-            <option [value]="acc.id">
-              {{ acc.bankName }} ({{ acc.accountNumberMasked }})
-            </option>
-          }
-        </select>
-      </div>
+      <div class="terminal-input-grid grid-3">
+        <!-- Bot Token -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="telegram-bot-token">
+            <span>Telegram Bot Token</span>
+            <span class="terminal-subtext">De @BotFather</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="telegram-bot-token"
+              type="password"
+              class="terminal-input font-mono"
+              [value]="telegramToken()"
+              (input)="telegramToken.set($any($event.target).value)"
+              placeholder="123456789:ABCdefGhIJKlmNoPQRstUVw"
+            />
+          </div>
+        </div>
 
-      <div class="terminal-field" style="margin-bottom: 10px;">
-        <label class="terminal-label" for="incoming-trade-ves">Monto Entrante de Operación (VES)</label>
-        <div class="input-control-wrap">
-          <span class="input-prefix">Bs</span>
-          <input
-            id="incoming-trade-ves"
-            type="number"
-            class="terminal-input font-mono"
-            [value]="incomingTradeVes()"
-            (input)="incomingTradeVes.set(+$any($event.target).value)"
-          />
+        <!-- Chat ID -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="telegram-chat-id">
+            <span>Chat ID Autorizado (Personal o Supergrupo)</span>
+            <span class="terminal-subtext">Ej. 987654321 o -100...</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="telegram-chat-id"
+              type="text"
+              class="terminal-input font-mono"
+              [value]="telegramChatId()"
+              (input)="telegramChatId.set($any($event.target).value)"
+              placeholder="987654321"
+            />
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <a
+              [href]="'https://t.me/' + (botUsername() || 'P2pTradeServiceBot')"
+              target="_blank"
+              rel="noopener"
+              class="btn btn-primary btn-sm"
+              style="flex: 1; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px; text-decoration: none;"
+              title="Abre tu bot en Telegram para presionar Iniciar"
+            >
+              ✈️ Abrir Bot
+            </a>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              style="flex: 1.3; font-size: 0.75rem; padding: 6px 8px; display: flex; align-items: center; justify-content: center; gap: 4px;"
+              [disabled]="detectingChatId()"
+              (click)="detectChatId()"
+              title="Detecta automáticamente tu Chat ID leyendo el último mensaje /start que enviaste a tu bot"
+            >
+              <span>{{ detectingChatId() ? '⏳ Vinculando...' : '🔍 Detectar Chat ID' }}</span>
+            </button>
+          </div>
+          <div style="margin-top: 4px; font-size: 0.72rem; color: #38bdf8;">
+            Bot: <strong>@{{ botUsername() || 'P2pTradeServiceBot' }}</strong> • Presioná "Abrir Bot" e "Iniciar" (/start) en Telegram.
+          </div>
+        </div>
+
+        <!-- 24/7 Long-Polling Worker -->
+        <div class="terminal-field">
+          <label class="terminal-label" for="telegram-polling-enabled">
+            <span>Worker 24/7 (Long-Polling)</span>
+            <span class="terminal-subtext">Recepción de comandos y fotos</span>
+          </label>
+          <div class="input-control-wrap">
+            <select
+              id="telegram-polling-enabled"
+              class="terminal-select"
+              [value]="telegramPollingEnabled() ? 'yes' : 'no'"
+              (change)="telegramPollingEnabled.set($any($event.target).value === 'yes'); togglePolling()"
+            >
+              <option value="yes">🟢 EN LÍNEA — Escuchar comandos & OCR</option>
+              <option value="no">⚪ DESCONECTADO — Modo pasivo</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div style="display: flex; gap: 6px; margin-bottom: 12px;">
-        <button
-          type="button"
-          class="btn btn-primary btn-sm"
-          style="flex: 1.2;"
-          (click)="evaluateBankSaturation()"
-          [disabled]="mcpSaturationEvaluating()"
-        >
-          {{ mcpSaturationEvaluating() ? 'Calculando...' : '📊 Evaluar Saturación' }}
-        </button>
+      <!-- Live Command Logs Console -->
+      <div style="margin-top: 14px; background: rgba(10, 15, 26, 0.7); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.04em;">
+            📡 Consola de Comandos y Comprobantes Recibidos en Vivo
+          </span>
+          <span class="badge" [class.badge-accent]="telegramWorker.isPolling()" style="font-size: 0.68rem;">
+            {{ telegramWorker.isPolling() ? '● POLLING ACTIVO' : '○ INACTIVO' }}
+          </span>
+        </div>
+
+        @if (telegramWorker.recentLogs().length === 0) {
+          <div style="font-size: 0.78rem; color: var(--muted); padding: 12px 0; text-align: center;">
+            El bot está esperando mensajes desde tu Telegram. Enviá <code>/status</code>, <code>/bcv</code>, <code>/bancos</code> o una foto de comprobante para probarlo.
+          </div>
+        } @else {
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--line); color: var(--muted); text-align: left;">
+                <th style="padding: 4px 6px;">Hora</th>
+                <th style="padding: 4px 6px;">Mensaje / Foto</th>
+                <th style="padding: 4px 6px;">Acción</th>
+                <th style="padding: 4px 6px;">Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (log of telegramWorker.recentLogs(); track log.time + $index) {
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <td style="padding: 4px 6px; font-family: var(--font-mono); color: var(--muted);">{{ log.time }}</td>
+                  <td style="padding: 4px 6px; font-weight: 600;">{{ log.command }}</td>
+                  <td style="padding: 4px 6px;">
+                    <span class="badge badge-accent" style="font-size: 0.65rem;">{{ log.action }}</span>
+                  </td>
+                  <td style="padding: 4px 6px;">
+                    <span class="badge" [style.color]="log.status === 'SUCCESS' ? '#4ade80' : '#ef4444'" style="font-size: 0.65rem;">
+                      {{ log.status }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+
+      <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 8px;">
+        <div class="footer-badge">
+          <span class="status-indicator" [class.active]="telegramWorker.isPolling()"></span>
+          <span>Soporta: 📸 Auditoría OCR por Foto, /bcv, /bancos, /spreads, /status y /killswitch remoto</span>
+        </div>
+        <div class="actions" style="margin: 0; display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" (click)="sendTestTelegramAlert()">⚡ Probar Alerta</button>
+          <button type="button" class="btn btn-primary" (click)="saveTelegramConfig()">💾 Guardar Telegram</button>
+        </div>
+      </div>
+    </app-ui-card>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       TAB 4: MCP INSTITUTIONAL RISK & SECURITY SUITE (5 TOOLS)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'MCP_TOOLS') {
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+      <!-- Tool 1: evaluate_trade_risk -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🛡️" title="Evaluación Pre-Flight de Trade">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: evaluate_trade_risk</span>
+        </app-ui-panel-header>
+
+        <div class="terminal-field" style="margin-bottom: 12px;">
+          <label class="terminal-label" for="preflight-amount">Monto Propuesto (USDT)</label>
+          <div class="input-control-wrap">
+            <input
+              id="preflight-amount"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="preflightTradeAmountUsdt()"
+              (input)="preflightTradeAmountUsdt.set(+$any($event.target).value)"
+            />
+            <span class="input-suffix">USDT</span>
+          </div>
+        </div>
+
         <button
           type="button"
           class="btn btn-secondary btn-sm"
-          style="flex: 1;"
-          (click)="goToReceiptScanner()"
-          title="Abre el escáner OCR para validar comprobantes de Pago Móvil"
+          (click)="evaluatePreflightRisk()"
+          [disabled]="mcpPreflightEvaluating()"
+          style="width: 100%; margin-bottom: 12px;"
         >
-          📸 Auditar OCR
+          {{ mcpPreflightEvaluating() ? 'Evaluando...' : '🔍 Ejecutar Pre-Flight Check' }}
         </button>
-      </div>
 
-      @if (mcpSaturationResult(); as sat) {
-        <div
-          style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
-          [style.border-left]="sat.riskLevel === 'CRITICAL' ? '3px solid #ef4444' : sat.riskLevel === 'ELEVATED' ? '3px solid #fbbf24' : '3px solid #4ade80'"
-        >
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span class="text-muted">Saturación Proyectada:</span>
-            <strong class="font-mono" [style.color]="sat.riskLevel === 'CRITICAL' ? '#ef4444' : sat.riskLevel === 'ELEVATED' ? '#fbbf24' : '#4ade80'">
-              {{ sat.saturationPercentage }}%
-            </strong>
+        @if (mcpPreflightResult(); as res) {
+          <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.8rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong>Veredicto:</strong>
+              <span
+                class="badge"
+                [class.badge-accent]="res.verdict === 'ALLOW'"
+                [class.badge-warning]="res.verdict === 'PAUSE'"
+                [class.badge-danger]="res.verdict === 'DENY'"
+              >
+                {{ res.verdict }}
+              </span>
+            </div>
+            <div><span class="text-muted">Motivo:</span> {{ res.reason }}</div>
+            @if (res.ruleChecks) {
+              <div style="margin-top: 6px; font-size: 0.72rem; color: var(--text-muted);">
+                Reglas verificadas: {{ res.ruleChecks.length || 6 }} controles institucionales.
+              </div>
+            }
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Cupo Disponible:</span>
-            <span class="font-mono">Bs {{ sat.remainingQuotaVes | number:'1.2-2' }}</span>
+        }
+      </app-ui-card>
+
+      <!-- Tool 2: calculate_delta_neutral_hedge -->
+      <app-ui-card>
+        <app-ui-panel-header icon="⚖️" title="Cobertura Delta Neutral (VES)">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: delta_neutral_hedge</span>
+        </app-ui-panel-header>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="hedge-ves">Saldo Ocioso VES</label>
+            <input
+              id="hedge-ves"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="hedgeVesBalance()"
+              (input)="hedgeVesBalance.set(+$any($event.target).value)"
+            />
           </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
-            {{ sat.reason }}
+          <div class="terminal-field">
+            <label class="terminal-label" for="hedge-ref">Tasa USDT</label>
+            <input
+              id="hedge-ref"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="hedgeUsdtRefPrice()"
+              (input)="hedgeUsdtRefPrice.set(+$any($event.target).value)"
+            />
           </div>
         </div>
-      }
-    </app-ui-card>
-  </div>
 
-  <div class="section-divider"></div>
-  <div class="verdict-card">
-    <span class="section-eyebrow">Veredicto del Motor</span>
-    <p class="verdict" role="alert" [class.allow]="verdict().decision === 'ALLOW'" [class.deny]="verdict().decision === 'DENY'" [class.pause]="verdict().decision === 'PAUSE'">
-      Veredicto del motor (estado de ejemplo): {{ decisionLabel(verdict().decision) }} — {{ reasonLabel(verdict().reason) }}
-    </p>
-  </div>
-</section>
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          (click)="calculateDeltaHedge()"
+          [disabled]="mcpHedgeCalculating()"
+          style="width: 100%; margin-bottom: 12px;"
+        >
+          {{ mcpHedgeCalculating() ? 'Calculando...' : '⚡ Calcular Cobertura Corta' }}
+        </button>
+
+        @if (mcpHedgeResult(); as h) {
+          <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--gold); font-size: 0.8rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Short Hedge Requerido:</span>
+              <strong class="font-mono" style="color: var(--gold-strong);">{{ h.shortHedgeUsdt || h.requiredShortUsdt }} USDT</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Instrumento Sugerido:</span>
+              <span>{{ h.recommendedInstrument || 'USDT-M Perpetual / Short Spot' }}</span>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted);">
+              Inmuniza el saldo en bolívares ante devaluación del tipo de cambio.
+            </div>
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 3: consult_zk_market_mesh -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🔒" title="Consulta Privada ZK Market Mesh">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: zk_mesh</span>
+        </app-ui-panel-header>
+
+        <div class="terminal-field" style="margin-bottom: 10px;">
+          <label class="terminal-label" for="zk-query">ID / Teléfono / Alias de Contraparte</label>
+          <input
+            id="zk-query"
+            type="text"
+            class="terminal-input font-mono"
+            [value]="zkCounterpartyQuery()"
+            (input)="zkCounterpartyQuery.set($any($event.target).value)"
+            placeholder="Ej. V-12345678 o @trader_alias"
+          />
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          (click)="queryZkMarketMesh()"
+          [disabled]="mcpZkLoading()"
+          style="width: 100%; margin-bottom: 12px;"
+        >
+          {{ mcpZkLoading() ? 'Consultando Malla ZK...' : '🕵️ Verificar Blind Hash' }}
+        </button>
+
+        @if (mcpZkResult(); as zk) {
+          <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #38bdf8; font-size: 0.8rem;">
+            <div style="margin-bottom: 4px; font-size: 0.72rem; word-break: break-all;" class="font-mono text-muted">
+              Blind Hash: {{ zk.blindHash }}
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Score Reputación:</span>
+              <strong class="font-mono" [style.color]="(zk.riskScore ?? 95) > 50 ? '#ef4444' : '#4ade80'">{{ zk.riskScore ?? 95 }}/100</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span class="text-muted">Recomendación:</span>
+              <span class="badge badge-accent" style="font-size: 0.65rem;">{{ zk.recommendation || 'VERIFICADO_LIMPIO' }}</span>
+            </div>
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 4: detect_usdt_depeg -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🌐" title="Monitor Global de Paridad USDT">
+          <span uiHeaderActions class="badge badge-accent font-mono">MCP: detect_usdt_depeg</span>
+        </app-ui-panel-header>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="depeg-price">Precio Spot USDT</label>
+            <div class="input-control-wrap">
+              <span class="input-prefix">$</span>
+              <input
+                id="depeg-price"
+                type="number"
+                step="0.0001"
+                class="terminal-input font-mono"
+                [value]="depegSpotPrice()"
+                (input)="depegSpotPrice.set(+$any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="depeg-thresh">Tolerancia (%)</label>
+            <div class="input-control-wrap">
+              <input
+                id="depeg-thresh"
+                type="number"
+                step="0.05"
+                class="terminal-input font-mono"
+                [value]="depegThresholdPct()"
+                (input)="depegThresholdPct.set(+$any($event.target).value)"
+              />
+              <span class="input-suffix">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            style="flex: 1;"
+            (click)="fetchLiveSpotTickerForDepeg()"
+            [disabled]="depegLoadingSpot()"
+            title="Consulta el libro Spot de Binance en tiempo real"
+          >
+            {{ depegLoadingSpot() ? 'Leyendo...' : '📡 Leer Spot en Vivo' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            style="flex: 1.2;"
+            (click)="evaluateDepegRisk()"
+            [disabled]="mcpDepegEvaluating()"
+          >
+            {{ mcpDepegEvaluating() ? 'Auditando...' : '🔍 Evaluar Paridad' }}
+          </button>
+        </div>
+
+        @if (mcpDepegResult(); as dep) {
+          <div
+            style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
+            [style.border-left]="dep.isDepegged ? '3px solid #ef4444' : '3px solid #4ade80'"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span class="text-muted">Estado Paridad:</span>
+              <span
+                class="badge"
+                [class.badge-accent]="!dep.isDepegged"
+                [class.badge-danger]="dep.isDepegged"
+                style="font-size: 0.68rem;"
+              >
+                {{ dep.status || 'PEGGED_NORMAL' }}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Desviación:</span>
+              <strong class="font-mono" [style.color]="dep.isDepegged ? '#ef4444' : '#4ade80'">
+                {{ dep.parityDeviationPct }}%
+              </strong>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
+              {{ dep.recommendation }}
+            </div>
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 5: evaluate_account_saturation (SUDEBAN) -->
+      <app-ui-card>
+        <app-ui-panel-header icon="🏛️" title="Escudo Bancario Local & SUDEBAN">
+          <span uiHeaderActions class="badge badge-warning font-mono">MCP: account_saturation</span>
+        </app-ui-panel-header>
+
+        <div class="terminal-field" style="margin-bottom: 8px;">
+          <label class="terminal-label" for="bank-acc-select">Cuenta Bancaria Nacional</label>
+          <select
+            id="bank-acc-select"
+            class="terminal-select font-mono"
+            [value]="selectedBankAccountId()"
+            (change)="selectedBankAccountId.set($any($event.target).value)"
+          >
+            @for (acc of accounts(); track acc.id) {
+              <option [value]="acc.id">
+                {{ acc.bankName }} ({{ acc.accountNumberMasked }})
+              </option>
+            }
+          </select>
+        </div>
+
+        <div class="terminal-field" style="margin-bottom: 10px;">
+          <label class="terminal-label" for="incoming-trade-ves">Monto Entrante de Operación (VES)</label>
+          <div class="input-control-wrap">
+            <span class="input-prefix">Bs</span>
+            <input
+              id="incoming-trade-ves"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="incomingTradeVes()"
+              (input)="incomingTradeVes.set(+$any($event.target).value)"
+            />
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            style="flex: 1.2;"
+            (click)="evaluateBankSaturation()"
+            [disabled]="mcpSaturationEvaluating()"
+          >
+            {{ mcpSaturationEvaluating() ? 'Calculando...' : '📊 Evaluar Saturación' }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            style="flex: 1;"
+            (click)="goToReceiptScanner()"
+            title="Abre el escáner OCR para validar comprobantes de Pago Móvil"
+          >
+            📸 Auditar OCR
+          </button>
+        </div>
+
+        @if (mcpSaturationResult(); as sat) {
+          <div
+            style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: var(--radius); font-size: 0.8rem;"
+            [style.border-left]="sat.riskLevel === 'CRITICAL' ? '3px solid #ef4444' : sat.riskLevel === 'ELEVATED' ? '3px solid #fbbf24' : '3px solid #4ade80'"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span class="text-muted">Saturación Proyectada:</span>
+              <strong
+                class="font-mono"
+                [style.color]="sat.riskLevel === 'CRITICAL' ? '#ef4444' : sat.riskLevel === 'ELEVATED' ? '#fbbf24' : '#4ade80'"
+              >
+                {{ sat.saturationPercentage }}%
+              </strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span class="text-muted">Cupo Disponible:</span>
+              <span class="font-mono">Bs {{ sat.remainingQuotaVes | number:'1.2-2' }}</span>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
+              {{ sat.reason }}
+            </div>
+          </div>
+        }
+      </app-ui-card>
+    </div>
+  }
+</div>

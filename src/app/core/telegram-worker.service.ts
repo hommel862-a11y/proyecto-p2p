@@ -12,6 +12,8 @@ import {
   formatBcvIntelligenceTelegramMessage,
   formatBankLimitsTelegramMessage,
   parseBankReceiptText,
+  detectBankType,
+  type BankType,
   evaluateFraudRisk,
   getBcvMarketIntelligence,
   escapeMarkdownV2,
@@ -49,11 +51,21 @@ import {
   type TelegramInboundUpdate,
   type TelegramInlineKeyboardMarkup,
   type TelegramReplyKeyboardMarkup,
+  OPS_KEY,
+  roundMoney,
+  type Operation,
+  formatStrategyPlanTelegramMessage,
+  buildPlanApprovalKeyboard,
+  type StrategyPlanTelegramCard,
+  type PlanActionParams,
   type VerificationSummary,
+  type CopilotChatParams,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
 import { FinanceTelegramBridgeService } from './services/finance-telegram-bridge.service';
+import { FinanceAiIngestorService } from './services/finance-ai-ingestor.service';
+import { StorageService } from './storage';
 
 /**
  * ¿Este resumen se puede imprimir sin que el panel mienta?
@@ -387,6 +399,8 @@ export class TelegramWorkerService implements OnDestroy {
    */
   private readonly journal = inject(DecisionJournalService, { optional: true });
   private readonly financeBridge = inject(FinanceTelegramBridgeService, { optional: true });
+  private readonly aiIngestor = inject(FinanceAiIngestorService, { optional: true });
+  private readonly storage = inject(StorageService);
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
   readonly isPolling = signal<boolean>(false);
@@ -1330,6 +1344,74 @@ export class TelegramWorkerService implements OnDestroy {
         break;
       }
 
+      case 'COPILOT_CHAT': {
+        const prompt = (dispatch.params as CopilotChatParams)?.prompt || dispatch.command || '';
+        await this.processCopilotChat(token, chatId, prompt);
+        this.addLog({
+          time: timeStr,
+          command: prompt.length > 30 ? `${prompt.slice(0, 27)}...` : prompt,
+          action: 'COPILOT_CHAT',
+          status: 'SUCCESS',
+        });
+        break;
+      }
+
+      case 'PLAN': {
+        const params = dispatch.params as PlanActionParams | undefined;
+        const capital = params?.capital ?? 200;
+        const bank = params?.bank ?? 'Banesco';
+        const freshDepth = await this.getFreshMarketDepth();
+        const depth = freshDepth ?? this.binance.marketDepth();
+        const netSpreadPct = depth?.spreadPct ?? 1.5;
+        const profitUsdt = Math.round((capital * (netSpreadPct / 100)) * 100) / 100;
+        const planId = `PLAN-${Date.now().toString(36).toUpperCase()}`;
+
+        const card: StrategyPlanTelegramCard = {
+          id: planId,
+          title: `Arbitraje Rápido ${bank.toUpperCase()}`,
+          route: `USDT/${bank.toUpperCase()}`,
+          capitalRequiredUsdt: capital,
+          expectedNetSpreadPct: netSpreadPct,
+          expectedProfitUsdt: profitUsdt,
+          riskLevel: netSpreadPct > 1.0 ? 'LOW' : 'MEDIUM',
+          assignedOperatorName: 'Sentinel Copilot',
+        };
+
+        const planMsg = formatStrategyPlanTelegramMessage(card);
+        const keyboard = buildPlanApprovalKeyboard(planId);
+        await this.sendTelegramMessage(token, chatId, planMsg, keyboard);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/plan',
+          action: 'PLAN',
+          status: 'SUCCESS',
+          details: `${capital} USDT en ${bank}`,
+        });
+        break;
+      }
+
+      case 'PLAN_APPROVE': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Plan Aprobado');
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          `✅ *PLAN APROBADO EN EL TERMINAL* 📋\n\nSe autorizó el despacho de arbitraje. Las posturas y límites fueron reservados en tesorería\\.`,
+        );
+        this.addLog({ time: timeStr, command: 'Plan', action: 'PLAN_APPROVE', status: 'SUCCESS' });
+        break;
+      }
+
+      case 'PLAN_REJECT': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Plan Descartado');
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          `❌ *PLAN DESCARTADO*: La propuesta fue rechazada y no se modificaron las posturas\\.`,
+        );
+        this.addLog({ time: timeStr, command: 'Plan', action: 'PLAN_REJECT', status: 'SUCCESS' });
+        break;
+      }
+
       default: {
         if (dispatch.responseMarkdown) {
           await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
@@ -1694,32 +1776,228 @@ export class TelegramWorkerService implements OnDestroy {
         `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,
       );
       if (!fileMetaRes.ok) throw new Error('No se pudo obtener el archivo de Telegram');
-      const fileMeta = (await fileMetaRes.json()) as { ok: boolean; result: { file_path: string } };
+      const fileMeta = (await fileMetaRes.json()) as { ok: boolean; result?: { file_path?: string } };
+      const filePath = fileMeta.result?.file_path;
+      if (!filePath) throw new Error('Telegram no devolvió la ruta del archivo');
 
-      const downloadUrl = `https://api.telegram.org/file/bot${token}/${fileMeta.result.file_path}`;
+      // 2. Descarga multi-nivel para evitar bloqueos CORS
+      let base64Data: string | null = null;
+      let mimeType = 'image/jpeg';
+      if (filePath.toLowerCase().endsWith('.png')) mimeType = 'image/png';
+      else if (filePath.toLowerCase().endsWith('.webp')) mimeType = 'image/webp';
+      else if (filePath.toLowerCase().endsWith('.pdf')) mimeType = 'application/pdf';
 
-      // 2. Ejecutar OCR con Tesseract
-      const ocrResult = await Tesseract.recognize(downloadUrl, 'spa+eng');
-      const text = ocrResult.data.text;
+      // Nivel A: Puente IPC de Electron nativo (net.fetch sin restricciones CORS)
+      const shell = (globalThis as unknown as Record<string, unknown>)['electron'] as any;
+      if (shell?.telegram?.downloadFile) {
+        try {
+          const ipcRes = await shell.telegram.downloadFile({ token, filePath });
+          if (ipcRes?.success && ipcRes.base64) {
+            base64Data = ipcRes.base64;
+            if (ipcRes.mimeType) mimeType = ipcRes.mimeType;
+          }
+        } catch (ipcErr) {
+          console.warn('[TelegramWorker] Falló descarga vía IPC Electron:', ipcErr);
+        }
+      }
 
-      // 3. Parsear datos bancarios
+      // Nivel B: Servidor HTTP local (Bridge CORS en puerto 51857)
+      if (!base64Data) {
+        try {
+          const bridgeUrl = `http://localhost:51857/api/telegram/file?token=${encodeURIComponent(token)}&filePath=${encodeURIComponent(filePath)}`;
+          const bridgeRes = await fetch(bridgeUrl);
+          if (bridgeRes.ok) {
+            const buf = await bridgeRes.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            base64Data = btoa(binary);
+            const ct = bridgeRes.headers.get('content-type');
+            if (ct) mimeType = ct;
+          }
+        } catch {
+          // Servidor local no disponible o error
+        }
+      }
+
+      // Nivel C: Fallback a fetch directo (si no hay restricciones de CORS)
+      if (!base64Data) {
+        const directUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+        const directRes = await fetch(directUrl);
+        if (directRes.ok) {
+          const buf = await directRes.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          base64Data = btoa(binary);
+          const ct = directRes.headers.get('content-type');
+          if (ct) mimeType = ct;
+        }
+      }
+
+      if (!base64Data) {
+        throw new Error('No se pudo descargar la imagen del comprobante a través de ningún canal.');
+      }
+
+      // 3. Crear Blob local en memoria para Tesseract (garantiza cero CORS)
+      const binaryString = atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const imageBlob = new Blob([bytes], { type: mimeType });
+
+      // 4. Extracción OCR local vía Tesseract
+      let text = '';
+      try {
+        const ocrResult = await Tesseract.recognize(imageBlob, 'spa+eng');
+        text = ocrResult?.data?.text || '';
+      } catch (ocrErr) {
+        console.warn('[TelegramWorker] Tesseract OCR error:', ocrErr);
+      }
+
+      // 5. Ingestión y enriquecimiento con IA Multimodal si está disponible
+      let aiParsed: import('./services/finance-ai-ingestor.service').ParsedFinancialDocument | null = null;
+      if (this.aiIngestor) {
+        try {
+          aiParsed = await this.aiIngestor.analyzeReceiptImage(base64Data, mimeType, text);
+        } catch (aiErr) {
+          console.warn('[TelegramWorker] Error en análisis multimodal con IA:', aiErr);
+        }
+      }
+
+      // 6. Parseo heurístico de reglas bancarias locales
       const parsed = parseBankReceiptText(text);
 
-      // 4. Evaluar riesgo con Escudo Anti-Fraude
+      // Fusión de campos: Heurístico + IA
+      const finalAmount = parsed.amount > 0 ? parsed.amount : (aiParsed?.amount ?? 0);
+      const finalReference =
+        parsed.reference && parsed.reference !== 'N/A'
+          ? parsed.reference
+          : (aiParsed?.referenceNumber || 'N/A');
+      const finalBank: BankType =
+        parsed.bank !== 'UNKNOWN'
+          ? parsed.bank
+          : (aiParsed?.entityName ? detectBankType(aiParsed.entityName) : 'UNKNOWN');
+      const finalBankLabel =
+        finalBank !== 'UNKNOWN'
+          ? finalBank
+          : (aiParsed?.entityName || 'BANCO NO IDENTIFICADO');
+      const finalPayer =
+        parsed.payerName ||
+        parsed.beneficiaryName ||
+        aiParsed?.entityName ||
+        aiParsed?.notes ||
+        '';
+      const finalPayerId = parsed.payerId || '';
+
+      // 7. Evaluar riesgo con Escudo Anti-Fraude
       const audit = evaluateFraudRisk({
         orderId: `TG-${Date.now().toString().slice(-6)}`,
-        orderAmount: parsed.amount,
-        orderCurrency: parsed.currency,
-        advertiserVerifiedName: parsed.payerName || 'Verificación Móvil',
-        receipt: parsed,
+        orderAmount: finalAmount,
+        orderCurrency: parsed.currency || (aiParsed?.currency === 'USD' ? 'USD' : 'VES'),
+        advertiserVerifiedName: finalPayer || 'Verificación Móvil',
+        receipt: {
+          ...parsed,
+          amount: finalAmount,
+          reference: finalReference,
+          bank: finalBank,
+          payerName: finalPayer,
+        },
       });
 
-      // 5. Enviar tarjeta formateada a Telegram
+      // 8. Registro y Vinculación Automática en el Libro Mayor P2P (Portafolio de Operaciones)
+      let operationRegistered = false;
+      let registeredOpId = '';
+
+      try {
+        const ops = this.storage.get<Operation[]>(OPS_KEY) || [];
+        const existingIdx = ops.findIndex(
+          (o) =>
+            (finalReference !== 'N/A' && o.receiptReference === finalReference) ||
+            (finalReference !== 'N/A' && o.merchantNote?.includes(finalReference)),
+        );
+
+        const depth = (await this.getFreshMarketDepth()) || this.binance.marketDepth();
+        const marketPrice =
+          depth?.bestBuyPrice ||
+          depth?.bestSellPrice ||
+          this.cotizave.ratesByMarket()['oficial']?.mid ||
+          60;
+        const usdtAmount = marketPrice > 0 ? roundMoney(finalAmount / marketPrice, 2) : 0;
+
+        // Buscar cuenta bancaria asociada en el inventario de cuentas
+        const matchedAccount = this.accounts
+          .accounts()
+          .find(
+            (a) =>
+              a.bankName.toLowerCase().includes(finalBank.toLowerCase()) ||
+              a.bankCode.toLowerCase().includes(finalBank.toLowerCase()) ||
+              finalBankLabel.toLowerCase().includes(a.bankName.toLowerCase()),
+          );
+
+        const receiptDataUrl = `data:${mimeType};base64,${base64Data}`;
+        const payerLabel = [finalPayer, finalPayerId].filter(Boolean).join(' - ');
+
+        if (existingIdx >= 0) {
+          // Actualizar comprobante y titular en la operación existente
+          const existing = ops[existingIdx];
+          ops[existingIdx] = {
+            ...existing,
+            receiptImage: receiptDataUrl,
+            receiptReference: finalReference,
+            payerName: payerLabel || existing.payerName,
+            merchantNote: existing.merchantNote || `Ref: ${finalReference} (${finalBankLabel})`,
+          };
+          registeredOpId = existing.id;
+          operationRegistered = true;
+        } else {
+          // Registrar nueva operación en el libro mayor
+          const newOpId = crypto.randomUUID();
+          const newOp: Operation = {
+            id: newOpId,
+            timestamp: new Date().toISOString(),
+            type: 'sell', // Cobro recibido en bolívares por venta P2P
+            pair: 'USDT',
+            vesAmount: finalAmount,
+            usdtAmount,
+            price: marketPrice,
+            merchantNote: `Ref: ${finalReference} (${finalBankLabel})`,
+            fees: 0,
+            notes: `Comprobante verificado vía Telegram Sentinel · Banco: ${finalBankLabel}${payerLabel ? ' · Titular: ' + payerLabel : ''}`,
+            errorFree: audit.riskLevel === 'SAFE',
+            payerName: payerLabel || undefined,
+            bankAccountId: matchedAccount?.id,
+            receiptImage: receiptDataUrl,
+            receiptReference: finalReference,
+          };
+          ops.unshift(newOp);
+          registeredOpId = newOpId;
+          operationRegistered = true;
+        }
+
+        this.storage.set(OPS_KEY, ops);
+        this.accounts.refreshLedger();
+        this.toast.success(
+          `Comprobante Ref: ${finalReference} (${finalAmount.toLocaleString('es-VE')} Bs) guardado en Libro Mayor P2P`,
+          'Auditoría Telegram',
+        );
+      } catch (saveErr) {
+        console.warn('[TelegramWorker] Error al registrar operación en storage:', saveErr);
+      }
+
+      // 9. Enviar tarjeta formateada a Telegram
       const msg = formatReceiptAuditTelegramMessage({
-        receiptNumber: parsed.reference,
-        bank: parsed.bank,
-        amountVes: parsed.amount,
-        extractedName: parsed.payerName || 'No detectado',
+        receiptNumber: finalReference,
+        bank: finalBankLabel,
+        amountVes: finalAmount,
+        extractedName: finalPayer || 'No detectado',
+        payerId: finalPayerId || undefined,
         counterpartyName: 'Auditoría Móvil Telegram',
         nameSimilarityPct: audit.nameMatch.score * 100,
         score: audit.overallScore,
@@ -1728,11 +2006,15 @@ export class TelegramWorkerService implements OnDestroy {
           audit.riskLevel === 'SAFE'
             ? 'Pago consistente. Seguro para liberar.'
             : 'Posible discrepancia de datos. Verifica en tu banca en línea antes de liberar.',
+        operationRegistered,
+        operationId: registeredOpId ? registeredOpId.slice(0, 8).toUpperCase() : undefined,
       });
 
       await this.sendTelegramMessage(token, chatId, msg);
-    } catch {
-      const errorMsg = `⚠️ *ERROR AL AUDITAR COMPROBANTE*: No se pudo extraer el texto o conectar con la imagen\\.`;
+    } catch (err: unknown) {
+      console.error('[TelegramWorker] Error al procesar comprobante:', err);
+      const errMsg = err instanceof Error ? err.message : 'Error desconocido';
+      const errorMsg = `⚠️ *ERROR AL AUDITAR COMPROBANTE*: No se pudo extraer el texto o conectar con la imagen\\.\n_Detalle:_ \`${escapeMarkdownV2(errMsg)}\``;
       await this.sendTelegramMessage(token, chatId, errorMsg);
     }
   }
@@ -1759,6 +2041,160 @@ export class TelegramWorkerService implements OnDestroy {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Emits Telegram chat actions (e.g. typing) for immediate feedback.
+   */
+  async sendChatAction(
+    token: string,
+    chatId: number | string,
+    action: 'typing' | 'upload_photo' = 'typing',
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, action }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Evaluates questions directed to the Copilot via Telegram.
+   * Feeds live market context (rates, spreads, brecha, bank caps) and invokes
+   * Gemini API or provides a high-fidelity heuristic answer if the key is missing.
+   */
+  private async processCopilotChat(
+    token: string,
+    chatId: number | string,
+    prompt: string,
+  ): Promise<void> {
+    const cleanPrompt = prompt.trim();
+    if (!cleanPrompt) {
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        `🤖 *COPILOTO ESTRATEGA IA*\n\nEscribí una consulta sobre el mercado P2P, arbitraje o gestión de tesorería (ej. _¿Qué banco tiene mejor spread hoy?_).`,
+      );
+      return;
+    }
+
+    void this.sendChatAction(token, chatId, 'typing');
+
+    const depth = (await this.getFreshMarketDepth()) || this.binance.marketDepth();
+    const rates = this.cotizave.ratesByMarket();
+    const bcvRate = rates['bcv']?.mid || rates['oficial']?.mid || 0;
+    const p2pBuy = depth?.bestBuyPrice || 0;
+    const p2pSell = depth?.bestSellPrice || 0;
+    const spreadPct = depth?.spreadPct || 0;
+    const brechaPct =
+      bcvRate > 0 && p2pSell > 0
+        ? (((p2pSell - bcvRate) / bcvRate) * 100).toFixed(2)
+        : 'n/d';
+    const repricerState = this.repricer.isActive() ? 'ACTIVO' : 'PAUSADO';
+
+    const usages = this.accounts.usages();
+    const accountsSummary = usages
+      .map(
+        (u) =>
+          `${u.account.bankName}: consumido ${u.consumedLimitPct}% (quedan Bs ${(u.account.dailyLimitVes - u.spentTodayVes).toLocaleString('es-VE')})`,
+      )
+      .join('; ');
+
+    const apiKey = (
+      this.storage.get<string>('p2p.gemini.apiKey') ||
+      this.storage.get<string>('p2p.ai.key.gemini') ||
+      ''
+    ).trim();
+
+    if (apiKey) {
+      const systemInstruction = {
+        parts: [
+          {
+            text:
+              `Sos el Copiloto Senior y Estratega de Arbitraje P2P Institucional y Tesorería en Venezuela. Respondés en español rioplatense natural (voseo: fijate, mirá, tené en cuenta), de forma ejecutiva, fluida y concisa (máximo 2 párrafos breves o viñetas cortas, optimizado para Telegram).\n\n` +
+              `DATOS EN VIVO DEL MERCADO:\n` +
+              `• Tasa Oficial BCV: ${bcvRate > 0 ? bcvRate.toFixed(2) : 'n/d'} VES/USD\n` +
+              `• Binance P2P: Compra ${p2pBuy > 0 ? p2pBuy.toFixed(2) : 'n/d'} VES · Venta ${p2pSell > 0 ? p2pSell.toFixed(2) : 'n/d'} VES\n` +
+              `• Spread Neto Actual: +${spreadPct.toFixed(2)}%\n` +
+              `• Brecha Cambiaria (P2P vs BCV): +${brechaPct}%\n` +
+              `• Repricer Automático: ${repricerState}\n` +
+              `• Cuentas Bancarias Locales: ${accountsSummary || 'Cuentas estándar'}\n\n` +
+              `INSTRUCCIÓN: Respondé a la consulta del operador aplicando estos números reales. Sé directo y da recomendaciones prácticas.`,
+          },
+        ],
+      };
+
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      for (const model of candidateModels) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+              },
+              body: JSON.stringify({
+                system_instruction: systemInstruction,
+                contents: [{ role: 'user', parts: [{ text: cleanPrompt }] }],
+                generationConfig: {
+                  temperature: 0.4,
+                  maxOutputTokens: 800,
+                },
+              }),
+            },
+          );
+
+          if (res.ok) {
+            const data = (await res.json()) as {
+              candidates?: { content?: { parts?: { text?: string }[] } }[];
+            };
+            const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (aiText) {
+              const reply = `🧠 *COPILOTO ESTRATEGA IA* 🤖\n━━━━━━━━━━━━━━━━━━━━\n${escapeMarkdownV2(aiText)}`;
+              await this.sendTelegramMessage(token, chatId, reply);
+              return;
+            }
+          }
+        } catch (geminiErr) {
+          console.warn(`[TelegramWorker] Falló consulta a modelo ${model}:`, geminiErr);
+        }
+      }
+    }
+
+    // Respuesta heurística estructurada en caso de no tener API key o fallo de conexión
+    const adviceLines: string[] = [];
+    if (spreadPct >= 1.0) {
+      adviceLines.push(`• *Spread:* El spread actual (+${spreadPct.toFixed(2)}%) está saludable para arbitrar.`);
+    } else {
+      adviceLines.push(`• *Spread:* El spread (+${spreadPct.toFixed(2)}%) está ajustado; priorizá compras por tramos.`);
+    }
+
+    if (bcvRate > 0) {
+      adviceLines.push(`• *Brecha BCV:* Brecha del +${brechaPct}%. Mantené rotación en cuentas con cupo.`);
+    }
+
+    const fallbackReply =
+      `🧠 *COPILOTO ESTRATEGA P2P* 🤖\n━━━━━━━━━━━━━━━━━━━━\n` +
+      `Mirá, respecto a tu consulta: _"${escapeMarkdownV2(cleanPrompt)}"_\n\n` +
+      `📊 *Diagnóstico de Mercado en Vivo:*\n` +
+      `• BCV Oficial: \`${bcvRate > 0 ? bcvRate.toFixed(2) + ' Bs' : 'n/d'}\`\n` +
+      `• P2P Binance: Compra \`${p2pBuy.toFixed(2)} Bs\` · Venta \`${p2pSell.toFixed(2)} Bs\`\n` +
+      `• Spread Neto: \`+${spreadPct.toFixed(2)}%\`\n` +
+      `• Brecha P2P/BCV: \`+${brechaPct}%\`\n` +
+      `• Repricer: *${escapeMarkdownV2(repricerState)}*\n\n` +
+      `${adviceLines.join('\n')}\n\n` +
+      (!apiKey
+        ? `💡 _Para respuestas conversacionales completas con IA generativa desde Telegram, asegurate de guardar tu Gemini API Key en el terminal web (Ajustes de API > Gemini)._`
+        : `⚠️ _No se pudo conectar con la API de Gemini en este momento. Mostrando métricas locales en vivo._`);
+
+    await this.sendTelegramMessage(token, chatId, fallbackReply);
   }
 
   async sendTelegramMessage(

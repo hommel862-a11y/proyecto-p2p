@@ -14,6 +14,8 @@ import { AuditLoggerService } from './audit-logger.service';
 export interface RiskConfig {
   /** minimum acceptable unit spread (VES/USDT). Drives spread-monitor alerts. */
   minSpread: number;
+  /** optional minimum acceptable spread in percentage (e.g. 1.2 = 1.2%). */
+  minSpreadPct?: number;
   /** max concurrent operations allowed before PAUSE. */
   maxConcurrentOps: number;
   /** max risk per trade as a percentage (e.g. 1 = 1%). */
@@ -26,10 +28,69 @@ export interface RiskConfig {
   apiStatus: 'ok' | 'down';
 }
 
+export type RiskProfileId = 'DEFENSIVE_BCV' | 'BALANCED' | 'AGGRESSIVE_SCALPER';
+
+export interface RiskProfile {
+  id: RiskProfileId;
+  name: string;
+  description: string;
+  badge: string;
+  config: RiskConfig;
+}
+
+export const RISK_PROFILES: Record<RiskProfileId, RiskProfile> = {
+  DEFENSIVE_BCV: {
+    id: 'DEFENSIVE_BCV',
+    name: 'Defensivo BCV',
+    description: 'Máxima protección ante volatilidad cambiaria o ventanas de subasta del BCV.',
+    badge: 'DEFENSIVE',
+    config: {
+      minSpread: 25,
+      minSpreadPct: 2.5,
+      maxConcurrentOps: 1,
+      maxRiskPerTradePct: 0.5,
+      dailyLossCapPct: 2.0,
+      maxConsecutiveErrors: 2,
+      apiStatus: 'ok',
+    },
+  },
+  BALANCED: {
+    id: 'BALANCED',
+    name: 'Balanceado',
+    description: 'Parámetros estándar para operativa cotidiana con spread y volumen moderado.',
+    badge: 'BALANCED',
+    config: {
+      minSpread: 15,
+      minSpreadPct: 1.2,
+      maxConcurrentOps: 3,
+      maxRiskPerTradePct: 1.0,
+      dailyLossCapPct: 4.0,
+      maxConsecutiveErrors: 3,
+      apiStatus: 'ok',
+    },
+  },
+  AGGRESSIVE_SCALPER: {
+    id: 'AGGRESSIVE_SCALPER',
+    name: 'Scalper Dinámico',
+    description: 'Para operadores rápidos con alta rotación en libros líquidos.',
+    badge: 'SCALPER',
+    config: {
+      minSpread: 8,
+      minSpreadPct: 0.6,
+      maxConcurrentOps: 5,
+      maxRiskPerTradePct: 2.0,
+      dailyLossCapPct: 6.0,
+      maxConsecutiveErrors: 4,
+      apiStatus: 'ok',
+    },
+  },
+};
+
 const STORAGE_KEY = 'p2p.risk-config';
 
 const DEFAULT_CONFIG: RiskConfig = {
   minSpread: 15,
+  minSpreadPct: 1.2,
   maxConcurrentOps: 3,
   maxRiskPerTradePct: 1,
   dailyLossCapPct: 4,
@@ -47,6 +108,10 @@ export function sanitizeConfig(cfg: RiskConfig): RiskConfig {
   return {
     ...cfg,
     minSpread: clampNonNegative(cfg.minSpread),
+    minSpreadPct:
+      typeof cfg.minSpreadPct === 'number'
+        ? clampNonNegative(cfg.minSpreadPct)
+        : 1.2,
     maxConcurrentOps: Math.round(clampAtLeast(cfg.maxConcurrentOps, 1)),
     maxRiskPerTradePct: clampNonNegative(cfg.maxRiskPerTradePct),
     dailyLossCapPct: clampNonNegative(cfg.dailyLossCapPct),
@@ -100,12 +165,26 @@ export class RisksService {
     );
   }
 
+  applyProfile(profileId: RiskProfileId): void {
+    const profile = RISK_PROFILES[profileId];
+    if (profile) {
+      this.save({ ...profile.config });
+      this.audit.log(
+        'CONFIG_CHANGE',
+        `Perfil de riesgo aplicado: ${profile.name}`,
+        { profileId },
+        'info',
+      );
+    }
+  }
+
   /** Evaluate the current operating state against the 6 rules using the live config. */
   evaluate(state: RuleContext): RuleVerdict {
     const c = this.config();
     return evaluate({
       ...state,
       minSpread: state.minSpread ?? c.minSpread,
+      minSpreadPct: state.minSpreadPct ?? c.minSpreadPct,
       maxConcurrentOps: c.maxConcurrentOps,
       maxRiskPerTradePct: c.maxRiskPerTradePct,
       dailyLossCapPct: c.dailyLossCapPct,

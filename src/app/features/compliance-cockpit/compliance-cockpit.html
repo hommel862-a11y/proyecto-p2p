@@ -51,7 +51,7 @@
           type="button"
           class="action-btn bridge-settle-btn"
           [class.settled]="isTodaySettled()"
-          [disabled]="isTodaySettled() || deskState().todayNetPnlUsdt <= 0"
+          [disabled]="isTodaySettled() || deskKpis().todayNetPnlUsdt <= 0"
           (click)="transferDailyProfitToFinance360()"
           title="Transferir Ganancia Neta del día hacia el libro mayor de Finanzas 360"
         >
@@ -59,7 +59,7 @@
           @if (isTodaySettled()) {
             <span>Ganancia Hoy Enviada (#SETTLE)</span>
           } @else {
-            <span>Enviar Ganancia Hoy a Finanzas 360 (+${{ deskState().todayNetPnlUsdt | number:'1.2-2' }})</span>
+            <span>Enviar Ganancia Hoy a Finanzas 360 (+${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }})</span>
           }
         </button>
       }
@@ -92,18 +92,18 @@
   <!-- 4 TARJETAS KPI EN TIEMPO REAL (TOP RIBBON) -->
   <section class="kpi-ribbon-grid" aria-label="Indicadores Clave del Día">
     <!-- KPI 1: Ganancia Neta Hoy -->
-    <div class="kpi-card" [class.positive]="deskState().todayNetPnlUsdt > 0">
+    <div class="kpi-card" [class.positive]="deskKpis().todayNetPnlUsdt > 0">
       <div class="kpi-header">
         <span class="kpi-tag">GANANCIA NETA HOY</span>
-        <span class="kpi-badge" [class.badge-success]="deskState().todayNetPnlUsdt > 0" [class.badge-neutral]="deskState().todayNetPnlUsdt <= 0">
-          {{ deskState().todayNetPnlUsdt > 0 ? 'PnL Positivo' : 'Sin Ganancia' }}
+        <span class="kpi-badge" [class.badge-success]="deskKpis().todayNetPnlUsdt > 0" [class.badge-neutral]="deskKpis().todayNetPnlUsdt <= 0">
+          {{ deskKpis().todayNetPnlUsdt > 0 ? 'PnL Positivo' : 'Sin Ganancia' }}
         </span>
       </div>
       <div class="kpi-body">
         @if (privacyMode()) {
           <span class="kpi-val masked">AUDITADO OK</span>
         } @else {
-          <span class="kpi-val highlight">+${{ deskState().todayNetPnlUsdt | number:'1.2-2' }}</span>
+          <span class="kpi-val highlight">+${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }}</span>
           <span class="kpi-unit">USDT</span>
         }
       </div>
@@ -125,7 +125,7 @@
         @if (privacyMode()) {
           <span class="kpi-val masked">CALIBRADO</span>
         } @else {
-          <span class="kpi-val">{{ deskState().spreadEfficiencyPct | number:'1.2-2' }}%</span>
+          <span class="kpi-val">{{ deskKpis().spreadEfficiencyPct | number:'1.2-2' }}%</span>
           <span class="kpi-unit">Neto</span>
         }
       </div>
@@ -144,7 +144,7 @@
         @if (privacyMode()) {
           <span class="kpi-val masked">CONFIDENCIAL</span>
         } @else {
-          <span class="kpi-val">${{ deskState().todayVolumeUsdt | number:'1.2-2' }}</span>
+          <span class="kpi-val">${{ deskKpis().todayVolumeUsdt | number:'1.2-2' }}</span>
           <span class="kpi-unit">USDT</span>
         }
       </div>
@@ -163,7 +163,7 @@
         @if (privacyMode()) {
           <span class="kpi-val masked">DEDUCIDO</span>
         } @else {
-          <span class="kpi-val text-amber">${{ deskState().todayFrictionUsdt | number:'1.2-2' }}</span>
+          <span class="kpi-val text-amber">${{ deskKpis().todayFrictionUsdt | number:'1.2-2' }}</span>
           <span class="kpi-unit">USDT</span>
         }
       </div>
@@ -247,9 +247,9 @@
             (ngModelChange)="tradeBankId.set($event)"
           >
             <option value="">-- Seleccionar Banco --</option>
-            @for (b of deskState().banks; track b.account.id) {
-              <option [value]="b.account.id" [disabled]="b.status !== 'AVAILABLE'">
-                {{ b.account.bankName }} ({{ b.account.currency }}) - {{ b.status }}
+            @for (b of bankCards(); track b.account.id) {
+              <option [value]="b.account.id" [disabled]="b.telemetry.status !== 'AVAILABLE'">
+                {{ b.account.bankName }} ({{ b.account.currency }}) - {{ b.telemetry.status }}
               </option>
             }
           </select>
@@ -329,7 +329,7 @@
           <div class="title-with-pill">
             <span class="icon">🏦</span>
             <h2 class="section-title">Cuentas Bancarias Operativas</h2>
-            <span class="badge-count">{{ deskState().banks.length }}</span>
+            <span class="badge-count">{{ bankCards().length }}</span>
           </div>
           <button
             type="button"
@@ -343,7 +343,7 @@
 
         <!-- LISTA DE BANCOS CON ESTADO VACÍO OPERATIVO -->
         <div class="bank-items-container">
-          @if (deskState().banks.length === 0) {
+          @if (bankCards().length === 0) {
             <div class="empty-state-box">
               <div class="empty-icon">🏦</div>
               <h3 class="empty-heading">Cero Cuentas Bancarias</h3>
@@ -357,11 +357,11 @@
               </button>
             </div>
           } @else {
-            @for (b of deskState().banks; track b.account.id) {
+            @for (b of bankCards(); track b.account.id) {
               <div
                 class="bank-account-tile"
-                [class.burst-cooldown]="b.status === 'COOLDOWN_BURST'"
-                [class.cap-reached]="b.status === 'DAILY_CAP_REACHED'"
+                [class.burst-cooldown]="b.telemetry.status === 'COOLDOWN_BURST'"
+                [class.cap-reached]="b.telemetry.status === 'DAILY_CAP_REACHED'"
                 [class.recommended]="b.account.id === deskState().recommendedBankId"
               >
                 <!-- Fila Superior de la Cuenta -->
@@ -373,10 +373,10 @@
                       <span class="badge-recommended" title="Mayor capacidad disponible">★ RECOMENDADO</span>
                     }
                   </div>
-                  <div class="bank-status-pill" [class.st-avail]="b.status === 'AVAILABLE'" [class.st-burst]="b.status === 'COOLDOWN_BURST'" [class.st-cap]="b.status === 'DAILY_CAP_REACHED'">
-                    @if (b.status === 'AVAILABLE') {
+                  <div class="bank-status-pill" [class.st-avail]="b.telemetry.status === 'AVAILABLE'" [class.st-burst]="b.telemetry.status === 'COOLDOWN_BURST'" [class.st-cap]="b.telemetry.status === 'DAILY_CAP_REACHED'">
+                    @if (b.telemetry.status === 'AVAILABLE') {
                       <span>DISPONIBLE</span>
-                    } @else if (b.status === 'COOLDOWN_BURST') {
+                    } @else if (b.telemetry.status === 'COOLDOWN_BURST') {
                       <span>ENFRIAMIENTO RÁFAGA</span>
                     } @else {
                       <span>TOPE ALCANZADO</span>
@@ -396,8 +396,8 @@
                   </div>
                   <div class="burst-col">
                     <span class="lbl">Ráfaga 15m:</span>
-                    <span class="burst-meter font-mono" [class.burst-warn]="b.recent15MinTxCount >= b.account.maxBurstTxPer15Min">
-                      {{ b.recent15MinTxCount }} / {{ b.account.maxBurstTxPer15Min }} tx
+                    <span class="burst-meter font-mono" [class.burst-warn]="b.telemetry.recent15MinTxCount >= b.account.maxBurstTxPer15Min">
+                      {{ b.telemetry.recent15MinTxCount }} / {{ b.account.maxBurstTxPer15Min }} tx
                     </span>
                   </div>
                 </div>
@@ -405,15 +405,15 @@
                 <!-- Barra de Progreso de Tope Diario -->
                 <div class="bank-cap-bar-wrapper">
                   <div class="cap-labels">
-                    <span>Uso Diario: {{ b.dailyUsagePct | number:'1.1-1' }}%</span>
+                    <span>Uso Diario: {{ b.telemetry.dailyUsagePct | number:'1.1-1' }}%</span>
                     <span>Tope: {{ b.account.maxDailyCapFiat | number:'1.0-0' }} {{ b.account.currency }}</span>
                   </div>
                   <div class="cap-bar-track">
                     <div
                       class="cap-bar-fill"
-                      [style.width.%]="b.dailyUsagePct > 100 ? 100 : b.dailyUsagePct"
-                      [class.fill-danger]="b.dailyUsagePct >= 90"
-                      [class.fill-warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
+                      [style.width.%]="b.telemetry.dailyUsagePct > 100 ? 100 : b.telemetry.dailyUsagePct"
+                      [class.fill-danger]="b.telemetry.dailyUsagePct >= 90"
+                      [class.fill-warn]="b.telemetry.dailyUsagePct >= 70 && b.telemetry.dailyUsagePct < 90"
                     ></div>
                   </div>
                 </div>
@@ -591,7 +591,7 @@
             </svg>
             <div class="chart-footer-metrics">
               <span>Inicio: $0.00 USDT</span>
-              <span>Cierre actual: +${{ deskState().todayNetPnlUsdt | number:'1.2-2' }} USDT</span>
+              <span>Cierre actual: +${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }} USDT</span>
             </div>
           }
         </div>

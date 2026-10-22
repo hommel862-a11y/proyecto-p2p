@@ -1,16 +1,28 @@
-import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import '@angular/compiler';
+import { Injector, runInInjectionContext, signal } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RiskRules } from './risk-rules';
-import { RisksService, sanitizeConfig, type RiskConfig } from '../../core/rules';
-import { P2P_STORAGE } from '../../core/storage';
-import { MemoryStorage } from '../../core/memory-storage';
+import { RiskRules, isValidChatId } from './risk-rules';
+import {
+  RisksService,
+  sanitizeConfig,
+  RISK_PROFILES,
+  type RiskConfig,
+} from '../../core/rules';
+import { StorageService } from '../../core/storage';
+import { AuditLoggerService } from '../../core/audit-logger.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { ToastService } from '../../core/toast.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { SpotMarketService } from '../../core/spot-market.service';
+import { McpService } from '../../core/mcp.service';
+import { AccountsService } from '../../core/accounts.service';
+import { CotizaveService } from '../../core/cotizave.service';
+import { TriangulationIntelligenceService } from '../../core/triangulation-intelligence.service';
+import { Router } from '@angular/router';
 
 const DEFAULT: RiskConfig = {
   minSpread: 15,
+  minSpreadPct: 1.2,
   maxConcurrentOps: 3,
   maxRiskPerTradePct: 1,
   dailyLossCapPct: 4,
@@ -20,33 +32,43 @@ const DEFAULT: RiskConfig = {
 
 type MockFn = ReturnType<typeof vi.fn>;
 
-interface ToastMock {
-  success: MockFn;
-  error: MockFn;
-  warn: MockFn;
-  info: MockFn;
-}
-
-interface WorkerMock {
-  getConfig: MockFn;
-  getBotInfo: MockFn;
-  detectChatIdFromUpdates: MockFn;
-  saveConfig: MockFn;
-  startPolling: MockFn;
-  stopPolling: MockFn;
-  isPolling: MockFn;
-  recentLogs: MockFn;
-}
-
 describe('RiskRules', () => {
-  let fixture: ComponentFixture<RiskRules>;
-  let mem: MemoryStorage;
-  let toast: ToastMock;
-  let worker: WorkerMock;
-  let binance: { fetchMarketDepth: MockFn };
+  let injector: Injector;
+  let component: RiskRules;
+  let risksService: RisksService;
+  let toast: { success: MockFn; error: MockFn; warn: MockFn; info: MockFn };
+  let worker: {
+    getConfig: MockFn;
+    getBotInfo: MockFn;
+    detectChatIdFromUpdates: MockFn;
+    saveConfig: MockFn;
+    startPolling: MockFn;
+    stopPolling: MockFn;
+    isPolling: MockFn;
+    recentLogs: MockFn;
+  };
+  let binance: { fetchMarketDepth: MockFn; marketDepth: MockFn };
+  let mcp: {
+    evaluateTradeRisk: MockFn;
+    calculateDeltaNeutralHedge: MockFn;
+    consultZkMarketMesh: MockFn;
+    triggerKillswitch: MockFn;
+    detectUsdtDepeg: MockFn;
+    evaluateAccountSaturation: MockFn;
+  };
+  let spotMarket: { fetchBookTicker: MockFn };
+  let router: { navigate: MockFn };
 
   beforeEach(() => {
-    mem = new MemoryStorage();
+    const storedData: Record<string, unknown> = {};
+    const storageMock = {
+      get: vi.fn((key: string) => storedData[key] ?? null),
+      set: vi.fn((key: string, val: unknown) => {
+        storedData[key] = val;
+      }),
+    };
+    const auditMock = { log: vi.fn() };
+
     toast = { success: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() };
     worker = {
       getConfig: vi.fn().mockResolvedValue({
@@ -66,17 +88,126 @@ describe('RiskRules', () => {
       isPolling: vi.fn(() => false),
       recentLogs: vi.fn(() => []),
     };
-    binance = { fetchMarketDepth: vi.fn() };
-    TestBed.configureTestingModule({
-      imports: [RiskRules],
+    binance = {
+      fetchMarketDepth: vi.fn().mockResolvedValue({
+        bestBuyPrice: 100,
+        bestSellPrice: 98.5,
+        spreadPct: 1.5,
+      }),
+      marketDepth: vi.fn(() => ({
+        bestBuyPrice: 100,
+        bestSellPrice: 98.5,
+        spreadPct: 1.5,
+      })),
+    };
+    mcp = {
+      evaluateTradeRisk: vi.fn().mockResolvedValue({
+        success: true,
+        result: { verdict: 'ALLOW', reason: 'ok', ruleChecks: [1, 2, 3] },
+      }),
+      calculateDeltaNeutralHedge: vi.fn().mockResolvedValue({
+        success: true,
+        result: { shortHedgeUsdt: 62.5, recommendedInstrument: 'USDT-M Perpetual' },
+      }),
+      consultZkMarketMesh: vi.fn().mockResolvedValue({
+        success: true,
+        result: { blindHash: '0xabc123', riskScore: 10, recommendation: 'VERIFICADO_LIMPIO' },
+      }),
+      triggerKillswitch: vi.fn().mockResolvedValue({
+        success: true,
+        result: { status: 'CIRCUIT_BREAKER_TRIGGERED' },
+      }),
+      detectUsdtDepeg: vi.fn().mockImplementation(async (args: { spotUsdtPrice: number }) => {
+        const isDepegged = args.spotUsdtPrice < 0.998 || args.spotUsdtPrice > 1.002;
+        return {
+          success: true,
+          result: {
+            isDepegged,
+            isEmergencyActionRequired: args.spotUsdtPrice < 0.99,
+            status: isDepegged ? 'DEPEGGED_WARNING' : 'PEGGED_NORMAL',
+            parityDeviationPct: Math.round(Math.abs(1 - args.spotUsdtPrice) * 10000) / 100,
+            recommendation: 'Paridad auditada',
+          },
+        };
+      }),
+      evaluateAccountSaturation: vi.fn().mockResolvedValue({
+        success: true,
+        result: {
+          bankId: 'banesco-pm-1',
+          saturationPercentage: 15,
+          remainingQuotaVes: 85000,
+          riskLevel: 'LOW',
+          recommendBankRotation: false,
+          reason: 'Operativa normal',
+        },
+      }),
+    };
+    spotMarket = { fetchBookTicker: vi.fn() };
+    router = { navigate: vi.fn() };
+
+    const accountsMock = {
+      accounts: signal([
+        {
+          id: 'banesco-pm-1',
+          bankName: 'Banesco',
+          accountNumberMasked: '...1234',
+          balance: 2000,
+          currency: 'USDT',
+          dailyLimitVes: 100000,
+        },
+        {
+          id: 'bdv-1',
+          bankName: 'Banco de Venezuela',
+          accountNumberMasked: '...5678',
+          balance: 210000,
+          currency: 'VES',
+          dailyLimitVes: 500000,
+        },
+      ]),
+      usages: signal([
+        {
+          account: { id: 'banesco-pm-1' },
+          spentTodayVes: 15000,
+        },
+      ]),
+    };
+
+    const cotizaveMock = {
+      ratesByMarket: signal({
+        oficial: { mid: 70.0, ask: 70.0, bid: 70.0 },
+      }),
+    };
+
+    const triangulationMock = {
+      bcvIntervention: signal({
+        inWindow: false,
+        intensity: 'LOW' as const,
+        message: 'Monitoreo de calendario BCV activo.',
+      }),
+    };
+
+    injector = Injector.create({
       providers: [
-        { provide: P2P_STORAGE, useValue: mem },
-        { provide: TelegramWorkerService, useValue: worker as unknown as TelegramWorkerService },
-        { provide: ToastService, useValue: toast as unknown as ToastService },
-        { provide: BinanceP2pService, useValue: binance as unknown as BinanceP2pService },
+        { provide: StorageService, useValue: storageMock },
+        { provide: AuditLoggerService, useValue: auditMock },
+        RisksService,
+        { provide: ToastService, useValue: toast },
+        { provide: TelegramWorkerService, useValue: worker },
+        { provide: BinanceP2pService, useValue: binance },
+        { provide: McpService, useValue: mcp },
+        { provide: AccountsService, useValue: accountsMock },
+        { provide: SpotMarketService, useValue: spotMarket },
+        { provide: CotizaveService, useValue: cotizaveMock },
+        { provide: TriangulationIntelligenceService, useValue: triangulationMock },
+        { provide: Router, useValue: router },
       ],
     });
-    TestBed.inject(RisksService).save({ ...DEFAULT });
+
+    risksService = injector.get(RisksService);
+    risksService.save({ ...DEFAULT });
+
+    component = runInInjectionContext(injector, () => new RiskRules());
+    component.ngOnInit();
   });
 
   afterEach(() => {
@@ -84,73 +215,82 @@ describe('RiskRules', () => {
     vi.unstubAllGlobals();
   });
 
-  function create(): ComponentFixture<RiskRules> {
-    return TestBed.createComponent(RiskRules);
-  }
+  it('initializes with default config and engine verdict on sample state is ALLOW', () => {
+    expect(component.verdict().decision).toBe('ALLOW');
+    expect(component.verdict().reason).toBe('ok');
+    expect(component.decisionLabel('ALLOW')).toBe('PERMITIR');
+    expect(component.activeTab()).toBe('LIVE_SHIELD');
+  });
 
-  it('default config => engine verdict on sample state is ALLOW (ok)', () => {
-    const f = create();
-    const c = f.componentInstance;
-    f.detectChanges();
-    expect(c.verdict().decision).toBe('ALLOW');
-    expect(c.verdict().reason).toBe('ok');
-    expect(f.nativeElement.textContent).toContain('PERMITIR');
+  it('supports 4-tab switching', () => {
+    expect(component.activeTab()).toBe('LIVE_SHIELD');
+    component.selectTab('BARRIERS');
+    expect(component.activeTab()).toBe('BARRIERS');
+    component.selectTab('TELEGRAM');
+    expect(component.activeTab()).toBe('TELEGRAM');
+    component.selectTab('MCP_TOOLS');
+    expect(component.activeTab()).toBe('MCP_TOOLS');
   });
 
   it('min-spread rule => DENY when spread below configured minimum', () => {
-    const f = create();
-    const c = f.componentInstance;
-    c.draft.set({ ...DEFAULT, minSpread: 25 });
-    c.save();
-    f.detectChanges();
-    expect(c.verdict().decision).toBe('DENY');
-    expect(c.verdict().reason).toBe('spread below minimum');
+    component.draft.set({ ...DEFAULT, minSpread: 25 });
+    component.save();
+    expect(component.verdict().decision).toBe('DENY');
+    expect(component.verdict().reason).toBe('spread below minimum');
   });
 
-  it('daily-loss rule => PAUSE when daily loss exceeds cap', () => {
-    const f = create();
-    const c = f.componentInstance;
-    const verdict = TestBed.inject(RisksService).evaluate({
-      currentSpread: 20,
-      minSpread: 15,
-      openOps: 1,
-      tradeRiskPct: 0.5,
-      dailyLossPct: 5,
-      consecutiveErrors: 0,
-    });
-    expect(verdict.decision).toBe('PAUSE');
-    expect(verdict.reason).toBe('daily loss cap exceeded');
+  it('killswitch activation forces verdict to PAUSE and down status', async () => {
+    component.killswitchReason.set('Emergencia BCV');
+    component.killswitchChallenge.set('CONFIRMAR-FREEZE');
+    await component.activateKillswitch();
+
+    expect(mcp.triggerKillswitch).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'Emergencia BCV' }),
+    );
+    expect(component.killswitchActive()).toBe(true);
+    expect(component.draft().apiStatus).toBe('down');
+    expect(component.verdict().decision).toBe('PAUSE');
+    expect(component.verdict().reason).toContain('killswitch-engaged');
+
+    // Resetting killswitch restores normal state
+    component.resetKillswitch();
+    expect(component.killswitchActive()).toBe(false);
+    expect(component.draft().apiStatus).toBe('ok');
+    expect(component.verdict().decision).toBe('ALLOW');
   });
 
-  it('concurrency rule => PAUSE when open ops reach max', () => {
-    const f = create();
-    const c = f.componentInstance;
-    const verdict = TestBed.inject(RisksService).evaluate({
-      currentSpread: 20,
-      minSpread: 15,
-      openOps: 3,
-      tradeRiskPct: 0.5,
-      dailyLossPct: 1,
-      consecutiveErrors: 0,
-    });
-    expect(verdict.decision).toBe('PAUSE');
-    expect(verdict.reason).toBe('max concurrent operations reached');
+  it('applies risk profiles correctly (DEFENSIVE_BCV, BALANCED, AGGRESSIVE_SCALPER)', () => {
+    component.applyRiskProfile('DEFENSIVE_BCV');
+    expect(component.draft().minSpreadPct).toBe(RISK_PROFILES.DEFENSIVE_BCV.config.minSpreadPct);
+    expect(component.draft().maxConcurrentOps).toBe(1);
+    expect(component.activeProfileId()).toBe('DEFENSIVE_BCV');
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('Defensivo BCV'));
+
+    component.applyRiskProfile('AGGRESSIVE_SCALPER');
+    expect(component.draft().maxConcurrentOps).toBe(5);
+    expect(component.activeProfileId()).toBe('AGGRESSIVE_SCALPER');
   });
 
-  it('save() persists config so a fresh instance reads it', () => {
-    const f = create();
-    const c = f.componentInstance;
-    c.draft.set({ ...DEFAULT, minSpread: 25, maxConcurrentOps: 5 });
-    c.save();
-    const f2 = TestBed.createComponent(RiskRules);
-    expect(f2.componentInstance.config().minSpread).toBe(25);
-    expect(f2.componentInstance.config().maxConcurrentOps).toBe(5);
+  it('computes dynamic treasury exposure from active accounts', () => {
+    // 2000 USDT + (210,000 VES / 70 BCV rate = 3000 USDT) = 5000 USDT
+    expect(component.totalTreasuryCapitalUsdt()).toBe(5000);
+    // At 1% risk per trade: $50
+    expect(component.maxRiskPerTradeUsdt()).toBe(50);
+    // At 4% daily loss cap: $200 USDT
+    expect(component.dailyLossCapUsdt()).toBe(200);
+    // In VES: 200 * 70 = 14,000 VES
+    expect(component.dailyLossCapVes()).toBe(14000);
   });
 
-  it('save() sanitizes NaN/negative/out-of-range values (no decision-engine poisoning)', () => {
-    const f = create();
-    const c = f.componentInstance;
-    c.draft.set({
+  it('save() persists config so a fresh service reads it', () => {
+    component.draft.set({ ...DEFAULT, minSpread: 25, maxConcurrentOps: 5 });
+    component.save();
+    expect(risksService.config().minSpread).toBe(25);
+    expect(risksService.config().maxConcurrentOps).toBe(5);
+  });
+
+  it('save() sanitizes invalid/out-of-range values', () => {
+    component.draft.set({
       ...DEFAULT,
       minSpread: -5,
       maxConcurrentOps: Number.NaN,
@@ -158,148 +298,83 @@ describe('RiskRules', () => {
       dailyLossCapPct: -1,
       maxConsecutiveErrors: 0,
     });
-    c.save();
-    const cfg = TestBed.inject(RisksService).config();
+    component.save();
+    const cfg = risksService.config();
     expect(cfg.minSpread).toBe(0);
     expect(cfg.maxConcurrentOps).toBe(1);
     expect(cfg.maxRiskPerTradePct).toBe(0);
     expect(cfg.dailyLossCapPct).toBe(0);
     expect(cfg.maxConsecutiveErrors).toBe(1);
-    // the live verdict stays finite/typed
-    expect(c.verdict()).toBeDefined();
   });
 
-  it('detectChatId() con token vacío => toast warn y no llama al worker', async () => {
-    const c = create().componentInstance;
-    c.telegramToken.set('');
+  it('isValidChatId validates standard users and supergroups up to 16 digits', () => {
+    expect(isValidChatId('987654321')).toBe(true);
+    expect(isValidChatId('-1001234567890')).toBe(true);
+    expect(isValidChatId('-1009876543210123')).toBe(true);
+    // Rejects invalid strings / phone numbers
+    expect(isValidChatId('+584121234567')).toBe(false);
+    expect(isValidChatId('chat_room_p2p')).toBe(false);
+    expect(isValidChatId('')).toBe(false);
+  });
 
-    await c.detectChatId();
-
+  it('detectChatId() with empty token warns and aborts', async () => {
+    component.telegramToken.set('');
+    await component.detectChatId();
     expect(toast.warn).toHaveBeenCalledWith(expect.stringContaining('Token'));
     expect(worker.detectChatIdFromUpdates).not.toHaveBeenCalled();
-    expect(c.detectingChatId()).toBe(false);
   });
 
-  it('detectChatId() con detección exitosa => setea chatId, guarda config y dispara la prueba', async () => {
-    const c = create().componentInstance;
-    c.telegramToken.set('123456789:AAA-bot-token');
+  it('detectChatId() on success updates chatId, saves config, and triggers test alert', async () => {
+    component.telegramToken.set('123456789:AAA-bot-token');
     worker.detectChatIdFromUpdates.mockResolvedValue({
       success: true,
       chatId: '987654321',
       firstName: 'Ana',
-      username: 'ana_p2p',
       botUsername: 'MockBot',
     });
-    const saveSpy = vi.spyOn(c, 'saveTelegramConfig');
-    const testSpy = vi.spyOn(c, 'sendTestTelegramAlert').mockResolvedValue();
+    const saveSpy = vi.spyOn(component, 'saveTelegramConfig');
+    const testSpy = vi.spyOn(component, 'sendTestTelegramAlert').mockResolvedValue();
 
-    await c.detectChatId();
+    await component.detectChatId();
 
-    expect(c.telegramChatId()).toBe('987654321');
-    expect(c.botUsername()).toBe('MockBot');
+    expect(component.telegramChatId()).toBe('987654321');
+    expect(component.botUsername()).toBe('MockBot');
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringContaining('987654321'),
       'Telegram Conectado',
     );
-    // El chatId ya está en la signal ANTES de guardar: la config persistida lo incluye.
-    expect(worker.saveConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ chatId: '987654321', botToken: '123456789:AAA-bot-token' }),
-    );
     expect(saveSpy).toHaveBeenCalledTimes(1);
     expect(testSpy).toHaveBeenCalledTimes(1);
-    expect(c.detectingChatId()).toBe(false);
-  });
-
-  it('detectChatId() sin detección => reintenta (1+3) y termina con toast warn con pasos', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const c = create().componentInstance;
-    c.telegramToken.set('123456789:AAA-bot-token');
-    worker.detectChatIdFromUpdates.mockResolvedValue({ success: false, botUsername: 'MockBot' });
-
-    const pending = c.detectChatId();
-    await vi.runAllTimersAsync();
-    await pending;
-
-    // 1 intento inicial + 3 reintentos cada 2.5s
-    expect(worker.detectChatIdFromUpdates).toHaveBeenCalledTimes(4);
-    expect(toast.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Abrir Bot'),
-      expect.stringContaining('Paso Requerido en Telegram'),
-    );
-    expect(c.telegramChatId()).toBe('');
-    expect(c.botUsername()).toBe('MockBot');
-    expect(c.detectingChatId()).toBe(false);
-  });
-
-  it('sendTestTelegramAlert() con 400 "chat not found" => toast.error con orientación Abrir Bot / Iniciar', async () => {
-    const c = create().componentInstance;
-    c.telegramToken.set('123456789:AAA-bot-token');
-    c.telegramChatId.set('987654321');
-    c.botUsername.set('MockBot');
-    binance.fetchMarketDepth.mockResolvedValue({
-      bestBuyPrice: 100.5,
-      bestSellPrice: 99.25,
-      spreadPct: 1.26,
-      spreadVes: 1.25,
-    });
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ ok: false, description: 'chat not found' }),
-    });
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await c.sendTestTelegramAlert();
-
-    expect(binance.fetchMarketDepth).toHaveBeenCalledWith('USDT', 'VES', true);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('sendMessage'),
-      expect.objectContaining({ method: 'POST' }),
-    );
-    expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining('Abrir Bot'),
-      expect.stringContaining('Chat no iniciado'),
-    );
-    const [message] = toast.error.mock.calls[0] as [string];
-    expect(message).toContain('@MockBot');
-    expect(message).toContain('Iniciar');
   });
 
   it('evaluates USDT depeg risk via detectUsdtDepeg tool and sets result state', async () => {
-    const f = create();
-    const c = f.componentInstance;
-    f.detectChanges();
+    component.depegSpotPrice.set(1.0001);
+    component.depegThresholdPct.set(0.2);
+    await component.evaluateDepegRisk();
 
-    c.depegSpotPrice.set(1.0001);
-    c.depegThresholdPct.set(0.2);
-    await c.evaluateDepegRisk();
-
-    expect(c.mcpDepegResult()).not.toBeNull();
-    expect(c.mcpDepegResult()?.isDepegged).toBe(false);
-    expect(c.mcpDepegResult()?.status).toBe('PEGGED_NORMAL');
+    expect(component.mcpDepegResult()).not.toBeNull();
+    expect(component.mcpDepegResult()?.isDepegged).toBe(false);
+    expect(component.mcpDepegResult()?.status).toBe('PEGGED_NORMAL');
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringContaining('Paridad de USDT estable'),
     );
 
-    // Test with critical depeg
-    c.depegSpotPrice.set(0.985);
-    await c.evaluateDepegRisk();
-    expect(c.mcpDepegResult()?.isDepegged).toBe(true);
-    expect(c.mcpDepegResult()?.isEmergencyActionRequired).toBe(true);
+    // Test with severe depeg
+    component.depegSpotPrice.set(0.985);
+    await component.evaluateDepegRisk();
+    expect(component.mcpDepegResult()?.isDepegged).toBe(true);
+    expect(component.mcpDepegResult()?.isEmergencyActionRequired).toBe(true);
     expect(toast.error).toHaveBeenCalledWith(
       expect.stringContaining('ALERTA CRÍTICA: Depeg de USDT severo'),
     );
   });
 
   it('evaluates bank account saturation via evaluateAccountSaturation tool', async () => {
-    const f = create();
-    const c = f.componentInstance;
-    f.detectChanges();
+    component.selectedBankAccountId.set('banesco-pm-1');
+    component.incomingTradeVes.set(10000);
+    await component.evaluateBankSaturation();
 
-    c.selectedBankAccountId.set('banesco-pm-1');
-    c.incomingTradeVes.set(10000);
-    await c.evaluateBankSaturation();
-
-    const res = c.mcpSaturationResult();
+    const res = component.mcpSaturationResult();
     expect(res).not.toBeNull();
     expect(res?.bankId).toBe('banesco-pm-1');
     expect(res?.saturationPercentage).toBeGreaterThanOrEqual(0);
@@ -307,12 +382,7 @@ describe('RiskRules', () => {
   });
 
   it('fetches live spot ticker and updates depegSpotPrice', async () => {
-    const f = create();
-    const c = f.componentInstance;
-    f.detectChanges();
-
-    const spotMarket = TestBed.inject(SpotMarketService);
-    vi.spyOn(spotMarket, 'fetchBookTicker').mockResolvedValue({
+    spotMarket.fetchBookTicker.mockResolvedValue({
       symbol: 'USDCUSDT',
       bidPrice: 0.9998,
       bidQty: 1000,
@@ -323,12 +393,17 @@ describe('RiskRules', () => {
       timestamp: new Date().toISOString(),
     });
 
-    await c.fetchLiveSpotTickerForDepeg();
+    await component.fetchLiveSpotTickerForDepeg();
 
-    expect(c.depegSpotPrice()).toBe(1.0);
+    expect(component.depegSpotPrice()).toBe(1.0);
     expect(toast.info).toHaveBeenCalledWith(
       expect.stringContaining('Ticker Spot USDCUSDT recibido'),
     );
+  });
+
+  it('navigates to receipts scanner on request', () => {
+    component.goToReceiptScanner();
+    expect(router.navigate).toHaveBeenCalledWith(['/receipts']);
   });
 });
 
@@ -336,6 +411,7 @@ describe('sanitizeConfig', () => {
   it('clamps non-finite and negative numeric fields to sensible floors', () => {
     const clean = sanitizeConfig({
       minSpread: Number.NaN,
+      minSpreadPct: -0.5,
       maxConcurrentOps: Number.NEGATIVE_INFINITY,
       maxRiskPerTradePct: -3,
       dailyLossCapPct: Number.POSITIVE_INFINITY,
@@ -343,6 +419,7 @@ describe('sanitizeConfig', () => {
       apiStatus: 'down',
     });
     expect(clean.minSpread).toBe(0);
+    expect(clean.minSpreadPct).toBe(0);
     expect(clean.maxConcurrentOps).toBe(1);
     expect(clean.maxRiskPerTradePct).toBe(0);
     expect(clean.dailyLossCapPct).toBe(0);

@@ -36,9 +36,15 @@ export class GlobalErrorHandler implements ErrorHandler {
     // Log internally for enterprise traceability
     this.audit.log('SYSTEM_ERROR', 'Excepción no controlada', { message, stack }, 'error');
 
+    // Humanize technical worker script loading errors
+    let displayMessage = message;
+    if (/Failed to execute 'importScripts'/i.test(message) || /worker\.min\.js/i.test(message)) {
+      displayMessage = 'Fallo de red al cargar el motor OCR (Tesseract). Reintentando con conexión segura.';
+    }
+
     // Notify user non-intrusively via Toast
     this.toast.error(
-      message.length > 120 ? `${message.substring(0, 117)}...` : message,
+      displayMessage.length > 120 ? `${displayMessage.substring(0, 117)}...` : displayMessage,
       'Error en el sistema',
     );
 

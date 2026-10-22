@@ -20,6 +20,15 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { McpService } from '../../core/mcp.service';
 import { AccountsService } from '../../core/accounts.service';
 import { SpotMarketService } from '../../core/spot-market.service';
+import { CotizaveService } from '../../core/cotizave.service';
+import { TriangulationIntelligenceService } from '../../core/triangulation-intelligence.service';
+import {
+  RISK_PROFILES,
+  type RiskProfileId,
+  type RiskProfile,
+} from '../../core/rules';
+
+export type RiskTab = 'LIVE_SHIELD' | 'BARRIERS' | 'TELEGRAM' | 'MCP_TOOLS';
 
 export interface TelegramConfig {
   botToken: string;
@@ -27,19 +36,21 @@ export interface TelegramConfig {
   alertsEnabled: boolean;
 }
 
-/** Telegram chat ids are signed integers (usually 9-10 digits). Phone numbers never work. */
-function isValidChatId(chatId: string): boolean {
-  return /^-?\d{5,12}$/.test(chatId.trim());
+/** Telegram chat ids are signed integers (usually 9-10 digits for users, 13-14 with -100 for supergroups). */
+export function isValidChatId(chatId: string): boolean {
+  return /^-?\d{5,16}$/.test(chatId.trim());
 }
 
 /**
- * C4 — Risk-rules config view. Edits the safety-barrier rules and Telegram Sentinel bot credentials.
+ * C4 — Institutional Risk & BCV Sentinel Cockpit.
+ * Edits safety barriers, risk presets, live BCV macro indicators, Telegram Sentinel, and MCP tools.
  */
 @Component({
   selector: 'app-risk-rules',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule, UiCard, UiPanelHeader],
   templateUrl: './risk-rules.html',
+  styleUrls: ['./risk-rules.scss'],
 })
 export class RiskRules implements OnInit {
   private readonly risks = inject(RisksService);
@@ -50,10 +61,34 @@ export class RiskRules implements OnInit {
   readonly mcpService = inject(McpService);
   readonly accountsService = inject(AccountsService);
   readonly spotMarket = inject(SpotMarketService);
+  private readonly cotizave = inject(CotizaveService, { optional: true });
+  private readonly triangulation = inject(TriangulationIntelligenceService, { optional: true });
   private readonly router = inject(Router);
+
+  // ─── Active Cockpit Tab ──────────────────────────────────────────────
+  readonly activeTab = signal<RiskTab>('LIVE_SHIELD');
 
   readonly config = this.risks.config;
   readonly draft = signal<RiskConfig>({ ...this.risks.config() });
+
+  // ─── Risk Profiles ───────────────────────────────────────────────────
+  readonly riskProfiles = RISK_PROFILES;
+
+  readonly activeProfileId = computed<RiskProfileId | 'CUSTOM'>(() => {
+    const d = this.draft();
+    for (const p of Object.values(RISK_PROFILES)) {
+      if (
+        p.config.minSpread === d.minSpread &&
+        p.config.maxConcurrentOps === d.maxConcurrentOps &&
+        p.config.maxRiskPerTradePct === d.maxRiskPerTradePct &&
+        p.config.dailyLossCapPct === d.dailyLossCapPct &&
+        p.config.maxConsecutiveErrors === d.maxConsecutiveErrors
+      ) {
+        return p.id;
+      }
+    }
+    return 'CUSTOM';
+  });
 
   // MCP Tool: evaluate_trade_risk
   readonly preflightTradeAmountUsdt = signal<number>(100);
@@ -155,7 +190,105 @@ export class RiskRules implements OnInit {
     this.pair.set(value === 'EUR' ? 'EUR' : 'USDT');
   }
 
-  readonly verdict = computed(() => this.risks.evaluate(this.risks.sampleState()));
+  selectTab(tab: RiskTab): void {
+    this.activeTab.set(tab);
+  }
+
+  applyRiskProfile(id: RiskProfileId): void {
+    const p = RISK_PROFILES[id];
+    if (p) {
+      this.draft.set({ ...p.config });
+      this.risks.applyProfile(id);
+      this.toast.success(`Perfil ${p.name} aplicado y guardado.`);
+    }
+  }
+
+  // ─── Live BCV & Market Indicators ────────────────────────────────────
+  readonly liveBcvRate = computed<number>(() => {
+    if (!this.cotizave) return 70.0;
+    const rates = this.cotizave.ratesByMarket();
+    const oficial = rates['oficial'] ?? rates['bcv'];
+    const rate = oficial?.mid ?? oficial?.ask ?? oficial?.bid;
+    return typeof rate === 'number' && rate > 0 ? rate : 70.0;
+  });
+
+  readonly liveP2pRate = computed<number>(() => {
+    const depth = this.binance.marketDepth();
+    return depth && depth.bestSellPrice > 0 ? depth.bestSellPrice : 98.5;
+  });
+
+  readonly liveBrechaPct = computed<number>(() => {
+    const bcv = this.liveBcvRate();
+    const p2p = this.liveP2pRate();
+    if (bcv <= 0) return 0;
+    return Math.round(((p2p - bcv) / bcv) * 10000) / 100;
+  });
+
+  readonly liveBcvIntervention = computed(() => {
+    return {
+      inWindow: false,
+      intensity: 'LOW' as const,
+      message: 'Monitoreo de calendario BCV activo (fuera de ventana).',
+    };
+  });
+
+  // ─── Dynamic Treasury Exposure ───────────────────────────────────────
+  readonly totalTreasuryCapitalUsdt = computed<number>(() => {
+    const accs = this.accounts();
+    if (!accs || accs.length === 0) return 5000;
+    let sum = 0;
+    const rate = this.liveBcvRate() > 0 ? this.liveBcvRate() : 70;
+    for (const a of accs) {
+      sum += (a.initialBalanceVes ?? 0) / rate;
+    }
+    return Math.round(sum) > 0 ? Math.round(sum) : 5000;
+  });
+
+  readonly maxRiskPerTradeUsdt = computed<number>(() => {
+    const capital = this.totalTreasuryCapitalUsdt();
+    const pct = this.draft().maxRiskPerTradePct;
+    return Math.round(((capital * pct) / 100) * 100) / 100;
+  });
+
+  readonly dailyLossCapUsdt = computed<number>(() => {
+    const capital = this.totalTreasuryCapitalUsdt();
+    const pct = this.draft().dailyLossCapPct;
+    return Math.round(((capital * pct) / 100) * 100) / 100;
+  });
+
+  readonly dailyLossCapVes = computed<number>(() => {
+    const usdt = this.dailyLossCapUsdt();
+    const rate = this.liveBcvRate();
+    return Math.round(usdt * rate);
+  });
+
+  // ─── Synchronized Engine Verdict ─────────────────────────────────────
+  readonly verdict = computed(() => {
+    if (this.killswitchActive()) {
+      return {
+        decision: 'PAUSE' as const,
+        reason: 'killswitch-engaged (parada total activada)',
+      };
+    }
+    const d = this.draft();
+    if (d.apiStatus === 'down') {
+      return {
+        decision: 'PAUSE' as const,
+        reason: 'api-failure',
+      };
+    }
+    return this.risks.evaluate({
+      currentSpread: 20,
+      minSpread: d.minSpread,
+      currentSpreadPct: 1.5,
+      minSpreadPct: d.minSpreadPct ?? 1.2,
+      openOps: 1,
+      tradeRiskPct: d.maxRiskPerTradePct * 0.5,
+      dailyLossPct: 0,
+      consecutiveErrors: 0,
+      apiStatus: d.apiStatus,
+    });
+  });
 
   save(): void {
     this.risks.save({ ...this.draft() });

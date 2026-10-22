@@ -632,6 +632,33 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
         }
 
+        @if (form().receiptImage) {
+          <div
+            style="background: rgba(16, 185, 129, 0.08); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; margin-top: 10px;"
+          >
+            <span style="display: flex; align-items: center; gap: 6px; color: var(--accent);">
+              📸 <strong>Comprobante Bancario Adjunto:</strong> {{ form().receiptReference || 'Captura vinculada' }}
+            </span>
+            <button
+              type="button"
+              class="btn btn-ghost"
+              style="padding: 2px 8px; font-size: 0.72rem; border: 1px solid var(--accent); color: var(--accent);"
+              (click)="showReceiptPreview.set(!showReceiptPreview())"
+            >
+              {{ showReceiptPreview() ? 'Ocultar Captura' : 'Ver Captura' }}
+            </button>
+          </div>
+          @if (showReceiptPreview()) {
+            <div style="text-align: center; margin-top: 8px; margin-bottom: 8px;">
+              <img
+                [src]="form().receiptImage"
+                alt="Comprobante de pago"
+                style="max-height: 220px; max-width: 100%; border-radius: 6px; border: 1px solid var(--border); object-fit: contain;"
+              />
+            </div>
+          }
+        }
+
         <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 10px; flex-wrap: wrap; gap: 10px;">
           <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <label class="checkbox-label" style="margin: 0;">
@@ -705,6 +732,7 @@ export class OperationFormComponent {
 
   readonly showReconciler = signal<boolean>(false);
   readonly showQrDispatcher = signal<boolean>(false);
+  readonly showReceiptPreview = signal<boolean>(false);
   readonly rawBankNotification = signal<string>('');
   readonly autoCalcMath = signal<boolean>(true);
   readonly qrBankKey = signal<string>('MERCANTIL');

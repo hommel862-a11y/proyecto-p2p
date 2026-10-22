@@ -63,10 +63,29 @@ describe('Receipt OCR Parser Domain Engine', () => {
       expect(result.reference).toBe('0009842145');
       expect(result.amount).toBe(4250.5);
       expect(result.currency).toBe('VES');
+      expect(result.payerName).toBe('JUAN PEREZ');
       expect(result.payerId).toBe('V-18920194');
       expect(result.beneficiaryPhone).toBe('04141234567');
       expect(result.confidenceScore).toBeGreaterThanOrEqual(0.8);
       expect(result.isDuplicate).toBe(false);
+    });
+
+    it('parses BDV Pago Móvil with Nombre label and 12-digit reference', () => {
+      const bdvText = `
+        Comprobante de Pago Móvil BDV
+        Monto: Bs. 1.000,00
+        Referencia: 007736689881
+        Nombre: PEDRO JOSE CASTILLO
+        Cédula: V-24890123
+        Fecha: 20/10/2026 17:35:10
+      `;
+
+      const result = parseBankReceiptText(bdvText);
+      expect(result.bank).toBe('BDV');
+      expect(result.reference).toBe('007736689881');
+      expect(result.amount).toBe(1000.0);
+      expect(result.payerName).toBe('PEDRO JOSE CASTILLO');
+      expect(result.payerId).toBe('V-24890123');
     });
 
     it('parses Banesco receipt text and identifies pagador', () => {

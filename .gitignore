@@ -97,3 +97,5 @@ mi_operaciones_binance.csv
 # Telegram daemon build artifacts & offset cache
 /packages/telegram-daemon/dist/
 .telegram_offset
+elec.out.log
+

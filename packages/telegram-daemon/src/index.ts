@@ -20,6 +20,10 @@ import {
   formatReceiptAuditTelegramMessage,
   formatBcvIntelligenceTelegramMessage,
   formatBankLimitsTelegramMessage,
+  parseBankReceiptText,
+  detectBankType,
+  type BankType,
+  evaluateFraudRisk,
   getBcvMarketIntelligence,
   escapeMarkdownV2,
   formatRadarTelegramMessage,
@@ -544,6 +548,153 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
           BOT_TOKEN,
           chatId,
           `⚠️ *Libro en sincronización o sin órdenes para esa ruta*, reintentá en unos segundos\\.`,
+        );
+      }
+      break;
+    }
+
+    case 'AUDIT_RECEIPT': {
+      if (!dispatch.fileId) {
+        await sendTelegramMessage(BOT_TOKEN, chatId, '⚠️ *No se recibió el identificador del archivo\\.*');
+        break;
+      }
+      await sendTelegramMessage(
+        BOT_TOKEN,
+        chatId,
+        '🔍 *COMPROBANTE RECIBIDO*: Descargando imagen y analizando con Escudo Anti\\-Fraude\\.\\.\\.',
+      );
+
+      try {
+        // 1. Obtener la ruta del archivo desde Telegram API
+        const fileMetaRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${dispatch.fileId}`);
+        if (!fileMetaRes.ok) throw new Error('Fallo al consultar metadatos del archivo en Telegram');
+        const fileMeta = (await fileMetaRes.json()) as { ok: boolean; result?: { file_path?: string } };
+        const filePath = fileMeta.result?.file_path;
+        if (!filePath) throw new Error('Telegram no devolvió la ruta del archivo');
+
+        // 2. Descargar el archivo directamente en Node.js
+        const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+        const fileRes = await fetch(downloadUrl);
+        if (!fileRes.ok) throw new Error(`HTTP ${fileRes.status} al descargar imagen desde Telegram`);
+        const arrayBuf = await fileRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuf).toString('base64');
+        let mimeType = 'image/jpeg';
+        if (filePath.endsWith('.png')) mimeType = 'image/png';
+        else if (filePath.endsWith('.webp')) mimeType = 'image/webp';
+
+        // 3. Consultar IA Multimodal si hay API Key disponible
+        let ocrText = '';
+        let aiParsed: { amount?: number; reference?: string; bank?: string; payer?: string } = {};
+
+        if (process.env['GEMINI_API_KEY']) {
+          try {
+            const geminiKey = process.env['GEMINI_API_KEY'].trim();
+            const geminiModel = process.env['GEMINI_MODEL']?.trim() || 'gemini-2.0-flash';
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+            const prompt = `Analiza este comprobante de pago bancario / transferencia / Pago Móvil (Venezuela o Colombia).
+Extrae en formato JSON exacto:
+{
+  "bank": "nombre del banco emisor o receptor (ej: BANESCO, BDV, MERCANTIL, BANCAMIGA, BANCOLOMBIA, etc)",
+  "amount": 0.00,
+  "currency": "VES" o "USD" o "COP",
+  "reference": "número de referencia o confirmación",
+  "payer": "nombre completo del pagador / titular emisor",
+  "extractedText": "transcripción de los datos clave del comprobante"
+}
+Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSON.`;
+
+            const gRes = await fetch(geminiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      { text: prompt },
+                      {
+                        inlineData: {
+                          mimeType,
+                          data: base64,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }),
+            });
+
+            if (gRes.ok) {
+              const gData = (await gRes.json()) as any;
+              const content = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              ocrText = content;
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsedJson = JSON.parse(jsonMatch[0]);
+                aiParsed = {
+                  amount: typeof parsedJson.amount === 'number' ? parsedJson.amount : parseFloat(String(parsedJson.amount || 0).replace(/[^0-9.]/g, '')),
+                  reference: parsedJson.reference ? String(parsedJson.reference) : undefined,
+                  bank: parsedJson.bank ? String(parsedJson.bank) : undefined,
+                  payer: parsedJson.payer ? String(parsedJson.payer) : undefined,
+                };
+              }
+            }
+          } catch (aiErr) {
+            console.warn('[Daemon] Gemini Vision error:', aiErr);
+          }
+        }
+
+        // 4. Parseo heurístico de reglas bancarias locales
+        const heuristicParsed = parseBankReceiptText(ocrText);
+        const finalAmount = aiParsed.amount || heuristicParsed.amount || 0;
+        const finalReference = aiParsed.reference || heuristicParsed.reference || 'N/A';
+        const finalBank: BankType =
+          heuristicParsed.bank !== 'UNKNOWN'
+            ? heuristicParsed.bank
+            : (aiParsed.bank ? detectBankType(aiParsed.bank) : 'UNKNOWN');
+        const finalBankLabel =
+          finalBank !== 'UNKNOWN'
+            ? finalBank
+            : (aiParsed.bank || 'BANCO NO IDENTIFICADO');
+        const finalPayer = aiParsed.payer || heuristicParsed.payerName || 'Titular no detectado';
+
+        // 5. Evaluar con Escudo Anti-Fraude
+        const audit = evaluateFraudRisk({
+          orderId: `TG-${Date.now().toString().slice(-6)}`,
+          orderAmount: finalAmount,
+          orderCurrency: heuristicParsed.currency || 'VES',
+          advertiserVerifiedName: finalPayer,
+          receipt: {
+            ...heuristicParsed,
+            amount: finalAmount,
+            reference: finalReference,
+            bank: finalBank,
+            payerName: finalPayer,
+          },
+        });
+
+        // 6. Formatear y enviar mensaje
+        const msg = formatReceiptAuditTelegramMessage({
+          receiptNumber: finalReference,
+          bank: finalBankLabel,
+          amountVes: finalAmount,
+          extractedName: finalPayer,
+          counterpartyName: 'Auditoría Móvil Telegram (Daemon VPS)',
+          nameSimilarityPct: audit.nameMatch.score * 100,
+          score: audit.overallScore,
+          level: audit.riskLevel,
+          recommendation:
+            audit.riskLevel === 'SAFE'
+              ? 'Pago verificado y consistente. Seguro para liberar.'
+              : 'Posible discrepancia de datos o titular no verificado. Revisar banca online antes de liberar.',
+        });
+
+        await sendTelegramMessage(BOT_TOKEN, chatId, msg);
+      } catch (err: any) {
+        console.error('[Daemon] Error al auditar comprobante:', err);
+        await sendTelegramMessage(
+          BOT_TOKEN,
+          chatId,
+          `⚠️ *ERROR AL AUDITAR COMPROBANTE*: No se pudo extraer el texto o conectar con la imagen\\.\n_Detalle:_ \`${escapeMarkdownV2(err?.message || 'Error desconocido')}\``,
         );
       }
       break;

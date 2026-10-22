@@ -41,6 +41,10 @@ export interface Operation {
   operatorId?: string;
   /** display name of the active operator. */
   operatorName?: string;
+  /** optional receipt screenshot base64 or attachment URL for forensic audit. */
+  receiptImage?: string;
+  /** bank confirmation or transfer reference number. */
+  receiptReference?: string;
 }
 
 import {

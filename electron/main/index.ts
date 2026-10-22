@@ -109,8 +109,16 @@ async function ensureMainWindow(): Promise<void> {
     if (wc.isDestroyed() || wc.isCrashed()) {
       try {
         wc.reload();
+        // Sin este show() la ventana quedaba oculta incluso al rescatarla:
+        // el reload ocurría pero seguía invisible para el usuario.
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
       } catch {
         // webContents destruido: recrear la ventana entera.
+        mainWindow.destroy();
+        mainWindow = null;
+        await createWindow();
       }
     } else {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -467,6 +475,49 @@ function startStaticServer(): Promise<number> {
     writeBridgeJson(req, res, 404, { error: 'Unknown orchestrator endpoint' }, ORCHESTRATOR_CORS[0], ORCHESTRATOR_CORS[1]);
   }
 
+  const TELEGRAM_CORS = ['GET, OPTIONS', 'content-type'] as const;
+
+  async function handleTelegramBridge(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    if (req.method === 'OPTIONS') {
+      applyBridgeCors(req, res, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const fullUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const token = fullUrl.searchParams.get('token');
+    const filePath = fullUrl.searchParams.get('file_path');
+    if (!token || !filePath) {
+      writeBridgeJson(req, res, 400, { error: 'Missing token or file_path' }, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+      return;
+    }
+    try {
+      const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+      const response = await net.fetch(downloadUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) {
+        writeBridgeJson(req, res, response.status, { error: `Telegram Download Error ${response.status}` }, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+        return;
+      }
+      const buffer = await response.arrayBuffer();
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      applyBridgeCors(req, res, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+      res.writeHead(200, {
+        'Content-Type': mimeType,
+        'Cache-Control': 'no-store',
+      });
+      res.end(Buffer.from(buffer));
+    } catch {
+      writeBridgeJson(req, res, 502, { error: 'No se pudo descargar el archivo de Telegram' }, TELEGRAM_CORS[0], TELEGRAM_CORS[1]);
+    }
+  }
+
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
 
@@ -487,6 +538,11 @@ function startStaticServer(): Promise<number> {
       return;
     }
 
+    if (urlPath.startsWith('/api/telegram/file')) {
+      void handleTelegramBridge(req, res);
+      return;
+    }
+
     const filePath = path.resolve(root, urlPath.replace(/^[/\\]+/, '') || 'index.html');
     if (!filePath.startsWith(root)) {
       res.writeHead(403);
@@ -499,12 +555,12 @@ function startStaticServer(): Promise<number> {
      */
     const CSP = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https:",
       "font-src 'self'",
-      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com http://127.0.0.1:51857 http://localhost:51857 data: blob:",
-      "worker-src 'self' blob:",
+      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com http://127.0.0.1:51857 http://localhost:51857 data: blob:",
+      "worker-src 'self' blob: https://cdn.jsdelivr.net",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -681,8 +737,10 @@ async function createWindow(): Promise<void> {
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
+      // Minimizar a la barra de tareas en lugar de ocultar en la bandeja:
+      // oculta en la bandeja la ventana quedaba "perdida" para el usuario.
       event.preventDefault();
-      mainWindow?.hide();
+      mainWindow?.minimize();
     }
   });
 

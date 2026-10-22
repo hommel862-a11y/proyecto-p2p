@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FORMAT_PIPES } from '../../core/format';
 import { CounterpartyService } from '../../core/counterparty.service';
@@ -174,6 +174,17 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                         🪪 Titular: {{ o.payerName }}
                       </span>
                     }
+                    @if (o.receiptImage) {
+                      <button
+                        type="button"
+                        class="badge badge-accent"
+                        style="cursor: pointer; font-size: 0.68rem; margin-top: 3px; display: inline-flex; align-items: center; gap: 4px; width: fit-content; border: 1px solid var(--accent); background: rgba(16, 185, 129, 0.15);"
+                        (click)="selectedReceipt.set(o)"
+                        title="Ver captura del comprobante bancario"
+                      >
+                        📸 Ver Comprobante
+                      </button>
+                    }
                   </div>
                 </td>
                 <td>
@@ -263,10 +274,86 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
           </tbody>
         </table>
       </div>
+
+      <!-- Modal de Visualización de Comprobante / Capture -->
+      @if (selectedReceipt(); as receiptOp) {
+        <div
+          class="modal-backdrop"
+          (click)="selectedReceipt.set(null)"
+          style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px;"
+        >
+          <div
+            class="terminal-card"
+            (click)="$event.stopPropagation()"
+            style="max-width: 480px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; background: #18181b; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);"
+          >
+            <div
+              style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border);"
+            >
+              <span
+                style="font-weight: 700; font-size: 0.9rem; color: var(--accent); display: flex; align-items: center; gap: 6px;"
+              >
+                📸 Comprobante Bancario Auditado
+              </span>
+              <button
+                type="button"
+                class="btn btn-ghost"
+                style="padding: 2px 8px; font-size: 1rem;"
+                (click)="selectedReceipt.set(null)"
+              >
+                ✕
+              </button>
+            </div>
+            <div style="padding: 16px; overflow-y: auto; text-align: center;">
+              @if (receiptOp.receiptImage) {
+                <img
+                  [src]="receiptOp.receiptImage"
+                  alt="Comprobante de pago"
+                  style="max-width: 100%; max-height: 52vh; border-radius: 8px; border: 1px solid var(--border); object-fit: contain; margin-bottom: 12px;"
+                />
+              }
+              <div
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; text-align: left; background: rgba(0, 0, 0, 0.3); padding: 10px; border-radius: 6px;"
+              >
+                <div>
+                  <span class="text-muted">Monto:</span>
+                  <strong class="font-mono text-positive">{{ receiptOp.vesAmount | ves }}</strong>
+                </div>
+                <div>
+                  <span class="text-muted">Banco:</span>
+                  <strong>{{ getAccountName(receiptOp.bankAccountId) || receiptOp.merchantNote }}</strong>
+                </div>
+                <div>
+                  <span class="text-muted">Titular:</span>
+                  <strong>{{ receiptOp.payerName || 'No detectado' }}</strong>
+                </div>
+                <div>
+                  <span class="text-muted">Referencia:</span>
+                  <strong class="font-mono">{{ receiptOp.receiptReference || 'N/A' }}</strong>
+                </div>
+              </div>
+            </div>
+            <div
+              style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px;"
+            >
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="font-size: 0.8rem;"
+                (click)="selectedReceipt.set(null)"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
 })
 export class OperationTableComponent {
+  readonly selectedReceipt = signal<Operation | null>(null);
+
   readonly crmService = inject(CounterpartyService);
   readonly accountsService = inject(AccountsService);
 

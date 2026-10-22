@@ -126,6 +126,10 @@ export interface PlanActionParams {
   planId?: string;
 }
 
+export interface CopilotChatParams {
+  prompt?: string;
+}
+
 /**
  * Payload carried by {@link DispatchResult.params}. The concrete shape depends on
  * {@link DispatchResult.action}; narrowing on the action is required to read it.
@@ -135,7 +139,8 @@ export type SentinelActionParams =
   | RepriceParams
   | AutoRepriceParams
   | BacktestRequestParams
-  | PlanActionParams;
+  | PlanActionParams
+  | CopilotChatParams;
 
 export interface DispatchResult {
   authorized: boolean;
@@ -293,17 +298,28 @@ export function formatReceiptAuditTelegramMessage(audit: {
   bank?: string;
   amountVes?: number;
   extractedName?: string;
+  payerId?: string;
   counterpartyName?: string;
   nameSimilarityPct: number;
   score: number;
   level: 'SAFE' | 'WARNING' | 'CRITICAL';
   recommendation: string;
+  operationRegistered?: boolean;
+  operationId?: string;
 }): string {
   const icon = audit.level === 'SAFE' ? '🟢' : audit.level === 'WARNING' ? '🟡' : '🔴';
   const scoreStr = `${audit.score}/100`;
   const amountStr = audit.amountVes
     ? `${audit.amountVes.toLocaleString('es-VE', { minimumFractionDigits: 2 })} VES`
     : 'No detectado';
+
+  const docLine = audit.payerId
+    ? `\n🪪 *Documento / Cédula:* \`${escapeMarkdownV2(audit.payerId)}\``
+    : '';
+
+  const regLine = audit.operationRegistered
+    ? `\n📂 *Libro Mayor P2P:* ✅ \`Registrado en Operaciones\` \\(ID: \`${escapeMarkdownV2(audit.operationId || 'TG')}\`\\)\n📸 *Comprobante:* \`Adjunto y vinculado\``
+    : '';
 
   return `🛡️ *AUDITORÍA FORENSE INSTANTÁNEA* 🛡️
 ━━━━━━━━━━━━━━━━━━━━
@@ -312,9 +328,9 @@ export function formatReceiptAuditTelegramMessage(audit: {
 🔢 *Referencia:* \`${escapeMarkdownV2(audit.receiptNumber || 'Sin número')}\`
 💵 *Monto:* \`${escapeMarkdownV2(amountStr)}\`
 
-👤 *Titular en Comprobante:* \`${escapeMarkdownV2(audit.extractedName || 'No detectado')}\`
+👤 *Titular en Comprobante:* \`${escapeMarkdownV2(audit.extractedName || 'No detectado')}\`${docLine}
 👥 *Contraparte P2P:* \`${escapeMarkdownV2(audit.counterpartyName || 'No provisto')}\`
-🎯 *Similitud de Identidad:* \`${escapeMarkdownV2(audit.nameSimilarityPct.toFixed(1))}%\`
+🎯 *Similitud de Identidad:* \`${escapeMarkdownV2(audit.nameSimilarityPct.toFixed(1))}%\`${regLine}
 ━━━━━━━━━━━━━━━━━━━━
 💡 *Recomendación:* _${escapeMarkdownV2(audit.recommendation)}_`;
 }
@@ -1468,11 +1484,28 @@ export function dispatchTelegramUpdate(
       };
     }
 
+    if (
+      text.startsWith('/ia') ||
+      text.startsWith('/copiloto') ||
+      text.startsWith('/copilot') ||
+      text.startsWith('/ask')
+    ) {
+      const prompt = text.replace(/^\/(ia|copiloto|copilot|ask)\s*/i, '').trim();
+      return {
+        authorized: true,
+        command: text,
+        action: 'COPILOT_CHAT',
+        params: { prompt: prompt || text },
+        responseMarkdown: `🧠 *CONSULTANDO AL COPILOTO ESTRATEGA IA*\\.\\.\\.`,
+      };
+    }
+
     if (!text.startsWith('/')) {
       return {
         authorized: true,
         command: text,
         action: 'COPILOT_CHAT',
+        params: { prompt: text },
         responseMarkdown: `🧠 *CONSULTANDO AL COPILOTO ESTRATEGA IA*\\.\\.\\.`,
       };
     }
@@ -1481,7 +1514,7 @@ export function dispatchTelegramUpdate(
       authorized: true,
       command: text,
       responseMarkdown: escapeMarkdownV2(
-        `Comando recibido: "${text}". Comandos disponibles: /status, /spread [banco], /plan [capital], /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o escribe una pregunta abierta para el Copiloto IA.`,
+        `Comando recibido: "${text}". Comandos disponibles: /status, /spread [banco], /plan [capital], /bcv, /bancos, /radar, /heatmap, /reprecio, /macro, /backtest, /panel, /killswitch, /resume o escribe una pregunta abierta para el Copiloto IA (o /ia <pregunta>).`,
       ),
     };
   }

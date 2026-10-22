@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

@@ -1,4 +1,5 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
+import * as path from 'path';
 import { createHmac } from 'crypto';
 import type {
   P2PIpcChannels,
@@ -546,6 +547,38 @@ export function registerIpcHandlers(): void {
         }
         throw new Error(message, { cause: err });
       }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:telegram-download-file');
+  ipcMain.handle(
+    'p2p:telegram-download-file',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { token: string; filePath: string },
+    ): Promise<{ success: boolean; base64: string; mimeType: string }> => {
+      const { token, filePath } = params || {};
+      if (!token || !filePath) {
+        throw new Error('Parámetros de Telegram inválidos (token o filePath faltante)');
+      }
+      const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+      const response = await net.fetch(downloadUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!response.ok) {
+        throw new Error(`Telegram Download HTTP Error ${response.status}`);
+      }
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeType =
+        ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      return {
+        success: true,
+        base64,
+        mimeType,
+      };
     },
   );
 

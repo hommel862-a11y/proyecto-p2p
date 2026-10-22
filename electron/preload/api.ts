@@ -163,6 +163,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       delete: (id) => ipc('agents:delete', id) as Promise<boolean>,
       toggle: (id, active) => ipc('agents:toggle', { id, active }) as Promise<any>,
     },
+    telegram: {
+      downloadFile: (params: { token: string; filePath: string }) =>
+        ipc('p2p:telegram-download-file', params) as Promise<{
+          success: boolean;
+          base64: string;
+          mimeType: string;
+        }>,
+    },
   };
 }
 
@@ -187,6 +195,7 @@ export const EXPOSED_API_KEYS = [
   'mcp',
   'clipboard',
   'agents',
+  'telegram',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -254,6 +263,7 @@ export const ALLOWED_CHANNELS = [
   'agents:update',
   'agents:delete',
   'agents:toggle',
+  'p2p:telegram-download-file',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels

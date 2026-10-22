@@ -93,4 +93,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/agent-studio/agent-studio.component').then((m) => m.AgentStudioComponent),
   },
+  {
+    path: 'compliance-cockpit',
+    title: 'Compliance & Quant Cockpit',
+    loadComponent: () =>
+      import('./features/compliance-cockpit/compliance-cockpit').then(
+        (m) => m.ComplianceCockpitComponent,
+      ),
+  },
 ];

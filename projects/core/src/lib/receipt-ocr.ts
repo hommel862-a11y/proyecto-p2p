@@ -237,18 +237,86 @@ export function parseBankReceiptText(
   let payerName: string | undefined;
   let beneficiaryName: string | undefined;
 
+  const cleanExtractedName = (str: string): string => {
+    return str
+      .split(/[\r\n]/)[0]
+      .replace(/\b(?:monto|bs\.?|ves|usd|cop|c[eé]dula|c\.?i\.?|rif|documento|fecha|hora|banco|ref|referencia|tel[eé]fono|concepto|cuenta)\b.*/i, '')
+      .replace(/[^A-Za-zÁÉÍÓÚáéíóúñÑ\s.-]/g, '')
+      .trim();
+  };
+
+  // 1. Explicit Payer / Emisor labels
   const nameMatch = rawText.match(
-    /(?:pagador|ordenante|emisor|titular|nombre\s+del\s+pagador)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i,
+    /(?:nombre\s*(?:del)?\s*(?:pagador|ordenante|emisor|titular|cliente)|pagador|ordenante|emisor|titular\s*(?:de\s*la\s*cuenta)?|persona\s*natural|de\s+parte\s+de|enviado\s*por)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s.-]{3,40})/i,
   );
   if (nameMatch) {
-    payerName = nameMatch[1].split(/[\r\n]/)[0].trim();
+    const candidate = cleanExtractedName(nameMatch[1]);
+    if (candidate.length >= 3) payerName = candidate;
   }
 
+  // 2. Explicit Beneficiary / Receptor labels
   const benefMatch = rawText.match(
-    /(?:beneficiario|destino|a nombre de|para)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s]{3,35})/i,
+    /(?:nombre\s*(?:del)?\s*(?:beneficiario|destino|receptor|destinatario)|beneficiario|destino|receptor|destinatario|a\s+nombre\s+de|acreditado\s*a)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s.-]{3,40})/i,
   );
   if (benefMatch) {
-    beneficiaryName = benefMatch[1].split(/[\r\n]/)[0].trim();
+    const candidate = cleanExtractedName(benefMatch[1]);
+    if (candidate.length >= 3) beneficiaryName = candidate;
+  }
+
+  // 3. Generic "Nombre:" or "Nombre y Apellido:" if neither matched yet
+  if (!payerName && !beneficiaryName) {
+    const genericNameMatch = rawText.match(
+      /(?:nombre\s*(?:y\s*apellido)?|cliente)[:\s]+([A-Za-zÁÉÍÓÚáéíóúñÑ\s.-]{3,40})/i,
+    );
+    if (genericNameMatch) {
+      const candidate = cleanExtractedName(genericNameMatch[1]);
+      if (candidate.length >= 3) payerName = candidate;
+    }
+  }
+
+  // 4. Line-by-line fallback: line adjacent to Cédula or standalone capitalized name words
+  if (!payerName && !beneficiaryName) {
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const stopWords = new Set([
+      'BANCO', 'DE', 'VENEZUELA', 'BANESCO', 'MERCANTIL', 'BANCAMIGA', 'PROVINCIAL',
+      'BBVA', 'BNC', 'BDV', 'PAGO', 'MOVIL', 'PAGOMOVIL', 'OPERACION', 'EXITOSA',
+      'EXITOSO', 'TRANSFERENCIA', 'COMPROBANTE', 'DETALLE', 'MONTO', 'REFERENCIA',
+      'FECHA', 'HORA', 'CEDULA', 'RIF', 'DOCUMENTO', 'TELEFONO', 'CONCEPTO', 'DESTINO',
+      'ORIGEN', 'CUENTA', 'TERMINAL', 'APROBADO', 'APROBADA', 'LINEA', 'BOLIVARES',
+      'DIGITAL', 'EN', 'LA', 'EL', 'LOS', 'LAS', 'RECIBO', 'MENSAJE', 'TITULAR',
+    ]);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/(?:c[eé]dula|c\.?i\.?|[VvEeJjGgP]-?[0-9]{6,10})/i.test(line)) {
+        if (i > 0) {
+          const prev = cleanExtractedName(lines[i - 1]);
+          const words = prev.split(/\s+/).filter((w) => w.length >= 2);
+          const isStopWord = words.every((w) => stopWords.has(w.toUpperCase()));
+          if (words.length >= 2 && words.length <= 5 && !isStopWord && !/\d/.test(prev)) {
+            payerName = prev;
+            break;
+          }
+        }
+        if (i < lines.length - 1) {
+          const next = cleanExtractedName(lines[i + 1]);
+          const words = next.split(/\s+/).filter((w) => w.length >= 2);
+          const isStopWord = words.every((w) => stopWords.has(w.toUpperCase()));
+          if (words.length >= 2 && words.length <= 5 && !isStopWord && !/\d/.test(next)) {
+            payerName = next;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Harmonize: If payerName is empty but beneficiaryName was extracted, use it
+  if (!payerName && beneficiaryName) {
+    payerName = beneficiaryName;
+  }
+  if (!beneficiaryName && payerName) {
+    beneficiaryName = payerName;
   }
 
   // Phone number (e.g. 0414-1234567, 3001234567)

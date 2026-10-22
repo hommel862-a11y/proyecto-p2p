@@ -674,6 +674,12 @@ export interface ElectronAPI {
     delete(id: string): Promise<boolean>;
     toggle(id: string, active?: boolean): Promise<CustomAgentDto | null>;
   };
+  telegram?: {
+    downloadFile(params: {
+      token: string;
+      filePath: string;
+    }): Promise<{ success: boolean; base64: string; mimeType: string }>;
+  };
 }
 
 declare global {
