@@ -80,3 +80,8 @@ export * from './lib/heatmap-calculator';
 export * from './lib/dynamic-spread-anchoring';
 export * from './lib/ai-proxy-gateway';
 export * from './lib/sync-hub';
+export * from './lib/p2p-radar-clean-mode';
+export * from './lib/p2p-radar-bot-detector';
+export * from './lib/p2p-radar-spread-engine';
+export * from './lib/p2p-radar-hud-bridge';
+export * from './lib/client-compliance-intelligence';

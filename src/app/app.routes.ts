@@ -14,6 +14,12 @@ export const routes: Routes = [
       import('./features/spread-monitor/spread-monitor').then((m) => m.SpreadMonitor),
   },
   {
+    path: 'radar',
+    title: 'Radar de Inteligencia P2P',
+    loadComponent: () =>
+      import('./features/p2p-radar/p2p-radar.component').then((m) => m.P2PRadarComponent),
+  },
+  {
     path: 'income',
     title: 'Income Calculator',
     loadComponent: () =>

@@ -34,10 +34,20 @@ describe('evaluate (risk-rules safety barrier)', () => {
     expect(v.reason).toMatch(/concurrent/i);
   });
 
-  it('Scenario C: daily loss cap exceeded (default 4%) -> PAUSE', () => {
+  it('Scenario C: daily loss cap reached or exceeded (default 4%) -> PAUSE', () => {
     const v = evaluate({ ...safe, dailyLossPct: 5 });
     expect(v.decision).toBe(DECISION.PAUSE);
     expect(v.reason).toMatch(/daily loss/i);
+
+    const vExact = evaluate({ ...safe, dailyLossPct: 4 });
+    expect(vExact.decision).toBe(DECISION.PAUSE);
+    expect(vExact.reason).toMatch(/daily loss/i);
+  });
+
+  it('Scenario F: spread in percentage below minSpreadPct -> DENY', () => {
+    const v = evaluate({ ...safe, currentSpreadPct: 0.8, minSpreadPct: 1.2 });
+    expect(v.decision).toBe(DECISION.DENY);
+    expect(v.reason).toMatch(/minimum/i);
   });
 
   it('Scenario E: API status down -> PAUSE (api-failure)', () => {

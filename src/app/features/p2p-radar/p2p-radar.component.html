@@ -1,0 +1,776 @@
+<div class="radar-container">
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ZONA 1: HEADER DE PERFIL OPERATIVO Y CONTROLES TÁCTICOS
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <header class="radar-header card-surface">
+    <div class="header-main-row">
+      <div class="brand-title-area">
+        <div class="badge-live-pulse">
+          <span class="pulse-dot"></span>
+          <span class="pulse-text">RADAR QUANT INTEL</span>
+        </div>
+        <h1 class="radar-title">Radar de Inteligencia P2P</h1>
+        <p class="radar-subtitle">
+          Microestructura de libro en tiempo real, filtro anti-manipulación y matriz de arbitraje
+        </p>
+      </div>
+
+      <div class="header-actions-area">
+        <button
+          type="button"
+          class="hud-bridge-pill"
+          [class.active]="radarService.hudActive()"
+          (click)="toggleHudBridge()"
+          title="Alternar canal WebSocket / BroadcastChannel para la Extensión de Chrome"
+        >
+          <span class="hud-dot"></span>
+          <span>HUD Extension: {{ radarService.hudActive() ? 'LIVE' : 'OFF' }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="btn-scan"
+          [class.loading]="radarService.loading()"
+          [disabled]="radarService.loading()"
+          (click)="scanRadar()"
+        >
+          <span class="icon" [class.spinning]="radarService.loading()">⚡</span>
+          <span>{{ radarService.loading() ? 'Escaneando Libros...' : 'Escanear Radar' }}</span>
+        </button>
+
+        @if (radarService.lastUpdated(); as updated) {
+          <span class="last-sync-badge">
+            Sync: {{ updated | date:'HH:mm:ss' }}
+          </span>
+        }
+      </div>
+    </div>
+
+    <!-- Quick Operational Controls -->
+    <div class="controls-toolbar">
+      <!-- Tier Selector -->
+      <div class="control-group">
+        <label class="control-label">Perfil de Operador</label>
+        <div class="segmented-control">
+          <button
+            type="button"
+            class="seg-btn"
+            [class.active]="radarService.userTier() === 'VERIFIED'"
+            (click)="setUserTier('VERIFIED')"
+          >
+            <span class="tier-icon verified-icon">★</span>
+            <span>Verificado (0.20%)</span>
+          </button>
+          <button
+            type="button"
+            class="seg-btn"
+            [class.active]="radarService.userTier() === 'UNVERIFIED'"
+            (click)="setUserTier('UNVERIFIED')"
+          >
+            <span>No Verificado (0.35%)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Execution Mode Selector -->
+      <div class="control-group">
+        <label class="control-label">Modo de Ejecución</label>
+        <div class="segmented-control">
+          <button
+            type="button"
+            class="seg-btn"
+            [class.active]="radarService.executionMode() === 'DOBLE_MAKER'"
+            (click)="setExecutionMode('DOBLE_MAKER')"
+            title="Anuncio Maker en Compra y Anuncio Maker en Venta"
+          >
+            <span>Doble Maker</span>
+          </button>
+          <button
+            type="button"
+            class="seg-btn"
+            [class.active]="radarService.executionMode() === 'MAKER_COMPRA_TAKER_VENTA'"
+            (click)="setExecutionMode('MAKER_COMPRA_TAKER_VENTA')"
+            title="Anunciar compra como Maker y vender tomando anuncios como Taker"
+          >
+            <span>Maker C / Taker V</span>
+          </button>
+          <button
+            type="button"
+            class="seg-btn"
+            [class.active]="radarService.executionMode() === 'TAKER_COMPRA_MAKER_VENTA'"
+            (click)="setExecutionMode('TAKER_COMPRA_MAKER_VENTA')"
+            title="Comprar como Taker y anunciar venta como Maker"
+          >
+            <span>Taker C / Maker V</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Financial Params: Capital & Target Margin -->
+      <div class="financial-inputs-group">
+        <div class="input-unit-wrapper">
+          <label class="control-label" for="radar-capital">Capital USDT</label>
+          <div class="input-with-symbol">
+            <span class="symbol">$</span>
+            <input
+              id="radar-capital"
+              type="number"
+              class="field-mono"
+              [ngModel]="radarService.operatingCapitalUsdt()"
+              (ngModelChange)="onCapitalChange($event)"
+              min="10"
+              step="100"
+            />
+          </div>
+        </div>
+
+        <div class="input-unit-wrapper">
+          <label class="control-label" for="radar-margin">Margen Objetivo</label>
+          <div class="input-with-symbol">
+            <input
+              id="radar-margin"
+              type="number"
+              class="field-mono"
+              [ngModel]="radarService.targetNetMarginPct()"
+              (ngModelChange)="onMarginTargetChange($event)"
+              step="0.05"
+              min="0.05"
+            />
+            <span class="symbol">%</span>
+          </div>
+        </div>
+
+        <!-- Clean Mode Filter Button -->
+        <div class="clean-mode-badge-wrap">
+          <label class="control-label">Filtro Anti-Manipulación</label>
+          <button type="button" class="btn-clean-mode-settings" (click)="openCleanModal()">
+            <span class="shield-icon">🛡️</span>
+            <span>Modo Limpio Activo</span>
+            <span class="gear-icon">⚙️</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Stats Bar -->
+    <div class="quick-stats-bar">
+      <div class="stat-pill">
+        <span class="stat-label">Anuncios Limpios:</span>
+        <span class="stat-value font-mono">{{ radarService.totalCleanOffers() }}</span>
+      </div>
+      <div class="stat-pill" [class.warning-pulse]="radarService.totalBotsDetected() > 0">
+        <span class="stat-label">Bots Detectados:</span>
+        <span class="stat-value font-mono stat-amber">{{ radarService.totalBotsDetected() }}</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-label">Señuelos Descartados:</span>
+        <span class="stat-value font-mono stat-red">{{ radarService.totalManipulationsDetected() }}</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-label">Rutas Viables:</span>
+        <span class="stat-value font-mono stat-emerald">{{ radarService.viableRoutesCount() }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ZONA 2: GRID MULTIBANCO SIMULTÁNEO
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <section class="multibank-section">
+    <!-- Volume Presets & Bank Filter Chips -->
+    <div class="section-toolbar">
+      <div class="toolbar-left">
+        <span class="filter-label">Escalón de Volumen:</span>
+        <div class="volume-bracket-pills">
+          @for (bracket of volumeBrackets; track bracket.id) {
+            <button
+              type="button"
+              class="pill-btn"
+              [class.active]="radarService.selectedBracket().id === bracket.id"
+              (click)="setVolumeBracket(bracket.id)"
+            >
+              <span>{{ bracket.label }}</span>
+              <span class="bracket-amount font-mono">({{ bracket.minAmountVes | number:'1.0-0' }} Bs)</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <div class="bank-filter-header">
+          <span class="filter-label">Bancos Activos:</span>
+          <span class="active-count-badge font-mono">{{ activeBanks().length }}/{{ availableBanks.length }}</span>
+          
+          <div class="preset-pills-row">
+            <button
+              type="button"
+              class="preset-pill-btn"
+              [class.active]="activePreset() === 'TOP_VES'"
+              (click)="setBankPreset('TOP_VES')"
+              title="Carga los 4 bancos más líquidos de Venezuela"
+            >
+              ⚡ Top 4 VES
+            </button>
+            <button
+              type="button"
+              class="preset-pill-btn"
+              [class.active]="activePreset() === 'ALL_VES'"
+              (click)="setBankPreset('ALL_VES')"
+              title="Carga los 8 bancos nacionales venezolanos"
+            >
+              🏛️ Todos Nacionales
+            </button>
+            <button
+              type="button"
+              class="preset-pill-btn"
+              [class.active]="activePreset() === 'EXPANDED'"
+              (click)="setBankPreset('EXPANDED')"
+              title="Carga nacionales más cuentas en dólares/Panamá y Zinli"
+            >
+              🌐 Full (+ USD/Panamá)
+            </button>
+            <button
+              type="button"
+              class="preset-pill-btn clear-pill"
+              (click)="setBankPreset('CLEAR')"
+              title="Desmarcar todos"
+            >
+              ✕ Limpiar
+            </button>
+          </div>
+        </div>
+
+        <div class="bank-chips">
+          @for (b of availableBanks; track b) {
+            <button
+              type="button"
+              class="chip-btn"
+              [class.active]="activeBanks().includes(b)"
+              (click)="toggleBank(b)"
+            >
+              <span class="check-dot"></span>
+              <span>{{ bankLabels[b] || b }}</span>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Parallel Columns Grid -->
+    <div class="banks-grid">
+      @for (bank of activeBanks(); track bank) {
+        @let buyBook = getBook(bank, 'BUY');
+        @let sellBook = getBook(bank, 'SELL');
+        @let sellTrend = getTrend(bank, 'SELL');
+
+        <div class="bank-column card-surface">
+          <!-- Column Header -->
+          <div class="bank-column-header">
+            <div class="bank-name-badge">
+              <span class="bank-icon">🏛️</span>
+              <span class="bank-title">{{ bankLabels[bank] || bank }}</span>
+            </div>
+
+            <!-- Trend Thermometer -->
+            @if (sellTrend; as trend) {
+              <div class="trend-badge" [attr.data-trend]="trend.trend">
+                <span class="trend-arrow">
+                  @if (trend.trend === 'ALCISTA') { ▲ }
+                  @else if (trend.trend === 'BAJISTA') { ▼ }
+                  @else { ◀▶ }
+                </span>
+                <span class="trend-text">{{ trend.trend }}</span>
+                <span class="trend-vwap font-mono">VWAP: {{ trend.currentVWAP | number:'1.2-2' }}</span>
+              </div>
+            }
+          </div>
+
+          <!-- Subdivided Order Books: BUY and SELL -->
+          <div class="books-split">
+            <!-- BUY SIDE (Comprar USDT) -->
+            <div class="sub-book buy-sub-book">
+              <div class="sub-book-header">
+                <span class="sub-book-title buy-label">COMPRA (Top 5 Limpio)</span>
+                @if (buyBook) {
+                  <span class="top-rate font-mono buy-color">{{ buyBook.effectiveTopPrice | number:'1.2-2' }}</span>
+                }
+              </div>
+
+              <div class="offers-list">
+                @if (buyBook && buyBook.cleanOffers.length > 0) {
+                  @for (offer of buyBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
+                    @let bot = isOfferBot(bank, 'BUY', offer);
+                    <div
+                      class="offer-row buy-row"
+                      (click)="selectOfferForSimulation(bank, 'BUY', offer)"
+                      title="Clic para cargar tasa de compra en simulador"
+                    >
+                      <div class="offer-rank-col">
+                        <span class="rank-badge">#{{ idx + 1 }}</span>
+                      </div>
+                      <div class="offer-price-col">
+                        <span class="offer-price font-mono buy-color">{{ offer.price | number:'1.2-2' }}</span>
+                        <span class="offer-user" [class.is-merchant]="offer.isMerchant">
+                          {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}%)
+                        </span>
+                      </div>
+                      <div class="offer-volume-col">
+                        <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }}</span>
+                        <span class="offer-limits font-mono">
+                          {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                        </span>
+                      </div>
+
+                      @if (bot) {
+                        <div class="bot-badge" title="Bot Detectado: {{ bot.details }}">
+                          BOT
+                        </div>
+                      }
+                    </div>
+                  }
+                } @else {
+                  <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                }
+              </div>
+            </div>
+
+            <!-- SELL SIDE (Vender USDT) -->
+            <div class="sub-book sell-sub-book">
+              <div class="sub-book-header">
+                <span class="sub-book-title sell-label">VENTA (Top 5 Limpio)</span>
+                @if (sellBook) {
+                  <span class="top-rate font-mono sell-color">{{ sellBook.effectiveTopPrice | number:'1.2-2' }}</span>
+                }
+              </div>
+
+              <div class="offers-list">
+                @if (sellBook && sellBook.cleanOffers.length > 0) {
+                  @for (offer of sellBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
+                    @let bot = isOfferBot(bank, 'SELL', offer);
+                    <div
+                      class="offer-row sell-row"
+                      (click)="selectOfferForSimulation(bank, 'SELL', offer)"
+                      title="Clic para cargar tasa de venta en simulador"
+                    >
+                      <div class="offer-rank-col">
+                        <span class="rank-badge">#{{ idx + 1 }}</span>
+                      </div>
+                      <div class="offer-price-col">
+                        <span class="offer-price font-mono sell-color">{{ offer.price | number:'1.2-2' }}</span>
+                        <span class="offer-user" [class.is-merchant]="offer.isMerchant">
+                          {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}%)
+                        </span>
+                      </div>
+                      <div class="offer-volume-col">
+                        <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }}</span>
+                        <span class="offer-limits font-mono">
+                          {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                        </span>
+                      </div>
+
+                      @if (bot) {
+                        <div class="bot-badge" title="Bot Detectado: {{ bot.details }}">
+                          BOT
+                        </div>
+                      }
+                    </div>
+                  }
+                } @else {
+                  <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ZONA 3: SIMULADOR INTERACTIVO Y POSICIONADOR TÁCTICO
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <section class="simulator-section card-surface">
+    <div class="simulator-header">
+      <div class="title-wrap">
+        <span class="sim-icon">🎯</span>
+        <h2>Simulador Interactivo y Posicionador Táctico</h2>
+      </div>
+      <p class="sim-desc">
+        Calcula el punto de equilibrio exacto y la tasa necesaria para alcanzar tu margen neto
+      </p>
+    </div>
+
+    <div class="simulator-grid">
+      <!-- Input Parameters -->
+      <div class="sim-inputs-col">
+        <div class="sim-input-row">
+          <div class="field-item">
+            <label class="control-label" for="sim-buy-bank">Banco de Compra (USDT)</label>
+            <select
+              id="sim-buy-bank"
+              class="select-dark"
+              [ngModel]="simBuyBank()"
+              (ngModelChange)="simBuyBank.set($event)"
+            >
+              @for (b of availableBanks; track b) {
+                <option [value]="b">{{ bankLabels[b] || b }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="field-item">
+            <label class="control-label" for="sim-buy-price">Tasa de Compra (VES)</label>
+            <input
+              id="sim-buy-price"
+              type="number"
+              class="field-mono field-highlight"
+              [ngModel]="simBuyPrice()"
+              (ngModelChange)="simBuyPrice.set(+$event)"
+              step="0.01"
+            />
+          </div>
+        </div>
+
+        <div class="sim-input-row">
+          <div class="field-item">
+            <label class="control-label" for="sim-sell-bank">Banco de Venta (USDT)</label>
+            <select
+              id="sim-sell-bank"
+              class="select-dark"
+              [ngModel]="simSellBank()"
+              (ngModelChange)="simSellBank.set($event)"
+            >
+              @for (b of availableBanks; track b) {
+                <option [value]="b">{{ bankLabels[b] || b }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="field-item">
+            <label class="control-label" for="sim-sell-price">Tasa de Venta (VES)</label>
+            <input
+              id="sim-sell-price"
+              type="number"
+              class="field-mono field-highlight"
+              [ngModel]="simSellPrice()"
+              (ngModelChange)="simSellPrice.set(+$event)"
+              step="0.01"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Calculated Output Metrics -->
+      @let metrics = simulatedMetrics();
+      <div class="sim-metrics-col">
+        <div class="metrics-card-grid">
+          <!-- Spread Neto Hero Card -->
+          <div
+            class="metric-hero-card"
+            [class.hero-emerald]="metrics.netSpreadPct >= radarService.targetNetMarginPct()"
+            [class.hero-amber]="metrics.netSpreadPct > 0 && metrics.netSpreadPct < radarService.targetNetMarginPct()"
+            [class.hero-red]="metrics.netSpreadPct <= 0"
+          >
+            <span class="metric-hero-label">Spread Neto Real</span>
+            <span class="metric-hero-val font-mono">
+              {{ metrics.netSpreadPct >= 0 ? '+' : '' }}{{ metrics.netSpreadPct | number:'1.2-2' }}%
+            </span>
+            <span class="metric-hero-sub font-mono">
+              Bruto: {{ metrics.grossSpreadPct >= 0 ? '+' : '' }}{{ metrics.grossSpreadPct | number:'1.2-2' }}%
+            </span>
+          </div>
+
+          <!-- Profit in USDT & Fiat -->
+          <div class="metric-sub-card">
+            <span class="metric-label">Ganancia Neta Estimada</span>
+            <span class="metric-val font-mono stat-emerald">
+              {{ metrics.netProfitUsdt >= 0 ? '+' : '' }}${{ metrics.netProfitUsdt | number:'1.2-2' }} USDT
+            </span>
+            <span class="metric-sub font-mono">
+              +Bs {{ metrics.netProfitFiat | number:'1.2-2' }}
+            </span>
+          </div>
+
+          <!-- Break-Even Price -->
+          <div class="metric-sub-card">
+            <span class="metric-label">Break-Even (Punto 0)</span>
+            <span class="metric-val font-mono stat-amber">
+              Venta: {{ metrics.breakEvenSellPrice | number:'1.2-2' }}
+            </span>
+            <span class="metric-sub font-mono">
+              Compra máx: {{ metrics.breakEvenBuyPrice | number:'1.2-2' }}
+            </span>
+          </div>
+
+          <!-- Target Price Recommended -->
+          <div class="metric-sub-card target-action-card">
+            <div class="target-title-area">
+              <span class="metric-label">Tasa Target (+{{ radarService.targetNetMarginPct() }}%)</span>
+              <span class="metric-val font-mono stat-cyan">
+                {{ metrics.targetSellPrice | number:'1.2-2' }} VES
+              </span>
+            </div>
+
+            <div class="simulator-actions-stack">
+              <button
+                type="button"
+                class="btn-copy-target"
+                [class.copied]="copiedTarget() === 'targetSell'"
+                (click)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')"
+              >
+                <span>{{ copiedTarget() === 'targetSell' ? '✓ ¡Tasa Copiada!' : '📋 Copiar Tasa Sugerida' }}</span>
+              </button>
+
+              <button
+                type="button"
+                class="btn-record-cycle"
+                (click)="recordCurrentSimulatedCycle()"
+                title="Registra este ciclo completado en la contabilidad diaria aislada"
+              >
+                <span>💾 Registrar Ciclo Completado</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ZONA 5: RENDIMIENTO DIARIO CONSOLIDADO (AISLAMIENTO CONTABLE)
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <section class="journal-section card-surface">
+    @let daily = radarService.dailyConsolidated();
+    <div class="journal-header">
+      <div class="journal-title-area">
+        <span class="journal-icon">📊</span>
+        <div>
+          <h3 class="journal-title">Rendimiento Diario Consolidado (Aislamiento Contable)</h3>
+          <p class="journal-subtitle">
+            Cierres de ciclos confirmados en fecha {{ daily.dateKey }}. Cero ruido de órdenes canceladas.
+          </p>
+        </div>
+      </div>
+
+      <div class="journal-actions">
+        <button
+          type="button"
+          class="btn-copy-journal"
+          (click)="copyDailySummaryToClipboard()"
+          [disabled]="daily.totalCycles === 0"
+        >
+          <span>📋 Copiar Resumen Diario</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Daily KPI cards -->
+    <div class="journal-kpis-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">Ciclos Completados</span>
+        <span class="kpi-val font-mono">{{ daily.totalCycles }}</span>
+        <span class="kpi-sub font-mono">{{ daily.monobankCyclesCount }} monobanco · {{ daily.interbankCyclesCount }} interbancario</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Volumen Operado</span>
+        <span class="kpi-val font-mono">${{ daily.totalTurnoverUsdt | number:'1.2-2' }}</span>
+        <span class="kpi-sub">Total USDT rotado hoy</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Ganancia Neta Total</span>
+        <span class="kpi-val font-mono stat-emerald">+${{ daily.totalNetProfitUsdt | number:'1.2-2' }} USDT</span>
+        <span class="kpi-sub font-mono">+Bs {{ daily.totalNetProfitFiat | number:'1.2-2' }}</span>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-label">Spread Neto Promedio</span>
+        <span class="kpi-val font-mono stat-amber">+{{ daily.averageNetSpreadPct | number:'1.2-2' }}%</span>
+        <span class="kpi-sub font-mono">Mejor ciclo: +{{ daily.bestSpreadPct | number:'1.2-2' }}%</span>
+      </div>
+    </div>
+
+    <!-- Closed Cycles Table -->
+    @if (radarService.completedCycles().length > 0) {
+      <div class="cycles-table-wrap">
+        <table class="cycles-table">
+          <thead>
+            <tr>
+              <th>ID Ciclo</th>
+              <th>Hora</th>
+              <th>Ruta (Venta ➔ Compra)</th>
+              <th>Modo</th>
+              <th>Capital</th>
+              <th>Spread Neto</th>
+              <th>Ganancia Neta</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (cycle of radarService.completedCycles().slice(0, 8); track cycle.cycleId) {
+              <tr>
+                <td class="font-mono text-muted">{{ cycle.cycleId }}</td>
+                <td class="font-mono">{{ cycle.timestampMs | date:'HH:mm:ss' }}</td>
+                <td>
+                  <strong>{{ bankLabels[cycle.sourceBank] || cycle.sourceBank }}</strong> ({{ cycle.sellPrice | number:'1.2-2' }})
+                  ➔
+                  <strong>{{ bankLabels[cycle.targetBank] || cycle.targetBank }}</strong> ({{ cycle.buyPrice | number:'1.2-2' }})
+                </td>
+                <td><span class="mode-tag">{{ cycle.executionMode }}</span></td>
+                <td class="font-mono">${{ cycle.capitalUsdt | number:'1.0-0' }}</td>
+                <td class="font-mono stat-emerald font-bold">+{{ cycle.netSpreadPct | number:'1.2-2' }}%</td>
+                <td class="font-mono stat-emerald font-bold">+${{ cycle.netProfitUsdt | number:'1.2-2' }} USDT</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ZONA 4: TICKER INFERIOR DE OPORTUNIDADES (AUTO-ROTATIVO + ALERTA SONORA)
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <footer class="opportunities-ticker-bar card-surface">
+    <div class="ticker-content">
+      <div class="ticker-badge-area">
+        <span class="pulse-beacon"></span>
+        <span class="ticker-title">OPORTUNIDAD RADAR</span>
+      </div>
+
+      @if (currentTickerRoute(); as route) {
+        <div class="ticker-route-details">
+          <span class="route-path">
+            <strong>{{ bankLabels[route.sourceBank] || route.sourceBank }}</strong> (Venta: {{ route.sellPrice | number:'1.2-2' }})
+            <span class="arrow-sep">➔</span>
+            <strong>{{ bankLabels[route.targetBank] || route.targetBank }}</strong> (Compra: {{ route.buyPrice | number:'1.2-2' }})
+          </span>
+
+          <span
+            class="route-spread font-mono"
+            [class.spread-positive]="route.metrics.netSpreadPct >= radarService.targetNetMarginPct()"
+          >
+            Neto: +{{ route.metrics.netSpreadPct | number:'1.2-2' }}%
+          </span>
+
+          <span class="route-profit font-mono">
+            (+${{ route.metrics.netProfitUsdt | number:'1.2-2' }} USDT)
+          </span>
+
+          <button
+            type="button"
+            class="btn-load-route"
+            (click)="loadRouteIntoSimulator(route)"
+          >
+            Cargar en Simulador
+          </button>
+        </div>
+      } @else {
+        <div class="ticker-empty">
+          <span>Escaneando rutas de mayor spread en el libro de órdenes...</span>
+        </div>
+      }
+
+      <div class="ticker-controls">
+        <button
+          type="button"
+          class="btn-sound-toggle"
+          [class.muted]="!soundAlertsActive()"
+          (click)="toggleSoundAlerts()"
+          title="Alternar alertas sonoras de oportunidad"
+        >
+          <span>{{ soundAlertsActive() ? '🔔 Sonido Activo' : '🔕 Silenciado' }}</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       MODAL: REGLAS DE MODO LIMPIO (ANTI-MANIPULACIÓN)
+       ══════════════════════════════════════════════════════════════════════════ -->
+  @if (cleanModalOpen()) {
+    <div class="modal-backdrop" (click)="closeCleanModal()">
+      <div class="modal-card card-surface" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <span class="shield-lg">🛡️</span>
+            <h3>Reglas de Filtrado: Modo Limpio</h3>
+          </div>
+          <button type="button" class="btn-close-modal" (click)="closeCleanModal()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="modal-desc">
+            Purga anuncios trampa, ofertas señuelo de baja liquidez y distorsiones estadísticas antes de calcular el precio tope.
+          </p>
+
+          <div class="modal-fields">
+            <div class="field-row">
+              <label class="control-label" for="clean-pay-time">Tiempo Máximo de Pago (minutos)</label>
+              <input
+                id="clean-pay-time"
+                type="number"
+                class="field-mono"
+                [ngModel]="modalMaxPayTime()"
+                (ngModelChange)="modalMaxPayTime.set(+$event)"
+                min="5"
+                max="60"
+              />
+              <span class="field-hint">Descarta anuncios de 45-60 min usados para bloquear liquidez.</span>
+            </div>
+
+            <div class="field-row">
+              <label class="control-label" for="clean-finish-rate">Tasa Mínima de Finalización (%)</label>
+              <input
+                id="clean-finish-rate"
+                type="number"
+                class="field-mono"
+                [ngModel]="modalMinFinishRate()"
+                (ngModelChange)="modalMinFinishRate.set(+$event)"
+                min="50"
+                max="100"
+              />
+              <span class="field-hint">Por defecto 92%. Protege contra cancelaciones recurrentes.</span>
+            </div>
+
+            <div class="field-row">
+              <label class="control-label" for="clean-min-orders">Órdenes Mínimas en el Mes</label>
+              <input
+                id="clean-min-orders"
+                type="number"
+                class="field-mono"
+                [ngModel]="modalMinOrders()"
+                (ngModelChange)="modalMinOrders.set(+$event)"
+                min="5"
+                max="500"
+              />
+              <span class="field-hint">Por defecto 30 órdenes. Descarta cuentas recién creadas.</span>
+            </div>
+
+            <div class="field-row">
+              <label class="control-label" for="clean-outlier-dev">Tolerancia a Desvío Señuelo / Outlier (%)</label>
+              <input
+                id="clean-outlier-dev"
+                type="number"
+                class="field-mono"
+                [ngModel]="modalMaxOutlierDevPct()"
+                (ngModelChange)="modalMaxOutlierDevPct.set(+$event)"
+                step="0.1"
+                min="0.2"
+                max="5"
+              />
+              <span class="field-hint">Si el anuncio #1 se desvía más de este % del promedio de #2 y #3, se excluye.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-cancel" (click)="closeCleanModal()">Cancelar</button>
+          <button type="button" class="btn-modal-save" (click)="saveCleanModalSettings()">
+            Guardar y Re-filtrar Libros
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

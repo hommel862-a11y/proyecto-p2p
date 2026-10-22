@@ -6,6 +6,7 @@
     "outDir": "../../out-tsc/lib",
     "declaration": true,
     "declarationMap": true,
+    "noEmit": false,
     "types": []
   },
   "include": ["src/**/*.ts"],

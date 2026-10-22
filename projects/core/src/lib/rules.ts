@@ -26,6 +26,10 @@ export interface RuleContext {
   currentSpread: number;
   /** configured minimum acceptable spread (risk-rules config; also drives spread-monitor alert). */
   minSpread: number;
+  /** optional current spread in percentage (e.g. 1.85 = 1.85%). */
+  currentSpreadPct?: number;
+  /** optional minimum acceptable spread in percentage (e.g. 1.25 = 1.25%). */
+  minSpreadPct?: number;
   /** number of operations currently open. */
   openOps: number;
   /** risk for the proposed trade, as a percentage (e.g. 2 = 2%). */
@@ -66,7 +70,7 @@ export function evaluate(ctx: RuleContext): RuleVerdict {
   if (apiStatus === 'down') {
     return { decision: DECISION.PAUSE, reason: RULE_REASON.API_FAILURE };
   }
-  if (ctx.dailyLossPct > dailyLossCap) {
+  if (ctx.dailyLossPct >= dailyLossCap) {
     return { decision: DECISION.PAUSE, reason: RULE_REASON.DAILY_LOSS_CAP };
   }
   if (ctx.consecutiveErrors >= maxErrors) {
@@ -76,6 +80,13 @@ export function evaluate(ctx: RuleContext): RuleVerdict {
     return { decision: DECISION.PAUSE, reason: RULE_REASON.MAX_CONCURRENT };
   }
   if (ctx.currentSpread < ctx.minSpread) {
+    return { decision: DECISION.DENY, reason: RULE_REASON.MIN_SPREAD };
+  }
+  if (
+    typeof ctx.currentSpreadPct === 'number' &&
+    typeof ctx.minSpreadPct === 'number' &&
+    ctx.currentSpreadPct < ctx.minSpreadPct
+  ) {
     return { decision: DECISION.DENY, reason: RULE_REASON.MIN_SPREAD };
   }
   if (ctx.tradeRiskPct > maxRisk) {

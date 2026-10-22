@@ -1,0 +1,563 @@
+
+> p2p@1.4.1 start
+> ng serve
+
+Node.js version v25.8.2 detected.
+Prior to version 27, odd numbered Node.js versions will not enter LTS status and should not be used for production. For more information, please see https://nodejs.org/en/about/previous-releases/.
+> Building...
+√ Building...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.35 kB | 
+chunk-GNNILXIN.js   | -                     | 126.18 kB | 
+chunk-VNHYH53T.js   | -                     |  63.43 kB | 
+styles.css          | styles                |  61.50 kB | 
+chunk-RGMPY2RU.js   | -                     |  58.68 kB | 
+chunk-334L5RFP.js   | -                     |  54.53 kB | 
+chunk-LVKPHEAA.js   | -                     |  36.20 kB | 
+chunk-6WKFIMBX.js   | -                     |  26.10 kB | 
+chunk-DKGO4KKA.js   | -                     |  22.13 kB | 
+chunk-F52Q6FNC.js   | -                     |  13.61 kB | 
+chunk-R3SNOOY4.js   | -                     |   9.42 kB | 
+chunk-Q4HJWRRU.js   | -                     |   7.24 kB | 
+chunk-JBIFHWUB.js   | -                     |   6.76 kB | 
+chunk-33SUABDS.js   | -                     |   5.22 kB | 
+chunk-GIWVDAW5.js   | -                     |   5.13 kB | 
+chunk-7327FIG4.js   | -                     |   4.60 kB | 
+chunk-MAGUZX4B.js   | -                     |   4.38 kB | 
+chunk-DF5UJVAT.js   | -                     |   2.88 kB | 
+chunk-IJ7ZMCDO.js   | -                     |   1.86 kB | 
+chunk-6NVDBKOO.js   | -                     |   1.51 kB | 
+chunk-CZJLB7T5.js   | -                     |   1.13 kB | 
+chunk-OOF7BLQG.js   | -                     | 676 bytes | 
+
+                    | Initial total         | 774.51 kB
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-5EORGH2Z.js   | spread-monitor        |   1.02 MB | 
+chunk-ST4GGTMZ.js   | finance-360-component | 897.58 kB | 
+chunk-ZJ3TMY3Y.js   | copilot               | 648.03 kB | 
+chunk-KMGGLBMU.js   | income-calculator     | 427.90 kB | 
+chunk-SURY6VSX.js   | dashboard             | 421.33 kB | 
+chunk-2XK5OB6L.js   | operation-log         | 379.27 kB | 
+chunk-A2DYITPD.js   | guide                 | 280.76 kB | 
+chunk-OCRRROMB.js   | p2p-radar-component   | 207.62 kB | 
+chunk-3GL7JXB4.js   | triangulation         | 203.71 kB | 
+chunk-RA3SXPBW.js   | -                     | 167.30 kB | 
+chunk-3VERZ5FB.js   | growth-projector      | 157.41 kB | 
+chunk-RAQCIIUU.js   | stats                 | 131.39 kB | 
+chunk-GT7XAGRX.js   | receipt-scanner       | 129.43 kB | 
+chunk-ALVNETZS.js   | mcp-hub               | 122.80 kB | 
+chunk-724GB7TD.js   | risk-rules            | 102.05 kB | 
+...and 20 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [58.814 seconds] - 2026-10-19T21:13:58.781Z
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4200[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m5:20:25 p. m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mNG0956: The configured tracking expression (track by identity) caused re-creation of the entire collection of size 5. This is an expensive operation requiring destruction and subsequent creation of DOM nodes, directives, components etc. Please review the "track expression" and make sure that it uniquely identifies items in a collection. Find more at https://v22.angular.dev/errors/NG0956
+[2m5:33:56 p. m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mNG0956: The configured tracking expression (track by identity) caused re-creation of the entire collection of size 5. This is an expensive operation requiring destruction and subsequent creation of DOM nodes, directives, components etc. Please review the "track expression" and make sure that it uniquely identifies items in a collection. Find more at https://v22.angular.dev/errors/NG0956
+[2m5:45:22 p. m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mNG0956: The configured tracking expression (track by identity) caused re-creation of the entire collection of size 5. This is an expensive operation requiring destruction and subsequent creation of DOM nodes, directives, components etc. Please review the "track expression" and make sure that it uniquely identifies items in a collection. Find more at https://v22.angular.dev/errors/NG0956
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.35 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-TXTLED7W.js   | remittances-component |  94.47 kB | 
+
+Application bundle generation complete. [43.144 seconds] - 2026-10-19T21:53:15.419Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.35 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-6GXMX7QD.js   | remittances-component |  97.27 kB | 
+
+Application bundle generation complete. [6.952 seconds] - 2026-10-19T21:53:28.601Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Application bundle generation failed. [6.290 seconds] - 2026-10-19T21:54:06.126Z
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2323: Cannot redeclare exported variable 'formatRemittanceWhatsAppMessage'.[0m [1m[35m[plugin angular-compiler][0m
+
+    projects/core/src/lib/remittance-corridor.ts:414:16:
+[37m      414 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2393: Duplicate function implementation.[0m [1m[35m[plugin angular-compiler][0m
+
+    projects/core/src/lib/remittance-corridor.ts:414:16:
+[37m      414 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2323: Cannot redeclare exported variable 'formatRemittanceWhatsAppMessage'.[0m [1m[35m[plugin angular-compiler][0m
+
+    projects/core/src/lib/remittance-corridor.ts:555:16:
+[37m      555 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2393: Duplicate function implementation.[0m [1m[35m[plugin angular-compiler][0m
+
+    projects/core/src/lib/remittance-corridor.ts:555:16:
+[37m      555 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mMultiple exports with the same name "formatRemittanceWhatsAppMessage"[0m
+
+    projects/core/src/lib/remittance-corridor.ts:555:16:
+[37m      555 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+  The name "formatRemittanceWhatsAppMessage" was originally exported here:
+
+    projects/core/src/lib/remittance-corridor.ts:414:16:
+[37m      414 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mThe symbol "formatRemittanceWhatsAppMessage" has already been declared[0m
+
+    projects/core/src/lib/remittance-corridor.ts:555:16:
+[37m      555 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+  The symbol "formatRemittanceWhatsAppMessage" was originally declared here:
+
+    projects/core/src/lib/remittance-corridor.ts:414:16:
+[37m      414 │ export function [32mformatRemittanceWhatsAppMessage[37m(
+          ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+  Duplicate top-level function declarations are not allowed in an ECMAScript module. This file is considered to be an ECMAScript module because of the "export" keyword here:
+
+    projects/core/src/lib/remittance-corridor.ts:555:0:
+[37m      555 │ [32mexport[37m function formatRemittanceWhatsAppMessage(
+          ╵ [32m~~~~~~[0m
+
+
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.35 kB | 
+chunk-GNNILXIN.js   | -                     | 126.18 kB | 
+chunk-VNHYH53T.js   | -                     |  63.43 kB | 
+styles.css          | styles                |  61.50 kB | 
+chunk-RGMPY2RU.js   | -                     |  58.68 kB | 
+chunk-334L5RFP.js   | -                     |  54.53 kB | 
+chunk-LVKPHEAA.js   | -                     |  36.20 kB | 
+chunk-6WKFIMBX.js   | -                     |  26.10 kB | 
+chunk-DKGO4KKA.js   | -                     |  22.13 kB | 
+chunk-F52Q6FNC.js   | -                     |  13.61 kB | 
+chunk-R3SNOOY4.js   | -                     |   9.42 kB | 
+chunk-Q4HJWRRU.js   | -                     |   7.24 kB | 
+chunk-JBIFHWUB.js   | -                     |   6.76 kB | 
+chunk-33SUABDS.js   | -                     |   5.22 kB | 
+chunk-GIWVDAW5.js   | -                     |   5.13 kB | 
+chunk-7327FIG4.js   | -                     |   4.60 kB | 
+chunk-MAGUZX4B.js   | -                     |   4.38 kB | 
+chunk-DF5UJVAT.js   | -                     |   2.88 kB | 
+chunk-IJ7ZMCDO.js   | -                     |   1.86 kB | 
+chunk-6NVDBKOO.js   | -                     |   1.51 kB | 
+chunk-CZJLB7T5.js   | -                     |   1.13 kB | 
+chunk-OOF7BLQG.js   | -                     | 676 bytes | 
+
+                    | Initial total         | 774.51 kB
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-5EORGH2Z.js   | spread-monitor        |   1.02 MB | 
+chunk-ST4GGTMZ.js   | finance-360-component | 897.58 kB | 
+chunk-ZJ3TMY3Y.js   | copilot               | 648.03 kB | 
+chunk-KMGGLBMU.js   | income-calculator     | 427.90 kB | 
+chunk-SURY6VSX.js   | dashboard             | 421.33 kB | 
+chunk-2XK5OB6L.js   | operation-log         | 379.27 kB | 
+chunk-A2DYITPD.js   | guide                 | 280.76 kB | 
+chunk-OCRRROMB.js   | p2p-radar-component   | 207.62 kB | 
+chunk-3GL7JXB4.js   | triangulation         | 203.71 kB | 
+chunk-RA3SXPBW.js   | -                     | 167.30 kB | 
+chunk-3VERZ5FB.js   | growth-projector      | 157.41 kB | 
+chunk-RAQCIIUU.js   | stats                 | 131.39 kB | 
+chunk-GT7XAGRX.js   | receipt-scanner       | 129.43 kB | 
+chunk-ALVNETZS.js   | mcp-hub               | 122.80 kB | 
+chunk-724GB7TD.js   | risk-rules            | 102.05 kB | 
+...and 20 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [4.703 seconds] - 2026-10-19T21:54:24.210Z
+
+Page reload sent to client(s).
+[2m6:02:23 p. m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mNG0956: The configured tracking expression (track by identity) caused re-creation of the entire collection of size 5. This is an expensive operation requiring destruction and subsequent creation of DOM nodes, directives, components etc. Please review the "track expression" and make sure that it uniquely identifies items in a collection. Find more at https://v22.angular.dev/errors/NG0956
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.32 kB | 
+chunk-2G5DXRM4.js   | -                     | 126.18 kB | 
+chunk-WDSNPSFT.js   | -                     |  63.43 kB | 
+chunk-GEO7Q7D2.js   | -                     |  58.68 kB | 
+chunk-SNGLMW7M.js   | -                     |  54.53 kB | 
+chunk-JWPXDPUA.js   | -                     |  41.26 kB | 
+chunk-YYG4BSDE.js   | -                     |  13.61 kB | 
+chunk-3RUMRK6N.js   | -                     |   5.13 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-IG2GTWY7.js   | spread-monitor        |   1.02 MB | 
+chunk-7O6SHNLM.js   | finance-360-component | 897.55 kB | 
+chunk-N52MDWZ7.js   | copilot               | 648.00 kB | 
+chunk-CK2QES3A.js   | income-calculator     | 427.87 kB | 
+chunk-5MALTR7W.js   | dashboard             | 421.30 kB | 
+chunk-VJTZ2F62.js   | operation-log         | 379.24 kB | 
+chunk-LQWGW2Z5.js   | triangulation         | 203.68 kB | 
+chunk-ATTY5JXA.js   | growth-projector      | 157.38 kB | 
+chunk-OKEY2LZU.js   | receipt-scanner       | 129.40 kB | 
+chunk-QNACP6YP.js   | remittances-component | 108.55 kB | 
+chunk-4FQTX6LL.js   | risk-rules            | 102.02 kB | 
+chunk-AOSEWOYR.js   | -                     |  63.17 kB | 
+chunk-BTRLEMSU.js   | -                     |  26.33 kB | 
+chunk-S2D4YF4S.js   | -                     |  10.67 kB | 
+
+Application bundle generation complete. [3.272 seconds] - 2026-10-19T22:04:43.655Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Application bundle generation failed. [1.141 seconds] - 2026-10-19T22:05:19.257Z
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isDeskLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:45:36:
+[37m      45 │     @let deskLine = conv.lines.find([32misDeskLine[37m);
+         ╵                                     [32m~~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isP2pLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:46:35:
+[37m      46 │     @let p2pLine = conv.lines.find([32misP2pLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isBcvLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:47:35:
+[37m      47 │     @let bcvLine = conv.lines.find([32misBcvLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Application bundle generation failed. [1.155 seconds] - 2026-10-19T22:05:42.099Z
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isDeskLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:45:36:
+[37m      45 │     @let deskLine = conv.lines.find([32misDeskLine[37m);
+         ╵                                     [32m~~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isP2pLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:46:35:
+[37m      46 │     @let p2pLine = conv.lines.find([32misP2pLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isBcvLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:47:35:
+[37m      47 │     @let bcvLine = conv.lines.find([32misBcvLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:31:15:
+[37m      31 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2552: Cannot find name 'UsdVesConversionLine'. Did you mean 'UsdVesConversionResult'?[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.ts:136:37:
+[37m      136 │ ...dVesDeskLine = computed<[32mUsdVesConversionLine[37m | undefined>(() => {
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2552: Cannot find name 'UsdVesConversionLine'. Did you mean 'UsdVesConversionResult'?[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.ts:140:36:
+[37m      140 │ ...sdVesP2pLine = computed<[32mUsdVesConversionLine[37m | undefined>(() => {
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2552: Cannot find name 'UsdVesConversionLine'. Did you mean 'UsdVesConversionResult'?[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.ts:144:36:
+[37m      144 │ ...sdVesBcvLine = computed<[32mUsdVesConversionLine[37m | undefined>(() => {
+          ╵                            [32m~~~~~~~~~~~~~~~~~~~~[0m
+
+
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Application bundle generation failed. [0.843 seconds] - 2026-10-19T22:05:57.704Z
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isDeskLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:45:36:
+[37m      45 │     @let deskLine = conv.lines.find([32misDeskLine[37m);
+         ╵                                     [32m~~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:32:15:
+[37m      32 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isP2pLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:46:35:
+[37m      46 │     @let p2pLine = conv.lines.find([32misP2pLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:32:15:
+[37m      32 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mTS2339: Property 'isBcvLine' does not exist on type 'RemittancesComponent'.[0m [1m[35m[plugin angular-compiler][0m
+
+    src/app/features/remittances/remittances.component.html:47:35:
+[37m      47 │     @let bcvLine = conv.lines.find([32misBcvLine[37m);
+         ╵                                    [32m~~~~~~~~~[0m
+
+  Error occurs in the template of component RemittancesComponent.
+
+    src/app/features/remittances/remittances.component.ts:32:15:
+[37m      32 │   templateUrl: [32m'./remittances.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.32 kB | 
+chunk-2G5DXRM4.js   | -                     | 126.18 kB | 
+chunk-WDSNPSFT.js   | -                     |  63.43 kB | 
+styles.css          | styles                |  61.50 kB | 
+chunk-GEO7Q7D2.js   | -                     |  58.68 kB | 
+chunk-SNGLMW7M.js   | -                     |  54.53 kB | 
+chunk-JWPXDPUA.js   | -                     |  41.26 kB | 
+chunk-6WKFIMBX.js   | -                     |  26.10 kB | 
+chunk-DKGO4KKA.js   | -                     |  22.13 kB | 
+chunk-YYG4BSDE.js   | -                     |  13.61 kB | 
+chunk-R3SNOOY4.js   | -                     |   9.42 kB | 
+chunk-Q4HJWRRU.js   | -                     |   7.24 kB | 
+chunk-JBIFHWUB.js   | -                     |   6.76 kB | 
+chunk-3RUMRK6N.js   | -                     |   5.13 kB | 
+chunk-7327FIG4.js   | -                     |   4.60 kB | 
+chunk-MAGUZX4B.js   | -                     |   4.38 kB | 
+chunk-DF5UJVAT.js   | -                     |   2.88 kB | 
+chunk-IJ7ZMCDO.js   | -                     |   1.86 kB | 
+chunk-6NVDBKOO.js   | -                     |   1.51 kB | 
+chunk-CZJLB7T5.js   | -                     |   1.13 kB | 
+chunk-OOF7BLQG.js   | -                     | 676 bytes | 
+
+                    | Initial total         | 774.32 kB
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-IG2GTWY7.js   | spread-monitor        |   1.02 MB | 
+chunk-7O6SHNLM.js   | finance-360-component | 897.55 kB | 
+chunk-N52MDWZ7.js   | copilot               | 648.00 kB | 
+chunk-CK2QES3A.js   | income-calculator     | 427.87 kB | 
+chunk-5MALTR7W.js   | dashboard             | 421.30 kB | 
+chunk-VJTZ2F62.js   | operation-log         | 379.24 kB | 
+chunk-A2DYITPD.js   | guide                 | 280.76 kB | 
+chunk-OCRRROMB.js   | p2p-radar-component   | 207.62 kB | 
+chunk-LQWGW2Z5.js   | triangulation         | 203.68 kB | 
+chunk-RA3SXPBW.js   | -                     | 167.30 kB | 
+chunk-ATTY5JXA.js   | growth-projector      | 157.38 kB | 
+chunk-JAZSFKFK.js   | remittances-component | 143.40 kB | 
+chunk-RAQCIIUU.js   | stats                 | 131.39 kB | 
+chunk-OKEY2LZU.js   | receipt-scanner       | 129.40 kB | 
+chunk-ALVNETZS.js   | mcp-hub               | 122.80 kB | 
+...and 20 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [1.320 seconds] - 2026-10-19T22:06:17.775Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.32 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-OTIYSXIU.js   | remittances-component | 159.04 kB | 
+
+Application bundle generation complete. [1.917 seconds] - 2026-10-19T22:07:09.033Z
+
+Component update sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.32 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-7AGOOV3N.js   | remittances-component | 159.09 kB | 
+
+Application bundle generation complete. [5.534 seconds] - 2026-10-20T02:34:00.905Z
+
+Page reload sent to client(s).
+[2m11:00:05 p. m.[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mNG0956: The configured tracking expression (track by identity) caused re-creation of the entire collection of size 5. This is an expensive operation requiring destruction and subsequent creation of DOM nodes, directives, components etc. Please review the "track expression" and make sure that it uniquely identifies items in a collection. Find more at https://v22.angular.dev/errors/NG0956
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-Y7ML7CJW.js   | p2p-radar-component | 207.76 kB | 
+
+Application bundle generation complete. [5.382 seconds] - 2026-10-20T03:20:12.647Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-GDK447KJ.js   | p2p-radar-component | 208.52 kB | 
+
+Application bundle generation complete. [1.993 seconds] - 2026-10-20T03:20:30.199Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-R5WGIFXH.js   | p2p-radar-component | 208.52 kB | 
+
+Application bundle generation complete. [2.627 seconds] - 2026-10-20T03:21:02.377Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-EI2UUVNJ.js   | p2p-radar-component | 208.88 kB | 
+
+Application bundle generation complete. [2.515 seconds] - 2026-10-20T03:21:34.006Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-UHYQ47M2.js   | p2p-radar-component | 208.96 kB | 
+
+Application bundle generation complete. [3.245 seconds] - 2026-10-20T03:21:57.593Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-A6CWYO4F.js   | p2p-radar-component | 209.73 kB | 
+
+Application bundle generation complete. [2.950 seconds] - 2026-10-20T03:22:54.861Z
+
+Page reload sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-DMNPSK45.js   | p2p-radar-component | 213.71 kB | 
+
+Application bundle generation complete. [3.162 seconds] - 2026-10-20T03:24:33.951Z
+
+Component update sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names               |  Raw size
+main.js             | main                | 261.32 kB | 
+
+Lazy chunk files    | Names               |  Raw size
+chunk-U3HOD764.js   | p2p-radar-component | 216.03 kB | 
+
+Application bundle generation complete. [3.608 seconds] - 2026-10-20T03:25:01.120Z
+
+Component update sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Initial chunk files | Names                 |  Raw size
+main.js             | main                  | 261.32 kB | 
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-BTZPYNFR.js   | spread-monitor        |   1.02 MB | 
+chunk-2QE27Q3N.js   | finance-360-component | 897.55 kB | 
+chunk-MZ7GG2NC.js   | copilot               | 648.00 kB | 
+chunk-2MOUGSCD.js   | income-calculator     | 427.87 kB | 
+chunk-THYCHVS5.js   | dashboard             | 421.30 kB | 
+chunk-UQAZUB2U.js   | operation-log         | 379.24 kB | 
+chunk-NUPH7RLQ.js   | guide                 | 280.76 kB | 
+chunk-6UR77UL5.js   | triangulation         | 203.68 kB | 
+chunk-UZSFVXN3.js   | -                     | 167.51 kB | 
+chunk-G4A3DJUY.js   | growth-projector      | 157.38 kB | 
+chunk-EI7OH77J.js   | stats                 | 131.39 kB | 
+chunk-KND2OB36.js   | mcp-hub               | 122.80 kB | 
+chunk-7UGTEUAK.js   | risk-rules            | 102.02 kB | 
+chunk-TGGKBQTV.js   | -                     |  63.17 kB | 
+chunk-CKXDIKVG.js   | -                     |  26.33 kB | 
+...and 1 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [13.855 seconds] - 2026-10-20T13:15:39.387Z
+
+Page reload sent to client(s).

@@ -1,267 +1,540 @@
 <div class="remittances-container">
-  <!-- Page Header -->
+  <!-- Page Header & Tab Navigation -->
   <header class="page-header">
     <div class="header-titles">
       <div class="badge-pill">
         <span class="badge-dot"></span>
-        <span>Cross-Border Commercial Engine</span>
+        <span>Commercial FX & Remittance Suite</span>
       </div>
-      <h1 class="main-title">Cotizador Comercial de Remesas</h1>
+      <h1 class="main-title">Mesa Comercial de Cambio & Remesas</h1>
       <p class="subtitle">
-        Calcula rutas multidivisa en segundos, deduce impuestos bancarios de origen (4x1000) y genera cotizaciones profesionales para WhatsApp.
+        Cotizador institucional de alta velocidad: conversión bidireccional USD ⇄ VES con referencias en vivo (BCV vs P2P) y cálculo de corredores internacionales con deducción de gravámenes.
       </p>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="view-tabs-bar">
+      <button
+        type="button"
+        class="tab-btn"
+        [class.active]="activeTab() === 'USD_VES_DUAL'"
+        (click)="activeTab.set('USD_VES_DUAL')"
+      >
+        <span class="tab-icon">💱</span>
+        <span>Conversor Express USD ⇄ VES</span>
+      </button>
+
+      <button
+        type="button"
+        class="tab-btn"
+        [class.active]="activeTab() === 'CORRIDORS'"
+        (click)="activeTab.set('CORRIDORS')"
+      >
+        <span class="tab-icon">🌍</span>
+        <span>Corredores Internacionales (Multidivisa)</span>
+      </button>
     </div>
   </header>
 
-  <!-- Corridor Selection Grid -->
-  <div class="corridor-selector">
-    @for (corridor of corridors; track corridor.id) {
-      <button
-        type="button"
-        class="corridor-card"
-        [class.active]="corridor.id === selectedCorridorId()"
-        (click)="selectCorridor(corridor.id)"
-      >
-        <div class="corridor-flags">
-          <span class="flag">{{ corridor.originFlag }}</span>
-          <span class="arrow">➔</span>
-          <span class="flag">{{ corridor.destFlag }}</span>
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 1: CONVERSOR EXPRESS USD ⇄ VES (DÓLARES Y BOLÍVARES)
+       ══════════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'USD_VES_DUAL') {
+    @let conv = usdVesConversion();
+    @let isUsdToVes = conv.direction === 'USD_TO_VES';
+    @let deskLine = usdVesDeskLine();
+    @let p2pLine = usdVesP2pLine();
+    @let bcvLine = usdVesBcvLine();
+
+    <div class="dual-converter-view">
+      <!-- Direction Swap Banner -->
+      <div class="direction-banner card-surface">
+        <div class="direction-selector">
+          <button
+            type="button"
+            class="direction-pill"
+            [class.active]="isUsdToVes"
+            (click)="usdVesDirection.set('USD_TO_VES')"
+          >
+            <span>🇺🇸 USD ➔ 🇻🇪 VES</span>
+            <span class="direction-sub">Dólares a Bolívares</span>
+          </button>
+
+          <button
+            type="button"
+            class="btn-swap-direction"
+            (click)="toggleUsdVesDirection()"
+            title="Invertir dirección de conversión"
+          >
+            ⇄
+          </button>
+
+          <button
+            type="button"
+            class="direction-pill"
+            [class.active]="!isUsdToVes"
+            (click)="usdVesDirection.set('VES_TO_USD')"
+          >
+            <span>🇻🇪 VES ➔ 🇺🇸 USD</span>
+            <span class="direction-sub">Bolívares a Dólares</span>
+          </button>
         </div>
-        <div class="corridor-meta">
-          <div class="corridor-name">{{ corridor.name }}</div>
-          <div class="corridor-method">{{ corridor.paymentMethod }}</div>
-        </div>
-        @if (corridor.defaultBankingFeePct > 0) {
-          <span class="tax-tag">Gravamen {{ corridor.defaultBankingFeePct }}%</span>
+
+        @if (conv.exchangeGapPct !== null) {
+          <div class="exchange-gap-pill font-mono">
+            <span>Brecha P2P vs BCV:</span>
+            <strong class="stat-amber">+{{ conv.exchangeGapPct | number:'1.2-2' }}%</strong>
+          </div>
         }
-      </button>
+      </div>
+
+      <!-- Main Workspace Grid: Controls & Comparison Table -->
+      <div class="dual-workspace-grid">
+        <!-- Left: Input & Margin Controls -->
+        <div class="dual-controls-panel card-surface">
+          <div class="input-header">
+            <label class="input-label" for="usd-ves-amount">
+              {{ isUsdToVes ? 'Monto en Dólares a cambiar (USD)' : 'Monto en Bolívares a cambiar (VES)' }}
+            </label>
+            <span class="currency-tag">{{ conv.fromCurrency }}</span>
+          </div>
+
+          <div class="amount-input-wrapper">
+            <input
+              id="usd-ves-amount"
+              type="number"
+              class="amount-input font-mono"
+              [ngModel]="usdVesAmount()"
+              (ngModelChange)="usdVesAmount.set(+$event)"
+              min="1"
+              step="any"
+            />
+          </div>
+
+          <!-- Quick Amount Chips -->
+          <div class="quick-amounts-row">
+            <span class="quick-label">Montos rápidos:</span>
+            <div class="chips-wrap">
+              @if (isUsdToVes) {
+                @for (amt of usdQuickAmounts; track amt) {
+                  <button
+                    type="button"
+                    class="chip-amount font-mono"
+                    [class.active]="usdVesAmount() === amt"
+                    (click)="setUsdVesAmount(amt)"
+                  >
+                    ${{ amt }}
+                  </button>
+                }
+              } @else {
+                @for (amt of vesQuickAmounts; track amt) {
+                  <button
+                    type="button"
+                    class="chip-amount font-mono"
+                    [class.active]="usdVesAmount() === amt"
+                    (click)="setUsdVesAmount(amt)"
+                  >
+                    Bs {{ amt | number:'1.0-0' }}
+                  </button>
+                }
+              }
+            </div>
+          </div>
+
+          <!-- Tuning Parameters -->
+          <div class="tuning-divider"></div>
+
+          <div class="dual-parameters-grid">
+            <div class="tuning-field">
+              <label for="desk-margin-input">Margen de la Mesa (%)</label>
+              <div class="input-with-suffix">
+                <input
+                  id="desk-margin-input"
+                  type="number"
+                  class="tuning-input font-mono"
+                  [ngModel]="usdVesDeskMarginPct()"
+                  (ngModelChange)="usdVesDeskMarginPct.set(+$event)"
+                  step="0.1"
+                  min="0"
+                  max="49"
+                />
+                <span class="suffix">%</span>
+              </div>
+            </div>
+
+            <div class="tuning-field">
+              <label for="desk-name-dual">Firma de la Mesa</label>
+              <input
+                id="desk-name-dual"
+                type="text"
+                class="tuning-input text-input"
+                [ngModel]="deskName()"
+                (ngModelChange)="deskName.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Multi-Rate Benchmark & Liquidation Cards -->
+        <div class="dual-results-panel">
+          <!-- 3-Way Rate Comparison Cards -->
+          <div class="rates-comparison-grid">
+            <!-- 1. Tasa Mesa (Final para el cliente) -->
+            <div class="rate-card rate-card-desk card-surface">
+              <div class="rate-card-header">
+                <span class="rate-badge-pill desk-badge">⚡ TASA DE TU MESA</span>
+                <span class="margin-tag font-mono">Margen: {{ usdVesDeskMarginPct() }}%</span>
+              </div>
+              <div class="rate-value-row">
+                <span class="rate-title">Tasa Aplicada</span>
+                <span class="rate-number font-mono stat-cyan">
+                  {{ (deskLine?.rate ?? 0) | number:'1.2-4' }} VES
+                </span>
+              </div>
+              <div class="payout-highlight-box">
+                <span class="payout-label">El cliente recibe neto:</span>
+                <span class="payout-val font-mono stat-emerald">
+                  {{ isUsdToVes ? 'Bs ' : '$' }}{{ (deskLine?.result ?? 0) | number:'1.2-2' }} {{ conv.toCurrency }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 2. Tasa Binance P2P Real -->
+            <div class="rate-card card-surface">
+              <div class="rate-card-header">
+                <span class="rate-badge-pill p2p-badge">BINANCE P2P EN VIVO</span>
+                <span class="side-tag">{{ isUsdToVes ? 'Venta (Bid)' : 'Compra (Ask)' }}</span>
+              </div>
+              <div class="rate-value-row">
+                <span class="rate-title">Tasa P2P</span>
+                <span class="rate-number font-mono">
+                  {{ (p2pLine?.rate ?? 0) | number:'1.2-2' }} VES
+                </span>
+              </div>
+              <div class="payout-sub-box font-mono">
+                <span>Equivalente sin margen:</span>
+                <strong>{{ isUsdToVes ? 'Bs ' : '$' }}{{ (p2pLine?.result ?? 0) | number:'1.2-2' }}</strong>
+              </div>
+            </div>
+
+            <!-- 3. Tasa Oficial BCV -->
+            <div class="rate-card card-surface">
+              <div class="rate-card-header">
+                <span class="rate-badge-pill bcv-badge">OFICIAL BCV</span>
+                <span class="side-tag">Referencial</span>
+              </div>
+              <div class="rate-value-row">
+                <span class="rate-title">Tasa BCV</span>
+                <span class="rate-number font-mono">
+                  {{ (bcvLine?.rate ?? 0) | number:'1.2-2' }} VES
+                </span>
+              </div>
+              <div class="payout-sub-box font-mono">
+                <span>Al cambio oficial:</span>
+                <strong>{{ isUsdToVes ? 'Bs ' : '$' }}{{ (bcvLine?.result ?? 0) | number:'1.2-2' }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- WhatsApp Direct Copy Card -->
+          <div class="whatsapp-card card-surface">
+            <div class="whatsapp-header">
+              <div class="wa-brand">
+                <span class="wa-icon">💬</span>
+                <span class="wa-title">Cotización Lista para WhatsApp / Telegram</span>
+              </div>
+              <button
+                type="button"
+                class="btn-copy-wa"
+                [class.btn-copied]="usdVesCopied()"
+                (click)="copyUsdVesQuote()"
+              >
+                @if (usdVesCopied()) {
+                  <span>✅ ¡Copiado al Portapapeles!</span>
+                } @else {
+                  <span>📋 Copiar Cotización USD ⇄ VES</span>
+                }
+              </button>
+            </div>
+
+            <div class="whatsapp-bubble">
+              <pre class="bubble-content font-mono">{{ usdVesWhatsAppMessage() }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 2: CORREDORES INTERNACIONALES (MULTIDIVISA)
+       ══════════════════════════════════════════════════════════════════════════ -->
+  @if (activeTab() === 'CORRIDORS') {
+    <!-- Corridor Selection Grid -->
+    <div class="corridor-selector">
+      @for (corridor of corridors; track corridor.id) {
+        <button
+          type="button"
+          class="corridor-card"
+          [class.active]="corridor.id === selectedCorridorId()"
+          (click)="selectCorridor(corridor.id)"
+        >
+          <div class="corridor-flags">
+            <span class="flag">{{ corridor.originFlag }}</span>
+            <span class="arrow">➔</span>
+            <span class="flag">{{ corridor.destFlag }}</span>
+          </div>
+          <div class="corridor-meta">
+            <div class="corridor-name">{{ corridor.name }}</div>
+            <div class="corridor-method">{{ corridor.paymentMethod }}</div>
+          </div>
+          @if (corridor.defaultBankingFeePct > 0) {
+            <span class="tax-tag">Gravamen {{ corridor.defaultBankingFeePct }}%</span>
+          }
+        </button>
+      }
+    </div>
+
+    <!-- Validation Issues Banner (if any) -->
+    @if (!quote().isValid && quote().issues.length > 0) {
+      <div class="validation-issues-card">
+        <div class="issue-icon">⚠️</div>
+        <div class="issue-content">
+          <strong>Atención: la cotización no es válida para emisión:</strong>
+          <ul>
+            @for (issue of quote().issues; track issue.code) {
+              <li>{{ issue.message }}</li>
+            }
+          </ul>
+        </div>
+      </div>
     }
-  </div>
 
-  <!-- Workspace Grid: Inputs & Live Preview -->
-  <div class="workspace-grid">
-    <!-- Left Column: Parameters -->
-    <div class="parameters-panel">
-      <!-- Mode Toggle -->
-      <div class="mode-toggle-card">
-        <span class="toggle-label">Modo de Cotización:</span>
-        <div class="mode-buttons">
-          <button
-            type="button"
-            class="btn-mode"
-            [class.active]="calculationMode() === 'BY_SEND_AMOUNT'"
-            (click)="calculationMode.set('BY_SEND_AMOUNT')"
-          >
-            Monto a Enviar ({{ activeCorridor().originCurrency }})
-          </button>
-          <button
-            type="button"
-            class="btn-mode"
-            [class.active]="calculationMode() === 'BY_RECEIVE_AMOUNT'"
-            (click)="calculationMode.set('BY_RECEIVE_AMOUNT')"
-          >
-            Monto a Recibir ({{ activeCorridor().destCurrency }})
-          </button>
+    <!-- Workspace Grid: Inputs & Live Preview -->
+    <div class="workspace-grid">
+      <!-- Left Column: Parameters -->
+      <div class="parameters-panel">
+        <!-- Mode Toggle -->
+        <div class="mode-toggle-card">
+          <span class="toggle-label">Modo de Cotización:</span>
+          <div class="mode-buttons">
+            <button
+              type="button"
+              class="btn-mode"
+              [class.active]="calculationMode() === 'BY_SEND_AMOUNT'"
+              (click)="calculationMode.set('BY_SEND_AMOUNT')"
+            >
+              Monto a Enviar ({{ activeCorridor().originCurrency }})
+            </button>
+            <button
+              type="button"
+              class="btn-mode"
+              [class.active]="calculationMode() === 'BY_RECEIVE_AMOUNT'"
+              (click)="calculationMode.set('BY_RECEIVE_AMOUNT')"
+            >
+              Monto a Recibir ({{ activeCorridor().destCurrency }})
+            </button>
+          </div>
         </div>
-      </div>
 
-      <!-- Main Input Amount -->
-      <div class="input-card">
-        <div class="input-header">
-          <label class="input-label" for="remittance-input-amount">
-            {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en ' + activeCorridor().destCurrency }}
-          </label>
-          <span class="currency-tag">
-            {{ calculationMode() === 'BY_SEND_AMOUNT' ? activeCorridor().originCurrency : activeCorridor().destCurrency }}
-          </span>
-        </div>
-        <div class="amount-input-wrapper">
-          <input
-            id="remittance-input-amount"
-            type="number"
-            class="amount-input"
-            [ngModel]="inputAmount()"
-            (ngModelChange)="inputAmount.set($event)"
-            min="1"
-            step="any"
-          />
-        </div>
-      </div>
-
-      <!-- Rates & Frictions Tuning -->
-      <div class="tuning-card">
-        <h3 class="tuning-title">Parámetros de Tasa & Fricción</h3>
-        
-        <div class="tuning-grid">
-          <!-- Origin Rate -->
-          <div class="tuning-field">
-            <div class="field-label-row">
-              <label for="origin-crypto-rate">Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
-              @if (liveRateSide() === 'origin') {
-                <span class="live-tag">P2P En Vivo</span>
-              }
-            </div>
+        <!-- Main Input Amount -->
+        <div class="input-card">
+          <div class="input-header">
+            <label class="input-label" for="remittance-input-amount">
+              {{ calculationMode() === 'BY_SEND_AMOUNT' ? 'Monto que envía el cliente' : 'Monto neto que debe recibir el cliente en ' + activeCorridor().destCurrency }}
+            </label>
+            <span class="currency-tag">
+              {{ calculationMode() === 'BY_SEND_AMOUNT' ? activeCorridor().originCurrency : activeCorridor().destCurrency }}
+            </span>
+          </div>
+          <div class="amount-input-wrapper">
             <input
-              id="origin-crypto-rate"
+              id="remittance-input-amount"
               type="number"
-              class="tuning-input"
-              [ngModel]="originCryptoRate()"
-              (ngModelChange)="originCryptoRate.set($event)"
+              class="amount-input font-mono"
+              [ngModel]="inputAmount()"
+              (ngModelChange)="inputAmount.set(+$event)"
+              min="1"
               step="any"
             />
           </div>
+        </div>
 
-          <!-- Destination Rate -->
-          <div class="tuning-field">
-            <div class="field-label-row">
-              <label for="dest-crypto-rate">Tasa Salida ({{ activeCorridor().destCurrency }}/USDT)</label>
-              @if (liveRateSide() === 'dest') {
-                <span class="live-tag">P2P En Vivo</span>
+        <!-- Rates & Frictions Tuning -->
+        <div class="tuning-card">
+          <h3 class="tuning-title">Parámetros de Tasa & Fricción</h3>
+          
+          <div class="tuning-grid">
+            <!-- Origin Rate -->
+            <div class="tuning-field">
+              <div class="field-label-row">
+                <label for="origin-crypto-rate">Tasa Origen ({{ activeCorridor().originCurrency }}/USDT)</label>
+                @if (liveRateSide() === 'origin') {
+                  <span class="live-tag">P2P En Vivo</span>
+                }
+              </div>
+              <input
+                id="origin-crypto-rate"
+                type="number"
+                class="tuning-input font-mono"
+                [ngModel]="originCryptoRate()"
+                (ngModelChange)="originCryptoRate.set(+$event)"
+                step="any"
+              />
+            </div>
+
+            <!-- Destination Rate -->
+            <div class="tuning-field">
+              <div class="field-label-row">
+                <label for="dest-crypto-rate">Tasa Salida ({{ activeCorridor().destCurrency }}/USDT)</label>
+                @if (liveRateSide() === 'dest') {
+                  <span class="live-tag">P2P En Vivo</span>
+                }
+              </div>
+              <input
+                id="dest-crypto-rate"
+                type="number"
+                class="tuning-input font-mono"
+                [ngModel]="destCryptoRate()"
+                (ngModelChange)="destCryptoRate.set(+$event)"
+                step="any"
+              />
+            </div>
+
+            <!-- Operator Margin -->
+            <div class="tuning-field">
+              <label for="operator-margin-pct">Margen de la Mesa (%)</label>
+              <div class="input-with-suffix">
+                <input
+                  id="operator-margin-pct"
+                  type="number"
+                  class="tuning-input font-mono"
+                  [ngModel]="operatorMarginPct()"
+                  (ngModelChange)="operatorMarginPct.set(+$event)"
+                  step="0.1"
+                  min="0"
+                  max="49"
+                />
+                <span class="suffix">%</span>
+              </div>
+            </div>
+
+            <!-- Banking Friction (e.g. 4x1000) -->
+            <div class="tuning-field">
+              <label for="banking-fee-pct">Fricción Bancaria / 4x1000 (%)</label>
+              <div class="input-with-suffix">
+                <input
+                  id="banking-fee-pct"
+                  type="number"
+                  class="tuning-input font-mono"
+                  [ngModel]="bankingFeePct()"
+                  (ngModelChange)="bankingFeePct.set(+$event)"
+                  step="0.1"
+                  min="0"
+                />
+                <span class="suffix">%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Customization for WhatsApp -->
+          <div class="custom-branding-grid">
+            <div class="tuning-field">
+              <label for="desk-name-corridors">Firma de tu Mesa</label>
+              <input
+                id="desk-name-corridors"
+                type="text"
+                class="tuning-input text-input"
+                [ngModel]="deskName()"
+                (ngModelChange)="deskName.set($event)"
+                placeholder="Ej. Caracas Trading Desk"
+              />
+            </div>
+            <div class="tuning-field">
+              <label for="validity-minutes">Validez de la Cotización</label>
+              <div class="input-with-suffix">
+                <input
+                  id="validity-minutes"
+                  type="number"
+                  class="tuning-input font-mono"
+                  [ngModel]="validityMinutes()"
+                  (ngModelChange)="validityMinutes.set(+$event)"
+                  min="5"
+                  max="60"
+                />
+                <span class="suffix">min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Quote Results & WhatsApp Action -->
+      <div class="results-panel">
+        <!-- Payout Hero Card -->
+        <div class="hero-quote-card">
+          <div class="hero-top">
+            <span class="hero-label">Liquidación Final al Cliente</span>
+            <span class="effective-rate-badge font-mono">
+              @if (quote().originCurrency === 'VES') {
+                Tasa: 1 {{ quote().destCurrency }} = {{ quote().inverseRate | number:'1.2-2' }} {{ quote().originCurrency }}
+              } @else {
+                Tasa: 1 {{ quote().originCurrency }} = {{ quote().effectiveRate }} {{ quote().destCurrency }}
               }
-            </div>
-            <input
-              id="dest-crypto-rate"
-              type="number"
-              class="tuning-input"
-              [ngModel]="destCryptoRate()"
-              (ngModelChange)="destCryptoRate.set($event)"
-              step="any"
-            />
+            </span>
+          </div>
+          
+          <div class="hero-amount-display">
+            <span class="hero-currency">{{ quote().destCurrency }}</span>
+            <span class="hero-number font-mono">{{ quote().destPayoutAmount | number:'1.2-2' }}</span>
           </div>
 
-          <!-- Operator Margin -->
-          <div class="tuning-field">
-            <label for="operator-margin-pct">Margen de la Mesa (%)</label>
-            <div class="input-with-suffix">
-              <input
-                id="operator-margin-pct"
-                type="number"
-                class="tuning-input"
-                [ngModel]="operatorMarginPct()"
-                (ngModelChange)="operatorMarginPct.set($event)"
-                step="0.1"
-                min="0"
-                max="50"
-              />
-              <span class="suffix">%</span>
+          <div class="hero-breakdown-row font-mono">
+            <div class="breakdown-stat">
+              <span class="stat-name">Monto Bruto Enviado</span>
+              <span class="stat-value">{{ quote().grossOriginAmount | number:'1.2-2' }} {{ quote().originCurrency }}</span>
             </div>
-          </div>
-
-          <!-- Banking Friction (e.g. 4x1000) -->
-          <div class="tuning-field">
-            <label for="banking-fee-pct">Fricción Bancaria / 4x1000 (%)</label>
-            <div class="input-with-suffix">
-              <input
-                id="banking-fee-pct"
-                type="number"
-                class="tuning-input"
-                [ngModel]="bankingFeePct()"
-                (ngModelChange)="bankingFeePct.set($event)"
-                step="0.1"
-                min="0"
-              />
-              <span class="suffix">%</span>
+            <div class="breakdown-stat">
+              <span class="stat-name">Fricción Bancaria (Impuesto)</span>
+              <span class="stat-value text-warning">-{{ quote().bankingFeeTotal | number:'1.2-2' }} {{ quote().originCurrency }}</span>
+            </div>
+            <div class="breakdown-stat">
+              <span class="stat-name">Ganancia Neta Mesa</span>
+              <span class="stat-value text-success">+{{ quote().operatorMarginUsdt | number:'1.2-2' }} USDT ({{ quote().operatorProfitDestFiat | number:'1.0-2' }} {{ quote().destCurrency }})</span>
             </div>
           </div>
         </div>
 
-        <!-- Customization for WhatsApp -->
-        <div class="custom-branding-grid">
-          <div class="tuning-field">
-            <label for="desk-name">Nombre de tu Mesa / Negocio</label>
-            <input
-              id="desk-name"
-              type="text"
-              class="tuning-input text-input"
-              [ngModel]="deskName()"
-              (ngModelChange)="deskName.set($event)"
-              placeholder="Ej. Caracas Trading Desk"
-            />
-          </div>
-          <div class="tuning-field">
-            <label for="validity-minutes">Validez de la Cotización</label>
-            <div class="input-with-suffix">
-              <input
-                id="validity-minutes"
-                type="number"
-                class="tuning-input"
-                [ngModel]="validityMinutes()"
-                (ngModelChange)="validityMinutes.set($event)"
-                min="5"
-                max="60"
-              />
-              <span class="suffix">min</span>
+        <!-- WhatsApp Preview Card -->
+        <div class="whatsapp-card">
+          <div class="whatsapp-header">
+            <div class="wa-brand">
+              <span class="wa-icon">💬</span>
+              <span class="wa-title">Vista Previa para WhatsApp / Telegram</span>
             </div>
+            <button
+              type="button"
+              class="btn-copy-wa"
+              [class.btn-copied]="copied()"
+              (click)="copyQuoteToClipboard()"
+            >
+              @if (copied()) {
+                <span>✅ ¡Copiado al Portapapeles!</span>
+              } @else {
+                <span>📋 Copiar Cotización</span>
+              }
+            </button>
+          </div>
+
+          <div class="whatsapp-bubble">
+            <pre class="bubble-content font-mono">{{ formattedMessage() }}</pre>
+          </div>
+
+          <div class="whatsapp-footer-hint">
+            <span>💡 Consejo del Arquitecto: La cláusula anti-terceros protege tu cuenta bancaria de congelamientos preventivos de SUDEBAN.</span>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Right Column: Quote Results & WhatsApp Action -->
-    <div class="results-panel">
-      <!-- Payout Hero Card -->
-      <div class="hero-quote-card">
-        <div class="hero-top">
-          <span class="hero-label">Liquidación Final al Cliente</span>
-          <span class="effective-rate-badge">
-            @if (quote().originCurrency === 'VES') {
-              Tasa: 1 {{ quote().destCurrency }} = {{ quote().inverseRate | number:'1.2-2' }} {{ quote().originCurrency }}
-            } @else {
-              Tasa: 1 {{ quote().originCurrency }} = {{ quote().effectiveRate }} {{ quote().destCurrency }}
-            }
-          </span>
-        </div>
-        
-        <div class="hero-amount-display">
-          <span class="hero-currency">{{ quote().destCurrency }}</span>
-          <span class="hero-number">{{ quote().destPayoutAmount | number:'1.2-2' }}</span>
-        </div>
-
-        <div class="hero-breakdown-row">
-          <div class="breakdown-stat">
-            <span class="stat-name">Monto Bruto Enviado</span>
-            <span class="stat-value">{{ quote().grossOriginAmount | number:'1.2-2' }} {{ quote().originCurrency }}</span>
-          </div>
-          <div class="breakdown-stat">
-            <span class="stat-name">Fricción Bancaria (Impuesto)</span>
-            <span class="stat-value text-warning">-{{ quote().bankingFeeTotal | number:'1.2-2' }} {{ quote().originCurrency }}</span>
-          </div>
-          <div class="breakdown-stat">
-            <span class="stat-name">Ganancia Neta Mesa</span>
-            <span class="stat-value text-success">+{{ quote().operatorMarginUsdt | number:'1.2-2' }} USDT ({{ quote().operatorProfitDestFiat | number:'1.0-2' }} {{ quote().destCurrency }})</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- WhatsApp Preview Card -->
-      <div class="whatsapp-card">
-        <div class="whatsapp-header">
-          <div class="wa-brand">
-            <span class="wa-icon">💬</span>
-            <span class="wa-title">Vista Previa para WhatsApp / Telegram</span>
-          </div>
-          <button
-            type="button"
-            class="btn-copy-wa"
-            [class.btn-copied]="copied()"
-            (click)="copyQuoteToClipboard()"
-          >
-            @if (copied()) {
-              <span>✅ ¡Copiado al Portapapeles!</span>
-            } @else {
-              <span>📋 Copiar Cotización</span>
-            }
-          </button>
-        </div>
-
-        <div class="whatsapp-bubble">
-          <pre class="bubble-content">{{ formattedMessage() }}</pre>
-        </div>
-
-        <div class="whatsapp-footer-hint">
-          <span>💡 Consejo del Arquitecto: Copiá el mensaje directamente y pegalo en tu chat con el cliente. La cláusula anti-terceros protege tu cuenta de congelamientos preventivos.</span>
-        </div>
-      </div>
-    </div>
-  </div>
+  }
 </div>

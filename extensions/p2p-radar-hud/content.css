@@ -1,0 +1,378 @@
+/**
+ * P2P Radar HUD - Tactical Terminal Overlay CSS
+ * Dark mode institutional styling for Binance P2P
+ */
+
+#p2p-radar-hud-root {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #e2e8f0;
+  box-sizing: border-box;
+  user-select: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#p2p-radar-hud-root * {
+  box-sizing: border-box;
+}
+
+#p2p-radar-hud-root .font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+}
+
+/* Card Surface */
+#p2p-radar-hud-root .hud-card {
+  width: 380px;
+  background: rgba(18, 22, 31, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid #1e2533;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+/* Header & Drag Handle */
+#p2p-radar-hud-root .hud-header {
+  background: #0e121a;
+  border-bottom: 1px solid #1e2533;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+}
+
+#p2p-radar-hud-root .hud-header:active {
+  cursor: grabbing;
+}
+
+#p2p-radar-hud-root .hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#p2p-radar-hud-root .pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: p2pHudPulse 1.8s infinite ease-in-out;
+}
+
+#p2p-radar-hud-root .hud-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+#p2p-radar-hud-root .hud-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#p2p-radar-hud-root .hud-btn-icon {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+#p2p-radar-hud-root .hud-btn-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* Body */
+#p2p-radar-hud-root .hud-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+#p2p-radar-hud-root .hud-body::-webkit-scrollbar {
+  width: 4px;
+}
+#p2p-radar-hud-root .hud-body::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 4px;
+}
+
+/* Top Opportunity Hero Banner */
+#p2p-radar-hud-root .opportunity-hero {
+  background: #0b0e14;
+  border: 1px solid #1e2533;
+  border-left: 3px solid #10b981;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#p2p-radar-hud-root .opportunity-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#p2p-radar-hud-root .badge-hero {
+  font-size: 10px;
+  font-weight: 800;
+  color: #10b981;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#p2p-radar-hud-root .spread-pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+#p2p-radar-hud-root .route-path-text {
+  font-size: 12px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#p2p-radar-hud-root .arrow-accent {
+  color: #3b82f6;
+  font-weight: bold;
+}
+
+#p2p-radar-hud-root .profit-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 5px;
+}
+
+#p2p-radar-hud-root .profit-highlight {
+  color: #10b981;
+  font-weight: 700;
+}
+
+/* Suggested Action Box */
+#p2p-radar-hud-root .action-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #141a24;
+  border: 1px solid #253347;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+#p2p-radar-hud-root .target-rate-info {
+  display: flex;
+  flex-direction: column;
+}
+
+#p2p-radar-hud-root .target-rate-label {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+#p2p-radar-hud-root .target-rate-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: #06b6d4;
+}
+
+#p2p-radar-hud-root .btn-copy-target {
+  background: #2563eb;
+  border: none;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+#p2p-radar-hud-root .btn-copy-target:hover {
+  background: #1d4ed8;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
+}
+
+#p2p-radar-hud-root .btn-copy-target.copied {
+  background: #10b981;
+}
+
+/* Micro Orderbook Overview */
+#p2p-radar-hud-root .banks-summary-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#p2p-radar-hud-root .summary-bank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0b0e14;
+  border: 1px solid #1e2533;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+#p2p-radar-hud-root .bank-name-badge {
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#p2p-radar-hud-root .trend-mini-tag {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+#p2p-radar-hud-root .trend-mini-tag.trend-ALCISTA {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+#p2p-radar-hud-root .trend-mini-tag.trend-BAJISTA {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+#p2p-radar-hud-root .trend-mini-tag.trend-LATERAL {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+#p2p-radar-hud-root .bank-rates-preview {
+  display: flex;
+  gap: 10px;
+}
+
+#p2p-radar-hud-root .rate-col {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#p2p-radar-hud-root .rate-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+#p2p-radar-hud-root .buy-val {
+  color: #10b981;
+  font-weight: 700;
+}
+
+#p2p-radar-hud-root .sell-val {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+#p2p-radar-hud-root .bot-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7c3aed;
+  box-shadow: 0 0 6px #7c3aed;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+/* Footer info */
+#p2p-radar-hud-root .hud-footer {
+  background: #0e121a;
+  border-top: 1px solid #1e2533;
+  padding: 6px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* Minimized Pill Mode */
+#p2p-radar-hud-root.minimized .hud-card {
+  width: auto;
+  border-radius: 24px;
+}
+
+#p2p-radar-hud-root.minimized .hud-body,
+#p2p-radar-hud-root.minimized .hud-footer {
+  display: none;
+}
+
+#p2p-radar-hud-root.minimized .hud-header {
+  border-bottom: none;
+  padding: 6px 14px;
+  border-radius: 24px;
+}
+
+/* Waiting / Offline State */
+#p2p-radar-hud-root .hud-waiting {
+  padding: 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#p2p-radar-hud-root .hud-waiting-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #1e2533;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: p2pHudSpin 1s infinite linear;
+  margin: 0 auto;
+}
+
+@keyframes p2pHudPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.9); }
+}
+
+@keyframes p2pHudSpin {
+  100% { transform: rotate(360deg); }
+}
