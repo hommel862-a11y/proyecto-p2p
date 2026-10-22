@@ -1,18 +1,18 @@
 <div class="compliance-cockpit-container" [class.privacy-active]="privacyMode()">
-  <!-- 1. BARRA SUPERIOR DE CONTROL, BÓVEDAS Y PUENTE FINANZAS 360 -->
+  <!-- 1. BARRA SUPERIOR GLOBAL -->
   <header class="cockpit-top-bar">
     <div class="brand-zone">
       <div class="brand-badge">
         <span class="live-pulse"></span>
-        <span class="badge-text">QUANT DUAL-LEDGER</span>
+        <span class="badge-text">P2P QUANT TREASURY</span>
       </div>
       <div class="brand-titles">
-        <h1 class="cockpit-title">Cumplimiento, Bancos &amp; CRM Operativo</h1>
-        <span class="cockpit-subtitle">Aislamiento de Bóvedas &bull; Cero Falsos Positivos &bull; Cuadre Contable Real</span>
+        <h1 class="cockpit-title">CRM Financiero &amp; Pipeline Operativo</h1>
+        <span class="cockpit-subtitle">Máquina de Estados &bull; Reserva de Cupo en Tránsito &bull; Doble Bóveda Desacoplada</span>
       </div>
     </div>
 
-    <!-- SELECTOR DE BÓVEDA ACTIVA (DESCOUPLED DUAL-LEDGER) -->
+    <!-- SELECTOR DE BÓVEDA (DUAL-LEDGER) -->
     <div class="vault-switcher-group">
       <div class="vault-segmented-control" role="tablist" aria-label="Selección de Bóveda">
         <button
@@ -25,7 +25,6 @@
         >
           <span class="vault-icon">⚡</span>
           <span class="vault-text">MESA P2P / OTC</span>
-          <span class="vault-counter">{{ deskState().filteredTrades.length }} ops</span>
         </button>
 
         <button
@@ -37,441 +36,704 @@
           [attr.aria-selected]="activeScope() === 'FINANCE_360'"
         >
           <span class="vault-icon">🏛️</span>
-          <span class="vault-text">FINANZAS 360</span>
-          <span class="vault-counter">{{ deskState().contacts.length }} ctas</span>
+          <span class="vault-text">FINANZAS 360 CRM</span>
         </button>
       </div>
     </div>
 
-    <!-- ACCIONES DE NAVEGACIÓN Y PUENTE -->
+    <!-- ACCIONES RÁPIDAS GLOBALES -->
     <div class="header-right-actions">
-      <!-- BOTÓN DE CORTE DIARIO A FINANZAS 360 (PUENTE UNIDIRECCIONAL) -->
+      <button
+        type="button"
+        class="action-btn btn-new-deal"
+        (click)="openNewDealModal()"
+        title="Crear un nuevo acuerdo o cotización en el pipeline"
+      >
+        <span class="btn-icon">⚡</span>
+        <span>+ Nuevo Trato</span>
+      </button>
+
+      <button
+        type="button"
+        class="action-btn btn-new-contact"
+        (click)="showAddContactModal.set(true)"
+        title="Registrar un nuevo cliente o contacto"
+      >
+        <span class="btn-icon">👤</span>
+        <span>+ Contacto</span>
+      </button>
+
+      <button
+        type="button"
+        class="action-btn btn-new-bank"
+        (click)="showAddBankModal.set(true)"
+        title="Agregar una cuenta bancaria o riel de pago"
+      >
+        <span class="btn-icon">🏦</span>
+        <span>+ Banco</span>
+      </button>
+
       @if (activeScope() === 'P2P_DESK') {
         <button
           type="button"
           class="action-btn bridge-settle-btn"
           [class.settled]="isTodaySettled()"
-          [disabled]="isTodaySettled() || deskKpis().todayNetPnlUsdt <= 0"
+          [disabled]="isTodaySettled() || kpis().closedNetProfitTodayUsdt <= 0"
           (click)="transferDailyProfitToFinance360()"
-          title="Transferir Ganancia Neta del día hacia el libro mayor de Finanzas 360"
+          title="Transferir ganancia neta cerrada hoy hacia Finanzas 360"
         >
           <span class="btn-icon">💰</span>
           @if (isTodaySettled()) {
-            <span>Ganancia Hoy Enviada (#SETTLE)</span>
+            <span>Ganancia Enviada (#SETTLE)</span>
           } @else {
-            <span>Enviar Ganancia Hoy a Finanzas 360 (+${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }})</span>
+            <span>Corte a Finanzas 360 (+${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }})</span>
           }
         </button>
       }
 
-      <!-- NAVEGACIÓN A FINANZAS 360 -->
-      <button
-        type="button"
-        class="action-btn nav-360-btn"
-        (click)="navigateToFinance360()"
-        title="Ir al módulo Finanzas 360"
-      >
-        <span>Ir a Finanzas 360</span>
-        <span class="btn-arrow">➔</span>
-      </button>
-
-      <!-- BOTÓN MODO PRIVACIDAD (ALT+P) -->
       <button
         type="button"
         class="action-btn privacy-toggle-btn"
         [class.active]="privacyMode()"
         (click)="togglePrivacyMode()"
-        title="Alternar Modo Privacidad para mostrar al cliente (Alt+P)"
+        title="Alternar Modo Privacidad para vista cliente (Alt+P)"
       >
         <span class="btn-icon">{{ privacyMode() ? '👁️' : '🔒' }}</span>
-        <span class="privacy-label">{{ privacyMode() ? 'Modo Privacidad [ON]' : 'Privacidad [Alt+P]' }}</span>
+        <span>{{ privacyMode() ? 'Privacidad [ON]' : 'Privacidad [Alt+P]' }}</span>
       </button>
     </div>
   </header>
 
-  <!-- 4 TARJETAS KPI EN TIEMPO REAL (TOP RIBBON) -->
-  <section class="kpi-ribbon-grid" aria-label="Indicadores Clave del Día">
-    <!-- KPI 1: Ganancia Neta Hoy -->
-    <div class="kpi-card" [class.positive]="deskKpis().todayNetPnlUsdt > 0">
-      <div class="kpi-header">
-        <span class="kpi-tag">GANANCIA NETA HOY</span>
-        <span class="kpi-badge" [class.badge-success]="deskKpis().todayNetPnlUsdt > 0" [class.badge-neutral]="deskKpis().todayNetPnlUsdt <= 0">
-          {{ deskKpis().todayNetPnlUsdt > 0 ? 'PnL Positivo' : 'Sin Ganancia' }}
-        </span>
-      </div>
-      <div class="kpi-body">
-        @if (privacyMode()) {
-          <span class="kpi-val masked">AUDITADO OK</span>
-        } @else {
-          <span class="kpi-val highlight">+${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }}</span>
-          <span class="kpi-unit">USDT</span>
-        }
-      </div>
-      <div class="kpi-footer">
-        <span>{{ deskState().todayTrades.length }} operaciones hoy</span>
-        @if (deskState().recommendedBankId) {
-          <span class="kpi-sublink">Banco óptimo activo</span>
-        }
-      </div>
-    </div>
+  <!-- 2. BARRA DE NAVEGACIÓN MODULAR (6 MÓDULOS) -->
+  <nav class="module-nav-bar" aria-label="Módulos del CRM">
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'DASHBOARD'"
+      (click)="setView('DASHBOARD')"
+    >
+      <span class="tab-icon">📊</span>
+      <span class="tab-text">Dashboard</span>
+    </button>
 
-    <!-- KPI 2: Margen & Eficiencia -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span class="kpi-tag">EFECTIVIDAD DE MARGEN</span>
-        <span class="kpi-badge badge-blue">Spread %</span>
-      </div>
-      <div class="kpi-body">
-        @if (privacyMode()) {
-          <span class="kpi-val masked">CALIBRADO</span>
-        } @else {
-          <span class="kpi-val">{{ deskKpis().spreadEfficiencyPct | number:'1.2-2' }}%</span>
-          <span class="kpi-unit">Neto</span>
-        }
-      </div>
-      <div class="kpi-footer">
-        <span>Rendimiento ponderado</span>
-      </div>
-    </div>
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'KANBAN'"
+      (click)="setView('KANBAN')"
+    >
+      <span class="tab-icon">📋</span>
+      <span class="tab-text">Pipeline Kanban</span>
+      <span class="tab-badge">{{ workspaceState().deals.length }}</span>
+    </button>
 
-    <!-- KPI 3: Volumen Operado Hoy -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span class="kpi-tag">VOLUMEN OPERADO HOY</span>
-        <span class="kpi-badge badge-neutral">Rotación</span>
-      </div>
-      <div class="kpi-body">
-        @if (privacyMode()) {
-          <span class="kpi-val masked">CONFIDENCIAL</span>
-        } @else {
-          <span class="kpi-val">${{ deskKpis().todayVolumeUsdt | number:'1.2-2' }}</span>
-          <span class="kpi-unit">USDT</span>
-        }
-      </div>
-      <div class="kpi-footer">
-        <span>Bóveda: {{ activeScope() }}</span>
-      </div>
-    </div>
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'CONTACTS'"
+      (click)="setView('CONTACTS')"
+    >
+      <span class="tab-icon">👥</span>
+      <span class="tab-text">Contactos CRM</span>
+      <span class="tab-badge">{{ workspaceState().contacts.length }}</span>
+    </button>
 
-    <!-- KPI 4: Comisiones / Fricción -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span class="kpi-tag">COMISIONES / FRICCIÓN</span>
-        <span class="kpi-badge badge-amber">Bancos &amp; Red</span>
-      </div>
-      <div class="kpi-body">
-        @if (privacyMode()) {
-          <span class="kpi-val masked">DEDUCIDO</span>
-        } @else {
-          <span class="kpi-val text-amber">${{ deskKpis().todayFrictionUsdt | number:'1.2-2' }}</span>
-          <span class="kpi-unit">USDT</span>
-        }
-      </div>
-      <div class="kpi-footer">
-        <span>Fricción bancaria deducida</span>
-      </div>
-    </div>
-  </section>
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'BANKS'"
+      (click)="setView('BANKS')"
+    >
+      <span class="tab-icon">🏦</span>
+      <span class="tab-text">Bancos y Escudo</span>
+      <span class="tab-badge">{{ workspaceState().bankTelemetry.length }}</span>
+    </button>
 
-  <!-- 2. BARRA OPERATIVA EN VIVO: VERIFICADOR ANTI-FRAUDE + REGISTRO RÁPIDO -->
-  <section class="live-action-bar" aria-label="Herramientas Operativas Inmediatas">
-    <!-- SUB-MÓDULO: VERIFICADOR INSTANTÁNEO DE REFERENCIAS -->
-    <div class="reference-verifier-panel" [class.collision-alert]="referenceCheck().isDuplicate">
-      <div class="verifier-title-row">
-        <span class="v-icon">🛡️</span>
-        <span class="v-label">VERIFICADOR ANTI-ESTAFA (REFERENCIAS)</span>
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'ACTIVITIES'"
+      (click)="setView('ACTIVITIES')"
+    >
+      <span class="tab-icon">📑</span>
+      <span class="tab-text">Actividades &amp; Parser</span>
+      <span class="tab-badge">{{ workspaceState().activities.length }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="nav-tab-btn"
+      [class.active]="activeView() === 'SETTINGS'"
+      (click)="setView('SETTINGS')"
+    >
+      <span class="tab-icon">⚙️</span>
+      <span class="tab-text">Ajustes &amp; Datos</span>
+    </button>
+  </nav>
+
+  <!-- 3. VISTAS MODULARES -->
+  <main class="cockpit-main-content">
+    <!-- ======================================================================= -->
+    <!-- VISTA 1: DASHBOARD DE TESORERÍA & KPIS -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'DASHBOARD') {
+      <div class="view-dashboard-container">
+        <!-- 4 Tarjetas KPI -->
+        <section class="kpi-ribbon-grid" aria-label="KPIs de Tesorería">
+          <div class="kpi-card" [class.positive]="kpis().closedNetProfitTodayUsdt > 0">
+            <div class="kpi-header">
+              <span class="kpi-tag">GANANCIA CERRADA HOY</span>
+              <span class="kpi-badge badge-success">{{ kpis().closedTradesCountToday }} cerrados</span>
+            </div>
+            <div class="kpi-body">
+              @if (privacyMode()) {
+                <span class="kpi-val masked">AUDITADO OK</span>
+              } @else {
+                <span class="kpi-val highlight">+${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }}</span>
+                <span class="kpi-unit">USDT</span>
+              }
+            </div>
+            <div class="kpi-footer">
+              <span>Margen ponderado: {{ kpis().spreadEfficiencyPct | number:'1.2-2' }}%</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-tag">VOLUMEN CERRADO HOY</span>
+              <span class="kpi-badge badge-blue">Liquidado</span>
+            </div>
+            <div class="kpi-body">
+              @if (privacyMode()) {
+                <span class="kpi-val masked">CONFIDENCIAL</span>
+              } @else {
+                <span class="kpi-val">${{ kpis().closedVolumeTodayUsdt | number:'1.2-2' }}</span>
+                <span class="kpi-unit">USDT</span>
+              }
+            </div>
+            <div class="kpi-footer">
+              <span>Bóveda: {{ activeScope() }}</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" [class.warn]="kpis().inTransitVolumeUsdt > 0">
+            <div class="kpi-header">
+              <span class="kpi-tag">VOLUMEN EN TRÁNSITO</span>
+              <span class="kpi-badge badge-amber">Flotante</span>
+            </div>
+            <div class="kpi-body">
+              @if (privacyMode()) {
+                <span class="kpi-val masked">RESERVADO</span>
+              } @else {
+                <span class="kpi-val text-amber">${{ kpis().inTransitVolumeUsdt | number:'1.2-2' }}</span>
+                <span class="kpi-unit">USDT</span>
+              }
+            </div>
+            <div class="kpi-footer">
+              <span>Cupo reservado en bancos</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-tag">CUENTAS POR COBRAR / PAGAR</span>
+              <span class="kpi-badge badge-neutral">Saldos Netos</span>
+            </div>
+            <div class="kpi-body">
+              <div class="receivables-col">
+                <span class="lbl">Por Cobrar:</span>
+                <span class="val text-red font-mono">${{ kpis().totalReceivablesUsdt | number:'1.2-2' }}</span>
+              </div>
+              <div class="receivables-col">
+                <span class="lbl">Por Pagar:</span>
+                <span class="val text-emerald font-mono">${{ kpis().totalPayablesUsdt | number:'1.2-2' }}</span>
+              </div>
+            </div>
+            <div class="kpi-footer">
+              <span>Saldos de clientes en cuenta corriente</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Curva Cuántica Intradía y Alerta de Tránsito -->
+        <div class="dashboard-mid-grid">
+          <!-- Curva SVG -->
+          <div class="cockpit-card chart-audit-card">
+            <div class="card-section-header">
+              <div class="title-with-pill">
+                <span class="icon">📈</span>
+                <h2 class="section-title">Curva Intradía de Ganancias Liquidadas (USDT)</h2>
+              </div>
+              <span class="chart-tag">HOY: {{ todayDateIso() }}</span>
+            </div>
+
+            <div class="dynamic-svg-chart-container">
+              @if (!workspaceState().svgPath || kpis().closedTradesCountToday === 0) {
+                <div class="chart-empty-state">
+                  <span class="chart-empty-icon">📊</span>
+                  <p>Sin operaciones liquidadas hoy para graficar trayectoria.</p>
+                  <span class="chart-empty-sub">Mueve tratos a "Liquidado / Cerrado" en el Kanban para visualizar la curva en tiempo real.</span>
+                </div>
+              } @else {
+                <svg class="performance-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
+                  <line x1="0" y1="50" x2="600" y2="50" stroke="#27272a" stroke-dasharray="3,3" />
+                  <line x1="0" y1="100" x2="600" y2="100" stroke="#27272a" stroke-dasharray="3,3" />
+                  <line x1="0" y1="150" x2="600" y2="150" stroke="#27272a" stroke-dasharray="3,3" />
+                  <path [attr.d]="workspaceState().svgPath" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <div class="chart-footer-metrics">
+                  <span>Partida: $0.00 USDT</span>
+                  <span>Cierre actual: +${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }} USDT</span>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Resumen de Bancos y Recomendado -->
+          <div class="cockpit-card recommended-banks-summary">
+            <div class="card-section-header">
+              <div class="title-with-pill">
+                <span class="icon">🛡️</span>
+                <h2 class="section-title">Escudo de Rieles Bancarios</h2>
+              </div>
+              @if (workspaceState().recommendedBankId) {
+                <span class="badge-recommended">★ Riel Recomendado Activo</span>
+              }
+            </div>
+
+            <div class="bank-mini-summary-list">
+              @if (workspaceState().bankTelemetry.length === 0) {
+                <div class="empty-state-box mini-empty">
+                  <p class="empty-desc">No hay bancos registrados para {{ activeScope() }}.</p>
+                  <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Banco</button>
+                </div>
+              } @else {
+                @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
+                  <div class="bank-mini-row" [class.recommended]="b.isRecommended" [class.cooldown]="b.status === 'COOLDOWN_BURST'">
+                    <div class="b-info">
+                      <span class="b-name">{{ b.bankName }} ({{ b.currency }})</span>
+                      <span class="b-cap">Uso: {{ b.dailyUsagePct | number:'1.1-1' }}% (Tope: {{ b.maxDailyCapFiat | number:'1.0-0' }})</span>
+                    </div>
+                    <div class="b-stat">
+                      <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
+                        {{ b.status }}
+                      </span>
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="verifier-input-group">
-        <input
-          type="text"
-          class="terminal-input ref-search-input"
-          placeholder="Pegue o escriba nro. de referencia bancaria..."
-          [ngModel]="candidateRef()"
-          (ngModelChange)="candidateRef.set($event)"
-        />
-        <div class="ref-status-badge" [class.free]="!referenceCheck().isDuplicate && candidateRef().trim().length >= 4" [class.alert]="referenceCheck().isDuplicate">
-          @if (!candidateRef().trim()) {
-            <span class="status-text muted">INGRESE REFERENCIA</span>
-          } @else if (!referenceCheck().isDuplicate) {
-            <span class="status-text green">✅ REFERENCIA LIBRE</span>
-          } @else {
-            <span class="status-text red">🚨 ALERTA: REFERENCIA YA USADA</span>
+    }
+
+    <!-- ======================================================================= -->
+    <!-- VISTA 2: PIPELINE KANBAN INTERACTIVO (4 ETAPAS) -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'KANBAN') {
+      <div class="view-kanban-container">
+        <div class="kanban-board-grid">
+          @for (col of kanbanColumnsList(); track col.stage) {
+            <div
+              class="kanban-column"
+              (dragover)="onDragOver($event)"
+              (drop)="onDrop($event, col.stage)"
+            >
+              <!-- Cabecera de la Columna -->
+              <div class="kanban-column-header">
+                <div class="col-title-group">
+                  <h3 class="col-title">{{ col.label }}</h3>
+                  <span class="col-count-badge">{{ col.deals.length }}</span>
+                </div>
+                <div class="col-totals">
+                  <span class="total-usdt font-mono">${{ col.totalUsdt | number:'1.2-2' }}</span>
+                  <span class="total-fiat font-mono">{{ col.totalFiat | number:'1.0-0' }}</span>
+                </div>
+              </div>
+
+              <!-- Lista de Tarjetas en la Columna -->
+              <div class="kanban-cards-stream">
+                @if (col.deals.length === 0) {
+                  <div class="kanban-empty-slot">
+                    <span>Sin operaciones aquí</span>
+                  </div>
+                } @else {
+                  @for (d of col.deals; track d.id) {
+                    <div
+                      class="kanban-deal-card"
+                      draggable="true"
+                      (dragstart)="onDragStart($event, d.id)"
+                      [class.expired]="d.isRateExpired"
+                      [class.closed]="d.stage === 'STAGE_4_CLOSED'"
+                    >
+                      <!-- Top de la Tarjeta -->
+                      <div class="card-head-row">
+                        <span class="card-id font-mono">#{{ d.id }}</span>
+                        <div class="card-badges">
+                          @if (d.isRateExpired) {
+                            <span class="badge-expired" title="Cotización vencida por tiempo límite">⚠️ TASA VENCIDA</span>
+                          }
+                          @if (d.bankReferenceId) {
+                            <span class="badge-ref font-mono">Ref: {{ d.bankReferenceId }}</span>
+                          }
+                        </div>
+                      </div>
+
+                      <!-- Cliente y Banco -->
+                      <div class="card-contact-row">
+                        <span class="contact-name" (click)="selectContact(d.contactId); setView('CONTACTS')">
+                          👤 {{ d.contactName }}
+                        </span>
+                        <span class="bank-pill">🏦 {{ d.bankName }}</span>
+                      </div>
+
+                      <!-- Montos y Tasa -->
+                      <div class="card-financials-row">
+                        <div class="f-col">
+                          <span class="f-lbl">Monto USDT:</span>
+                          <span class="f-val font-mono highlight">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</span>
+                        </div>
+                        <div class="f-col">
+                          <span class="f-lbl">Total Fiat:</span>
+                          <span class="f-val font-mono">{{ d.totalFiatAmount | number:'1.2-2' }} {{ d.fiatCurrency }}</span>
+                        </div>
+                        <div class="f-col">
+                          <span class="f-lbl">Tasa:</span>
+                          <span class="f-val font-mono">{{ d.appliedRate | number:'1.2-2' }}</span>
+                        </div>
+                      </div>
+
+                      <!-- Ganancia Neta -->
+                      <div class="card-pnl-row">
+                        <span class="pnl-lbl">PnL Neto:</span>
+                        <span class="pnl-val font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }} USDT</span>
+                      </div>
+
+                      <!-- Acciones de Avance de Etapa -->
+                      <div class="card-pipeline-actions">
+                        @if (d.stage === 'STAGE_1_NEW') {
+                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_2_TRANSIT')">
+                            ➔ En Tránsito
+                          </button>
+                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" title="Liquidar directamente">
+                            ⚡ Liquidar
+                          </button>
+                        } @else if (d.stage === 'STAGE_2_TRANSIT') {
+                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_3_VERIFY')">
+                            ➔ Verificar Ref
+                          </button>
+                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')">
+                            ⚡ Liquidar
+                          </button>
+                        } @else if (d.stage === 'STAGE_3_VERIFY') {
+                          <button type="button" class="btn-step-success" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')">
+                            ✅ Liquidar / Cerrar
+                          </button>
+                        } @else {
+                          <span class="closed-label font-mono">✓ Liquidado en Bóveda</span>
+                        }
+
+                        <button type="button" class="btn-del-deal" (click)="deleteDeal(d.id)" title="Eliminar trato">
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
           }
         </div>
       </div>
-      @if (referenceCheck().isDuplicate && referenceCheck().existingEntry; as dup) {
-        <div class="collision-dossier-banner">
-          <span>⚠️ Detectada en Op <strong>#{{ dup.id }}</strong> ({{ dup.clientName }} &bull; {{ dup.fiatAmount | number:'1.2-2' }} {{ dup.fiatCurrency }} &bull; {{ dup.timestamp | date:'short' }})</span>
-        </div>
-      }
-    </div>
+    }
 
-    <!-- FORMULARIO DE ASENTAMIENTO RÁPIDO EN LÍNEA -->
-    <div class="quick-trade-form-panel">
-      <div class="quick-form-title-row">
-        <span class="q-icon">⚡</span>
-        <span class="q-label">ASENTAMIENTO RÁPIDO DE OPERACIÓN ({{ activeScope() }})</span>
-      </div>
+    <!-- ======================================================================= -->
+    <!-- VISTA 3: CONTACTOS CRM & EXPEDIENTE 360° -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'CONTACTS') {
+      <div class="view-contacts-container">
+        <!-- Panel Izquierdo: Directorio y Buscador -->
+        <aside class="contacts-sidebar">
+          <div class="sidebar-header">
+            <h2 class="sidebar-title">Directorio de Contactos ({{ activeScope() }})</h2>
+            <button type="button" class="mini-btn-primary" (click)="showAddContactModal.set(true)">
+              + Nuevo Contacto
+            </button>
+          </div>
 
-      <div class="quick-form-grid">
-        <!-- Selector o Nuevo Cliente -->
-        <div class="form-field field-client">
-          <label class="field-label">Cliente / Contacto</label>
-          <div class="client-input-combo">
-            <select
-              class="terminal-select"
-              [ngModel]="tradeClientSelect()"
-              (ngModelChange)="onClientSelectChange($event)"
-            >
-              <option value="">-- Seleccionar Existente --</option>
-              @for (c of deskState().contacts; track c.clientId) {
-                <option [value]="c.clientId">{{ c.clientName }} ({{ c.clientDocId || 'Sin Doc' }})</option>
-              }
-            </select>
+          <div class="contact-search-bar">
             <input
               type="text"
-              class="terminal-input client-free-input"
-              placeholder="O escribir nuevo..."
-              [ngModel]="tradeClientNameInput()"
-              (ngModelChange)="tradeClientNameInput.set($event)"
+              class="terminal-input search-input"
+              placeholder="Buscar por nombre, cédula o teléfono..."
+              [ngModel]="contactSearchQuery()"
+              (ngModelChange)="contactSearchQuery.set($event)"
             />
           </div>
-        </div>
 
-        <!-- Banco Operativo -->
-        <div class="form-field field-bank">
-          <label class="field-label">Cuenta Bancaria / Riel</label>
-          <select
-            class="terminal-select"
-            [ngModel]="tradeBankId()"
-            (ngModelChange)="tradeBankId.set($event)"
-          >
-            <option value="">-- Seleccionar Banco --</option>
-            @for (b of bankCards(); track b.account.id) {
-              <option [value]="b.account.id" [disabled]="b.telemetry.status !== 'AVAILABLE'">
-                {{ b.account.bankName }} ({{ b.account.currency }}) - {{ b.telemetry.status }}
-              </option>
-            }
-          </select>
-        </div>
-
-        <!-- Monto USDT -->
-        <div class="form-field field-sm">
-          <label class="field-label">Monto (USDT)</label>
-          <input
-            type="number"
-            class="terminal-input"
-            placeholder="Ej: 1000"
-            [ngModel]="tradeAmountUsdt()"
-            (ngModelChange)="tradeAmountUsdt.set($event)"
-          />
-        </div>
-
-        <!-- Tasa Aplicada al Cliente -->
-        <div class="form-field field-sm">
-          <label class="field-label">Tasa Cliente</label>
-          <input
-            type="number"
-            class="terminal-input"
-            placeholder="Ej: 84.50"
-            [ngModel]="tradeAppliedRate()"
-            (ngModelChange)="tradeAppliedRate.set($event)"
-          />
-        </div>
-
-        <!-- Tasa de Reemplazo (Costo) -->
-        <div class="form-field field-sm">
-          <label class="field-label">Tasa Costo / Reemplazo</label>
-          <input
-            type="number"
-            class="terminal-input"
-            placeholder="Ej: 82.00"
-            [ngModel]="tradeReplacementRate()"
-            (ngModelChange)="tradeReplacementRate.set($event)"
-          />
-        </div>
-
-        <!-- Referencia Bancaria -->
-        <div class="form-field field-ref">
-          <label class="field-label">Nro. Referencia</label>
-          <input
-            type="text"
-            class="terminal-input"
-            placeholder="Nro. Comprobante"
-            [ngModel]="tradeReferenceId()"
-            (ngModelChange)="tradeReferenceId.set($event)"
-          />
-        </div>
-
-        <!-- Botón Asentar -->
-        <div class="form-field field-btn">
-          <label class="field-label">&nbsp;</label>
-          <button
-            type="button"
-            class="action-btn submit-trade-btn"
-            (click)="registerTrade()"
-            title="Asentar operación en el libro mayor de la mesa"
-          >
-            <span>⚡ Asentar Operación</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 3. CUERPO PRINCIPAL: DISTRIBUCIÓN TRIPARTITA (IZQUIERDA, CENTRO, DERECHA) -->
-  <main class="cockpit-tripartite-grid">
-    <!-- PANEL IZQUIERDO: ESCUDO BANCARIO & PADRÓN CRM -->
-    <aside class="panel-left-shield">
-      <!-- SECCIÓN A: CUENTAS BANCARIAS OPERATIVAS -->
-      <div class="cockpit-card bank-shield-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">🏦</span>
-            <h2 class="section-title">Cuentas Bancarias Operativas</h2>
-            <span class="badge-count">{{ bankCards().length }}</span>
-          </div>
-          <button
-            type="button"
-            class="mini-btn-primary"
-            (click)="showAddBankModal.set(true)"
-            title="Agregar nueva cuenta bancaria"
-          >
-            <span>+ Agregar Banco</span>
-          </button>
-        </div>
-
-        <!-- LISTA DE BANCOS CON ESTADO VACÍO OPERATIVO -->
-        <div class="bank-items-container">
-          @if (bankCards().length === 0) {
-            <div class="empty-state-box">
-              <div class="empty-icon">🏦</div>
-              <h3 class="empty-heading">Cero Cuentas Bancarias</h3>
-              <p class="empty-desc">No hay rieles bancarios configurados para la bóveda {{ activeScope() }}. Agregue su primera cuenta para operar.</p>
-              <button
-                type="button"
-                class="btn-empty-action"
-                (click)="showAddBankModal.set(true)"
-              >
-                + Crear Cuenta Bancaria
-              </button>
-            </div>
-          } @else {
-            @for (b of bankCards(); track b.account.id) {
-              <div
-                class="bank-account-tile"
-                [class.burst-cooldown]="b.telemetry.status === 'COOLDOWN_BURST'"
-                [class.cap-reached]="b.telemetry.status === 'DAILY_CAP_REACHED'"
-                [class.recommended]="b.account.id === deskState().recommendedBankId"
-              >
-                <!-- Fila Superior de la Cuenta -->
-                <div class="bank-tile-top">
-                  <div class="bank-name-badge">
-                    <span class="bank-name">{{ b.account.bankName }}</span>
-                    <span class="currency-badge">{{ b.account.currency }}</span>
-                    @if (b.account.id === deskState().recommendedBankId) {
-                      <span class="badge-recommended" title="Mayor capacidad disponible">★ RECOMENDADO</span>
-                    }
+          <div class="contacts-scroll-list">
+            @if (filteredContacts().length === 0) {
+              <div class="empty-state-box mini-empty">
+                <p class="empty-desc">No hay contactos en {{ activeScope() }}.</p>
+                <button type="button" class="btn-empty-action" (click)="showAddContactModal.set(true)">+ Crear Contacto</button>
+              </div>
+            } @else {
+              @for (c of filteredContacts(); track c.id) {
+                <div
+                  class="contact-tile-row"
+                  [class.selected]="c.id === selectedContactId()"
+                  (click)="selectContact(c.id)"
+                >
+                  <div class="c-head">
+                    <span class="c-name">{{ c.name }}</span>
+                    <span class="c-cat-pill">{{ c.category }}</span>
                   </div>
-                  <div class="bank-status-pill" [class.st-avail]="b.telemetry.status === 'AVAILABLE'" [class.st-burst]="b.telemetry.status === 'COOLDOWN_BURST'" [class.st-cap]="b.telemetry.status === 'DAILY_CAP_REACHED'">
-                    @if (b.telemetry.status === 'AVAILABLE') {
-                      <span>DISPONIBLE</span>
-                    } @else if (b.telemetry.status === 'COOLDOWN_BURST') {
-                      <span>ENFRIAMIENTO RÁFAGA</span>
-                    } @else {
-                      <span>TOPE ALCANZADO</span>
-                    }
+                  <div class="c-sub">
+                    <span class="c-doc font-mono">{{ c.documentId || 'Sin documento' }}</span>
+                    <span class="c-bal" [class.bal-pos]="c.pendingBalanceUsdt > 0" [class.bal-neg]="c.pendingBalanceUsdt < 0">
+                      {{ c.pendingBalanceUsdt >= 0 ? '+' : '' }}${{ c.pendingBalanceUsdt | number:'1.2-2' }}
+                    </span>
                   </div>
                 </div>
+              }
+            }
+          </div>
+        </aside>
 
-                <!-- Saldo Fiat y Titular -->
-                <div class="bank-balance-row">
-                  <div class="bal-col">
-                    <span class="lbl">Saldo en Sistema:</span>
-                    @if (privacyMode()) {
-                      <span class="val masked">*****</span>
-                    } @else {
-                      <span class="val font-mono">{{ b.account.currentBalanceFiat | number:'1.2-2' }} {{ b.account.currency }}</span>
-                    }
+        <!-- Panel Derecho: Expediente 360° -->
+        <section class="contact-dossier-main">
+          @if (!selectedContact()) {
+            <div class="empty-state-box dossier-empty">
+              <span class="empty-icon">👈</span>
+              <h3 class="empty-heading">Seleccione un Contacto</h3>
+              <p class="empty-desc">Haga clic en un contacto del directorio para ver su historial en el pipeline, gestionar su cuenta corriente y generar recibos de WhatsApp.</p>
+            </div>
+          } @else {
+            <div class="dossier-card-expanded">
+              <!-- Cabecera del Contacto -->
+              <div class="dossier-header-row">
+                <div class="d-avatar-big">{{ selectedContact()?.name?.slice(0, 2)?.toUpperCase() }}</div>
+                <div class="d-titles">
+                  <h2 class="d-name">{{ selectedContact()?.name }}</h2>
+                  <div class="d-meta-row">
+                    <span class="meta-tag font-mono">Doc: {{ selectedContact()?.documentId || 'N/A' }}</span>
+                    <span class="meta-tag">Tel: {{ selectedContact()?.phoneOrContact || 'N/A' }}</span>
+                    <span class="meta-tag category">{{ selectedContact()?.category }}</span>
                   </div>
-                  <div class="burst-col">
-                    <span class="lbl">Ráfaga 15m:</span>
-                    <span class="burst-meter font-mono" [class.burst-warn]="b.telemetry.recent15MinTxCount >= b.account.maxBurstTxPer15Min">
-                      {{ b.telemetry.recent15MinTxCount }} / {{ b.account.maxBurstTxPer15Min }} tx
+                </div>
+                <div class="d-top-actions">
+                  <button type="button" class="btn-action-wa" (click)="copyWhatsAppReceipt()">
+                    📲 Recibo WhatsApp
+                  </button>
+                </div>
+              </div>
+
+              <!-- Saldo de Cuenta Corriente y Límite de Exposición -->
+              <div class="dossier-balance-grid">
+                <!-- Saldo Corriente -->
+                <div class="balance-hero-box" [class.pos]="(selectedContact()?.pendingBalanceUsdt ?? 0) > 0" [class.neg]="(selectedContact()?.pendingBalanceUsdt ?? 0) < 0">
+                  <span class="lbl">Saldo de Cuenta Corriente:</span>
+                  <div class="val-row">
+                    <span class="val font-mono">
+                      {{ (selectedContact()?.pendingBalanceUsdt ?? 0) >= 0 ? '+' : '' }}${{ (selectedContact()?.pendingBalanceUsdt ?? 0) | number:'1.2-2' }} USDT
+                    </span>
+                    <span class="status-desc">
+                      @if ((selectedContact()?.pendingBalanceUsdt ?? 0) > 0) { Saldo a favor del cliente }
+                      @else if ((selectedContact()?.pendingBalanceUsdt ?? 0) < 0) { Cuenta por cobrar }
+                      @else { Al día ($0.00) }
                     </span>
                   </div>
                 </div>
 
-                <!-- Barra de Progreso de Tope Diario -->
-                <div class="bank-cap-bar-wrapper">
-                  <div class="cap-labels">
-                    <span>Uso Diario: {{ b.telemetry.dailyUsagePct | number:'1.1-1' }}%</span>
-                    <span>Tope: {{ b.account.maxDailyCapFiat | number:'1.0-0' }} {{ b.account.currency }}</span>
+                <!-- Límite de Exposición Flotante -->
+                <div class="exposure-hero-box">
+                  <span class="lbl">Tope de Exposición en Tránsito:</span>
+                  <div class="val-row">
+                    <span class="val font-mono">${{ selectedContact()?.maxPendingExposureUsdt | number:'1.0-0' }} USDT</span>
+                    <span class="status-desc">Protección contra fraude por saturación</span>
                   </div>
-                  <div class="cap-bar-track">
+                </div>
+              </div>
+
+              <!-- Ajustador de Saldo Rápido -->
+              <div class="balance-adjuster-bar">
+                <span class="bar-lbl">Ajustar Saldo:</span>
+                <input
+                  type="number"
+                  class="terminal-input adj-input"
+                  placeholder="Monto USDT"
+                  [ngModel]="contactBalanceAdjustAmount()"
+                  (ngModelChange)="contactBalanceAdjustAmount.set($event)"
+                />
+                <button type="button" class="btn-adj-plus" (click)="adjustContactBalance('POSITIVE')">+ Abonar</button>
+                <button type="button" class="btn-adj-minus" (click)="adjustContactBalance('NEGATIVE')">- Cargar</button>
+                <button type="button" class="btn-adj-zero" (click)="adjustContactBalance('ZERO')">✓ Saldar a $0.00</button>
+              </div>
+
+              <!-- Datos de Pago para 1-Click Copy -->
+              @if (selectedContact()?.paymentDetailsText) {
+                <div class="payment-details-box">
+                  <div class="box-head">
+                    <span class="box-title">Datos Bancarios / Pago Móvil del Contacto:</span>
+                    <button type="button" class="mini-copy-btn" (click)="copyText(selectedContact()?.paymentDetailsText || '', 'Datos de pago')">
+                      📋 Copiar Datos
+                    </button>
+                  </div>
+                  <pre class="box-pre">{{ selectedContact()?.paymentDetailsText }}</pre>
+                </div>
+              }
+
+              <!-- Historial de Operaciones en el Pipeline -->
+              <div class="contact-deals-history">
+                <h3 class="history-title">Operaciones del Contacto en el Pipeline ({{ selectedContactDeals().length }})</h3>
+                <div class="deals-table-wrapper">
+                  @if (selectedContactDeals().length === 0) {
+                    <p class="empty-desc">Sin tratos registrados para este contacto.</p>
+                  } @else {
+                    <table class="deals-mini-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Etapa</th>
+                          <th>Banco</th>
+                          <th>Referencia</th>
+                          <th class="text-right">Monto USDT</th>
+                          <th class="text-right">Total Fiat</th>
+                          <th class="text-right">PnL Neto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (d of selectedContactDeals(); track d.id) {
+                          <tr>
+                            <td class="font-mono">#{{ d.id }}</td>
+                            <td><span class="stage-tag font-mono">{{ d.stage }}</span></td>
+                            <td>{{ d.bankName }}</td>
+                            <td class="font-mono text-blue">{{ d.bankReferenceId || 'Pendiente' }}</td>
+                            <td class="text-right font-mono">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</td>
+                            <td class="text-right font-mono">{{ d.totalFiatAmount | number:'1.2-2' }}</td>
+                            <td class="text-right font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </section>
+      </div>
+    }
+
+    <!-- ======================================================================= -->
+    <!-- VISTA 4: BANCOS Y ESCUDO DE RIELES -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'BANKS') {
+      <div class="view-banks-container">
+        <div class="banks-header-actions">
+          <h2 class="section-title">Cuentas Bancarias Operativas ({{ activeScope() }})</h2>
+          <button type="button" class="mini-btn-primary" (click)="showAddBankModal.set(true)">
+            + Agregar Nueva Cuenta Bancaria
+          </button>
+        </div>
+
+        <div class="bank-cards-grid">
+          @if (workspaceState().bankTelemetry.length === 0) {
+            <div class="empty-state-box full-grid">
+              <span class="empty-icon">🏦</span>
+              <h3 class="empty-heading">Cero Cuentas Bancarias</h3>
+              <p class="empty-desc">No hay rieles configurados para la bóveda {{ activeScope() }}. Agregue una cuenta para controlar cupos y ráfagas.</p>
+              <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Cuenta</button>
+            </div>
+          } @else {
+            @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
+              <div
+                class="bank-shield-tile"
+                [class.recommended]="b.isRecommended"
+                [class.cooldown]="b.status === 'COOLDOWN_BURST'"
+                [class.cap-full]="b.status === 'DAILY_CAP_REACHED'"
+              >
+                <!-- Head -->
+                <div class="tile-head">
+                  <div class="b-title-group">
+                    <span class="b-name">{{ b.bankName }}</span>
+                    <span class="b-currency">{{ b.currency }}</span>
+                    @if (b.isRecommended) {
+                      <span class="b-recom-badge">★ RECOMENDADO</span>
+                    }
+                  </div>
+                  <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
+                    {{ b.status }}
+                  </span>
+                </div>
+
+                <!-- Balances & Burst -->
+                <div class="tile-metrics-grid">
+                  <div class="m-item">
+                    <span class="m-lbl">Saldo en Sistema:</span>
+                    <span class="m-val font-mono">{{ b.currentBalanceFiat | number:'1.2-2' }} {{ b.currency }}</span>
+                  </div>
+                  <div class="m-item">
+                    <span class="m-lbl">Ráfaga 15 min:</span>
+                    <span class="m-val font-mono" [class.text-red]="b.recent15MinTxCount >= b.maxBurstTxPer15Min">
+                      {{ b.recent15MinTxCount }} / {{ b.maxBurstTxPer15Min }} tx
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Cupo: Cerrado vs En Tránsito -->
+                <div class="capacity-breakdown-bar">
+                  <div class="cap-labels">
+                    <span>Cerrado: {{ b.dailyClosedFiat | number:'1.0-0' }}</span>
+                    <span>En Tránsito: {{ b.dailyInTransitFiat | number:'1.0-0' }}</span>
+                    <span>Tope: {{ b.maxDailyCapFiat | number:'1.0-0' }}</span>
+                  </div>
+                  <div class="progress-track">
                     <div
-                      class="cap-bar-fill"
-                      [style.width.%]="b.telemetry.dailyUsagePct > 100 ? 100 : b.telemetry.dailyUsagePct"
-                      [class.fill-danger]="b.telemetry.dailyUsagePct >= 90"
-                      [class.fill-warn]="b.telemetry.dailyUsagePct >= 70 && b.telemetry.dailyUsagePct < 90"
+                      class="progress-fill"
+                      [style.width.%]="b.dailyUsagePct > 100 ? 100 : b.dailyUsagePct"
+                      [class.fill-warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
+                      [class.fill-danger]="b.dailyUsagePct >= 90"
                     ></div>
                   </div>
+                  <span class="usage-text">{{ b.dailyUsagePct | number:'1.1-1' }}% del tope diario utilizado</span>
                 </div>
 
-                <!-- Datos de Titular y Acciones Rápidas -->
-                <div class="bank-tile-actions">
+                <!-- Acciones Rápidas -->
+                <div class="tile-actions-row">
                   <button
                     type="button"
-                    class="btn-tile-action"
-                    (click)="copyBankDetails(b.account)"
-                    title="Copiar datos para pago móvil o transferencia bancaria"
+                    class="btn-tile-act"
+                    (click)="openReconciliation(b.bankAccountId, b.currentBalanceFiat)"
                   >
-                    <span>📋 Copiar Datos</span>
+                    ⚖️ Cuadre Real
                   </button>
                   <button
                     type="button"
-                    class="btn-tile-action"
-                    (click)="openReconciliation(b.account.id, b.account.currentBalanceFiat)"
-                    title="Ajustar saldo real por cuadre bancario"
+                    class="btn-tile-act btn-del"
+                    (click)="deleteBank(b.bankAccountId)"
                   >
-                    <span>⚖️ Cuadre</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-tile-action btn-danger-action"
-                    (click)="deleteBank(b.account.id)"
-                    title="Eliminar cuenta"
-                  >
-                    <span>🗑️</span>
+                    🗑️
                   </button>
                 </div>
 
-                <!-- Inline Cuadre Bancario Input -->
-                @if (reconcilingBankId() === b.account.id) {
-                  <div class="reconcile-inline-box">
-                    <span class="rec-title">Ajuste de Cuadre Real:</span>
-                    <div class="rec-row">
+                <!-- Inline Cuadre -->
+                @if (reconcilingBankId() === b.bankAccountId) {
+                  <div class="reconcile-box">
+                    <span class="rec-title">Ajustar Saldo Real Bancario:</span>
+                    <div class="rec-inputs">
                       <input
                         type="number"
-                        class="terminal-input rec-input"
+                        class="terminal-input rec-field"
                         placeholder="Saldo real en banco"
                         [ngModel]="realBankBalanceInput()"
                         (ngModelChange)="realBankBalanceInput.set($event)"
                       />
-                      <button
-                        type="button"
-                        class="mini-btn-confirm"
-                        (click)="applyBankReconciliation(b.account.id)"
-                      >
-                        ✓ Asentar Cuadre
+                      <button type="button" class="btn-rec-confirm" (click)="applyBankReconciliation(b.bankAccountId)">
+                        ✓ Asentar
                       </button>
-                      <button
-                        type="button"
-                        class="mini-btn-cancel"
-                        (click)="reconcilingBankId.set(null)"
-                      >
-                        ✕
-                      </button>
+                      <button type="button" class="btn-rec-cancel" (click)="reconcilingBankId.set(null)">✕</button>
                     </div>
                   </div>
                 }
@@ -480,443 +742,412 @@
           }
         </div>
       </div>
+    }
 
-      <!-- SECCIÓN B: PADRÓN CRM / DIRECTORIO DE CLIENTES & PROVEEDORES -->
-      <div class="cockpit-card crm-directory-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">👥</span>
-            <h2 class="section-title">Padrón CRM ({{ activeScope() }})</h2>
-            <span class="badge-count">{{ filteredContacts().length }}</span>
+    <!-- ======================================================================= -->
+    <!-- VISTA 5: ACTIVIDADES & PARSER INTELIGENTE -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'ACTIVITIES') {
+      <div class="view-activities-container">
+        <!-- Submódulo: Parser Inteligente de Portapapeles / SMS -->
+        <div class="cockpit-card clipboard-parser-card">
+          <div class="card-section-header">
+            <div class="title-with-pill">
+              <span class="icon">📋</span>
+              <h2 class="section-title">Parser Inteligente de Comprobantes &amp; SMS</h2>
+            </div>
+            <span class="chart-tag">Zero-Typing Intake</span>
           </div>
-          <button
-            type="button"
-            class="mini-btn-primary"
-            (click)="showAddContactModal.set(true)"
-            title="Registrar nuevo contacto en el padrón"
-          >
-            <span>+ Nuevo Contacto</span>
-          </button>
-        </div>
 
-        <!-- Buscador de Contactos -->
-        <div class="contact-search-bar">
-          <input
-            type="text"
-            class="terminal-input search-input"
-            placeholder="Buscar por nombre o documento..."
-            [ngModel]="contactSearchQuery()"
-            (ngModelChange)="contactSearchQuery.set($event)"
-          />
-        </div>
-
-        <!-- Lista de Contactos con Empty State -->
-        <div class="crm-contacts-list">
-          @if (filteredContacts().length === 0) {
-            <div class="empty-state-box">
-              <div class="empty-icon">👥</div>
-              <h3 class="empty-heading">Padrón Vacío</h3>
-              <p class="empty-desc">No hay contactos registrados en la bóveda {{ activeScope() }}. Cree un contacto para seguimiento de saldos y referencias.</p>
-              <button
-                type="button"
-                class="btn-empty-action"
-                (click)="showAddContactModal.set(true)"
-              >
-                + Registrar Primer Contacto
+          <div class="parser-body">
+            <p class="parser-desc">Pegue el texto del SMS o comprobante del banco (Banesco, Mercantil, BDV, Bancolombia, etc.) para extraer banco, monto y referencia en 1 clic:</p>
+            <div class="parser-input-row">
+              <textarea
+                class="terminal-input parser-textarea"
+                rows="2"
+                placeholder="Pegue aquí el texto: 'Banesco Pago Móvil: Aprobado por Bs. 85.000,00... Ref: 12345678'"
+                [ngModel]="rawClipboardInput()"
+                (ngModelChange)="rawClipboardInput.set($event)"
+              ></textarea>
+              <button type="button" class="btn-apply-parser" (click)="applyParsedClipboard()">
+                ⚡ Extraer Datos
               </button>
             </div>
-          } @else {
-            @for (c of filteredContacts(); track c.clientId) {
-              <div
-                class="contact-row-tile"
-                [class.selected]="c.clientId === selectedContactId()"
-                (click)="selectContact(c.clientId)"
-              >
-                <div class="c-info-main">
-                  <div class="c-name-row">
-                    <span class="c-name">{{ c.clientName }}</span>
-                    <span class="category-pill">{{ c.category }}</span>
-                  </div>
-                  <span class="c-doc font-mono">{{ c.clientDocId || 'Sin documento' }}</span>
-                </div>
 
-                <div class="c-balances">
-                  <div class="balance-pill" [class.bal-pos]="c.pendingBalanceUsdt > 0" [class.bal-neg]="c.pendingBalanceUsdt < 0" [class.bal-zero]="c.pendingBalanceUsdt === 0">
-                    @if (c.pendingBalanceUsdt > 0) {
-                      <span>A favor: +${{ c.pendingBalanceUsdt | number:'1.2-2' }}</span>
-                    } @else if (c.pendingBalanceUsdt < 0) {
-                      <span>Por cobrar: -${{ -c.pendingBalanceUsdt | number:'1.2-2' }}</span>
-                    } @else {
-                      <span>Al día $0.00</span>
-                    }
-                  </div>
-                  <span class="c-vol-lifetime">Vol: ${{ c.lifetimeVolumeUsdt | number:'1.0-0' }}</span>
-                </div>
+            @if (parsedClipboard().amountFiat || parsedClipboard().referenceId) {
+              <div class="parser-results-pill">
+                <span><strong>Banco:</strong> {{ parsedClipboard().detectedBank || 'Detectado' }}</span>
+                <span><strong>Monto:</strong> {{ parsedClipboard().amountFiat | number:'1.2-2' }} {{ parsedClipboard().currency }}</span>
+                <span><strong>Referencia:</strong> {{ parsedClipboard().referenceId || 'N/A' }}</span>
               </div>
-            }
-          }
-        </div>
-      </div>
-    </aside>
-
-    <!-- PANEL CENTRAL: CURVA CUÁNTICA Y BITÁCORA DE AUDITORÍA -->
-    <section class="panel-center-audit">
-      <!-- SECCIÓN A: CURVA CUÁNTICA DE RENDIMIENTO EN VIVO -->
-      <div class="cockpit-card chart-audit-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">📈</span>
-            <h2 class="section-title">Curva Cuántica Intradía (Ganancia Acumulada USDT)</h2>
-          </div>
-          <div class="chart-meta">
-            <span class="chart-tag">HOY: {{ todayDateIso() }}</span>
-          </div>
-        </div>
-
-        <div class="dynamic-svg-chart-container">
-          @if (!deskState().svgPath || deskState().todayTrades.length === 0) {
-            <div class="chart-empty-state">
-              <span class="chart-empty-icon">📊</span>
-              <p>Sin operaciones hoy para trazar curva de rendimiento.</p>
-              <span class="chart-empty-sub">Registre operaciones en la barra superior para visualizar la trayectoria de PnL en tiempo real.</span>
-            </div>
-          } @else {
-            <svg class="performance-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
-              <!-- Grid lines -->
-              <line x1="0" y1="50" x2="600" y2="50" stroke="#27272a" stroke-dasharray="3,3" />
-              <line x1="0" y1="100" x2="600" y2="100" stroke="#27272a" stroke-dasharray="3,3" />
-              <line x1="0" y1="150" x2="600" y2="150" stroke="#27272a" stroke-dasharray="3,3" />
-              <!-- Curva dinámica -->
-              <path [attr.d]="deskState().svgPath" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <div class="chart-footer-metrics">
-              <span>Inicio: $0.00 USDT</span>
-              <span>Cierre actual: +${{ deskKpis().todayNetPnlUsdt | number:'1.2-2' }} USDT</span>
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- SECCIÓN B: BITÁCORA DE AUDITORÍA EN VIVO (TABLA) -->
-      <div class="cockpit-card trade-audit-table-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">📜</span>
-            <h2 class="section-title">Bitácora de Auditoría en Vivo</h2>
-            <span class="badge-count">{{ displayedTrades().length }}</span>
-          </div>
-
-          <!-- Filtros de la Bitácora -->
-          <div class="table-filters-row">
-            <input
-              type="text"
-              class="terminal-input filter-search"
-              placeholder="Filtrar por cliente, ref, banco..."
-              [ngModel]="tradeSearchQuery()"
-              (ngModelChange)="tradeSearchQuery.set($event)"
-            />
-            @if (filterClientId()) {
-              <button type="button" class="mini-btn-clear" (click)="clearContactFilter()">
-                <span>Limpiar filtro cliente ✕</span>
-              </button>
             }
           </div>
         </div>
 
-        <!-- Tabla de Operaciones con Empty State -->
-        <div class="table-scroll-container">
-          @if (displayedTrades().length === 0) {
-            <div class="empty-state-box">
-              <div class="empty-icon">📜</div>
-              <h3 class="empty-heading">Bitácora en Blanco</h3>
-              <p class="empty-desc">No existen operaciones registradas bajo los filtros seleccionados para {{ activeScope() }}.</p>
-              <button
-                type="button"
-                class="btn-empty-action"
-                (click)="tradeAmountUsdt.set(100)"
-              >
-                + Asentar Primera Operación
-              </button>
+        <!-- Verificador Anti-Fraude en Tiempo Real -->
+        <div class="cockpit-card reference-verifier-card">
+          <div class="card-section-header">
+            <div class="title-with-pill">
+              <span class="icon">🛡️</span>
+              <h2 class="section-title">Verificador de Referencias Anti-Estafa</h2>
             </div>
-          } @else {
-            <table class="audit-data-table">
-              <thead>
-                <tr>
-                  <th>ID / Hora</th>
-                  <th>Cliente</th>
-                  <th>Riel / Banco</th>
-                  <th>Referencia</th>
-                  <th class="text-right">Monto Fiat</th>
-                  <th class="text-right">USDT</th>
-                  <th class="text-right">Tasa Cliente</th>
-                  <th class="text-right">PnL Neto</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (t of displayedTrades(); track t.id) {
-                  <tr>
-                    <td class="font-mono cell-id">
-                      <span class="op-id">{{ t.id }}</span>
-                      <span class="op-time">{{ t.timestamp | date:'shortTime' }}</span>
-                    </td>
-                    <td>
-                      <span class="c-link" (click)="selectContact(t.clientId)">{{ t.clientName }}</span>
-                      <span class="c-doc-mini">{{ t.clientDocId }}</span>
-                    </td>
-                    <td>
-                      <span class="bank-pill">{{ t.bankName }}</span>
-                    </td>
-                    <td class="font-mono cell-ref">
-                      <span class="ref-code">{{ t.bankReferenceId || 'N/A' }}</span>
-                    </td>
-                    <td class="text-right font-mono">
-                      @if (privacyMode()) {
-                        <span class="masked">****</span>
-                      } @else {
-                        <span>{{ t.fiatAmount | number:'1.2-2' }} {{ t.fiatCurrency }}</span>
-                      }
-                    </td>
-                    <td class="text-right font-mono">
-                      @if (privacyMode()) {
-                        <span class="masked">****</span>
-                      } @else {
-                        <span>${{ t.cryptoAmountUsdt | number:'1.2-2' }}</span>
-                      }
-                    </td>
-                    <td class="text-right font-mono">
-                      <span>{{ t.appliedRate | number:'1.2-2' }}</span>
-                    </td>
-                    <td class="text-right font-mono cell-pnl" [class.pnl-pos]="t.netPnlUsdt > 0" [class.pnl-neg]="t.netPnlUsdt < 0">
-                      @if (privacyMode()) {
-                        <span class="masked">****</span>
-                      } @else {
-                        <span>+${{ t.netPnlUsdt | number:'1.2-2' }}</span>
-                      }
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="btn-row-del"
-                        (click)="deleteTrade(t.id)"
-                        title="Eliminar operación"
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-        </div>
-      </div>
-    </section>
-
-    <!-- PANEL DERECHO: DOSSIER CRM, CUENTA CORRIENTE Y COTIZADOR -->
-    <aside class="panel-right-crm">
-      <!-- SECCIÓN A: DOSSIER DEL CONTACTO SELECCIONADO -->
-      <div class="cockpit-card client-dossier-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">👤</span>
-            <h2 class="section-title">Dossier de Contacto</h2>
           </div>
-          @if (selectedContact()) {
-            <span class="category-pill">{{ selectedContact()?.category }}</span>
-          }
-        </div>
-
-        @if (!selectedContact()) {
-          <div class="empty-state-box mini-empty">
-            <div class="empty-icon">👈</div>
-            <h3 class="empty-heading">Ningún Contacto Seleccionado</h3>
-            <p class="empty-desc">Haga clic en un contacto del padrón izquierdo para gestionar su saldo de cuenta corriente, ver referencias y generar estados de cuenta WhatsApp.</p>
-          </div>
-        } @else {
-          <div class="dossier-content">
-            <div class="dossier-profile-row">
-              <div class="d-avatar">{{ selectedContact()?.clientName?.slice(0, 2)?.toUpperCase() }}</div>
-              <div class="d-details">
-                <h3 class="d-name">{{ selectedContact()?.clientName }}</h3>
-                <span class="d-doc font-mono">Doc: {{ selectedContact()?.clientDocId || 'N/A' }}</span>
-              </div>
-            </div>
-
-            <!-- Saldo Corriente Destacado -->
-            <div class="running-balance-hero" [class.hero-pos]="(selectedContact()?.pendingBalanceUsdt ?? 0) > 0" [class.hero-neg]="(selectedContact()?.pendingBalanceUsdt ?? 0) < 0">
-              <span class="hero-lbl">Saldo de Cuenta Corriente:</span>
-              <div class="hero-val-row">
-                <span class="hero-val font-mono">
-                  {{ (selectedContact()?.pendingBalanceUsdt ?? 0) > 0 ? '+' : '' }}${{ (selectedContact()?.pendingBalanceUsdt ?? 0) | number:'1.2-2' }} USDT
-                </span>
-                <span class="hero-status">
-                  @if ((selectedContact()?.pendingBalanceUsdt ?? 0) > 0) {
-                    Saldo a favor del cliente
-                  } @else if ((selectedContact()?.pendingBalanceUsdt ?? 0) < 0) {
-                    Cuenta por cobrar al cliente
-                  } @else {
-                    Cuenta saldada ($0.00)
-                  }
-                </span>
-              </div>
-            </div>
-
-            <!-- Métricas Acumuladas -->
-            <div class="dossier-metrics-grid">
-              <div class="d-metric-item">
-                <span class="m-lbl">Volumen Histórico</span>
-                <span class="m-val font-mono">${{ selectedContact()?.lifetimeVolumeUsdt | number:'1.2-2' }}</span>
-              </div>
-              <div class="d-metric-item">
-                <span class="m-lbl">PnL Aportado</span>
-                <span class="m-val font-mono text-emerald">+${{ selectedContact()?.lifetimeNetPnlUsdt | number:'1.2-2' }}</span>
-              </div>
-            </div>
-
-            <!-- GESTOR DE SALDO DE CUENTA CORRIENTE -->
-            <div class="balance-adjuster-box">
-              <span class="adjuster-title">Ajuste Manual de Saldo:</span>
-              <div class="adjuster-input-row">
-                <input
-                  type="number"
-                  class="terminal-input adj-input"
-                  placeholder="Monto USDT"
-                  [ngModel]="contactBalanceAdjustAmount()"
-                  (ngModelChange)="contactBalanceAdjustAmount.set($event)"
-                />
-              </div>
-              <div class="adjuster-btn-group">
-                <button
-                  type="button"
-                  class="adj-btn btn-plus"
-                  (click)="adjustContactBalance('POSITIVE')"
-                  title="Abonar saldo a favor del cliente"
-                >
-                  + Abonar Saldo
-                </button>
-                <button
-                  type="button"
-                  class="adj-btn btn-minus"
-                  (click)="adjustContactBalance('NEGATIVE')"
-                  title="Cargar deuda al cliente"
-                >
-                  - Cargar Deuda
-                </button>
-                <button
-                  type="button"
-                  class="adj-btn btn-zero"
-                  (click)="adjustContactBalance('ZERO')"
-                  title="Saldar cuenta a $0.00"
-                >
-                  ✓ Saldar Cuenta
-                </button>
-              </div>
-            </div>
-
-            <!-- ACCIÓN WHATSAPP STATEMENT (SIN FUGAS DE GANANCIA) -->
-            <div class="whatsapp-statement-box">
-              <button
-                type="button"
-                class="action-btn-whatsapp"
-                (click)="copyWhatsAppStatement()"
-                title="Generar y copiar estado de cuenta limpio para enviar por WhatsApp al cliente"
-              >
-                <span>📲 Copiar Estado de Cuenta WhatsApp</span>
-              </button>
-              <span class="whatsapp-disclaimer">Seguridad garantizada: No revela márgenes ni comisiones internas del operador.</span>
-            </div>
-
-            <!-- REFERENCIAS BANCARIAS VERIFICADAS -->
-            <div class="verified-refs-section">
-              <span class="refs-title">Referencias Bancarias Verificadas ({{ selectedContact()?.verifiedReferences?.length || 0 }}):</span>
-              <div class="refs-chip-cloud">
-                @if (!selectedContact()?.verifiedReferences?.length) {
-                  <span class="muted-text">Sin referencias registradas aún.</span>
+          <div class="verifier-body">
+            <div class="verifier-input-group">
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Escriba o pegue número de referencia para verificar duplicidad..."
+                [ngModel]="candidateRef()"
+                (ngModelChange)="candidateRef.set($event)"
+              />
+              <div class="ref-badge" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
+                @if (!candidateRef().trim()) {
+                  <span class="muted">INGRESE REFERENCIA</span>
+                } @else if (!referenceCheck().isDuplicate) {
+                  <span class="green">✅ REFERENCIA TOTALMENTE LIBRE</span>
                 } @else {
-                  @for (r of selectedContact()?.verifiedReferences; track r) {
-                    <span class="ref-chip font-mono">{{ r }}</span>
-                  }
+                  <span class="red">🚨 ALERTA: YA FUE REGISTRADA PREVIAMENTE</span>
                 }
               </div>
             </div>
-          </div>
-        }
-      </div>
-
-      <!-- SECCIÓN B: CALCULADORA COMERCIAL DIRECTA (SIN JERGA BPS) -->
-      <div class="cockpit-card commercial-quote-card">
-        <div class="card-section-header">
-          <div class="title-with-pill">
-            <span class="icon">🧮</span>
-            <h2 class="section-title">Cotizador Comercial Directo</h2>
+            @if (referenceCheck().isDuplicate && referenceCheck().existingDeal; as ed) {
+              <div class="dup-alert-banner">
+                <span>⚠️ Utilizada en trato <strong>#{{ ed.id }}</strong> ({{ ed.contactName }} por {{ ed.totalFiatAmount | number:'1.2-2' }} {{ ed.fiatCurrency }})</span>
+              </div>
+            }
           </div>
         </div>
 
-        <div class="calculator-body">
-          <div class="calc-inputs-grid">
-            <div class="calc-field">
-              <label class="calc-lbl">Monto USDT</label>
-              <input
-                type="number"
-                class="terminal-input"
-                [ngModel]="calcAmountUsdt()"
-                (ngModelChange)="calcAmountUsdt.set($event)"
-              />
-            </div>
-
-            <div class="calc-field">
-              <label class="calc-lbl">Tasa Reemplazo (Costo)</label>
-              <input
-                type="number"
-                class="terminal-input"
-                [ngModel]="calcReplacementRate()"
-                (ngModelChange)="calcReplacementRate.set($event)"
-              />
-            </div>
-
-            <div class="calc-field">
-              <label class="calc-lbl">Tasa Cotizada al Cliente</label>
-              <input
-                type="number"
-                class="terminal-input"
-                [ngModel]="calcClientRate()"
-                (ngModelChange)="calcClientRate.set($event)"
-              />
-            </div>
-
-            <div class="calc-field">
-              <label class="calc-lbl">Comisión Banco (%)</label>
-              <input
-                type="number"
-                class="terminal-input"
-                [ngModel]="calcBankFeePct()"
-                (ngModelChange)="calcBankFeePct.set($event)"
-              />
+        <!-- Bitácora de Auditoría -->
+        <div class="cockpit-card activity-audit-card">
+          <div class="card-section-header">
+            <div class="title-with-pill">
+              <span class="icon">📜</span>
+              <h2 class="section-title">Bitácora de Auditoría Inmutable ({{ workspaceState().activities.length }})</h2>
             </div>
           </div>
 
-          <!-- RESULTADO EN VIVO DE LA COTIZACIÓN -->
-          <div class="calc-results-panel">
-            <div class="res-row">
-              <span class="res-lbl">Total Fiat a Cobrar:</span>
-              <span class="res-val font-mono">{{ commercialQuote().totalFiatToCollect | number:'1.2-2' }}</span>
+          <div class="activity-timeline-list">
+            @if (workspaceState().activities.length === 0) {
+              <p class="empty-desc">Sin eventos registrados aún en la bitácora.</p>
+            } @else {
+              @for (act of workspaceState().activities; track act.id) {
+                <div class="activity-timeline-row">
+                  <span class="act-time font-mono">{{ act.timestamp | date:'short' }}</span>
+                  <span class="act-type-badge font-mono">{{ act.type }}</span>
+                  <span class="act-desc">{{ act.description }}</span>
+                  @if (act.amountUsdt > 0) {
+                    <span class="act-amt font-mono">${{ act.amountUsdt | number:'1.2-2' }} USDT</span>
+                  }
+                </div>
+              }
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- ======================================================================= -->
+    <!-- VISTA 6: AJUSTES & COPIA DE SEGURIDAD -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'SETTINGS') {
+      <div class="view-settings-container">
+        <div class="cockpit-card settings-card">
+          <div class="card-section-header">
+            <div class="title-with-pill">
+              <span class="icon">⚙️</span>
+              <h2 class="section-title">Parámetros Operativos de la Mesa</h2>
             </div>
-            <div class="res-row">
-              <span class="res-lbl">Ganancia Neta Estimada:</span>
-              <span class="res-val font-mono text-emerald">+${{ commercialQuote().netProfitUsdt | number:'1.2-2' }} USDT</span>
+          </div>
+
+          <div class="settings-form-grid">
+            <div class="s-field">
+              <label class="s-lbl">Tasa Base de Reemplazo (Costo USDT)</label>
+              <input
+                type="number"
+                class="terminal-input"
+                [ngModel]="liveReplacementRate()"
+                (ngModelChange)="liveReplacementRate.set($event)"
+              />
+              <span class="s-help">Usada por defecto en la calculadora comercial de nuevos tratos.</span>
             </div>
-            <div class="res-row">
-              <span class="res-lbl">Margen Porcentual:</span>
-              <span class="res-val font-mono text-blue">{{ commercialQuote().marginPct | number:'1.2-2' }}%</span>
+
+            <div class="s-field">
+              <label class="s-lbl">Bóveda Activa de Trabajo</label>
+              <select
+                class="terminal-select"
+                [ngModel]="activeScope()"
+                (ngModelChange)="setScope($event)"
+              >
+                <option value="P2P_DESK">MESA P2P / OTC (Arbitraje, rotación rápida)</option>
+                <option value="FINANCE_360">FINANZAS 360 CRM (Patrimonio, proveedores)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="cockpit-card backup-card">
+          <div class="card-section-header">
+            <div class="title-with-pill">
+              <span class="icon">💾</span>
+              <h2 class="section-title">Copia de Seguridad &amp; Portabilidad de Datos</h2>
+            </div>
+          </div>
+
+          <div class="backup-actions-grid">
+            <div class="b-action-item">
+              <h3>Exportar Base de Datos</h3>
+              <p>Descarga un archivo JSON completo con todos los tratos, clientes, bancos y bitácora auditada.</p>
+              <button type="button" class="btn-backup-export" (click)="exportDataJson()">
+                📥 Descargar Copia JSON
+              </button>
+            </div>
+
+            <div class="b-action-item">
+              <h3>Restaurar Base de Datos</h3>
+              <p>Carga un archivo JSON para restablecer todos tus datos operativos de inmediato.</p>
+              <input type="file" accept=".json" class="file-input" (change)="importDataJson($event)" />
             </div>
           </div>
         </div>
       </div>
-    </aside>
+    }
   </main>
 
-  <!-- 4. MODALES OPERATIVOS (AGREGAR BANCO Y NUEVO CONTACTO) -->
+  <!-- ======================================================================= -->
+  <!-- MODALES GLOBALES -->
+  <!-- ======================================================================= -->
+
+  <!-- MODAL: NUEVO TRATO -->
+  @if (showAddDealModal()) {
+    <div class="modal-backdrop" (click)="showAddDealModal.set(false)">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <span class="m-icon">⚡</span>
+            <h3 class="modal-title">Nuevo Trato / Operación ({{ activeScope() }})</h3>
+          </div>
+          <button type="button" class="btn-close-modal" (click)="showAddDealModal.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-form-grid">
+            <!-- Cliente -->
+            <div class="m-field full-width">
+              <label class="m-label">Contacto / Cliente *</label>
+              <select
+                class="terminal-select"
+                [ngModel]="dealContactId()"
+                (ngModelChange)="dealContactId.set($event)"
+              >
+                <option value="">-- Seleccionar Contacto --</option>
+                @for (c of workspaceState().contacts; track c.id) {
+                  <option [value]="c.id">{{ c.name }} ({{ c.documentId || 'Sin Doc' }})</option>
+                }
+              </select>
+            </div>
+
+            <!-- Banco -->
+            <div class="m-field full-width">
+              <label class="m-label">Cuenta Bancaria Operativa *</label>
+              <select
+                class="terminal-select"
+                [ngModel]="dealBankAccountId()"
+                (ngModelChange)="dealBankAccountId.set($event)"
+              >
+                <option value="">-- Seleccionar Banco --</option>
+                @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
+                  <option [value]="b.bankAccountId" [disabled]="b.status !== 'AVAILABLE'">
+                    {{ b.bankName }} ({{ b.currency }}) - {{ b.status }}
+                  </option>
+                }
+              </select>
+            </div>
+
+            <!-- Monto USDT -->
+            <div class="m-field">
+              <label class="m-label">Monto (USDT) *</label>
+              <input
+                type="number"
+                class="terminal-input"
+                placeholder="Ej: 1000"
+                [ngModel]="dealAmountUsdt()"
+                (ngModelChange)="dealAmountUsdt.set($event)"
+              />
+            </div>
+
+            <!-- Tasa Cliente -->
+            <div class="m-field">
+              <label class="m-label">Tasa al Cliente *</label>
+              <input
+                type="number"
+                class="terminal-input"
+                placeholder="Ej: 84.50"
+                [ngModel]="dealAppliedRate()"
+                (ngModelChange)="dealAppliedRate.set($event)"
+              />
+            </div>
+
+            <!-- Tasa Reemplazo -->
+            <div class="m-field">
+              <label class="m-label">Tasa Costo / Reemplazo</label>
+              <input
+                type="number"
+                class="terminal-input"
+                placeholder="Ej: 82.00"
+                [ngModel]="dealReplacementRate()"
+                (ngModelChange)="dealReplacementRate.set($event)"
+              />
+            </div>
+
+            <!-- TTL en minutos -->
+            <div class="m-field">
+              <label class="m-label">Límite de Tasa (Minutos TTL)</label>
+              <input
+                type="number"
+                class="terminal-input"
+                placeholder="15"
+                [ngModel]="dealQuoteTtlMinutes()"
+                (ngModelChange)="dealQuoteTtlMinutes.set($event)"
+              />
+            </div>
+
+            <!-- Referencia preliminar opcional -->
+            <div class="m-field full-width">
+              <label class="m-label">Referencia / Comprobante (Opcional si es cotización)</label>
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Ej: 12345678"
+                [ngModel]="dealReferenceId()"
+                (ngModelChange)="dealReferenceId.set($event)"
+              />
+            </div>
+
+            <!-- Vista Previa de Cotización Comercial -->
+            <div class="quote-preview-box full-width">
+              <div class="q-row">
+                <span>Total Fiat a Cobrar:</span>
+                <span class="font-mono">{{ dealCommercialQuote().totalFiatToCollect | number:'1.2-2' }}</span>
+              </div>
+              <div class="q-row">
+                <span>Ganancia Neta Estimada:</span>
+                <span class="font-mono text-emerald">+${{ dealCommercialQuote().netProfitUsdt | number:'1.2-2' }} USDT</span>
+              </div>
+              <div class="q-row">
+                <span>Margen Porcentual:</span>
+                <span class="font-mono text-blue">{{ dealCommercialQuote().marginPct | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" (click)="showAddDealModal.set(false)">Cancelar</button>
+          <button type="button" class="btn-confirm-quote" (click)="saveNewDeal(false)">+ Crear en Cotizado</button>
+          <button type="button" class="btn-confirm-direct" (click)="saveNewDeal(true)">⚡ Liquidar Directo</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- MODAL: NUEVO CONTACTO -->
+  @if (showAddContactModal()) {
+    <div class="modal-backdrop" (click)="showAddContactModal.set(false)">
+      <div class="modal-dialog" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <span class="m-icon">👤</span>
+            <h3 class="modal-title">Nuevo Contacto ({{ activeScope() }})</h3>
+          </div>
+          <button type="button" class="btn-close-modal" (click)="showAddContactModal.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-form-grid">
+            <div class="m-field full-width">
+              <label class="m-label">Nombre del Contacto o Empresa *</label>
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Ej: Carlos Mendoza"
+                [ngModel]="newContactName()"
+                (ngModelChange)="newContactName.set($event)"
+              />
+            </div>
+
+            <div class="m-field">
+              <label class="m-label">Documento / Cédula / RIF</label>
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="V-12345678"
+                [ngModel]="newContactDocId()"
+                (ngModelChange)="newContactDocId.set($event)"
+              />
+            </div>
+
+            <div class="m-field">
+              <label class="m-label">Teléfono / WhatsApp</label>
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="+584141234567"
+                [ngModel]="newContactPhone()"
+                (ngModelChange)="newContactPhone.set($event)"
+              />
+            </div>
+
+            <div class="m-field">
+              <label class="m-label">Categoría</label>
+              <select
+                class="terminal-select"
+                [ngModel]="newContactCategory()"
+                (ngModelChange)="newContactCategory.set($event)"
+              >
+                @if (activeScope() === 'P2P_DESK') {
+                  <option value="CLIENT_P2P">Cliente P2P Habitual</option>
+                  <option value="VIP_OTC">Cliente VIP OTC</option>
+                } @else {
+                  <option value="SUPPLIER_360">Proveedor Comercial</option>
+                  <option value="CLIENT_360">Cliente Comercial</option>
+                }
+              </select>
+            </div>
+
+            <div class="m-field">
+              <label class="m-label">Tope Máximo Exposición Flotante (USDT)</label>
+              <input
+                type="number"
+                class="terminal-input"
+                placeholder="5000"
+                [ngModel]="newContactMaxExposure()"
+                (ngModelChange)="newContactMaxExposure.set($event)"
+              />
+            </div>
+
+            <div class="m-field full-width">
+              <label class="m-label">Datos Bancarios / Pago Móvil del Contacto</label>
+              <textarea
+                class="terminal-input"
+                rows="2"
+                placeholder="Banesco / 0414-1234567 / V-12345678"
+                [ngModel]="newContactPaymentDetails()"
+                (ngModelChange)="newContactPaymentDetails.set($event)"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" (click)="showAddContactModal.set(false)">Cancelar</button>
+          <button type="button" class="btn-confirm-save" (click)="saveNewContact()">Guardar Contacto</button>
+        </div>
+      </div>
+    </div>
+  }
+
   <!-- MODAL: AGREGAR BANCO -->
   @if (showAddBankModal()) {
     <div class="modal-backdrop" (click)="showAddBankModal.set(false)">
@@ -924,7 +1155,7 @@
         <div class="modal-header">
           <div class="modal-title-row">
             <span class="m-icon">🏦</span>
-            <h3 class="modal-title">Agregar Cuenta Bancaria / Riel ({{ activeScope() }})</h3>
+            <h3 class="modal-title">Agregar Cuenta Bancaria ({{ activeScope() }})</h3>
           </div>
           <button type="button" class="btn-close-modal" (click)="showAddBankModal.set(false)">✕</button>
         </div>
@@ -932,7 +1163,7 @@
         <div class="modal-body">
           <div class="modal-form-grid">
             <div class="m-field">
-              <label class="m-label">Nombre del Banco / Riel *</label>
+              <label class="m-label">Nombre del Banco o Riel *</label>
               <input
                 type="text"
                 class="terminal-input"
@@ -953,50 +1184,6 @@
                 <option value="COP">COP (Pesos Colombianos)</option>
                 <option value="USD">USD (Dólares)</option>
               </select>
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Nombre del Titular</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="Nombre completo"
-                [ngModel]="newBankHolderName()"
-                (ngModelChange)="newBankHolderName.set($event)"
-              />
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Documento / Cédula / RIF</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="V-12345678"
-                [ngModel]="newBankDocId()"
-                (ngModelChange)="newBankDocId.set($event)"
-              />
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Teléfono / Pago Móvil</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="0414-1234567"
-                [ngModel]="newBankPhone()"
-                (ngModelChange)="newBankPhone.set($event)"
-              />
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Número de Cuenta</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="0134-..."
-                [ngModel]="newBankAccountNumber()"
-                (ngModelChange)="newBankAccountNumber.set($event)"
-              />
             </div>
 
             <div class="m-field">
@@ -1022,7 +1209,7 @@
             </div>
 
             <div class="m-field">
-              <label class="m-label">Comisión Transaccional (%)</label>
+              <label class="m-label">Comisión Bancaria (%)</label>
               <input
                 type="number"
                 class="terminal-input"
@@ -1042,75 +1229,23 @@
                 (ngModelChange)="newBankBurstMax.set($event)"
               />
             </div>
+
+            <div class="m-field full-width">
+              <label class="m-label">Datos del Titular para 1-Click Copy</label>
+              <textarea
+                class="terminal-input"
+                rows="2"
+                placeholder="Titular: Inversiones Skalix C.A. / RIF: J-12345678 / Pago Móvil: 0414-1234567"
+                [ngModel]="newBankHolderDetails()"
+                (ngModelChange)="newBankHolderDetails.set($event)"
+              ></textarea>
+            </div>
           </div>
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn-cancel" (click)="showAddBankModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-save" (click)="saveNewBank()">Guardar Cuenta Bancaria</button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- MODAL: NUEVO CONTACTO -->
-  @if (showAddContactModal()) {
-    <div class="modal-backdrop" (click)="showAddContactModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <div class="modal-title-row">
-            <span class="m-icon">👥</span>
-            <h3 class="modal-title">Nuevo Contacto / Cliente ({{ activeScope() }})</h3>
-          </div>
-          <button type="button" class="btn-close-modal" (click)="showAddContactModal.set(false)">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="modal-form-grid">
-            <div class="m-field full-width">
-              <label class="m-label">Nombre del Contacto / Razón Social *</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="Nombre o empresa"
-                [ngModel]="newContactName()"
-                (ngModelChange)="newContactName.set($event)"
-              />
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Documento / Cédula / Tax ID</label>
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="V-98765432"
-                [ngModel]="newContactDocId()"
-                (ngModelChange)="newContactDocId.set($event)"
-              />
-            </div>
-
-            <div class="m-field">
-              <label class="m-label">Categoría *</label>
-              <select
-                class="terminal-select"
-                [ngModel]="newContactCategory()"
-                (ngModelChange)="newContactCategory.set($event)"
-              >
-                @if (activeScope() === 'P2P_DESK') {
-                  <option value="CLIENT_P2P">Cliente P2P Habitual</option>
-                  <option value="VIP_OTC">Cliente VIP OTC</option>
-                } @else {
-                  <option value="SUPPLIER_360">Proveedor Comercial</option>
-                  <option value="CREDITOR_360">Acreedor / Socio</option>
-                }
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="showAddContactModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-save" (click)="saveNewContact()">Registrar Contacto</button>
+          <button type="button" class="btn-confirm-save" (click)="saveNewBank()">Guardar Cuenta</button>
         </div>
       </div>
     </div>

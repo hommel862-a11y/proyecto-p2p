@@ -14,30 +14,48 @@ import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
 import {
-  compileLiveDeskState,
+  compileCrmWorkspaceState,
+  transitionDealStage,
+  checkCounterpartyExposure,
+  parseBankSmsClipboard,
   verifyReferenceCollision,
+  calculateDirectQuote,
+  buildContactWhatsAppReceipt,
+  createDailyProfitSettlementForFinance360,
   calculateBankReconciliationAdjustment,
-  calculateDirectCommercialQuote,
-  buildClientWhatsAppStatement,
-  createFinance360ProfitSettlement,
+  normalizeBankReference,
   type WorkspaceScope,
+  type PipelineStage,
   type FiatCurrency,
   type CrmContactCategory,
-  type OperationalBankAccount,
-  type RealTimeTradeEntry,
-  type CrmContactLedger,
+  type PipelineDeal,
+  type CrmContact,
+  type CrmBankAccount,
+  type ActivityLogEntry,
   type DailyNetProfitTransferPayload,
-  type CompiledDeskState,
+  type CompiledCrmWorkspaceState,
   type DirectCommercialQuote,
+  type ClipboardParseResult,
+  type KanbanColumn,
 } from '@p2p/core';
 
+export type CrmModuleView =
+  | 'DASHBOARD'
+  | 'KANBAN'
+  | 'CONTACTS'
+  | 'BANKS'
+  | 'ACTIVITIES'
+  | 'SETTINGS';
+
 const STORAGE_KEYS = {
-  TRADES: 'p2p.compliance.trades',
-  BANKS: 'p2p.compliance.banks',
-  CONTACTS: 'p2p.compliance.contacts',
-  SETTLEMENTS: 'p2p.compliance.settlements',
-  ACTIVE_SCOPE: 'p2p.compliance.active-scope',
-  PRIVACY_MODE: 'p2p.compliance.privacy-mode',
+  DEALS: 'p2p.crm.deals',
+  CONTACTS: 'p2p.crm.contacts',
+  BANKS: 'p2p.crm.banks',
+  ACTIVITIES: 'p2p.crm.activities',
+  SETTLEMENTS: 'p2p.crm.settlements',
+  ACTIVE_SCOPE: 'p2p.crm.active-scope',
+  PRIVACY_MODE: 'p2p.crm.privacy-mode',
+  ACTIVE_VIEW: 'p2p.crm.active-view',
 } as const;
 
 @Component({
@@ -55,7 +73,7 @@ export class ComplianceCockpitComponent {
   private readonly finance360 = inject(Finance360Service);
 
   // ---------------------------------------------------------------------------
-  // 1. DUAL-VAULT SCOPE & PRIVACY STATE (ZERO-SEED POLICY)
+  // 1. DUAL-VAULT & VIEW NAVIGATION (ZERO-SEED POLICY)
   // ---------------------------------------------------------------------------
   readonly activeScope = signal<WorkspaceScope>(
     (this.storage.get<WorkspaceScope>(STORAGE_KEYS.ACTIVE_SCOPE) ?? 'P2P_DESK') === 'FINANCE_360'
@@ -63,71 +81,68 @@ export class ComplianceCockpitComponent {
       : 'P2P_DESK',
   );
 
+  readonly activeView = signal<CrmModuleView>(
+    this.storage.get<CrmModuleView>(STORAGE_KEYS.ACTIVE_VIEW) ?? 'DASHBOARD',
+  );
+
   readonly privacyMode = signal<boolean>(
     this.storage.get<boolean>(STORAGE_KEYS.PRIVACY_MODE) ?? false,
   );
 
   // Clean persistent signals (initialized strictly as empty arrays if no user data exists)
-  readonly trades = signal<RealTimeTradeEntry[]>(
-    this.storage.get<RealTimeTradeEntry[]>(STORAGE_KEYS.TRADES) ?? [],
+  readonly deals = signal<PipelineDeal[]>(
+    this.storage.get<PipelineDeal[]>(STORAGE_KEYS.DEALS) ?? [],
   );
 
-  readonly banks = signal<OperationalBankAccount[]>(
-    this.storage.get<OperationalBankAccount[]>(STORAGE_KEYS.BANKS) ?? [],
+  readonly contacts = signal<CrmContact[]>(
+    this.storage.get<CrmContact[]>(STORAGE_KEYS.CONTACTS) ?? [],
   );
 
-  readonly contacts = signal<CrmContactLedger[]>(
-    this.storage.get<CrmContactLedger[]>(STORAGE_KEYS.CONTACTS) ?? [],
+  readonly banks = signal<CrmBankAccount[]>(
+    this.storage.get<CrmBankAccount[]>(STORAGE_KEYS.BANKS) ?? [],
+  );
+
+  readonly activities = signal<ActivityLogEntry[]>(
+    this.storage.get<ActivityLogEntry[]>(STORAGE_KEYS.ACTIVITIES) ?? [],
   );
 
   readonly settlements = signal<DailyNetProfitTransferPayload[]>(
     this.storage.get<DailyNetProfitTransferPayload[]>(STORAGE_KEYS.SETTLEMENTS) ?? [],
   );
 
-  // Clock tick for live 15-min burst cooldown calculations
+  // Live market baseline for calculations
+  readonly liveReplacementRate = signal<number>(82.0);
+
+  // Clock tick for live 15-min burst cooldown and TTL expirations
   readonly clockTick = signal<number>(Date.now());
 
   // ---------------------------------------------------------------------------
-  // 2. COMPILED LIVE DESK STATE
+  // 2. COMPILED CRM WORKSPACE STATE (O(n) SINGLE-PASS ENGINE)
   // ---------------------------------------------------------------------------
-  readonly deskState = computed<CompiledDeskState>(() => {
-    return compileLiveDeskState(
-      this.trades(),
-      this.banks(),
+  readonly workspaceState = computed<CompiledCrmWorkspaceState>(() => {
+    return compileCrmWorkspaceState(
+      this.deals(),
       this.contacts(),
+      this.banks(),
+      this.activities(),
       this.activeScope(),
+      this.liveReplacementRate(),
       this.clockTick(),
     );
   });
 
-  readonly deskKpis = computed(() => this.deskState().kpis);
+  readonly kpis = computed(() => this.workspaceState().kpis);
 
-  readonly activeBanks = computed<OperationalBankAccount[]>(() => {
-    const scope = this.activeScope();
-    return this.banks().filter((b) => b.scope === scope);
+  readonly kanbanColumnsList = computed<KanbanColumn[]>(() => {
+    const cols = this.workspaceState().kanbanColumns;
+    return [
+      cols.STAGE_1_NEW,
+      cols.STAGE_2_TRANSIT,
+      cols.STAGE_3_VERIFY,
+      cols.STAGE_4_CLOSED,
+    ];
   });
 
-  readonly bankCards = computed(() => {
-    const telemetryMap = new Map(this.deskState().bankTelemetry.map((t) => [t.bankAccountId, t]));
-    return this.activeBanks().map((b) => ({
-      account: b,
-      telemetry: telemetryMap.get(b.id) ?? {
-        bankAccountId: b.id,
-        bankName: b.bankName,
-        currency: b.currency,
-        currentBalanceFiat: b.currentBalanceFiat,
-        maxDailyCapFiat: b.maxDailyCapFiat,
-        dailyUsedFiat: 0,
-        dailyUsagePct: 0,
-        recent15MinTxCount: 0,
-        maxBurstTxPer15Min: b.maxBurstTxPer15Min,
-        status: 'AVAILABLE' as const,
-        isRecommended: false,
-      },
-    }));
-  });
-
-  // Today's date ISO format (YYYY-MM-DD)
   readonly todayDateIso = computed<string>(() => {
     const d = new Date(this.clockTick());
     const year = d.getFullYear();
@@ -136,130 +151,103 @@ export class ComplianceCockpitComponent {
     return `${year}-${month}-${day}`;
   });
 
-  // Check if today's profit is already settled into Finance 360
   readonly isTodaySettled = computed<boolean>(() => {
     const todaySettlementId = `SETTLE-${this.todayDateIso()}`;
     return this.settlements().some((s) => s.settlementId === todaySettlementId);
   });
 
   // ---------------------------------------------------------------------------
-  // 3. OPERATIONAL TOOLBAR: REFERENCE COLLISION VERIFIER & TRADE REGISTRATION
+  // 3. CLIPBOARD SMS PARSER & ANTI-FRAUDE VERIFIER STATE
   // ---------------------------------------------------------------------------
   readonly candidateRef = signal<string>('');
+  readonly rawClipboardInput = signal<string>('');
 
   readonly referenceCheck = computed(() => {
-    return verifyReferenceCollision(this.trades(), this.candidateRef());
+    return verifyReferenceCollision(this.deals(), this.candidateRef());
   });
 
-  // Quick trade registration form signals
-  readonly tradeClientSelect = signal<string>('');
-  readonly tradeClientNameInput = signal<string>('');
-  readonly tradeClientDocInput = signal<string>('');
-  readonly tradeBankId = signal<string>('');
-  readonly tradeAmountUsdt = signal<number | null>(null);
-  readonly tradeAppliedRate = signal<number | null>(null);
-  readonly tradeReplacementRate = signal<number | null>(null);
-  readonly tradeReferenceId = signal<string>('');
+  readonly parsedClipboard = computed<ClipboardParseResult>(() => {
+    return parseBankSmsClipboard(this.rawClipboardInput());
+  });
 
   // ---------------------------------------------------------------------------
-  // 4. BANK MANAGEMENT & RECONCILIATION MODAL STATE
+  // 4. NUEVO TRATO / PIPELINE MODAL & FORM STATE
+  // ---------------------------------------------------------------------------
+  readonly showAddDealModal = signal<boolean>(false);
+  readonly dealTitle = signal<string>('');
+  readonly dealContactId = signal<string>('');
+  readonly dealBankAccountId = signal<string>('');
+  readonly dealAmountUsdt = signal<number | null>(null);
+  readonly dealAppliedRate = signal<number | null>(null);
+  readonly dealReplacementRate = signal<number | null>(null);
+  readonly dealReferenceId = signal<string>('');
+  readonly dealQuoteTtlMinutes = signal<number>(15);
+
+  readonly dealCommercialQuote = computed<DirectCommercialQuote>(() => {
+    return calculateDirectQuote(
+      this.dealAmountUsdt() ?? 0,
+      this.dealReplacementRate() ?? this.liveReplacementRate(),
+      this.dealAppliedRate() ?? 0,
+      0.3,
+    );
+  });
+
+  // Drag & Drop tracking
+  readonly draggingDealId = signal<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // 5. CONTACTS CRM & 360° DOSSIER STATE
+  // ---------------------------------------------------------------------------
+  readonly showAddContactModal = signal<boolean>(false);
+  readonly newContactName = signal<string>('');
+  readonly newContactDocId = signal<string>('');
+  readonly newContactPhone = signal<string>('');
+  readonly newContactCategory = signal<CrmContactCategory>('CLIENT_P2P');
+  readonly newContactPaymentDetails = signal<string>('');
+  readonly newContactCreditLimit = signal<number>(5000);
+  readonly newContactMaxExposure = signal<number>(5000);
+  readonly contactSearchQuery = signal<string>('');
+  readonly selectedContactId = signal<string | null>(null);
+  readonly contactBalanceAdjustAmount = signal<number | null>(null);
+
+  readonly selectedContact = computed<CrmContact | null>(() => {
+    const id = this.selectedContactId();
+    if (!id) return null;
+    return this.workspaceState().contacts.find((c) => c.id === id) ?? null;
+  });
+
+  readonly selectedContactDeals = computed<PipelineDeal[]>(() => {
+    const id = this.selectedContactId();
+    if (!id) return [];
+    return this.workspaceState().deals.filter((d) => d.contactId === id);
+  });
+
+  readonly filteredContacts = computed<CrmContact[]>(() => {
+    const q = this.contactSearchQuery().trim().toLowerCase();
+    const list = this.workspaceState().contacts;
+    if (!q) return list;
+    return list.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.documentId.toLowerCase().includes(q) ||
+        c.phoneOrContact.toLowerCase().includes(q),
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // 6. BANK SHIELD & RECONCILIATION STATE
   // ---------------------------------------------------------------------------
   readonly showAddBankModal = signal<boolean>(false);
   readonly newBankName = signal<string>('');
   readonly newBankCurrency = signal<FiatCurrency>('VES');
-  readonly newBankHolderName = signal<string>('');
-  readonly newBankDocId = signal<string>('');
-  readonly newBankPhone = signal<string>('');
-  readonly newBankAccountNumber = signal<string>('');
+  readonly newBankHolderDetails = signal<string>('');
   readonly newBankInitialBalance = signal<number | null>(0);
   readonly newBankDailyCap = signal<number | null>(50000);
   readonly newBankFeePct = signal<number | null>(0.3);
   readonly newBankBurstMax = signal<number | null>(5);
 
-  // Bank reconciliation inline state
   readonly reconcilingBankId = signal<string | null>(null);
   readonly realBankBalanceInput = signal<number | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // 5. CRM CONTACT MANAGEMENT STATE
-  // ---------------------------------------------------------------------------
-  readonly showAddContactModal = signal<boolean>(false);
-  readonly newContactName = signal<string>('');
-  readonly newContactDocId = signal<string>('');
-  readonly newContactCategory = signal<CrmContactCategory>('CLIENT_P2P');
-  readonly contactSearchQuery = signal<string>('');
-  readonly selectedContactId = signal<string | null>(null);
-
-  readonly selectedContact = computed<CrmContactLedger | null>(() => {
-    const id = this.selectedContactId();
-    if (!id) return null;
-    return this.deskState().contacts.find((c) => c.clientId === id) ?? null;
-  });
-
-  readonly filteredContacts = computed<CrmContactLedger[]>(() => {
-    const q = this.contactSearchQuery().trim().toLowerCase();
-    const list = this.deskState().contacts;
-    if (!q) return list;
-    return list.filter(
-      (c) =>
-        c.clientName.toLowerCase().includes(q) ||
-        c.clientDocId.toLowerCase().includes(q),
-    );
-  });
-
-  // ---------------------------------------------------------------------------
-  // 6. AUDIT LOG FILTERS
-  // ---------------------------------------------------------------------------
-  readonly tradeSearchQuery = signal<string>('');
-  readonly filterBankId = signal<string>('');
-  readonly filterClientId = signal<string>('');
-
-  readonly displayedTrades = computed<RealTimeTradeEntry[]>(() => {
-    let list = this.deskState().filteredTrades;
-    const q = this.tradeSearchQuery().trim().toLowerCase();
-    const bankId = this.filterBankId();
-    const clientId = this.filterClientId();
-
-    if (q) {
-      list = list.filter(
-        (t) =>
-          t.clientName.toLowerCase().includes(q) ||
-          t.clientDocId.toLowerCase().includes(q) ||
-          t.bankReferenceId.toLowerCase().includes(q) ||
-          t.bankName.toLowerCase().includes(q),
-      );
-    }
-
-    if (bankId) {
-      list = list.filter((t) => t.bankAccountId === bankId);
-    }
-
-    if (clientId) {
-      list = list.filter((t) => t.clientId === clientId);
-    }
-
-    return [...list].sort((a, b) => b.timestamp - a.timestamp);
-  });
-
-  // ---------------------------------------------------------------------------
-  // 7. DIRECT COMMERCIAL CALCULATOR
-  // ---------------------------------------------------------------------------
-  readonly calcAmountUsdt = signal<number | null>(1000);
-  readonly calcReplacementRate = signal<number | null>(82.0);
-  readonly calcClientRate = signal<number | null>(84.5);
-  readonly calcBankFeePct = signal<number | null>(0.3);
-
-  readonly commercialQuote = computed<DirectCommercialQuote>(() => {
-    return calculateDirectCommercialQuote(
-      this.calcAmountUsdt() ?? 0,
-      this.calcReplacementRate() ?? 0,
-      this.calcClientRate() ?? 0,
-      this.calcBankFeePct() ?? 0,
-    );
-  });
-
-  // Running account adjustment input
-  readonly contactBalanceAdjustAmount = signal<number | null>(null);
 
   // ---------------------------------------------------------------------------
   // LIFECYCLE & HOTKEYS
@@ -273,20 +261,23 @@ export class ComplianceCockpitComponent {
   }
 
   // ---------------------------------------------------------------------------
-  // ACTIONS: VAULT SCOPE & FINANCE 360 BRIDGE
+  // ACTIONS: SCOPE & VIEW NAVIGATION
   // ---------------------------------------------------------------------------
   setScope(scope: WorkspaceScope): void {
     this.activeScope.set(scope);
     this.storage.set(STORAGE_KEYS.ACTIVE_SCOPE, scope);
-    this.filterClientId.set('');
-    this.filterBankId.set('');
     this.selectedContactId.set(null);
     this.toast.info(
       scope === 'P2P_DESK'
         ? 'Bóveda P2P / OTC activada.'
-        : 'Bóveda CRM & Finanzas 360 activada.',
+        : 'Bóveda Finanzas 360 activada.',
       'Aislamiento de Bóveda',
     );
+  }
+
+  setView(view: CrmModuleView): void {
+    this.activeView.set(view);
+    this.storage.set(STORAGE_KEYS.ACTIVE_VIEW, view);
   }
 
   togglePrivacyMode(): void {
@@ -303,32 +294,30 @@ export class ComplianceCockpitComponent {
     void this.router.navigate(['/finanzas-360']);
   }
 
+  // ---------------------------------------------------------------------------
+  // ACTIONS: FINANCES 360 PROFIT BRIDGE
+  // ---------------------------------------------------------------------------
   transferDailyProfitToFinance360(): void {
-    const todayTrades = this.deskState().todayTrades;
+    const deals = this.deals();
     const dateIso = this.todayDateIso();
-    const existingSettlements = this.settlements();
+    const existing = this.settlements();
 
-    const result = createFinance360ProfitSettlement(todayTrades, dateIso, existingSettlements);
+    const result = createDailyProfitSettlementForFinance360(deals, dateIso, existing);
 
     if (!result.success || !result.payload) {
       if (result.error === 'SETTLEMENT_ALREADY_EXISTS') {
         this.toast.warn('La ganancia de hoy ya fue transferida a Finanzas 360.', 'Corte Diario');
-      } else if (result.error === 'NO_POSITIVE_PROFIT_TO_TRANSFER') {
-        this.toast.warn('No hay ganancia neta positiva acumulada hoy para transferir.', 'Corte Diario');
       } else {
-        this.toast.warn('No hay operaciones registradas hoy en la mesa P2P.', 'Corte Diario');
+        this.toast.warn('No hay ganancia neta positiva de tratos liquidados hoy.', 'Corte Diario');
       }
       return;
     }
 
     const payload = result.payload;
-
-    // 1. Update internal settlement history
-    const nextSettlements = [...existingSettlements, payload];
+    const nextSettlements = [...existing, payload];
     this.settlements.set(nextSettlements);
     this.storage.set(STORAGE_KEYS.SETTLEMENTS, nextSettlements);
 
-    // 2. Direct Bridge into Finance 360 ledger
     try {
       this.finance360.addIncome({
         title: `Corte Diario P2P Desk (${payload.dateIso})`,
@@ -338,7 +327,7 @@ export class ComplianceCockpitComponent {
         triMonetary: computeTriMonetaryAmount(payload.netProfitUsdt, 'USDT', 1, 1),
         date: payload.dateIso,
         referenceNumber: payload.settlementId,
-        notes: `Transferencia automática de ganancia P2P. Liquidación #${payload.settlementId} (${payload.tradesCount} operaciones verificadas).`,
+        notes: `Liquidación automática P2P #${payload.settlementId} (${payload.tradesCount} operaciones cerradas).`,
         p2pBridgeMetadata: {
           operationsCount: payload.tradesCount,
           realizedPnlVes: 0,
@@ -348,186 +337,432 @@ export class ComplianceCockpitComponent {
       });
 
       this.toast.success(
-        `💰 +$${payload.netProfitUsdt.toFixed(2)} USDT transferidos con éxito a Finanzas 360 (#${payload.settlementId}).`,
+        `💰 +$${payload.netProfitUsdt.toFixed(2)} USDT transferidos a Finanzas 360 (#${payload.settlementId}).`,
         'Puente Liquidación 360',
       );
     } catch {
       this.toast.warn(
-        `Liquidación #${payload.settlementId} registrada localmente. Verifique Finanzas 360.`,
+        `Liquidación #${payload.settlementId} registrada localmente.`,
         'Liquidación P2P',
       );
     }
   }
 
   // ---------------------------------------------------------------------------
-  // ACTIONS: TRADE REGISTRATION & VERIFICATION
+  // ACTIONS: KANBAN & PIPELINE MANAGEMENT
   // ---------------------------------------------------------------------------
-  onClientSelectChange(clientId: string): void {
-    this.tradeClientSelect.set(clientId);
-    if (clientId) {
-      const contact = this.deskState().contacts.find((c) => c.clientId === clientId);
-      if (contact) {
-        this.tradeClientNameInput.set(contact.clientName);
-        this.tradeClientDocInput.set(contact.clientDocId);
-      }
-    }
+  openNewDealModal(): void {
+    this.dealTitle.set('');
+    this.dealContactId.set(this.selectedContactId() ?? '');
+    this.dealBankAccountId.set(this.workspaceState().recommendedBankId ?? '');
+    this.dealAmountUsdt.set(null);
+    this.dealAppliedRate.set(null);
+    this.dealReplacementRate.set(this.liveReplacementRate());
+    this.dealReferenceId.set('');
+    this.dealQuoteTtlMinutes.set(15);
+    this.showAddDealModal.set(true);
   }
 
-  registerTrade(): void {
+  saveNewDeal(directSettle = false): void {
     const scope = this.activeScope();
-    const amountUsdt = this.tradeAmountUsdt();
-    const appliedRate = this.tradeAppliedRate();
-    const replacementRate = this.tradeReplacementRate() ?? appliedRate ?? 0;
-    const bankId = this.tradeBankId();
-    const ref = this.tradeReferenceId().trim();
+    const contactId = this.dealContactId();
+    const bankId = this.dealBankAccountId();
+    const amountUsdt = this.dealAmountUsdt();
+    const appliedRate = this.dealAppliedRate();
+    const replacementRate = this.dealReplacementRate() ?? this.liveReplacementRate();
+    const ref = this.dealReferenceId().trim();
 
+    if (!contactId) {
+      this.toast.warn('Seleccione un contacto o cliente.', 'Formulario Incompleto');
+      return;
+    }
+    if (!bankId) {
+      this.toast.warn('Seleccione una cuenta bancaria.', 'Formulario Incompleto');
+      return;
+    }
     if (!amountUsdt || amountUsdt <= 0) {
-      this.toast.warn('Ingrese un monto válido en USDT mayor a 0.', 'Formulario Incompleto');
+      this.toast.warn('Ingrese un monto válido en USDT.', 'Formulario Incompleto');
       return;
     }
     if (!appliedRate || appliedRate <= 0) {
       this.toast.warn('Ingrese la tasa aplicada al cliente.', 'Formulario Incompleto');
       return;
     }
-    if (!bankId) {
-      this.toast.warn('Seleccione una cuenta bancaria operativa.', 'Formulario Incompleto');
+
+    const contact = this.contacts().find((c) => c.id === contactId);
+    const bank = this.banks().find((b) => b.id === bankId);
+    if (!contact || !bank) {
+      this.toast.error('Contacto o banco no encontrado.', 'Error');
       return;
     }
 
-    // Check reference collision
+    // Check Counterparty Exposure Limit
+    if (!directSettle) {
+      const exposureCheck = checkCounterpartyExposure(contact, this.deals(), amountUsdt);
+      if (!exposureCheck.allowed) {
+        const confirmOverlimit = window.confirm(
+          `⚠️ ALERTA DE EXPOSICIÓN:\nEl cliente ${contact.name} tiene $${exposureCheck.currentExposureUsdt} USDT en tránsito. Esta nueva operación de $${amountUsdt} supera su límite de $${exposureCheck.limitUsdt} USDT.\n\n¿Desea autorizar este trato de todas formas?`,
+        );
+        if (!confirmOverlimit) return;
+      }
+    }
+
+    // Check Reference Collision if reference provided
     if (ref) {
-      const collision = verifyReferenceCollision(this.trades(), ref);
-      if (collision.isDuplicate && collision.existingEntry) {
+      const collision = verifyReferenceCollision(this.deals(), ref);
+      if (collision.isDuplicate && collision.existingDeal) {
         const confirmDup = window.confirm(
-          `⚠️ ALERTA DE COLISIÓN:\nLa referencia "${ref}" ya fue registrada previamente en la operación #${collision.existingEntry.id} (${collision.existingEntry.clientName} por ${collision.existingEntry.fiatAmount} ${collision.existingEntry.fiatCurrency}).\n\n¿Desea asentar esta operación de todos modos?`,
+          `⚠️ COLISIÓN DE REFERENCIA:\nLa referencia "${ref}" ya fue usada en el trato #${collision.existingDeal.id} (${collision.existingDeal.contactName}).\n\n¿Desea registrarla de todos modos?`,
         );
         if (!confirmDup) return;
       }
     }
 
-    const bank = this.banks().find((b) => b.id === bankId);
-    if (!bank) {
-      this.toast.error('Banco seleccionado no encontrado.', 'Error');
-      return;
-    }
-
-    // Resolve client
-    let clientId = this.tradeClientSelect();
-    let clientName = this.tradeClientNameInput().trim();
-    let clientDoc = this.tradeClientDocInput().trim();
-
-    if (!clientName) {
-      clientName = `Cliente-${ref || Date.now().toString().slice(-4)}`;
-    }
-
-    if (!clientId) {
-      // Find existing contact by document or name
-      const existing = this.contacts().find(
-        (c) =>
-          c.scope === scope &&
-          ((clientDoc && c.clientDocId === clientDoc) ||
-            c.clientName.toLowerCase() === clientName.toLowerCase()),
-      );
-
-      if (existing) {
-        clientId = existing.clientId;
-      } else {
-        // Auto-register new CRM contact
-        clientId = `CLI-${Date.now().toString().slice(-6)}`;
-        const newContact: CrmContactLedger = {
-          clientId,
-          scope,
-          clientName,
-          clientDocId: clientDoc,
-          category: scope === 'P2P_DESK' ? 'CLIENT_P2P' : 'SUPPLIER_360',
-          pendingBalanceUsdt: 0,
-          pendingBalanceFiat: 0,
-          lifetimeVolumeUsdt: 0,
-          lifetimeNetPnlUsdt: 0,
-          verifiedReferences: ref ? [ref] : [],
-          lastActivityTimestamp: Date.now(),
-        };
-        const nextContacts = [...this.contacts(), newContact];
-        this.contacts.set(nextContacts);
-        this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
-      }
-    }
-
     // Financial calculations
-    const fiatAmount = Math.round(amountUsdt * appliedRate * 100) / 100;
-    const frictionFiat = Math.round(fiatAmount * (bank.feePct / 100) * 100) / 100;
-    const netFiatProfit =
-      Math.round((fiatAmount - frictionFiat - amountUsdt * replacementRate) * 100) / 100;
-    const netPnlUsdt =
-      replacementRate > 0 ? Math.round((netFiatProfit / replacementRate) * 100) / 100 : 0;
+    const quote = calculateDirectQuote(amountUsdt, replacementRate, appliedRate, bank.feePct);
+    const now = Date.now();
+    const targetStage: PipelineStage = directSettle ? 'STAGE_4_CLOSED' : 'STAGE_1_NEW';
 
-    const newTrade: RealTimeTradeEntry = {
-      id: `TRD-${Date.now().toString().slice(-6)}`,
-      timestamp: Date.now(),
+    const newDeal: PipelineDeal = {
+      id: `DL-${Date.now().toString().slice(-6)}`,
       scope,
-      clientId,
-      clientName,
-      clientDocId: clientDoc,
+      title: this.dealTitle().trim() || `Trato ${amountUsdt} USDT - ${contact.name}`,
+      contactId: contact.id,
+      contactName: contact.name,
       bankAccountId: bank.id,
       bankName: bank.bankName,
-      bankReferenceId: ref,
+      stage: targetStage,
       fiatCurrency: bank.currency,
-      fiatAmount,
       cryptoAmountUsdt: amountUsdt,
       appliedRate,
       replacementRate,
-      netPnlUsdt,
-      frictionFiat,
+      totalFiatAmount: quote.totalFiatToCollect,
+      paidFiatAmount: directSettle ? quote.totalFiatToCollect : 0,
+      netProfitUsdt: quote.netProfitUsdt,
+      bankReferenceId: ref,
+      quoteTtlMinutes: this.dealQuoteTtlMinutes(),
+      quotedAt: now,
+      isRateExpired: false,
+      timeline: [
+        {
+          timestamp: now,
+          fromStage: null,
+          toStage: targetStage,
+          notes: directSettle ? 'Liquidación directa inmediata' : 'Trato cotizado en tablero',
+        },
+      ],
+      createdAt: now,
+      closedAt: directSettle ? now : null,
     };
 
-    // 1. Insert trade
-    const nextTrades = [newTrade, ...this.trades()];
-    this.trades.set(nextTrades);
-    this.storage.set(STORAGE_KEYS.TRADES, nextTrades);
+    // 1. Insert Deal
+    const nextDeals = [newDeal, ...this.deals()];
+    this.deals.set(nextDeals);
+    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
 
-    // 2. Update bank balance
-    const nextBanks = this.banks().map((b) => {
-      if (b.id === bank.id) {
-        return {
-          ...b,
-          currentBalanceFiat: Math.round((b.currentBalanceFiat + fiatAmount) * 100) / 100,
-        };
-      }
-      return b;
+    // 2. If direct settle, update Bank balance
+    if (directSettle) {
+      const nextBanks = this.banks().map((b) =>
+        b.id === bank.id
+          ? { ...b, currentBalanceFiat: Math.round((b.currentBalanceFiat + newDeal.totalFiatAmount) * 100) / 100 }
+          : b,
+      );
+      this.banks.set(nextBanks);
+      this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+    }
+
+    // 3. Record Activity Log
+    this.logActivity({
+      type: directSettle ? 'DEAL_CLOSED' : 'DEAL_CREATED',
+      description: directSettle
+        ? `Operación #${newDeal.id} liquidada directamente (+${newDeal.netProfitUsdt} USDT)`
+        : `Nuevo trato #${newDeal.id} cotizado para ${contact.name}`,
+      amountUsdt: newDeal.cryptoAmountUsdt,
+      referenceId: ref,
     });
-    this.banks.set(nextBanks);
-    this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
 
-    // Reset inputs
-    this.tradeAmountUsdt.set(null);
-    this.tradeAppliedRate.set(null);
-    this.tradeReplacementRate.set(null);
-    this.tradeReferenceId.set('');
-    this.candidateRef.set('');
-
+    this.showAddDealModal.set(false);
     this.toast.success(
-      `⚡ Operación #${newTrade.id} registrada (+${newTrade.netPnlUsdt.toFixed(2)} USDT PnL).`,
-      'Operación Asentada',
+      directSettle
+        ? `⚡ Operación #${newDeal.id} liquidada con éxito (+${newDeal.netProfitUsdt.toFixed(2)} USDT PnL).`
+        : `📋 Trato #${newDeal.id} agregado al tablero en "Cotizado".`,
+      'Pipeline Operativo',
     );
   }
 
-  deleteTrade(tradeId: string): void {
-    const trade = this.trades().find((t) => t.id === tradeId);
-    if (!trade) return;
+  moveDealToStage(dealId: string, targetStage: PipelineStage): void {
+    const deal = this.deals().find((d) => d.id === dealId);
+    if (!deal) return;
+
+    let targetRef = deal.bankReferenceId;
+    if (targetStage === 'STAGE_4_CLOSED' && !deal.bankReferenceId.trim()) {
+      const inputRef = window.prompt(
+        `Para liquidar la operación #${deal.id} (${deal.cryptoAmountUsdt} USDT), ingrese el número de comprobante o referencia bancaria:`,
+      );
+      if (!inputRef || !inputRef.trim()) {
+        this.toast.warn('Se requiere un comprobante para liquidar la operación.', 'Referencia Requerida');
+        return;
+      }
+      targetRef = inputRef.trim();
+
+      // Check collision
+      const coll = verifyReferenceCollision(this.deals(), targetRef, deal.id);
+      if (coll.isDuplicate && coll.existingDeal) {
+        const confirmDup = window.confirm(
+          `⚠️ ALERTA:\nLa referencia "${targetRef}" ya fue usada en la operación #${coll.existingDeal.id}.\n¿Desea cerrar el trato con esta referencia de todas formas?`,
+        );
+        if (!confirmDup) return;
+      }
+    }
+
+    const now = Date.now();
+    const transition = transitionDealStage(
+      deal,
+      targetStage,
+      targetRef,
+      now,
+      this.liveReplacementRate(),
+    );
+
+    if (!transition.success) {
+      this.toast.error('No se pudo mover el trato.', 'Error de Pipeline');
+      return;
+    }
+
+    const updated = transition.updatedDeal;
+
+    // 1. Update deals list
+    const nextDeals = this.deals().map((d) => (d.id === dealId ? updated : d));
+    this.deals.set(nextDeals);
+    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
+
+    // 2. If moving to CLOSED_WON, impact bank balance and contact verified references
+    if (targetStage === 'STAGE_4_CLOSED' && deal.stage !== 'STAGE_4_CLOSED') {
+      const nextBanks = this.banks().map((b) =>
+        b.id === deal.bankAccountId
+          ? { ...b, currentBalanceFiat: Math.round((b.currentBalanceFiat + deal.totalFiatAmount) * 100) / 100 }
+          : b,
+      );
+      this.banks.set(nextBanks);
+      this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+
+      // Add verified reference to contact
+      const nextContacts = this.contacts().map((c) => {
+        if (c.id === deal.contactId && targetRef) {
+          const refs = c.verifiedReferences.includes(targetRef)
+            ? c.verifiedReferences
+            : [targetRef, ...c.verifiedReferences];
+          return { ...c, verifiedReferences: refs };
+        }
+        return c;
+      });
+      this.contacts.set(nextContacts);
+      this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+
+      this.logActivity({
+        type: 'DEAL_CLOSED',
+        description: `Trato #${deal.id} liquidado (+${updated.netProfitUsdt} USDT PnL) en ${deal.bankName}`,
+        amountUsdt: deal.cryptoAmountUsdt,
+        referenceId: targetRef,
+      });
+
+      this.toast.success(
+        `🎉 Trato #${deal.id} liquidado. +$${updated.netProfitUsdt.toFixed(2)} USDT sumados al Dashboard.`,
+        'Trato Cerrado',
+      );
+    } else {
+      this.logActivity({
+        type: 'STAGE_MOVED',
+        description: `Trato #${deal.id} avanzado a ${targetStage}`,
+        amountUsdt: deal.cryptoAmountUsdt,
+      });
+      this.toast.info(`Trato #${deal.id} movido a "${targetStage}".`, 'Pipeline');
+    }
+  }
+
+  deleteDeal(dealId: string): void {
+    const deal = this.deals().find((d) => d.id === dealId);
+    if (!deal) return;
 
     const confirmDel = window.confirm(
-      `¿Eliminar la operación #${trade.id} (${trade.cryptoAmountUsdt} USDT - ${trade.clientName}) de la bitácora?`,
+      `¿Eliminar el trato #${deal.id} (${deal.cryptoAmountUsdt} USDT - ${deal.contactName})?`,
     );
     if (!confirmDel) return;
 
-    const nextTrades = this.trades().filter((t) => t.id !== tradeId);
-    this.trades.set(nextTrades);
-    this.storage.set(STORAGE_KEYS.TRADES, nextTrades);
-    this.toast.info(`Operación #${tradeId} eliminada.`, 'Bitácora');
+    const nextDeals = this.deals().filter((d) => d.id !== dealId);
+    this.deals.set(nextDeals);
+    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
+    this.toast.info(`Trato #${dealId} eliminado.`, 'Pipeline');
+  }
+
+  // Drag & drop handlers
+  onDragStart(event: DragEvent, dealId: string): void {
+    this.draggingDealId.set(dealId);
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('text/plain', dealId);
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onDrop(event: DragEvent, targetStage: PipelineStage): void {
+    event.preventDefault();
+    const dealId = this.draggingDealId();
+    if (dealId) {
+      this.moveDealToStage(dealId, targetStage);
+      this.draggingDealId.set(null);
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // ACTIONS: BANK MANAGEMENT
+  // ACTIONS: CLIPBOARD & SMS AUTO-INTAKE
+  // ---------------------------------------------------------------------------
+  applyParsedClipboard(): void {
+    const parsed = this.parsedClipboard();
+    if (parsed.referenceId) {
+      this.candidateRef.set(parsed.referenceId);
+      this.dealReferenceId.set(parsed.referenceId);
+    }
+    if (parsed.amountFiat) {
+      // Find matching bank if detected
+      if (parsed.detectedBank) {
+        const found = this.banks().find((b) =>
+          b.bankName.toLowerCase().includes(parsed.detectedBank!.toLowerCase()),
+        );
+        if (found) {
+          this.dealBankAccountId.set(found.id);
+        }
+      }
+      this.toast.success(
+        `Datos de ${parsed.detectedBank || 'banco'} detectados (Ref: ${parsed.referenceId || 'N/A'}, Monto: ${parsed.amountFiat}).`,
+        'Parser Inteligente',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ACTIONS: CONTACTS CRM & RUNNING ACCOUNT
+  // ---------------------------------------------------------------------------
+  saveNewContact(): void {
+    const name = this.newContactName().trim();
+    if (!name) {
+      this.toast.warn('Ingrese el nombre del contacto o cliente.', 'Campo Requerido');
+      return;
+    }
+
+    const newContact: CrmContact = {
+      id: `CLI-${Date.now().toString().slice(-6)}`,
+      scope: this.activeScope(),
+      name,
+      documentId: this.newContactDocId().trim(),
+      phoneOrContact: this.newContactPhone().trim(),
+      category: this.newContactCategory(),
+      paymentDetailsText: this.newContactPaymentDetails().trim(),
+      creditLimitUsdt: this.newContactCreditLimit() ?? 5000,
+      pendingBalanceUsdt: 0,
+      maxPendingExposureUsdt: this.newContactMaxExposure() ?? 5000,
+      isDebtIndexedToUsdt: true,
+      verifiedReferences: [],
+      createdAt: Date.now(),
+    };
+
+    const nextContacts = [...this.contacts(), newContact];
+    this.contacts.set(nextContacts);
+    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+
+    this.showAddContactModal.set(false);
+    this.newContactName.set('');
+    this.newContactDocId.set('');
+    this.newContactPhone.set('');
+    this.newContactPaymentDetails.set('');
+    this.selectedContactId.set(newContact.id);
+    this.toast.success(`Contacto "${newContact.name}" registrado en el CRM.`, 'Padrón CRM');
+  }
+
+  selectContact(contactId: string): void {
+    this.selectedContactId.set(contactId);
+  }
+
+  adjustContactBalance(mode: 'POSITIVE' | 'NEGATIVE' | 'ZERO'): void {
+    const contact = this.selectedContact();
+    if (!contact) return;
+
+    if (mode === 'ZERO') {
+      const confirmZero = window.confirm(
+        `¿Saldar la cuenta corriente de ${contact.name} a $0.00 USDT?`,
+      );
+      if (!confirmZero) return;
+
+      const nextContacts = this.contacts().map((c) =>
+        c.id === contact.id ? { ...c, pendingBalanceUsdt: 0 } : c,
+      );
+      this.contacts.set(nextContacts);
+      this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+      this.logActivity({
+        type: 'BALANCE_ADJUSTED',
+        description: `Cuenta corriente de ${contact.name} saldada a $0.00`,
+        amountUsdt: 0,
+      });
+      this.toast.success(`Cuenta de ${contact.name} saldada a $0.00.`, 'Cuenta Corriente');
+      return;
+    }
+
+    const amount = this.contactBalanceAdjustAmount();
+    if (!amount || amount <= 0) {
+      this.toast.warn('Ingrese un monto válido a ajustar.', 'Monto Inválido');
+      return;
+    }
+
+    const delta = mode === 'POSITIVE' ? amount : -amount;
+    const newBal = Math.round((contact.pendingBalanceUsdt + delta) * 100) / 100;
+
+    const nextContacts = this.contacts().map((c) =>
+      c.id === contact.id ? { ...c, pendingBalanceUsdt: newBal } : c,
+    );
+    this.contacts.set(nextContacts);
+    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+    this.contactBalanceAdjustAmount.set(null);
+
+    this.logActivity({
+      type: 'BALANCE_ADJUSTED',
+      description: `Ajuste de saldo para ${contact.name}: ${delta >= 0 ? '+' : ''}${delta} USDT (Nuevo saldo: ${newBal} USDT)`,
+      amountUsdt: amount,
+    });
+
+    this.toast.success(
+      `Saldo de ${contact.name} actualizado a ${newBal.toFixed(2)} USDT.`,
+      'Cuenta Corriente',
+    );
+  }
+
+  copyWhatsAppReceipt(): void {
+    const contact = this.selectedContact();
+    if (!contact) return;
+
+    const deals = this.selectedContactDeals();
+    const statement = buildContactWhatsAppReceipt(contact, deals, true);
+
+    void navigator.clipboard.writeText(statement);
+    this.toast.success(
+      `Estado de cuenta de ${contact.name} copiado al portapapeles.`,
+      'WhatsApp CRM',
+    );
+  }
+
+  copyText(text: string, label: string): void {
+    if (!text) return;
+    void navigator.clipboard.writeText(text);
+    this.toast.info(`${label} copiado al portapapeles.`, '1-Click Copy');
+  }
+
+  // ---------------------------------------------------------------------------
+  // ACTIONS: BANKS & RECONCILIATION
   // ---------------------------------------------------------------------------
   saveNewBank(): void {
     const name = this.newBankName().trim();
@@ -536,17 +771,12 @@ export class ComplianceCockpitComponent {
       return;
     }
 
-    const newBank: OperationalBankAccount = {
+    const newBank: CrmBankAccount = {
       id: `BNK-${Date.now().toString().slice(-6)}`,
       scope: this.activeScope(),
       bankName: name,
       currency: this.newBankCurrency(),
-      holderDetails: {
-        holderName: this.newBankHolderName().trim() || name,
-        documentId: this.newBankDocId().trim(),
-        phone: this.newBankPhone().trim(),
-        accountNumber: this.newBankAccountNumber().trim(),
-      },
+      holderDetailsText: this.newBankHolderDetails().trim() || name,
       currentBalanceFiat: this.newBankInitialBalance() ?? 0,
       maxDailyCapFiat: this.newBankDailyCap() ?? 50000,
       feePct: this.newBankFeePct() ?? 0.3,
@@ -558,32 +788,9 @@ export class ComplianceCockpitComponent {
     this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
 
     this.showAddBankModal.set(false);
-    this.resetNewBankForm();
-    this.toast.success(`Banco "${newBank.bankName}" agregado con éxito.`, 'Escudo Bancario');
-  }
-
-  private resetNewBankForm(): void {
     this.newBankName.set('');
-    this.newBankHolderName.set('');
-    this.newBankDocId.set('');
-    this.newBankPhone.set('');
-    this.newBankAccountNumber.set('');
-    this.newBankInitialBalance.set(0);
-    this.newBankDailyCap.set(50000);
-    this.newBankFeePct.set(0.3);
-    this.newBankBurstMax.set(5);
-  }
-
-  copyBankDetails(bank: OperationalBankAccount): void {
-    const text = `🏦 *DATOS BANCARIOS — ${bank.bankName}*
-Titular: ${bank.holderDetails.holderName}
-Documento: ${bank.holderDetails.documentId}
-Teléfono / Pago Móvil: ${bank.holderDetails.phone}
-Nro de Cuenta: ${bank.holderDetails.accountNumber}
-Moneda: ${bank.currency}`;
-
-    void navigator.clipboard.writeText(text);
-    this.toast.info(`Datos de ${bank.bankName} copiados al portapapeles.`, '1-Click Copy');
+    this.newBankHolderDetails.set('');
+    this.toast.success(`Cuenta bancaria "${newBank.bankName}" agregada.`, 'Escudo Bancario');
   }
 
   openReconciliation(bankId: string, currentBalance: number): void {
@@ -600,19 +807,21 @@ Moneda: ${bank.currency}`;
 
     const adj = calculateBankReconciliationAdjustment(bank.currentBalanceFiat, realBalance);
 
-    const nextBanks = this.banks().map((b) => {
-      if (b.id === bankId) {
-        return { ...b, currentBalanceFiat: realBalance };
-      }
-      return b;
-    });
-
+    const nextBanks = this.banks().map((b) =>
+      b.id === bankId ? { ...b, currentBalanceFiat: realBalance } : b,
+    );
     this.banks.set(nextBanks);
     this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
     this.reconcilingBankId.set(null);
 
+    this.logActivity({
+      type: 'BANK_RECONCILED',
+      description: `Cuadre bancario en ${bank.bankName}: Ajuste de ${adj.formattedDrift} ${bank.currency} (Saldo real: ${realBalance})`,
+      amountUsdt: 0,
+    });
+
     this.toast.success(
-      `Saldo de ${bank.bankName} ajustado a ${realBalance.toFixed(2)} ${bank.currency} (Ajuste: ${adj.formattedDrift}).`,
+      `Saldo de ${bank.bankName} ajustado a ${realBalance.toFixed(2)} ${bank.currency} (${adj.formattedDrift}).`,
       'Cuadre Bancario',
     );
   }
@@ -621,133 +830,84 @@ Moneda: ${bank.currency}`;
     const bank = this.banks().find((b) => b.id === bankId);
     if (!bank) return;
 
-    const confirmDel = window.confirm(
-      `¿Eliminar la cuenta bancaria "${bank.bankName}" (${bank.currency})?`,
-    );
+    const confirmDel = window.confirm(`¿Eliminar la cuenta "${bank.bankName}"?`);
     if (!confirmDel) return;
 
     const nextBanks = this.banks().filter((b) => b.id !== bankId);
     this.banks.set(nextBanks);
     this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
-    this.toast.info(`Banco "${bank.bankName}" eliminado.`, 'Escudo Bancario');
+    this.toast.info(`Cuenta "${bank.bankName}" eliminada.`, 'Escudo Bancario');
   }
 
   // ---------------------------------------------------------------------------
-  // ACTIONS: CRM CONTACTS & RUNNING ACCOUNT
+  // ACTIONS: BACKUP & DATA EXPORT/IMPORT
   // ---------------------------------------------------------------------------
-  saveNewContact(): void {
-    const name = this.newContactName().trim();
-    if (!name) {
-      this.toast.warn('Ingrese el nombre del contacto o cliente.', 'Campo Requerido');
-      return;
-    }
-
-    const newContact: CrmContactLedger = {
-      clientId: `CLI-${Date.now().toString().slice(-6)}`,
+  exportDataJson(): void {
+    const backup = {
+      version: '2.4',
+      timestamp: Date.now(),
       scope: this.activeScope(),
-      clientName: name,
-      clientDocId: this.newContactDocId().trim(),
-      category: this.newContactCategory(),
-      pendingBalanceUsdt: 0,
-      pendingBalanceFiat: 0,
-      lifetimeVolumeUsdt: 0,
-      lifetimeNetPnlUsdt: 0,
-      verifiedReferences: [],
-      lastActivityTimestamp: Date.now(),
+      deals: this.deals(),
+      contacts: this.contacts(),
+      banks: this.banks(),
+      activities: this.activities(),
+      settlements: this.settlements(),
     };
 
-    const nextContacts = [...this.contacts(), newContact];
-    this.contacts.set(nextContacts);
-    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
-
-    this.showAddContactModal.set(false);
-    this.newContactName.set('');
-    this.newContactDocId.set('');
-    this.selectedContactId.set(newContact.clientId);
-    this.toast.success(`Contacto "${newContact.clientName}" registrado con éxito.`, 'Padrón CRM');
-  }
-
-  selectContact(clientId: string): void {
-    this.selectedContactId.set(clientId);
-    this.tradeClientSelect.set(clientId);
-    this.onClientSelectChange(clientId);
-  }
-
-  adjustContactBalance(mode: 'POSITIVE' | 'NEGATIVE' | 'ZERO'): void {
-    const contact = this.selectedContact();
-    if (!contact) return;
-
-    if (mode === 'ZERO') {
-      const confirmZero = window.confirm(
-        `¿Saldar la cuenta de ${contact.clientName} a $0.00 USDT?`,
-      );
-      if (!confirmZero) return;
-
-      const nextContacts = this.contacts().map((c) => {
-        if (c.clientId === contact.clientId) {
-          return { ...c, pendingBalanceUsdt: 0, pendingBalanceFiat: 0 };
-        }
-        return c;
-      });
-      this.contacts.set(nextContacts);
-      this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
-      this.toast.success(`Cuenta de ${contact.clientName} saldada a $0.00.`, 'Cuenta Corriente');
-      return;
-    }
-
-    const amount = this.contactBalanceAdjustAmount();
-    if (!amount || amount <= 0) {
-      this.toast.warn('Ingrese un monto válido a ajustar.', 'Monto Inválido');
-      return;
-    }
-
-    const delta = mode === 'POSITIVE' ? amount : -amount;
-    const newBalUsdt = Math.round((contact.pendingBalanceUsdt + delta) * 100) / 100;
-
-    const nextContacts = this.contacts().map((c) => {
-      if (c.clientId === contact.clientId) {
-        return { ...c, pendingBalanceUsdt: newBalUsdt };
-      }
-      return c;
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: 'application/json',
     });
-
-    this.contacts.set(nextContacts);
-    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
-    this.contactBalanceAdjustAmount.set(null);
-
-    this.toast.success(
-      `Saldo de ${contact.clientName} actualizado a ${newBalUsdt.toFixed(2)} USDT.`,
-      'Cuenta Corriente',
-    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `p2p_crm_backup_${this.todayDateIso()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.toast.success('Copia de respaldo exportada con éxito.', 'Exportación JSON');
   }
 
-  copyWhatsAppStatement(): void {
-    const contact = this.selectedContact();
-    if (!contact) return;
+  importDataJson(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
 
-    const statement = buildClientWhatsAppStatement(
-      contact,
-      this.deskState().filteredTrades,
-      false, // Never leak operator internal profit to the client
-    );
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        if (data.deals && data.contacts && data.banks) {
+          this.deals.set(data.deals);
+          this.contacts.set(data.contacts);
+          this.banks.set(data.banks);
+          if (data.activities) this.activities.set(data.activities);
+          if (data.settlements) this.settlements.set(data.settlements);
 
-    void navigator.clipboard.writeText(statement);
-    this.toast.success(
-      `Estado de cuenta de ${contact.clientName} copiado al portapapeles.`,
-      'WhatsApp CRM',
-    );
+          this.storage.set(STORAGE_KEYS.DEALS, data.deals);
+          this.storage.set(STORAGE_KEYS.CONTACTS, data.contacts);
+          this.storage.set(STORAGE_KEYS.BANKS, data.banks);
+          this.storage.set(STORAGE_KEYS.ACTIVITIES, data.activities || []);
+          this.storage.set(STORAGE_KEYS.SETTLEMENTS, data.settlements || []);
+
+          this.toast.success('Base de datos restaurada correctamente.', 'Importación Exitosa');
+        } else {
+          this.toast.error('Formato de archivo inválido.', 'Error de Importación');
+        }
+      } catch {
+        this.toast.error('No se pudo procesar el archivo JSON.', 'Error');
+      }
+    };
+    reader.readAsText(file);
   }
 
-  filterBySelectedContact(): void {
-    const contact = this.selectedContact();
-    if (contact) {
-      this.filterClientId.set(contact.clientId);
-      this.toast.info(`Bitácora filtrada por "${contact.clientName}".`, 'Filtro Activo');
-    }
-  }
-
-  clearContactFilter(): void {
-    this.filterClientId.set('');
-    this.toast.info('Filtro de cliente limpiado.', 'Filtro Desactivado');
+  private logActivity(entry: Omit<ActivityLogEntry, 'id' | 'scope' | 'timestamp'>): void {
+    const newEntry: ActivityLogEntry = {
+      id: `ACT-${Date.now().toString().slice(-6)}`,
+      scope: this.activeScope(),
+      timestamp: Date.now(),
+      ...entry,
+    };
+    const nextActivities = [newEntry, ...this.activities()].slice(0, 100);
+    this.activities.set(nextActivities);
+    this.storage.set(STORAGE_KEYS.ACTIVITIES, nextActivities);
   }
 }

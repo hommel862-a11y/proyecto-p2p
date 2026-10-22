@@ -1,457 +1,451 @@
 import { describe, it, expect } from 'vitest';
 import {
-  compileLiveDeskState,
+  compileCrmWorkspaceState,
+  transitionDealStage,
+  checkCounterpartyExposure,
+  parseBankSmsClipboard,
   verifyReferenceCollision,
+  calculateDirectQuote,
+  buildContactWhatsAppReceipt,
+  createDailyProfitSettlementForFinance360,
   calculateBankReconciliationAdjustment,
-  calculateDirectCommercialQuote,
-  buildClientWhatsAppStatement,
-  createFinance360ProfitSettlement,
   normalizeBankReference,
-  type OperationalBankAccount,
-  type RealTimeTradeEntry,
-  type CrmContactLedger,
+  type PipelineDeal,
+  type CrmContact,
+  type CrmBankAccount,
+  type ActivityLogEntry,
   type DailyNetProfitTransferPayload,
 } from './client-compliance-intelligence';
 
-describe('Client Compliance Intelligence & Dual-Ledger Core Engine', () => {
-  const mockNow = new Date('2026-10-21T14:30:00Z').getTime();
+describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
+  const mockNow = new Date('2026-10-22T14:30:00Z').getTime();
 
-  describe('Zero-Seed and Clean Data Policy', () => {
-    it('initializes cleanly in zero state when trades, banks and contacts are empty', () => {
-      const state = compileLiveDeskState([], [], [], 'P2P_DESK', mockNow);
+  const sampleContact: CrmContact = {
+    id: 'cli-001',
+    scope: 'P2P_DESK',
+    name: 'Carlos Mendoza VIP',
+    documentId: 'V-19876543',
+    phoneOrContact: '+584141234567',
+    category: 'VIP_OTC',
+    paymentDetailsText: 'Pago Móvil Banesco 04141234567 V19876543',
+    creditLimitUsdt: 10000,
+    pendingBalanceUsdt: 250,
+    maxPendingExposureUsdt: 5000,
+    isDebtIndexedToUsdt: true,
+    verifiedReferences: ['REF-884920'],
+    createdAt: mockNow - 86400000,
+  };
 
-      expect(state.activeScope).toBe('P2P_DESK');
-      expect(state.filteredTrades).toEqual([]);
-      expect(state.todayTrades).toEqual([]);
-      expect(state.kpis.todayNetPnlUsdt).toBe(0);
-      expect(state.kpis.todayVolumeUsdt).toBe(0);
-      expect(state.kpis.todayFrictionUsdt).toBe(0);
-      expect(state.kpis.spreadEfficiencyPct).toBe(0);
-      expect(state.kpis.totalTradesCount).toBe(0);
-      expect(state.svgPath).toBe('');
-      expect(state.svgPoints).toEqual([]);
-      expect(state.bankTelemetry).toEqual([]);
-      expect(state.recommendedBankId).toBeNull();
+  const sampleBank: CrmBankAccount = {
+    id: 'bnk-banesco-01',
+    scope: 'P2P_DESK',
+    bankName: 'Banesco Pago Móvil',
+    currency: 'VES',
+    holderDetailsText: 'Titular: Inversiones Skalix C.A. RIF J-50001234',
+    currentBalanceFiat: 45000,
+    maxDailyCapFiat: 100000,
+    feePct: 0.3,
+    maxBurstTxPer15Min: 5,
+  };
+
+  describe('Zero-Seed Policy & Clean State', () => {
+    it('initializes completely at 0.00 when all arrays are empty', () => {
+      const state = compileCrmWorkspaceState([], [], [], [], 'P2P_DESK', 80, mockNow);
+
+      expect(state.deals).toEqual([]);
       expect(state.contacts).toEqual([]);
+      expect(state.bankTelemetry).toEqual([]);
+      expect(state.activities).toEqual([]);
+      expect(state.kpis.closedNetProfitTodayUsdt).toBe(0);
+      expect(state.kpis.closedVolumeTodayUsdt).toBe(0);
+      expect(state.kpis.inTransitVolumeUsdt).toBe(0);
+      expect(state.kpis.totalReceivablesUsdt).toBe(0);
+      expect(state.kpis.totalPayablesUsdt).toBe(0);
+      expect(state.kpis.spreadEfficiencyPct).toBe(0);
+      expect(state.svgPath).toBe('');
+      expect(state.recommendedBankId).toBeNull();
     });
 
-    it('produces empty SVG path and no NaN coordinates when no trades occurred today', () => {
-      const yesterday = mockNow - 24 * 60 * 60 * 1000;
-      const oldTrade: RealTimeTradeEntry = {
-        id: 'T-OLD',
-        timestamp: yesterday,
+    it('isolates strictly between P2P_DESK and FINANCE_360', () => {
+      const dealP2p: PipelineDeal = {
+        id: 'deal-p2p-1',
         scope: 'P2P_DESK',
-        clientId: 'C-1',
-        clientName: 'Cliente Viejo',
-        clientDocId: 'V-12345',
-        bankAccountId: 'B-1',
+        title: 'Venta USDT Arbitraje',
+        contactId: 'cli-001',
+        contactName: 'Carlos VIP',
+        bankAccountId: 'bnk-banesco-01',
         bankName: 'Banesco',
-        bankReferenceId: 'REF-100',
+        stage: 'STAGE_4_CLOSED',
         fiatCurrency: 'VES',
-        fiatAmount: 1000,
-        cryptoAmountUsdt: 20,
-        appliedRate: 50,
-        replacementRate: 48,
-        netPnlUsdt: 0.8,
-        frictionFiat: 5,
+        cryptoAmountUsdt: 1000,
+        appliedRate: 85,
+        replacementRate: 82,
+        totalFiatAmount: 85000,
+        paidFiatAmount: 85000,
+        netProfitUsdt: 35.29,
+        bankReferenceId: 'REF-112233',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow - 600000,
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow - 600000,
+        closedAt: mockNow - 100000,
       };
 
-      const state = compileLiveDeskState([oldTrade], [], [], 'P2P_DESK', mockNow);
-      expect(state.todayTrades).toHaveLength(0);
-      expect(state.svgPath).toBe('');
-      expect(state.kpis.todayNetPnlUsdt).toBe(0);
+      const dealFin360: PipelineDeal = {
+        ...dealP2p,
+        id: 'deal-fin-1',
+        scope: 'FINANCE_360',
+        title: 'Pago Proveedor Mercancía',
+        netProfitUsdt: 0,
+      };
+
+      const stateP2p = compileCrmWorkspaceState([dealP2p, dealFin360], [], [], [], 'P2P_DESK', 82, mockNow);
+      expect(stateP2p.deals.length).toBe(1);
+      expect(stateP2p.deals[0].id).toBe('deal-p2p-1');
+      expect(stateP2p.kpis.closedNetProfitTodayUsdt).toBe(35.29);
+
+      const stateFin = compileCrmWorkspaceState([dealP2p, dealFin360], [], [], [], 'FINANCE_360', 82, mockNow);
+      expect(stateFin.deals.length).toBe(1);
+      expect(stateFin.deals[0].id).toBe('deal-fin-1');
+      expect(stateFin.kpis.closedNetProfitTodayUsdt).toBe(0);
     });
   });
 
-  describe('Strict Dual-Ledger Isolation (P2P_DESK vs FINANCE_360)', () => {
-    const p2pBank: OperationalBankAccount = {
-      id: 'B-P2P',
-      scope: 'P2P_DESK',
-      bankName: 'Banesco Pago Móvil P2P',
-      currency: 'VES',
-      holderDetails: { documentId: 'V-1', phone: '04141', accountNumber: '0134', holderName: 'Operador' },
-      currentBalanceFiat: 50000,
-      maxDailyCapFiat: 100000,
-      feePct: 0.3,
-      maxBurstTxPer15Min: 5,
-    };
+  describe('Bank Shield Capacity Reservation & Burst Protection', () => {
+    it('reserves bank capacity when deals are in STAGE_2_TRANSIT or STAGE_3_VERIFY', () => {
+      const transitDeal: PipelineDeal = {
+        id: 'deal-transit-1',
+        scope: 'P2P_DESK',
+        title: 'Compra en tránsito',
+        contactId: 'cli-001',
+        contactName: 'Carlos VIP',
+        bankAccountId: 'bnk-banesco-01',
+        bankName: 'Banesco',
+        stage: 'STAGE_2_TRANSIT',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 500,
+        appliedRate: 80,
+        replacementRate: 78,
+        totalFiatAmount: 40000,
+        paidFiatAmount: 0,
+        netProfitUsdt: 12.5,
+        bankReferenceId: '',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow - 300000,
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow - 300000,
+        closedAt: null,
+      };
 
-    const fin360Bank: OperationalBankAccount = {
-      id: 'B-FIN360',
-      scope: 'FINANCE_360',
-      bankName: 'Mercantil Cuenta PYME',
-      currency: 'VES',
-      holderDetails: { documentId: 'J-2', phone: '04122', accountNumber: '0105', holderName: 'Empresa C.A.' },
-      currentBalanceFiat: 120000,
-      maxDailyCapFiat: 500000,
-      feePct: 0,
-      maxBurstTxPer15Min: 20,
-    };
-
-    const p2pTrade: RealTimeTradeEntry = {
-      id: 'T-P2P',
-      timestamp: mockNow - 1000 * 60 * 10,
-      scope: 'P2P_DESK',
-      clientId: 'CLI-P2P',
-      clientName: 'Comprador Binance',
-      clientDocId: 'V-999',
-      bankAccountId: 'B-P2P',
-      bankName: 'Banesco',
-      bankReferenceId: 'REF-P2P-1',
-      fiatCurrency: 'VES',
-      fiatAmount: 42000,
-      cryptoAmountUsdt: 1000,
-      appliedRate: 42,
-      replacementRate: 41,
-      netPnlUsdt: 23.8,
-      frictionFiat: 10,
-    };
-
-    const fin360Trade: RealTimeTradeEntry = {
-      id: 'T-FIN360',
-      timestamp: mockNow - 1000 * 60 * 5,
-      scope: 'FINANCE_360',
-      clientId: 'CLI-PROV',
-      clientName: 'Proveedor Local',
-      clientDocId: 'J-888',
-      bankAccountId: 'B-FIN360',
-      bankName: 'Mercantil',
-      bankReferenceId: 'REF-FIN-1',
-      fiatCurrency: 'VES',
-      fiatAmount: 85000,
-      cryptoAmountUsdt: 2000,
-      appliedRate: 42.5,
-      replacementRate: 42.5,
-      netPnlUsdt: 0,
-      frictionFiat: 0,
-    };
-
-    it('isolates P2P_DESK from FINANCE_360 banks and transactions', () => {
-      const p2pState = compileLiveDeskState(
-        [p2pTrade, fin360Trade],
-        [p2pBank, fin360Bank],
+      const state = compileCrmWorkspaceState(
+        [transitDeal],
+        [sampleContact],
+        [sampleBank],
         [],
         'P2P_DESK',
+        78,
         mockNow,
       );
 
-      expect(p2pState.filteredTrades).toHaveLength(1);
-      expect(p2pState.filteredTrades[0].id).toBe('T-P2P');
-      expect(p2pState.bankTelemetry).toHaveLength(1);
-      expect(p2pState.bankTelemetry[0].bankAccountId).toBe('B-P2P');
-      expect(p2pState.kpis.todayNetPnlUsdt).toBe(23.8);
-      expect(p2pState.kpis.todayVolumeUsdt).toBe(1000);
+      expect(state.kpis.inTransitVolumeUsdt).toBe(500);
+      expect(state.kpis.closedVolumeTodayUsdt).toBe(0);
+
+      const telemetry = state.bankTelemetry[0];
+      expect(telemetry.dailyInTransitFiat).toBe(40000);
+      expect(telemetry.dailyClosedFiat).toBe(0);
+      expect(telemetry.dailyTotalUsedFiat).toBe(40000);
+      expect(telemetry.dailyUsagePct).toBe(40);
+      expect(telemetry.status).toBe('AVAILABLE');
     });
 
-    it('isolates FINANCE_360 from P2P_DESK banks and transactions', () => {
-      const finState = compileLiveDeskState(
-        [p2pTrade, fin360Trade],
-        [p2pBank, fin360Bank],
-        [],
-        'FINANCE_360',
-        mockNow,
-      );
-
-      expect(finState.filteredTrades).toHaveLength(1);
-      expect(finState.filteredTrades[0].id).toBe('T-FIN360');
-      expect(finState.bankTelemetry).toHaveLength(1);
-      expect(finState.bankTelemetry[0].bankAccountId).toBe('B-FIN360');
-      expect(finState.kpis.todayNetPnlUsdt).toBe(0);
-      expect(finState.kpis.todayVolumeUsdt).toBe(2000);
-    });
-  });
-
-  describe('Anti-Fraud Reference Collision Verification', () => {
-    const existingTrades: RealTimeTradeEntry[] = [
-      {
-        id: 'T-1',
-        timestamp: mockNow,
+    it('triggers burst cooldown when exceeding maxBurstTxPer15Min', () => {
+      const burstDeals: PipelineDeal[] = Array.from({ length: 6 }).map((_, i) => ({
+        id: `deal-burst-${i}`,
         scope: 'P2P_DESK',
-        clientId: 'C-1',
-        clientName: 'Juan Perez',
-        clientDocId: 'V-100',
-        bankAccountId: 'B-1',
+        title: `Ráfaga ${i}`,
+        contactId: 'cli-001',
+        contactName: 'Carlos VIP',
+        bankAccountId: 'bnk-banesco-01',
         bankName: 'Banesco',
-        bankReferenceId: 'BAN-884920',
+        stage: 'STAGE_2_TRANSIT',
         fiatCurrency: 'VES',
-        fiatAmount: 5000,
-        cryptoAmountUsdt: 100,
-        appliedRate: 50,
-        replacementRate: 49,
-        netPnlUsdt: 2,
-        frictionFiat: 0,
-      },
-    ];
+        cryptoAmountUsdt: 50,
+        appliedRate: 80,
+        replacementRate: 78,
+        totalFiatAmount: 4000,
+        paidFiatAmount: 0,
+        netProfitUsdt: 1,
+        bankReferenceId: '',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow - (i * 60000),
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow - (i * 60000),
+        closedAt: null,
+      }));
 
-    it('normalizes references cleanly ignoring spaces and lowercase', () => {
-      expect(normalizeBankReference(' ban-884920 ')).toBe('BAN-884920');
-      expect(normalizeBankReference('123 456 789')).toBe('123456789');
-      expect(normalizeBankReference(null)).toBe('');
-    });
+      const state = compileCrmWorkspaceState(
+        burstDeals,
+        [sampleContact],
+        [sampleBank],
+        [],
+        'P2P_DESK',
+        78,
+        mockNow,
+      );
 
-    it('detects duplicate reference collision accurately', () => {
-      const check = verifyReferenceCollision(existingTrades, ' ban-884920 ');
-      expect(check.isDuplicate).toBe(true);
-      expect(check.existingEntry?.id).toBe('T-1');
-    });
-
-    it('allows clean new unused references', () => {
-      const check = verifyReferenceCollision(existingTrades, 'BAN-999999');
-      expect(check.isDuplicate).toBe(false);
-      expect(check.existingEntry).toBeNull();
-    });
-
-    it('safely handles empty or whitespace input without false alarms', () => {
-      expect(verifyReferenceCollision(existingTrades, '').isDuplicate).toBe(false);
-      expect(verifyReferenceCollision(existingTrades, '   ').isDuplicate).toBe(false);
-      expect(verifyReferenceCollision(existingTrades, null).isDuplicate).toBe(false);
+      const telemetry = state.bankTelemetry[0];
+      expect(telemetry.recent15MinTxCount).toBe(6);
+      expect(telemetry.status).toBe('COOLDOWN_BURST');
     });
   });
 
-  describe('Bank Telemetry, Burst Cooldown and Smart Recommendation', () => {
-    const bankA: OperationalBankAccount = {
-      id: 'BANK-A',
-      scope: 'P2P_DESK',
-      bankName: 'Banco A',
-      currency: 'VES',
-      holderDetails: { documentId: 'V-1', phone: '0414', accountNumber: '001', holderName: 'Titular' },
-      currentBalanceFiat: 10000,
-      maxDailyCapFiat: 100000,
-      feePct: 0.3,
-      maxBurstTxPer15Min: 3,
-    };
-
-    const bankB: OperationalBankAccount = {
-      id: 'BANK-B',
-      scope: 'P2P_DESK',
-      bankName: 'Banco B',
-      currency: 'VES',
-      holderDetails: { documentId: 'V-2', phone: '0416', accountNumber: '002', holderName: 'Titular' },
-      currentBalanceFiat: 30000,
-      maxDailyCapFiat: 100000,
-      feePct: 0.3,
-      maxBurstTxPer15Min: 10,
-    };
-
-    it('triggers COOLDOWN_BURST when 15-minute transactions reach threshold', () => {
-      const burstTrades: RealTimeTradeEntry[] = [
-        { id: 'T-1', timestamp: mockNow - 1000 * 60 * 2, scope: 'P2P_DESK', clientId: 'C', clientName: 'C', clientDocId: 'D', bankAccountId: 'BANK-A', bankName: 'Banco A', bankReferenceId: 'R1', fiatCurrency: 'VES', fiatAmount: 1000, cryptoAmountUsdt: 20, appliedRate: 50, replacementRate: 49, netPnlUsdt: 0.4, frictionFiat: 0 },
-        { id: 'T-2', timestamp: mockNow - 1000 * 60 * 5, scope: 'P2P_DESK', clientId: 'C', clientName: 'C', clientDocId: 'D', bankAccountId: 'BANK-A', bankName: 'Banco A', bankReferenceId: 'R2', fiatCurrency: 'VES', fiatAmount: 1000, cryptoAmountUsdt: 20, appliedRate: 50, replacementRate: 49, netPnlUsdt: 0.4, frictionFiat: 0 },
-        { id: 'T-3', timestamp: mockNow - 1000 * 60 * 10, scope: 'P2P_DESK', clientId: 'C', clientName: 'C', clientDocId: 'D', bankAccountId: 'BANK-A', bankName: 'Banco A', bankReferenceId: 'R3', fiatCurrency: 'VES', fiatAmount: 1000, cryptoAmountUsdt: 20, appliedRate: 50, replacementRate: 49, netPnlUsdt: 0.4, frictionFiat: 0 },
-      ];
-
-      const state = compileLiveDeskState(burstTrades, [bankA, bankB], [], 'P2P_DESK', mockNow);
-      const teleA = state.bankTelemetry.find((b) => b.bankAccountId === 'BANK-A');
-      const teleB = state.bankTelemetry.find((b) => b.bankAccountId === 'BANK-B');
-
-      expect(teleA?.recent15MinTxCount).toBe(3);
-      expect(teleA?.status).toBe('COOLDOWN_BURST');
-      expect(teleB?.status).toBe('AVAILABLE');
-      expect(state.recommendedBankId).toBe('BANK-B');
-    });
-
-    it('triggers DAILY_CAP_REACHED when daily fiat usage reaches or exceeds limit', () => {
-      const capTrade: RealTimeTradeEntry = {
-        id: 'T-CAP',
-        timestamp: mockNow - 1000 * 60 * 30, // 30 min ago (today)
-        scope: 'P2P_DESK',
-        clientId: 'C',
-        clientName: 'C',
-        clientDocId: 'D',
-        bankAccountId: 'BANK-A',
-        bankName: 'Banco A',
-        bankReferenceId: 'R-CAP',
-        fiatCurrency: 'VES',
-        fiatAmount: 105000, // exceeds 100,000 cap
-        cryptoAmountUsdt: 2100,
-        appliedRate: 50,
-        replacementRate: 49,
-        netPnlUsdt: 42,
-        frictionFiat: 0,
-      };
-
-      const state = compileLiveDeskState([capTrade], [bankA], [], 'P2P_DESK', mockNow);
-      const teleA = state.bankTelemetry.find((b) => b.bankAccountId === 'BANK-A');
-
-      expect(teleA?.status).toBe('DAILY_CAP_REACHED');
-      expect(teleA?.dailyUsagePct).toBe(105);
-      expect(state.recommendedBankId).toBeNull();
-    });
-  });
-
-  describe('Bank Balance Reconciliation Adjustment', () => {
-    it('detects surplus drift when phone balance is higher than system ledger', () => {
-      const res = calculateBankReconciliationAdjustment(10000, 10550.5);
-      expect(res.driftFiat).toBe(550.5);
-      expect(res.isBalanced).toBe(false);
-      expect(res.adjustmentType).toBe('SURPLUS');
-      expect(res.formattedDrift).toBe('+550.50');
-    });
-
-    it('detects deficit drift when phone balance is lower than system ledger', () => {
-      const res = calculateBankReconciliationAdjustment(10000, 9850);
-      expect(res.driftFiat).toBe(-150);
-      expect(res.isBalanced).toBe(false);
-      expect(res.adjustmentType).toBe('DEFICIT');
-      expect(res.formattedDrift).toBe('-150.00');
-    });
-
-    it('detects balanced state when difference is under 1 cent', () => {
-      const res = calculateBankReconciliationAdjustment(5000, 5000.004);
-      expect(res.isBalanced).toBe(true);
-      expect(res.adjustmentType).toBe('BALANCED');
-    });
-  });
-
-  describe('Direct Commercial Quote Calculator', () => {
-    it('calculates total fiat to collect and net profit USDT without jargon', () => {
-      // 1000 USDT, Operator replacement at 82.00 VES, Sells to client at 84.50 VES, Bank fee 0.3%
-      const quote = calculateDirectCommercialQuote(1000, 82.0, 84.5, 0.3);
-
-      expect(quote.totalFiatToCollect).toBe(84500); // 1000 * 84.5
-      // Bank fee: 84500 * 0.003 = 253.5 VES
-      // Net fiat: 84500 - 253.5 - (1000 * 82) = 84246.5 - 82000 = 2246.5 VES
-      // Profit USDT: 2246.5 / 82 = 27.40 USDT
-      expect(quote.netProfitUsdt).toBe(27.4);
-      expect(quote.marginPct).toBe(2.75); // (84.5 - 82) / 82 * 100 - 0.3 = 3.05 - 0.3 = 2.75%
-      expect(quote.effectiveSpreadFiat).toBe(2.5);
-    });
-
-    it('returns zero safely for negative or zero amounts', () => {
-      const quote = calculateDirectCommercialQuote(0, 82, 84);
-      expect(quote.totalFiatToCollect).toBe(0);
-      expect(quote.netProfitUsdt).toBe(0);
-      expect(quote.marginPct).toBe(0);
-    });
-  });
-
-  describe('Client WhatsApp Statement Builder (Zero Profit Leakage)', () => {
-    const contact: CrmContactLedger = {
-      clientId: 'CLI-01',
-      scope: 'P2P_DESK',
-      clientName: 'Distribuidora Los Andes',
-      clientDocId: 'J-31002991-0',
-      category: 'VIP_OTC',
-      pendingBalanceUsdt: 150.0,
-      pendingBalanceFiat: 12300.0,
-      lifetimeVolumeUsdt: 15000.0,
-      lifetimeNetPnlUsdt: 420.0,
-      verifiedReferences: ['REF-9921', 'REF-9922'],
-      lastActivityTimestamp: mockNow,
-    };
-
-    const trade: RealTimeTradeEntry = {
-      id: 'T-CLI-1',
-      timestamp: mockNow,
-      scope: 'P2P_DESK',
-      clientId: 'CLI-01',
-      clientName: 'Distribuidora Los Andes',
-      clientDocId: 'J-31002991-0',
-      bankAccountId: 'B-1',
-      bankName: 'Banesco',
-      bankReferenceId: 'REF-9922',
-      fiatCurrency: 'VES',
-      fiatAmount: 82000,
-      cryptoAmountUsdt: 1000,
-      appliedRate: 82.0,
-      replacementRate: 80.5,
-      netPnlUsdt: 18.29,
-      frictionFiat: 0,
-    };
-
-    it('generates statement WITHOUT leaking internal profit when includeInternalProfit is false', () => {
-      const statement = buildClientWhatsAppStatement(contact, [trade], false);
-
-      expect(statement).toContain('Distribuidora Los Andes');
-      expect(statement).toContain('J-31002991-0');
-      expect(statement).toContain('A FAVOR DEL CLIENTE (+150.00 USDT)');
-      expect(statement).toContain('REF-9922');
-      expect(statement).not.toContain('Margen Generado');
-      expect(statement).not.toContain('80.5'); // replacement rate must NOT leak
-      expect(statement).not.toContain('18.29'); // internal PnL must NOT leak
-    });
-
-    it('includes internal profit line ONLY when explicitly authorized for internal audit', () => {
-      const statement = buildClientWhatsAppStatement(contact, [trade], true);
-      expect(statement).toContain('Margen Generado (Auditoría Interna)');
-      expect(statement).toContain('+420.00 USDT');
-    });
-  });
-
-  describe('Finance 360 Daily Net Profit Settlement Bridge', () => {
-    const todayTrades: RealTimeTradeEntry[] = [
-      {
-        id: 'T-1',
-        timestamp: mockNow,
-        scope: 'P2P_DESK',
-        clientId: 'C-1',
-        clientName: 'C1',
-        clientDocId: 'D1',
-        bankAccountId: 'B1',
-        bankName: 'B1',
-        bankReferenceId: 'R1',
-        fiatCurrency: 'VES',
-        fiatAmount: 41000,
-        cryptoAmountUsdt: 1000,
-        appliedRate: 41,
-        replacementRate: 40,
-        netPnlUsdt: 24.39,
-        frictionFiat: 0,
-      },
-    ];
-
-    it('creates settlement payload successfully when positive profit exists', () => {
-      const dateIso = '2026-10-21';
-      const res = createFinance360ProfitSettlement(todayTrades, dateIso, []);
-
-      expect(res.success).toBe(true);
-      expect(res.payload?.settlementId).toBe('SETTLE-2026-10-21');
-      expect(res.payload?.netProfitUsdt).toBe(24.39);
-      expect(res.payload?.tradesCount).toBe(1);
-    });
-
-    it('enforces idempotency and prevents duplicate transfer for the same date', () => {
-      const dateIso = '2026-10-21';
-      const existing: DailyNetProfitTransferPayload[] = [
+  describe('Counterparty Exposure & TTL Slippage Protection', () => {
+    it('blocks adding a deal when exceeding counterparty pending exposure limit', () => {
+      const activeDeals: PipelineDeal[] = [
         {
-          settlementId: 'SETTLE-2026-10-21',
-          dateIso: '2026-10-21',
-          netProfitUsdt: 24.39,
-          tradesCount: 1,
-          timestamp: mockNow - 1000,
+          id: 'deal-active-1',
+          scope: 'P2P_DESK',
+          title: 'Orden en curso',
+          contactId: 'cli-001',
+          contactName: 'Carlos VIP',
+          bankAccountId: 'bnk-banesco-01',
+          bankName: 'Banesco',
+          stage: 'STAGE_2_TRANSIT',
+          fiatCurrency: 'VES',
+          cryptoAmountUsdt: 4000,
+          appliedRate: 80,
+          replacementRate: 78,
+          totalFiatAmount: 320000,
+          paidFiatAmount: 0,
+          netProfitUsdt: 100,
+          bankReferenceId: '',
+          quoteTtlMinutes: 15,
+          quotedAt: mockNow,
+          isRateExpired: false,
+          timeline: [],
+          createdAt: mockNow,
+          closedAt: null,
         },
       ];
 
-      const res = createFinance360ProfitSettlement(todayTrades, dateIso, existing);
-      expect(res.success).toBe(false);
-      expect(res.error).toBe('SETTLEMENT_ALREADY_EXISTS');
-      expect(res.payload).toBeNull();
+      // Limit is 5000, current exposure is 4000.
+      const checkValid = checkCounterpartyExposure(sampleContact, activeDeals, 800);
+      expect(checkValid.allowed).toBe(true);
+
+      const checkExcess = checkCounterpartyExposure(sampleContact, activeDeals, 1500);
+      expect(checkExcess.allowed).toBe(false);
+      expect(checkExcess.currentExposureUsdt).toBe(4000);
+      expect(checkExcess.limitUsdt).toBe(5000);
     });
 
-    it('rejects settlement when net profit is zero or negative', () => {
-      const losingTrade: RealTimeTradeEntry = {
-        id: 'T-LOSS',
-        timestamp: mockNow,
+    it('detects rate expiration when quote TTL has elapsed', () => {
+      const expiredDeal: PipelineDeal = {
+        id: 'deal-quoted-1',
         scope: 'P2P_DESK',
-        clientId: 'C',
-        clientName: 'C',
-        clientDocId: 'D',
-        bankAccountId: 'B',
-        bankName: 'B',
-        bankReferenceId: 'R',
+        title: 'Cotización vieja',
+        contactId: 'cli-001',
+        contactName: 'Carlos VIP',
+        bankAccountId: 'bnk-banesco-01',
+        bankName: 'Banesco',
+        stage: 'STAGE_1_NEW',
         fiatCurrency: 'VES',
-        fiatAmount: 40000,
         cryptoAmountUsdt: 1000,
-        appliedRate: 40,
-        replacementRate: 41,
-        netPnlUsdt: -24.39,
-        frictionFiat: 0,
+        appliedRate: 80,
+        replacementRate: 78,
+        totalFiatAmount: 80000,
+        paidFiatAmount: 0,
+        netProfitUsdt: 25,
+        bankReferenceId: '',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow - (20 * 60 * 1000), // 20 min ago
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow - (20 * 60 * 1000),
+        closedAt: null,
       };
 
-      const res = createFinance360ProfitSettlement([losingTrade], '2026-10-21', []);
-      expect(res.success).toBe(false);
-      expect(res.error).toBe('NO_POSITIVE_PROFIT_TO_TRANSFER');
-      expect(res.payload).toBeNull();
+      const result = transitionDealStage(expiredDeal, 'STAGE_2_TRANSIT', '', mockNow);
+      expect(result.updatedDeal.isRateExpired).toBe(true);
+    });
+
+    it('requires reference when transitioning to STAGE_4_CLOSED', () => {
+      const deal: PipelineDeal = {
+        id: 'deal-to-close',
+        scope: 'P2P_DESK',
+        title: 'Por cerrar',
+        contactId: 'cli-001',
+        contactName: 'Carlos VIP',
+        bankAccountId: 'bnk-banesco-01',
+        bankName: 'Banesco',
+        stage: 'STAGE_3_VERIFY',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 1000,
+        appliedRate: 80,
+        replacementRate: 78,
+        totalFiatAmount: 80000,
+        paidFiatAmount: 80000,
+        netProfitUsdt: 25,
+        bankReferenceId: '',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow,
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow,
+        closedAt: null,
+      };
+
+      const fail = transitionDealStage(deal, 'STAGE_4_CLOSED', '', mockNow);
+      expect(fail.success).toBe(false);
+      expect(fail.requiresReference).toBe(true);
+
+      const ok = transitionDealStage(deal, 'STAGE_4_CLOSED', 'REF-998877', mockNow);
+      expect(ok.success).toBe(true);
+      expect(ok.updatedDeal.stage).toBe('STAGE_4_CLOSED');
+      expect(ok.updatedDeal.bankReferenceId).toBe('REF-998877');
+      expect(ok.updatedDeal.closedAt).toBe(mockNow);
+    });
+  });
+
+  describe('Anti-Fraud Reference Collision & Clipboard Parser', () => {
+    it('detects duplicate reference collision accurately', () => {
+      const deals: PipelineDeal[] = [
+        {
+          id: 'deal-101',
+          scope: 'P2P_DESK',
+          title: 'Trade existoso',
+          contactId: 'cli-001',
+          contactName: 'Carlos',
+          bankAccountId: 'bnk-1',
+          bankName: 'Banesco',
+          stage: 'STAGE_4_CLOSED',
+          fiatCurrency: 'VES',
+          cryptoAmountUsdt: 500,
+          appliedRate: 80,
+          replacementRate: 78,
+          totalFiatAmount: 40000,
+          paidFiatAmount: 40000,
+          netProfitUsdt: 12.5,
+          bankReferenceId: 'BAN-98765432',
+          quoteTtlMinutes: 15,
+          quotedAt: mockNow,
+          isRateExpired: false,
+          timeline: [],
+          createdAt: mockNow,
+          closedAt: mockNow,
+        },
+      ];
+
+      expect(verifyReferenceCollision(deals, 'ban-98765432').isDuplicate).toBe(true);
+      expect(verifyReferenceCollision(deals, 'BAN 9876 5432').isDuplicate).toBe(true);
+      expect(verifyReferenceCollision(deals, 'REF-TOTALMENTE-NUEVA').isDuplicate).toBe(false);
+      expect(verifyReferenceCollision(deals, 'ban-98765432', 'deal-101').isDuplicate).toBe(false);
+    });
+
+    it('parses bank SMS clipboard receipts correctly', () => {
+      const sms1 = 'Banesco Pago Movil: Aprobado por Bs. 85.000,00 a Inversiones Skalix. Ref: 45981203';
+      const parsed1 = parseBankSmsClipboard(sms1);
+      expect(parsed1.detectedBank).toBe('Banesco');
+      expect(parsed1.referenceId).toBe('45981203');
+      expect(parsed1.amountFiat).toBe(85000);
+      expect(parsed1.currency).toBe('VES');
+
+      const sms2 = 'Bancolombia le informa transferencia recibida por $ 1.500.000 Comprobante: 77889900';
+      const parsed2 = parseBankSmsClipboard(sms2);
+      expect(parsed2.detectedBank).toBe('Bancolombia');
+      expect(parsed2.referenceId).toBe('77889900');
+      expect(parsed2.amountFiat).toBe(1500000);
+      expect(parsed2.currency).toBe('COP');
+    });
+  });
+
+  describe('WhatsApp Statement & Finance 360 Bridge', () => {
+    it('generates WhatsApp statement without leaking internal operator profit', () => {
+      const closedDeal: PipelineDeal = {
+        id: 'deal-wa',
+        scope: 'P2P_DESK',
+        title: 'Venta',
+        contactId: sampleContact.id,
+        contactName: sampleContact.name,
+        bankAccountId: 'bnk-1',
+        bankName: 'Banesco',
+        stage: 'STAGE_4_CLOSED',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 1000,
+        appliedRate: 85,
+        replacementRate: 82,
+        totalFiatAmount: 85000,
+        paidFiatAmount: 85000,
+        netProfitUsdt: 35.29,
+        bankReferenceId: 'REF-771122',
+        quoteTtlMinutes: 15,
+        quotedAt: mockNow,
+        isRateExpired: false,
+        timeline: [],
+        createdAt: mockNow,
+        closedAt: mockNow,
+      };
+
+      const statement = buildContactWhatsAppReceipt(sampleContact, [closedDeal]);
+
+      expect(statement).toContain('CARLOS MENDOZA VIP');
+      expect(statement).toContain('REF-771122');
+      expect(statement).toContain('1000.00 USDT @ 85.00');
+      expect(statement).not.toContain('35.29'); // Internal profit MUST NOT be leaked
+      expect(statement).not.toContain('replacementRate');
+      expect(statement).not.toContain('82.00');
+    });
+
+    it('creates idempotent daily profit settlement for Finance 360', () => {
+      const closedDeals: PipelineDeal[] = [
+        {
+          id: 'deal-bridge-1',
+          scope: 'P2P_DESK',
+          title: 'Op 1',
+          contactId: 'cli-1',
+          contactName: 'Cliente A',
+          bankAccountId: 'bnk-1',
+          bankName: 'Banesco',
+          stage: 'STAGE_4_CLOSED',
+          fiatCurrency: 'VES',
+          cryptoAmountUsdt: 1000,
+          appliedRate: 85,
+          replacementRate: 82,
+          totalFiatAmount: 85000,
+          paidFiatAmount: 85000,
+          netProfitUsdt: 35.0,
+          bankReferenceId: 'REF-1',
+          quoteTtlMinutes: 15,
+          quotedAt: new Date('2026-10-22T10:00:00Z').getTime(),
+          isRateExpired: false,
+          timeline: [],
+          createdAt: new Date('2026-10-22T10:00:00Z').getTime(),
+          closedAt: new Date('2026-10-22T10:30:00Z').getTime(),
+        },
+      ];
+
+      const res = createDailyProfitSettlementForFinance360(closedDeals, '2026-10-22', []);
+      expect(res.success).toBe(true);
+      expect(res.payload?.netProfitUsdt).toBe(35.0);
+      expect(res.payload?.settlementId).toBe('SETTLE-2026-10-22');
+
+      const existing: DailyNetProfitTransferPayload[] = [res.payload!];
+      const dup = createDailyProfitSettlementForFinance360(closedDeals, '2026-10-22', existing);
+      expect(dup.success).toBe(false);
+      expect(dup.error).toBe('SETTLEMENT_ALREADY_EXISTS');
+    });
+
+    it('calculates bank reconciliation drift correctly', () => {
+      const balanced = calculateBankReconciliationAdjustment(50000, 50000);
+      expect(balanced.isBalanced).toBe(true);
+      expect(balanced.driftFiat).toBe(0);
+
+      const diff = calculateBankReconciliationAdjustment(48500, 50000);
+      expect(diff.isBalanced).toBe(false);
+      expect(diff.driftFiat).toBe(1500);
+      expect(diff.formattedDrift).toBe('+1500.00');
     });
   });
 });
