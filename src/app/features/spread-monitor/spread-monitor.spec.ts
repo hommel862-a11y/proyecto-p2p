@@ -1,5 +1,6 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { SpreadMonitor } from './spread-monitor';
 import { RisksService } from '../../core/rules';
@@ -40,7 +41,7 @@ describe('SpreadMonitor', () => {
     mem = new MemoryStorage();
     TestBed.configureTestingModule({
       imports: [SpreadMonitor],
-      providers: [{ provide: P2P_STORAGE, useValue: mem }],
+      providers: [{ provide: P2P_STORAGE, useValue: mem }, provideRouter([])],
     });
     TestBed.inject(RisksService).save({ ...DEFAULT_RISK });
   });
@@ -157,6 +158,7 @@ describe('SpreadMonitor · arranque del auto-refresh de Cotizave', () => {
       imports: [SpreadMonitor],
       providers: [
         { provide: P2P_STORAGE, useValue: mem },
+        provideRouter([]),
         {
           provide: CredentialStoreService,
           useValue: {
@@ -235,6 +237,7 @@ describe('SpreadMonitor · linaje de Cotizave en la triangulacion', () => {
       imports: [SpreadMonitor],
       providers: [
         { provide: P2P_STORAGE, useValue: mem },
+        provideRouter([]),
         {
           provide: CredentialStoreService,
           useValue: {
@@ -433,6 +436,7 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       imports: [SpreadMonitor],
       providers: [
         { provide: P2P_STORAGE, useValue: new MemoryStorage() },
+        provideRouter([]),
         {
           provide: CredentialStoreService,
           useValue: {

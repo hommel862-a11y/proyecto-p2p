@@ -3,6 +3,7 @@ import { Injector } from '@angular/core';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BinanceP2pService } from './binance-p2p.service';
 import { ToastService } from './toast.service';
+import { StorageService } from './storage';
 
 const BINANCE_PAYLOAD = {
   code: '000000',
@@ -45,8 +46,17 @@ describe('BinanceP2pService', () => {
 
     delete (window as unknown as Record<string, unknown>)['electron'];
 
+    const storageMock = {
+      get: vi.fn(() => null),
+      set: vi.fn(),
+    };
+
     const injector = Injector.create({
-      providers: [{ provide: ToastService, useValue: toast }, BinanceP2pService],
+      providers: [
+        { provide: ToastService, useValue: toast },
+        { provide: StorageService, useValue: storageMock },
+        BinanceP2pService,
+      ],
     });
     svc = injector.get(BinanceP2pService);
   });
@@ -73,7 +83,7 @@ describe('BinanceP2pService', () => {
   it('falls back to the local desktop bridge when direct Binance fetch is CORS-blocked', async () => {
     const fetchMock = vi.fn<FetchLike>(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('p2p.binance.com')) {
+      if (url.includes('p2p.binance.com') || url.includes('/api/binance-p2p')) {
         throw new TypeError('Failed to fetch');
       }
       if (url.includes('127.0.0.1:51857')) {
@@ -85,7 +95,7 @@ describe('BinanceP2pService', () => {
 
     await svc.fetchMarketDepth('USDT', 'VES', true);
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     const bridgeCalls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes('127.0.0.1:51857/api/binance/p2p'),
     );

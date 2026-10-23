@@ -68,7 +68,7 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
       expect(c.capital()).toBe(73000);
     });
 
-    it('renders the 1/5/20 × 8/10/15% table (365-day basis)', () => {
+    it('renders the discipline table on 365-day basis', () => {
       const f = create();
       const c = f.componentInstance;
       c.daysPerYear.set(365);
@@ -77,10 +77,10 @@ describe('IncomeCalculator (Smart Multi-Mode)', () => {
         c.table().find((t) => t.target === target)?.cells[
           c.bands.indexOf(band as (typeof c.bands)[number])
         ];
-      expect(cell(20, 10)).toBe(73000);
-      expect(cell(1, 8)).toBe(4562.5);
-      expect(cell(5, 10)).toBe(18250);
-      expect(cell(20, 15)).toBeCloseTo(48666.67, 2);
+      expect(cell(15, 10)).toBe(54750);
+      expect(cell(35, 20)).toBe(63875);
+      expect(cell(50, 10)).toBe(182500);
+      expect(cell(100, 120)).toBeCloseTo(30416.67, 2);
     });
 
     it('converts USD capital to Bs using the supplied rate (73,000 @ 800 => 58,400,000)', () => {
