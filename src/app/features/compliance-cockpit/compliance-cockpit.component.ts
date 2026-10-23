@@ -5,13 +5,16 @@ import {
   computed,
   inject,
   signal,
+  OnDestroy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
+import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
 import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
 import {
   compileCrmWorkspaceState,
@@ -40,6 +43,7 @@ import {
   type DirectCommercialQuote,
   type ClipboardParseResult,
   type KanbanColumn,
+  type InboundReceiptEvent,
 } from '@p2p/core';
 
 export type CrmModuleView =
@@ -58,11 +62,24 @@ export type CrmModuleView =
   styleUrls: ['./compliance-cockpit.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ComplianceCockpitComponent {
+export class ComplianceCockpitComponent implements OnDestroy {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly finance360 = inject(Finance360Service);
+  readonly inboundGateway = inject(InboundGatewayService);
+
+  private gatewaySubscription: Subscription | null = null;
+
+  constructor() {
+    this.gatewaySubscription = this.inboundGateway.receipt$.subscribe((receipt) => {
+      this.handleInboundReceipt(receipt);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.gatewaySubscription?.unsubscribe();
+  }
 
   // ---------------------------------------------------------------------------
   // 1. DUAL-VAULT & VIEW NAVIGATION (ZERO-SEED POLICY)
@@ -513,6 +530,114 @@ export class ComplianceCockpitComponent {
       directSettle
         ? `⚡ Operación #${newDeal.id} liquidada con éxito (+${newDeal.netProfitUsdt.toFixed(2)} USDT PnL).`
         : `📋 Trato #${newDeal.id} agregado al tablero en "Cotizado".`,
+      'Pipeline Operativo',
+    );
+  }
+
+  handleInboundReceipt(receipt: InboundReceiptEvent): void {
+    if (!receipt || !receipt.parsed) return;
+
+    // Dual-Vault filter: Only ingest into matching active workspace scope
+    if (receipt.scope !== this.activeScope()) {
+      return;
+    }
+
+    const ref = receipt.parsed.referenceId || '';
+
+    // Anti-fraud duplicate reference detection
+    if (ref) {
+      const collision = verifyReferenceCollision(this.deals(), ref);
+      if (collision.isDuplicate) {
+        this.toast.warn(
+          `Comprobante duplicado recibido vía ${receipt.channel} (Ref: ${ref})`,
+          'Alerta de Colisión',
+        );
+        this.logActivity({
+          type: 'EXPOSURE_ALERT',
+          description: `Comprobante duplicado detectado (${receipt.channel}) Ref: ${ref}`,
+          amountUsdt: 0,
+          referenceId: ref,
+        });
+        return;
+      }
+    }
+
+    // Match existing counterparty contact by phone number or name
+    const matchedContact = this.contacts().find(
+      (c) =>
+        (c.phoneOrContact && receipt.sender.id && c.phoneOrContact.includes(receipt.sender.id)) ||
+        (c.name && receipt.sender.name && c.name.toLowerCase() === receipt.sender.name.toLowerCase()),
+    );
+    const contactId = matchedContact ? matchedContact.id : 'CNT-UNREGISTERED';
+    const contactName = matchedContact
+      ? matchedContact.name
+      : (receipt.sender.name || receipt.sender.id || 'Contraparte Externa');
+
+    // Match existing bank or default to first bank in scope
+    const matchedBank = this.banks().find(
+      (b) =>
+        receipt.parsed.detectedBank &&
+        b.bankName.toLowerCase().includes(receipt.parsed.detectedBank.toLowerCase()),
+    ) ?? this.banks()[0] ?? null;
+
+    const bankAccountId = matchedBank ? matchedBank.id : 'BNK-UNASSIGNED';
+    const bankName = matchedBank ? matchedBank.bankName : (receipt.parsed.detectedBank || 'Banco Sin Asignar');
+
+    const totalFiat = Number.isFinite(receipt.parsed.amountFiat) ? Number(receipt.parsed.amountFiat) : 0;
+    const replacementRate = this.liveReplacementRate();
+
+    const cryptoAmountUsdt =
+      totalFiat > 0 && replacementRate > 0
+        ? Math.round((totalFiat / replacementRate) * 100) / 100
+        : 0;
+    const netProfitUsdt = 0;
+
+    const now = Date.now();
+    const newDeal: PipelineDeal = {
+      id: `INB-${receipt.eventId.slice(-6)}`,
+      scope: this.activeScope(),
+      title: `Ingreso ${receipt.channel}: ${contactName}`,
+      contactId,
+      contactName,
+      bankAccountId,
+      bankName,
+      stage: 'STAGE_1_NEW',
+      fiatCurrency: (receipt.parsed.currency as FiatCurrency) || 'VES',
+      cryptoAmountUsdt,
+      appliedRate: replacementRate,
+      replacementRate,
+      totalFiatAmount: totalFiat,
+      paidFiatAmount: 0,
+      netProfitUsdt,
+      bankReferenceId: ref,
+      quoteTtlMinutes: 15,
+      quotedAt: now,
+      isRateExpired: false,
+      timeline: [
+        {
+          timestamp: now,
+          fromStage: null,
+          toStage: 'STAGE_1_NEW',
+          notes: `Comprobante entrante recibido automáticamente vía ${receipt.channel} [Remitente: ${receipt.sender.id}]`,
+        },
+      ],
+      createdAt: now,
+      closedAt: null,
+    };
+
+    const nextDeals = [newDeal, ...this.deals()];
+    this.deals.set(nextDeals);
+    this.storage.set(CRM_STORAGE_KEYS.DEALS, nextDeals);
+
+    this.logActivity({
+      type: 'DEAL_CREATED',
+      description: `Comprobante ingresado vía ${receipt.channel} #${newDeal.id} para ${contactName}`,
+      amountUsdt: newDeal.cryptoAmountUsdt,
+      referenceId: ref,
+    });
+
+    this.toast.success(
+      `⚡ Nuevo comprobante ingresado vía ${receipt.channel} (Ref: ${ref || 'S/R'}, Bs. ${totalFiat.toLocaleString('es-VE')})`,
       'Pipeline Operativo',
     );
   }

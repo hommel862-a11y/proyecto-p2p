@@ -155,6 +155,58 @@
     gap: 8px;
     flex-wrap: wrap;
 
+    .gateway-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 9999px;
+      cursor: pointer;
+      border: 1px solid #27272a;
+      background: #121318;
+      color: #a1a1aa;
+      transition: all 0.2s ease;
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #71717a;
+      }
+
+      &.connected {
+        border-color: rgba(16, 185, 129, 0.4);
+        background: rgba(16, 185, 129, 0.08);
+        color: #34d399;
+
+        .status-dot {
+          background: #10b981;
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+        }
+      }
+
+      &.connecting {
+        border-color: rgba(245, 158, 11, 0.4);
+        background: rgba(245, 158, 11, 0.08);
+        color: #fbbf24;
+
+        .status-dot {
+          background: #f59e0b;
+        }
+      }
+
+      &.disconnected {
+        border-color: rgba(113, 113, 122, 0.3);
+        color: #71717a;
+        &:hover {
+          border-color: #52525b;
+          color: #d4d4d8;
+        }
+      }
+    }
+
     .action-btn {
       display: inline-flex;
       align-items: center;

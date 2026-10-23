@@ -43,6 +43,30 @@
 
     <!-- ACCIONES RÁPIDAS GLOBALES -->
     <div class="header-right-actions">
+      <!-- INDICADOR INBOUND GATEWAY -->
+      <button
+        type="button"
+        class="gateway-status-pill"
+        [class.connected]="inboundGateway.status() === 'CONNECTED'"
+        [class.connecting]="inboundGateway.status() === 'CONNECTING'"
+        [class.disconnected]="inboundGateway.status() === 'DISCONNECTED'"
+        [attr.title]="inboundGateway.status() === 'CONNECTED' ? 'Inbound Gateway conectado: Webhooks WhatsApp & Instagram activos' : 'Inbound Gateway inactivo. Click para reconectar.'"
+        (click)="inboundGateway.connect()"
+        role="status"
+        aria-label="Estado del Inbound Webhook Gateway"
+      >
+        <span class="status-dot"></span>
+        <span class="gateway-label">
+          @if (inboundGateway.status() === 'CONNECTED') {
+            Gateway Activo
+          } @else if (inboundGateway.status() === 'CONNECTING') {
+            Reconectando...
+          } @else {
+            Gateway Off
+          }
+        </span>
+      </button>
+
       <button
         type="button"
         class="action-btn btn-new-deal"

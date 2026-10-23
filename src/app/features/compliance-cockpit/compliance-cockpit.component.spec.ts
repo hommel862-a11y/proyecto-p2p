@@ -3,10 +3,18 @@ import { Injector, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComplianceCockpitComponent } from './compliance-cockpit.component';
+import { Subject } from 'rxjs';
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
-import { CRM_STORAGE_KEYS, type PipelineDeal, type CrmContact, type CrmBankAccount } from '@p2p/core';
+import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
+import {
+  CRM_STORAGE_KEYS,
+  type PipelineDeal,
+  type CrmContact,
+  type CrmBankAccount,
+  type InboundReceiptEvent,
+} from '@p2p/core';
 
 describe('ComplianceCockpitComponent', () => {
   let component: ComplianceCockpitComponent;
@@ -20,12 +28,20 @@ describe('ComplianceCockpitComponent', () => {
     error: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
+    warning: ReturnType<typeof vi.fn>;
   };
   let routerMock: {
     navigate: ReturnType<typeof vi.fn>;
   };
   let finance360Mock: {
     recordExternalSettlement: ReturnType<typeof vi.fn>;
+  };
+  let inboundReceiptSubject: Subject<InboundReceiptEvent>;
+  let inboundGatewayMock: {
+    receipt$: Subject<InboundReceiptEvent>;
+    status: ReturnType<typeof signal>;
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -42,6 +58,7 @@ describe('ComplianceCockpitComponent', () => {
       error: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
+      warning: vi.fn(),
     };
 
     routerMock = {
@@ -52,12 +69,21 @@ describe('ComplianceCockpitComponent', () => {
       recordExternalSettlement: vi.fn().mockResolvedValue(true),
     };
 
+    inboundReceiptSubject = new Subject<InboundReceiptEvent>();
+    inboundGatewayMock = {
+      receipt$: inboundReceiptSubject,
+      status: signal('CONNECTED'),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
     const injector = Injector.create({
       providers: [
         { provide: StorageService, useValue: storageMock },
         { provide: ToastService, useValue: toastMock },
         { provide: Router, useValue: routerMock },
         { provide: Finance360Service, useValue: finance360Mock },
+        { provide: InboundGatewayService, useValue: inboundGatewayMock },
         ComplianceCockpitComponent,
       ],
     });
@@ -231,6 +257,120 @@ describe('ComplianceCockpitComponent', () => {
       expect(modal).toBeTruthy();
       expect(modal?.title).toContain('Eliminar Trato');
       expect(modal?.isDestructive).toBe(true);
+    });
+  });
+
+  describe('Inbound Gateway Real-Time Receipt Streaming', () => {
+    it('automatically ingests an incoming receipt event into STAGE_1_NEW of the active vault', () => {
+      const receipt: InboundReceiptEvent = {
+        eventId: 'evt-webhook-8800',
+        channel: 'WHATSAPP',
+        sender: { id: '584145551234', name: 'Carlos OTC', channel: 'WHATSAPP' },
+        parsed: {
+          rawText: 'Transferencia Banesco Ref: 99881122 por Bs 50.000,00',
+          referenceId: '99881122',
+          amountFiat: 50000,
+          currency: 'VES',
+          detectedBank: 'Banesco',
+        },
+        scope: 'P2P_DESK',
+        receivedAt: Date.now(),
+        rawText: 'Transferencia Banesco Ref: 99881122 por Bs 50.000,00',
+        status: 'AUTO_MATCHED',
+      };
+
+      inboundReceiptSubject.next(receipt);
+
+      const deals = component.deals();
+      expect(deals.length).toBe(1);
+      const newDeal = deals[0];
+      expect(newDeal.stage).toBe('STAGE_1_NEW');
+      expect(newDeal.contactName).toBe('Carlos OTC');
+      expect(newDeal.bankReferenceId).toBe('99881122');
+      expect(newDeal.totalFiatAmount).toBe(50000);
+      expect(newDeal.scope).toBe('P2P_DESK');
+      expect(toastMock.success).toHaveBeenCalledWith(
+        expect.stringContaining('99881122'),
+        'Pipeline Operativo',
+      );
+    });
+
+    it('rejects duplicate receipt reference and triggers anti-fraud warning without inserting deal', () => {
+      const existing: PipelineDeal = {
+        id: 'EXISTING-01',
+        title: 'Trato anterior',
+        scope: 'P2P_DESK',
+        contactId: 'c1',
+        contactName: 'Cliente',
+        bankAccountId: 'b1',
+        bankName: 'Banesco',
+        stage: 'STAGE_2_TRANSIT',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 100,
+        appliedRate: 50,
+        replacementRate: 50,
+        totalFiatAmount: 5000,
+        paidFiatAmount: 5000,
+        netProfitUsdt: 2,
+        bankReferenceId: '99881122',
+        quoteTtlMinutes: 15,
+        quotedAt: Date.now(),
+        isRateExpired: false,
+        timeline: [],
+        createdAt: Date.now(),
+        closedAt: null,
+      };
+      component.deals.set([existing]);
+
+      const duplicateReceipt: InboundReceiptEvent = {
+        eventId: 'evt-dup-99',
+        channel: 'INSTAGRAM',
+        sender: { id: 'ig_user_1', channel: 'INSTAGRAM' },
+        parsed: {
+          rawText: 'Pago recibido Ref 99881122',
+          referenceId: '99881122',
+          amountFiat: 5000,
+          currency: 'VES',
+          detectedBank: 'Banesco',
+        },
+        scope: 'P2P_DESK',
+        receivedAt: Date.now(),
+        rawText: 'Pago recibido Ref 99881122',
+        status: 'DUPLICATE_FLAGGED',
+      };
+
+      inboundReceiptSubject.next(duplicateReceipt);
+
+      expect(component.deals().length).toBe(1);
+      expect(toastMock.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Comprobante duplicado'),
+        'Alerta de Colisión',
+      );
+    });
+
+    it('ignores receipts destined for another vault/scope', () => {
+      expect(component.activeScope()).toBe('P2P_DESK');
+
+      const finance360Receipt: InboundReceiptEvent = {
+        eventId: 'evt-fin360',
+        channel: 'GMAIL',
+        sender: { id: 'admin@finance.com', channel: 'GMAIL' },
+        parsed: {
+          rawText: 'Pago Ref: 12345678 por Bs 10.000',
+          referenceId: '12345678',
+          amountFiat: 10000,
+          currency: 'VES',
+          detectedBank: 'Mercantil',
+        },
+        scope: 'FINANCE_360',
+        receivedAt: Date.now(),
+        rawText: 'Pago Ref: 12345678',
+        status: 'AUTO_MATCHED',
+      };
+
+      inboundReceiptSubject.next(finance360Receipt);
+
+      expect(component.deals().length).toBe(0);
     });
   });
 });
