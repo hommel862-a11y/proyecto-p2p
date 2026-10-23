@@ -51,7 +51,7 @@
         [class.connecting]="inboundGateway.status() === 'CONNECTING'"
         [class.disconnected]="inboundGateway.status() === 'DISCONNECTED'"
         [attr.title]="inboundGateway.status() === 'CONNECTED' ? 'Inbound Gateway conectado: Webhooks WhatsApp & Instagram activos' : 'Inbound Gateway inactivo. Click para reconectar.'"
-        (click)="inboundGateway.connect()"
+        (click)="onGatewayPillClick()"
         role="status"
         aria-label="Estado del Inbound Webhook Gateway"
       >

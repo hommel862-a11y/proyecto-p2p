@@ -10,7 +10,7 @@ export * from './meta-webhook-parser.js';
 export * from './receipt-intake.js';
 export * from './server.js';
 
-const port = Number(process.env.PORT || 3030);
+const port = Number(process.env.INBOUND_GATEWAY_PORT || process.env.GATEWAY_PORT || 3030);
 const targetScope: WorkspaceScope = (process.env.TARGET_SCOPE as WorkspaceScope) === 'FINANCE_360'
   ? 'FINANCE_360'
   : 'P2P_DESK';

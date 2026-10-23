@@ -559,7 +559,7 @@ function startStaticServer(): Promise<number> {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self'",
-      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com http://127.0.0.1:51857 http://localhost:51857 data: blob:",
+      "connect-src 'self' https://api.telegram.org https://p2p.binance.com https://api.cotizave.com https://cdn.jsdelivr.net https://tessdata.projectnaptha.com http://127.0.0.1:51857 http://localhost:51857 http://127.0.0.1:3030 http://localhost:3030 data: blob:",
       "worker-src 'self' blob: https://cdn.jsdelivr.net",
       "object-src 'none'",
       "base-uri 'self'",

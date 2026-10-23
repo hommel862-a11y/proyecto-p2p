@@ -81,6 +81,30 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.gatewaySubscription?.unsubscribe();
   }
 
+  onGatewayPillClick(): void {
+    if (this.inboundGateway.status() === 'CONNECTED') {
+      this.toast.success(
+        `Inbound Gateway activo en ${this.inboundGateway.getGatewayUrl()}. Webhooks WhatsApp/Instagram listos.`,
+        'Gateway SSE'
+      );
+      return;
+    }
+
+    this.toast.info(`Intentando conectar con Inbound Gateway (${this.inboundGateway.getGatewayUrl()})...`, 'Gateway SSE');
+    this.inboundGateway.connect();
+
+    setTimeout(() => {
+      if (this.inboundGateway.status() !== 'CONNECTED') {
+        this.toast.warn(
+          `No se pudo conectar a ${this.inboundGateway.getGatewayUrl()}. Verificá que el daemon esté corriendo ('npm run inbound:start' o 'npm run electron:dev').`,
+          'Gateway Desconectado'
+        );
+      } else {
+        this.toast.success('¡Conectado exitosamente al Inbound Gateway!', 'Gateway Conectado');
+      }
+    }, 2500);
+  }
+
   // ---------------------------------------------------------------------------
   // 1. DUAL-VAULT & VIEW NAVIGATION (ZERO-SEED POLICY)
   // ---------------------------------------------------------------------------
