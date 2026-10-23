@@ -24,6 +24,9 @@ import {
   createDailyProfitSettlementForFinance360,
   calculateBankReconciliationAdjustment,
   normalizeBankReference,
+  CRM_STORAGE_KEYS,
+  safeHydrateCrmCollection,
+  validateAndSanitizeCrmBackupPayload,
   type WorkspaceScope,
   type PipelineStage,
   type FiatCurrency,
@@ -47,17 +50,6 @@ export type CrmModuleView =
   | 'ACTIVITIES'
   | 'SETTINGS';
 
-const STORAGE_KEYS = {
-  DEALS: 'p2p.crm.deals',
-  CONTACTS: 'p2p.crm.contacts',
-  BANKS: 'p2p.crm.banks',
-  ACTIVITIES: 'p2p.crm.activities',
-  SETTLEMENTS: 'p2p.crm.settlements',
-  ACTIVE_SCOPE: 'p2p.crm.active-scope',
-  PRIVACY_MODE: 'p2p.crm.privacy-mode',
-  ACTIVE_VIEW: 'p2p.crm.active-view',
-} as const;
-
 @Component({
   selector: 'app-compliance-cockpit',
   standalone: true,
@@ -76,39 +68,58 @@ export class ComplianceCockpitComponent {
   // 1. DUAL-VAULT & VIEW NAVIGATION (ZERO-SEED POLICY)
   // ---------------------------------------------------------------------------
   readonly activeScope = signal<WorkspaceScope>(
-    (this.storage.get<WorkspaceScope>(STORAGE_KEYS.ACTIVE_SCOPE) ?? 'P2P_DESK') === 'FINANCE_360'
+    (this.storage.get<WorkspaceScope>(CRM_STORAGE_KEYS.ACTIVE_SCOPE) ?? 'P2P_DESK') === 'FINANCE_360'
       ? 'FINANCE_360'
       : 'P2P_DESK',
   );
 
   readonly activeView = signal<CrmModuleView>(
-    this.storage.get<CrmModuleView>(STORAGE_KEYS.ACTIVE_VIEW) ?? 'DASHBOARD',
+    this.storage.get<CrmModuleView>(CRM_STORAGE_KEYS.ACTIVE_VIEW) ?? 'DASHBOARD',
   );
 
   readonly privacyMode = signal<boolean>(
-    this.storage.get<boolean>(STORAGE_KEYS.PRIVACY_MODE) ?? false,
+    this.storage.get<boolean>(CRM_STORAGE_KEYS.PRIVACY_MODE) ?? false,
   );
 
   // Clean persistent signals (initialized strictly as empty arrays if no user data exists)
   readonly deals = signal<PipelineDeal[]>(
-    this.storage.get<PipelineDeal[]>(STORAGE_KEYS.DEALS) ?? [],
+    safeHydrateCrmCollection<PipelineDeal>(this.storage.get(CRM_STORAGE_KEYS.DEALS)),
   );
 
   readonly contacts = signal<CrmContact[]>(
-    this.storage.get<CrmContact[]>(STORAGE_KEYS.CONTACTS) ?? [],
+    safeHydrateCrmCollection<CrmContact>(this.storage.get(CRM_STORAGE_KEYS.CONTACTS)),
   );
 
   readonly banks = signal<CrmBankAccount[]>(
-    this.storage.get<CrmBankAccount[]>(STORAGE_KEYS.BANKS) ?? [],
+    safeHydrateCrmCollection<CrmBankAccount>(this.storage.get(CRM_STORAGE_KEYS.BANKS)),
   );
 
   readonly activities = signal<ActivityLogEntry[]>(
-    this.storage.get<ActivityLogEntry[]>(STORAGE_KEYS.ACTIVITIES) ?? [],
+    safeHydrateCrmCollection<ActivityLogEntry>(this.storage.get(CRM_STORAGE_KEYS.ACTIVITIES)),
   );
 
   readonly settlements = signal<DailyNetProfitTransferPayload[]>(
-    this.storage.get<DailyNetProfitTransferPayload[]>(STORAGE_KEYS.SETTLEMENTS) ?? [],
+    safeHydrateCrmCollection<DailyNetProfitTransferPayload>(this.storage.get(CRM_STORAGE_KEYS.SETTLEMENTS)),
   );
+
+  // Non-blocking in-component dialog signals (Electron & Web safe)
+  readonly promptClosingDeal = signal<{
+    deal: PipelineDeal;
+    reference: string;
+    isDuplicate: boolean;
+    collidingDealId?: string;
+  } | null>(null);
+
+  readonly confirmModal = signal<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+
+  readonly allowExposureOverride = signal<boolean>(false);
+  readonly allowDuplicateRefOverride = signal<boolean>(false);
 
   // Live market baseline for calculations
   readonly liveReplacementRate = signal<number>(82.0);
@@ -265,7 +276,7 @@ export class ComplianceCockpitComponent {
   // ---------------------------------------------------------------------------
   setScope(scope: WorkspaceScope): void {
     this.activeScope.set(scope);
-    this.storage.set(STORAGE_KEYS.ACTIVE_SCOPE, scope);
+    this.storage.set(CRM_STORAGE_KEYS.ACTIVE_SCOPE, scope);
     this.selectedContactId.set(null);
     this.toast.info(
       scope === 'P2P_DESK'
@@ -277,13 +288,13 @@ export class ComplianceCockpitComponent {
 
   setView(view: CrmModuleView): void {
     this.activeView.set(view);
-    this.storage.set(STORAGE_KEYS.ACTIVE_VIEW, view);
+    this.storage.set(CRM_STORAGE_KEYS.ACTIVE_VIEW, view);
   }
 
   togglePrivacyMode(): void {
     const next = !this.privacyMode();
     this.privacyMode.set(next);
-    this.storage.set(STORAGE_KEYS.PRIVACY_MODE, next);
+    this.storage.set(CRM_STORAGE_KEYS.PRIVACY_MODE, next);
     this.toast.info(
       next ? 'Modo Privacidad [ACTIVO] (cifras ocultas)' : 'Modo Privacidad [DESACTIVADO]',
       'Vista Operativa',
@@ -316,7 +327,7 @@ export class ComplianceCockpitComponent {
     const payload = result.payload;
     const nextSettlements = [...existing, payload];
     this.settlements.set(nextSettlements);
-    this.storage.set(STORAGE_KEYS.SETTLEMENTS, nextSettlements);
+    this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, nextSettlements);
 
     try {
       this.finance360.addIncome({
@@ -399,22 +410,38 @@ export class ComplianceCockpitComponent {
     // Check Counterparty Exposure Limit
     if (!directSettle) {
       const exposureCheck = checkCounterpartyExposure(contact, this.deals(), amountUsdt);
-      if (!exposureCheck.allowed) {
-        const confirmOverlimit = window.confirm(
-          `⚠️ ALERTA DE EXPOSICIÓN:\nEl cliente ${contact.name} tiene $${exposureCheck.currentExposureUsdt} USDT en tránsito. Esta nueva operación de $${amountUsdt} supera su límite de $${exposureCheck.limitUsdt} USDT.\n\n¿Desea autorizar este trato de todas formas?`,
-        );
-        if (!confirmOverlimit) return;
+      if (!exposureCheck.allowed && !this.allowExposureOverride()) {
+        this.confirmModal.set({
+          title: 'Alerta de Sobreexposición Crediticia',
+          message: `El cliente ${contact.name} tiene $${exposureCheck.currentExposureUsdt} USDT en tránsito. Esta nueva operación de $${amountUsdt} USDT supera su límite de $${exposureCheck.limitUsdt} USDT.\n\n¿Desea autorizar este trato de todas formas?`,
+          confirmLabel: 'Autorizar Operación',
+          isDestructive: false,
+          onConfirm: () => {
+            this.allowExposureOverride.set(true);
+            this.confirmModal.set(null);
+            this.saveNewDeal();
+          },
+        });
+        return;
       }
     }
 
     // Check Reference Collision if reference provided
     if (ref) {
       const collision = verifyReferenceCollision(this.deals(), ref);
-      if (collision.isDuplicate && collision.existingDeal) {
-        const confirmDup = window.confirm(
-          `⚠️ COLISIÓN DE REFERENCIA:\nLa referencia "${ref}" ya fue usada en el trato #${collision.existingDeal.id} (${collision.existingDeal.contactName}).\n\n¿Desea registrarla de todos modos?`,
-        );
-        if (!confirmDup) return;
+      if (collision.isDuplicate && collision.existingDeal && !this.allowDuplicateRefOverride()) {
+        this.confirmModal.set({
+          title: 'Alerta: Colisión de Referencia',
+          message: `La referencia "${ref}" ya fue usada en el trato #${collision.existingDeal.id} (${collision.existingDeal.contactName}).\n\n¿Desea registrarla de todas formas?`,
+          confirmLabel: 'Confirmar con Referencia Duplicada',
+          isDestructive: false,
+          onConfirm: () => {
+            this.allowDuplicateRefOverride.set(true);
+            this.confirmModal.set(null);
+            this.saveNewDeal();
+          },
+        });
+        return;
       }
     }
 
@@ -458,7 +485,7 @@ export class ComplianceCockpitComponent {
     // 1. Insert Deal
     const nextDeals = [newDeal, ...this.deals()];
     this.deals.set(nextDeals);
-    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
+    this.storage.set(CRM_STORAGE_KEYS.DEALS, nextDeals);
 
     // 2. If direct settle, update Bank balance
     if (directSettle) {
@@ -468,7 +495,7 @@ export class ComplianceCockpitComponent {
           : b,
       );
       this.banks.set(nextBanks);
-      this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+      this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
     }
 
     // 3. Record Activity Log
@@ -494,26 +521,54 @@ export class ComplianceCockpitComponent {
     const deal = this.deals().find((d) => d.id === dealId);
     if (!deal) return;
 
-    let targetRef = deal.bankReferenceId;
     if (targetStage === 'STAGE_4_CLOSED' && !deal.bankReferenceId.trim()) {
-      const inputRef = window.prompt(
-        `Para liquidar la operación #${deal.id} (${deal.cryptoAmountUsdt} USDT), ingrese el número de comprobante o referencia bancaria:`,
-      );
-      if (!inputRef || !inputRef.trim()) {
-        this.toast.warn('Se requiere un comprobante para liquidar la operación.', 'Referencia Requerida');
-        return;
-      }
-      targetRef = inputRef.trim();
-
-      // Check collision
-      const coll = verifyReferenceCollision(this.deals(), targetRef, deal.id);
-      if (coll.isDuplicate && coll.existingDeal) {
-        const confirmDup = window.confirm(
-          `⚠️ ALERTA:\nLa referencia "${targetRef}" ya fue usada en la operación #${coll.existingDeal.id}.\n¿Desea cerrar el trato con esta referencia de todas formas?`,
-        );
-        if (!confirmDup) return;
-      }
+      this.promptClosingDeal.set({
+        deal,
+        reference: '',
+        isDuplicate: false,
+      });
+      return;
     }
+
+    this.executeStageTransition(deal, targetStage, deal.bankReferenceId);
+  }
+
+  updateCloseDealRef(ref: string): void {
+    const current = this.promptClosingDeal();
+    if (!current) return;
+    const coll = verifyReferenceCollision(this.deals(), ref, current.deal.id);
+    this.promptClosingDeal.set({
+      ...current,
+      reference: ref,
+      isDuplicate: coll.isDuplicate,
+      collidingDealId: coll.existingDeal?.id,
+    });
+  }
+
+  cancelCloseDealModal(): void {
+    this.promptClosingDeal.set(null);
+  }
+
+  executeCloseDealModal(overrideDuplicate: boolean = false): void {
+    const current = this.promptClosingDeal();
+    if (!current) return;
+    const ref = current.reference.trim();
+    if (!ref) {
+      this.toast.warn('Ingrese el comprobante o referencia para liquidar la operación.', 'Referencia Requerida');
+      return;
+    }
+
+    if (current.isDuplicate && !overrideDuplicate) {
+      this.toast.warn('Esta referencia ya fue utilizada. Confirme en el modal si desea forzar el cierre.', 'Referencia Duplicada');
+      return;
+    }
+
+    const deal = current.deal;
+    this.promptClosingDeal.set(null);
+    this.executeStageTransition(deal, 'STAGE_4_CLOSED', ref);
+  }
+
+  private executeStageTransition(deal: PipelineDeal, targetStage: PipelineStage, targetRef: string): void {
 
     const now = Date.now();
     const transition = transitionDealStage(
@@ -532,9 +587,9 @@ export class ComplianceCockpitComponent {
     const updated = transition.updatedDeal;
 
     // 1. Update deals list
-    const nextDeals = this.deals().map((d) => (d.id === dealId ? updated : d));
+    const nextDeals = this.deals().map((d) => (d.id === deal.id ? updated : d));
     this.deals.set(nextDeals);
-    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
+    this.storage.set(CRM_STORAGE_KEYS.DEALS, nextDeals);
 
     // 2. If moving to CLOSED_WON, impact bank balance and contact verified references
     if (targetStage === 'STAGE_4_CLOSED' && deal.stage !== 'STAGE_4_CLOSED') {
@@ -544,7 +599,7 @@ export class ComplianceCockpitComponent {
           : b,
       );
       this.banks.set(nextBanks);
-      this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+      this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
 
       // Add verified reference to contact
       const nextContacts = this.contacts().map((c) => {
@@ -557,7 +612,7 @@ export class ComplianceCockpitComponent {
         return c;
       });
       this.contacts.set(nextContacts);
-      this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+      this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
 
       this.logActivity({
         type: 'DEAL_CLOSED',
@@ -580,19 +635,27 @@ export class ComplianceCockpitComponent {
     }
   }
 
+  closeConfirmModal(): void {
+    this.confirmModal.set(null);
+  }
+
   deleteDeal(dealId: string): void {
     const deal = this.deals().find((d) => d.id === dealId);
     if (!deal) return;
 
-    const confirmDel = window.confirm(
-      `¿Eliminar el trato #${deal.id} (${deal.cryptoAmountUsdt} USDT - ${deal.contactName})?`,
-    );
-    if (!confirmDel) return;
-
-    const nextDeals = this.deals().filter((d) => d.id !== dealId);
-    this.deals.set(nextDeals);
-    this.storage.set(STORAGE_KEYS.DEALS, nextDeals);
-    this.toast.info(`Trato #${dealId} eliminado.`, 'Pipeline');
+    this.confirmModal.set({
+      title: 'Eliminar Trato',
+      message: `¿Eliminar el trato #${deal.id} (${deal.cryptoAmountUsdt} USDT - ${deal.contactName})?`,
+      confirmLabel: 'Eliminar Trato',
+      isDestructive: true,
+      onConfirm: () => {
+        const nextDeals = this.deals().filter((d) => d.id !== dealId);
+        this.deals.set(nextDeals);
+        this.storage.set(CRM_STORAGE_KEYS.DEALS, nextDeals);
+        this.toast.info(`Trato #${dealId} eliminado.`, 'Pipeline');
+        this.confirmModal.set(null);
+      },
+    });
   }
 
   // Drag & drop handlers
@@ -674,7 +737,7 @@ export class ComplianceCockpitComponent {
 
     const nextContacts = [...this.contacts(), newContact];
     this.contacts.set(nextContacts);
-    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+    this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
 
     this.showAddContactModal.set(false);
     this.newContactName.set('');
@@ -694,22 +757,26 @@ export class ComplianceCockpitComponent {
     if (!contact) return;
 
     if (mode === 'ZERO') {
-      const confirmZero = window.confirm(
-        `¿Saldar la cuenta corriente de ${contact.name} a $0.00 USDT?`,
-      );
-      if (!confirmZero) return;
-
-      const nextContacts = this.contacts().map((c) =>
-        c.id === contact.id ? { ...c, pendingBalanceUsdt: 0 } : c,
-      );
-      this.contacts.set(nextContacts);
-      this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
-      this.logActivity({
-        type: 'BALANCE_ADJUSTED',
-        description: `Cuenta corriente de ${contact.name} saldada a $0.00`,
-        amountUsdt: 0,
+      this.confirmModal.set({
+        title: 'Saldar Cuenta Corriente',
+        message: `¿Saldar la cuenta corriente de ${contact.name} a $0.00 USDT?`,
+        confirmLabel: 'Saldar a $0.00',
+        isDestructive: false,
+        onConfirm: () => {
+          const nextContacts = this.contacts().map((c) =>
+            c.id === contact.id ? { ...c, pendingBalanceUsdt: 0 } : c,
+          );
+          this.contacts.set(nextContacts);
+          this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
+          this.logActivity({
+            type: 'BALANCE_ADJUSTED',
+            description: `Cuenta corriente de ${contact.name} saldada a $0.00`,
+            amountUsdt: 0,
+          });
+          this.toast.success(`Cuenta de ${contact.name} saldada a $0.00.`, 'Cuenta Corriente');
+          this.confirmModal.set(null);
+        },
       });
-      this.toast.success(`Cuenta de ${contact.name} saldada a $0.00.`, 'Cuenta Corriente');
       return;
     }
 
@@ -726,7 +793,7 @@ export class ComplianceCockpitComponent {
       c.id === contact.id ? { ...c, pendingBalanceUsdt: newBal } : c,
     );
     this.contacts.set(nextContacts);
-    this.storage.set(STORAGE_KEYS.CONTACTS, nextContacts);
+    this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
     this.contactBalanceAdjustAmount.set(null);
 
     this.logActivity({
@@ -785,7 +852,7 @@ export class ComplianceCockpitComponent {
 
     const nextBanks = [...this.banks(), newBank];
     this.banks.set(nextBanks);
-    this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+    this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
 
     this.showAddBankModal.set(false);
     this.newBankName.set('');
@@ -811,7 +878,7 @@ export class ComplianceCockpitComponent {
       b.id === bankId ? { ...b, currentBalanceFiat: realBalance } : b,
     );
     this.banks.set(nextBanks);
-    this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
+    this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
     this.reconcilingBankId.set(null);
 
     this.logActivity({
@@ -830,13 +897,19 @@ export class ComplianceCockpitComponent {
     const bank = this.banks().find((b) => b.id === bankId);
     if (!bank) return;
 
-    const confirmDel = window.confirm(`¿Eliminar la cuenta "${bank.bankName}"?`);
-    if (!confirmDel) return;
-
-    const nextBanks = this.banks().filter((b) => b.id !== bankId);
-    this.banks.set(nextBanks);
-    this.storage.set(STORAGE_KEYS.BANKS, nextBanks);
-    this.toast.info(`Cuenta "${bank.bankName}" eliminada.`, 'Escudo Bancario');
+    this.confirmModal.set({
+      title: 'Eliminar Cuenta Bancaria',
+      message: `¿Eliminar la cuenta "${bank.bankName}"?`,
+      confirmLabel: 'Eliminar Cuenta',
+      isDestructive: true,
+      onConfirm: () => {
+        const nextBanks = this.banks().filter((b) => b.id !== bankId);
+        this.banks.set(nextBanks);
+        this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
+        this.toast.info(`Cuenta "${bank.bankName}" eliminada.`, 'Escudo Bancario');
+        this.confirmModal.set(null);
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -874,23 +947,37 @@ export class ComplianceCockpitComponent {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result as string);
-        if (data.deals && data.contacts && data.banks) {
-          this.deals.set(data.deals);
-          this.contacts.set(data.contacts);
-          this.banks.set(data.banks);
-          if (data.activities) this.activities.set(data.activities);
-          if (data.settlements) this.settlements.set(data.settlements);
+        const raw = JSON.parse(reader.result as string);
+        const report = validateAndSanitizeCrmBackupPayload(raw, this.activeScope());
 
-          this.storage.set(STORAGE_KEYS.DEALS, data.deals);
-          this.storage.set(STORAGE_KEYS.CONTACTS, data.contacts);
-          this.storage.set(STORAGE_KEYS.BANKS, data.banks);
-          this.storage.set(STORAGE_KEYS.ACTIVITIES, data.activities || []);
-          this.storage.set(STORAGE_KEYS.SETTLEMENTS, data.settlements || []);
+        if (!report.valid) {
+          this.toast.error(report.errors[0] || 'Formato de archivo inválido.', 'Error de Importación');
+          return;
+        }
 
-          this.toast.success('Base de datos restaurada correctamente.', 'Importación Exitosa');
+        const { deals, contacts, banks, activities, settlements } = report.sanitizedPayload;
+        this.deals.set(deals);
+        this.contacts.set(contacts);
+        this.banks.set(banks);
+        this.activities.set(activities);
+        this.settlements.set(settlements);
+
+        this.storage.set(CRM_STORAGE_KEYS.DEALS, deals);
+        this.storage.set(CRM_STORAGE_KEYS.CONTACTS, contacts);
+        this.storage.set(CRM_STORAGE_KEYS.BANKS, banks);
+        this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, activities);
+        this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, settlements);
+
+        if (report.quarantinedCount > 0) {
+          this.toast.warn(
+            `Base de datos restaurada (${deals.length} tratos, ${contacts.length} contactos). Se omitieron ${report.quarantinedCount} registros corruptos o sin ámbito.`,
+            'Importación con Advertencias',
+          );
         } else {
-          this.toast.error('Formato de archivo inválido.', 'Error de Importación');
+          this.toast.success(
+            `Base de datos restaurada correctamente (${deals.length} tratos, ${contacts.length} contactos, ${banks.length} bancos).`,
+            'Importación Exitosa',
+          );
         }
       } catch {
         this.toast.error('No se pudo procesar el archivo JSON.', 'Error');
@@ -908,6 +995,6 @@ export class ComplianceCockpitComponent {
     };
     const nextActivities = [newEntry, ...this.activities()].slice(0, 100);
     this.activities.set(nextActivities);
-    this.storage.set(STORAGE_KEYS.ACTIVITIES, nextActivities);
+    this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, nextActivities);
   }
 }
