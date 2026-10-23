@@ -333,10 +333,12 @@
     <!-- ======================================================================= -->
     @if (activeView() === 'KANBAN') {
       <div class="view-kanban-container">
-        <div class="kanban-board-grid">
+        <div class="kanban-board-grid" role="region" aria-label="Tablero Kanban de Operaciones">
           @for (col of kanbanColumnsList(); track col.stage) {
             <div
               class="kanban-column"
+              role="region"
+              [attr.aria-label]="'Columna ' + col.label + ', ' + col.deals.length + ' operaciones'"
               (dragover)="onDragOver($event)"
               (drop)="onDrop($event, col.stage)"
             >
@@ -344,7 +346,7 @@
               <div class="kanban-column-header">
                 <div class="col-title-group">
                   <h3 class="col-title">{{ col.label }}</h3>
-                  <span class="col-count-badge">{{ col.deals.length }}</span>
+                  <span class="col-count-badge" [attr.aria-label]="col.deals.length + ' operaciones'">{{ col.deals.length }}</span>
                 </div>
                 <div class="col-totals">
                   <span class="total-usdt font-mono">${{ col.totalUsdt | number:'1.2-2' }}</span>
@@ -353,7 +355,7 @@
               </div>
 
               <!-- Lista de Tarjetas en la Columna -->
-              <div class="kanban-cards-stream">
+              <div class="kanban-cards-stream" role="list" [attr.aria-label]="'Lista de tratos en ' + col.label">
                 @if (col.deals.length === 0) {
                   <div class="kanban-empty-slot">
                     <span>Sin operaciones aquí</span>
@@ -362,8 +364,12 @@
                   @for (d of col.deals; track d.id) {
                     <div
                       class="kanban-deal-card"
+                      role="listitem"
+                      tabindex="0"
                       draggable="true"
                       (dragstart)="onDragStart($event, d.id)"
+                      (keydown)="onCardKeyDown($event, d)"
+                      [attr.aria-label]="'Trato ' + d.id + ' para ' + d.contactName + ', ' + d.cryptoAmountUsdt + ' USDT en ' + col.label + '. Use flechas o teclas 1 a 4 para mover.'"
                       [class.expired]="d.isRateExpired"
                       [class.closed]="d.stage === 'STAGE_4_CLOSED'"
                     >
@@ -382,7 +388,7 @@
 
                       <!-- Cliente y Banco -->
                       <div class="card-contact-row">
-                        <span class="contact-name" (click)="selectContact(d.contactId); setView('CONTACTS')">
+                        <span class="contact-name" (click)="selectContact(d.contactId); setView('CONTACTS')" [attr.aria-label]="'Ver expediente del contacto ' + d.contactName">
                           👤 {{ d.contactName }}
                         </span>
                         <span class="bank-pill">🏦 {{ d.bankName }}</span>
@@ -413,28 +419,28 @@
                       <!-- Acciones de Avance de Etapa -->
                       <div class="card-pipeline-actions">
                         @if (d.stage === 'STAGE_1_NEW') {
-                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_2_TRANSIT')">
+                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_2_TRANSIT')" [attr.aria-label]="'Avanzar trato ' + d.id + ' a En Tránsito'">
                             ➔ En Tránsito
                           </button>
-                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" title="Liquidar directamente">
+                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" title="Liquidar directamente" [attr.aria-label]="'Liquidar trato ' + d.id + ' directamente'">
                             ⚡ Liquidar
                           </button>
                         } @else if (d.stage === 'STAGE_2_TRANSIT') {
-                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_3_VERIFY')">
+                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_3_VERIFY')" [attr.aria-label]="'Avanzar trato ' + d.id + ' a Verificar Referencia'">
                             ➔ Verificar Ref
                           </button>
-                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')">
+                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" [attr.aria-label]="'Liquidar trato ' + d.id + ' directamente'">
                             ⚡ Liquidar
                           </button>
                         } @else if (d.stage === 'STAGE_3_VERIFY') {
-                          <button type="button" class="btn-step-success" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')">
+                          <button type="button" class="btn-step-success" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" [attr.aria-label]="'Liquidar y cerrar trato ' + d.id">
                             ✅ Liquidar / Cerrar
                           </button>
                         } @else {
                           <span class="closed-label font-mono">✓ Liquidado en Bóveda</span>
                         }
 
-                        <button type="button" class="btn-del-deal" (click)="deleteDeal(d.id)" title="Eliminar trato">
+                        <button type="button" class="btn-del-deal" (click)="deleteDeal(d.id)" title="Eliminar trato" [attr.aria-label]="'Eliminar trato ' + d.id">
                           🗑️
                         </button>
                       </div>

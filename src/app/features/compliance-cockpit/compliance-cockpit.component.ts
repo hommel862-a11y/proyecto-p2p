@@ -683,6 +683,46 @@ export class ComplianceCockpitComponent {
     }
   }
 
+  // Keyboard and accessibility handlers for Kanban cards
+  onCardKeyDown(event: KeyboardEvent, deal: PipelineDeal): void {
+    const key = event.key;
+    if (key === 'ArrowRight') {
+      event.preventDefault();
+      if (deal.stage === 'STAGE_1_NEW') {
+        this.moveDealToStage(deal.id, 'STAGE_2_TRANSIT');
+      } else if (deal.stage === 'STAGE_2_TRANSIT') {
+        this.moveDealToStage(deal.id, 'STAGE_3_VERIFY');
+      } else if (deal.stage === 'STAGE_3_VERIFY') {
+        this.moveDealToStage(deal.id, 'STAGE_4_CLOSED');
+      }
+    } else if (key === 'ArrowLeft') {
+      event.preventDefault();
+      if (deal.stage === 'STAGE_3_VERIFY') {
+        this.moveDealToStage(deal.id, 'STAGE_2_TRANSIT');
+      } else if (deal.stage === 'STAGE_2_TRANSIT') {
+        this.moveDealToStage(deal.id, 'STAGE_1_NEW');
+      }
+    } else if (key === '1') {
+      event.preventDefault();
+      this.moveDealToStage(deal.id, 'STAGE_1_NEW');
+    } else if (key === '2') {
+      event.preventDefault();
+      this.moveDealToStage(deal.id, 'STAGE_2_TRANSIT');
+    } else if (key === '3') {
+      event.preventDefault();
+      this.moveDealToStage(deal.id, 'STAGE_3_VERIFY');
+    } else if (key === '4') {
+      event.preventDefault();
+      this.moveDealToStage(deal.id, 'STAGE_4_CLOSED');
+    } else if (key === 'Enter' || key === 'l' || key === 'L') {
+      event.preventDefault();
+      this.moveDealToStage(deal.id, 'STAGE_4_CLOSED');
+    } else if (key === 'Delete' || key === 'Backspace') {
+      event.preventDefault();
+      this.deleteDeal(deal.id);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // ACTIONS: CLIPBOARD & SMS AUTO-INTAKE
   // ---------------------------------------------------------------------------
