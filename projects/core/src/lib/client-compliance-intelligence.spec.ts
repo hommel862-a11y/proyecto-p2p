@@ -10,6 +10,9 @@ import {
   createDailyProfitSettlementForFinance360,
   calculateBankReconciliationAdjustment,
   normalizeBankReference,
+  validateAndSanitizeCrmBackupPayload,
+  safeHydrateCrmCollection,
+  CRM_STORAGE_KEYS,
   type PipelineDeal,
   type CrmContact,
   type CrmBankAccount,
@@ -446,6 +449,155 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
       expect(diff.isBalanced).toBe(false);
       expect(diff.driftFiat).toBe(1500);
       expect(diff.formattedDrift).toBe('+1500.00');
+    });
+
+    it('does NOT silently fabricate an exchange rate of 80 when rate is omitted or 0', () => {
+      const stateWithZero = compileCrmWorkspaceState([], [], [], [], 'P2P_DESK', 0, mockNow);
+      expect(stateWithZero.deals).toEqual([]);
+      expect(stateWithZero.kpis.closedNetProfitTodayUsdt).toBe(0);
+
+      // Polymorphic overload with missing rate
+      const stateOmitted = compileCrmWorkspaceState([], [], [], 'P2P_DESK');
+      expect(stateOmitted.deals).toEqual([]);
+      expect(stateOmitted.kpis.closedVolumeTodayUsdt).toBe(0);
+    });
+
+    it('handles direct quote edge cases (zero amount, zero rate, fractional fees)', () => {
+      const zeroQuote = calculateDirectQuote(0, 80, 82, 0.3);
+      expect(zeroQuote.totalFiatToCollect).toBe(0);
+      expect(zeroQuote.netProfitUsdt).toBe(0);
+
+      const validQuote = calculateDirectQuote(100, 80, 82, 0.5);
+      // grossFiat = 100 * 82 = 8200
+      // netFiat = 8200 * (1 - 0.005) = 8159
+      // netUsdt = 8159 / 80 = 101.9875 => profit = 1.99 USDT
+      expect(validQuote.totalFiatToCollect).toBe(8200);
+      expect(validQuote.netProfitUsdt).toBeCloseTo(1.99, 2);
+    });
+
+    it('normalizes dirty bank references with punctuation, symbols, and leading/trailing spaces', () => {
+      expect(normalizeBankReference('  ref-12345678  ')).toBe('REF12345678');
+      expect(normalizeBankReference('#98.765.432-0')).toBe('#98.765.4320');
+      expect(normalizeBankReference('REF_88-99  ')).toBe('REF8899');
+      expect(normalizeBankReference('')).toBe('');
+      expect(normalizeBankReference('   ')).toBe('');
+    });
+
+    it('verifies reference collisions across all stages and honors self-exclusion', () => {
+      const deals: PipelineDeal[] = [
+        {
+          id: 'D-101',
+          scope: 'P2P_DESK',
+          title: 'Trato 1',
+          contactId: 'c1',
+          contactName: 'Carlos',
+          bankAccountId: 'b1',
+          bankName: 'Banesco',
+          stage: 'STAGE_2_TRANSIT',
+          fiatCurrency: 'VES',
+          cryptoAmountUsdt: 500,
+          appliedRate: 85,
+          replacementRate: 83,
+          totalFiatAmount: 42500,
+          paidFiatAmount: 0,
+          netProfitUsdt: 12,
+          bankReferenceId: 'REF-778899',
+          quoteTtlMinutes: 15,
+          quotedAt: mockNow,
+          isRateExpired: false,
+          timeline: [],
+          createdAt: mockNow,
+          closedAt: null,
+        },
+      ];
+
+      // Collision with existing
+      const coll = verifyReferenceCollision(deals, 'REF-778899');
+      expect(coll.isDuplicate).toBe(true);
+      expect(coll.existingDeal?.id).toBe('D-101');
+
+      // Normalized collision (different casing/spacing)
+      const collNorm = verifyReferenceCollision(deals, 'ref-778899 ');
+      expect(collNorm.isDuplicate).toBe(true);
+
+      // Self exclusion (updating same deal)
+      const selfEx = verifyReferenceCollision(deals, 'REF-778899', 'D-101');
+      expect(selfEx.isDuplicate).toBe(false);
+
+      // Non-collision
+      const freshRef = verifyReferenceCollision(deals, 'REF-999999');
+      expect(freshRef.isDuplicate).toBe(false);
+    });
+
+    it('validates and sanitizes CRM backup payload, eliminating scopeless ghost records and NaN values', () => {
+      const malformedPayload = {
+        deals: [
+          {
+            id: 'valid-deal',
+            scope: 'P2P_DESK',
+            cryptoAmountUsdt: 100,
+            appliedRate: 85,
+            totalFiatAmount: 8500,
+          },
+          {
+            id: 'ghost-deal-no-scope',
+            scope: 'INVALID_SCOPE',
+            cryptoAmountUsdt: 'not-a-number',
+            appliedRate: NaN,
+          },
+        ],
+        contacts: [
+          {
+            id: 'c-valid',
+            scope: 'FINANCE_360',
+            pendingBalanceUsdt: -50,
+          },
+          {
+            id: 'c-scopeless',
+            // Missing scope entirely
+            pendingBalanceUsdt: Infinity,
+          },
+        ],
+        banks: [
+          {
+            id: 'b-valid',
+            scope: 'P2P_DESK',
+            currentBalanceFiat: 15000,
+          },
+        ],
+      };
+
+      // 1. With fallbackScope = 'P2P_DESK'
+      const reportFallback = validateAndSanitizeCrmBackupPayload(malformedPayload, 'P2P_DESK');
+      expect(reportFallback.valid).toBe(true);
+      expect(reportFallback.sanitizedPayload.deals).toHaveLength(2);
+      expect(reportFallback.sanitizedPayload.deals[1].scope).toBe('P2P_DESK');
+      expect(reportFallback.sanitizedPayload.deals[1].cryptoAmountUsdt).toBe(0); // NaN coerced to 0
+      expect(reportFallback.sanitizedPayload.contacts[1].pendingBalanceUsdt).toBe(0); // Infinity coerced to 0
+
+      // 2. With invalid fallbackScope: quarantines scopeless records
+      const reportQuarantine = validateAndSanitizeCrmBackupPayload(malformedPayload, 'INVALID' as any);
+      expect(reportQuarantine.valid).toBe(true);
+      expect(reportQuarantine.sanitizedPayload.deals).toHaveLength(1);
+      expect(reportQuarantine.sanitizedPayload.deals[0].id).toBe('valid-deal');
+      expect(reportQuarantine.quarantinedCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('safeHydrateCrmCollection guards against corrupted non-array storage values', () => {
+      expect(safeHydrateCrmCollection(null)).toEqual([]);
+      expect(safeHydrateCrmCollection(undefined)).toEqual([]);
+      expect(safeHydrateCrmCollection({ corrupted: true })).toEqual([]);
+      expect(safeHydrateCrmCollection('string')).toEqual([]);
+      expect(safeHydrateCrmCollection([1, 2, 3])).toEqual([1, 2, 3]);
+    });
+
+    it('exports centralized CRM_STORAGE_KEYS matching the p2p.crm.* namespace', () => {
+      expect(CRM_STORAGE_KEYS.DEALS).toBe('p2p.crm.deals');
+      expect(CRM_STORAGE_KEYS.CONTACTS).toBe('p2p.crm.contacts');
+      expect(CRM_STORAGE_KEYS.BANKS).toBe('p2p.crm.banks');
+      expect(CRM_STORAGE_KEYS.ACTIVITIES).toBe('p2p.crm.activities');
+      expect(CRM_STORAGE_KEYS.SETTLEMENTS).toBe('p2p.crm.settlements');
+      expect(CRM_STORAGE_KEYS.ACTIVE_SCOPE).toBe('p2p.crm.active-scope');
     });
   });
 });

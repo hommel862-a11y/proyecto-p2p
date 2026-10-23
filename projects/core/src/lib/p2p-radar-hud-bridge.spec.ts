@@ -20,10 +20,13 @@ describe('p2p-radar-hud-bridge', () => {
         userTier: 'VERIFIED',
         cleanOffers: [],
         rejectedOffers: [],
+        rawCount: 1,
         cleanCount: 1,
         rejectedCount: 0,
         effectiveTopPrice: 98.5,
         makerFeePct: 0.2,
+        takerFeePct: 0.0,
+        isHybridEligible: true,
       });
       books.set('Banesco_SELL', {
         side: 'SELL',
@@ -31,10 +34,13 @@ describe('p2p-radar-hud-bridge', () => {
         userTier: 'VERIFIED',
         cleanOffers: [],
         rejectedOffers: [],
+        rawCount: 1,
         cleanCount: 1,
         rejectedCount: 0,
         effectiveTopPrice: 101.5,
         makerFeePct: 0.2,
+        takerFeePct: 0.0,
+        isHybridEligible: true,
       });
 
       const matrixResult: MatrixScanResult = {

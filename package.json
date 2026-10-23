@@ -34,7 +34,8 @@
     "telegram:daemon:build": "npm run build --prefix packages/telegram-daemon",
     "telegram:daemon:dev": "npm run dev --prefix packages/telegram-daemon",
     "telegram:daemon:start": "node packages/telegram-daemon/dist/index.js",
-    "validate:all": "npm run check:vendor && npm run mcp:test && npm run test:electron && npx tsc --noEmit"
+    "typecheck": "node scripts/typecheck.cjs",
+    "validate:all": "npm run check:vendor && npm run typecheck && npm run mcp:test && npm run test:electron"
   },
   "private": true,
   "engines": {

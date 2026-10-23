@@ -510,18 +510,21 @@ export function compileCrmWorkspaceState(
 ): CompiledCrmWorkspaceState {
   let activities: ActivityLogEntry[] = [];
   let activeScope: WorkspaceScope = 'P2P_DESK';
-  let liveReplacementRate = 80;
+  let liveReplacementRate = 0;
   let nowMs = Date.now();
 
   if (Array.isArray(activitiesOrScope)) {
     activities = activitiesOrScope;
     activeScope = (activeScopeOrLiveRate as WorkspaceScope) ?? 'P2P_DESK';
-    liveReplacementRate = (liveReplacementRateOrNow as number) ?? 80;
-    nowMs = nowTimestamp ?? Date.now();
+    const rateVal = liveReplacementRateOrNow as number | undefined;
+    liveReplacementRate = typeof rateVal === 'number' && Number.isFinite(rateVal) && rateVal > 0 ? rateVal : 0;
+    nowMs = typeof nowTimestamp === 'number' && Number.isFinite(nowTimestamp) ? nowTimestamp : Date.now();
   } else {
     activeScope = activitiesOrScope;
-    liveReplacementRate = (activeScopeOrLiveRate as number) ?? 80;
-    nowMs = (liveReplacementRateOrNow as number) ?? Date.now();
+    const rateVal = activeScopeOrLiveRate as number | undefined;
+    liveReplacementRate = typeof rateVal === 'number' && Number.isFinite(rateVal) && rateVal > 0 ? rateVal : 0;
+    const nowVal = liveReplacementRateOrNow as number | undefined;
+    nowMs = typeof nowVal === 'number' && Number.isFinite(nowVal) ? nowVal : Date.now();
     activities = [];
   }
 
@@ -586,7 +589,7 @@ export function compileCrmWorkspaceState(
     let isExpired = d.isRateExpired;
     if (d.stage === 'STAGE_1_NEW') {
       const ttlMs = (d.quoteTtlMinutes || 15) * 60 * 1000;
-      if (nowTimestamp - d.quotedAt > ttlMs) {
+      if (nowMs - d.quotedAt > ttlMs) {
         isExpired = true;
       }
     }
@@ -867,6 +870,242 @@ export function createDailyProfitSettlementForFinance360(
       netProfitUsdt: Math.round(netProfitUsdt * 100) / 100,
       tradesCount: closedToday.length,
       timestamp: Date.now(),
+    },
+  };
+}
+
+// =============================================================================
+// 7. STORAGE KEYS & BACKUP VALIDATION / HYDRATION ENGINE
+// =============================================================================
+
+export const CRM_STORAGE_KEYS = {
+  DEALS: 'p2p.crm.deals',
+  CONTACTS: 'p2p.crm.contacts',
+  BANKS: 'p2p.crm.banks',
+  ACTIVITIES: 'p2p.crm.activities',
+  SETTLEMENTS: 'p2p.crm.settlements',
+  ACTIVE_SCOPE: 'p2p.crm.active-scope',
+  PRIVACY_MODE: 'p2p.crm.privacy-mode',
+  ACTIVE_VIEW: 'p2p.crm.active-view',
+} as const;
+
+export function safeHydrateCrmCollection<T>(raw: unknown): T[] {
+  if (!Array.isArray(raw)) return [];
+  return raw as T[];
+}
+
+export interface CrmSanitizationReport {
+  valid: boolean;
+  errors: string[];
+  quarantinedCount: number;
+  sanitizedPayload: {
+    deals: PipelineDeal[];
+    contacts: CrmContact[];
+    banks: CrmBankAccount[];
+    activities: ActivityLogEntry[];
+    settlements: DailyNetProfitTransferPayload[];
+  };
+}
+
+export function validateAndSanitizeCrmBackupPayload(
+  raw: unknown,
+  fallbackScope: WorkspaceScope = 'P2P_DESK',
+): CrmSanitizationReport {
+  const errors: string[] = [];
+  let quarantinedCount = 0;
+
+  if (!raw || typeof raw !== 'object') {
+    return {
+      valid: false,
+      errors: ['El archivo de respaldo no contiene un objeto JSON válido.'],
+      quarantinedCount: 0,
+      sanitizedPayload: { deals: [], contacts: [], banks: [], activities: [], settlements: [] },
+    };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const cleanDeals: PipelineDeal[] = [];
+  const cleanContacts: CrmContact[] = [];
+  const cleanBanks: CrmBankAccount[] = [];
+  const cleanActivities: ActivityLogEntry[] = [];
+  const cleanSettlements: DailyNetProfitTransferPayload[] = [];
+
+  const isValidScope = (s: unknown): s is WorkspaceScope => s === 'P2P_DESK' || s === 'FINANCE_360';
+
+  // 1. Deals
+  if (Array.isArray(obj['deals'])) {
+    for (const d of obj['deals']) {
+      if (!d || typeof d !== 'object') {
+        quarantinedCount++;
+        continue;
+      }
+      const rawDeal = d as Partial<PipelineDeal>;
+      let scope = rawDeal.scope;
+      if (!isValidScope(scope)) {
+        if (isValidScope(fallbackScope)) {
+          scope = fallbackScope;
+        } else {
+          quarantinedCount++;
+          errors.push(`Operación omitida por ámbito inválido o ausente: ID ${String(rawDeal.id || 'desconocido')}`);
+          continue;
+        }
+      }
+
+      cleanDeals.push({
+        id: String(rawDeal.id || `DEAL-${Date.now().toString().slice(-6)}`),
+        scope,
+        title: String(rawDeal.title || 'Operación P2P'),
+        contactId: String(rawDeal.contactId || ''),
+        contactName: String(rawDeal.contactName || 'Cliente General'),
+        bankAccountId: String(rawDeal.bankAccountId || ''),
+        bankName: String(rawDeal.bankName || 'Banco Desconocido'),
+        stage: (rawDeal.stage as PipelineStage) || 'STAGE_1_NEW',
+        fiatCurrency: (rawDeal.fiatCurrency as FiatCurrency) || 'VES',
+        cryptoAmountUsdt: Number.isFinite(rawDeal.cryptoAmountUsdt) ? Number(rawDeal.cryptoAmountUsdt) : 0,
+        appliedRate: Number.isFinite(rawDeal.appliedRate) ? Number(rawDeal.appliedRate) : 0,
+        replacementRate: Number.isFinite(rawDeal.replacementRate) ? Number(rawDeal.replacementRate) : 0,
+        totalFiatAmount: Number.isFinite(rawDeal.totalFiatAmount) ? Number(rawDeal.totalFiatAmount) : 0,
+        paidFiatAmount: Number.isFinite(rawDeal.paidFiatAmount) ? Number(rawDeal.paidFiatAmount) : 0,
+        netProfitUsdt: Number.isFinite(rawDeal.netProfitUsdt) ? Number(rawDeal.netProfitUsdt) : 0,
+        bankReferenceId: String(rawDeal.bankReferenceId || ''),
+        quoteTtlMinutes: Number.isFinite(rawDeal.quoteTtlMinutes) ? Number(rawDeal.quoteTtlMinutes) : 15,
+        quotedAt: Number.isFinite(rawDeal.quotedAt) ? Number(rawDeal.quotedAt) : Date.now(),
+        isRateExpired: Boolean(rawDeal.isRateExpired),
+        timeline: Array.isArray(rawDeal.timeline) ? rawDeal.timeline : [],
+        createdAt: Number.isFinite(rawDeal.createdAt) ? Number(rawDeal.createdAt) : Date.now(),
+        closedAt: typeof rawDeal.closedAt === 'number' && Number.isFinite(rawDeal.closedAt) ? rawDeal.closedAt : null,
+      });
+    }
+  }
+
+  // 2. Contacts
+  if (Array.isArray(obj['contacts'])) {
+    for (const c of obj['contacts']) {
+      if (!c || typeof c !== 'object') {
+        quarantinedCount++;
+        continue;
+      }
+      const rawC = c as Partial<CrmContact>;
+      let scope = rawC.scope;
+      if (!isValidScope(scope)) {
+        if (isValidScope(fallbackScope)) {
+          scope = fallbackScope;
+        } else {
+          quarantinedCount++;
+          errors.push(`Contacto omitido por ámbito inválido o ausente: ID ${String(rawC.id || 'desconocido')}`);
+          continue;
+        }
+      }
+
+      cleanContacts.push({
+        id: String(rawC.id || `CNT-${Date.now().toString().slice(-6)}`),
+        scope,
+        name: String(rawC.name || 'Sin Nombre'),
+        documentId: String(rawC.documentId || ''),
+        phoneOrContact: String(rawC.phoneOrContact || ''),
+        category: (rawC.category as CrmContactCategory) || (scope === 'P2P_DESK' ? 'CLIENT_P2P' : 'CLIENT_360'),
+        paymentDetailsText: String(rawC.paymentDetailsText || ''),
+        creditLimitUsdt: Number.isFinite(rawC.creditLimitUsdt) ? Number(rawC.creditLimitUsdt) : 0,
+        pendingBalanceUsdt: Number.isFinite(rawC.pendingBalanceUsdt) ? Number(rawC.pendingBalanceUsdt) : 0,
+        maxPendingExposureUsdt: Number.isFinite(rawC.maxPendingExposureUsdt) ? Number(rawC.maxPendingExposureUsdt) : 0,
+        isDebtIndexedToUsdt: Boolean(rawC.isDebtIndexedToUsdt),
+        verifiedReferences: Array.isArray(rawC.verifiedReferences) ? rawC.verifiedReferences.map(String) : [],
+        createdAt: Number.isFinite(rawC.createdAt) ? Number(rawC.createdAt) : Date.now(),
+      });
+    }
+  }
+
+  // 3. Banks
+  if (Array.isArray(obj['banks'])) {
+    for (const b of obj['banks']) {
+      if (!b || typeof b !== 'object') {
+        quarantinedCount++;
+        continue;
+      }
+      const rawB = b as Partial<CrmBankAccount>;
+      let scope = rawB.scope;
+      if (!isValidScope(scope)) {
+        if (isValidScope(fallbackScope)) {
+          scope = fallbackScope;
+        } else {
+          quarantinedCount++;
+          errors.push(`Banco omitido por ámbito inválido o ausente: ID ${String(rawB.id || 'desconocido')}`);
+          continue;
+        }
+      }
+
+      cleanBanks.push({
+        id: String(rawB.id || `BNK-${Date.now().toString().slice(-6)}`),
+        scope,
+        bankName: String(rawB.bankName || 'Banco'),
+        currency: (rawB.currency as FiatCurrency) || 'VES',
+        holderDetailsText: String(rawB.holderDetailsText || ''),
+        currentBalanceFiat: Number.isFinite(rawB.currentBalanceFiat) ? Number(rawB.currentBalanceFiat) : 0,
+        maxDailyCapFiat: Number.isFinite(rawB.maxDailyCapFiat) ? Number(rawB.maxDailyCapFiat) : 0,
+        feePct: Number.isFinite(rawB.feePct) ? Number(rawB.feePct) : 0.3,
+        maxBurstTxPer15Min: Number.isFinite(rawB.maxBurstTxPer15Min) ? Number(rawB.maxBurstTxPer15Min) : 5,
+      });
+    }
+  }
+
+  // 4. Activities
+  if (Array.isArray(obj['activities'])) {
+    for (const a of obj['activities']) {
+      if (!a || typeof a !== 'object') {
+        quarantinedCount++;
+        continue;
+      }
+      const rawA = a as Partial<ActivityLogEntry>;
+      let scope = rawA.scope;
+      if (!isValidScope(scope)) {
+        if (isValidScope(fallbackScope)) {
+          scope = fallbackScope;
+        } else {
+          quarantinedCount++;
+          continue;
+        }
+      }
+
+      cleanActivities.push({
+        id: String(rawA.id || `ACT-${Date.now().toString().slice(-6)}`),
+        scope,
+        timestamp: Number.isFinite(rawA.timestamp) ? Number(rawA.timestamp) : Date.now(),
+        type: (rawA.type as ActivityType) || 'STAGE_MOVED',
+        description: String(rawA.description || ''),
+        amountUsdt: Number.isFinite(rawA.amountUsdt) ? Number(rawA.amountUsdt) : 0,
+        referenceId: rawA.referenceId ? String(rawA.referenceId) : undefined,
+      });
+    }
+  }
+
+  // 5. Settlements
+  if (Array.isArray(obj['settlements'])) {
+    for (const s of obj['settlements']) {
+      if (!s || typeof s !== 'object') {
+        quarantinedCount++;
+        continue;
+      }
+      const rawS = s as Partial<DailyNetProfitTransferPayload>;
+      cleanSettlements.push({
+        settlementId: String(rawS.settlementId || `SETTLE-${new Date().toISOString().slice(0, 10)}`),
+        dateIso: String(rawS.dateIso || new Date().toISOString().slice(0, 10)),
+        netProfitUsdt: Number.isFinite(rawS.netProfitUsdt) ? Number(rawS.netProfitUsdt) : 0,
+        tradesCount: Number.isFinite(rawS.tradesCount) ? Number(rawS.tradesCount) : 0,
+        timestamp: Number.isFinite(rawS.timestamp) ? Number(rawS.timestamp) : Date.now(),
+      });
+    }
+  }
+
+  return {
+    valid: true,
+    errors,
+    quarantinedCount,
+    sanitizedPayload: {
+      deals: cleanDeals,
+      contacts: cleanContacts,
+      banks: cleanBanks,
+      activities: cleanActivities,
+      settlements: cleanSettlements,
     },
   };
 }

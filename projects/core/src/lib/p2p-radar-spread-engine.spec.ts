@@ -179,10 +179,13 @@ describe('p2p-radar-spread-engine', () => {
           },
         ],
         rejectedOffers: [],
+        rawCount: 1,
         cleanCount: 1,
         rejectedCount: 0,
         effectiveTopPrice: topPrice,
         makerFeePct: 0.2,
+        takerFeePct: 0.0,
+        isHybridEligible: true,
       };
     }
 

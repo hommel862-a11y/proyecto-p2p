@@ -37,15 +37,16 @@ describe('ad-templates', () => {
   });
 
   describe('BUILT_IN_TEMPLATES', () => {
-    it('tiene 3 plantillas base', () => {
-      expect(BUILT_IN_TEMPLATES).toHaveLength(3);
+    it('tiene 4 plantillas base', () => {
+      expect(BUILT_IN_TEMPLATES).toHaveLength(4);
     });
 
-    it('incluye compra estándar, venta estándar y compra high volume', () => {
+    it('incluye compra estándar, venta estándar, compra high volume y venta express', () => {
       const names = BUILT_IN_TEMPLATES.map((t) => t.name);
       expect(names).toContain('Compra Estándar Pago Móvil');
       expect(names).toContain('Venta Estándar Pago Móvil');
       expect(names).toContain('Compra Rápida High Volume');
+      expect(names).toContain('Venta Rápida High Volume');
     });
 
     it('tipos correctos', () => {
