@@ -1,0 +1,39 @@
+{
+  "name": "@p2p/inbound-gateway",
+  "version": "1.0.0",
+  "description": "Secure Zero-Trust Inbound Webhook Gateway for WhatsApp, Instagram, and Bank Receipt Automation",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "p2p",
+    "inbound",
+    "webhook",
+    "whatsapp",
+    "instagram",
+    "zero-trust",
+    "gateway"
+  ],
+  "author": "P2P Decisor Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.0.8"
+  },
+  "engines": {
+    "node": ">=20.18.0 <26.0.0"
+  }
+}

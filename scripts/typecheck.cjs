@@ -18,6 +18,7 @@ const TARGETS = [
   { name: 'app:main', config: 'tsconfig.app.json' },
   { name: 'app:spec', config: 'tsconfig.spec.json' },
   { name: 'core:spec', config: 'projects/core/tsconfig.spec.json' },
+  { name: 'inbound:gateway', config: 'packages/inbound-gateway/tsconfig.json' },
 ];
 
 console.log('[typecheck] Running workspace-wide type check across all project targets...');
@@ -48,6 +49,6 @@ if (hasError) {
   console.error('\n[typecheck] FAILED: Type errors detected in one or more targets.');
   process.exit(1);
 } else {
-  console.log('\n[typecheck] PASSED: All 4 targets typechecked cleanly.');
+  console.log(`\n[typecheck] PASSED: All ${TARGETS.length} targets typechecked cleanly.`);
   process.exit(0);
 }

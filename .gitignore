@@ -7,7 +7,7 @@
 /bazel-out
 
 # Node
-/node_modules
+node_modules/
 npm-debug.log
 yarn-error.log
 /ng-serve.log
@@ -94,8 +94,9 @@ mi_operaciones_binance.csv
 /electron-crash.log
 *.crash.log
 
-# Telegram daemon build artifacts & offset cache
+# Telegram daemon and Inbound gateway build artifacts & offset cache
 /packages/telegram-daemon/dist/
+/packages/inbound-gateway/dist/
 .telegram_offset
 elec.out.log
 
