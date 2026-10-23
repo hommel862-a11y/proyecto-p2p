@@ -370,10 +370,17 @@ export function parseBankSmsClipboard(clipboardText: string): ClipboardParseResu
     referenceId = refMatch[1];
   }
 
-  // Extract amount (e.g., "Bs. 1.250,50", "Bs 500", "COP 450.000", "$ 1,500.00")
+  // Extract amount: prioritize explicit currency / marker patterns (e.g., "Bs. 1.250,50", "por Bs 500", "COP 450.000", "$ 1,500.00", "monto: 2500")
   let amountFiat: number | null = null;
-  const amountRegex = /(?:bs\.?|ves|\$|cop)?\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?|[0-9]+(?:[.,][0-9]{2})?)/i;
-  const amtMatch = raw.match(amountRegex);
+  const explicitAmountRegex =
+    /(?:bs\.?|ves|\$|cop|monto[:\s]*|por\s+(?:bs\.?|ves|\$|cop)?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?|[0-9]+(?:[.,][0-9]{2})?)/i;
+  let amtMatch = raw.match(explicitAmountRegex);
+
+  // Fallback to formatted number with thousand separators or decimals if no explicit marker
+  if (!amtMatch) {
+    const fallbackAmountRegex = /\b([0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]+[.,][0-9]{2})\b/;
+    amtMatch = raw.match(fallbackAmountRegex);
+  }
   if (amtMatch && amtMatch[1]) {
     let cleanNum = amtMatch[1].replace(/\s/g, '');
     if (cleanNum.includes('.') && cleanNum.includes(',')) {

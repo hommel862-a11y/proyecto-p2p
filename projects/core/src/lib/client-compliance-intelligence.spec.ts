@@ -361,6 +361,13 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
       expect(parsed2.referenceId).toBe('77889900');
       expect(parsed2.amountFiat).toBe(1500000);
       expect(parsed2.currency).toBe('COP');
+
+      const sms3 = 'BANESCO: Pago Movil recibido de Alejandro Magno CI 19888777 por Bs. 82.000,00 Ref: 55443322';
+      const parsed3 = parseBankSmsClipboard(sms3);
+      expect(parsed3.detectedBank).toBe('Banesco');
+      expect(parsed3.referenceId).toBe('55443322');
+      expect(parsed3.amountFiat).toBe(82000);
+      expect(parsed3.currency).toBe('VES');
     });
   });
 

@@ -39,6 +39,7 @@
     "inbound:start": "npm run start --prefix packages/inbound-gateway",
     "inbound:test": "npm test --prefix packages/inbound-gateway",
     "inbound:typecheck": "npm run typecheck --prefix packages/inbound-gateway",
+    "inbound:simulate": "node scripts/simulate-inbound-receipt.cjs",
     "typecheck": "node scripts/typecheck.cjs",
     "validate:all": "npm run check:vendor && npm run typecheck && npm run mcp:test && npm run test:electron"
   },
