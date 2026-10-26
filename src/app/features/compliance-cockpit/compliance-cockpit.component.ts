@@ -185,7 +185,10 @@ export class ComplianceCockpitComponent implements OnDestroy {
   );
 
   readonly settlements = signal<DailyNetProfitTransferPayload[]>(
-    safeHydrateCrmCollection<DailyNetProfitTransferPayload>(this.storage.get(CRM_STORAGE_KEYS.SETTLEMENTS)),
+    safeHydrateCrmCollection<DailyNetProfitTransferPayload>(
+      this.storage.get(CRM_STORAGE_KEYS.SETTLEMENTS),
+      false,
+    ),
   );
 
   readonly conversations = signal<OmnichannelConversation[]>(
@@ -2173,7 +2176,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     reader.onload = () => {
       try {
         const raw = JSON.parse(reader.result as string);
-        const report = validateAndSanitizeCrmBackupPayload(raw, this.activeScope());
+        const report = validateAndSanitizeCrmBackupPayload(raw);
 
         if (!report.valid) {
           this.toast.error(report.errors[0] || 'Formato de archivo inválido.', 'Error de Importación');
@@ -2194,12 +2197,14 @@ export class ComplianceCockpitComponent implements OnDestroy {
         this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, settlements);
 
         if (Array.isArray(raw['conversations'])) {
-          this.conversations.set(raw['conversations']);
-          this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, raw['conversations']);
+          const cleanConvs = safeHydrateCrmCollection<OmnichannelConversation>(raw['conversations']);
+          this.conversations.set(cleanConvs);
+          this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, cleanConvs);
         }
         if (Array.isArray(raw['invoicesOrQuotes'])) {
-          this.invoicesOrQuotes.set(raw['invoicesOrQuotes']);
-          this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, raw['invoicesOrQuotes']);
+          const cleanDocs = safeHydrateCrmCollection<CrmBillingDocument>(raw['invoicesOrQuotes']);
+          this.invoicesOrQuotes.set(cleanDocs);
+          this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, cleanDocs);
         }
         if (raw['omnichannelConfig'] && typeof raw['omnichannelConfig'] === 'object') {
           this.omnichannelConfig.set(raw['omnichannelConfig']);

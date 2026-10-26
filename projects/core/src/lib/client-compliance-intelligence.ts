@@ -901,9 +901,18 @@ export const CRM_STORAGE_KEYS = {
 
 export * from './crm-omnichannel-billing';
 
-export function safeHydrateCrmCollection<T>(raw: unknown): T[] {
+export function isValidWorkspaceScope(s: unknown): s is WorkspaceScope {
+  return s === 'P2P_DESK' || s === 'FINANCE_360';
+}
+
+export function safeHydrateCrmCollection<T>(raw: unknown, requireScope = true): T[] {
   if (!Array.isArray(raw)) return [];
-  return raw as T[];
+  return raw.filter((item): item is T => {
+    if (!item || typeof item !== 'object') return false;
+    if (!requireScope) return true;
+    const scope = (item as { scope?: unknown }).scope;
+    return isValidWorkspaceScope(scope);
+  });
 }
 
 export interface CrmSanitizationReport {
@@ -919,14 +928,25 @@ export interface CrmSanitizationReport {
   };
 }
 
+function hasInvalidFiniteField(record: Record<string, unknown>, fields: readonly string[]): string | null {
+  for (const field of fields) {
+    if (field in record && record[field] !== undefined && record[field] !== null) {
+      if (typeof record[field] !== 'number' || !Number.isFinite(record[field])) {
+        return field;
+      }
+    }
+  }
+  return null;
+}
+
 export function validateAndSanitizeCrmBackupPayload(
   raw: unknown,
-  fallbackScope: WorkspaceScope = 'P2P_DESK',
+  fallbackScope?: WorkspaceScope,
 ): CrmSanitizationReport {
   const errors: string[] = [];
   let quarantinedCount = 0;
 
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return {
       valid: false,
       errors: ['El archivo de respaldo no contiene un objeto JSON válido.'],
@@ -942,25 +962,48 @@ export function validateAndSanitizeCrmBackupPayload(
   const cleanActivities: ActivityLogEntry[] = [];
   const cleanSettlements: DailyNetProfitTransferPayload[] = [];
 
-  const isValidScope = (s: unknown): s is WorkspaceScope => s === 'P2P_DESK' || s === 'FINANCE_360';
+  const effectiveFallbackScope: WorkspaceScope | undefined = isValidWorkspaceScope(obj['scope'])
+    ? obj['scope']
+    : isValidWorkspaceScope(fallbackScope)
+      ? fallbackScope
+      : undefined;
+
+  const resolveScope = (recordScope: unknown): WorkspaceScope | undefined => {
+    if (isValidWorkspaceScope(recordScope)) return recordScope;
+    return effectiveFallbackScope;
+  };
 
   // 1. Deals
   if (Array.isArray(obj['deals'])) {
     for (const d of obj['deals']) {
-      if (!d || typeof d !== 'object') {
+      if (!d || typeof d !== 'object' || Array.isArray(d)) {
         quarantinedCount++;
+        errors.push('Operación omitida: formato de registro inválido.');
         continue;
       }
+      const rawDealRecord = d as Record<string, unknown>;
       const rawDeal = d as Partial<PipelineDeal>;
-      let scope = rawDeal.scope;
-      if (!isValidScope(scope)) {
-        if (isValidScope(fallbackScope)) {
-          scope = fallbackScope;
-        } else {
-          quarantinedCount++;
-          errors.push(`Operación omitida por ámbito inválido o ausente: ID ${String(rawDeal.id || 'desconocido')}`);
-          continue;
-        }
+      const scope = resolveScope(rawDeal.scope);
+      if (!scope) {
+        quarantinedCount++;
+        errors.push(`Operación omitida por ámbito inválido o ausente: ID ${String(rawDeal.id || 'desconocido')}`);
+        continue;
+      }
+
+      const badField = hasInvalidFiniteField(rawDealRecord, [
+        'cryptoAmountUsdt',
+        'appliedRate',
+        'replacementRate',
+        'totalFiatAmount',
+        'paidFiatAmount',
+        'netProfitUsdt',
+      ]);
+      if (badField) {
+        quarantinedCount++;
+        errors.push(
+          `Operación omitida por cifra financiera corrupta (${badField}): ID ${String(rawDeal.id || 'desconocido')}`,
+        );
+        continue;
       }
 
       cleanDeals.push({
@@ -993,20 +1036,31 @@ export function validateAndSanitizeCrmBackupPayload(
   // 2. Contacts
   if (Array.isArray(obj['contacts'])) {
     for (const c of obj['contacts']) {
-      if (!c || typeof c !== 'object') {
+      if (!c || typeof c !== 'object' || Array.isArray(c)) {
         quarantinedCount++;
+        errors.push('Contacto omitido: formato de registro inválido.');
         continue;
       }
+      const rawContactRecord = c as Record<string, unknown>;
       const rawC = c as Partial<CrmContact>;
-      let scope = rawC.scope;
-      if (!isValidScope(scope)) {
-        if (isValidScope(fallbackScope)) {
-          scope = fallbackScope;
-        } else {
-          quarantinedCount++;
-          errors.push(`Contacto omitido por ámbito inválido o ausente: ID ${String(rawC.id || 'desconocido')}`);
-          continue;
-        }
+      const scope = resolveScope(rawC.scope);
+      if (!scope) {
+        quarantinedCount++;
+        errors.push(`Contacto omitido por ámbito inválido o ausente: ID ${String(rawC.id || 'desconocido')}`);
+        continue;
+      }
+
+      const badField = hasInvalidFiniteField(rawContactRecord, [
+        'creditLimitUsdt',
+        'pendingBalanceUsdt',
+        'maxPendingExposureUsdt',
+      ]);
+      if (badField) {
+        quarantinedCount++;
+        errors.push(
+          `Contacto omitido por cifra financiera corrupta (${badField}): ID ${String(rawC.id || 'desconocido')}`,
+        );
+        continue;
       }
 
       cleanContacts.push({
@@ -1030,20 +1084,31 @@ export function validateAndSanitizeCrmBackupPayload(
   // 3. Banks
   if (Array.isArray(obj['banks'])) {
     for (const b of obj['banks']) {
-      if (!b || typeof b !== 'object') {
+      if (!b || typeof b !== 'object' || Array.isArray(b)) {
         quarantinedCount++;
+        errors.push('Banco omitido: formato de registro inválido.');
         continue;
       }
+      const rawBankRecord = b as Record<string, unknown>;
       const rawB = b as Partial<CrmBankAccount>;
-      let scope = rawB.scope;
-      if (!isValidScope(scope)) {
-        if (isValidScope(fallbackScope)) {
-          scope = fallbackScope;
-        } else {
-          quarantinedCount++;
-          errors.push(`Banco omitido por ámbito inválido o ausente: ID ${String(rawB.id || 'desconocido')}`);
-          continue;
-        }
+      const scope = resolveScope(rawB.scope);
+      if (!scope) {
+        quarantinedCount++;
+        errors.push(`Banco omitido por ámbito inválido o ausente: ID ${String(rawB.id || 'desconocido')}`);
+        continue;
+      }
+
+      const badField = hasInvalidFiniteField(rawBankRecord, [
+        'currentBalanceFiat',
+        'maxDailyCapFiat',
+        'feePct',
+      ]);
+      if (badField) {
+        quarantinedCount++;
+        errors.push(
+          `Banco omitido por cifra financiera corrupta (${badField}): ID ${String(rawB.id || 'desconocido')}`,
+        );
+        continue;
       }
 
       cleanBanks.push({
@@ -1063,19 +1128,24 @@ export function validateAndSanitizeCrmBackupPayload(
   // 4. Activities
   if (Array.isArray(obj['activities'])) {
     for (const a of obj['activities']) {
-      if (!a || typeof a !== 'object') {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) {
         quarantinedCount++;
         continue;
       }
+      const rawActRecord = a as Record<string, unknown>;
       const rawA = a as Partial<ActivityLogEntry>;
-      let scope = rawA.scope;
-      if (!isValidScope(scope)) {
-        if (isValidScope(fallbackScope)) {
-          scope = fallbackScope;
-        } else {
-          quarantinedCount++;
-          continue;
-        }
+      const scope = resolveScope(rawA.scope);
+      if (!scope) {
+        quarantinedCount++;
+        errors.push(`Actividad omitida por ámbito inválido o ausente: ID ${String(rawA.id || 'desconocido')}`);
+        continue;
+      }
+
+      const badField = hasInvalidFiniteField(rawActRecord, ['amountUsdt']);
+      if (badField) {
+        quarantinedCount++;
+        errors.push(`Actividad omitida por monto corrupto (${badField}): ID ${String(rawA.id || 'desconocido')}`);
+        continue;
       }
 
       cleanActivities.push({
@@ -1093,11 +1163,21 @@ export function validateAndSanitizeCrmBackupPayload(
   // 5. Settlements
   if (Array.isArray(obj['settlements'])) {
     for (const s of obj['settlements']) {
-      if (!s || typeof s !== 'object') {
+      if (!s || typeof s !== 'object' || Array.isArray(s)) {
         quarantinedCount++;
         continue;
       }
+      const rawSettleRecord = s as Record<string, unknown>;
       const rawS = s as Partial<DailyNetProfitTransferPayload>;
+      const badField = hasInvalidFiniteField(rawSettleRecord, ['netProfitUsdt', 'tradesCount']);
+      if (badField) {
+        quarantinedCount++;
+        errors.push(
+          `Liquidación omitida por cifra financiera corrupta (${badField}): ID ${String(rawS.settlementId || 'desconocido')}`,
+        );
+        continue;
+      }
+
       cleanSettlements.push({
         settlementId: String(rawS.settlementId || `SETTLE-${new Date().toISOString().slice(0, 10)}`),
         dateIso: String(rawS.dateIso || new Date().toISOString().slice(0, 10)),
@@ -1121,3 +1201,4 @@ export function validateAndSanitizeCrmBackupPayload(
     },
   };
 }
+

@@ -536,8 +536,11 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
       expect(freshRef.isDuplicate).toBe(false);
     });
 
-    it('validates and sanitizes CRM backup payload, eliminating scopeless ghost records and NaN values', () => {
-      const malformedPayload = {
+    it('validates and sanitizes CRM backup payload, inheriting top-level scope and quarantining scopeless or NaN records', () => {
+      // Case 1: Top-level backup scope ('FINANCE_360') is inherited by scopeless records with finite numbers,
+      // while records with NaN/Infinity/string numeric fields are strictly quarantined.
+      const backupWithTopLevelScope = {
+        scope: 'FINANCE_360',
         deals: [
           {
             id: 'valid-deal',
@@ -547,21 +550,28 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
             totalFiatAmount: 8500,
           },
           {
-            id: 'ghost-deal-no-scope',
-            scope: 'INVALID_SCOPE',
+            id: 'deal-inherits-top-scope',
+            // missing scope -> inherits 'FINANCE_360'
+            cryptoAmountUsdt: 250,
+            appliedRate: 82,
+            totalFiatAmount: 20500,
+          },
+          {
+            id: 'corrupted-nan-deal',
+            scope: 'P2P_DESK',
             cryptoAmountUsdt: 'not-a-number',
             appliedRate: NaN,
           },
         ],
         contacts: [
           {
-            id: 'c-valid',
-            scope: 'FINANCE_360',
+            id: 'c-valid-inherited',
+            // missing scope -> inherits 'FINANCE_360'
             pendingBalanceUsdt: -50,
           },
           {
-            id: 'c-scopeless',
-            // Missing scope entirely
+            id: 'c-infinity-corrupted',
+            scope: 'FINANCE_360',
             pendingBalanceUsdt: Infinity,
           },
         ],
@@ -574,28 +584,56 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
         ],
       };
 
-      // 1. With fallbackScope = 'P2P_DESK'
-      const reportFallback = validateAndSanitizeCrmBackupPayload(malformedPayload, 'P2P_DESK');
-      expect(reportFallback.valid).toBe(true);
-      expect(reportFallback.sanitizedPayload.deals).toHaveLength(2);
-      expect(reportFallback.sanitizedPayload.deals[1].scope).toBe('P2P_DESK');
-      expect(reportFallback.sanitizedPayload.deals[1].cryptoAmountUsdt).toBe(0); // NaN coerced to 0
-      expect(reportFallback.sanitizedPayload.contacts[1].pendingBalanceUsdt).toBe(0); // Infinity coerced to 0
+      const reportTopScope = validateAndSanitizeCrmBackupPayload(backupWithTopLevelScope);
+      expect(reportTopScope.valid).toBe(true);
+      expect(reportTopScope.sanitizedPayload.deals).toHaveLength(2);
+      expect(reportTopScope.sanitizedPayload.deals[0].scope).toBe('P2P_DESK');
+      expect(reportTopScope.sanitizedPayload.deals[1].id).toBe('deal-inherits-top-scope');
+      expect(reportTopScope.sanitizedPayload.deals[1].scope).toBe('FINANCE_360');
+      expect(reportTopScope.sanitizedPayload.contacts).toHaveLength(1);
+      expect(reportTopScope.sanitizedPayload.contacts[0].scope).toBe('FINANCE_360');
+      expect(reportTopScope.quarantinedCount).toBe(2); // corrupted-nan-deal + c-infinity-corrupted
 
-      // 2. With invalid fallbackScope: quarantines scopeless records
-      const reportQuarantine = validateAndSanitizeCrmBackupPayload(malformedPayload, 'INVALID' as any);
-      expect(reportQuarantine.valid).toBe(true);
-      expect(reportQuarantine.sanitizedPayload.deals).toHaveLength(1);
-      expect(reportQuarantine.sanitizedPayload.deals[0].id).toBe('valid-deal');
-      expect(reportQuarantine.quarantinedCount).toBeGreaterThanOrEqual(2);
+      // Case 2: No top-level scope and no fallbackScope -> scopeless records are quarantined (zero ghost records)
+      const scopelessPayload = {
+        deals: [
+          { id: 'valid-scoped', scope: 'P2P_DESK', cryptoAmountUsdt: 100, appliedRate: 80, totalFiatAmount: 8000 },
+          { id: 'ghost-no-scope', cryptoAmountUsdt: 100, appliedRate: 80, totalFiatAmount: 8000 },
+          { id: 'ghost-bad-scope', scope: 'ORPHAN_VAULT', cryptoAmountUsdt: 100 },
+        ],
+      };
+      const reportStrict = validateAndSanitizeCrmBackupPayload(scopelessPayload);
+      expect(reportStrict.valid).toBe(true);
+      expect(reportStrict.sanitizedPayload.deals).toHaveLength(1);
+      expect(reportStrict.sanitizedPayload.deals[0].id).toBe('valid-scoped');
+      expect(reportStrict.quarantinedCount).toBe(2);
     });
 
-    it('safeHydrateCrmCollection guards against corrupted non-array storage values', () => {
+    it('safeHydrateCrmCollection guards against corrupted non-array storage values and filters out scopeless ghost records', () => {
       expect(safeHydrateCrmCollection(null)).toEqual([]);
       expect(safeHydrateCrmCollection(undefined)).toEqual([]);
       expect(safeHydrateCrmCollection({ corrupted: true })).toEqual([]);
       expect(safeHydrateCrmCollection('string')).toEqual([]);
-      expect(safeHydrateCrmCollection([1, 2, 3])).toEqual([1, 2, 3]);
+
+      // Scoped collections (default requireScope = true) drop primitives and scopeless ghost records
+      const mixedRaw = [
+        { id: 'd1', scope: 'P2P_DESK' },
+        { id: 'd2', scope: 'FINANCE_360' },
+        { id: 'ghost-1' },
+        { id: 'ghost-2', scope: 'UNKNOWN' },
+        null,
+        123,
+      ];
+      expect(safeHydrateCrmCollection(mixedRaw)).toEqual([
+        { id: 'd1', scope: 'P2P_DESK' },
+        { id: 'd2', scope: 'FINANCE_360' },
+      ]);
+
+      // Unscoped collections like settlements pass requireScope = false
+      const settlementsRaw = [{ settlementId: 'SETTLE-2026-10-22', netProfitUsdt: 40 }, null];
+      expect(safeHydrateCrmCollection(settlementsRaw, false)).toEqual([
+        { settlementId: 'SETTLE-2026-10-22', netProfitUsdt: 40 },
+      ]);
     });
 
     it('exports centralized CRM_STORAGE_KEYS matching the p2p.crm.* namespace', () => {
