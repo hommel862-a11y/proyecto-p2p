@@ -509,6 +509,7 @@
         <div class="terminal-input-card">
           <div class="terminal-card-header">
             <div class="card-header-title">
+              <span class="quantum-step-badge">PASO 01</span>
               <span class="card-icon">⚡</span>
               <span class="card-title">Cotización & Posicionamiento Táctico</span>
             </div>
@@ -634,6 +635,7 @@
         <div class="terminal-input-card">
           <div class="terminal-card-header">
             <div class="card-header-title">
+              <span class="quantum-step-badge">PASO 02</span>
               <span class="card-icon">⚙️</span>
               <span class="card-title">Parámetros de Ejecución & Fricción Real</span>
             </div>
@@ -787,65 +789,81 @@
                 </select>
               </div>
             </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="spread-threshold">
-                <span>Umbral Favorable (VES)</span>
-                <span class="terminal-subtext">Spread mínimo en Bs</span>
-              </label>
-              <div class="input-control-wrap">
-                <span class="input-prefix">Bs</span>
-                <input
-                  id="spread-threshold"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="terminal-input"
-                  [value]="threshold()"
-                  (input)="threshold.set(clampMoney(+$any($event.target).value))"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="spread-min-guard">
-                <span>Guardia Mínima (%)</span>
-                <span class="terminal-subtext">Spread neto de seguridad</span>
-              </label>
-              <div class="input-control-wrap">
-                <input
-                  id="spread-min-guard"
-                  type="number"
-                  min="0"
-                  step="0.05"
-                  class="terminal-input"
-                  [value]="minSpreadGuardPct()"
-                  (input)="minSpreadGuardPct.set(clampMoney(+$any($event.target).value))"
-                />
-                <span class="input-suffix">%</span>
-              </div>
-            </div>
-
-            <div class="terminal-field full-width">
-              <label class="terminal-label" for="spread-alert-pct">
-                <span>Alerta de Spread de Mercado (%)</span>
-                <span class="terminal-subtext">Avisa cuando el spread en vivo supera este umbral</span>
-              </label>
-              <div class="input-control-wrap">
-                <input
-                  id="spread-alert-pct"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  class="terminal-input"
-                  [value]="spreadAlertPct()"
-                  (input)="spreadAlertPct.set(clampMoney(+$any($event.target).value))"
-                />
-                <span class="input-suffix">%</span>
-              </div>
-            </div>
           </div>
+
+          <details class="quantum-guard-accordion" open>
+            <summary>
+              <span class="accordion-summary-left">
+                <span>🛡️</span>
+                <span>Guardias de Seguridad & Alertas de Umbral</span>
+              </span>
+              <span class="accordion-summary-pills">
+                <span class="badge badge-gold font-mono">Guardia: {{ minSpreadGuardPct() }}%</span>
+                <span class="badge badge-accent font-mono">Alerta: {{ spreadAlertPct() }}%</span>
+              </span>
+            </summary>
+            <div class="accordion-body">
+              <div class="terminal-input-grid grid-3">
+                <div class="terminal-field">
+                  <label class="terminal-label" for="spread-threshold">
+                    <span>Umbral Favorable (VES)</span>
+                    <span class="terminal-subtext">Spread mínimo en Bs</span>
+                  </label>
+                  <div class="input-control-wrap">
+                    <span class="input-prefix">Bs</span>
+                    <input
+                      id="spread-threshold"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="terminal-input"
+                      [value]="threshold()"
+                      (input)="threshold.set(clampMoney(+$any($event.target).value))"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <div class="terminal-field">
+                  <label class="terminal-label" for="spread-min-guard">
+                    <span>Guardia Mínima (%)</span>
+                    <span class="terminal-subtext">Spread neto de seguridad</span>
+                  </label>
+                  <div class="input-control-wrap">
+                    <input
+                      id="spread-min-guard"
+                      type="number"
+                      min="0"
+                      step="0.05"
+                      class="terminal-input"
+                      [value]="minSpreadGuardPct()"
+                      (input)="minSpreadGuardPct.set(clampMoney(+$any($event.target).value))"
+                    />
+                    <span class="input-suffix">%</span>
+                  </div>
+                </div>
+
+                <div class="terminal-field">
+                  <label class="terminal-label" for="spread-alert-pct">
+                    <span>Alerta de Spread (%)</span>
+                    <span class="terminal-subtext">Avisa en vivo</span>
+                  </label>
+                  <div class="input-control-wrap">
+                    <input
+                      id="spread-alert-pct"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      class="terminal-input"
+                      [value]="spreadAlertPct()"
+                      (input)="spreadAlertPct.set(clampMoney(+$any($event.target).value))"
+                    />
+                    <span class="input-suffix">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
 
           <div class="terminal-card-footer">
             <div class="footer-badge">

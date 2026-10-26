@@ -195,96 +195,100 @@
         P2P Decisor cuenta con <strong>{{ deskModuleCount() }} herramientas especializadas</strong>. Cada una cumple una función quirúrgica en tu flujo de trabajo diario. A continuación tienes la guía detallada de qué hace cada módulo, cómo se opera y cómo interpretar sus resultados:
       </p>
 
-      <!-- Selector Rápido de Herramientas -->
-      <div class="tool-pills-selector">
-        @for (tool of deskModules(); track tool.id) {
-          <button
-            type="button"
-            class="tool-selector-btn"
-            [class.active]="selectedToolId() === tool.id"
-            (click)="selectedToolId.set(tool.id)"
-          >
-            <span class="tool-btn-icon">{{ tool.icon }}</span>
-            <span class="tool-btn-name">{{ tool.name }}</span>
-            @if (tool.badge) {
-              <span class="tool-btn-badge">{{ tool.badge }}</span>
-            }
-          </button>
+      <!-- Master-Detail Encyclopedia Bento Grid (Left 4 Cols Selector + Right 8 Cols Dossier) -->
+      <div class="quantum-bento-grid" style="margin-bottom: 24px; align-items: start;">
+        <!-- Selector Rápido de Herramientas (Columna Izquierda) -->
+        <div class="tool-pills-selector bento-span-4" style="display: flex; flex-direction: column; gap: 8px; max-height: 620px; overflow-y: auto; padding-right: 4px; margin: 0;">
+          @for (tool of deskModules(); track tool.id) {
+            <button
+              type="button"
+              class="tool-selector-btn"
+              style="width: 100%; justify-content: flex-start;"
+              [class.active]="selectedToolId() === tool.id"
+              (click)="selectedToolId.set(tool.id)"
+            >
+              <span class="tool-btn-icon">{{ tool.icon }}</span>
+              <span class="tool-btn-name" style="flex: 1; text-align: left;">{{ tool.name }}</span>
+              @if (tool.badge) {
+                <span class="tool-btn-badge">{{ tool.badge }}</span>
+              }
+            </button>
+          }
+        </div>
+
+        <!-- Ficha Profunda de la Herramienta Seleccionada (Columna Derecha Sticky) -->
+        @if (activeToolGuide(); as t) {
+          <div class="deep-tool-dossier bento-span-8 quantum-sticky-col" style="margin: 0;">
+            <div class="dossier-hero">
+              <div class="dossier-title-area">
+                <div class="dossier-icon">{{ t.icon }}</div>
+                <div>
+                  <span class="dossier-category">{{ t.category }}</span>
+                  <h3>{{ t.name }}</h3>
+                  <p class="dossier-tagline">{{ t.tagline }}</p>
+                </div>
+              </div>
+              <a [routerLink]="t.route" class="btn-goto-tool">
+                <span>Abrir {{ t.name }}</span>
+                <span>&rarr;</span>
+              </a>
+            </div>
+
+            <div class="dossier-grid">
+              <!-- Por qué importa -->
+              <div class="dossier-section why">
+                <h4>🎯 ¿Por qué es fundamental esta herramienta?</h4>
+                <p>{{ t.whyItMatters }}</p>
+              </div>
+
+              <!-- Paso a Paso -->
+              <div class="dossier-section steps">
+                <h4>📋 ¿Cómo se usa paso a paso?</h4>
+                <ol>
+                  @for (step of t.stepByStep; track step) {
+                    <li>{{ step }}</li>
+                  }
+                </ol>
+              </div>
+
+              <!-- Inputs & Outputs -->
+              <div class="dossier-section io">
+                <h4>⚙️ Datos de Entrada & Resultados</h4>
+                <div class="io-subgrid">
+                  <div>
+                    <span class="io-title">Qué datos te pide (Inputs):</span>
+                    <ul>
+                      @for (inp of t.keyInputs; track inp) {
+                        <li>{{ inp }}</li>
+                      }
+                    </ul>
+                  </div>
+                  <div>
+                    <span class="io-title">Qué métricas te entrega (Outputs):</span>
+                    <ul>
+                      @for (out of t.keyOutputs; track out) {
+                        <li>{{ out }}</li>
+                      }
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Errores comunes & Consejo Pro -->
+              <div class="dossier-section tips">
+                <div class="warning-callout">
+                  <strong>⚠️ Error común del principiante:</strong>
+                  <p>{{ t.commonMistakes }}</p>
+                </div>
+                <div class="pro-callout">
+                  <strong>💡 Consejo Pro del Arquitecto:</strong>
+                  <p>{{ t.proTip }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         }
       </div>
-
-      <!-- Ficha Profunda de la Herramienta Seleccionada -->
-      @if (activeToolGuide(); as t) {
-        <div class="deep-tool-dossier">
-          <div class="dossier-hero">
-            <div class="dossier-title-area">
-              <div class="dossier-icon">{{ t.icon }}</div>
-              <div>
-                <span class="dossier-category">{{ t.category }}</span>
-                <h3>{{ t.name }}</h3>
-                <p class="dossier-tagline">{{ t.tagline }}</p>
-              </div>
-            </div>
-            <a [routerLink]="t.route" class="btn-goto-tool">
-              <span>Abrir {{ t.name }}</span>
-              <span>&rarr;</span>
-            </a>
-          </div>
-
-          <div class="dossier-grid">
-            <!-- Por qué importa -->
-            <div class="dossier-section why">
-              <h4>🎯 ¿Por qué es fundamental esta herramienta?</h4>
-              <p>{{ t.whyItMatters }}</p>
-            </div>
-
-            <!-- Paso a Paso -->
-            <div class="dossier-section steps">
-              <h4>📋 ¿Cómo se usa paso a paso?</h4>
-              <ol>
-                @for (step of t.stepByStep; track step) {
-                  <li>{{ step }}</li>
-                }
-              </ol>
-            </div>
-
-            <!-- Inputs & Outputs -->
-            <div class="dossier-section io">
-              <h4>⚙️ Datos de Entrada & Resultados</h4>
-              <div class="io-subgrid">
-                <div>
-                  <span class="io-title">Qué datos te pide (Inputs):</span>
-                  <ul>
-                    @for (inp of t.keyInputs; track inp) {
-                      <li>{{ inp }}</li>
-                    }
-                  </ul>
-                </div>
-                <div>
-                  <span class="io-title">Qué métricas te entrega (Outputs):</span>
-                  <ul>
-                    @for (out of t.keyOutputs; track out) {
-                      <li>{{ out }}</li>
-                    }
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <!-- Errores comunes & Consejo Pro -->
-            <div class="dossier-section tips">
-              <div class="warning-callout">
-                <strong>⚠️ Error común del principiante:</strong>
-                <p>{{ t.commonMistakes }}</p>
-              </div>
-              <div class="pro-callout">
-                <strong>💡 Consejo Pro del Arquitecto:</strong>
-                <p>{{ t.proTip }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      }
 
       <!-- ASISTENTE "¿QUÉ HERRAMIENTA NECESITO PARA MI CASO?" -->
       <div class="help-wizard-card">

@@ -57,170 +57,174 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       BARRA GLOBAL DE TELEMETRÍA EN VIVO, NIVEL VIP Y PUENTE DE TESORERÍA
+       BENTO HUD: TELEMETRÍA EN VIVO (7 COLS) + TRACKER DE META DIARIA (5 COLS)
        ═══════════════════════════════════════════════════════════════════ -->
-  <div class="calc-global-telemetry-bar">
-    <div class="telemetry-left">
-      <div class="telemetry-chip">
-        <span class="chip-label">📡 Mercado P2P:</span>
-        <strong class="font-mono">{{ buyPrice() | num }} Bs</strong>
-        <span class="text-muted">→</span>
-        <strong class="font-mono" style="color: var(--gold-strong);">{{ sellPrice() | num }} Bs</strong>
-        @if (autoSyncLiveOrderbook()) {
-          <span
-            class="badge badge-success font-mono live-sync-pill"
-            style="cursor: pointer;"
-            (click)="toggleAutoSyncLiveOrderbook()"
-            title="Auto-sincronizado con libro L2 de Binance cada 30s. Clic para pausar."
-          >
-            🟢 L2 En Vivo
-          </span>
-        } @else {
-          <button
-            type="button"
-            class="badge badge-warning font-mono live-sync-pill"
-            style="cursor: pointer; border: none;"
-            (click)="toggleAutoSyncLiveOrderbook()"
-            title="Sincronización pausada por edición manual. Clic para reanudar precios en vivo."
-          >
-            🟡 Manual (Reconectar)
-          </button>
-        }
-        @if (binance.lastFetched(); as last) {
-          <span class="text-muted font-mono" style="font-size: 0.7rem;" title="Hora del último tick del libro de órdenes">
-            {{ last | date:'HH:mm:ss' }}
-          </span>
-        }
-      </div>
-
-      <div class="telemetry-chip">
-        <span class="chip-label">📦 FIFO Abierto:</span>
-        @if (treasuryTelemetry().openFifoUsdt > 0) {
-          <strong class="font-mono" style="color: #34d399;">
-            {{ treasuryTelemetry().openFifoUsdt | num }} USDT ({{ treasuryTelemetry().openFifoAvgVes | num }} Bs)
-          </strong>
-        } @else {
-          <span class="text-muted font-mono">Sin lotes abiertos</span>
-        }
-      </div>
-
-      <div class="telemetry-chip">
-        <span class="chip-label">🏦 Cupo Diario Tesorería:</span>
-        <strong class="font-mono">{{ treasuryTelemetry().totalDailyLimitVes | ves }}</strong>
-        <span class="text-muted" style="font-size: 0.7rem;">
-          ({{ treasuryTelemetry().hasRealAccounts ? treasuryTelemetry().activeAccountsCount + ' cuentas' : 'Referencial' }})
-        </span>
-      </div>
-    </div>
-
-    <div class="telemetry-actions">
-      <!-- Selector Global de Nivel VIP Comerciante -->
-      <div class="vip-tier-selector" role="group" aria-label="Nivel VIP de comerciante Binance">
-        <span class="vip-label">Tarifa Maker VIP:</span>
-        @for (lvl of [
-          { id: 'STANDARD', label: 'Estándar 0.25%' },
-          { id: 'BRONZE', label: 'Bronce 0.20%' },
-          { id: 'SILVER', label: 'Plata 0.175%' },
-          { id: 'GOLD', label: 'Oro 0.125%' }
-        ]; track lvl.id) {
-          <button
-            type="button"
-            class="vip-pill font-mono"
-            [class.active]="merchantLevel() === lvl.id"
-            (click)="merchantLevel.set($any(lvl.id))"
-          >
-            {{ lvl.label }}
-          </button>
-        }
-      </div>
-
-      <button
-        type="button"
-        class="btn btn-secondary btn-sm-action"
-        (click)="loadInventoryAndTreasuryCapital()"
-        title="Carga automáticamente tu inventario FIFO abierto o el saldo disponible en Tesorería"
-      >
-        📦 Cargar Capital Real
-      </button>
-
-      <button
-        type="button"
-        class="btn btn-primary btn-sm-action"
-        [disabled]="syncingLive()"
-        (click)="loadBinancePrices(true)"
-      >
-        {{ syncingLive() ? '⏳ Sincronizando Libro...' : '⚡ Sincronizar Binance en Vivo' }}
-      </button>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════════════
-       TRACKER DE META DIARIA ACTIVA EN VIVO (CONECTADO A BITÁCORA & CENTRO DE CONTROL)
-       ═══════════════════════════════════════════════════════════════════ -->
-  @if (liveDailyGoalTracker(); as trk) {
-    <div class="daily-goal-tracker-strip" [class.goal-achieved]="trk.isAchieved">
-      <div class="tracker-main">
-        <div class="tracker-title-row">
-          <span class="badge font-mono" [class.badge-gold]="trk.isPinned" [class.badge-secondary]="!trk.isPinned">
-            {{ trk.isPinned ? '📌 META DIARIA FIJADA' : '🎯 META EN SIMULACIÓN' }}
-          </span>
-          <strong class="font-mono" style="font-size: 0.9rem; color: #fff;">
-            Objetivo: +{{ trk.goalUsd | usdt }}/día
-          </strong>
-          <span class="text-muted font-mono" style="font-size: 0.75rem;">
-            ({{ trk.targetCycles }} vueltas @ {{ trk.targetSellVes | num }} Bs)
-          </span>
+  <div class="quantum-bento-grid" style="margin-bottom: 18px; align-items: stretch;">
+    <div
+      class="calc-global-telemetry-bar"
+      [class.bento-span-7]="!!liveDailyGoalTracker()"
+      [class.bento-span-12]="!liveDailyGoalTracker()"
+      style="margin-bottom: 0;"
+    >
+      <div class="telemetry-left">
+        <div class="telemetry-chip">
+          <span class="chip-label">📡 Mercado P2P:</span>
+          <strong class="font-mono">{{ buyPrice() | num }} Bs</strong>
+          <span class="text-muted">→</span>
+          <strong class="font-mono" style="color: var(--gold-strong);">{{ sellPrice() | num }} Bs</strong>
+          @if (autoSyncLiveOrderbook()) {
+            <span
+              class="badge badge-success font-mono live-sync-pill"
+              style="cursor: pointer;"
+              (click)="toggleAutoSyncLiveOrderbook()"
+              title="Auto-sincronizado con libro L2 de Binance cada 30s. Clic para pausar."
+            >
+              🟢 L2 En Vivo
+            </span>
+          } @else {
+            <button
+              type="button"
+              class="badge badge-warning font-mono live-sync-pill"
+              style="cursor: pointer; border: none;"
+              (click)="toggleAutoSyncLiveOrderbook()"
+              title="Sincronización pausada por edición manual. Clic para reanudar precios en vivo."
+            >
+              🟡 Manual (Reconectar)
+            </button>
+          }
+          @if (binance.lastFetched(); as last) {
+            <span class="text-muted font-mono" style="font-size: 0.7rem;" title="Hora del último tick del libro de órdenes">
+              {{ last | date:'HH:mm:ss' }}
+            </span>
+          }
         </div>
 
-        <div class="tracker-metrics font-mono">
-          <span>
-            Hoy en Bitácora:
-            <strong [class.positive]="trk.todayPnlUsdt > 0" [class.negative]="trk.todayPnlUsdt < 0">
-              {{ trk.todayPnlUsdt > 0 ? '+' : '' }}{{ trk.todayPnlUsdt | usdt }}
+        <div class="telemetry-chip">
+          <span class="chip-label">📦 FIFO Abierto:</span>
+          @if (treasuryTelemetry().openFifoUsdt > 0) {
+            <strong class="font-mono" style="color: #34d399;">
+              {{ treasuryTelemetry().openFifoUsdt | num }} USDT ({{ treasuryTelemetry().openFifoAvgVes | num }} Bs)
             </strong>
-            <small class="text-muted">({{ trk.todayPnlVes | ves }} · {{ trk.todayOpsCount }} órdenes)</small>
-          </span>
-          <span class="tracker-sep">|</span>
-          @if (trk.isAchieved) {
-            <strong class="positive">🏆 ¡Meta diaria superada hoy!</strong>
           } @else {
-            <span>Faltan: <strong style="color: var(--gold-strong);">{{ trk.remainingUsd | usdt }}</strong></span>
+            <span class="text-muted font-mono">Sin lotes abiertos</span>
+          }
+        </div>
+
+        <div class="telemetry-chip">
+          <span class="chip-label">🏦 Cupo Diario Tesorería:</span>
+          <strong class="font-mono">{{ treasuryTelemetry().totalDailyLimitVes | ves }}</strong>
+          <span class="text-muted" style="font-size: 0.7rem;">
+            ({{ treasuryTelemetry().hasRealAccounts ? treasuryTelemetry().activeAccountsCount + ' cuentas' : 'Referencial' }})
+          </span>
+        </div>
+      </div>
+
+      <div class="telemetry-actions">
+        <!-- Selector Global de Nivel VIP Comerciante -->
+        <div class="vip-tier-selector" role="group" aria-label="Nivel VIP de comerciante Binance">
+          <span class="vip-label">Tarifa Maker VIP:</span>
+          @for (lvl of [
+            { id: 'STANDARD', label: 'Estándar 0.25%' },
+            { id: 'BRONZE', label: 'Bronce 0.20%' },
+            { id: 'SILVER', label: 'Plata 0.175%' },
+            { id: 'GOLD', label: 'Oro 0.125%' }
+          ]; track lvl.id) {
+            <button
+              type="button"
+              class="vip-pill font-mono"
+              [class.active]="merchantLevel() === lvl.id"
+              (click)="merchantLevel.set($any(lvl.id))"
+            >
+              {{ lvl.label }}
+            </button>
+          }
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm-action"
+          (click)="loadInventoryAndTreasuryCapital()"
+          title="Carga automáticamente tu inventario FIFO abierto o el saldo disponible en Tesorería"
+        >
+          📦 Cargar Capital Real
+        </button>
+
+        <button
+          type="button"
+          class="btn btn-primary btn-sm-action"
+          [disabled]="syncingLive()"
+          (click)="loadBinancePrices(true)"
+        >
+          {{ syncingLive() ? '⏳ Sincronizando Libro...' : '⚡ Sincronizar Binance en Vivo' }}
+        </button>
+      </div>
+    </div>
+
+    @if (liveDailyGoalTracker(); as trk) {
+      <div class="daily-goal-tracker-strip bento-span-5" [class.goal-achieved]="trk.isAchieved" style="margin-bottom: 0;">
+        <div class="tracker-main">
+          <div class="tracker-title-row">
+            <span class="badge font-mono" [class.badge-gold]="trk.isPinned" [class.badge-secondary]="!trk.isPinned">
+              {{ trk.isPinned ? '📌 META DIARIA FIJADA' : '🎯 META EN SIMULACIÓN' }}
+            </span>
+            <strong class="font-mono" style="font-size: 0.9rem; color: #fff;">
+              Objetivo: +{{ trk.goalUsd | usdt }}/día
+            </strong>
+            <span class="text-muted font-mono" style="font-size: 0.75rem;">
+              ({{ trk.targetCycles }} vueltas @ {{ trk.targetSellVes | num }} Bs)
+            </span>
+          </div>
+
+          <div class="tracker-metrics font-mono">
+            <span>
+              Hoy en Bitácora:
+              <strong [class.positive]="trk.todayPnlUsdt > 0" [class.negative]="trk.todayPnlUsdt < 0">
+                {{ trk.todayPnlUsdt > 0 ? '+' : '' }}{{ trk.todayPnlUsdt | usdt }}
+              </strong>
+              <small class="text-muted">({{ trk.todayPnlVes | ves }} · {{ trk.todayOpsCount }} órdenes)</small>
+            </span>
+            <span class="tracker-sep">|</span>
+            @if (trk.isAchieved) {
+              <strong class="positive">🏆 ¡Meta diaria superada hoy!</strong>
+            } @else {
+              <span>Faltan: <strong style="color: var(--gold-strong);">{{ trk.remainingUsd | usdt }}</strong></span>
+            }
+          </div>
+        </div>
+
+        <div class="tracker-progress-wrap">
+          <div class="tracker-progress-head font-mono">
+            <span>Avance Real Hoy</span>
+            <strong>{{ trk.progressPct }}%</strong>
+          </div>
+          <div class="tracker-progress-bar">
+            <div class="tracker-progress-fill" [style.width.%]="trk.progressPct"></div>
+          </div>
+        </div>
+
+        <div class="tracker-actions">
+          <button
+            type="button"
+            class="preset-mini-btn active"
+            (click)="pinActiveDailyGoal()"
+            title="Fija la meta actual del Planificador Reverso como objetivo oficial del día en toda la suite"
+          >
+            📌 {{ trk.isPinned ? 'Actualizar Meta Diaria' : 'Fijar Meta del Día' }}
+          </button>
+          @if (trk.isPinned) {
+            <button
+              type="button"
+              class="preset-mini-btn"
+              (click)="clearActiveDailyGoal()"
+              title="Desfijar meta personalizada"
+            >
+              ✕
+            </button>
           }
         </div>
       </div>
-
-      <div class="tracker-progress-wrap">
-        <div class="tracker-progress-head font-mono">
-          <span>Avance Real Hoy</span>
-          <strong>{{ trk.progressPct }}%</strong>
-        </div>
-        <div class="tracker-progress-bar">
-          <div class="tracker-progress-fill" [style.width.%]="trk.progressPct"></div>
-        </div>
-      </div>
-
-      <div class="tracker-actions">
-        <button
-          type="button"
-          class="preset-mini-btn active"
-          (click)="pinActiveDailyGoal()"
-          title="Fija la meta actual del Planificador Reverso como objetivo oficial del día en toda la suite"
-        >
-          📌 {{ trk.isPinned ? 'Actualizar Meta Diaria' : 'Fijar Meta del Día' }}
-        </button>
-        @if (trk.isPinned) {
-          <button
-            type="button"
-            class="preset-mini-btn"
-            (click)="clearActiveDailyGoal()"
-            title="Desfijar meta personalizada"
-          >
-            ✕
-          </button>
-        }
-      </div>
-    </div>
-  }
+    }
+  </div>
 
   <!-- ═══════════════════════════════════════════════════
        MODO A: Retorno por Vuelta & Velocidad (Cycle Profit & Velocity)

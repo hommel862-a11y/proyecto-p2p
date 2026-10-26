@@ -10,76 +10,71 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FORMAT_PIPES],
   template: `
-    <div class="data-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-        <span class="section-eyebrow" style="margin: 0;">
-          Historial de Operaciones ({{ visibleOps().length }} de {{ operations().length }})
+    <div class="data-section apple-dock-card" style="padding: 22px 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+        <span class="section-eyebrow" style="margin: 0; font-size: 0.82rem; letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 8px;">
+          <span class="island-pulse-dot" style="width: 7px; height: 7px;"></span>
+          HISTORIAL DE OPERACIONES ({{ visibleOps().length }} de {{ operations().length }})
         </span>
       </div>
 
-      <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+      <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px;">
         @if (operations().length) {
-          <div class="filter-group" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-            <label class="inline" style="margin: 0;">
-              <span>Filtrar por par:</span>
-              <select
-                [value]="pairFilter()"
-                (change)="pairFilterChange.emit($any($event.target).value)"
-              >
-                <option value="all">Todos los pares</option>
-                <option value="USDT">Solo USDT/VES</option>
-                <option value="EUR">Solo EUR/VES</option>
-              </select>
+          <div class="filter-group" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <label class="inline" style="margin: 0; font-size: 0.78rem; display: inline-flex; flex-direction: row !important; align-items: center; gap: 6px;">
+              <span class="text-muted">Par:</span>
+              <div class="input-control-wrap" style="border-radius: 999px; width: auto; min-width: 145px;">
+                <select
+                  class="terminal-select"
+                  style="font-size: 0.76rem; padding: 5px 28px 5px 12px;"
+                  [value]="pairFilter()"
+                  (change)="pairFilterChange.emit($any($event.target).value)"
+                >
+                  <option value="all">Todos los pares</option>
+                  <option value="USDT">Solo USDT/VES</option>
+                  <option value="EUR">Solo EUR/VES</option>
+                </select>
+              </div>
             </label>
 
-            <!-- Filtros rápidos por tipo (Pills sin alterar conteo de <select>) -->
-            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <!-- Filtros rápidos por tipo (Apple Pro capsule chips) -->
+            <div class="quick-fill-group">
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.74rem; padding: 4px 8px; border: 1px solid var(--border);"
-                [style.borderColor]="typeFilter() === 'all' ? 'var(--accent)' : 'var(--border)'"
-                [style.color]="typeFilter() === 'all' ? 'var(--accent)' : 'var(--muted)'"
+                class="quick-fill-chip"
+                [class.accent]="typeFilter() === 'all'"
                 (click)="typeFilterChange.emit('all')"
               >
                 Todas
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.74rem; padding: 4px 8px; border: 1px solid var(--border);"
-                [style.borderColor]="typeFilter() === 'buy' ? 'var(--accent)' : 'var(--border)'"
-                [style.color]="typeFilter() === 'buy' ? 'var(--accent)' : 'var(--muted)'"
+                class="quick-fill-chip"
+                [class.accent]="typeFilter() === 'buy'"
                 (click)="typeFilterChange.emit('buy')"
               >
                 🟢 Compras
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.74rem; padding: 4px 8px; border: 1px solid var(--border);"
-                [style.borderColor]="typeFilter() === 'sell' ? '#f87171' : 'var(--border)'"
-                [style.color]="typeFilter() === 'sell' ? '#f87171' : 'var(--muted)'"
+                class="quick-fill-chip"
+                [class.danger]="typeFilter() === 'sell'"
                 (click)="typeFilterChange.emit('sell')"
               >
                 🔴 Ventas
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.74rem; padding: 4px 8px; border: 1px solid var(--border);"
-                [style.borderColor]="typeFilter() === 'assign' ? 'var(--gold)' : 'var(--border)'"
-                [style.color]="typeFilter() === 'assign' ? 'var(--gold)' : 'var(--muted)'"
+                class="quick-fill-chip"
+                [class.gold]="typeFilter() === 'assign'"
                 (click)="typeFilterChange.emit('assign')"
               >
                 💰 Tesorería
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.74rem; padding: 4px 8px; border: 1px solid var(--border);"
-                [style.borderColor]="onlyTodayFilter() ? 'var(--gold)' : 'var(--border)'"
-                [style.color]="onlyTodayFilter() ? 'var(--gold)' : 'var(--muted)'"
+                class="quick-fill-chip"
+                [class.gold]="onlyTodayFilter()"
                 (click)="onlyTodayToggle.emit()"
               >
                 📅 Solo Hoy
@@ -87,11 +82,11 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
             </div>
           </div>
 
-          <div style="flex: 1; min-width: 220px; max-width: 340px;">
+          <div class="input-control-wrap" style="flex: 1; min-width: 220px; max-width: 340px; border-radius: 999px;">
             <input
               type="search"
               class="terminal-input"
-              style="font-size: 0.8rem; padding: 5px 10px; width: 100%;"
+              style="font-size: 0.8rem; padding: 6px 14px;"
               placeholder="🔍 Buscar ref, comercio, cédula o nota..."
               [value]="searchQuery()"
               (input)="searchQueryChange.emit($any($event.target).value)"
@@ -154,16 +149,16 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                   }
                 </td>
                 <td>
-                  <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <div style="display: flex; flex-direction: column; gap: 3px;">
                     <div>
                       <span>{{ o.merchantNote || '—' }}</span>
                       @if (getCounterpartyReputation(o.counterpartyId); as rep) {
                         <span
-                          class="badge"
-                          [class.badge-accent]="rep === 'TRUSTED' || rep === 'VERIFIED'"
-                          [class.badge-sell]="rep === 'BLOCKED'"
-                          [class.badge-buy]="rep === 'SUSPICIOUS'"
-                          style="font-size: 0.68rem; margin-left: 5px; padding: 2px 6px;"
+                          class="apple-pill-mini"
+                          [class.live]="rep === 'TRUSTED' || rep === 'VERIFIED'"
+                          [class.badge-danger]="rep === 'BLOCKED'"
+                          [class.gold]="rep === 'SUSPICIOUS'"
+                          style="margin-left: 5px;"
                         >
                           {{ rep }}
                         </span>
@@ -177,8 +172,8 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                     @if (o.receiptImage) {
                       <button
                         type="button"
-                        class="badge badge-accent"
-                        style="cursor: pointer; font-size: 0.68rem; margin-top: 3px; display: inline-flex; align-items: center; gap: 4px; width: fit-content; border: 1px solid var(--accent); background: rgba(16, 185, 129, 0.15);"
+                        class="quick-fill-chip accent"
+                        style="width: fit-content; margin-top: 2px;"
                         (click)="selectedReceipt.set(o)"
                         title="Ver captura del comprobante bancario"
                       >
@@ -211,8 +206,8 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                     @if (o.type !== 'assign') {
                       <button
                         type="button"
-                        class="btn btn-ghost"
-                        style="padding: 3px 6px; font-size: 0.75rem;"
+                        class="apple-pill-btn apple-btn-secondary"
+                        style="padding: 4px 8px; font-size: 0.74rem;"
                         (click)="cloneRequest.emit(o)"
                         title="Clonar / Repetir esta operación en el formulario"
                       >
@@ -220,8 +215,8 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                       </button>
                       <button
                         type="button"
-                        class="btn btn-ghost"
-                        style="padding: 3px 6px; font-size: 0.75rem;"
+                        class="apple-pill-btn apple-btn-secondary"
+                        style="padding: 4px 8px; font-size: 0.74rem;"
                         (click)="editRequest.emit(o)"
                         title="Editar esta operación"
                       >
@@ -338,8 +333,8 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
             >
               <button
                 type="button"
-                class="btn btn-secondary"
-                style="font-size: 0.8rem;"
+                class="apple-pill-btn apple-btn-secondary"
+                style="font-size: 0.8rem; padding: 6px 16px;"
                 (click)="selectedReceipt.set(null)"
               >
                 Cerrar

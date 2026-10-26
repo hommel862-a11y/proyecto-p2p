@@ -1,14 +1,33 @@
-<div class="compliance-cockpit-container" [class.privacy-active]="privacyMode()">
-  <!-- 1. BARRA SUPERIOR GLOBAL -->
-  <header class="cockpit-top-bar">
+<div
+  class="compliance-cockpit-container"
+  [class.privacy-active]="privacyMode()"
+  [class.scope-360]="activeScope() === 'FINANCE_360'"
+>
+  <!-- 1. BARRA SUPERIOR GLOBAL (QUANTUM COMMAND HEADER) -->
+  <header class="cockpit-top-bar quantum-hero-banner">
     <div class="brand-zone">
       <div class="brand-badge">
         <span class="live-pulse"></span>
-        <span class="badge-text">P2P QUANT TREASURY</span>
+        <span class="badge-text">
+          {{ activeScope() === 'P2P_DESK' ? 'P2P QUANT TREASURY' : 'FINANCE 360 ENTERPRISE' }}
+        </span>
       </div>
       <div class="brand-titles">
-        <h1 class="cockpit-title">CRM Financiero &amp; Pipeline Operativo</h1>
-        <span class="cockpit-subtitle">Máquina de Estados &bull; Reserva de Cupo en Tránsito &bull; Doble Bóveda Desacoplada</span>
+        <div class="title-row-inline">
+          <h1 class="cockpit-title">CRM Financiero &amp; Pipeline Operativo</h1>
+          <span class="crm-telemetry-chip font-mono" title="Tasa base de reemplazo activa">
+            Base: {{ liveReplacementRate() | number:'1.2-2' }}
+          </span>
+          <span class="crm-telemetry-chip emerald font-mono" title="Tasa de conversión del pipeline">
+            Conv: {{ pipelineConversionSummary().conversionRatePct }}%
+          </span>
+          <span class="crm-telemetry-chip cyan font-mono" title="Rieles bancarios disponibles">
+            Rieles: {{ bankFleetSummary().availableCount }}/{{ bankFleetSummary().totalCount }}
+          </span>
+        </div>
+        <span class="cockpit-subtitle">
+          Máquina de Estados Cuántica &bull; Reserva de Cupo en Tránsito &bull; Doble Bóveda Desacoplada
+        </span>
       </div>
     </div>
 
@@ -67,35 +86,37 @@
         </span>
       </button>
 
-      <button
-        type="button"
-        class="action-btn btn-new-deal"
-        (click)="openNewDealModal()"
-        title="Crear un nuevo acuerdo o cotización en el pipeline"
-      >
-        <span class="btn-icon">⚡</span>
-        <span>+ Nuevo Trato</span>
-      </button>
+      <div class="crm-action-dock">
+        <button
+          type="button"
+          class="action-btn btn-new-deal"
+          (click)="openNewDealModal()"
+          title="Crear un nuevo acuerdo o cotización en el pipeline"
+        >
+          <span class="btn-icon">⚡</span>
+          <span>+ Nuevo Trato</span>
+        </button>
 
-      <button
-        type="button"
-        class="action-btn btn-new-contact"
-        (click)="showAddContactModal.set(true)"
-        title="Registrar un nuevo cliente o contacto"
-      >
-        <span class="btn-icon">👤</span>
-        <span>+ Contacto</span>
-      </button>
+        <button
+          type="button"
+          class="action-btn btn-new-contact"
+          (click)="showAddContactModal.set(true)"
+          title="Registrar un nuevo cliente o contacto"
+        >
+          <span class="btn-icon">👤</span>
+          <span>+ Contacto</span>
+        </button>
 
-      <button
-        type="button"
-        class="action-btn btn-new-bank"
-        (click)="showAddBankModal.set(true)"
-        title="Agregar una cuenta bancaria o riel de pago"
-      >
-        <span class="btn-icon">🏦</span>
-        <span>+ Banco</span>
-      </button>
+        <button
+          type="button"
+          class="action-btn btn-new-bank"
+          (click)="showAddBankModal.set(true)"
+          title="Agregar una cuenta bancaria o riel de pago"
+        >
+          <span class="btn-icon">🏦</span>
+          <span>+ Banco</span>
+        </button>
+      </div>
 
       @if (activeScope() === 'P2P_DESK') {
         <button
@@ -128,8 +149,8 @@
     </div>
   </header>
 
-  <!-- 2. BARRA DE NAVEGACIÓN MODULAR (6 MÓDULOS) -->
-  <nav class="module-nav-bar" aria-label="Módulos del CRM">
+  <!-- 2. BARRA DE NAVEGACIÓN MODULAR STICKY (7 MÓDULOS) -->
+  <nav class="module-nav-bar cockpit-tabs-bar" aria-label="Módulos del CRM">
     <button
       type="button"
       class="nav-tab-btn"
@@ -137,7 +158,7 @@
       (click)="setView('DASHBOARD')"
     >
       <span class="tab-icon">📊</span>
-      <span class="tab-text">Dashboard</span>
+      <span class="tab-text">Cockpit Ejecutivo</span>
     </button>
 
     <button
@@ -149,6 +170,9 @@
       <span class="tab-icon">📋</span>
       <span class="tab-text">Pipeline Kanban</span>
       <span class="tab-badge">{{ workspaceState().deals.length }}</span>
+      @if (pipelineConversionSummary().expiredCount > 0) {
+        <span class="tab-alert-dot" title="Hay cotizaciones con tasa vencida">!</span>
+      }
     </button>
 
     <button
@@ -158,7 +182,7 @@
       (click)="setView('CONTACTS')"
     >
       <span class="tab-icon">👥</span>
-      <span class="tab-text">Contactos CRM</span>
+      <span class="tab-text">Contactos 360°</span>
       <span class="tab-badge">{{ workspaceState().contacts.length }}</span>
     </button>
 
@@ -180,7 +204,7 @@
       (click)="setView('ACTIVITIES')"
     >
       <span class="tab-icon">📑</span>
-      <span class="tab-text">Actividades &amp; Parser</span>
+      <span class="tab-text">Parser &amp; Auditoría</span>
       <span class="tab-badge">{{ workspaceState().activities.length }}</span>
     </button>
 
@@ -191,7 +215,7 @@
       (click)="setView('OMNICHANNEL')"
     >
       <span class="tab-icon">💬</span>
-      <span class="tab-text">Omnicanal &amp; Facturador</span>
+      <span class="tab-text">Omnicanal &amp; Studio HD</span>
       <span class="tab-badge">{{ filteredConversations().length }}</span>
     </button>
 
@@ -202,7 +226,7 @@
       (click)="setView('SETTINGS')"
     >
       <span class="tab-icon">⚙️</span>
-      <span class="tab-text">Ajustes &amp; Datos</span>
+      <span class="tab-text">Ajustes &amp; Portabilidad</span>
     </button>
   </nav>
 
@@ -213,11 +237,11 @@
     <!-- ======================================================================= -->
     @if (activeView() === 'DASHBOARD') {
       <div class="view-dashboard-container">
-        <!-- 4 Tarjetas KPI -->
+        <!-- 4 Tarjetas KPI Interactivas -->
         <section class="kpi-ribbon-grid" aria-label="KPIs de Tesorería">
-          <div class="kpi-card" [class.positive]="kpis().closedNetProfitTodayUsdt > 0">
+          <div class="kpi-card interactive" [class.positive]="kpis().closedNetProfitTodayUsdt > 0" (click)="setView('KANBAN')">
             <div class="kpi-header">
-              <span class="kpi-tag">GANANCIA CERRADA HOY</span>
+              <span class="kpi-tag">01 · GANANCIA CERRADA HOY</span>
               <span class="kpi-badge badge-success">{{ kpis().closedTradesCountToday }} cerrados</span>
             </div>
             <div class="kpi-body">
@@ -229,13 +253,14 @@
               }
             </div>
             <div class="kpi-footer">
-              <span>Margen ponderado: {{ kpis().spreadEfficiencyPct | number:'1.2-2' }}%</span>
+              <span>Margen ponderado: <strong>{{ kpis().spreadEfficiencyPct | number:'1.2-2' }}%</strong></span>
+              <span class="kpi-link-hint">Ver Pipeline →</span>
             </div>
           </div>
 
-          <div class="kpi-card">
+          <div class="kpi-card interactive" (click)="setView('KANBAN')">
             <div class="kpi-header">
-              <span class="kpi-tag">VOLUMEN CERRADO HOY</span>
+              <span class="kpi-tag">02 · VOLUMEN LIQUIDADO HOY</span>
               <span class="kpi-badge badge-blue">Liquidado</span>
             </div>
             <div class="kpi-body">
@@ -247,14 +272,15 @@
               }
             </div>
             <div class="kpi-footer">
-              <span>Bóveda: {{ activeScope() }}</span>
+              <span>Bóveda activa: <strong>{{ activeScope() }}</strong></span>
+              <span class="kpi-link-hint">Auditar →</span>
             </div>
           </div>
 
-          <div class="kpi-card" [class.warn]="kpis().inTransitVolumeUsdt > 0">
+          <div class="kpi-card interactive" [class.warn]="kpis().inTransitVolumeUsdt > 0" (click)="setView('KANBAN')">
             <div class="kpi-header">
-              <span class="kpi-tag">VOLUMEN EN TRÁNSITO</span>
-              <span class="kpi-badge badge-amber">Flotante</span>
+              <span class="kpi-tag">03 · VOLUMEN EN TRÁNSITO</span>
+              <span class="kpi-badge badge-amber">Reserva Activa</span>
             </div>
             <div class="kpi-body">
               @if (privacyMode()) {
@@ -265,14 +291,15 @@
               }
             </div>
             <div class="kpi-footer">
-              <span>Cupo reservado en bancos</span>
+              <span>Cupo reservado en rieles bancarios</span>
+              <span class="kpi-link-hint">Destrabar →</span>
             </div>
           </div>
 
-          <div class="kpi-card">
+          <div class="kpi-card interactive" (click)="setView('CONTACTS')">
             <div class="kpi-header">
-              <span class="kpi-tag">CUENTAS POR COBRAR / PAGAR</span>
-              <span class="kpi-badge badge-neutral">Saldos Netos</span>
+              <span class="kpi-tag">04 · CUENTAS POR COBRAR / PAGAR</span>
+              <span class="kpi-badge badge-neutral">Cuenta Corriente</span>
             </div>
             <div class="kpi-body">
               <div class="receivables-col">
@@ -285,78 +312,184 @@
               </div>
             </div>
             <div class="kpi-footer">
-              <span>Saldos de clientes en cuenta corriente</span>
+              <span>Saldos vivos de contrapartes</span>
+              <span class="kpi-link-hint">Directorio →</span>
             </div>
           </div>
         </section>
 
-        <!-- Curva Cuántica Intradía y Alerta de Tránsito -->
-        <div class="dashboard-mid-grid">
-          <!-- Curva SVG -->
-          <div class="cockpit-card chart-audit-card">
-            <div class="card-section-header">
-              <div class="title-with-pill">
-                <span class="icon">📈</span>
-                <h2 class="section-title">Curva Intradía de Ganancias Liquidadas (USDT)</h2>
+        <!-- TIRA DE EMBUDO DE CONVERSIÓN DEL PIPELINE (4 ETAPAS EN VIVO) -->
+        <section class="crm-funnel-ribbon" aria-label="Embudo de Etapas del Pipeline">
+          @for (col of kanbanColumnsList(); track col.stage; let idx = $index) {
+            <div
+              class="funnel-stage-pill"
+              [class.stage-1]="idx === 0"
+              [class.stage-2]="idx === 1"
+              [class.stage-3]="idx === 2"
+              [class.stage-4]="idx === 3"
+              (click)="setView('KANBAN')"
+            >
+              <div class="f-top">
+                <span class="quantum-step-badge">ETAPA 0{{ idx + 1 }}</span>
+                <span class="f-count font-mono">{{ col.deals.length }} ops</span>
               </div>
-              <span class="chart-tag">HOY: {{ todayDateIso() }}</span>
+              <div class="f-mid">
+                <span class="f-title">{{ col.label }}</span>
+                <span class="f-usdt font-mono">${{ col.totalUsdt | number:'1.2-2' }}</span>
+              </div>
+              <div class="f-bar-track">
+                <div
+                  class="f-bar-fill"
+                  [style.width.%]="pipelineConversionSummary().totalPipelineUsdt > 0 ? (col.totalUsdt / pipelineConversionSummary().totalPipelineUsdt) * 100 : 0"
+                ></div>
+              </div>
+            </div>
+          }
+        </section>
+
+        <!-- BENTO GRID PRINCIPAL DEL DASHBOARD (7 + 5) -->
+        <div class="quantum-bento-grid dashboard-mid-grid">
+          <!-- Columna Izquierda (7 cols): Curva Intradía + Quick SMS Intake -->
+          <div class="bento-span-7" style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="cockpit-card chart-audit-card">
+              <div class="card-section-header">
+                <div class="title-with-pill">
+                  <span class="quantum-step-badge">TELEMETRÍA</span>
+                  <h2 class="section-title">Curva Intradía de Ganancias Liquidadas (USDT)</h2>
+                </div>
+                <span class="chart-tag">HOY: {{ todayDateIso() }}</span>
+              </div>
+
+              <div class="dynamic-svg-chart-container">
+                @if (!workspaceState().svgPath || kpis().closedTradesCountToday === 0) {
+                  <div class="chart-empty-state">
+                    <span class="chart-empty-icon">📊</span>
+                    <p>Sin operaciones liquidadas hoy para graficar trayectoria.</p>
+                    <span class="chart-empty-sub">Mueve tratos a "Liquidado / Cerrado" en el Kanban o usa "+ Nuevo Trato" para visualizar la curva en tiempo real.</span>
+                  </div>
+                } @else {
+                  <svg class="performance-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="crmProfitGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#10b981" stop-opacity="0.32" />
+                        <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <line x1="0" y1="50" x2="600" y2="50" stroke="#27272a" stroke-dasharray="3,3" />
+                    <line x1="0" y1="100" x2="600" y2="100" stroke="#27272a" stroke-dasharray="3,3" />
+                    <line x1="0" y1="150" x2="600" y2="150" stroke="#27272a" stroke-dasharray="3,3" />
+                    <path [attr.d]="workspaceState().svgPath" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <div class="chart-footer-metrics">
+                    <span>Partida: $0.00 USDT</span>
+                    <span>Operaciones hoy: {{ kpis().closedTradesCountToday }}</span>
+                    <span class="text-emerald">Cierre actual: +${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }} USDT</span>
+                  </div>
+                }
+              </div>
             </div>
 
-            <div class="dynamic-svg-chart-container">
-              @if (!workspaceState().svgPath || kpis().closedTradesCountToday === 0) {
-                <div class="chart-empty-state">
-                  <span class="chart-empty-icon">📊</span>
-                  <p>Sin operaciones liquidadas hoy para graficar trayectoria.</p>
-                  <span class="chart-empty-sub">Mueve tratos a "Liquidado / Cerrado" en el Kanban para visualizar la curva en tiempo real.</span>
+            <!-- Ingesta Rápida Zero-Typing desde el Cockpit Ejecutivo -->
+            <div class="cockpit-card quick-intake-dashboard-card">
+              <div class="card-section-header">
+                <div class="title-with-pill">
+                  <span class="quantum-step-badge">ZERO-TYPING</span>
+                  <h2 class="section-title">Escáner Rápido de Referencia Bancaria y SMS</h2>
                 </div>
-              } @else {
-                <svg class="performance-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
-                  <line x1="0" y1="50" x2="600" y2="50" stroke="#27272a" stroke-dasharray="3,3" />
-                  <line x1="0" y1="100" x2="600" y2="100" stroke="#27272a" stroke-dasharray="3,3" />
-                  <line x1="0" y1="150" x2="600" y2="150" stroke="#27272a" stroke-dasharray="3,3" />
-                  <path [attr.d]="workspaceState().svgPath" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <div class="chart-footer-metrics">
-                  <span>Partida: $0.00 USDT</span>
-                  <span>Cierre actual: +${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }} USDT</span>
+                <button type="button" class="mini-btn-primary" (click)="setView('ACTIVITIES')">
+                  Abrir Consola Forense →
+                </button>
+              </div>
+              <div class="quick-verifier-strip">
+                <input
+                  type="text"
+                  class="terminal-input"
+                  placeholder="Pegar número de referencia para verificar colisión instantánea..."
+                  [ngModel]="candidateRef()"
+                  (ngModelChange)="candidateRef.set($event)"
+                />
+                <div class="quick-ref-status" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
+                  @if (!candidateRef().trim()) {
+                    <span class="muted">ESPERANDO REFERENCIA</span>
+                  } @else if (!referenceCheck().isDuplicate) {
+                    <span class="green">✅ LIBRE PARA LIQUIDAR</span>
+                  } @else {
+                    <span class="red">🚨 DUPLICADA (#{{ referenceCheck().existingDeal?.id }})</span>
+                  }
                 </div>
-              }
+              </div>
             </div>
           </div>
 
-          <!-- Resumen de Bancos y Recomendado -->
-          <div class="cockpit-card recommended-banks-summary">
-            <div class="card-section-header">
-              <div class="title-with-pill">
-                <span class="icon">🛡️</span>
-                <h2 class="section-title">Escudo de Rieles Bancarios</h2>
+          <!-- Columna Derecha (5 cols): Escudo de Rieles Bancarios + Últimas Actividades -->
+          <div class="bento-span-5 quantum-sticky-col" style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="cockpit-card recommended-banks-summary">
+              <div class="card-section-header">
+                <div class="title-with-pill">
+                  <span class="quantum-step-badge">ESCUDO</span>
+                  <h2 class="section-title">Salud de Rieles Bancarios</h2>
+                </div>
+                @if (workspaceState().recommendedBankId) {
+                  <span class="badge-recommended">★ Riel Óptimo Activo</span>
+                }
               </div>
-              @if (workspaceState().recommendedBankId) {
-                <span class="badge-recommended">★ Riel Recomendado Activo</span>
-              }
+
+              <div class="bank-mini-summary-list">
+                @if (workspaceState().bankTelemetry.length === 0) {
+                  <div class="empty-state-box mini-empty">
+                    <p class="empty-desc">No hay bancos registrados para {{ activeScope() }}.</p>
+                    <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Banco</button>
+                  </div>
+                } @else {
+                  @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
+                    <div class="bank-mini-row" [class.recommended]="b.isRecommended" [class.cooldown]="b.status === 'COOLDOWN_BURST'">
+                      <div class="b-info" style="flex: 1; margin-right: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <span class="b-name">{{ b.bankName }} ({{ b.currency }})</span>
+                          <span class="b-cap font-mono">{{ b.dailyUsagePct | number:'1.1-1' }}%</span>
+                        </div>
+                        <div class="mini-progress-track">
+                          <div
+                            class="mini-progress-fill"
+                            [style.width.%]="b.dailyUsagePct > 100 ? 100 : b.dailyUsagePct"
+                            [class.warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
+                            [class.danger]="b.dailyUsagePct >= 90"
+                          ></div>
+                        </div>
+                        <span class="b-cap">Saldo: {{ b.currentBalanceFiat | number:'1.0-0' }} {{ b.currency }} &bull; Ráfaga: {{ b.recent15MinTxCount }}/{{ b.maxBurstTxPer15Min }}</span>
+                      </div>
+                      <div class="b-stat">
+                        <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
+                          {{ b.status === 'AVAILABLE' ? 'ACTIVO' : b.status === 'COOLDOWN_BURST' ? 'RÁFAGA' : 'TOPE' }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
             </div>
 
-            <div class="bank-mini-summary-list">
-              @if (workspaceState().bankTelemetry.length === 0) {
-                <div class="empty-state-box mini-empty">
-                  <p class="empty-desc">No hay bancos registrados para {{ activeScope() }}.</p>
-                  <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Banco</button>
+            <!-- Feed de Eventos Recientes -->
+            <div class="cockpit-card dashboard-recent-activity">
+              <div class="card-section-header">
+                <div class="title-with-pill">
+                  <span class="quantum-step-badge">PULSO</span>
+                  <h2 class="section-title">Últimos Eventos de Bóveda</h2>
                 </div>
-              } @else {
-                @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
-                  <div class="bank-mini-row" [class.recommended]="b.isRecommended" [class.cooldown]="b.status === 'COOLDOWN_BURST'">
-                    <div class="b-info">
-                      <span class="b-name">{{ b.bankName }} ({{ b.currency }})</span>
-                      <span class="b-cap">Uso: {{ b.dailyUsagePct | number:'1.1-1' }}% (Tope: {{ b.maxDailyCapFiat | number:'1.0-0' }})</span>
+                <span class="chart-tag">{{ workspaceState().activities.length }} total</span>
+              </div>
+              <div class="mini-activity-feed">
+                @if (workspaceState().activities.length === 0) {
+                  <p class="empty-desc" style="margin: 0; font-size: 11px; color: #71717a;">Sin eventos registrados aún.</p>
+                } @else {
+                  @for (act of workspaceState().activities.slice(0, 4); track act.id) {
+                    <div class="mini-act-item">
+                      <span class="mini-act-badge font-mono">{{ act.type }}</span>
+                      <span class="mini-act-text">{{ act.description }}</span>
                     </div>
-                    <div class="b-stat">
-                      <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
-                        {{ b.status }}
-                      </span>
-                    </div>
-                  </div>
+                  }
                 }
-              }
+              </div>
             </div>
           </div>
         </div>
@@ -364,14 +497,85 @@
     }
 
     <!-- ======================================================================= -->
-    <!-- VISTA 2: PIPELINE KANBAN INTERACTIVO (4 ETAPAS) -->
+    <!-- VISTA 2: PIPELINE KANBAN INTERACTIVO (4 ETAPAS + BARRA DE FILTROS) -->
     <!-- ======================================================================= -->
     @if (activeView() === 'KANBAN') {
       <div class="view-kanban-container">
+        <!-- BARRA DE COMANDOS, BÚSQUEDA Y DENSIDAD DEL KANBAN -->
+        <div class="kanban-command-toolbar">
+          <div class="kanban-search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              class="terminal-input kanban-filter-input"
+              placeholder="Filtrar tratos por cliente, #ID, banco o referencia..."
+              [ngModel]="kanbanSearchQuery()"
+              (ngModelChange)="kanbanSearchQuery.set($event)"
+            />
+            @if (kanbanSearchQuery()) {
+              <button type="button" class="btn-clear-search" (click)="kanbanSearchQuery.set('')">✕</button>
+            }
+          </div>
+
+          <div class="kanban-filter-pills" role="group" aria-label="Filtros rápidos de Kanban">
+            <button
+              type="button"
+              class="k-filter-pill"
+              [class.active]="kanbanFilterMode() === 'ALL'"
+              (click)="kanbanFilterMode.set('ALL')"
+            >
+              Todos ({{ pipelineConversionSummary().totalDeals }})
+            </button>
+            <button
+              type="button"
+              class="k-filter-pill warn"
+              [class.active]="kanbanFilterMode() === 'EXPIRED'"
+              (click)="kanbanFilterMode.set('EXPIRED')"
+            >
+              ⚠️ Tasa Vencida ({{ pipelineConversionSummary().expiredCount }})
+            </button>
+            <button
+              type="button"
+              class="k-filter-pill cyan"
+              [class.active]="kanbanFilterMode() === 'WITH_REF'"
+              (click)="kanbanFilterMode.set('WITH_REF')"
+            >
+              🔗 Con Referencia
+            </button>
+            <button
+              type="button"
+              class="k-filter-pill emerald"
+              [class.active]="kanbanFilterMode() === 'HIGH_VALUE'"
+              (click)="kanbanFilterMode.set('HIGH_VALUE')"
+            >
+              💎 Alto Valor (+$500)
+            </button>
+          </div>
+
+          <div class="kanban-density-actions">
+            <button
+              type="button"
+              class="k-density-btn"
+              [class.active]="kanbanCompactMode()"
+              (click)="kanbanCompactMode.set(!kanbanCompactMode())"
+              title="Alternar densidad visual de las tarjetas"
+            >
+              {{ kanbanCompactMode() ? '📐 Vista Expandida' : '⚡ Vista Compacta' }}
+            </button>
+            <button type="button" class="mini-btn-primary" (click)="openNewDealModal()">
+              + Nuevo Trato
+            </button>
+          </div>
+        </div>
+
         <div class="kanban-board-grid" role="region" aria-label="Tablero Kanban de Operaciones">
-          @for (col of kanbanColumnsList(); track col.stage) {
+          @for (col of filteredKanbanColumnsList(); track col.stage; let colIdx = $index) {
             <div
               class="kanban-column"
+              [class.stage-col-1]="colIdx === 0"
+              [class.stage-col-2]="colIdx === 1"
+              [class.stage-col-3]="colIdx === 2"
+              [class.stage-col-4]="colIdx === 3"
               role="region"
               [attr.aria-label]="'Columna ' + col.label + ', ' + col.deals.length + ' operaciones'"
               (dragover)="onDragOver($event)"
@@ -380,6 +584,7 @@
               <!-- Cabecera de la Columna -->
               <div class="kanban-column-header">
                 <div class="col-title-group">
+                  <span class="quantum-step-badge">0{{ colIdx + 1 }}</span>
                   <h3 class="col-title">{{ col.label }}</h3>
                   <span class="col-count-badge" [attr.aria-label]="col.deals.length + ' operaciones'">{{ col.deals.length }}</span>
                 </div>
@@ -393,12 +598,14 @@
               <div class="kanban-cards-stream" role="list" [attr.aria-label]="'Lista de tratos en ' + col.label">
                 @if (col.deals.length === 0) {
                   <div class="kanban-empty-slot">
-                    <span>Sin operaciones aquí</span>
+                    <span class="empty-slot-icon">📭</span>
+                    <span>Sin operaciones en esta etapa</span>
                   </div>
                 } @else {
                   @for (d of col.deals; track d.id) {
                     <div
                       class="kanban-deal-card"
+                      [class.compact-card]="kanbanCompactMode()"
                       role="listitem"
                       tabindex="0"
                       draggable="true"
@@ -416,7 +623,13 @@
                             <span class="badge-expired" title="Cotización vencida por tiempo límite">⚠️ TASA VENCIDA</span>
                           }
                           @if (d.bankReferenceId) {
-                            <span class="badge-ref font-mono">Ref: {{ d.bankReferenceId }}</span>
+                            <span
+                              class="badge-ref font-mono"
+                              (click)="copyText(d.bankReferenceId, 'Referencia #' + d.bankReferenceId); $event.stopPropagation()"
+                              title="Clic para copiar referencia"
+                            >
+                              Ref: {{ d.bankReferenceId }} 📋
+                            </span>
                           }
                         </div>
                       </div>
@@ -424,7 +637,8 @@
                       <!-- Cliente y Banco -->
                       <div class="card-contact-row">
                         <span class="contact-name" (click)="selectContact(d.contactId); setView('CONTACTS')" [attr.aria-label]="'Ver expediente del contacto ' + d.contactName">
-                          👤 {{ d.contactName }}
+                          <span class="contact-avatar-mini">{{ d.contactName.slice(0, 2).toUpperCase() }}</span>
+                          {{ d.contactName }}
                         </span>
                         <span class="bank-pill">🏦 {{ d.bankName }}</span>
                       </div>
@@ -432,24 +646,26 @@
                       <!-- Montos y Tasa -->
                       <div class="card-financials-row">
                         <div class="f-col">
-                          <span class="f-lbl">Monto USDT:</span>
+                          <span class="f-lbl">Monto USDT</span>
                           <span class="f-val font-mono highlight">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</span>
                         </div>
                         <div class="f-col">
-                          <span class="f-lbl">Total Fiat:</span>
-                          <span class="f-val font-mono">{{ d.totalFiatAmount | number:'1.2-2' }} {{ d.fiatCurrency }}</span>
+                          <span class="f-lbl">Total {{ d.fiatCurrency }}</span>
+                          <span class="f-val font-mono">{{ d.totalFiatAmount | number:'1.2-2' }}</span>
                         </div>
                         <div class="f-col">
-                          <span class="f-lbl">Tasa:</span>
+                          <span class="f-lbl">Tasa</span>
                           <span class="f-val font-mono">{{ d.appliedRate | number:'1.2-2' }}</span>
                         </div>
                       </div>
 
                       <!-- Ganancia Neta -->
-                      <div class="card-pnl-row">
-                        <span class="pnl-lbl">PnL Neto:</span>
-                        <span class="pnl-val font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }} USDT</span>
-                      </div>
+                      @if (!kanbanCompactMode()) {
+                        <div class="card-pnl-row">
+                          <span class="pnl-lbl">PnL Neto Estimado:</span>
+                          <span class="pnl-val font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }} USDT</span>
+                        </div>
+                      }
 
                       <!-- Acciones de Avance de Etapa -->
                       <div class="card-pipeline-actions">
@@ -494,14 +710,17 @@
     }
 
     <!-- ======================================================================= -->
-    <!-- VISTA 3: CONTACTOS CRM & EXPEDIENTE 360° -->
+    <!-- VISTA 3: CONTACTOS CRM & EXPEDIENTE 360° (MASTER-DETAIL STICKY) -->
     <!-- ======================================================================= -->
     @if (activeView() === 'CONTACTS') {
       <div class="view-contacts-container">
         <!-- Panel Izquierdo: Directorio y Buscador -->
-        <aside class="contacts-sidebar">
+        <aside class="contacts-sidebar quantum-sticky-col">
           <div class="sidebar-header">
-            <h2 class="sidebar-title">Directorio de Contactos ({{ activeScope() }})</h2>
+            <div>
+              <span class="quantum-step-badge">DIRECTORIO</span>
+              <h2 class="sidebar-title" style="margin-top: 4px;">Padrón CRM ({{ filteredContacts().length }})</h2>
+            </div>
             <button type="button" class="mini-btn-primary" (click)="showAddContactModal.set(true)">
               + Nuevo Contacto
             </button>
@@ -517,10 +736,65 @@
             />
           </div>
 
+          <!-- Píldoras de Filtro Rápido de Contactos -->
+          <div class="contact-filter-chips">
+            <button
+              type="button"
+              class="c-filter-chip"
+              [class.active]="contactCategoryFilter() === 'ALL'"
+              (click)="contactCategoryFilter.set('ALL')"
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              class="c-filter-chip"
+              [class.active]="contactCategoryFilter() === 'WITH_BALANCE'"
+              (click)="contactCategoryFilter.set('WITH_BALANCE')"
+            >
+              ⚖️ Con Saldo
+            </button>
+            @if (activeScope() === 'P2P_DESK') {
+              <button
+                type="button"
+                class="c-filter-chip"
+                [class.active]="contactCategoryFilter() === 'VIP_OTC'"
+                (click)="contactCategoryFilter.set('VIP_OTC')"
+              >
+                💎 VIP OTC
+              </button>
+              <button
+                type="button"
+                class="c-filter-chip"
+                [class.active]="contactCategoryFilter() === 'CLIENT_P2P'"
+                (click)="contactCategoryFilter.set('CLIENT_P2P')"
+              >
+                👤 Cliente P2P
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="c-filter-chip"
+                [class.active]="contactCategoryFilter() === 'SUPPLIER_360'"
+                (click)="contactCategoryFilter.set('SUPPLIER_360')"
+              >
+                🏭 Proveedor
+              </button>
+              <button
+                type="button"
+                class="c-filter-chip"
+                [class.active]="contactCategoryFilter() === 'CLIENT_360'"
+                (click)="contactCategoryFilter.set('CLIENT_360')"
+              >
+                🏢 Cliente 360
+              </button>
+            }
+          </div>
+
           <div class="contacts-scroll-list">
             @if (filteredContacts().length === 0) {
               <div class="empty-state-box mini-empty">
-                <p class="empty-desc">No hay contactos en {{ activeScope() }}.</p>
+                <p class="empty-desc">No hay contactos que coincidan en {{ activeScope() }}.</p>
                 <button type="button" class="btn-empty-action" (click)="showAddContactModal.set(true)">+ Crear Contacto</button>
               </div>
             } @else {
@@ -536,7 +810,7 @@
                   </div>
                   <div class="c-sub">
                     <span class="c-doc font-mono">{{ c.documentId || 'Sin documento' }}</span>
-                    <span class="c-bal" [class.bal-pos]="c.pendingBalanceUsdt > 0" [class.bal-neg]="c.pendingBalanceUsdt < 0">
+                    <span class="c-bal font-mono" [class.bal-pos]="c.pendingBalanceUsdt > 0" [class.bal-neg]="c.pendingBalanceUsdt < 0">
                       {{ c.pendingBalanceUsdt >= 0 ? '+' : '' }}${{ c.pendingBalanceUsdt | number:'1.2-2' }}
                     </span>
                   </div>
@@ -550,9 +824,9 @@
         <section class="contact-dossier-main">
           @if (!selectedContact()) {
             <div class="empty-state-box dossier-empty">
-              <span class="empty-icon">👈</span>
-              <h3 class="empty-heading">Seleccione un Contacto</h3>
-              <p class="empty-desc">Haga clic en un contacto del directorio para ver su historial en el pipeline, gestionar su cuenta corriente y generar recibos de WhatsApp.</p>
+              <span class="empty-icon">👤</span>
+              <h3 class="empty-heading">Expediente Institucional 360°</h3>
+              <p class="empty-desc">Seleccione un contacto del directorio lateral para auditar su límite de riesgo crediticio, estado de cuenta corriente, datos de pago y operaciones históricas.</p>
             </div>
           } @else {
             <div class="dossier-card-expanded">
@@ -560,20 +834,46 @@
               <div class="dossier-header-row">
                 <div class="d-avatar-big">{{ selectedContact()?.name?.slice(0, 2)?.toUpperCase() }}</div>
                 <div class="d-titles">
-                  <h2 class="d-name">{{ selectedContact()?.name }}</h2>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 class="d-name">{{ selectedContact()?.name }}</h2>
+                    <span class="quantum-step-badge">{{ selectedContact()?.category }}</span>
+                  </div>
                   <div class="d-meta-row">
-                    <span class="meta-tag font-mono">Doc: {{ selectedContact()?.documentId || 'N/A' }}</span>
-                    <span class="meta-tag">Tel: {{ selectedContact()?.phoneOrContact || 'N/A' }}</span>
-                    <span class="meta-tag category">{{ selectedContact()?.category }}</span>
+                    <span class="meta-tag font-mono">🪪 Doc: {{ selectedContact()?.documentId || 'N/A' }}</span>
+                    <span class="meta-tag font-mono">📱 Tel: {{ selectedContact()?.phoneOrContact || 'N/A' }}</span>
+                    <span class="meta-tag font-mono">🔗 Refs verificadas: {{ selectedContact()?.verifiedReferences?.length || 0 }}</span>
                   </div>
                 </div>
                 <div class="d-top-actions">
                   <button type="button" class="btn-action-wa" (click)="copyWhatsAppReceipt()">
-                    📲 Recibo WhatsApp
+                    📲 Estado de Cuenta WA
                   </button>
-                  <button type="button" class="btn-action-wa" style="background: #0284c7; margin-left: 6px;" (click)="openOmnichannelForContact(selectedContact())">
+                  <button type="button" class="btn-action-wa btn-omni-jump" (click)="openOmnichannelForContact(selectedContact())">
                     💬 Atender / Facturar
                   </button>
+                  <button type="button" class="mini-btn-primary" (click)="openNewDealModal()">
+                    ⚡ + Trato
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tira de 4 KPIs de Valor de Vida del Cliente (LTV) -->
+              <div class="dossier-ltv-ribbon">
+                <div class="ltv-cell">
+                  <span class="ltv-lbl">Operaciones Totales</span>
+                  <span class="ltv-val font-mono">{{ selectedContactMetrics().totalDeals }} ({{ selectedContactMetrics().closedDeals }} cerradas)</span>
+                </div>
+                <div class="ltv-cell">
+                  <span class="ltv-lbl">Volumen Histórico</span>
+                  <span class="ltv-val font-mono text-blue">${{ selectedContactMetrics().lifetimeVolumeUsdt | number:'1.2-2' }} USDT</span>
+                </div>
+                <div class="ltv-cell">
+                  <span class="ltv-lbl">PnL Neto Generado</span>
+                  <span class="ltv-val font-mono text-emerald">+${{ selectedContactMetrics().lifetimeProfitUsdt | number:'1.2-2' }} USDT</span>
+                </div>
+                <div class="ltv-cell">
+                  <span class="ltv-lbl">En Tránsito Ahora</span>
+                  <span class="ltv-val font-mono text-amber">${{ selectedContactMetrics().inTransitExposureUsdt | number:'1.2-2' }} USDT</span>
                 </div>
               </div>
 
@@ -581,32 +881,44 @@
               <div class="dossier-balance-grid">
                 <!-- Saldo Corriente -->
                 <div class="balance-hero-box" [class.pos]="(selectedContact()?.pendingBalanceUsdt ?? 0) > 0" [class.neg]="(selectedContact()?.pendingBalanceUsdt ?? 0) < 0">
-                  <span class="lbl">Saldo de Cuenta Corriente:</span>
+                  <span class="lbl">SALDO DE CUENTA CORRIENTE</span>
                   <div class="val-row">
                     <span class="val font-mono">
                       {{ (selectedContact()?.pendingBalanceUsdt ?? 0) >= 0 ? '+' : '' }}${{ (selectedContact()?.pendingBalanceUsdt ?? 0) | number:'1.2-2' }} USDT
                     </span>
                     <span class="status-desc">
-                      @if ((selectedContact()?.pendingBalanceUsdt ?? 0) > 0) { Saldo a favor del cliente }
-                      @else if ((selectedContact()?.pendingBalanceUsdt ?? 0) < 0) { Cuenta por cobrar }
-                      @else { Al día ($0.00) }
+                      @if ((selectedContact()?.pendingBalanceUsdt ?? 0) > 0) { Saldo a favor del cliente (Por Pagar) }
+                      @else if ((selectedContact()?.pendingBalanceUsdt ?? 0) < 0) { Cuenta por cobrar al cliente }
+                      @else { Cuenta conciliada al día ($0.00) }
                     </span>
                   </div>
                 </div>
 
-                <!-- Límite de Exposición Flotante -->
+                <!-- Límite de Exposición Flotante con Barra de Riesgo -->
                 <div class="exposure-hero-box">
-                  <span class="lbl">Tope de Exposición en Tránsito:</span>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="lbl">CUPO DE EXPOSICIÓN EN TRÁNSITO</span>
+                    <span class="font-mono" style="font-size: 11px; color: #38bdf8;">{{ selectedContactMetrics().exposurePct }}% en uso</span>
+                  </div>
                   <div class="val-row">
                     <span class="val font-mono">${{ selectedContact()?.maxPendingExposureUsdt | number:'1.0-0' }} USDT</span>
-                    <span class="status-desc">Protección contra fraude por saturación</span>
+                    <div class="mini-progress-track" style="margin: 6px 0;">
+                      <div
+                        class="mini-progress-fill"
+                        [style.width.%]="selectedContactMetrics().exposurePct"
+                        [class.warn]="selectedContactMetrics().exposurePct >= 70"
+                        [class.danger]="selectedContactMetrics().exposurePct >= 95"
+                      ></div>
+                    </div>
+                    <span class="status-desc">Escudo contra saturación de órdenes abiertas sin confirmar</span>
                   </div>
                 </div>
               </div>
 
               <!-- Ajustador de Saldo Rápido -->
               <div class="balance-adjuster-bar">
-                <span class="bar-lbl">Ajustar Saldo:</span>
+                <span class="quantum-step-badge">AJUSTE RÁPIDO</span>
+                <span class="bar-lbl">Cuenta Corriente:</span>
                 <input
                   type="number"
                   class="terminal-input adj-input"
@@ -614,8 +926,8 @@
                   [ngModel]="contactBalanceAdjustAmount()"
                   (ngModelChange)="contactBalanceAdjustAmount.set($event)"
                 />
-                <button type="button" class="btn-adj-plus" (click)="adjustContactBalance('POSITIVE')">+ Abonar</button>
-                <button type="button" class="btn-adj-minus" (click)="adjustContactBalance('NEGATIVE')">- Cargar</button>
+                <button type="button" class="btn-adj-plus" (click)="adjustContactBalance('POSITIVE')">+ Abonar (A Favor)</button>
+                <button type="button" class="btn-adj-minus" (click)="adjustContactBalance('NEGATIVE')">- Cargar (Deuda)</button>
                 <button type="button" class="btn-adj-zero" (click)="adjustContactBalance('ZERO')">✓ Saldar a $0.00</button>
               </div>
 
@@ -623,9 +935,9 @@
               @if (selectedContact()?.paymentDetailsText) {
                 <div class="payment-details-box">
                   <div class="box-head">
-                    <span class="box-title">Datos Bancarios / Pago Móvil del Contacto:</span>
+                    <span class="box-title">🏦 Coordenadas Bancarias / Pago Móvil del Contacto:</span>
                     <button type="button" class="mini-copy-btn" (click)="copyText(selectedContact()?.paymentDetailsText || '', 'Datos de pago')">
-                      📋 Copiar Datos
+                      📋 Copiar Coordenadas
                     </button>
                   </div>
                   <pre class="box-pre">{{ selectedContact()?.paymentDetailsText }}</pre>
@@ -634,12 +946,12 @@
 
               <!-- Historial de Operaciones en el Pipeline -->
               <div class="contact-deals-history">
-                <h3 class="history-title">Operaciones del Contacto en el Pipeline ({{ selectedContactDeals().length }})</h3>
+                <h3 class="history-title">Historial de Operaciones del Contacto ({{ selectedContactDeals().length }})</h3>
                 <div class="deals-table-wrapper">
                   @if (selectedContactDeals().length === 0) {
                     <p class="empty-desc">Sin tratos registrados para este contacto.</p>
                   } @else {
-                    <table class="deals-mini-table">
+                    <table class="deals-mini-table corporate-table">
                       <thead>
                         <tr>
                           <th>ID</th>
@@ -659,7 +971,7 @@
                             <td>{{ d.bankName }}</td>
                             <td class="font-mono text-blue">{{ d.bankReferenceId || 'Pendiente' }}</td>
                             <td class="text-right font-mono">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</td>
-                            <td class="text-right font-mono">{{ d.totalFiatAmount | number:'1.2-2' }}</td>
+                            <td class="text-right font-mono">{{ d.totalFiatAmount | number:'1.2-2' }} {{ d.fiatCurrency }}</td>
                             <td class="text-right font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }}</td>
                           </tr>
                         }
@@ -680,10 +992,60 @@
     @if (activeView() === 'BANKS') {
       <div class="view-banks-container">
         <div class="banks-header-actions">
-          <h2 class="section-title">Cuentas Bancarias Operativas ({{ activeScope() }})</h2>
+          <div>
+            <span class="quantum-step-badge">TESORERÍA &amp; LÍMITES</span>
+            <h2 class="section-title" style="margin-top: 4px;">Escudo de Cuentas Bancarias Operativas ({{ activeScope() }})</h2>
+          </div>
           <button type="button" class="mini-btn-primary" (click)="showAddBankModal.set(true)">
             + Agregar Nueva Cuenta Bancaria
           </button>
+        </div>
+
+        <!-- TIRA DE TELEMETRÍA GLOBAL DE FLOTA BANCARIA -->
+        <div class="kpi-ribbon-grid" style="margin-bottom: 4px;">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-tag">RIELES DISPONIBLES</span>
+              <span class="kpi-badge badge-success">Operativos</span>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-val highlight font-mono">{{ bankFleetSummary().availableCount }} / {{ bankFleetSummary().totalCount }}</span>
+              <span class="kpi-unit">Cuentas</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" [class.warn]="bankFleetSummary().cooldownCount > 0">
+            <div class="kpi-header">
+              <span class="kpi-tag">ENFRIAMIENTO ANTI-RÁFAGA</span>
+              <span class="kpi-badge badge-amber">Ventana 15m</span>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-val text-amber font-mono">{{ bankFleetSummary().cooldownCount }}</span>
+              <span class="kpi-unit">en pausa</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-tag">USO PROMEDIO DE CUPO</span>
+              <span class="kpi-badge badge-blue">Capacidad Diaria</span>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-val font-mono">{{ bankFleetSummary().avgUsagePct | number:'1.1-1' }}%</span>
+              <span class="kpi-unit">del tope</span>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-tag">LIQUIDEZ VES CONSOLIDADA</span>
+              <span class="kpi-badge badge-neutral">Saldo en Sistema</span>
+            </div>
+            <div class="kpi-body">
+              <span class="kpi-val font-mono">{{ bankFleetSummary().totalVesBalance | number:'1.2-2' }}</span>
+              <span class="kpi-unit">VES</span>
+            </div>
+          </div>
         </div>
 
         <div class="bank-cards-grid">
@@ -753,6 +1115,14 @@
                   <button
                     type="button"
                     class="btn-tile-act"
+                    (click)="copyBankHolderDetails(b.bankAccountId)"
+                    title="Copiar datos de pago en formato de 3 burbujas"
+                  >
+                    📋 Copiar Datos
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-tile-act"
                     (click)="openReconciliation(b.bankAccountId, b.currentBalanceFiat)"
                   >
                     ⚖️ Cuadre Real
@@ -793,104 +1163,132 @@
     }
 
     <!-- ======================================================================= -->
-    <!-- VISTA 5: ACTIVIDADES & PARSER INTELIGENTE -->
+    <!-- VISTA 5: ACTIVIDADES & PARSER INTELIGENTE (SPLIT-COCKPIT 5 + 7) -->
     <!-- ======================================================================= -->
     @if (activeView() === 'ACTIVITIES') {
-      <div class="view-activities-container">
-        <!-- Submódulo: Parser Inteligente de Portapapeles / SMS -->
-        <div class="cockpit-card clipboard-parser-card">
-          <div class="card-section-header">
-            <div class="title-with-pill">
-              <span class="icon">📋</span>
-              <h2 class="section-title">Parser Inteligente de Comprobantes &amp; SMS</h2>
-            </div>
-            <span class="chart-tag">Zero-Typing Intake</span>
-          </div>
-
-          <div class="parser-body">
-            <p class="parser-desc">Pegue el texto del SMS o comprobante del banco (Banesco, Mercantil, BDV, Bancolombia, etc.) para extraer banco, monto y referencia en 1 clic:</p>
-            <div class="parser-input-row">
-              <textarea
-                class="terminal-input parser-textarea"
-                rows="2"
-                placeholder="Pegue aquí el texto: 'Banesco Pago Móvil: Aprobado por Bs. 85.000,00... Ref: 12345678'"
-                [ngModel]="rawClipboardInput()"
-                (ngModelChange)="rawClipboardInput.set($event)"
-              ></textarea>
-              <button type="button" class="btn-apply-parser" (click)="applyParsedClipboard()">
-                ⚡ Extraer Datos
-              </button>
-            </div>
-
-            @if (parsedClipboard().amountFiat || parsedClipboard().referenceId) {
-              <div class="parser-results-pill">
-                <span><strong>Banco:</strong> {{ parsedClipboard().detectedBank || 'Detectado' }}</span>
-                <span><strong>Monto:</strong> {{ parsedClipboard().amountFiat | number:'1.2-2' }} {{ parsedClipboard().currency }}</span>
-                <span><strong>Referencia:</strong> {{ parsedClipboard().referenceId || 'N/A' }}</span>
+      <div class="view-activities-container quantum-bento-grid">
+        <!-- Columna Izquierda Sticky (5 cols): Parser SMS + Verificador Anti-Estafa -->
+        <div class="bento-span-5 quantum-sticky-col" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Submódulo 1: Parser Inteligente de Portapapeles / SMS -->
+          <div class="cockpit-card clipboard-parser-card">
+            <div class="card-section-header">
+              <div class="title-with-pill">
+                <span class="quantum-step-badge">PASO 01</span>
+                <h2 class="section-title">Parser Inteligente de Comprobantes &amp; SMS</h2>
               </div>
-            }
-          </div>
-        </div>
-
-        <!-- Verificador Anti-Fraude en Tiempo Real -->
-        <div class="cockpit-card reference-verifier-card">
-          <div class="card-section-header">
-            <div class="title-with-pill">
-              <span class="icon">🛡️</span>
-              <h2 class="section-title">Verificador de Referencias Anti-Estafa</h2>
+              <span class="chart-tag">Zero-Typing Intake</span>
             </div>
-          </div>
-          <div class="verifier-body">
-            <div class="verifier-input-group">
-              <input
-                type="text"
-                class="terminal-input"
-                placeholder="Escriba o pegue número de referencia para verificar duplicidad..."
-                [ngModel]="candidateRef()"
-                (ngModelChange)="candidateRef.set($event)"
-              />
-              <div class="ref-badge" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
-                @if (!candidateRef().trim()) {
-                  <span class="muted">INGRESE REFERENCIA</span>
-                } @else if (!referenceCheck().isDuplicate) {
-                  <span class="green">✅ REFERENCIA TOTALMENTE LIBRE</span>
-                } @else {
-                  <span class="red">🚨 ALERTA: YA FUE REGISTRADA PREVIAMENTE</span>
-                }
+
+            <div class="parser-body">
+              <p class="parser-desc">Pegue el texto del SMS o comprobante bancario (Banesco, Mercantil, BDV, Bancolombia, etc.) para extraer banco, monto y referencia en 1 clic:</p>
+              <div class="parser-input-row">
+                <textarea
+                  class="terminal-input parser-textarea"
+                  rows="3"
+                  placeholder="Pegue aquí el texto: 'Banesco Pago Móvil: Aprobado por Bs. 85.000,00... Ref: 12345678'"
+                  [ngModel]="rawClipboardInput()"
+                  (ngModelChange)="rawClipboardInput.set($event)"
+                ></textarea>
+                <button type="button" class="btn-apply-parser" (click)="applyParsedClipboard()">
+                  ⚡ Extraer Datos
+                </button>
               </div>
-            </div>
-            @if (referenceCheck().isDuplicate && referenceCheck().existingDeal; as ed) {
-              <div class="dup-alert-banner">
-                <span>⚠️ Utilizada en trato <strong>#{{ ed.id }}</strong> ({{ ed.contactName }} por {{ ed.totalFiatAmount | number:'1.2-2' }} {{ ed.fiatCurrency }})</span>
-              </div>
-            }
-          </div>
-        </div>
 
-        <!-- Bitácora de Auditoría -->
-        <div class="cockpit-card activity-audit-card">
-          <div class="card-section-header">
-            <div class="title-with-pill">
-              <span class="icon">📜</span>
-              <h2 class="section-title">Bitácora de Auditoría Inmutable ({{ workspaceState().activities.length }})</h2>
-            </div>
-          </div>
-
-          <div class="activity-timeline-list">
-            @if (workspaceState().activities.length === 0) {
-              <p class="empty-desc">Sin eventos registrados aún en la bitácora.</p>
-            } @else {
-              @for (act of workspaceState().activities; track act.id) {
-                <div class="activity-timeline-row">
-                  <span class="act-time font-mono">{{ act.timestamp | date:'short' }}</span>
-                  <span class="act-type-badge font-mono">{{ act.type }}</span>
-                  <span class="act-desc">{{ act.description }}</span>
-                  @if (act.amountUsdt > 0) {
-                    <span class="act-amt font-mono">${{ act.amountUsdt | number:'1.2-2' }} USDT</span>
-                  }
+              @if (parsedClipboard().amountFiat || parsedClipboard().referenceId) {
+                <div class="parser-results-pill">
+                  <span><strong>Banco:</strong> {{ parsedClipboard().detectedBank || 'Detectado' }}</span>
+                  <span><strong>Monto:</strong> {{ parsedClipboard().amountFiat | number:'1.2-2' }} {{ parsedClipboard().currency }}</span>
+                  <span><strong>Referencia:</strong> {{ parsedClipboard().referenceId || 'N/A' }}</span>
                 </div>
               }
-            }
+            </div>
+          </div>
+
+          <!-- Submódulo 2: Verificador Anti-Fraude en Tiempo Real -->
+          <div class="cockpit-card reference-verifier-card">
+            <div class="card-section-header">
+              <div class="title-with-pill">
+                <span class="quantum-step-badge">PASO 02</span>
+                <h2 class="section-title">Verificador de Referencias Anti-Estafa</h2>
+              </div>
+            </div>
+            <div class="verifier-body">
+              <div class="verifier-input-group">
+                <input
+                  type="text"
+                  class="terminal-input"
+                  placeholder="Escriba o pegue número de referencia para verificar duplicidad..."
+                  [ngModel]="candidateRef()"
+                  (ngModelChange)="candidateRef.set($event)"
+                />
+                <div class="ref-badge" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
+                  @if (!candidateRef().trim()) {
+                    <span class="muted">INGRESE REFERENCIA</span>
+                  } @else if (!referenceCheck().isDuplicate) {
+                    <span class="green">✅ REFERENCIA LIBRE</span>
+                  } @else {
+                    <span class="red">🚨 YA REGISTRADA</span>
+                  }
+                </div>
+              </div>
+              @if (referenceCheck().isDuplicate && referenceCheck().existingDeal; as ed) {
+                <div class="dup-alert-banner">
+                  <span>⚠️ Utilizada en trato <strong>#{{ ed.id }}</strong> ({{ ed.contactName }} por {{ ed.totalFiatAmount | number:'1.2-2' }} {{ ed.fiatCurrency }})</span>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna Derecha (7 cols): Bitácora de Auditoría Inmutable con Filtros -->
+        <div class="bento-span-7">
+          <div class="cockpit-card activity-audit-card">
+            <div class="card-section-header">
+              <div class="title-with-pill">
+                <span class="quantum-step-badge">AUDITORÍA</span>
+                <h2 class="section-title">Bitácora Forense Inmutable ({{ filteredActivities().length }})</h2>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input
+                  type="text"
+                  class="terminal-input"
+                  style="width: 190px; height: 30px; font-size: 11px;"
+                  placeholder="Buscar evento o ref..."
+                  [ngModel]="activitySearchQuery()"
+                  (ngModelChange)="activitySearchQuery.set($event)"
+                />
+                <select
+                  class="terminal-select"
+                  style="width: 140px; height: 30px; font-size: 11px;"
+                  [ngModel]="activityTypeFilter()"
+                  (ngModelChange)="activityTypeFilter.set($event)"
+                >
+                  <option value="ALL">Todos los tipos</option>
+                  <option value="DEAL_CLOSED">DEAL_CLOSED</option>
+                  <option value="DEAL_CREATED">DEAL_CREATED</option>
+                  <option value="STAGE_MOVED">STAGE_MOVED</option>
+                  <option value="BANK_RECONCILED">BANK_RECONCILED</option>
+                  <option value="BALANCE_ADJUSTED">BALANCE_ADJUSTED</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="activity-timeline-list">
+              @if (filteredActivities().length === 0) {
+                <p class="empty-desc">Sin eventos que coincidan con el filtro actual en la bitácora.</p>
+              } @else {
+                @for (act of filteredActivities(); track act.id) {
+                  <div class="activity-timeline-row">
+                    <span class="act-time font-mono">{{ act.timestamp | date:'short' }}</span>
+                    <span class="act-type-badge font-mono">{{ act.type }}</span>
+                    <span class="act-desc">{{ act.description }}</span>
+                    @if (act.amountUsdt > 0) {
+                      <span class="act-amt font-mono">${{ act.amountUsdt | number:'1.2-2' }} USDT</span>
+                    }
+                  </div>
+                }
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -904,8 +1302,8 @@
         <div class="cockpit-card settings-card">
           <div class="card-section-header">
             <div class="title-with-pill">
-              <span class="icon">⚙️</span>
-              <h2 class="section-title">Parámetros Operativos de la Mesa</h2>
+              <span class="quantum-step-badge">PARÁMETROS</span>
+              <h2 class="section-title">Configuración Operativa de la Mesa</h2>
             </div>
           </div>
 
@@ -938,7 +1336,7 @@
         <div class="cockpit-card backup-card">
           <div class="card-section-header">
             <div class="title-with-pill">
-              <span class="icon">💾</span>
+              <span class="quantum-step-badge">PORTABILIDAD</span>
               <h2 class="section-title">Copia de Seguridad &amp; Portabilidad Dual (JSON + CSV)</h2>
             </div>
           </div>
@@ -1171,16 +1569,28 @@
                         Trato: #{{ actConv.linkedDealId }}
                       </span>
                     }
+
+                    <button
+                      type="button"
+                      class="mini-btn-primary"
+                      (click)="omnichannelSubTab.set('STUDIO'); renderVoucherCanvas()"
+                      title="Abrir Estudio de Facturación para este cliente"
+                    >
+                      🧾 Emitir Comprobante
+                    </button>
                   </div>
                 </div>
 
-                <!-- Barra de Simulación / Test de Triaje IA -->
-                <div class="ai-simulation-bar">
-                  <div class="sim-title-row">
-                    <span class="sim-badge">TEST LAB</span>
-                    <span class="sim-label">Simular Mensaje Entrante de Cliente (Test Triaje &amp; IA):</span>
-                  </div>
-                  <div class="sim-input-row">
+                <!-- Barra de Simulación / Test de Triaje IA Colapsable -->
+                <details class="ai-simulation-bar quantum-guard-accordion" style="margin: 0; border-radius: 0; border-left: none; border-right: none;">
+                  <summary style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                    <div class="sim-title-row">
+                      <span class="sim-badge">TEST LAB IA</span>
+                      <span class="sim-label">Simulador de Mensaje Entrante &amp; Triaje Semántico ({{ omnichannelConfig().aiMode }})</span>
+                    </div>
+                    <span class="font-mono" style="font-size: 10px; color: #94a3b8;">Expandir / Plegar ▾</span>
+                  </summary>
+                  <div class="sim-input-row" style="margin-top: 8px;">
                     <input
                       type="text"
                       class="terminal-input sim-text-input"
@@ -1193,7 +1603,7 @@
                       🤖 Simular Inbound &amp; Triaje
                     </button>
                   </div>
-                </div>
+                </details>
 
                 <!-- Banner de Recomendación / Triaje Activo -->
                 @if (activeAiTriage(); as t) {
@@ -1331,7 +1741,7 @@
               <div class="cockpit-card">
                 <div class="card-section-header">
                   <div class="title-with-pill">
-                    <span class="icon">✏️</span>
+                    <span class="quantum-step-badge">PASO 01</span>
                     <h2 class="section-title">Editor de Presupuestos, Facturas y Comprobantes</h2>
                   </div>
                 </div>
@@ -1547,7 +1957,7 @@
               <div class="cockpit-card studio-history-card">
                 <div class="card-section-header">
                   <div class="title-with-pill">
-                    <span class="icon">📁</span>
+                    <span class="quantum-step-badge">ARCHIVO</span>
                     <h2 class="section-title">Documentos Generados ({{ invoicesOrQuotes().length }})</h2>
                   </div>
                 </div>
@@ -1556,7 +1966,7 @@
                   <p class="empty-desc">Sin documentos generados aún en esta bóveda.</p>
                 } @else {
                   <div class="deals-table-wrapper">
-                    <table class="deals-mini-table">
+                    <table class="deals-mini-table corporate-table">
                       <thead>
                         <tr>
                           <th>Nº</th>
@@ -1590,12 +2000,12 @@
               </div>
             </div>
 
-            <!-- Columna Derecha: Vista Previa Canvas HD & Acciones de 1 Clic -->
-            <div class="studio-preview-column">
+            <!-- Columna Derecha Sticky: Vista Previa Canvas HD & Acciones de 1 Clic -->
+            <div class="studio-preview-column quantum-sticky-col">
               <div class="cockpit-card canvas-card">
                 <div class="card-section-header">
                   <div class="title-with-pill">
-                    <span class="icon">🖼️</span>
+                    <span class="quantum-step-badge">PASO 02 · LIVE HD</span>
                     <h2 class="section-title">Tarjeta Institucional HD (Canvas 2D)</h2>
                   </div>
                   <button type="button" class="btn-render-refresh" (click)="renderVoucherCanvas()">

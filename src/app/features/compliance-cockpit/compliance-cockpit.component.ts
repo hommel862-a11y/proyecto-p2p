@@ -310,6 +310,66 @@ export class ComplianceCockpitComponent implements OnDestroy {
     ];
   });
 
+  // Kanban Toolbar & Interactive Filtering Signals
+  readonly kanbanSearchQuery = signal<string>('');
+  readonly kanbanFilterMode = signal<'ALL' | 'EXPIRED' | 'WITH_REF' | 'HIGH_VALUE'>('ALL');
+  readonly kanbanCompactMode = signal<boolean>(false);
+
+  readonly filteredKanbanColumnsList = computed<KanbanColumn[]>(() => {
+    const baseCols = this.kanbanColumnsList();
+    const q = this.kanbanSearchQuery().trim().toLowerCase();
+    const mode = this.kanbanFilterMode();
+
+    if (!q && mode === 'ALL') {
+      return baseCols;
+    }
+
+    return baseCols.map((col) => {
+      const deals = col.deals.filter((d) => {
+        if (q) {
+          const matchesQuery =
+            d.id.toLowerCase().includes(q) ||
+            d.contactName.toLowerCase().includes(q) ||
+            d.bankName.toLowerCase().includes(q) ||
+            (d.bankReferenceId && d.bankReferenceId.toLowerCase().includes(q));
+          if (!matchesQuery) return false;
+        }
+        if (mode === 'EXPIRED' && !d.isRateExpired) return false;
+        if (mode === 'WITH_REF' && !d.bankReferenceId?.trim()) return false;
+        if (mode === 'HIGH_VALUE' && d.cryptoAmountUsdt < 500) return false;
+        return true;
+      });
+
+      const totalUsdt = deals.reduce((acc, d) => acc + d.cryptoAmountUsdt, 0);
+      const totalFiat = deals.reduce((acc, d) => acc + d.totalFiatAmount, 0);
+      return {
+        ...col,
+        deals,
+        totalUsdt: Math.round(totalUsdt * 100) / 100,
+        totalFiat: Math.round(totalFiat * 100) / 100,
+      };
+    });
+  });
+
+  readonly pipelineConversionSummary = computed(() => {
+    const cols = this.kanbanColumnsList();
+    const totalDeals = cols.reduce((acc, c) => acc + c.deals.length, 0);
+    const totalPipelineUsdt = cols.reduce((acc, c) => acc + c.totalUsdt, 0);
+    const closedCount = cols[3]?.deals.length ?? 0;
+    const expiredCount = cols.reduce(
+      (acc, c) => acc + c.deals.filter((d) => d.isRateExpired).length,
+      0,
+    );
+    const conversionRatePct = totalDeals > 0 ? Math.round((closedCount / totalDeals) * 100) : 0;
+    return {
+      totalDeals,
+      totalPipelineUsdt: Math.round(totalPipelineUsdt * 100) / 100,
+      closedCount,
+      expiredCount,
+      conversionRatePct,
+    };
+  });
+
   readonly todayDateIso = computed<string>(() => {
     const d = new Date(this.clockTick());
     const year = d.getFullYear();
@@ -362,6 +422,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
   // ---------------------------------------------------------------------------
   readonly candidateRef = signal<string>('');
   readonly rawClipboardInput = signal<string>('');
+  readonly activitySearchQuery = signal<string>('');
+  readonly activityTypeFilter = signal<string>('ALL');
 
   readonly referenceCheck = computed(() => {
     return verifyReferenceCollision(this.deals(), this.candidateRef());
@@ -369,6 +431,22 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
   readonly parsedClipboard = computed<ClipboardParseResult>(() => {
     return parseBankSmsClipboard(this.rawClipboardInput());
+  });
+
+  readonly filteredActivities = computed<ActivityLogEntry[]>(() => {
+    const list = this.workspaceState().activities;
+    const q = this.activitySearchQuery().trim().toLowerCase();
+    const typeFilter = this.activityTypeFilter();
+
+    return list.filter((act) => {
+      if (typeFilter !== 'ALL' && act.type !== typeFilter) return false;
+      if (!q) return true;
+      return (
+        act.description.toLowerCase().includes(q) ||
+        act.type.toLowerCase().includes(q) ||
+        (act.referenceId && act.referenceId.toLowerCase().includes(q))
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -408,6 +486,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly newContactCreditLimit = signal<number>(5000);
   readonly newContactMaxExposure = signal<number>(5000);
   readonly contactSearchQuery = signal<string>('');
+  readonly contactCategoryFilter = signal<'ALL' | 'WITH_BALANCE' | 'VIP_OTC' | 'CLIENT_P2P' | 'SUPPLIER_360' | 'CLIENT_360'>('ALL');
   readonly selectedContactId = signal<string | null>(null);
   readonly contactBalanceAdjustAmount = signal<number | null>(null);
 
@@ -423,16 +502,73 @@ export class ComplianceCockpitComponent implements OnDestroy {
     return this.workspaceState().deals.filter((d) => d.contactId === id);
   });
 
+  readonly selectedContactMetrics = computed(() => {
+    const c = this.selectedContact();
+    const deals = this.selectedContactDeals();
+    if (!c) {
+      return {
+        totalDeals: 0,
+        closedDeals: 0,
+        inTransitDeals: 0,
+        lifetimeVolumeUsdt: 0,
+        lifetimeProfitUsdt: 0,
+        inTransitExposureUsdt: 0,
+        exposurePct: 0,
+      };
+    }
+
+    let closedDeals = 0;
+    let inTransitDeals = 0;
+    let lifetimeVolumeUsdt = 0;
+    let lifetimeProfitUsdt = 0;
+    let inTransitExposureUsdt = 0;
+
+    for (const d of deals) {
+      lifetimeVolumeUsdt += d.cryptoAmountUsdt;
+      if (d.stage === 'STAGE_4_CLOSED') {
+        closedDeals++;
+        lifetimeProfitUsdt += d.netProfitUsdt;
+      } else {
+        inTransitDeals++;
+        inTransitExposureUsdt += d.cryptoAmountUsdt;
+      }
+    }
+
+    const maxExp = c.maxPendingExposureUsdt > 0 ? c.maxPendingExposureUsdt : 1;
+    const exposurePct = Math.min(100, Math.round((inTransitExposureUsdt / maxExp) * 100));
+
+    return {
+      totalDeals: deals.length,
+      closedDeals,
+      inTransitDeals,
+      lifetimeVolumeUsdt: Math.round(lifetimeVolumeUsdt * 100) / 100,
+      lifetimeProfitUsdt: Math.round(lifetimeProfitUsdt * 100) / 100,
+      inTransitExposureUsdt: Math.round(inTransitExposureUsdt * 100) / 100,
+      exposurePct,
+    };
+  });
+
   readonly filteredContacts = computed<CrmContact[]>(() => {
     const q = this.contactSearchQuery().trim().toLowerCase();
+    const catFilter = this.contactCategoryFilter();
     const list = this.workspaceState().contacts;
-    if (!q) return list;
-    return list.filter(
-      (c) =>
+
+    return list.filter((c) => {
+      if (catFilter === 'WITH_BALANCE' && Math.abs(c.pendingBalanceUsdt) < 0.01) return false;
+      if (
+        catFilter !== 'ALL' &&
+        catFilter !== 'WITH_BALANCE' &&
+        c.category !== catFilter
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         c.name.toLowerCase().includes(q) ||
         c.documentId.toLowerCase().includes(q) ||
-        c.phoneOrContact.toLowerCase().includes(q),
-    );
+        c.phoneOrContact.toLowerCase().includes(q)
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -449,6 +585,30 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
   readonly reconcilingBankId = signal<string | null>(null);
   readonly realBankBalanceInput = signal<number | null>(null);
+
+  readonly bankFleetSummary = computed(() => {
+    const telemetry = this.workspaceState().bankTelemetry;
+    const totalCount = telemetry.length;
+    const availableCount = telemetry.filter((b) => b.status === 'AVAILABLE').length;
+    const cooldownCount = telemetry.filter((b) => b.status === 'COOLDOWN_BURST').length;
+    const capReachedCount = telemetry.filter((b) => b.status === 'DAILY_CAP_REACHED').length;
+    const avgUsagePct =
+      totalCount > 0
+        ? Math.round((telemetry.reduce((acc, b) => acc + b.dailyUsagePct, 0) / totalCount) * 10) / 10
+        : 0;
+    const totalVesBalance = telemetry
+      .filter((b) => b.currency === 'VES')
+      .reduce((acc, b) => acc + b.currentBalanceFiat, 0);
+
+    return {
+      totalCount,
+      availableCount,
+      cooldownCount,
+      capReachedCount,
+      avgUsagePct,
+      totalVesBalance: Math.round(totalVesBalance * 100) / 100,
+    };
+  });
 
   // ---------------------------------------------------------------------------
   // LIFECYCLE & HOTKEYS
@@ -1166,6 +1326,20 @@ export class ComplianceCockpitComponent implements OnDestroy {
     if (!text) return;
     void navigator.clipboard.writeText(text);
     this.toast.info(`${label} copiado al portapapeles.`, '1-Click Copy');
+  }
+
+  copyBankHolderDetails(bankAccountId: string): void {
+    const bank = this.banks().find((b) => b.id === bankAccountId);
+    if (!bank || !bank.holderDetailsText) {
+      this.toast.warn('Esta cuenta no tiene datos de titular detallados.', '1-Click Copy');
+      return;
+    }
+    const bubbles = buildCopyableBankBubbles(bank);
+    void navigator.clipboard.writeText(bubbles.formattedBlock);
+    this.toast.success(
+      `Datos de pago de ${bank.bankName} copiados al portapapeles.`,
+      '1-Click Copy Bancario',
+    );
   }
 
   // ---------------------------------------------------------------------------

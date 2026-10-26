@@ -214,6 +214,13 @@ export interface PaletteCommand {
               }
             </div>
           }
+
+          <div class="palette-footer">
+            <span class="palette-footer-item"><kbd>↑</kbd><kbd>↓</kbd> Navegar</span>
+            <span class="palette-footer-item"><kbd>↵</kbd> Ejecutar</span>
+            <span class="palette-footer-item"><kbd>Esc</kbd> Cerrar</span>
+            <span class="palette-footer-brand">P2P QUANTUM HUD</span>
+          </div>
         </div>
       </div>
     }
@@ -226,26 +233,28 @@ export interface PaletteCommand {
     .palette-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(5, 8, 15, 0.82);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      background: rgba(4, 7, 14, 0.78);
+      backdrop-filter: blur(12px) saturate(140%);
+      -webkit-backdrop-filter: blur(12px) saturate(140%);
       display: flex;
       align-items: flex-start;
       justify-content: center;
-      padding-top: min(20vh, 180px);
+      padding-top: min(16vh, 140px);
       z-index: 1100;
       animation: paletteFadeIn 0.15s var(--ease-out);
     }
 
     .palette-panel {
-      background: var(--panel);
+      background: linear-gradient(165deg, color-mix(in srgb, var(--panel-2) 95%, rgba(255, 255, 255, 0.05)) 0%, var(--panel) 100%);
       border: 1px solid var(--line-strong);
-      border-radius: var(--radius-lg);
+      border-top: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line-strong));
+      border-radius: 18px;
       width: 100%;
-      max-width: 520px;
+      max-width: 580px;
       box-shadow:
-        var(--shadow-lg),
-        0 0 40px rgba(216, 180, 92, 0.1);
+        0 28px 70px -12px rgba(0, 0, 0, 0.8),
+        0 0 42px rgba(216, 180, 92, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
       overflow: hidden;
       animation: paletteSlideIn 0.18s var(--ease-out);
     }
@@ -253,61 +262,63 @@ export interface PaletteCommand {
     .palette-input-wrap {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--line);
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, 0.015);
     }
 
     .palette-search-icon {
-      width: 18px;
-      height: 18px;
-      color: var(--muted);
+      width: 19px;
+      height: 19px;
+      color: var(--gold);
       flex-shrink: 0;
     }
 
     .palette-input {
       flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
       color: var(--text);
       font-family: var(--font-body);
-      font-size: 0.95rem;
+      font-size: 0.98rem;
+      font-weight: 500;
       padding: 0;
-      box-shadow: none;
+      box-shadow: none !important;
     }
     .palette-input::placeholder {
       color: var(--muted);
-      opacity: 0.6;
+      opacity: 0.65;
     }
 
     .palette-shortcut-hint {
       flex-shrink: 0;
       font-family: var(--font-mono);
       font-size: 0.7rem;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--muted);
       background: var(--panel-2);
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 2px 6px;
-      letter-spacing: 0.02em;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      padding: 3px 8px;
+      letter-spacing: 0.03em;
     }
 
     .palette-list {
-      max-height: 340px;
+      max-height: 360px;
       overflow-y: auto;
-      padding: 6px;
+      padding: 8px;
     }
 
     .palette-group-label {
       font-family: var(--font-display);
-      font-size: 0.62rem;
-      font-weight: 700;
+      font-size: 0.64rem;
+      font-weight: 800;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--muted);
-      padding: 10px 12px 5px;
+      color: var(--gold);
+      padding: 10px 12px 6px;
       user-select: none;
     }
 
@@ -316,70 +327,111 @@ export interface PaletteCommand {
       align-items: center;
       gap: 12px;
       width: 100%;
-      padding: 10px 12px;
+      padding: 10px 14px;
       border: 1px solid transparent;
-      border-radius: var(--radius-sm);
+      border-radius: 10px;
       background: transparent;
       color: var(--text);
       font-family: var(--font-body);
       font-size: 0.88rem;
+      font-weight: 500;
       cursor: pointer;
       text-align: left;
+      box-shadow: none;
       transition:
         background 0.12s var(--ease-out),
-        border-color 0.12s var(--ease-out);
+        border-color 0.12s var(--ease-out),
+        transform 0.12s var(--ease-out);
     }
 
     .palette-item:hover,
     .palette-item.active {
-      background: rgba(216, 180, 92, 0.08);
-      border-color: rgba(216, 180, 92, 0.18);
-    }
-    .palette-item.active {
-      background: rgba(216, 180, 92, 0.12);
-      border-color: rgba(216, 180, 92, 0.3);
+      background: linear-gradient(90deg, rgba(216, 180, 92, 0.14) 0%, rgba(216, 180, 92, 0.04) 100%);
+      border-color: rgba(216, 180, 92, 0.32);
+      box-shadow: inset 3px 0 0 var(--gold);
+      transform: none;
     }
 
     .palette-item-icon {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 20px;
-      height: 20px;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      background: rgba(216, 180, 92, 0.1);
+      border: 1px solid rgba(216, 180, 92, 0.22);
       color: var(--gold);
       flex-shrink: 0;
     }
     .palette-item-icon svg {
-      width: 18px;
-      height: 18px;
+      width: 15px;
+      height: 15px;
     }
     .palette-icon-emoji {
-      font-size: 18px;
+      font-size: 14px;
       line-height: 1;
     }
 
     .palette-item-label {
       flex: 1;
       min-width: 0;
+      font-weight: 600;
     }
 
     .palette-item-hint {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       font-weight: 600;
       color: var(--muted);
-      background: var(--panel-2);
+      background: var(--bg-1);
       border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 2px 7px;
+      border-radius: 6px;
+      padding: 2px 8px;
       flex-shrink: 0;
     }
 
     .palette-empty {
-      padding: 24px 18px;
+      padding: 28px 18px;
       text-align: center;
       color: var(--muted);
       font-size: 0.88rem;
+    }
+
+    .palette-footer {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 18px;
+      border-top: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg-0) 65%, var(--panel));
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .palette-footer-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      kbd {
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--panel-2);
+        border: 1px solid var(--line-strong);
+        color: var(--text);
+      }
+    }
+
+    .palette-footer-brand {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--gold);
     }
 
     @keyframes paletteFadeIn {
@@ -503,7 +555,7 @@ export class CommandPalette {
   }
 
   private buildCommands(): PaletteCommand[] {
-    const groupsOrder = ['TESORERÍA & BANCOS', 'MISIÓN', 'PLANIFICACIÓN', 'CONFIG', 'ACCIONES'];
+    const groupsOrder = ['TESORERÍA & BANCOS', 'MISIÓN', 'PLANIFICACIÓN', 'IA & AUTOMATIZACIÓN', 'CONFIG', 'ACCIONES'];
 
     const bankCommands: PaletteCommand[] = this.accountsService.accounts().map((acc) => ({
       id: `inject-${acc.id}`,
@@ -577,8 +629,16 @@ export class CommandPalette {
         action: () => void this.router.navigate(['/spread']),
       },
       {
+        id: 'nav-radar',
+        label: 'Radar P2P & Cazador de Liquidez',
+        icon: '📡',
+        hint: '/radar',
+        group: 'MISIÓN',
+        action: () => void this.router.navigate(['/radar']),
+      },
+      {
         id: 'nav-log',
-        label: 'Registro de Operaciones',
+        label: 'Registro de Operaciones (Bitácora)',
         icon: 'log',
         hint: '/log',
         group: 'MISIÓN',
@@ -593,14 +653,6 @@ export class CommandPalette {
         action: () => void this.router.navigate(['/income']),
       },
       {
-        id: 'nav-triangulation',
-        label: 'Triangulación Multidivisa',
-        icon: 'income',
-        hint: '/triangulation',
-        group: 'PLANIFICACIÓN',
-        action: () => void this.router.navigate(['/triangulation']),
-      },
-      {
         id: 'nav-growth-projector',
         label: 'Proyector de Crecimiento Compuesto (90D)',
         icon: 'income',
@@ -609,12 +661,68 @@ export class CommandPalette {
         action: () => void this.router.navigate(['/growth-projector']),
       },
       {
+        id: 'nav-triangulation',
+        label: 'Triangulación Multidivisa',
+        icon: 'income',
+        hint: '/triangulation',
+        group: 'PLANIFICACIÓN',
+        action: () => void this.router.navigate(['/triangulation']),
+      },
+      {
+        id: 'nav-remittances',
+        label: 'Envíos y Remesas Multi-Ruta',
+        icon: '💸',
+        hint: '/remittances',
+        group: 'PLANIFICACIÓN',
+        action: () => void this.router.navigate(['/remittances']),
+      },
+      {
+        id: 'nav-finance-360',
+        label: 'Finanzas 360° & Patrimonio',
+        icon: '🏦',
+        hint: '/finanzas-360',
+        group: 'PLANIFICACIÓN',
+        action: () => void this.router.navigate(['/finanzas-360']),
+      },
+      {
+        id: 'nav-scanner',
+        label: 'Escáner OCR de Comprobantes',
+        icon: '🔍',
+        hint: '/receipts',
+        group: 'PLANIFICACIÓN',
+        action: () => void this.router.navigate(['/receipts']),
+      },
+      {
         id: 'nav-stats',
         label: 'Estadísticas / Cumplimiento',
         icon: 'stats',
         hint: '/stats',
         group: 'PLANIFICACIÓN',
         action: () => void this.router.navigate(['/stats']),
+      },
+      {
+        id: 'nav-copilot',
+        label: 'Copiloto IA Cuántico',
+        icon: '🧠',
+        hint: '/copilot',
+        group: 'IA & AUTOMATIZACIÓN',
+        action: () => void this.router.navigate(['/copilot']),
+      },
+      {
+        id: 'nav-agent-studio',
+        label: 'Estudio de Agentes & Swarms',
+        icon: '⚙️',
+        hint: '/agents',
+        group: 'IA & AUTOMATIZACIÓN',
+        action: () => void this.router.navigate(['/agents']),
+      },
+      {
+        id: 'nav-mcp-hub',
+        label: 'Centro MCP (45 Herramientas)',
+        icon: '🔌',
+        hint: '/mcp',
+        group: 'IA & AUTOMATIZACIÓN',
+        action: () => void this.router.navigate(['/mcp']),
       },
       {
         id: 'nav-risk',

@@ -25,10 +25,24 @@ type UiKpiTone = (typeof KPI_TONE)[keyof typeof KPI_TONE];
       >
         <ng-content />
       </span>
+      @if (hint(); as h) {
+        <span class="stat-hint">{{ h }}</span>
+      }
+      @if (progressPct() !== undefined) {
+        <div class="stat-progress-track" aria-hidden="true">
+          <div
+            class="stat-progress-fill"
+            [style.width.%]="Math.min(100, Math.max(0, progressPct()!))"
+          ></div>
+        </div>
+      }
     </div>
   `,
 })
 export class UiKpi {
+  protected readonly Math = Math;
   readonly label = input.required<string>();
   readonly tone = input<UiKpiTone>(KPI_TONE.NEUTRAL);
+  readonly hint = input<string>();
+  readonly progressPct = input<number>();
 }

@@ -14,6 +14,7 @@ import {
   RADAR_BANK_LABELS,
   BANK_PRESETS,
   type BankPresetId,
+  type AutoRefreshIntervalSec,
 } from '../../core/p2p-radar.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
@@ -27,6 +28,11 @@ import {
   type MarketTrendResult,
   RADAR_VOLUME_BRACKETS,
 } from '@p2p/core';
+
+export type RadarViewMode = 'BOOKS' | 'MATRIX' | 'FORENSIC';
+export type RadarDensityMode = 'COMFORT' | 'COMPACT';
+export type MatrixRouteFilter = 'ALL' | 'MONOBANK' | 'INTERBANK' | 'VIABLE';
+export type TacticalPriceStrategy = 'TOP1' | 'BEAT_TICK' | 'VWAP' | 'ANTI_BOT';
 
 @Component({
   selector: 'app-p2p-radar',
@@ -69,6 +75,11 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   readonly currentTickerIndex = signal<number>(0);
   readonly copiedTarget = signal<string | null>(null);
 
+  // Visual Adaptability & Intelligence View State
+  readonly activeViewMode = signal<RadarViewMode>('BOOKS');
+  readonly booksDensityMode = signal<RadarDensityMode>('COMFORT');
+  readonly routeFilterMode = signal<MatrixRouteFilter>('ALL');
+
   // Interactive Simulator inputs
   readonly simBuyBank = signal<string>('Banesco');
   readonly simSellBank = signal<string>('Banesco');
@@ -105,6 +116,19 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     return 'CUSTOM';
   });
 
+  readonly filteredMatrixRoutes = computed<ArbitrageRoute[]>(() => {
+    const all = this.radarService.allRoutes();
+    const filter = this.routeFilterMode();
+    const targetMargin = this.radarService.targetNetMarginPct();
+
+    return all.filter((route) => {
+      if (filter === 'MONOBANK') return !route.isInterbank;
+      if (filter === 'INTERBANK') return route.isInterbank;
+      if (filter === 'VIABLE') return route.metrics.netSpreadPct >= targetMargin;
+      return true;
+    });
+  });
+
   readonly simulatedMetrics = computed(() => {
     const buy = this.simBuyPrice();
     const sell = this.simSellPrice();
@@ -135,7 +159,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
 
     // Initial scan if books are empty
     if (this.radarService.radarBooks().size === 0) {
-      this.scanRadar();
+      void this.scanRadar();
     } else {
       this.initSimulatorFromBestRoute();
     }
@@ -155,14 +179,36 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       clearInterval(this.tickerTimer);
       this.tickerTimer = null;
     }
+    this.radarService.stopAutoRefresh();
   }
 
-  // ─── Actions ───────────────────────────────────────────────────────
+  // ─── Actions & Live Stream Controls ────────────────────────────────
   async scanRadar(): Promise<void> {
     const books = await this.radarService.scanRadar();
     if (books.size > 0) {
       this.initSimulatorFromBestRoute();
     }
+  }
+
+  setAutoRefresh(seconds: AutoRefreshIntervalSec): void {
+    this.radarService.setAutoRefreshInterval(seconds);
+    if (seconds > 0) {
+      this.toast.info(`Radar Live Stream activado cada ${seconds}s.`);
+    } else {
+      this.toast.info('Radar en modo escaneo manual.');
+    }
+  }
+
+  setViewMode(mode: RadarViewMode): void {
+    this.activeViewMode.set(mode);
+  }
+
+  toggleDensityMode(): void {
+    this.booksDensityMode.update((m) => (m === 'COMFORT' ? 'COMPACT' : 'COMFORT'));
+  }
+
+  setRouteFilter(filter: MatrixRouteFilter): void {
+    this.routeFilterMode.set(filter);
   }
 
   setUserTier(tier: P2PUserTier): void {
@@ -193,7 +239,11 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.radarService.setTargetNetMargin(val);
   }
 
-  // ─── Interactive Simulator ─────────────────────────────────────────
+  onInterbankFrictionChange(val: number): void {
+    this.radarService.setInterbankFriction(val);
+  }
+
+  // ─── Interactive Simulator & Tactical Positioning ──────────────────
   selectOfferForSimulation(bank: string, side: 'BUY' | 'SELL', offer: CleanRadarOffer): void {
     if (side === 'BUY') {
       this.simBuyBank.set(bank);
@@ -213,6 +263,72 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.toast.success(`Ruta ${route.sourceBank} ➔ ${route.targetBank} cargada en simulador`);
   }
 
+  swapSimulatorBanks(): void {
+    const prevBuyBank = this.simBuyBank();
+    const prevSellBank = this.simSellBank();
+    const prevBuyPrice = this.simBuyPrice();
+    const prevSellPrice = this.simSellPrice();
+
+    this.simBuyBank.set(prevSellBank);
+    this.simSellBank.set(prevBuyBank);
+
+    const newBuyTop = this.getBook(prevSellBank, 'BUY')?.effectiveTopPrice;
+    const newSellTop = this.getBook(prevBuyBank, 'SELL')?.effectiveTopPrice;
+
+    this.simBuyPrice.set(newBuyTop && newBuyTop > 0 ? newBuyTop : prevSellPrice);
+    this.simSellPrice.set(newSellTop && newSellTop > 0 ? newSellTop : prevBuyPrice);
+    this.toast.info('Bancos de compra y venta invertidos en el simulador.');
+  }
+
+  nudgeSimPrice(side: 'BUY' | 'SELL', delta: number): void {
+    if (side === 'BUY') {
+      const next = Math.max(0.01, Math.round((this.simBuyPrice() + delta) * 100) / 100);
+      this.simBuyPrice.set(next);
+    } else {
+      const next = Math.max(0.01, Math.round((this.simSellPrice() + delta) * 100) / 100);
+      this.simSellPrice.set(next);
+    }
+  }
+
+  applyTacticalPosition(side: 'BUY' | 'SELL', strategy: TacticalPriceStrategy): void {
+    const bank = side === 'BUY' ? this.simBuyBank() : this.simSellBank();
+    const book = this.getBook(bank, side);
+    const trend = this.getTrend(bank, side);
+    const bots = this.getBots(bank, side);
+
+    let targetPrice: number | null = null;
+
+    if (strategy === 'TOP1') {
+      targetPrice = book?.effectiveTopPrice ?? null;
+    } else if (strategy === 'BEAT_TICK') {
+      const top = book?.effectiveTopPrice ?? 0;
+      if (top > 0) {
+        // Maker BUY beats #1 by paying +0.01 Bs more; Maker SELL beats #1 by offering -0.01 Bs cheaper
+        targetPrice = Math.round((side === 'BUY' ? top + 0.01 : top - 0.01) * 100) / 100;
+      }
+    } else if (strategy === 'VWAP') {
+      if (trend && trend.currentVWAP > 0) {
+        targetPrice = Math.round(trend.currentVWAP * 100) / 100;
+      }
+    } else if (strategy === 'ANTI_BOT') {
+      const topBot = bots.find((b) => b.recommendedCounterPrice != null && b.recommendedCounterPrice > 0);
+      if (topBot?.recommendedCounterPrice) {
+        targetPrice = Math.round(topBot.recommendedCounterPrice * 100) / 100;
+      }
+    }
+
+    if (targetPrice && targetPrice > 0) {
+      if (side === 'BUY') {
+        this.simBuyPrice.set(targetPrice);
+      } else {
+        this.simSellPrice.set(targetPrice);
+      }
+      this.toast.info(`Posicionamiento ${strategy} aplicado en ${this.bankLabels[bank] || bank}: ${targetPrice.toFixed(2)} Bs`);
+    } else {
+      this.toast.warn('No hay datos suficientes en este libro para aplicar ese posicionamiento.');
+    }
+  }
+
   copyRateToClipboard(rate: number, label: string): void {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(rate.toFixed(2));
@@ -223,6 +339,24 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
           this.copiedTarget.set(null);
         }
       }, 2500);
+    }
+  }
+
+  copyMakerAdCard(): void {
+    const metrics = this.simulatedMetrics();
+    const buyBankLabel = this.bankLabels[this.simBuyBank()] || this.simBuyBank();
+    const sellBankLabel = this.bankLabels[this.simSellBank()] || this.simSellBank();
+    const text = [
+      `🎯 FICHA TÁCTICA RADAR P2P (${this.radarService.executionMode()})`,
+      `• Compra (${buyBankLabel}): ${this.simBuyPrice().toFixed(2)} Bs/USDT`,
+      `• Venta (${sellBankLabel}): ${this.simSellPrice().toFixed(2)} Bs/USDT`,
+      `• Break-Even Venta: ${metrics.breakEvenSellPrice.toFixed(2)} Bs | Target (+${this.radarService.targetNetMarginPct()}%): ${metrics.targetSellPrice.toFixed(2)} Bs`,
+      `• Spread Neto: ${metrics.netSpreadPct >= 0 ? '+' : ''}${metrics.netSpreadPct.toFixed(2)}% (+$${metrics.netProfitUsdt.toFixed(2)} USDT sobre $${this.radarService.operatingCapitalUsdt()} USDT)`,
+    ].join('\n');
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      this.toast.success('Ficha táctica Maker copiada al portapapeles.');
     }
   }
 
@@ -237,7 +371,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ─── Phase 5: Cycle Recording & Daily Journal ──────────────────────
+  // ─── Phase 5: Cycle Recording, CRM Bridge & Daily Journal ──────────
   recordCurrentSimulatedCycle(): void {
     const metrics = this.simulatedMetrics();
     const buyPrice = this.simBuyPrice();
@@ -259,6 +393,26 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       netProfitUsdt: metrics.netProfitUsdt,
       netProfitFiat: metrics.netProfitFiat,
       notes: `Venta en ${this.bankLabels[this.simSellBank()] || this.simSellBank()} @ ${sellPrice.toFixed(2)} | Compra en ${this.bankLabels[this.simBuyBank()] || this.simBuyBank()} @ ${buyPrice.toFixed(2)}`,
+    });
+  }
+
+  dispatchSimulatedToCrm(): void {
+    const buyPrice = this.simBuyPrice();
+    const sellPrice = this.simSellPrice();
+    const metrics = this.simulatedMetrics();
+
+    if (buyPrice <= 0 || sellPrice <= 0) {
+      this.toast.warn('Configura tasas válidas en el simulador antes de enviar al CRM.');
+      return;
+    }
+
+    this.radarService.dispatchRouteToCrmPipeline({
+      sourceBank: this.simSellBank(),
+      targetBank: this.simBuyBank(),
+      buyPrice,
+      sellPrice,
+      capitalUsdt: this.radarService.operatingCapitalUsdt(),
+      netProfitUsdt: metrics.netProfitUsdt,
     });
   }
 
@@ -316,7 +470,7 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.toast.success('Reglas de Modo Limpio actualizadas y libros re-filtrados.');
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────────
+  // ─── Microstructure & Forensic Helpers ─────────────────────────────
   getBook(bank: string, side: 'BUY' | 'SELL'): RadarCleanBook | undefined {
     return this.radarService.radarBooks().get(`${bank}_${side}`);
   }
@@ -332,6 +486,39 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   isOfferBot(bank: string, side: 'BUY' | 'SELL', offer: CleanRadarOffer): BotDetectionResult | undefined {
     const bots = this.getBots(bank, side);
     return bots.find((b) => b.advertiserNo === offer.advertiserNo);
+  }
+
+  getBookCleanLiquidityUsdt(bank: string, side: 'BUY' | 'SELL'): number {
+    const book = this.getBook(bank, side);
+    if (!book) return 0;
+    return book.cleanOffers.slice(0, 5).reduce((sum, o) => sum + (o.surplusAmount || 0), 0);
+  }
+
+  getOfferDepthPct(bank: string, side: 'BUY' | 'SELL', surplusUsdt: number): number {
+    const book = this.getBook(bank, side);
+    if (!book || book.cleanOffers.length === 0) return 10;
+    const maxSurplus = Math.max(
+      ...book.cleanOffers.slice(0, 5).map((o) => o.surplusAmount || 1),
+      1,
+    );
+    return Math.min(100, Math.max(8, Math.round((surplusUsdt / maxSurplus) * 100)));
+  }
+
+  formatRejectionReason(reason: string): string {
+    switch (reason) {
+      case 'MANIPULACION_DETECTADA':
+        return 'Señuelo / Outlier Top #1';
+      case 'LIQUIDITY_TRAP':
+        return 'Trampa de Baja Liquidez';
+      case 'PAY_TIME_EXCEEDED':
+        return 'Ventana Pago Lenta (>Límite)';
+      case 'LOW_FINISH_RATE':
+        return 'Baja Finalización (<Mín)';
+      case 'LOW_ORDER_COUNT':
+        return 'Pocas Órdenes / Cuenta Nueva';
+      default:
+        return reason;
+    }
   }
 
   private initSimulatorFromBestRoute(): void {

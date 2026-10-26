@@ -80,156 +80,152 @@
     </div>
   </div>
 
-  <!-- Telemetry Bar & Live MCP Prices Ticker -->
-  <div class="telemetry-bar">
-    <!--
-      Cada chip resuelve la ausencia explícitamente. Con `| number` un `null`
-      imprimía 0 (o, antes del fix, la constante de arranque) y el operador leía
-      una tasa de mercado donde no había nada. `formatRate` devuelve el texto de
-      ausencia y el `title` dice de dónde habría salido el dato.
-    -->
-    <!-- Live Binance P2P Rate -->
-    <div class="telemetry-chip chip-price">
-      <span class="chip-dot-live"></span>
-      <span class="chip-title">Binance P2P VES:</span>
-      <span class="chip-val font-mono" [attr.title]="absentHint(intelligence.liveRates().binanceVesSell)">
-        {{ formatRate(intelligence.liveRates().binanceVesSell) }} / {{ formatRate(intelligence.liveRates().binanceVesBuy) }}
-      </span>
-    </div>
+  <!-- Bento HUD: Telemetry Bar (7 cols) + Slippage & Volatility Risk Guard (5 cols) -->
+  <div class="quantum-bento-grid" style="margin-bottom: 16px; align-items: stretch;">
+    <!-- Telemetry Bar & Live MCP Prices Ticker -->
+    <div class="telemetry-bar bento-span-7" style="margin: 0;">
+      <!-- Live Binance P2P Rate -->
+      <div class="telemetry-chip chip-price">
+        <span class="chip-dot-live"></span>
+        <span class="chip-title">Binance P2P VES:</span>
+        <span class="chip-val font-mono" [attr.title]="absentHint(intelligence.liveRates().binanceVesSell)">
+          {{ formatRate(intelligence.liveRates().binanceVesSell) }} / {{ formatRate(intelligence.liveRates().binanceVesBuy) }}
+        </span>
+      </div>
 
-    <!-- Parallel Rate -->
-    <div class="telemetry-chip chip-price">
-      <span class="chip-title">Paralelo:</span>
-      <span
-        class="chip-val font-mono"
-        [class.chip-absent]="intelligence.liveRates().parallelAvg.value === null"
-        [attr.title]="absentHint(intelligence.liveRates().parallelAvg)"
-        >{{ formatRate(intelligence.liveRates().parallelAvg) }} VES</span
-      >
-    </div>
+      <!-- Parallel Rate -->
+      <div class="telemetry-chip chip-price">
+        <span class="chip-title">Paralelo:</span>
+        <span
+          class="chip-val font-mono"
+          [class.chip-absent]="intelligence.liveRates().parallelAvg.value === null"
+          [attr.title]="absentHint(intelligence.liveRates().parallelAvg)"
+          >{{ formatRate(intelligence.liveRates().parallelAvg) }} VES</span
+        >
+      </div>
 
-    <!-- BCV Official Rate & Gap -->
-    <div class="telemetry-chip chip-price">
-      <span class="chip-title">BCV:</span>
-      <span
-        class="chip-val font-mono"
-        [class.chip-absent]="intelligence.liveRates().bcvUsd.value === null"
-        [attr.title]="absentHint(intelligence.liveRates().bcvUsd)"
-        >{{ formatRate(intelligence.liveRates().bcvUsd) }} VES</span
+      <!-- BCV Official Rate & Gap -->
+      <div class="telemetry-chip chip-price">
+        <span class="chip-title">BCV:</span>
+        <span
+          class="chip-val font-mono"
+          [class.chip-absent]="intelligence.liveRates().bcvUsd.value === null"
+          [attr.title]="absentHint(intelligence.liveRates().bcvUsd)"
+          >{{ formatRate(intelligence.liveRates().bcvUsd) }} VES</span
+        >
+        @if (intelligence.liveRates().rateGapPct.value !== null) {
+          <span
+            class="gap-pill font-mono"
+            [attr.title]="'Fuente: ' + intelligence.liveRates().rateGapPct.expectedSource"
+            >+{{ intelligence.liveRates().rateGapPct.value | number: '1.1-1' }}%</span
+          >
+        } @else {
+          <span
+            class="gap-pill gap-pill-absent font-mono"
+            [attr.title]="absentHint(intelligence.liveRates().rateGapPct)"
+            >brecha n/d</span
+          >
+        }
+      </div>
+
+      <!-- COP Rates -->
+      <div class="telemetry-chip chip-price">
+        <span class="chip-title">COP/USDT:</span>
+        <span
+          class="chip-val font-mono"
+          [class.chip-absent]="intelligence.liveRates().copPerUsdt.value === null"
+          [attr.title]="absentHint(intelligence.liveRates().copPerUsdt)"
+          >{{ formatRate(intelligence.liveRates().copPerUsdt, 0) }}</span
+        >
+        <span
+          class="cross-rate font-mono"
+          [class.chip-absent]="intelligence.liveRates().copPerVes.value === null"
+          [attr.title]="absentHint(intelligence.liveRates().copPerVes)"
+          >({{ formatRate(intelligence.liveRates().copPerVes) }} COP/VES)</span
+        >
+      </div>
+
+      <!-- Binance Spot USDC/USDT Rate -->
+      <div class="telemetry-chip chip-price">
+        <span class="chip-title">Spot USDC/USDT:</span>
+        <span
+          class="chip-val font-mono"
+          [class.chip-absent]="intelligence.liveRates().spotUsdcUsdt.value === null"
+          [attr.title]="absentHint(intelligence.liveRates().spotUsdcUsdt)"
+          >{{ formatRate(intelligence.liveRates().spotUsdcUsdt, 4) }}</span
+        >
+      </div>
+
+      <!-- BCV Status -->
+      <div
+        class="telemetry-chip"
+        [class.chip-warn]="tacticalReport().bcvRisk.inWindow"
+        [class.chip-ok]="!tacticalReport().bcvRisk.inWindow"
       >
-      @if (intelligence.liveRates().rateGapPct.value !== null) {
-        <span
-          class="gap-pill font-mono"
-          [attr.title]="'Fuente: ' + intelligence.liveRates().rateGapPct.expectedSource"
-          >+{{ intelligence.liveRates().rateGapPct.value | number: '1.1-1' }}%</span
-        >
-      } @else {
-        <!-- La píldora de brecha no se renderiza: un "+0.0%" sería una afirmación
-             de mercado, y un hueco sin rótulo no dice si falta el BCV o el paralelo. -->
-        <span
-          class="gap-pill gap-pill-absent font-mono"
-          [attr.title]="absentHint(intelligence.liveRates().rateGapPct)"
-          >brecha n/d</span
-        >
+        <span class="chip-dot"></span>
+        <span class="chip-title">BCV Risk:</span>
+        <span class="chip-val">{{ tacticalReport().bcvRisk.inWindow ? 'VENTANA CRÍTICA (' + tacticalReport().bcvRisk.probabilityPct + '%)' : 'Régimen Normal' }}</span>
+      </div>
+
+      <!-- Delta Hedge Advice -->
+      @if (tacticalReport().hedgeAdvice.needed) {
+        <div class="telemetry-chip chip-hedge">
+          <span class="chip-title">🛡️ Cobertura:</span>
+          <span class="chip-val">Shorter {{ tacticalReport().hedgeAdvice.shortUsdtAmount | number: '1.2-2' }} USDT</span>
+        </div>
+      }
+
+      <!-- Compliance Self-Routing Reminder -->
+      <div class="telemetry-chip chip-compliance">
+        <span class="chip-title">⚖️ Self-Routing:</span>
+        <span class="chip-val">Cuentas propias</span>
+      </div>
+
+      @if (intelligence.lastSyncTimestamp()) {
+        <div class="telemetry-chip chip-sync-time">
+          <span class="chip-title">Sincronizado:</span>
+          <span class="chip-val font-mono">{{ intelligence.lastSyncTimestamp() }}</span>
+        </div>
       }
     </div>
 
-    <!-- COP Rates -->
-    <div class="telemetry-chip chip-price">
-      <span class="chip-title">COP/USDT:</span>
-      <span
-        class="chip-val font-mono"
-        [class.chip-absent]="intelligence.liveRates().copPerUsdt.value === null"
-        [attr.title]="absentHint(intelligence.liveRates().copPerUsdt)"
-        >{{ formatRate(intelligence.liveRates().copPerUsdt, 0) }}</span
-      >
-      <span
-        class="cross-rate font-mono"
-        [class.chip-absent]="intelligence.liveRates().copPerVes.value === null"
-        [attr.title]="absentHint(intelligence.liveRates().copPerVes)"
-        >({{ formatRate(intelligence.liveRates().copPerVes) }} COP/VES)</span
-      >
-    </div>
-
-    <!-- Binance Spot USDC/USDT Rate -->
-    <div class="telemetry-chip chip-price">
-      <span class="chip-title">Spot USDC/USDT:</span>
-      <span
-        class="chip-val font-mono"
-        [class.chip-absent]="intelligence.liveRates().spotUsdcUsdt.value === null"
-        [attr.title]="absentHint(intelligence.liveRates().spotUsdcUsdt)"
-        >{{ formatRate(intelligence.liveRates().spotUsdcUsdt, 4) }}</span
-      >
-    </div>
-
-    <!-- BCV Status -->
+    <!-- Slippage & Volatility Risk Guard Banner -->
     <div
-      class="telemetry-chip"
-      [class.chip-warn]="tacticalReport().bcvRisk.inWindow"
-      [class.chip-ok]="!tacticalReport().bcvRisk.inWindow"
-    >
-      <span class="chip-dot"></span>
-      <span class="chip-title">BCV Risk:</span>
-      <span class="chip-val">{{ tacticalReport().bcvRisk.inWindow ? 'VENTANA CRÍTICA (' + tacticalReport().bcvRisk.probabilityPct + '%)' : 'Régimen Normal' }}</span>
-    </div>
-
-    <!-- Delta Hedge Advice -->
-    @if (tacticalReport().hedgeAdvice.needed) {
-      <div class="telemetry-chip chip-hedge">
-        <span class="chip-title">🛡️ Cobertura:</span>
-        <span class="chip-val">Shorter {{ tacticalReport().hedgeAdvice.shortUsdtAmount | number: '1.2-2' }} USDT</span>
-      </div>
-    }
-
-    <!-- Compliance Self-Routing Reminder -->
-    <div class="telemetry-chip chip-compliance">
-      <span class="chip-title">⚖️ Self-Routing:</span>
-      <span class="chip-val">Cuentas propias</span>
-    </div>
-
-    @if (intelligence.lastSyncTimestamp()) {
-      <div class="telemetry-chip chip-sync-time">
-        <span class="chip-title">Sincronizado:</span>
-        <span class="chip-val font-mono">{{ intelligence.lastSyncTimestamp() }}</span>
-      </div>
-    }
-  </div>
-
-  <!-- Slippage & Volatility Risk Guard Banner -->
-  <div
-    style="margin-top: 10px; padding: 10px 14px; border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
-    [style.background]="slippageGuard().recommendation === 'OPERAR' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.12)'"
-    [style.border]="slippageGuard().recommendation === 'OPERAR' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.35)'">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <span style="font-size: 1.2rem;">{{ slippageGuard().recommendation === 'OPERAR' ? '🛡️' : '⚠️' }}</span>
-      <div>
-        <div style="font-size: 0.82rem; font-weight: 700;" [style.color]="slippageGuard().recommendation === 'OPERAR' ? '#10b981' : '#f87171'">
-          Guardia de Deslizamiento (Ventana {{ settlementMinutes() }} min): {{ slippageGuard().recommendation === 'OPERAR' ? 'PERMITIDO OPERAR' : 'NO OPERAR — RIESGO DE VOLATILIDAD' }}
-        </div>
-        <div style="font-size: 0.75rem; color: var(--muted);">
-          {{ slippageGuard().rationale }}
+      class="bento-span-5"
+      style="padding: 12px 16px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
+      [style.background]="slippageGuard().recommendation === 'OPERAR' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.12)'"
+      [style.border]="slippageGuard().recommendation === 'OPERAR' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.38)'">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.2rem;">{{ slippageGuard().recommendation === 'OPERAR' ? '🛡️' : '⚠️' }}</span>
+        <div>
+          <div style="font-size: 0.82rem; font-weight: 700;" [style.color]="slippageGuard().recommendation === 'OPERAR' ? '#10b981' : '#f87171'">
+            Guardia de Deslizamiento ({{ settlementMinutes() }}m): {{ slippageGuard().recommendation === 'OPERAR' ? 'PERMITIDO OPERAR' : 'NO OPERAR — RIESGO' }}
+          </div>
+          <div style="font-size: 0.74rem; color: var(--muted);">
+            {{ slippageGuard().rationale }}
+          </div>
         </div>
       </div>
-    </div>
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <span style="font-size: 0.75rem; color: var(--muted);">Espera estimada:</span>
-      <select
-        class="terminal-select"
-        style="padding: 2px 6px; font-size: 0.75rem;"
-        [value]="settlementMinutes()"
-        (change)="settlementMinutes.set(+$any($event.target).value)">
-        <option value="15">15 min (Rápido)</option>
-        <option value="25">25 min (Normal)</option>
-        <option value="45">45 min (Congestión bancaria)</option>
-      </select>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 0.74rem; color: var(--muted);">Espera:</span>
+        <select
+          class="terminal-select"
+          style="padding: 2px 6px; font-size: 0.75rem;"
+          [value]="settlementMinutes()"
+          (change)="settlementMinutes.set(+$any($event.target).value)">
+          <option value="15">15 min (Rápido)</option>
+          <option value="25">25 min (Normal)</option>
+          <option value="45">45 min (Congestión bancaria)</option>
+        </select>
+      </div>
     </div>
   </div>
-
 
   <!-- Section: Radar Scanner Matrix -->
   <div class="glass-section-card scanner-card">
     <div class="section-title-row">
       <div class="title-group">
+        <span class="quantum-step-badge">PASO 01 · RADAR</span>
         <span class="section-icon">📡</span>
         <div>
           <h3>Radar Scanner de Rutas Arbitrables</h3>

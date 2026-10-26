@@ -14,11 +14,11 @@
       </div>
 
       <div class="header-controls-right">
-        <!-- Demo Seeder & Purge Controls -->
-        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        <!-- Demo Seeder & Purge Controls (Segmented Capsule) -->
+        <div class="toolbar-segmented" role="group" aria-label="Gestión de datos de portafolio">
           <button
             type="button"
-            class="btn-demo-seed"
+            class="btn-ghost"
             title="Cargar movimientos realistas de demostración para explorar gráficas y analíticas"
             (click)="loadDemoPortfolio()"
           >
@@ -26,21 +26,21 @@
           </button>
           <button
             type="button"
-            class="btn-demo-seed"
-            style="background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5;"
+            class="btn-ghost"
+            style="color: #fca5a5;"
             title="Eliminar únicamente las transacciones y pasivos demo generados"
             (click)="clearDemoPortfolio()"
           >
-            🧹 Limpiar Demo
+            🧹 Limpiar
           </button>
           <button
             type="button"
-            class="btn-demo-seed"
-            style="background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.45); color: #fda4af;"
+            class="btn-ghost"
+            style="color: #fda4af;"
             title="Vaciar completamente todo el portafolio y reiniciar libro a cero"
             (click)="resetFullPortfolio()"
           >
-            🔄 Vaciar Todo
+            🔄 Reset
           </button>
         </div>
 
@@ -163,6 +163,15 @@
             </div>
 
             <div class="nw-quick-cta-group">
+              <button
+                type="button"
+                class="btn-hero-action transfer"
+                style="background: rgba(226, 183, 85, 0.16); border-color: rgba(226, 183, 85, 0.45); color: #facc15;"
+                (click)="openQuickModal('audio')"
+                title="Dicta un gasto o ingreso por voz en lenguaje natural (Atajo: Alt+V)"
+              >
+                🎙️ Dictar (Alt+V)
+              </button>
               <button type="button" class="btn-hero-action income" (click)="openQuickModal('income')">
                 ➕ Ingreso
               </button>
@@ -1000,19 +1009,36 @@
               <button
                 type="button"
                 class="btn-ai-parse"
+                [style.background]="voice.isListening() && voice.activeContext() === 'finance360' ? '#ef4444' : 'rgba(226, 183, 85, 0.22)'"
+                [style.color]="voice.isListening() && voice.activeContext() === 'finance360' ? '#fff' : '#facc15'"
+                (click)="toggleVoiceInModal()"
+                title="Activar o detener dictado por voz en vivo"
+              >
+                {{ voice.isListening() && voice.activeContext() === 'finance360' ? '🔴 Escuchando...' : '🎙️ Dictar' }}
+              </button>
+              <button
+                type="button"
+                class="btn-ai-parse"
                 (click)="parseNaturalLanguageCommand()"
               >
                 Autocompletar
               </button>
             </div>
+            @if (lastVoiceBadges().length > 0) {
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                @for (badge of lastVoiceBadges(); track badge) {
+                  <span class="apple-pill-mini gold font-mono">{{ badge }}</span>
+                }
+              </div>
+            }
             @if (scannedReceiptName()) {
               <div style="margin-top: 6px; font-size: 0.75rem; color: #34d399; font-weight: 600;">
                 ✅ Imagen procesada: {{ scannedReceiptName() }}
               </div>
             }
-            @if (isRecordingAudio()) {
+            @if (isRecordingAudio() || (voice.isListening() && voice.activeContext() === 'finance360')) {
               <div class="voice-status-banner">
-                <span class="pulse-dot"></span> Escuchando dictado de voz y clasificando categoría...
+                <span class="pulse-dot"></span> {{ voice.interimTranscript() || 'Escuchando dictado de voz y clasificando categoría...' }}
               </div>
             }
           </div>

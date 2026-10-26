@@ -1,7 +1,21 @@
 <section class="panel">
-  <header>
-    <h1>Estadísticas</h1>
-    <p class="note">Rendimiento agrupado de tu registro de operaciones. Los periodos usan la fecha UTC del registro.</p>
+  <header class="quantum-hero-banner">
+    <div class="quantum-hero-title-group">
+      <span class="quantum-eyebrow">
+        <span class="quantum-live-dot"></span>
+        AUDIT ANALYTICS &amp; HEATMAP LEDGER
+      </span>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h1 style="margin: 0;">Estadísticas</h1>
+        <span class="badge badge-gold font-mono">{{ fmtNum(totals().operations) }} Ops</span>
+      </div>
+      <p class="note" style="margin: 2px 0 0;">Rendimiento agrupado de tu registro de operaciones. Los periodos usan la fecha UTC del registro.</p>
+    </div>
+    <div class="quantum-hero-actions">
+      <button type="button" class="btn btn-secondary" style="padding: 7px 14px; font-size: 0.8rem;" (click)="openComplianceModal()">
+        📄 Justificación Bancaria (PDF)
+      </button>
+    </div>
   </header>
 
   <app-ui-card variant="terminal">
@@ -142,108 +156,116 @@
         </div>
       </div>
 
-      <!-- Calendar Matrix -->
-      <div class="calendar-grid-container" style="background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 24px;">
-        <div class="calendar-weekdays" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; font-weight: 600; font-size: 0.8rem; color: var(--gold); margin-bottom: 10px;">
-          <div>DOM</div><div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div>
-        </div>
-        <div class="calendar-cells" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
-          @for (d of calendarMonthView().days; track $index) {
-            @if (d === null) {
-              <div class="calendar-cell empty" style="min-height: 80px; background: rgba(0,0,0,0.1); border-radius: 6px; border: 1px dashed rgba(255,255,255,0.03);"></div>
-            } @else {
-              <button
-                type="button"
-                class="calendar-cell day"
-                [class.selected]="selectedCalendarDay()?.date === d.date"
-                [class.has-ops]="d.operationsCount > 0"
-                [class.heat-1]="d.heatLevel === 1"
-                [class.heat-2]="d.heatLevel === 2"
-                [class.heat-3]="d.heatLevel === 3"
-                [class.heat-4]="d.heatLevel === 4"
-                [class.loss]="d.hasLoss"
-                (click)="selectDay(d)"
-                [attr.aria-label]="'Día ' + d.dayOfMonth + ': ' + d.operationsCount + ' operaciones'"
-                style="min-height: 85px; padding: 8px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; text-align: left; background: var(--panel);"
-              >
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                  <span class="day-number font-mono" style="font-size: 0.85rem; font-weight: 700;">{{ d.dayOfMonth }}</span>
-                  @if (d.operationsCount > 0) {
-                    <span class="badge" [class.badge-accent]="!d.hasLoss" [class.badge-danger]="d.hasLoss" style="font-size: 0.65rem; padding: 2px 5px;">
-                      {{ d.completedCycles }} {{ d.completedCycles === 1 ? 'vuelta' : 'vueltas' }}
-                    </span>
-                  }
-                </div>
-
-                @if (d.operationsCount > 0) {
-                  <div style="margin-top: 6px;">
-                    <div class="font-mono" [class.positive]="d.pnlVes >= 0" [class.negative]="d.pnlVes < 0" style="font-size: 0.8rem; font-weight: 700;">
-                      {{ d.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(d.pnlVes) }}
-                    </div>
-                    <div class="text-muted font-mono" style="font-size: 0.7rem;">
-                      {{ fmtUsd(d.volumeUsdt) }}
-                    </div>
-                  </div>
-                } @else {
-                  <div class="text-muted" style="font-size: 0.7rem; text-align: center; margin-top: 10px;">—</div>
-                }
-              </button>
-            }
-          }
-        </div>
-      </div>
-
-      <!-- Selected Day Inspection Panel -->
-      @if (selectedCalendarDay(); as day) {
-        <div class="section-group" style="background: var(--bg-1); border: 1px solid var(--gold-border); padding: 18px; border-radius: var(--radius); margin-bottom: 24px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px;">
-            <div>
-              <span class="section-eyebrow">Auditoría del Día Seleccionado</span>
-              <h3 style="margin: 2px 0 0; font-size: 1.1rem;">Jornada del {{ day.date }}</h3>
-            </div>
-            <div style="text-align: right;">
-              <span class="font-mono" [class.positive]="day.pnlVes >= 0" [class.negative]="day.pnlVes < 0" style="font-size: 1.1rem; font-weight: 700;">
-                PnL: {{ day.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(day.pnlVes) }} (~{{ fmtUsd(day.pnlUsdt) }})
-              </span>
-            </div>
+      <!-- Master-Detail Calendar Bento Grid -->
+      <div class="quantum-bento-grid" style="margin-bottom: 24px; align-items: start;">
+        <!-- Calendar Matrix -->
+        <div
+          class="calendar-grid-container"
+          [class.bento-span-7]="!!selectedCalendarDay()"
+          [class.bento-span-12]="!selectedCalendarDay()"
+          style="background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 0;"
+        >
+          <div class="calendar-weekdays" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; font-weight: 600; font-size: 0.8rem; color: var(--gold); margin-bottom: 10px;">
+            <div>DOM</div><div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div>
           </div>
-
-          @if (selectedDayOps().length === 0) {
-            <p class="note">Sin operaciones registradas en este día.</p>
-          } @else {
-            <table class="corporate-table" style="font-size: 0.82rem;" aria-label="Auditoría detallada de operaciones del día">
-              <thead>
-                <tr>
-                  <th scope="col">Hora</th>
-                  <th scope="col">Tipo</th>
-                  <th scope="col">USDT</th>
-                  <th scope="col">Tasa</th>
-                  <th scope="col">VES Total</th>
-                  <th scope="col">Comisión</th>
-                  <th scope="col">Notas</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (op of selectedDayOps(); track op.id) {
-                  <tr>
-                    <td class="font-mono text-muted">{{ op.timestamp | slice:11:16 }}</td>
-                    <td>
-                      <span class="badge" [class.badge-buy]="op.type === 'buy'" [class.badge-sell]="op.type === 'sell'">
-                        {{ op.type === 'buy' ? 'COMPRA' : op.type === 'sell' ? 'VENTA' : 'ASIGNACIÓN' }}
+          <div class="calendar-cells" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+            @for (d of calendarMonthView().days; track $index) {
+              @if (d === null) {
+                <div class="calendar-cell empty" style="min-height: 80px; background: rgba(0,0,0,0.1); border-radius: 6px; border: 1px dashed rgba(255,255,255,0.03);"></div>
+              } @else {
+                <button
+                  type="button"
+                  class="calendar-cell day"
+                  [class.selected]="selectedCalendarDay()?.date === d.date"
+                  [class.has-ops]="d.operationsCount > 0"
+                  [class.heat-1]="d.heatLevel === 1"
+                  [class.heat-2]="d.heatLevel === 2"
+                  [class.heat-3]="d.heatLevel === 3"
+                  [class.heat-4]="d.heatLevel === 4"
+                  [class.loss]="d.hasLoss"
+                  (click)="selectDay(d)"
+                  [attr.aria-label]="'Día ' + d.dayOfMonth + ': ' + d.operationsCount + ' operaciones'"
+                  style="min-height: 85px; padding: 8px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; text-align: left; background: var(--panel);"
+                >
+                  <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span class="day-number font-mono" style="font-size: 0.85rem; font-weight: 700;">{{ d.dayOfMonth }}</span>
+                    @if (d.operationsCount > 0) {
+                      <span class="badge" [class.badge-accent]="!d.hasLoss" [class.badge-danger]="d.hasLoss" style="font-size: 0.65rem; padding: 2px 5px;">
+                        {{ d.completedCycles }} {{ d.completedCycles === 1 ? 'vuelta' : 'vueltas' }}
                       </span>
-                    </td>
-                    <td class="font-mono">{{ fmtUsd(op.usdtAmount) }}</td>
-                    <td class="font-mono">{{ op.price | number:'1.2-2' }}</td>
-                    <td class="font-mono">{{ fmtVes(op.vesAmount) }}</td>
-                    <td class="font-mono">{{ fmtVes(op.fees) }}</td>
-                    <td class="text-muted">{{ op.merchantNote || op.notes || '—' }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
+                    }
+                  </div>
+
+                  @if (d.operationsCount > 0) {
+                    <div style="margin-top: 6px;">
+                      <div class="font-mono" [class.positive]="d.pnlVes >= 0" [class.negative]="d.pnlVes < 0" style="font-size: 0.8rem; font-weight: 700;">
+                        {{ d.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(d.pnlVes) }}
+                      </div>
+                      <div class="text-muted font-mono" style="font-size: 0.7rem;">
+                        {{ fmtUsd(d.volumeUsdt) }}
+                      </div>
+                    </div>
+                  } @else {
+                    <div class="text-muted" style="font-size: 0.7rem; text-align: center; margin-top: 10px;">—</div>
+                  }
+                </button>
+              }
+            }
+          </div>
         </div>
-      }
+
+        <!-- Selected Day Inspection Panel -->
+        @if (selectedCalendarDay(); as day) {
+          <div class="section-group bento-span-5 quantum-sticky-col" style="background: var(--bg-1); border: 1px solid var(--gold-border); padding: 18px; border-radius: var(--radius); margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px;">
+              <div>
+                <span class="section-eyebrow">Auditoría del Día Seleccionado</span>
+                <h3 style="margin: 2px 0 0; font-size: 1.05rem;">Jornada del {{ day.date }}</h3>
+              </div>
+              <div style="text-align: right;">
+                <span class="font-mono" [class.positive]="day.pnlVes >= 0" [class.negative]="day.pnlVes < 0" style="font-size: 1rem; font-weight: 700;">
+                  PnL: {{ day.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(day.pnlVes) }} (~{{ fmtUsd(day.pnlUsdt) }})
+                </span>
+              </div>
+            </div>
+
+            @if (selectedDayOps().length === 0) {
+              <p class="note">Sin operaciones registradas en este día.</p>
+            } @else {
+              <div class="table-container">
+                <table class="corporate-table" style="font-size: 0.8rem;" aria-label="Auditoría detallada de operaciones del día">
+                  <thead>
+                    <tr>
+                      <th scope="col">Hora</th>
+                      <th scope="col">Tipo</th>
+                      <th scope="col">USDT</th>
+                      <th scope="col">Tasa</th>
+                      <th scope="col">VES Total</th>
+                      <th scope="col">Comisión</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (op of selectedDayOps(); track op.id) {
+                      <tr>
+                        <td class="font-mono text-muted">{{ op.timestamp | slice:11:16 }}</td>
+                        <td>
+                          <span class="badge" [class.badge-buy]="op.type === 'buy'" [class.badge-sell]="op.type === 'sell'">
+                            {{ op.type === 'buy' ? 'COMPRA' : op.type === 'sell' ? 'VENTA' : 'ASIGNACIÓN' }}
+                          </span>
+                        </td>
+                        <td class="font-mono">{{ fmtUsd(op.usdtAmount) }}</td>
+                        <td class="font-mono">{{ op.price | number:'1.2-2' }}</td>
+                        <td class="font-mono">{{ fmtVes(op.vesAmount) }}</td>
+                        <td class="font-mono">{{ fmtVes(op.fees) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        }
+      </div>
     </div>
   } @else if (period() === 'session') {
     <div class="section-divider"></div>

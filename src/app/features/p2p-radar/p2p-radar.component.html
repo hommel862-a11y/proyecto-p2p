@@ -1,21 +1,75 @@
-<div class="radar-container">
+<div class="radar-container" [class.compact-density]="booksDensityMode() === 'COMPACT'">
   <!-- ══════════════════════════════════════════════════════════════════════════
-       ZONA 1: HEADER DE PERFIL OPERATIVO Y CONTROLES TÁCTICOS
+       ZONA 1: QUANTUM COMMAND HEADER, LIVE STREAM & CONTROLES TÁCTICOS
        ══════════════════════════════════════════════════════════════════════════ -->
-  <header class="radar-header card-surface">
+  <header class="radar-header card-surface quantum-hero-banner">
     <div class="header-main-row">
       <div class="brand-title-area">
-        <div class="badge-live-pulse">
-          <span class="pulse-dot"></span>
-          <span class="pulse-text">RADAR QUANT INTEL</span>
+        <div class="title-badges-row">
+          <div class="badge-live-pulse">
+            <span class="pulse-dot"></span>
+            <span class="pulse-text">QUANTUM RADAR v3.0</span>
+          </div>
+          <span class="ring-buffer-pill font-mono" title="Muestras históricas acumuladas en el RingBuffer para detección de Bots y cruces EMA">
+            🧠 RingBuffer: {{ radarService.scanCycleCount() }}/12 muestras
+          </span>
+          @if (radarService.lastUpdated(); as updated) {
+            <span class="last-sync-badge font-mono">
+              🕒 Sync: {{ updated | date:'HH:mm:ss' }}
+            </span>
+          }
         </div>
-        <h1 class="radar-title">Radar de Inteligencia P2P</h1>
+        <h1 class="radar-title">Radar Cuantitativo de Microestructura P2P</h1>
         <p class="radar-subtitle">
-          Microestructura de libro en tiempo real, filtro anti-manipulación y matriz de arbitraje
+          Ingesta concurrente en tiempo real, purga anti-manipulación, posicionador de centavos y matriz de arbitraje N×N
         </p>
       </div>
 
       <div class="header-actions-area">
+        <!-- Real-Time Live Stream Auto-Polling Bar -->
+        <div class="live-stream-control-box" title="Frecuencia de escaneo automático en tiempo real">
+          <span class="stream-lbl">LIVE STREAM:</span>
+          <div class="stream-pills">
+            <button
+              type="button"
+              class="stream-pill"
+              [class.active]="radarService.autoRefreshIntervalSec() === 0"
+              (click)="setAutoRefresh(0)"
+            >
+              Manual
+            </button>
+            <button
+              type="button"
+              class="stream-pill"
+              [class.active]="radarService.autoRefreshIntervalSec() === 10"
+              (click)="setAutoRefresh(10)"
+            >
+              ⚡ 10s
+            </button>
+            <button
+              type="button"
+              class="stream-pill"
+              [class.active]="radarService.autoRefreshIntervalSec() === 15"
+              (click)="setAutoRefresh(15)"
+            >
+              🔄 15s
+            </button>
+            <button
+              type="button"
+              class="stream-pill"
+              [class.active]="radarService.autoRefreshIntervalSec() === 30"
+              (click)="setAutoRefresh(30)"
+            >
+              🌱 30s
+            </button>
+          </div>
+          @if (radarService.autoRefreshIntervalSec() > 0) {
+            <span class="stream-countdown font-mono">
+              {{ radarService.streamCountdownSec() }}s
+            </span>
+          }
+        </div>
+
         <button
           type="button"
           class="hud-bridge-pill"
@@ -24,7 +78,7 @@
           title="Alternar canal WebSocket / BroadcastChannel para la Extensión de Chrome"
         >
           <span class="hud-dot"></span>
-          <span>HUD Extension: {{ radarService.hudActive() ? 'LIVE' : 'OFF' }}</span>
+          <span>HUD: {{ radarService.hudActive() ? 'LIVE' : 'OFF' }}</span>
         </button>
 
         <button
@@ -35,14 +89,8 @@
           (click)="scanRadar()"
         >
           <span class="icon" [class.spinning]="radarService.loading()">⚡</span>
-          <span>{{ radarService.loading() ? 'Escaneando Libros...' : 'Escanear Radar' }}</span>
+          <span>{{ radarService.loading() ? 'Escaneando...' : 'Escanear Ahora' }}</span>
         </button>
-
-        @if (radarService.lastUpdated(); as updated) {
-          <span class="last-sync-badge">
-            Sync: {{ updated | date:'HH:mm:ss' }}
-          </span>
-        }
       </div>
     </div>
 
@@ -67,7 +115,7 @@
             [class.active]="radarService.userTier() === 'UNVERIFIED'"
             (click)="setUserTier('UNVERIFIED')"
           >
-            <span>No Verificado (0.35%)</span>
+            <span>Estándar (0.35%)</span>
           </button>
         </div>
       </div>
@@ -106,7 +154,7 @@
         </div>
       </div>
 
-      <!-- Financial Params: Capital & Target Margin -->
+      <!-- Financial Params: Capital, Target Margin & Interbank Friction -->
       <div class="financial-inputs-group">
         <div class="input-unit-wrapper">
           <label class="control-label" for="radar-capital">Capital USDT</label>
@@ -125,7 +173,7 @@
         </div>
 
         <div class="input-unit-wrapper">
-          <label class="control-label" for="radar-margin">Margen Objetivo</label>
+          <label class="control-label" for="radar-margin">Margen Meta</label>
           <div class="input-with-symbol">
             <input
               id="radar-margin"
@@ -140,401 +188,861 @@
           </div>
         </div>
 
+        <div class="input-unit-wrapper">
+          <label class="control-label" for="radar-friction" title="Costo de transferencia interbancaria o Pago Móvil (0% si es mismo banco)">Fricción Interb.</label>
+          <div class="input-with-symbol">
+            <input
+              id="radar-friction"
+              type="number"
+              class="field-mono"
+              [ngModel]="radarService.interbankFrictionPct()"
+              (ngModelChange)="onInterbankFrictionChange($event)"
+              step="0.05"
+              min="0"
+            />
+            <span class="symbol">%</span>
+          </div>
+        </div>
+
         <!-- Clean Mode Filter Button -->
         <div class="clean-mode-badge-wrap">
-          <label class="control-label">Filtro Anti-Manipulación</label>
+          <label class="control-label">Escudo Estadístico</label>
           <button type="button" class="btn-clean-mode-settings" (click)="openCleanModal()">
             <span class="shield-icon">🛡️</span>
-            <span>Modo Limpio Activo</span>
+            <span>Modo Limpio ({{ radarService.cleanConfig().maxPayTimeMinutes }}m · {{ radarService.cleanConfig().minMonthFinishRate }}%)</span>
             <span class="gear-icon">⚙️</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Quick Stats Bar -->
-    <div class="quick-stats-bar">
-      <div class="stat-pill">
-        <span class="stat-label">Anuncios Limpios:</span>
-        <span class="stat-value font-mono">{{ radarService.totalCleanOffers() }}</span>
+    <!-- Telemetry & Workspace View Switcher Bar -->
+    <div class="telemetry-and-views-bar">
+      <div class="quick-stats-bar">
+        <div class="stat-pill" (click)="setViewMode('BOOKS')" style="cursor: pointer;">
+          <span class="stat-label">Ofertas Limpias:</span>
+          <span class="stat-value font-mono">{{ radarService.totalCleanOffers() }}</span>
+        </div>
+        <div class="stat-pill" (click)="setViewMode('BOOKS')" style="cursor: pointer;">
+          <span class="stat-label">Liquidez Limpia:</span>
+          <span class="stat-value font-mono stat-cyan">${{ radarService.totalCleanLiquidityUsdt() | number:'1.0-0' }} USDT</span>
+        </div>
+        <div
+          class="stat-pill"
+          [class.warning-pulse]="radarService.totalBotsDetected() > 0"
+          (click)="setViewMode('FORENSIC')"
+          style="cursor: pointer;"
+        >
+          <span class="stat-label">Bots Detectados:</span>
+          <span class="stat-value font-mono stat-amber">{{ radarService.totalBotsDetected() }}</span>
+        </div>
+        <div class="stat-pill" (click)="setViewMode('FORENSIC')" style="cursor: pointer;">
+          <span class="stat-label">Señuelos Purgados:</span>
+          <span class="stat-value font-mono stat-red">{{ radarService.totalManipulationsDetected() }}</span>
+        </div>
+        <div class="stat-pill" (click)="setViewMode('MATRIX')" style="cursor: pointer;">
+          <span class="stat-label">Rutas Viables:</span>
+          <span class="stat-value font-mono stat-emerald">{{ radarService.viableRoutesCount() }}</span>
+        </div>
       </div>
-      <div class="stat-pill" [class.warning-pulse]="radarService.totalBotsDetected() > 0">
-        <span class="stat-label">Bots Detectados:</span>
-        <span class="stat-value font-mono stat-amber">{{ radarService.totalBotsDetected() }}</span>
-      </div>
-      <div class="stat-pill">
-        <span class="stat-label">Señuelos Descartados:</span>
-        <span class="stat-value font-mono stat-red">{{ radarService.totalManipulationsDetected() }}</span>
-      </div>
-      <div class="stat-pill">
-        <span class="stat-label">Rutas Viables:</span>
-        <span class="stat-value font-mono stat-emerald">{{ radarService.viableRoutesCount() }}</span>
+
+      <!-- 3-Mode Intelligence Canvas Switcher + Density Toggle -->
+      <div class="view-mode-switcher">
+        <button
+          type="button"
+          class="view-tab-btn"
+          [class.active]="activeViewMode() === 'BOOKS'"
+          (click)="setViewMode('BOOKS')"
+        >
+          <span>📚 Libros Multibanco</span>
+          <span class="tab-count font-mono">{{ activeBanks().length }}</span>
+        </button>
+        <button
+          type="button"
+          class="view-tab-btn"
+          [class.active]="activeViewMode() === 'MATRIX'"
+          (click)="setViewMode('MATRIX')"
+        >
+          <span>🔥 Matriz de Arbitraje</span>
+          <span class="tab-count font-mono">{{ radarService.allRoutes().length }}</span>
+        </button>
+        <button
+          type="button"
+          class="view-tab-btn"
+          [class.active]="activeViewMode() === 'FORENSIC'"
+          (click)="setViewMode('FORENSIC')"
+        >
+          <span>🤖 Bots & Señuelos</span>
+          <span class="tab-count font-mono">{{ radarService.totalBotsDetected() + radarService.allRejectedOffers().length }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="density-toggle-btn"
+          [class.active]="booksDensityMode() === 'COMPACT'"
+          (click)="toggleDensityMode()"
+          title="Alternar densidad visual entre Vista Confort y Vista Compacta de Alta Densidad"
+        >
+          {{ booksDensityMode() === 'COMPACT' ? '⚡ Compacto' : '📐 Confort' }}
+        </button>
       </div>
     </div>
   </header>
 
   <!-- ══════════════════════════════════════════════════════════════════════════
-       ZONA 2: GRID MULTIBANCO SIMULTÁNEO
+       ZONA 2: SPLIT-SCREEN WORKSPACE (8 COLS INTELIGENCIA / 4 COLS COCKPIT FIJO)
        ══════════════════════════════════════════════════════════════════════════ -->
-  <section class="multibank-section">
-    <!-- Volume Presets & Bank Filter Chips -->
-    <div class="section-toolbar">
-      <div class="toolbar-left">
-        <span class="filter-label">Escalón de Volumen:</span>
-        <div class="volume-bracket-pills">
-          @for (bracket of volumeBrackets; track bracket.id) {
-            <button
-              type="button"
-              class="pill-btn"
-              [class.active]="radarService.selectedBracket().id === bracket.id"
-              (click)="setVolumeBracket(bracket.id)"
-            >
-              <span>{{ bracket.label }}</span>
-              <span class="bracket-amount font-mono">({{ bracket.minAmountVes | number:'1.0-0' }} Bs)</span>
-            </button>
-          }
-        </div>
-      </div>
-
-      <div class="toolbar-right">
-        <div class="bank-filter-header">
-          <span class="filter-label">Bancos Activos:</span>
-          <span class="active-count-badge font-mono">{{ activeBanks().length }}/{{ availableBanks.length }}</span>
-          
-          <div class="preset-pills-row">
-            <button
-              type="button"
-              class="preset-pill-btn"
-              [class.active]="activePreset() === 'TOP_VES'"
-              (click)="setBankPreset('TOP_VES')"
-              title="Carga los 4 bancos más líquidos de Venezuela"
-            >
-              ⚡ Top 4 VES
-            </button>
-            <button
-              type="button"
-              class="preset-pill-btn"
-              [class.active]="activePreset() === 'ALL_VES'"
-              (click)="setBankPreset('ALL_VES')"
-              title="Carga los 8 bancos nacionales venezolanos"
-            >
-              🏛️ Todos Nacionales
-            </button>
-            <button
-              type="button"
-              class="preset-pill-btn"
-              [class.active]="activePreset() === 'EXPANDED'"
-              (click)="setBankPreset('EXPANDED')"
-              title="Carga nacionales más cuentas en dólares/Panamá y Zinli"
-            >
-              🌐 Full (+ USD/Panamá)
-            </button>
-            <button
-              type="button"
-              class="preset-pill-btn clear-pill"
-              (click)="setBankPreset('CLEAR')"
-              title="Desmarcar todos"
-            >
-              ✕ Limpiar
-            </button>
+  <div class="radar-workspace-bento quantum-bento-grid">
+    <!-- ────────────────────────────────────────────────────────────────────────
+         COLUMNA IZQUIERDA (8 COLUMNAS): LIBROS / MATRIZ N×N / ESCÁNER FORENSE
+         ──────────────────────────────────────────────────────────────────────── -->
+    <div class="radar-primary-column bento-span-8">
+      <!-- Barra de Escalón de Volumen y Bancos Activos -->
+      <div class="section-toolbar card-surface">
+        <div class="toolbar-left">
+          <span class="filter-label">Escalón de Volumen:</span>
+          <div class="volume-bracket-pills">
+            @for (bracket of volumeBrackets; track bracket.id) {
+              <button
+                type="button"
+                class="pill-btn"
+                [class.active]="radarService.selectedBracket().id === bracket.id"
+                (click)="setVolumeBracket(bracket.id)"
+              >
+                <span>{{ bracket.label }}</span>
+                <span class="bracket-amount font-mono">({{ bracket.minAmountVes | number:'1.0-0' }} Bs)</span>
+              </button>
+            }
           </div>
         </div>
 
-        <div class="bank-chips">
-          @for (b of availableBanks; track b) {
-            <button
-              type="button"
-              class="chip-btn"
-              [class.active]="activeBanks().includes(b)"
-              (click)="toggleBank(b)"
-            >
-              <span class="check-dot"></span>
-              <span>{{ bankLabels[b] || b }}</span>
-            </button>
-          }
+        <div class="toolbar-right">
+          <div class="bank-filter-header">
+            <span class="filter-label">Bancos Activos:</span>
+            <span class="active-count-badge font-mono">{{ activeBanks().length }}/{{ availableBanks.length }}</span>
+
+            <div class="preset-pills-row">
+              <button
+                type="button"
+                class="preset-pill-btn"
+                [class.active]="activePreset() === 'TOP_VES'"
+                (click)="setBankPreset('TOP_VES')"
+                title="Carga los 4 bancos más líquidos de Venezuela"
+              >
+                ⚡ Top 4 VES
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                [class.active]="activePreset() === 'ALL_VES'"
+                (click)="setBankPreset('ALL_VES')"
+                title="Carga los 8 bancos nacionales venezolanos"
+              >
+                🏛️ Todos Nacionales
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn"
+                [class.active]="activePreset() === 'EXPANDED'"
+                (click)="setBankPreset('EXPANDED')"
+                title="Carga nacionales más cuentas en dólares/Panamá y Zinli"
+              >
+                🌐 Full (+ USD/Panamá)
+              </button>
+              <button
+                type="button"
+                class="preset-pill-btn clear-pill"
+                (click)="setBankPreset('CLEAR')"
+                title="Desmarcar todos"
+              >
+                ✕ Limpiar
+              </button>
+            </div>
+          </div>
+
+          <div class="bank-chips">
+            @for (b of availableBanks; track b) {
+              <button
+                type="button"
+                class="chip-btn"
+                [class.active]="activeBanks().includes(b)"
+                (click)="toggleBank(b)"
+              >
+                <span class="check-dot"></span>
+                <span>{{ bankLabels[b] || b }}</span>
+              </button>
+            }
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Parallel Columns Grid -->
-    <div class="banks-grid">
-      @for (bank of activeBanks(); track bank) {
-        @let buyBook = getBook(bank, 'BUY');
-        @let sellBook = getBook(bank, 'SELL');
-        @let sellTrend = getTrend(bank, 'SELL');
+      <!-- ════════════════════════════════════════════════════════════════════
+           VISTA A: LIBROS MULTIBANCO CON MICROESTRUCTURA Y BARRAS DE LIQUIDEZ
+           ════════════════════════════════════════════════════════════════════ -->
+      @if (activeViewMode() === 'BOOKS') {
+        <div class="banks-grid">
+          @for (bank of activeBanks(); track bank) {
+            @let buyBook = getBook(bank, 'BUY');
+            @let sellBook = getBook(bank, 'SELL');
+            @let sellTrend = getTrend(bank, 'SELL');
+            @let buyLiquidity = getBookCleanLiquidityUsdt(bank, 'BUY');
+            @let sellLiquidity = getBookCleanLiquidityUsdt(bank, 'SELL');
 
-        <div class="bank-column card-surface">
-          <!-- Column Header -->
-          <div class="bank-column-header">
-            <div class="bank-name-badge">
-              <span class="bank-icon">🏛️</span>
-              <span class="bank-title">{{ bankLabels[bank] || bank }}</span>
+            <div class="bank-column card-surface">
+              <!-- Column Header -->
+              <div class="bank-column-header">
+                <div class="bank-name-badge">
+                  <span class="bank-icon">🏛️</span>
+                  <div class="bank-title-stack">
+                    <span class="bank-title">{{ bankLabels[bank] || bank }}</span>
+                    @if (sellTrend; as trend) {
+                      <span class="bank-advice-sub" [title]="trend.advice">{{ trend.advice }}</span>
+                    }
+                  </div>
+                  @if (buyBook && sellBook && (buyBook.effectiveTopPrice ?? 0) > 0 && (sellBook.effectiveTopPrice ?? 0) > 0) {
+                    @let bankSpreadVes = (sellBook.effectiveTopPrice ?? 0) - (buyBook.effectiveTopPrice ?? 0);
+                    @let bankSpreadPct = ((sellBook.effectiveTopPrice ?? 0) / (buyBook.effectiveTopPrice ?? 1) - 1) * 100;
+                    <span
+                      class="intra-spread-badge font-mono"
+                      [class.positive]="bankSpreadVes > 0"
+                      [class.negative]="bankSpreadVes <= 0"
+                      title="Spread bruto intra-bancario entre Venta Top #1 y Compra Top #1"
+                    >
+                      Δ {{ bankSpreadVes >= 0 ? '+' : '' }}{{ bankSpreadVes | number:'1.2-2' }} Bs ({{ bankSpreadPct | number:'1.2-2' }}%)
+                    </span>
+                  }
+                </div>
+
+                <!-- Trend Thermometer + EMA Crossover -->
+                @if (sellTrend; as trend) {
+                  <div class="trend-badge" [attr.data-trend]="trend.trend" [title]="'EMA Corta: ' + (trend.emaShort | number:'1.2-2') + ' | EMA Larga: ' + (trend.emaLong | number:'1.2-2')">
+                    <span class="trend-arrow">
+                      @if (trend.trend === 'ALCISTA') { ▲ }
+                      @else if (trend.trend === 'BAJISTA') { ▼ }
+                      @else { ◀▶ }
+                    </span>
+                    <span class="trend-text">{{ trend.trend }}</span>
+                    <span class="trend-vwap font-mono">VWAP: {{ trend.currentVWAP | number:'1.2-2' }}</span>
+                  </div>
+                }
+              </div>
+
+              <!-- Subdivided Order Books: BUY and SELL -->
+              <div class="books-split">
+                <!-- BUY SIDE (Comprar USDT) -->
+                <div class="sub-book buy-sub-book">
+                  <div class="sub-book-header">
+                    <div class="sub-book-title-group">
+                      <span class="sub-book-title buy-label">COMPRA (Top 5 Limpio)</span>
+                      <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
+                        💧 ${{ buyLiquidity | number:'1.0-0' }} USDT
+                      </span>
+                    </div>
+                    @if (buyBook && buyBook.effectiveTopPrice) {
+                      <span class="top-rate font-mono buy-color">{{ buyBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
+                    }
+                  </div>
+
+                  <div class="offers-list">
+                    @if (buyBook && buyBook.cleanOffers.length > 0) {
+                      @for (offer of buyBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
+                        @let bot = isOfferBot(bank, 'BUY', offer);
+                        @let depthPct = getOfferDepthPct(bank, 'BUY', offer.surplusAmount);
+                        <div
+                          class="offer-row buy-row"
+                          [class.selected-sim]="simBuyBank() === bank && simBuyPrice() === offer.price"
+                          (click)="selectOfferForSimulation(bank, 'BUY', offer)"
+                          title="Clic para cargar {{ offer.price | number:'1.2-2' }} Bs en Compra del Simulador"
+                        >
+                          <div class="offer-depth-bar buy-depth" [style.width.%]="depthPct"></div>
+                          <div class="offer-rank-col">
+                            <span class="rank-badge">#{{ idx + 1 }}</span>
+                          </div>
+                          <div class="offer-price-col">
+                            <div class="price-and-paytime">
+                              <span class="offer-price font-mono buy-color">{{ offer.price | number:'1.2-2' }}</span>
+                              <span class="paytime-pill font-mono">{{ offer.payTimeLimit }}m</span>
+                            </div>
+                            <span class="offer-user" [class.is-merchant]="offer.isMerchant">
+                              @if (offer.isMerchant) { ★ } {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}% · {{ offer.monthOrderCount }} órd)
+                            </span>
+                          </div>
+                          <div class="offer-volume-col">
+                            <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                            <span class="offer-limits font-mono">
+                              {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                            </span>
+                          </div>
+
+                          @if (bot) {
+                            <div
+                              class="bot-badge"
+                              title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
+                            >
+                              🤖 BOT
+                            </div>
+                          }
+                        </div>
+                      }
+                    } @else {
+                      <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                    }
+                  </div>
+                </div>
+
+                <!-- SELL SIDE (Vender USDT) -->
+                <div class="sub-book sell-sub-book">
+                  <div class="sub-book-header">
+                    <div class="sub-book-title-group">
+                      <span class="sub-book-title sell-label">VENTA (Top 5 Limpio)</span>
+                      <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
+                        💧 ${{ sellLiquidity | number:'1.0-0' }} USDT
+                      </span>
+                    </div>
+                    @if (sellBook && sellBook.effectiveTopPrice) {
+                      <span class="top-rate font-mono sell-color">{{ sellBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
+                    }
+                  </div>
+
+                  <div class="offers-list">
+                    @if (sellBook && sellBook.cleanOffers.length > 0) {
+                      @for (offer of sellBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
+                        @let bot = isOfferBot(bank, 'SELL', offer);
+                        @let depthPct = getOfferDepthPct(bank, 'SELL', offer.surplusAmount);
+                        <div
+                          class="offer-row sell-row"
+                          [class.selected-sim]="simSellBank() === bank && simSellPrice() === offer.price"
+                          (click)="selectOfferForSimulation(bank, 'SELL', offer)"
+                          title="Clic para cargar {{ offer.price | number:'1.2-2' }} Bs en Venta del Simulador"
+                        >
+                          <div class="offer-depth-bar sell-depth" [style.width.%]="depthPct"></div>
+                          <div class="offer-rank-col">
+                            <span class="rank-badge">#{{ idx + 1 }}</span>
+                          </div>
+                          <div class="offer-price-col">
+                            <div class="price-and-paytime">
+                              <span class="offer-price font-mono sell-color">{{ offer.price | number:'1.2-2' }}</span>
+                              <span class="paytime-pill font-mono">{{ offer.payTimeLimit }}m</span>
+                            </div>
+                            <span class="offer-user" [class.is-merchant]="offer.isMerchant">
+                              @if (offer.isMerchant) { ★ } {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}% · {{ offer.monthOrderCount }} órd)
+                            </span>
+                          </div>
+                          <div class="offer-volume-col">
+                            <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                            <span class="offer-limits font-mono">
+                              {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                            </span>
+                          </div>
+
+                          @if (bot) {
+                            <div
+                              class="bot-badge"
+                              title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
+                            >
+                              🤖 BOT
+                            </div>
+                          }
+                        </div>
+                      }
+                    } @else {
+                      <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ════════════════════════════════════════════════════════════════════
+           VISTA B: MATRIZ CUANTITATIVA N×N DE RUTAS DE ARBITRAJE EN VIVO
+           ════════════════════════════════════════════════════════════════════ -->
+      @if (activeViewMode() === 'MATRIX') {
+        <div class="matrix-view-card card-surface">
+          <div class="matrix-header-bar">
+            <div>
+              <h3 class="matrix-title">🔥 Matriz Cuantitativa de Rutas Cruzadas (N×N)</h3>
+              <p class="matrix-subtitle">
+                Ranking en tiempo real de pares Venta ➔ Compra descontando comisiones ({{ radarService.executionMode() }}) y fricción interbancaria
+              </p>
             </div>
 
-            <!-- Trend Thermometer -->
-            @if (sellTrend; as trend) {
-              <div class="trend-badge" [attr.data-trend]="trend.trend">
-                <span class="trend-arrow">
-                  @if (trend.trend === 'ALCISTA') { ▲ }
-                  @else if (trend.trend === 'BAJISTA') { ▼ }
-                  @else { ◀▶ }
-                </span>
-                <span class="trend-text">{{ trend.trend }}</span>
-                <span class="trend-vwap font-mono">VWAP: {{ trend.currentVWAP | number:'1.2-2' }}</span>
+            <div class="matrix-filter-pills">
+              <button
+                type="button"
+                class="m-pill"
+                [class.active]="routeFilterMode() === 'ALL'"
+                (click)="setRouteFilter('ALL')"
+              >
+                Todas ({{ radarService.allRoutes().length }})
+              </button>
+              <button
+                type="button"
+                class="m-pill"
+                [class.active]="routeFilterMode() === 'VIABLE'"
+                (click)="setRouteFilter('VIABLE')"
+              >
+                ✅ Meta ≥ {{ radarService.targetNetMarginPct() }}% ({{ radarService.viableRoutesCount() }})
+              </button>
+              <button
+                type="button"
+                class="m-pill"
+                [class.active]="routeFilterMode() === 'MONOBANK'"
+                (click)="setRouteFilter('MONOBANK')"
+              >
+                🏛️ Monobanco (0% fricción)
+              </button>
+              <button
+                type="button"
+                class="m-pill"
+                [class.active]="routeFilterMode() === 'INTERBANK'"
+                (click)="setRouteFilter('INTERBANK')"
+              >
+                🔀 Interbancario
+              </button>
+            </div>
+          </div>
+
+          <div class="matrix-table-wrap">
+            @if (filteredMatrixRoutes().length > 0) {
+              <table class="matrix-routes-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Ruta (Venta ➔ Compra)</th>
+                    <th>Tipo</th>
+                    <th>Tasa Venta</th>
+                    <th>Tasa Compra</th>
+                    <th>Break-Even</th>
+                    <th>Spread Neto</th>
+                    <th>Utilidad Neta</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (route of filteredMatrixRoutes(); track route.routeId) {
+                    <tr
+                      [class.viable-row]="route.metrics.netSpreadPct >= radarService.targetNetMarginPct()"
+                      (click)="loadRouteIntoSimulator(route)"
+                      style="cursor: pointer;"
+                    >
+                      <td class="font-mono text-muted">#{{ route.rank }}</td>
+                      <td>
+                        <div class="route-cell-main">
+                          <strong>{{ bankLabels[route.sourceBank] || route.sourceBank }}</strong>
+                          <span class="route-arrow">➔</span>
+                          <strong>{{ bankLabels[route.targetBank] || route.targetBank }}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="route-type-badge" [class.mono]="!route.isInterbank" [class.inter]="route.isInterbank">
+                          {{ route.isInterbank ? '🔀 Interbancario' : '🏛️ Monobanco' }}
+                        </span>
+                      </td>
+                      <td class="font-mono sell-color font-bold">{{ route.sellPrice | number:'1.2-2' }} Bs</td>
+                      <td class="font-mono buy-color font-bold">{{ route.buyPrice | number:'1.2-2' }} Bs</td>
+                      <td class="font-mono text-muted">{{ route.metrics.breakEvenSellPrice | number:'1.2-2' }} Bs</td>
+                      <td>
+                        <span
+                          class="spread-pill font-mono"
+                          [class.emerald]="route.metrics.netSpreadPct >= radarService.targetNetMarginPct()"
+                          [class.amber]="route.metrics.netSpreadPct > 0 && route.metrics.netSpreadPct < radarService.targetNetMarginPct()"
+                          [class.red]="route.metrics.netSpreadPct <= 0"
+                        >
+                          {{ route.metrics.netSpreadPct >= 0 ? '+' : '' }}{{ route.metrics.netSpreadPct | number:'1.2-2' }}%
+                        </span>
+                      </td>
+                      <td class="font-mono">
+                        <strong [class.stat-emerald]="route.metrics.netProfitUsdt > 0" [class.stat-red]="route.metrics.netProfitUsdt <= 0">
+                          {{ route.metrics.netProfitUsdt >= 0 ? '+' : '' }}${{ route.metrics.netProfitUsdt | number:'1.2-2' }}
+                        </strong>
+                        <span class="sub-fiat-inline">({{ route.metrics.netProfitFiat | number:'1.0-0' }} Bs)</span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn-load-matrix-route"
+                          (click)="loadRouteIntoSimulator(route); $event.stopPropagation()"
+                        >
+                          🎯 Simular
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            } @else {
+              <div class="empty-book-msg">
+                No hay rutas que coincidan con el filtro seleccionado. Prueba escanear más bancos o cambiar el filtro.
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ════════════════════════════════════════════════════════════════════
+           VISTA C: ESCÁNER FORENSE DE BOTS Y SEÑUELOS PURGADOS
+           ════════════════════════════════════════════════════════════════════ -->
+      @if (activeViewMode() === 'FORENSIC') {
+        <div class="forensic-view-stack">
+          <!-- Detected Bots Card -->
+          <div class="forensic-card card-surface">
+            <div class="forensic-header">
+              <div>
+                <h3 class="forensic-title">🤖 Radar Heurístico de Bots Algorítmicos ({{ radarService.allDetectedBots().length }})</h3>
+                <p class="forensic-subtitle">
+                  Detectados mediante análisis de micro-movimientos (±0.01 Bs) y frecuencia de actualización en el RingBuffer ({{ radarService.scanCycleCount() }}/12 muestras)
+                </p>
+              </div>
+              @if (radarService.autoRefreshIntervalSec() === 0) {
+                <button type="button" class="btn-activate-stream-hint" (click)="setAutoRefresh(10)">
+                  ⚡ Activar Live Stream 10s para alimentar RingBuffer
+                </button>
+              }
+            </div>
+
+            @if (radarService.allDetectedBots().length > 0) {
+              <div class="forensic-table-wrap">
+                <table class="matrix-routes-table">
+                  <thead>
+                    <tr>
+                      <th>Comerciante</th>
+                      <th>Libro</th>
+                      <th>Clasificación</th>
+                      <th>Confianza</th>
+                      <th>Reacción Prom.</th>
+                      <th>Límite Estimado</th>
+                      <th>Contra-Precio Sugerido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (bot of radarService.allDetectedBots(); track bot.advertiserNo + bot.payMethod + bot.side) {
+                      <tr>
+                        <td><strong>{{ bot.nickName }}</strong></td>
+                        <td class="font-mono">{{ bankLabels[bot.payMethod] || bot.payMethod }} ({{ bot.side }})</td>
+                        <td><span class="bot-type-pill">{{ bot.botType }}</span></td>
+                        <td class="font-mono stat-amber font-bold">{{ (bot.confidenceScore * 100) | number:'1.0-0' }}%</td>
+                        <td class="font-mono">{{ bot.reactionTimeSecondsAverage | number:'1.1-1' }}s ({{ bot.updateCountInWindow }} act.)</td>
+                        <td class="font-mono">{{ bot.estimatedLimitPrice ? (bot.estimatedLimitPrice | number:'1.2-2') + ' Bs' : '—' }}</td>
+                        <td>
+                          @if (bot.recommendedCounterPrice) {
+                            <button
+                              type="button"
+                              class="btn-load-matrix-route"
+                              (click)="bot.side === 'BUY' ? simBuyBank.set(bot.payMethod) : simSellBank.set(bot.payMethod); bot.side === 'BUY' ? simBuyPrice.set(bot.recommendedCounterPrice) : simSellPrice.set(bot.recommendedCounterPrice)"
+                            >
+                              ⚡ Usar {{ bot.recommendedCounterPrice | number:'1.2-2' }} Bs
+                            </button>
+                          } @else {
+                            <span class="text-muted">—</span>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <div class="empty-book-msg">
+                Aún no se detectaron patrones de Bot en las muestras actuales. Mantén el Live Stream activo (10s o 15s) para capturar transiciones de guerra de centavos.
               </div>
             }
           </div>
 
-          <!-- Subdivided Order Books: BUY and SELL -->
-          <div class="books-split">
-            <!-- BUY SIDE (Comprar USDT) -->
-            <div class="sub-book buy-sub-book">
-              <div class="sub-book-header">
-                <span class="sub-book-title buy-label">COMPRA (Top 5 Limpio)</span>
-                @if (buyBook) {
-                  <span class="top-rate font-mono buy-color">{{ buyBook.effectiveTopPrice | number:'1.2-2' }}</span>
-                }
+          <!-- Rejected / Decoy Offers Card -->
+          <div class="forensic-card card-surface">
+            <div class="forensic-header">
+              <div>
+                <h3 class="forensic-title">🛡️ Anuncios Señuelo y Trampas Purgadas por Modo Limpio ({{ radarService.allRejectedOffers().length }})</h3>
+                <p class="forensic-subtitle">
+                  Anuncios excluidos automáticamente del cálculo de precio tope y VWAP para proteger tu margen real
+                </p>
               </div>
-
-              <div class="offers-list">
-                @if (buyBook && buyBook.cleanOffers.length > 0) {
-                  @for (offer of buyBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
-                    @let bot = isOfferBot(bank, 'BUY', offer);
-                    <div
-                      class="offer-row buy-row"
-                      (click)="selectOfferForSimulation(bank, 'BUY', offer)"
-                      title="Clic para cargar tasa de compra en simulador"
-                    >
-                      <div class="offer-rank-col">
-                        <span class="rank-badge">#{{ idx + 1 }}</span>
-                      </div>
-                      <div class="offer-price-col">
-                        <span class="offer-price font-mono buy-color">{{ offer.price | number:'1.2-2' }}</span>
-                        <span class="offer-user" [class.is-merchant]="offer.isMerchant">
-                          {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}%)
-                        </span>
-                      </div>
-                      <div class="offer-volume-col">
-                        <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }}</span>
-                        <span class="offer-limits font-mono">
-                          {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
-                        </span>
-                      </div>
-
-                      @if (bot) {
-                        <div class="bot-badge" title="Bot Detectado: {{ bot.details }}">
-                          BOT
-                        </div>
-                      }
-                    </div>
-                  }
-                } @else {
-                  <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
-                }
-              </div>
+              <button type="button" class="btn-clean-mode-settings" (click)="openCleanModal()">
+                ⚙️ Ajustar Umbrales
+              </button>
             </div>
 
-            <!-- SELL SIDE (Vender USDT) -->
-            <div class="sub-book sell-sub-book">
-              <div class="sub-book-header">
-                <span class="sub-book-title sell-label">VENTA (Top 5 Limpio)</span>
-                @if (sellBook) {
-                  <span class="top-rate font-mono sell-color">{{ sellBook.effectiveTopPrice | number:'1.2-2' }}</span>
-                }
+            @if (radarService.allRejectedOffers().length > 0) {
+              <div class="forensic-table-wrap">
+                <table class="matrix-routes-table">
+                  <thead>
+                    <tr>
+                      <th>Banco / Lado</th>
+                      <th>Anunciante</th>
+                      <th>Precio Señuelo</th>
+                      <th>Liquidez / Ventana</th>
+                      <th>Finalización / Órdenes</th>
+                      <th>Causales de Purga</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (rej of radarService.allRejectedOffers().slice(0, 25); track rej.advNo + rej.payMethod + rej.side) {
+                      <tr>
+                        <td class="font-mono">
+                          <strong>{{ bankLabels[rej.payMethod] || rej.payMethod }}</strong> ({{ rej.side }})
+                        </td>
+                        <td>{{ rej.nickName }}</td>
+                        <td class="font-mono stat-red font-bold">{{ rej.price | number:'1.2-2' }} Bs</td>
+                        <td class="font-mono">${{ rej.surplusAmount | number:'1.0-0' }} USDT · {{ rej.payTimeLimit }}m</td>
+                        <td class="font-mono">{{ rej.monthFinishRate | number:'1.0-0' }}% · {{ rej.monthOrderCount }} órd.</td>
+                        <td>
+                          <div class="reasons-tags-row">
+                            @for (reason of rej.verdict.reasons; track reason) {
+                              <span class="reason-tag">{{ formatRejectionReason(reason) }}</span>
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
               </div>
-
-              <div class="offers-list">
-                @if (sellBook && sellBook.cleanOffers.length > 0) {
-                  @for (offer of sellBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
-                    @let bot = isOfferBot(bank, 'SELL', offer);
-                    <div
-                      class="offer-row sell-row"
-                      (click)="selectOfferForSimulation(bank, 'SELL', offer)"
-                      title="Clic para cargar tasa de venta en simulador"
-                    >
-                      <div class="offer-rank-col">
-                        <span class="rank-badge">#{{ idx + 1 }}</span>
-                      </div>
-                      <div class="offer-price-col">
-                        <span class="offer-price font-mono sell-color">{{ offer.price | number:'1.2-2' }}</span>
-                        <span class="offer-user" [class.is-merchant]="offer.isMerchant">
-                          {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}%)
-                        </span>
-                      </div>
-                      <div class="offer-volume-col">
-                        <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }}</span>
-                        <span class="offer-limits font-mono">
-                          {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
-                        </span>
-                      </div>
-
-                      @if (bot) {
-                        <div class="bot-badge" title="Bot Detectado: {{ bot.details }}">
-                          BOT
-                        </div>
-                      }
-                    </div>
-                  }
-                } @else {
-                  <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
-                }
+            } @else {
+              <div class="empty-book-msg">
+                No se detectaron anuncios señuelo o trampas en el último escaneo.
               </div>
-            </div>
+            }
           </div>
         </div>
       }
     </div>
-  </section>
 
-  <!-- ══════════════════════════════════════════════════════════════════════════
-       ZONA 3: SIMULADOR INTERACTIVO Y POSICIONADOR TÁCTICO
-       ══════════════════════════════════════════════════════════════════════════ -->
-  <section class="simulator-section card-surface">
-    <div class="simulator-header">
-      <div class="title-wrap">
-        <span class="sim-icon">🎯</span>
-        <h2>Simulador Interactivo y Posicionador Táctico</h2>
-      </div>
-      <p class="sim-desc">
-        Calcula el punto de equilibrio exacto y la tasa necesaria para alcanzar tu margen neto
-      </p>
-    </div>
+    <!-- ────────────────────────────────────────────────────────────────────────
+         COLUMNA DERECHA FIJA (4 COLUMNAS): SIMULADOR TÁCTICO Y POSICIONADOR
+         ──────────────────────────────────────────────────────────────────────── -->
+    <aside class="radar-sticky-cockpit bento-span-4 quantum-sticky-col">
+      <section class="simulator-section card-surface">
+        <div class="simulator-header">
+          <div class="title-wrap">
+            <span class="quantum-step-badge">COCKPIT</span>
+            <h2>Posicionador Táctico & Simulador</h2>
+          </div>
+          <p class="sim-desc">
+            Haz clic en cualquier oferta del libro o usa los botones de guerra de centavos (±0.01 Bs)
+          </p>
+        </div>
 
-    <div class="simulator-grid">
-      <!-- Input Parameters -->
-      <div class="sim-inputs-col">
-        <div class="sim-input-row">
-          <div class="field-item">
-            <label class="control-label" for="sim-buy-bank">Banco de Compra (USDT)</label>
-            <select
-              id="sim-buy-bank"
-              class="select-dark"
-              [ngModel]="simBuyBank()"
-              (ngModelChange)="simBuyBank.set($event)"
-            >
-              @for (b of availableBanks; track b) {
-                <option [value]="b">{{ bankLabels[b] || b }}</option>
-              }
-            </select>
+        <!-- Bloque 1: COMPRA (USDT) -->
+        <div class="tactical-leg-box buy-leg-box">
+          <div class="leg-box-header">
+            <span class="leg-badge buy">1. COMPRA USDT (ENTRADA)</span>
+            <div class="quick-pos-pills">
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('BUY', 'TOP1')" title="Igualar el Top #1 limpio de este banco">
+                = Top 1
+              </button>
+              <button type="button" class="pos-pill highlight" (click)="applyTacticalPosition('BUY', 'BEAT_TICK')" title="Superar Top #1 por +0.01 Bs para encabezar libro Maker">
+                ⚡ +0.01
+              </button>
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('BUY', 'VWAP')" title="Anclar tasa al VWAP limpio del Top 5">
+                📊 VWAP
+              </button>
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('BUY', 'ANTI_BOT')" title="Aplicar contra-precio sugerido contra Bot">
+                🤖 Anti-Bot
+              </button>
+            </div>
           </div>
 
-          <div class="field-item">
-            <label class="control-label" for="sim-buy-price">Tasa de Compra (VES)</label>
-            <input
-              id="sim-buy-price"
-              type="number"
-              class="field-mono field-highlight"
-              [ngModel]="simBuyPrice()"
-              (ngModelChange)="simBuyPrice.set(+$event)"
-              step="0.01"
-            />
+          <div class="sim-input-row">
+            <div class="field-item">
+              <label class="control-label" for="sim-buy-bank">Banco Compra</label>
+              <select
+                id="sim-buy-bank"
+                class="select-dark"
+                [ngModel]="simBuyBank()"
+                (ngModelChange)="simBuyBank.set($event)"
+              >
+                @for (b of availableBanks; track b) {
+                  <option [value]="b">{{ bankLabels[b] || b }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-item">
+              <label class="control-label" for="sim-buy-price">Tasa Compra (VES)</label>
+              <input
+                id="sim-buy-price"
+                type="number"
+                class="field-mono field-highlight buy-border"
+                [ngModel]="simBuyPrice()"
+                (ngModelChange)="simBuyPrice.set(+$event)"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          <!-- Fine Tick Nudge Buttons -->
+          <div class="nudge-ticks-row font-mono">
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('BUY', -0.05)">-0.05</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('BUY', -0.01)">-0.01</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('BUY', 0.01)">+0.01</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('BUY', 0.05)">+0.05</button>
           </div>
         </div>
 
-        <div class="sim-input-row">
-          <div class="field-item">
-            <label class="control-label" for="sim-sell-bank">Banco de Venta (USDT)</label>
-            <select
-              id="sim-sell-bank"
-              class="select-dark"
-              [ngModel]="simSellBank()"
-              (ngModelChange)="simSellBank.set($event)"
-            >
-              @for (b of availableBanks; track b) {
-                <option [value]="b">{{ bankLabels[b] || b }}</option>
-              }
-            </select>
+        <!-- Swap Banks Divider -->
+        <div class="swap-legs-row">
+          <button type="button" class="btn-swap-banks" (click)="swapSimulatorBanks()" title="Invertir bancos de Compra y Venta">
+            ⇅ Invertir Bancos ({{ bankLabels[simSellBank()] || simSellBank() }} ⇄ {{ bankLabels[simBuyBank()] || simBuyBank() }})
+          </button>
+        </div>
+
+        <!-- Bloque 2: VENTA (USDT) -->
+        <div class="tactical-leg-box sell-leg-box">
+          <div class="leg-box-header">
+            <span class="leg-badge sell">2. VENTA USDT (SALIDA)</span>
+            <div class="quick-pos-pills">
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('SELL', 'TOP1')" title="Igualar el Top #1 limpio de este banco">
+                = Top 1
+              </button>
+              <button type="button" class="pos-pill highlight" (click)="applyTacticalPosition('SELL', 'BEAT_TICK')" title="Mejorar Top #1 por -0.01 Bs para encabezar libro Maker">
+                ⚡ -0.01
+              </button>
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('SELL', 'VWAP')" title="Anclar tasa al VWAP limpio del Top 5">
+                📊 VWAP
+              </button>
+              <button type="button" class="pos-pill" (click)="applyTacticalPosition('SELL', 'ANTI_BOT')" title="Aplicar contra-precio sugerido contra Bot">
+                🤖 Anti-Bot
+              </button>
+            </div>
           </div>
 
-          <div class="field-item">
-            <label class="control-label" for="sim-sell-price">Tasa de Venta (VES)</label>
-            <input
-              id="sim-sell-price"
-              type="number"
-              class="field-mono field-highlight"
-              [ngModel]="simSellPrice()"
-              (ngModelChange)="simSellPrice.set(+$event)"
-              step="0.01"
-            />
+          <div class="sim-input-row">
+            <div class="field-item">
+              <label class="control-label" for="sim-sell-bank">Banco Venta</label>
+              <select
+                id="sim-sell-bank"
+                class="select-dark"
+                [ngModel]="simSellBank()"
+                (ngModelChange)="simSellBank.set($event)"
+              >
+                @for (b of availableBanks; track b) {
+                  <option [value]="b">{{ bankLabels[b] || b }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-item">
+              <label class="control-label" for="sim-sell-price">Tasa Venta (VES)</label>
+              <input
+                id="sim-sell-price"
+                type="number"
+                class="field-mono field-highlight sell-border"
+                [ngModel]="simSellPrice()"
+                (ngModelChange)="simSellPrice.set(+$event)"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          <!-- Fine Tick Nudge Buttons -->
+          <div class="nudge-ticks-row font-mono">
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('SELL', -0.05)">-0.05</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('SELL', -0.01)">-0.01</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('SELL', 0.01)">+0.01</button>
+            <button type="button" class="nudge-btn" (click)="nudgeSimPrice('SELL', 0.05)">+0.05</button>
           </div>
         </div>
-      </div>
 
-      <!-- Live Calculated Output Metrics -->
-      @let metrics = simulatedMetrics();
-      <div class="sim-metrics-col">
-        <div class="metrics-card-grid">
-          <!-- Spread Neto Hero Card -->
+        <!-- Live Calculated Output Metrics -->
+        @let metrics = simulatedMetrics();
+        <div class="cockpit-results-stack">
+          <!-- Spread Neto & Profit Hero Row -->
           <div
             class="metric-hero-card"
             [class.hero-emerald]="metrics.netSpreadPct >= radarService.targetNetMarginPct()"
             [class.hero-amber]="metrics.netSpreadPct > 0 && metrics.netSpreadPct < radarService.targetNetMarginPct()"
             [class.hero-red]="metrics.netSpreadPct <= 0"
           >
-            <span class="metric-hero-label">Spread Neto Real</span>
-            <span class="metric-hero-val font-mono">
-              {{ metrics.netSpreadPct >= 0 ? '+' : '' }}{{ metrics.netSpreadPct | number:'1.2-2' }}%
-            </span>
-            <span class="metric-hero-sub font-mono">
-              Bruto: {{ metrics.grossSpreadPct >= 0 ? '+' : '' }}{{ metrics.grossSpreadPct | number:'1.2-2' }}%
-            </span>
+            <div class="hero-top-split">
+              <div>
+                <span class="metric-hero-label">Spread Neto Real</span>
+                <div class="metric-hero-val font-mono">
+                  {{ metrics.netSpreadPct >= 0 ? '+' : '' }}{{ metrics.netSpreadPct | number:'1.2-2' }}%
+                </div>
+              </div>
+              <div class="hero-profit-right">
+                <span class="metric-hero-label">Utilidad Neta</span>
+                <div class="hero-profit-usdt font-mono stat-emerald">
+                  {{ metrics.netProfitUsdt >= 0 ? '+' : '' }}${{ metrics.netProfitUsdt | number:'1.2-2' }} USDT
+                </div>
+                <span class="metric-hero-sub font-mono">
+                  {{ metrics.netProfitFiat >= 0 ? '+' : '' }}Bs {{ metrics.netProfitFiat | number:'1.2-2' }}
+                </span>
+              </div>
+            </div>
+            <div class="hero-friction-footer font-mono">
+              <span>Bruto: {{ metrics.grossSpreadPct >= 0 ? '+' : '' }}{{ metrics.grossSpreadPct | number:'1.2-2' }}%</span>
+              <span>•</span>
+              <span>Fees: ${{ metrics.totalFeesUsdt | number:'1.2-2' }} USDT</span>
+              @if (simBuyBank() !== simSellBank()) {
+                <span>•</span>
+                <span>Fricción: Bs {{ metrics.fiatFrictionCostFiat | number:'1.0-0' }}</span>
+              }
+            </div>
           </div>
 
-          <!-- Profit in USDT & Fiat -->
-          <div class="metric-sub-card">
-            <span class="metric-label">Ganancia Neta Estimada</span>
-            <span class="metric-val font-mono stat-emerald">
-              {{ metrics.netProfitUsdt >= 0 ? '+' : '' }}${{ metrics.netProfitUsdt | number:'1.2-2' }} USDT
-            </span>
-            <span class="metric-sub font-mono">
-              +Bs {{ metrics.netProfitFiat | number:'1.2-2' }}
-            </span>
-          </div>
-
-          <!-- Break-Even Price -->
-          <div class="metric-sub-card">
-            <span class="metric-label">Break-Even (Punto 0)</span>
-            <span class="metric-val font-mono stat-amber">
-              Venta: {{ metrics.breakEvenSellPrice | number:'1.2-2' }}
-            </span>
-            <span class="metric-sub font-mono">
-              Compra máx: {{ metrics.breakEvenBuyPrice | number:'1.2-2' }}
-            </span>
-          </div>
-
-          <!-- Target Price Recommended -->
-          <div class="metric-sub-card target-action-card">
-            <div class="target-title-area">
-              <span class="metric-label">Tasa Target (+{{ radarService.targetNetMarginPct() }}%)</span>
-              <span class="metric-val font-mono stat-cyan">
-                {{ metrics.targetSellPrice | number:'1.2-2' }} VES
-              </span>
+          <!-- Break-Even & Target Rates Grid -->
+          <div class="tactical-rates-grid">
+            <div class="t-rate-box" (click)="copyRateToClipboard(metrics.breakEvenSellPrice, 'beSell')" title="Clic para copiar Break-Even de Venta">
+              <span class="t-rate-lbl">Break-Even Venta</span>
+              <span class="t-rate-val font-mono stat-amber">{{ metrics.breakEvenSellPrice | number:'1.2-2' }} Bs</span>
+              <span class="t-rate-sub font-mono">Compra máx: {{ metrics.breakEvenBuyPrice | number:'1.2-2' }}</span>
             </div>
 
-            <div class="simulator-actions-stack">
+            <div class="t-rate-box" (click)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')" title="Clic para copiar Tasa Target de Venta">
+              <span class="t-rate-lbl">Target Venta (+{{ radarService.targetNetMarginPct() }}%)</span>
+              <span class="t-rate-val font-mono stat-cyan">{{ metrics.targetSellPrice | number:'1.2-2' }} Bs</span>
+              <span class="t-rate-sub font-mono">Target Compra: {{ metrics.targetBuyPrice | number:'1.2-2' }}</span>
+            </div>
+          </div>
+
+          <!-- Action Buttons Stack -->
+          <div class="simulator-actions-stack">
+            <div class="sim-actions-row-2">
               <button
                 type="button"
                 class="btn-copy-target"
                 [class.copied]="copiedTarget() === 'targetSell'"
                 (click)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')"
               >
-                <span>{{ copiedTarget() === 'targetSell' ? '✓ ¡Tasa Copiada!' : '📋 Copiar Tasa Sugerida' }}</span>
+                <span>{{ copiedTarget() === 'targetSell' ? '✓ ¡Tasa Copiada!' : '📋 Copiar Target' }}</span>
               </button>
 
               <button
                 type="button"
-                class="btn-record-cycle"
-                (click)="recordCurrentSimulatedCycle()"
-                title="Registra este ciclo completado en la contabilidad diaria aislada"
+                class="btn-copy-target"
+                (click)="copyMakerAdCard()"
+                title="Copiar ficha completa de tasas para publicación de anuncio Maker"
               >
-                <span>💾 Registrar Ciclo Completado</span>
+                <span>🎯 Ficha Maker</span>
               </button>
             </div>
+
+            <button
+              type="button"
+              class="btn-record-cycle"
+              (click)="recordCurrentSimulatedCycle()"
+              title="Registra este ciclo completado en la contabilidad diaria aislada del Radar"
+            >
+              <span>💾 Registrar Ciclo Completado en Radar</span>
+            </button>
+
+            <button
+              type="button"
+              class="btn-dispatch-crm"
+              (click)="dispatchSimulatedToCrm()"
+              title="Crea un trato en tránsito directamente en el Kanban del CRM & Tesorería"
+            >
+              <span>🚀 Despachar Ruta al CRM Kanban</span>
+            </button>
           </div>
         </div>
-      </div>
-    </div>
-  </section>
+      </section>
+    </aside>
+  </div>
 
   <!-- ══════════════════════════════════════════════════════════════════════════
        ZONA 5: RENDIMIENTO DIARIO CONSOLIDADO (AISLAMIENTO CONTABLE)

@@ -5,13 +5,18 @@ import { AutoBackupService } from '../../core/auto-backup.service';
   selector: 'app-backup-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="backup-section">
-      <span class="section-eyebrow">Gestión, Automatización Contable y Respaldo</span>
-      <div class="backup-actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
+    <div class="apple-dock-card" style="padding: 20px 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+        <span class="section-eyebrow" style="margin: 0; font-size: 0.8rem; letter-spacing: 0.04em;">
+          GESTIÓN, AUTOMATIZACIÓN CONTABLE Y RESPALDO
+        </span>
+        <span class="apple-pill-mini gold font-mono">SHA-256 INTEGRITY</span>
+      </div>
+
+      <div class="backup-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
         <button
           type="button"
-          class="btn btn-secondary"
-          style="border-color: var(--accent); color: var(--accent);"
+          class="apple-pill-btn apple-btn-accent"
           (click)="binanceCsvInput.click()"
           title="Importa directamente el historial CSV de órdenes completadas de Binance P2P con deduplicación automática"
         >
@@ -27,8 +32,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
 
         <button
           type="button"
-          class="btn btn-secondary"
-          style="border-color: #38bdf8; color: #38bdf8;"
+          class="apple-pill-btn apple-btn-info"
           (click)="openRpaReconciler.emit()"
           title="Conciliación automática en lote de extractos y notificaciones bancarias contra el libro mayor"
         >
@@ -37,15 +41,14 @@ import { AutoBackupService } from '../../core/auto-backup.service';
 
         <button
           type="button"
-          class="btn btn-secondary"
-          style="border-color: var(--gold); color: var(--gold);"
+          class="apple-pill-btn apple-btn-gold"
           (click)="openInvoiceModal.emit()"
           title="Generar facturas PDF en lote para cumplimiento y blindaje bancario"
         >
           🛡️ Facturación Fiscal (PDF Lote)
         </button>
 
-        <button type="button" class="btn btn-secondary" (click)="downloadCsv.emit()">
+        <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="downloadCsv.emit()">
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -65,14 +68,14 @@ import { AutoBackupService } from '../../core/auto-backup.service';
 
         <button
           type="button"
-          class="btn btn-secondary"
+          class="apple-pill-btn apple-btn-secondary"
           (click)="downloadExtendedCsv.emit()"
           title="Exporta CSV con Cuenta Bancaria, Titular/Cédula, Contraparte CRM y Duración para contabilidad"
         >
           📊 CSV Contable Completo
         </button>
 
-        <button type="button" class="btn btn-secondary" (click)="downloadJson.emit()">
+        <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="downloadJson.emit()">
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -85,9 +88,9 @@ import { AutoBackupService } from '../../core/auto-backup.service';
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          Exportar respaldo JSON
+          Exportar JSON
         </button>
-        <button type="button" class="btn btn-secondary" (click)="fileInput.click()">
+        <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="fileInput.click()">
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -100,7 +103,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          Importar respaldo JSON
+          Importar JSON
         </button>
         <input
           #fileInput
@@ -112,7 +115,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
 
         <button
           type="button"
-          class="btn btn-secondary"
+          class="apple-pill-btn apple-btn-secondary"
           (click)="syncGoogleSheets.emit()"
           title="Sincroniza operaciones y métricas FIFO con Google Sheets vía MCP"
         >
@@ -120,7 +123,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
         </button>
         <button
           type="button"
-          class="btn btn-secondary"
+          class="apple-pill-btn apple-btn-secondary"
           (click)="backupGoogleDrive.emit()"
           title="Respalda snapshot contable en Google Drive vía MCP"
         >
@@ -129,20 +132,20 @@ import { AutoBackupService } from '../../core/auto-backup.service';
       </div>
 
       <!-- Rolling 7-day auto-snapshots -->
-      <div style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px;">
+      <div style="margin-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px;">
         <div
-          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;"
         >
           <span
-            style="font-size: 0.76rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;"
+            style="font-size: 0.74rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;"
           >
             Snapshots Automáticos Criptográficos (Últimos 7 días — Incluye Cuentas y CRM)
           </span>
           <button
             type="button"
-            class="btn btn-secondary"
+            class="apple-pill-btn apple-btn-gold"
             (click)="autoBackup.createSnapshot()"
-            style="font-size: 0.75rem; padding: 4px 10px;"
+            style="font-size: 0.74rem; padding: 5px 12px;"
           >
             📸 Snapshot Manual Ahora
           </button>
@@ -151,40 +154,39 @@ import { AutoBackupService } from '../../core/auto-backup.service';
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
           @for (s of autoBackup.snapshots(); track s.date) {
             <div
-              style="background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;"
+              class="apple-lot-card lot-open"
+              style="padding: 6px 12px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 8px;"
             >
-              <span class="font-mono" style="font-weight: 600; color: var(--gold);">{{
+              <span class="font-mono" style="font-weight: 700; color: var(--gold-strong);">{{
                 s.date
               }}</span>
               @if (s.checksumSha256) {
                 <span
                   title="Integridad SHA-256 Verificada: {{ s.checksumSha256 }}"
-                  style="color: #10b981; font-size: 0.8rem; cursor: help;"
+                  style="color: #2fd08f; font-size: 0.8rem; cursor: help;"
                   >🛡️</span
                 >
               }
-              <span class="text-muted">({{ s.operationsCount }} ops)</span>
+              <span class="text-muted font-mono">({{ s.operationsCount }} ops)</span>
               <button
                 type="button"
-                class="btn btn-secondary"
+                class="quick-fill-chip accent"
                 (click)="autoBackup.restoreSnapshot(s.date)"
                 title="Restaurar este snapshot"
-                style="font-size: 0.7rem; padding: 2px 6px; color: var(--accent);"
               >
                 ↺ Restaurar
               </button>
               <button
                 type="button"
-                class="btn btn-secondary"
+                class="quick-fill-chip"
                 (click)="autoBackup.downloadSnapshot(s.date)"
                 title="Descargar JSON"
-                style="font-size: 0.7rem; padding: 2px 6px;"
               >
                 ⬇
               </button>
             </div>
           } @empty {
-            <span class="text-muted" style="font-size: 0.75rem;"
+            <span class="text-muted" style="font-size: 0.78rem;"
               >Aún no hay snapshots automáticos registrados.</span
             >
           }

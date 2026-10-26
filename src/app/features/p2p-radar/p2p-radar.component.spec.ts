@@ -252,5 +252,52 @@ describe('P2PRadarComponent', () => {
     component.toggleHudBridge();
     expect(radarService.hudActive()).toBe(true);
   });
+
+  it('manages real-time Live Stream auto-refresh intervals cleanly', () => {
+    component.setAutoRefresh(15);
+    expect(radarService.autoRefreshIntervalSec()).toBe(15);
+    expect(radarService.streamCountdownSec()).toBe(15);
+
+    component.setAutoRefresh(0);
+    expect(radarService.autoRefreshIntervalSec()).toBe(0);
+    expect(radarService.streamCountdownSec()).toBe(0);
+  });
+
+  it('switches workspace view modes, density modes, and matrix route filters', () => {
+    expect(component.activeViewMode()).toBe('BOOKS');
+    component.setViewMode('MATRIX');
+    expect(component.activeViewMode()).toBe('MATRIX');
+
+    component.setViewMode('FORENSIC');
+    expect(component.activeViewMode()).toBe('FORENSIC');
+
+    expect(component.booksDensityMode()).toBe('COMFORT');
+    component.toggleDensityMode();
+    expect(component.booksDensityMode()).toBe('COMPACT');
+
+    component.setRouteFilter('INTERBANK');
+    expect(component.routeFilterMode()).toBe('INTERBANK');
+  });
+
+  it('supports tactical penny-war price nudging, bank swapping, and CRM pipeline dispatch', () => {
+    component.simBuyBank.set('Banesco');
+    component.simSellBank.set('Mercantil');
+    component.simBuyPrice.set(100.0);
+    component.simSellPrice.set(103.5);
+
+    component.nudgeSimPrice('BUY', 0.01);
+    expect(component.simBuyPrice()).toBe(100.01);
+
+    component.nudgeSimPrice('SELL', -0.05);
+    expect(component.simSellPrice()).toBe(103.45);
+
+    component.swapSimulatorBanks();
+    expect(component.simBuyBank()).toBe('Mercantil');
+    expect(component.simSellBank()).toBe('Banesco');
+
+    component.dispatchSimulatedToCrm();
+    expect(toastMock.success).toHaveBeenCalled();
+  });
 });
+
 

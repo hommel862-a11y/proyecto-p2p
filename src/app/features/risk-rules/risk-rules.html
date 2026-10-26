@@ -241,7 +241,12 @@
         <span uiHeaderActions class="badge badge-accent font-mono">{{ pair() }}/VES</span>
       </app-ui-panel-header>
 
-      <div class="terminal-input-grid grid-3">
+      <!-- Sub-grupo 01: Rentabilidad & Spread -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <span class="quantum-step-badge">01 · RENTABILIDAD</span>
+        <span class="text-muted" style="font-size: 0.78rem; font-weight: 600;">Piso mínimo de spread exigido para habilitar ejecución</span>
+      </div>
+      <div class="terminal-input-grid grid-3" style="margin-bottom: 18px;">
         <!-- Pair Context -->
         <div class="terminal-field">
           <label class="terminal-label" for="risk-pair-select">
@@ -301,7 +306,14 @@
             <span class="input-suffix">%</span>
           </div>
         </div>
+      </div>
 
+      <!-- Sub-grupo 02: Exposición, Concurrencia & Stop Diario -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+        <span class="quantum-step-badge">02 · EXPOSICIÓN &amp; DRAWDOWN</span>
+        <span class="text-muted" style="font-size: 0.78rem; font-weight: 600;">Límites de órdenes simultáneas, riesgo por orden y stop-loss diario</span>
+      </div>
+      <div class="terminal-input-grid grid-3" style="margin-bottom: 18px;">
         <!-- Max Concurrent Ops -->
         <div class="terminal-field">
           <label class="terminal-label" for="risk-max-concurrent">
@@ -364,7 +376,14 @@
             <span class="input-suffix">%</span>
           </div>
         </div>
+      </div>
 
+      <!-- Sub-grupo 03: Freno de Racha & Gateway -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+        <span class="quantum-step-badge">03 · CORTACIRCUITO</span>
+        <span class="text-muted" style="font-size: 0.78rem; font-weight: 600;">Bloqueo automático por racha de fallas y estado maestro del gateway</span>
+      </div>
+      <div class="terminal-input-grid grid-2">
         <!-- Max Consecutive Errors -->
         <div class="terminal-field">
           <label class="terminal-label" for="risk-max-errors">
@@ -387,7 +406,7 @@
         </div>
 
         <!-- API Gateway Status -->
-        <div class="terminal-field full-width">
+        <div class="terminal-field">
           <label class="terminal-label" for="risk-api-status">
             <span>Estado del Gateway API</span>
             <span class="terminal-subtext">Interruptor de salud de conexión</span>

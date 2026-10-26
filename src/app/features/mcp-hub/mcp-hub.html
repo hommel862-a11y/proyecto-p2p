@@ -31,6 +31,38 @@
     </div>
   </header>
 
+  <!-- Executive MCP Telemetry Bento Strip -->
+  <div class="quantum-bento-grid" style="margin-bottom: 16px;">
+    <div class="card bento-span-3" style="padding: 12px 16px;">
+      <span class="terminal-label">Nodos MCP Activos</span>
+      <strong class="font-mono" style="font-size: 1.15rem; color: var(--accent);">
+        {{ mcp.onlineCount() }} / {{ mcp.servers().length }}
+      </strong>
+      <small class="text-muted font-mono" style="font-size: 0.72rem;">Orquestación multi-proceso</small>
+    </div>
+    <div class="card bento-span-3" style="padding: 12px 16px;">
+      <span class="terminal-label">Catálogo de Tools</span>
+      <strong class="font-mono" style="font-size: 1.15rem; color: var(--gold-strong);">
+        {{ mcp.totalToolsCount() }} Skills
+      </strong>
+      <small class="text-muted font-mono" style="font-size: 0.72rem;">Ejecución JSON-RPC 2.0</small>
+    </div>
+    <div class="card bento-span-3" style="padding: 12px 16px;">
+      <span class="terminal-label">Transporte Primario</span>
+      <strong class="font-mono" style="font-size: 1.15rem; color: var(--text);">
+        {{ mcp.activeTransport() | uppercase }}
+      </strong>
+      <small class="text-muted font-mono" style="font-size: 0.72rem;">Puente híbrido IPC / HTTP</small>
+    </div>
+    <div class="card bento-span-3" style="padding: 12px 16px;">
+      <span class="terminal-label">Trazabilidad Forense</span>
+      <strong class="font-mono" style="font-size: 1.15rem; color: var(--accent-2);">
+        {{ mcp.recentAuditLogs().length }} firmas
+      </strong>
+      <small class="text-muted font-mono" style="font-size: 0.72rem;">Cadena SHA-256 inmutable</small>
+    </div>
+  </div>
+
   <!-- Navigation Tabs -->
   <nav class="hub-nav" aria-label="Secciones del Centro MCP">
     <button type="button" class="tab-btn" [class.active]="activeTab() === 'servers'" (click)="setTab('servers')">

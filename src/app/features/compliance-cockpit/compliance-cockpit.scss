@@ -1,14 +1,14 @@
 // =============================================================================
-// COMPLIANCE COCKPIT — 6-MODULE KANBAN CRM & TREASURY DESK STYLES
+// COMPLIANCE COCKPIT — 6-MODULE KANBAN CRM & TREASURY DESK STYLES (v3.0)
 // =============================================================================
 
 :host {
   display: block;
   width: 100%;
   min-height: 100vh;
-  background-color: #0d0e12;
-  color: #e4e4e7;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-void, #0d0e12);
+  color: var(--text-primary, #e4e4e7);
+  font-family: var(--font-sans, 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   box-sizing: border-box;
 }
 
@@ -2381,3 +2381,641 @@
   font-size: 12px;
   &:hover { background: #0369a1; }
 }
+
+// =============================================================================
+// QUANTUM INSTITUTIONAL CRM v3.0 — HIGH-IMPACT VISUAL & OPERATIONAL UPGRADE
+// =============================================================================
+
+.cockpit-top-bar {
+  background: var(--bg-surface, rgba(20, 21, 26, 0.92));
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle, #27272a);
+  box-shadow: var(--shadow-card, 0 12px 32px rgba(0, 0, 0, 0.45)), var(--shadow-inset-specular, inset 0 1px 0 rgba(255, 255, 255, 0.08));
+  transition: all 0.25s ease;
+
+  &.scope-360 {
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow: 0 12px 32px rgba(139, 92, 246, 0.14), inset 0 1px 0 rgba(167, 139, 250, 0.22);
+
+    .brand-zone .brand-badge {
+      background: rgba(139, 92, 246, 0.16);
+      border-color: rgba(139, 92, 246, 0.45);
+
+      .live-pulse {
+        background: #a78bfa;
+        box-shadow: 0 0 10px #a78bfa;
+      }
+
+      .badge-text {
+        color: #c4b5fd;
+      }
+    }
+
+    .vault-switcher-group .vault-segmented-control .vault-btn.active {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(245, 158, 11, 0.15));
+      color: #ddd6fe;
+      border: 1px solid rgba(139, 92, 246, 0.45);
+    }
+  }
+
+  .title-row-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .crm-telemetry-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    color: var(--text-secondary, #a1a1aa);
+
+    strong {
+      color: #38bdf8;
+      font-weight: 700;
+    }
+
+    &.emerald {
+      border-color: rgba(16, 185, 129, 0.35);
+      background: rgba(16, 185, 129, 0.1);
+      strong { color: #10b981; }
+    }
+
+    &.cyan {
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.1);
+      strong { color: #38bdf8; }
+    }
+  }
+
+  .crm-action-dock {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    background: rgba(9, 10, 15, 0.65);
+    border: 1px solid var(--border-subtle, #27272a);
+    border-radius: 10px;
+  }
+}
+
+// Module Navigation Bar Alert Dot
+.module-nav-bar .nav-tab {
+  position: relative;
+
+  .tab-alert-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    display: inline-block;
+    margin-left: 4px;
+  }
+}
+
+// Interactive KPI Cards
+.kpi-ribbon-grid .kpi-card.interactive {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(56, 189, 248, 0.45);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4), 0 0 18px rgba(56, 189, 248, 0.12);
+
+    .kpi-link-hint {
+      color: #38bdf8;
+      transform: translateX(2px);
+    }
+  }
+
+  .kpi-link-hint {
+    font-size: 11px;
+    font-weight: 700;
+    color: #71717a;
+    transition: all 0.2s ease;
+  }
+}
+
+// Pipeline Funnel & Velocity Ribbon (Vista 1: Dashboard)
+.crm-funnel-ribbon {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--bg-surface, #14151a);
+  border: 1px solid var(--border-subtle, #27272a);
+  border-radius: 12px;
+
+  .funnel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    .funnel-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .funnel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary, #f4f4f5);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .funnel-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--text-secondary, #a1a1aa);
+    }
+  }
+
+  .funnel-stages-track {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+
+    @media (max-width: 960px) {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    @media (max-width: 560px) {
+      grid-template-columns: 1fr;
+    }
+
+    .funnel-stage-pill {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 12px 14px;
+      background: rgba(9, 10, 15, 0.65);
+      border: 1px solid var(--border-subtle, #27272a);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        border-color: rgba(56, 189, 248, 0.45);
+        transform: translateY(-1px);
+      }
+
+      &.stage-1 { border-left: 3px solid #38bdf8; }
+      &.stage-2 { border-left: 3px solid #f59e0b; }
+      &.stage-3 { border-left: 3px solid #8b5cf6; }
+      &.stage-4 { border-left: 3px solid #10b981; }
+
+      .f-stage-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+
+        .f-stage-name {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-primary, #e4e4e7);
+        }
+
+        .f-stage-count {
+          padding: 1px 7px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.07);
+          font-size: 11px;
+          font-weight: 700;
+          color: #38bdf8;
+        }
+      }
+
+      .f-stage-vol {
+        font-size: 14px;
+        font-weight: 700;
+        color: #10b981;
+      }
+
+      .f-stage-bar {
+        height: 5px;
+        background: #1e2029;
+        border-radius: 999px;
+        overflow: hidden;
+
+        .f-stage-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #38bdf8, #10b981);
+          border-radius: 999px;
+          transition: width 0.35s ease;
+        }
+      }
+    }
+  }
+}
+
+// Dashboard Quick Reference Verifier Strip & Mini Progress / Activity Feed
+.quick-verifier-strip {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle, #27272a);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .qv-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary, #a1a1aa);
+    text-transform: uppercase;
+  }
+
+  .qv-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    .qv-input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .qv-status {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(9, 10, 15, 0.8);
+      border: 1px solid #27272a;
+
+      &.unique {
+        color: #10b981;
+        border-color: rgba(16, 185, 129, 0.45);
+        background: rgba(16, 185, 129, 0.1);
+      }
+
+      &.dup {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.55);
+        background: rgba(239, 68, 68, 0.15);
+      }
+    }
+  }
+}
+
+.mini-progress-track {
+  width: 72px;
+  height: 5px;
+  background: #090a0d;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 3px 0 3px auto;
+
+  .mini-progress-fill {
+    height: 100%;
+    background: #10b981;
+    border-radius: 999px;
+    transition: width 0.3s ease;
+
+    &.warn { background: #f59e0b; }
+    &.danger { background: #ef4444; }
+  }
+}
+
+.mini-activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .mini-act-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: rgba(9, 10, 15, 0.55);
+    border: 1px solid var(--border-subtle, #27272a);
+    border-radius: 6px;
+    font-size: 11px;
+
+    .m-act-time { color: #71717a; }
+    .m-act-badge {
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .m-act-desc {
+      flex: 1;
+      color: var(--text-primary, #e4e4e7);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .m-act-amt { font-weight: 700; }
+  }
+}
+
+.btn-link-sm {
+  background: transparent;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: #38bdf8;
+  }
+}
+
+// Vista 2: Kanban Command Toolbar & Density Mode
+.kanban-command-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  background: var(--bg-surface, #14151a);
+  border: 1px solid var(--border-subtle, #27272a);
+  border-radius: 12px;
+
+  .kanban-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 260px;
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    .kanban-search-input {
+      padding-left: 34px;
+      padding-right: 30px;
+      width: 100%;
+    }
+
+    .btn-clear-search {
+      position: absolute;
+      right: 8px;
+      background: transparent;
+      border: none;
+      color: #71717a;
+      cursor: pointer;
+      font-size: 12px;
+      &:hover { color: #fff; }
+    }
+  }
+
+  .kanban-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+
+    .k-filter-pill {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle, #27272a);
+      background: rgba(9, 10, 15, 0.65);
+      color: var(--text-secondary, #a1a1aa);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        color: #fff;
+        border-color: #3f3f46;
+      }
+
+      &.active {
+        background: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border-color: rgba(56, 189, 248, 0.45);
+      }
+
+      &.danger.active {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border-color: rgba(239, 68, 68, 0.45);
+      }
+    }
+  }
+
+  .kanban-density-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .k-density-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle, #27272a);
+      background: rgba(9, 10, 15, 0.65);
+      color: var(--text-secondary, #a1a1aa);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+
+      &.active {
+        border-color: #10b981;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+      }
+    }
+  }
+}
+
+.kanban-board-scroll .kanban-column {
+  &.stage-col-1 { border-top: 3px solid #38bdf8; }
+  &.stage-col-2 { border-top: 3px solid #f59e0b; }
+  &.stage-col-3 { border-top: 3px solid #8b5cf6; }
+  &.stage-col-4 { border-top: 3px solid #10b981; }
+
+  .kanban-deal-card {
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      border-color: rgba(56, 189, 248, 0.4);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .contact-avatar-mini {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #10b981);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .deal-ref-row.clickable {
+      cursor: pointer;
+      &:hover {
+        border-color: #38bdf8;
+        background: rgba(56, 189, 248, 0.08);
+      }
+      .copy-hint {
+        margin-left: auto;
+        font-size: 10px;
+        opacity: 0.7;
+      }
+    }
+
+    &.compact-card {
+      padding: 8px 10px;
+      gap: 6px;
+
+      .deal-amounts-box {
+        padding: 4px 8px;
+      }
+    }
+  }
+}
+
+// Vista 3: Contacts 360 Filter Chips & Customer LTV Ribbon
+.contact-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 10px 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-subtle, #27272a);
+
+  .c-filter-chip {
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle, #27272a);
+    background: rgba(9, 10, 15, 0.65);
+    color: var(--text-secondary, #a1a1aa);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: #fff;
+      border-color: #3f3f46;
+    }
+
+    &.active {
+      background: rgba(16, 185, 129, 0.14);
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+  }
+}
+
+.dossier-ltv-ribbon {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 12px 20px;
+  background: rgba(9, 10, 15, 0.55);
+  border-bottom: 1px solid var(--border-subtle, #27272a);
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ltv-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 12px;
+    background: var(--bg-surface, #14151a);
+    border: 1px solid var(--border-subtle, #27272a);
+    border-radius: 8px;
+
+    .ltv-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      color: #71717a;
+      text-transform: uppercase;
+    }
+
+    .ltv-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary, #f4f4f5);
+    }
+  }
+}
+
+.dossier-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+// Vista 5: Audit Filter Controls
+.audit-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  .audit-search-input {
+    width: 210px;
+    height: 30px;
+    font-size: 11px;
+  }
+
+  .audit-type-select {
+    width: 140px;
+    height: 30px;
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+}
+
+// Vista 7: Omnichannel Studio Shortcut & Accordion
+.btn-omni-jump {
+  background: rgba(56, 189, 248, 0.14);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #38bdf8;
+    color: #000;
+  }
+}
+

@@ -6,6 +6,7 @@ import {
   type P2PUserTier,
   type RadarOrderSide,
   type CleanModeConfig,
+  type CleanRadarOffer,
   type RadarCleanBook,
   type VolumeBracketConfig,
   type RawP2POfferInput,
@@ -20,6 +21,9 @@ import {
   type RadarHudPayload,
   type RadarCompletedCycleRecord,
   type RadarDailyConsolidatedSummary,
+  type PipelineDeal,
+  CRM_STORAGE_KEYS,
+  safeHydrateCrmCollection,
   DEFAULT_CLEAN_MODE_CONFIG,
   RADAR_VOLUME_BRACKETS,
   buildCleanRadarBook,
@@ -49,6 +53,7 @@ export const RADAR_BANK_LABELS: Record<string, string> = {
 };
 
 export type BankPresetId = 'TOP_VES' | 'ALL_VES' | 'EXPANDED' | 'CLEAR';
+export type AutoRefreshIntervalSec = 0 | 10 | 15 | 30;
 
 export const BANK_PRESETS: Record<Exclude<BankPresetId, 'CLEAR'>, readonly string[]> = {
   TOP_VES: ['Banesco', 'Mercantil', 'SpecificBank', 'PagoMovil'],
@@ -99,9 +104,14 @@ export class P2PRadarService {
     return consolidateDailyCycles(this.completedCycles());
   });
 
-  // ─── Phase 2 Memory Stores ─────────────────────────────────────────
+  // ─── Phase 2 Memory Stores & Live Stream Telemetry ─────────────────
   private readonly ringBuffers = new Map<string, SnapshotRingBuffer>();
   private readonly vwapHistories = new Map<string, number[]>();
+  private autoPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  readonly autoRefreshIntervalSec = signal<AutoRefreshIntervalSec>(0);
+  readonly streamCountdownSec = signal<number>(0);
+  readonly scanCycleCount = signal<number>(0);
 
   // ─── Reactive State ────────────────────────────────────────────────
   readonly userTier = signal<P2PUserTier>('UNVERIFIED');
@@ -138,12 +148,47 @@ export class P2PRadarService {
     return count;
   });
 
+  readonly totalCleanLiquidityUsdt = computed(() => {
+    let total = 0;
+    for (const book of this.radarBooks().values()) {
+      for (const offer of book.cleanOffers) {
+        total += offer.surplusAmount || 0;
+      }
+    }
+    return Math.round(total * 100) / 100;
+  });
+
   readonly totalBotsDetected = computed(() => {
     let count = 0;
     for (const bots of this.botReports().values()) {
       count += bots.length;
     }
     return count;
+  });
+
+  readonly allDetectedBots = computed<
+    Array<BotDetectionResult & { payMethod: string; side: RadarOrderSide }>
+  >(() => {
+    const list: Array<BotDetectionResult & { payMethod: string; side: RadarOrderSide }> = [];
+    for (const [key, bots] of this.botReports().entries()) {
+      const [payMethod, side] = key.split('_') as [string, RadarOrderSide];
+      for (const bot of bots) {
+        list.push({ ...bot, payMethod, side });
+      }
+    }
+    return list.sort((a, b) => b.confidenceScore - a.confidenceScore);
+  });
+
+  readonly allRejectedOffers = computed<
+    Array<CleanRadarOffer & { payMethod: string; side: RadarOrderSide }>
+  >(() => {
+    const list: Array<CleanRadarOffer & { payMethod: string; side: RadarOrderSide }> = [];
+    for (const book of this.radarBooks().values()) {
+      for (const rej of book.rejectedOffers) {
+        list.push({ ...rej, payMethod: book.payMethod, side: book.side });
+      }
+    }
+    return list;
   });
 
   readonly topRoutes = computed(() => this.matrixScanResult()?.topRoutes ?? []);
@@ -339,6 +384,7 @@ export class P2PRadarService {
       this.recomputeMatrixScan(nextBooks);
       this.broadcastHud();
       this.lastUpdated.set(new Date());
+      this.scanCycleCount.update((c) => c + 1);
       this.loading.set(false);
       return nextBooks;
     } catch (err: unknown) {
@@ -347,6 +393,38 @@ export class P2PRadarService {
       this.loading.set(false);
       this.toast.error(`Error al escanear radar P2P: ${msg}`);
       return this.radarBooks();
+    }
+  }
+
+  // ─── Real-Time Auto-Polling Engine (Live Stream) ───────────────────
+  setAutoRefreshInterval(seconds: AutoRefreshIntervalSec): void {
+    this.stopAutoRefresh();
+    this.autoRefreshIntervalSec.set(seconds);
+
+    if (seconds <= 0) {
+      this.streamCountdownSec.set(0);
+      return;
+    }
+
+    this.streamCountdownSec.set(seconds);
+    this.autoPollTimer = setInterval(() => {
+      if (this.loading()) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      const nextTick = this.streamCountdownSec() - 1;
+      if (nextTick <= 0) {
+        this.streamCountdownSec.set(this.autoRefreshIntervalSec());
+        void this.scanRadar();
+      } else {
+        this.streamCountdownSec.set(nextTick);
+      }
+    }, 1000);
+  }
+
+  stopAutoRefresh(): void {
+    if (this.autoPollTimer) {
+      clearInterval(this.autoPollTimer);
+      this.autoPollTimer = null;
     }
   }
 
@@ -612,6 +690,75 @@ export class P2PRadarService {
       `Ciclo registrado: +$${record.netProfitUsdt.toFixed(2)} USDT (+${record.netSpreadPct.toFixed(2)}%)`,
     );
     return record;
+  }
+
+  /**
+   * Dispatches a tactical arbitrage route directly to the CRM & Treasury Kanban Pipeline
+   * (`STAGE_2_TRANSIT`) so the operator can track bank reservation and reference verification.
+   */
+  dispatchRouteToCrmPipeline(params: {
+    sourceBank: string;
+    targetBank: string;
+    buyPrice: number;
+    sellPrice: number;
+    capitalUsdt: number;
+    netProfitUsdt: number;
+  }): PipelineDeal {
+    const now = Date.now();
+    const dealId = `RADAR-${now.toString(36).toUpperCase()}`;
+    const sourceBankLabel = RADAR_BANK_LABELS[params.sourceBank] || params.sourceBank;
+    const targetBankLabel = RADAR_BANK_LABELS[params.targetBank] || params.targetBank;
+
+    const newDeal: PipelineDeal = {
+      id: dealId,
+      scope: 'P2P_DESK',
+      title: `Arbitraje Radar: ${sourceBankLabel} ➔ ${targetBankLabel}`,
+      contactId: 'RADAR_DESK',
+      contactName: `Mesa P2P (${sourceBankLabel} ➔ ${targetBankLabel})`,
+      bankAccountId: `BANK_${params.sourceBank.toUpperCase()}`,
+      bankName: sourceBankLabel,
+      stage: 'STAGE_2_TRANSIT',
+      fiatCurrency: 'VES',
+      cryptoAmountUsdt: params.capitalUsdt,
+      appliedRate: params.sellPrice,
+      replacementRate: params.buyPrice,
+      totalFiatAmount: Math.round(params.capitalUsdt * params.sellPrice * 100) / 100,
+      paidFiatAmount: 0,
+      netProfitUsdt: params.netProfitUsdt,
+      bankReferenceId: '',
+      quoteTtlMinutes: 15,
+      quotedAt: now,
+      isRateExpired: false,
+      timeline: [
+        {
+          timestamp: now,
+          fromStage: null,
+          toStage: 'STAGE_2_TRANSIT',
+          notes: `Despachado desde Radar Cuantitativo (${sourceBankLabel} @ ${params.sellPrice.toFixed(2)} ➔ ${targetBankLabel} @ ${params.buyPrice.toFixed(2)})`,
+        },
+      ],
+      createdAt: now,
+      closedAt: null,
+    };
+
+    try {
+      let existingDeals: PipelineDeal[] = [];
+      if (this.storage) {
+        const raw = this.storage.get<unknown>(CRM_STORAGE_KEYS.DEALS);
+        existingDeals = safeHydrateCrmCollection<PipelineDeal>(raw);
+        this.storage.set(CRM_STORAGE_KEYS.DEALS, [newDeal, ...existingDeals]);
+      } else if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
+        const rawStr = localStorage.getItem(CRM_STORAGE_KEYS.DEALS);
+        const parsed = rawStr ? JSON.parse(rawStr) : [];
+        existingDeals = safeHydrateCrmCollection<PipelineDeal>(parsed);
+        localStorage.setItem(CRM_STORAGE_KEYS.DEALS, JSON.stringify([newDeal, ...existingDeals]));
+      }
+      this.toast.success(`Trato ${dealId} enviado al Kanban del CRM (En Tránsito).`);
+    } catch (err) {
+      console.debug('[P2PRadarService] Error dispatching deal to CRM:', err);
+    }
+
+    return newDeal;
   }
 
   clearCompletedCycles(dateKey?: string): void {

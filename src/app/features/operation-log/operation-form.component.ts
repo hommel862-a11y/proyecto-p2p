@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   computed,
   effect,
   inject,
@@ -18,6 +19,10 @@ import { MarketHistoryService } from '../../core/market-history.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { TradeTimerService } from '../../core/trade-timer.service';
 import { ToastService } from '../../core/toast.service';
+import {
+  VoiceDictationService,
+  type ParsedP2pVoiceCommand,
+} from '../../core/voice-dictation.service';
 import {
   clampMoney as sharedClampMoney,
   roundMoney,
@@ -45,33 +50,98 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FORMAT_PIPES],
   template: `
-    <div class="terminal-input-card">
-      <div class="terminal-card-header" style="flex-wrap: wrap; gap: 8px;">
+    <div class="apple-dock-card" [class.glow-accent]="form().type === 'buy'" [class.glow-danger]="form().type === 'sell'" style="padding: 22px 24px;">
+      <!-- MULTI-SLOT IN-FLIGHT ORDERS BAR + HOTKEYS TELEMETRY -->
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.07);"
+      >
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;">
+            ⚡ Órdenes en Tránsito (Multi-Slot):
+          </span>
+          @for (slot of [0, 1, 2]; track slot) {
+            <button
+              type="button"
+              class="quick-fill-chip font-mono"
+              [class.accent]="activeSlot() === slot && getSlotDraft(slot).type === 'buy'"
+              [class.danger]="activeSlot() === slot && getSlotDraft(slot).type === 'sell'"
+              [class.gold]="activeSlot() !== slot && isSlotOccupied(slot)"
+              style="padding: 5px 12px; font-size: 0.75rem;"
+              (click)="selectSlot(slot)"
+              [title]="'Cambiar a Slot de Orden #' + (slot + 1) + ' (Atajo: Alt+' + (slot + 1) + ')'"
+            >
+              <span>{{ activeSlot() === slot ? '🟢' : isSlotOccupied(slot) ? '⏳' : '⚪' }}</span>
+              <strong>Orden #{{ slot + 1 }}</strong>
+              <span style="opacity: 0.85;">· {{ getSlotSummaryLabel(slot) }}</span>
+            </button>
+          }
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <span class="apple-pill-mini muted font-mono" title="Atajos rápidos de teclado activos en el Centro de Operaciones">
+            ⌨️ Alt+V Voz · Alt+1/2/3 Slots · Alt+R SUDEBAN · Ctrl+V Pegar · Ctrl+Enter Registrar
+          </span>
+        </div>
+      </div>
+
+      <div class="terminal-card-header" style="flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
         <div class="card-header-title">
           <span class="card-icon">{{ editingOpId() ? '✏️' : '⚡' }}</span>
           <span class="card-title">
             {{ editingOpId() ? 'Editando Operación en Libro Mayor' : 'Nueva Operación en Libro Mayor' }}
           </span>
           @if (editingOpId()) {
-            <span class="badge badge-gold font-mono" style="font-size: 0.7rem; margin-left: 6px;">
+            <span class="apple-pill-mini gold font-mono" style="margin-left: 6px;">
               MODO EDICIÓN
             </span>
           }
         </div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <div class="quantum-segmented-switch">
+            <button
+              type="button"
+              class="seg-btn buy"
+              [class.active]="form().type === 'buy'"
+              (click)="onTypeChange('buy')"
+            >
+              <span class="quantum-live-dot" [class.gold]="form().type !== 'buy'"></span>
+              🟢 COMPRA
+            </button>
+            <button
+              type="button"
+              class="seg-btn sell"
+              [class.active]="form().type === 'sell'"
+              (click)="onTypeChange('sell')"
+            >
+              <span class="quantum-live-dot danger"></span>
+              🔴 VENTA
+            </button>
+          </div>
           <button
             type="button"
-            class="btn btn-secondary"
-            style="font-size: 0.76rem; padding: 4px 10px; border-color: var(--accent); color: var(--accent);"
+            class="apple-pill-btn"
+            [class.apple-btn-danger]="voice.isListening() && voice.activeContext() === 'p2p'"
+            [class.apple-btn-gold]="!(voice.isListening() && voice.activeContext() === 'p2p')"
+            (click)="toggleVoiceDictation()"
+            title="Dicta la operación completa por voz (Ej: 'Venta de 250 USDT a 78.60 por Banesco ref 849312 cédula 18940211') — Atajo: Alt+V"
+          >
+            @if (voice.isListening() && voice.activeContext() === 'p2p') {
+              🔴 Escuchando... (Detener)
+            } @else {
+              🎙️ Dictar Operación (Alt+V)
+            }
+          </button>
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-accent"
             (click)="pasteAndReconcileFromClipboard()"
-            title="Lee el SMS/comprobante directo de tu portapapeles, concilia y rellena el formulario"
+            title="Lee el SMS/comprobante directo de tu portapapeles, concilia y rellena el formulario (Atajo: Ctrl+V)"
           >
             📋 Pegar y Conciliar (1-Clic)
           </button>
           <button
             type="button"
-            class="btn btn-secondary"
-            style="font-size: 0.76rem; padding: 4px 10px;"
+            class="apple-pill-btn apple-btn-secondary"
             (click)="toggleReconciler()"
           >
             📥 {{ showReconciler() ? 'Ocultar Lector' : 'Lector Manual SMS' }}
@@ -79,8 +149,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           @if (form().type === 'buy') {
             <button
               type="button"
-              class="btn btn-secondary"
-              style="font-size: 0.76rem; padding: 4px 10px; border-color: var(--gold);"
+              class="apple-pill-btn apple-btn-gold"
               (click)="toggleQrDispatcher()"
             >
               📲 {{ showQrDispatcher() ? 'Ocultar QR' : 'QR Pago Móvil' }}
@@ -88,9 +157,9 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           }
           <button
             type="button"
-            class="btn btn-ghost"
-            style="font-size: 0.74rem; padding: 4px 8px;"
-            [style.color]="autoCalcMath() ? 'var(--accent)' : 'var(--muted)'"
+            class="apple-pill-btn"
+            [class.apple-btn-accent]="autoCalcMath()"
+            [class.apple-btn-secondary]="!autoCalcMath()"
             (click)="toggleAutoCalc()"
             title="Activa o pausa el cálculo bidireccional automático entre Precio, VES y USDT"
           >
@@ -99,37 +168,106 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
         </div>
       </div>
 
+      <!-- PÍLDORA INTERACTIVA DE DICTADO POR VOZ SEMÁNTICO P2P -->
+      @if ((voice.isListening() && voice.activeContext() === 'p2p') || lastVoiceCommand()) {
+        <div
+          style="background: rgba(12, 18, 32, 0.88); border: 1px solid rgba(226, 183, 85, 0.42); border-radius: 14px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
+        >
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
+            <span class="apple-pill-mini" [class.badge-danger]="voice.isListening()" [class.live]="!voice.isListening()">
+              {{ voice.isListening() ? '🎙️ ESCUCHANDO VOZ EN VIVO' : '✨ DICTADO PROCESADO' }}
+            </span>
+            <span class="font-mono" style="font-size: 0.84rem; color: #f8fafc;">
+              "{{ voice.isListening() ? (voice.interimTranscript() || 'Habla ahora: ej. Venta de 250 USDT a 78.60 por Banesco ref 849312...') : lastVoiceCommand()?.rawTranscript }}"
+            </span>
+          </div>
+
+          @if (lastVoiceCommand(); as cmd) {
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              @for (b of cmd.summaryBadges; track b) {
+                <span class="apple-pill-mini gold font-mono">{{ b }}</span>
+              }
+              <button
+                type="button"
+                class="quick-fill-chip"
+                (click)="clearVoiceBanner()"
+                title="Cerrar aviso de dictado"
+              >
+                ✕
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- BARRA TÁCTICA DE COORDINACIÓN RÁPIDA PARA EL CHAT DE BINANCE (1-CLIC) -->
+      <div
+        style="background: rgba(15, 22, 38, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 9px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+      >
+        <span style="font-size: 0.74rem; font-weight: 700; color: var(--muted); display: flex; align-items: center; gap: 6px;">
+          💬 Coordinación Rápida Chat P2P (Copia al Portapapeles en 1-Clic):
+        </span>
+        <div class="quick-fill-group" style="margin: 0;">
+          <button
+            type="button"
+            class="quick-fill-chip gold"
+            (click)="copyChatTemplate('payment_details')"
+            title="Copia los datos bancarios de la cuenta activa, el monto exacto en Bs y la cláusula anti-terceros"
+          >
+            🏦 1. Enviar Datos de Pago
+          </button>
+          <button
+            type="button"
+            class="quick-fill-chip accent"
+            (click)="copyChatTemplate('verifying')"
+            title="Copia mensaje de recepción y verificación bancaria en curso (60s)"
+          >
+            🔍 2. En Verificación (60s)
+          </button>
+          <button
+            type="button"
+            class="quick-fill-chip accent"
+            (click)="copyChatTemplate('released')"
+            title="Copia mensaje de cierre exitoso y solicitud de calificación positiva"
+          >
+            ✅ 3. Orden Liberada + Fidelizar
+          </button>
+        </div>
+      </div>
+
       <!-- Panel de Ingesta y Conciliación Pasiva -->
       @if (showReconciler()) {
         <div
-          style="background: rgba(10, 15, 26, 0.75); border: 1px solid var(--gold-border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;"
+          style="background: rgba(5, 8, 15, 0.75); border: 1px solid rgba(216, 180, 92, 0.35); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
         >
           <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;"
           >
             <span
-              style="font-size: 0.8rem; font-weight: 700; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.5px;"
+              style="font-size: 0.78rem; font-weight: 700; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.05em;"
             >
               Lector Inteligente de Notificaciones (Mercantil, Bancamiga, Banesco, Provincial, BDV, BNC, Bancaribe, Banplus)
             </span>
-            <span class="text-muted" style="font-size: 0.74rem;"
-              >Auto-Detección de Banco + Cédula CRM + Anti-Triangulación</span
+            <span class="apple-pill-mini gold font-mono"
+              >Auto-Detección + Anti-Triangulación</span
             >
           </div>
 
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <input
-              type="text"
-              placeholder="Pega aquí el SMS o correo del banco (ej: MERCANTIL: Recibiste Pago Movil por Bs. 2.450,00 de CI: V18450123 Ref: 987654)"
-              [value]="rawBankNotification()"
-              (input)="rawBankNotification.set($any($event.target).value)"
-              style="flex: 1; min-width: 260px; font-size: 0.85rem;"
-            />
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <div class="input-control-wrap" style="flex: 1; min-width: 260px;">
+              <input
+                type="text"
+                class="terminal-input"
+                placeholder="Pega aquí el SMS o correo del banco (ej: MERCANTIL: Recibiste Pago Movil por Bs. 2.450,00 de CI: V18450123 Ref: 987654)"
+                [value]="rawBankNotification()"
+                (input)="rawBankNotification.set($any($event.target).value)"
+                style="font-size: 0.84rem;"
+              />
+            </div>
             <button
               type="button"
-              class="btn btn-primary"
+              class="apple-pill-btn apple-btn-primary"
               (click)="processBankReceipt()"
-              style="font-size: 0.82rem; white-space: nowrap;"
             >
               ⚡ Conciliar y Rellenar
             </button>
@@ -137,23 +275,23 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
           @if (bankNotifier.lastReconciliation(); as rec) {
             <div
-              style="margin-top: 10px; padding: 10px 12px; border-radius: 6px; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+              style="margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
               [style.background]="
                 rec.status === 'VERIFIED_SAFE'
-                  ? 'rgba(52, 211, 153, 0.15)'
-                  : 'rgba(239, 68, 68, 0.15)'
+                  ? 'rgba(47, 208, 143, 0.14)'
+                  : 'rgba(239, 68, 68, 0.14)'
               "
-              [style.color]="rec.status === 'VERIFIED_SAFE' ? '#34d399' : '#f87171'"
+              [style.color]="rec.status === 'VERIFIED_SAFE' ? '#2fd08f' : '#f87171'"
               [style.border-left]="
-                rec.status === 'VERIFIED_SAFE' ? '3px solid #34d399' : '3px solid #ef4444'
+                rec.status === 'VERIFIED_SAFE' ? '3px solid #2fd08f' : '3px solid #ef4444'
               "
             >
               <span>{{ rec.message }}</span>
               @if (unregisteredPayer(); as newPayer) {
                 <button
                   type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.74rem; padding: 3px 10px; border-color: var(--accent); color: var(--accent); background: rgba(15, 23, 42, 0.85);"
+                  class="apple-pill-btn apple-btn-accent"
+                  style="font-size: 0.74rem; padding: 4px 12px;"
                   (click)="quickOnboardCounterparty()"
                 >
                   ➕ Fichar {{ newPayer.documentId }} ({{ newPayer.bankName }}) en CRM
@@ -167,24 +305,22 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- Despachador Asistido de Pago Móvil (Human-in-the-Loop) -->
       @if (showQrDispatcher() && form().type === 'buy') {
         <div
-          style="background: rgba(10, 15, 26, 0.75); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;"
+          style="background: rgba(5, 8, 15, 0.75); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
         >
           <div
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;"
           >
             <span
-              style="font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px;"
+              style="font-size: 0.78rem; font-weight: 700; color: #2fd08f; text-transform: uppercase; letter-spacing: 0.05em;"
             >
               📲 Despachador QR Pago Móvil ({{ selectedQrBankInfo().name }} — {{ selectedQrBankInfo().code }})
             </span>
-            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <div class="quick-fill-group">
               @for (b of bankCodeEntries; track b.key) {
                 <button
                   type="button"
-                  class="btn btn-ghost"
-                  style="font-size: 0.7rem; padding: 2px 6px; border: 1px solid var(--border);"
-                  [style.borderColor]="qrBankKey() === b.key ? 'var(--accent)' : 'var(--border)'"
-                  [style.color]="qrBankKey() === b.key ? 'var(--accent)' : 'var(--muted)'"
+                  class="quick-fill-chip"
+                  [class.accent]="qrBankKey() === b.key"
                   (click)="qrBankKey.set(b.key)"
                 >
                   {{ b.code }} {{ b.shortName }}
@@ -196,35 +332,35 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
             @if (qrCodeUrl(); as svg) {
               <div
-                style="background: #fff; padding: 8px; border-radius: 6px; display: inline-flex;"
+                style="background: #fff; padding: 8px; border-radius: 10px; display: inline-flex;"
               >
                 <img
                   [src]="svg"
                   alt="QR Pago Móvil"
-                  style="width: 130px; height: 130px; display: block;"
+                  style="width: 120px; height: 120px; display: block;"
                 />
               </div>
             }
             <div
-              style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;"
+              style="display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 220px;"
             >
-              <div style="font-size: 0.83rem; color: var(--muted);">
+              <div style="font-size: 0.82rem; color: var(--muted);">
                 Escanea con la app de tu banco o copia los datos exactos de transferencia con 1 clic:
               </div>
 
-              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button
                   type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.76rem; padding: 4px 8px;"
+                  class="apple-pill-btn apple-btn-secondary"
+                  style="font-size: 0.75rem; padding: 5px 12px;"
                   (click)="copy(selectedQrBankInfo().code, 'Banco')"
                 >
                   🏦 Banco: {{ selectedQrBankInfo().code }} ({{ selectedQrBankInfo().name }})
                 </button>
                 <button
                   type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.76rem; padding: 4px 8px;"
+                  class="apple-pill-btn apple-btn-secondary"
+                  style="font-size: 0.75rem; padding: 5px 12px;"
                   (click)="
                     copy(selectedCounterparty()?.documentId || form().payerName || '', 'Cédula')
                   "
@@ -233,16 +369,16 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                 </button>
                 <button
                   type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.76rem; padding: 4px 8px;"
+                  class="apple-pill-btn apple-btn-secondary"
+                  style="font-size: 0.75rem; padding: 5px 12px;"
                   (click)="copy(selectedCounterparty()?.phone || '', 'Teléfono')"
                 >
                   📋 Teléfono: {{ selectedCounterparty()?.phone || 'N/A' }}
                 </button>
                 <button
                   type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.76rem; padding: 4px 8px;"
+                  class="apple-pill-btn apple-btn-gold"
+                  style="font-size: 0.75rem; padding: 5px 12px;"
                   (click)="copy(form().vesAmount.toFixed(2), 'Monto')"
                 >
                   📋 Monto: {{ form().vesAmount | ves }}
@@ -258,6 +394,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div class="terminal-field">
             <label class="terminal-label" for="op-field-type">
               <span>Tipo de Operación</span>
+              <span class="terminal-subtext">Flujo de orden</span>
             </label>
             <div class="input-control-wrap">
               <select
@@ -275,6 +412,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div class="terminal-field">
             <label class="terminal-label" for="op-field-pair">
               <span>Par Comercial</span>
+              <span class="terminal-subtext">Activo base</span>
             </label>
             <div class="input-control-wrap">
               <select
@@ -290,7 +428,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label" for="op-field-price" style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="terminal-label" for="op-field-price">
               <span>Precio Pactado</span>
               <span class="terminal-subtext">VES por {{ form().pair }}</span>
             </label>
@@ -308,12 +446,11 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               />
             </div>
             <!-- Presets rápidos de Precio del Libro L2 y Break-Even -->
-            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
+            <div class="quick-fill-group" style="margin-top: 6px;">
               @if (marketPrices().buy > 0) {
                 <button
                   type="button"
-                  class="btn btn-ghost"
-                  style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid rgba(47, 208, 143, 0.3); color: var(--accent);"
+                  class="quick-fill-chip accent"
                   (click)="applyPricePreset(marketPrices().buy)"
                   title="Aplicar precio de punta Compra actual"
                 >
@@ -323,8 +460,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               @if (marketPrices().sell > 0) {
                 <button
                   type="button"
-                  class="btn btn-ghost"
-                  style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid rgba(255, 95, 109, 0.3); color: #f87171;"
+                  class="quick-fill-chip danger"
                   (click)="applyPricePreset(marketPrices().sell)"
                   title="Aplicar precio de punta Venta actual"
                 >
@@ -334,8 +470,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               @if (openInventoryAvgPrice() > 0) {
                 <button
                   type="button"
-                  class="btn btn-ghost"
-                  style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--gold-border); color: var(--gold);"
+                  class="quick-fill-chip gold"
                   (click)="applyPricePreset(recommendedExitPrice())"
                   title="Precio promedio FIFO de tu inventario abierto + 1.0% de margen seguro"
                 >
@@ -344,14 +479,19 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               }
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.68rem; padding: 2px 6px;"
+                class="quick-fill-chip"
                 (click)="refreshOrderbookPrice()"
                 title="Actualizar precios en vivo desde Binance P2P"
               >
                 🔄 L2
               </button>
             </div>
+            @if (form().type === 'sell' && form().price > 0 && openInventoryAvgPrice() > 0 && form().price < openInventoryAvgPrice()) {
+              <div class="pill" style="border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.12); color: #f87171; font-size: 0.72rem; padding: 4px 8px; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                <span class="quantum-live-dot danger"></span>
+                <span><strong>Alerta de Margen:</strong> Tasa por debajo de tu costo VWAP ({{ openInventoryAvgPrice() | ves }}). Estás vendiendo a pérdida.</span>
+              </div>
+            }
           </div>
 
           <div class="terminal-field">
@@ -394,6 +534,18 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               />
               <span class="input-suffix" aria-hidden="true">{{ form().pair }}</span>
             </div>
+            <div class="quick-fill-group" style="margin-top: 6px;">
+              <span class="text-muted" style="font-size: 0.68rem; font-weight: 700;">Llenado:</span>
+              @if (form().type === 'sell' && openInventoryAmount() > 0) {
+                <button type="button" class="quick-fill-chip gold" (click)="fillCryptoPct(0.25)" title="25% del stock abierto">25% ({{ (openInventoryAmount() * 0.25) | num }})</button>
+                <button type="button" class="quick-fill-chip gold" (click)="fillCryptoPct(0.50)" title="50% del stock abierto">50% ({{ (openInventoryAmount() * 0.50) | num }})</button>
+                <button type="button" class="quick-fill-chip gold" (click)="fillCryptoPct(1.00)" title="100% de todo el stock abierto">100% (Todo)</button>
+              } @else {
+                <button type="button" class="quick-fill-chip accent" (click)="fillCryptoAmount(100)">100 {{ form().pair }}</button>
+                <button type="button" class="quick-fill-chip accent" (click)="fillCryptoAmount(500)">500 {{ form().pair }}</button>
+                <button type="button" class="quick-fill-chip accent" (click)="fillCryptoAmount(1000)">1.000 {{ form().pair }}</button>
+              }
+            </div>
             @if (effectiveSpreadHint(); as spreadHint) {
               <div style="font-size: 0.7rem; margin-top: 4px;" [style.color]="spreadHint.isPositive ? 'var(--accent)' : 'var(--danger)'">
                 {{ spreadHint.label }}
@@ -419,19 +571,17 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                 placeholder="0.00"
               />
             </div>
-            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
+            <div class="quick-fill-group" style="margin-top: 6px;">
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--border);"
+                class="quick-fill-chip"
                 (click)="applyFeePct(0)"
               >
                 0% Mismo Banco
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--border);"
+                class="quick-fill-chip"
                 (click)="applyFeePct(0.3)"
                 title="Comisión Pago Móvil interbancario (0.3%)"
               >
@@ -439,8 +589,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               </button>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--border);"
+                class="quick-fill-chip"
                 (click)="applyFeePct(1.5)"
                 title="Comisión pasarela / IGTF (1.5%)"
               >
@@ -452,6 +601,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div class="terminal-field">
             <label class="terminal-label" for="op-field-counterparty">
               <span>Contraparte (CRM)</span>
+              <span class="terminal-subtext">Directorio KYC</span>
             </label>
             <div class="input-control-wrap">
               <select
@@ -492,12 +642,12 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
 
           <div class="terminal-field">
-            <label class="terminal-label" for="op-field-bank" style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="terminal-label" for="op-field-bank">
               <span>Cuenta Bancaria / Riel</span>
               <button
                 type="button"
-                class="btn btn-ghost"
-                style="font-size: 0.68rem; padding: 1px 6px; color: var(--accent); border: 1px solid rgba(47, 208, 143, 0.35);"
+                class="quick-fill-chip accent"
+                style="padding: 1px 8px; font-size: 0.65rem;"
                 (click)="autoRouteBestAccount()"
                 title="Selecciona automáticamente la cuenta con mejor velocidad SUDEBAN y cupo disponible"
               >
@@ -528,22 +678,10 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
                   Saldo: <strong style="color: var(--text);">{{ tel.usage.currentBalanceVes | ves }}</strong> · Libre: {{ tel.usage.remainingLimitVes | ves }}
                 </span>
                 <span
-                  class="badge font-mono"
-                  style="font-size: 0.65rem; padding: 1px 5px;"
-                  [style.background]="
-                    tel.velocity.velocityHealth === 'OPTIMAL'
-                      ? 'rgba(47, 208, 143, 0.15)'
-                      : tel.velocity.velocityHealth === 'SATURATED'
-                        ? 'rgba(255, 95, 109, 0.2)'
-                        : 'rgba(234, 179, 8, 0.2)'
-                  "
-                  [style.color]="
-                    tel.velocity.velocityHealth === 'OPTIMAL'
-                      ? 'var(--accent)'
-                      : tel.velocity.velocityHealth === 'SATURATED'
-                        ? 'var(--danger)'
-                        : 'var(--gold)'
-                  "
+                  class="apple-pill-mini font-mono"
+                  [class.live]="tel.velocity.velocityHealth === 'OPTIMAL'"
+                  [class.badge-danger]="tel.velocity.velocityHealth === 'SATURATED'"
+                  [class.gold]="tel.velocity.velocityHealth !== 'OPTIMAL' && tel.velocity.velocityHealth !== 'SATURATED'"
                 >
                   SUDEBAN: {{ tel.velocity.todayTransactionCount }}/{{ tel.velocity.maxDailyTransactions }} ops ({{ tel.velocity.velocityHealth }})
                 </span>
@@ -554,6 +692,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           <div class="terminal-field full-width">
             <label class="terminal-label" for="op-field-note">
               <span>Notas del Comercio / Referencia Bancaria</span>
+              <span class="terminal-subtext">Auditoría & Anti-Replay</span>
             </label>
             <div class="input-control-wrap">
               <input
@@ -570,7 +709,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (duplicateRefWarning(); as dupWarn) {
           <div
-            style="background: rgba(255, 95, 109, 0.16); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin: 10px 0 6px;"
+            style="background: rgba(255, 95, 109, 0.16); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 12px 0 6px;"
             role="alert"
           >
             🚨 <strong>ALERTA ANTI-REPLAY (REFERENCIA DUPLICADA):</strong> {{ dupWarn }}
@@ -579,14 +718,14 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (coherenceWarning(); as cohWarn) {
           <div
-            style="background: rgba(234, 179, 8, 0.14); border-left: 4px solid var(--gold); padding: 10px 14px; border-radius: 6px; font-size: 0.83rem; color: var(--gold-strong); margin: 8px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
+            style="background: rgba(234, 179, 8, 0.14); border-left: 4px solid var(--gold); padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; color: var(--gold-strong); margin: 10px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
             role="alert"
           >
             <span>⚠️ <strong>DESCALCE MATEMÁTICO (FAT-FINGER):</strong> {{ cohWarn }}</span>
             <button
               type="button"
-              class="btn btn-secondary"
-              style="font-size: 0.74rem; padding: 3px 8px;"
+              class="apple-pill-btn apple-btn-gold"
+              style="font-size: 0.74rem; padding: 4px 12px;"
               (click)="reconcileMathDiscrepancy()"
             >
               🔧 Ajustar VES a {{ (form().usdtAmount * form().price) | ves }}
@@ -610,7 +749,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             [style.color]="
               antiTriangulation().riskLevel === 'CRITICAL' ? 'var(--danger)' : 'var(--gold-strong)'
             "
-            style="padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin: 12px 0 6px;"
+            style="padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; margin: 12px 0 6px;"
             role="alert"
           >
             <strong>{{
@@ -625,7 +764,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
         @if (limitExceededWarning(); as warn) {
           <div
             id="op-limit-warning"
-            style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; color: var(--danger); margin: 6px 0;"
+            style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 8px 0;"
             role="alert"
           >
             ⚠️ {{ warn }}
@@ -634,15 +773,15 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (form().receiptImage) {
           <div
-            style="background: rgba(16, 185, 129, 0.08); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; margin-top: 10px;"
+            style="background: rgba(47, 208, 143, 0.08); border: 1px solid rgba(47, 208, 143, 0.35); padding: 8px 12px; border-radius: 10px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; margin-top: 10px;"
           >
-            <span style="display: flex; align-items: center; gap: 6px; color: var(--accent);">
+            <span style="display: flex; align-items: center; gap: 6px; color: #2fd08f;">
               📸 <strong>Comprobante Bancario Adjunto:</strong> {{ form().receiptReference || 'Captura vinculada' }}
             </span>
             <button
               type="button"
-              class="btn btn-ghost"
-              style="padding: 2px 8px; font-size: 0.72rem; border: 1px solid var(--accent); color: var(--accent);"
+              class="apple-pill-btn apple-btn-accent"
+              style="padding: 4px 10px; font-size: 0.72rem;"
               (click)="showReceiptPreview.set(!showReceiptPreview())"
             >
               {{ showReceiptPreview() ? 'Ocultar Captura' : 'Ver Captura' }}
@@ -653,15 +792,15 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               <img
                 [src]="form().receiptImage"
                 alt="Comprobante de pago"
-                style="max-height: 220px; max-width: 100%; border-radius: 6px; border: 1px solid var(--border); object-fit: contain;"
+                style="max-height: 220px; max-width: 100%; border-radius: 8px; border: 1px solid var(--border); object-fit: contain;"
               />
             </div>
           }
         }
 
-        <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 10px; flex-wrap: wrap; gap: 10px;">
+        <div class="terminal-card-footer" style="padding-top: 14px; margin-top: 14px; flex-wrap: wrap; gap: 10px;">
           <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <label class="checkbox-label" style="margin: 0;">
+            <label class="checkbox-label" style="margin: 0; flex-direction: row !important; align-items: center; gap: 8px;">
               <input
                 type="checkbox"
                 [checked]="form().errorFree"
@@ -672,29 +811,28 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               >
             </label>
             <span
-              class="badge font-mono"
-              style="font-size: 0.7rem; padding: 3px 8px;"
-              [style.background]="sopAudit().isCompliant ? 'rgba(47, 208, 143, 0.15)' : 'rgba(234, 179, 8, 0.18)'"
-              [style.color]="sopAudit().isCompliant ? 'var(--accent)' : 'var(--gold)'"
+              class="apple-pill-mini font-mono"
+              [class.live]="sopAudit().isCompliant"
+              [class.gold]="!sopAudit().isCompliant"
               [title]="sopAudit().summary"
             >
               🛡️ SOP Score: {{ sopAudit().complianceScore }}%
             </span>
           </div>
-          <div class="form-actions" style="margin: 0; display: flex; gap: 8px;">
+          <div class="form-actions" style="margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             @if (editingOpId()) {
               <button
                 type="button"
-                class="btn btn-ghost"
+                class="apple-pill-btn apple-btn-secondary"
                 (click)="cancelEdit.emit()"
               >
                 Cancelar Edición
               </button>
             }
-            <button type="button" class="btn btn-ghost" (click)="resetForm()" style="font-size: 0.8rem;">
+            <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="resetForm()">
               Limpiar
             </button>
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="apple-pill-btn apple-btn-primary" style="padding: 8px 22px; font-weight: 800;">
               {{ editingOpId() ? '💾 Guardar Cambios' : '⚡ Registrar Operación' }}
             </button>
           </div>
@@ -707,6 +845,7 @@ export class OperationFormComponent {
   readonly crmService = inject(CounterpartyService);
   readonly accountsService = inject(AccountsService);
   readonly bankNotifier = inject(BankNotifierService);
+  readonly voice = inject(VoiceDictationService);
   private readonly binanceP2p = inject(BinanceP2pService);
   private readonly marketHistory = inject(MarketHistoryService);
   private readonly finance360 = inject(Finance360Service);
@@ -718,6 +857,7 @@ export class OperationFormComponent {
   readonly limitExceededWarning = input<string | null>(null);
   readonly duplicateRefWarning = input<string | null>(null);
   readonly openInventoryAvgPrice = input<number>(0);
+  readonly openInventoryAmount = input<number>(0);
   readonly editingOpId = input<string | null>(null);
   readonly antiTriangulation = input<AntiTriangulationAssessment>({
     isSafe: true,
@@ -736,11 +876,245 @@ export class OperationFormComponent {
   readonly rawBankNotification = signal<string>('');
   readonly autoCalcMath = signal<boolean>(true);
   readonly qrBankKey = signal<string>('MERCANTIL');
+  readonly lastVoiceCommand = signal<ParsedP2pVoiceCommand | null>(null);
+  readonly activeSlot = signal<number>(0);
+  readonly slotDrafts = signal<[OpDraft, OpDraft, OpDraft]>([
+    this.createEmptyDraft('buy'),
+    this.createEmptyDraft('sell'),
+    this.createEmptyDraft('buy'),
+  ]);
   readonly unregisteredPayer = signal<{
     documentId: string;
     bankName: string;
     phone?: string;
   } | null>(null);
+
+  private createEmptyDraft(type: 'buy' | 'sell' = 'buy'): OpDraft {
+    return {
+      type,
+      pair: 'USDT',
+      vesAmount: 0,
+      usdtAmount: 0,
+      price: 0,
+      merchantNote: '',
+      fees: 0,
+      notes: '',
+      errorFree: false,
+      bankAccountId: '',
+      counterpartyId: '',
+      payerName: '',
+    };
+  }
+
+  private readonly syncSlotEffect = effect(() => {
+    const currentForm = this.form();
+    const idx = this.activeSlot();
+    this.slotDrafts.update((arr) => {
+      const next: [OpDraft, OpDraft, OpDraft] = [{ ...arr[0] }, { ...arr[1] }, { ...arr[2] }];
+      next[idx] = { ...currentForm };
+      return next;
+    });
+  });
+
+  getSlotDraft(slotIndex: number): OpDraft {
+    if (slotIndex === this.activeSlot()) {
+      return this.form();
+    }
+    return this.slotDrafts()[slotIndex] ?? this.createEmptyDraft();
+  }
+
+  isSlotOccupied(slotIndex: number): boolean {
+    const d = this.getSlotDraft(slotIndex);
+    return d.usdtAmount > 0 || d.vesAmount > 0 || Boolean(d.counterpartyId) || Boolean(d.payerName);
+  }
+
+  getSlotSummaryLabel(slotIndex: number): string {
+    const d = this.getSlotDraft(slotIndex);
+    const dir = d.type === 'sell' ? 'VENTA' : 'COMPRA';
+    if (d.usdtAmount > 0) {
+      return `${dir} ${d.usdtAmount.toFixed(2)} ${d.pair}`;
+    }
+    if (d.vesAmount > 0) {
+      return `${dir} ${d.vesAmount.toLocaleString('es-VE')} Bs`;
+    }
+    return `Libre (${dir})`;
+  }
+
+  selectSlot(slotIndex: number): void {
+    if (slotIndex === this.activeSlot() || slotIndex < 0 || slotIndex > 2) return;
+    const current = this.form();
+    const prevIdx = this.activeSlot();
+    const allSlots = this.slotDrafts();
+    const nextSlots: [OpDraft, OpDraft, OpDraft] = [
+      { ...allSlots[0] },
+      { ...allSlots[1] },
+      { ...allSlots[2] },
+    ];
+    nextSlots[prevIdx] = { ...current };
+    this.slotDrafts.set(nextSlots);
+    this.activeSlot.set(slotIndex);
+
+    const targetDraft = nextSlots[slotIndex];
+    this.formChange.emit({ ...targetDraft });
+    this.toast.info(
+      `Cambiaste a Orden en Tránsito #${slotIndex + 1} (${this.getSlotSummaryLabel(slotIndex)})`,
+      'Multi-Slot P2P',
+    );
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  onGlobalKeydown(event: KeyboardEvent): void {
+    if (event.altKey && event.key.toLowerCase() === 'v') {
+      event.preventDefault();
+      this.toggleVoiceDictation();
+      return;
+    }
+    if (event.altKey && (event.key === '1' || event.key === '2' || event.key === '3')) {
+      event.preventDefault();
+      this.selectSlot(Number(event.key) - 1);
+      return;
+    }
+    if (event.altKey && event.key.toLowerCase() === 'r') {
+      event.preventDefault();
+      this.autoRouteBestAccount();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      this.onSubmitForm();
+    }
+  }
+
+  @HostListener('window:paste', ['$event'])
+  onGlobalPaste(event: ClipboardEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    const text = event.clipboardData?.getData('text/plain')?.trim();
+    if (!text) return;
+    event.preventDefault();
+    this.rawBankNotification.set(text);
+    this.showReconciler.set(true);
+    this.processBankReceipt();
+  }
+
+  toggleVoiceDictation(): void {
+    this.voice.startListening('p2p', (transcript) => {
+      this.applyVoiceCommand(transcript);
+    });
+  }
+
+  clearVoiceBanner(): void {
+    this.lastVoiceCommand.set(null);
+  }
+
+  applyVoiceCommand(transcript: string): void {
+    const parsed = this.voice.parseP2pCommand(transcript);
+    this.lastVoiceCommand.set(parsed);
+
+    const patch: Partial<OpDraft> = {};
+    if (parsed.type) {
+      patch.type = parsed.type;
+    }
+    if (parsed.pair) {
+      patch.pair = parsed.pair;
+    }
+
+    const activePrice =
+      parsed.price ??
+      (this.form().price > 0
+        ? this.form().price
+        : (parsed.type ?? this.form().type) === 'sell'
+          ? this.marketPrices().sell
+          : this.marketPrices().buy);
+
+    if (activePrice > 0) {
+      patch.price = activePrice;
+    }
+
+    if (parsed.usdtAmount && parsed.usdtAmount > 0) {
+      patch.usdtAmount = parsed.usdtAmount;
+      if (activePrice > 0 && !parsed.vesAmount) {
+        patch.vesAmount = roundMoney(parsed.usdtAmount * activePrice, 2);
+      }
+    }
+
+    if (parsed.vesAmount && parsed.vesAmount > 0) {
+      patch.vesAmount = parsed.vesAmount;
+      if (activePrice > 0 && !parsed.usdtAmount) {
+        patch.usdtAmount = Number((parsed.vesAmount / activePrice).toFixed(6));
+      }
+    }
+
+    if (parsed.bankCode) {
+      if (BANK_CODES[parsed.bankCode]) {
+        this.qrBankKey.set(parsed.bankCode);
+      }
+      const matchingAcc = this.accountsService
+        .accounts()
+        .find((a) => a.bankCode === parsed.bankCode && a.status !== 'DISABLED');
+      if (matchingAcc) {
+        patch.bankAccountId = matchingAcc.id;
+      }
+    }
+
+    if (parsed.documentId) {
+      patch.payerName = parsed.documentId;
+      const normDoc = normalizeIdentityDoc(parsed.documentId).replace(/[^0-9]/g, '');
+      const matchedCp = this.crmService
+        .counterparties()
+        .find((c) => normalizeIdentityDoc(c.documentId).replace(/[^0-9]/g, '') === normDoc);
+      if (matchedCp) {
+        patch.counterpartyId = matchedCp.id;
+      }
+    }
+
+    if (parsed.reference) {
+      patch.merchantNote = `Ref: ${parsed.reference}${parsed.documentId ? ` (${parsed.documentId})` : ''}`;
+      patch.errorFree = true;
+    }
+
+    patch.notes = `Dictado por voz: "${parsed.rawTranscript}"`;
+    this.formChange.emit(patch);
+    this.toast.success(
+      `Dictado P2P aplicado (${parsed.summaryBadges.join(' · ') || 'Datos cargados'})`,
+      '🎙️ Voz Semántica P2P',
+    );
+  }
+
+  copyChatTemplate(templateType: 'payment_details' | 'verifying' | 'released'): void {
+    const f = this.form();
+    const acc = f.bankAccountId ? this.accountsService.getAccountById(f.bankAccountId) : null;
+    const bankLabel = acc ? `${acc.bankName} (${acc.accountNumberMasked})` : this.selectedQrBankInfo().name;
+    const bankCode = acc?.bankCode ? (BANK_CODES[acc.bankCode]?.code ?? '') : this.selectedQrBankInfo().code;
+    const vesStr =
+      f.vesAmount > 0
+        ? `Bs. ${f.vesAmount.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : 'el monto acordado en Bs';
+
+    let message = '';
+    if (templateType === 'payment_details') {
+      message = `👋 ¡Hola! Por favor realiza el Pago Móvil / Transferencia exacta por ${vesStr} a:\n🏦 Banco: ${bankLabel} ${bankCode ? `(${bankCode})` : ''}\n⚠️ IMPORTANTE: Exclusivamente desde cuenta TITULAR verificada (NO aceptamos pagos de terceros ni cuentas jurídicas no registradas). Envía captura o número de referencia al transferir.`;
+    } else if (templateType === 'verifying') {
+      message = `🔍 Pago recibido en cola de conciliación bancaria (${bankLabel}). Estoy verificando en cuenta en este momento, dame 60 segundos por favor.`;
+    } else {
+      message = `✅ ¡Operación verificada y activos liberados exitosamente! Muchas gracias por operar con nosotros. Te dejamos calificación 100% positiva ⭐`;
+    }
+
+    navigator.clipboard?.writeText(message).then(() => {
+      this.toast.success(
+        'Plantilla copiada al portapapeles. Pégala con Ctrl+V en el chat de Binance.',
+        '💬 Coordinación Rápida',
+      );
+    });
+  }
 
   readonly bankCodeEntries = [
     { key: 'BANESCO', code: '0134', shortName: 'Banesco' },
@@ -927,6 +1301,17 @@ export class OperationFormComponent {
       }
     }
     this.formChange.emit(patch);
+  }
+
+  fillCryptoPct(pct: number): void {
+    const total = this.openInventoryAmount();
+    if (total <= 0) return;
+    const amount = Number((total * pct).toFixed(4));
+    this.onCryptoInput(amount);
+  }
+
+  fillCryptoAmount(val: number): void {
+    this.onCryptoInput(val);
   }
 
   applyPricePreset(price: number): void {

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, HostListener, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Finance360Service, type UnifiedMovementItem } from '../../core/finance-360.service';
@@ -7,6 +7,7 @@ import { CotizaveService } from '../../core/cotizave.service';
 import { FinanceAiIngestorService } from '../../core/services/finance-ai-ingestor.service';
 import { FinanceDriveSyncService } from '../../core/services/finance-drive-sync.service';
 import { ToastService } from '../../core/toast.service';
+import { VoiceDictationService } from '../../core/voice-dictation.service';
 import { computeLogSummary } from '@p2p/core';
 import {
   type AssetVault,
@@ -41,6 +42,7 @@ import { QuoteBuilderComponent } from './submodules/quote-builder/quote-builder.
 export class Finance360Component {
   readonly financeService = inject(Finance360Service);
   readonly driveSync = inject(FinanceDriveSyncService);
+  readonly voice = inject(VoiceDictationService);
   private readonly accountsService = inject(AccountsService);
   private readonly cotizaveService = inject(CotizaveService);
   private readonly aiIngestor = inject(FinanceAiIngestorService);
@@ -71,6 +73,7 @@ export class Finance360Component {
   readonly isRecordingAudio = signal<boolean>(false);
   readonly isScanningReceipt = signal<boolean>(false);
   readonly scannedReceiptName = signal<string>('');
+  readonly lastVoiceBadges = signal<string[]>([]);
 
   /** Vault Modals State (Transfer, Create, Adjust Balance) */
   readonly transferModalOpen = signal<boolean>(false);
@@ -523,6 +526,19 @@ export class Finance360Component {
   // QUICK MODAL & NATURAL LANGUAGE AI PARSER
   // -------------------------------------------------------------
 
+  @HostListener('window:keydown', ['$event'])
+  onGlobalKeydown(event: KeyboardEvent): void {
+    if (event.altKey && event.key.toLowerCase() === 'v') {
+      event.preventDefault();
+      this.openQuickModal('audio');
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && this.quickModalOpen()) {
+      event.preventDefault();
+      this.saveQuickTransaction();
+    }
+  }
+
   openQuickModal(type: 'expense' | 'income' | 'audio'): void {
     this.quickModalType.set(type);
     this.formTitle.set('');
@@ -534,17 +550,19 @@ export class Finance360Component {
     this.smartCommandText.set('');
     this.scannedReceiptName.set('');
     this.isScanningReceipt.set(false);
+    this.lastVoiceBadges.set([]);
     const vaults = this.financeService.assets();
     this.formVaultId.set(vaults.length > 0 ? vaults[0].id : '');
     this.quickModalOpen.set(true);
 
     if (type === 'audio') {
-      this.startVoiceNoteSimulation();
+      this.startVoiceDictation();
     }
   }
 
   closeQuickModal(): void {
     this.quickModalOpen.set(false);
+    this.voice.stopListening();
     this.isRecordingAudio.set(false);
     this.isScanningReceipt.set(false);
   }
@@ -636,6 +654,28 @@ export class Finance360Component {
     });
   }
 
+  startVoiceDictation(): void {
+    this.isRecordingAudio.set(true);
+    this.voice.startListening(
+      'finance360',
+      (transcript) => {
+        this.isRecordingAudio.set(false);
+        this.smartCommandText.set(transcript);
+        this.parseNaturalLanguageCommand();
+      },
+      'Gasté 35 dólares en repuestos del taller por Pago Móvil Banesco referencia 774120',
+    );
+  }
+
+  toggleVoiceInModal(): void {
+    if (this.voice.isListening()) {
+      this.voice.stopListening();
+      this.isRecordingAudio.set(false);
+    } else {
+      this.startVoiceDictation();
+    }
+  }
+
   parseNaturalLanguageCommand(): void {
     const raw = this.smartCommandText().trim();
     if (!raw) {
@@ -644,63 +684,63 @@ export class Finance360Component {
     }
 
     const bcv = this.financeService.currentBcvRate();
-    const parsed = this.aiIngestor.parseWithHeuristics(raw, bcv);
-    const lower = raw.toLowerCase();
+    const voiceParsed = this.voice.parseFinance360Command(raw, bcv);
+    this.lastVoiceBadges.set(voiceParsed.summaryBadges);
 
-    // Also extract plain integer/decimal numbers if regex missed simple "25$"
-    let detectedAmount = parsed.amount;
-    if (detectedAmount <= 0) {
-      const simpleNum = raw.match(/(\d+(?:[.,]\d+)?)/);
-      if (simpleNum) {
-        detectedAmount = parseFloat(simpleNum[1].replace(',', '.')) || 0;
-      }
+    this.quickModalType.set(voiceParsed.pillar);
+    if (voiceParsed.amount > 0) {
+      this.formAmount.set(voiceParsed.amount);
     }
+    this.formCurrency.set(voiceParsed.currency);
+    this.formScope.set(voiceParsed.scope);
 
-    if (
-      lower.includes('cobré') ||
-      lower.includes('cobre') ||
-      lower.includes('recibí') ||
-      lower.includes('ingreso') ||
-      lower.includes('sueldo') ||
-      lower.includes('venta')
-    ) {
-      this.quickModalType.set('income');
-      if (lower.includes('venta') || lower.includes('taller')) {
-        this.formIncomeCategory.set('business_sale');
-        this.formScope.set('business');
-      } else if (lower.includes('presupuesto') || lower.includes('anticipo')) {
-        this.formIncomeCategory.set('quote_advance');
-      } else {
-        this.formIncomeCategory.set('salary');
-      }
+    if (voiceParsed.pillar === 'income') {
+      this.formIncomeCategory.set(voiceParsed.incomeCategory);
     } else {
-      this.quickModalType.set('expense');
-      this.formExpenseCategory.set(parsed.expenseCategory || 'other');
-      this.formScope.set(parsed.scope);
+      this.formExpenseCategory.set(voiceParsed.expenseCategory);
     }
 
-    if (detectedAmount > 0) {
-      this.formAmount.set(detectedAmount);
-    }
-    this.formCurrency.set(parsed.currency);
-    if (parsed.referenceNumber) {
-      this.formReferenceNumber.set(parsed.referenceNumber);
-    }
-    const cleanTitle = raw
-      .replace(/(?:gast[eé]|pagu[eé]|cobr[eé]|recib[ií]|en|por)\s+/gi, '')
-      .replace(/\d+(?:[.,]\d+)?\s*(?:\$|usd|bs\.?|ves|dólares|bolívares)?/gi, '')
-      .trim();
-    this.formTitle.set(cleanTitle ? cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1) : parsed.title);
-    this.formNotes.set(`Comando inteligente IA: "${raw}"`);
-
-    const matchingVault = this.financeService
-      .assets()
-      .find((v) => v.currency === parsed.currency);
-    if (matchingVault) {
-      this.formVaultId.set(matchingVault.id);
+    if (voiceParsed.feeRatePct > 0) {
+      this.feeRatePct.set(voiceParsed.feeRatePct);
     }
 
-    this.toast.success('✨ Comando analizado y clasificado automáticamente.');
+    if (voiceParsed.referenceNumber) {
+      this.formReferenceNumber.set(voiceParsed.referenceNumber);
+    }
+
+    this.formTitle.set(voiceParsed.title);
+    this.formNotes.set(`Dictado / Comando Inteligente: "${raw}"`);
+
+    // Smart Vault Auto-Selection based on hint or currency
+    const allVaults = this.financeService.assets();
+    let matchedVault: AssetVault | undefined;
+
+    if (voiceParsed.vaultHint) {
+      if (voiceParsed.vaultHint === 'zelle') {
+        matchedVault = allVaults.find((v) => v.channel === 'zelle');
+      } else if (voiceParsed.vaultHint === 'bs_bank') {
+        matchedVault = allVaults.find((v) => v.currency === 'VES' || v.channel === 'bs_bank');
+      } else if (voiceParsed.vaultHint === 'crypto') {
+        matchedVault = allVaults.find((v) => v.currency === 'USDT' || v.channel === 'crypto');
+      } else if (voiceParsed.vaultHint === 'pyme') {
+        matchedVault = allVaults.find((v) => v.scope === 'business');
+      } else if (voiceParsed.vaultHint === 'cash') {
+        matchedVault = allVaults.find((v) => v.channel === 'cash');
+      }
+    }
+
+    if (!matchedVault) {
+      matchedVault = allVaults.find((v) => v.currency === voiceParsed.currency);
+    }
+
+    if (matchedVault) {
+      this.formVaultId.set(matchedVault.id);
+    }
+
+    this.toast.success(
+      `✨ Dictado procesado (${voiceParsed.summaryBadges.join(' · ') || 'Clasificado'})`,
+      'Finanzas 360',
+    );
   }
 
   saveQuickTransaction(): void {
@@ -763,18 +803,6 @@ export class Finance360Component {
     }
 
     this.closeQuickModal();
-  }
-
-  startVoiceNoteSimulation(): void {
-    this.isRecordingAudio.set(true);
-    setTimeout(() => {
-      if (this.isRecordingAudio()) {
-        const samplePhrase = 'Gasté 25$ en gasolina y transporte pagando por Pago Móvil';
-        this.smartCommandText.set(samplePhrase);
-        this.parseNaturalLanguageCommand();
-        this.isRecordingAudio.set(false);
-      }
-    }, 1600);
   }
 
   // -------------------------------------------------------------

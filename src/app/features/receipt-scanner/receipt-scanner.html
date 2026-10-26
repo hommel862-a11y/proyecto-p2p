@@ -1,12 +1,19 @@
 <section class="panel">
-  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
-    <div>
-      <h2>Comprobantes Bancarios & Ingestión OCR</h2>
-      <p class="panel-subtitle">
+  <header class="quantum-hero-banner">
+    <div class="quantum-hero-title-group">
+      <span class="quantum-eyebrow">
+        <span class="quantum-live-dot"></span>
+        FORENSIC OCR &amp; ANTI-FRAUD SHIELD
+      </span>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <h2>Comprobantes Bancarios &amp; Ingestión OCR</h2>
+        <span class="badge badge-gold font-mono">{{ receipts().length }} Procesados</span>
+      </div>
+      <p class="panel-subtitle" style="margin: 2px 0 0;">
         Procesamiento 100% local de comprobantes de pago, auditoría anti-triangulación y exportación a Excel
       </p>
     </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
+    <div class="quantum-hero-actions">
       <button
         type="button"
         class="btn-primary"
@@ -29,33 +36,32 @@
         </button>
       }
     </div>
-  </div>
+  </header>
 
   <!-- Destination Mode Router: P2P Mesa vs Portafolio 360 -->
-  <div class="destination-mode-selector" style="margin-bottom: 20px; display: flex; flex-direction: column; gap: 12px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 10px; border: 1px solid var(--border);">
+  <div class="destination-mode-selector terminal-input-card" style="margin-bottom: 18px; gap: 12px;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
         <span style="font-size: 1.1rem;">🧭</span>
-        <strong style="color: var(--text); font-size: 0.95rem;">Destino del Comprobante:</strong>
+        <strong style="color: var(--text); font-size: 0.92rem; font-family: var(--font-display);">Destino Contable del Comprobante:</strong>
+        <span class="badge badge-gold font-mono" title="El motor OCR procesa las imágenes localmente sin enviarlas a servidores externos. Usa Ctrl+V en cualquier momento.">
+          🔒 100% Local Offline · Ctrl+V Activo
+        </span>
       </div>
-      <div class="mode-pills" style="display: flex; gap: 6px;">
+      <div class="mode-pills toolbar-segmented">
         <button
           type="button"
-          class="btn-tab"
-          [style.background]="destinationMode() === 'p2p' ? 'var(--gold)' : 'transparent'"
-          [style.color]="destinationMode() === 'p2p' ? '#000' : 'var(--text-muted)'"
+          class="btn-tab seg-btn"
+          [class.active]="destinationMode() === 'p2p'"
           (click)="destinationMode.set('p2p')"
-          style="padding: 6px 14px; font-weight: 700; font-size: 0.82rem; border-radius: 6px; cursor: pointer; border: 1px solid var(--border);"
         >
           ⚡ Mesa P2P (Arbitraje)
         </button>
         <button
           type="button"
-          class="btn-tab"
-          [style.background]="destinationMode() === 'finance360' ? 'var(--gold)' : 'transparent'"
-          [style.color]="destinationMode() === 'finance360' ? '#000' : 'var(--gold)'"
+          class="btn-tab seg-btn"
+          [class.active]="destinationMode() === 'finance360'"
           (click)="destinationMode.set('finance360')"
-          style="padding: 6px 14px; font-weight: 700; font-size: 0.82rem; border-radius: 6px; cursor: pointer; border: 1px solid var(--gold);"
         >
           💼 Portafolio Financiero 360
         </button>
@@ -63,11 +69,11 @@
     </div>
 
     @if (destinationMode() === 'finance360') {
-      <div class="finance360-routing-bar" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
+      <div class="finance360-routing-bar" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1);">
         <!-- Scope -->
         <div style="display: flex; align-items: center; gap: 6px;">
           <span class="text-muted" style="font-size: 0.78rem;">Ámbito:</span>
-          <select [ngModel]="financeScope()" (ngModelChange)="financeScope.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+          <select [ngModel]="financeScope()" (ngModelChange)="financeScope.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
             <option value="personal">👤 Personal (Sueldo / Hogar)</option>
             <option value="business">🏢 Pyme / Negocio (Taller / Comercio)</option>
           </select>
@@ -76,7 +82,7 @@
         <!-- Pillar -->
         <div style="display: flex; align-items: center; gap: 6px;">
           <span class="text-muted" style="font-size: 0.78rem;">Pilar:</span>
-          <select [ngModel]="financePillar()" (ngModelChange)="financePillar.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+          <select [ngModel]="financePillar()" (ngModelChange)="financePillar.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
             <option value="expense">🔴 Gasto / Salida</option>
             <option value="income">🟢 Ingreso / Entrada</option>
             <option value="liability">🟡 Factura por Pagar / Pasivo</option>
@@ -87,7 +93,7 @@
         @if (financePillar() === 'expense') {
           <div style="display: flex; align-items: center; gap: 6px;">
             <span class="text-muted" style="font-size: 0.78rem;">Categoría:</span>
-            <select [ngModel]="financeExpenseCategory()" (ngModelChange)="financeExpenseCategory.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+            <select [ngModel]="financeExpenseCategory()" (ngModelChange)="financeExpenseCategory.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
               <option value="cashea_installment">⚡ Cuota Cashea</option>
               <option value="groceries">🛒 Comida y Mercado</option>
               <option value="transport">⛽ Gasolina / Transporte</option>
@@ -104,7 +110,7 @@
         <!-- Vault -->
         <div style="display: flex; align-items: center; gap: 6px;">
           <span class="text-muted" style="font-size: 0.78rem;">Bóveda / Cuenta:</span>
-          <select [ngModel]="selectedVaultId()" (ngModelChange)="selectedVaultId.set($event)" class="form-select" style="font-size: 0.8rem; padding: 4px 8px; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--border); border-radius: 6px;">
+          <select [ngModel]="selectedVaultId()" (ngModelChange)="selectedVaultId.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
             <option value="">(Sin debitar cuenta)</option>
             @for (vault of finance360Service.assets(); track vault.id) {
               <option [value]="vault.id">{{ vault.name }} ({{ vault.currency }})</option>
@@ -115,32 +121,22 @@
     }
   </div>
 
-  <!-- Privacy & Offline Banner -->
-  <div class="section-group" style="border-left: 4px solid var(--gold); display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-    <div style="font-size: 1.3rem; line-height: 1;">🔒</div>
-    <div>
-      <strong style="color: var(--gold); font-size: 0.95rem;">Privacidad & Procesamiento Offline:</strong>
-      <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">
-        El motor OCR procesa las imágenes y cédulas directamente en tu máquina local. Ninguna captura ni dato bancario se envía a servidores externos. Puedes presionar <kbd style="background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 4px; font-family: monospace;">Ctrl+V</kbd> en cualquier lugar para pegar una captura del portapapeles.
-      </p>
-    </div>
-  </div>
-
-  <!-- Ingestion Inputs Grid -->
-  <div class="terminal-input-grid grid-2" style="margin-bottom: 24px;">
-    <!-- Drop Zone & File Upload -->
-    <div class="terminal-input-card" style="margin-bottom: 0;">
+  <!-- 3-Column Bento Row: Captura OCR (4 cols) + SMS/Texto (4 cols) + Escudo Forense Anti-Fraude (4 cols) -->
+  <div class="quantum-bento-grid" style="margin-bottom: 22px; align-items: stretch;">
+    <!-- Col 1: Drop Zone & File Upload -->
+    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
       <div class="terminal-card-header">
         <div class="card-header-title">
+          <span class="quantum-step-badge">01 · OCR</span>
           <span class="card-icon">📸</span>
-          <span class="card-title">Captura o Screenshot (OCR)</span>
+          <span class="card-title">Captura / Imagen</span>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 6px; align-items: center;">
           @if (hasScreenPipe()) {
             <button
               type="button"
               class="btn-primary"
-              style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; padding: 4px 10px; font-weight: 700;"
+              style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; padding: 4px 8px; font-weight: 700;"
               [disabled]="isProcessing()"
               (click)="captureWithScreenPipe()"
               title="Capturar pantalla en vivo con Screen Pipe nativo de Electron"
@@ -156,7 +152,7 @@
       <button
         type="button"
         class="drop-zone"
-        style="width: 100%; font: inherit; text-align: center;"
+        style="width: 100%; font: inherit; text-align: center; flex: 1;"
         [class.dragging]="isDragging()"
         (dragover)="onDragOver($event)"
         (dragleave)="onDragLeave($event)"
@@ -172,11 +168,11 @@
         />
         <span class="drop-icon">🧾</span>
         <p class="drop-title">Haz clic o arrastra un comprobante aquí</p>
-        <p class="drop-hint">Soporta capturas de Pago Móvil, BDV, Banesco, Bancolombia, Zinli</p>
+        <p class="drop-hint">Pago Móvil, BDV, Banesco, Bancolombia, Zinli</p>
       </button>
 
       @if (isProcessing()) {
-        <div style="margin-top: 14px;">
+        <div style="margin-top: 10px;">
           <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
             <span class="text-muted">{{ progressStatus() }}</span>
             <span class="font-mono" style="color: var(--gold);">{{ progressPct() }}%</span>
@@ -188,24 +184,25 @@
       }
     </div>
 
-    <!-- Manual Text / SMS Ingestion -->
-    <div class="terminal-input-card" style="margin-bottom: 0;">
+    <!-- Col 2: Manual Text / SMS Ingestion -->
+    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
       <div class="terminal-card-header">
         <div class="card-header-title">
+          <span class="quantum-step-badge">02 · SMS</span>
           <span class="card-icon">💬</span>
-          <span class="card-title">Texto de SMS o Mensaje Bancario</span>
+          <span class="card-title">Texto Bancario</span>
         </div>
         <span class="badge">Inmediato</span>
       </div>
 
-      <div class="terminal-field" style="margin-bottom: 12px;">
+      <div class="terminal-field" style="flex: 1;">
         <label class="terminal-label" for="manual-receipt-text">
-          <span>Pega el texto del recibo o notificación bancaria</span>
+          <span>Pega el texto del recibo o SMS bancario</span>
         </label>
         <textarea
           id="manual-receipt-text"
           class="terminal-input"
-          style="height: 100px; font-family: var(--font-mono); font-size: 0.8rem; resize: vertical;"
+          style="height: 112px; font-family: var(--font-mono); font-size: 0.8rem; resize: vertical;"
           [ngModel]="manualTextInput()"
           (ngModelChange)="manualTextInput.set($event)"
           placeholder="Ej: BDV: Pago Móvil exitoso por Bs. 2.450,00 ref 0001234567 a Juan Perez..."
@@ -218,73 +215,73 @@
           class="btn-primary"
           [disabled]="!manualTextInput().trim()"
           (click)="processManualText()"
-          style="font-size: 0.8rem; padding: 6px 14px;"
+          style="font-size: 0.8rem; padding: 7px 14px; width: 100%;"
         >
-          Procesar Texto
+          ⚡ Procesar Texto Bancario
         </button>
       </div>
     </div>
-  </div>
 
-  <!-- Anti-Triangulation & Fraud Shield Reference Bar -->
-  <div class="terminal-input-card" style="margin-bottom: 24px;">
-    <div class="terminal-card-header">
-      <div class="card-header-title">
-        <span class="card-icon">🛡️</span>
-        <span class="card-title">Escudo Forense Anti-Fraude & Cruce de Identidad</span>
-      </div>
-      <span class="badge badge-accent">Auditoría en Tiempo Real</span>
-    </div>
-
-    <div class="terminal-input-grid grid-3">
-      <div class="terminal-field">
-        <label class="terminal-label" for="counterparty-check-input">
-          <span>Titular Verificado en Binance / Bybit</span>
-          <span class="terminal-subtext">Nombre registrado en el exchange</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="counterparty-check-input"
-            type="text"
-            class="terminal-input"
-            [ngModel]="expectedCounterparty()"
-            (ngModelChange)="expectedCounterparty.set($event); recomputeAudits()"
-            placeholder="Ej. Pedro Pérez"
-          />
+    <!-- Col 3: Anti-Triangulation & Fraud Shield Reference Bar -->
+    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
+      <div class="terminal-card-header">
+        <div class="card-header-title">
+          <span class="quantum-step-badge">03 · ESCUDO</span>
+          <span class="card-icon">🛡️</span>
+          <span class="card-title">Cruce de Identidad</span>
         </div>
+        <span class="badge badge-accent">En Vivo</span>
       </div>
 
-      <div class="terminal-field">
-        <label class="terminal-label" for="counterparty-id-input">
-          <span>Cédula o RIF de la Orden (Opcional)</span>
-          <span class="terminal-subtext">Cédula del comprador en el exchange</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="counterparty-id-input"
-            type="text"
-            class="terminal-input"
-            [ngModel]="expectedId()"
-            (ngModelChange)="expectedId.set($event); recomputeAudits()"
-            placeholder="Ej. V-18293041"
-          />
+      <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
+        <div class="terminal-field">
+          <label class="terminal-label" for="counterparty-check-input">
+            <span>Titular Verificado (Exchange)</span>
+          </label>
+          <div class="input-control-wrap">
+            <input
+              id="counterparty-check-input"
+              type="text"
+              class="terminal-input"
+              [ngModel]="expectedCounterparty()"
+              (ngModelChange)="expectedCounterparty.set($event); recomputeAudits()"
+              placeholder="Ej. Pedro Pérez"
+            />
+          </div>
         </div>
-      </div>
 
-      <div class="terminal-field">
-        <label class="terminal-label" for="counterparty-amount-input">
-          <span>Monto Esperado de la Orden (Opcional)</span>
-          <span class="terminal-subtext">Para detectar pagos fraccionados</span>
-        </label>
-        <div class="input-control-wrap">
-          <input
-            id="counterparty-amount-input"
-            type="number"
-            class="terminal-input font-mono"
-            [ngModel]="expectedAmount()"
-            (ngModelChange)="expectedAmount.set($event); recomputeAudits()"
-            placeholder="Ej. 5400.00"
-          />
+        <div class="terminal-input-grid grid-2" style="gap: 10px;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="counterparty-id-input">
+              <span>Cédula / RIF</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="counterparty-id-input"
+                type="text"
+                class="terminal-input"
+                [ngModel]="expectedId()"
+                (ngModelChange)="expectedId.set($event); recomputeAudits()"
+                placeholder="V-18293041"
+              />
+            </div>
+          </div>
+
+          <div class="terminal-field">
+            <label class="terminal-label" for="counterparty-amount-input">
+              <span>Monto Orden</span>
+            </label>
+            <div class="input-control-wrap">
+              <input
+                id="counterparty-amount-input"
+                type="number"
+                class="terminal-input font-mono"
+                [ngModel]="expectedAmount()"
+                (ngModelChange)="expectedAmount.set($event); recomputeAudits()"
+                placeholder="5400.00"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

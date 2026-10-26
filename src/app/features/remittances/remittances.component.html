@@ -91,11 +91,14 @@
       <!-- Main Workspace Grid: Controls & Comparison Table -->
       <div class="dual-workspace-grid">
         <!-- Left: Input & Margin Controls -->
-        <div class="dual-controls-panel card-surface">
+        <div class="dual-controls-panel card-surface quantum-sticky-col">
           <div class="input-header">
-            <label class="input-label" for="usd-ves-amount">
-              {{ isUsdToVes ? 'Monto en Dólares a cambiar (USD)' : 'Monto en Bolívares a cambiar (VES)' }}
-            </label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="quantum-step-badge">PASO 01</span>
+              <label class="input-label" for="usd-ves-amount" style="margin: 0;">
+                {{ isUsdToVes ? 'Monto en Dólares a cambiar (USD)' : 'Monto en Bolívares a cambiar (VES)' }}
+              </label>
+            </div>
             <span class="currency-tag">{{ conv.fromCurrency }}</span>
           </div>
 
