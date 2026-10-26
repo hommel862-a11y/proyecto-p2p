@@ -373,4 +373,125 @@ describe('ComplianceCockpitComponent', () => {
       expect(component.deals().length).toBe(0);
     });
   });
+
+  describe('Omnichannel CRM, AI Triage & Studio Engine', () => {
+    it('initializes with zero-seed empty collections for conversations and invoices', () => {
+      expect(component.conversations()).toEqual([]);
+      expect(component.invoicesOrQuotes()).toEqual([]);
+      expect(component.omnichannelConfig().aiMode).toBe('COPILOT_DRAFT');
+    });
+
+    it('creates a new conversation and persists to storage', () => {
+      component.newChatChannel.set('WHATSAPP');
+      component.newChatRecipient.set('584141234567');
+      component.newChatName.set('Cliente VIP');
+      component.createNewConversation();
+
+      expect(component.conversations().length).toBe(1);
+      const conv = component.conversations()[0];
+      expect(conv.contactName).toBe('Cliente VIP');
+      expect(conv.recipientPhoneOrIgId).toBe('584141234567');
+      expect(component.selectedConversationId()).toBe(conv.id);
+      expect(storageMock.set).toHaveBeenCalledWith(CRM_STORAGE_KEYS.CONVERSATIONS, expect.any(Array));
+    });
+
+    it('sends an outbound chat message and clears draft', () => {
+      component.newChatRecipient.set('584141234567');
+      component.createNewConversation();
+
+      component.chatDraftText.set('Buenas tardes, tasa en 84.50');
+      component.sendChatMessage();
+
+      const conv = component.activeConversation();
+      expect(conv?.messages.length).toBe(2);
+      expect(conv?.messages[1].text).toBe('Buenas tardes, tasa en 84.50');
+      expect(conv?.messages[1].direction).toBe('OUTBOUND');
+      expect(component.chatDraftText()).toBe('');
+    });
+
+    it('simulates inbound customer message with AI Triage in Copilot mode', () => {
+      component.newChatRecipient.set('584141234567');
+      component.createNewConversation();
+
+      component.testInboundText.set('Hola, ¿a qué tasa tienen el USDT por Pago Móvil?');
+      component.simulateIncomingCustomerMessage();
+
+      const triage = component.activeAiTriage();
+      expect(triage).not.toBeNull();
+      expect(triage?.detectedIntent).toBe('P2P_EXCHANGE');
+      expect(triage?.recommendedKanbanAction).toBe('CREATE_P2P_DEAL');
+      expect(component.chatDraftText()).toContain('USDT');
+    });
+
+    it('loads 3 copyable bank bubbles into chat draft', () => {
+      const bank: CrmBankAccount = {
+        id: 'BNK-TEST',
+        scope: 'P2P_DESK',
+        bankName: 'Mercantil',
+        currency: 'VES',
+        holderDetailsText: 'Juan Pérez\nV-26123456\nPago Móvil: 04141234567\nCuenta: 01050001000012345678',
+        currentBalanceFiat: 5000,
+        maxDailyCapFiat: 100000,
+        feePct: 0.3,
+        maxBurstTxPer15Min: 5,
+      };
+      component.banks.set([bank]);
+
+      component.newChatRecipient.set('584141234567');
+      component.createNewConversation();
+
+      component.sendBankBubblesToChat(bank.id);
+      expect(component.chatDraftText()).toContain('DATOS DE PAGO');
+      expect(component.chatDraftText()).toContain('V26123456');
+      expect(component.chatDraftText()).toContain('04141234567');
+    });
+
+    it('saves a studio quote and pushes a new deal to Kanban', () => {
+      component.studioDocType.set('PRESUPUESTO_QUOTE');
+      component.studioDocNumber.set('PRE-0099');
+      component.studioExchangeRate.set(80);
+      component.saveStudioDocument(true);
+
+      expect(component.invoicesOrQuotes().length).toBe(1);
+      expect(component.invoicesOrQuotes()[0].docNumber).toBe('PRE-0099');
+      expect(component.deals().length).toBe(1);
+      expect(component.deals()[0].stage).toBe('STAGE_1_NEW');
+      expect(component.activeView()).toBe('KANBAN');
+      expect(storageMock.set).toHaveBeenCalledWith(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, expect.any(Array));
+    });
+
+    it('supports cross-module shortcut openOmnichannelForDeal', () => {
+      const deal: PipelineDeal = {
+        id: 'DEAL-88',
+        scope: 'P2P_DESK',
+        title: 'Operación P2P Carlos',
+        contactId: 'CNT-99',
+        contactName: 'Carlos Gómez',
+        bankAccountId: 'BNK-1',
+        bankName: 'Banesco',
+        stage: 'STAGE_1_NEW',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 100,
+        appliedRate: 80,
+        replacementRate: 80,
+        totalFiatAmount: 8000,
+        paidFiatAmount: 0,
+        netProfitUsdt: 2,
+        bankReferenceId: '',
+        quoteTtlMinutes: 15,
+        quotedAt: Date.now(),
+        isRateExpired: false,
+        timeline: [],
+        createdAt: Date.now(),
+        closedAt: null,
+      };
+
+      component.openOmnichannelForDeal(deal);
+
+      expect(component.activeView()).toBe('OMNICHANNEL');
+      expect(component.omnichannelSubTab()).toBe('INBOX');
+      expect(component.activeConversation()?.contactName).toBe('Carlos Gómez');
+      expect(component.chatDraftText()).toContain('DEAL-88');
+    });
+  });
 });

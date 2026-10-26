@@ -30,6 +30,15 @@ import {
   CRM_STORAGE_KEYS,
   safeHydrateCrmCollection,
   validateAndSanitizeCrmBackupPayload,
+  evaluateMeta24hFreeWindow,
+  classifyAndDraftAiResponse,
+  buildCopyableBankBubbles,
+  calculateBillingDocumentTotals,
+  formatDocumentForMessaging,
+  buildWhatsAppDirectUrl,
+  buildGeminiMultimodalOcrPayload,
+  parseGeminiOcrResponse,
+  formatFiatNumber,
   type WorkspaceScope,
   type PipelineStage,
   type FiatCurrency,
@@ -44,6 +53,18 @@ import {
   type ClipboardParseResult,
   type KanbanColumn,
   type InboundReceiptEvent,
+  type MessagingChannel,
+  type AiOperatingMode,
+  type OmnichannelMessage,
+  type OmnichannelConversation,
+  type MetaFreeWindowEvaluation,
+  type AiTriageResult,
+  type CopyableBankBubbles,
+  type CrmDocumentType,
+  type BillingLineItem,
+  type CrmBillingDocument,
+  type OmnichannelIntegrationConfig,
+  type GeminiOcrParsedResult,
 } from '@p2p/core';
 
 export type CrmModuleView =
@@ -52,6 +73,7 @@ export type CrmModuleView =
   | 'CONTACTS'
   | 'BANKS'
   | 'ACTIVITIES'
+  | 'OMNICHANNEL'
   | 'SETTINGS';
 
 @Component({
@@ -81,28 +103,51 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.gatewaySubscription?.unsubscribe();
   }
 
+  readonly showGatewayConfigModal = signal<boolean>(false);
+  readonly gatewayUrlInput = signal<string>(this.inboundGateway.getGatewayUrl());
+  readonly gatewayTesting = signal<boolean>(false);
+  readonly gatewayTestResult = signal<{ ok: boolean; message: string } | null>(null);
+
   onGatewayPillClick(): void {
+    this.gatewayUrlInput.set(this.inboundGateway.getGatewayUrl());
+    this.gatewayTestResult.set(null);
+
     if (this.inboundGateway.status() === 'CONNECTED') {
-      this.toast.success(
-        `Inbound Gateway activo en ${this.inboundGateway.getGatewayUrl()}. Webhooks WhatsApp/Instagram listos.`,
-        'Gateway SSE'
+      this.toast.info(
+        `Inbound Gateway activo en ${this.inboundGateway.getGatewayUrl()}. Podés editar o verificar la conexión.`,
+        'Gateway Conectado'
       );
-      return;
     }
+    this.showGatewayConfigModal.set(true);
+  }
 
-    this.toast.info(`Intentando conectar con Inbound Gateway (${this.inboundGateway.getGatewayUrl()})...`, 'Gateway SSE');
-    this.inboundGateway.connect();
+  setGatewayUrlPreset(presetUrl: string): void {
+    this.gatewayUrlInput.set(presetUrl);
+    this.gatewayTestResult.set(null);
+  }
 
-    setTimeout(() => {
-      if (this.inboundGateway.status() !== 'CONNECTED') {
-        this.toast.warn(
-          `No se pudo conectar a ${this.inboundGateway.getGatewayUrl()}. Verificá que el daemon esté corriendo ('npm run inbound:start' o 'npm run electron:dev').`,
-          'Gateway Desconectado'
-        );
-      } else {
-        this.toast.success('¡Conectado exitosamente al Inbound Gateway!', 'Gateway Conectado');
-      }
-    }, 2500);
+  async testGatewayConnection(): Promise<void> {
+    this.gatewayTesting.set(true);
+    this.gatewayTestResult.set(null);
+    const targetUrl = this.gatewayUrlInput().trim();
+    const result = await this.inboundGateway.testConnection(targetUrl);
+    this.gatewayTesting.set(false);
+    if (result.ok) {
+      this.gatewayTestResult.set({ ok: true, message: `¡Conexión exitosa! Estado: ${result.status}` });
+    } else {
+      this.gatewayTestResult.set({
+        ok: false,
+        message: `No se pudo conectar (${result.error || 'Host inalcanzable'}). Asegurate de que el daemon esté activo ('npm run inbound:start').`,
+      });
+    }
+  }
+
+  saveAndConnectGateway(): void {
+    const targetUrl = this.gatewayUrlInput().trim();
+    if (!targetUrl) return;
+    this.inboundGateway.setGatewayUrl(targetUrl);
+    this.showGatewayConfigModal.set(false);
+    this.toast.success(`Guardada URL del Gateway: ${targetUrl}`, 'Gateway Configurado');
   }
 
   // ---------------------------------------------------------------------------
@@ -142,6 +187,64 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly settlements = signal<DailyNetProfitTransferPayload[]>(
     safeHydrateCrmCollection<DailyNetProfitTransferPayload>(this.storage.get(CRM_STORAGE_KEYS.SETTLEMENTS)),
   );
+
+  readonly conversations = signal<OmnichannelConversation[]>(
+    safeHydrateCrmCollection<OmnichannelConversation>(this.storage.get(CRM_STORAGE_KEYS.CONVERSATIONS)),
+  );
+
+  readonly invoicesOrQuotes = signal<CrmBillingDocument[]>(
+    safeHydrateCrmCollection<CrmBillingDocument>(this.storage.get(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES)),
+  );
+
+  readonly omnichannelConfig = signal<OmnichannelIntegrationConfig>(
+    this.storage.get<OmnichannelIntegrationConfig>(CRM_STORAGE_KEYS.OMNICHANNEL_CONFIG) ?? {
+      aiMode: 'COPILOT_DRAFT',
+      businessDisplayName: 'P2P Quant Treasury',
+      welcomeTemplateP2p: '¡Hola! Con gusto te atendemos en nuestra mesa P2P. Indícanos el monto en USDT o Fiat que deseas operar y tu método de pago preferido.',
+      welcomeTemplate360: '¡Hola! Con gusto gestionamos tu cotización o factura comercial. Indícanos los ítems o servicios requeridos para emitirte la propuesta formal.',
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // OMNICHANNEL & BILLING STUDIO SIGNALS
+  // ---------------------------------------------------------------------------
+  readonly omnichannelSubTab = signal<'INBOX' | 'STUDIO' | 'CONFIG'>('INBOX');
+  readonly selectedConversationId = signal<string | null>(null);
+  readonly chatSearchTerm = signal<string>('');
+  readonly chatDraftText = signal<string>('');
+  readonly testInboundText = signal<string>('');
+  readonly activeAiTriage = signal<AiTriageResult | null>(null);
+  readonly selectedBankForBubbles = signal<string>('');
+  readonly isAnalyzingOcr = signal<boolean>(false);
+  readonly ocrExtractedResult = signal<GeminiOcrParsedResult | null>(null);
+
+  // New Chat Modal
+  readonly showNewChatModal = signal<boolean>(false);
+  readonly newChatChannel = signal<MessagingChannel>('WHATSAPP');
+  readonly newChatContactId = signal<string>('');
+  readonly newChatRecipient = signal<string>('');
+  readonly newChatName = signal<string>('');
+
+  // Studio Document Signals
+  readonly studioDocType = signal<CrmDocumentType>('PRESUPUESTO_QUOTE');
+  readonly studioContactId = signal<string>('');
+  readonly studioDocNumber = signal<string>('');
+  readonly studioFiatCurrency = signal<FiatCurrency>('VES');
+  readonly studioExchangeRate = signal<number>(82.0);
+  readonly studioDiscountUsdt = signal<number>(0);
+  readonly studioTaxPct = signal<number>(0);
+  readonly studioBankAccountId = signal<string>('');
+  readonly studioBankRefId = signal<string>('');
+  readonly studioPaymentInstructions = signal<string>('');
+  readonly studioItems = signal<BillingLineItem[]>([
+    {
+      id: 'item-1',
+      description: 'Servicio / Operación Comercial',
+      quantity: 1,
+      unitPriceUsdt: 100,
+      category: 'PRODUCT',
+    },
+  ]);
 
   // Non-blocking in-component dialog signals (Electron & Web safe)
   readonly promptClosingDeal = signal<{
@@ -206,6 +309,40 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly isTodaySettled = computed<boolean>(() => {
     const todaySettlementId = `SETTLE-${this.todayDateIso()}`;
     return this.settlements().some((s) => s.settlementId === todaySettlementId);
+  });
+
+  readonly filteredConversations = computed(() => {
+    const scope = this.activeScope();
+    const term = this.chatSearchTerm().toLowerCase().trim();
+    return this.conversations().filter((c) => {
+      if (c.scope !== scope) return false;
+      if (!term) return true;
+      return (
+        c.contactName.toLowerCase().includes(term) ||
+        c.recipientPhoneOrIgId.toLowerCase().includes(term)
+      );
+    });
+  });
+
+  readonly activeConversation = computed(() => {
+    const id = this.selectedConversationId();
+    const list = this.filteredConversations();
+    if (!id) return list[0] ?? null;
+    return this.conversations().find((c) => c.id === id) ?? list[0] ?? null;
+  });
+
+  readonly activeConvFreeWindow = computed<MetaFreeWindowEvaluation>(() => {
+    const conv = this.activeConversation();
+    return evaluateMeta24hFreeWindow(conv?.lastInboundTimestamp, this.clockTick());
+  });
+
+  readonly studioTotals = computed(() => {
+    return calculateBillingDocumentTotals(
+      this.studioItems(),
+      this.studioDiscountUsdt(),
+      this.studioTaxPct(),
+      this.studioExchangeRate(),
+    );
   });
 
   // ---------------------------------------------------------------------------
@@ -666,11 +803,13 @@ export class ComplianceCockpitComponent implements OnDestroy {
     );
   }
 
-  moveDealToStage(dealId: string, targetStage: PipelineStage): void {
+  moveDealToStage(dealId: string, targetStage: PipelineStage, targetRef?: string): void {
     const deal = this.deals().find((d) => d.id === dealId);
     if (!deal) return;
 
-    if (targetStage === 'STAGE_4_CLOSED' && !deal.bankReferenceId.trim()) {
+    const refToUse = targetRef !== undefined ? targetRef : deal.bankReferenceId;
+
+    if (targetStage === 'STAGE_4_CLOSED' && !refToUse.trim()) {
       this.promptClosingDeal.set({
         deal,
         reference: '',
@@ -679,7 +818,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
       return;
     }
 
-    this.executeStageTransition(deal, targetStage, deal.bankReferenceId);
+    this.executeStageTransition(deal, targetStage, refToUse);
   }
 
   updateCloseDealRef(ref: string): void {
@@ -1104,9 +1243,903 @@ export class ComplianceCockpitComponent implements OnDestroy {
   // ---------------------------------------------------------------------------
   // ACTIONS: BACKUP & DATA EXPORT/IMPORT
   // ---------------------------------------------------------------------------
+  // 8. OMNICHANNEL CRM & INVOICE STUDIO METHODS
+  // ---------------------------------------------------------------------------
+  saveConversations(): void {
+    this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, this.conversations());
+  }
+
+  saveInvoicesOrQuotes(): void {
+    this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, this.invoicesOrQuotes());
+  }
+
+  updateOmnichannelConfig(field: keyof OmnichannelIntegrationConfig, val: any): void {
+    const updated = {
+      ...this.omnichannelConfig(),
+      [field]: val,
+    };
+    this.omnichannelConfig.set(updated);
+    this.storage.set(CRM_STORAGE_KEYS.OMNICHANNEL_CONFIG, updated);
+  }
+
+  selectConversation(id: string): void {
+    this.selectedConversationId.set(id);
+    const updated = this.conversations().map((c) =>
+      c.id === id ? { ...c, unreadCount: 0 } : c,
+    );
+    this.conversations.set(updated);
+    this.saveConversations();
+  }
+
+  openNewChatModal(): void {
+    this.newChatChannel.set('WHATSAPP');
+    this.newChatContactId.set('');
+    this.newChatRecipient.set('');
+    this.newChatName.set('');
+    this.showNewChatModal.set(true);
+  }
+
+  onNewChatContactSelected(contactId: string): void {
+    this.newChatContactId.set(contactId);
+    const c = this.contacts().find((item) => item.id === contactId);
+    if (c) {
+      this.newChatName.set(c.name);
+      this.newChatRecipient.set(c.phoneOrContact || '');
+    }
+  }
+
+  createNewConversation(): void {
+    const recipient = this.newChatRecipient().trim();
+    if (!recipient) {
+      this.toast.warn('Ingrese el número o handle del destinatario.', 'Nueva Conversación');
+      return;
+    }
+
+    const name = this.newChatName().trim() || recipient;
+    const newConv: OmnichannelConversation = {
+      id: `conv-${Date.now()}`,
+      scope: this.activeScope(),
+      contactId: this.newChatContactId() || null,
+      contactName: name,
+      channel: this.newChatChannel(),
+      recipientPhoneOrIgId: recipient,
+      lastInboundTimestamp: Date.now(),
+      unreadCount: 0,
+      linkedDealId: null,
+      messages: [
+        {
+          id: `msg-${Date.now()}`,
+          conversationId: `conv-${Date.now()}`,
+          channel: this.newChatChannel(),
+          direction: 'INBOUND',
+          senderHandle: recipient,
+          text: 'Conversación iniciada con cliente.',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    const next = [newConv, ...this.conversations()];
+    this.conversations.set(next);
+    this.saveConversations();
+    this.selectedConversationId.set(newConv.id);
+    this.showNewChatModal.set(false);
+    this.toast.success(`Conversación creada con ${name}.`, 'Omnicanal');
+  }
+
+  sendChatMessage(): void {
+    const text = this.chatDraftText().trim();
+    const conv = this.activeConversation();
+    if (!conv || !text) return;
+
+    const newMsg: OmnichannelMessage = {
+      id: `msg-${Date.now()}`,
+      conversationId: conv.id,
+      channel: conv.channel,
+      direction: 'OUTBOUND',
+      senderHandle: 'Operador CRM',
+      text,
+      timestamp: Date.now(),
+    };
+
+    this.appendMessageToConversation(conv.id, newMsg);
+    this.chatDraftText.set('');
+    this.toast.success('Mensaje despachado.', 'Chat Omnicanal');
+  }
+
+  simulateIncomingCustomerMessage(): void {
+    const text = this.testInboundText().trim();
+    const conv = this.activeConversation();
+    if (!conv || !text) {
+      this.toast.warn('Escriba un mensaje simulado primero.', 'Simulación IA');
+      return;
+    }
+
+    const triage = classifyAndDraftAiResponse(
+      text,
+      this.deals(),
+      this.activeScope(),
+      this.omnichannelConfig(),
+    );
+    this.activeAiTriage.set(triage);
+
+    const inboundMsg: OmnichannelMessage = {
+      id: `msg-${Date.now()}`,
+      conversationId: conv.id,
+      channel: conv.channel,
+      direction: 'INBOUND',
+      senderHandle: conv.recipientPhoneOrIgId,
+      text,
+      timestamp: Date.now(),
+      detectedIntent: triage.detectedIntent,
+      extractedReferenceId: triage.extractedReferenceId,
+      extractedAmount: triage.extractedAmount,
+      aiConfidence: triage.confidence,
+    };
+
+    this.appendMessageToConversation(conv.id, inboundMsg);
+    this.testInboundText.set('');
+
+    const mode = this.omnichannelConfig().aiMode;
+    if (mode === 'AUTOPILOT') {
+      setTimeout(() => {
+        const aiMsg: OmnichannelMessage = {
+          id: `msg-${Date.now() + 1}`,
+          conversationId: conv.id,
+          channel: conv.channel,
+          direction: 'OUTBOUND',
+          senderHandle: 'IA Autopilot',
+          text: triage.suggestedReplyText,
+          timestamp: Date.now(),
+        };
+        this.appendMessageToConversation(conv.id, aiMsg);
+        this.toast.info('Autopilot IA respondió automáticamente al cliente.', 'Autopilot');
+      }, 500);
+    } else {
+      // COPILOT_DRAFT or MANUAL
+      this.chatDraftText.set(triage.suggestedReplyText);
+      this.toast.info(
+        `Triaje IA: ${triage.detectedIntent} (${(triage.confidence * 100).toFixed(0)}% conf). Respuesta sugerida cargada en el borrador.`,
+        'Copiloto IA',
+      );
+    }
+  }
+
+  applyTriageAction(): void {
+    const triage = this.activeAiTriage();
+    const conv = this.activeConversation();
+    if (!triage || !conv) return;
+
+    if (triage.recommendedKanbanAction === 'CREATE_P2P_DEAL' || triage.recommendedKanbanAction === 'CREATE_360_QUOTE_DEAL') {
+      const is360 = triage.recommendedKanbanAction === 'CREATE_360_QUOTE_DEAL';
+      const targetScope: WorkspaceScope = is360 ? 'FINANCE_360' : 'P2P_DESK';
+      const contact = this.contacts().find((c) => c.id === conv.contactId);
+      const contactName = contact ? contact.name : conv.contactName;
+      const bank = this.banks().find((b) => b.scope === targetScope) ?? this.banks()[0] ?? { id: 'BNK-1', bankName: 'Banco Primario' };
+
+      const amountUsdt = triage.extractedAmount || 100;
+      const rate = this.liveReplacementRate();
+      const now = Date.now();
+
+      const newDeal: PipelineDeal = {
+        id: `DEAL-${Date.now().toString().slice(-6)}`,
+        scope: targetScope,
+        title: is360 ? `Presupuesto Comercial: ${contactName}` : `Operación P2P: ${contactName}`,
+        contactId: contact ? contact.id : 'CNT-DIRECT',
+        contactName,
+        bankAccountId: bank.id,
+        bankName: bank.bankName,
+        stage: 'STAGE_1_NEW',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: amountUsdt,
+        appliedRate: rate,
+        replacementRate: rate,
+        totalFiatAmount: Math.round(amountUsdt * rate * 100) / 100,
+        paidFiatAmount: 0,
+        netProfitUsdt: Math.round(amountUsdt * 0.02 * 100) / 100,
+        bankReferenceId: triage.extractedReferenceId || '',
+        quoteTtlMinutes: 15,
+        quotedAt: now,
+        isRateExpired: false,
+        timeline: [
+          {
+            timestamp: now,
+            fromStage: null,
+            toStage: 'STAGE_1_NEW',
+            notes: `Trato creado automáticamente por Triaje IA (${conv.channel})`,
+          },
+        ],
+        createdAt: now,
+        closedAt: null,
+      };
+
+      const updatedDeals = [newDeal, ...this.deals()];
+      this.deals.set(updatedDeals);
+      this.storage.set(CRM_STORAGE_KEYS.DEALS, updatedDeals);
+
+      // Link to conversation
+      const updatedConvs = this.conversations().map((c) =>
+        c.id === conv.id ? { ...c, linkedDealId: newDeal.id } : c,
+      );
+      this.conversations.set(updatedConvs);
+      this.saveConversations();
+
+      this.toast.success(`Trato #${newDeal.id} creado en el Pipeline Kanban.`, 'Triaje IA');
+      this.setView('KANBAN');
+    } else if (triage.recommendedKanbanAction === 'ATTACH_PAYMENT_REF') {
+      const ref = triage.extractedReferenceId;
+      if (!ref) return;
+
+      const dealToUpdate = this.deals().find(
+        (d) => d.id === conv.linkedDealId || (conv.contactId && d.contactId === conv.contactId && d.stage !== 'STAGE_4_CLOSED'),
+      );
+
+      if (dealToUpdate) {
+        this.moveDealToStage(dealToUpdate.id, 'STAGE_3_VERIFY', ref);
+        this.toast.success(`Referencia ${ref} adjuntada al trato #${dealToUpdate.id}. Avanzado a Verificando.`, 'Referencia Bancaria');
+      } else {
+        this.toast.info(`Referencia ${ref} verificada. No se encontró trato abierto pendiente para este contacto.`, 'Referencia Registrada');
+      }
+    }
+
+    this.activeAiTriage.set(null);
+  }
+
+  sendBankBubblesToChat(bankId: string): void {
+    const bank = this.banks().find((b) => b.id === bankId);
+    const conv = this.activeConversation();
+    if (!bank || !conv) {
+      this.toast.warn('Seleccione una cuenta bancaria válida.', 'Burbujas Bancarias');
+      return;
+    }
+
+    const linkedDeal = this.deals().find((d) => d.id === conv.linkedDealId);
+    const bubbles = buildCopyableBankBubbles(bank, linkedDeal?.totalFiatAmount);
+
+    this.chatDraftText.set(bubbles.formattedBlock);
+
+    try {
+      navigator.clipboard.writeText(bubbles.formattedBlock);
+      this.toast.success('Burbujas bancarias cargadas y copiadas al portapapeles.', 'Fácil Copiar');
+    } catch {
+      this.toast.success('Burbujas bancarias cargadas en el borrador.', 'Burbujas');
+    }
+  }
+
+  insertDocTemplateIntoChat(docId: string): void {
+    const doc = this.invoicesOrQuotes().find((d) => d.id === docId);
+    if (!doc) return;
+
+    const bank = this.banks().find((b) => b.id === this.studioBankAccountId()) ?? this.banks()[0];
+    const text = formatDocumentForMessaging(doc, bank);
+    this.chatDraftText.set(text);
+    this.toast.success(`Documento #${doc.docNumber} insertado en el borrador.`, 'Documento');
+  }
+
+  openWhatsAppDirectForActiveChat(): void {
+    const conv = this.activeConversation();
+    if (!conv) return;
+    const text = this.chatDraftText();
+    const url = buildWhatsAppDirectUrl(conv.recipientPhoneOrIgId, text);
+    window.open(url, '_blank');
+  }
+
+  evaluateConversationFreeWindow(conv: OmnichannelConversation): MetaFreeWindowEvaluation {
+    return evaluateMeta24hFreeWindow(conv?.lastInboundTimestamp, this.clockTick());
+  }
+
+  copyFullDraftText(): void {
+    const text = this.chatDraftText();
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    this.toast.success('Texto copiado al portapapeles.', 'Copiado');
+  }
+
+  private appendMessageToConversation(convId: string, msg: OmnichannelMessage): void {
+    const nextConvs = this.conversations().map((c) => {
+      if (c.id !== convId) return c;
+      const isIncoming = msg.direction === 'INBOUND';
+      return {
+        ...c,
+        lastInboundTimestamp: isIncoming ? msg.timestamp : c.lastInboundTimestamp,
+        unreadCount: isIncoming ? c.unreadCount + 1 : c.unreadCount,
+        messages: [...c.messages, msg],
+      };
+    });
+    this.conversations.set(nextConvs);
+    this.saveConversations();
+  }
+
+  // ---------------------------------------------------------------------------
+  // CLIPBOARD OCR IMAGE LISTENER (CTRL+V CAPTURE PASTE)
+  // ---------------------------------------------------------------------------
+  @HostListener('paste', ['$event'])
+  onGlobalPaste(event: ClipboardEvent): void {
+    if (this.activeView() !== 'OMNICHANNEL' || this.omnichannelSubTab() !== 'INBOX') return;
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          event.preventDefault();
+          this.handlePastedImageFile(file);
+          break;
+        }
+      }
+    }
+  }
+
+  handlePastedImageFile(file: File): void {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      if (!base64) return;
+      this.processReceiptOcr(base64);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async processReceiptOcr(base64: string): Promise<void> {
+    const activeConv = this.activeConversation();
+    if (!activeConv) {
+      this.toast.warn('Seleccione una conversación para adjuntar la captura.', 'Bandeja');
+      return;
+    }
+
+    const apiKey = this.omnichannelConfig().geminiApiKey?.trim();
+    this.isAnalyzingOcr.set(true);
+
+    let ocrResult: GeminiOcrParsedResult;
+
+    if (apiKey) {
+      this.toast.info('Analizando captura con Gemini Flash Multimodal...', 'OCR IA');
+      try {
+        const payload = buildGeminiMultimodalOcrPayload(base64);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        ocrResult = parseGeminiOcrResponse(data);
+      } catch (err) {
+        console.warn('Gemini OCR API error:', err);
+        ocrResult = {
+          bank: null,
+          reference: null,
+          amount: null,
+          currency: null,
+          date: null,
+          rawNotes: 'Error al contactar Gemini API.',
+        };
+      }
+    } else {
+      this.toast.info('Captura adjuntada. Ingrese su API Key gratuita de Gemini Flash en Ajustes para extracción OCR automática.', 'Comprobante');
+      ocrResult = {
+        bank: null,
+        reference: null,
+        amount: null,
+        currency: null,
+        date: null,
+        rawNotes: 'Comprobante adjuntado vía portapapeles.',
+      };
+    }
+
+    this.isAnalyzingOcr.set(false);
+    this.ocrExtractedResult.set(ocrResult);
+
+    const refText = ocrResult.reference ? ` | Ref: ${ocrResult.reference}` : '';
+    const amountText = ocrResult.amount ? ` | Monto: ${ocrResult.amount} ${ocrResult.currency || ''}` : '';
+    const newMsg: OmnichannelMessage = {
+      id: `msg-${Date.now()}`,
+      conversationId: activeConv.id,
+      channel: activeConv.channel,
+      direction: 'INBOUND',
+      senderHandle: activeConv.recipientPhoneOrIgId,
+      text: `[Comprobante de Pago]${refText}${amountText}`,
+      timestamp: Date.now(),
+      imageUrl: base64,
+      detectedIntent: 'PAYMENT_PROOF',
+      extractedReferenceId: ocrResult.reference || undefined,
+      extractedAmount: ocrResult.amount || undefined,
+    };
+
+    this.appendMessageToConversation(activeConv.id, newMsg);
+
+    if (ocrResult.reference) {
+      const collision = verifyReferenceCollision(this.deals(), ocrResult.reference);
+      if (collision.isDuplicate) {
+        this.toast.error(
+          `⚠️ ALERTA: La referencia ${ocrResult.reference} ya fue utilizada en el trato #${collision.existingDeal?.id}`,
+          'Colisión de Referencia',
+        );
+      } else {
+        this.toast.success(
+          `Referencia ${ocrResult.reference} cotejada y válida. Lista para avanzar en Kanban.`,
+          'Pago Válido',
+        );
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 9. NATIVE INVOICE, QUOTE & RECEIPT STUDIO
+  // ---------------------------------------------------------------------------
+  addStudioItem(): void {
+    const newItem: BillingLineItem = {
+      id: `item-${Date.now()}`,
+      description: 'Nuevo Ítem Comercial',
+      quantity: 1,
+      unitPriceUsdt: 50,
+      category: 'PRODUCT',
+    };
+    this.studioItems.set([...this.studioItems(), newItem]);
+    setTimeout(() => this.renderVoucherCanvas(), 50);
+  }
+
+  removeStudioItem(itemId: string): void {
+    const next = this.studioItems().filter((it) => it.id !== itemId);
+    this.studioItems.set(next);
+    setTimeout(() => this.renderVoucherCanvas(), 50);
+  }
+
+  updateStudioItem(index: number, field: keyof BillingLineItem, val: any): void {
+    const items = [...this.studioItems()];
+    if (!items[index]) return;
+    items[index] = { ...items[index], [field]: val };
+    this.studioItems.set(items);
+    setTimeout(() => this.renderVoucherCanvas(), 50);
+  }
+
+  renderVoucherCanvas(): void {
+    const canvas = document.getElementById('voucherCanvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = 800;
+    const height = 980;
+    canvas.width = width;
+    canvas.height = height;
+
+    // Background Dark Slate
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    // Border
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(8, 8, width - 16, height - 16);
+
+    // Header Banner
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0, '#1e293b');
+    grad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(10, 10, width - 20, 140);
+
+    // Brand Label
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText((this.omnichannelConfig().businessDisplayName || 'P2P QUANT TREASURY').toUpperCase(), 40, 55);
+
+    // Subtitle
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('SISTEMA INTEGRADO DE LIQUIDACIÓN Y FACTURACIÓN COMERCIAL', 40, 80);
+
+    // Document Title & Number
+    const docTypeTitles: Record<CrmDocumentType, string> = {
+      PRESUPUESTO_QUOTE: 'PRESUPUESTO / COTIZACIÓN',
+      FACTURA_INVOICE: 'FACTURA COMERCIAL',
+      COMPROBANTE_P2P: 'COMPROBANTE DE LIQUIDACIÓN P2P',
+    };
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText(docTypeTitles[this.studioDocType()] || 'COMPROBANTE', 40, 122);
+
+    // Doc Number & Date
+    const docNum = this.studioDocNumber() || `DOC-${Date.now().toString().slice(-6)}`;
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Nº ${docNum}`, width - 40, 60);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px sans-serif';
+    ctx.fillText(`Fecha: ${new Date().toLocaleDateString('es-ES')}`, width - 40, 85);
+    ctx.fillText(`Ámbito: ${this.activeScope()}`, width - 40, 110);
+    ctx.textAlign = 'left';
+
+    // Divider
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(30, 160);
+    ctx.lineTo(width - 30, 160);
+    ctx.stroke();
+
+    // Client Info Box
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(30, 175, width - 60, 90);
+
+    const contact = this.contacts().find((c) => c.id === this.studioContactId());
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('EMITIDO A NOMBRE DE:', 50, 202);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(contact ? contact.name : 'Cliente Directo / Mostrador', 50, 230);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '14px monospace';
+    ctx.fillText(`Doc: ${contact?.documentId || 'N/A'}  |  Tel: ${contact?.phoneOrContact || 'N/A'}`, 50, 252);
+
+    // Table Header
+    let y = 300;
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(30, y, width - 60, 36);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('CANT', 45, y + 23);
+    ctx.fillText('DESCRIPCIÓN', 120, y + 23);
+    ctx.fillText('CATEGORÍA', 460, y + 23);
+    ctx.textAlign = 'right';
+    ctx.fillText('P. UNIT (USDT)', 650, y + 23);
+    ctx.fillText('TOTAL (USDT)', width - 45, y + 23);
+    ctx.textAlign = 'left';
+
+    // Line Items
+    y += 48;
+    ctx.font = '14px sans-serif';
+    for (const it of this.studioItems()) {
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillText(`${it.quantity}x`, 45, y);
+      ctx.fillText(it.description || 'Ítem sin descripción', 120, y);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px monospace';
+      ctx.fillText(it.category, 460, y);
+
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = '14px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`$${it.unitPriceUsdt.toFixed(2)}`, 650, y);
+      ctx.fillText(`$${(it.quantity * it.unitPriceUsdt).toFixed(2)}`, width - 45, y);
+      ctx.textAlign = 'left';
+
+      y += 34;
+      if (y > 560) break;
+    }
+
+    // Totals Box
+    const totalsY = 620;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(width - 380, totalsY, 350, 190);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeRect(width - 380, totalsY, 350, 190);
+
+    const totals = this.studioTotals();
+    let rowY = totalsY + 30;
+
+    const drawRow = (label: string, val: string, isBig = false, color = '#f8fafc') => {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = isBig ? 'bold 15px sans-serif' : '13px sans-serif';
+      ctx.fillText(label, width - 360, rowY);
+
+      ctx.fillStyle = color;
+      ctx.font = isBig ? 'bold 20px monospace' : 'bold 14px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(val, width - 50, rowY);
+      ctx.textAlign = 'left';
+      rowY += isBig ? 38 : 28;
+    };
+
+    drawRow('Subtotal:', `$${totals.subtotalUsdt.toFixed(2)} USDT`);
+    if (totals.discountUsdt > 0) drawRow('Descuento:', `-$${totals.discountUsdt.toFixed(2)} USDT`, false, '#ef4444');
+    if (totals.taxOrFeeUsdt > 0) drawRow(`Impuesto (${this.studioTaxPct()}%):`, `+$${totals.taxOrFeeUsdt.toFixed(2)} USDT`, false, '#f59e0b');
+    drawRow('TOTAL A PAGAR:', `$${totals.totalUsdt.toFixed(2)} USDT`, true, '#10b981');
+    drawRow(`TOTAL EN ${this.studioFiatCurrency()}:`, `${formatFiatNumber(totals.totalFiat)} ${this.studioFiatCurrency()}`, true, '#38bdf8');
+
+    // Left info (Bank Instructions & Ref)
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('INSTRUCCIONES / DETALLES DE PAGO:', 40, totalsY + 25);
+
+    const bank = this.banks().find((b) => b.id === this.studioBankAccountId());
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '13px sans-serif';
+    if (bank) {
+      const bubbles = buildCopyableBankBubbles(bank, totals.totalFiat);
+      ctx.fillText(`Banco: ${bank.bankName} (${bank.currency})`, 40, totalsY + 50);
+      ctx.fillText(`Titular: ${bank.holderDetailsText.split('\n')[0] || ''}`, 40, totalsY + 75);
+      ctx.font = '13px monospace';
+      ctx.fillText(`Doc / RIF: ${bubbles.docIdBubble}`, 40, totalsY + 100);
+      ctx.fillText(`Cuenta / Pago Móvil: ${bubbles.accountOrPhoneBubble}`, 40, totalsY + 125);
+    } else {
+      ctx.fillText(this.studioPaymentInstructions() || 'Pago acordado vía transferencia bancaria o Pago Móvil.', 40, totalsY + 55);
+    }
+
+    if (this.studioBankRefId()) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(`REFERENCIA BANCARIA: ${this.studioBankRefId()}`, 40, totalsY + 160);
+    }
+
+    // Bottom Watermark
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Documento digital generado institucionalmente por P2P Quant Treasury CRM.', 40, height - 30);
+    ctx.textAlign = 'right';
+    ctx.fillText(`ID: ${docNum} | Verificación Criptográfica`, width - 40, height - 30);
+    ctx.textAlign = 'left';
+  }
+
+  copyCanvasImageToClipboard(): void {
+    const canvas = document.getElementById('voucherCanvas') as HTMLCanvasElement | null;
+    if (!canvas) {
+      this.toast.warn('Renderice el comprobante primero.', 'Studio');
+      return;
+    }
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        this.toast.error('No se pudo generar la imagen del comprobante.', 'Error');
+        return;
+      }
+      try {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+          this.toast.success('¡Comprobante copiado al portapapeles! Listo para pegar en WhatsApp o Instagram.', 'Copiado');
+        }).catch(() => {
+          this.downloadCanvasImage();
+        });
+      } catch {
+        this.downloadCanvasImage();
+      }
+    });
+  }
+
+  downloadCanvasImage(): void {
+    const canvas = document.getElementById('voucherCanvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    const docNum = this.studioDocNumber() || `DOC-${Date.now().toString().slice(-6)}`;
+    a.download = `Comprobante-${docNum}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    this.toast.success('Comprobante descargado en PNG.', 'Descargado');
+  }
+
+  saveStudioDocument(createDeal: boolean = false): void {
+    const contact = this.contacts().find((c) => c.id === this.studioContactId());
+    const totals = this.studioTotals();
+    const docNum = this.studioDocNumber() || `DOC-${Date.now().toString().slice(-6)}`;
+
+    const newDoc: CrmBillingDocument = {
+      id: `doc-${Date.now()}`,
+      docNumber: docNum,
+      scope: this.activeScope(),
+      docType: this.studioDocType(),
+      contactId: contact ? contact.id : 'CNT-DIRECT',
+      contactName: contact ? contact.name : 'Cliente Directo',
+      contactDocId: contact?.documentId || '',
+      fiatCurrency: this.studioFiatCurrency(),
+      exchangeRate: this.studioExchangeRate(),
+      items: this.studioItems(),
+      subtotalUsdt: totals.subtotalUsdt,
+      discountUsdt: totals.discountUsdt,
+      taxOrFeeUsdt: totals.taxOrFeeUsdt,
+      totalUsdt: totals.totalUsdt,
+      totalFiat: totals.totalFiat,
+      paymentInstructionsText: this.studioPaymentInstructions(),
+      bankReferenceId: this.studioBankRefId() || undefined,
+      status: this.studioDocType() === 'COMPROBANTE_P2P' ? 'PAID' : 'DRAFT',
+      createdAt: Date.now(),
+    };
+
+    const next = [newDoc, ...this.invoicesOrQuotes()];
+    this.invoicesOrQuotes.set(next);
+    this.saveInvoicesOrQuotes();
+    this.toast.success(`Documento #${newDoc.docNumber} guardado en el estudio.`, 'Guardado');
+
+    if (createDeal) {
+      const bank = this.banks().find((b) => b.id === this.studioBankAccountId()) ?? this.banks()[0] ?? { id: 'BNK-1', bankName: 'Banco' };
+      const now = Date.now();
+      const newDeal: PipelineDeal = {
+        id: `DEAL-${Date.now().toString().slice(-6)}`,
+        scope: this.activeScope(),
+        title: `${newDoc.docType === 'COMPROBANTE_P2P' ? 'Liquidación' : 'Cotización'}: ${newDoc.contactName}`,
+        contactId: newDoc.contactId,
+        contactName: newDoc.contactName,
+        bankAccountId: bank.id,
+        bankName: bank.bankName,
+        stage: newDoc.docType === 'COMPROBANTE_P2P' ? 'STAGE_4_CLOSED' : 'STAGE_1_NEW',
+        fiatCurrency: newDoc.fiatCurrency,
+        cryptoAmountUsdt: newDoc.totalUsdt,
+        appliedRate: newDoc.exchangeRate,
+        replacementRate: newDoc.exchangeRate,
+        totalFiatAmount: newDoc.totalFiat,
+        paidFiatAmount: newDoc.docType === 'COMPROBANTE_P2P' ? newDoc.totalFiat : 0,
+        netProfitUsdt: Math.round(newDoc.totalUsdt * 0.02 * 100) / 100,
+        bankReferenceId: newDoc.bankReferenceId || '',
+        quoteTtlMinutes: 15,
+        quotedAt: now,
+        isRateExpired: false,
+        timeline: [
+          {
+            timestamp: now,
+            fromStage: null,
+            toStage: newDoc.docType === 'COMPROBANTE_P2P' ? 'STAGE_4_CLOSED' : 'STAGE_1_NEW',
+            notes: `Generado desde Estudio de Facturación (${newDoc.docNumber})`,
+          },
+        ],
+        createdAt: now,
+        closedAt: newDoc.docType === 'COMPROBANTE_P2P' ? now : null,
+      };
+
+      const updatedDeals = [newDeal, ...this.deals()];
+      this.deals.set(updatedDeals);
+      this.storage.set(CRM_STORAGE_KEYS.DEALS, updatedDeals);
+      this.toast.success(`Trato #${newDeal.id} generado en el tablero Kanban.`, 'Kanban');
+      this.setView('KANBAN');
+    }
+  }
+
+  sendStudioDocViaWhatsApp(): void {
+    const contact = this.contacts().find((c) => c.id === this.studioContactId());
+    const phone = contact?.phoneOrContact || '';
+    if (!phone) {
+      this.toast.warn('El contacto seleccionado no tiene número de teléfono registrado.', 'WhatsApp Direct');
+      return;
+    }
+
+    const totals = this.studioTotals();
+    const docNum = this.studioDocNumber() || `DOC-${Date.now().toString().slice(-6)}`;
+    const doc: CrmBillingDocument = {
+      id: `doc-${Date.now()}`,
+      docNumber: docNum,
+      scope: this.activeScope(),
+      docType: this.studioDocType(),
+      contactId: contact ? contact.id : 'CNT-DIRECT',
+      contactName: contact ? contact.name : 'Cliente Directo',
+      contactDocId: contact?.documentId || '',
+      fiatCurrency: this.studioFiatCurrency(),
+      exchangeRate: this.studioExchangeRate(),
+      items: this.studioItems(),
+      subtotalUsdt: totals.subtotalUsdt,
+      discountUsdt: totals.discountUsdt,
+      taxOrFeeUsdt: totals.taxOrFeeUsdt,
+      totalUsdt: totals.totalUsdt,
+      totalFiat: totals.totalFiat,
+      paymentInstructionsText: this.studioPaymentInstructions(),
+      bankReferenceId: this.studioBankRefId() || undefined,
+      status: 'DRAFT',
+      createdAt: Date.now(),
+    };
+
+    const bank = this.banks().find((b) => b.id === this.studioBankAccountId());
+    const msg = formatDocumentForMessaging(doc, bank);
+    const url = buildWhatsAppDirectUrl(phone, msg);
+    window.open(url, '_blank');
+  }
+
+  deleteStudioDocument(docId: string): void {
+    const next = this.invoicesOrQuotes().filter((d) => d.id !== docId);
+    this.invoicesOrQuotes.set(next);
+    this.saveInvoicesOrQuotes();
+    this.toast.success('Documento eliminado del historial.', 'Eliminado');
+  }
+
+  loadStudioDocument(doc: CrmBillingDocument): void {
+    this.studioDocType.set(doc.docType);
+    this.studioContactId.set(doc.contactId);
+    this.studioDocNumber.set(doc.docNumber);
+    this.studioFiatCurrency.set(doc.fiatCurrency);
+    this.studioExchangeRate.set(doc.exchangeRate);
+    this.studioDiscountUsdt.set(doc.discountUsdt);
+    this.studioTaxPct.set(0);
+    this.studioPaymentInstructions.set(doc.paymentInstructionsText || '');
+    this.studioBankRefId.set(doc.bankReferenceId || '');
+    this.studioItems.set(doc.items || []);
+    this.toast.info(`Documento #${doc.docNumber} cargado en el editor.`, 'Cargado');
+    setTimeout(() => this.renderVoucherCanvas(), 50);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 10. CROSS-MODULE SHORTCUTS
+  // ---------------------------------------------------------------------------
+  openOmnichannelForDeal(deal: PipelineDeal): void {
+    let conv = this.conversations().find(
+      (c) => c.scope === deal.scope && (c.linkedDealId === deal.id || (c.contactId && c.contactId === deal.contactId)),
+    );
+
+    if (!conv) {
+      const contact = this.contacts().find((c) => c.id === deal.contactId);
+      const phone = contact?.phoneOrContact || '584140000000';
+      conv = {
+        id: `conv-${Date.now()}`,
+        scope: deal.scope,
+        contactId: deal.contactId,
+        contactName: deal.contactName,
+        channel: 'WHATSAPP',
+        recipientPhoneOrIgId: phone,
+        lastInboundTimestamp: Date.now(),
+        unreadCount: 0,
+        linkedDealId: deal.id,
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            conversationId: `conv-${Date.now()}`,
+            channel: 'WHATSAPP',
+            direction: 'OUTBOUND',
+            senderHandle: 'Operador CRM',
+            text: `Hola ${deal.contactName}, nos comunicamos respecto a su operación #${deal.id} por $${deal.cryptoAmountUsdt.toFixed(2)} USDT (${deal.totalFiatAmount.toFixed(2)} ${deal.fiatCurrency}).`,
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      this.conversations.set([conv, ...this.conversations()]);
+      this.saveConversations();
+    }
+
+    this.selectedConversationId.set(conv.id);
+    this.chatDraftText.set(
+      `Hola ${deal.contactName}, confirmamos su orden #${deal.id}: Monto: $${deal.cryptoAmountUsdt.toFixed(2)} USDT (${deal.totalFiatAmount.toFixed(2)} ${deal.fiatCurrency}).`,
+    );
+    this.omnichannelSubTab.set('INBOX');
+    this.setView('OMNICHANNEL');
+  }
+
+  openOmnichannelForContact(contact?: CrmContact | null): void {
+    if (!contact) return;
+    let conv = this.conversations().find(
+      (c) => c.scope === contact.scope && c.contactId === contact.id,
+    );
+
+    if (!conv) {
+      conv = {
+        id: `conv-${Date.now()}`,
+        scope: contact.scope,
+        contactId: contact.id,
+        contactName: contact.name,
+        channel: 'WHATSAPP',
+        recipientPhoneOrIgId: contact.phoneOrContact || '584140000000',
+        lastInboundTimestamp: Date.now(),
+        unreadCount: 0,
+        linkedDealId: null,
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            conversationId: `conv-${Date.now()}`,
+            channel: 'WHATSAPP',
+            direction: 'INBOUND',
+            senderHandle: contact.phoneOrContact || contact.name,
+            text: `Expediente de contacto abierto en Omnicanal.`,
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      this.conversations.set([conv, ...this.conversations()]);
+      this.saveConversations();
+    }
+
+    this.selectedConversationId.set(conv.id);
+    this.omnichannelSubTab.set('INBOX');
+    this.setView('OMNICHANNEL');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 11. EXPORT / IMPORT DATA WITH CONVERSATIONS & INVOICES
+  // ---------------------------------------------------------------------------
   exportDataJson(): void {
     const backup = {
-      version: '2.4',
+      version: '2.5',
       timestamp: Date.now(),
       scope: this.activeScope(),
       deals: this.deals(),
@@ -1114,6 +2147,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
       banks: this.banks(),
       activities: this.activities(),
       settlements: this.settlements(),
+      conversations: this.conversations(),
+      invoicesOrQuotes: this.invoicesOrQuotes(),
+      omnichannelConfig: this.omnichannelConfig(),
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -1157,6 +2193,19 @@ export class ComplianceCockpitComponent implements OnDestroy {
         this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, activities);
         this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, settlements);
 
+        if (Array.isArray(raw['conversations'])) {
+          this.conversations.set(raw['conversations']);
+          this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, raw['conversations']);
+        }
+        if (Array.isArray(raw['invoicesOrQuotes'])) {
+          this.invoicesOrQuotes.set(raw['invoicesOrQuotes']);
+          this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, raw['invoicesOrQuotes']);
+        }
+        if (raw['omnichannelConfig'] && typeof raw['omnichannelConfig'] === 'object') {
+          this.omnichannelConfig.set(raw['omnichannelConfig']);
+          this.storage.set(CRM_STORAGE_KEYS.OMNICHANNEL_CONFIG, raw['omnichannelConfig']);
+        }
+
         if (report.quarantinedCount > 0) {
           this.toast.warn(
             `Base de datos restaurada (${deals.length} tratos, ${contacts.length} contactos). Se omitieron ${report.quarantinedCount} registros corruptos o sin ámbito.`,
@@ -1187,3 +2236,4 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, nextActivities);
   }
 }
+

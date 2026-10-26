@@ -894,7 +894,12 @@ export const CRM_STORAGE_KEYS = {
   ACTIVE_SCOPE: 'p2p.crm.active-scope',
   PRIVACY_MODE: 'p2p.crm.privacy-mode',
   ACTIVE_VIEW: 'p2p.crm.active-view',
+  CONVERSATIONS: 'p2p.crm.conversations',
+  INVOICES_OR_QUOTES: 'p2p.crm.invoices-quotes',
+  OMNICHANNEL_CONFIG: 'p2p.crm.omnichannel.config',
 } as const;
+
+export * from './crm-omnichannel-billing';
 
 export function safeHydrateCrmCollection<T>(raw: unknown): T[] {
   if (!Array.isArray(raw)) return [];

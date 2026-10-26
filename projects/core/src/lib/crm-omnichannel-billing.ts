@@ -406,6 +406,18 @@ export function classifyAndDraftAiResponse(
 // =============================================================================
 
 /**
+ * Deterministically formats fiat numbers with dot thousands and comma decimals (e.g. 5.000,00).
+ */
+export function formatFiatNumber(amount: number): string {
+  const safe = Number.isFinite(amount) ? amount : 0;
+  const isNeg = safe < 0;
+  const fixed = Math.abs(safe).toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${isNeg ? '-' : ''}${formattedInt},${decPart}`;
+}
+
+/**
  * Produces clean, separate copyable bubbles and a formatted single text block
  * so mobile users on WhatsApp/Instagram can copy raw bank details with 1 tap.
  */
@@ -414,38 +426,95 @@ export function buildCopyableBankBubbles(
   totalFiatAmount?: number,
 ): CopyableBankBubbles {
   const details = bank.holderDetailsText || '';
+  const lines = details.split('\n');
 
   // Header
-  const firstLine = details.split(/[\n,;-]/)[0]?.trim() || '';
+  const firstLine = lines[0]?.trim() || '';
   const headerBubble = `🏦 ${bank.bankName} (${bank.currency})${firstLine ? ` - ${firstLine}` : ''}`;
 
   // Document ID (pure V/E/J/G/NIT + numbers, no spaces or hyphens)
   let docIdBubble = '';
-  const docMatch = details.match(/\b([VEJGvejgP][-:\s]?[0-9]{6,10}(?:[-][0-9])?)\b/i);
-  if (docMatch && docMatch[1]) {
-    docIdBubble = docMatch[1].toUpperCase().replace(/[-:\s]/g, '');
-  } else {
-    // Fallback: search for bare 7-9 digits
-    const bareNumMatch = details.match(/\b\d{7,9}\b/);
-    docIdBubble = bareNumMatch ? `V${bareNumMatch[0]}` : details.trim();
+  const docLine = lines.find(
+    (l) =>
+      /^(?:CI|RIF|NIT|C\.?I\.?|[VEJGPvejgp])[-:\s]*\d/i.test(l.trim()) ||
+      /(?:c[eé]dula|rif|nit|documento)[-:\s]*[VEJGPvejgp]?[-:\s]*\d/i.test(l),
+  );
+
+  if (docLine) {
+    const letterMatch = docLine.match(/([VEJGPvejgp])/i);
+    const letter = letterMatch ? letterMatch[1].toUpperCase() : 'V';
+    const digits = docLine.replace(/[^0-9]/g, '');
+    if (digits.length >= 5) {
+      docIdBubble = `${letter}${digits}`;
+    }
+  }
+
+  if (!docIdBubble) {
+    const docMatch = details.match(
+      /\b([VEJGvejgP])[-:\s]*([0-9]{1,3}(?:\.[0-9]{3}){1,3}(?:[-][0-9])?|[0-9]{6,10}(?:[-][0-9])?)\b/i,
+    );
+    if (docMatch && docMatch[1]) {
+      const letter = docMatch[1].toUpperCase();
+      const digits = (docMatch[2] || '').replace(/[^0-9]/g, '');
+      if (digits.length >= 5) {
+        docIdBubble = `${letter}${digits}`;
+      }
+    }
+  }
+
+  if (!docIdBubble) {
+    // Fallback: search for bare 7-9 digits (stripping dots) that are NOT part of a phone or account line
+    const nonPhoneLines = lines.filter(
+      (l) => !/(?:pago\s*m[oó]vil|cuenta|tel[eé]fono|tlf|04\d{9})/i.test(l),
+    );
+    for (const line of nonPhoneLines) {
+      const cleanDigits = line.replace(/[^0-9]/g, '');
+      if (cleanDigits.length >= 6 && cleanDigits.length <= 10) {
+        docIdBubble = `V${cleanDigits}`;
+        break;
+      }
+    }
+  }
+
+  if (!docIdBubble) {
+    docIdBubble = details.trim();
   }
 
   // Account / Phone (pure digits without dashes, spaces or labels)
   let accountOrPhoneBubble = '';
-  const fullAccountMatch = details.match(/\b\d{20}\b/);
-  const phoneMatch = details.match(/\b(?:04|02|584|573)\d{8,9}\b/);
+  const phoneLine = lines.find((l) =>
+    /(?:pago\s*m[oó]vil|tel[eé]fono|tlf|celular|m[oó]vil)/i.test(l),
+  );
+  if (phoneLine) {
+    const rawDigits = phoneLine.replace(/[^0-9]/g, '');
+    if (rawDigits.length >= 10 && rawDigits.length <= 12) {
+      accountOrPhoneBubble = rawDigits;
+    }
+  }
 
-  if (phoneMatch) {
-    accountOrPhoneBubble = phoneMatch[0];
-  } else if (fullAccountMatch) {
-    accountOrPhoneBubble = fullAccountMatch[0];
-  } else {
-    // Search general 10-20 digit block
-    const generalDigits = details.match(/\b\d{10,20}\b/);
-    if (generalDigits) {
-      accountOrPhoneBubble = generalDigits[0];
+  if (!accountOrPhoneBubble) {
+    const phoneMatch =
+      details.match(/\b(?:04|02|584|573)[-.\s]?\d{2,3}[-.\s]?\d{3}[-.\s]?\d{4}\b/) ||
+      details.match(/\b(?:04|02)\d{2}[-.\s]?\d{7}\b/);
+    if (phoneMatch) {
+      accountOrPhoneBubble = phoneMatch[0].replace(/[^0-9]/g, '');
+    }
+  }
+
+  if (!accountOrPhoneBubble) {
+    const fullAccountMatch =
+      details.match(/\b\d{4}[-.\s]?\d{4}[-.\s]?\d{2}[-.\s]?\d{10}\b/) ||
+      details.match(/\b\d{20}\b/);
+    if (fullAccountMatch) {
+      accountOrPhoneBubble = fullAccountMatch[0].replace(/[^0-9]/g, '');
     } else {
-      accountOrPhoneBubble = details.replace(/[^0-9]/g, '') || details.trim();
+      // Search general 10-20 digit block
+      const generalDigits = details.match(/\b\d{10,20}\b/);
+      if (generalDigits) {
+        accountOrPhoneBubble = generalDigits[0];
+      } else {
+        accountOrPhoneBubble = details.replace(/[^0-9]/g, '') || details.trim();
+      }
     }
   }
 
@@ -462,7 +531,7 @@ export function buildCopyableBankBubbles(
 
   const formattedBlock = [
     `🏦 *DATOS DE PAGO - ${bank.bankName} (${bank.currency})*`,
-    `👤 *Titular:* ${details.split('\n')[0] || 'Registrado'}`,
+    `👤 *Titular:* ${lines[0] || 'Registrado'}`,
     `🆔 *Cédula/RIF:* \`${docIdBubble}\``,
     `📲 *Cuenta / Pago Móvil:* \`${accountOrPhoneBubble}\``,
     ...(amountBubble ? [`💵 *Monto Exacto:* \`${amountBubble} ${bank.currency}\``] : []),
@@ -571,7 +640,7 @@ export function formatDocumentForMessaging(
 
   if (doc.fiatCurrency && doc.exchangeRate > 0 && doc.totalFiat > 0) {
     lines.push(
-      `*TOTAL EN ${doc.fiatCurrency}: ${doc.totalFiat.toLocaleString('es-ES', { minimumFractionDigits: 2 })} ${doc.fiatCurrency}* (Tasa: ${doc.exchangeRate.toFixed(4)})`,
+      `*TOTAL EN ${doc.fiatCurrency}: ${formatFiatNumber(doc.totalFiat)} ${doc.fiatCurrency}* (Tasa: ${doc.exchangeRate.toFixed(4)})`,
     );
   }
 

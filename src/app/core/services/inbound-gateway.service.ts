@@ -23,25 +23,54 @@ export class InboundGatewayService implements OnDestroy {
   readonly receipt$: Observable<InboundReceiptEvent> = this.receiptSubject.asObservable();
 
   constructor() {
-    // Graceful startup connection if in browser/electron runtime
-    if (typeof window !== 'undefined' && typeof EventSource !== 'undefined') {
-      this.connect();
-    }
-  }
-
-  setGatewayUrl(url: string): void {
-    const trimmed = url.trim().replace(/\/+$/, '');
-    if (trimmed && trimmed !== this.baseUrl) {
-      this.baseUrl = trimmed;
-      if (this.status() === 'CONNECTED' || this.status() === 'CONNECTING') {
-        this.disconnect();
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('p2p.inbound.gateway_url');
+        if (stored) {
+          this.baseUrl = stored.trim().replace(/\/+$/, '');
+        }
+      } catch {
+        /* storage fallback */
+      }
+      if (typeof EventSource !== 'undefined') {
         this.connect();
       }
     }
   }
 
+  setGatewayUrl(url: string): void {
+    const trimmed = url.trim().replace(/\/+$/, '');
+    if (trimmed) {
+      this.baseUrl = trimmed;
+      try {
+        localStorage.setItem('p2p.inbound.gateway_url', trimmed);
+      } catch {
+        /* storage fallback */
+      }
+      if (this.status() === 'CONNECTED' || this.status() === 'CONNECTING') {
+        this.disconnect();
+      }
+      this.connect();
+    }
+  }
+
   getGatewayUrl(): string {
     return this.baseUrl;
+  }
+
+  async testConnection(targetUrl?: string): Promise<{ ok: boolean; status?: string; error?: string }> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/health`, { method: 'GET', signal: AbortSignal.timeout(4000) });
+      if (!res.ok) {
+        return { ok: false, error: `HTTP ${res.status}` };
+      }
+      const data = (await res.json()) as { status?: string };
+      return { ok: true, status: data.status || 'UP' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión';
+      return { ok: false, error: msg };
+    }
   }
 
   connect(): void {
