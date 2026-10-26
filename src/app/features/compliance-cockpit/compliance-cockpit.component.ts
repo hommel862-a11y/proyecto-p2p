@@ -30,6 +30,13 @@ import {
   CRM_STORAGE_KEYS,
   safeHydrateCrmCollection,
   validateAndSanitizeCrmBackupPayload,
+  serializeContactsToCsv,
+  parseAndValidateContactsCsv,
+  serializeBanksToCsv,
+  parseAndValidateBanksCsv,
+  serializeActivitiesToCsv,
+  parseAndValidateActivitiesCsv,
+  reconcileCrmCollectionById,
   evaluateMeta24hFreeWindow,
   classifyAndDraftAiResponse,
   buildCopyableBankBubbles,
@@ -39,6 +46,8 @@ import {
   buildGeminiMultimodalOcrPayload,
   parseGeminiOcrResponse,
   formatFiatNumber,
+  type CrmImportStrategy,
+  type CrmCsvCatalogEntity,
   type WorkspaceScope,
   type PipelineStage,
   type FiatCurrency,
@@ -2138,8 +2147,11 @@ export class ComplianceCockpitComponent implements OnDestroy {
   }
 
   // ---------------------------------------------------------------------------
-  // 11. EXPORT / IMPORT DATA WITH CONVERSATIONS & INVOICES
+  // 11. DUAL-FORMAT EXPORT / IMPORT (JSON STATEFUL + CSV CATALOGS)
   // ---------------------------------------------------------------------------
+  readonly importStrategy = signal<CrmImportStrategy>('MERGE');
+  readonly csvCatalogTarget = signal<CrmCsvCatalogEntity>('CONTACTS');
+
   exportDataJson(): void {
     const backup = {
       version: '2.5',
@@ -2167,6 +2179,76 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.toast.success('Copia de respaldo exportada con éxito.', 'Exportación JSON');
   }
 
+  applyBackupJsonText(jsonText: string, strategy: CrmImportStrategy = this.importStrategy()): boolean {
+    try {
+      const raw = JSON.parse(jsonText);
+      const report = validateAndSanitizeCrmBackupPayload(raw);
+
+      if (!report.valid) {
+        this.toast.error(report.errors[0] || 'Formato de archivo inválido.', 'Error de Importación');
+        return false;
+      }
+
+      const { deals, contacts, banks, activities, settlements } = report.sanitizedPayload;
+
+      const nextDeals = reconcileCrmCollectionById(this.deals(), deals, strategy, (d) => d.id);
+      const nextContacts = reconcileCrmCollectionById(this.contacts(), contacts, strategy, (c) => c.id);
+      const nextBanks = reconcileCrmCollectionById(this.banks(), banks, strategy, (b) => b.id);
+      const nextActivities = reconcileCrmCollectionById(this.activities(), activities, strategy, (a) => a.id);
+      const nextSettlements = reconcileCrmCollectionById(
+        this.settlements(),
+        settlements,
+        strategy,
+        (s) => s.settlementId,
+      );
+
+      this.deals.set(nextDeals);
+      this.contacts.set(nextContacts);
+      this.banks.set(nextBanks);
+      this.activities.set(nextActivities);
+      this.settlements.set(nextSettlements);
+
+      this.storage.set(CRM_STORAGE_KEYS.DEALS, nextDeals);
+      this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
+      this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
+      this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, nextActivities);
+      this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, nextSettlements);
+
+      if (Array.isArray(raw['conversations'])) {
+        const cleanConvs = safeHydrateCrmCollection<OmnichannelConversation>(raw['conversations']);
+        const nextConvs = reconcileCrmCollectionById(this.conversations(), cleanConvs, strategy, (c) => c.id);
+        this.conversations.set(nextConvs);
+        this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, nextConvs);
+      }
+      if (Array.isArray(raw['invoicesOrQuotes'])) {
+        const cleanDocs = safeHydrateCrmCollection<CrmBillingDocument>(raw['invoicesOrQuotes']);
+        const nextDocs = reconcileCrmCollectionById(this.invoicesOrQuotes(), cleanDocs, strategy, (d) => d.id);
+        this.invoicesOrQuotes.set(nextDocs);
+        this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, nextDocs);
+      }
+      if (raw['omnichannelConfig'] && typeof raw['omnichannelConfig'] === 'object') {
+        this.omnichannelConfig.set(raw['omnichannelConfig']);
+        this.storage.set(CRM_STORAGE_KEYS.OMNICHANNEL_CONFIG, raw['omnichannelConfig']);
+      }
+
+      if (report.quarantinedCount > 0) {
+        this.toast.warn(
+          `Base de datos procesada (${strategy}). Se omitieron ${report.quarantinedCount} registros corruptos o sin ámbito.`,
+          'Importación con Advertencias',
+        );
+      } else {
+        this.toast.success(
+          `Base de datos procesada (${strategy}: ${nextDeals.length} tratos, ${nextContacts.length} contactos, ${nextBanks.length} bancos).`,
+          'Importación Exitosa',
+        );
+      }
+      return true;
+    } catch {
+      this.toast.error('No se pudo procesar el archivo JSON.', 'Error');
+      return false;
+    }
+  }
+
   importDataJson(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
@@ -2174,59 +2256,115 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const file = input.files[0];
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const raw = JSON.parse(reader.result as string);
-        const report = validateAndSanitizeCrmBackupPayload(raw);
-
-        if (!report.valid) {
-          this.toast.error(report.errors[0] || 'Formato de archivo inválido.', 'Error de Importación');
-          return;
-        }
-
-        const { deals, contacts, banks, activities, settlements } = report.sanitizedPayload;
-        this.deals.set(deals);
-        this.contacts.set(contacts);
-        this.banks.set(banks);
-        this.activities.set(activities);
-        this.settlements.set(settlements);
-
-        this.storage.set(CRM_STORAGE_KEYS.DEALS, deals);
-        this.storage.set(CRM_STORAGE_KEYS.CONTACTS, contacts);
-        this.storage.set(CRM_STORAGE_KEYS.BANKS, banks);
-        this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, activities);
-        this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, settlements);
-
-        if (Array.isArray(raw['conversations'])) {
-          const cleanConvs = safeHydrateCrmCollection<OmnichannelConversation>(raw['conversations']);
-          this.conversations.set(cleanConvs);
-          this.storage.set(CRM_STORAGE_KEYS.CONVERSATIONS, cleanConvs);
-        }
-        if (Array.isArray(raw['invoicesOrQuotes'])) {
-          const cleanDocs = safeHydrateCrmCollection<CrmBillingDocument>(raw['invoicesOrQuotes']);
-          this.invoicesOrQuotes.set(cleanDocs);
-          this.storage.set(CRM_STORAGE_KEYS.INVOICES_OR_QUOTES, cleanDocs);
-        }
-        if (raw['omnichannelConfig'] && typeof raw['omnichannelConfig'] === 'object') {
-          this.omnichannelConfig.set(raw['omnichannelConfig']);
-          this.storage.set(CRM_STORAGE_KEYS.OMNICHANNEL_CONFIG, raw['omnichannelConfig']);
-        }
-
-        if (report.quarantinedCount > 0) {
-          this.toast.warn(
-            `Base de datos restaurada (${deals.length} tratos, ${contacts.length} contactos). Se omitieron ${report.quarantinedCount} registros corruptos o sin ámbito.`,
-            'Importación con Advertencias',
-          );
-        } else {
-          this.toast.success(
-            `Base de datos restaurada correctamente (${deals.length} tratos, ${contacts.length} contactos, ${banks.length} bancos).`,
-            'Importación Exitosa',
-          );
-        }
-      } catch {
-        this.toast.error('No se pudo procesar el archivo JSON.', 'Error');
-      }
+      this.applyBackupJsonText(String(reader.result ?? ''), this.importStrategy());
     };
     reader.readAsText(file);
+  }
+
+  exportCatalogCsv(entity: CrmCsvCatalogEntity = this.csvCatalogTarget()): void {
+    const scope = this.activeScope();
+    let csvContent = '';
+    let prefix = 'crm_catalog';
+
+    if (entity === 'CONTACTS') {
+      csvContent = serializeContactsToCsv(this.contacts(), scope);
+      prefix = `crm_contactos_${scope.toLowerCase()}`;
+    } else if (entity === 'BANKS') {
+      csvContent = serializeBanksToCsv(this.banks(), scope);
+      prefix = `crm_bancos_${scope.toLowerCase()}`;
+    } else {
+      csvContent = serializeActivitiesToCsv(this.activities(), scope);
+      prefix = `crm_actividades_${scope.toLowerCase()}`;
+    }
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${prefix}_${this.todayDateIso()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.toast.success(`Catálogo CSV (${entity}) exportado para ${scope}.`, 'Exportación CSV');
+  }
+
+  applyCatalogCsvText(
+    csvText: string,
+    entity: CrmCsvCatalogEntity = this.csvCatalogTarget(),
+    strategy: CrmImportStrategy = this.importStrategy(),
+  ): boolean {
+    const fallbackScope = this.activeScope();
+
+    if (entity === 'CONTACTS') {
+      const res = parseAndValidateContactsCsv(csvText, fallbackScope);
+      if (!res.valid) {
+        this.toast.error(res.errors[0] || 'CSV de contactos inválido.', 'Error CSV');
+        return false;
+      }
+      const next = reconcileCrmCollectionById(this.contacts(), res.records, strategy, (c) => c.id);
+      this.contacts.set(next);
+      this.storage.set(CRM_STORAGE_KEYS.CONTACTS, next);
+      this.notifyCsvImportResult('Contactos', res.records.length, res.quarantinedCount, strategy);
+      return true;
+    }
+
+    if (entity === 'BANKS') {
+      const res = parseAndValidateBanksCsv(csvText, fallbackScope);
+      if (!res.valid) {
+        this.toast.error(res.errors[0] || 'CSV de bancos inválido.', 'Error CSV');
+        return false;
+      }
+      const next = reconcileCrmCollectionById(this.banks(), res.records, strategy, (b) => b.id);
+      this.banks.set(next);
+      this.storage.set(CRM_STORAGE_KEYS.BANKS, next);
+      this.notifyCsvImportResult('Bancos', res.records.length, res.quarantinedCount, strategy);
+      return true;
+    }
+
+    const res = parseAndValidateActivitiesCsv(csvText, fallbackScope);
+    if (!res.valid) {
+      this.toast.error(res.errors[0] || 'CSV de actividades inválido.', 'Error CSV');
+      return false;
+    }
+    const next = reconcileCrmCollectionById(this.activities(), res.records, strategy, (a) => a.id);
+    this.activities.set(next);
+    this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, next);
+    this.notifyCsvImportResult('Actividades', res.records.length, res.quarantinedCount, strategy);
+    return true;
+  }
+
+  importCatalogCsv(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.applyCatalogCsvText(
+        String(reader.result ?? ''),
+        this.csvCatalogTarget(),
+        this.importStrategy(),
+      );
+    };
+    reader.readAsText(file);
+  }
+
+  private notifyCsvImportResult(
+    label: string,
+    importedCount: number,
+    quarantinedCount: number,
+    strategy: CrmImportStrategy,
+  ): void {
+    if (quarantinedCount > 0) {
+      this.toast.warn(
+        `${label}: ${importedCount} registros procesados (${strategy}). Se omitieron ${quarantinedCount} filas corruptas.`,
+        'Importación CSV con Advertencias',
+      );
+    } else {
+      this.toast.success(
+        `${label}: ${importedCount} registros procesados (${strategy}) correctamente.`,
+        'Importación CSV Exitosa',
+      );
+    }
   }
 
   private logActivity(entry: Omit<ActivityLogEntry, 'id' | 'scope' | 'timestamp'>): void {

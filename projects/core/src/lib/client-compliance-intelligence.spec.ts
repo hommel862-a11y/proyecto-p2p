@@ -12,6 +12,13 @@ import {
   normalizeBankReference,
   validateAndSanitizeCrmBackupPayload,
   safeHydrateCrmCollection,
+  serializeContactsToCsv,
+  parseAndValidateContactsCsv,
+  serializeBanksToCsv,
+  parseAndValidateBanksCsv,
+  serializeActivitiesToCsv,
+  parseAndValidateActivitiesCsv,
+  reconcileCrmCollectionById,
   CRM_STORAGE_KEYS,
   type PipelineDeal,
   type CrmContact,
@@ -644,5 +651,77 @@ describe('Client Compliance & CRM Pipeline Intelligence Engine', () => {
       expect(CRM_STORAGE_KEYS.SETTLEMENTS).toBe('p2p.crm.settlements');
       expect(CRM_STORAGE_KEYS.ACTIVE_SCOPE).toBe('p2p.crm.active-scope');
     });
+
+    it('serializes and parses RFC-4180 CSV catalogs (Contacts, Banks, Activities) with multi-line quoted fields and NaN quarantine', () => {
+      const contactWithNewlines: CrmContact = {
+        ...sampleContact,
+        paymentDetailsText: 'Titular: Carlos Mendoza, C.A.\nBanesco Pago Móvil "VIP"',
+        verifiedReferences: ['REF-100', 'REF-200'],
+      };
+
+      const csvContacts = serializeContactsToCsv([contactWithNewlines], 'P2P_DESK');
+      const parsedContacts = parseAndValidateContactsCsv(csvContacts);
+      expect(parsedContacts.valid).toBe(true);
+      expect(parsedContacts.quarantinedCount).toBe(0);
+      expect(parsedContacts.records).toHaveLength(1);
+      expect(parsedContacts.records[0].paymentDetailsText).toBe(
+        'Titular: Carlos Mendoza, C.A.\nBanesco Pago Móvil "VIP"',
+      );
+      expect(parsedContacts.records[0].verifiedReferences).toEqual(['REF-100', 'REF-200']);
+
+      // Corrupted CSV row with non-finite number or missing scope without fallback is quarantined
+      const dirtyBanksCsv = [
+        'id,scope,bankName,currency,holderDetailsText,currentBalanceFiat,maxDailyCapFiat,feePct,maxBurstTxPer15Min',
+        'bnk-ok,FINANCE_360,Mercantil,VES,"Cuenta Corriente, Rif J-123",25000,100000,0.3,5',
+        'bnk-bad-nan,P2P_DESK,Banesco,VES,Titular,NOT_A_NUMBER,100000,0.3,5',
+        'bnk-no-scope,INVALID_VAULT,Provincial,VES,Titular,5000,50000,0.3,5',
+      ].join('\n');
+
+      const parsedBanks = parseAndValidateBanksCsv(dirtyBanksCsv);
+      expect(parsedBanks.valid).toBe(true);
+      expect(parsedBanks.records).toHaveLength(1);
+      expect(parsedBanks.records[0].id).toBe('bnk-ok');
+      expect(parsedBanks.records[0].scope).toBe('FINANCE_360');
+      expect(parsedBanks.quarantinedCount).toBe(2);
+
+      // Activities round-trip
+      const act: ActivityLogEntry = {
+        id: 'act-01',
+        scope: 'P2P_DESK',
+        timestamp: mockNow,
+        type: 'DEAL_CLOSED',
+        description: 'Liquidación orden #101, cliente "VIP"',
+        amountUsdt: 500,
+        referenceId: 'REF-9911',
+      };
+      const csvAct = serializeActivitiesToCsv([act]);
+      const parsedAct = parseAndValidateActivitiesCsv(csvAct);
+      expect(parsedAct.valid).toBe(true);
+      expect(parsedAct.records).toHaveLength(1);
+      expect(parsedAct.records[0].description).toBe('Liquidación orden #101, cliente "VIP"');
+      expect(parsedAct.records[0].referenceId).toBe('REF-9911');
+    });
+
+    it('reconciles collections with MERGE (upsert preserving both vaults) vs REPLACE', () => {
+      const existing: CrmContact[] = [
+        { ...sampleContact, id: 'c-p2p', scope: 'P2P_DESK', name: 'Carlos Viejo' },
+        { ...sampleContact, id: 'c-360', scope: 'FINANCE_360', name: 'Proveedor 360' },
+      ];
+      const incoming: CrmContact[] = [
+        { ...sampleContact, id: 'c-p2p', scope: 'P2P_DESK', name: 'Carlos Actualizado' },
+        { ...sampleContact, id: 'c-new', scope: 'P2P_DESK', name: 'Cliente Nuevo' },
+      ];
+
+      const merged = reconcileCrmCollectionById(existing, incoming, 'MERGE', (c) => c.id);
+      expect(merged).toHaveLength(3);
+      expect(merged.find((c) => c.id === 'c-p2p')?.name).toBe('Carlos Actualizado');
+      expect(merged.find((c) => c.id === 'c-360')?.name).toBe('Proveedor 360');
+      expect(merged.find((c) => c.id === 'c-new')?.name).toBe('Cliente Nuevo');
+
+      const replaced = reconcileCrmCollectionById(existing, incoming, 'REPLACE', (c) => c.id);
+      expect(replaced).toHaveLength(2);
+      expect(replaced.find((c) => c.id === 'c-360')).toBeUndefined();
+    });
   });
 });
+

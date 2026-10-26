@@ -939,23 +939,80 @@
           <div class="card-section-header">
             <div class="title-with-pill">
               <span class="icon">💾</span>
-              <h2 class="section-title">Copia de Seguridad &amp; Portabilidad de Datos</h2>
+              <h2 class="section-title">Copia de Seguridad &amp; Portabilidad Dual (JSON + CSV)</h2>
+            </div>
+          </div>
+
+          <div class="settings-form-grid" style="margin-bottom: 16px;">
+            <div class="s-field">
+              <label class="s-lbl" for="crm-import-strategy-select">Modo de Conciliación al Importar</label>
+              <select
+                id="crm-import-strategy-select"
+                class="terminal-select"
+                [ngModel]="importStrategy()"
+                (ngModelChange)="importStrategy.set($event)"
+              >
+                <option value="MERGE">FUSIONAR (Upsert por ID — preserva registros existentes)</option>
+                <option value="REPLACE">REEMPLAZAR (Sustituye la colección completa)</option>
+              </select>
+              <span class="s-help">En modo FUSIONAR, los registros existentes de ambas bóvedas se conservan salvo actualización por mismo ID.</span>
+            </div>
+
+            <div class="s-field">
+              <label class="s-lbl" for="crm-csv-catalog-select">Catálogo Plano CSV (Excel / Sheets)</label>
+              <select
+                id="crm-csv-catalog-select"
+                class="terminal-select"
+                [ngModel]="csvCatalogTarget()"
+                (ngModelChange)="csvCatalogTarget.set($event)"
+              >
+                <option value="CONTACTS">Agenda de Contactos ({{ activeScope() }})</option>
+                <option value="BANKS">Cuentas Bancarias ({{ activeScope() }})</option>
+                <option value="ACTIVITIES">Bitácora de Actividades ({{ activeScope() }})</option>
+              </select>
+              <span class="s-help">Selecciona qué catálogo plano deseas exportar o cargar en formato CSV RFC-4180.</span>
             </div>
           </div>
 
           <div class="backup-actions-grid">
             <div class="b-action-item">
-              <h3>Exportar Base de Datos</h3>
-              <p>Descarga un archivo JSON completo con todos los tratos, clientes, bancos y bitácora auditada.</p>
+              <h3>Respaldo Completo con Estado (JSON)</h3>
+              <p>Descarga un archivo JSON con todos los tratos (incluyendo línea de tiempo), clientes, bancos y bitácora.</p>
               <button type="button" class="btn-backup-export" (click)="exportDataJson()">
                 📥 Descargar Copia JSON
               </button>
             </div>
 
             <div class="b-action-item">
-              <h3>Restaurar Base de Datos</h3>
-              <p>Carga un archivo JSON para restablecer todos tus datos operativos de inmediato.</p>
-              <input type="file" accept=".json" class="file-input" (change)="importDataJson($event)" />
+              <h3>Restaurar o Fusionar Respaldo (JSON)</h3>
+              <p>Carga un archivo JSON aplicando el modo <strong>{{ importStrategy() }}</strong> con validación de bóveda y finitud.</p>
+              <input
+                type="file"
+                accept=".json"
+                aria-label="Importar archivo JSON de respaldo"
+                class="file-input"
+                (change)="importDataJson($event)"
+              />
+            </div>
+
+            <div class="b-action-item">
+              <h3>Exportar Catálogo a Planilla (CSV)</h3>
+              <p>Descarga el catálogo seleccionado (<strong>{{ csvCatalogTarget() }}</strong>) de la bóveda activa en CSV compatible con Excel.</p>
+              <button type="button" class="btn-backup-export" (click)="exportCatalogCsv()">
+                📊 Exportar Catálogo CSV ({{ csvCatalogTarget() }})
+              </button>
+            </div>
+
+            <div class="b-action-item">
+              <h3>Importar Catálogo desde Planilla (CSV)</h3>
+              <p>Carga masiva de <strong>{{ csvCatalogTarget() }}</strong> en modo <strong>{{ importStrategy() }}</strong> validando cifras finitas.</p>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                aria-label="Importar archivo CSV de catálogo"
+                class="file-input"
+                (change)="importCatalogCsv($event)"
+              />
             </div>
           </div>
         </div>

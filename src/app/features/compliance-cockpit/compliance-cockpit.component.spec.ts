@@ -500,4 +500,80 @@ describe('ComplianceCockpitComponent', () => {
       expect(component.chatDraftText()).toContain('DEAL-88');
     });
   });
+
+  describe('Phase 5: Dual-Format Import/Export (JSON Stateful + CSV Catalogs with MERGE/REPLACE)', () => {
+    it('merges CSV contacts into the active vault without wiping FINANCE_360 records', () => {
+      const fin360Contact: CrmContact = {
+        id: 'CNT-FIN-01',
+        scope: 'FINANCE_360',
+        name: 'Proveedor Corporativo 360',
+        documentId: 'J-40001111',
+        phoneOrContact: '+584120001111',
+        category: 'SUPPLIER_360',
+        paymentDetailsText: 'Transferencia Mercantil',
+        creditLimitUsdt: 5000,
+        pendingBalanceUsdt: 0,
+        maxPendingExposureUsdt: 5000,
+        isDebtIndexedToUsdt: true,
+        verifiedReferences: [],
+        createdAt: Date.now(),
+      };
+      component.contacts.set([fin360Contact]);
+      component.activeScope.set('P2P_DESK');
+      component.importStrategy.set('MERGE');
+
+      const csvText = [
+        'id,scope,name,documentId,phoneOrContact,category,paymentDetailsText,creditLimitUsdt,pendingBalanceUsdt,maxPendingExposureUsdt,isDebtIndexedToUsdt,verifiedReferences,createdAt',
+        'CNT-P2P-01,P2P_DESK,Maria Arbitraje,V-20111222,+584149998877,CLIENT_P2P,"Pago Movil Banesco, 0414",1500,100,2000,true,REF-1|REF-2,1700000000000',
+        'CNT-BAD-NAN,P2P_DESK,Corrupto,V-000,+58000,CLIENT_P2P,Datos,NaN,0,1000,false,,1700000000000',
+      ].join('\n');
+
+      const ok = component.applyCatalogCsvText(csvText, 'CONTACTS', 'MERGE');
+      expect(ok).toBe(true);
+      expect(component.contacts()).toHaveLength(2);
+      expect(component.contacts().find((c) => c.id === 'CNT-FIN-01')).toBeTruthy();
+      expect(component.contacts().find((c) => c.id === 'CNT-P2P-01')?.name).toBe('Maria Arbitraje');
+      expect(toastMock.warn).toHaveBeenCalled(); // 1 row quarantined due to NaN
+    });
+
+    it('supports JSON backup import in both MERGE and REPLACE modes while respecting top-level scope', () => {
+      const existingBank: CrmBankAccount = {
+        id: 'BNK-P2P-1',
+        scope: 'P2P_DESK',
+        bankName: 'Banesco P2P',
+        currency: 'VES',
+        holderDetailsText: 'Titular P2P',
+        currentBalanceFiat: 10000,
+        maxDailyCapFiat: 50000,
+        feePct: 0.3,
+        maxBurstTxPer15Min: 5,
+      };
+      component.banks.set([existingBank]);
+
+      const jsonPayload = JSON.stringify({
+        scope: 'FINANCE_360',
+        banks: [
+          {
+            id: 'BNK-360-1',
+            // scopeless record inherits top-level FINANCE_360
+            bankName: 'Mercantil Tesorería 360',
+            currency: 'VES',
+            currentBalanceFiat: 95000,
+            maxDailyCapFiat: 500000,
+          },
+        ],
+      });
+
+      // 1. MERGE preserves existing P2P bank and adds FINANCE_360 bank
+      component.applyBackupJsonText(jsonPayload, 'MERGE');
+      expect(component.banks()).toHaveLength(2);
+      expect(component.banks().find((b) => b.id === 'BNK-360-1')?.scope).toBe('FINANCE_360');
+
+      // 2. REPLACE overwrites collection with incoming payload only
+      component.applyBackupJsonText(jsonPayload, 'REPLACE');
+      expect(component.banks()).toHaveLength(1);
+      expect(component.banks()[0].id).toBe('BNK-360-1');
+    });
+  });
 });
+

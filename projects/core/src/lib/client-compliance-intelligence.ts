@@ -1202,3 +1202,492 @@ export function validateAndSanitizeCrmBackupPayload(
   };
 }
 
+// =============================================================================
+// 8. DUAL-FORMAT CSV CATALOG IMPORT / EXPORT & VAULT-SAFE MERGE ENGINE
+// =============================================================================
+
+export type CrmImportStrategy = 'MERGE' | 'REPLACE';
+export type CrmCsvCatalogEntity = 'CONTACTS' | 'BANKS' | 'ACTIVITIES';
+
+export interface CrmCsvParseResult<T> {
+  valid: boolean;
+  records: T[];
+  quarantinedCount: number;
+  errors: string[];
+}
+
+/**
+ * Pure RFC-4180 CSV field serializer. Escapes double quotes and wraps fields
+ * containing commas, quotes, or newlines.
+ */
+export function escapeCsvCell(value: unknown): string {
+  const str = value === null || value === undefined ? '' : String(value);
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+/**
+ * Pure RFC-4180 CSV parser supporting quoted fields, escaped quotes (""),
+ * and multi-line strings inside quotes.
+ */
+export function parseRfc4180CsvRows(csvText: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  const normalized = csvText.replace(/^\uFEFF/, ''); // Strip UTF-8 BOM if present
+
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    const next = normalized[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        currentCell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      currentRow.push(currentCell);
+      currentCell = '';
+    } else if (ch === '\r' && next === '\n') {
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = '';
+      i++;
+    } else if (ch === '\n' || ch === '\r') {
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = '';
+    } else {
+      currentCell += ch;
+    }
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell);
+    rows.push(currentRow);
+  }
+
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
+}
+
+function parseStrictFiniteCsvNumber(rawCell: string | undefined, defaultVal: number): number | null {
+  if (rawCell === undefined || rawCell.trim() === '') return defaultVal;
+  const num = Number(rawCell.trim());
+  return Number.isFinite(num) ? num : null;
+}
+
+export function serializeContactsToCsv(contacts: readonly CrmContact[], scopeFilter?: WorkspaceScope): string {
+  const headers = [
+    'id',
+    'scope',
+    'name',
+    'documentId',
+    'phoneOrContact',
+    'category',
+    'paymentDetailsText',
+    'creditLimitUsdt',
+    'pendingBalanceUsdt',
+    'maxPendingExposureUsdt',
+    'isDebtIndexedToUsdt',
+    'verifiedReferences',
+    'createdAt',
+  ];
+  const filtered = scopeFilter ? contacts.filter((c) => c.scope === scopeFilter) : contacts;
+  const lines = [headers.join(',')];
+
+  for (const c of filtered) {
+    lines.push(
+      [
+        escapeCsvCell(c.id),
+        escapeCsvCell(c.scope),
+        escapeCsvCell(c.name),
+        escapeCsvCell(c.documentId),
+        escapeCsvCell(c.phoneOrContact),
+        escapeCsvCell(c.category),
+        escapeCsvCell(c.paymentDetailsText),
+        escapeCsvCell(c.creditLimitUsdt),
+        escapeCsvCell(c.pendingBalanceUsdt),
+        escapeCsvCell(c.maxPendingExposureUsdt),
+        escapeCsvCell(c.isDebtIndexedToUsdt),
+        escapeCsvCell((c.verifiedReferences || []).join('|')),
+        escapeCsvCell(c.createdAt),
+      ].join(','),
+    );
+  }
+
+  return lines.join('\n');
+}
+
+export function parseAndValidateContactsCsv(
+  csvText: string,
+  fallbackScope?: WorkspaceScope,
+): CrmCsvParseResult<CrmContact> {
+  const rows = parseRfc4180CsvRows(csvText);
+  if (rows.length === 0) {
+    return { valid: false, records: [], quarantinedCount: 0, errors: ['El archivo CSV de contactos está vacío.'] };
+  }
+
+  const headerRow = rows[0].map((h) => h.trim().toLowerCase());
+  const colIdx = (name: string) => headerRow.indexOf(name.toLowerCase());
+
+  if (colIdx('name') === -1 && colIdx('id') === -1) {
+    return {
+      valid: false,
+      records: [],
+      quarantinedCount: 0,
+      errors: ['Encabezados CSV inválidos: se requiere al menos la columna "name" o "id".'],
+    };
+  }
+
+  const records: CrmContact[] = [];
+  const errors: string[] = [];
+  let quarantinedCount = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const getCell = (col: string): string => {
+      const idx = colIdx(col);
+      return idx >= 0 && idx < row.length ? row[idx].trim() : '';
+    };
+
+    const rawScope = getCell('scope');
+    const resolvedScope: WorkspaceScope | undefined = isValidWorkspaceScope(rawScope)
+      ? rawScope
+      : isValidWorkspaceScope(fallbackScope)
+        ? fallbackScope
+        : undefined;
+
+    if (!resolvedScope) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Contacto omitido por ámbito inválido o ausente.`);
+      continue;
+    }
+
+    const creditLimitUsdt = parseStrictFiniteCsvNumber(getCell('creditLimitUsdt'), 0);
+    const pendingBalanceUsdt = parseStrictFiniteCsvNumber(getCell('pendingBalanceUsdt'), 0);
+    const maxPendingExposureUsdt = parseStrictFiniteCsvNumber(getCell('maxPendingExposureUsdt'), 0);
+    const createdAt = parseStrictFiniteCsvNumber(getCell('createdAt'), Date.now());
+
+    if (
+      creditLimitUsdt === null ||
+      pendingBalanceUsdt === null ||
+      maxPendingExposureUsdt === null ||
+      createdAt === null
+    ) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Contacto omitido por cifra financiera no finita.`);
+      continue;
+    }
+
+    const name = getCell('name');
+    const id = getCell('id') || `CNT-CSV-${r}-${Date.now().toString().slice(-4)}`;
+    if (!name && !getCell('id')) {
+      quarantinedCount++;
+      continue;
+    }
+
+    const rawRefs = getCell('verifiedReferences');
+    const verifiedReferences = rawRefs
+      ? rawRefs
+          .split('|')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const rawCat = getCell('category') as CrmContactCategory;
+    const validCategories: CrmContactCategory[] = ['CLIENT_P2P', 'VIP_OTC', 'SUPPLIER_360', 'CLIENT_360'];
+    const category: CrmContactCategory = validCategories.includes(rawCat)
+      ? rawCat
+      : resolvedScope === 'P2P_DESK'
+        ? 'CLIENT_P2P'
+        : 'CLIENT_360';
+
+    const rawDebtIndexed = getCell('isDebtIndexedToUsdt').toLowerCase();
+
+    records.push({
+      id,
+      scope: resolvedScope,
+      name: name || 'Sin Nombre',
+      documentId: getCell('documentId'),
+      phoneOrContact: getCell('phoneOrContact'),
+      category,
+      paymentDetailsText: getCell('paymentDetailsText'),
+      creditLimitUsdt,
+      pendingBalanceUsdt,
+      maxPendingExposureUsdt,
+      isDebtIndexedToUsdt: rawDebtIndexed === 'true' || rawDebtIndexed === '1',
+      verifiedReferences,
+      createdAt,
+    });
+  }
+
+  return { valid: true, records, quarantinedCount, errors };
+}
+
+export function serializeBanksToCsv(banks: readonly CrmBankAccount[], scopeFilter?: WorkspaceScope): string {
+  const headers = [
+    'id',
+    'scope',
+    'bankName',
+    'currency',
+    'holderDetailsText',
+    'currentBalanceFiat',
+    'maxDailyCapFiat',
+    'feePct',
+    'maxBurstTxPer15Min',
+  ];
+  const filtered = scopeFilter ? banks.filter((b) => b.scope === scopeFilter) : banks;
+  const lines = [headers.join(',')];
+
+  for (const b of filtered) {
+    lines.push(
+      [
+        escapeCsvCell(b.id),
+        escapeCsvCell(b.scope),
+        escapeCsvCell(b.bankName),
+        escapeCsvCell(b.currency),
+        escapeCsvCell(b.holderDetailsText),
+        escapeCsvCell(b.currentBalanceFiat),
+        escapeCsvCell(b.maxDailyCapFiat),
+        escapeCsvCell(b.feePct),
+        escapeCsvCell(b.maxBurstTxPer15Min),
+      ].join(','),
+    );
+  }
+
+  return lines.join('\n');
+}
+
+export function parseAndValidateBanksCsv(
+  csvText: string,
+  fallbackScope?: WorkspaceScope,
+): CrmCsvParseResult<CrmBankAccount> {
+  const rows = parseRfc4180CsvRows(csvText);
+  if (rows.length === 0) {
+    return { valid: false, records: [], quarantinedCount: 0, errors: ['El archivo CSV de bancos está vacío.'] };
+  }
+
+  const headerRow = rows[0].map((h) => h.trim().toLowerCase());
+  const colIdx = (name: string) => headerRow.indexOf(name.toLowerCase());
+
+  if (colIdx('bankname') === -1 && colIdx('id') === -1) {
+    return {
+      valid: false,
+      records: [],
+      quarantinedCount: 0,
+      errors: ['Encabezados CSV inválidos: se requiere al menos la columna "bankName" o "id".'],
+    };
+  }
+
+  const records: CrmBankAccount[] = [];
+  const errors: string[] = [];
+  let quarantinedCount = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const getCell = (col: string): string => {
+      const idx = colIdx(col);
+      return idx >= 0 && idx < row.length ? row[idx].trim() : '';
+    };
+
+    const rawScope = getCell('scope');
+    const resolvedScope: WorkspaceScope | undefined = isValidWorkspaceScope(rawScope)
+      ? rawScope
+      : isValidWorkspaceScope(fallbackScope)
+        ? fallbackScope
+        : undefined;
+
+    if (!resolvedScope) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Banco omitido por ámbito inválido o ausente.`);
+      continue;
+    }
+
+    const currentBalanceFiat = parseStrictFiniteCsvNumber(getCell('currentBalanceFiat'), 0);
+    const maxDailyCapFiat = parseStrictFiniteCsvNumber(getCell('maxDailyCapFiat'), 50000);
+    const feePct = parseStrictFiniteCsvNumber(getCell('feePct'), 0.3);
+    const maxBurstTxPer15Min = parseStrictFiniteCsvNumber(getCell('maxBurstTxPer15Min'), 5);
+
+    if (
+      currentBalanceFiat === null ||
+      maxDailyCapFiat === null ||
+      feePct === null ||
+      maxBurstTxPer15Min === null
+    ) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Banco omitido por cifra financiera no finita.`);
+      continue;
+    }
+
+    const bankName = getCell('bankName');
+    const id = getCell('id') || `BNK-CSV-${r}-${Date.now().toString().slice(-4)}`;
+    if (!bankName && !getCell('id')) {
+      quarantinedCount++;
+      continue;
+    }
+
+    const rawCurrency = getCell('currency') as FiatCurrency;
+    const validCurrencies: FiatCurrency[] = ['VES', 'USD', 'COP'];
+
+    records.push({
+      id,
+      scope: resolvedScope,
+      bankName: bankName || 'Banco',
+      currency: validCurrencies.includes(rawCurrency) ? rawCurrency : 'VES',
+      holderDetailsText: getCell('holderDetailsText'),
+      currentBalanceFiat,
+      maxDailyCapFiat,
+      feePct,
+      maxBurstTxPer15Min,
+    });
+  }
+
+  return { valid: true, records, quarantinedCount, errors };
+}
+
+export function serializeActivitiesToCsv(
+  activities: readonly ActivityLogEntry[],
+  scopeFilter?: WorkspaceScope,
+): string {
+  const headers = ['id', 'scope', 'timestamp', 'type', 'description', 'amountUsdt', 'referenceId'];
+  const filtered = scopeFilter ? activities.filter((a) => a.scope === scopeFilter) : activities;
+  const lines = [headers.join(',')];
+
+  for (const a of filtered) {
+    lines.push(
+      [
+        escapeCsvCell(a.id),
+        escapeCsvCell(a.scope),
+        escapeCsvCell(a.timestamp),
+        escapeCsvCell(a.type),
+        escapeCsvCell(a.description),
+        escapeCsvCell(a.amountUsdt),
+        escapeCsvCell(a.referenceId ?? ''),
+      ].join(','),
+    );
+  }
+
+  return lines.join('\n');
+}
+
+export function parseAndValidateActivitiesCsv(
+  csvText: string,
+  fallbackScope?: WorkspaceScope,
+): CrmCsvParseResult<ActivityLogEntry> {
+  const rows = parseRfc4180CsvRows(csvText);
+  if (rows.length === 0) {
+    return { valid: false, records: [], quarantinedCount: 0, errors: ['El archivo CSV de actividades está vacío.'] };
+  }
+
+  const headerRow = rows[0].map((h) => h.trim().toLowerCase());
+  const colIdx = (name: string) => headerRow.indexOf(name.toLowerCase());
+
+  if (colIdx('description') === -1 && colIdx('id') === -1) {
+    return {
+      valid: false,
+      records: [],
+      quarantinedCount: 0,
+      errors: ['Encabezados CSV inválidos: se requiere al menos la columna "description" o "id".'],
+    };
+  }
+
+  const records: ActivityLogEntry[] = [];
+  const errors: string[] = [];
+  let quarantinedCount = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const getCell = (col: string): string => {
+      const idx = colIdx(col);
+      return idx >= 0 && idx < row.length ? row[idx].trim() : '';
+    };
+
+    const rawScope = getCell('scope');
+    const resolvedScope: WorkspaceScope | undefined = isValidWorkspaceScope(rawScope)
+      ? rawScope
+      : isValidWorkspaceScope(fallbackScope)
+        ? fallbackScope
+        : undefined;
+
+    if (!resolvedScope) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Actividad omitida por ámbito inválido o ausente.`);
+      continue;
+    }
+
+    const amountUsdt = parseStrictFiniteCsvNumber(getCell('amountUsdt'), 0);
+    const timestamp = parseStrictFiniteCsvNumber(getCell('timestamp'), Date.now());
+
+    if (amountUsdt === null || timestamp === null) {
+      quarantinedCount++;
+      errors.push(`Fila ${r + 1}: Actividad omitida por monto o fecha no finita.`);
+      continue;
+    }
+
+    const id = getCell('id') || `ACT-CSV-${r}-${Date.now().toString().slice(-4)}`;
+    const rawType = getCell('type') as ActivityType;
+    const validTypes: ActivityType[] = [
+      'DEAL_CREATED',
+      'STAGE_MOVED',
+      'DEAL_CLOSED',
+      'BALANCE_ADJUSTED',
+      'BANK_RECONCILED',
+      'EXPOSURE_ALERT',
+    ];
+    const refCell = getCell('referenceId');
+
+    records.push({
+      id,
+      scope: resolvedScope,
+      timestamp,
+      type: validTypes.includes(rawType) ? rawType : 'STAGE_MOVED',
+      description: getCell('description'),
+      amountUsdt,
+      referenceId: refCell ? refCell : undefined,
+    });
+  }
+
+  return { valid: true, records, quarantinedCount, errors };
+}
+
+/**
+ * Reconciles an existing collection with incoming validated records using
+ * either 'MERGE' (upsert by primary key ID, preserving non-colliding records
+ * in both vaults) or 'REPLACE' (replaces all records).
+ */
+export function reconcileCrmCollectionById<T>(
+  existing: readonly T[],
+  incoming: readonly T[],
+  strategy: CrmImportStrategy,
+  getKey: (item: T) => string,
+): T[] {
+  if (strategy === 'REPLACE') {
+    return [...incoming];
+  }
+
+  const map = new Map<string, T>();
+  for (const item of existing) {
+    map.set(getKey(item), item);
+  }
+  for (const item of incoming) {
+    map.set(getKey(item), item);
+  }
+  return Array.from(map.values());
+}
+
+
