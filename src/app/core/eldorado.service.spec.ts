@@ -57,10 +57,23 @@ describe('ElDoradoService', () => {
     void TestBed.inject(BybitP2pService);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    try {
+      await svc?.clearCredentials();
+    } catch {
+      /* ignore */
+    }
+    TestBed.resetTestingModule();
     if (typeof window !== 'undefined') {
       delete (window as unknown as Record<string, unknown>)['electron'];
     }
+  });
+
+  it('stays in demo mode when credentials are missing', async () => {
+    installElDoradoBridge(async () => quote(1.1, 'buy'));
+    await svc.refresh('USDT', 'USD');
+    expect(svc.mode()).toBe('demo');
+    expect(svc.lastFetched()).toBeNull();
   });
 
   it('rejects unsupported fiats (VES) with demo mode', async () => {
@@ -70,13 +83,6 @@ describe('ElDoradoService', () => {
     expect(svc.mode()).toBe('demo');
     expect(svc.fiatSupported()).toBe(false);
     expect(svc.statusText()).toContain('no soporta');
-  });
-
-  it('stays in demo mode when credentials are missing', async () => {
-    installElDoradoBridge(async () => quote(1.1, 'buy'));
-    await svc.refresh('USDT', 'USD');
-    expect(svc.mode()).toBe('demo');
-    expect(svc.lastFetched()).toBeNull();
   });
 
   it('derives live quote rates for a supported fiat', async () => {

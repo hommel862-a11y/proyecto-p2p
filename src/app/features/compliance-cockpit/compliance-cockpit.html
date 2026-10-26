@@ -2181,6 +2181,11 @@
           >
             {{ c.confirmLabel || 'Confirmar' }}
           </button>
+        </div>
+      </div>
+    </div>
+  }
+
   <!-- MODAL: CONFIGURACIÓN Y ESTADO DEL INBOUND GATEWAY -->
   @if (showGatewayConfigModal()) {
     <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-gateway-title" (click)="showGatewayConfigModal.set(false)">

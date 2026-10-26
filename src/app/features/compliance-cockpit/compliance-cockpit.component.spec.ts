@@ -42,6 +42,9 @@ describe('ComplianceCockpitComponent', () => {
     status: ReturnType<typeof signal>;
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    getGatewayUrl: ReturnType<typeof vi.fn>;
+    setGatewayUrl: ReturnType<typeof vi.fn>;
+    testConnection: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -75,6 +78,9 @@ describe('ComplianceCockpitComponent', () => {
       status: signal('CONNECTED'),
       connect: vi.fn(),
       disconnect: vi.fn(),
+      getGatewayUrl: vi.fn().mockReturnValue('http://127.0.0.1:3030'),
+      setGatewayUrl: vi.fn(),
+      testConnection: vi.fn().mockResolvedValue({ ok: true, status: 'UP' }),
     };
 
     const injector = Injector.create({
