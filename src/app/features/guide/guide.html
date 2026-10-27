@@ -1,936 +1,848 @@
 <div class="academy-container">
-  <!-- Cabecera Hero de la Academia -->
+  <!-- Cabecera Superior Apple Pro -->
   <header class="academy-hero">
-    <div class="hero-tagline">Campus Financiero &middot; Arbitraje Institucional &middot; Manual Táctico</div>
-    <h1>Guía de uso & <span>Manual Táctico P2P</span></h1>
-    <p>
-      Bienvenido a la academia integral de <strong>P2P Decisor</strong>. Aquí aprenderás desde los conceptos elementales
-      del comercio persona a persona hasta la gestión cuantitativa de riesgo con nuestro Enjambre de Agentes IA y herramientas MCP.
-    </p>
+    <div class="hero-top-row">
+      <div class="hero-brand">
+        <span class="hero-pill">Campus Institucional &middot; Arbitraje Cuantitativo &middot; Spatial Bento</span>
+        <h1>Guía de uso & <span>Manual Táctico P2P</span></h1>
+        <p class="hero-subtitle">
+          Academia interactiva de <strong>P2P Decisor</strong>. Domina desde los fundamentos del arbitraje y el dictado por voz hasta la liquidación FIFO, la doble bóveda CRM y los centinelas MCP.
+        </p>
+      </div>
+
+      <!-- Indicador de Dominio (Mastery Tracker) en el Header -->
+      <div class="hero-mastery-card">
+        <div class="mastery-header">
+          <span class="mastery-title">🎓 Dominio del Operador</span>
+          <span class="mastery-pct tabular-nums">{{ masteryPercentage() }}%</span>
+        </div>
+        <div class="mastery-track">
+          <div class="mastery-bar" [style.width.%]="masteryPercentage()"></div>
+        </div>
+        <span class="mastery-subtext">{{ masteryCount() }} de {{ totalMasterableItems() }} módulos dominados</span>
+      </div>
+    </div>
   </header>
 
-  <!-- Menú Interactivo de Pestañas -->
-  <nav class="guide-nav-bar" aria-label="Navegación de temas de la guía">
-      @for (tab of tabs(); track tab.id) {
-      <button
-        type="button"
-        class="nav-pill"
-        [class.active]="activeTab() === tab.id"
-        (click)="setTab(tab.id)"
-      >
-        <span class="nav-icon">{{ tab.icon }}</span>
-        <span>{{ tab.label }}</span>
-        @if (tab.badge) {
-          <span class="nav-badge">{{ tab.badge }}</span>
+  <!-- Layout Principal en 2 Columnas: Navegador Táctico (280px) + Lienzo Bento (1fr) -->
+  <div class="academy-cockpit-layout">
+    <!-- COLUMNA IZQUIERDA: Barra Lateral de Navegación & Filtros -->
+    <aside class="academy-sidebar">
+      <!-- Buscador en Tiempo Real -->
+      <div class="sidebar-search-box">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          class="sidebar-search-input"
+          placeholder="Buscar táctica, atajo, módulo..."
+          [(ngModel)]="searchQuery"
+        />
+        @if (searchQuery()) {
+          <button type="button" class="search-clear-btn" (click)="searchQuery.set('')" aria-label="Limpiar búsqueda">✕</button>
         }
-      </button>
-    }
-  </nav>
-
-  <!-- ========================================================================= -->
-  <!-- 1. P2P DESDE CERO (Para Principiantes + SIMULADOR DE SPREAD)              -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'intro') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">📚</div>
-          <h2>¿Qué es P2P Decisor?</h2>
-        </div>
-        <span class="badge badge-accent">Fundamentos Clave</span>
       </div>
 
-      <p class="lead-text">
-        Es una <strong>herramienta de apoyo a la decisión</strong> diseñada para operar de forma profesional y segura en Binance P2P dentro del contexto financiero venezolano.
-      </p>
-
-      <div class="alert-box info">
-        🛡️ <strong>Soberanía y Privacidad Absoluta:</strong> Esta plataforma <strong>no se conecta a Binance</strong> mediante credenciales privadas de cuenta y <strong>no opera por ti</strong>. Toda tu información se mantiene 100% local en tu dispositivo, dándote a ti el control total de cada centavo.
-      </div>
-
-      <!-- Analogía del Profesor -->
-      <div class="prof-analogy">
-        <div class="analogy-title">
-          <span>👨‍🏫</span> La Analogía del Profesor: El Comerciante de Divisas Digital
-        </div>
-        <p>
-          Imaginá el P2P como una tienda en la esquina de tu barrio. La gente entra porque necesita cambiar bolívares por dólares para proteger sus ahorros de la inflación, o porque recibieron una remesa en dólares y necesitan bolívares para hacer las compras en el supermercado.
-          Tu rol como comerciante P2P es proveer esa liquidez: <em>comprar dólares a quien necesita vender rápido y vender dólares a quien necesita comprar</em>.
-          La diferencia entre el precio al que compras y el precio al que vendes se llama <strong>Spread</strong>, y de ahí proviene tu beneficio legítimo.
-        </p>
-      </div>
-
-      <h3 style="color: var(--gold-strong); margin-top: 28px;">La Fórmula Sagrada: Spread Bruto vs. Spread Neto</h3>
-      <p>
-        Uno de los errores más comunes de los principiantes es pensar que si compran a 88.00 y venden a 89.00, ganaron un bolívar por dólar. ¡Falso! En el mundo real existen comisiones que se comen tu ganancia:
-      </p>
-
-      <div class="code-formula-box">
-        Spread Bruto (%) = ((Precio Venta - Precio Compra) / Precio Compra) &times; 100<br>
-        Spread Neto Real (%) = Spread Bruto - Comisiones de Binance (0.25% Maker) - Fricción Bancaria (0.30% Pago Móvil)
-      </div>
-
-      <!-- SIMULADOR INTERACTIVO DE SPREAD BRUTO VS NETO -->
-      <div class="interactive-simulator-card">
-        <div class="sim-header">
-          <div class="sim-badge">⚡ Laboratorio Interactivo</div>
-          <h4>Simulador en Vivo: ¿Tu operación cumple la Regla de Oro?</h4>
-          <p>Mueve los precios de compra y venta para comprobar al instante tu margen neto real y deducciones:</p>
-        </div>
-
-        <div class="sim-body">
-          <div class="sim-controls">
-            <div class="sim-control-group">
-              <label for="simBuyInput">Precio de Compra (VES/USDT):</label>
-              <div class="input-with-stepper">
-                <input
-                  id="simBuyInput"
-                  type="number"
-                  step="0.1"
-                  [ngModel]="calcBuyPrice()"
-                  (ngModelChange)="calcBuyPrice.set($event)"
-                />
-              </div>
-            </div>
-
-            <div class="sim-control-group">
-              <label for="simSellInput">Precio de Venta (VES/USDT):</label>
-              <div class="input-with-stepper">
-                <input
-                  id="simSellInput"
-                  type="number"
-                  step="0.1"
-                  [ngModel]="calcSellPrice()"
-                  (ngModelChange)="calcSellPrice.set($event)"
-                />
-              </div>
-            </div>
-
-            <div class="sim-toggles">
-              <label class="checkbox-pill">
-                <input
-                  type="checkbox"
-                  [checked]="applyMakerFee()"
-                  (change)="applyMakerFee.set(!applyMakerFee())"
-                />
-                <span>Comisión Binance Maker (0.25%)</span>
-              </label>
-
-              <label class="checkbox-pill">
-                <input
-                  type="checkbox"
-                  [checked]="applyBankFee()"
-                  (change)="applyBankFee.set(!applyBankFee())"
-                />
-                <span>Fricción Pago Móvil (0.30%)</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="sim-results" [class.profitable]="isGoldenRuleMet()" [class.unprofitable]="!isGoldenRuleMet()">
-            <div class="metric-row">
-              <span class="label">Spread Bruto:</span>
-              <span class="value">{{ calcGrossSpread() | number:'1.2-2' }}%</span>
-            </div>
-            <div class="metric-row">
-              <span class="label">Fricción Total (Fees):</span>
-              <span class="value negative">-{{ calcTotalFeePct() | number:'1.2-2' }}%</span>
-            </div>
-            <div class="metric-row highlight">
-              <span class="label">Spread Neto Real:</span>
-              <span class="value main-result">{{ calcNetSpread() | number:'1.2-2' }}%</span>
-            </div>
-
-            <div class="verdict-banner" [class.pass]="isGoldenRuleMet()" [class.fail]="!isGoldenRuleMet()">
-              @if (isGoldenRuleMet()) {
-                <span>✅ <strong>OPERACIÓN VIABLE:</strong> Supera la Regla de Oro (&ge; 0.50% neto). Margen saludable para absorber imprevistos.</span>
-              } @else {
-                <span>⚠️ <strong>REGLA DE ORO VIOLADA:</strong> Margen neto inferior a 0.50% (o negativo). Estás trabajando gratis o perdiendo contra la inflación.</span>
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Comparativa Maker vs Taker -->
-      <h3 style="color: var(--text); margin-top: 28px;">Estrategia Maker vs. Taker: ¿Cuál es la diferencia?</h3>
-      <div class="maker-taker-grid">
-        <div class="role-box maker">
-          <h4>Rol Maker (Creador de Mercado)</h4>
-          <p>Publicas tu propio anuncio en el libro de órdenes y esperas a que otros usuarios vengan a comprarte o venderte.</p>
-          <ul>
-            <li><strong>Ventaja:</strong> Tú fijas el precio y capturas el margen completo.</li>
-            <li><strong>Costo:</strong> Paga 0.25% de comisión de Binance por orden finalizada.</li>
-            <li><strong>Recomendación:</strong> Usar en el 90% de tus operaciones de venta para maximizar tu ganancia.</li>
-          </ul>
-        </div>
-
-        <div class="role-box taker">
-          <h4>Rol Taker (Tomador de Mercado)</h4>
-          <p>Entras a los anuncios ya publicados por otros comerciantes y presionas "Comprar" o "Vender" de inmediato.</p>
-          <ul>
-            <li><strong>Ventaja:</strong> Ejecución instantánea en segundos. Cero tiempo de espera.</li>
-            <li><strong>Costo:</strong> 0.00% de comisión de Binance.</li>
-            <li><strong>Recomendación:</strong> Usar cuando el mercado sube velozmente y necesitas recomprar USDT ya mismo para no quedar expuesto en bolívares.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- ========================================================================= -->
-  <!-- 2. CATÁLOGO COMPLETO DE HERRAMIENTAS DEL DESK (módulos del Desk)            -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'tools') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">🛠️</div>
-          <h2>Catálogo de Herramientas del Desk</h2>
-        </div>
-        <span class="badge badge-accent">{{ deskModuleCount() }} Módulos Integrados</span>
-      </div>
-
-      <p class="lead-text">
-        P2P Decisor cuenta con <strong>{{ deskModuleCount() }} herramientas especializadas</strong>. Cada una cumple una función quirúrgica en tu flujo de trabajo diario. A continuación tienes la guía detallada de qué hace cada módulo, cómo se opera y cómo interpretar sus resultados:
-      </p>
-
-      <!-- Master-Detail Encyclopedia Bento Grid (Left 4 Cols Selector + Right 8 Cols Dossier) -->
-      <div class="quantum-bento-grid" style="margin-bottom: 24px; align-items: start;">
-        <!-- Selector Rápido de Herramientas (Columna Izquierda) -->
-        <div class="tool-pills-selector bento-span-4" style="display: flex; flex-direction: column; gap: 8px; max-height: 620px; overflow-y: auto; padding-right: 4px; margin: 0;">
-          @for (tool of deskModules(); track tool.id) {
+      <!-- Filtro por Rol Operativo -->
+      <div class="sidebar-section">
+        <span class="section-label">FILTRAR POR ROL</span>
+        <div class="role-pills-list">
+          @for (role of roleOptions; track role.id) {
             <button
               type="button"
-              class="tool-selector-btn"
-              style="width: 100%; justify-content: flex-start;"
-              [class.active]="selectedToolId() === tool.id"
-              (click)="selectedToolId.set(tool.id)"
+              class="role-pill"
+              [class.active]="selectedRole() === role.id"
+              (click)="setRoleFilter(role.id)"
             >
-              <span class="tool-btn-icon">{{ tool.icon }}</span>
-              <span class="tool-btn-name" style="flex: 1; text-align: left;">{{ tool.name }}</span>
-              @if (tool.badge) {
-                <span class="tool-btn-badge">{{ tool.badge }}</span>
-              }
+              <span class="pill-icon">{{ role.icon }}</span>
+              <span>{{ role.label }}</span>
             </button>
           }
         </div>
+      </div>
 
-        <!-- Ficha Profunda de la Herramienta Seleccionada (Columna Derecha Sticky) -->
-        @if (activeToolGuide(); as t) {
-          <div class="deep-tool-dossier bento-span-8 quantum-sticky-col" style="margin: 0;">
-            <div class="dossier-hero">
-              <div class="dossier-title-area">
-                <div class="dossier-icon">{{ t.icon }}</div>
+      <!-- Navegador de Pestañas Principales -->
+      <div class="sidebar-section">
+        <span class="section-label">PLAN DE ESTUDIO TÁCTICO</span>
+        <nav class="guide-nav-vertical" aria-label="Navegación de módulos de la academia">
+          @for (tab of tabs(); track tab.id) {
+            <button
+              type="button"
+              class="nav-tab-item"
+              [class.active]="activeTab() === tab.id"
+              (click)="setTab(tab.id)"
+            >
+              <div class="tab-item-content">
+                <span class="tab-icon">{{ tab.icon }}</span>
+                <span class="tab-label">{{ tab.label }}</span>
+              </div>
+              @if (tab.badge) {
+                <span class="tab-badge">{{ tab.badge }}</span>
+              }
+            </button>
+          }
+        </nav>
+      </div>
+
+      <!-- Lanzador Rápido de Módulos en Vivo -->
+      <div class="sidebar-section quick-launcher">
+        <span class="section-label">ACCESO RÁPIDO EN VIVO</span>
+        <div class="quick-links-grid">
+          <a routerLink="/log" class="quick-link-btn" title="Ir al Centro de Operaciones">
+            <span>⚡ Operaciones v4.0</span>
+            <span class="arrow-icon">➔</span>
+          </a>
+          <a routerLink="/compliance-cockpit" class="quick-link-btn" title="Ir al CRM de Doble Bóveda">
+            <span>👥 CRM Doble Bóveda</span>
+            <span class="arrow-icon">➔</span>
+          </a>
+          <a routerLink="/finanzas-360" class="quick-link-btn" title="Ir a Finanzas 360">
+            <span>🏛️ Finanzas 360</span>
+            <span class="arrow-icon">➔</span>
+          </a>
+          <a routerLink="/radar" class="quick-link-btn" title="Ir al Radar P2P">
+            <span>🛰️ Radar Cuantitativo</span>
+            <span class="arrow-icon">➔</span>
+          </a>
+          <a routerLink="/dashboard" class="quick-link-btn" title="Ir a Mesa de Dinero">
+            <span>📊 Mesa de Dinero</span>
+            <span class="arrow-icon">➔</span>
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- COLUMNA DERECHA: Lienzo Interactivo Bento -->
+    <main class="academy-canvas">
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 1: P2P DESDE CERO & SANDBOX INTERACTIVO (VOZ, FIFO, TECLADO)  -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'intro') {
+        <div class="canvas-bento-grid">
+          <!-- Tarjeta de Fundamentos Clave & Soberanía -->
+          <article class="bento-card full-width primary-accent">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">📚</span>
                 <div>
-                  <span class="dossier-category">{{ t.category }}</span>
-                  <h3>{{ t.name }}</h3>
-                  <p class="dossier-tagline">{{ t.tagline }}</p>
+                  <h2>¿Qué es P2P Decisor?</h2>
+                  <span class="card-subtitle">Fundamentos, Soberanía y Reglas de Juego Institucionales</span>
                 </div>
               </div>
-              <a [routerLink]="t.route" class="btn-goto-tool">
-                <span>Abrir {{ t.name }}</span>
-                <span>&rarr;</span>
-              </a>
+              <span class="status-pill green">Soberano & Local-First</span>
             </div>
 
-            <div class="dossier-grid">
-              <!-- Por qué importa -->
-              <div class="dossier-section why">
-                <h4>🎯 ¿Por qué es fundamental esta herramienta?</h4>
-                <p>{{ t.whyItMatters }}</p>
-              </div>
+            <p class="lead-text">
+              Es una <strong>herramienta de apoyo a la decisión</strong> diseñada para operar de forma profesional y segura en Binance P2P dentro del contexto financiero venezolano y latinoamericano.
+            </p>
 
-              <!-- Paso a Paso -->
-              <div class="dossier-section steps">
-                <h4>📋 ¿Cómo se usa paso a paso?</h4>
-                <ol>
-                  @for (step of t.stepByStep; track step) {
+            <div class="alert-box sovereign-alert">
+              <div class="alert-icon">🛡️</div>
+              <div class="alert-body">
+                <strong>Soberanía y Privacidad Absoluta:</strong> Esta plataforma <strong>no se conecta a Binance</strong> mediante credenciales privadas de cuenta y <strong>no opera por ti</strong>. Toda tu información se mantiene 100% local en tu dispositivo, dándote a ti el control total de cada centavo.
+              </div>
+            </div>
+
+            <div class="prof-analogy">
+              <div class="analogy-header">
+                <span class="analogy-icon">👨‍🏫</span>
+                <h4>La Analogía del Comerciante de Divisas Digital</h4>
+              </div>
+              <p>
+                Imaginá el P2P como una casa de cambio en la mejor esquina de la ciudad. La gente acude porque necesita cambiar bolívares por dólares para proteger sus ahorros de la devaluación, o porque recibieron una remesa familiar y necesitan bolívares para el supermercado. Tu trabajo como operador es proveer esa liquidez: <em>comprar a quien necesita vender rápido y vender a quien necesita comprar</em>. La diferencia entre ambos precios es el <strong>Spread</strong>, y de ahí proviene tu beneficio legítimo.
+              </p>
+            </div>
+          </article>
+
+          <!-- NUEVO MÓDULO INTERACTIVO A: Sandbox de Voz y SMS en Vivo -->
+          <article class="bento-card full-width voice-sandbox-card">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🎙️</span>
+                <div>
+                  <h3>Simulador Interactivo de Voz y SMS en Vivo</h3>
+                  <span class="card-subtitle">Prueba la extracción en tiempo real de comandos hablados y comprobantes bancarios</span>
+                </div>
+              </div>
+              <span class="status-pill purple">Sandbox Funcional</span>
+            </div>
+
+            <p class="section-desc">
+              En el Centro de Operaciones puedes presionar <kbd>Alt + V</kbd> y dictar libremente. El motor heurístico identifica la acción, monto, tasa, banco, referencia y cliente sin requerir APIs externas. Prueba escribir o hacer clic en los ejemplos de abajo:
+            </p>
+
+            <!-- Chips de prueba rápida -->
+            <div class="sandbox-preset-chips">
+              <span class="chips-label">Prueba rápida:</span>
+              <button
+                type="button"
+                class="chip-btn"
+                (click)="setSandboxPreset('Venta de 450 USDT a 36.85 por Banesco referencia 984512 cliente Carlos')"
+              >
+                Venta 450 USDT Banesco
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                (click)="setSandboxPreset('Compra 1000 USDT tasa 36.40 pago móvil mercantil ref 482190 cliente María')"
+              >
+                Compra 1000 USDT Mercantil
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                (click)="setSandboxPreset('Pago Móvil recibido BDV 1.850 Bs ref 9382 cliente Roberto')"
+              >
+                SMS Pago Móvil BDV
+              </button>
+            </div>
+
+            <!-- Input Interactivo -->
+            <div class="sandbox-input-wrapper">
+              <span class="mic-icon">🎙️</span>
+              <input
+                type="text"
+                class="sandbox-input"
+                [ngModel]="sandboxInput()"
+                (ngModelChange)="sandboxInput.set($event)"
+                placeholder="Escribe o dicta: Ej: Venta de 300 USDT a 36.50 por Banesco ref 123456 cliente Juan"
+              />
+            </div>
+
+            <!-- Extracción de Tokens en Tiempo Real -->
+            <div class="tokens-extraction-grid">
+              <div class="token-tile" [class.compra]="parsedVoice().action === 'COMPRA'" [class.venta]="parsedVoice().action === 'VENTA'">
+                <span class="token-name">Acción</span>
+                <span class="token-val bold">{{ parsedVoice().action }}</span>
+              </div>
+              <div class="token-tile">
+                <span class="token-name">Monto Cripto</span>
+                <span class="token-val tabular-nums">{{ parsedVoice().amount ? parsedVoice().amount + ' USDT' : '—' }}</span>
+              </div>
+              <div class="token-tile">
+                <span class="token-name">Tasa Ejecución</span>
+                <span class="token-val tabular-nums">{{ parsedVoice().rate ? parsedVoice().rate + ' Bs' : '—' }}</span>
+              </div>
+              <div class="token-tile">
+                <span class="token-name">Banco Detectado</span>
+                <span class="token-val">{{ parsedVoice().bank }}</span>
+              </div>
+              <div class="token-tile">
+                <span class="token-name">N° Referencia</span>
+                <span class="token-val mono">{{ parsedVoice().reference }}</span>
+              </div>
+              <div class="token-tile">
+                <span class="token-name">Contraparte</span>
+                <span class="token-val">{{ parsedVoice().counterparty }}</span>
+              </div>
+              <div class="token-tile highlight-gold">
+                <span class="token-name">Total Fiduciario</span>
+                <span class="token-val tabular-nums bold">{{ parsedVoice().totalFiat ? (parsedVoice().totalFiat | number:'1.2-2') + ' Bs' : '—' }}</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- NUEVO MÓDULO INTERACTIVO B: Simulador Visual FIFO y Break-Even -->
+          <article class="bento-card half-width fifo-simulator-card">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">📐</span>
+                <div>
+                  <h3>Simulador Visual FIFO & VWAP</h3>
+                  <span class="card-subtitle">Protección contra venta a pérdida al retroceder el mercado</span>
+                </div>
+              </div>
+              <span class="status-pill blue">Algoritmo FIFO</span>
+            </div>
+
+            <p class="section-desc">
+              El motor FIFO (First In, First Out) liquida primero los lotes más antiguos comprados. El umbral <strong>VWAP + 1%</strong> garantiza tu margen neto sin importar la volatilidad:
+            </p>
+
+            <div class="fifo-lots-table">
+              <div class="fifo-row header">
+                <span>Lote de Compra</span>
+                <span>Cantidad</span>
+                <span>Costo Unitario</span>
+              </div>
+              <div class="fifo-row">
+                <span>Lote #1 (Antiguo)</span>
+                <span class="tabular-nums">300 USDT</span>
+                <span class="tabular-nums mono">36.20 Bs</span>
+              </div>
+              <div class="fifo-row">
+                <span>Lote #2 (Reciente)</span>
+                <span class="tabular-nums">500 USDT</span>
+                <span class="tabular-nums mono">36.80 Bs</span>
+              </div>
+            </div>
+
+            <div class="fifo-metrics-summary">
+              <div class="metric-item">
+                <span class="metric-lbl">Total Inventario</span>
+                <span class="metric-val tabular-nums">{{ fifoTotalInventory() }} USDT</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-lbl">VWAP (Costo Medio)</span>
+                <span class="metric-val tabular-nums mono">{{ fifoVwap() | number:'1.2-3' }} Bs</span>
+              </div>
+              <div class="metric-item highlight-green">
+                <span class="metric-lbl">Venta Segura (VWAP + 1%)</span>
+                <span class="metric-val tabular-nums bold mono">{{ fifoSafeBreakEven() | number:'1.2-3' }} Bs</span>
+              </div>
+            </div>
+
+            <div class="pro-tip-box">
+              💡 <strong>Regla Táctica:</strong> En el Centro de Operaciones haz clic en <strong>Click-to-Liquidate</strong> en cualquier lote abierto para cargar el ticket de venta pre-calculado.
+            </div>
+          </article>
+
+          <!-- NUEVO MÓDULO INTERACTIVO C: Deck Táctico de Teclado Mecánico -->
+          <article class="bento-card half-width hotkeys-card">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">⌨️</span>
+                <div>
+                  <h3>Teclado Táctico & Comandos Rápidos</h3>
+                  <span class="card-subtitle">Opera sin tocar el mouse con atajos de alta velocidad</span>
+                </div>
+              </div>
+              <span class="status-pill gold">Hotkeys en Vivo</span>
+            </div>
+
+            <p class="section-desc">
+              Haz clic en cualquier atajo para simular su ejecución en el sistema:
+            </p>
+
+            <div class="hotkeys-deck-grid">
+              <button
+                type="button"
+                class="hotkey-btn"
+                [class.pressed]="simulatedHotkey() === 'Ctrl+K'"
+                (click)="triggerHotkeyFeedback('Ctrl+K')"
+              >
+                <div class="keys-combo"><kbd>Ctrl</kbd> + <kbd>K</kbd></div>
+                <div class="key-desc">Paleta Global de Comandos y saltos de módulo</div>
+              </button>
+
+              <button
+                type="button"
+                class="hotkey-btn"
+                [class.pressed]="simulatedHotkey() === 'Alt+P'"
+                (click)="triggerHotkeyFeedback('Alt+P')"
+              >
+                <div class="keys-combo"><kbd>Alt</kbd> + <kbd>P</kbd></div>
+                <div class="key-desc">Modo Privacidad: Oculta balances y PnL al instante</div>
+              </button>
+
+              <button
+                type="button"
+                class="hotkey-btn"
+                [class.pressed]="simulatedHotkey() === 'Alt+V'"
+                (click)="triggerHotkeyFeedback('Alt+V')"
+              >
+                <div class="keys-combo"><kbd>Alt</kbd> + <kbd>V</kbd></div>
+                <div class="key-desc">Activa / Desactiva el Dictado por Voz</div>
+              </button>
+
+              <button
+                type="button"
+                class="hotkey-btn"
+                [class.pressed]="simulatedHotkey() === 'Alt+1'"
+                (click)="triggerHotkeyFeedback('Alt+1')"
+              >
+                <div class="keys-combo"><kbd>Alt</kbd> + <kbd>1</kbd> / <kbd>2</kbd></div>
+                <div class="key-desc">Alterna entre formulario de Compra y Venta</div>
+              </button>
+            </div>
+
+            @if (simulatedHotkey()) {
+              <div class="hotkey-feedback-pill">
+                ⚡ Atajo simulado: <strong>{{ simulatedHotkey() }}</strong> activado con éxito.
+              </div>
+            }
+          </article>
+
+          <!-- Simulador Clásico de Spread Bruto vs Neto -->
+          <article class="bento-card full-width spread-sim-card">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🧮</span>
+                <div>
+                  <h3>Simulador de Spread Bruto vs. Neto (Regla de Oro Institucional)</h3>
+                  <span class="card-subtitle">Verifica cómo las comisiones de exchange y comisiones bancarias erosionan tu margen real</span>
+                </div>
+              </div>
+              <span class="status-pill" [class.green]="isGoldenRuleMet()" [class.red]="!isGoldenRuleMet()">
+                {{ isGoldenRuleMet() ? 'Regla de Oro Cumplida (>= 0.50%)' : 'Margen No Rentable (< 0.50%)' }}
+              </span>
+            </div>
+
+            <div class="sim-controls-grid">
+              <div class="control-box">
+                <label>Precio de Compra (Bs):</label>
+                <input type="number" step="0.1" [ngModel]="calcBuyPrice()" (ngModelChange)="calcBuyPrice.set($event)" />
+              </div>
+              <div class="control-box">
+                <label>Precio de Venta (Bs):</label>
+                <input type="number" step="0.1" [ngModel]="calcSellPrice()" (ngModelChange)="calcSellPrice.set($event)" />
+              </div>
+              <div class="checkboxes-row">
+                <label class="check-label">
+                  <input type="checkbox" [checked]="applyMakerFee()" (change)="applyMakerFee.set(!applyMakerFee())" />
+                  Binance Maker Fee (0.25%)
+                </label>
+                <label class="check-label">
+                  <input type="checkbox" [checked]="applyBankFee()" (change)="applyBankFee.set(!applyBankFee())" />
+                  Fricción Pago Móvil (0.30%)
+                </label>
+              </div>
+            </div>
+
+            <div class="sim-results-grid">
+              <div class="res-item">
+                <span class="res-lbl">Spread Bruto Nominal</span>
+                <span class="res-val tabular-nums">{{ calcGrossSpread() | number:'1.2-2' }}%</span>
+              </div>
+              <div class="res-item">
+                <span class="res-lbl">Total Comisiones y Fricción</span>
+                <span class="res-val tabular-nums text-danger">-{{ calcTotalFeePct() | number:'1.2-2' }}%</span>
+              </div>
+              <div class="res-item highlight" [class.green]="isGoldenRuleMet()" [class.red]="!isGoldenRuleMet()">
+                <span class="res-lbl">Spread Neto Real</span>
+                <span class="res-val tabular-nums bold">{{ calcNetSpread() | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      }
+
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 2: HERRAMIENTAS DEL DESK (CATÁLOGO 16 MÓDULOS + MASTERY)       -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'tools') {
+        <div class="tools-catalog-section">
+          <!-- Filtros y Métricas del Catálogo -->
+          <div class="tools-filter-bar">
+            <div class="tools-counts">
+              <h3>Catálogo de Módulos Operativos</h3>
+              <span class="tools-badge">{{ filteredDeskModules().length }} Módulos disponibles</span>
+            </div>
+            <div class="tools-search-inline">
+              <input
+                type="text"
+                placeholder="Filtrar por nombre, categoría o beneficio..."
+                [(ngModel)]="searchQuery"
+              />
+            </div>
+          </div>
+
+          <!-- Grid de Tarjetas Bento Apple Pro de Módulos -->
+          <div class="modules-bento-grid">
+            @for (mod of filteredDeskModules(); track mod.id) {
+              <article class="module-bento-card" [class.mastered]="isMastered(mod.id)">
+                <!-- Cabecera de la tarjeta con Toggle de Dominio -->
+                <div class="card-top">
+                  <div class="mod-meta">
+                    <span class="mod-icon">{{ mod.icon }}</span>
+                    <div>
+                      <h4 class="mod-name">{{ mod.name }}</h4>
+                      <span class="mod-category">{{ mod.category }}</span>
+                    </div>
+                  </div>
+                  <div class="mod-actions">
+                    @if (mod.badge) {
+                      <span class="mod-badge">{{ mod.badge }}</span>
+                    }
+                    <button
+                      type="button"
+                      class="mastery-toggle-btn"
+                      [class.checked]="isMastered(mod.id)"
+                      (click)="toggleMastery(mod.id)"
+                      title="Marcar módulo como dominado"
+                    >
+                      <span>{{ isMastered(mod.id) ? '✓ Dominado' : '○ Por dominar' }}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p class="mod-tagline">{{ mod.tagline }}</p>
+
+                <!-- Por qué importa -->
+                <div class="mod-why-box">
+                  <strong>¿Por qué importa?</strong>
+                  <p>{{ mod.whyItMatters }}</p>
+                </div>
+
+                <!-- Pasos tácticos -->
+                <div class="mod-steps-box">
+                  <span class="steps-title">Protocolo de Uso Paso a Paso:</span>
+                  <ol class="steps-list">
+                    @for (step of mod.stepByStep; track step) {
+                      <li>{{ step }}</li>
+                    }
+                  </ol>
+                </div>
+
+                <!-- Entradas y Salidas -->
+                <div class="io-tags-row">
+                  <div class="io-group">
+                    <span class="io-lbl">Entradas clave:</span>
+                    <div class="tags-wrap">
+                      @for (inp of mod.keyInputs; track inp) {
+                        <span class="io-tag inp">{{ inp }}</span>
+                      }
+                    </div>
+                  </div>
+                  <div class="io-group">
+                    <span class="io-lbl">Salidas deterministas:</span>
+                    <div class="tags-wrap">
+                      @for (out of mod.keyOutputs; track out) {
+                        <span class="io-tag out">{{ out }}</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Errores comunes y Pro Tip -->
+                <div class="tips-box">
+                  <div class="tip-line mistake">
+                    <span>⚠️</span>
+                    <span><strong>Error común:</strong> {{ mod.commonMistakes }}</span>
+                  </div>
+                  <div class="tip-line protip">
+                    <span>💡</span>
+                    <span><strong>Pro-Tip de Mesa:</strong> {{ mod.proTip }}</span>
+                  </div>
+                </div>
+
+                <!-- Botón de Acción Directa en Vivo -->
+                <div class="card-footer-action">
+                  <a [routerLink]="mod.route" class="live-action-btn">
+                    <span>⚡ Abrir {{ mod.name }} en Vivo</span>
+                    <span class="btn-arrow">➔</span>
+                  </a>
+                </div>
+              </article>
+            }
+          </div>
+
+          <!-- Asistente Interactivo "¿Qué Herramienta Necesito?" -->
+          <div class="interactive-scenario-assistant bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🧭</span>
+                <div>
+                  <h3>Asistente Situacional: "¿Qué Herramienta Necesito?"</h3>
+                  <span class="card-subtitle">Respuestas inmediatas ante escenarios críticos de mercado</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="scenario-buttons-scroll">
+              @for (scen of helpScenarios; track scen.id) {
+                <button
+                  type="button"
+                  class="scenario-btn"
+                  [class.active]="selectedScenarioId() === scen.id"
+                  (click)="selectedScenarioId.set(scen.id)"
+                >
+                  <span>{{ scen.icon }}</span>
+                  <span>{{ scen.question }}</span>
+                </button>
+              }
+            </div>
+
+            <div class="scenario-resolution-box">
+              <div class="res-header">
+                <h4>{{ activeHelpScenario().question }}</h4>
+                <a [routerLink]="activeHelpScenario().toolRoute" class="scenario-link-pill">
+                  Ir a {{ activeHelpScenario().toolName }} ➔
+                </a>
+              </div>
+              <p class="res-text">{{ activeHelpScenario().solution }}</p>
+              <div class="res-steps">
+                <h5>Pasos de acción inmediata:</h5>
+                <ul>
+                  @for (step of activeHelpScenario().steps; track step) {
                     <li>{{ step }}</li>
                   }
-                </ol>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 3: SERVIDORES MCP (ARQUITECTURA & TESTER JSON-RPC)            -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'mcp') {
+        <div class="mcp-section">
+          <article class="bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🔌</span>
+                <div>
+                  <h2>Arquitectura Model Context Protocol (MCP)</h2>
+                  <span class="card-subtitle">Conectores deterministas, seguros y auditables para agentes de IA</span>
+                </div>
+              </div>
+              <span class="status-pill blue">{{ mcpServerCount() }} Servidores Locales</span>
+            </div>
+
+            <p class="lead-text">
+              El <strong>Model Context Protocol (MCP)</strong> es el estándar abierto que permite a agentes de lenguaje consultar herramientas en tu propia máquina de manera determinista. El servidor <strong>p2p-decisor</strong> expone lógica matemática pura sin custodia ni llaves privadas.
+            </p>
+
+            <div class="mcp-tester-box">
+              <h3>Tester Interactivo de Herramientas MCP</h3>
+              <p>Selecciona una función y ejecuta una prueba JSON-RPC local en tiempo real:</p>
+
+              <div class="quick-sim-tools-row">
+                <button type="button" class="tool-chip" [class.active]="simulatedToolName() === 'calculate_spread'" (click)="selectQuickSimTool('calculate_spread')">
+                  calculate_spread
+                </button>
+                <button type="button" class="tool-chip" [class.active]="simulatedToolName() === 'evaluate_trade_risk'" (click)="selectQuickSimTool('evaluate_trade_risk')">
+                  evaluate_trade_risk
+                </button>
+                <button type="button" class="tool-chip" [class.active]="simulatedToolName() === 'check_bcv_intervention_window'" (click)="selectQuickSimTool('check_bcv_intervention_window')">
+                  check_bcv_intervention_window
+                </button>
               </div>
 
-              <!-- Inputs & Outputs -->
-              <div class="dossier-section io">
-                <h4>⚙️ Datos de Entrada & Resultados</h4>
-                <div class="io-subgrid">
+              <div class="json-editor-row">
+                <div class="editor-col">
+                  <label>Argumentos JSON de entrada:</label>
+                  <textarea rows="5" class="json-textarea" [ngModel]="simulatedArgsJson()" (ngModelChange)="simulatedArgsJson.set($event)"></textarea>
+                  <button type="button" class="run-mcp-btn" [disabled]="isRunningSim()" (click)="executeSimulatedMcp()">
+                    {{ isRunningSim() ? 'Ejecutando...' : '⚡ Ejecutar Tool MCP' }}
+                  </button>
+                </div>
+                <div class="editor-col">
+                  <label>Resultado de ejecución:</label>
+                  <pre class="json-result-view">{{ simulationResult() ? (simulationResult() | json) : 'Presiona "Ejecutar Tool MCP" para ver la respuesta JSON determinista.' }}</pre>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      }
+
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 4: ENJAMBRE MULTI-AGENTE (SWARM AI)                           -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'swarm') {
+        <div class="swarm-section">
+          <div class="swarm-header-card bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🤖</span>
+                <div>
+                  <h2>Enjambre Multi-Agente Cuantitativo</h2>
+                  <span class="card-subtitle">Especialistas autónomos con poder de veto y peritaje forense</span>
+                </div>
+              </div>
+              <span class="status-pill purple">{{ swarmAgentCount() }} Agentes Activos</span>
+            </div>
+            <p class="lead-text">
+              Cada agente cumple un rol estricto: el <strong>Agente Centinela</strong> vigila micro-spreads, el <strong>Agente Estratega</strong> optimiza rutas, el <strong>Oficial de Riesgo</strong> impone el veto ante violaciones de capital y el <strong>Auditor de Disputas</strong> blinda tus apelaciones.
+            </p>
+          </div>
+
+          <div class="swarm-agents-grid">
+            @for (agent of swarmAgents; track agent.id) {
+              <article class="agent-bento-card" [class]="agent.theme">
+                <div class="agent-top">
+                  <span class="agent-avatar">{{ agent.avatar }}</span>
                   <div>
-                    <span class="io-title">Qué datos te pide (Inputs):</span>
-                    <ul>
-                      @for (inp of t.keyInputs; track inp) {
-                        <li>{{ inp }}</li>
-                      }
-                    </ul>
-                  </div>
-                  <div>
-                    <span class="io-title">Qué métricas te entrega (Outputs):</span>
-                    <ul>
-                      @for (out of t.keyOutputs; track out) {
-                        <li>{{ out }}</li>
-                      }
-                    </ul>
+                    <h3 class="agent-name">{{ agent.name }}</h3>
+                    <span class="agent-role-pill">{{ agent.roleBadge }}</span>
                   </div>
                 </div>
-              </div>
+                <blockquote class="agent-quote">{{ agent.quote }}</blockquote>
+                <p class="agent-summary">{{ agent.summary }}</p>
 
-              <!-- Errores comunes & Consejo Pro -->
-              <div class="dossier-section tips">
-                <div class="warning-callout">
-                  <strong>⚠️ Error común del principiante:</strong>
-                  <p>{{ t.commonMistakes }}</p>
+                <div class="agent-skills-box">
+                  <span class="skills-title">Habilidades y Conectores MCP:</span>
+                  <ul class="skills-list">
+                    @for (sk of agent.skills; track sk.serverId) {
+                      <li>
+                        <strong>{{ sk.serverId }}:</strong> {{ sk.detail }}
+                      </li>
+                    }
+                  </ul>
                 </div>
-                <div class="pro-callout">
-                  <strong>💡 Consejo Pro del Arquitecto:</strong>
-                  <p>{{ t.proTip }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      </div>
-
-      <!-- ASISTENTE "¿QUÉ HERRAMIENTA NECESITO PARA MI CASO?" -->
-      <div class="help-wizard-card">
-        <div class="wizard-header">
-          <div class="wizard-badge">🧭 Asistente Práctico</div>
-          <h3>¿Qué herramienta debo usar en mi situación?</h3>
-          <p>Selecciona tu problema o duda actual para ver qué módulo y qué MCP debes aplicar:</p>
-        </div>
-
-        <div class="scenario-buttons">
-          @for (scen of helpScenarios; track scen.id) {
-            <button
-              type="button"
-              class="scenario-pill"
-              [class.active]="selectedScenarioId() === scen.id"
-              (click)="selectedScenarioId.set(scen.id)"
-            >
-              <span>{{ scen.icon }}</span>
-              <span>{{ scen.question }}</span>
-            </button>
-          }
-        </div>
-
-        @if (activeHelpScenario(); as s) {
-          <div class="scenario-solution-box">
-            <div class="solution-header">
-              <div class="tool-recommendation">
-                <span class="rec-label">Herramienta recomendada:</span>
-                <a [routerLink]="s.toolRoute" class="rec-link">{{ s.toolName }} &rarr;</a>
-              </div>
-              <div class="mcp-recommendation">
-                <span class="rec-label">Servidor MCP conectado:</span>
-                <code>{{ s.mcpServer }} &middot; {{ s.mcpTool }}</code>
-              </div>
-            </div>
-
-            <p class="solution-text">{{ s.solution }}</p>
-
-            <div class="solution-steps">
-              <span class="steps-title">Plan de acción inmediato:</span>
-              <ol>
-                @for (st of s.steps; track st) {
-                  <li>{{ st }}</li>
-                }
-              </ol>
-            </div>
-          </div>
-        }
-      </div>
-    </div>
-  }
-
-  <!-- ========================================================================= -->
-  <!-- 3. SERVIDORES MCP: EXPLICACIÓN DETALLADA, ARQUITECTURA & PLAYGROUND        -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'mcp') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">🔌</div>
-          <h2>Catálogo de Servidores MCP ({{ mcpServerCount() }} Dominios / {{ mcpToolCount() }} Tools)</h2>
-        </div>
-        <span class="badge badge-accent">Model Context Protocol</span>
-      </div>
-
-      <!-- Honestidad operacional: qué está documentado a fondo y qué no -->
-      <div class="prof-analogy">
-        <div class="analogy-title">
-          <span>📖</span> Estado de la documentación de esta guía
-        </div>
-        <p>
-          Esta guía explica en profundidad <strong>{{ mcpDocumentedServerCount() }} de los {{ mcpServerCount() }}</strong> servidores del catálogo
-          ({{ mcpDocumentedToolCount() }} de {{ mcpToolCount() }} herramientas con parámetros, respuesta y caso de uso).
-          El resto aparece listado con su descripción oficial pero <strong>sin ficha detallada</strong>: es una herramienta real y ejecutable, simplemente todavía no está documentada aquí.
-          Las cifras se leen del mismo catálogo que usa el <a routerLink="/mcp">Centro de Servidores MCP</a>, así que no pueden desincronizarse.
-        </p>
-      </div>
-
-      <!-- Explicación Conceptual Profunda del MCP -->
-      <div class="prof-analogy">
-        <div class="analogy-title">
-          <span>👨‍🏫</span> La Analogía del Profesor: ¿Qué es el protocolo MCP y por qué existe?
-        </div>
-        <p>
-          Imaginá que un Gran Modelo de Lenguaje (LLM como Gemini o Claude) es como un <strong>médico brillante encerrado en una habitación de cristal sin teléfono ni instrumentos</strong>.
-          Si le pides que diagnostique la presión arterial de un paciente, el médico intentará adivinar o "alucinar" un número porque no tiene cómo medir la realidad.<br><br>
-          El <strong>protocolo MCP (Model Context Protocol)</strong> es el estándar abierto que le entrega al médico un tensiómetro, un estetoscopio y una balanza calibrada: son herramientas estandarizadas que le permiten <strong>leer cotizaciones reales en vivo, calcular spreads exactos sin errar un decimal, inspeccionar comprobantes con OCR y consultar bases de datos locales</strong> de forma determinista y segura.
-        </p>
-      </div>
-
-      <!-- Cómo se trabaja con los MCP (Flujo Operativo Paso a Paso) -->
-      <div class="mcp-how-it-works-box">
-        <h3>🚀 ¿Cómo se trabaja con los MCP en el día a día? (Flujo de Trabajo)</h3>
-        <p>
-          Trabajar con MCP no requiere conocimientos avanzados de programación. La arquitectura funciona de forma invisible siguiendo este ciclo:
-        </p>
-
-        <div class="mcp-workflow-steps">
-          <div class="mcp-step">
-            <div class="step-num">1</div>
-            <div class="step-desc">
-              <strong>El Conector Local (stdio)</strong>
-              <p>Tu asistente de IA (en Antigravity o Claude) se conecta a nuestro paquete <code>@proyecto-p2p/mcp-server</code> a través de un canal de texto seguro en tu propio computador. No viaja nada por servidores externos.</p>
-            </div>
-          </div>
-
-          <div class="mcp-step">
-            <div class="step-num">2</div>
-            <div class="step-desc">
-              <strong>El Catálogo de Herramientas</strong>
-              <p>El servidor le presenta a la IA el catálogo de {{ mcpToolCount() }} herramientas disponibles con sus especificaciones exactas (qué parámetros pide y qué tipo de datos devuelve).</p>
-            </div>
-          </div>
-
-          <div class="mcp-step">
-            <div class="step-num">3</div>
-            <div class="step-desc">
-              <strong>La Invocación Cuantitativa</strong>
-              <p>Cuando preguntas <em>"¿Es viable vender a 90.50 si compré a 89.20?"</em>, la IA no hace la cuenta mental: llama a la herramienta <code>calculate_spread</code> con esos argumentos.</p>
-            </div>
-          </div>
-
-          <div class="mcp-step">
-            <div class="step-num">4</div>
-            <div class="step-desc">
-              <strong>Gobernanza Human-in-the-Loop</strong>
-              <p>La IA te presenta el resultado verificado y la directiva. <strong>Ningún MCP transfiere dinero ni opera en Binance automáticamente</strong>. El operador humano siempre conserva el botón de ejecución.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Selector de Servidores MCP -->
-      <h3 style="color: var(--gold-strong); margin-top: 32px;">Los {{ mcpServerCount() }} Servidores MCP Especializados</h3>
-      <p style="color: var(--muted); margin-bottom: 16px;">
-        Selecciona un servidor para conocer a fondo sus herramientas, sus argumentos y en qué momento de tu jornada comercial debes invocarlo:
-      </p>
-
-      <!-- Filtro por categoría, con conteos derivados del catálogo -->
-      <div class="mcp-category-filters">
-        @for (cat of mcpCategoryOptions(); track cat.id) {
-          <button
-            type="button"
-            class="mcp-category-btn"
-            [class.active]="selectedMcpCategory() === cat.id"
-            (click)="selectedMcpCategory.set(cat.id)"
-          >
-            {{ cat.label }} ({{ cat.count }})
-          </button>
-        }
-      </div>
-
-      <div class="mcp-servers-tabs">
-        @for (srv of filteredMcpServers(); track srv.id) {
-          <button
-            type="button"
-            class="mcp-server-tab-btn"
-            [class.active]="selectedMcpServerId() === srv.id"
-            (click)="selectedMcpServerId.set(srv.id)"
-          >
-            <span class="srv-icon">{{ srv.icon }}</span>
-            <span class="srv-name">{{ srv.name }}</span>
-            <span class="srv-tool-count">{{ srv.toolCount }} tools</span>
-            @if (!srv.hasNarrative) {
-              <span class="srv-doc-badge" title="Servidor real del catálogo, sin ficha detallada en esta guía">sin ficha</span>
-            }
-          </button>
-        }
-      </div>
-
-      <!-- Ficha Detallada del Servidor Seleccionado -->
-      @if (activeMcpServer(); as srv) {
-        <div class="mcp-server-dossier">
-          <div class="srv-dossier-header">
-            <div class="srv-info">
-              <span class="srv-id-code"><code>{{ srv.id }}</code></span>
-              <h4>{{ srv.name }}</h4>
-              @if (srv.purpose) {
-                <p class="srv-purpose">{{ srv.purpose }}</p>
-              } @else {
-                <p class="srv-purpose srv-purpose-muted">
-                  Este servidor expone {{ srv.toolCount }} herramientas reales y ejecutables, pero todavía no tiene ficha narrativa en esta guía.
-                  Podés ver su descripción oficial completa y probarla en el Centro de Servidores MCP.
-                </p>
-              }
-            </div>
-            <div class="srv-badge-group">
-              <span class="badge badge-accent">Transporte: {{ srv.transport }}</span>
-              <span class="badge" style="background: rgba(16,185,129,0.15); color: #34d399;">Local Offline</span>
-              <span class="badge">Estado: {{ srv.status }}</span>
-            </div>
-          </div>
-
-          @if (srv.howItWorks) {
-            <div class="srv-how-box">
-              <strong>Mecánica Operativa:</strong> {{ srv.howItWorks }}
-            </div>
-          } @else {
-            <div class="srv-how-box srv-how-box-muted">
-              <strong>Mecánica Operativa:</strong> aún no documentada para este servidor.
-            </div>
-          }
-
-          <!-- Lista de Herramientas de este Servidor -->
-          <h5 class="tools-heading">
-            Herramientas expuestas por este servidor ({{ srv.toolCount }}):
-            @if (srv.documentedToolCount < srv.toolCount) {
-              <span class="heading-muted">— {{ srv.documentedToolCount }} documentadas en profundidad, {{ srv.toolCount - srv.documentedToolCount }} listadas sin ficha</span>
-            }
-          </h5>
-          <div class="mcp-tools-list">
-            @for (tool of srv.tools; track tool.name) {
-              <div class="tool-spec-card" [class.tool-spec-card-undocumented]="!tool.isDocumented">
-                <div class="tool-spec-top">
-                  <div class="tool-code-name">
-                    <code>{{ tool.name }}</code>
-                  </div>
-                  <span class="tool-category-badge">{{ srv.category }}</span>
-                </div>
-
-                <p class="tool-spec-desc">{{ tool.description }}</p>
-
-                @if (tool.isDocumented) {
-                  <div class="tool-specs-details">
-                    <div class="spec-row">
-                      <span class="spec-label">Parámetros (JSON):</span>
-                      <pre class="spec-pre">{{ tool.params }}</pre>
-                    </div>
-                    <div class="spec-row">
-                      <span class="spec-label">Respuesta (JSON):</span>
-                      <pre class="spec-pre">{{ tool.returns }}</pre>
-                    </div>
-                    <div class="spec-row use-case">
-                      <span class="spec-label">Caso de uso real:</span>
-                      <span class="spec-val">{{ tool.useCase }}</span>
-                    </div>
-                  </div>
-                } @else {
-                  <p class="tool-spec-pending">
-                    Documentación pendiente: esta herramienta está activa y disponible, pero esta guía aún no publica sus parámetros ni su respuesta.
-                  </p>
-                }
-              </div>
+              </article>
             }
           </div>
         </div>
       }
 
-      <!-- SIMULADOR Y PROBADOR INTERACTIVO DE HERRAMIENTAS MCP -->
-      <div class="mcp-interactive-tester">
-        <div class="tester-header">
-          <div class="sim-badge">🧪 Banco de Pruebas MCP</div>
-          <h3>Prueba en Vivo una Herramienta MCP</h3>
-          <p>
-            Ejecuta una llamada directa a las funciones de nuestro servidor MCP para ver cómo procesa los datos y qué responde en milisegundos:
-          </p>
-        </div>
-
-        <div class="quick-tool-selectors">
-          <button
-            type="button"
-            class="quick-pill"
-            [class.active]="simulatedToolName() === 'calculate_spread'"
-            (click)="selectQuickSimTool('calculate_spread')"
-          >
-            calculate_spread
-          </button>
-          <button
-            type="button"
-            class="quick-pill"
-            [class.active]="simulatedToolName() === 'evaluate_trade_risk'"
-            (click)="selectQuickSimTool('evaluate_trade_risk')"
-          >
-            evaluate_trade_risk
-          </button>
-          <button
-            type="button"
-            class="quick-pill"
-            [class.active]="simulatedToolName() === 'get_bcv_rates'"
-            (click)="selectQuickSimTool('get_bcv_rates')"
-          >
-            get_bcv_rates
-          </button>
-          <button
-            type="button"
-            class="quick-pill"
-            [class.active]="simulatedToolName() === 'check_bcv_intervention_window'"
-            (click)="selectQuickSimTool('check_bcv_intervention_window')"
-          >
-            check_bcv_intervention_window
-          </button>
-        </div>
-
-        <div class="tester-body">
-          <div class="tester-col">
-            <label for="simJsonArgs">Argumentos de Entrada (JSON Payload):</label>
-            <textarea
-              id="simJsonArgs"
-              class="tester-textarea"
-              rows="6"
-              [ngModel]="simulatedArgsJson()"
-              (ngModelChange)="simulatedArgsJson.set($event)"
-            ></textarea>
-            <button
-              type="button"
-              class="btn-run-sim"
-              [disabled]="isRunningSim()"
-              (click)="executeSimulatedMcp()"
-            >
-              @if (isRunningSim()) {
-                <span>⏳ Ejecutando en Servidor Local...</span>
-              } @else {
-                <span>⚡ Ejecutar Herramienta MCP</span>
-              }
-            </button>
-          </div>
-
-          <div class="tester-col">
-            <span class="output-label">Resultado Devuelto por el Servidor MCP:</span>
-            <div class="output-console">
-              @if (simulationResult()) {
-                <pre>{{ simulationResult() | json }}</pre>
-              } @else {
-                <div class="console-placeholder">
-                  Presiona "Ejecutar Herramienta MCP" para ver la respuesta JSON estructurada generada por el servidor.
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 5: BLINDAJE BANCARIO, SUDEBAN Y COPIA EN 3 BURBUJAS           -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'security') {
+        <div class="security-section">
+          <article class="bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🛡️</span>
+                <div>
+                  <h2>Blindaje y Seguridad Bancaria</h2>
+                  <span class="card-subtitle">Protección contra TRIANGULACIÓN, bloqueos de SUDEBAN y peritaje OCR</span>
                 </div>
-              }
+              </div>
+              <span class="status-pill red">Seguridad Nivel 1</span>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
 
-  <!-- ========================================================================= -->
-  <!-- 4. ENJAMBRE MULTI-AGENTE (SWARM AI)                                      -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'swarm') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">🤖</div>
-          <h2>El Enjambre Multi-Agente (Swarm AI)</h2>
-        </div>
-        <span class="badge badge-accent">Gobernanza Colegiada</span>
-      </div>
+            <div class="security-grid-cols">
+              <div class="sec-col">
+                <h4>Erradicación de la TRIANGULACIÓN</h4>
+                <p>
+                  La <strong>TRIANGULACIÓN</strong> ocurre cuando una víctima es engañada para transferir fondos a tu cuenta mientras el estafador se lleva los USDT en Binance. Para erradicarla:
+                </p>
+                <ol>
+                  <li>Exige que el titular de la cuenta bancaria coincida exactamente con el usuario verificado en Binance.</li>
+                  <li>Usa el <strong>Escáner Forense OCR</strong> para cotejar cédula y monto.</li>
+                  <li>Rechaza de inmediato pagos recibidos desde cuentas de terceros no autorizadas.</li>
+                </ol>
+              </div>
 
-      <p class="lead-text">
-        Para evitar decisiones sesgadas o errores humanos por fatiga, P2P Decisor implementa una <strong>arquitectura de {{ swarmAgentCount() }} agentes autónomos</strong> con separación estricta de poderes y derecho a veto:
-      </p>
-
-      <div class="swarm-grid">
-        @for (agent of swarmAgentViews(); track agent.id) {
-          <div class="agent-dossier-card" [class]="'agent-dossier-card ' + agent.theme">
-            <div class="agent-header">
-              <div class="agent-avatar">{{ agent.avatar }}</div>
-              <span class="role-badge">{{ agent.roleBadge }}</span>
+              <div class="sec-col">
+                <h4>Gobernanza SUDEBAN & Prevención de Bloqueos</h4>
+                <p>
+                  Las alertas de <strong>SUDEBAN</strong> se activan por volumen inusual en una sola cuenta y micro-transferencias repetitivas en ráfaga (burst):
+                </p>
+                <ul>
+                  <li>Distribuye tu volumen fiduciario aplicando la regla 40/35/25 (Banesco, Mercantil y BDV).</li>
+                  <li>Respeta el tiempo de enfriamiento de 15 minutos tras ráfagas de 5 operaciones seguidas.</li>
+                  <li>Detén la cuenta cuando alcance el 70% del cupo diario tolerado.</li>
+                </ul>
+              </div>
             </div>
-            <h3>{{ agent.name }}</h3>
-            <span class="agent-quote">{{ agent.quote }}</span>
-            <p>{{ agent.summary }}</p>
-            <div class="agent-skills-list">
-              <span class="list-title">Servidores & Habilidades:</span>
-              <ul>
-                @for (skill of agent.skills; track skill.serverId) {
-                  <li><code>{{ skill.serverId }}</code>: {{ skill.detail }}</li>
-                }
-              </ul>
+
+            <!-- Visualizador del Protocolo de Copia en 3 Burbujas -->
+            <div class="three-bubbles-showcase">
+              <h4>El Sistema de Copiado en 3 Burbujas para WhatsApp / Telegram</h4>
+              <p>
+                Para evitar que el cliente pegue datos corruptos en su aplicación bancaria, el CRM envía los datos en 3 mensajes separados:
+              </p>
+              <div class="bubbles-mockup">
+                <div class="chat-bubble">
+                  <span class="bubble-tag">Burbuja 1 (Identificación):</span>
+                  <code>V-18945231</code>
+                  <span class="copy-hint">El cliente hace 1 toque y pega la cédula sin espacios</span>
+                </div>
+                <div class="chat-bubble">
+                  <span class="bubble-tag">Burbuja 2 (Canal Bancario):</span>
+                  <code>04141234567 Banesco</code>
+                  <span class="copy-hint">El cliente pega teléfono y banco receptor</span>
+                </div>
+                <div class="chat-bubble highlight">
+                  <span class="bubble-tag">Burbuja 3 (Monto Exacto):</span>
+                  <code>1845.50</code>
+                  <span class="copy-hint">Monto fiduciario sin símbolos que puedan causar rechazo</span>
+                </div>
+              </div>
             </div>
-          </div>
-        }
-      </div>
-    </div>
-  }
 
-  <!-- ========================================================================= -->
-  <!-- 5. BLINDAJE BANCARIO & SUDEBAN                                            -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'security') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">🛡️</div>
-          <h2>Protocolo de Blindaje y Seguridad Bancaria en Venezuela</h2>
-        </div>
-        <span class="badge" style="background: rgba(239,68,68,0.2); color: #f87171;">Prioridad Máxima</span>
-      </div>
-
-      <!-- Alerta Estafa de Triangulación -->
-      <div class="alert-box danger">
-        🚨 <strong>LA ESTAFA DE TRIANGULACIÓN (CÓMO FUNCIONA Y CÓMO BLINDARTE):</strong><br>
-        Un estafador abre una orden para comprarte USDT en Binance, pero en lugar de pagarte él, le vende un producto ficticio (ej. un teléfono o repuesto) a una víctima inocente en Facebook o WhatsApp y le da TU cuenta bancaria para que transfiera. Tú ves el dinero en tu banco, liberas los USDT al estafador, y horas después la víctima te denuncia por estafa ante el banco o el CICPC, bloqueando tu cuenta bancaria.<br><br>
-        <strong>REGLA DE ORO INNEGOCIABLE:</strong> Nunca, bajo ninguna circunstancia, liberes criptomonedas si el titular de la cuenta bancaria emisora no coincide exactamente (letra por letra y cédula por cédula) con el nombre verificado en Binance. Si paga un tercero ("mi esposa", "mi socio"), <strong>NO LIBERES</strong> y abre disputa.
-      </div>
-
-      <h3 style="color: var(--gold-strong); margin-top: 24px;">Distribución Multi-Banco 40/35/25 (Prevención de Pitufeo y SUDEBAN)</h3>
-      <p>
-        Para carteras activas (ej. $5,000 a $10,000 USD), concentrar todo el dinero en una sola cuenta bancaria dispara alertas en los algoritmos de SUDEBAN por exceso de velocidad transaccional o <em>pitufeo</em>. Recomendamos diversificar según nuestra matriz:
-      </p>
-
-      <div class="bank-distribution-grid">
-        <div class="bank-box banesco">
-          <h4>Banesco (40% — Cuenta Ancla)</h4>
-          <p>Máxima tolerancia a volumen transaccional. Ideal para tickets institucionales medianos y altos ($500 - $2,500).</p>
-        </div>
-
-        <div class="bank-box mercantil">
-          <h4>Mercantil (35% — Flujo Intermedio)</h4>
-          <p>Excelente estabilidad en TPago y transferencias directas. Muy baja tasa de incidencias o fondos retenidos.</p>
-        </div>
-
-        <div class="bank-box bdv">
-          <h4>Banco de Venezuela (25% — Captación)</h4>
-          <p>Captación masiva minorista por PagoClave. <strong>Regla estricta:</strong> Nunca pernoctar bolívares en BDV después de las 20:00 hrs.</p>
-        </div>
-      </div>
-
-      <!-- Matriz de Comisiones Bancarias -->
-      <h3 style="color: var(--text); margin-top: 28px;">Matriz Real de Comisiones Bancarias (Venezuela)</h3>
-      <table class="corporate-table">
-        <thead>
-          <tr>
-            <th>Entidad Bancaria</th>
-            <th>Mismo Banco</th>
-            <th>Pago Móvil Interbancario</th>
-            <th>Transferencia Interbancaria</th>
-            <th>Velocidad de Acreditación</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>Banesco</strong></td>
-            <td class="positive">0.00%</td>
-            <td class="negative">0.30%</td>
-            <td class="negative">0.30%</td>
-            <td>⚡ Inmediata (Líder en volumen P2P)</td>
-          </tr>
-          <tr>
-            <td><strong>Mercantil</strong></td>
-            <td class="positive">0.00%</td>
-            <td class="negative">0.30%</td>
-            <td class="negative">0.30%</td>
-            <td>⚡ Muy alta liquidez y estabilidad</td>
-          </tr>
-          <tr>
-            <td><strong>Banco de Venezuela (BDV)</strong></td>
-            <td class="positive">0.00%</td>
-            <td class="negative">0.30%</td>
-            <td class="negative">0.30%</td>
-            <td>Alta liquidez (vulnerable a intermitencias)</td>
-          </tr>
-          <tr>
-            <td><strong>Bancamiga</strong></td>
-            <td class="positive">0.00%</td>
-            <td class="negative">0.30%</td>
-            <td class="negative">0.30%</td>
-            <td>Ágil en divisas y tarjetas internacionales</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- Atajos de Teclado -->
-      <h3 style="color: var(--text); margin-top: 28px;">Atajos de Teclado del Escritorio (Terminal Financiera)</h3>
-      <div class="keyboard-shortcuts-grid">
-        <div class="shortcut-box"><kbd>F1</kbd> &mdash; Ir al Monitor de Spread</div>
-        <div class="shortcut-box"><kbd>F2</kbd> &mdash; Sincronizar radar de Binance</div>
-        <div class="shortcut-box"><kbd>F3</kbd> &mdash; Abrir Calculadora Inteligente</div>
-        <div class="shortcut-box"><kbd>F5</kbd> &mdash; Abrir Tesorería y Límites</div>
-        <div class="shortcut-box danger"><kbd>Esc</kbd> &mdash; 🚨 <strong>Kill-Switch de Emergencia</strong></div>
-      </div>
-
-      <!-- Respaldo de datos -->
-      <h3 style="color: var(--gold-strong); margin-top: 28px;">Respaldo de datos y Soberanía Local</h3>
-      <p class="note">
-        Tus datos nunca se suben a servidores de terceros ni a la nube sin tu consentimiento explícito. Todo tu historial de operaciones y parámetros de riesgo se guardan en tu equipo. Utiliza la opción de <strong>exportar</strong> periódicamente desde el Registro de Operaciones para guardar un respaldo JSON seguro en un pendrive o unidad externa.
-      </p>
-    </div>
-  }
-
-  <!-- ========================================================================= -->
-  <!-- 6. CHECKLIST PASO A PASO (OPERATIVA DIARIA)                               -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'workflow') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">🎯</div>
-          <h2>Checklist Operativo Paso a Paso (La Rutina del Trader)</h2>
-        </div>
-        <span class="badge badge-accent">Procedimiento SOP</span>
-      </div>
-
-      <p class="lead-text">
-        El arbitraje rentable no es cuestión de suerte, sino de disciplina militar. Sigue esta rutina diaria de 4 fases para garantizar que cada sesión sea rentable y segura:
-      </p>
-
-      <div class="timeline-workflow">
-        <!-- Paso 1 -->
-        <div class="timeline-step">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <h3>Apertura de Sesión & Análisis Macro</h3>
-            <p>
-              Antes de colocar una sola orden en Binance, inspecciona la brecha entre el dólar BCV oficial y el mercado paralelo en el Monitor. Si la brecha supera el 20% o si estamos en día de inyección bancaria (lunes o jueves en la mañana), el precio del dólar fluctuará con fuerza.
-            </p>
-            <div class="step-actions">
-              <span class="action-chip">🔍 Consultar Brecha BCV</span>
-              <span class="action-chip">🏦 Verificar Latencia Bancaria</span>
-              <span class="action-chip">🟢 Comprobar Kill-Switch Activo</span>
+            <div class="backup-advice-box">
+              <h4>Respaldo de datos y Privacidad</h4>
+              <p>
+                Toda tu base contable e historial reside en el almacenamiento local de tu navegador. Recuerda <strong>exportar</strong> periódicamente tu copia de seguridad cifrada en formato JSON o sincronizar con Google Drive desde el Centro de Control.
+              </p>
             </div>
-          </div>
+          </article>
         </div>
+      }
 
-        <!-- Paso 2 -->
-        <div class="timeline-step">
-          <div class="step-number">2</div>
-          <div class="step-content">
-            <h3>Fijación de Precios & Filtro de la Regla de Oro</h3>
-            <p>
-              Abre el <strong>Monitor de Spread</strong>. Ingresa el precio de compra y el de venta que planeas publicar en Binance. Verifica que el <strong>Spread Neto</strong> sea igual o mayor a <strong>0.50%</strong>. Si el margen neto da menos de 0.50%, el Oficial de Riesgo vetará la operación porque cualquier imprevisto te generará pérdida.
-            </p>
-            <div class="step-actions">
-              <span class="action-chip">📐 Calcular SQS (&gt; 65 pts)</span>
-              <span class="action-chip">🛡️ Validar Regla de Oro (&ge; 0.50%)</span>
-              <span class="action-chip">📢 Publicar Anuncio Maker en Binance</span>
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 6: CHECKLIST Y PROTOCOLO DE JORNADA EN 5 PASOS                -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'workflow') {
+        <div class="workflow-section">
+          <article class="bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">🎯</span>
+                <div>
+                  <h2>Checklist Operativo Paso a Paso</h2>
+                  <span class="card-subtitle">La Rutina del Trader: Desde la Apertura de Mesa hasta el Cierre Contable</span>
+                </div>
+              </div>
+              <span class="status-pill green">SOP Estandarizado</span>
             </div>
-          </div>
-        </div>
 
-        <!-- Paso 3 -->
-        <div class="timeline-step">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <h3>Atención de Órdenes & Escaneo con OCR</h3>
-            <p>
-              Cuando un comprador tome tu anuncio y marque la orden como "Pagado", no te fíes de la captura enviada por el chat de Binance. Ingresa a tu banca en línea, verifica que el dinero esté acreditado en saldo <strong>disponible</strong> y pasa el comprobante por el <strong>Escáner de Recibos</strong> para validar la concordancia de la cédula y el número de referencia.
+            <p class="lead-text">
+              El éxito de un desk profesional se basa en la disciplina operativa. Sigue este protocolo en cada jornada:
             </p>
-            <div class="step-actions">
-              <span class="action-chip">⚠️ Cotejar Titular Bancario == Binance</span>
-              <span class="action-chip">📱 Verificar Saldo Disponible en App</span>
-              <span class="action-chip">🔓 Liberar Criptomonedas</span>
+
+            <div class="five-steps-workflow-grid">
+              <div class="workflow-step-card">
+                <div class="step-num">1</div>
+                <h4>Radar & Macro BCV</h4>
+                <p>Verifica la ventana de intervención bancaria y el spread neto libre de bots de centavo en el Radar L2.</p>
+              </div>
+
+              <div class="workflow-step-card">
+                <div class="step-num">2</div>
+                <h4>Escudo Bancario</h4>
+                <p>Revisa los cupos disponibles en Banesco, Mercantil y BDV antes de habilitar anuncios Maker.</p>
+              </div>
+
+              <div class="workflow-step-card">
+                <div class="step-num">3</div>
+                <h4>Ejecución Rápida & FIFO</h4>
+                <p>Carga órdenes con dictado de voz y liquida lotes con el botón Click-to-Liquidate protegiendo el VWAP + 1%.</p>
+              </div>
+
+              <div class="workflow-step-card">
+                <div class="step-num">4</div>
+                <h4>Verificación Anti-Colisión</h4>
+                <p>Comprueba que la referencia no esté duplicada y audita el comprobante OCR antes de liberar.</p>
+              </div>
+
+              <div class="workflow-step-card highlight">
+                <div class="step-num">5</div>
+                <h4>Corte de Turno a Finanzas 360</h4>
+                <p>Ejecuta el Profit Sweep trasvasando únicamente las ganancias netas positivas a la Bóveda Pyme.</p>
+              </div>
             </div>
-          </div>
+          </article>
         </div>
+      }
 
-        <!-- Paso 4 -->
-        <div class="timeline-step">
-          <div class="step-number">4</div>
-          <div class="step-content">
-            <h3>Cierre de Sesión, Reconciliación & Respaldo</h3>
-            <p>
-              Registra cada operación completada en el <strong>Registro de Operaciones</strong>. Revisa que tu saldo físico en cuentas bancarias cuadre al centavo con el PnL calculado por el software. Antes de apagar tu terminal, haz clic en <strong>exportar</strong> respaldo para archivar tu base de datos de manera segura.
-            </p>
-            <div class="step-actions">
-              <span class="action-chip">📝 Asentar Registro de Operaciones</span>
-              <span class="action-chip">📊 Revisar Estadísticas Diarias</span>
-              <span class="action-chip">💾 Exportar Respaldo Local</span>
+      <!-- ===================================================================== -->
+      <!-- PESTAÑA 7: TÉRMINOS DE USO, PRIVACIDAD & GESTIÓN DE RIESGO           -->
+      <!-- ===================================================================== -->
+      @if (activeTab() === 'terms') {
+        <div class="terms-section">
+          <article class="bento-card full-width">
+            <div class="card-header">
+              <div class="title-group">
+                <span class="card-badge-icon">⚖️</span>
+                <div>
+                  <h2>Términos de Uso, Privacidad Soberana & Gestión de Riesgo</h2>
+                  <span class="card-subtitle">Manifiesto de Soberanía Técnica y Cero Telemetría</span>
+                </div>
+              </div>
+              <span class="status-pill gold">Soberanía de Datos</span>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
 
-  <!-- ========================================================================= -->
-  <!-- 7. TÉRMINOS DE USO, PRIVACIDAD SOBERANA & GESTIÓN DE RIESGO                -->
-  <!-- ========================================================================= -->
-  @if (activeTab() === 'terms') {
-    <div class="academy-card">
-      <div class="card-header">
-        <div class="title-group">
-          <div class="badge-icon">⚖️</div>
-          <h2>Términos de Uso, Privacidad Soberana & Gestión de Riesgo</h2>
-        </div>
-        <span class="badge badge-accent">Compliance Institucional</span>
-      </div>
+            <div class="terms-content-box">
+              <h3>Cero Telemetría y Almacenamiento Local Soberano</h3>
+              <p>
+                <strong>P2P Decisor</strong> aplica una política inquebrantable de <strong>Cero Telemetría</strong>. No existen servidores analíticos, trackers de comportamiento ni transmisión de saldos o transacciones a entidades externas. Toda la información financiera permanece exclusivamente en tu equipo.
+              </p>
 
-      <div class="alert-box info" style="margin-bottom: 24px;">
-        🛡️ <strong>Cero Telemetría y Cero Custodia:</strong> Esta aplicación es una herramienta de cálculo y asistencia matemática personal. <strong>No procesamos, no almacenamos ni transmitimos tus datos personales</strong>. Toda la información contable reside única y exclusivamente en tu dispositivo y en tus servicios privados personales (como tu Google Drive / Workspace personal con tus propias credenciales).
-      </div>
-
-      <div class="terms-grid">
-        <div class="term-item">
-          <div class="term-icon">🧠</div>
-          <div class="term-info">
-            <h3>1. Naturaleza Jurídica del Software</h3>
-            <p>
-              Software de soporte a la decisión (Personal Decision-Support Utility). <strong>No es un exchange, no es un procesador de pagos ni un custodio de fondos</strong>. No ejecuta transacciones de manera autónoma; el operador humano tiene el control absoluto (Human-in-the-Loop).
-            </p>
-          </div>
+              <h3>Naturaleza Jurídica del Software</h3>
+              <p>
+                Este software es una herramienta técnica de soporte al cálculo y toma de decisiones comerciales. <strong>No constituye asesoría financiera, corretaje de valores ni custodia fiduciaria</strong>. Cada usuario es responsable único y soberano de sus decisiones comerciales, el cumplimiento de la normativa cambiaria y tributaria de su jurisdicción, y la custodia de su patrimonio.
+              </p>
+            </div>
+          </article>
         </div>
-
-        <div class="term-item">
-          <div class="term-icon">🔐</div>
-          <div class="term-info">
-            <h3>2. Soberanía de Datos y Privacidad Absoluta</h3>
-            <p>
-              Cero recolección de datos de identidad o transacciones. Cada usuario opera en su propio entorno local aislado. Los respaldos en la nube se hacen directamente desde el dispositivo hacia la cuenta de Google Drive personal del usuario, sin intermediarios.
-            </p>
-          </div>
-        </div>
-
-        <div class="term-item">
-          <div class="term-icon">🚫</div>
-          <div class="term-info">
-            <h3>3. Prohibición de Pagos de Terceros (Anti-Triangulación)</h3>
-            <p>
-              Norma de oro de seguridad: nunca recibir pagos de cuentas cuyo titular no coincida exactamente con la contraparte verificada en Binance. El escáner OCR y el filtro de listas negras ayudan a mitigar riesgos de congelamiento bancario.
-            </p>
-          </div>
-        </div>
-
-        <div class="term-item">
-          <div class="term-icon">📈</div>
-          <div class="term-info">
-            <h3>4. Política de Gestión de Riesgo (Regla de Oro)</h3>
-            <p>
-              Mantener siempre un spread neto mínimo del <strong>0.50%</strong> para protegerse contra la devaluación del bolívar en inventarios fiduciarios. Respetar las señales de parada de emergencia (PAUSE / DENY) emitidas por el Oficial de Riesgo.
-            </p>
-          </div>
-        </div>
-
-        <div class="term-item">
-          <div class="term-icon">📜</div>
-          <div class="term-info">
-            <h3>5. Exención de Responsabilidad</h3>
-            <p>
-              Software distribuido "tal cual" (As-Is). El usuario es el único responsable de la gestión de sus instrumentos bancarios, de la declaración de impuestos y del cumplimiento de las regulaciones financieras vigentes en su jurisdicción.
-            </p>
-          </div>
-        </div>
-
-        <div class="term-item">
-          <div class="term-icon">🏦</div>
-          <div class="term-info">
-            <h3>6. Monitoreo de Saturación Bancaria</h3>
-            <p>
-              Controlar los límites transaccionales diarios y rotar cuentas bancarias para operar de forma transparente y prevenir alertas de velocidad bancaria (SUDEBAN).
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
+      }
+    </main>
+  </div>
 </div>

@@ -12,6 +12,7 @@ export interface DeskModuleGuide {
   route: string;
   icon: string;
   category: string;
+  role: 'operations' | 'banking' | 'crm' | 'finance' | 'mcp';
   badge?: string;
   tagline: string;
   whyItMatters: string;
@@ -24,14 +25,12 @@ export interface DeskModuleGuide {
 
 export interface SwarmAgentGuide {
   id: string;
-  /** Maps to the `.sentinel` / `.strategist` / `.risk` / `.dispute` theme class. */
   theme: string;
   avatar: string;
   roleBadge: string;
   name: string;
   quote: string;
   summary: string;
-  /** `serverId` must be a real catalog server id, so the card cannot name a phantom. */
   skills: { serverId: string; detail: string }[];
 }
 
@@ -43,15 +42,6 @@ export interface McpToolGuide {
   useCase: string;
 }
 
-/**
- * Curated narrative for one MCP server.
- *
- * The shared catalog (`core/mcp/mcp-catalog.ts`) only carries `name` +
- * `description` per tool, so `params` / `returns` / `useCase` exist nowhere
- * else and live here. A server listed in this array is documented in depth; a
- * server that is absent is still shown by the Guide, but only as a catalog
- * listing. That distinction is rendered on screen, never implied.
- */
 export interface McpServerGuide {
   id: string;
   name: string;
@@ -62,18 +52,15 @@ export interface McpServerGuide {
   tools: McpToolGuide[];
 }
 
-/** One tool row in the MCP tab, merged from the catalog and the curated guide. */
 export interface McpToolView {
   name: string;
   description: string;
   params: string | null;
   returns: string | null;
   useCase: string | null;
-  /** True when this tool has a full ficha (params/returns/use case) in the guide. */
   isDocumented: boolean;
 }
 
-/** One server row in the MCP tab. Existence and counts come from the catalog. */
 export interface McpServerView {
   id: string;
   name: string;
@@ -81,12 +68,9 @@ export interface McpServerView {
   category: string;
   transport: string;
   status: string;
-  /** Tool count reported by the runtime/catalog. Never a literal. */
   toolCount: number;
   resourceCount: number;
-  /** How many of this server's tools carry an in-depth ficha in this guide. */
   documentedToolCount: number;
-  /** True when the guide has a purpose + mechanics narrative for this server. */
   hasNarrative: boolean;
   purpose: string | null;
   howItWorks: string | null;
@@ -105,6 +89,16 @@ export interface InteractiveHelpScenario {
   steps: string[];
 }
 
+export interface ParsedVoiceResult {
+  action: 'COMPRA' | 'VENTA';
+  amount: number | null;
+  rate: number | null;
+  bank: string;
+  reference: string;
+  counterparty: string;
+  totalFiat: number | null;
+}
+
 @Component({
   selector: 'app-guide',
   standalone: true,
@@ -117,13 +111,199 @@ export class Guide {
 
   readonly activeTab = signal<GuideTab>('intro');
   readonly searchQuery = signal<string>('');
+  readonly selectedRole = signal<string>('all');
 
-  // ─── Derived counts ────────────────────────────────────────────────────────
-  //
-  // Every number the Guide shows the operator is read from a signal here, never
-  // typed into a template. The MCP ones are the exact same reads the sibling
-  // `/mcp` page performs on `McpService`, so both pages cannot disagree: change
-  // the shared catalog or ship a tool and both follow on the next render.
+  // =========================================================================
+  // MASTERY TRACKER (Persistencia en localStorage)
+  // =========================================================================
+  private readonly MASTERY_STORAGE_KEY = 'p2p.guide.mastery';
+  readonly masterySet = signal<Set<string>>(new Set(this.loadMasteryFromStorage()));
+
+  private loadMasteryFromStorage(): string[] {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
+    try {
+      const raw = localStorage.getItem(this.MASTERY_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  toggleMastery(id: string): void {
+    const current = new Set(this.masterySet());
+    if (current.has(id)) {
+      current.delete(id);
+    } else {
+      current.add(id);
+    }
+    this.masterySet.set(current);
+    try {
+      localStorage.setItem(this.MASTERY_STORAGE_KEY, JSON.stringify([...current]));
+    } catch {
+      /* sin persistencia */
+    }
+  }
+
+  isMastered(id: string): boolean {
+    return this.masterySet().has(id);
+  }
+
+  readonly totalMasterableItems = computed(() => this.deskModules().length + 5);
+  readonly masteryCount = computed(() => this.masterySet().size);
+  readonly masteryPercentage = computed(() => {
+    const total = this.totalMasterableItems();
+    if (total === 0) return 0;
+    return Math.min(100, Math.round((this.masteryCount() / total) * 100));
+  });
+
+  // =========================================================================
+  // ROLES & FILTROS RÁPIDOS
+  // =========================================================================
+  readonly roleOptions = [
+    { id: 'all', label: 'Todos', icon: '🌐' },
+    { id: 'operations', label: '⚡ Operativa Diaria P2P', icon: '⚡' },
+    { id: 'banking', label: '🛡️ Bancos & Anti-Estafa', icon: '🛡️' },
+    { id: 'crm', label: '💬 CRM, WhatsApp & Facturas', icon: '💬' },
+    { id: 'finance', label: '🏛️ Finanzas 360', icon: '🏛️' },
+    { id: 'mcp', label: '🤖 Enjambre & Centinelas', icon: '🤖' },
+  ];
+
+  setRoleFilter(role: string): void {
+    this.selectedRole.set(role);
+  }
+
+  // =========================================================================
+  // SIMULADOR INTERACTIVO DE VOZ Y SMS (Sandbox en tiempo real)
+  // =========================================================================
+  readonly sandboxInput = signal<string>(
+    'Venta de 450 USDT a 36.85 por Banesco referencia 984512 cliente Carlos',
+  );
+
+  readonly parsedVoice = computed<ParsedVoiceResult>(() => {
+    const text = this.sandboxInput().toLowerCase();
+
+    // Action
+    let action: 'COMPRA' | 'VENTA' = 'VENTA';
+    if (
+      text.includes('compra') ||
+      text.includes('compre') ||
+      text.includes('recibí pago') ||
+      text.includes('pago móvil recibido')
+    ) {
+      action = 'COMPRA';
+    } else if (
+      text.includes('venta') ||
+      text.includes('vendí') ||
+      text.includes('vendi') ||
+      text.includes('envío') ||
+      text.includes('despacho')
+    ) {
+      action = 'VENTA';
+    }
+
+    // Numbers
+    const allNums = [...text.matchAll(/\b\d+(?:[.,]\d+)?\b/g)].map((m) =>
+      parseFloat(m[0].replace(',', '.')),
+    );
+
+    let amount: number | null = null;
+    let rate: number | null = null;
+
+    if (allNums.length > 0) {
+      amount = allNums[0];
+    }
+
+    const rateMatch = text.match(/(?:tasa|precio|a|en)\s*(\d+(?:[.,]\d+)?)/i);
+    if (rateMatch && rateMatch[1]) {
+      rate = parseFloat(rateMatch[1].replace(',', '.'));
+    } else if (allNums.length > 1) {
+      rate = allNums[1];
+    }
+
+    // Bank
+    let bank = 'General / Interbancario';
+    if (text.includes('banesco')) bank = 'Banesco';
+    else if (text.includes('mercantil')) bank = 'Mercantil';
+    else if (text.includes('bdv') || text.includes('venezuela')) bank = 'Banco de Venezuela';
+    else if (text.includes('provincial')) bank = 'BBVA Provincial';
+    else if (text.includes('bancolombia')) bank = 'Bancolombia';
+    else if (text.includes('binance') || text.includes('pay')) bank = 'Binance Pay';
+    else if (text.includes('zinli')) bank = 'Zinli';
+    else if (text.includes('wally')) bank = 'Wally Tech';
+
+    // Reference
+    let reference = 'No detectada';
+    const refMatch = text.match(/(?:ref(?:erencia)?\.?|recibo|comprobante|#)\s*([a-z0-9_-]{4,12})/i);
+    if (refMatch && refMatch[1]) {
+      reference = refMatch[1].toUpperCase();
+    } else {
+      const longNum = allNums.find((n) => n >= 1000 && n !== amount && n !== rate);
+      if (longNum) reference = String(Math.round(longNum));
+    }
+
+    // Counterparty
+    let counterparty = 'Sin asignar';
+    const clientMatch = text.match(
+      /(?:cliente|usuario|persona|contraparte|para|de)\s+([a-záéíóúñ]+)/i,
+    );
+    if (clientMatch && clientMatch[1]) {
+      const candidate = clientMatch[1].trim();
+      const ignoreWords = ['usdt', 'bs', 'bolivares', 'tasa', 'banco', 'banesco', 'mercantil', 'referencia'];
+      if (!ignoreWords.includes(candidate)) {
+        counterparty = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      }
+    }
+
+    return {
+      action,
+      amount,
+      rate,
+      bank,
+      reference,
+      counterparty,
+      totalFiat: amount && rate ? amount * rate : null,
+    };
+  });
+
+  setSandboxPreset(phrase: string): void {
+    this.sandboxInput.set(phrase);
+  }
+
+  // =========================================================================
+  // SIMULADOR VISUAL DE LIQUIDACIÓN FIFO & BREAK-EVEN
+  // =========================================================================
+  readonly fifoLot1Qty = signal<number>(300);
+  readonly fifoLot1Price = signal<number>(36.2);
+  readonly fifoLot2Qty = signal<number>(500);
+  readonly fifoLot2Price = signal<number>(36.8);
+
+  readonly fifoTotalInventory = computed(() => this.fifoLot1Qty() + this.fifoLot2Qty());
+  readonly fifoTotalCost = computed(
+    () => this.fifoLot1Qty() * this.fifoLot1Price() + this.fifoLot2Qty() * this.fifoLot2Price(),
+  );
+  readonly fifoVwap = computed(() => {
+    const qty = this.fifoTotalInventory();
+    return qty > 0 ? this.fifoTotalCost() / qty : 0;
+  });
+  readonly fifoSafeBreakEven = computed(() => this.fifoVwap() * 1.01); // VWAP + 1%
+
+  // =========================================================================
+  // DECK TÁCTICO DE ATremote / TECLADO
+  // =========================================================================
+  readonly simulatedHotkey = signal<string | null>(null);
+
+  triggerHotkeyFeedback(key: string): void {
+    this.simulatedHotkey.set(key);
+    setTimeout(() => {
+      if (this.simulatedHotkey() === key) {
+        this.simulatedHotkey.set(null);
+      }
+    }, 1800);
+  }
+
+  // =========================================================================
+  // DERIVED COUNTS & TABS
+  // =========================================================================
   readonly deskModuleCount = computed(() => this.deskModuleDocs.length);
   readonly swarmAgentCount = computed(() => this.swarmAgentViews().length);
   readonly mcpServerCount = computed(() => this.mcp.servers().length);
@@ -137,17 +317,17 @@ export class Guide {
   );
 
   readonly tabs = computed<{ id: GuideTab; label: string; icon: string; badge: string }[]>(() => [
-    { id: 'intro', label: '1. P2P Desde Cero', icon: '📚', badge: 'Fundamentos' },
+    { id: 'intro', label: '1. P2P Desde Cero & Sandbox', icon: '📚', badge: 'Fundamentos & Voz' },
     { id: 'tools', label: '2. Herramientas del Desk', icon: '🛠️', badge: `${this.deskModuleCount()} Módulos` },
     { id: 'mcp', label: '3. Servidores MCP', icon: '🔌', badge: `${this.mcpServerCount()} Dominios / ${this.mcpToolCount()} Tools` },
     { id: 'swarm', label: '4. Enjambre Multi-Agente', icon: '🤖', badge: `${this.swarmAgentCount()} Agentes` },
     { id: 'security', label: '5. Blindaje Bancario & SUDEBAN', icon: '🛡️', badge: 'Seguridad' },
-    { id: 'workflow', label: '6. Checklist Paso a Paso', icon: '🎯', badge: 'Rutina SOP' },
+    { id: 'workflow', label: '6. Checklist Paso a Paso', icon: '🎯', badge: 'Protocolo SOP' },
     { id: 'terms', label: '7. Términos & Privacidad', icon: '⚖️', badge: 'Legal' },
   ]);
 
   // =========================================================================
-  // SIMULADOR INTERACTIVO DE SPREAD BRUTO VS NETO (Pestaña Intro)
+  // SIMULADOR INTERACTIVO DE SPREAD BRUTO VS NETO
   // =========================================================================
   readonly calcBuyPrice = signal<number>(88.5);
   readonly calcSellPrice = signal<number>(90.0);
@@ -163,8 +343,8 @@ export class Guide {
 
   readonly calcTotalFeePct = computed(() => {
     let fee = 0;
-    if (this.applyMakerFee()) fee += 0.25; // Binance Maker Fee
-    if (this.applyBankFee()) fee += 0.3; // Fricción Pago Móvil (0.30%)
+    if (this.applyMakerFee()) fee += 0.25;
+    if (this.applyBankFee()) fee += 0.3;
     return fee;
   });
 
@@ -177,36 +357,106 @@ export class Guide {
   });
 
   // =========================================================================
-  // HERRAMIENTAS DEL DESK (módulos del Desk)
+  // HERRAMIENTAS DEL DESK (Catálogo Completo de 16 Módulos)
   // =========================================================================
-  //
-  // `deskModuleDocs` is the hand-written source of truth for the module list.
-  // The mcp-hub entry intentionally carries no literal counts: its badge,
-  // tagline and first step are rewritten below from the live McpService
-  // signals, so a new tool or server can never leave the copy lying again.
   readonly selectedToolId = signal<string>('spread');
 
   readonly deskModuleDocs: DeskModuleGuide[] = [
     {
-      id: 'dashboard',
-      name: 'Dashboard Central',
-      route: '/dashboard',
-      icon: '📊',
-      category: 'Control Maestro',
-      badge: 'Kill-Switch',
-      tagline: 'Centro de comando con visión situacional instantánea y parada de emergencia.',
+      id: 'p2p-radar',
+      name: 'Radar de Inteligencia P2P L2',
+      route: '/radar',
+      icon: '🛰️',
+      category: 'Inteligencia de Mercado',
+      role: 'operations',
+      badge: 'Bots & BCV',
+      tagline: 'Profundidad de libro Nivel 2, detección de Penny War y ventana de intervención cambiaria del BCV.',
       whyItMatters:
-        'En los mercados de alta volatilidad no puedes perder tiempo navegando menús. El Dashboard sintetiza tu capital expuesto en bolívares, el estado macro del BCV y te da acceso al Kill-Switch de un solo clic.',
+        'En mercados de alta competencia, los bots bajan el precio 0.001 Bs para acaparar el primer lugar sin volumen real. El radar filtra el ruido, muestra la liquidez institucional real y te avisa si el Banco Central está inyectando divisas.',
       stepByStep: [
-        'Inspecciona el indicador de Kill-Switch: debe estar en estado ARMADO (verde).',
-        'Revisa el widget de alerta macro del BCV y la brecha cambiaria en tiempo real.',
-        'Observa la distribución de inventario fiduciario vs cripto antes de iniciar la jornada.',
+        'Activa el filtro "Clean Mode" para ocultar bots con órdenes insignificantes (< 50 USDT).',
+        'Monitorea el indicador de Presión de Libro (Bid vs Ask Imbalance).',
+        'Revisa la Brecha BCV vs Paralelo y la ventana de intervención cambiaria oficial.',
+        'Establece alertas audibles de depeg o roturas de soporte.',
       ],
-      keyInputs: ['Monitoreo pasivo (consume telemetría interna y cotizaciones de mercado).'],
-      keyOutputs: ['Nivel de riesgo general', 'Capital en riesgo', 'Botón de parada de emergencia global'],
+      keyInputs: ['Libro de órdenes Binance P2P L2', 'Tasas BCV oficiales', 'Historial de micro-spreads'],
+      keyOutputs: ['Profundidad neta real', 'Presión de mercado (%)', 'Alerta de intervención BCV'],
       commonMistakes:
-        'Ignorar el Kill-Switch cuando se reporta una caída bancaria masiva (ej. Banesco o BDV fuera de servicio).',
-      proTip: 'Usa el atajo Esc en cualquier pantalla de escritorio para disparar el Kill-Switch inmediato.',
+        'Pelear la guerra del centavo contra un bot automatizado que te arrastra a operar a pérdida.',
+      proTip:
+        'Si el BCV inyecta divisas por la mañana, la tasa paralela tiende a frenarse o caer temporalmente. Reduce tu stock fiduciario.',
+    },
+    {
+      id: 'log',
+      name: 'Registro Contable (Ledger) & Operaciones v4.0',
+      route: '/log',
+      icon: '📑',
+      category: 'Centro de Operaciones',
+      role: 'operations',
+      badge: 'Voz & FIFO',
+      tagline: 'Terminal de trading con dictado por voz, ingestión de SMS, 3 ranuras en paralelo y liquidación FIFO.',
+      whyItMatters:
+        'La velocidad de carga y la precisión contable deciden la rentabilidad del trader. Puedes dictar órdenes con voz natural, liquidar lotes antiguos con 1 clic protegiendo el Break-Even (VWAP + 1%) y estacionar hasta 3 trades en paralelo.',
+      stepByStep: [
+        'Presiona Alt + V o el botón del micrófono y dicta tu orden (ej. "Venta 450 USDT tasa 36.85 por Banesco").',
+        'Usa el botón Click-to-Liquidate en los lotes FIFO para auto-completar el formulario de venta.',
+        'Si tienes varias órdenes activas, conmuta entre las ranuras 1, 2 y 3 sin perder datos.',
+        'Fija la plantilla (Pin Template) para cargar múltiples operaciones del mismo banco sin reescribir.',
+      ],
+      keyInputs: ['Dictado de voz / SMS', 'Lotes de compra FIFO', 'Comprobante y referencia bancaria'],
+      keyOutputs: ['PnL Neto por orden', 'Ganancia acumulada del día', 'Inventario FIFO actualizado'],
+      commonMistakes:
+        'Promediar a ciegas cuando el mercado baja; usa siempre el botón Click-to-Liquidate al precio VWAP + 1%.',
+      proTip:
+        'La tecla Enter confirma y guarda el trade inmediatamente sin necesidad de tocar el ratón.',
+    },
+    {
+      id: 'compliance-cockpit',
+      name: 'CRM & Contrapartes (KYC)',
+      route: '/compliance-cockpit',
+      icon: '👥',
+      category: 'Cumplimiento & Bóvedas',
+      role: 'crm',
+      badge: 'Doble Bóveda',
+      tagline: 'Bóveda P2P Desk vs Finanzas 360, Kanban de 4 etapas, copiado en 3 burbujas y facturación PNG.',
+      whyItMatters:
+        'El mayor peligro en P2P es la triangulación de pagos y mezclar el capital de trabajo con el dinero de tu vida personal o pyme. Este CRM aísla tus contrapartes, califica su riesgo y genera facturas comerciales.',
+      stepByStep: [
+        'Selecciona la bóveda activa: "⚡ MESA P2P" para trading o "🏛️ FINANZAS 360" para tesorería/pyme.',
+        'Mueve las tarjetas por el Kanban: Cotizado -> En Tránsito -> Verificando Ref -> Liquidado.',
+        'Usa el botón "Copiar 3 Burbujas" para enviar Cédula, Teléfono y Monto por separado a WhatsApp.',
+        'Genera un comprobante o factura en imagen PNG de alta definición con código QR con 1 clic.',
+      ],
+      keyInputs: ['Datos del cliente (Cédula/RIF, Banco, Teléfono)', 'Etapa del trato', 'Monto y divisa'],
+      keyOutputs: ['Tarjeta Kanban con estado de reserva', 'Comprobante PNG descargable', 'Historial KYC'],
+      commonMistakes:
+        'Enviar todos los datos bancarios en un solo párrafo largo donde el cliente copia y pega mal los números.',
+      proTip:
+        'El sistema en 3 burbujas reduce los errores de transferencia de clientes en un 95%.',
+    },
+    {
+      id: 'finance-360',
+      name: 'Finanzas 360 & Pyme',
+      route: '/finanzas-360',
+      icon: '🏛️',
+      category: 'Tesorería & Patrimonio',
+      role: 'finance',
+      badge: 'Runway & PnL',
+      tagline: 'Cortafuegos financiero: barrido de utilidades netas, cálculo de Runway y asignación patrimonial.',
+      whyItMatters:
+        'Un trader que no separa su capital de trabajo de sus utilidades termina quebrado o gastándose el inventario. Finanzas 360 ejecuta el Corte de Turno diario trasvasando únicamente las ganancias netas.',
+      stepByStep: [
+        'Al cerrar tu jornada en la Mesa P2P, presiona "Corte de Turno (Profit Sweep)".',
+        'El sistema transfiere únicamente el beneficio neto positivo a la Bóveda Pyme.',
+        'Monitorea el Runway operativo (meses de supervivencia con gastos fijos cubiertos).',
+        'Visualiza la distribución de activos: Capital P2P, Caja Operativa y Ganancias Acumuladas.',
+      ],
+      keyInputs: ['PnL neto diario acumulado', 'Costos fijos mensuales', 'Asignación de cuentas'],
+      keyOutputs: ['Cálculo de Runway en meses', 'Gráfico de torta patrimonial', 'Bitácora de cortes de turno'],
+      commonMistakes:
+        'Gastar dinero de la cuenta operativa creyendo que todo el saldo en cuenta es ganancia propia.',
+      proTip:
+        'Mantén al menos 6 meses de Runway en la Bóveda Pyme antes de retirar utilidades personales.',
     },
     {
       id: 'spread',
@@ -214,6 +464,7 @@ export class Guide {
       route: '/spread',
       icon: '📈',
       category: 'Motor Cuantitativo',
+      role: 'operations',
       badge: 'SQS & Libros',
       tagline: 'Radar en vivo de libros de compra y venta con cálculo de margen neto real.',
       whyItMatters:
@@ -228,7 +479,8 @@ export class Guide {
       keyOutputs: ['Spread Bruto (%)', 'Spread Neto (%)', 'Punto de equilibrio', 'Puntaje SQS (0-100)'],
       commonMistakes:
         'Fijarse solo en la diferencia nominal sin deducir el 0.30% del Pago Móvil interbancario.',
-      proTip: 'Presiona F2 en el escritorio para sincronizar instantáneamente el radar con el libro de Binance.',
+      proTip:
+        'Presiona F2 en el escritorio para sincronizar instantáneamente el radar con el libro de Binance.',
     },
     {
       id: 'income',
@@ -236,6 +488,7 @@ export class Guide {
       route: '/income',
       icon: '🧮',
       category: 'Planificación Financiera',
+      role: 'finance',
       badge: 'Rotación APR',
       tagline: 'Planificación de metas diarias en USD, capital necesario y velocidad de rotación.',
       whyItMatters:
@@ -250,7 +503,8 @@ export class Guide {
       keyOutputs: ['Rotaciones diarias necesarias', 'Volumen transaccional requerido', 'Proyección mensual y APR'],
       commonMistakes:
         'Querer ganar $100 diarios con solo $200 de capital sin entender que exigiría 50 rotaciones al día.',
-      proTip: 'Rotar $1,000 USDT 3 veces al día al 0.8% neto produce $24 diarios ($720/mes) con riesgo controlado.',
+      proTip:
+        'Rotar $1,000 USDT 3 veces al día al 0.8% neto produce $24 diarios ($720/mes) con riesgo controlado.',
     },
     {
       id: 'triangulation',
@@ -258,6 +512,7 @@ export class Guide {
       route: '/triangulation',
       icon: '🔄',
       category: 'Arbitraje de Divisas',
+      role: 'operations',
       badge: 'Cotizave & Pares',
       tagline: 'Detección de arbitraje entre cotizaciones paralelas, oficiales y divisas cruzadas.',
       whyItMatters:
@@ -271,7 +526,8 @@ export class Guide {
       keyOutputs: ['Brecha cambiaria (%)', 'Ruta triangular más rentable', 'Margen neto del tramo'],
       commonMistakes:
         'No considerar el tiempo que tarda la liquidación entre diferentes monedas o bancos.',
-      proTip: 'Las mañanas de intervención bancaria del BCV suelen crear los spreads triangulares más jugosos.',
+      proTip:
+        'Las mañanas de intervención bancaria del BCV suelen crear los spreads triangulares más jugosos.',
     },
     {
       id: 'remittances',
@@ -279,6 +535,7 @@ export class Guide {
       route: '/remittances',
       icon: '💸',
       category: 'Negocio Cambiario',
+      role: 'crm',
       badge: 'Comercial & Delivery',
       tagline: 'Cotizaciones instantáneas para remesas familiares y comerciales con spread protegido.',
       whyItMatters:
@@ -293,7 +550,8 @@ export class Guide {
       keyOutputs: ['Bolívares a transferir', 'Ganancia neta en USD', 'Resumen listo para compartir al cliente'],
       commonMistakes:
         'Olvidar la comisión que cobra la pasarela receptora (ej. PayPal cobra 5.4% + comisión fija).',
-      proTip: 'Copia el desglose transparente generado con un clic y envíaselo al cliente por WhatsApp.',
+      proTip:
+        'Copia el desglose transparente generado con un clic y envíaselo al cliente por WhatsApp.',
     },
     {
       id: 'copilot',
@@ -301,6 +559,7 @@ export class Guide {
       route: '/copilot',
       icon: '🤖',
       category: 'Inteligencia Artificial',
+      role: 'mcp',
       badge: 'SOP & Prompting',
       tagline: 'Asistente senior para consultar dudas tácticas, redactar apelaciones y generar SOPs.',
       whyItMatters:
@@ -314,7 +573,8 @@ export class Guide {
       keyOutputs: ['Planes de acción SOP', 'Directivas de fijación de precios', 'Memoria táctica'],
       commonMistakes:
         'Esperar que el copiloto opere por ti; recuerda que es un asesor consultivo, tú tienes el control.',
-      proTip: 'Pídele que redacte tu texto de apelación en Binance si un usuario marca pagado sin enviar dinero.',
+      proTip:
+        'Pídele que redacte tu texto de apelación en Binance si un usuario marca pagado sin enviar dinero.',
     },
     {
       id: 'receipts',
@@ -322,6 +582,7 @@ export class Guide {
       route: '/receipts',
       icon: '🔍',
       category: 'Seguridad Antifraude',
+      role: 'banking',
       badge: 'OCR Tesseract',
       tagline: 'Peritaje óptico de capturas de Pago Móvil para erradicar estafas de triangulación.',
       whyItMatters:
@@ -336,29 +597,8 @@ export class Guide {
       keyOutputs: ['Datos extraídos OCR', 'Veredicto de concordancia (MATCH / FRAUDE)', 'Hash criptográfico SHA-256'],
       commonMistakes:
         'Liberar criptomonedas confiando únicamente en la captura sin revisar la cuenta bancaria propia.',
-      proTip: 'Si el nombre del comprobante no coincide con Binance, rechaza el pago y abre apelación de inmediato.',
-    },
-    {
-      id: 'log',
-      name: 'Registro Contable (Ledger)',
-      route: '/log',
-      icon: '📑',
-      category: 'Contabilidad y Auditoría',
-      badge: 'PnL Real',
-      tagline: 'Libro mayor de operaciones completadas con deducción automática de fricciones.',
-      whyItMatters:
-        'Lo que no se mide no se puede mejorar. Cada trade debe registrarse con sus costos exactos para saber tu ganancia real neta al final del día y cumplir con la contabilidad.',
-      stepByStep: [
-        'Al cerrar una orden en Binance, registra la compra o venta en el Ledger.',
-        'El sistema computa el PnL neto en USD y en VES, descontando fees bancarios.',
-        'Filtra por fecha o contraparte para auditar tu rendimiento semanal.',
-        'Exporta tu respaldo JSON o sincroniza con Google Sheets periódicamente.',
-      ],
-      keyInputs: ['Tipo (Compra/Venta)', 'Monto USDT', 'Tasa ejecutada', 'Banco utilizado', 'Contraparte'],
-      keyOutputs: ['PnL Neto por orden', 'Ganancia acumulada del día', 'Histórico auditable'],
-      commonMistakes:
-        'Dejar el registro para el final de la semana; anota cada trade en caliente para no olvidar referencias.',
-      proTip: 'Puedes usar el botón de exportación para guardar un backup de tu base contable en un pendrive.',
+      proTip:
+        'Si el nombre del comprobante no coincide con Binance, rechaza el pago y abre apelación de inmediato.',
     },
     {
       id: 'risk',
@@ -366,6 +606,7 @@ export class Guide {
       route: '/risk',
       icon: '⚖️',
       category: 'Gobernanza Financiera',
+      role: 'banking',
       badge: 'ALLOW / DENY',
       tagline: '6 barreras automáticas que impiden operar cuando el riesgo supera tu tolerancia.',
       whyItMatters:
@@ -380,7 +621,8 @@ export class Guide {
       keyOutputs: ['Veredicto (ALLOW / PAUSE / DENY)', 'Alertas de violación de límites', 'Protección de drawdown'],
       commonMistakes:
         'Aumentar los límites de riesgo cuando vas perdiendo para "recuperar rápido" (típica conducta de ludopatía).',
-      proTip: 'Respeta las órdenes de PAUSA; cuando el mercado entra en pánico es mejor apagar la pantalla 1 hora.',
+      proTip:
+        'Respeta las órdenes de PAUSA; cuando el mercado entra en pánico es mejor apagar la pantalla 1 hora.',
     },
     {
       id: 'stats',
@@ -388,6 +630,7 @@ export class Guide {
       route: '/stats',
       icon: '📉',
       category: 'Analítica Cuantitativa',
+      role: 'finance',
       badge: 'KPIs & Ratios',
       tagline: 'Análisis de rendimiento histórico, tasa de acierto, comisiones acumuladas y volumen.',
       whyItMatters:
@@ -401,7 +644,31 @@ export class Guide {
       keyOutputs: ['Tasa de acierto (Win Rate)', 'Sharpe Ratio estimado', 'Total fees pagados'],
       commonMistakes:
         'Celebrar un volumen transaccionado alto si el margen neto resultante fue insignificante.',
-      proTip: 'Un operador profesional busca maximizar el margen por hora trabajada, no mover volumen por vanidad.',
+      proTip:
+        'Un operador profesional busca maximizar el margen por hora trabajada, no mover volumen por vanidad.',
+    },
+    {
+      id: 'agent-studio',
+      name: 'Estudio de Agentes Autónomos',
+      route: '/agents',
+      icon: '🧪',
+      category: 'Automatización',
+      role: 'mcp',
+      badge: 'Centinelas MCP',
+      tagline: 'Diseño, inspección y orquestación de agentes especializados y centinelas remotos.',
+      whyItMatters:
+        'Permite configurar los parámetros operativos de tus centinelas de Telegram, definir reglas de disparo automático y probar las capacidades de cada modelo.',
+      stepByStep: [
+        'Selecciona el agente que deseas auditar (Centinela, Estratega, Riesgo o Disputas).',
+        'Ajusta la sensibilidad de las alertas y el canal de despacho (Telegram / Notificaciones locales).',
+        'Verifica los permisos y herramientas MCP asignadas a cada perfil.',
+      ],
+      keyInputs: ['Parámetros de disparo', 'Tokens y configuraciones de agentes'],
+      keyOutputs: ['Estado de conectividad', 'Registro de decisiones tomadas'],
+      commonMistakes:
+        'Otorgar permisos de ejecución sin supervisión humana (Human-in-the-Loop).',
+      proTip:
+        'Vincula el bot de Telegram para recibir alertas en tu teléfono cuando estés lejos de la pantalla.',
     },
     {
       id: 'mcp-hub',
@@ -409,6 +676,7 @@ export class Guide {
       route: '/mcp',
       icon: '🔌',
       category: 'Suite de Conectores',
+      role: 'mcp',
       badge: '',
       tagline: '',
       whyItMatters:
@@ -420,18 +688,60 @@ export class Guide {
         'Audita el log de llamadas y telemetría de ejecución en tiempo real.',
       ],
       keyInputs: ['Llamadas JSON-RPC de clientes MCP o pruebas manuales en UI'],
-      keyOutputs: ['Estado de conectores', 'Tiempo de respuesta en milisegundos', 'Telemetría de auditoría'],
+      keyOutputs: ['Estado de conectividad', 'Tiempo de respuesta en milisegundos', 'Telemetría de auditoría'],
       commonMistakes:
         'Pensar que el MCP transfiere dinero; todas las herramientas de escritura son estrictamente Human-in-the-Loop.',
-      proTip: 'Puedes probar la herramienta calculate_spread directamente desde el playground para validar precios.',
+      proTip:
+        'Puedes probar la herramienta calculate_spread directamente desde el playground para validar precios.',
+    },
+    {
+      id: 'dashboard',
+      name: 'Dashboard Central',
+      route: '/dashboard',
+      icon: '📊',
+      category: 'Control Maestro',
+      role: 'operations',
+      badge: 'Kill-Switch',
+      tagline: 'Centro de comando con visión situacional instantánea y parada de emergencia.',
+      whyItMatters:
+        'En los mercados de alta volatilidad no puedes perder tiempo navegando menús. El Dashboard sintetiza tu capital expuesto en bolívares, el estado macro del BCV y te da acceso al Kill-Switch de un solo clic.',
+      stepByStep: [
+        'Inspecciona el indicador de Kill-Switch: debe estar en estado ARMADO (verde).',
+        'Revisa el widget de alerta macro del BCV y la brecha cambiaria en tiempo real.',
+        'Observa la distribución de inventario fiduciario vs cripto antes de iniciar la jornada.',
+      ],
+      keyInputs: ['Monitoreo pasivo (consume telemetría interna y cotizaciones de mercado).'],
+      keyOutputs: ['Nivel de riesgo general', 'Capital en riesgo', 'Botón de parada de emergencia global'],
+      commonMistakes:
+        'Ignorar el Kill-Switch cuando se reporta una caída bancaria masiva (ej. Banesco o BDV fuera de servicio).',
+      proTip:
+        'Usa el atajo Esc en cualquier pantalla de escritorio para disparar el Kill-Switch inmediato.',
+    },
+    {
+      id: 'growth-projector',
+      name: 'Proyector de Crecimiento',
+      route: '/growth-projector',
+      icon: '🚀',
+      category: 'Planificación Financiera',
+      role: 'finance',
+      badge: 'Interés Compuesto',
+      tagline: 'Simulación montecarlo y proyección exponencial de capital reinvertido.',
+      whyItMatters:
+        'Visualiza el efecto multiplicador de la reinversión constante de utilidades vs la extracción de capital en escenarios conservadores, moderados y agresivos.',
+      stepByStep: [
+        'Ingresa tu capital inicial de trabajo.',
+        'Configura el porcentaje de reinversión diaria de tus márgenes P2P.',
+        'Proyecta tu balance a 3, 6 y 12 meses visualizando la curva de interés compuesto.',
+      ],
+      keyInputs: ['Capital base', 'Tasa de reinversión', 'Horizonte temporal'],
+      keyOutputs: ['Curva de crecimiento de balance', 'Retiro acumulado estimado'],
+      commonMistakes:
+        'Asumir un 100% de reinversión sin presupuestar gastos operativos fijos ni impuestos.',
+      proTip:
+        'Un retiro del 30% de ganancias para la Bóveda Pyme y un 70% de reinversión en P2P garantiza estabilidad.',
     },
   ];
 
-  /**
-   * Module view: the hand-written docs with the MCP module's volatile copy
-   * resolved against the live service. Only the mcp-hub entry is rewritten —
-   * every other module is static by nature and keeps its literal text.
-   */
   readonly deskModules = computed<DeskModuleGuide[]>(() =>
     this.deskModuleDocs.map((doc) => {
       if (doc.id !== 'mcp-hub') return doc;
@@ -448,17 +758,35 @@ export class Guide {
     }),
   );
 
+  readonly filteredDeskModules = computed(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    const role = this.selectedRole();
+    let list = this.deskModules();
+
+    if (role !== 'all') {
+      list = list.filter((m) => m.role === role);
+    }
+
+    if (q) {
+      list = list.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          m.category.toLowerCase().includes(q) ||
+          m.tagline.toLowerCase().includes(q) ||
+          m.whyItMatters.toLowerCase().includes(q) ||
+          m.proTip.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  });
+
   readonly activeToolGuide = computed(() => {
-    return this.deskModules().find((m) => m.id === this.selectedToolId()) || this.deskModules()[1];
+    return this.deskModules().find((m) => m.id === this.selectedToolId()) || this.deskModules()[0];
   });
 
   // =========================================================================
   // ENJAMBRE MULTI-AGENTE (SWARM AI)
   // =========================================================================
-  //
-  // The dossier is data, not markup, so the "N agentes" claim in the tab badge
-  // and in the lead paragraph is `swarmAgentViews().length` — the number of
-  // agents that still have at least one live MCP server behind them.
   readonly swarmAgents: SwarmAgentGuide[] = [
     {
       id: 'sentinel',
@@ -522,390 +850,95 @@ export class Guide {
     },
   ];
 
-  /**
-   * Agents whose backing MCP servers are all still live. A skill pointing at a
-   * server that left the catalog is dropped instead of being advertised, and an
-   * agent left with no live skill stops being counted as an agent at all.
-   */
   readonly swarmAgentViews = computed(() => {
-    const liveServerIds = new Set(this.mcpServerViews().map((s) => s.id));
+    const onlineServerIds = new Set(this.mcp.servers().map((s) => s.id));
     return this.swarmAgents
       .map((agent) => ({
         ...agent,
-        skills: agent.skills.filter((s) => liveServerIds.has(s.serverId)),
+        skills: agent.skills.filter((s) => onlineServerIds.has(s.serverId)),
       }))
       .filter((agent) => agent.skills.length > 0);
   });
 
+  readonly selectedAgentId = signal<string>('sentinel');
+  readonly activeAgent = computed(() => {
+    const list = this.swarmAgentViews();
+    return list.find((a) => a.id === this.selectedAgentId()) || list[0] || this.swarmAgents[0];
+  });
+
   // =========================================================================
-  // SERVIDORES MCP: GUÍA EN PROFUNDIDAD + CATÁLOGO EN VIVO
+  // SERVIDORES MCP & PLAYGROUND
   // =========================================================================
-  //
-  // Durable rule for this tab: the shared catalog decides *what exists*, the
-  // curated guide below only decides *what is explained in depth*. Rendering is
-  // driven by the merge in `mcpServerViews`, never by hand-written totals.
   readonly selectedMcpCategory = signal<string>('all');
   readonly selectedMcpServerId = signal<string>('p2p-decisor');
 
-  /**
-   * In-depth documentation. Keys must match catalog server ids and catalog tool
-   * names — `mcpServerViews` joins on them and silently drops anything that no
-   * longer exists, so dead documentation cannot be shown as a live capability.
-   */
-  readonly mcpServersGuideDetailed: McpServerGuide[] = [
+  readonly mcpServerGuides: McpServerGuide[] = [
     {
       id: 'p2p-decisor',
-      name: 'P2P Decisor — Gateway Maestro',
-      category: 'master',
-      icon: '👑',
-      purpose:
-        'Servidor maestro que concentra las funciones nucleares de cálculo de márgenes, evaluación de riesgo de operaciones y control de parada de emergencia.',
-      howItWorks:
-        'Actúa como el árbitro central. Cuando un agente de IA propone una orden, este servidor evalúa los precios, deduce comisiones fijas y porcentuales, y rechaza cualquier operación que no cumpla la Regla de Oro (margen >= 0.50%).',
+      name: 'p2p-decisor',
+      category: 'Core Cuantitativo',
+      icon: '⚡',
+      purpose: 'Motor de cálculo de spreads netos, fricciones y verificación de la Regla de Oro.',
+      howItWorks: 'Recibe precios de compra/venta y calcula el spread real deduciendo comisiones y fees bancarios.',
       tools: [
         {
           name: 'calculate_spread',
-          description: 'Calcula el spread bruto, deducción de comisiones Binance y banco, y margen neto real.',
-          params: '{ buyPrice: number, sellPrice: number, makerFeePct?: number, bankFeePct?: number }',
-          returns: '{ grossSpreadPct: number, netSpreadPct: number, isProfitable: boolean, breakevenSell: number }',
-          useCase: 'Llamado antes de abrir cualquier anuncio para asegurar rentabilidad real.',
-        },
-        {
-          name: 'evaluate_trade_risk',
-          description: 'Evalúa una propuesta de trade frente a las 6 políticas institucionales inquebrantables.',
-          params: '{ tradeAmountUsdt: number, proposedNetSpread: number, currentLossTodayUsdt: number }',
-          returns: '{ verdict: "ALLOW" | "PAUSE" | "DENY", reason: string, riskScore: number }',
-          useCase: 'Veta trades impulsivos o que sobrepasen el drawdown diario.',
-        },
-        {
-          name: 'trigger_killswitch',
-          description: 'Detiene inmediatamente todas las operaciones y activa el modo seguro.',
-          params: '{ reason: string, operatorId?: string }',
-          returns: '{ status: "HALTED", timestamp: string, affectedBots: number }',
-          useCase: 'Emergencia bancaria o caída abrupta de conectividad.',
-        },
-        {
-          name: 'simulate_trade_impact',
-          description: 'Simula el impacto de una orden en la liquidez disponible y en el cupo bancario diario.',
-          params: '{ bankCode: string, amountVes: number }',
-          returns: '{ newSaturationPct: number, exceedsDailyThreshold: boolean }',
-          useCase: 'Evita saturar una cuenta con transferencias muy seguidas.',
+          description: 'Calcula el spread bruto y neto entre órdenes P2P con deducción de comisiones.',
+          params: 'buyPrice, sellPrice, makerFeePct, bankFeePct',
+          returns: 'grossSpreadPct, netSpreadPct, isGoldenRuleMet, breakEvenSellPrice',
+          useCase: 'Verificar rentabilidad antes de publicar un anuncio Maker.',
         },
       ],
     },
     {
       id: 'p2p-macro-predictor',
-      name: 'Monitor Macro & Dólar Venezuela',
-      category: 'tasas',
-      icon: '🇻🇪',
-      purpose:
-        'Monitorea la cotización del Banco Central de Venezuela (BCV), los índices paralelos y la brecha cambiaria.',
-      howItWorks:
-        'Extrae cotizaciones oficiales y calcula el diferencial porcentual. Conoce los horarios de intervención bancaria del BCV (09:00 a 13:00 VET) para anticipar momentos de alta volatilidad.',
+      name: 'p2p-macro-predictor',
+      category: 'Macroeconomía & BCV',
+      icon: '🏦',
+      purpose: 'Monitoreo de intervención cambiaria del Banco Central de Venezuela y brechas de divisas.',
+      howItWorks: 'Monitorea las inyecciones de divisas del BCV para alertar sobre caídas de spread.',
       tools: [
-        {
-          name: 'get_bcv_rates',
-          description: 'Retorna las tasas oficiales del BCV (USD, EUR) y la fecha de valor vigente.',
-          params: '{}',
-          returns: '{ usdRate: number, eurRate: number, valueDate: string }',
-          useCase: 'Base de comparación para arbitraje oficial vs paralelo.',
-        },
-        {
-          name: 'calculate_rate_gap',
-          description: 'Calcula la brecha cambiaria entre la tasa oficial BCV y el promedio P2P Binance.',
-          params: '{ p2pRate: number, bcvRate?: number }',
-          returns: '{ gapPercentage: number, riskLevel: "BAJO" | "MEDIO" | "CRITICO" }',
-          useCase: 'Alerta cuando la brecha supera el 20%, señal de devaluación inminente.',
-        },
         {
           name: 'check_bcv_intervention_window',
-          description: 'Verifica si el mercado está dentro del horario crítico de inyección de divisas del BCV.',
-          params: '{}',
-          returns: '{ isInterventionWindow: boolean, currentHourVet: number, directive: string }',
-          useCase: 'Ajusta la velocidad de rotación durante las mañanas de subasta.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-multi-exchange',
-      name: 'Multi-Exchange P2P & Microestructura',
-      category: 'mercado',
-      icon: '🌐',
-      purpose:
-        'Inspecciona libros de órdenes en tiempo real entre múltiples exchanges (Binance, Bybit, OKX, KuCoin).',
-      howItWorks:
-        'Analiza la profundidad de mercado, detecta si USDT pierde su paridad de $1.00 USD (depeg) y recomienda el precio exacto para posicionar tu anuncio entre los primeros 3 lugares con margen seguro.',
-      tools: [
-        {
-          name: 'get_binance_p2p_orderbook',
-          description: 'Obtiene las mejores 10 ofertas de compra y venta del libro P2P Binance en VES.',
-          params: '{ asset: "USDT", fiat: "VES", tradeType: "BUY" | "SELL" }',
-          returns: '{ bestPrice: number, top5Average: number, totalVolumeAvailable: number }',
-          useCase: 'Conocer la competencia exacta antes de publicar precio.',
-        },
-        {
-          name: 'recommend_competitive_pricing',
-          description: 'Recomienda el precio óptimo Maker para maximizar velocidad de venta sin perder margen.',
-          params: '{ targetMarginPct: number, costBasis: number }',
-          returns: '{ suggestedPrice: number, rankPosition: number, expectedClearanceMinutes: number }',
-          useCase: 'Garantiza vender rápido sin participar en guerras de precios absurdas.',
-        },
-        {
-          name: 'detect_usdt_depeg',
-          description: 'Monitorea si el valor internacional de USDT se desvía del dólar (< 0.998 o > 1.002).',
-          params: '{}',
-          returns: '{ isDepegDetected: boolean, currentUsdtUsd: number, alertLevel: string }',
-          useCase: 'Evita comprar USDT si la moneda estable tiene problemas de solvencia.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-bank-sentinel',
-      name: 'Conciliación Bancaria & Webhook',
-      category: 'bancos',
-      icon: '🏦',
-      purpose:
-        'Supervisa el estado de la banca venezolana (Banesco, Mercantil, BDV) y concilia pagos entrantes.',
-      howItWorks:
-        'Monitorea la latencia de acreditación de Pago Móvil y transferencias. Si un banco presenta fallas técnicas masivas, emite una orden de PAUSA para no aceptar pagos por ese canal.',
-      tools: [
-        {
-          name: 'check_bank_operational_status',
-          description: 'Evalúa la salud operativa de cada banco local y latencia de Pago Móvil.',
-          params: '{ bankCode: string }',
-          returns: '{ status: "OPERATIVO" | "LENTO" | "CAIDO", avgLatencySeconds: number }',
-          useCase: 'Evita disputas causadas por pagos que se quedan retenidos en la cámara interbancaria.',
-        },
-        {
-          name: 'verify_inbound_transfer',
-          description: 'Concilia una transferencia entrante validando número de referencia y monto exacto.',
-          params: '{ reference: string, expectedAmountVes: number, bankCode: string }',
-          returns: '{ verified: boolean, creditedAmount: number, matchedOrder: boolean }',
-          useCase: 'Garantiza que el dinero está en tu cuenta antes de liberar.',
-        },
-        {
-          name: 'audit_payment_proof_ocr',
-          description: 'Audita comprobantes mediante peritaje OCR validando titular y cédula del emisor.',
-          params: '{ imageBase64: string, expectedTitularCedula: string }',
-          returns: '{ isAuthentic: boolean, matchScore: number, extractedData: object }',
-          useCase: 'Detecta capturas de pantalla editadas con Photoshop o Canva.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-sudeban-radar',
-      name: 'Radar Anti-SUDEBAN & Velocidad',
-      category: 'compliance',
-      icon: '🛡️',
-      purpose:
-        'Controla la velocidad transaccional y los límites regulatorios para prevenir bloqueos bancarios preventivos.',
-      howItWorks:
-        'Registra el acumulado diario de bolívares movidos en cada cuenta bancaria. Aplica la matriz 40/35/25 para distribuir el dinero entre Banesco, Mercantil y BDV, alertando antes de rozar los topes que disparan alertas de lavado de dinero (pitufeo).',
-      tools: [
-        {
-          name: 'evaluate_account_saturation',
-          description: 'Calcula el porcentaje de saturación de la cuenta según límites SUDEBAN y de la entidad.',
-          params: '{ bankCode: string, currentDailyVes: number }',
-          returns: '{ saturationPct: number, remainingQuotaVes: number, shouldRotateAccount: boolean }',
-          useCase: 'Te indica el momento exacto en que debes rotar a otra cuenta bancaria.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-dispute-dossier',
-      name: 'Dossier Forense & Apelaciones AI',
-      category: 'legal',
-      icon: '⚖️',
-      purpose:
-        'Compila expedientes probatorios irrefutables con hash SHA-256 para ganar apelaciones en Binance.',
-      howItWorks:
-        'Cuando una contraparte actúa de mala fe (marca pagado sin pagar o envía pago de un tercero), este servidor genera un informe formal en PDF y texto con sellos de tiempo, extracto bancario y marco normativo.',
-      tools: [
-        {
-          name: 'compile_dispute_dossier',
-          description: 'Genera el expediente formal con hash criptográfico para adjuntar en la apelación de Binance.',
-          params: '{ orderId: string, counterpartyName: string, reason: string, bankEvidence: string }',
-          returns: '{ dossierText: string, sha256Hash: string, pdfUrl: string }',
-          useCase: 'Permite ganar el 100% de las apelaciones legítimas ante el soporte de Binance.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-portfolio-risk',
-      name: 'Gestión de Portafolio & Coberturas',
-      category: 'portafolio',
-      icon: '💼',
-      purpose:
-        'Gestiona coberturas cortas (delta neutral) y modelado cuantitativo de preservación de capital.',
-      howItWorks:
-        'Si te quedas con un inventario alto de bolívares al final del día y no puedes recomprar USDT inmediatamente, calcula coberturas sintéticas en futuros o recomienda el reparto óptimo según el Criterio de Kelly.',
-      tools: [
-        {
-          name: 'calculate_delta_neutral_hedge',
-          description: 'Calcula el tamaño de cobertura necesario para neutralizar la devaluación del bolívar.',
-          params: '{ inventoryVes: number, expectedDevaluationPct: number }',
-          returns: '{ shortHedgeUsdt: number, recommendedLeverage: number }',
-          useCase: 'Protege tu capital si debes quedarte con bolívares un fin de semana.',
-        },
-        {
-          name: 'stress_test_portfolio',
-          description: 'Ejecuta simulaciones de estrés ante saltos devaluatorios repentinos del 10%, 20% o 50%.',
-          params: '{ totalCapitalUsdt: number, vesExposurePct: number }',
-          returns: '{ maximumDrawdownUsdt: number, survivalScore: number }',
-          useCase: 'Evalúa si tu mesa sobreviviría a un salto violento del dólar.',
-        },
-        {
-          name: 'project_compound_runway',
-          description: 'Proyecta el crecimiento del capital reinvirtiendo ganancias con interés compuesto.',
-          params: '{ initialCapital: number, monthlyYieldPct: number, months: number }',
-          returns: '{ finalCapital: number, compoundMultiplier: number }',
-          useCase: 'Planificación patrimonial a 6 y 12 meses.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-omnichannel',
-      name: 'Concierge Omnicanal & OTC',
-      category: 'operaciones',
-      icon: '💬',
-      purpose:
-        'Despacha coordenadas de pago seguras y alertas críticas a Telegram y WhatsApp.',
-      howItWorks:
-        'Automatiza el envío de datos bancarios con formato profesional y envía notificaciones push al teléfono del operador cuando surge una orden VIP o una señal de riesgo.',
-      tools: [
-        {
-          name: 'dispatch_order_instructions',
-          description: 'Envía los datos de Pago Móvil o cuenta de forma limpia y segura a la contraparte.',
-          params: '{ channel: "telegram" | "whatsapp", recipient: string, bankDetails: object }',
-          returns: '{ delivered: boolean, messageId: string }',
-          useCase: 'Evita errores de tipeo de cédula o número de teléfono al cobrar.',
-        },
-        {
-          name: 'send_multichannel_alert',
-          description: 'Envía alerta prioritaria al operador ante disparos del Kill-Switch o precios anómalos.',
-          params: '{ severity: "CRITICAL" | "WARNING", message: string }',
-          returns: '{ dispatchedCount: number }',
-          useCase: 'Te avisa al teléfono aunque estés lejos del computador.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-google-workspace',
-      name: 'Google Workspace & Cloud Vault',
-      category: 'cloud',
-      icon: '☁️',
-      purpose:
-        'Respaldo transparente y sincronización contable directa en tu propio Google Drive y Sheets personal.',
-      howItWorks:
-        'Cumple con la soberanía total de datos: utiliza tus propias credenciales OAuth personales. Cada comprobante escaneado se archiva en una carpeta organizada por mes en tu Google Drive y cada trade se escribe en tu hoja de cálculo.',
-      tools: [
-        {
-          name: 'gdrive_backup_receipt',
-          description: 'Sube y clasifica comprobantes de pago en una carpeta segura de tu Google Drive personal.',
-          params: '{ imageBase64: string, tradeReference: string, date: string }',
-          returns: '{ fileId: string, webViewLink: string }',
-          useCase: 'Archivo digital organizado para cualquier consulta contable futura.',
-        },
-        {
-          name: 'gsheets_sync_trade',
-          description: 'Añade una fila en tiempo real a tu hoja de cálculo de Google Sheets con el PnL del trade.',
-          params: '{ tradeData: object }',
-          returns: '{ updatedRow: number, spreadsheetId: string }',
-          useCase: 'Control financiero compartido con tu contador o socio.',
-        },
-        {
-          name: 'gdrive_sync_db_backup',
-          description: 'Genera un snapshot cifrado de la base de datos local y lo respalda en Google Drive.',
-          params: '{}',
-          returns: '{ backupTimestamp: string, sizeBytes: number }',
-          useCase: 'Protección contra pérdida o formateo del computador.',
-        },
-      ],
-    },
-    {
-      id: 'p2p-aml-forensics',
-      name: 'AML & On-Chain Forensics',
-      category: 'seguridad',
-      icon: '🔬',
-      purpose:
-        'Inspección de billeteras cripto y listas negras locales para evitar fondos contaminados.',
-      howItWorks:
-        'Examina si una dirección USDT (TRC20 o BEP20) ha estado vinculada a hackeos, estafas o mixers. Consulta la base de datos local SQLite con hashes ciegos para alertar si el número de cédula o teléfono de la contraparte tiene reportes previos.',
-      tools: [
-        {
-          name: 'screen_wallet_address',
-          description: 'Evalúa el nivel de riesgo AML de una dirección de depósito o retiro.',
-          params: '{ address: string, chain: "TRC20" | "ERC20" | "BEP20" }',
-          returns: '{ riskScore: number, isSanctioned: boolean, flags: string[] }',
-          useCase: 'Evita que Binance congele tu cuenta por recibir USDT contaminados.',
-        },
-        {
-          name: 'check_counterparty_blacklist',
-          description: 'Verifica si la cédula o cuenta bancaria está en la lista negra local anti-fraude.',
-          params: '{ identifier: string }',
-          returns: '{ isBlacklisted: boolean, incidentsCount: number, reason?: string }',
-          useCase: 'Filtra estafadores seriales antes de iniciar la transacción.',
-        },
-        {
-          name: 'register_blacklisted_entity',
-          description: 'Registra un estafador o cuenta sospechosa en la base local (Human-in-the-Loop).',
-          params: '{ identifier: string, reason: string, proofHash: string }',
-          returns: '{ saved: boolean, id: string }',
-          useCase: 'Construir memoria institucional para blindar tu mesa a futuro.',
+          description: 'Indica si el mercado está dentro de una ventana de intervención bancaria del BCV.',
+          params: 'none',
+          returns: 'isInterventionActive, windowEndEstimate, volatilityRiskLevel',
+          useCase: 'Reducir tamaño de posición fiduciaria durante mañanas de inyección de divisas.',
         },
       ],
     },
   ];
 
-  /**
-   * The single merge point for the MCP tab.
-   *
-   * Left side: the runtime catalog from `McpService` — the same signal the
-   * sibling `/mcp` page reads, so it decides existence, naming, status and
-   * counts. Right side: `mcpServersGuideDetailed`, which only supplies the
-   * params/returns/use-case narrative the catalog cannot carry.
-   *
-   * Consequences that matter:
-   *  - a server or tool added to the catalog appears here automatically;
-   *  - documentation that drifts away from the catalog is dropped instead of
-   *    advertising a capability that no longer exists;
-   *  - catalog-only entries are rendered with an explicit "no ficha" state, so
-   *    a richer tool count is never dressed up as deeper documentation.
-   */
   readonly mcpServerViews = computed<McpServerView[]>(() => {
-    const detailed = new Map(this.mcpServersGuideDetailed.map((s) => [s.id, s]));
+    const catalogServers = this.mcp.servers();
+    const guidesById = new Map<string, McpServerGuide>(this.mcpServerGuides.map((g) => [g.id, g]));
 
-    return this.mcp.servers().map((catalogServer) => {
-      const doc = detailed.get(catalogServer.id);
-
-      const tools: McpToolView[] = catalogServer.tools.map((catalogTool) => {
-        const toolDoc = doc?.tools.find((t) => t.name === catalogTool.name);
-        return {
-          name: catalogTool.name,
-          description: toolDoc?.description ?? catalogTool.description,
-          params: toolDoc?.params ?? null,
-          returns: toolDoc?.returns ?? null,
-          useCase: toolDoc?.useCase ?? null,
-          isDocumented: Boolean(toolDoc),
-        };
-      });
-
+    return catalogServers.map((cat) => {
+      const doc = guidesById.get(cat.id);
       return {
-        id: catalogServer.id,
-        name: doc?.name ?? catalogServer.name,
-        icon: doc?.icon ?? '🔌',
-        category: catalogServer.category,
-        transport: catalogServer.transport,
-        status: catalogServer.status,
-        // Runtime truth, not the curated narrative: use the catalog total so a
-        // server that gained tools without a guide update cannot under-report.
-        toolCount: catalogServer.toolCount || tools.length,
-        resourceCount: catalogServer.resourceCount,
-        documentedToolCount: tools.filter((t) => t.isDocumented).length,
+        id: cat.id,
+        name: cat.name || cat.id,
+        icon: doc?.icon || '🔌',
+        category: doc?.category || cat.category || 'Servicio MCP',
+        transport: cat.transport || 'stdio',
+        status: cat.status || 'ONLINE',
+        toolCount: cat.toolCount || 0,
+        resourceCount: cat.resourceCount || 0,
+        documentedToolCount: doc?.tools.length || 0,
         hasNarrative: Boolean(doc),
-        purpose: doc?.purpose ?? null,
-        howItWorks: doc?.howItWorks ?? null,
-        tools,
+        purpose: doc?.purpose ?? 'Servidor de herramientas deterministas para agentes autónomos.',
+        howItWorks: doc?.howItWorks ?? 'Expone endpoints JSON-RPC locales en tu equipo.',
+        tools: (cat.tools || []).map((t) => {
+          const docTool = doc?.tools.find((dt) => dt.name === t.name);
+          return {
+            name: t.name,
+            description: t.description,
+            params: docTool?.params ?? null,
+            returns: docTool?.returns ?? null,
+            useCase: docTool?.useCase ?? null,
+            isDocumented: Boolean(docTool),
+          };
+        }),
       };
     });
   });
@@ -915,7 +948,6 @@ export class Guide {
     ...this.mcpCategoryViews(),
   ]);
 
-  /** Server categories grouped for the filter bar, with real per-category counts. */
   readonly mcpCategoryViews = computed(() => {
     const byCategory = new Map<string, { label: string; count: number }>();
     for (const server of this.mcpServerViews()) {
@@ -937,9 +969,6 @@ export class Guide {
     return views.find((s) => s.id === this.selectedMcpServerId()) || views[0];
   });
 
-  // =========================================================================
-  // SIMULADOR / TESTER INTERACTIVO DE LLAMADA MCP (Pestaña MCP)
-  // =========================================================================
   readonly simulatedToolName = signal<string>('calculate_spread');
   readonly simulatedArgsJson = signal<string>(
     '{\n  "buyPrice": 88.50,\n  "sellPrice": 90.20,\n  "makerFeePct": 0.25,\n  "bankFeePct": 0.30\n}',
@@ -947,7 +976,9 @@ export class Guide {
   readonly isRunningSim = signal<boolean>(false);
   readonly simulationResult = signal<any>(null);
 
-  selectQuickSimTool(tool: 'calculate_spread' | 'evaluate_trade_risk' | 'get_bcv_rates' | 'check_bcv_intervention_window'): void {
+  selectQuickSimTool(
+    tool: 'calculate_spread' | 'evaluate_trade_risk' | 'get_bcv_rates' | 'check_bcv_intervention_window',
+  ): void {
     this.simulatedToolName.set(tool);
     if (tool === 'calculate_spread') {
       this.simulatedArgsJson.set(
@@ -969,8 +1000,6 @@ export class Guide {
     this.isRunningSim.set(true);
     this.simulationResult.set(null);
 
-    // No initializer on purpose: the catch below returns, so a default value
-    // here could never be observed (and `no-useless-assignment` says so).
     let parsedArgs: unknown;
     try {
       parsedArgs = JSON.parse(this.simulatedArgsJson());
@@ -996,7 +1025,7 @@ export class Guide {
   }
 
   // =========================================================================
-  // ASISTENTE "¿QUÉ HERRAMIENTA NECESITO?" (Pestaña Herramientas)
+  // ASISTENTE "¿QUÉ HERRAMIENTA NECESITO?"
   // =========================================================================
   readonly selectedScenarioId = signal<string>('pricing');
 
