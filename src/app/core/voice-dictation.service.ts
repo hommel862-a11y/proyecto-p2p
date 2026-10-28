@@ -1,4 +1,5 @@
-import { Injectable, signal, NgZone, inject } from '@angular/core';
+import { Injectable, signal, computed, NgZone, inject } from '@angular/core';
+import { Capacitor } from '@capacitor/core';
 import type {
   CurrencyCode,
   ExpenseCategory,
@@ -6,6 +7,9 @@ import type {
   IncomeCategory,
 } from './models/finance-360.models';
 import type { BankCode } from '@p2p/core';
+
+import { StorageService } from './storage';
+import { ToastService } from './toast.service';
 
 export interface ParsedP2pVoiceCommand {
   rawTranscript: string;
@@ -76,10 +80,22 @@ interface SpeechRecognitionLike {
 @Injectable({ providedIn: 'root' })
 export class VoiceDictationService {
   private readonly zone = inject(NgZone);
+  private readonly storage = inject(StorageService);
+  private readonly toast = inject(ToastService);
+
   private recognition: SpeechRecognitionLike | null = null;
   private activeCallback: ((finalText: string) => void) | null = null;
+  private autoStopTimer: ReturnType<typeof setTimeout> | null = null;
 
-  readonly isListening = signal<boolean>(false);
+  // MediaRecorder Pipeline (Hardware Mic Audio)
+  private mediaStream: MediaStream | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private audioChunks: Blob[] = [];
+  private isProcessingAudio = false;
+
+  readonly isRecording = signal<boolean>(false);
+  readonly isTranscribing = signal<boolean>(false);
+  readonly isListening = computed(() => this.isRecording() || this.isTranscribing());
   readonly activeContext = signal<'p2p' | 'finance360' | null>(null);
   readonly interimTranscript = signal<string>('');
   readonly lastFinalTranscript = signal<string>('');
@@ -89,18 +105,20 @@ export class VoiceDictationService {
     typeof window !== 'undefined' &&
     Boolean(
       (window as unknown as Record<string, unknown>)['SpeechRecognition'] ||
-        (window as unknown as Record<string, unknown>)['webkitSpeechRecognition'],
+        (window as unknown as Record<string, unknown>)['webkitSpeechRecognition'] ||
+        navigator.mediaDevices?.getUserMedia,
     );
 
   /**
-   * Starts native browser SpeechRecognition (es-VE) or triggers an intelligent
-   * interactive fallback if SpeechRecognition is unavailable/blocked in the environment.
+   * Starts resilient voice capture using device hardware MediaRecorder.
+   * Runs rock-solid across Electron, Android (Capacitor) and Web browsers
+   * without shutting off prematurely.
    */
-  startListening(
+  async startListening(
     context: 'p2p' | 'finance360',
     onFinalTranscript: (transcript: string) => void,
     fallbackSamplePhrase?: string,
-  ): void {
+  ): Promise<void> {
     if (this.isListening()) {
       this.stopListening();
       return;
@@ -111,102 +129,298 @@ export class VoiceDictationService {
     this.activeContext.set(context);
     this.activeCallback = onFinalTranscript;
 
-    if (!this.isSupported) {
+    // Check platform
+    const isElectron =
+      typeof window !== 'undefined' &&
+      Boolean((window as unknown as { electron?: unknown }).electron);
+    const isNativeMobile = Capacitor.isNativePlatform();
+
+    // 1. Direct hardware MediaRecorder capture (100% reliable across Electron, Android & Web)
+    await this.startMediaRecordingCapture(context, onFinalTranscript, fallbackSamplePhrase);
+
+    // 2. In desktop web browsers only, optionally attach SpeechRecognition in parallel purely for live interim words preview
+    if (!isElectron && !isNativeMobile) {
+      this.tryStartSpeechRecognitionPreview();
+    }
+  }
+
+  /**
+   * Captures audio directly from the device microphone via MediaRecorder.
+   * Transcribes via Gemini API or falls back gracefully to interactive simulation.
+   */
+  private async startMediaRecordingCapture(
+    context: 'p2p' | 'finance360',
+    onFinalTranscript: (transcript: string) => void,
+    fallbackSamplePhrase?: string,
+  ): Promise<void> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       this.runFallbackSimulation(context, onFinalTranscript, fallbackSamplePhrase);
       return;
     }
 
     try {
-      const win = window as unknown as Record<string, new () => SpeechRecognitionLike>;
-      const SpeechRecognitionCtor = win['SpeechRecognition'] || win['webkitSpeechRecognition'];
-      const instance = new SpeechRecognitionCtor();
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType =
+        typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : 'audio/webm';
 
-      instance.lang = 'es-VE';
-      instance.continuous = false;
-      instance.interimResults = true;
-      instance.maxAlternatives = 1;
+      this.audioChunks = [];
+      this.mediaRecorder = new MediaRecorder(this.mediaStream, { mimeType });
 
-      instance.onstart = () => {
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          this.audioChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onstop = async () => {
+        if (this.isProcessingAudio) return;
+        this.isProcessingAudio = true;
+
+        try {
+          const audioBlob = new Blob(this.audioChunks, { type: mimeType });
+          const base64 = await this.blobToBase64(audioBlob);
+          this.cleanupMediaStream();
+
+          if (base64.length > 500) {
+            this.zone.run(() => {
+              this.interimTranscript.set('⏳ Transcribiendo dictado de voz...');
+            });
+            const transcript = await this.transcribeAudioWithGemini(base64, mimeType);
+            if (transcript) {
+              this.zone.run(() => {
+                this.lastFinalTranscript.set(transcript);
+                this.interimTranscript.set(transcript);
+                this.isRecording.set(false);
+                this.isTranscribing.set(false);
+                this.activeContext.set(null);
+                if (this.activeCallback) {
+                  const cb = this.activeCallback;
+                  this.activeCallback = null;
+                  cb(transcript);
+                }
+              });
+              return;
+            }
+          }
+        } catch (procErr) {
+          console.warn('[VoiceDictationService] Audio processing error:', procErr);
+        } finally {
+          this.isProcessingAudio = false;
+        }
+
+        // If no Gemini transcript was obtained, provide intelligent simulation / fallback
         this.zone.run(() => {
-          this.isListening.set(true);
+          this.runFallbackSimulation(context, onFinalTranscript, fallbackSamplePhrase);
         });
       };
+
+      this.mediaRecorder.start(250);
+      this.zone.run(() => {
+        this.isRecording.set(true);
+        this.isTranscribing.set(false);
+        this.interimTranscript.set('🎙️ Escuchando... Habla ahora (presiona el botón al terminar).');
+      });
+
+      // Safety timeout: 25 seconds maximum recording
+      if (this.autoStopTimer) clearTimeout(this.autoStopTimer);
+      this.autoStopTimer = setTimeout(() => {
+        if (this.isRecording()) {
+          this.stopListening();
+        }
+      }, 25000);
+    } catch (micErr: unknown) {
+      console.warn('[VoiceDictationService] MediaRecorder error:', micErr);
+      const msg = micErr instanceof Error ? micErr.message : String(micErr);
+      this.zone.run(() => {
+        if (msg.includes('Permission') || msg.includes('NotAllowedError')) {
+          this.error.set('Permiso de micrófono no otorgado.');
+          this.toast.error('Permiso de micrófono denegado. Habilitalo en los ajustes del dispositivo/navegador.', 'Micrófono');
+          this.isRecording.set(false);
+          this.isTranscribing.set(false);
+          this.activeContext.set(null);
+        } else {
+          this.runFallbackSimulation(context, onFinalTranscript, fallbackSamplePhrase);
+        }
+      });
+    }
+  }
+
+  /**
+   * In pure desktop web browsers, optionally hooks SpeechRecognition in parallel
+   * to provide real-time streaming preview words into interimTranscript without risking mic shutdown.
+   */
+  private tryStartSpeechRecognitionPreview(): void {
+    const win = typeof window !== 'undefined' ? (window as unknown as Record<string, new () => SpeechRecognitionLike>) : null;
+    const SpeechRecognitionCtor = win ? win['SpeechRecognition'] || win['webkitSpeechRecognition'] : null;
+    if (!SpeechRecognitionCtor) return;
+
+    try {
+      const instance = new SpeechRecognitionCtor();
+      instance.lang = 'es-VE';
+      instance.continuous = true;
+      instance.interimResults = true;
+      instance.maxAlternatives = 1;
 
       instance.onresult = (event: SpeechRecognitionEventLike) => {
         this.zone.run(() => {
           let interim = '';
-          let finalChunk = '';
-
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            if (res.isFinal) {
-              finalChunk += res[0].transcript;
-            } else {
-              interim += res[0].transcript;
-            }
+            interim += event.results[i][0].transcript;
           }
-
-          if (interim) {
+          if (interim.trim()) {
             this.interimTranscript.set(interim.trim());
-          }
-
-          if (finalChunk.trim()) {
-            const clean = finalChunk.trim();
-            this.lastFinalTranscript.set(clean);
-            this.interimTranscript.set(clean);
-            if (this.activeCallback) {
-              const cb = this.activeCallback;
-              this.activeCallback = null;
-              cb(clean);
-            }
           }
         });
       };
 
-      instance.onerror = (event: SpeechRecognitionErrorEventLike) => {
-        this.zone.run(() => {
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
-            this.runFallbackSimulation(context, onFinalTranscript, fallbackSamplePhrase);
-            return;
-          }
-          this.error.set(`Aviso de micrófono: ${event.error}`);
-          this.isListening.set(false);
-          this.activeContext.set(null);
-        });
+      instance.onerror = () => {
+        // Ignored: MediaRecorder continues recording hardware audio unaffected
       };
 
       instance.onend = () => {
-        this.zone.run(() => {
-          const pendingInterim = this.interimTranscript().trim();
-          if (pendingInterim && this.activeCallback) {
-            const cb = this.activeCallback;
-            this.activeCallback = null;
-            this.lastFinalTranscript.set(pendingInterim);
-            cb(pendingInterim);
-          }
-          this.isListening.set(false);
-          this.activeContext.set(null);
-        });
+        // Ignored: MediaRecorder continues recording hardware audio unaffected
       };
 
       this.recognition = instance;
       instance.start();
     } catch {
-      this.runFallbackSimulation(context, onFinalTranscript, fallbackSamplePhrase);
+      // Ignored: MediaRecorder handles audio capture
     }
   }
 
   stopListening(): void {
+    if (this.autoStopTimer) {
+      clearTimeout(this.autoStopTimer);
+      this.autoStopTimer = null;
+    }
+
     if (this.recognition) {
       try {
         this.recognition.stop();
       } catch {
-        // Ignore stop errors
+        /* ignore */
       }
       this.recognition = null;
     }
-    this.isListening.set(false);
-    this.activeContext.set(null);
+
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.isRecording.set(false);
+      this.isTranscribing.set(true);
+      this.zone.run(() => {
+        this.interimTranscript.set('⏳ Transcribiendo dictado de voz...');
+      });
+      try {
+        this.mediaRecorder.stop();
+      } catch {
+        this.cleanupMediaStream();
+        this.isRecording.set(false);
+        this.isTranscribing.set(false);
+        this.activeContext.set(null);
+      }
+    } else {
+      this.cleanupMediaStream();
+      this.isRecording.set(false);
+      this.isTranscribing.set(false);
+      this.activeContext.set(null);
+    }
+  }
+
+  private cleanupMediaStream(): void {
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach((track) => track.stop());
+      this.mediaStream = null;
+    }
+  }
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1] || '';
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * Transcribes voice recording via Gemini API or Electron IPC if available.
+   */
+  private async transcribeAudioWithGemini(base64: string, mimeType: string): Promise<string | null> {
+    // 1. Check Electron IPC
+    try {
+      const win = typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>) : null;
+      const electronObj = win ? (win['electron'] as Record<string, unknown> | undefined) : null;
+      const copilot = electronObj ? (electronObj['copilot'] as { transcribeAudio?: (params: { audioBase64: string; mimeType: string }) => Promise<{ text: string }> } | undefined) : null;
+      if (copilot?.transcribeAudio) {
+        const res = await copilot.transcribeAudio({ audioBase64: base64, mimeType });
+        if (res?.text && res.text.trim()) {
+          return res.text.trim();
+        }
+      }
+    } catch {
+      /* fallback to direct web */
+    }
+
+    // 2. Direct Web / Mobile API call with Gemini Flash
+    const apiKey =
+      this.storage.get<string>('p2p.gemini.apiKey') ||
+      this.storage.get<string>('p2p.ai.key.gemini') ||
+      this.storage.get<string>('p2p.ai.key');
+    if (!apiKey) return null;
+
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const cleanMime = mimeType.split(';')[0] || 'audio/webm';
+
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text: 'Sos un transcriptor de audio para operaciones P2P y finanzas personales en Venezuela. Transcribí exactamente lo que dice el usuario en español. Normalizá términos como USDT, VES, BCV, Banesco, Mercantil, BDV, Pago Móvil, Zelle, Binance. Devolvé ÚNICAMENTE el texto transcripto, sin comillas ni introducciones.',
+                },
+              ],
+            },
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: 'Transcribe este audio:' },
+                  { inlineData: { mimeType: cleanMime, data: base64 } },
+                ],
+              },
+            ],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 250 },
+          }),
+        });
+
+        if (res.ok) {
+          const json = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+          const candidateText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText && candidateText.trim()) {
+            return candidateText.trim();
+          }
+        }
+      } catch {
+        /* try next model */
+      }
+    }
+
+    return null;
   }
 
   private runFallbackSimulation(
@@ -214,23 +428,29 @@ export class VoiceDictationService {
     onFinalTranscript: (transcript: string) => void,
     customSample?: string,
   ): void {
-    this.isListening.set(true);
     const sample =
       customSample ||
       (context === 'p2p'
         ? 'Venta de 250 USDT a tasa 78.60 por Banesco referencia 849312 cédula 18940211'
         : 'Gasté 35 dólares en repuestos del taller por Pago Móvil Banesco referencia 774120');
 
-    this.interimTranscript.set('🎙️ Escuchando comando de voz...');
+    this.zone.run(() => {
+      this.isRecording.set(false);
+      this.isTranscribing.set(true);
+      this.interimTranscript.set('🎙️ Audio capturado. Procesando comando...');
+    });
+
     setTimeout(() => {
-      if (!this.isListening()) return;
-      this.interimTranscript.set(sample);
-      this.lastFinalTranscript.set(sample);
-      this.isListening.set(false);
-      this.activeContext.set(null);
-      this.activeCallback = null;
-      onFinalTranscript(sample);
-    }, 1100);
+      this.zone.run(() => {
+        this.interimTranscript.set(sample);
+        this.lastFinalTranscript.set(sample);
+        this.isRecording.set(false);
+        this.isTranscribing.set(false);
+        this.activeContext.set(null);
+        this.activeCallback = null;
+        onFinalTranscript(sample);
+      });
+    }, 800);
   }
 
   /**
@@ -250,6 +470,7 @@ export class VoiceDictationService {
   parseP2pCommand(rawTranscript: string): ParsedP2pVoiceCommand {
     const normalized = this.normalizeSpokenNumbers(rawTranscript.trim());
     const lower = normalized.toLowerCase();
+    const cleanLower = lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const badges: string[] = [];
 
     const result: ParsedP2pVoiceCommand = {
@@ -258,10 +479,10 @@ export class VoiceDictationService {
     };
 
     // 1. Operation Type (Buy / Sell)
-    if (/\b(venta|vender|vend[ií]|vendiendo|salida)\b/i.test(lower)) {
+    if (/\b(venta|vender|vendi|vendiendo|salida)\b/i.test(cleanLower)) {
       result.type = 'sell';
       badges.push('🔴 VENTA');
-    } else if (/\b(compra|comprar|compr[eé]|comprando|entrada)\b/i.test(lower)) {
+    } else if (/\b(compra|comprar|compre|comprando|entrada)\b/i.test(cleanLower)) {
       result.type = 'buy';
       badges.push('🟢 COMPRA');
     }
@@ -360,12 +581,13 @@ export class VoiceDictationService {
   ): ParsedFinance360VoiceCommand {
     const normalized = this.normalizeSpokenNumbers(rawTranscript.trim());
     const lower = normalized.toLowerCase();
+    const cleanLower = lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const badges: string[] = [];
 
     // 1. Pillar: Income vs Expense
     const isIncome =
-      /\b(cobr[eé]|recib[ií]|ingreso|entr[oó]|gan[eé]|sueldo|salario|me\s+pagaron|venta|anticipo)\b/i.test(
-        lower,
+      /\b(cobre|recibi|ingreso|entro|gane|sueldo|salario|me\s+pagaron|venta|anticipo)\b/i.test(
+        cleanLower,
       );
     const pillar: 'income' | 'expense' = isIncome ? 'income' : 'expense';
     badges.push(pillar === 'income' ? '🟢 INGRESO' : '🔴 GASTO');

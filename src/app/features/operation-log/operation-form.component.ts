@@ -1006,6 +1006,10 @@ export class OperationFormComponent {
   }
 
   toggleVoiceDictation(): void {
+    if (this.voice.isListening()) {
+      this.voice.stopListening();
+      return;
+    }
     this.voice.startListening('p2p', (transcript) => {
       this.applyVoiceCommand(transcript);
     });
