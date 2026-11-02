@@ -20,6 +20,12 @@ export const routes: Routes = [
       import('./features/p2p-radar/p2p-radar.component').then((m) => m.P2PRadarComponent),
   },
   {
+    path: 'mesa-bcv',
+    title: 'Mesa Cambiaria BCV & Centinela Multibanco',
+    loadComponent: () =>
+      import('./features/fx-bank-desk/fx-bank-desk.component').then((m) => m.FxBankDeskComponent),
+  },
+  {
     path: 'income',
     title: 'Income Calculator',
     loadComponent: () =>

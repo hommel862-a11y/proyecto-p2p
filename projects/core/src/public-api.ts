@@ -87,3 +87,4 @@ export * from './lib/p2p-radar-hud-bridge';
 export * from './lib/client-compliance-intelligence';
 export * from './lib/inbound-webhook-contracts';
 export * from './lib/crm-omnichannel-billing';
+export * from './lib/fx-bank-desk';

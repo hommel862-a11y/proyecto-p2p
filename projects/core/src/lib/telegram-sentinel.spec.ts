@@ -26,10 +26,13 @@ import {
   TelegramInboundUpdate,
   formatStrategyPlanTelegramMessage,
   buildPlanApprovalKeyboard,
+  formatFxDeskTelegramMessage,
+  buildFxDeskTelegramKeyboard,
   type StrategyPlanTelegramCard,
   type PanelReport,
 } from './telegram-sentinel';
 import type { VerificationSummary } from './decision-journal';
+import { evaluateFxBankDeskPlan } from './fx-bank-desk';
 
 // Caracteres reservados de MarkdownV2 que en NUESTROS mensajes solo pueden
 // aparecer escapados (fuera de los spans de código): [ ] ( ) ~ > # + - = | { } . !
@@ -1818,6 +1821,71 @@ describe('TelegramSentinel: Centro de Alertas y Despacho Remoto', () => {
       expect(normalizeButtonCommand('📋 Plan Táctico SOP')).toBe('/plan');
       expect(normalizeButtonCommand('plan tactico')).toBe('/plan');
       expect(normalizeButtonCommand('plan tactico 300 mercantil')).toBe('/plan 300 mercantil');
+    });
+
+    it('despacha /mesa y formatea reporte MarkdownV2 + teclado interactivo de 14 bancos', () => {
+      const cmdUpdate: TelegramInboundUpdate = {
+        update_id: 9001,
+        message: {
+          message_id: 21,
+          from: { id: 123456 },
+          chat: { id: 123456, type: 'private' },
+          text: '/mesa bdv 80000',
+          date: Date.now(),
+        },
+      };
+      const cmdRes = dispatchTelegramUpdate(cmdUpdate, 123456);
+      expect(cmdRes.authorized).toBe(true);
+      expect(cmdRes.action).toBe('FX_DESK');
+      expect(cmdRes.params).toEqual({ bankId: 'BDV', capitalVes: 80000 });
+      expectParseableMarkdownV2(cmdRes.responseMarkdown);
+
+      const plan = evaluateFxBankDeskPlan({
+        bcvOfficialRateVes: 62.45,
+        p2pSellRateVes: 84.2,
+        simulatedCapitalVes: 80000,
+        confirmedFluidBanks: ['BDV'],
+      });
+      const md = formatFxDeskTelegramMessage(plan);
+      expectParseableMarkdownV2(md);
+      const kb = buildFxDeskTelegramKeyboard(plan);
+      expect(kb.inline_keyboard.length).toBeGreaterThan(0);
+      expect(kb.inline_keyboard[0][0].url).toContain('https://');
+      expect(kb.inline_keyboard[0][1].callback_data).toMatch(/^FX_BOUGHT:/);
+    });
+
+    it('despacha callbacks FX_BOUGHT y FX_EMPTY con MarkdownV2 válido', () => {
+      const boughtRes = dispatchTelegramUpdate(
+        {
+          update_id: 9002,
+          callback_query: {
+            id: 'cb-fx-1',
+            from: { id: 123456 },
+            data: 'FX_BOUGHT:BDV:750',
+          },
+        },
+        123456,
+      );
+      expect(boughtRes.authorized).toBe(true);
+      expect(boughtRes.action).toBe('FX_BOUGHT');
+      expect(boughtRes.params).toEqual({ bankId: 'BDV', orderUsd: 750 });
+      expectParseableMarkdownV2(boughtRes.responseMarkdown);
+
+      const emptyRes = dispatchTelegramUpdate(
+        {
+          update_id: 9003,
+          callback_query: {
+            id: 'cb-fx-2',
+            from: { id: 123456 },
+            data: 'FX_EMPTY:BANCAMIGA',
+          },
+        },
+        123456,
+      );
+      expect(emptyRes.authorized).toBe(true);
+      expect(emptyRes.action).toBe('FX_EMPTY');
+      expect(emptyRes.params).toEqual({ bankId: 'BANCAMIGA' });
+      expectParseableMarkdownV2(emptyRes.responseMarkdown);
     });
   });
 });

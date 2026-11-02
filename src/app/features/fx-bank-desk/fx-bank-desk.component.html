@@ -1,0 +1,397 @@
+<div class="fx-desk-shell">
+  <!-- ZONA 1: CINTA DE PULSO MACRO & CONTROL DE TELEGRAM -->
+  <header class="fx-hero-banner">
+    <div class="hero-left">
+      <div class="hero-badge-row">
+        <span class="window-pill" [class.window-active]="isWindowActive()">
+          <span class="pulse-dot"></span>
+          {{ isWindowActive() ? '🟢 VENTANA BCV ACTIVA (09:00 - 13:00 VET)' : '🕒 MODO VIGILANCIA / MENUDEO' }}
+        </span>
+        <span class="provenance-chip font-mono">
+          Fuente BCV: {{ bcvProvenanceLabel() }}
+        </span>
+      </div>
+      <h1 class="hero-title">Mesa Cambiaria BCV &amp; Centinela Multibanco</h1>
+      <p class="hero-subtitle">
+        Coordinación en tiempo real en <strong>14 entidades bancarias (Estado y Privadas)</strong> con cálculo de lote exacto anti-rechazo, protección de sesión WAF y cierre contable FIFO en 1 clic.
+      </p>
+    </div>
+
+    <div class="hero-metrics-ribbon">
+      <div class="metric-box">
+        <span class="metric-label">TASA OFICIAL BCV</span>
+        @if (liveBcvRate() !== null) {
+          <strong class="metric-value font-mono">{{ liveBcvRate() | number: '1.2-2' }} <small>Bs/USD</small></strong>
+        } @else {
+          <strong class="metric-value unavailable font-mono">Sin dato en vivo</strong>
+        }
+      </div>
+
+      <div class="metric-divider"></div>
+
+      <div class="metric-box">
+        <span class="metric-label">LIQUIDACIÓN P2P</span>
+        @if (liveP2pRate() !== null) {
+          <strong class="metric-value accent font-mono">{{ liveP2pRate() | number: '1.2-2' }} <small>Bs/USDT</small></strong>
+        } @else {
+          <strong class="metric-value unavailable font-mono">Sin dato en vivo</strong>
+        }
+      </div>
+
+      <div class="metric-divider"></div>
+
+      <div class="metric-box highlight-gold">
+        <span class="metric-label">BRECHA BRUTA (GAP)</span>
+        @if (evaluationPlan().grossGapPct !== null) {
+          <strong class="metric-value gold font-mono">
+            +{{ evaluationPlan().grossGapPct | number: '1.2-2' }}%
+            <small>(+{{ evaluationPlan().grossGapVes | number: '1.2-2' }} Bs)</small>
+          </strong>
+        } @else {
+          <strong class="metric-value unavailable font-mono">n/d</strong>
+        }
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <button
+        type="button"
+        class="btn-telegram-push"
+        [disabled]="isSendingTelegram()"
+        (click)="pushPlanToTelegram()"
+        title="Enviar alerta interactiva con botones de compra y confirmación FIFO a tu teléfono"
+      >
+        <span>📲 {{ isSendingTelegram() ? 'Enviando...' : 'Despachar Alerta a Telegram' }}</span>
+      </button>
+
+      @if (liveBcvRate() === null || liveP2pRate() === null) {
+        <button
+          type="button"
+          class="btn-contingency"
+          (click)="applyDemoRatesIfOffline()"
+          title="Cargar tasas de referencia manuales para simular mientras conectas las APIs"
+        >
+          ⚡ Activar Tasas de Contingencia
+        </button>
+      } @else if (manualBcvOverride() !== null || manualP2pOverride() !== null) {
+        <button
+          type="button"
+          class="btn-contingency"
+          (click)="clearManualOverrides()"
+        >
+          🔄 Volver a Feed en Vivo
+        </button>
+      }
+    </div>
+  </header>
+
+  <!-- ZONA 2: SIMULADOR INTERACTIVO "1-SLIDER" Y CASCADA DE RETORNO -->
+  <section class="simulator-section" aria-label="Simulador de Inyección y Retorno Neto">
+    <div class="sim-controls-card">
+      <div class="sim-header">
+        <div>
+          <span class="section-eyebrow">⚡ SIMULADOR INTERACTIVO DE INYECCIÓN</span>
+          <h2 class="sim-title">Presupuesto por Cuenta / Simulación Rápida</h2>
+        </div>
+        <button type="button" class="btn-sync-treasury" (click)="useTotalTreasuryBalance()">
+          🏦 Usar Mi Liquidez Total ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
+        </button>
+      </div>
+
+      <div class="slider-row">
+        <input
+          type="range"
+          min="5000"
+          max="1000000"
+          step="5000"
+          [ngModel]="simulatedCapitalVes()"
+          (ngModelChange)="simulatedCapitalVes.set($event)"
+          class="capital-slider"
+          aria-label="Presupuesto en Bolívares a inyectar"
+        />
+        <div class="slider-input-group font-mono">
+          <span class="currency-prefix">Bs.</span>
+          <input
+            type="number"
+            min="1000"
+            step="1000"
+            [ngModel]="simulatedCapitalVes()"
+            (ngModelChange)="simulatedCapitalVes.set(+$event || 0)"
+            class="capital-number-input"
+            aria-label="Monto en Bolívares"
+          />
+        </div>
+      </div>
+
+      <div class="manual-rates-bar">
+        <label class="rate-override-field">
+          <span>Tasa BCV (Bs):</span>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Auto"
+            [ngModel]="manualBcvOverride()"
+            (ngModelChange)="manualBcvOverride.set($event ? +$event : null)"
+            class="mini-rate-input font-mono"
+          />
+        </label>
+        <label class="rate-override-field">
+          <span>Tasa P2P (Bs):</span>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Auto"
+            [ngModel]="manualP2pOverride()"
+            (ngModelChange)="manualP2pOverride.set($event ? +$event : null)"
+            class="mini-rate-input font-mono"
+          />
+        </label>
+      </div>
+    </div>
+
+    <!-- CASCADA DE 3 PASOS: BANCOS -> RIEL USDT -> RETORNO P2P -->
+    <div class="waterfall-cards">
+      <div class="wf-step">
+        <span class="wf-step-num">PASO 1 · COMPRA OFICIAL EN BANCOS</span>
+        <strong class="wf-step-val font-mono">${{ evaluationPlan().totalRecommendedUsd | number: '1.0-0' }} USD</strong>
+        <span class="wf-step-sub">
+          Débito: {{ evaluationPlan().totalDeployableVes | number: '1.2-2' }} Bs (Comisión 0.25%-0.50% + buffer incluidos)
+        </span>
+      </div>
+
+      <div class="wf-arrow" aria-hidden="true">➔</div>
+
+      <div class="wf-step">
+        <span class="wf-step-num">PASO 2 · CONVERSIÓN RIEL A USDT</span>
+        <strong class="wf-step-val accent font-mono">{{ evaluationPlan().totalNetUsdt | number: '1.2-2' }} USDT</strong>
+        <span class="wf-step-sub">
+          Neto libre en bóveda tras fricción de tarjeta internacional / P2P divisas
+        </span>
+      </div>
+
+      <div class="wf-arrow" aria-hidden="true">➔</div>
+
+      <div class="wf-step wf-step-profit">
+        <span class="wf-step-num">PASO 3 · LIQUIDACIÓN P2P Y GANANCIA NETA</span>
+        @if (evaluationPlan().totalProjectedNetProfitVes !== null) {
+          <strong class="wf-step-val gold font-mono">
+            +{{ evaluationPlan().totalProjectedNetProfitVes | number: '1.2-2' }} Bs
+          </strong>
+          <span class="wf-step-sub">
+            ROI Neto Promedio: <strong>+{{ evaluationPlan().averageNetRoiPct | number: '1.2-2' }}%</strong> ({{ viableTicketsCount() }} bancos listos)
+          </span>
+        } @else {
+          <strong class="wf-step-val unavailable font-mono">Esperando tasas...</strong>
+          <span class="wf-step-sub">Activa tasas de contingencia o conecta Cotizave/Binance</span>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ZONA 3: BARRA DE FILTROS Y PARRILLA DE 14 BANCOS (ESTADO Y PRIVADOS) -->
+  <section class="banks-grid-section" aria-label="Parrilla de Entidades Bancarias">
+    <div class="grid-toolbar">
+      <div class="filter-pills" role="tablist">
+        <button
+          type="button"
+          class="filter-pill"
+          [class.active]="sectorFilter() === 'ALL'"
+          (click)="setSectorFilter('ALL')"
+        >
+          Todos los Bancos ({{ allBanks.length }})
+        </button>
+        <button
+          type="button"
+          class="filter-pill"
+          [class.active]="sectorFilter() === 'ESTADO'"
+          (click)="setSectorFilter('ESTADO')"
+        >
+          🏛️ Banca del Estado ({{ stateBanksCount() }})
+        </button>
+        <button
+          type="button"
+          class="filter-pill"
+          [class.active]="sectorFilter() === 'PRIVADO'"
+          (click)="setSectorFilter('PRIVADO')"
+        >
+          🏦 Banca Privada ({{ privateBanksCount() }})
+        </button>
+        <button
+          type="button"
+          class="filter-pill"
+          [class.active]="sectorFilter() === 'VIABLE'"
+          (click)="setSectorFilter('VIABLE')"
+        >
+          🟢 Órdenes Listas ({{ viableTicketsCount() }})
+        </button>
+      </div>
+
+      <div class="toolbar-right">
+        <span class="anti-block-legend">
+          🛡️ <strong>Escudo Anti-Rechazo Activo:</strong> Lotes redondeados sin centavos + Reserva automática de comisión.
+        </span>
+      </div>
+    </div>
+
+    <div class="banks-grid">
+      @for (ticket of filteredTickets(); track ticket.bank.id) {
+        <article
+          class="bank-card"
+          [class.card-fluid]="ticket.signalState === 'CONFIRMED_FLUID'"
+          [class.card-depleted]="ticket.signalState === 'COOLDOWN_DEPLETED'"
+          [class.card-blocked]="ticket.sudebanHealth === 'BLOCKED_LIMIT'"
+        >
+          <!-- Card Header -->
+          <div class="bank-card-header">
+            <div class="bank-identity">
+              <span class="bank-aba font-mono">{{ ticket.bank.abaCode }}</span>
+              <div>
+                <h3 class="bank-name">{{ ticket.bank.shortName }}</h3>
+                <span class="bank-mechanism">{{ ticket.bank.mechanismLabel }}</span>
+              </div>
+            </div>
+
+            <div class="bank-badges">
+              <span class="sector-tag" [class.estado]="ticket.bank.sector === 'ESTADO'">
+                {{ ticket.bank.sector === 'ESTADO' ? '🏛️ ESTADO' : '🏦 PRIVADO' }}
+              </span>
+              <button
+                type="button"
+                class="signal-toggle-btn"
+                [class.fluid]="ticket.signalState === 'CONFIRMED_FLUID'"
+                [class.depleted]="ticket.signalState === 'COOLDOWN_DEPLETED'"
+                (click)="toggleFluidSignal(ticket.bank.id)"
+                title="Clic para alternar estado de fluidez reportada en este banco"
+              >
+                @switch (ticket.signalState) {
+                  @case ('CONFIRMED_FLUID') { 🟢 FLUIDEZ ACTIVA }
+                  @case ('WINDOW_OPEN') { 🟢 EN VENTANA }
+                  @case ('COOLDOWN_DEPLETED') { 🔴 SIN CUPO }
+                  @default { 🟡 VIGILANCIA }
+                }
+              </button>
+            </div>
+          </div>
+
+          <!-- Account & SUDEBAN Health Bar -->
+          <div class="sudeban-bar-wrap">
+            <div class="sudeban-bar-labels">
+              <span>
+                @if (ticket.linkedAccountName) {
+                  🔗 {{ ticket.linkedAccountName }}: <strong>{{ ticket.availableBalanceVes | number: '1.0-0' }} Bs</strong>
+                } @else {
+                  🧪 Simulado: <strong>{{ ticket.availableBalanceVes | number: '1.0-0' }} Bs</strong>
+                  <button type="button" class="btn-inline-link" (click)="quickLinkBankAccount(ticket.bank)">
+                    + Vincular cuenta
+                  </button>
+                }
+              </span>
+              <span class="sudeban-pct font-mono" [class.warn]="ticket.sudebanHealth === 'WARNING'" [class.danger]="ticket.sudebanHealth === 'BLOCKED_LIMIT'">
+                Cupo SUDEBAN: {{ ticket.consumedDailyLimitPct }}% ({{ ticket.todayTxCount }}/{{ ticket.maxDailyTxCount }} tx)
+              </span>
+            </div>
+            <div class="sudeban-progress-track">
+              <div
+                class="sudeban-progress-fill"
+                [class.warn]="ticket.sudebanHealth === 'WARNING'"
+                [class.danger]="ticket.sudebanHealth === 'BLOCKED_LIMIT'"
+                [style.width.%]="ticket.consumedDailyLimitPct > 100 ? 100 : ticket.consumedDailyLimitPct"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Exact Order Callout ("The Magic Number") -->
+          <div class="magic-lot-box">
+            <div class="lot-main">
+              <span class="lot-label">👉 PEDIR LOTE EXACTO SIN CENTAVOS:</span>
+              <div class="lot-value-row">
+                <strong class="lot-usd font-mono">${{ ticket.recommendedOrderUsd | number: '1.0-0' }} <small>USD</small></strong>
+                <button
+                  type="button"
+                  class="btn-copy-lot"
+                  [disabled]="ticket.recommendedOrderUsd <= 0"
+                  (click)="copyOrderLotUsd(ticket)"
+                >
+                  {{ copiedBankId() === ticket.bank.id ? '✓ Copiado' : '📋 Copiar $' + ticket.recommendedOrderUsd }}
+                </button>
+              </div>
+              <span class="lot-rule-hint">
+                Mínimo ${{ ticket.bank.minLotUsd }} · Múltiplo de ${{ ticket.bank.lotStepUsd }} · Fee banco {{ ticket.bank.bankFxFeePct }}%
+              </span>
+            </div>
+
+            <div class="lot-breakdown font-mono">
+              <div class="bd-row">
+                <span>Débito Exacto en Cuenta:</span>
+                <strong>{{ ticket.estimatedVesDebit | number: '1.2-2' }} Bs</strong>
+              </div>
+              <div class="bd-row">
+                <span>Colchón Anti-Rebote Reservado:</span>
+                <span>{{ ticket.reservedSafetyBufferVes | number: '1.2-2' }} Bs</span>
+              </div>
+              <div class="bd-row">
+                <span>Riel ({{ ticket.bank.primaryExitRailLabel }}):</span>
+                <strong class="accent">{{ ticket.netUsdtAfterExitRail | number: '1.2-2' }} USDT</strong>
+              </div>
+              <div class="bd-row profit-row">
+                <span>Ganancia Neta P2P:</span>
+                @if (ticket.projectedNetProfitVes !== null) {
+                  <strong class="gold">
+                    +{{ ticket.projectedNetProfitVes | number: '1.2-2' }} Bs (+{{ ticket.projectedNetRoiPct | number: '1.2-2' }}%)
+                  </strong>
+                } @else {
+                  <span>s/d</span>
+                }
+              </div>
+            </div>
+          </div>
+
+          @if (ticket.blockReason) {
+            <div class="ticket-block-banner">
+              ⚠️ {{ ticket.blockReason }}
+            </div>
+          }
+
+          <!-- Anti-Block Tips Accordion Trigger -->
+          <div class="bank-tip-line">
+            🛡️ <em>{{ ticket.bank.antiBlockTips[0] }}</em>
+          </div>
+
+          <!-- Action Buttons Row -->
+          <div class="bank-card-actions">
+            <button
+              type="button"
+              class="btn-portal-launch"
+              (click)="launchBankPortal(ticket)"
+            >
+              @if ((wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0) {
+                ⏳ Cadencia Anti-WAF: {{ wafCooldownRemaining()[ticket.bank.id] }}s
+              } @else {
+                🚀 Ir a {{ ticket.bank.shortName }}
+              }
+            </button>
+
+            <button
+              type="button"
+              class="btn-settle-fifo"
+              [disabled]="ticket.recommendedOrderUsd <= 0"
+              (click)="settlePurchaseInFifo(ticket)"
+              title="Registra la compra en el libro contable FIFO y descuenta los Bolívares de tu cuenta"
+            >
+              ✅ Ya Pacté ➔ FIFO
+            </button>
+
+            <button
+              type="button"
+              class="btn-tg-mini"
+              (click)="pushPlanToTelegram(ticket.bank.id)"
+              title="Enviar orden de este banco a Telegram"
+            >
+              📲
+            </button>
+          </div>
+        </article>
+      }
+    </div>
+  </section>
+</div>

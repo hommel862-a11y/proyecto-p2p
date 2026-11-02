@@ -60,6 +60,15 @@ import {
   type PlanActionParams,
   type VerificationSummary,
   type CopilotChatParams,
+  VENEZUELAN_FX_BANKS,
+  evaluateFxBankDeskPlan,
+  formatFxDeskTelegramMessage,
+  buildFxDeskTelegramKeyboard,
+  type FxDeskEvaluationPlan,
+  type FxInterventionBankId,
+  type FxDeskActionParams,
+  type FxBoughtCallbackParams,
+  type FxEmptyCallbackParams,
 } from '@p2p/core';
 import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
@@ -1412,6 +1421,85 @@ export class TelegramWorkerService implements OnDestroy {
         break;
       }
 
+      case 'FX_DESK': {
+        const params = (dispatch.params as FxDeskActionParams | undefined) ?? {};
+        const [depth] = await Promise.all([
+          this.getFreshMarketDepth(),
+          this.cotizave.fetchRates(),
+        ]);
+        const rates = this.cotizave.ratesByMarket();
+        const bcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
+        const p2pSell =
+          depth?.bestBuyPrice ??
+          depth?.bestSellPrice ??
+          rates['binance']?.ask ??
+          rates['binance']?.bid ??
+          null;
+        const plan = evaluateFxBankDeskPlan({
+          bcvOfficialRateVes: bcv && bcv > 0 ? bcv : null,
+          p2pSellRateVes: p2pSell && p2pSell > 0 ? p2pSell : null,
+          simulatedCapitalVes: params.capitalVes ?? 100000,
+          accounts: this.accounts.accounts(),
+          usages: this.accounts.usages(),
+          velocities: this.accounts.accountVelocities(),
+          confirmedFluidBanks: this.fxFluidBanks(),
+          depletedBanks: this.fxDepletedBanks(),
+        });
+        const msg = formatFxDeskTelegramMessage(plan, params.bankId);
+        const kb = buildFxDeskTelegramKeyboard(plan, params.bankId);
+        await this.sendTelegramMessage(token, chatId, msg, kb);
+        this.addLog({
+          time: timeStr,
+          command: dispatch.command ?? '/mesa',
+          action: 'FX_DESK',
+          status: 'SUCCESS',
+          details: params.bankId ? `banco ${params.bankId}` : '14 bancos',
+        });
+        break;
+      }
+
+      case 'FX_BOUGHT': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Pacto registrado en FIFO');
+        const params = dispatch.params as FxBoughtCallbackParams | undefined;
+        if (!params?.bankId || !params.orderUsd) {
+          await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+          break;
+        }
+        const settled = this.settleFxBankPurchase(params.bankId, params.orderUsd);
+        await this.sendTelegramMessage(
+          token,
+          chatId,
+          dispatch.responseMarkdown +
+            (settled
+              ? `\n\n📊 *Asiento FIFO:* \`${escapeMarkdownV2(settled.summary)}\``
+              : ''),
+        );
+        this.addLog({
+          time: timeStr,
+          command: `FX ${params.bankId}`,
+          action: 'FX_BOUGHT',
+          status: 'SUCCESS',
+          details: `${params.orderUsd} USD`,
+        });
+        break;
+      }
+
+      case 'FX_EMPTY': {
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Banco en enfriamiento 30m');
+        const params = dispatch.params as FxEmptyCallbackParams | undefined;
+        if (params?.bankId) {
+          this.markFxBankDepleted(params.bankId);
+        }
+        await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
+        this.addLog({
+          time: timeStr,
+          command: `Sin cupo ${params?.bankId ?? ''}`,
+          action: 'FX_EMPTY',
+          status: 'SUCCESS',
+        });
+        break;
+      }
+
       default: {
         if (dispatch.responseMarkdown) {
           await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
@@ -2298,5 +2386,102 @@ export class TelegramWorkerService implements OnDestroy {
   private addLog(entry: TelegramLogEntry): void {
     const logs = [entry, ...this.recentLogs()].slice(0, 15);
     this.recentLogs.set(logs);
+  }
+
+  /** Banks marked as having active FX liquidity during the current session. */
+  readonly fxFluidBanks = signal<FxInterventionBankId[]>(['BDV', 'BANCAMIGA', 'BANESCO']);
+
+  /** Banks marked as depleted/no-quota by the operator. */
+  readonly fxDepletedBanks = signal<FxInterventionBankId[]>([]);
+
+  markFxBankFluid(bankId: FxInterventionBankId): void {
+    this.fxDepletedBanks.update((list) => list.filter((id) => id !== bankId));
+    this.fxFluidBanks.update((list) => (list.includes(bankId) ? list : [...list, bankId]));
+  }
+
+  markFxBankDepleted(bankId: FxInterventionBankId): void {
+    this.fxFluidBanks.update((list) => list.filter((id) => id !== bankId));
+    this.fxDepletedBanks.update((list) => (list.includes(bankId) ? list : [...list, bankId]));
+  }
+
+  /**
+   * Records a confirmed FX bank purchase into the FIFO operation ledger (p2p.operations)
+   * and triggers AccountsService.refreshLedger() so balances update immediately.
+   */
+  settleFxBankPurchase(
+    bankId: FxInterventionBankId,
+    orderUsd: number,
+    customBcvRate?: number,
+  ): { operation: Operation; summary: string } | null {
+    const profile = VENEZUELAN_FX_BANKS.find((b) => b.id === bankId);
+    if (!profile || !Number.isFinite(orderUsd) || orderUsd <= 0) return null;
+
+    const rates = this.cotizave.ratesByMarket();
+    const bcvRate =
+      customBcvRate && customBcvRate > 0
+        ? customBcvRate
+        : rates['bcv']?.mid || rates['oficial']?.mid || 62.5;
+
+    const principalVes = roundMoney(orderUsd * bcvRate, 2);
+    const bankFeeVes = roundMoney(principalVes * (profile.bankFxFeePct / 100), 2);
+    const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
+    const netUsdt = roundMoney(orderUsd * (1 - profile.exitRailFrictionPct / 100), 2);
+
+    const matchedAcc = this.accounts
+      .accounts()
+      .find(
+        (a) =>
+          a.status !== 'DISABLED' &&
+          (a.bankCode === profile.coreBankCode ||
+            a.bankName.toLowerCase().includes(profile.shortName.toLowerCase())),
+      );
+
+    const op: Operation = {
+      id: `fx-${bankId.toLowerCase()}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: 'buy',
+      pair: 'USDT',
+      vesAmount: totalDebitVes,
+      usdtAmount: netUsdt,
+      price: roundMoney(totalDebitVes / Math.max(0.01, netUsdt), 2),
+      merchantNote: `MESA_BCV:${profile.shortName}`,
+      fees: bankFeeVes,
+      notes: `Compra Mesa Cambiaria ${profile.name}: ${orderUsd} USD a tasa BCV ${bcvRate.toFixed(2)} Bs (${profile.primaryExitRailLabel} -> ${netUsdt} USDT netos)`,
+      errorFree: true,
+      bankAccountId: matchedAcc?.id,
+    };
+
+    const existing = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    this.storage.set(OPS_KEY, [op, ...existing]);
+    this.accounts.refreshLedger();
+    void this.accounts.announceTreasuryToMain();
+    this.markFxBankFluid(bankId);
+
+    return {
+      operation: op,
+      summary: `${profile.shortName}: -Bs ${totalDebitVes.toFixed(2)} ➔ +${netUsdt.toFixed(2)} USDT netos`,
+    };
+  }
+
+  /**
+   * Dispatches the current FX Desk plan to the operator's linked Telegram chat.
+   */
+  async sendFxDeskPlanAlert(
+    plan: FxDeskEvaluationPlan,
+    filterBankId?: FxInterventionBankId,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const cfg = await this.getConfig();
+    const token = (this.config().botToken || cfg.botToken || '').trim();
+    const chatId = (this.config().chatId || cfg.chatId || '').trim();
+    if (!token || !chatId) {
+      return {
+        ok: false,
+        error: 'Configura primero tu Bot Token y Chat ID en Reglas de Riesgo > Telegram Sentinel.',
+      };
+    }
+    const msg = formatFxDeskTelegramMessage(plan, filterBankId);
+    const kb = buildFxDeskTelegramKeyboard(plan, filterBankId);
+    await this.sendTelegramMessage(token, chatId, msg, kb);
+    return { ok: true };
   }
 }

@@ -26,6 +26,11 @@
         <span>Radar Cuantitativo</span>
         <small class="nav-tag live">L2</small>
       </a>
+      <a routerLink="/mesa-bcv" routerLinkActive="active" ariaCurrentWhenActive="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+        <span>Mesa Cambiaria BCV</span>
+        <small class="nav-tag pro">FX</small>
+      </a>
       <a routerLink="/log" routerLinkActive="active" ariaCurrentWhenActive="page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
         <span>Operaciones</span>
@@ -289,6 +294,11 @@
           <a routerLink="/radar" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 12l7-7"/><circle cx="12" cy="12" r="2"/></svg>
             <span>Radar Cuantitativo L2</span>
+          </a>
+          <a routerLink="/mesa-bcv" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link" style="background: rgba(47, 208, 143, 0.08); border: 1px solid rgba(47, 208, 143, 0.28);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+            <span style="color: #f8fafc; font-weight: 700;">Mesa Cambiaria BCV (14 Bancos)</span>
+            <span class="apple-pill-mini font-mono" style="margin-left: auto; background: rgba(47, 208, 143, 0.2); color: var(--accent);">FX</span>
           </a>
           <a routerLink="/dashboard" (click)="closeMobileDrawer()" routerLinkActive="active" class="drawer-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>

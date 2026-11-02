@@ -637,6 +637,14 @@ export class CommandPalette {
         action: () => void this.router.navigate(['/radar']),
       },
       {
+        id: 'nav-mesa-bcv',
+        label: 'Mesa Cambiaria BCV & Centinela Multibanco (14 Bancos)',
+        icon: '🏛️',
+        hint: '/mesa-bcv',
+        group: 'MISIÓN',
+        action: () => void this.router.navigate(['/mesa-bcv']),
+      },
+      {
         id: 'nav-log',
         label: 'Registro de Operaciones (Bitácora)',
         icon: 'log',
