@@ -733,6 +733,18 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' };
   });
 
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isLocalOrigin =
+      url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
+    if (
+      !isLocalOrigin &&
+      (url.startsWith('https:') || url.startsWith('http:') || url.startsWith('tg:'))
+    ) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
+  });
+
   void mainWindow.loadURL(targetUrl);
 
   mainWindow.on('close', (event) => {

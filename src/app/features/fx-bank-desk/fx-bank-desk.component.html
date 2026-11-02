@@ -359,17 +359,20 @@
 
           <!-- Action Buttons Row -->
           <div class="bank-card-actions">
-            <button
-              type="button"
+            <a
+              [href]="ticket.bank.portalUrl"
+              target="_blank"
+              rel="noopener noreferrer"
               class="btn-portal-launch"
-              (click)="launchBankPortal(ticket)"
+              [class.cooldown-active]="(wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0"
+              (click)="launchBankPortal(ticket, $event)"
             >
               @if ((wafCooldownRemaining()[ticket.bank.id] ?? 0) > 0) {
                 ⏳ Cadencia Anti-WAF: {{ wafCooldownRemaining()[ticket.bank.id] }}s
               } @else {
                 🚀 Ir a {{ ticket.bank.shortName }}
               }
-            </button>
+            </a>
 
             <button
               type="button"

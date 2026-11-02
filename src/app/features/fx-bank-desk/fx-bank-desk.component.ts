@@ -199,14 +199,22 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     );
   }
 
-  launchBankPortal(ticket: FxBankOrderTicket): void {
+  launchBankPortal(ticket: FxBankOrderTicket, event?: MouseEvent): void {
     const rem = this.wafCooldownRemaining()[ticket.bank.id] ?? 0;
     if (rem > 0) {
+      event?.preventDefault();
       this.toast.warn(
         `Espera ${rem}s antes de reintentar en ${ticket.bank.shortName} para evitar bloqueo preventivo de sesión (WAF).`,
         '🛡️ Cadencia Anti-Bloqueo Activa',
       );
       return;
+    }
+
+    // If invoked programmatically without a native <a target="_blank"> click event,
+    // trigger window.open BEFORE any async clipboard or signal mutations so the
+    // browser/Electron user-activation token is never consumed beforehand.
+    if (!event && typeof window !== 'undefined') {
+      window.open(ticket.bank.portalUrl, '_blank');
     }
 
     if (ticket.recommendedOrderUsd > 0) {
@@ -219,10 +227,6 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       ...curr,
       [ticket.bank.id]: ticket.bank.antiWafCooldownSec,
     }));
-
-    if (typeof window !== 'undefined') {
-      window.open(ticket.bank.portalUrl, '_blank', 'noopener,noreferrer');
-    }
 
     this.toast.info(
       `Portal ${ticket.bank.shortName} abierto. Lote sugerido ($${ticket.recommendedOrderUsd} USD) copiado al portapapeles.`,
