@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   VENEZUELAN_FX_BANKS,
   computeAntiRejectionUsdLot,
+  detectFxInterventionReceipt,
   evaluateFxBankDeskPlan,
+  matchAccountsForFxBank,
   resolveFxInterventionBankId,
 } from './fx-bank-desk';
 import type { BankAccount, AccountUsage } from './accounts';
@@ -143,5 +145,52 @@ describe('fx-bank-desk domain engine', () => {
     expect(resolveFxInterventionBankId('100%')).toBe('CIEN_BANCO');
     expect(resolveFxInterventionBankId('bicentenario')).toBe('BICENTENARIO');
     expect(resolveFxInterventionBankId('unknown-xyz')).toBeNull();
+  });
+
+  it('prevents coreBankCode OTRO collision across extended banks and honors ABA prefix', () => {
+    const plazaAccount: BankAccount = {
+      id: 'acc-1',
+      bankName: 'Plaza Mesa Divisas',
+      bankCode: 'OTRO',
+      rail: 'TRANSFERENCIA',
+      accountNumberMasked: '0138-***0001',
+      dailyLimitVes: 250000,
+      initialBalanceVes: 150000,
+    };
+    const plazaProfile = VENEZUELAN_FX_BANKS.find((b) => b.id === 'PLAZA')!;
+    const tesoroProfile = VENEZUELAN_FX_BANKS.find((b) => b.id === 'TESORO')!;
+
+    expect(matchAccountsForFxBank(plazaProfile, [plazaAccount]).length).toBe(1);
+    expect(matchAccountsForFxBank(tesoroProfile, [plazaAccount]).length).toBe(0);
+  });
+
+  it('applies per-bank exit rail overrides to net USDT and profit calculations', () => {
+    const planDefault = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 60.0,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: 65000,
+    });
+    const planOverridden = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 60.0,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: 65000,
+      exitRailOverrides: { BANCAMIGA: 'INTERNAL_USD_P2P' },
+    });
+
+    const bDefault = planDefault.tickets.find((t) => t.bank.id === 'BANCAMIGA')!;
+    const bOverride = planOverridden.tickets.find((t) => t.bank.id === 'BANCAMIGA')!;
+    expect(bDefault.activeExitRail).toBe('INTL_DEBIT_CARD');
+    expect(bOverride.activeExitRail).toBe('INTERNAL_USD_P2P');
+    expect(bOverride.netUsdtAfterExitRail).toBeGreaterThan(bDefault.netUsdtAfterExitRail);
+  });
+
+  it('detects FX intervention receipts from OCR text and extracts USD lot and BCV rate', () => {
+    const parsed = detectFxInterventionReceipt(
+      'COMPROBANTE COMPRA DE DIVISAS MENUDEO BANCO DE VENEZUELA MONTO: USD 250.00 TASA BCV: 62.45',
+    );
+    expect(parsed.isFxPurchase).toBe(true);
+    expect(parsed.bankId).toBe('BDV');
+    expect(parsed.usdAmount).toBe(250);
+    expect(parsed.bcvRateVes).toBeCloseTo(62.45, 2);
   });
 });

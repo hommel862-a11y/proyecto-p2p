@@ -41,6 +41,34 @@ export type FxExitRailType =
   | 'INTERNAL_USD_P2P'
   | 'CASH_WITHDRAWAL_OTC';
 
+export interface FxExitRailOption {
+  readonly id: FxExitRailType;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly defaultFrictionPct: number;
+}
+
+export const FX_EXIT_RAIL_OPTIONS: readonly FxExitRailOption[] = [
+  {
+    id: 'INTL_DEBIT_CARD',
+    label: 'Tarjeta Mastercard/Visa Débito Internacional ➔ USDT',
+    shortLabel: '💳 Tarjeta Intl (1.5%)',
+    defaultFrictionPct: 1.5,
+  },
+  {
+    id: 'INTERNAL_USD_P2P',
+    label: 'Cuenta Verde / Transferencia Divisas ➔ P2P Interno',
+    shortLabel: '🔄 P2P Divisas (1.2%)',
+    defaultFrictionPct: 1.2,
+  },
+  {
+    id: 'CASH_WITHDRAWAL_OTC',
+    label: 'Retiro Taquilla Efectivo USD ➔ OTC P2P',
+    shortLabel: '💵 Efectivo OTC (1.8%)',
+    defaultFrictionPct: 1.8,
+  },
+];
+
 export type BankLiquiditySignalState =
   | 'CONFIRMED_FLUID'
   | 'WINDOW_OPEN'
@@ -443,6 +471,9 @@ export interface FxBankOrderTicket {
   readonly reservedSafetyBufferVes: number;
   /** Equivalent net USDT received after primary exit rail friction. */
   readonly netUsdtAfterExitRail: number;
+  readonly activeExitRail: FxExitRailType;
+  readonly activeExitRailLabel: string;
+  readonly activeExitRailFrictionPct: number;
   /** Projected VES returned when selling the net USDT on P2P at `p2pSellRateVes`. */
   readonly projectedP2pReturnVes: number | null;
   /** Projected net profit in VES after all banking and exit rail frictions. */
@@ -468,6 +499,8 @@ export interface FxDeskEvaluationInput {
   readonly isBcvWindowOpen?: boolean;
   /** P2P maker/taker fee percentage on the final USDT->VES leg (default 0.25%). */
   readonly p2pExitFeePct?: number;
+  /** Optional per-bank exit rail overrides chosen by the operator. */
+  readonly exitRailOverrides?: Partial<Record<FxInterventionBankId, FxExitRailType>>;
 }
 
 export interface FxDeskEvaluationPlan {
@@ -488,19 +521,26 @@ export interface FxDeskEvaluationPlan {
 }
 
 /**
- * Matches a bank profile against user accounts by `bankCode` or name substring (for OTRO banks).
+ * Matches a bank profile against user accounts by `bankCode`, ABA prefix, or name substring (for OTRO banks).
+ * Never matches on `bankCode === 'OTRO'` alone to avoid cross-bank collisions among extended banks.
  */
 export function matchAccountsForFxBank(
   profile: FxBankDeskProfile,
   accounts: readonly BankAccount[],
 ): BankAccount[] {
   const active = accounts.filter((a) => a.status !== 'DISABLED');
-  if (profile.coreBankCode !== 'OTRO') {
-    return active.filter((a) => a.bankCode === profile.coreBankCode);
-  }
   const keyword = profile.shortName.toLowerCase();
+  if (profile.coreBankCode !== 'OTRO') {
+    return active.filter(
+      (a) =>
+        a.bankCode === profile.coreBankCode ||
+        a.accountNumberMasked?.startsWith(profile.abaCode) ||
+        a.bankName.toLowerCase().includes(keyword),
+    );
+  }
   return active.filter(
     (a) =>
+      a.accountNumberMasked?.startsWith(profile.abaCode) ||
       a.bankName.toLowerCase().includes(keyword) ||
       a.id.toLowerCase().includes(profile.id.toLowerCase()),
   );
@@ -669,9 +709,19 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
         ? computeAntiRejectionUsdLot(deployableForBank, bcvRate, bank)
         : { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
 
+    const overrideRailId = input.exitRailOverrides?.[bank.id];
+    const overrideRail = overrideRailId
+      ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === overrideRailId)
+      : undefined;
+    const activeExitRail = overrideRail ? overrideRail.id : bank.primaryExitRail;
+    const activeExitRailLabel = overrideRail ? overrideRail.label : bank.primaryExitRailLabel;
+    const activeExitRailFrictionPct = overrideRail
+      ? overrideRail.defaultFrictionPct
+      : bank.exitRailFrictionPct;
+
     const netUsdtAfterExitRail =
       lot.orderUsd > 0
-        ? roundMoney(lot.orderUsd * (1 - bank.exitRailFrictionPct / 100), 2)
+        ? roundMoney(lot.orderUsd * (1 - activeExitRailFrictionPct / 100), 2)
         : 0;
 
     const projectedP2pReturnVes =
@@ -733,6 +783,9 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       estimatedBankFeeVes: lot.bankFeeVes,
       reservedSafetyBufferVes: lot.safetyBufferVes,
       netUsdtAfterExitRail,
+      activeExitRail,
+      activeExitRailLabel,
+      activeExitRailFrictionPct,
       projectedP2pReturnVes,
       projectedNetProfitVes,
       projectedNetRoiPct,
@@ -785,4 +838,70 @@ export function resolveFxInterventionBankId(raw?: string | null): FxIntervention
   if (clean.includes('FONDO') || clean.includes('COMUN')) return 'BFC';
   if (clean.includes('TRABAJADORES') || clean.includes('BDT')) return 'BICENTENARIO';
   return null;
+}
+
+/**
+ * Inspects OCR-extracted receipt text to detect whether a receipt corresponds to a
+ * Venezuelan bank FX purchase (Mesa de Cambio / Menudeo / Intervención Cambiaria).
+ */
+export function detectFxInterventionReceipt(
+  rawText: string,
+  bankHint?: string | null,
+): {
+  readonly isFxPurchase: boolean;
+  readonly bankId: FxInterventionBankId | null;
+  readonly usdAmount: number | null;
+  readonly bcvRateVes: number | null;
+} {
+  const text = (rawText || '').trim();
+  const upper = text.toUpperCase();
+  const fxKeywords = [
+    'COMPRA DE DIVISAS',
+    'MESA DE CAMBIO',
+    'INTERVENCION CAMBIARIA',
+    'INTERVENCIÓN CAMBIARIA',
+    'MENUDEO',
+    'OPERACION CAMBIARIA',
+    'OPERACIÓN CAMBIARIA',
+    'DIVISAS PLUS',
+    'COMPRA MONEDA EXTRANJERA',
+  ];
+  const isFxPurchase = fxKeywords.some((kw) => upper.includes(kw));
+  if (!isFxPurchase) {
+    return { isFxPurchase: false, bankId: null, usdAmount: null, bcvRateVes: null };
+  }
+
+  let bankId = resolveFxInterventionBankId(bankHint);
+  if (!bankId) {
+    if (upper.includes('BANCO DE VENEZUELA') || upper.includes('BDVENLINEA')) {
+      bankId = 'BDV';
+    } else {
+      for (const bank of VENEZUELAN_FX_BANKS) {
+        if (
+          upper.includes(bank.shortName.toUpperCase()) ||
+          upper.includes(bank.name.toUpperCase())
+        ) {
+          bankId = bank.id;
+          break;
+        }
+      }
+    }
+  }
+
+  const usdMatch = text.match(/(?:USD|\$|US\$)\s*([0-9]+(?:[.,][0-9]{1,2})?)/i);
+  const usdAmount = usdMatch
+    ? Number.parseFloat(usdMatch[1].replace(',', '.'))
+    : null;
+
+  const rateMatch = text.match(/(?:TASA|CAMBIO|BCV)\s*[:=]?\s*(?:BS\.?\s*)?([0-9]{2,3}[.,][0-9]{2,4})/i);
+  const bcvRateVes = rateMatch
+    ? Number.parseFloat(rateMatch[1].replace(',', '.'))
+    : null;
+
+  return {
+    isFxPurchase: true,
+    bankId,
+    usdAmount: usdAmount && Number.isFinite(usdAmount) && usdAmount > 0 ? usdAmount : null,
+    bcvRateVes: bcvRateVes && Number.isFinite(bcvRateVes) && bcvRateVes > 0 ? bcvRateVes : null,
+  };
 }

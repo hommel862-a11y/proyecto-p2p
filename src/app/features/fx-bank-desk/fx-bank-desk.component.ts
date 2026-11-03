@@ -11,6 +11,7 @@ import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   VENEZUELAN_FX_BANKS,
+  FX_EXIT_RAIL_OPTIONS,
   evaluateFxBankDeskPlan,
   getBcvMarketIntelligence,
   roundMoney,
@@ -18,6 +19,7 @@ import {
   type FxBankOrderTicket,
   type FxDeskEvaluationPlan,
   type FxInterventionBankId,
+  type FxExitRailType,
 } from '@p2p/core';
 import { AccountsService } from '../../core/accounts.service';
 import { CotizaveService, describeCotizaveProvenance } from '../../core/cotizave.service';
@@ -45,6 +47,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
 
   readonly allBanks = VENEZUELAN_FX_BANKS;
+  readonly exitRailOptions = FX_EXIT_RAIL_OPTIONS;
 
   // ─── Interactive Cockpit Controls ──────────────────────────────────────
   readonly sectorFilter = signal<FxSectorFilter>('ALL');
@@ -55,6 +58,10 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   readonly isSendingTelegram = signal<boolean>(false);
   readonly copiedBankId = signal<FxInterventionBankId | null>(null);
   readonly selectedBankGuide = signal<FxBankDeskProfile | null>(null);
+
+  /** Morning Burst Sequential Execution Queue ("Ráfaga Matutina"). */
+  readonly burstQueueActive = signal<boolean>(false);
+  readonly burstQueueIndex = signal<number>(0);
 
   /** Per-bank anti-WAF countdown seconds remaining after clicking portal launch. */
   readonly wafCooldownRemaining = signal<Partial<Record<FxInterventionBankId, number>>>({});
@@ -108,7 +115,19 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       confirmedFluidBanks: this.telegram.fxFluidBanks(),
       depletedBanks: this.telegram.fxDepletedBanks(),
       isBcvWindowOpen: this.isWindowActive(),
+      exitRailOverrides: this.telegram.fxExitRailOverrides(),
     });
+  });
+
+  readonly viableTickets = computed<readonly FxBankOrderTicket[]>(() =>
+    this.evaluationPlan().tickets.filter((t) => t.isViableOrder),
+  );
+
+  readonly currentBurstTicket = computed<FxBankOrderTicket | null>(() => {
+    const list = this.viableTickets();
+    if (list.length === 0) return null;
+    const idx = Math.min(this.burstQueueIndex(), list.length - 1);
+    return list[idx] ?? null;
   });
 
   readonly filteredTickets = computed<readonly FxBankOrderTicket[]>(() => {
@@ -309,5 +328,87 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     } finally {
       this.isSendingTelegram.set(false);
     }
+  }
+
+  onChangeExitRail(bankId: FxInterventionBankId, railId: string): void {
+    this.telegram.setFxExitRailOverride(bankId, railId as FxExitRailType);
+    this.toast.info(
+      `Riel de salida actualizado para ${bankId}. Ganancia neta recalculada.`,
+      '🔄 Riel de Liquidación Actualizado',
+    );
+  }
+
+  depletedMinutesRemaining(bankId: FxInterventionBankId): number {
+    const exp = this.telegram.fxDepletedExpiryMap()[bankId];
+    if (!exp) return 30;
+    return Math.max(1, Math.ceil((exp - Date.now()) / 60_000));
+  }
+
+  startMorningBurstRound(): void {
+    const list = this.viableTickets();
+    if (list.length === 0) {
+      this.toast.warn(
+        'Activa tasas o asigna capital para tener al menos un banco viable en la cola.',
+        '⚡ Ráfaga sin Bancos Listos',
+      );
+      return;
+    }
+    this.burstQueueIndex.set(0);
+    this.burstQueueActive.set(true);
+    const first = list[0];
+    if (first && first.recommendedOrderUsd > 0) {
+      this.copyOrderLotUsd(first);
+    }
+  }
+
+  advanceBurstRound(): void {
+    const list = this.viableTickets();
+    if (list.length === 0) {
+      this.burstQueueActive.set(false);
+      return;
+    }
+    const nextIdx = this.burstQueueIndex() + 1;
+    if (nextIdx >= list.length) {
+      this.burstQueueActive.set(false);
+      this.burstQueueIndex.set(0);
+      this.toast.success(
+        'Completaste el recorrido de todos los bancos viables de la ronda.',
+        '🏁 Ronda Matutina Completada',
+      );
+      return;
+    }
+    this.burstQueueIndex.set(nextIdx);
+    const nextTicket = list[nextIdx];
+    if (nextTicket && nextTicket.recommendedOrderUsd > 0) {
+      this.copyOrderLotUsd(nextTicket);
+    }
+  }
+
+  settleAndAdvanceBurst(ticket: FxBankOrderTicket): void {
+    this.settlePurchaseInFifo(ticket);
+    this.advanceBurstRound();
+  }
+
+  skipDepletedAndAdvanceBurst(ticket: FxBankOrderTicket): void {
+    this.telegram.markFxBankDepleted(ticket.bank.id);
+    this.toast.warn(
+      `${ticket.bank.shortName} en enfriamiento por 30m. Pasando al siguiente banco viable.`,
+      '⏭️ Banco Saltado (30m)',
+    );
+    const list = this.viableTickets();
+    if (list.length === 0) {
+      this.burstQueueActive.set(false);
+      return;
+    }
+    const idx = Math.min(this.burstQueueIndex(), list.length - 1);
+    this.burstQueueIndex.set(idx);
+    const current = list[idx];
+    if (current && current.recommendedOrderUsd > 0) {
+      this.copyOrderLotUsd(current);
+    }
+  }
+
+  stopMorningBurstRound(): void {
+    this.burstQueueActive.set(false);
   }
 }

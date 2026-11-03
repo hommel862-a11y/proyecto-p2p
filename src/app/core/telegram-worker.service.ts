@@ -61,11 +61,15 @@ import {
   type VerificationSummary,
   type CopilotChatParams,
   VENEZUELAN_FX_BANKS,
+  FX_EXIT_RAIL_OPTIONS,
   evaluateFxBankDeskPlan,
+  matchAccountsForFxBank,
+  detectFxInterventionReceipt,
   formatFxDeskTelegramMessage,
   buildFxDeskTelegramKeyboard,
   type FxDeskEvaluationPlan,
   type FxInterventionBankId,
+  type FxExitRailType,
   type FxDeskActionParams,
   type FxBoughtCallbackParams,
   type FxEmptyCallbackParams,
@@ -431,12 +435,23 @@ export class TelegramWorkerService implements OnDestroy {
    */
   private pendingBacktest: BacktestRequestParams | null = null;
 
+  private fxMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor() {
     this.financeBridge?.setTelegramWorker(this);
+    this.hydrateFxDeskState();
+    this.fxMaintenanceTimer = setInterval(() => {
+      this.pruneExpiredFxDepletedBanks();
+      void this.maybeSendMorningFxWindowBell();
+    }, 30_000);
     void this.hydrateAndStart();
   }
 
   ngOnDestroy(): void {
+    if (this.fxMaintenanceTimer) {
+      clearInterval(this.fxMaintenanceTimer);
+      this.fxMaintenanceTimer = null;
+    }
     this.stopPolling();
   }
 
@@ -1422,6 +1437,7 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'FX_DESK': {
+        this.pruneExpiredFxDepletedBanks();
         const params = (dispatch.params as FxDeskActionParams | undefined) ?? {};
         const [depth] = await Promise.all([
           this.getFreshMarketDepth(),
@@ -1435,6 +1451,14 @@ export class TelegramWorkerService implements OnDestroy {
           rates['binance']?.ask ??
           rates['binance']?.bid ??
           null;
+        const intel =
+          bcv && bcv > 0 && p2pSell && p2pSell > 0
+            ? getBcvMarketIntelligence(p2pSell, bcv)
+            : null;
+        const isBcvWindowOpen = intel
+          ? intel.window.phase === 'INTERVENTION_ACTIVE' ||
+            intel.window.phase === 'PRE_INTERVENTION_COMPRESSION'
+          : false;
         const plan = evaluateFxBankDeskPlan({
           bcvOfficialRateVes: bcv && bcv > 0 ? bcv : null,
           p2pSellRateVes: p2pSell && p2pSell > 0 ? p2pSell : null,
@@ -1444,6 +1468,8 @@ export class TelegramWorkerService implements OnDestroy {
           velocities: this.accounts.accountVelocities(),
           confirmedFluidBanks: this.fxFluidBanks(),
           depletedBanks: this.fxDepletedBanks(),
+          isBcvWindowOpen,
+          exitRailOverrides: this.fxExitRailOverrides(),
         });
         const msg = formatFxDeskTelegramMessage(plan, params.bankId);
         const kb = buildFxDeskTelegramKeyboard(plan, params.bankId);
@@ -1459,20 +1485,34 @@ export class TelegramWorkerService implements OnDestroy {
       }
 
       case 'FX_BOUGHT': {
-        await this.answerCallbackQuery(token, update.callback_query?.id, 'Pacto registrado en FIFO');
         const params = dispatch.params as FxBoughtCallbackParams | undefined;
         if (!params?.bankId || !params.orderUsd) {
+          await this.answerCallbackQuery(token, update.callback_query?.id, 'Datos incompletos');
           await this.sendTelegramMessage(token, chatId, dispatch.responseMarkdown);
           break;
         }
-        const settled = this.settleFxBankPurchase(params.bankId, params.orderUsd);
+        let rates = this.cotizave.ratesByMarket();
+        if (!(rates['bcv']?.mid || rates['oficial']?.mid)) {
+          await this.cotizave.fetchRates();
+          rates = this.cotizave.ratesByMarket();
+        }
+        const liveBcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? undefined;
+        const settled = this.settleFxBankPurchase(params.bankId, params.orderUsd, liveBcv);
+        if (!settled) {
+          await this.answerCallbackQuery(token, update.callback_query?.id, 'Sin tasa BCV verificada');
+          await this.sendTelegramMessage(
+            token,
+            chatId,
+            `⚠️ *Asiento FIFO bloqueado \\(Fail\\-Closed\\):* No se pudo obtener la tasa oficial BCV en vivo para liquidar la compra de \`${escapeMarkdownV2(String(params.orderUsd))} USD\` en *${escapeMarkdownV2(params.bankId)}*\\. Verifica tu conexión a Cotizave o liquida desde la Mesa Cambiaria en la app\\.`,
+          );
+          break;
+        }
+        await this.answerCallbackQuery(token, update.callback_query?.id, 'Pacto registrado en FIFO');
         await this.sendTelegramMessage(
           token,
           chatId,
           dispatch.responseMarkdown +
-            (settled
-              ? `\n\n📊 *Asiento FIFO:* \`${escapeMarkdownV2(settled.summary)}\``
-              : ''),
+            `\n\n📊 *Asiento FIFO:* \`${escapeMarkdownV2(settled.summary)}\``,
         );
         this.addLog({
           time: timeStr,
@@ -2045,19 +2085,32 @@ export class TelegramWorkerService implements OnDestroy {
           registeredOpId = existing.id;
           operationRegistered = true;
         } else {
-          // Registrar nueva operación en el libro mayor
+          // Registrar nueva operación en el libro mayor (detecta si es Compra Cambiaria BCV o Venta P2P)
+          const fxReceipt = detectFxInterventionReceipt(text, finalBankLabel);
+          const bcvRateNow =
+            fxReceipt.bcvRateVes ??
+            this.cotizave.ratesByMarket()['bcv']?.mid ??
+            this.cotizave.ratesByMarket()['oficial']?.mid ??
+            marketPrice;
+          const fxUsdLot =
+            fxReceipt.usdAmount ??
+            (bcvRateNow > 0 ? roundMoney(finalAmount / bcvRateNow, 2) : usdtAmount);
           const newOpId = crypto.randomUUID();
           const newOp: Operation = {
             id: newOpId,
             timestamp: new Date().toISOString(),
-            type: 'sell', // Cobro recibido en bolívares por venta P2P
+            type: fxReceipt.isFxPurchase ? 'buy' : 'sell',
             pair: 'USDT',
             vesAmount: finalAmount,
-            usdtAmount,
-            price: marketPrice,
-            merchantNote: `Ref: ${finalReference} (${finalBankLabel})`,
+            usdtAmount: fxReceipt.isFxPurchase ? fxUsdLot : usdtAmount,
+            price: fxReceipt.isFxPurchase ? bcvRateNow : marketPrice,
+            merchantNote: fxReceipt.isFxPurchase
+              ? `MESA_BCV:${fxReceipt.bankId ?? finalBankLabel} (Ref: ${finalReference})`
+              : `Ref: ${finalReference} (${finalBankLabel})`,
             fees: 0,
-            notes: `Comprobante verificado vía Telegram Sentinel · Banco: ${finalBankLabel}${payerLabel ? ' · Titular: ' + payerLabel : ''}`,
+            notes: fxReceipt.isFxPurchase
+              ? `Comprobante Compra Cambiaria BCV vía Telegram OCR · Banco: ${finalBankLabel} · Lote: ${fxUsdLot} USD a tasa ${bcvRateNow.toFixed(2)} Bs`
+              : `Comprobante verificado vía Telegram Sentinel · Banco: ${finalBankLabel}${payerLabel ? ' · Titular: ' + payerLabel : ''}`,
             errorFree: audit.riskLevel === 'SAFE',
             payerName: payerLabel || undefined,
             bankAccountId: matchedAccount?.id,
@@ -2065,6 +2118,7 @@ export class TelegramWorkerService implements OnDestroy {
             receiptReference: finalReference,
           };
           ops.unshift(newOp);
+          void (window as unknown as { p2p?: { db?: { saveOperationRecord?: (o: Operation) => Promise<boolean> } } }).p2p?.db?.saveOperationRecord?.(newOp);
           registeredOpId = newOpId;
           operationRegistered = true;
         }
@@ -2388,25 +2442,158 @@ export class TelegramWorkerService implements OnDestroy {
     this.recentLogs.set(logs);
   }
 
+  private static readonly FX_FLUID_STORAGE_KEY = 'p2p.fx.fluidBanks';
+  private static readonly FX_DEPLETED_MAP_STORAGE_KEY = 'p2p.fx.depletedExpiryMap';
+  private static readonly FX_EXIT_RAILS_STORAGE_KEY = 'p2p.fx.exitRailOverrides';
+  private static readonly FX_MORNING_BELL_DATE_KEY = 'p2p.fx.lastMorningBellDate';
+  private static readonly FX_DEPLETED_TTL_MS = 30 * 60 * 1000;
+
   /** Banks marked as having active FX liquidity during the current session. */
   readonly fxFluidBanks = signal<FxInterventionBankId[]>(['BDV', 'BANCAMIGA', 'BANESCO']);
 
-  /** Banks marked as depleted/no-quota by the operator. */
+  /** Banks marked as depleted/no-quota by the operator (auto-expires after 30 minutes). */
   readonly fxDepletedBanks = signal<FxInterventionBankId[]>([]);
 
+  /** Map of bankId -> timestamp (ms) when the 30-minute depleted cooldown expires. */
+  readonly fxDepletedExpiryMap = signal<Partial<Record<FxInterventionBankId, number>>>({});
+
+  /** Operator-selected exit rail per bank (persisted in StorageService). */
+  readonly fxExitRailOverrides = signal<Partial<Record<FxInterventionBankId, FxExitRailType>>>({});
+
+  private hydrateFxDeskState(): void {
+    const savedFluid = this.storage.get<FxInterventionBankId[]>(
+      TelegramWorkerService.FX_FLUID_STORAGE_KEY,
+    );
+    if (Array.isArray(savedFluid) && savedFluid.length > 0) {
+      this.fxFluidBanks.set(savedFluid);
+    }
+    const savedRails = this.storage.get<Partial<Record<FxInterventionBankId, FxExitRailType>>>(
+      TelegramWorkerService.FX_EXIT_RAILS_STORAGE_KEY,
+    );
+    if (savedRails && typeof savedRails === 'object') {
+      this.fxExitRailOverrides.set(savedRails);
+    }
+    const savedDepleted = this.storage.get<Partial<Record<FxInterventionBankId, number>>>(
+      TelegramWorkerService.FX_DEPLETED_MAP_STORAGE_KEY,
+    );
+    if (savedDepleted && typeof savedDepleted === 'object') {
+      this.fxDepletedExpiryMap.set(savedDepleted);
+      this.pruneExpiredFxDepletedBanks();
+    }
+  }
+
+  pruneExpiredFxDepletedBanks(): void {
+    const now = Date.now();
+    const map = this.fxDepletedExpiryMap();
+    const nextMap: Partial<Record<FxInterventionBankId, number>> = {};
+    const activeDepleted: FxInterventionBankId[] = [];
+    let changed = false;
+
+    for (const [key, exp] of Object.entries(map) as [FxInterventionBankId, number | undefined][]) {
+      if (typeof exp === 'number' && exp > now) {
+        nextMap[key] = exp;
+        activeDepleted.push(key);
+      } else {
+        changed = true;
+      }
+    }
+
+    if (changed || activeDepleted.length !== this.fxDepletedBanks().length) {
+      this.fxDepletedExpiryMap.set(nextMap);
+      this.fxDepletedBanks.set(activeDepleted);
+      this.storage.set(TelegramWorkerService.FX_DEPLETED_MAP_STORAGE_KEY, nextMap);
+    }
+  }
+
   markFxBankFluid(bankId: FxInterventionBankId): void {
-    this.fxDepletedBanks.update((list) => list.filter((id) => id !== bankId));
-    this.fxFluidBanks.update((list) => (list.includes(bankId) ? list : [...list, bankId]));
+    const nextMap = { ...this.fxDepletedExpiryMap() };
+    delete nextMap[bankId];
+    this.fxDepletedExpiryMap.set(nextMap);
+    this.fxDepletedBanks.set(Object.keys(nextMap) as FxInterventionBankId[]);
+    this.storage.set(TelegramWorkerService.FX_DEPLETED_MAP_STORAGE_KEY, nextMap);
+
+    this.fxFluidBanks.update((list) => {
+      const next = list.includes(bankId) ? list : [...list, bankId];
+      this.storage.set(TelegramWorkerService.FX_FLUID_STORAGE_KEY, next);
+      return next;
+    });
   }
 
   markFxBankDepleted(bankId: FxInterventionBankId): void {
-    this.fxFluidBanks.update((list) => list.filter((id) => id !== bankId));
-    this.fxDepletedBanks.update((list) => (list.includes(bankId) ? list : [...list, bankId]));
+    this.fxFluidBanks.update((list) => {
+      const next = list.filter((id) => id !== bankId);
+      this.storage.set(TelegramWorkerService.FX_FLUID_STORAGE_KEY, next);
+      return next;
+    });
+    const expiresAt = Date.now() + TelegramWorkerService.FX_DEPLETED_TTL_MS;
+    const nextMap: Partial<Record<FxInterventionBankId, number>> = {
+      ...this.fxDepletedExpiryMap(),
+      [bankId]: expiresAt,
+    };
+    this.fxDepletedExpiryMap.set(nextMap);
+    this.fxDepletedBanks.set(Object.keys(nextMap) as FxInterventionBankId[]);
+    this.storage.set(TelegramWorkerService.FX_DEPLETED_MAP_STORAGE_KEY, nextMap);
+  }
+
+  setFxExitRailOverride(bankId: FxInterventionBankId, rail: FxExitRailType): void {
+    this.fxExitRailOverrides.update((curr) => {
+      const next = { ...curr, [bankId]: rail };
+      this.storage.set(TelegramWorkerService.FX_EXIT_RAILS_STORAGE_KEY, next);
+      return next;
+    });
   }
 
   /**
-   * Records a confirmed FX bank purchase into the FIFO operation ledger (p2p.operations)
-   * and triggers AccountsService.refreshLedger() so balances update immediately.
+   * Proactive Morning Bell: Once per business day when the BCV intervention window opens
+   * and the gross gap is profitable (>= 10%), pushes the /mesa roadmap to Telegram.
+   */
+  private async maybeSendMorningFxWindowBell(): Promise<void> {
+    const cfg = this.config();
+    if (!cfg.alertsEnabled || !cfg.botToken || !cfg.chatId) return;
+
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const lastSent = this.storage.get<string>(TelegramWorkerService.FX_MORNING_BELL_DATE_KEY);
+    if (lastSent === todayKey) return;
+
+    const rates = this.cotizave.ratesByMarket();
+    const bcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
+    const depth = this.binance.marketDepth();
+    const p2pSell =
+      depth?.bestBuyPrice ??
+      depth?.bestSellPrice ??
+      rates['binance']?.ask ??
+      null;
+
+    if (!bcv || bcv <= 0 || !p2pSell || p2pSell <= 0) return;
+
+    const intel = getBcvMarketIntelligence(p2pSell, bcv);
+    const isWindowOpen =
+      intel.window.phase === 'INTERVENTION_ACTIVE' ||
+      intel.window.phase === 'PRE_INTERVENTION_COMPRESSION';
+    if (!isWindowOpen || intel.gap.gapPct === null || intel.gap.gapPct < 10) return;
+
+    this.storage.set(TelegramWorkerService.FX_MORNING_BELL_DATE_KEY, todayKey);
+    const plan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: bcv,
+      p2pSellRateVes: p2pSell,
+      simulatedCapitalVes: 120000,
+      accounts: this.accounts.accounts(),
+      usages: this.accounts.usages(),
+      velocities: this.accounts.accountVelocities(),
+      confirmedFluidBanks: this.fxFluidBanks(),
+      depletedBanks: this.fxDepletedBanks(),
+      isBcvWindowOpen: true,
+      exitRailOverrides: this.fxExitRailOverrides(),
+    });
+    if (plan.actionable) {
+      await this.sendFxDeskPlanAlert(plan);
+    }
+  }
+
+  /**
+   * Records a confirmed FX bank purchase into the FIFO operation ledger (p2p.operations),
+   * mirrors it to Electron SQLite when available, and refreshes AccountsService.
+   * Fails closed (returns null) if no valid BCV rate is available.
    */
   settleFxBankPurchase(
     bankId: FxInterventionBankId,
@@ -2417,24 +2604,30 @@ export class TelegramWorkerService implements OnDestroy {
     if (!profile || !Number.isFinite(orderUsd) || orderUsd <= 0) return null;
 
     const rates = this.cotizave.ratesByMarket();
-    const bcvRate =
-      customBcvRate && customBcvRate > 0
+    const rawBcv =
+      customBcvRate && Number.isFinite(customBcvRate) && customBcvRate > 0
         ? customBcvRate
-        : rates['bcv']?.mid || rates['oficial']?.mid || 62.5;
+        : rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
+
+    // Fail-closed: never invent a hardcoded BCV rate in FIFO accounting.
+    if (!rawBcv || !Number.isFinite(rawBcv) || rawBcv <= 0) {
+      return null;
+    }
+    const bcvRate = roundMoney(rawBcv, 2);
+
+    const overrideRailId = this.fxExitRailOverrides()[bankId];
+    const overrideRail = overrideRailId
+      ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === overrideRailId)
+      : undefined;
+    const exitFrictionPct = overrideRail ? overrideRail.defaultFrictionPct : profile.exitRailFrictionPct;
+    const exitRailLabel = overrideRail ? overrideRail.label : profile.primaryExitRailLabel;
 
     const principalVes = roundMoney(orderUsd * bcvRate, 2);
     const bankFeeVes = roundMoney(principalVes * (profile.bankFxFeePct / 100), 2);
     const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
-    const netUsdt = roundMoney(orderUsd * (1 - profile.exitRailFrictionPct / 100), 2);
+    const netUsdt = roundMoney(orderUsd * (1 - exitFrictionPct / 100), 2);
 
-    const matchedAcc = this.accounts
-      .accounts()
-      .find(
-        (a) =>
-          a.status !== 'DISABLED' &&
-          (a.bankCode === profile.coreBankCode ||
-            a.bankName.toLowerCase().includes(profile.shortName.toLowerCase())),
-      );
+    const matchedAcc = matchAccountsForFxBank(profile, this.accounts.accounts())[0];
 
     const op: Operation = {
       id: `fx-${bankId.toLowerCase()}-${Date.now()}`,
@@ -2446,13 +2639,16 @@ export class TelegramWorkerService implements OnDestroy {
       price: roundMoney(totalDebitVes / Math.max(0.01, netUsdt), 2),
       merchantNote: `MESA_BCV:${profile.shortName}`,
       fees: bankFeeVes,
-      notes: `Compra Mesa Cambiaria ${profile.name}: ${orderUsd} USD a tasa BCV ${bcvRate.toFixed(2)} Bs (${profile.primaryExitRailLabel} -> ${netUsdt} USDT netos)`,
+      notes: `Compra Mesa Cambiaria ${profile.name}: ${orderUsd} USD a tasa BCV ${bcvRate.toFixed(2)} Bs (${exitRailLabel} -> ${netUsdt} USDT netos)`,
       errorFree: true,
       bankAccountId: matchedAcc?.id,
     };
 
     const existing = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     this.storage.set(OPS_KEY, [op, ...existing]);
+    if (typeof window !== 'undefined') {
+      void (window as unknown as { p2p?: { db?: { saveOperationRecord?: (o: Operation) => Promise<boolean> } } }).p2p?.db?.saveOperationRecord?.(op);
+    }
     this.accounts.refreshLedger();
     void this.accounts.announceTreasuryToMain();
     this.markFxBankFluid(bankId);

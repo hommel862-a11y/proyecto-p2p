@@ -228,10 +228,67 @@
 
       <div class="toolbar-right">
         <span class="anti-block-legend">
-          🛡️ <strong>Escudo Anti-Rechazo Activo:</strong> Lotes redondeados sin centavos + Reserva automática de comisión.
+          🛡️ <strong>Escudo Anti-Rechazo Activo:</strong> Lotes sin centavos + Reserva de comisión.
         </span>
+        <button
+          type="button"
+          class="btn-burst-trigger"
+          [class.active]="burstQueueActive()"
+          (click)="burstQueueActive() ? stopMorningBurstRound() : startMorningBurstRound()"
+        >
+          @if (burstQueueActive()) {
+            ⏹️ Detener Ráfaga
+          } @else {
+            ⚡ Ráfaga Matutina ({{ viableTicketsCount() }} Bancos)
+          }
+        </button>
       </div>
     </div>
+
+    <!-- SECUENCIADOR DE RÁFAGA MATUTINA (COLA ASISTIDA 1-CLIC) -->
+    @if (burstQueueActive() && currentBurstTicket(); as burstTicket) {
+      <div class="burst-sequencer-bar" role="region" aria-label="Secuenciador de Ráfaga Matutina">
+        <div class="burst-step-info">
+          <span class="burst-badge font-mono">
+            PASO {{ burstQueueIndex() + 1 }} / {{ viableTickets().length }}
+          </span>
+          <div class="burst-bank-meta">
+            <strong>{{ burstTicket.bank.name }} ({{ burstTicket.bank.abaCode }})</strong>
+            <span>
+              Lote exacto copiado al portapapeles:
+              <strong class="gold font-mono">${{ burstTicket.recommendedOrderUsd }} USD</strong>
+              ({{ burstTicket.estimatedVesDebit | number: '1.2-2' }} Bs · {{ burstTicket.activeExitRailLabel }})
+            </span>
+          </div>
+        </div>
+
+        <div class="burst-actions">
+          <a
+            [href]="burstTicket.bank.portalUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn-burst-portal"
+            (click)="launchBankPortal(burstTicket, $event)"
+          >
+            🚀 1. Abrir {{ burstTicket.bank.shortName }} (${{ burstTicket.recommendedOrderUsd }})
+          </a>
+          <button
+            type="button"
+            class="btn-burst-settle"
+            (click)="settleAndAdvanceBurst(burstTicket)"
+          >
+            ✅ 2. Pacté ➔ Siguiente
+          </button>
+          <button
+            type="button"
+            class="btn-burst-skip"
+            (click)="skipDepletedAndAdvanceBurst(burstTicket)"
+          >
+            🚫 Sin Cupo (30m) ➔ Saltar
+          </button>
+        </div>
+      </div>
+    }
 
     <div class="banks-grid">
       @for (ticket of filteredTickets(); track ticket.bank.id) {
@@ -266,7 +323,7 @@
                 @switch (ticket.signalState) {
                   @case ('CONFIRMED_FLUID') { 🟢 FLUIDEZ ACTIVA }
                   @case ('WINDOW_OPEN') { 🟢 EN VENTANA }
-                  @case ('COOLDOWN_DEPLETED') { 🔴 SIN CUPO }
+                  @case ('COOLDOWN_DEPLETED') { 🔴 SIN CUPO ({{ depletedMinutesRemaining(ticket.bank.id) }}m) }
                   @default { 🟡 VIGILANCIA }
                 }
               </button>
@@ -329,8 +386,23 @@
                 <span>Colchón Anti-Rebote Reservado:</span>
                 <span>{{ ticket.reservedSafetyBufferVes | number: '1.2-2' }} Bs</span>
               </div>
+              <div class="bd-row rail-selector-row">
+                <label class="rail-select-label" [attr.for]="'rail-' + ticket.bank.id">
+                  Riel Salida:
+                </label>
+                <select
+                  [id]="'rail-' + ticket.bank.id"
+                  class="exit-rail-select font-mono"
+                  [ngModel]="ticket.activeExitRail"
+                  (ngModelChange)="onChangeExitRail(ticket.bank.id, $event)"
+                >
+                  @for (opt of exitRailOptions; track opt.id) {
+                    <option [value]="opt.id">{{ opt.shortLabel }}</option>
+                  }
+                </select>
+              </div>
               <div class="bd-row">
-                <span>Riel ({{ ticket.bank.primaryExitRailLabel }}):</span>
+                <span>Recibes Neto (–{{ ticket.activeExitRailFrictionPct }}%):</span>
                 <strong class="accent">{{ ticket.netUsdtAfterExitRail | number: '1.2-2' }} USDT</strong>
               </div>
               <div class="bd-row profit-row">
