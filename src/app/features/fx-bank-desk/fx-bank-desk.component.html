@@ -10,6 +10,17 @@
         <span class="provenance-chip font-mono">
           Fuente BCV: {{ bcvProvenanceLabel() }}
         </span>
+        <span class="provenance-chip font-mono">
+          Sync: {{ feedFreshnessLabel() }}
+        </span>
+        <button
+          type="button"
+          class="btn-refresh-feeds"
+          [disabled]="isRefreshingFeeds()"
+          (click)="refreshLiveFeeds()"
+        >
+          {{ isRefreshingFeeds() ? '⏳ Sincronizando...' : '🔄 Refrescar BCV + P2P' }}
+        </button>
       </div>
       <h1 class="hero-title">Mesa Cambiaria BCV &amp; Centinela Multibanco</h1>
       <p class="hero-subtitle">
@@ -91,11 +102,37 @@
       <div class="sim-header">
         <div>
           <span class="section-eyebrow">⚡ SIMULADOR INTERACTIVO DE INYECCIÓN</span>
-          <h2 class="sim-title">Presupuesto por Cuenta / Simulación Rápida</h2>
+          <h2 class="sim-title">
+            {{
+              capitalAllocationMode() === 'DISTRIBUTE_TOTAL'
+                ? 'Capital Total a Repartir en Bancos Top'
+                : 'Presupuesto por Cuenta / Simulación Rápida'
+            }}
+          </h2>
         </div>
-        <button type="button" class="btn-sync-treasury" (click)="useTotalTreasuryBalance()">
-          🏦 Usar Mi Liquidez Total ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
-        </button>
+        <div class="sim-header-actions">
+          <div class="mode-toggle-group" role="group" aria-label="Modo de asignación de capital">
+            <button
+              type="button"
+              class="btn-mode-toggle"
+              [class.active]="capitalAllocationMode() === 'PER_BANK'"
+              (click)="setCapitalAllocationMode('PER_BANK')"
+            >
+              Presupuesto por Banco
+            </button>
+            <button
+              type="button"
+              class="btn-mode-toggle"
+              [class.active]="capitalAllocationMode() === 'DISTRIBUTE_TOTAL'"
+              (click)="setCapitalAllocationMode('DISTRIBUTE_TOTAL')"
+            >
+              Repartir Capital Total
+            </button>
+          </div>
+          <button type="button" class="btn-sync-treasury" (click)="useTotalTreasuryBalance()">
+            🏦 Usar Mi Liquidez Total ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
+          </button>
+        </div>
       </div>
 
       <div class="slider-row">
@@ -312,6 +349,11 @@
               <span class="sector-tag" [class.estado]="ticket.bank.sector === 'ESTADO'">
                 {{ ticket.bank.sector === 'ESTADO' ? '🏛️ ESTADO' : '🏦 PRIVADO' }}
               </span>
+              @if (settledTodayByBank()[ticket.bank.id]; as todayStats) {
+                <span class="settled-today-tag font-mono" title="Pactos BCV registrados hoy en tu libro FIFO">
+                  ✓ Hoy: ${{ todayStats.usd | number: '1.0-2' }} USD ({{ todayStats.count }} op)
+                </span>
+              }
               <button
                 type="button"
                 class="signal-toggle-btn"

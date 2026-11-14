@@ -75,6 +75,8 @@ export type BankLiquiditySignalState =
   | 'COOLDOWN_DEPLETED'
   | 'STANDBY';
 
+export type FxCapitalAllocationMode = 'PER_BANK' | 'DISTRIBUTE_TOTAL';
+
 export interface FxBankDeskProfile {
   readonly id: FxInterventionBankId;
   readonly coreBankCode: BankCode;
@@ -482,6 +484,8 @@ export interface FxBankOrderTicket {
   readonly projectedNetRoiPct: number | null;
   readonly isViableOrder: boolean;
   readonly blockReason: string | null;
+  /** Composite priority score used to rank banks and order the Morning Burst queue. */
+  readonly executionScore: number;
 }
 
 export interface FxDeskEvaluationInput {
@@ -489,6 +493,8 @@ export interface FxDeskEvaluationInput {
   readonly p2pSellRateVes: number | null;
   /** Optional simulated VES capital per bank when no account is linked or when simulating a custom injection. */
   readonly simulatedCapitalVes?: number;
+  /** Whether `simulatedCapitalVes` applies per bank (default) or is distributed across banks as a single total pool. */
+  readonly capitalAllocationMode?: FxCapitalAllocationMode;
   readonly accounts?: readonly BankAccount[];
   readonly usages?: readonly AccountUsage[];
   readonly velocities?: readonly AccountVelocityStatus[];
@@ -544,6 +550,48 @@ export function matchAccountsForFxBank(
       a.bankName.toLowerCase().includes(keyword) ||
       a.id.toLowerCase().includes(profile.id.toLowerCase()),
   );
+}
+
+/**
+ * Selects the primary eligible bank account for FX Mesa de Cambio operations,
+ * strictly prioritizing `TRANSFERENCIA` accounts over `PAGO_MOVIL` (since retail FX
+ * purchases execute via bank transfer accounts, not Pago Móvil), sorted by highest balance.
+ */
+export function selectPrimaryFxBankAccount(
+  profile: FxBankDeskProfile,
+  accounts: readonly BankAccount[],
+  usages?: readonly AccountUsage[],
+): {
+  account: BankAccount | null;
+  usage: AccountUsage | null;
+  eligibleAccounts: BankAccount[];
+  eligibleUsages: AccountUsage[];
+} {
+  const matched = matchAccountsForFxBank(profile, accounts);
+  const transferAccounts = matched.filter((a) => a.rail === 'TRANSFERENCIA');
+  const eligibleAccounts = transferAccounts.length > 0 ? transferAccounts : matched;
+
+  const usageMap = new Map<string, AccountUsage>((usages ?? []).map((u) => [u.account.id, u]));
+  const eligibleUsages = eligibleAccounts
+    .map((a) => usageMap.get(a.id))
+    .filter((u): u is AccountUsage => u !== undefined)
+    .sort((a, b) => b.currentBalanceVes - a.currentBalanceVes);
+
+  const sortedAccounts = [...eligibleAccounts].sort((a, b) => {
+    const uA = usageMap.get(a.id)?.currentBalanceVes ?? a.initialBalanceVes;
+    const uB = usageMap.get(b.id)?.currentBalanceVes ?? b.initialBalanceVes;
+    return uB - uA;
+  });
+
+  const primaryUsage = eligibleUsages[0] ?? null;
+  const primaryAccount = primaryUsage?.account ?? sortedAccounts[0] ?? null;
+
+  return {
+    account: primaryAccount,
+    usage: primaryUsage,
+    eligibleAccounts: sortedAccounts,
+    eligibleUsages,
+  };
 }
 
 /**
@@ -639,36 +687,38 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
     typeof input.simulatedCapitalVes === 'number' && input.simulatedCapitalVes > 0
       ? input.simulatedCapitalVes
       : 0;
+  const allocationMode: FxCapitalAllocationMode = input.capitalAllocationMode ?? 'PER_BANK';
 
-  let totalDeployableVes = 0;
-  let totalRecommendedUsd = 0;
-  let totalNetUsdt = 0;
-  let totalProjectedReturnVes = 0;
-  let totalProjectedNetProfitVes = 0;
+  interface BankPrep {
+    bank: FxBankDeskProfile;
+    primaryAcc: BankAccount | null;
+    primaryUsage: AccountUsage | null;
+    velocity: AccountVelocityStatus | undefined;
+    realBalanceVes: number;
+    sudebanHealth: 'OPTIMAL' | 'WARNING' | 'BLOCKED_LIMIT';
+    signalState: BankLiquiditySignalState;
+    activeExitRail: FxExitRailType;
+    activeExitRailLabel: string;
+    activeExitRailFrictionPct: number;
+    remainingDailyLimitVes: number;
+    consumedDailyLimitPct: number;
+    todayTxCount: number;
+    maxDailyTxCount: number;
+    preAllocPriority: number;
+  }
 
-  const tickets: FxBankOrderTicket[] = VENEZUELAN_FX_BANKS.map((bank) => {
-    const matched = matchAccountsForFxBank(bank, accounts);
-    // Prefer TRANSFERENCIA account for FX desk, or highest available balance
-    const matchedUsages = matched
-      .map((a) => usageMap.get(a.id))
-      .filter((u): u is AccountUsage => u !== undefined)
-      .sort((a, b) => b.currentBalanceVes - a.currentBalanceVes);
-
-    const primaryUsage = matchedUsages[0];
-    const primaryAcc = primaryUsage?.account ?? matched[0] ?? null;
+  const preps: BankPrep[] = VENEZUELAN_FX_BANKS.map((bank) => {
+    const selection = selectPrimaryFxBankAccount(bank, accounts, usages);
+    const primaryAcc = selection.account;
+    const primaryUsage = selection.usage;
     const velocity = primaryAcc ? velocityMap.get(primaryAcc.id) : undefined;
 
-    const realBalanceVes = matchedUsages.reduce((s, u) => s + Math.max(0, u.currentBalanceVes), 0);
-    const availableBalanceVes = roundMoney(
-      realBalanceVes > 0 ? realBalanceVes : simulatedCap,
+    const realBalanceVes = roundMoney(
+      selection.eligibleUsages.length > 0
+        ? selection.eligibleUsages.reduce((s, u) => s + Math.max(0, u.currentBalanceVes), 0)
+        : selection.eligibleAccounts.reduce((s, a) => s + Math.max(0, a.initialBalanceVes), 0),
       2,
     );
-
-    const remainingDailyLimitVes = primaryUsage
-      ? primaryUsage.account.dailyLimitVes > 0
-        ? primaryUsage.remainingLimitVes
-        : availableBalanceVes
-      : availableBalanceVes;
 
     const consumedDailyLimitPct = primaryUsage ? primaryUsage.consumedLimitPct : 0;
     const todayTxCount = velocity?.todayTransactionCount ?? 0;
@@ -699,16 +749,6 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       signalState = 'WINDOW_OPEN';
     }
 
-    const deployableForBank =
-      sudebanHealth === 'BLOCKED_LIMIT' || signalState === 'COOLDOWN_DEPLETED'
-        ? 0
-        : Math.min(availableBalanceVes, remainingDailyLimitVes > 0 ? remainingDailyLimitVes : availableBalanceVes);
-
-    const lot =
-      bcvRate !== null && deployableForBank > 0
-        ? computeAntiRejectionUsdLot(deployableForBank, bcvRate, bank)
-        : { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
-
     const overrideRailId = input.exitRailOverrides?.[bank.id];
     const overrideRail = overrideRailId
       ? FX_EXIT_RAIL_OPTIONS.find((r) => r.id === overrideRailId)
@@ -718,6 +758,133 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
     const activeExitRailFrictionPct = overrideRail
       ? overrideRail.defaultFrictionPct
       : bank.exitRailFrictionPct;
+
+    const remainingDailyLimitVes = primaryUsage
+      ? primaryUsage.account.dailyLimitVes > 0
+        ? primaryUsage.remainingLimitVes
+        : realBalanceVes
+      : simulatedCap;
+
+    const signalWeight =
+      signalState === 'CONFIRMED_FLUID'
+        ? 500
+        : signalState === 'WINDOW_OPEN'
+          ? 250
+          : signalState === 'STANDBY'
+            ? 100
+            : -500;
+    const tierWeight =
+      bank.tier === 'TIER_1_LIDER' ? 30 : bank.tier === 'TIER_2_COMERCIAL' ? 15 : 0;
+    const totalCostPct = bank.bankFxFeePct + activeExitRailFrictionPct;
+    const preAllocPriority =
+      sudebanHealth === 'BLOCKED_LIMIT' || signalState === 'COOLDOWN_DEPLETED'
+        ? -1000
+        : signalWeight + tierWeight - totalCostPct * 10 - consumedDailyLimitPct * 0.5;
+
+    return {
+      bank,
+      primaryAcc,
+      primaryUsage,
+      velocity,
+      realBalanceVes,
+      sudebanHealth,
+      signalState,
+      activeExitRail,
+      activeExitRailLabel,
+      activeExitRailFrictionPct,
+      remainingDailyLimitVes,
+      consumedDailyLimitPct,
+      todayTxCount,
+      maxDailyTxCount,
+      preAllocPriority,
+    };
+  });
+
+  // In DISTRIBUTE_TOTAL mode, greedily assign slices of `simulatedCap` to top-ranked eligible banks
+  const distributedBudgetByBank = new Map<FxInterventionBankId, number>();
+  if (allocationMode === 'DISTRIBUTE_TOTAL' && simulatedCap > 0) {
+    let remainingPoolVes = simulatedCap;
+    const ranked = [...preps].sort((a, b) => b.preAllocPriority - a.preAllocPriority);
+    for (const prep of ranked) {
+      if (remainingPoolVes <= 0) {
+        distributedBudgetByBank.set(prep.bank.id, 0);
+        continue;
+      }
+      if (prep.sudebanHealth === 'BLOCKED_LIMIT' || prep.signalState === 'COOLDOWN_DEPLETED') {
+        distributedBudgetByBank.set(prep.bank.id, 0);
+        continue;
+      }
+      const dailyLimitCap =
+        prep.primaryUsage && prep.primaryUsage.account.dailyLimitVes > 0
+          ? prep.primaryUsage.remainingLimitVes
+          : remainingPoolVes;
+      const bankBudget = roundMoney(Math.max(0, Math.min(remainingPoolVes, dailyLimitCap)), 2);
+
+      if (bcvRate !== null && bankBudget > 0) {
+        const probeLot = computeAntiRejectionUsdLot(bankBudget, bcvRate, prep.bank);
+        if (probeLot.orderUsd >= prep.bank.minLotUsd && probeLot.totalDebitVes > 0) {
+          distributedBudgetByBank.set(prep.bank.id, bankBudget);
+          remainingPoolVes = roundMoney(Math.max(0, remainingPoolVes - probeLot.totalDebitVes), 2);
+          continue;
+        }
+      }
+      distributedBudgetByBank.set(prep.bank.id, bankBudget);
+    }
+  }
+
+  let totalDeployableVes = 0;
+  let totalRecommendedUsd = 0;
+  let totalNetUsdt = 0;
+  let totalProjectedReturnVes = 0;
+  let totalProjectedNetProfitVes = 0;
+
+  const tickets: FxBankOrderTicket[] = preps.map((prep) => {
+    const {
+      bank,
+      primaryAcc,
+      primaryUsage,
+      realBalanceVes,
+      sudebanHealth,
+      signalState,
+      activeExitRail,
+      activeExitRailLabel,
+      activeExitRailFrictionPct,
+      consumedDailyLimitPct,
+      todayTxCount,
+      maxDailyTxCount,
+    } = prep;
+
+    // Crucial fix: When a real linked account exists (`primaryAcc !== null`) in PER_BANK mode,
+    // honor its real balance even if 0 VES instead of falling back to `simulatedCap`.
+    const availableBalanceVes = roundMoney(
+      allocationMode === 'DISTRIBUTE_TOTAL'
+        ? (distributedBudgetByBank.get(bank.id) ?? 0)
+        : primaryAcc !== null
+          ? realBalanceVes
+          : simulatedCap,
+      2,
+    );
+
+    const remainingDailyLimitVes = primaryUsage
+      ? primaryUsage.account.dailyLimitVes > 0
+        ? primaryUsage.remainingLimitVes
+        : availableBalanceVes
+      : availableBalanceVes;
+
+    const deployableForBank =
+      sudebanHealth === 'BLOCKED_LIMIT' || signalState === 'COOLDOWN_DEPLETED'
+        ? 0
+        : Math.min(
+            availableBalanceVes,
+            remainingDailyLimitVes > 0 || primaryUsage
+              ? Math.max(0, remainingDailyLimitVes)
+              : availableBalanceVes,
+          );
+
+    const lot =
+      bcvRate !== null && deployableForBank > 0
+        ? computeAntiRejectionUsdLot(deployableForBank, bcvRate, bank)
+        : { orderUsd: 0, principalVes: 0, bankFeeVes: 0, totalDebitVes: 0, safetyBufferVes: 0 };
 
     const netUsdtAfterExitRail =
       lot.orderUsd > 0
@@ -757,6 +924,20 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       lot.orderUsd >= bank.minLotUsd &&
       (projectedNetProfitVes === null || projectedNetProfitVes > 0);
 
+    const signalBonus =
+      signalState === 'CONFIRMED_FLUID'
+        ? 300
+        : signalState === 'WINDOW_OPEN'
+          ? 150
+          : signalState === 'COOLDOWN_DEPLETED'
+            ? -500
+            : 0;
+    const roiContribution = (projectedNetRoiPct ?? 0) * 5;
+    const executionScore = roundMoney(
+      (isViableOrder ? 1000 : 0) + signalBonus + roiContribution - consumedDailyLimitPct,
+      2,
+    );
+
     if (isViableOrder) {
       totalDeployableVes = roundMoney(totalDeployableVes + lot.totalDebitVes, 2);
       totalRecommendedUsd = roundMoney(totalRecommendedUsd + lot.orderUsd, 2);
@@ -791,8 +972,11 @@ export function evaluateFxBankDeskPlan(input: FxDeskEvaluationInput): FxDeskEval
       projectedNetRoiPct,
       isViableOrder,
       blockReason,
+      executionScore,
     };
   });
+
+  tickets.sort((a, b) => b.executionScore - a.executionScore);
 
   const averageNetRoiPct =
     bcvRate !== null && p2pRate !== null && totalDeployableVes > 0

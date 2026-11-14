@@ -12,14 +12,19 @@ import { FormsModule } from '@angular/forms';
 import {
   VENEZUELAN_FX_BANKS,
   FX_EXIT_RAIL_OPTIONS,
+  OPS_KEY,
   evaluateFxBankDeskPlan,
   getBcvMarketIntelligence,
+  getTodayOperations,
+  resolveFxInterventionBankId,
   roundMoney,
   type FxBankDeskProfile,
   type FxBankOrderTicket,
+  type FxCapitalAllocationMode,
   type FxDeskEvaluationPlan,
   type FxInterventionBankId,
   type FxExitRailType,
+  type Operation,
 } from '@p2p/core';
 import { AccountsService } from '../../core/accounts.service';
 import { CotizaveService, describeCotizaveProvenance } from '../../core/cotizave.service';
@@ -27,6 +32,7 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
+import { StorageService } from '../../core/storage';
 
 export type FxSectorFilter = 'ALL' | 'ESTADO' | 'PRIVADO' | 'VIABLE';
 
@@ -103,12 +109,19 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return phase === 'INTERVENTION_ACTIVE' || phase === 'PRE_INTERVENTION_COMPRESSION';
   });
 
+  private readonly storage = inject(StorageService);
+
+  readonly capitalAllocationMode = signal<FxCapitalAllocationMode>('PER_BANK');
+  readonly isRefreshingFeeds = signal(false);
+  readonly ledgerVersion = signal(0);
+
   // ─── Master FX Evaluation Plan (14 Banks) ──────────────────────────────
   readonly evaluationPlan = computed<FxDeskEvaluationPlan>(() => {
     return evaluateFxBankDeskPlan({
       bcvOfficialRateVes: this.liveBcvRate(),
       p2pSellRateVes: this.liveP2pRate(),
       simulatedCapitalVes: this.simulatedCapitalVes(),
+      capitalAllocationMode: this.capitalAllocationMode(),
       accounts: this.accountsService.accounts(),
       usages: this.accountsService.usages(),
       velocities: this.accountsService.accountVelocities(),
@@ -117,6 +130,50 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       isBcvWindowOpen: this.isWindowActive(),
       exitRailOverrides: this.telegram.fxExitRailOverrides(),
     });
+  });
+
+  readonly feedFreshnessLabel = computed<string>(() => {
+    const bcvTs = this.cotizave.lastFetched();
+    const p2pTs = this.binance.lastFetched();
+    const fmt = (d: Date | null) =>
+      d
+        ? d.toLocaleTimeString('es-VE', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/Caracas',
+          })
+        : 'pendiente';
+    return `BCV ${fmt(bcvTs)} · P2P ${fmt(p2pTs)}`;
+  });
+
+  readonly settledTodayByBank = computed<Record<string, { usd: number; count: number }>>(() => {
+    this.ledgerVersion();
+    this.accountsService.usages();
+    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    const todayOps = getTodayOperations(ops);
+    const accounts = this.accountsService.accounts();
+    const summary: Record<string, { usd: number; count: number }> = {};
+
+    for (const op of todayOps) {
+      if (op.type !== 'buy' || !op.merchantNote?.startsWith('MESA_BCV:')) continue;
+      const rawTag = op.merchantNote.slice('MESA_BCV:'.length).split('(')[0].trim();
+      let bankId = resolveFxInterventionBankId(rawTag);
+      if (!bankId && op.bankAccountId) {
+        const linked = accounts.find((a) => a.id === op.bankAccountId);
+        if (linked) {
+          bankId = resolveFxInterventionBankId(linked.bankCode || linked.bankName);
+        }
+      }
+      if (!bankId) continue;
+
+      const prev = summary[bankId] ?? { usd: 0, count: 0 };
+      summary[bankId] = {
+        usd: roundMoney(prev.usd + op.usdtAmount, 2),
+        count: prev.count + 1,
+      };
+    }
+
+    return summary;
   });
 
   readonly viableTickets = computed<readonly FxBankOrderTicket[]>(() =>
@@ -150,7 +207,10 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   );
 
   ngOnInit(): void {
-    void this.cotizave.fetchRates();
+    void this.cotizave.refreshIfStale().catch(() => {});
+    if (!this.binance.marketDepth()) {
+      void this.binance.fetchMarketDepth('USDT', 'VES', true).catch(() => {});
+    }
     this.wafInterval = setInterval(() => {
       const current = this.wafCooldownRemaining();
       const keys = Object.keys(current) as FxInterventionBankId[];
@@ -273,6 +333,36 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     }
   }
 
+  setCapitalAllocationMode(mode: FxCapitalAllocationMode): void {
+    this.capitalAllocationMode.set(mode);
+  }
+
+  async refreshLiveFeeds(): Promise<void> {
+    if (this.isRefreshingFeeds()) return;
+    this.isRefreshingFeeds.set(true);
+    try {
+      await Promise.allSettled([
+        this.cotizave.fetchRates(),
+        this.binance.fetchMarketDepth('USDT', 'VES', false),
+      ]);
+      const bcvOk = this.liveBcvRate() !== null;
+      const p2pOk = this.liveP2pRate() !== null;
+      if (bcvOk && p2pOk) {
+        this.toast.success(
+          'Tasas BCV y profundidad Binance P2P actualizadas.',
+          '🔄 Feeds Sincronizados',
+        );
+      } else {
+        this.toast.warn(
+          'Sincronización parcial: verificá tu conexión si falta alguna tasa.',
+          '⚠️ Feeds Incompletos',
+        );
+      }
+    } finally {
+      this.isRefreshingFeeds.set(false);
+    }
+  }
+
   settlePurchaseInFifo(ticket: FxBankOrderTicket): void {
     if (ticket.recommendedOrderUsd <= 0) {
       this.toast.warn(
@@ -288,12 +378,18 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
       bcv,
     );
     if (res) {
+      this.ledgerVersion.update((v) => v + 1);
       if (this.soundEnabled()) {
         this.audioAlerts.playOpportunityAlert();
       }
       this.toast.success(
         `Pacto asentado en contabilidad FIFO (${res.summary}). Saldo bancario actualizado.`,
         '✅ Compra Registrada en FIFO',
+      );
+    } else {
+      this.toast.warn(
+        'No se pudo registrar la compra en FIFO. Verificá que la tasa BCV esté activa y el monto sea válido.',
+        '⚠️ Pacto No Registrado',
       );
     }
   }

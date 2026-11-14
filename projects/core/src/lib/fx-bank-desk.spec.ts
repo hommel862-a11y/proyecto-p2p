@@ -6,6 +6,7 @@ import {
   evaluateFxBankDeskPlan,
   matchAccountsForFxBank,
   resolveFxInterventionBankId,
+  selectPrimaryFxBankAccount,
 } from './fx-bank-desk';
 import type { BankAccount, AccountUsage } from './accounts';
 
@@ -192,5 +193,187 @@ describe('fx-bank-desk domain engine', () => {
     expect(parsed.bankId).toBe('BDV');
     expect(parsed.usdAmount).toBe(250);
     expect(parsed.bcvRateVes).toBeCloseTo(62.45, 2);
+  });
+
+  it('selectPrimaryFxBankAccount prioritizes TRANSFERENCIA rail over PAGO_MOVIL regardless of array order', () => {
+    const bdvProfile = VENEZUELAN_FX_BANKS.find((b) => b.id === 'BDV')!;
+    const accounts: BankAccount[] = [
+      {
+        id: 'bdv-pm',
+        bankName: 'Banco de Venezuela Pago Móvil',
+        bankCode: 'BDV',
+        rail: 'PAGO_MOVIL',
+        accountNumberMasked: '0414-***0001',
+        dailyLimitVes: 250000,
+        initialBalanceVes: 100000,
+      },
+      {
+        id: 'bdv-tr',
+        bankName: 'Banco de Venezuela Transferencia',
+        bankCode: 'BDV',
+        rail: 'TRANSFERENCIA',
+        accountNumberMasked: '0102-***2222',
+        dailyLimitVes: 500000,
+        initialBalanceVes: 40000,
+      },
+    ];
+    const usages: AccountUsage[] = [
+      {
+        account: accounts[0],
+        spentTodayVes: 0,
+        receivedTodayVes: 0,
+        currentBalanceVes: 100000,
+        consumedLimitPct: 0,
+        remainingLimitVes: 250000,
+        isNearLimit: false,
+        isOverLimit: false,
+        spentThisMonthVes: 0,
+        consumedMonthlyLimitPct: 0,
+        isNearMonthlyLimit: false,
+        isOverMonthlyLimit: false,
+      },
+      {
+        account: accounts[1],
+        spentTodayVes: 0,
+        receivedTodayVes: 0,
+        currentBalanceVes: 40000,
+        consumedLimitPct: 0,
+        remainingLimitVes: 500000,
+        isNearLimit: false,
+        isOverLimit: false,
+        spentThisMonthVes: 0,
+        consumedMonthlyLimitPct: 0,
+        isNearMonthlyLimit: false,
+        isOverMonthlyLimit: false,
+      },
+    ];
+
+    const primary = selectPrimaryFxBankAccount(bdvProfile, accounts, usages);
+    expect(primary.account).not.toBeNull();
+    expect(primary.account!.id).toBe('bdv-tr');
+    expect(primary.account!.rail).toBe('TRANSFERENCIA');
+    expect(primary.usage?.account.id).toBe('bdv-tr');
+    expect(primary.eligibleAccounts.every((a) => a.rail === 'TRANSFERENCIA')).toBe(true);
+
+    const mercantilProfile = VENEZUELAN_FX_BANKS.find((b) => b.id === 'MERCANTIL')!;
+    const none = selectPrimaryFxBankAccount(mercantilProfile, accounts, usages);
+    expect(none.account).toBeNull();
+    expect(none.usage).toBeNull();
+  });
+
+  it('honors real 0 Bs balance on linked primary account instead of falling back to simulatedCapitalVes or summing PAGO_MOVIL', () => {
+    const accounts: BankAccount[] = [
+      {
+        id: 'bdv-pm-rich',
+        bankName: 'Banco de Venezuela Pago Móvil',
+        bankCode: 'BDV',
+        rail: 'PAGO_MOVIL',
+        accountNumberMasked: '0414-***8888',
+        dailyLimitVes: 250000,
+        initialBalanceVes: 150000,
+      },
+      {
+        id: 'bdv-zero-tr',
+        bankName: 'Banco de Venezuela Transferencia',
+        bankCode: 'BDV',
+        rail: 'TRANSFERENCIA',
+        accountNumberMasked: '0102-***9999',
+        dailyLimitVes: 500000,
+        initialBalanceVes: 0,
+      },
+    ];
+    const usages: AccountUsage[] = [
+      {
+        account: accounts[0],
+        spentTodayVes: 0,
+        receivedTodayVes: 0,
+        currentBalanceVes: 150000,
+        consumedLimitPct: 0,
+        remainingLimitVes: 250000,
+        isNearLimit: false,
+        isOverLimit: false,
+        spentThisMonthVes: 0,
+        consumedMonthlyLimitPct: 0,
+        isNearMonthlyLimit: false,
+        isOverMonthlyLimit: false,
+      },
+      {
+        account: accounts[1],
+        spentTodayVes: 0,
+        receivedTodayVes: 0,
+        currentBalanceVes: 0,
+        consumedLimitPct: 0,
+        remainingLimitVes: 500000,
+        isNearLimit: false,
+        isOverLimit: false,
+        spentThisMonthVes: 0,
+        consumedMonthlyLimitPct: 0,
+        isNearMonthlyLimit: false,
+        isOverMonthlyLimit: false,
+      },
+    ];
+
+    const plan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: 200000,
+      accounts,
+      usages,
+      capitalAllocationMode: 'PER_BANK',
+    });
+
+    const bdvTicket = plan.tickets.find((t) => t.bank.id === 'BDV')!;
+    expect(bdvTicket.isViableOrder).toBe(false);
+    expect(bdvTicket.recommendedOrderUsd).toBe(0);
+  });
+
+  it('splits a single capital pool across top banks in DISTRIBUTE_TOTAL mode without exceeding total VES budget', () => {
+    const budgetVes = 100000;
+    const perBankPlan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: budgetVes,
+      accounts: [],
+      usages: [],
+      capitalAllocationMode: 'PER_BANK',
+    });
+
+    const distributePlan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: budgetVes,
+      accounts: [],
+      usages: [],
+      capitalAllocationMode: 'DISTRIBUTE_TOTAL',
+    });
+
+    expect(distributePlan.actionable).toBe(true);
+    expect(distributePlan.totalDeployableVes).toBeGreaterThan(0);
+    expect(distributePlan.totalDeployableVes).toBeLessThanOrEqual(budgetVes + 0.01);
+    expect(perBankPlan.totalDeployableVes).toBeGreaterThan(budgetVes);
+  });
+
+  it('ranks and sorts tickets in descending order by executionScore', () => {
+    const plan = evaluateFxBankDeskPlan({
+      bcvOfficialRateVes: 62.5,
+      p2pSellRateVes: 84.0,
+      simulatedCapitalVes: 120000,
+      accounts: [],
+      usages: [],
+      confirmedFluidBanks: ['BANESCO'],
+      depletedBanks: ['MERCANTIL'],
+      isBcvWindowOpen: true,
+    });
+
+    for (let i = 0; i < plan.tickets.length - 1; i++) {
+      expect(plan.tickets[i].executionScore).toBeGreaterThanOrEqual(
+        plan.tickets[i + 1].executionScore,
+      );
+    }
+
+    const banescoIndex = plan.tickets.findIndex((t) => t.bank.id === 'BANESCO');
+    const mercantilIndex = plan.tickets.findIndex((t) => t.bank.id === 'MERCANTIL');
+    expect(banescoIndex).toBeGreaterThanOrEqual(0);
+    expect(mercantilIndex).toBeGreaterThan(banescoIndex);
   });
 });

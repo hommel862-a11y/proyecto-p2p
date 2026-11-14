@@ -874,6 +874,74 @@
   }
 }
 
+.btn-refresh-feeds {
+  cursor: pointer;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(47, 208, 143, 0.45);
+  background: rgba(47, 208, 143, 0.1);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: background 0.15s ease, opacity 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(47, 208, 143, 0.22);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.sim-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.mode-toggle-group {
+  display: inline-flex;
+  padding: 0.18rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-strong);
+  background: var(--input-bg);
+  gap: 0.2rem;
+}
+
+.btn-mode-toggle {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.32rem 0.7rem;
+  border-radius: var(--radius-full);
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &.active {
+    background: rgba(47, 208, 143, 0.18);
+    color: var(--accent);
+  }
+
+  &:hover:not(.active) {
+    color: var(--text);
+  }
+}
+
+.settled-today-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(47, 208, 143, 0.4);
+  background: rgba(47, 208, 143, 0.12);
+  color: var(--accent);
+}
+
 @media (max-width: 1120px) {
   .fx-hero-banner {
     grid-template-columns: 1fr;

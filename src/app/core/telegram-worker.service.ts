@@ -64,6 +64,7 @@ import {
   FX_EXIT_RAIL_OPTIONS,
   evaluateFxBankDeskPlan,
   matchAccountsForFxBank,
+  selectPrimaryFxBankAccount,
   detectFxInterventionReceipt,
   formatFxDeskTelegramMessage,
   buildFxDeskTelegramKeyboard,
@@ -928,7 +929,7 @@ export class TelegramWorkerService implements OnDestroy {
       case 'BCV': {
         // Mismo criterio que `/macro`: `fetchRates()` no rechaza, así que el
         // `.catch()` que estaba acá era código muerto.
-        const [depth] = await Promise.all([this.getFreshMarketDepth(), this.cotizave.fetchRates()]);
+        const [depth] = await Promise.all([this.getFreshMarketDepth(), this.cotizave.refreshIfStale().catch(() => {})]);
         const rates = this.cotizave.ratesByMarket();
         const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
         const bcv = rates['bcv']?.mid || rates['oficial']?.mid;
@@ -1173,7 +1174,7 @@ export class TelegramWorkerService implements OnDestroy {
         // promesa y después mira `ratesByMarket()` / `ratesProvenance()`.
         const [depth] = await Promise.all([
           this.getFreshMarketDepth(),
-          this.cotizave.fetchRates(),
+          this.cotizave.refreshIfStale().catch(() => {}),
         ]);
         const rates = this.cotizave.ratesByMarket();
         const parallel = depth?.bestBuyPrice || rates['binance']?.ask;
@@ -1441,7 +1442,7 @@ export class TelegramWorkerService implements OnDestroy {
         const params = (dispatch.params as FxDeskActionParams | undefined) ?? {};
         const [depth] = await Promise.all([
           this.getFreshMarketDepth(),
-          this.cotizave.fetchRates(),
+          this.cotizave.refreshIfStale().catch(() => {}),
         ]);
         const rates = this.cotizave.ratesByMarket();
         const bcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? null;
@@ -1493,7 +1494,7 @@ export class TelegramWorkerService implements OnDestroy {
         }
         let rates = this.cotizave.ratesByMarket();
         if (!(rates['bcv']?.mid || rates['oficial']?.mid)) {
-          await this.cotizave.fetchRates();
+          await this.cotizave.refreshIfStale().catch(() => {});
           rates = this.cotizave.ratesByMarket();
         }
         const liveBcv = rates['bcv']?.mid ?? rates['oficial']?.mid ?? undefined;
@@ -2551,7 +2552,7 @@ export class TelegramWorkerService implements OnDestroy {
     const cfg = this.config();
     if (!cfg.alertsEnabled || !cfg.botToken || !cfg.chatId) return;
 
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const lastSent = this.storage.get<string>(TelegramWorkerService.FX_MORNING_BELL_DATE_KEY);
     if (lastSent === todayKey) return;
 
@@ -2576,7 +2577,7 @@ export class TelegramWorkerService implements OnDestroy {
     const plan = evaluateFxBankDeskPlan({
       bcvOfficialRateVes: bcv,
       p2pSellRateVes: p2pSell,
-      simulatedCapitalVes: 120000,
+      simulatedCapitalVes: this.accounts.treasurySummary().totalBalanceVes,
       accounts: this.accounts.accounts(),
       usages: this.accounts.usages(),
       velocities: this.accounts.accountVelocities(),
@@ -2627,7 +2628,9 @@ export class TelegramWorkerService implements OnDestroy {
     const totalDebitVes = roundMoney(principalVes + bankFeeVes, 2);
     const netUsdt = roundMoney(orderUsd * (1 - exitFrictionPct / 100), 2);
 
-    const matchedAcc = matchAccountsForFxBank(profile, this.accounts.accounts())[0];
+    const matchedAcc =
+      selectPrimaryFxBankAccount(profile, this.accounts.accounts(), this.accounts.usages())
+        .account ?? undefined;
 
     const op: Operation = {
       id: `fx-${bankId.toLowerCase()}-${Date.now()}`,
