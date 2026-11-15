@@ -1,6 +1,16 @@
-import { Component, computed, effect, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { StorageService } from '../../core/storage';
 import { RisksService } from '../../core/rules';
 import { SessionService } from '../../core/session.service';
@@ -17,6 +27,8 @@ import {
   formatCotizaveDataAge,
 } from '../../core/cotizave.service';
 import { McpService } from '../../core/mcp.service';
+import { TelegramWorkerService } from '../../core/telegram-worker.service';
+import { SpotMarketService } from '../../core/spot-market.service';
 import {
   computeDashboard,
   computeSessionSummary,
@@ -45,6 +57,8 @@ import {
   type RateDivergenceResult,
   calculateTreasuryYieldAllocation,
   type TreasuryAllocationPlan,
+  evaluateFxBankDeskPlan,
+  type FxDeskEvaluationPlan,
 } from '@p2p/core';
 import { FormsModule } from '@angular/forms';
 import { AnimatedCounterComponent } from '../../shared/ui/animated-counter';
@@ -103,7 +117,17 @@ export interface UnifiedAccountView {
   isRecommended: boolean;
 }
 
-const OPS_KEY = 'p2p.operations';
+export type TreasuryRailFilter = 'ALL' | 'PAGO_MOVIL' | 'TRANSFERENCIA';
+export type TreasuryHealthFilter = 'ALL' | 'OPTIMAL' | 'ALERT';
+
+export interface AlphaPulseStatus {
+  state: 'ALPHA_WINDOW' | 'STANDBY' | 'RISK_GUARD';
+  badgeLabel: string;
+  headline: string;
+  subheadline: string;
+  isBcvWindowActive: boolean;
+  spreadPct: number;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -111,6 +135,7 @@ const OPS_KEY = 'p2p.operations';
   imports: [CommonModule, RouterLink, FormsModule, AnimatedCounterComponent, ...FORMAT_PIPES],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Dashboard implements OnInit, OnDestroy {
   private readonly router = inject(Router);
@@ -126,6 +151,8 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly mcpService = inject(McpService);
   readonly audioAlerts = inject(AudioAlertsService);
   readonly telemetryService = inject(TelemetryService);
+  readonly telegramService = inject(TelegramWorkerService);
+  readonly spotMarketService = inject(SpotMarketService);
 
   readonly telemetry = this.telemetryService.telemetry;
 
@@ -140,9 +167,21 @@ export class Dashboard implements OnInit, OnDestroy {
       'bento',
   );
 
+  /** Interactive filters for the 16 multi-bank accounts */
+  readonly bankRailFilter = signal<TreasuryRailFilter>('ALL');
+  readonly bankHealthFilter = signal<TreasuryHealthFilter>('ALL');
+
   setTreasuryDensity(density: 'bento' | 'compact'): void {
     this.treasuryDensity.set(density);
     this.storage.set('p2p.dashboard.treasuryDensity', density);
+  }
+
+  setBankRailFilter(rail: TreasuryRailFilter): void {
+    this.bankRailFilter.set(rail);
+  }
+
+  setBankHealthFilter(health: TreasuryHealthFilter): void {
+    this.bankHealthFilter.set(health);
   }
 
   private readonly liquidityWatcher = effect(() => {
@@ -156,14 +195,7 @@ export class Dashboard implements OnInit, OnDestroy {
     }
   });
 
-  private readonly routeTabWatcher = effect(() => {
-    this.route.queryParamMap.subscribe((params) => {
-      const tab = params.get('tab');
-      if (tab === 'treasury' || tab === 'agents' || tab === 'performance' || tab === 'all') {
-        this.activeTab.set(tab);
-      }
-    });
-  });
+  private routeSub: Subscription | null = null;
 
   readonly swarmAgents = signal<SwarmAgentDto[]>([
     {
@@ -231,6 +263,84 @@ export class Dashboard implements OnInit, OnDestroy {
     return getBcvMarketIntelligence(parallel, bcv);
   });
 
+  /** Live 14-bank Mesa Cambiaria BCV execution plan synthesized into the Control Center. */
+  readonly fxDeskPlan = computed<FxDeskEvaluationPlan>(() => {
+    const depth = this.binanceService.marketDepth();
+    const rates = this.cotizaveService.ratesByMarket();
+    const bcvOfficialRateVes =
+      rates['bcv']?.mid || rates['oficial']?.mid || this.mcpBcvRates()?.usd || this.manualBcvRate();
+    const p2pSellRateVes =
+      depth?.bestSellPrice ||
+      depth?.bestBuyPrice ||
+      rates['binance']?.ask ||
+      this.mcpParallelRates()?.rate ||
+      this.manualParallelRate();
+    const totalBalanceVes = this.accountsService.treasurySummary().totalBalanceVes;
+    const simulatedCapitalVes = totalBalanceVes > 0 ? totalBalanceVes : 120000;
+    const bcvPhase = this.mcpBcvIntervention()?.phase || this.bcvIntelligence().window.phase;
+    const isBcvWindowOpen =
+      bcvPhase === 'INTERVENTION_ACTIVE' || bcvPhase === 'PRE_INTERVENTION_COMPRESSION';
+
+    return evaluateFxBankDeskPlan({
+      bcvOfficialRateVes,
+      p2pSellRateVes,
+      simulatedCapitalVes,
+      capitalAllocationMode: 'DISTRIBUTE_TOTAL',
+      accounts: this.accountsService.accounts(),
+      usages: this.accountsService.usages(),
+      velocities: this.accountsService.accountVelocities(),
+      confirmedFluidBanks: this.telegramService.fxFluidBanks(),
+      depletedBanks: this.telegramService.fxDepletedBanks(),
+      isBcvWindowOpen,
+      exitRailOverrides: this.telegramService.fxExitRailOverrides(),
+    });
+  });
+
+  readonly fxDeskSummary = computed(() => {
+    const plan = this.fxDeskPlan();
+    const viableTickets = plan.tickets.filter((t) => t.isViableOrder);
+    const confirmedFluidCount = plan.tickets.filter(
+      (t) => t.signalState === 'CONFIRMED_FLUID',
+    ).length;
+    const topTicket = viableTickets[0] ?? plan.tickets[0] ?? null;
+    const bcvPhase = this.mcpBcvIntervention()?.phase || this.bcvIntelligence().window.phase;
+    const isBcvWindowOpen =
+      bcvPhase === 'INTERVENTION_ACTIVE' || bcvPhase === 'PRE_INTERVENTION_COMPRESSION';
+    const netProfitVes = plan.totalProjectedNetProfitVes ?? 0;
+    const netProfitUsdt =
+      plan.p2pSellRateVes && plan.p2pSellRateVes > 0
+        ? +(netProfitVes / plan.p2pSellRateVes).toFixed(2)
+        : 0;
+
+    return {
+      viableCount: viableTickets.length,
+      totalBanks: plan.tickets.length,
+      confirmedFluidCount,
+      topTicket,
+      isBcvWindowOpen,
+      totalDeployableVes: plan.totalDeployableVes,
+      totalDeployableUsd: plan.totalRecommendedUsd,
+      netProfitVes,
+      netProfitUsdt,
+    };
+  });
+
+  /** Institutional Spot Market telemetry (BTC anchor & USDC peg deviation guard). */
+  readonly spotPulse = computed(() => {
+    const btc = this.spotMarketService.btcTicker();
+    const usdc = this.spotMarketService.usdcTicker();
+    const usdcMid = usdc?.midPrice ?? 1;
+    const depegBps = Math.round(Math.abs(usdcMid - 1) * 10000);
+    return {
+      btcPriceUsd: btc?.lastPrice ?? 0,
+      btcChange24hPct: btc?.priceChangePct24h ?? 0,
+      usdcMidPrice: usdcMid,
+      depegBps,
+      isUsdcDepegged: depegBps >= 50,
+      availabilityStatus: this.spotMarketService.availability().status,
+    };
+  });
+
   /**
    * Edad y procedencia de las tasas de Cotizave. `bcvIntelligence` se apoya en
    * `ratesByMarket()` para la brecha, así que se leen juntas: la marca de tiempo
@@ -263,11 +373,74 @@ export class Dashboard implements OnInit, OnDestroy {
     updatedAt: string;
   } | null>(this.storage.get('p2p.active-daily-goal'));
 
-  /** Daily income target (USD) — read from active daily goal or legacy daily-target key. */
+  private readonly customDailyTarget = signal<number | null>(
+    this.storage.get<number>('p2p.daily-target'),
+  );
+
+  /** In-place quick editor for daily target USD */
+  readonly editingDailyTarget = signal<boolean>(false);
+  readonly dailyTargetDraft = signal<number>(35);
+  readonly dailyTargetPresets: readonly number[] = [25, 50, 100, 200];
+
+  /** Daily income target (USD) — read from active daily goal or custom daily-target key. */
   readonly dailyTarget = computed<number>(() => {
     const pinned = this.activeDailyGoalPlan();
     if (pinned && pinned.targetGoalUsd > 0) return pinned.targetGoalUsd;
+    const custom = this.customDailyTarget();
+    if (custom !== null && custom > 0) return custom;
     return this.storage.get<number>('p2p.daily-target') ?? 35;
+  });
+
+  openDailyTargetEditor(event?: Event): void {
+    event?.stopPropagation();
+    this.dailyTargetDraft.set(this.dailyTarget());
+    this.editingDailyTarget.set(true);
+  }
+
+  cancelDailyTargetEditor(event?: Event): void {
+    event?.stopPropagation();
+    this.editingDailyTarget.set(false);
+  }
+
+  saveDailyTarget(presetUsd?: number, event?: Event): void {
+    event?.stopPropagation();
+    const raw = presetUsd !== undefined ? presetUsd : Number(this.dailyTargetDraft());
+    if (!Number.isFinite(raw) || raw <= 0) {
+      this.toast.error('Ingresa una meta diaria válida mayor a 0 USDT.', 'Meta Diaria');
+      return;
+    }
+    const target = Math.round(raw * 100) / 100;
+    this.customDailyTarget.set(target);
+    this.storage.set('p2p.daily-target', target);
+
+    const pinned = this.activeDailyGoalPlan();
+    if (pinned) {
+      const perCycleUsd =
+        pinned.availableCapitalUsdt > 0 && pinned.requiredNetRoiPct > 0
+          ? pinned.availableCapitalUsdt * (pinned.requiredNetRoiPct / 100)
+          : 0;
+      const desiredCyclesPerDay =
+        perCycleUsd > 0 ? Math.max(1, Math.ceil(target / perCycleUsd)) : pinned.desiredCyclesPerDay;
+      const updatedPlan = {
+        ...pinned,
+        targetGoalUsd: target,
+        desiredCyclesPerDay,
+        updatedAt: new Date().toISOString(),
+      };
+      this.activeDailyGoalPlan.set(updatedPlan);
+      this.storage.set('p2p.active-daily-goal', updatedPlan);
+    }
+
+    this.editingDailyTarget.set(false);
+    this.audioAlerts.playConfirmationTone();
+    this.toast.success(`Meta diaria ajustada a $${target} USDT.`, 'Objetivo Actualizado');
+  }
+
+  /** Remaining USDT needed today to hit 100% of dailyTarget */
+  readonly remainingDailyTargetUsdt = computed<number>(() => {
+    const target = this.dailyTarget();
+    const current = Math.max(0, this.dashboard().today.pnlUsdt);
+    return Math.max(0, +(target - current).toFixed(2));
   });
 
   /** State for closing session modal */
@@ -290,8 +463,11 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly projectedBalanceAfterInjection = computed<number>(() => {
     const acc = this.selectedAccountForInjection();
     if (!acc) return 0;
-    const add = this.injectionAmount() ?? 0;
-    return acc.currentBalanceVes + (add > 0 ? add : 0);
+    const val = this.injectionAmount() ?? 0;
+    if (this.liquidityModalMode() === 'CALIBRATE') {
+      return val >= 0 ? val : 0;
+    }
+    return acc.currentBalanceVes + (val > 0 ? val : 0);
   });
 
   readonly ops = computed<Operation[]>(() => this.accountsService.rawOperations());
@@ -381,6 +557,18 @@ export class Dashboard implements OnInit, OnDestroy {
         : 0;
 
     const openOps = summary.exposure !== 0 ? 1 : 0;
+    const isCircuitOpen = this.binanceService.circuitBreaker?.getState?.() === 'OPEN';
+    const apiStatus: 'ok' | 'down' = isCircuitOpen ? 'down' : 'ok';
+
+    const sortedOps = [...this.ops()].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    let consecutiveErrors = 0;
+    for (const op of sortedOps) {
+      if (op.errorFree === false) {
+        consecutiveErrors += 1;
+      } else {
+        break;
+      }
+    }
 
     return this.risks.evaluate({
       currentSpread,
@@ -388,9 +576,56 @@ export class Dashboard implements OnInit, OnDestroy {
       openOps,
       tradeRiskPct: 0.5,
       dailyLossPct,
-      consecutiveErrors: 0,
-      apiStatus: 'ok',
+      consecutiveErrors,
+      apiStatus,
     });
+  });
+
+  /** High-Engagement Alpha Pulse Radar synthesizing L2 Spread, Risk Verdict, and BCV Window. */
+  readonly alphaPulse = computed<AlphaPulseStatus>(() => {
+    const depth = this.binanceService.marketDepth();
+    const spreadPct = depth?.spreadPct ?? 0;
+    const v = this.verdict();
+    const bcvPhase = this.mcpBcvIntervention()?.phase || this.bcvIntelligence().window.phase;
+    const isBcvWindowActive =
+      bcvPhase === 'INTERVENTION_ACTIVE' || bcvPhase === 'PRE_INTERVENTION_COMPRESSION';
+    const rec = this.rotationRecommendation();
+
+    if (v.decision === 'DENY') {
+      return {
+        state: 'RISK_GUARD',
+        badgeLabel: 'ESCUDO ACTIVO',
+        headline: 'Ejecución bloqueada por Motor de Riesgo',
+        subheadline: v.reason,
+        isBcvWindowActive,
+        spreadPct,
+      };
+    }
+
+    if (spreadPct >= 0.5 && v.decision === 'ALLOW') {
+      return {
+        state: 'ALPHA_WINDOW',
+        badgeLabel: 'VENTANA ALPHA ≥ 0.50%',
+        headline: `Spread óptimo activo (${spreadPct}%) · ${rec ? 'Rotar por ' + rec.bankName : 'Liquidez lista'}`,
+        subheadline: 'Regla de Oro validada para posicionamiento Maker/Taker inmediato',
+        isBcvWindowActive,
+        spreadPct,
+      };
+    }
+
+    return {
+      state: 'STANDBY',
+      badgeLabel: 'MODO VIGILANCIA',
+      headline:
+        spreadPct > 0
+          ? `Spread L2 en ${spreadPct}% · Esperando expansión ≥ 0.50%`
+          : 'Sincronizando profundidad L2 · Listo para operar',
+      subheadline: rec
+        ? `Cuenta óptima preseleccionada: ${rec.bankName}`
+        : 'Monitoreo continuo de microestructura y tesorería',
+      isBcvWindowActive,
+      spreadPct,
+    };
   });
 
   /** Forensic Risk & Hourly Distribution (Skill #44) */
@@ -466,6 +701,102 @@ export class Dashboard implements OnInit, OnDestroy {
     });
   });
 
+  /** Counts per filter category in the Treasury section */
+  readonly treasuryFilterCounts = computed(() => {
+    const all = this.unifiedAccounts();
+    return {
+      all: all.length,
+      pagoMovil: all.filter((a) => a.rail === 'PAGO_MOVIL').length,
+      transferencia: all.filter((a) => a.rail === 'TRANSFERENCIA').length,
+      optimal: all.filter((a) => !a.isOverLimit && !a.isNearLimit && a.status !== 'DISABLED')
+        .length,
+      alert: all.filter((a) => a.isOverLimit || a.isNearLimit).length,
+    };
+  });
+
+  /** Filtered accounts according to selected rail and health filter pills */
+  readonly filteredAccounts = computed<UnifiedAccountView[]>(() => {
+    const rail = this.bankRailFilter();
+    const health = this.bankHealthFilter();
+    return this.unifiedAccounts().filter((acc) => {
+      if (rail !== 'ALL' && acc.rail !== rail) return false;
+      if (health === 'OPTIMAL' && (acc.isOverLimit || acc.isNearLimit || acc.status === 'DISABLED')) {
+        return false;
+      }
+      if (health === 'ALERT' && !acc.isOverLimit && !acc.isNearLimit) {
+        return false;
+      }
+      return true;
+    });
+  });
+
+  /** Progressive disclosure in Vista General: Spotlight top 4 accounts unless expanded or filtered */
+  readonly showAllBanksInOverview = signal<boolean>(false);
+
+  readonly displayedAccounts = computed<UnifiedAccountView[]>(() => {
+    const list = this.filteredAccounts();
+    const isFiltered = this.bankRailFilter() !== 'ALL' || this.bankHealthFilter() !== 'ALL';
+    if (this.activeTab() === 'treasury' || this.showAllBanksInOverview() || isFiltered) {
+      return list;
+    }
+    return [...list]
+      .sort((a, b) => {
+        if (a.isRecommended !== b.isRecommended) return a.isRecommended ? -1 : 1;
+        if (a.isNearLimit !== b.isNearLimit) return a.isNearLimit ? -1 : 1;
+        return b.currentBalanceVes - a.currentBalanceVes;
+      })
+      .slice(0, 4);
+  });
+
+  /** Interactive One-Tap Ticket & Profit Simulator (High-Impact Client Engagement) */
+  readonly simTicketUsdt = signal<number>(250);
+  readonly simTicketPresets = [100, 250, 500, 1000] as const;
+
+  setSimTicket(amountUsdt: number): void {
+    if (Number.isFinite(amountUsdt) && amountUsdt > 0) {
+      this.simTicketUsdt.set(Math.round(amountUsdt));
+    }
+  }
+
+  readonly simulatedTradeOutcome = computed(() => {
+    const ticket = this.simTicketUsdt();
+    const depth = this.binanceService.marketDepth();
+    const gap = this.bcvIntelligence().gap;
+    const buyPrice = depth?.bestBuyPrice || gap.parallelRate || 810;
+    const spreadPct = depth && depth.spreadPct > 0 ? depth.spreadPct : 0.65;
+    const sellPrice =
+      depth && depth.bestSellPrice > buyPrice
+        ? depth.bestSellPrice
+        : +(buyPrice * (1 + spreadPct / 100)).toFixed(2);
+
+    const requiredVes = Math.round(ticket * buyPrice);
+    const netProfitUsdt = +(ticket * (spreadPct / 100)).toFixed(2);
+    const netProfitVes = Math.round(netProfitUsdt * sellPrice);
+
+    const viableAccounts = this.unifiedAccounts().filter(
+      (a) => a.status !== 'DISABLED' && !a.isOverLimit && a.remainingLimitVes >= requiredVes,
+    );
+    const bestAccount =
+      viableAccounts.find((a) => a.isRecommended) ??
+      viableAccounts[0] ??
+      this.unifiedAccounts()[0] ??
+      null;
+
+    return {
+      ticketUsdt: ticket,
+      buyPriceVes: buyPrice,
+      sellPriceVes: sellPrice,
+      spreadPct,
+      requiredVes,
+      netProfitUsdt,
+      netProfitVes,
+      bestAccount,
+      needsMultiBankSplit: viableAccounts.length === 0,
+      cyclesForDailyTarget:
+        netProfitUsdt > 0 ? Math.max(1, Math.ceil(this.dailyTarget() / netProfitUsdt)) : 1,
+    };
+  });
+
   /** Semáforo background CSS var per velocity health (no hardcoded colors). */
   readonly velocityHealthVar: Record<AccountVelocityHealth, string> = {
     OPTIMAL: 'var(--accent)',
@@ -499,11 +830,22 @@ export class Dashboard implements OnInit, OnDestroy {
     return Math.min(100, Math.round((Math.abs(pnlUsdt) / lossLimit) * 100));
   });
 
+  /** Chronological 7-day sequence (6 days ago -> today) matching cumulativeChart order. */
+  readonly chronologicalWeek = computed<DayActivity[]>(() =>
+    this.dashboard().week.slice().reverse(),
+  );
+
   /** Max PnL across the 7-day week for chart bar scaling. */
   readonly weekMax = computed(() => {
     const week = this.dashboard().week;
     const max = Math.max(...week.map((d) => Math.abs(d.pnlVes)), 1);
     return max;
+  });
+
+  /** Max USDT volume across the 7-day week for volume bar scaling. */
+  readonly weekVolumeMax = computed(() => {
+    const week = this.dashboard().week;
+    return Math.max(...week.map((d) => d.volumeUsdt), 1);
   });
 
   /** Active chart view: cumulative equity curve vs daily volume */
@@ -571,6 +913,10 @@ export class Dashboard implements OnInit, OnDestroy {
   });
 
   barHeight(day: DayActivity): number {
+    if (this.selectedChartTab() === 'volume') {
+      const maxVol = this.weekVolumeMax();
+      return Math.max(4, Math.round((day.volumeUsdt / maxVol) * 100));
+    }
     const max = this.weekMax();
     return Math.max(4, Math.round((Math.abs(day.pnlVes) / max) * 100));
   }
@@ -611,11 +957,15 @@ export class Dashboard implements OnInit, OnDestroy {
       accounts.length > 0
         ? Math.max(...accounts.map((a) => a.consumedLimitPct))
         : 0;
+    const tgCfg = this.telegramService.config();
+    const telegramSentinelActive = Boolean(
+      (tgCfg.botToken && tgCfg.chatId) || tgCfg.alertsEnabled !== false,
+    );
 
     return evaluatePreflightDiscipline({
       bankSaturationPct: maxSat,
       strictNoThirdPartyAcknowledged: this.preflightStrictNoThirdParty(),
-      telegramSentinelActive: true,
+      telegramSentinelActive,
       dailyLossLimitUsd: this.preflightDailyLossLimit(),
       mentalState: this.preflightMentalState(),
       unresolvedDisputesCount: 0,
@@ -663,11 +1013,15 @@ export class Dashboard implements OnInit, OnDestroy {
     );
   }
 
-  quickOperate(bankName?: string): void {
+  quickOperate(bankName?: string, event?: Event, amountUsdt?: number): void {
+    event?.stopPropagation();
     const queryParams: Record<string, string> = {};
     if (bankName) queryParams['autoFillBank'] = bankName;
     const depth = this.binanceService.marketDepth();
     if (depth?.bestSellPrice) queryParams['autoFillPrice'] = String(depth.bestSellPrice);
+    if (typeof amountUsdt === 'number' && Number.isFinite(amountUsdt) && amountUsdt > 0) {
+      queryParams['autoFillAmount'] = String(Math.round(amountUsdt));
+    }
     void this.router.navigate(['/log'], { queryParams });
   }
 
@@ -716,33 +1070,75 @@ export class Dashboard implements OnInit, OnDestroy {
     this.injectionError.set(null);
   }
 
+  /** Modo del modal de liquidez: 'ADD' (sumar capital) o 'CALIBRATE' (establecer saldo real exacto) */
+  readonly liquidityModalMode = signal<'ADD' | 'CALIBRATE'>('ADD');
+
+  /** Diálogo de confirmación para reseteo masivo de saldos a 0 */
+  readonly showResetConfirmModal = signal<boolean>(false);
+
+  openResetConfirmModal(): void {
+    this.showResetConfirmModal.set(true);
+  }
+
+  cancelResetConfirmModal(): void {
+    this.showResetConfirmModal.set(false);
+  }
+
+  confirmResetAllBalancesToZero(): void {
+    this.accountsService.resetAllBalancesToZero();
+    this.audioAlerts.playConfirmationTone();
+    this.toast.warn(
+      'Todos los saldos de tus cuentas bancarias se han establecido en 0,00 VES. Tu tesorería está lista para ser fondeada con capital real.',
+      'Saldos Reseteados a Cero',
+    );
+    this.showResetConfirmModal.set(false);
+  }
+
   confirmLiquidityInjection(): void {
     const accountId = this.selectedInjectionAccountId();
     const amount = Number(this.injectionAmount());
+    const mode = this.liquidityModalMode();
 
     if (!accountId) {
       this.injectionError.set('Por favor, selecciona una cuenta bancaria.');
       return;
     }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      this.injectionError.set('Ingresa un monto válido en VES mayor a 0.');
+    if (!Number.isFinite(amount) || (mode === 'ADD' && amount <= 0) || (mode === 'CALIBRATE' && amount < 0)) {
+      this.injectionError.set(
+        mode === 'ADD'
+          ? 'Ingresa un monto válido en VES mayor a 0.'
+          : 'Ingresa un saldo válido en VES igual o mayor a 0.',
+      );
       return;
     }
 
     try {
-      const updated = this.accountsService.injectLiquidity(
-        accountId,
-        amount,
-        this.injectionNote().trim() || 'Fondeo de liquidez en Centro de Control',
-      );
-      this.audioAlerts.playInjectionTone();
-      this.toast.success(
-        `Se han inyectado ${fmtVes(amount)} en ${updated.bankName}. Saldo disponible actualizado.`,
-        'Liquidez Inyectada',
-      );
+      if (mode === 'CALIBRATE') {
+        const updated = this.accountsService.setExactAccountBalance(
+          accountId,
+          amount,
+          this.injectionNote().trim() || 'Calibración de saldo real con extracto bancario',
+        );
+        this.audioAlerts.playConfirmationTone();
+        this.toast.success(
+          `Saldo de ${updated.bankName} calibrado a ${fmtVes(amount)}. Listo para operar.`,
+          'Saldo Calibrado',
+        );
+      } else {
+        const updated = this.accountsService.injectLiquidity(
+          accountId,
+          amount,
+          this.injectionNote().trim() || 'Fondeo de liquidez en Centro de Control',
+        );
+        this.audioAlerts.playInjectionTone();
+        this.toast.success(
+          `Se han inyectado ${fmtVes(amount)} en ${updated.bankName}. Saldo disponible actualizado.`,
+          'Liquidez Inyectada',
+        );
+      }
       this.cancelLiquidityModal();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al inyectar liquidez.';
+      const msg = err instanceof Error ? err.message : 'Error al procesar la operación de tesorería.';
       this.injectionError.set(msg);
     }
   }
@@ -766,37 +1162,51 @@ export class Dashboard implements OnInit, OnDestroy {
 
   /** KPIs → historical performance view. */
   goToStats(): void {
-    this.router.navigate(['/stats']);
+    void this.router.navigate(['/stats']);
   }
 
   /** Daily target / income projection → income calculator. */
   goToIncome(): void {
-    this.router.navigate(['/income']);
+    void this.router.navigate(['/income']);
   }
 
   /** Session KPIs → live trading terminal. */
   goToSpread(): void {
-    this.router.navigate(['/spread']);
+    void this.router.navigate(['/spread']);
+  }
+
+  /** Navigate directly to 14-bank BCV Exchange Desk (optionally starting Morning Burst queue). */
+  goToMesaBcv(startBurst = false, event?: Event): void {
+    event?.stopPropagation();
+    void this.router.navigate(
+      ['/mesa-bcv'],
+      startBurst ? { queryParams: { burst: '1' } } : undefined,
+    );
+  }
+
+  /** Navigate directly to Finanzas 360. */
+  goToFinanzas360(): void {
+    void this.router.navigate(['/finanzas-360']);
   }
 
   /** Velocity chip → operation log filtered by that bank (forward-compat query param). */
   goToBankLog(bankKey: string): void {
-    this.router.navigate(['/log'], { queryParams: { bank: bankKey } });
+    void this.router.navigate(['/log'], { queryParams: { bank: bankKey } });
   }
 
   /** Chart bar → stats calendar for that day (forward-compat query param). */
   goToDay(day: string): void {
-    this.router.navigate(['/stats'], { queryParams: { day } });
+    void this.router.navigate(['/stats'], { queryParams: { day } });
   }
 
   /** Risk verdict → risk rules editor. */
   goToRisk(): void {
-    this.router.navigate(['/risk']);
+    void this.router.navigate(['/risk']);
   }
 
   /** Recent operation row → full operation log. */
   goToLog(): void {
-    this.router.navigate(['/log']);
+    void this.router.navigate(['/log']);
   }
 
   bcvZoneBadge(zone: string): { label: string; class: string } {
@@ -826,18 +1236,31 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
-    void this.binanceService.fetchMarketDepth('USDT', 'VES', true);
-    void this.cotizaveService.fetchRates();
+    this.routeSub = this.route.queryParamMap.subscribe((params) => {
+      const tab = params.get('tab');
+      if (tab === 'treasury' || tab === 'agents' || tab === 'performance' || tab === 'all') {
+        this.activeTab.set(tab);
+      }
+    });
+
+    void this.binanceService.fetchMarketDepth?.('USDT', 'VES', true);
+    void this.cotizaveService.refreshIfStale?.()?.catch?.(() => {});
+    void this.spotMarketService.fetchCoreBasket?.()?.catch?.(() => {});
     await this.syncMcpIntelligence();
     await this.runSwarmHealthCheck();
     this.mcpIntervalId = setInterval(() => {
-      this.syncMcpIntelligence();
+      void this.syncMcpIntelligence();
     }, 45000);
   }
 
   ngOnDestroy(): void {
+    if (this.routeSub) {
+      this.routeSub.unsubscribe();
+      this.routeSub = null;
+    }
     if (this.mcpIntervalId) {
       clearInterval(this.mcpIntervalId);
+      this.mcpIntervalId = null;
     }
   }
 
@@ -899,12 +1322,16 @@ export class Dashboard implements OnInit, OnDestroy {
         this.toast.info('Diagnóstico de agentes ejecutado (modo local).', 'Swarm OK');
       }
     } else {
-      // High-fidelity telemetry simulation in web mode
+      const snap = this.telemetry();
+      const opsCount = this.ops().length;
+      const auditCount = this.audit.events().length;
+      const viableFxCount = this.fxDeskSummary().viableCount;
       this.swarmAgents.update((agents) =>
-        agents.map((a) => ({
+        agents.map((a, idx) => ({
           ...a,
-          lastPingMs: Math.floor(60 + Math.random() * 80),
-          decisionsCount: a.decisionsCount + 1,
+          lastPingMs: Math.max(18, (snap.p2pMs || 45) + idx * 12),
+          decisionsCount:
+            a.decisionsCount + Math.max(1, idx === 0 ? viableFxCount : idx === 1 ? opsCount : auditCount || 1),
         })),
       );
       this.toast.success('Telemetría del enjambre de agentes actualizada.', 'Swarm 4/4 Activo');
@@ -928,6 +1355,7 @@ export class Dashboard implements OnInit, OnDestroy {
 
       const bcvRate = this.mcpBcvRates()?.usd || this.manualBcvRate();
       const parallelRate = this.mcpParallelRates()?.rate || this.manualParallelRate();
+      const liveSpreadPct = this.binanceService.marketDepth()?.spreadPct ?? 1.25;
 
       // 3. Herramienta MCP: calculate_rate_gap
       const gapRes = await this.mcpService.calculateRateGap({ parallelRate, bcvRate });
@@ -950,7 +1378,7 @@ export class Dashboard implements OnInit, OnDestroy {
       const forecastRes = await this.mcpService.forecastVolatilityWindow({
         parallelRate,
         bcvRate,
-        currentSpreadPct: 1.25,
+        currentSpreadPct: liveSpreadPct,
       });
       if (forecastRes.success && forecastRes.result) {
         const res = forecastRes.result as Record<string, unknown>;

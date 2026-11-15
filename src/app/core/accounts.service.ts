@@ -477,6 +477,73 @@ export class AccountsService {
   }
 
   /**
+   * Calibra o establece directamente el saldo inicial disponible de una cuenta (Reconciliación Real).
+   * A diferencia de inyectar (que suma), esto sincroniza la cuenta con el extracto bancario real.
+   */
+  setExactAccountBalance(accountId: string, exactBalanceVes: number, referenceNote?: string): BankAccount {
+    if (!Number.isFinite(exactBalanceVes) || exactBalanceVes < 0) {
+      throw new Error(`Saldo de calibración inválido: ${exactBalanceVes}. Debe ser un número igual o mayor a cero.`);
+    }
+
+    const acc = this.accounts().find((a) => a.id === accountId);
+    if (!acc) {
+      throw new Error(`Cuenta bancaria con id ${accountId} no encontrada.`);
+    }
+
+    const previousInitialBalance = acc.initialBalanceVes;
+    const updated: BankAccount = {
+      ...acc,
+      initialBalanceVes: Math.round(exactBalanceVes * 100) / 100,
+    };
+    this.updateAccount(updated);
+    this.audit.log(
+      'CONFIG_CHANGE',
+      `Calibración de saldo real: ${exactBalanceVes} VES en ${acc.bankName}`,
+      {
+        accountId,
+        bankName: acc.bankName,
+        bankCode: acc.bankCode,
+        previousInitialBalance,
+        newInitialBalance: updated.initialBalanceVes,
+        referenceNote: referenceNote ?? 'Ajuste manual de saldo de apertura',
+      },
+      'info',
+    );
+    return updated;
+  }
+
+  /**
+   * Resetea los saldos iniciales de todas las cuentas a 0.00 VES sin borrar sus límites ni configuración.
+   * Deja la tesorería lista para ser fondeada con capital 100% real.
+   */
+  resetAllBalancesToZero(): void {
+    const previousAccounts = this.accounts();
+    const updated = previousAccounts.map((a) => ({
+      ...a,
+      initialBalanceVes: 0,
+    }));
+    this.saveAccounts(updated);
+
+    const electronDb = getElectronDb();
+    if (electronDb?.saveBankAccount) {
+      for (const acc of updated) {
+        void electronDb.saveBankAccount(acc);
+      }
+    }
+
+    this.audit.log(
+      'CONFIG_CHANGE',
+      'Puesta a cero de saldos de tesorería (Reset a 0 VES)',
+      {
+        totalAccountsUpdated: updated.length,
+        previousBalancesSummary: previousAccounts.map((a) => ({ id: a.id, name: a.bankName, prev: a.initialBalanceVes })),
+      },
+      'warn',
+    );
+    void this.announceTreasuryToMain();
+  }
+
+  /**
    * Anuncia el snapshot de tesorería real al proceso principal de Electron vía `p2p:treasury-announce`.
    */
   async announceTreasuryToMain(): Promise<void> {

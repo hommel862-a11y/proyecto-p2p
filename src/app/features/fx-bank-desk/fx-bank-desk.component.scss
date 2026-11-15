@@ -537,7 +537,7 @@
 
 .banks-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
   gap: 1rem;
 }
 
@@ -955,4 +955,85 @@
   .wf-arrow {
     display: none;
   }
+}
+
+/* ─── BARRA DE NAVEGACIÓN RÁPIDA Y CLASES UTILITARIAS ─────────────────── */
+.fx-quick-nav-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.fx-quick-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fx-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-strong);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    border-color: var(--gold);
+    color: var(--gold-strong);
+  }
+}
+
+.fx-daily-settled-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-full);
+  background: rgba(47, 208, 143, 0.12);
+  border: 1px solid rgba(47, 208, 143, 0.38);
+  color: var(--accent);
+  font-size: 0.76rem;
+
+  small {
+    color: var(--muted);
+  }
+}
+
+.hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.banks-grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.lot-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rail-select-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
 }

@@ -9,22 +9,22 @@ import {
 } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   VENEZUELAN_FX_BANKS,
   FX_EXIT_RAIL_OPTIONS,
-  OPS_KEY,
   evaluateFxBankDeskPlan,
   getBcvMarketIntelligence,
   getTodayOperations,
   resolveFxInterventionBankId,
   roundMoney,
+  selectPrimaryFxBankAccount,
   type FxBankDeskProfile,
   type FxBankOrderTicket,
   type FxCapitalAllocationMode,
   type FxDeskEvaluationPlan,
   type FxInterventionBankId,
   type FxExitRailType,
-  type Operation,
 } from '@p2p/core';
 import { AccountsService } from '../../core/accounts.service';
 import { CotizaveService, describeCotizaveProvenance } from '../../core/cotizave.service';
@@ -32,14 +32,13 @@ import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
-import { StorageService } from '../../core/storage';
 
 export type FxSectorFilter = 'ALL' | 'ESTADO' | 'PRIVADO' | 'VIABLE';
 
 @Component({
   selector: 'app-fx-bank-desk',
   standalone: true,
-  imports: [CommonModule, FormsModule, DecimalPipe],
+  imports: [CommonModule, FormsModule, DecimalPipe, RouterLink],
   templateUrl: './fx-bank-desk.component.html',
   styleUrls: ['./fx-bank-desk.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +50,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   readonly telegram = inject(TelegramWorkerService);
   private readonly audioAlerts = inject(AudioAlertsService);
   private readonly toast = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly allBanks = VENEZUELAN_FX_BANKS;
   readonly exitRailOptions = FX_EXIT_RAIL_OPTIONS;
@@ -109,8 +109,6 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     return phase === 'INTERVENTION_ACTIVE' || phase === 'PRE_INTERVENTION_COMPRESSION';
   });
 
-  private readonly storage = inject(StorageService);
-
   readonly capitalAllocationMode = signal<FxCapitalAllocationMode>('PER_BANK');
   readonly isRefreshingFeeds = signal(false);
   readonly ledgerVersion = signal(0);
@@ -149,7 +147,7 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   readonly settledTodayByBank = computed<Record<string, { usd: number; count: number }>>(() => {
     this.ledgerVersion();
     this.accountsService.usages();
-    const ops = this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    const ops = this.accountsService.rawOperations();
     const todayOps = getTodayOperations(ops);
     const accounts = this.accountsService.accounts();
     const summary: Record<string, { usd: number; count: number }> = {};
@@ -174,6 +172,17 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     }
 
     return summary;
+  });
+
+  readonly totalSettledToday = computed<{ totalUsd: number; opsCount: number }>(() => {
+    const entries = Object.values(this.settledTodayByBank());
+    return entries.reduce(
+      (acc, cur) => ({
+        totalUsd: roundMoney(acc.totalUsd + cur.usd, 2),
+        opsCount: acc.opsCount + cur.count,
+      }),
+      { totalUsd: 0, opsCount: 0 },
+    );
   });
 
   readonly viableTickets = computed<readonly FxBankOrderTicket[]>(() =>
@@ -210,6 +219,9 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
     void this.cotizave.refreshIfStale().catch(() => {});
     if (!this.binance.marketDepth()) {
       void this.binance.fetchMarketDepth('USDT', 'VES', true).catch(() => {});
+    }
+    if (this.route.snapshot.queryParamMap.get('burst') === '1' && this.viableTickets().length > 0) {
+      this.startMorningBurstRound();
     }
     this.wafInterval = setInterval(() => {
       const current = this.wafCooldownRemaining();
@@ -395,16 +407,36 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   }
 
   quickLinkBankAccount(bank: FxBankDeskProfile): void {
+    const targetBalanceVes = Math.max(0, Math.round(this.simulatedCapitalVes()));
+    const existing = selectPrimaryFxBankAccount(
+      bank,
+      this.accountsService.accounts(),
+      this.accountsService.usages(),
+    ).account;
+
+    if (existing) {
+      this.accountsService.setExactAccountBalance(
+        existing.id,
+        targetBalanceVes,
+        'Calibración desde Mesa Cambiaria BCV',
+      );
+      this.toast.success(
+        `Saldo de ${existing.bankName} calibrado a Bs. ${targetBalanceVes.toLocaleString('es-VE')}.`,
+        '🏦 Saldo Bancario Calibrado',
+      );
+      return;
+    }
+
     this.accountsService.addAccount({
       bankName: `${bank.shortName} Mesa Divisas`,
       bankCode: bank.coreBankCode,
       rail: 'TRANSFERENCIA',
       accountNumberMasked: `${bank.abaCode}-***0001`,
       dailyLimitVes: 250000,
-      initialBalanceVes: this.simulatedCapitalVes(),
+      initialBalanceVes: targetBalanceVes,
     });
     this.toast.success(
-      `Cuenta de ${bank.name} vinculada a tu tesorería con Bs. ${this.simulatedCapitalVes().toLocaleString('es-VE')}.`,
+      `Cuenta de ${bank.name} vinculada a tu tesorería con Bs. ${targetBalanceVes.toLocaleString('es-VE')}.`,
       '🏦 Cuenta Vinculada en 1 Clic',
     );
   }

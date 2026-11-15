@@ -1,6 +1,7 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { RouterTestingModule } from '@angular/router/testing';
 import { Dashboard } from './dashboard';
 import { P2P_STORAGE } from '../../core/storage';
@@ -115,9 +116,6 @@ describe('Dashboard', () => {
   });
 
   it('muestra la edad y la procedencia de los datos de Cotizave que alimentan la brecha', () => {
-    // La brecha se deriva de `ratesByMarket()`. Si el panel no dice de cuándo es
-    // ese dato, un número restaurado del disco se lee igual que uno descargado
-    // hace un segundo.
     TestBed.overrideProvider(CotizaveService, {
       useValue: {
         ratesByMarket: signal({
@@ -132,6 +130,7 @@ describe('Dashboard', () => {
         autoRefresh: signal(false),
         circuitBreaker: { getState: () => 'CLOSED', options: {} },
         fetchRates: vi.fn(),
+        refreshIfStale: vi.fn().mockResolvedValue(undefined),
         setApiKey: vi.fn(),
         startAutoRefresh: vi.fn(),
         stopAutoRefresh: vi.fn(),
@@ -147,10 +146,6 @@ describe('Dashboard', () => {
   });
 
   it('no afirma linaje de Cotizave cuando la brecha sale de constantes fijas', () => {
-    // `bcvIntelligence()` cae a `manualBcvRate()`/`manualParallelRate()` (685/815)
-    // cuando no hay MCP ni Cotizave. Rotular ese caso como "Cotizave" mentiría:
-    // el número no salió de Cotizave, y el guard viejo (`@if (cotizaveDataAge())`)
-    // era vacuo porque ese helper devuelve un string para `lastFetched() === null`.
     TestBed.overrideProvider(CotizaveService, {
       useValue: {
         ratesByMarket: signal({}),
@@ -162,6 +157,7 @@ describe('Dashboard', () => {
         autoRefresh: signal(false),
         circuitBreaker: { getState: () => 'CLOSED', options: {} },
         fetchRates: vi.fn(),
+        refreshIfStale: vi.fn().mockResolvedValue(undefined),
         setApiKey: vi.fn(),
         startAutoRefresh: vi.fn(),
         stopAutoRefresh: vi.fn(),
@@ -305,5 +301,190 @@ describe('Dashboard', () => {
     c.confirmLiquidityInjection();
     expect(injectionAudioSpy).toHaveBeenCalled();
   });
-});
 
+  it('filters bank accounts by rail and health state via Specular Glass filter pills', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const total = c.unifiedAccounts().length;
+    expect(total).toBeGreaterThanOrEqual(16);
+    expect(c.filteredAccounts().length).toBe(total);
+
+    c.setBankRailFilter('PAGO_MOVIL');
+    f.detectChanges();
+    expect(c.filteredAccounts().every((a) => a.rail === 'PAGO_MOVIL')).toBe(true);
+    expect(c.filteredAccounts().length).toBe(c.treasuryFilterCounts().pagoMovil);
+
+    c.setBankRailFilter('TRANSFERENCIA');
+    f.detectChanges();
+    expect(c.filteredAccounts().every((a) => a.rail === 'TRANSFERENCIA')).toBe(true);
+    expect(c.filteredAccounts().length).toBe(c.treasuryFilterCounts().transferencia);
+
+    c.setBankRailFilter('ALL');
+    c.setBankHealthFilter('OPTIMAL');
+    f.detectChanges();
+    expect(
+      c.filteredAccounts().every((a) => !a.isOverLimit && !a.isNearLimit && a.status !== 'DISABLED'),
+    ).toBe(true);
+  });
+
+  it('supports in-place daily target editing and computes remaining USDT goal', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.editingDailyTarget()).toBe(false);
+    c.openDailyTargetEditor();
+    expect(c.editingDailyTarget()).toBe(true);
+
+    c.saveDailyTarget(75);
+    f.detectChanges();
+
+    expect(c.editingDailyTarget()).toBe(false);
+    expect(c.dailyTarget()).toBe(75);
+    expect(c.remainingDailyTargetUsdt()).toBeGreaterThan(0);
+  });
+
+  it('computes alphaPulse radar state dynamically based on spread and risk guards', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const pulse = c.alphaPulse();
+    expect(['ALPHA_WINDOW', 'RISK_GUARD', 'STANDBY']).toContain(pulse.state);
+    expect(pulse.headline.length).toBeGreaterThan(0);
+
+    // Simulating a compressed spread below minSpread triggers RISK_GUARD via verdict()
+    c.binanceService.marketDepth.set({
+      asset: 'USDT',
+      fiat: 'VES',
+      buyAds: [],
+      sellAds: [],
+      bestBuyPrice: 800,
+      bestSellPrice: 800.1,
+      spreadVes: 0.1,
+      spreadPct: 0.01,
+      vwapBuy: 800,
+      vwapSell: 800.1,
+      timestamp: new Date().toISOString(),
+    } as any);
+    f.detectChanges();
+    expect(c.alphaPulse().state).toBe('RISK_GUARD');
+  });
+
+  it('curates top 4 priority bank cards in overview mode and expands to all 16 on toggle', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.activeTab()).toBe('all');
+    expect(c.showAllBanksInOverview()).toBe(false);
+    expect(c.displayedAccounts().length).toBe(4);
+
+    c.showAllBanksInOverview.set(true);
+    f.detectChanges();
+    expect(c.displayedAccounts().length).toBe(c.filteredAccounts().length);
+  });
+
+  it('computes live ticket simulation with net profit and multi-bank split detection', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    c.setSimTicket(500);
+    f.detectChanges();
+    const sim = c.simulatedTradeOutcome();
+    expect(sim.ticketUsdt).toBe(500);
+    expect(sim.requiredVes).toBeGreaterThan(0);
+    expect(sim.netProfitUsdt).toBeGreaterThan(0);
+  });
+
+  it('supports modal modes ADD vs CALIBRATE and zero balances reset', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const target = c.unifiedAccounts()[0];
+
+    // Mode CALIBRATE
+    c.selectedInjectionAccountId.set(target.id);
+    c.liquidityModalMode.set('CALIBRATE');
+    c.injectionAmount.set(9500);
+    f.detectChanges();
+
+    expect(c.projectedBalanceAfterInjection()).toBe(9500);
+
+    const setSpy = vi.spyOn(c.accountsService, 'setExactAccountBalance');
+    c.confirmLiquidityInjection();
+    expect(setSpy).toHaveBeenCalledWith(target.id, 9500, expect.any(String));
+
+    // Reset to zero workflow
+    const resetSpy = vi.spyOn(c.accountsService, 'resetAllBalancesToZero');
+    c.openResetConfirmModal();
+    expect(c.showResetConfirmModal()).toBe(true);
+
+    c.confirmResetAllBalancesToZero();
+    expect(resetSpy).toHaveBeenCalled();
+    expect(c.showResetConfirmModal()).toBe(false);
+  });
+
+  it('orders chronologicalWeek oldest-to-newest and scales volume barHeight by volumeUsdt when volume tab is active', () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    seed([
+      op({ id: 'old-buy', timestamp: yesterday, type: 'buy', vesAmount: 8000, usdtAmount: 100 }),
+      op({ id: 'today-buy', type: 'buy', vesAmount: 800, usdtAmount: 10 }),
+      op({ id: 'today-sell', type: 'sell', vesAmount: 2400, usdtAmount: 10 }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    const chrono = c.chronologicalWeek();
+    expect(chrono.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < chrono.length; i++) {
+      expect(chrono[i].date >= chrono[i - 1].date).toBe(true);
+    }
+
+    c.selectedChartTab.set('volume');
+    const maxVolDay = chrono.find((d) => d.volumeUsdt === c.weekVolumeMax())!;
+    const minVolDay = chrono.find((d) => d.volumeUsdt === 0) ?? chrono[0];
+    expect(c.barHeight(maxVolDay)).toBe(100);
+    expect(c.barHeight(minVolDay)).toBeLessThan(c.barHeight(maxVolDay));
+  });
+
+  it('forwards simulated ticket amount as autoFillAmount when quickOperate is called with amountUsdt', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+    const router = TestBed.inject(Router);
+    const navSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    c.setSimTicket(500);
+    c.quickOperate('Banesco', undefined, 500);
+
+    expect(navSpy).toHaveBeenCalledWith(
+      ['/log'],
+      expect.objectContaining({
+        queryParams: expect.objectContaining({
+          autoFillBank: 'Banesco',
+          autoFillAmount: '500',
+        }),
+      }),
+    );
+  });
+
+  it('computes fxDeskSummary for the 14-bank Mesa Cambiaria BCV strip and supports burst navigation', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+    const router = TestBed.inject(Router);
+    const navSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    expect(c.fxDeskSummary().totalBanks).toBe(14);
+    expect(f.nativeElement.textContent).toContain('MESA CAMBIARIA BCV');
+
+    c.goToMesaBcv(true);
+    expect(navSpy).toHaveBeenCalledWith(['/mesa-bcv'], { queryParams: { burst: '1' } });
+  });
+});

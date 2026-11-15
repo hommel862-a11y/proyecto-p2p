@@ -1,4 +1,18 @@
 <div class="fx-desk-shell">
+  <!-- BARRA DE NAVEGACIÓN RÁPIDA Y RESUMEN DIARIO -->
+  <nav class="fx-quick-nav-bar" aria-label="Navegación rápida desde Mesa Cambiaria BCV">
+    <div class="fx-quick-nav-links">
+      <a routerLink="/dashboard" class="fx-nav-pill">← Centro de Control</a>
+      <a routerLink="/spread" class="fx-nav-pill">📊 Monitor Spread</a>
+      <a routerLink="/log" class="fx-nav-pill">📑 Libro FIFO</a>
+    </div>
+    <div class="fx-daily-settled-pill font-mono" title="Total comprado hoy mediante Mesa Cambiaria BCV">
+      <span>✓ Pactado Hoy en Banca:</span>
+      <strong>${{ totalSettledToday().totalUsd | number: '1.2-2' }} USD</strong>
+      <small>({{ totalSettledToday().opsCount }} ops)</small>
+    </div>
+  </nav>
+
   <!-- ZONA 1: CINTA DE PULSO MACRO & CONTROL DE TELEGRAM -->
   <header class="fx-hero-banner">
     <div class="hero-left">
@@ -232,6 +246,8 @@
         <button
           type="button"
           class="filter-pill"
+          role="tab"
+          [attr.aria-selected]="sectorFilter() === 'ALL'"
           [class.active]="sectorFilter() === 'ALL'"
           (click)="setSectorFilter('ALL')"
         >
@@ -240,6 +256,8 @@
         <button
           type="button"
           class="filter-pill"
+          role="tab"
+          [attr.aria-selected]="sectorFilter() === 'ESTADO'"
           [class.active]="sectorFilter() === 'ESTADO'"
           (click)="setSectorFilter('ESTADO')"
         >
@@ -248,6 +266,8 @@
         <button
           type="button"
           class="filter-pill"
+          role="tab"
+          [attr.aria-selected]="sectorFilter() === 'PRIVADO'"
           [class.active]="sectorFilter() === 'PRIVADO'"
           (click)="setSectorFilter('PRIVADO')"
         >
@@ -256,6 +276,8 @@
         <button
           type="button"
           class="filter-pill"
+          role="tab"
+          [attr.aria-selected]="sectorFilter() === 'VIABLE'"
           [class.active]="sectorFilter() === 'VIABLE'"
           (click)="setSectorFilter('VIABLE')"
         >

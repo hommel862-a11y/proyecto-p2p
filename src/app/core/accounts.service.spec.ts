@@ -240,5 +240,38 @@ describe('AccountsService (Desktop SQLite Bridge & LocalStorage Fallback)', () =
       expect(() => service.injectLiquidity('non-existent-id', 5000)).toThrow('no encontrada');
     });
   });
+
+  describe('setExactAccountBalance & resetAllBalancesToZero', () => {
+    it('sets the exact account balance and audits change', () => {
+      const target = service.accounts()[0];
+      const updated = service.setExactAccountBalance(target.id, 12500.5, 'Reconciliación con banca en línea');
+
+      expect(updated.initialBalanceVes).toBe(12500.5);
+      expect(service.accounts().find((a) => a.id === target.id)?.initialBalanceVes).toBe(12500.5);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        'CONFIG_CHANGE',
+        expect.stringContaining('Calibración de saldo real: 12500.5 VES'),
+        expect.any(Object),
+        'info',
+      );
+    });
+
+    it('rejects negative or invalid exact balance amounts', () => {
+      const target = service.accounts()[0];
+      expect(() => service.setExactAccountBalance(target.id, -10)).toThrow('Saldo de calibración inválido');
+      expect(() => service.setExactAccountBalance(target.id, Number.NaN)).toThrow('Saldo de calibración inválido');
+    });
+
+    it('resets all account initial balances to zero cleanly', () => {
+      service.resetAllBalancesToZero();
+      expect(service.accounts().every((a) => a.initialBalanceVes === 0)).toBe(true);
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        'CONFIG_CHANGE',
+        expect.stringContaining('Puesta a cero de saldos de tesorería'),
+        expect.any(Object),
+        'warn',
+      );
+    });
+  });
 });
 

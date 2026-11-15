@@ -1,18 +1,27 @@
-<section class="apple-desk-panel">
+<section class="apple-desk-panel specular-glass-workspace">
+  <!-- Refractive Spatial Aurora Canvas (Makes Specular Liquid Glass refract real living light) -->
+  <div class="spatial-aurora-canvas" aria-hidden="true">
+    <div class="aurora-bloom bloom-gold"></div>
+    <div class="aurora-bloom bloom-emerald"></div>
+    <div class="aurora-bloom bloom-azure"></div>
+  </div>
+
   <!-- ═══════════════════════════════════════════════════
-       1. Apple Pro Main Header & Dynamic Island
+       1. Apple Pro Main Header & Dynamic Island (Specular Glass Tier 1)
        ═══════════════════════════════════════════════════ -->
-  <header class="apple-main-header">
+  <header class="apple-main-header glass-tier-1">
     <div class="apple-title-group">
       <div class="apple-title-badge-row">
         <h2 class="apple-desk-title">Centro de Control</h2>
-        <span class="apple-pro-badge">Apple Pro Edition</span>
+        <span class="apple-pro-badge">Spatial Glass v5.0</span>
       </div>
-      <p class="apple-desk-subtitle">Terminal ejecutivo de tesorería, enjambre de agentes y arbitraje institucional P2P</p>
+      <p class="apple-desk-subtitle">
+        Terminal ejecutivo de tesorería, enjambre de agentes y arbitraje institucional P2P
+      </p>
     </div>
 
     <!-- Dynamic Island Workshift Widget -->
-    <div class="apple-dynamic-island" [class.island-active]="activeSessionSummary() !== null">
+    <div class="apple-dynamic-island glass-tier-3" [class.island-active]="activeSessionSummary() !== null">
       @if (activeSessionSummary(); as sess) {
         <div class="island-left">
           <span class="island-pulse-dot"></span>
@@ -34,12 +43,17 @@
             </div>
           </div>
         </div>
-        <div class="island-telemetry"
-             [class.status-optimal]="telemetry().overallStatus === 'optimal'"
-             [class.status-moderate]="telemetry().overallStatus === 'moderate'"
-             [class.status-degraded]="telemetry().overallStatus === 'degraded'"
-             (click)="refreshTelemetry()"
-             title="Telemetría en tiempo real (Click para refrescar)">
+        <div
+          class="island-telemetry"
+          [class.status-optimal]="telemetry().overallStatus === 'optimal'"
+          [class.status-moderate]="telemetry().overallStatus === 'moderate'"
+          [class.status-degraded]="telemetry().overallStatus === 'degraded'"
+          (click)="refreshTelemetry()"
+          (keydown.enter)="refreshTelemetry()"
+          role="button"
+          tabindex="0"
+          title="Telemetría en tiempo real (Click para refrescar)"
+        >
           <span class="telemetry-status-dot"></span>
           <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>
           <span class="telemetry-sep">·</span>
@@ -61,16 +75,21 @@
               <span class="apple-pill-mini muted">En Espera</span>
             </div>
             <div class="island-metrics text-muted">
-              <span>Registra tu sesión de hoy para medir rotación y disciplina de trading</span>
+              <span>Iniciá tu sesión blindada para medir rotación y disciplina operativa</span>
             </div>
           </div>
         </div>
-        <div class="island-telemetry"
-             [class.status-optimal]="telemetry().overallStatus === 'optimal'"
-             [class.status-moderate]="telemetry().overallStatus === 'moderate'"
-             [class.status-degraded]="telemetry().overallStatus === 'degraded'"
-             (click)="refreshTelemetry()"
-             title="Telemetría en tiempo real (Click para refrescar)">
+        <div
+          class="island-telemetry"
+          [class.status-optimal]="telemetry().overallStatus === 'optimal'"
+          [class.status-moderate]="telemetry().overallStatus === 'moderate'"
+          [class.status-degraded]="telemetry().overallStatus === 'degraded'"
+          (click)="refreshTelemetry()"
+          (keydown.enter)="refreshTelemetry()"
+          role="button"
+          tabindex="0"
+          title="Telemetría en tiempo real (Click para refrescar)"
+        >
           <span class="telemetry-status-dot"></span>
           <span class="telemetry-item font-mono">IPC <strong>{{ telemetry().ipcMs }}ms</strong></span>
           <span class="telemetry-sep">·</span>
@@ -88,92 +107,141 @@
   </header>
 
   <!-- ═══════════════════════════════════════════════════
-       1.5. HUD de Ejecución Rápida & Radar Operativo
+       2. Sticky Specular Glass Command Dock (Alpha Pulse + Navigation)
        ═══════════════════════════════════════════════════ -->
-  <div class="apple-hud-bar">
-    <div class="hud-left">
-      <div class="hud-chip live" (click)="goToSpread()" role="button" tabindex="0" title="Ver profundidad L2 en tiempo real">
-        <span class="hud-dot live"></span>
-        <span class="font-mono font-bold">L2 Spread: {{ binanceService.marketDepth()?.spreadPct ?? 0 }}%</span>
-        <span class="hud-sub font-mono">({{ binanceService.marketDepth()?.spreadVes ?? 0 | num }} Bs)</span>
+  <div class="glass-command-dock glass-tier-3">
+    <!-- Top Row: Alpha Pulse Radar & Tactical Execution Shortcuts -->
+    <div
+      class="alpha-pulse-ribbon"
+      [class.pulse-alpha]="alphaPulse().state === 'ALPHA_WINDOW'"
+      [class.pulse-risk]="alphaPulse().state === 'RISK_GUARD'"
+    >
+      <div class="pulse-left">
+        <button
+          type="button"
+          class="hud-chip live"
+          [class.chip-optimal]="alphaPulse().state === 'ALPHA_WINDOW'"
+          [class.chip-danger]="alphaPulse().state === 'RISK_GUARD'"
+          (click)="goToSpread()"
+          title="Abrir Monitor de Spread L2 en tiempo real"
+        >
+          <span class="hud-dot live"></span>
+          <span class="font-mono font-bold">{{ alphaPulse().badgeLabel }}</span>
+          <span class="hud-sub font-mono">
+            ({{ binanceService.marketDepth()?.spreadPct ?? 0 }}% · {{ binanceService.marketDepth()?.spreadVes ?? 0 | num }} Bs)
+          </span>
+        </button>
+
+        <div class="pulse-headline-box">
+          <strong class="pulse-headline">{{ alphaPulse().headline }}</strong>
+          <span class="pulse-subheadline">{{ alphaPulse().subheadline }}</span>
+        </div>
       </div>
-      @if (rotationRecommendation(); as rec) {
-        <div class="hud-chip account" (click)="quickOperate(rec.bankName)" role="button" tabindex="0" title="Cuenta recomendada para rotar">
-          <span>🏛️ Sugerida: <strong>{{ rec.bankName }}</strong></span>
-          <span class="apple-pill-mini recommended">Rotar</span>
+
+      <div class="pulse-right">
+        @if (rotationRecommendation(); as rec) {
+          <button
+            type="button"
+            class="hud-chip account"
+            (click)="quickOperate(rec.bankName)"
+            title="Operar de inmediato con la cuenta de mayor holgura SUDEBAN"
+          >
+            <span>🏛️ Rotar: <strong>{{ rec.bankName }}</strong></span>
+            <span class="apple-pill-mini recommended">1-Click</span>
+          </button>
+        }
+
+        <button
+          type="button"
+          class="hud-chip bcv-desk-chip"
+          [class.window-open]="alphaPulse().isBcvWindowActive"
+          (click)="goToMesaBcv()"
+          title="Ir a la Mesa Cambiaria BCV (14 Bancos)"
+        >
+          <span>🏦 Mesa BCV</span>
+          <span class="apple-pill-mini" [class.live]="alphaPulse().isBcvWindowActive" [class.muted]="!alphaPulse().isBcvWindowActive">
+            {{ alphaPulse().isBcvWindowActive ? 'Abierta' : '14 Bancos' }}
+          </span>
+        </button>
+
+        <div class="hud-action-group">
+          <button type="button" class="apple-pill-btn apple-btn-primary" (click)="quickOperate()">
+            ⚡ Operar Ahora
+          </button>
+          <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="openLiquidityModal()">
+            💧 Inyectar Saldo
+          </button>
         </div>
-      }
-      @if (orderBookImbalance(); as obi) {
-        <div class="hud-chip obi" [title]="obi.makerSellPriceGuidance">
-          <span>⚖️ Presión: <strong>{{ obi.pressureLabel }}</strong></span>
-        </div>
-      }
+      </div>
     </div>
-    <div class="hud-right">
-      <button type="button" class="apple-pill-btn apple-btn-gold" (click)="quickOperate()">
-        ⚡ Operar Ahora
+
+    <!-- Bottom Row: Segmented View Filter Bar -->
+    <nav class="apple-segmented-bar" aria-label="Filtro de módulos del Centro de Control">
+      <button
+        type="button"
+        class="apple-segmented-tab"
+        [class.active]="activeTab() === 'all'"
+        (click)="activeTab.set('all')"
+      >
+        <span class="tab-icon">🌐</span>
+        <span>Vista General</span>
       </button>
-      <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="openLiquidityModal()">
-        💧 Inyectar Saldo
+      <button
+        type="button"
+        class="apple-segmented-tab"
+        [class.active]="activeTab() === 'treasury'"
+        (click)="activeTab.set('treasury')"
+      >
+        <span class="tab-icon">🏛️</span>
+        <span>Tesorería &amp; Bancos</span>
+        <span class="tab-count">{{ unifiedAccounts().length }}</span>
       </button>
-    </div>
+      <button
+        type="button"
+        class="apple-segmented-tab"
+        [class.active]="activeTab() === 'agents'"
+        (click)="activeTab.set('agents')"
+      >
+        <span class="tab-icon">🤖</span>
+        <span>Agentes &amp; Riesgo</span>
+        <span class="tab-count">4</span>
+      </button>
+      <button
+        type="button"
+        class="apple-segmented-tab"
+        [class.active]="activeTab() === 'performance'"
+        (click)="activeTab.set('performance')"
+      >
+        <span class="tab-icon">📈</span>
+        <span>Desempeño Semanal</span>
+      </button>
+    </nav>
   </div>
 
   <!-- ═══════════════════════════════════════════════════
-       2. Apple Segmented Filter Bar
-       ═══════════════════════════════════════════════════ -->
-  <nav class="apple-segmented-bar" aria-label="Filtro de módulos del Centro de Control">
-    <button
-      type="button"
-      class="apple-segmented-tab"
-      [class.active]="activeTab() === 'all'"
-      (click)="activeTab.set('all')"
-    >
-      <span class="tab-icon">🌐</span>
-      <span>Vista General</span>
-    </button>
-    <button
-      type="button"
-      class="apple-segmented-tab"
-      [class.active]="activeTab() === 'treasury'"
-      (click)="activeTab.set('treasury')"
-    >
-      <span class="tab-icon">🏛️</span>
-      <span>Tesorería & Bancos</span>
-      <span class="tab-count">{{ unifiedAccounts().length }}</span>
-    </button>
-    <button
-      type="button"
-      class="apple-segmented-tab"
-      [class.active]="activeTab() === 'agents'"
-      (click)="activeTab.set('agents')"
-    >
-      <span class="tab-icon">🤖</span>
-      <span>Agentes & Riesgo</span>
-      <span class="tab-count">4</span>
-    </button>
-    <button
-      type="button"
-      class="apple-segmented-tab"
-      [class.active]="activeTab() === 'performance'"
-      (click)="activeTab.set('performance')"
-    >
-      <span class="tab-icon">📈</span>
-      <span>Desempeño Semanal</span>
-    </button>
-  </nav>
-
-  <!-- ═══════════════════════════════════════════════════
-       3. Apple Bento KPI Cards — Today's Performance
+       3. Specular Glass Bento KPI Strip — Today's Performance
        ═══════════════════════════════════════════════════ -->
   @if (activeTab() === 'all' || activeTab() === 'performance') {
     <section class="apple-bento-kpi-grid">
-      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+      <!-- KPI 1: Ganancia Neta VES -->
+      <div
+        class="apple-kpi-card glass-tier-2"
+        [class.kpi-glow-accent]="dashboard().today.pnlVes > 0"
+        [class.kpi-glow-danger]="dashboard().today.pnlVes < 0"
+        (click)="goToStats()"
+        role="button"
+        tabindex="0"
+        (keydown.enter)="goToStats()"
+      >
         <div class="apple-kpi-header">
           <span class="apple-kpi-title">Ganancia Neta (VES)</span>
           <span class="apple-kpi-icon">🇻🇪</span>
         </div>
-        <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlVes > 0" [class.negative]="dashboard().today.pnlVes < 0">
+        <div
+          class="apple-kpi-val font-mono"
+          [class.positive]="dashboard().today.pnlVes > 0"
+          [class.negative]="dashboard().today.pnlVes < 0"
+        >
           <app-animated-counter [value]="dashboard().today.pnlVes" suffix="VES" />
         </div>
         <div class="apple-kpi-footer">
@@ -182,12 +250,25 @@
         </div>
       </div>
 
-      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+      <!-- KPI 2: Ganancia Neta USDT -->
+      <div
+        class="apple-kpi-card glass-tier-2"
+        [class.kpi-glow-accent]="dashboard().today.pnlUsdt > 0"
+        [class.kpi-glow-danger]="dashboard().today.pnlUsdt < 0"
+        (click)="goToStats()"
+        role="button"
+        tabindex="0"
+        (keydown.enter)="goToStats()"
+      >
         <div class="apple-kpi-header">
           <span class="apple-kpi-title">Ganancia Neta (USDT)</span>
           <span class="apple-kpi-icon">₮</span>
         </div>
-        <div class="apple-kpi-val font-mono" [class.positive]="dashboard().today.pnlUsdt > 0" [class.negative]="dashboard().today.pnlUsdt < 0">
+        <div
+          class="apple-kpi-val font-mono"
+          [class.positive]="dashboard().today.pnlUsdt > 0"
+          [class.negative]="dashboard().today.pnlUsdt < 0"
+        >
           <app-animated-counter [value]="dashboard().today.pnlUsdt" prefix="₮ " [decimals]="2" />
         </div>
         <div class="apple-kpi-footer">
@@ -196,304 +277,559 @@
         </div>
       </div>
 
-      <div class="apple-kpi-card" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
+      <!-- KPI 3: Operaciones Hoy & Racha -->
+      <div
+        class="apple-kpi-card glass-tier-2"
+        (click)="goToLog()"
+        role="button"
+        tabindex="0"
+        (keydown.enter)="goToLog()"
+      >
         <div class="apple-kpi-header">
           <span class="apple-kpi-title">Operaciones Hoy</span>
-          <span class="apple-kpi-icon">⚡</span>
+          <span class="apple-pill-mini" [class.live]="dashboard().today.zeroErrorStreak > 0">
+            🛡️ Racha {{ dashboard().today.zeroErrorStreak }}
+          </span>
         </div>
         <div class="apple-kpi-val font-mono">
           {{ dashboard().today.operations }} <span class="apple-kpi-unit">órdenes</span>
         </div>
         <div class="apple-kpi-footer">
-          <span class="apple-pill-mini" [class.live]="dashboard().today.zeroErrorStreak > 0">
-            🛡️ {{ dashboard().today.zeroErrorStreak }} sin incidentes
+          <span class="apple-kpi-subtext font-mono">
+            Exposición: {{ fmtUsd(dashboard().today.exposure) }}
           </span>
           <span class="apple-kpi-link">Libro →</span>
         </div>
       </div>
 
-      <div class="apple-kpi-card apple-card-progress" (click)="goToIncome()" role="button" tabindex="0" (keydown.enter)="goToIncome()">
+      <!-- KPI 4: Meta Diaria Interactiva In-Place -->
+      <div
+        class="apple-kpi-card apple-card-progress glass-tier-2 kpi-glow-gold"
+        (click)="!editingDailyTarget() && goToIncome()"
+        role="button"
+        tabindex="0"
+        (keydown.enter)="!editingDailyTarget() && goToIncome()"
+      >
         <div class="apple-kpi-header">
           <span class="apple-kpi-title">
             {{ activeDailyGoalPlan() ? '📌 Meta Diaria Fijada' : 'Meta Diaria de Ingresos' }}
           </span>
-          <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
-        </div>
-        @if (dailyDrawdownPct() > 0) {
-          <div class="apple-kpi-val font-mono" style="color: #ef4444;">
-            -{{ (dashboard().today.pnlUsdt * -1) | num }} USDT ({{ dailyDrawdownPct() }}% DD)
-          </div>
-          <div class="apple-track-bar">
-            <div class="apple-track-fill fill-danger" [style.width.%]="dailyDrawdownPct()"></div>
-          </div>
-        } @else {
-          <div class="apple-kpi-val font-mono" style="color: var(--gold-strong);">
-            {{ dailyProgress() }}%
-          </div>
-          <div class="apple-track-bar">
-            <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
-          </div>
-        }
-        <div class="apple-kpi-footer">
-          @if (activeDailyGoalPlan(); as plan) {
-            <span class="apple-kpi-subtext font-mono">
-              {{ plan.desiredCyclesPerDay }} vueltas @ {{ plan.requiredSellPriceVes | num }} Bs
-            </span>
-          } @else if (dailyDrawdownPct() > 0) {
-            <span class="apple-kpi-subtext" style="color: #fca5a5;">Drawdown activo vs límite diario</span>
-          } @else {
-            <span class="apple-kpi-subtext">Avance hacia el objetivo</span>
-          }
-          <span class="apple-kpi-link">Calculadora →</span>
-        </div>
-      </div>
-    </section>
-
-  }
-
-  <div class="quantum-bento-grid" style="margin-bottom: 18px;">
-    @if (activeTab() === 'all' || activeTab() === 'treasury') {
-      <!-- ═══════════════════════════════════════════════════
-           3.2. Cockpit de Inventario Abierto, Microestructura (OBI) & Yield
-           ═══════════════════════════════════════════════════ -->
-      <section
-        class="apple-card-section institutional-cockpit-section"
-        [class.bento-span-7]="activeTab() === 'all'"
-        [class.bento-span-12]="activeTab() !== 'all'"
-        style="margin-bottom: 0;"
-      >
-        <div class="apple-section-header">
-          <div class="apple-section-title-wrap">
-            <span class="apple-section-icon">💎</span>
-            <div>
-              <h3 class="apple-section-title">Posición de Inventario FIFO, Microestructura & Yield</h3>
-              <p class="apple-section-subtitle">Valoración Mark-to-Market en tiempo real, desbalance del libro L2 y optimización de capital ocioso</p>
-            </div>
-          </div>
-          <div class="apple-section-actions">
-            <span class="apple-pill-mini font-mono" [class.live]="markToMarketPnL().unrealizedPnlVes >= 0" [class.badge-danger]="markToMarketPnL().unrealizedPnlVes < 0">
-              PnL Flotante: {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
-            </span>
-          </div>
-        </div>
-
-        <div class="cockpit-three-grid">
-          <!-- Tile 1: Inventario Abierto & Mark-to-Market -->
-          <div class="apple-kpi-card cockpit-tile">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Stock Abierto & Costo VWAP</span>
-              <span class="apple-pill-mini gold font-mono">{{ markToMarketPnL().openUsdt | num }} USDT</span>
-            </div>
-            <div class="cockpit-metric-row">
-              <div>
-                <span class="cockpit-label">Costo Promedio (VWAP)</span>
-                <span class="cockpit-val font-mono">{{ markToMarketPnL().avgCostPriceVes | num }} Bs</span>
-              </div>
-              <div class="text-right">
-                <span class="cockpit-label">Salida Mercado (Best Ask)</span>
-                <span class="cockpit-val font-mono" style="color: var(--accent);">{{ markToMarketPnL().bestExitPriceVes | num }} Bs</span>
-              </div>
-            </div>
-            <div class="cockpit-valuation-box" [class.positive]="markToMarketPnL().unrealizedPnlVes >= 0" [class.negative]="markToMarketPnL().unrealizedPnlVes < 0">
-              <span>PnL no realizado (flotante):</span>
-              <strong class="font-mono">
-                {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
-                ({{ markToMarketPnL().unrealizedPnlUsdt >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlUsdt | num }} USDT)
-              </strong>
-            </div>
-            <div class="apple-kpi-footer">
-              <span class="apple-kpi-subtext">Valoración viva contra profundidad Binance L2</span>
-            </div>
-          </div>
-
-          <!-- Tile 2: Order Book Imbalance (OBI) -->
-          <div class="apple-kpi-card cockpit-tile">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Microestructura del Libro (OBI)</span>
-              <span class="apple-pill-mini" [class.live]="(orderBookImbalance()?.gaugePercent ?? 50) >= 50" [class.badge-warning]="(orderBookImbalance()?.gaugePercent ?? 50) < 50">
-                {{ orderBookImbalance()?.classification || 'EQUILIBRADO' }}
-              </span>
-            </div>
-            <div class="obi-gauge-wrap">
-              <div class="obi-track-bar">
-                <div class="obi-track-fill" [style.width.%]="orderBookImbalance()?.gaugePercent ?? 50"></div>
-              </div>
-              <div class="obi-labels font-mono">
-                <span>Venta ({{ orderBookImbalance()?.sellVolumeUsdt ?? 0 | num }} ₮)</span>
-                <span>Compra ({{ orderBookImbalance()?.buyVolumeUsdt ?? 0 | num }} ₮)</span>
-              </div>
-            </div>
-            <div class="obi-guidance-box">
-              <span class="guidance-text">💡 {{ orderBookImbalance()?.makerSellPriceGuidance || 'Colocar anuncios dentro del spread óptimo.' }}</span>
-            </div>
-            <div class="apple-kpi-footer">
-              <span class="apple-kpi-subtext">Desbalance: {{ orderBookImbalance()?.obiPercentage ?? 0 }}% presión</span>
-            </div>
-          </div>
-
-          <!-- Tile 3: Radar de Divergencia & Yield Pasivo -->
-          <div class="apple-kpi-card cockpit-tile">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Radar de Divergencia & Yield</span>
-              @if (rateDivergence(); as div) {
-                <span class="apple-pill-mini" [class.live]="div.signal === 'BUY_WINDOW'" [class.badge-warning]="div.signal === 'SELL_WINDOW'" [class.muted]="div.signal === 'NEUTRAL'">
-                  {{ div.signal }}
-                </span>
-              }
-            </div>
-            <div class="divergence-info-box">
-              <div class="div-row font-mono">
-                <span class="text-muted">Gap P2P vs Paralelo:</span>
-                <strong [class.positive]="(rateDivergence()?.gapPct ?? 0) >= 0" [class.negative]="(rateDivergence()?.gapPct ?? 0) < 0">
-                  {{ rateDivergence()?.gapPct ?? 0 }}% ({{ rateDivergence()?.gapVes ?? 0 | num }} Bs)
-                </strong>
-              </div>
-              <div class="div-row font-mono">
-                <span class="text-muted">Inercia Paralelo:</span>
-                <span>{{ rateDivergence()?.rateMomentumPct ?? 0 }}% momentum</span>
-              </div>
-            </div>
-            @if (smartTreasuryYield(); as yld) {
-              <div class="yield-sweep-box">
-                <div class="yield-header">
-                  <span>🏦 Rendimiento Pasivo ({{ yld.flexibleApyPct }}% APY)</span>
-                </div>
-                <p class="yield-detail font-mono">
-                  Barrer {{ yld.recommendedSweepAmountUsd | num }} USDT &rarr; Proyección: +${{ yld.projectedMonthlyInterestUsd | num }}/mes
-                </p>
-              </div>
-            }
-            <div class="apple-kpi-footer">
-              <span class="apple-kpi-subtext">Protección contra rezago cambiario y costo de oportunidad</span>
-            </div>
-          </div>
-        </div>
-      </section>
-    }
-
-    <!-- ═══════════════════════════════════════════════════
-         3.5. Auditoría Forense & Disciplina Operativa (Skill #44)
-         ═══════════════════════════════════════════════════ -->
-    @if (activeTab() === 'all' || activeTab() === 'treasury') {
-      <section
-        class="apple-card-section forensic-audit-section"
-        [class.bento-span-5]="activeTab() === 'all'"
-        [class.bento-span-12]="activeTab() !== 'all'"
-        style="margin-bottom: 0;"
-      >
-        <div class="apple-section-header">
-          <div class="apple-section-title-wrap">
-            <span class="apple-section-icon">🔍</span>
-            <div>
-              <h3 class="apple-section-title">Auditoría Forense & Disciplina Operativa (Skill #44)</h3>
-              <p class="apple-section-subtitle">Evaluación de la Regla de Oro (&ge; 0.50%), detección de rachas de tilt y ventana horaria de congestión bancaria</p>
-            </div>
-          </div>
-
-          <div class="apple-section-actions">
-            <button type="button" class="apple-pill-btn apple-btn-primary" (click)="goToForensicCopilot()" title="Preguntar al Copiloto sobre tu disciplina y horarios">
-              🧠 Consultar al Copiloto →
+          <div class="kpi-target-actions" (click)="$event.stopPropagation()">
+            <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
+            <button
+              type="button"
+              class="btn-inline-edit-target"
+              (click)="openDailyTargetEditor($event)"
+              title="Ajustar meta diaria en USDT directamente desde aquí"
+            >
+              ✏️
             </button>
           </div>
         </div>
 
-        <div class="forensic-grid">
-          <!-- Card 1: Dictamen de Disciplina -->
-          <div class="apple-kpi-card" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Disciplina del Operador</span>
-              <span class="apple-kpi-icon">⚖️</span>
-            </div>
-            <div class="apple-kpi-val font-mono" style="font-size: 19px;">
-              @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
-                <span style="color: var(--text-dim);">⚪ Sin calificar</span>
-              } @else if (forensicDossier().operatorStanding === 'DISCIPLINED') {
-                <span style="color: var(--accent);">🟢 Disciplinado</span>
-              } @else if (forensicDossier().operatorStanding === 'MODERATE_DEVIATION') {
-                <span style="color: var(--warn);">🟡 Desvío Moderado</span>
-              } @else {
-                <span style="color: var(--danger);">🔴 Alerta de Tilt</span>
+        @if (editingDailyTarget()) {
+          <div class="inline-target-editor" (click)="$event.stopPropagation()">
+            <div class="preset-chips-row">
+              @for (preset of dailyTargetPresets; track preset) {
+                <button
+                  type="button"
+                  class="preset-chip font-mono"
+                  [class.active]="dailyTarget() === preset"
+                  (click)="saveDailyTarget(preset, $event)"
+                >
+                  ${{ preset }}
+                </button>
               }
             </div>
-            <div class="apple-kpi-footer">
-              <span class="apple-kpi-subtext">
-                @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
-                  Sin operaciones registradas
-                } @else if (forensicDiscipline().tiltDetected) {
-                  ⚠️ Racha de operaciones sub-óptimas
-                } @else {
-                  Márgenes respetados rigurosamente
-                }
-              </span>
-              <span class="apple-kpi-link">Copiloto →</span>
+            <div class="custom-target-input-row">
+              <input
+                type="number"
+                min="1"
+                step="5"
+                class="target-mini-input font-mono"
+                [ngModel]="dailyTargetDraft()"
+                (ngModelChange)="dailyTargetDraft.set(+$event)"
+                (keydown.enter)="saveDailyTarget(undefined, $event)"
+                aria-label="Nueva meta diaria en USDT"
+              />
+              <button
+                type="button"
+                class="apple-pill-btn apple-btn-primary btn-micro"
+                (click)="saveDailyTarget(undefined, $event)"
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                class="apple-pill-btn apple-btn-secondary btn-micro"
+                (click)="cancelDailyTargetEditor($event)"
+              >
+                ✕
+              </button>
             </div>
           </div>
-
-          <!-- Card 2: Cumplimiento Regla de Oro -->
-          <div class="apple-kpi-card apple-card-progress" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Regla de Oro (&ge; 0.50%)</span>
-              <span class="apple-pill-mini gold font-mono">
-                @if (forensicDiscipline().complianceRatePct === null) {
-                  N/D
-                } @else {
-                  {{ forensicDiscipline().complianceRatePct | number:'1.1-1' }}%
-                }
-              </span>
-            </div>
-            <div class="apple-kpi-val font-mono" style="color: var(--gold-strong); font-size: 19px;">
-              {{ forensicDiscipline().averageSpreadPct | number:'1.2-2' }}% <span class="apple-kpi-unit">spread prom.</span>
+        } @else {
+          @if (dailyDrawdownPct() > 0) {
+            <div class="apple-kpi-val font-mono negative">
+              -{{ (dashboard().today.pnlUsdt * -1) | num }} USDT ({{ dailyDrawdownPct() }}% DD)
             </div>
             <div class="apple-track-bar">
-              <div class="apple-track-fill" [style.width.%]="forensicDiscipline().complianceRatePct ?? 0"></div>
+              <div class="apple-track-fill fill-danger" [style.width.%]="dailyDrawdownPct()"></div>
             </div>
-            <div class="apple-kpi-footer">
-              <span class="apple-kpi-subtext">
-                {{ forensicDiscipline().compliantOperationsCount }} de {{ forensicDiscipline().totalOperationsAnalyzed }} órdenes conformes
-              </span>
-            </div>
-          </div>
-
-          <!-- Card 3: Ventana Horaria de Mayor Riesgo -->
-          <div class="apple-kpi-card" (click)="goToForensicCopilot()" role="button" tabindex="0" (keydown.enter)="goToForensicCopilot()">
-            <div class="apple-kpi-header">
-              <span class="apple-kpi-title">Ventana Horaria Crítica</span>
-              <span class="apple-kpi-icon">⏱️</span>
-            </div>
-            <div class="apple-kpi-val font-mono" style="font-size: 19px;">
-              @if (forensicRiskAnalysis().peakRiskScore > 0) {
-                <span style="color: var(--gold-strong);">{{ forensicRiskAnalysis().peakRiskWindow }}</span>
-              } @else {
-                <span style="color: var(--accent);">0 Alertas</span>
-              }
-            </div>
-            <div class="apple-kpi-footer">
-              <span class="apple-pill-mini" [class.danger]="isPeakRiskHourNow()" [class.live]="!isPeakRiskHourNow()">
-                @if (isPeakRiskHourNow()) {
-                  ⚠️ Hora Actual en Pico de Riesgo
+          } @else {
+            <div class="kpi-progress-value-row">
+              <div class="apple-kpi-val font-mono gold-text">
+                {{ dailyProgress() }}%
+              </div>
+              <span class="kpi-remaining-tag font-mono">
+                @if (remainingDailyTargetUsdt() > 0) {
+                  Faltan {{ remainingDailyTargetUsdt() | num }} ₮
                 } @else {
-                  🟢 Horario Fuera de Congestión
+                  🏆 ¡Meta Lograda!
                 }
               </span>
-              <span class="apple-kpi-link">Detalles →</span>
             </div>
+            <div class="apple-track-bar">
+              <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
+            </div>
+          }
+          <div class="apple-kpi-footer">
+            @if (activeDailyGoalPlan(); as plan) {
+              <span class="apple-kpi-subtext font-mono">
+                {{ plan.desiredCyclesPerDay }} vueltas @ {{ plan.requiredSellPriceVes | num }} Bs
+              </span>
+            } @else if (dailyDrawdownPct() > 0) {
+              <span class="apple-kpi-subtext negative">Drawdown activo vs límite diario</span>
+            } @else {
+              <span class="apple-kpi-subtext">Avance hacia el objetivo diario</span>
+            }
+            <span class="apple-kpi-link">Calculadora →</span>
           </div>
+        }
+      </div>
+    </section>
+
+    <!-- 3B. Interactive One-Tap Arbitrage & Ticket Simulator (Client Engagement Loop) -->
+    @if (simulatedTradeOutcome(); as sim) {
+      <section class="spatial-simulator-ribbon glass-tier-2" aria-label="Simulador rápido de ticket y retorno neto">
+        <div class="sim-left">
+          <div class="sim-title-block">
+            <span class="sim-eyebrow">⚡ SIMULADOR TÁCTICO EN VIVO</span>
+            <strong class="sim-headline">Proyección Instantánea de Arbitraje</strong>
+          </div>
+          <div class="sim-preset-pills" role="group" aria-label="Seleccionar tamaño de ticket USDT">
+            @for (preset of simTicketPresets; track preset) {
+              <button
+                type="button"
+                class="sim-pill font-mono"
+                [class.active]="simTicketUsdt() === preset"
+                (click)="setSimTicket(preset)"
+              >
+                ${{ preset }} ₮
+              </button>
+            }
+          </div>
+        </div>
+
+        <div class="sim-metrics-center font-mono">
+          <div class="sim-metric-cell">
+            <span class="sim-lbl">Capital Requerido</span>
+            <strong class="sim-val">{{ fmtVes(sim.requiredVes) }}</strong>
+          </div>
+          <span class="sim-divider">→</span>
+          <div class="sim-metric-cell highlight">
+            <span class="sim-lbl">Retorno Neto ({{ sim.spreadPct }}%)</span>
+            <strong class="sim-val positive">+{{ sim.netProfitUsdt | num }} ₮ (+{{ fmtVes(sim.netProfitVes) }})</strong>
+          </div>
+          <span class="sim-divider">·</span>
+          <div class="sim-metric-cell">
+            <span class="sim-lbl">Ruta &amp; Cupo SUDEBAN</span>
+            @if (sim.needsMultiBankSplit) {
+              <strong class="sim-val warn-text">⚠️ Requiere Split Multi-Banco</strong>
+            } @else if (sim.bestAccount; as best) {
+              <strong class="sim-val gold-text">🏛️ {{ best.bankName }} ({{ sim.cyclesForDailyTarget }} vueltas/meta)</strong>
+            }
+          </div>
+        </div>
+
+        <div class="sim-right">
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-primary"
+            (click)="quickOperate(sim.bestAccount ? sim.bestAccount.bankName : undefined, $event, sim.ticketUsdt)"
+          >
+            🚀 Ejecutar Ticket ${{ sim.ticketUsdt }}
+          </button>
         </div>
       </section>
     }
-  </div>
+  }
 
   <!-- ═══════════════════════════════════════════════════
-       4. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid
+       3C. Mesa Cambiaria BCV (14 Bancos) & Pulso Spot Institucional
        ═══════════════════════════════════════════════════ -->
   @if (activeTab() === 'all' || activeTab() === 'treasury') {
-    <section class="apple-card-section">
+    @if (fxDeskSummary(); as fx) {
+      <section class="mesa-bcv-executive-strip glass-tier-2" aria-label="Mesa Cambiaria BCV 14 Bancos y Pulso Spot">
+        <div class="mesa-strip-left">
+          <div class="mesa-badge-line">
+            <span class="mesa-eyebrow">🏦 MESA CAMBIARIA BCV · {{ fx.totalBanks }} BANCOS</span>
+            <span class="apple-pill-mini" [class.live]="fx.isBcvWindowOpen" [class.muted]="!fx.isBcvWindowOpen">
+              {{ fx.isBcvWindowOpen ? '🟢 Ventana 8:30–11:00 AM Activa' : '🕒 Fuera de Ventana Pico' }}
+            </span>
+          </div>
+          <div class="mesa-top-bank">
+            @if (fx.topTicket; as top) {
+              <strong>Ruta Prioritaria: {{ top.bank.shortName }}</strong>
+              <span class="text-muted">({{ top.activeExitRailLabel }} · {{ top.recommendedOrderUsd | num:0 }} USD)</span>
+            } @else {
+              <strong class="text-muted">Sin cupo fondeado · Calibrar banca</strong>
+            }
+          </div>
+        </div>
+
+        <div class="mesa-strip-metrics font-mono">
+          <div class="mesa-metric-cell">
+            <span class="mesa-lbl">Bancos Viables</span>
+            <strong class="mesa-val">{{ fx.viableCount }} / {{ fx.totalBanks }}</strong>
+            <small class="text-muted">{{ fx.confirmedFluidCount }} fluidos</small>
+          </div>
+          <div class="mesa-metric-cell">
+            <span class="mesa-lbl">Despliegue BCV</span>
+            <strong class="mesa-val gold-text">{{ fmtVes(fx.totalDeployableVes) }}</strong>
+            <small class="text-muted">${{ fx.totalDeployableUsd | num:0 }} USD</small>
+          </div>
+          <div class="mesa-metric-cell highlight">
+            <span class="mesa-lbl">Retorno Neto Ciclo</span>
+            <strong class="mesa-val positive">+{{ fx.netProfitUsdt | num }} ₮</strong>
+            <small class="positive">+{{ fmtVes(fx.netProfitVes) }}</small>
+          </div>
+          <div class="mesa-metric-cell">
+            <span class="mesa-lbl">Pulso Spot · Peg USDC</span>
+            @if (spotPulse(); as sp) {
+              <strong class="mesa-val">
+                BTC ${{ sp.btcPriceUsd | num:0 }} · USDC {{ sp.usdcMidPrice | number: '1.4-4' }}
+              </strong>
+              <small [class.warn-text]="sp.isUsdcDepegged" [class.positive]="!sp.isUsdcDepegged">
+                {{ sp.isUsdcDepegged ? '⚠️ Depeg ' + sp.depegBps + ' bps' : '✓ Peg Estable (' + sp.depegBps + ' bps)' }}
+              </small>
+            }
+          </div>
+        </div>
+
+        <div class="mesa-strip-actions">
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-primary"
+            (click)="goToMesaBcv(true, $event)"
+          >
+            ⚡ Ráfaga BCV ({{ fx.viableCount }})
+          </button>
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-secondary"
+            (click)="goToMesaBcv(false, $event)"
+          >
+            🏦 Abrir Mesa →
+          </button>
+        </div>
+      </section>
+    }
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       4. Asymmetric Bento Row (7 / 5) — FIFO Inventory, OBI & Forensic Risk
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'treasury' || activeTab() === 'agents') {
+    <div class="quantum-bento-grid bento-stretch-row">
+      @if (activeTab() === 'all' || activeTab() === 'treasury') {
+        <!-- Left (Span 7): Posición de Inventario FIFO, Microestructura (OBI) & Yield -->
+        <section
+          class="apple-card-section institutional-cockpit-section glass-tier-1"
+          [class.bento-span-7]="activeTab() === 'all'"
+          [class.bento-span-12]="activeTab() !== 'all'"
+        >
+          <div class="apple-section-header">
+            <div class="apple-section-title-wrap">
+              <span class="apple-section-icon">💎</span>
+              <div>
+                <h3 class="apple-section-title">Posición de Inventario FIFO, Microestructura &amp; Yield</h3>
+                <p class="apple-section-subtitle">
+                  Valoración Mark-to-Market en vivo, presión del libro L2 y barrido de capital ocioso
+                </p>
+              </div>
+            </div>
+            <div class="apple-section-actions">
+              <span
+                class="apple-pill-mini font-mono"
+                [class.live]="markToMarketPnL().unrealizedPnlVes >= 0"
+                [class.badge-danger]="markToMarketPnL().unrealizedPnlVes < 0"
+              >
+                PnL Flotante: {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
+              </span>
+            </div>
+          </div>
+
+          <div class="cockpit-three-grid">
+            <!-- Tile 1: Inventario Abierto & Mark-to-Market -->
+            <div class="apple-kpi-card cockpit-tile glass-tier-2">
+              <div class="apple-kpi-header">
+                <span class="apple-kpi-title">Stock Abierto &amp; Costo VWAP</span>
+                <span class="apple-pill-mini gold font-mono">{{ markToMarketPnL().openUsdt | num }} USDT</span>
+              </div>
+              <div class="cockpit-metric-row">
+                <div>
+                  <span class="cockpit-label">Costo Promedio (VWAP)</span>
+                  <span class="cockpit-val font-mono">{{ markToMarketPnL().avgCostPriceVes | num }} Bs</span>
+                </div>
+                <div class="text-right">
+                  <span class="cockpit-label">Salida Mercado (Best Ask)</span>
+                  <span class="cockpit-val font-mono positive">{{ markToMarketPnL().bestExitPriceVes | num }} Bs</span>
+                </div>
+              </div>
+              <div
+                class="cockpit-valuation-box"
+                [class.positive]="markToMarketPnL().unrealizedPnlVes >= 0"
+                [class.negative]="markToMarketPnL().unrealizedPnlVes < 0"
+              >
+                <span>PnL no realizado:</span>
+                <strong class="font-mono">
+                  {{ markToMarketPnL().unrealizedPnlVes >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlVes | num }} Bs
+                  ({{ markToMarketPnL().unrealizedPnlUsdt >= 0 ? '+' : '' }}{{ markToMarketPnL().unrealizedPnlUsdt | num }} USDT)
+                </strong>
+              </div>
+              <div class="apple-kpi-footer">
+                <span class="apple-kpi-subtext">Valoración viva contra profundidad Binance L2</span>
+              </div>
+            </div>
+
+            <!-- Tile 2: Order Book Imbalance (OBI) -->
+            <div class="apple-kpi-card cockpit-tile glass-tier-2">
+              <div class="apple-kpi-header">
+                <span class="apple-kpi-title">Microestructura del Libro (OBI)</span>
+                <span
+                  class="apple-pill-mini"
+                  [class.live]="(orderBookImbalance()?.gaugePercent ?? 50) >= 50"
+                  [class.badge-warning]="(orderBookImbalance()?.gaugePercent ?? 50) < 50"
+                >
+                  {{ orderBookImbalance()?.classification || 'EQUILIBRADO' }}
+                </span>
+              </div>
+              <div class="obi-gauge-wrap">
+                <div class="obi-track-bar">
+                  <div class="obi-track-fill" [style.width.%]="orderBookImbalance()?.gaugePercent ?? 50"></div>
+                </div>
+                <div class="obi-labels font-mono">
+                  <span>Venta ({{ orderBookImbalance()?.sellVolumeUsdt ?? 0 | num }} ₮)</span>
+                  <span>Compra ({{ orderBookImbalance()?.buyVolumeUsdt ?? 0 | num }} ₮)</span>
+                </div>
+              </div>
+              <div class="obi-guidance-box">
+                <span class="guidance-text">
+                  💡 {{ orderBookImbalance()?.makerSellPriceGuidance || 'Colocar anuncios dentro del spread óptimo.' }}
+                </span>
+              </div>
+              <div class="apple-kpi-footer">
+                <span class="apple-kpi-subtext">Desbalance: {{ orderBookImbalance()?.obiPercentage ?? 0 }}% presión</span>
+              </div>
+            </div>
+
+            <!-- Tile 3: Radar de Divergencia & Yield Pasivo -->
+            <div class="apple-kpi-card cockpit-tile glass-tier-2">
+              <div class="apple-kpi-header">
+                <span class="apple-kpi-title">Radar de Divergencia &amp; Yield</span>
+                @if (rateDivergence(); as div) {
+                  <span
+                    class="apple-pill-mini"
+                    [class.live]="div.signal === 'BUY_WINDOW'"
+                    [class.badge-warning]="div.signal === 'SELL_WINDOW'"
+                    [class.muted]="div.signal === 'NEUTRAL'"
+                  >
+                    {{ div.signal }}
+                  </span>
+                }
+              </div>
+              <div class="divergence-info-box">
+                <div class="div-row font-mono">
+                  <span class="text-muted">Gap P2P vs Paralelo:</span>
+                  <strong
+                    [class.positive]="(rateDivergence()?.gapPct ?? 0) >= 0"
+                    [class.negative]="(rateDivergence()?.gapPct ?? 0) < 0"
+                  >
+                    {{ rateDivergence()?.gapPct ?? 0 }}% ({{ rateDivergence()?.gapVes ?? 0 | num }} Bs)
+                  </strong>
+                </div>
+                <div class="div-row font-mono">
+                  <span class="text-muted">Inercia Paralelo:</span>
+                  <span>{{ rateDivergence()?.rateMomentumPct ?? 0 }}% momentum</span>
+                </div>
+              </div>
+              @if (smartTreasuryYield(); as yld) {
+                <div class="yield-sweep-box">
+                  <div class="yield-header">
+                    <span>🏦 Rendimiento Pasivo ({{ yld.flexibleApyPct }}% APY)</span>
+                  </div>
+                  <p class="yield-detail font-mono">
+                    Barrer {{ yld.recommendedSweepAmountUsd | num }} USDT &rarr; Proyección: +${{ yld.projectedMonthlyInterestUsd | num }}/mes
+                  </p>
+                </div>
+              }
+              <div class="apple-kpi-footer">
+                <span class="apple-kpi-subtext">Protección contra rezago cambiario y costo de oportunidad</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- Right (Span 5): Auditoría Forense & Escudo de Riesgo Unificados (Cápsulas Apiladas sin estrangulamiento) -->
+      @if (activeTab() === 'all' || activeTab() === 'treasury' || activeTab() === 'agents') {
+        <section
+          class="apple-card-section forensic-audit-section glass-tier-1"
+          [class.bento-span-5]="activeTab() === 'all'"
+          [class.bento-span-12]="activeTab() !== 'all'"
+        >
+          <div class="apple-section-header">
+            <div class="apple-section-title-wrap">
+              <span class="apple-section-icon">🛡️</span>
+              <div>
+                <h3 class="apple-section-title">Auditoría Forense &amp; Disciplina Operativa (Skill #44)</h3>
+                <p class="apple-section-subtitle">
+                  Motor de Riesgo Dinámico, Regla de Oro (&ge; 0.50%) y ventana horaria de congestión
+                </p>
+              </div>
+            </div>
+
+            <div class="apple-section-actions">
+              <button
+                type="button"
+                class="apple-pill-btn apple-btn-gold"
+                (click)="goToForensicCopilot()"
+                title="Preguntar al Copiloto sobre tu disciplina y horarios"
+              >
+                🧠 Copiloto →
+              </button>
+            </div>
+          </div>
+
+          <!-- Stacked Specular Glass Capsules (Replaces cramped 3-col grid inside span-5) -->
+          <div class="forensic-capsule-stack">
+            <!-- Capsule 0: Live Dynamic Risk Verdict -->
+            <div
+              class="forensic-glass-capsule verdict-capsule {{ decisionClass(verdict().decision) }}"
+              (click)="goToRisk()"
+              role="button"
+              tabindex="0"
+              (keydown.enter)="goToRisk()"
+            >
+              <div class="capsule-left">
+                <span class="verdict-dot"></span>
+                <div>
+                  <div class="capsule-eyebrow">Motor de Riesgo Dinámico</div>
+                  <strong class="capsule-title font-mono">{{ decisionLabel(verdict().decision) }}</strong>
+                  <p class="capsule-subtext">{{ verdict().reason }}</p>
+                </div>
+              </div>
+              <span class="capsule-action-link">Reglas →</span>
+            </div>
+
+            <!-- Capsule 1: Dictamen de Disciplina & Anti-Tilt -->
+            <div
+              class="forensic-glass-capsule"
+              (click)="goToForensicCopilot()"
+              role="button"
+              tabindex="0"
+              (keydown.enter)="goToForensicCopilot()"
+            >
+              <div class="capsule-left">
+                <span class="capsule-icon">⚖️</span>
+                <div>
+                  <div class="capsule-eyebrow">Disciplina del Operador</div>
+                  <strong class="capsule-title font-mono">
+                    @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
+                      <span class="text-muted">⚪ Sin calificar</span>
+                    } @else if (forensicDossier().operatorStanding === 'DISCIPLINED') {
+                      <span class="positive">🟢 Disciplinado</span>
+                    } @else if (forensicDossier().operatorStanding === 'MODERATE_DEVIATION') {
+                      <span class="warn-text">🟡 Desvío Moderado</span>
+                    } @else {
+                      <span class="negative">🔴 Alerta de Tilt</span>
+                    }
+                  </strong>
+                  <p class="capsule-subtext">
+                    @if (forensicDossier().assessmentStatus === 'NOT_ASSESSED') {
+                      Sin operaciones registradas aún
+                    } @else if (forensicDiscipline().tiltDetected) {
+                      ⚠️ Racha de operaciones sub-óptimas detectada
+                    } @else {
+                      Márgenes respetados rigurosamente
+                    }
+                  </p>
+                </div>
+              </div>
+              <span class="capsule-action-link">Auditar →</span>
+            </div>
+
+            <!-- Capsule 2: Cumplimiento Regla de Oro -->
+            <div
+              class="forensic-glass-capsule"
+              (click)="goToForensicCopilot()"
+              role="button"
+              tabindex="0"
+              (keydown.enter)="goToForensicCopilot()"
+            >
+              <div class="capsule-left capsule-full">
+                <div class="capsule-top-between">
+                  <div>
+                    <span class="capsule-eyebrow">Regla de Oro (&ge; 0.50%)</span>
+                    <strong class="capsule-title font-mono gold-text">
+                      {{ forensicDiscipline().averageSpreadPct | number: '1.2-2' }}%
+                      <small class="text-muted">spread prom.</small>
+                    </strong>
+                  </div>
+                  <span class="apple-pill-mini gold font-mono">
+                    @if (forensicDiscipline().complianceRatePct === null) {
+                      N/D
+                    } @else {
+                      {{ forensicDiscipline().complianceRatePct | number: '1.1-1' }}%
+                    }
+                  </span>
+                </div>
+                <div class="apple-track-bar">
+                  <div class="apple-track-fill" [style.width.%]="forensicDiscipline().complianceRatePct ?? 0"></div>
+                </div>
+                <div class="capsule-bottom-between">
+                  <span class="capsule-subtext">
+                    {{ forensicDiscipline().compliantOperationsCount }} de {{ forensicDiscipline().totalOperationsAnalyzed }} órdenes conformes
+                  </span>
+                  <span class="capsule-subtext font-mono">
+                     Ventana Crítica:
+                    <strong class="gold-text">
+                      {{ forensicRiskAnalysis().peakRiskScore > 0 ? forensicRiskAnalysis().peakRiskWindow : '0 Alertas' }}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      }
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════
+       5. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid (With Rail & Health Filters)
+       ═══════════════════════════════════════════════════ -->
+  @if (activeTab() === 'all' || activeTab() === 'treasury') {
+    <section class="apple-card-section glass-tier-1">
       <div class="apple-section-header">
         <div class="apple-section-title-wrap">
           <span class="apple-section-icon">🏛️</span>
           <div>
-            <h3 class="apple-section-title">Tesorería & Rotación Anti-SUDEBAN</h3>
-            <p class="apple-section-subtitle">Supervisión integrada de liquidez, cupo diario consumido y límites de velocidad bancaria</p>
+            <h3 class="apple-section-title">Tesorería &amp; Rotación Anti-SUDEBAN</h3>
+            <p class="apple-section-subtitle">
+              Supervisión interactiva de liquidez, rieles operativos, cupo diario consumido y límites de velocidad bancaria
+            </p>
           </div>
         </div>
 
@@ -513,133 +849,245 @@
               class="apple-density-tab"
               [class.active]="treasuryDensity() === 'compact'"
               (click)="setTreasuryDensity('compact')"
-              title="Vista Grilla Compacta institucional (sin scroll)"
+              title="Vista Grilla Compacta institucional"
             >
               📋 Compacto
             </button>
           </div>
 
-          <button type="button" class="apple-pill-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-soft); color: var(--text-primary);" (click)="syncOfficialBanks()" title="Sincronizar y cargar los 8 bancos oficiales de Venezuela en SQLite">
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-secondary"
+            (click)="syncOfficialBanks()"
+            title="Sincronizar y cargar los 8 bancos oficiales de Venezuela en SQLite"
+          >
             🔄 Sincronizar Bancos
           </button>
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-danger"
+            (click)="openResetConfirmModal()"
+            title="Poner todos los saldos iniciales en 0 VES para arrancar desde cero"
+          >
+            🧹 Poner a Cero
+          </button>
           <button type="button" class="apple-pill-btn apple-btn-primary" (click)="openLiquidityModal()">
-            💧 Inyectar Liquidez
+            💧 Fondeo / Calibrar
           </button>
           <span class="apple-treasury-pill font-mono">
-            Liquidez Total: <app-animated-counter [value]="accountsService.treasurySummary().totalBalanceVes" suffix="VES" style="color: var(--gold-strong); font-weight: 700;" />
+            Liquidez Total:
+            <app-animated-counter
+              [value]="accountsService.treasurySummary().totalBalanceVes"
+              suffix="VES"
+              class="gold-text font-bold"
+            />
           </span>
+        </div>
+      </div>
+
+      <!-- Interactive Specular Filter Ribbon for the 16 Bank Accounts -->
+      <div class="treasury-filter-ribbon">
+        <div class="filter-pill-group" role="group" aria-label="Filtrar por riel bancario">
+          <span class="filter-group-label">Riel:</span>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankRailFilter() === 'ALL'"
+            (click)="setBankRailFilter('ALL')"
+          >
+            Todos <span class="pill-count font-mono">{{ treasuryFilterCounts().all }}</span>
+          </button>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankRailFilter() === 'PAGO_MOVIL'"
+            (click)="setBankRailFilter('PAGO_MOVIL')"
+          >
+            📱 Pago Móvil <span class="pill-count font-mono">{{ treasuryFilterCounts().pagoMovil }}</span>
+          </button>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankRailFilter() === 'TRANSFERENCIA'"
+            (click)="setBankRailFilter('TRANSFERENCIA')"
+          >
+            🏦 Transferencia <span class="pill-count font-mono">{{ treasuryFilterCounts().transferencia }}</span>
+          </button>
+        </div>
+
+        <div class="filter-pill-group" role="group" aria-label="Filtrar por estado SUDEBAN">
+          <span class="filter-group-label">Estado:</span>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankHealthFilter() === 'ALL'"
+            (click)="setBankHealthFilter('ALL')"
+          >
+            Todas
+          </button>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankHealthFilter() === 'OPTIMAL'"
+            (click)="setBankHealthFilter('OPTIMAL')"
+          >
+            🟢 Disponibles <span class="pill-count font-mono">{{ treasuryFilterCounts().optimal }}</span>
+          </button>
+          <button
+            type="button"
+            class="glass-filter-pill"
+            [class.active]="bankHealthFilter() === 'ALERT'"
+            (click)="setBankHealthFilter('ALERT')"
+          >
+            ⚠️ En Alerta <span class="pill-count font-mono">{{ treasuryFilterCounts().alert }}</span>
+          </button>
         </div>
       </div>
 
       @if (treasuryDensity() === 'bento') {
         <div class="apple-bank-grid">
-        @for (b of unifiedAccounts(); track b.id) {
-          <div
-            class="apple-bank-card"
-            [class.bank-banesco]="b.bankCode === 'BANESCO'"
-            [class.bank-mercantil]="b.bankCode === 'MERCANTIL'"
-            [class.bank-bdv]="b.bankCode === 'BDV'"
-            [class.bank-provincial]="b.bankCode === 'PROVINCIAL'"
-            [class.bank-bancamiga]="b.bankCode === 'BANCAMIGA'"
-            [class.bank-bnc]="b.bankCode === 'BNC'"
-            [class.bank-bancaribe]="b.bankCode === 'BANCARIBE'"
-            [class.bank-banplus]="b.bankCode === 'BANPLUS'"
-            [class.card-alert]="b.isOverLimit"
-            [class.card-near]="b.isNearLimit"
-            [class.card-recommended]="b.isRecommended"
-            (click)="goToBankLog(b.bankName)"
-            role="button"
-            tabindex="0"
-            (keydown.enter)="goToBankLog(b.bankName)"
-          >
-            <!-- Bank Card Header -->
-            <div class="apple-bank-card-top">
-              <div class="apple-bank-id-group">
-                <span class="bank-avatar-badge">{{ b.bankName | slice:0:2 | uppercase }}</span>
-                <div>
-                  <div class="apple-bank-title-row">
-                    <strong class="apple-bank-name">{{ b.bankName }}</strong>
-                    @if (b.rail) {
-                      <span class="apple-rail-pill font-mono">{{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}</span>
-                    }
+          @for (b of displayedAccounts(); track b.id) {
+            <div
+              class="apple-bank-card glass-tier-2"
+              [class.bank-banesco]="b.bankCode === 'BANESCO'"
+              [class.bank-mercantil]="b.bankCode === 'MERCANTIL'"
+              [class.bank-bdv]="b.bankCode === 'BDV'"
+              [class.bank-provincial]="b.bankCode === 'PROVINCIAL'"
+              [class.bank-bancamiga]="b.bankCode === 'BANCAMIGA'"
+              [class.bank-bnc]="b.bankCode === 'BNC'"
+              [class.bank-bancaribe]="b.bankCode === 'BANCARIBE'"
+              [class.bank-banplus]="b.bankCode === 'BANPLUS'"
+              [class.card-alert]="b.isOverLimit"
+              [class.card-near]="b.isNearLimit"
+              [class.card-recommended]="b.isRecommended"
+              [class.card-disabled]="b.status === 'DISABLED'"
+              (click)="goToBankLog(b.bankName)"
+              role="button"
+              tabindex="0"
+              (keydown.enter)="goToBankLog(b.bankName)"
+            >
+              <!-- Bank Card Header -->
+              <div class="apple-bank-card-top">
+                <div class="apple-bank-id-group">
+                  <span class="bank-avatar-badge">{{ b.bankName | slice: 0 : 2 | uppercase }}</span>
+                  <div>
+                    <div class="apple-bank-title-row">
+                      <strong class="apple-bank-name">{{ b.bankName }}</strong>
+                      @if (b.rail) {
+                        <span class="apple-rail-pill font-mono">
+                          {{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}
+                        </span>
+                      }
+                    </div>
+                    <div class="apple-bank-sub font-mono">
+                      Saldo: <app-animated-counter [value]="b.currentBalanceVes" suffix="VES" />
+                      @if (b.accountNumberMasked) {
+                        <span class="apple-bank-mask-sep">·</span>
+                        <span class="apple-bank-mask">{{ b.accountNumberMasked }}</span>
+                      }
+                    </div>
                   </div>
-                  <div class="apple-bank-sub font-mono">
-                    Saldo: <app-animated-counter [value]="b.currentBalanceVes" suffix="VES" />
-                    @if (b.accountNumberMasked) {
-                      <span class="apple-bank-mask-sep">·</span>
-                      <span class="apple-bank-mask">{{ b.accountNumberMasked }}</span>
-                    }
-                  </div>
+                </div>
+
+                <div class="apple-bank-badges">
+                  @if (b.isRecommended && b.status !== 'DISABLED') {
+                    <span class="apple-pill-mini recommended" title="Cuenta con mayor holgura de cupo y velocidad">
+                      ⭐ Recomendada
+                    </span>
+                  }
+                  @if (b.status === 'DISABLED') {
+                    <span class="apple-pill-mini muted">⏸️ En Pausa</span>
+                  } @else {
+                    <span
+                      class="apple-pill-mini"
+                      [class.badge-danger]="b.isOverLimit"
+                      [class.badge-warning]="b.isNearLimit"
+                      [class.badge-accent]="!b.isOverLimit && !b.isNearLimit"
+                    >
+                      {{ b.isOverLimit ? 'Límite Superado' : b.isNearLimit ? 'Cupo Crítico' : 'Disponible' }}
+                    </span>
+                  }
                 </div>
               </div>
 
-              <div class="apple-bank-badges">
-                @if (b.isRecommended) {
-                  <span class="apple-pill-mini recommended" title="Cuenta con mayor holgura de cupo y velocidad">
-                    ⭐ Recomendada
+              <!-- Daily Limit Progress -->
+              <div class="apple-bank-limit-row">
+                <div class="limit-labels">
+                  <span class="text-muted">Consumo diario: {{ fmtVes(b.spentTodayVes) }}</span>
+                  <span
+                    class="font-mono font-bold"
+                    [class.positive]="b.consumedLimitPct < 80"
+                    [class.negative]="b.consumedLimitPct >= 80"
+                  >
+                    {{ b.consumedLimitPct }}%
                   </span>
+                </div>
+                <div class="apple-track-bar">
+                  <div
+                    class="apple-track-fill"
+                    [class.fill-danger]="b.consumedLimitPct >= 80"
+                    [class.fill-warning]="b.consumedLimitPct >= 50 && b.consumedLimitPct < 80"
+                    [style.width.%]="Math.min(100, b.consumedLimitPct)"
+                  ></div>
+                </div>
+                <div class="limit-sub-row font-mono text-muted">
+                  <span>Restante: {{ fmtVes(b.remainingLimitVes) }}</span>
+                  <span>Cupo: {{ fmtVes(b.dailyLimitVes) }}</span>
+                </div>
+              </div>
+
+              <!-- Anti-SUDEBAN Velocity Capsule -->
+              <div class="apple-bank-velocity-capsule">
+                <div class="velocity-status-row">
+                  <div class="velocity-metric">
+                    <span class="bullet-dot" [style.background]="velocityHealthVar[b.velocityHealth]"></span>
+                    <span class="velocity-label">Velocidad SUDEBAN:</span>
+                    <strong class="velocity-state">{{ velocityHealthLabel[b.velocityHealth] }}</strong>
+                  </div>
+                  <span class="velocity-tx-counter font-mono">
+                    {{ b.todayTransactionCount }} / {{ b.maxDailyTransactions }} tx
+                  </span>
+                </div>
+
+                @if (b.recommendedWaitHours > 0) {
+                  <div class="velocity-wait-note">
+                    ⏳ Enfriamiento sugerido: ~{{ b.recommendedWaitHours }}h antes de nuevas transferencias
+                  </div>
                 }
-                <span class="apple-pill-mini" [class.badge-danger]="b.isOverLimit" [class.badge-warning]="b.isNearLimit" [class.badge-accent]="!b.isOverLimit && !b.isNearLimit">
-                  {{ b.isOverLimit ? 'Límite Superado' : (b.isNearLimit ? 'Cupo Crítico' : 'Disponible') }}
-                </span>
               </div>
-            </div>
 
-            <!-- Daily Limit Progress -->
-            <div class="apple-bank-limit-row">
-              <div class="limit-labels">
-                <span class="text-muted">Consumo diario: {{ fmtVes(b.spentTodayVes) }}</span>
-                <span class="font-mono font-bold" [class.positive]="b.consumedLimitPct < 80" [class.negative]="b.consumedLimitPct >= 80">
-                  {{ b.consumedLimitPct }}%
-                </span>
-              </div>
-              <div class="apple-track-bar">
-                <div
-                  class="apple-track-fill"
-                  [class.fill-danger]="b.consumedLimitPct >= 80"
-                  [class.fill-warning]="b.consumedLimitPct >= 50 && b.consumedLimitPct < 80"
-                  [style.width.%]="Math.min(100, b.consumedLimitPct)"
-                ></div>
-              </div>
-              <div class="limit-sub-row font-mono text-muted">
-                <span>Restante: {{ fmtVes(b.remainingLimitVes) }}</span>
-                <span>Cupo: {{ fmtVes(b.dailyLimitVes) }}</span>
-              </div>
-            </div>
-
-            <!-- Anti-SUDEBAN Velocity Capsule -->
-            <div class="apple-bank-velocity-capsule">
-              <div class="velocity-status-row">
-                <div class="velocity-metric">
-                  <span class="bullet-dot" [style.background]="velocityHealthVar[b.velocityHealth]"></span>
-                  <span class="velocity-label">Velocidad SUDEBAN:</span>
-                  <strong class="velocity-state">{{ velocityHealthLabel[b.velocityHealth] }}</strong>
+              <!-- Unified 3-Action Tactile Glass Footer -->
+              <div class="apple-bank-card-actions" (click)="$event.stopPropagation()">
+                <div class="bank-action-btns">
+                  <button
+                    type="button"
+                    class="apple-card-action-btn operate-btn"
+                    (click)="quickOperate(b.bankName, $event)"
+                    title="Operar de inmediato con {{ b.bankName }}"
+                  >
+                    ⚡ Operar
+                  </button>
+                  <button
+                    type="button"
+                    class="apple-card-action-btn inject-btn"
+                    (click)="openLiquidityModal(b)"
+                    title="Inyectar liquidez a {{ b.bankName }}"
+                  >
+                    💧 Inyectar
+                  </button>
+                  <button
+                    type="button"
+                    class="apple-card-action-btn pause-btn"
+                    (click)="toggleAccountStatus(b, $event)"
+                    [title]="b.status === 'DISABLED' ? 'Reactivar cuenta' : 'Pausar temporalmente (Escudo SUDEBAN)'"
+                  >
+                    {{ b.status === 'DISABLED' ? '▶️ Activar' : '⏸️ Pausar' }}
+                  </button>
                 </div>
-                <span class="velocity-tx-counter font-mono">
-                  {{ b.todayTransactionCount }} / {{ b.maxDailyTransactions }} tx
-                </span>
+                <span class="apple-card-action-hint" (click)="goToBankLog(b.bankName)">Historial →</span>
               </div>
-
-              @if (b.recommendedWaitHours > 0) {
-                <div class="velocity-wait-note">
-                  ⏳ Enfriamiento sugerido: ~{{ b.recommendedWaitHours }}h antes de nuevas transferencias
-                </div>
-              }
             </div>
-
-            <div class="apple-bank-card-actions">
-              <button
-                type="button"
-                class="apple-card-action-btn inject-btn"
-                (click)="$event.stopPropagation(); openLiquidityModal(b)"
-                title="Inyectar liquidez a {{ b.bankName }}"
-              >
-                💧 Inyectar
-              </button>
-              <span class="apple-card-action-hint">Ver transacciones →</span>
-            </div>
-          </div>
-        }
+          }
         </div>
       } @else {
         <!-- Compact Institutional Data Grid (High-Density No-Scroll View) -->
@@ -647,17 +1095,17 @@
           <table class="apple-compact-table" role="table">
             <thead>
               <tr>
-                <th>Banco & Riel</th>
+                <th>Banco &amp; Riel</th>
                 <th>Cuenta / Riel</th>
                 <th>Saldo Disponible</th>
                 <th>Cupo Consumido Hoy</th>
                 <th>Velocidad Operativa</th>
                 <th>Estado Anti-SUDEBAN</th>
-                <th style="text-align: right;">Acciones</th>
+                <th class="text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              @for (b of unifiedAccounts(); track b.id) {
+              @for (b of filteredAccounts(); track b.id) {
                 <tr
                   [class.row-alert]="b.isOverLimit"
                   [class.row-near]="b.isNearLimit"
@@ -669,11 +1117,13 @@
                 >
                   <td>
                     <div class="compact-bank-cell">
-                      <span class="bank-avatar-badge-micro">{{ b.bankName | slice:0:2 | uppercase }}</span>
+                      <span class="bank-avatar-badge-micro">{{ b.bankName | slice: 0 : 2 | uppercase }}</span>
                       <div>
                         <strong class="compact-bank-name">{{ b.bankName }}</strong>
                         @if (b.rail) {
-                          <span class="apple-rail-pill font-mono">{{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}</span>
+                          <span class="apple-rail-pill font-mono">
+                            {{ b.rail === 'TRANSFERENCIA' ? 'Transf' : 'Pago Móvil' }}
+                          </span>
                         }
                       </div>
                     </div>
@@ -681,7 +1131,7 @@
                   <td class="font-mono text-muted">
                     {{ b.accountNumberMasked || 'Principal' }}
                   </td>
-                  <td class="font-mono font-bold" style="color: var(--gold-strong);">
+                  <td class="font-mono font-bold gold-text">
                     <app-animated-counter [value]="b.currentBalanceVes" suffix="VES" />
                   </td>
                   <td>
@@ -693,7 +1143,11 @@
                           [style.width.%]="b.consumedLimitPct"
                         ></div>
                       </div>
-                      <span class="font-mono font-bold" [class.negative]="b.consumedLimitPct >= 80" [class.positive]="b.consumedLimitPct < 80">
+                      <span
+                        class="font-mono font-bold"
+                        [class.negative]="b.consumedLimitPct >= 80"
+                        [class.positive]="b.consumedLimitPct < 80"
+                      >
                         {{ b.consumedLimitPct }}%
                       </span>
                       <span class="compact-limit-abs text-muted font-mono">({{ fmtVes(b.spentTodayVes) }})</span>
@@ -703,7 +1157,9 @@
                     <span class="font-mono">{{ b.todayTransactionCount }} / {{ b.maxDailyTransactions }} ops</span>
                   </td>
                   <td>
-                    @if (b.isRecommended) {
+                    @if (b.status === 'DISABLED') {
+                      <span class="apple-pill-mini muted">⏸️ En Pausa</span>
+                    } @else if (b.isRecommended) {
                       <span class="apple-pill-mini recommended">⭐ Recomendada</span>
                     } @else if (b.isOverLimit) {
                       <span class="apple-pill-mini badge-danger">Límite Superado</span>
@@ -713,8 +1169,8 @@
                       <span class="apple-pill-mini badge-accent">Operativo</span>
                     }
                   </td>
-                  <td style="text-align: right;" (click)="$event.stopPropagation()">
-                    <div style="display: inline-flex; gap: 6px; justify-content: flex-end;">
+                  <td class="text-right" (click)="$event.stopPropagation()">
+                    <div class="compact-actions-row">
                       <button
                         type="button"
                         class="apple-pill-btn apple-btn-secondary btn-micro"
@@ -726,7 +1182,7 @@
                       <button
                         type="button"
                         class="apple-pill-btn apple-btn-gold btn-micro"
-                        (click)="quickOperate(b.bankName)"
+                        (click)="quickOperate(b.bankName, $event)"
                         title="Operar de inmediato con {{ b.bankName }}"
                       >
                         ⚡ Operar
@@ -748,6 +1204,33 @@
         </div>
       }
 
+      @if (activeTab() === 'all' && filteredAccounts().length > 4 && bankRailFilter() === 'ALL' && bankHealthFilter() === 'ALL') {
+        <div class="treasury-spotlight-footer">
+          <div class="spotlight-meta">
+            <span class="spotlight-badge">⚡ MODO FOCO EJECUTIVO</span>
+            <span class="text-muted">
+              Mostrando <strong>{{ displayedAccounts().length }}</strong> de <strong>{{ filteredAccounts().length }}</strong> cuentas prioritarias para evitar saturación visual
+            </span>
+          </div>
+          <div class="spotlight-actions">
+            <button
+              type="button"
+              class="apple-pill-btn apple-btn-secondary"
+              (click)="showAllBanksInOverview.set(!showAllBanksInOverview())"
+            >
+              {{ showAllBanksInOverview() ? '▴ Comprimir a Top 4 Prioritarias' : '▾ Expandir las ' + filteredAccounts().length + ' Cuentas Bancarias' }}
+            </button>
+            <button
+              type="button"
+              class="apple-pill-btn apple-btn-gold"
+              (click)="activeTab.set('treasury')"
+            >
+              🏛️ Abrir Sala de Tesorería →
+            </button>
+          </div>
+        </div>
+      }
+
       <!-- SUDEBAN Global Warnings -->
       @if (velocityAlerts().length > 0) {
         <div class="apple-alert-banner">
@@ -766,383 +1249,467 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       5. Multi-Agent Swarm Suite (Institutional AI)
+       6. Asymmetric Intelligence Bento Row (6 / 6) — Macro BCV + Swarm IA
        ═══════════════════════════════════════════════════ -->
   @if (activeTab() === 'all' || activeTab() === 'agents') {
-    <section class="apple-card-section">
-      <div class="apple-section-header">
-        <div class="apple-section-title-wrap">
-          <span class="apple-section-icon">🧠</span>
-          <div>
-            <h3 class="apple-section-title">Enjambre de Agentes de IA (Swarm Suite)</h3>
-            <p class="apple-section-subtitle">Arquitectura multi-agente para monitoreo continuo, optimización de rutas y poder de veto institucional</p>
-          </div>
-        </div>
-
-        <div class="apple-section-actions">
-          <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="runSwarmHealthCheck()">
-            ⚡ Ejecutar Diagnóstico Swarm
-          </button>
-        </div>
-      </div>
-
-      <div class="apple-agents-grid">
-        @for (agent of swarmAgents(); track agent.name) {
-          <div class="apple-agent-tile">
-            <div class="agent-tile-top">
-              <div class="agent-id-box">
-                <span class="agent-icon">{{ agent.icon }}</span>
-                <div>
-                  <h4 class="agent-name">{{ agent.name }}</h4>
-                  <span class="agent-role">{{ agent.role }}</span>
-                </div>
-              </div>
-              <div class="agent-status-badge">
-                <span class="agent-pulse-dot" [class.pulse-online]="agent.status === 'ONLINE'"></span>
-                <span class="agent-status-text font-mono">{{ agent.status }}</span>
-              </div>
-            </div>
-
-            <p class="agent-description">{{ agent.description }}</p>
-
-            <div class="agent-tile-footer font-mono">
-              <div class="agent-metric-item">
-                <span class="agent-metric-label">Decisiones:</span>
-                <span class="agent-metric-val">{{ agent.decisionsCount }}</span>
-              </div>
-              <div class="agent-metric-item">
-                <span class="agent-metric-label">Latencia:</span>
-                <span class="agent-metric-val">{{ agent.lastPingMs }}ms</span>
-              </div>
+    <div class="quantum-bento-grid bento-stretch-row">
+      <!-- Left (Span 6): Macro & Regulatory BCV Intelligence (MCP Decisor) -->
+      <section class="apple-card-section glass-tier-1 bento-span-6">
+        <div class="apple-section-header">
+          <div class="apple-section-title-wrap">
+            <span class="apple-section-icon">📊</span>
+            <div>
+              <h3 class="apple-section-title">Inteligencia Macro &amp; Regulatoria BCV</h3>
+              <p class="apple-section-subtitle">
+                Brecha Paralelo/Oficial, ciclo de intervención y régimen de volatilidad MCP
+              </p>
             </div>
           </div>
-        }
-      </div>
-    </section>
-  }
 
-  <!-- ═══════════════════════════════════════════════════
-       6. Macro & Regulatory BCV Intelligence (MCP Decisor)
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'agents') {
-    <section class="apple-card-section">
-      <div class="apple-section-header">
-        <div class="apple-section-title-wrap">
-          <span class="apple-section-icon">📊</span>
-          <div>
-            <h3 class="apple-section-title">Inteligencia Macro & Regulatoria BCV</h3>
-            <p class="apple-section-subtitle">Herramientas MCP conectadas: Brecha Paralelo/Oficial, directivas de inyección y régimen de volatilidad</p>
-          </div>
-        </div>
-
-        <div class="apple-section-actions">
-          <button type="button" class="apple-pill-btn apple-btn-gold" (click)="syncMcpIntelligence()" [disabled]="mcpSyncing()">
-            @if (mcpSyncing()) {
-              <span class="spin-icon">⏳</span> Sincronizando...
-            } @else {
-              🔄 Sincronizar MCP
-            }
-          </button>
-          <span class="apple-pill-mini" [ngClass]="bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).class">
-            {{ bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).label }}
-          </span>
-        </div>
-      </div>
-
-      <div class="apple-macro-grid">
-        <!-- Brecha Cambiaria -->
-        <div class="apple-macro-tile">
-          <div class="macro-tile-header">
-            <span class="macro-tile-title">Brecha Paralelo vs BCV</span>
-            <span class="apple-pill-mini muted font-mono">calculate_rate_gap</span>
-          </div>
-          <div class="macro-tile-metric font-mono font-bold" [style.color]="((mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) ?? 0) > 25 ? '#ef4444' : 'var(--gold)'">
-            +{{ mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct ?? 0 }}% (+{{ (mcpRateGap()?.gapVes ?? bcvIntelligence().gap.gapVes ?? 0) | num }} Bs)
-          </div>
-          <div class="macro-tile-subtext text-muted">
-            Paralelo: {{ (mcpRateGap()?.parallelRate ?? bcvIntelligence().gap.parallelRate ?? 0) | num }} Bs · BCV: {{ (mcpRateGap()?.bcvRate ?? bcvIntelligence().gap.bcvRate ?? 0) | num }} Bs
-            @if (mcpBcvRates()?.date) {
-              <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
-            }
-            <!-- La línea de linaje SOLO se dibuja cuando hay tasas de Cotizave detrás de la
-                 brecha. `bcvIntelligence()` cae a `manualBcvRate()`/`manualParallelRate()`
-                 (685 / 815) cuando no hay MCP ni Cotizave, así que rotular ese caso como
-                 "Cotizave" mentiría: el número no salió de Cotizave. Y cuando SÍ hay
-                 Cotizave, sin edad ni procedencia el operador no puede distinguir una cifra
-                 recién descargada de una restaurada del disco: la pantalla se ve igual y la
-                 conclusión también. Por eso el guard mira la procedencia real. -->
-            @if (cotizaveDataAge(); as age) {
-              <span class="macro-sub-date font-mono">{{ age }} · {{ cotizaveProvenanceLabel() }}</span>
-            }
-          </div>
-        </div>
-
-        <!-- Fase de Intervención -->
-        <div class="apple-macro-tile">
-          <div class="macro-tile-header">
-            <span class="macro-tile-title">Fase del Ciclo Cambiario</span>
-            <span class="apple-pill-mini muted font-mono">check_bcv_intervention</span>
-          </div>
-          <div class="macro-tile-badge-box">
-            <span class="badge" [ngClass]="bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).class">
-              {{ bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).label }}
+          <div class="apple-section-actions">
+            <button
+              type="button"
+              class="apple-pill-btn apple-btn-gold"
+              (click)="syncMcpIntelligence()"
+              [disabled]="mcpSyncing()"
+            >
+              @if (mcpSyncing()) {
+                <span class="spin-icon">⏳</span> Sincronizando...
+              } @else {
+                🔄 Sincronizar MCP
+              }
+            </button>
+            <span
+              class="apple-pill-mini"
+              [ngClass]="bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).class"
+            >
+              {{ bcvZoneBadge(mcpRateGap()?.zone || bcvIntelligence().gap.zone).label }}
             </span>
           </div>
-          <div class="macro-tile-subtext text-muted">
-            Próxima: {{ mcpBcvIntervention()?.nextExpectedIntervention || bcvIntelligence().window.nextExpectedIntervention }} ({{ (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) !== null ? (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) + '% prob.' : 'calendario; sin modelo probabilístico' }})
-          </div>
         </div>
 
-        <!-- Pronóstico de Volatilidad -->
-        <div class="apple-macro-tile">
-          <div class="macro-tile-header">
-            <span class="macro-tile-title">Pronóstico de Volatilidad</span>
-            <span class="apple-pill-mini muted font-mono">forecast_volatility</span>
-          </div>
-          @if (mcpVolatilityForecast(); as f) {
-            <div class="macro-tile-metric font-mono">
-              Spread Esperado: <strong style="color: var(--gold-strong);">{{ f.expectedSpreadMin }}% – {{ f.expectedSpreadMax }}%</strong>
+        <div class="apple-macro-grid">
+          <!-- Brecha Cambiaria -->
+          <div class="apple-macro-tile glass-tier-2">
+            <div class="macro-tile-header">
+              <span class="macro-tile-title">Brecha Paralelo vs BCV</span>
+              <span class="apple-pill-mini muted font-mono">calculate_rate_gap</span>
+            </div>
+            <div
+              class="macro-tile-metric font-mono font-bold"
+              [class.negative]="((mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) ?? 0) > 25"
+              [class.gold-text]="((mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct) ?? 0) <= 25"
+            >
+              +{{ mcpRateGap()?.gapPct ?? bcvIntelligence().gap.gapPct ?? 0 }}% (+{{ (mcpRateGap()?.gapVes ?? bcvIntelligence().gap.gapVes ?? 0) | num }} Bs)
             </div>
             <div class="macro-tile-subtext text-muted">
-              Régimen: <strong [class.positive]="f.marketRegime === 'STABLE'" [class.negative]="f.marketRegime === 'EXPANSIVE'">{{ f.marketRegime }}</strong> · Score: {{ f.volatilityScore }}/100
+              Paralelo: {{ (mcpRateGap()?.parallelRate ?? bcvIntelligence().gap.parallelRate ?? 0) | num }} Bs · BCV: {{ (mcpRateGap()?.bcvRate ?? bcvIntelligence().gap.bcvRate ?? 0) | num }} Bs
+              @if (mcpBcvRates()?.date) {
+                <span class="macro-sub-date font-mono">Oficial: {{ mcpBcvRates()?.date }}</span>
+              }
+              <!-- La línea de linaje SOLO se dibuja cuando hay tasas de Cotizave detrás de la brecha -->
+              @if (cotizaveDataAge(); as age) {
+                <span class="macro-sub-date font-mono">{{ age }} · {{ cotizaveProvenanceLabel() }}</span>
+              }
             </div>
-          } @else {
-            <div class="macro-tile-metric font-mono text-muted">Calculando régimen...</div>
-            <div class="macro-tile-subtext text-muted">Ventana estándar de 2 a 4 horas</div>
+          </div>
+
+          <!-- Fase de Intervención -->
+          <div class="apple-macro-tile glass-tier-2">
+            <div class="macro-tile-header">
+              <span class="macro-tile-title">Fase del Ciclo Cambiario</span>
+              <span class="apple-pill-mini muted font-mono">check_bcv_intervention</span>
+            </div>
+            <div class="macro-tile-badge-box">
+              <span
+                class="badge"
+                [ngClass]="bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).class"
+              >
+                {{ bcvPhaseBadge(mcpBcvIntervention()?.phase || bcvIntelligence().window.phase).label }}
+              </span>
+            </div>
+            <div class="macro-tile-subtext text-muted">
+              Próxima: {{ mcpBcvIntervention()?.nextExpectedIntervention || bcvIntelligence().window.nextExpectedIntervention }}
+              ({{ (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) !== null ? (mcpBcvIntervention()?.probabilityPct ?? bcvIntelligence().window.probabilityPct) + '% prob.' : 'calendario; sin modelo probabilístico' }})
+            </div>
+          </div>
+
+          <!-- Pronóstico de Volatilidad -->
+          <div class="apple-macro-tile glass-tier-2">
+            <div class="macro-tile-header">
+              <span class="macro-tile-title">Pronóstico de Volatilidad</span>
+              <span class="apple-pill-mini muted font-mono">forecast_volatility</span>
+            </div>
+            @if (mcpVolatilityForecast(); as f) {
+              <div class="macro-tile-metric font-mono">
+                Spread Esperado: <strong class="gold-text">{{ f.expectedSpreadMin }}% – {{ f.expectedSpreadMax }}%</strong>
+              </div>
+              <div class="macro-tile-subtext text-muted">
+                Régimen:
+                <strong [class.positive]="f.marketRegime === 'STABLE'" [class.negative]="f.marketRegime === 'EXPANSIVE'">
+                  {{ f.marketRegime }}
+                </strong>
+                · Score: {{ f.volatilityScore }}/100
+              </div>
+            } @else {
+              <div class="macro-tile-metric font-mono text-muted">Calculando régimen...</div>
+              <div class="macro-tile-subtext text-muted">Ventana estándar de 2 a 4 horas</div>
+            }
+          </div>
+        </div>
+
+        <!-- Macro Rationale Callout -->
+        <div class="apple-macro-callout">
+          <div class="callout-text">
+            <strong class="gold-text">Directiva Táctica:</strong>
+            <span>
+              {{ mcpBcvIntervention()?.directive || bcvIntelligence().recommendation.actionLabel }} —
+              {{ mcpBcvIntervention()?.rationale || bcvIntelligence().recommendation.rationale }}
+            </span>
+          </div>
+          <button type="button" class="apple-pill-btn apple-btn-secondary btn-micro" (click)="goToMesaBcv()">
+            Abrir Mesa BCV →
+          </button>
+        </div>
+      </section>
+
+      <!-- Right (Span 6): Multi-Agent Swarm Suite (Institutional AI) -->
+      <section class="apple-card-section glass-tier-1 bento-span-6">
+        <div class="apple-section-header">
+          <div class="apple-section-title-wrap">
+            <span class="apple-section-icon">🧠</span>
+            <div>
+              <h3 class="apple-section-title">Enjambre de Agentes de IA (Swarm Suite)</h3>
+              <p class="apple-section-subtitle">
+                Monitoreo continuo, optimización de rutas VWAP y poder de veto institucional
+              </p>
+            </div>
+          </div>
+
+          <div class="apple-section-actions">
+            <button type="button" class="apple-pill-btn apple-btn-secondary" (click)="runSwarmHealthCheck()">
+              ⚡ Diagnóstico Swarm
+            </button>
+          </div>
+        </div>
+
+        <div class="apple-agents-grid">
+          @for (agent of swarmAgents(); track agent.name) {
+            <div class="apple-agent-tile glass-tier-2">
+              <div class="agent-tile-top">
+                <div class="agent-id-box">
+                  <span class="agent-icon">{{ agent.icon }}</span>
+                  <div>
+                    <h4 class="agent-name">{{ agent.name }}</h4>
+                    <span class="agent-role">{{ agent.role }}</span>
+                  </div>
+                </div>
+                <div class="agent-status-badge">
+                  <span class="agent-pulse-dot" [class.pulse-online]="agent.status === 'ONLINE'"></span>
+                  <span class="agent-status-text font-mono">{{ agent.status }}</span>
+                </div>
+              </div>
+
+              <p class="agent-description">{{ agent.description }}</p>
+
+              <div class="agent-tile-footer font-mono">
+                <div class="agent-metric-item">
+                  <span class="agent-metric-label">Decisiones:</span>
+                  <span class="agent-metric-val">{{ agent.decisionsCount }}</span>
+                </div>
+                <div class="agent-metric-item">
+                  <span class="agent-metric-label">Latencia:</span>
+                  <span class="agent-metric-val">{{ agent.lastPingMs }}ms</span>
+                </div>
+              </div>
+            </div>
           }
         </div>
-      </div>
-
-      <!-- Macro Rationale Callout -->
-      <div class="apple-macro-callout">
-        <strong style="color: var(--gold);">Directiva Táctica:</strong>
-        <span>{{ mcpBcvIntervention()?.directive || bcvIntelligence().recommendation.actionLabel }} — {{ mcpBcvIntervention()?.rationale || bcvIntelligence().recommendation.rationale }}</span>
-      </div>
-    </section>
-  }
-
-  <!-- ═══════════════════════════════════════════════════
-       7. Motor de Riesgo & Resumen Operativo
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'agents') {
-    <div class="apple-grid-two-col">
-      <!-- Motor de Riesgo -->
-      <div class="apple-subcard apple-risk-subcard" (click)="goToRisk()" role="button" tabindex="0" (keydown.enter)="goToRisk()">
-        <div class="apple-subcard-header">
-          <div class="subcard-title-group">
-            <span class="subcard-icon">⚖️</span>
-            <h4 class="subcard-title">Motor de Riesgo Dinámico</h4>
-          </div>
-          <span class="apple-kpi-link">Configurar →</span>
-        </div>
-
-        <div class="apple-risk-verdict-box {{ decisionClass(verdict().decision) }}">
-          <span class="verdict-dot"></span>
-          <div>
-            <strong class="verdict-label font-mono">{{ decisionLabel(verdict().decision) }}</strong>
-            <p class="verdict-reason">{{ verdict().reason }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Resumen General -->
-      <div class="apple-subcard" (click)="goToStats()" role="button" tabindex="0" (keydown.enter)="goToStats()">
-        <div class="apple-subcard-header">
-          <div class="subcard-title-group">
-            <span class="subcard-icon">📋</span>
-            <h4 class="subcard-title">Resumen Histórico</h4>
-          </div>
-          <span class="apple-kpi-link">Estadísticas →</span>
-        </div>
-
-        <div class="apple-stats-mini-grid font-mono">
-          <div class="stats-mini-item">
-            <span class="stats-mini-label">Total Operaciones</span>
-            <span class="stats-mini-val">{{ dashboard().totalOps }}</span>
-          </div>
-          <div class="stats-mini-item">
-            <span class="stats-mini-label">Racha Sin Errores</span>
-            <span class="stats-mini-val positive">{{ dashboard().today.zeroErrorStreak }} ops</span>
-          </div>
-          <div class="stats-mini-item">
-            <span class="stats-mini-label">Exposición Neta</span>
-            <span class="stats-mini-val">{{ fmtUsd(dashboard().today.exposure) }}</span>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   }
 
   <!-- ═══════════════════════════════════════════════════
-       8. Weekly Performance Chart & Recent Operations
+       7. Asymmetric Performance & Ledger Row (7 / 5) — 7D Chart + Recent Ops
        ═══════════════════════════════════════════════════ -->
   @if (activeTab() === 'all' || activeTab() === 'performance') {
-    <section class="apple-card-section">
-      <div class="apple-section-header">
-        <div class="apple-section-title-wrap">
-          <span class="apple-section-icon">📈</span>
-          <div>
-            <h3 class="apple-section-title">Rendimiento Gráfico (Últimos 7 Días)</h3>
-            <p class="apple-section-subtitle">Curva de equidad acumulada y volumen transaccional diario</p>
+    <div class="quantum-bento-grid bento-stretch-row">
+      <!-- Left (Span 7): Weekly Performance Chart -->
+      <section class="apple-card-section glass-tier-1 bento-span-7">
+        <div class="apple-section-header">
+          <div class="apple-section-title-wrap">
+            <span class="apple-section-icon">📈</span>
+            <div>
+              <h3 class="apple-section-title">Rendimiento Gráfico (Últimos 7 Días)</h3>
+              <p class="apple-section-subtitle">Curva de equidad acumulada y volumen transaccional diario</p>
+            </div>
+          </div>
+
+          <div class="apple-section-actions">
+            <div class="apple-chart-switcher">
+              <button
+                type="button"
+                class="switcher-btn"
+                [class.active]="selectedChartTab() === 'cumulative'"
+                (click)="selectedChartTab.set('cumulative')"
+              >
+                📈 PnL Acumulado
+              </button>
+              <button
+                type="button"
+                class="switcher-btn"
+                [class.active]="selectedChartTab() === 'volume'"
+                (click)="selectedChartTab.set('volume')"
+              >
+                📊 Volumen Diario (USDT)
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="apple-section-actions">
-          <div class="apple-chart-switcher">
-            <button type="button" class="switcher-btn" [class.active]="selectedChartTab() === 'cumulative'" (click)="selectedChartTab.set('cumulative')">
-              📈 PnL Acumulado
-            </button>
-            <button type="button" class="switcher-btn" [class.active]="selectedChartTab() === 'volume'" (click)="selectedChartTab.set('volume')">
-              📊 Volumen Diario (USDT)
-            </button>
-          </div>
-        </div>
-      </div>
+        @if (selectedChartTab() === 'cumulative') {
+          <div class="apple-chart-container glass-tier-2">
+            <svg viewBox="0 0 600 180" class="apple-svg-chart">
+              <defs>
+                <linearGradient id="pnlGradApple" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.38" />
+                  <stop offset="100%" stop-color="var(--gold)" stop-opacity="0.0" />
+                </linearGradient>
+                <filter id="goldGlowApple" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#d8b45c" flood-opacity="0.4" />
+                </filter>
+              </defs>
 
-      @if (selectedChartTab() === 'cumulative') {
-        <div class="apple-chart-container">
-          <svg viewBox="0 0 600 180" class="apple-svg-chart">
-            <defs>
-              <linearGradient id="pnlGradApple" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="var(--gold)" stop-opacity="0.38" />
-                <stop offset="100%" stop-color="var(--gold)" stop-opacity="0.0" />
-              </linearGradient>
-              <filter id="goldGlowApple" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#d8b45c" flood-opacity="0.4" />
-              </filter>
-            </defs>
+              <!-- Baseline zero line -->
+              <line
+                x1="40"
+                [attr.y1]="cumulativeChart().baselineY"
+                x2="560"
+                [attr.y2]="cumulativeChart().baselineY"
+                stroke="var(--line-strong)"
+                stroke-dasharray="3 3"
+              />
 
-            <!-- Baseline zero line -->
-            <line x1="40" [attr.y1]="cumulativeChart().baselineY" x2="560" [attr.y2]="cumulativeChart().baselineY" stroke="rgba(255,255,255,0.12)" stroke-dasharray="3 3" />
+              <!-- Area fill -->
+              @if (cumulativeChart().areaD) {
+                <path [attr.d]="cumulativeChart().areaD" fill="url(#pnlGradApple)" />
+              }
 
-            <!-- Area fill -->
-            @if (cumulativeChart().areaD) {
-              <path [attr.d]="cumulativeChart().areaD" fill="url(#pnlGradApple)" />
-            }
-
-            <!-- Line curve -->
-            @if (cumulativeChart().lineD) {
-              <path [attr.d]="cumulativeChart().lineD" fill="none" stroke="var(--gold)" stroke-width="2.5" filter="url(#goldGlowApple)" />
-            }
-
-            <!-- Points -->
-            @for (p of cumulativeChart().points; track p.date) {
-              <g>
-                <circle
-                  [attr.cx]="p.x"
-                  [attr.cy]="p.y"
-                  r="4.5"
-                  fill="var(--panel-2)"
+              <!-- Line curve -->
+              @if (cumulativeChart().lineD) {
+                <path
+                  [attr.d]="cumulativeChart().lineD"
+                  fill="none"
                   stroke="var(--gold)"
-                  stroke-width="2"
-                  class="chart-point"
-                  (mouseenter)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
-                  (mouseleave)="hoveredPoint.set(null)"
+                  stroke-width="2.5"
+                  filter="url(#goldGlowApple)"
                 />
-                <text [attr.x]="p.x" y="175" text-anchor="middle" fill="var(--muted)" font-size="10" font-family="var(--font-mono)">
-                  {{ p.shortDate }}
-                </text>
-              </g>
-            }
-          </svg>
-
-          <!-- Tooltip overlay -->
-          @if (hoveredPoint(); as tip) {
-            <div class="apple-chart-tooltip font-mono">
-              <div class="tooltip-date">{{ tip.date }}</div>
-              <div class="tooltip-value">{{ tip.value }}</div>
-              @if (tip.subvalue) {
-                <div class="tooltip-subvalue">{{ tip.subvalue }}</div>
               }
-            </div>
-          }
-        </div>
-      } @else {
-        <!-- Daily Volume Bar View -->
-        <div class="dashboard-chart apple-chart-container">
-          @for (day of dashboard().week; track day.date) {
-            <div class="dashboard-chart-col">
-              <div class="dashboard-chart-bar-wrap dashboard-chart-click" (click)="goToDay(day.date)" role="button" tabindex="0" (keydown.enter)="goToDay(day.date)">
-                <div class="dashboard-chart-bar"
-                     [class.bar-positive]="day.pnlVes >= 0"
-                     [class.bar-negative]="day.pnlVes < 0"
-                     [style.height.%]="barHeight(day)"
-                     [title]="day.date + ': ' + fmtVes(day.pnlVes) + ' | ' + fmtUsd(day.volumeUsdt) + ' USDT'">
-                </div>
-              </div>
-              <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
-              <span class="dashboard-chart-ops font-mono">{{ fmtUsd(day.volumeUsdt) }}</span>
-              <span class="dashboard-hint">Drill día →</span>
-            </div>
-          }
-        </div>
-      }
-    </section>
 
-    <!-- Recent Operations Table -->
-    <section class="apple-card-section">
-      <div class="apple-section-header">
-        <div class="apple-section-title-wrap">
-          <span class="apple-section-icon">📑</span>
-          <div>
-            <h3 class="apple-section-title">Últimas Operaciones Ejecutadas</h3>
-            <p class="apple-section-subtitle">Bitácora reciente de compras y ventas liquidadas</p>
+              <!-- Points -->
+              @for (p of cumulativeChart().points; track p.date) {
+                <g>
+                  <circle
+                    [attr.cx]="p.x"
+                    [attr.cy]="p.y"
+                    r="4.5"
+                    fill="var(--panel-2)"
+                    stroke="var(--gold)"
+                    stroke-width="2"
+                    class="chart-point"
+                    tabindex="0"
+                    role="button"
+                    [attr.aria-label]="p.date + ': ' + fmtVes(p.cumulativePnl)"
+                    (mouseenter)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
+                    (mouseleave)="hoveredPoint.set(null)"
+                    (focus)="hoveredPoint.set({ date: p.date, label: 'PnL Acumulado', value: fmtVes(p.cumulativePnl), subvalue: 'Día: ' + fmtVes(p.dailyPnl) + ' (' + p.operations + ' ops)', x: p.x, y: p.y })"
+                    (blur)="hoveredPoint.set(null)"
+                    (click)="goToDay(p.date)"
+                    (keydown.enter)="goToDay(p.date)"
+                  />
+                  <text
+                    [attr.x]="p.x"
+                    y="175"
+                    text-anchor="middle"
+                    fill="var(--muted)"
+                    font-size="10"
+                    font-family="var(--font-mono)"
+                  >
+                    {{ p.shortDate }}
+                  </text>
+                </g>
+              }
+            </svg>
+
+            <!-- Tooltip overlay -->
+            @if (hoveredPoint(); as tip) {
+              <div class="apple-chart-tooltip font-mono">
+                <div class="tooltip-date">{{ tip.date }}</div>
+                <div class="tooltip-value">{{ tip.value }}</div>
+                @if (tip.subvalue) {
+                  <div class="tooltip-subvalue">{{ tip.subvalue }}</div>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <!-- Daily Volume Bar View (chronological: 6 days ago -> today) -->
+          <div class="dashboard-chart apple-chart-container glass-tier-2">
+            @for (day of chronologicalWeek(); track day.date) {
+              <div class="dashboard-chart-col">
+                <div
+                  class="dashboard-chart-bar-wrap dashboard-chart-click"
+                  (click)="goToDay(day.date)"
+                  role="button"
+                  tabindex="0"
+                  (keydown.enter)="goToDay(day.date)"
+                >
+                  <div
+                    class="dashboard-chart-bar"
+                    [class.bar-positive]="day.pnlVes >= 0"
+                    [class.bar-negative]="day.pnlVes < 0"
+                    [style.height.%]="barHeight(day)"
+                    [title]="day.date + ': ' + fmtVes(day.pnlVes) + ' | ' + fmtUsd(day.volumeUsdt)"
+                  ></div>
+                </div>
+                <span class="dashboard-chart-label">{{ shortDate(day.date) }}</span>
+                <span class="dashboard-chart-ops font-mono">{{ fmtUsd(day.volumeUsdt) }}</span>
+                <span class="dashboard-hint">Drill día →</span>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Historical Mini Summary Strip inside Chart Card Footer -->
+        <div class="apple-stats-mini-grid font-mono">
+          <div
+            class="stats-mini-item glass-tier-2"
+            (click)="goToStats()"
+            (keydown.enter)="goToStats()"
+            role="button"
+            tabindex="0"
+          >
+            <span class="stats-mini-label">Total Operaciones</span>
+            <span class="stats-mini-val">{{ dashboard().totalOps }}</span>
+          </div>
+          <div
+            class="stats-mini-item glass-tier-2"
+            (click)="goToStats()"
+            (keydown.enter)="goToStats()"
+            role="button"
+            tabindex="0"
+          >
+            <span class="stats-mini-label">Racha Sin Errores</span>
+            <span class="stats-mini-val positive">{{ dashboard().today.zeroErrorStreak }} ops</span>
+          </div>
+          <div
+            class="stats-mini-item glass-tier-2"
+            (click)="goToFinanzas360()"
+            (keydown.enter)="goToFinanzas360()"
+            role="button"
+            tabindex="0"
+          >
+            <span class="stats-mini-label">Exposición Neta</span>
+            <span class="stats-mini-val">{{ fmtUsd(dashboard().today.exposure) }}</span>
           </div>
         </div>
-        <div class="apple-section-actions">
-          <a routerLink="/log" class="apple-pill-btn apple-btn-secondary">Ver Registro Completo →</a>
-        </div>
-      </div>
+      </section>
 
-      @if (dashboard().recentOps.length === 0) {
-        <p class="text-muted" style="margin: 12px 0;">No hay operaciones registradas aún. <a routerLink="/log">Registrar primera operación →</a></p>
-      } @else {
-        <div class="table-container">
-          <table class="corporate-table apple-table" aria-label="Últimas 3 operaciones">
-            <thead>
-              <tr>
-                <th scope="col">Fecha</th>
-                <th scope="col">Tipo</th>
-                <th scope="col">Par</th>
-                <th scope="col" class="text-right">VES</th>
-                <th scope="col" class="text-right">Cripto</th>
-                <th scope="col">Contraparte</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (o of dashboard().recentOps; track o.id) {
-                <tr class="dashboard-op-row" (click)="goToLog()" role="button" tabindex="0" (keydown.enter)="goToLog()" title="Ver registro completo">
-                  <td class="font-mono text-muted">{{ o.timestamp | slice:0:16 }}</td>
-                  <td>
-                    <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
-                      {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Asignación' }}
-                    </span>
-                  </td>
-                  <td><strong>{{ o.pair }}</strong></td>
-                  <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
-                  <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
-                  <td>{{ o.merchantNote || '—' }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
+      <!-- Right (Span 5): Recent Operations Table -->
+      <section class="apple-card-section glass-tier-1 bento-span-5">
+        <div class="apple-section-header">
+          <div class="apple-section-title-wrap">
+            <span class="apple-section-icon">📑</span>
+            <div>
+              <h3 class="apple-section-title">Últimas Operaciones Ejecutadas</h3>
+              <p class="apple-section-subtitle">Bitácora reciente de compras y ventas liquidadas</p>
+            </div>
+          </div>
+          <div class="apple-section-actions">
+            <a routerLink="/log" class="apple-pill-btn apple-btn-secondary">Libro Completo →</a>
+          </div>
         </div>
-      }
-    </section>
+
+        @if (dashboard().recentOps.length === 0) {
+          <div class="empty-ops-glass glass-tier-2">
+            <p class="text-muted">
+              No hay operaciones registradas aún.
+              <a routerLink="/log">Registrar primera operación →</a>
+            </p>
+          </div>
+        } @else {
+          <div class="table-container">
+            <table class="corporate-table apple-table" aria-label="Últimas operaciones">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col" class="text-right">VES</th>
+                  <th scope="col" class="text-right">Cripto</th>
+                  <th scope="col">Contraparte</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (o of dashboard().recentOps; track o.id) {
+                  <tr
+                    class="dashboard-op-row"
+                    (click)="goToLog()"
+                    role="button"
+                    tabindex="0"
+                    (keydown.enter)="goToLog()"
+                    title="Ver registro completo"
+                  >
+                    <td class="font-mono text-muted">{{ o.timestamp | slice: 5 : 16 }}</td>
+                    <td>
+                      <span class="badge" [class.badge-buy]="o.type === 'buy'" [class.badge-sell]="o.type === 'sell'">
+                        {{ o.type === 'buy' ? 'Compra' : o.type === 'sell' ? 'Venta' : 'Asignación' }}
+                      </span>
+                    </td>
+                    <td class="text-right font-mono">{{ o.vesAmount | ves }}</td>
+                    <td class="text-right font-mono">{{ o.usdtAmount | usdt }}</td>
+                    <td>{{ o.merchantNote || '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+    </div>
   }
 
-  <!-- Modal de Cierre de Sesión -->
+  <!-- ═══════════════════════════════════════════════════
+       8. Specular Liquid Glass Modals (Close, Preflight, Liquidity)
+       ═══════════════════════════════════════════════════ -->
   @if (showCloseModal()) {
-    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelCloseModal()" (keydown.escape)="cancelCloseModal()" aria-label="Cerrar modal">
-      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="close-modal-title" tabindex="-1">
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && cancelCloseModal()"
+      (keydown.escape)="cancelCloseModal()"
+      aria-label="Cerrar modal"
+    >
+      <div
+        class="modal-dialog apple-modal-dialog glass-tier-3"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-modal-title"
+        tabindex="-1"
+      >
         <h3 id="close-modal-title">Cerrar Jornada Operativa</h3>
         <p>Evalúa el cumplimiento de tu disciplina y agrega observaciones de mercado antes de archivar la sesión.</p>
 
-        <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
+        <div class="modal-form-stack">
           <label for="close-session-discipline">
             <span>Calificación de Disciplina</span>
           </label>
-          <select id="close-session-discipline" [value]="closeDisciplineRating()" (change)="closeDisciplineRating.set(+$any($event.target).value)">
+          <select
+            id="close-session-discipline"
+            class="apple-input-select"
+            [value]="closeDisciplineRating()"
+            (change)="closeDisciplineRating.set(+$any($event.target).value)"
+          >
             <option value="5">⭐⭐⭐⭐⭐ 5 - Impecable (Respeté todas las reglas)</option>
             <option value="4">⭐⭐⭐⭐ 4 - Muy buena (Leve desviación sin riesgo)</option>
             <option value="3">⭐⭐⭐ 3 - Regular (Operé con algo de prisa)</option>
@@ -1153,7 +1720,14 @@
           <label for="close-session-notes">
             <span>Notas de Cierre / Observaciones</span>
           </label>
-          <input id="close-session-notes" type="text" placeholder="Ej: Mucha liquidez en Banesco, spread amplio al mediodía" [value]="closeNotes()" (input)="closeNotes.set($any($event.target).value)" />
+          <input
+            id="close-session-notes"
+            type="text"
+            class="apple-input-text"
+            placeholder="Ej: Mucha liquidez en Banesco, spread amplio al mediodía"
+            [value]="closeNotes()"
+            (input)="closeNotes.set($any($event.target).value)"
+          />
         </div>
 
         <div class="modal-actions">
@@ -1164,64 +1738,69 @@
     </div>
   }
 
-  <!-- Modal de Protocolo Pre-Vuelo & Escudo Anti-Tilt -->
   @if (showPreflightModal()) {
-    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelPreflight()" (keydown.escape)="cancelPreflight()" aria-label="Cerrar modal de pre-vuelo">
-      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="preflight-modal-title" style="max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.5rem;">🛡️</span>
-            <h3 id="preflight-modal-title" style="margin: 0; font-size: 1.25rem;">Protocolo Pre-Vuelo & Escudo Anti-Tilt</h3>
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && cancelPreflight()"
+      (keydown.escape)="cancelPreflight()"
+      aria-label="Cerrar modal de pre-vuelo"
+    >
+      <div
+        class="modal-dialog apple-modal-dialog preflight-modal-dialog glass-tier-3"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preflight-modal-title"
+      >
+        <div class="modal-header-between">
+          <div class="modal-title-row">
+            <span class="modal-icon-lg">🛡️</span>
+            <h3 id="preflight-modal-title">Protocolo Pre-Vuelo &amp; Escudo Anti-Tilt</h3>
           </div>
           <span
             class="apple-pill-mini"
             [class.live]="preflightEvaluation().status === 'CLEARED'"
             [class.muted]="preflightEvaluation().status === 'WARNING'"
-            [style.background]="preflightEvaluation().status === 'HALTED_BLOCKED' ? 'rgba(239, 68, 68, 0.2)' : ''"
-            [style.color]="preflightEvaluation().status === 'HALTED_BLOCKED' ? '#ef4444' : ''"
+            [class.badge-danger]="preflightEvaluation().status === 'HALTED_BLOCKED'"
           >
             {{ preflightEvaluation().status }}
           </span>
         </div>
 
-        <p style="font-size: 0.88rem; color: var(--muted); margin-bottom: 18px;">
+        <p class="modal-subtitle">
           Verificación obligatoria de 15 segundos antes de operar. Previene el 90% de congelamientos SUDEBAN y estafas triangulares.
         </p>
 
-        <!-- Checklist Verification Items -->
-        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+        <div class="preflight-checklist">
           @for (item of preflightEvaluation().items; track item.id) {
-            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07);">
-              <span style="font-size: 1.1rem; line-height: 1;">{{ item.passed ? '✅' : '❌' }}</span>
-              <div style="flex: 1;">
-                <div style="font-size: 0.82rem; font-weight: 700; color: #ffffff;">{{ item.label }}</div>
-                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 2px;">{{ item.detail }}</div>
+            <div class="preflight-check-item glass-tier-2">
+              <span class="check-icon">{{ item.passed ? '✅' : '❌' }}</span>
+              <div class="check-body">
+                <div class="check-label">{{ item.label }}</div>
+                <div class="check-detail">{{ item.detail }}</div>
               </div>
             </div>
           }
         </div>
 
-        <!-- Interactive Preflight Controls -->
-        <div style="background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 14px;">
-          <!-- Strict Zero Third Party Checkbox -->
-          <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+        <div class="preflight-controls-box glass-tier-2">
+          <label class="preflight-checkbox-label">
             <input
               type="checkbox"
-              style="margin-top: 3px; accent-color: #10b981; width: 16px; height: 16px;"
               [ngModel]="preflightStrictNoThirdParty()"
               (ngModelChange)="preflightStrictNoThirdParty.set($event)"
             />
-            <span style="font-size: 0.82rem; color: #f1f5f9; line-height: 1.4;">
+            <span>
               <strong>Confirmo la Regla Anti-Terceros</strong>: No liberaré fondos si el titular de la transferencia no coincide exactamente con el titular verificado.
             </span>
           </label>
 
-          <!-- Mental State / Anti-Tilt selector -->
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <label for="preflight-mental-state" style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Estado Emocional del Trader:</label>
+          <div class="form-group-clean">
+            <label for="preflight-mental-state">Estado Emocional del Trader:</label>
             <select
               id="preflight-mental-state"
-              style="background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 8px 12px; color: #ffffff; font-size: 0.85rem;"
+              class="apple-input-select"
               [ngModel]="preflightMentalState()"
               (ngModelChange)="preflightMentalState.set($event)"
             >
@@ -1232,62 +1811,94 @@
             </select>
           </div>
 
-          <!-- Daily Loss Limit -->
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label for="preflight-daily-loss" style="font-size: 0.78rem; font-weight: 600; color: var(--muted);">Límite de Pérdida Diaria (Stop-Loss):</label>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 0.82rem; color: #94a3b8;">$</span>
+          <div class="preflight-loss-row">
+            <label for="preflight-daily-loss">Límite de Pérdida Diaria (Stop-Loss):</label>
+            <div class="loss-input-group font-mono">
+              <span>$</span>
               <input
                 id="preflight-daily-loss"
                 type="number"
-                style="width: 80px; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 8px; color: #ffffff; font-size: 0.85rem; font-weight: 700;"
+                class="apple-input-text loss-number-input font-mono"
                 [ngModel]="preflightDailyLossLimit()"
                 (ngModelChange)="preflightDailyLossLimit.set($event)"
                 min="10"
                 step="10"
               />
-              <span style="font-size: 0.78rem; color: #94a3b8;">USD</span>
+              <span>USD</span>
             </div>
           </div>
         </div>
 
-        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+        <div class="modal-actions">
           <button type="button" class="btn btn-ghost" (click)="cancelPreflight()">Cancelar</button>
           <button
             type="button"
             class="btn btn-primary"
             [disabled]="!preflightEvaluation().canTrade"
             (click)="confirmPreflightSession()"
-            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none;"
           >
-            🛡️ Confirmar & Abrir Sesión Blindada
+            🛡️ Confirmar &amp; Abrir Sesión Blindada
           </button>
         </div>
       </div>
     </div>
   }
 
-  <!-- Modal de Inyección de Liquidez Multibanco -->
   @if (showLiquidityModal()) {
-    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && cancelLiquidityModal()" (keydown.escape)="cancelLiquidityModal()" aria-label="Cerrar modal de inyección de liquidez">
-      <div class="modal-dialog apple-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="liquidity-modal-title" style="max-width: 540px; width: 95%;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.4rem;">🏛️</span>
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && cancelLiquidityModal()"
+      (keydown.escape)="cancelLiquidityModal()"
+      aria-label="Cerrar modal de inyección de liquidez"
+    >
+      <div
+        class="modal-dialog apple-modal-dialog liquidity-modal-dialog glass-tier-3"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="liquidity-modal-title"
+      >
+        <div class="modal-header-between">
+          <div class="modal-title-row">
+            <span class="modal-icon-lg">🏛️</span>
             <div>
-              <h3 id="liquidity-modal-title" style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #fff;">Inyectar Liquidez Bancaria</h3>
-              <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--muted);">Fondeo y ajuste de saldo en tiempo real sincronizado con Anti-SUDEBAN y MCP</p>
+              <h3 id="liquidity-modal-title">
+                {{ liquidityModalMode() === 'ADD' ? 'Inyectar Liquidez Bancaria' : 'Calibrar Saldo Real de Caja' }}
+              </h3>
+              <p class="modal-subtitle-compact">
+                {{ liquidityModalMode() === 'ADD'
+                  ? 'Fondeo de capital sumado al saldo existente sincronizado con Anti-SUDEBAN'
+                  : 'Ajuste exacto del saldo según tu extracto bancario oficial en línea' }}
+              </p>
             </div>
           </div>
           <button type="button" class="btn-close-clean" (click)="cancelLiquidityModal()" aria-label="Cerrar">✕</button>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 16px; margin: 20px 0;">
-          <!-- Selector de Cuenta Bancaria -->
+        <!-- Mode Toggle Segmented Control -->
+        <div class="modal-mode-segmented" role="group" aria-label="Modo de operación de saldo">
+          <button
+            type="button"
+            class="mode-seg-btn"
+            [class.active]="liquidityModalMode() === 'ADD'"
+            (click)="liquidityModalMode.set('ADD')"
+          >
+            ➕ Inyectar / Sumar
+          </button>
+          <button
+            type="button"
+            class="mode-seg-btn"
+            [class.active]="liquidityModalMode() === 'CALIBRATE'"
+            (click)="liquidityModalMode.set('CALIBRATE')"
+          >
+            🎯 Calibrar Saldo Exacto
+          </button>
+        </div>
+
+        <div class="modal-form-stack">
           <div class="form-group-clean">
-            <label for="inject-account-select" style="font-size: 0.82rem; font-weight: 600; color: var(--gold-strong); margin-bottom: 6px; display: block;">
-              Cuenta Bancaria Destino
-            </label>
+            <label for="inject-account-select" class="gold-text">Cuenta Bancaria Destino</label>
             <select
               id="inject-account-select"
               class="apple-input-select"
@@ -1302,69 +1913,112 @@
             </select>
           </div>
 
-          <!-- Monto en VES -->
           <div class="form-group-clean">
-            <label for="inject-amount-input" style="font-size: 0.82rem; font-weight: 600; color: var(--gold-strong); margin-bottom: 6px; display: block;">
-              Monto a Inyectar (VES)
+            <label for="inject-amount-input" class="gold-text">
+              {{ liquidityModalMode() === 'ADD' ? 'Monto a Inyectar / Sumar (VES)' : 'Saldo Real Actual en Banco (VES)' }}
             </label>
-            <div style="position: relative;">
+            <div class="amount-input-wrap">
               <input
                 id="inject-amount-input"
                 type="number"
                 step="any"
-                min="1"
-                class="apple-input-text font-mono"
-                style="padding-right: 50px; font-size: 1.1rem; font-weight: 700;"
-                placeholder="Ej: 50000.00"
+                min="0"
+                class="apple-input-text font-mono amount-input-lg"
+                [placeholder]="liquidityModalMode() === 'ADD' ? 'Ej: 50000.00' : 'Ej: 15420.50'"
                 [value]="injectionAmount() ?? ''"
                 (input)="injectionAmount.set($any($event.target).value ? +$any($event.target).value : null)"
               />
-              <span style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; font-weight: 700; color: var(--muted);">VES</span>
+              <span class="amount-unit-suffix font-mono">VES</span>
             </div>
           </div>
 
-          <!-- Referencia / Nota de Fondeo -->
           <div class="form-group-clean">
-            <label for="inject-note-input" style="font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; display: block;">
-              Nota Operativa / Referencia (Opcional)
-            </label>
+            <label for="inject-note-input">Nota Operativa / Referencia (Opcional)</label>
             <input
               id="inject-note-input"
               type="text"
               class="apple-input-text"
-              placeholder="Ej: Fondeo de caja matutino, cobro USDT, recarga de saldo"
+              [placeholder]="liquidityModalMode() === 'ADD' ? 'Ej: Fondeo matutino, cobro USDT' : 'Ej: Reconciliación con banca en línea'"
               [value]="injectionNote()"
               (input)="injectionNote.set($any($event.target).value)"
             />
           </div>
 
-          <!-- Preview de Balance Proyectado -->
           @if (selectedAccountForInjection(); as selAcc) {
-            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+            <div class="projected-balance-preview glass-tier-2">
               <div>
-                <span style="font-size: 0.75rem; color: var(--muted); display: block;">Saldo actual</span>
-                <span class="font-mono" style="font-size: 0.95rem; color: #fff;">{{ fmtVes(selAcc.currentBalanceVes) }}</span>
+                <span class="preview-label">Saldo registrado</span>
+                <span class="font-mono preview-val">{{ fmtVes(selAcc.currentBalanceVes) }}</span>
               </div>
-              <span style="font-size: 1.1rem; color: var(--gold-strong);">➔</span>
-              <div style="text-align: right;">
-                <span style="font-size: 0.75rem; color: var(--gold-strong); font-weight: 600; display: block;">Saldo Proyectado</span>
-                <span class="font-mono" style="font-size: 1.05rem; font-weight: 800; color: #34d399;">{{ fmtVes(projectedBalanceAfterInjection()) }}</span>
+              <span class="preview-arrow">➔</span>
+              <div class="text-right">
+                <span class="preview-label gold-text">
+                  {{ liquidityModalMode() === 'ADD' ? 'Saldo Proyectado' : 'Nuevo Saldo Calibrado' }}
+                </span>
+                <span class="font-mono preview-val positive">{{ fmtVes(projectedBalanceAfterInjection()) }}</span>
               </div>
             </div>
           }
 
-          <!-- Mensaje de Error si aplica -->
           @if (injectionError()) {
-            <div style="padding: 8px 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.8rem;">
+            <div class="injection-error-banner">
               ⚠️ {{ injectionError() }}
             </div>
           }
         </div>
 
-        <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+        <div class="modal-actions">
           <button type="button" class="btn btn-ghost" (click)="cancelLiquidityModal()">Cancelar</button>
-          <button type="button" class="btn btn-primary" (click)="confirmLiquidityInjection()" [disabled]="!injectionAmount() || (injectionAmount() ?? 0) <= 0">
-            💧 Confirmar Inyección
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="confirmLiquidityInjection()"
+            [disabled]="injectionAmount() === null || (liquidityModalMode() === 'ADD' && (injectionAmount() ?? 0) <= 0) || (liquidityModalMode() === 'CALIBRATE' && (injectionAmount() ?? 0) < 0)"
+          >
+            {{ liquidityModalMode() === 'ADD' ? '💧 Confirmar Inyección' : '🎯 Fijar Saldo Real' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Modal de Confirmación de Puesta a Cero de Saldos -->
+  @if (showResetConfirmModal()) {
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && cancelResetConfirmModal()"
+      (keydown.escape)="cancelResetConfirmModal()"
+      aria-label="Cerrar modal de confirmación"
+    >
+      <div
+        class="modal-dialog apple-modal-dialog glass-tier-3"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-modal-title"
+      >
+        <div class="modal-header-between">
+          <div class="modal-title-row">
+            <span class="modal-icon-lg">🧹</span>
+            <h3 id="reset-modal-title">¿Poner a cero todos los saldos de tesorería?</h3>
+          </div>
+        </div>
+
+        <p class="modal-subtitle">
+          Esta acción cambiará el saldo inicial de todas tus <strong>{{ unifiedAccounts().length }} cuentas bancarias a 0,00 VES</strong>.
+          No se borrarán los límites diarios, configuraciones ni el historial de órdenes anteriores.
+        </p>
+        <div class="preflight-controls-box glass-tier-2">
+          <p class="text-muted font-mono" style="margin: 0; font-size: 0.74rem;">
+            💡 <strong>Siguiente paso recomendado</strong>: Luego del reseteo, utiliza el botón <strong>"Calibrar Saldo Exacto"</strong> en cada banco para ingresar únicamente el capital con el que cuentas en tu banca en línea real.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" (click)="cancelResetConfirmModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary apple-btn-danger" (click)="confirmResetAllBalancesToZero()">
+            🧹 Confirmar y Poner en Cero
           </button>
         </div>
       </div>

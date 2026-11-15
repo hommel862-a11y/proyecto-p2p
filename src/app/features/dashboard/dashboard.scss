@@ -1,265 +1,553 @@
-/* ============================================================
-   Apple Pro Design System: Centro de Control (Dashboard)
-   Executive desk, frosted glassmorphism & institutional micro-interactions
-   ============================================================ */
+/* ==========================================================================
+   P2P DESK — SPATIAL LIQUID GLASS COCKPIT v5.0
+   True Refractive Glassmorphism | Progressive Disclosure | 4-Theme Native
+   ========================================================================== */
 
-.apple-desk-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  max-width: 100%;
+:host {
+  display: block;
+  width: 100%;
+
+  /* Spatial Glass Tier Tokens (Dark / Navy Gold Default) */
+  --glass-surface-1: linear-gradient(
+    145deg,
+    rgba(22, 34, 58, 0.62) 0%,
+    rgba(11, 18, 33, 0.48) 55%,
+    rgba(8, 13, 25, 0.68) 100%
+  );
+  --glass-surface-2: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.075) 0%,
+    rgba(255, 255, 255, 0.022) 100%
+  );
+  --glass-surface-3: linear-gradient(
+    145deg,
+    rgba(14, 22, 39, 0.84) 0%,
+    rgba(8, 13, 25, 0.90) 100%
+  );
+  --glass-rim: rgba(255, 255, 255, 0.12);
+  --glass-rim-hover: rgba(216, 180, 92, 0.42);
+  --glass-specular:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 -12px 28px rgba(0, 0, 0, 0.22);
+  --glass-elevation: 0 20px 48px -14px rgba(0, 0, 0, 0.62), 0 4px 16px rgba(0, 0, 0, 0.32);
+  --glass-blur-filter: blur(28px) saturate(190%);
+  --recessed-well: rgba(5, 9, 18, 0.46);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   1. Apple Pro Main Header & Dynamic Island
-   ══════════════════════════════════════════════════════════════ */
+:host-context([data-theme="light"]) {
+  --glass-surface-1: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(245, 248, 255, 0.68) 100%
+  );
+  --glass-surface-2: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(240, 245, 255, 0.76) 100%
+  );
+  --glass-surface-3: rgba(255, 255, 255, 0.90);
+  --glass-rim: rgba(15, 23, 42, 0.09);
+  --glass-rim-hover: rgba(168, 131, 47, 0.40);
+  --glass-specular:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.98),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.03);
+  --glass-elevation: 0 18px 40px -14px rgba(20, 33, 61, 0.10), 0 2px 10px rgba(20, 33, 61, 0.05);
+  --recessed-well: rgba(15, 23, 42, 0.045);
+}
+
+:host-context([data-theme="apple-dark"]) {
+  --glass-surface-1: linear-gradient(
+    145deg,
+    rgba(34, 34, 42, 0.66) 0%,
+    rgba(16, 16, 22, 0.56) 100%
+  );
+  --glass-surface-2: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.028) 100%
+  );
+  --glass-surface-3: rgba(18, 18, 24, 0.84);
+  --glass-rim: rgba(255, 255, 255, 0.14);
+  --glass-rim-hover: rgba(255, 214, 10, 0.45);
+  --glass-specular:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --glass-elevation: 0 22px 50px -14px rgba(0, 0, 0, 0.72), 0 4px 16px rgba(0, 0, 0, 0.42);
+  --recessed-well: rgba(10, 10, 14, 0.56);
+}
+
+:host-context([data-theme="neon-pink"]) {
+  --glass-surface-1: linear-gradient(
+    145deg,
+    rgba(255, 45, 135, 0.13) 0%,
+    rgba(28, 6, 38, 0.68) 100%
+  );
+  --glass-surface-2: linear-gradient(
+    145deg,
+    rgba(255, 92, 165, 0.16) 0%,
+    rgba(38, 8, 48, 0.62) 100%
+  );
+  --glass-surface-3: rgba(20, 4, 28, 0.88);
+  --glass-rim: rgba(255, 45, 135, 0.34);
+  --glass-rim-hover: rgba(0, 240, 255, 0.65);
+  --glass-specular:
+    inset 0 1px 0 0 rgba(255, 140, 200, 0.28),
+    inset 0 0 0 1px rgba(0, 240, 255, 0.08);
+  --glass-elevation: 0 20px 48px -12px rgba(255, 45, 135, 0.25), 0 4px 18px rgba(0, 0, 0, 0.5);
+  --recessed-well: rgba(16, 3, 24, 0.62);
+}
+
+/* ==========================================================================
+   1. SPATIAL WORKSPACE & REFRACTIVE AURORA CANVAS
+   ========================================================================== */
+.apple-desk-panel.specular-glass-workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 1580px;
+  margin: 0 auto;
+  padding: 0.25rem 0 3.5rem;
+  color: var(--text);
+  z-index: 1;
+}
+
+.spatial-aurora-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+
+  .aurora-bloom {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(110px);
+    opacity: 0.55;
+    animation: spatialFloat 18s ease-in-out infinite alternate;
+  }
+
+  .bloom-gold {
+    width: 520px;
+    height: 520px;
+    top: -120px;
+    left: 10%;
+    background: radial-gradient(circle, var(--glow-gold) 0%, transparent 70%);
+  }
+
+  .bloom-emerald {
+    width: 560px;
+    height: 560px;
+    top: 26%;
+    right: -130px;
+    background: radial-gradient(circle, var(--glow-accent) 0%, transparent 70%);
+    animation-delay: -6s;
+  }
+
+  .bloom-azure {
+    width: 480px;
+    height: 480px;
+    bottom: -80px;
+    left: 28%;
+    background: radial-gradient(circle, var(--glow-accent-2) 0%, transparent 70%);
+    animation-delay: -11s;
+  }
+}
+
+@keyframes spatialFloat {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(28px, -22px, 0) scale(1.08); }
+  100% { transform: translate3d(-20px, 18px, 0) scale(0.95); }
+}
+
+/* 3-Tier Specular Glass Surfaces */
+.glass-tier-1 {
+  background: var(--glass-surface-1);
+  backdrop-filter: var(--glass-blur-filter);
+  -webkit-backdrop-filter: var(--glass-blur-filter);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-specular), var(--glass-elevation);
+  transition: border-color 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
+}
+
+.glass-tier-2 {
+  background: var(--glass-surface-2);
+  backdrop-filter: var(--glass-blur-filter);
+  -webkit-backdrop-filter: var(--glass-blur-filter);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-specular), 0 12px 30px -10px rgba(0, 0, 0, 0.45);
+  transition:
+    transform 0.24s var(--ease-out),
+    border-color 0.24s var(--ease-out),
+    box-shadow 0.24s var(--ease-out);
+
+  &:hover {
+    border-color: var(--glass-rim-hover);
+  }
+}
+
+.glass-tier-3 {
+  background: var(--glass-surface-3);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-specular), var(--glass-elevation);
+}
+
+/* ==========================================================================
+   2. MAIN HEADER & DYNAMIC ISLAND WORKSHIFT WIDGET
+   ========================================================================== */
 .apple-main-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 20px 24px;
-  background: linear-gradient(135deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.92) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(24px);
+  gap: 1rem;
+  padding: 1.15rem 1.45rem;
+  border-radius: 22px;
 
   .apple-title-group {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
+  }
 
-    .apple-title-badge-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+  .apple-title-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
 
-      .apple-desk-title {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: var(--text);
-        letter-spacing: -0.02em;
-        margin: 0;
-      }
+  .apple-desk-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
 
-      .apple-pro-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 8px;
-        font-size: 0.68rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        border-radius: 999px;
-        background: rgba(216, 180, 92, 0.15);
-        border: 1px solid rgba(216, 180, 92, 0.35);
-        color: var(--gold-strong);
-      }
-    }
+  .apple-pro-badge {
+    padding: 0.22rem 0.68rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--grad-gold);
+    color: #090d16;
+    box-shadow: 0 0 18px var(--glow-gold);
+  }
 
-    .apple-desk-subtitle {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin: 0;
-    }
+  .apple-desk-subtitle {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--muted);
   }
 }
 
-/* Dynamic Island Workshift Widget */
 .apple-dynamic-island {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 14px;
-  background: rgba(5, 8, 15, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.85rem 0.55rem 1rem;
   border-radius: 999px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @media (max-width: 900px) {
+    border-radius: 18px;
+    width: 100%;
+    justify-content: space-between;
+  }
 
   &.island-active {
-    border-color: rgba(47, 208, 143, 0.35);
-    background: linear-gradient(90deg, rgba(47, 208, 143, 0.06) 0%, rgba(5, 8, 15, 0.8) 100%);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(47, 208, 143, 0.15);
+    border-color: rgba(47, 208, 143, 0.42);
+    box-shadow: var(--glass-specular), 0 0 26px var(--glow-accent);
   }
 
   .island-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.65rem;
+  }
 
-    .island-pulse-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #2fd08f;
-      box-shadow: 0 0 10px #2fd08f;
-      animation: islandPulse 2s infinite ease-in-out;
-    }
+  .island-pulse-dot,
+  .island-idle-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
 
-    .island-idle-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--muted);
-    }
+  .island-pulse-dot {
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+  }
 
-    .island-info {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+  .island-idle-dot {
+    background: var(--muted);
+    opacity: 0.6;
+  }
 
-      .island-status-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
+  .island-status-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
 
-        .island-status-title {
-          font-size: 0.84rem;
-          color: var(--text);
-          font-weight: 700;
-        }
-      }
+  .island-status-title {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: var(--text);
+  }
 
-      .island-metrics {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.76rem;
-
-        .island-sep {
-          color: rgba(255, 255, 255, 0.2);
-        }
-      }
-    }
+  .island-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    color: var(--muted);
   }
 
   .island-telemetry {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 12px;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 0.4rem;
+    padding: 0.32rem 0.72rem;
     border-radius: 999px;
-    font-size: 0.72rem;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    font-size: 0.68rem;
+    color: var(--muted);
     cursor: pointer;
-    user-select: none;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: border-color 0.2s ease, transform 0.2s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.07);
-      border-color: rgba(255, 255, 255, 0.16);
+      border-color: var(--gold);
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
 
     .telemetry-status-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #2fd08f;
-      box-shadow: 0 0 6px #2fd08f;
-      flex-shrink: 0;
-      transition: all 0.3s ease;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
     }
 
-    &.status-optimal .telemetry-status-dot {
-      background: #2fd08f;
-      box-shadow: 0 0 6px rgba(47, 208, 143, 0.8);
-    }
+    &.status-moderate .telemetry-status-dot { background: var(--warn); }
+    &.status-degraded .telemetry-status-dot { background: var(--danger); }
 
-    &.status-moderate .telemetry-status-dot {
-      background: #f59e0b;
-      box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
-    }
-
-    &.status-degraded .telemetry-status-dot {
-      background: #ef4444;
-      box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
-    }
-
-    .telemetry-item {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 3px;
-      color: rgba(255, 255, 255, 0.65);
-
-      strong {
-        color: #ffffff;
-        font-weight: 600;
-      }
-    }
-
-    .telemetry-sep {
-      color: rgba(255, 255, 255, 0.2);
-    }
-  }
-
-  .island-actions {
-    display: flex;
-    align-items: center;
+    strong { color: var(--text); }
   }
 }
 
-/* Pills & Mini Badges */
-.apple-pill-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text);
+/* ==========================================================================
+   3. STICKY COMMAND DOCK (ALPHA PULSE RIBBON + SEGMENTED LENS BAR)
+   ========================================================================== */
+.glass-command-dock {
+  position: sticky;
+  top: 0.55rem;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 20px;
+}
 
-  &.live {
-    background: rgba(47, 208, 143, 0.15);
-    border-color: rgba(47, 208, 143, 0.35);
-    color: #2fd08f;
+.alpha-pulse-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 14px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+
+  &.pulse-alpha {
+    border-color: rgba(47, 208, 143, 0.45);
+    background: linear-gradient(90deg, rgba(47, 208, 143, 0.12), rgba(5, 9, 18, 0.4));
   }
 
-  &.muted {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.08);
+  &.pulse-risk {
+    border-color: rgba(255, 95, 109, 0.48);
+    background: linear-gradient(90deg, rgba(255, 95, 109, 0.14), rgba(5, 9, 18, 0.4));
+  }
+
+  .pulse-left,
+  .pulse-right {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  .pulse-headline-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+  }
+
+  .pulse-headline {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .pulse-subheadline {
+    font-size: 0.7rem;
     color: var(--muted);
   }
 
-  &.gold {
-    background: rgba(216, 180, 92, 0.15);
-    border-color: rgba(216, 180, 92, 0.35);
-    color: var(--gold-strong);
+  .hud-action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
   }
+}
 
-  &.recommended {
-    background: linear-gradient(135deg, rgba(216, 180, 92, 0.25) 0%, rgba(216, 180, 92, 0.1) 100%);
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.36rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-rim);
+  color: var(--text);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
     border-color: var(--gold);
-    color: var(--gold-strong);
-    box-shadow: 0 0 10px rgba(216, 180, 92, 0.2);
+    transform: translateY(-1px);
   }
 
-  &.badge-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.35);
-    color: #f87171;
+  &.chip-optimal {
+    border-color: rgba(47, 208, 143, 0.45);
+    color: var(--accent);
+  }
+
+  &.chip-danger {
+    border-color: rgba(255, 95, 109, 0.45);
+    color: var(--danger);
+  }
+
+  .hud-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .hud-sub {
+    color: var(--muted);
+    font-size: 0.68rem;
+  }
+}
+
+.apple-segmented-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.25rem;
+  border-radius: 14px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+}
+
+.apple-segmented-tab {
+  flex: 1;
+  min-width: 140px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.48rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+
+  &:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &.active {
+    background: var(--glass-surface-2);
+    border-color: var(--gold-border);
+    color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 4px 14px rgba(0, 0, 0, 0.25);
+  }
+
+  .tab-count {
+    padding: 0.08rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 800;
+    background: rgba(216, 180, 92, 0.16);
+    color: var(--gold);
+  }
+}
+
+/* ==========================================================================
+   4. SHARED PILLS, BUTTONS & SEMANTIC TEXT
+   ========================================================================== */
+.apple-pill-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-rim);
+  color: var(--text);
+
+  &.live,
+  &.badge-accent {
+    background: rgba(47, 208, 143, 0.14);
+    border-color: rgba(47, 208, 143, 0.35);
+    color: var(--accent);
+  }
+
+  &.gold,
+  &.recommended {
+    background: rgba(216, 180, 92, 0.16);
+    border-color: var(--gold-border);
+    color: var(--gold);
   }
 
   &.badge-warning {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.35);
-    color: #fbbf24;
+    background: rgba(245, 184, 76, 0.15);
+    border-color: rgba(245, 184, 76, 0.35);
+    color: var(--warn);
   }
 
-  &.badge-accent {
-    background: rgba(47, 208, 143, 0.15);
-    border-color: rgba(47, 208, 143, 0.35);
-    color: #2fd08f;
+  &.badge-danger {
+    background: rgba(255, 95, 109, 0.15);
+    border-color: rgba(255, 95, 109, 0.35);
+    color: var(--danger);
+  }
+
+  &.muted {
+    color: var(--muted);
   }
 }
 
@@ -267,569 +555,932 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  gap: 0.38rem;
+  padding: 0.44rem 0.9rem;
   border-radius: 999px;
-  border: 1px solid transparent;
+  font-size: 0.74rem;
+  font-weight: 800;
+  border: 1px solid var(--glass-rim);
+  background: var(--glass-surface-2);
+  color: var(--text);
   cursor: pointer;
   transition: all 0.2s var(--ease-out);
-  text-decoration: none;
 
-  &.apple-btn-primary {
-    background: linear-gradient(135deg, #f5e6bd 0%, #d8b45c 100%);
-    color: #05080f;
-    box-shadow: 0 2px 10px rgba(216, 180, 92, 0.3);
-
-    &:hover {
-      box-shadow: 0 4px 16px rgba(216, 180, 92, 0.45);
-      transform: translateY(-1px);
-    }
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--gold);
   }
 
-  &.apple-btn-secondary {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: var(--text);
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
+  &.apple-btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    border-color: rgba(47, 208, 143, 0.5);
+    color: #04130d;
+    box-shadow: 0 4px 16px var(--glow-accent);
   }
 
   &.apple-btn-gold {
-    background: rgba(216, 180, 92, 0.12);
-    border-color: rgba(216, 180, 92, 0.35);
-    color: var(--gold);
+    background: var(--grad-gold);
+    border-color: var(--gold);
+    color: #090d16;
+    box-shadow: 0 4px 16px var(--glow-gold);
+  }
 
-    &:hover:not(:disabled) {
-      background: rgba(216, 180, 92, 0.22);
-      border-color: var(--gold);
-      box-shadow: 0 0 12px var(--glow-gold);
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
+  &.apple-btn-secondary {
+    background: var(--recessed-well);
+    color: var(--text);
   }
 
   &.apple-btn-danger {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.35);
-    color: #f87171;
+    background: rgba(255, 95, 109, 0.16);
+    border-color: rgba(255, 95, 109, 0.4);
+    color: var(--danger);
+  }
 
-    &:hover {
-      background: rgba(239, 68, 68, 0.25);
-    }
+  &.btn-micro {
+    padding: 0.26rem 0.62rem;
+    font-size: 0.68rem;
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   2. Apple Segmented Control Bar
-   ══════════════════════════════════════════════════════════════ */
-.apple-segmented-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  overflow-x: auto;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+.positive  { color: var(--accent) !important; }
+.negative  { color: var(--danger) !important; }
+.warn-text { color: var(--warn) !important; }
+.gold-text { color: var(--gold) !important; }
+.text-muted { color: var(--muted); }
+.text-right { text-align: right; }
 
-  .apple-segmented-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--muted);
-    background: transparent;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    white-space: nowrap;
-
-    &:hover:not(.active) {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.04);
-    }
-
-    &.active {
-      color: var(--text);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-      font-weight: 700;
-    }
-
-    .tab-icon {
-      font-size: 0.95rem;
-    }
-
-    .tab-count {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1px 6px;
-      font-size: 0.65rem;
-      font-family: var(--font-mono);
-      font-weight: 700;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--muted);
-    }
-
-    &.active .tab-count {
-      background: rgba(216, 180, 92, 0.25);
-      color: var(--gold);
-    }
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   3. Apple Bento KPI Cards
-   ══════════════════════════════════════════════════════════════ */
+/* ==========================================================================
+   5. HERO KPI BENTO STRIP & ONE-TAP ARBITRAGE SIMULATOR
+   ========================================================================== */
 .apple-bento-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
 
-  @media (max-width: 1100px) {
-    grid-template-columns: repeat(2, 1fr);
+  @media (max-width: 1180px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  @media (max-width: 600px) {
+  @media (max-width: 640px) {
     grid-template-columns: 1fr;
   }
 }
 
 .apple-kpi-card {
-  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(11, 17, 30, 0.95) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 18px 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0.65rem;
+  padding: 1.2rem 1.3rem;
+  border-radius: 20px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
   overflow: hidden;
 
   &:hover {
-    border-color: rgba(216, 180, 92, 0.35);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(216, 180, 92, 0.1);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+  }
 
-    .apple-kpi-link {
-      opacity: 1;
-      transform: translateX(0);
-    }
+  &.kpi-glow-accent {
+    border-color: rgba(47, 208, 143, 0.35);
+    box-shadow: var(--glass-specular), 0 14px 34px -12px var(--glow-accent);
+  }
+
+  &.kpi-glow-gold {
+    border-color: var(--gold-border);
+    box-shadow: var(--glass-specular), 0 14px 34px -12px var(--glow-gold);
+  }
+
+  &.kpi-glow-danger {
+    border-color: rgba(255, 95, 109, 0.38);
   }
 
   .apple-kpi-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
 
-    .apple-kpi-title {
-      font-size: 0.76rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
-    }
+  .apple-kpi-title {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
 
-    .apple-kpi-icon {
-      font-size: 1.1rem;
-      line-height: 1;
-    }
+  .apple-kpi-icon {
+    font-size: 1.15rem;
   }
 
   .apple-kpi-val {
-    font-size: 1.6rem;
-    font-weight: 800;
-    line-height: 1.15;
+    font-size: 1.72rem;
+    font-weight: 900;
+    letter-spacing: -0.03em;
     color: var(--text);
-
-    &.positive {
-      color: #2fd08f;
-    }
-
-    &.negative {
-      color: #ef4444;
-    }
+    line-height: 1.15;
 
     .apple-kpi-unit {
-      font-size: 0.85rem;
-      font-weight: 500;
+      font-size: 0.82rem;
+      font-weight: 700;
       color: var(--muted);
     }
   }
 
   .apple-kpi-footer {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-size: 0.74rem;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.72rem;
+  }
 
-    .apple-kpi-subtext {
-      color: var(--text-muted);
-    }
+  .apple-kpi-subtext {
+    color: var(--muted);
+  }
 
-    .apple-kpi-link {
-      font-weight: 700;
-      color: var(--gold);
-      opacity: 0;
-      transform: translateX(-4px);
-      transition: all 0.2s ease;
-    }
+  .apple-kpi-link {
+    font-weight: 800;
+    color: var(--gold);
+    white-space: nowrap;
   }
 }
 
-/* Progress Track Bar */
+.kpi-target-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-inline-edit-target {
+  padding: 0.18rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--glass-rim);
+  background: var(--recessed-well);
+  color: var(--text);
+  font-size: 0.68rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--gold);
+  }
+}
+
+.kpi-progress-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kpi-remaining-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
 .apple-track-bar {
   width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 7px;
   border-radius: 999px;
+  background: var(--recessed-well);
   overflow: hidden;
-  position: relative;
 
   .apple-track-fill {
     height: 100%;
-    background: linear-gradient(90deg, #d8b45c 0%, #f0d48a 100%);
     border-radius: 999px;
-    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    background: linear-gradient(90deg, var(--gold), var(--accent));
+    transition: width 0.35s ease;
 
-    &.fill-danger {
-      background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+    &.fill-warning { background: var(--warn); }
+    &.fill-danger  { background: var(--danger); }
+  }
+}
+
+.inline-target-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: 12px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+
+  .preset-chips-row {
+    display: flex;
+    gap: 0.3rem;
+  }
+
+  .preset-chip {
+    flex: 1;
+    padding: 0.25rem 0.4rem;
+    border-radius: 8px;
+    border: 1px solid var(--glass-rim);
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    cursor: pointer;
+
+    &.active,
+    &:hover {
+      background: rgba(216, 180, 92, 0.18);
+      border-color: var(--gold);
+      color: var(--text);
+    }
+  }
+
+  .custom-target-input-row {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+  }
+
+  .target-mini-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0.55rem;
+    border-radius: 8px;
+    border: 1px solid var(--glass-rim);
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 0.76rem;
+    font-weight: 800;
+  }
+}
+
+/* Interactive One-Tap Arbitrage Simulator Ribbon */
+.spatial-simulator-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.9rem 1.3rem;
+  border-radius: 20px;
+  border-color: var(--gold-border);
+
+  .sim-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .sim-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .sim-eyebrow {
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+  }
+
+  .sim-headline {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .sim-preset-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem;
+    border-radius: 12px;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+  }
+
+  .sim-pill {
+    padding: 0.34rem 0.72rem;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    &:hover { color: var(--text); }
+    &.active {
+      background: var(--grad-gold);
+      color: #090d16;
+      box-shadow: 0 2px 10px var(--glow-gold);
+    }
+  }
+
+  .sim-metrics-center {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+  }
+
+  .sim-metric-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+
+    &.highlight {
+      padding: 0.3rem 0.75rem;
+      border-radius: 12px;
+      background: rgba(47, 208, 143, 0.1);
+      border: 1px solid rgba(47, 208, 143, 0.28);
     }
 
-    &.fill-warning {
-      background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+    .sim-lbl {
+      font-size: 0.64rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .sim-val {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+  }
+
+  .sim-divider {
+    color: var(--muted);
+    font-weight: 700;
+  }
+}
+
+/* Mesa Cambiaria BCV (14 Bancos) & Pulso Spot Institutional Strip */
+.mesa-bcv-executive-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.9rem 1.3rem;
+  border-radius: 20px;
+  border: 1px solid var(--gold-border);
+
+  .mesa-strip-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .mesa-badge-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .mesa-eyebrow {
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+  }
+
+  .mesa-top-bank {
+    font-size: 0.82rem;
+    color: var(--text);
+  }
+
+  .mesa-strip-metrics {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+  }
+
+  .mesa-metric-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+
+    &.highlight {
+      padding: 0.3rem 0.75rem;
+      border-radius: 12px;
+      background: rgba(47, 208, 143, 0.1);
+      border: 1px solid rgba(47, 208, 143, 0.28);
+    }
+
+    .mesa-lbl {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .mesa-val {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    small {
+      font-size: 0.68rem;
+    }
+  }
+
+  .mesa-strip-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+}
+
+/* ==========================================================================
+   6. BENTO SECTIONS, COCKPIT TILES & FORENSIC CAPSULE STACK
+   ========================================================================== */
+.bento-stretch-row {
+  align-items: stretch;
+}
+
+.apple-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.35rem 1.45rem;
+  border-radius: 22px;
+  height: 100%;
+}
+
+.apple-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+
+  .apple-section-title-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .apple-section-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    flex-shrink: 0;
+  }
+
+  .apple-section-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: var(--text);
+  }
+
+  .apple-section-subtitle {
+    margin: 0.15rem 0 0;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .apple-section-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+}
+
+.cockpit-three-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  flex: 1;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cockpit-tile {
+  cursor: default;
+  padding: 1rem 1.1rem;
+
+  .cockpit-metric-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .cockpit-label {
+    display: block;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 0.15rem;
+  }
+
+  .cockpit-val {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .cockpit-valuation-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-radius: 10px;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    font-size: 0.72rem;
+  }
+}
+
+.obi-gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  .obi-track-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 95, 109, 0.25);
+    overflow: hidden;
+  }
+
+  .obi-track-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 999px;
+  }
+
+  .obi-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.66rem;
+    color: var(--muted);
+  }
+}
+
+.obi-guidance-box,
+.yield-sweep-box {
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+  font-size: 0.7rem;
+  color: var(--muted);
+
+  .yield-header {
+    font-weight: 800;
+    color: var(--gold);
+    margin-bottom: 0.15rem;
+  }
+
+  .yield-detail {
+    margin: 0;
+    color: var(--text);
+  }
+}
+
+.divergence-info-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+
+  .div-row {
+    display: flex;
+    justify-content: space-between;
+  }
+}
+
+/* Forensic Capsule Stack (Span 5) */
+.forensic-capsule-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  flex: 1;
+}
+
+.forensic-glass-capsule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 16px;
+  background: var(--glass-surface-2);
+  border: 1px solid var(--glass-rim);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-out);
+
+  &:hover {
+    border-color: var(--gold-border);
+    transform: translateX(2px);
+  }
+
+  &.allow { border-left: 3px solid var(--accent); }
+  &.pause { border-left: 3px solid var(--warn); }
+  &.deny  { border-left: 3px solid var(--danger); }
+
+  .capsule-left {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+  }
+
+  .capsule-full {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .capsule-top-between,
+  .capsule-bottom-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .verdict-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    flex-shrink: 0;
+  }
+
+  .capsule-eyebrow {
+    font-size: 0.64rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .capsule-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .capsule-subtext {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .capsule-action-link {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+}
+
+/* ==========================================================================
+   7. TREASURY FILTER RIBBON, SPOTLIGHT BANK CARDS & COMPACT TABLE
+   ========================================================================== */
+.apple-density-segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+
+  .apple-density-tab {
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+
+    &.active {
+      background: var(--glass-surface-2);
+      color: var(--text);
     }
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   4. Apple Card Section & Unified Multi-Bank Treasury Grid
-   ══════════════════════════════════════════════════════════════ */
-.apple-card-section {
-  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.95) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 22px 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+.apple-treasury-pill {
+  padding: 0.38rem 0.85rem;
+  border-radius: 999px;
+  background: var(--recessed-well);
+  border: 1px solid var(--gold-border);
+  font-size: 0.75rem;
+  color: var(--text);
+}
+
+.treasury-filter-ribbon {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 16px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
 
-  .apple-section-header {
+  .filter-pill-group {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 0.4rem;
     flex-wrap: wrap;
-    gap: 12px;
+  }
 
-    .apple-section-title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+  .filter-group-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+}
 
-      .apple-section-icon {
-        font-size: 1.4rem;
-        line-height: 1;
-      }
+.glass-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-rim);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
 
-      .apple-section-title {
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: var(--text);
-        margin: 0;
-      }
+  &:hover {
+    color: var(--text);
+    border-color: var(--gold-border);
+  }
 
-      .apple-section-subtitle {
-        font-size: 0.78rem;
-        color: var(--muted);
-        margin: 2px 0 0;
-      }
-    }
+  &.active {
+    background: rgba(216, 180, 92, 0.18);
+    border-color: var(--gold);
+    color: var(--text);
+  }
 
-    .apple-section-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-
-      .apple-treasury-pill {
-        padding: 5px 12px;
-        font-size: 0.78rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: var(--text);
-      }
-    }
+  .pill-count {
+    font-size: 0.64rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
   }
 }
 
 .apple-bank-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1rem;
 }
 
 .apple-bank-card {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 1.15rem;
+  border-radius: 18px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-
-  &:hover {
-    border-color: rgba(216, 180, 92, 0.4);
-    background: rgba(0, 0, 0, 0.5);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    transform: translateY(-2px);
-
-    .apple-card-action-hint {
-      opacity: 1;
-    }
-  }
 
   &.card-recommended {
-    border-color: rgba(216, 180, 92, 0.45);
-    background: linear-gradient(180deg, rgba(216, 180, 92, 0.05) 0%, rgba(0, 0, 0, 0.4) 100%);
-    box-shadow: 0 0 16px rgba(216, 180, 92, 0.1);
+    border-color: var(--gold-border);
+    box-shadow: var(--glass-specular), 0 12px 30px -10px var(--glow-gold);
   }
-
-  &.card-alert {
-    border-color: rgba(239, 68, 68, 0.55);
-    background: rgba(239, 68, 68, 0.05);
-    box-shadow: 0 0 16px rgba(239, 68, 68, 0.12);
-    animation: bankAlertPulse 2.8s ease-in-out infinite;
-  }
-
-  &.card-near {
-    border-color: rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.04);
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.08);
-  }
-
-  @keyframes bankAlertPulse {
-    0%, 100% {
-      border-color: rgba(239, 68, 68, 0.45);
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.1);
-    }
-    50% {
-      border-color: rgba(239, 68, 68, 0.85);
-      box-shadow: 0 0 22px rgba(239, 68, 68, 0.25);
-    }
-  }
-
-  &.bank-banesco .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(0, 168, 107, 0.25) 0%, rgba(0, 168, 107, 0.06) 100%);
-    border-color: rgba(0, 168, 107, 0.4);
-    color: #34d399;
-  }
-
-  &.bank-mercantil .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(59, 130, 246, 0.06) 100%);
-    border-color: rgba(59, 130, 246, 0.4);
-    color: #60a5fa;
-  }
-
-  &.bank-bdv .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(239, 68, 68, 0.06) 100%);
-    border-color: rgba(239, 68, 68, 0.4);
-    color: #f87171;
-  }
-
-  &.bank-provincial .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(2, 132, 199, 0.25) 0%, rgba(2, 132, 199, 0.06) 100%);
-    border-color: rgba(2, 132, 199, 0.4);
-    color: #38bdf8;
-  }
-
-  &.bank-bancamiga .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(13, 148, 136, 0.25) 0%, rgba(13, 148, 136, 0.06) 100%);
-    border-color: rgba(13, 148, 136, 0.4);
-    color: #2dd4bf;
-  }
-
-  &.bank-bnc .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0.06) 100%);
-    border-color: rgba(16, 185, 129, 0.4);
-    color: #34d399;
-  }
-
-  &.bank-bancaribe .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0.06) 100%);
-    border-color: rgba(99, 102, 241, 0.4);
-    color: #818cf8;
-  }
-
-  &.bank-banplus .bank-avatar-badge {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(245, 158, 11, 0.06) 100%);
-    border-color: rgba(245, 158, 11, 0.4);
-    color: #fbbf24;
-  }
+  &.card-alert { border-color: rgba(255, 95, 109, 0.45); }
+  &.card-near  { border-color: rgba(245, 184, 76, 0.42); }
+  &.card-disabled { opacity: 0.55; filter: grayscale(0.4); }
 
   .apple-bank-card-top {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
 
-    .apple-bank-id-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+  .apple-bank-id-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+  }
 
-      .bank-avatar-badge {
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        font-size: 0.8rem;
-        color: var(--gold-strong);
-        flex-shrink: 0;
-      }
+  .bank-avatar-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.76rem;
+    font-weight: 900;
+    background: rgba(216, 180, 92, 0.15);
+    border: 1px solid var(--gold-border);
+    color: var(--gold);
+    flex-shrink: 0;
+  }
 
-      .apple-bank-title-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
+  .apple-bank-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
 
-      .apple-bank-name {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--text);
-      }
+  .apple-bank-name {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--text);
+  }
 
-      .apple-rail-pill {
-        font-size: 0.62rem;
-        padding: 1px 6px;
-        border-radius: var(--radius-full);
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
+  .apple-rail-pill {
+    padding: 0.1rem 0.45rem;
+    border-radius: 6px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    color: var(--muted);
+  }
 
-      .apple-bank-sub {
-        font-size: 0.78rem;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 4px;
-      }
-
-      .apple-bank-mask-sep {
-        opacity: 0.4;
-      }
-
-      .apple-bank-mask {
-        color: var(--muted);
-        font-size: 0.74rem;
-      }
-    }
-
-    .apple-bank-badges {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-    }
+  .apple-bank-sub {
+    font-size: 0.74rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
   }
 
   .apple-bank-limit-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.35rem;
 
-    .limit-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.75rem;
-    }
-
+    .limit-labels,
     .limit-sub-row {
       display: flex;
       justify-content: space-between;
-      font-size: 0.72rem;
+      font-size: 0.68rem;
     }
   }
 
   .apple-bank-velocity-capsule {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.5rem 0.7rem;
     border-radius: 10px;
-    padding: 8px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    font-size: 0.68rem;
 
     .velocity-status-row {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
+    }
 
-      .velocity-metric {
-        display: flex;
-        align-items: center;
-        gap: 6px;
+    .velocity-metric {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
 
-        .bullet-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-        }
-
-        .velocity-label {
-          font-size: 0.72rem;
-          color: var(--muted);
-        }
-
-        .velocity-state {
-          font-size: 0.75rem;
-          color: var(--text);
-        }
-      }
-
-      .velocity-tx-counter {
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: var(--text);
-      }
+    .bullet-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
     }
 
     .velocity-wait-note {
-      font-size: 0.7rem;
+      margin-top: 0.3rem;
       color: var(--warn);
+      font-size: 0.65rem;
     }
   }
 
@@ -837,1498 +1488,712 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-top: 4px;
-    padding-top: 8px;
+    gap: 0.4rem;
+    padding-top: 0.55rem;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
 
-    .apple-card-action-btn {
-      padding: 4px 10px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      display: inline-flex;
+    .bank-action-btns {
+      display: flex;
       align-items: center;
-      gap: 4px;
-      border: 1px solid transparent;
+      gap: 0.35rem;
+    }
 
-      &.inject-btn {
-        background: rgba(216, 180, 92, 0.12);
-        color: var(--gold-strong);
-        border-color: rgba(216, 180, 92, 0.3);
+    .apple-card-action-btn {
+      padding: 0.28rem 0.58rem;
+      border-radius: 8px;
+      border: 1px solid var(--glass-rim);
+      background: var(--recessed-well);
+      color: var(--text);
+      font-size: 0.68rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.16s ease;
 
-        &:hover {
-          background: rgba(216, 180, 92, 0.25);
-          border-color: rgba(216, 180, 92, 0.6);
-          transform: translateY(-1px);
-        }
+      &:hover {
+        border-color: var(--gold);
+      }
+
+      &.operate-btn {
+        background: rgba(47, 208, 143, 0.14);
+        border-color: rgba(47, 208, 143, 0.35);
+        color: var(--accent);
       }
     }
+
+    .apple-card-action-hint {
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: var(--gold);
+    }
+  }
+}
+
+.treasury-spotlight-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: var(--recessed-well);
+  border: 1px dashed var(--gold-border);
+  font-size: 0.76rem;
+
+  .spotlight-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
   }
 
-  .apple-card-action-hint {
-    font-size: 0.72rem;
-    font-weight: 700;
+  .spotlight-badge {
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.64rem;
+    font-weight: 800;
+    background: rgba(216, 180, 92, 0.16);
     color: var(--gold);
-    text-align: right;
-    opacity: 0.8;
-    transition: opacity 0.2s ease;
+  }
+
+  .spotlight-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 }
 
-.apple-input-select,
-.apple-input-text {
+/* Compact Table */
+.apple-compact-table-wrap,
+.table-container {
   width: 100%;
-  box-sizing: border-box;
-  padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #fff;
-  font-size: 0.88rem;
-  transition: all 0.2s ease;
-  outline: none;
+  overflow-x: auto;
+  border-radius: 16px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
+}
 
-  &:focus {
-    border-color: var(--gold-strong);
-    box-shadow: 0 0 12px rgba(216, 180, 92, 0.25);
-    background: rgba(0, 0, 0, 0.65);
+.apple-compact-table,
+.apple-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+
+  th {
+    text-align: left;
+    padding: 0.7rem 0.85rem;
+    font-size: 0.66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--glass-rim);
   }
 
-  & option {
-    background: #121214;
-    color: #fff;
+  td {
+    padding: 0.7rem 0.85rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text);
+  }
+
+  tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
   }
 }
 
-.btn-close-clean {
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  transition: color 0.15s ease;
+.compact-bank-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 
-  &:hover {
-    color: #fff;
+  .bank-avatar-badge-micro {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 800;
+    background: rgba(216, 180, 92, 0.15);
+    color: var(--gold);
   }
+}
+
+.compact-actions-row {
+  display: inline-flex;
+  gap: 0.35rem;
 }
 
 .apple-alert-banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 12px;
-  color: var(--warn);
-  font-size: 0.82rem;
-
-  .alert-icon {
-    font-size: 1.1rem;
-  }
-
-  .alert-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(245, 184, 76, 0.12);
+  border: 1px solid rgba(245, 184, 76, 0.35);
+  font-size: 0.75rem;
+  color: var(--text);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   5. Multi-Agent Swarm Suite Grid
-   ══════════════════════════════════════════════════════════════ */
-.apple-agents-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-}
-
-.apple-agent-tile {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
-  transition: all 0.2s ease;
-
-  &:hover {
-    border-color: rgba(255, 255, 255, 0.16);
-    background: rgba(0, 0, 0, 0.45);
-  }
-
-  .agent-tile-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 8px;
-
-    .agent-id-box {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      .agent-icon {
-        font-size: 1.4rem;
-        line-height: 1;
-      }
-
-      .agent-name {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--text);
-        margin: 0;
-      }
-
-      .agent-role {
-        font-size: 0.72rem;
-        color: var(--gold);
-      }
-    }
-
-    .agent-status-badge {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: rgba(47, 208, 143, 0.12);
-      border: 1px solid rgba(47, 208, 143, 0.25);
-
-      .agent-pulse-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #2fd08f;
-      }
-
-      .pulse-online {
-        animation: islandPulse 2s infinite ease-in-out;
-      }
-
-      .agent-status-text {
-        font-size: 0.65rem;
-        font-weight: 800;
-        color: #2fd08f;
-      }
-    }
-  }
-
-  .agent-description {
-    font-size: 0.78rem;
-    color: var(--muted);
-    line-height: 1.35;
-    margin: 0;
-  }
-
-  .agent-tile-footer {
-    display: flex;
-    justify-content: space-between;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    font-size: 0.72rem;
-
-    .agent-metric-item {
-      display: flex;
-      gap: 4px;
-
-      .agent-metric-label {
-        color: var(--muted);
-      }
-
-      .agent-metric-val {
-        font-weight: 700;
-        color: var(--text);
-      }
-    }
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   6. Macro & Regulatory BCV Intelligence
-   ══════════════════════════════════════════════════════════════ */
+/* ==========================================================================
+   8. MACRO BCV & AI SWARM 2x2 GRID (ROW 6: 6/6)
+   ========================================================================== */
 .apple-macro-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
 
-  @media (max-width: 900px) {
+  @media (max-width: 780px) {
     grid-template-columns: 1fr;
   }
 }
 
 .apple-macro-tile {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 8px;
+  gap: 0.5rem;
+  padding: 0.95rem 1.05rem;
+  border-radius: 16px;
 
   .macro-tile-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
 
-    .macro-tile-title {
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
+  .macro-tile-title {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 
   .macro-tile-metric {
-    font-size: 1.15rem;
+    font-size: 1.08rem;
+    font-weight: 900;
     color: var(--text);
   }
 
   .macro-tile-subtext {
-    font-size: 0.74rem;
-    line-height: 1.3;
-
-    .macro-sub-date {
-      display: block;
-      color: var(--gold);
-      margin-top: 2px;
-    }
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.68rem;
+    color: var(--muted);
   }
 }
 
 .apple-macro-callout {
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.4);
-  border-left: 3px solid var(--gold);
-  border-radius: 10px;
-  font-size: 0.8rem;
-  color: var(--text-muted);
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: var(--recessed-well);
+  border: 1px solid var(--gold-border);
+  font-size: 0.75rem;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   7. Motor de Riesgo & Resumen Operativo (2-Col Grid)
-   ══════════════════════════════════════════════════════════════ */
-.apple-grid-two-col {
+.apple-agents-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  flex: 1;
 
-  @media (max-width: 800px) {
+  @media (max-width: 640px) {
     grid-template-columns: 1fr;
   }
 }
 
-.apple-subcard {
-  background: linear-gradient(180deg, rgba(16, 24, 40, 0.85) 0%, rgba(10, 16, 28, 0.95) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 18px 20px;
+.apple-agent-tile {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
 
-  &:hover {
-    border-color: rgba(216, 180, 92, 0.35);
-    transform: translateY(-2px);
+  .agent-tile-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
   }
 
-  .apple-subcard-header {
+  .agent-id-box {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .agent-icon { font-size: 1.2rem; }
+  .agent-name { margin: 0; font-size: 0.82rem; font-weight: 800; color: var(--text); }
+  .agent-role { font-size: 0.66rem; color: var(--muted); }
+
+  .agent-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.64rem;
+    color: var(--accent);
+  }
+
+  .agent-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .agent-description {
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+
+  .agent-tile-footer {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-
-    .subcard-title-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .subcard-icon {
-        font-size: 1.1rem;
-      }
-
-      .subcard-title {
-        font-size: 0.88rem;
-        font-weight: 700;
-        color: var(--text);
-        margin: 0;
-      }
-    }
-
-    .apple-kpi-link {
-      font-size: 0.74rem;
-      font-weight: 700;
-      color: var(--gold);
-    }
-  }
-}
-
-.apple-risk-verdict-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 12px;
-  border: 1px solid var(--line);
-
-  .verdict-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-top: 4px;
-  }
-
-  &.allow {
-    border-color: rgba(47, 208, 143, 0.3);
-    .verdict-dot { background: #2fd08f; box-shadow: 0 0 8px #2fd08f; }
-    .verdict-label { color: #2fd08f; }
-  }
-
-  &.deny {
-    border-color: rgba(239, 68, 68, 0.3);
-    .verdict-dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
-    .verdict-label { color: #ef4444; }
-  }
-
-  &.pause {
-    border-color: rgba(245, 158, 11, 0.3);
-    .verdict-dot { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-    .verdict-label { color: #f59e0b; }
-  }
-
-  .verdict-label {
-    font-size: 0.95rem;
-    font-weight: 800;
-  }
-
-  .verdict-reason {
-    font-size: 0.76rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.66rem;
     color: var(--muted);
-    margin: 3px 0 0;
-  }
-}
 
-.apple-stats-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-
-  .stats-mini-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
-
-    .stats-mini-label {
-      font-size: 0.68rem;
-      color: var(--muted);
-    }
-
-    .stats-mini-val {
-      font-size: 1.05rem;
-      font-weight: 800;
+    .agent-metric-val {
       color: var(--text);
-
-      &.positive {
-        color: #2fd08f;
-      }
+      font-weight: 800;
+      margin-left: 0.25rem;
     }
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   8. Chart & Recent Operations Table
-   ══════════════════════════════════════════════════════════════ */
+/* ==========================================================================
+   9. WEEKLY CHART & RECENT OPERATIONS (ROW 7: 7/5)
+   ========================================================================== */
 .apple-chart-switcher {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  padding: 0.2rem;
+  border-radius: 10px;
+  background: var(--recessed-well);
+  border: 1px solid var(--glass-rim);
 
   .switcher-btn {
-    padding: 5px 12px;
-    font-size: 0.74rem;
-    font-weight: 600;
+    padding: 0.3rem 0.7rem;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
     color: var(--muted);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s ease;
-
-    &:hover:not(.active) {
-      color: var(--text);
-    }
 
     &.active {
+      background: var(--glass-surface-2);
       color: var(--text);
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.2);
-      font-weight: 700;
     }
   }
 }
 
 .apple-chart-container {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  padding: 14px 16px;
   position: relative;
-  min-height: 200px;
-}
+  padding: 1rem;
+  border-radius: 16px;
 
-.apple-svg-chart {
-  width: 100%;
-  height: auto;
-  overflow: visible;
-  display: block;
-}
-
-.chart-point {
-  cursor: pointer;
-  transition: r 0.2s ease;
-
-  &:hover {
-    r: 6.5;
+  .apple-svg-chart {
+    width: 100%;
+    height: 185px;
+    overflow: visible;
   }
+}
+
+.dashboard-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: end;
+  min-height: 185px;
+
+  .dashboard-chart-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    height: 100%;
+  }
+
+  .dashboard-chart-bar-wrap {
+    width: 100%;
+    height: 120px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .dashboard-chart-bar {
+    width: 65%;
+    border-radius: 6px 6px 2px 2px;
+    background: var(--gold);
+    &.bar-positive { background: linear-gradient(180deg, var(--accent), rgba(47, 208, 143, 0.35)); }
+    &.bar-negative { background: linear-gradient(180deg, var(--danger), rgba(255, 95, 109, 0.35)); }
+  }
+
+  .dashboard-chart-label { font-size: 0.66rem; color: var(--muted); }
+  .dashboard-chart-ops   { font-size: 0.68rem; font-weight: 700; color: var(--text); }
+  .dashboard-hint        { font-size: 0.6rem; color: var(--gold); }
+}
+
+.apple-stats-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+
+  .stats-mini-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 12px;
+    cursor: pointer;
+
+    .stats-mini-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+    .stats-mini-val   { font-size: 0.95rem; font-weight: 800; color: var(--text); }
+  }
+}
+
+/* ==========================================================================
+   10. MODALS (CLOSE SESSION, PREFLIGHT, LIQUIDITY INJECTION)
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(4, 7, 15, 0.74);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.apple-modal-dialog {
+  width: 100%;
+  max-width: 500px;
+  padding: 1.5rem;
+  border-radius: 22px;
+  color: var(--text);
+
+  .modal-header-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .modal-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    h3 { margin: 0; font-size: 1.08rem; font-weight: 800; }
+  }
+
+  .modal-form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin: 1rem 0;
+  }
+
+  .apple-input-select,
+  .apple-input-text {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border-radius: 10px;
+    border: 1px solid var(--glass-rim);
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 0.82rem;
+  }
+
+  .preflight-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.85rem 0;
+  }
+
+  .preflight-check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 12px;
+    font-size: 0.76rem;
+  }
+
+  .preflight-controls-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.85rem;
+    border-radius: 14px;
+    font-size: 0.76rem;
+  }
+
+  .projected-balance-preview {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.9rem;
+    border-radius: 12px;
+    font-size: 0.78rem;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.1rem;
+  }
+
+  .modal-mode-segmented {
+    display: flex;
+    padding: 0.25rem;
+    border-radius: 12px;
+    background: var(--recessed-well);
+    border: 1px solid var(--glass-rim);
+    gap: 0.35rem;
+    margin-bottom: 0.65rem;
+
+    .mode-seg-btn {
+      flex: 1;
+      padding: 0.45rem 0.75rem;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.18s ease;
+
+      &:hover {
+        color: var(--text);
+      }
+
+      &.active {
+        background: var(--glass-surface-2);
+        border-color: var(--gold-border);
+        color: var(--text);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      }
+    }
+  }
+}
+
+/* ==========================================================================
+   11. INSTITUTIONAL UTILITIES, TOOLTIPS, COMPACT TABLE & A11Y GUARDS
+   ========================================================================== */
+.badge-success {
+  background: rgba(47, 208, 143, 0.14);
+  border-color: rgba(47, 208, 143, 0.35);
+  color: var(--accent);
 }
 
 .apple-chart-tooltip {
   position: absolute;
-  top: 14px;
-  right: 18px;
-  background: rgba(13, 22, 38, 0.95);
-  border: 1px solid var(--gold);
-  border-radius: 8px;
-  padding: 8px 12px;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 5;
+  min-width: 170px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: var(--glass-surface-3);
+  border: 1px solid var(--gold-border);
+  box-shadow: var(--glass-elevation);
   pointer-events: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 
   .tooltip-date {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
     color: var(--muted);
   }
 
   .tooltip-value {
-    font-size: 0.95rem;
+    font-size: 0.86rem;
     font-weight: 800;
-    color: var(--gold-strong);
+    color: var(--gold);
   }
 
   .tooltip-subvalue {
-    font-size: 0.72rem;
-    color: var(--text-muted);
+    font-size: 0.68rem;
+    color: var(--text);
   }
 }
 
-.apple-table {
-  border-collapse: separate;
-  border-spacing: 0 4px;
+.compact-bank-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-weight: 700;
+}
 
-  tr {
-    transition: background 0.15s ease;
-  }
+.compact-limit-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 110px;
+}
 
-  tbody tr {
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 8px;
+.compact-track-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--recessed-well);
+  overflow: hidden;
 
-    &:hover {
-      background: rgba(216, 180, 92, 0.08);
-    }
+  .apple-track-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--gold), var(--accent));
+    &.fill-warning { background: var(--warn); }
+    &.fill-danger { background: var(--danger); }
   }
 }
 
-/* Modal Dialog */
-.apple-modal-dialog {
-  background: linear-gradient(180deg, rgba(16, 24, 40, 0.98) 0%, rgba(9, 14, 24, 0.99) 100%);
-  border: 1px solid rgba(216, 180, 92, 0.35);
-  border-radius: 20px;
-  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
+@keyframes dashboardSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
-/* Animations */
-@keyframes islandPulse {
-  0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.2); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.7; }
+.spin-icon {
+  display: inline-block;
+  animation: dashboardSpin 1s linear infinite;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Forensic Audit Grid (Skill #44) */
-.forensic-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-
-  @media (max-width: 950px) {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ============================================================
-   Mobile Vertical Screen (<= 768px)
-   ============================================================ */
-@media (max-width: 768px) {
-  .apple-desk-panel {
-    gap: 12px;
-    width: 100%;
-    max-width: 100%;
-    padding: 0;
-  }
-
-  .apple-main-header {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 14px 14px;
-    gap: 12px;
-    border-radius: 16px;
-
-    .apple-title-group {
-      .apple-title-badge-row {
-        flex-wrap: wrap;
-        gap: 6px;
-
-        .apple-desk-title {
-          font-size: 1.15rem;
-        }
-
-        .apple-pro-badge {
-          font-size: 0.62rem;
-        }
-      }
-
-      .apple-desk-subtitle {
-        font-size: 0.72rem;
-        line-height: 1.35;
-      }
-    }
-  }
-
-  .apple-dynamic-island {
-    border-radius: 14px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    padding: 10px 12px;
-
-    .island-left {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-
-      .island-info {
-        width: 100%;
-
-        .island-metrics {
-          flex-wrap: wrap;
-          font-size: 0.72rem;
-          line-height: 1.4;
-          gap: 4px;
-        }
-      }
-    }
-
-    .island-telemetry {
-      width: 100%;
-      justify-content: center;
-      padding: 6px 12px;
-    }
-
-    .island-actions {
-      width: 100%;
-
-      .apple-pill-btn {
-        width: 100%;
-        padding: 8px 12px;
-        font-size: 0.76rem;
-      }
-    }
-  }
-
-  .apple-segmented-bar {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    padding: 4px;
-    gap: 4px;
-    border-radius: 12px;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    .apple-segmented-tab {
-      flex-shrink: 0;
-      padding: 6px 12px;
-      font-size: 0.74rem;
-      gap: 6px;
-    }
-  }
-
-  .apple-bento-kpi-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .apple-card-section {
-    padding: 14px 12px;
-    border-radius: 16px;
-    gap: 12px;
-
-    .apple-section-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 10px;
-
-      .apple-section-title-wrap {
-        gap: 8px;
-
-        .apple-section-icon {
-          font-size: 1.2rem;
-        }
-
-        .apple-section-title {
-          font-size: 0.95rem;
-        }
-
-        .apple-section-subtitle {
-          font-size: 0.72rem;
-        }
-      }
-
-      .apple-section-actions {
-        width: 100%;
-
-        .apple-pill-btn,
-        .apple-treasury-pill {
-          width: 100%;
-          justify-content: center;
-          text-align: center;
-        }
-      }
-    }
-  }
-
-  .apple-bank-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .apple-bank-card {
-    padding: 12px 12px;
-    border-radius: 14px;
-    gap: 10px;
-
-    .apple-bank-card-top {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-
-      .apple-bank-badges {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        width: 100%;
-      }
-    }
-  }
-
-  .apple-grid-two-col {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .forensic-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-}
-
-/* ============================================================
-   Apple Pro Liquid Glass & OLED Midnight Architecture
-   Consolidated across all Centro de Control (Dashboard) Cards
-   ============================================================ */
-:host-context([data-theme="apple-dark"]) {
-  /* Main Header & Dynamic Island */
-  .apple-main-header {
-    background: rgba(17, 17, 22, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.14);
-    }
-  }
-
-  .apple-dynamic-island {
-    background: rgba(12, 12, 16, 0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-
-    &.island-active {
-      background: rgba(12, 12, 16, 0.85);
-      border-color: rgba(48, 209, 88, 0.35);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    }
-  }
-
-  /* Segmented Navigation Bar */
-  .apple-segmented-bar {
-    background: rgba(10, 10, 14, 0.6);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-
-    .apple-segmented-tab.active {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }
-  }
-
-  /* Bento KPI Cards */
-  .apple-kpi-card {
-    background: rgba(17, 17, 22, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-lg, 18px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.16);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }
-
-    .apple-kpi-val {
-      &.positive {
-        color: #30d158;
-      }
-      &.negative {
-        color: #ff453a;
-      }
-    }
-  }
-
-  /* Section Containers */
-  .apple-card-section {
-    background: rgba(17, 17, 22, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  }
-
-  /* Multi-Bank Treasury Cards */
-  .apple-bank-card {
-    background: rgba(22, 22, 28, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.16);
-      background: rgba(26, 26, 34, 0.8);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    }
-
-    &.card-recommended {
-      border-color: var(--gold, #ffd60a);
-      background: rgba(255, 214, 10, 0.05);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 214, 10, 0.25);
-    }
-
-    &.card-alert {
-      border-color: rgba(255, 69, 58, 0.4);
-      background: rgba(255, 69, 58, 0.06);
-    }
-
-    .apple-bank-velocity-capsule {
-      background: rgba(14, 14, 18, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-  }
-
-  /* Multi-Agent Swarm Tiles */
-  .apple-agent-tile {
-    background: rgba(22, 22, 28, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.16);
-      background: rgba(26, 26, 34, 0.8);
-    }
-
-    .agent-status-badge {
-      background: rgba(48, 209, 88, 0.12);
-      border-color: rgba(48, 209, 88, 0.25);
-
-      .agent-pulse-dot {
-        background: #30d158;
-      }
-
-      .agent-status-text {
-        color: #30d158;
-      }
-    }
-  }
-
-  /* Macro & Regulatory Tiles */
-  .apple-macro-tile {
-    background: rgba(22, 22, 28, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-  }
-
-  .apple-macro-callout {
-    background: rgba(20, 20, 26, 0.7);
-    border-left: 3px solid var(--gold, #ffd60a);
-  }
-
-  /* Subcards: Motor de Riesgo & Resumen Operativo */
-  .apple-subcard {
-    background: rgba(17, 17, 22, 0.85);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.16);
-    }
-  }
-
-  .apple-risk-verdict-box {
-    background: rgba(20, 20, 26, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-
-    &.allow {
-      border-color: rgba(48, 209, 88, 0.35);
-      .verdict-dot { background: #30d158; box-shadow: 0 0 8px #30d158; }
-      .verdict-label { color: #30d158; }
-    }
-
-    &.deny {
-      border-color: rgba(255, 69, 58, 0.35);
-      .verdict-dot { background: #ff453a; box-shadow: 0 0 8px #ff453a; }
-      .verdict-label { color: #ff453a; }
-    }
-
-    &.pause {
-      border-color: rgba(255, 159, 10, 0.35);
-      .verdict-dot { background: #ff9f0a; box-shadow: 0 0 8px #ff9f0a; }
-      .verdict-label { color: #ff9f0a; }
-    }
-  }
-
-  .apple-stats-mini-grid .stats-mini-item {
-    background: rgba(20, 20, 26, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-
-    .stats-mini-val.positive {
-      color: #30d158;
-    }
-  }
-
-  /* Chart & Tables */
-  .apple-chart-container {
-    background: rgba(14, 14, 18, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .apple-chart-tooltip {
-    background: rgba(17, 17, 22, 0.95);
-    border: 1px solid var(--gold, #ffd60a);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-  }
-
-  .apple-table tbody tr {
-    background: rgba(20, 20, 26, 0.5);
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.04);
-    }
-  }
-
-  /* Modal Dialog */
-  .apple-modal-dialog {
-    background: rgba(17, 17, 22, 0.95);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-}
-
-/* ═════════════════════════════════════════════════════════
-   Phase 3: Density Switcher & Compact Institutional Table
-   ═════════════════════════════════════════════════════════ */
-.apple-density-segmented {
+.verdict-capsule {
   display: inline-flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 980px;
-  padding: 3px;
-  gap: 2px;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: 1px solid var(--glass-rim);
+  background: var(--recessed-well);
 
-  .apple-density-tab {
-    background: transparent;
-    border: none;
-    outline: none;
+  &.allow {
+    color: var(--accent);
+    border-color: rgba(47, 208, 143, 0.4);
+    background: rgba(47, 208, 143, 0.12);
+  }
+
+  &.deny {
+    color: var(--danger);
+    border-color: rgba(255, 95, 109, 0.4);
+    background: rgba(255, 95, 109, 0.12);
+  }
+
+  &.pause {
+    color: var(--warn);
+    border-color: rgba(245, 184, 76, 0.4);
+    background: rgba(245, 184, 76, 0.12);
+  }
+}
+
+.empty-ops-glass {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  border-radius: 14px;
+  border: 1px dashed var(--glass-rim);
+
+  a {
+    color: var(--gold);
+    font-weight: 700;
+    text-decoration: none;
+    margin-left: 0.35rem;
+  }
+}
+
+.btn-close-clean {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-rim);
+  background: var(--recessed-well);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text);
+    border-color: var(--gold);
+  }
+}
+
+.form-group-clean {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  label {
+    font-size: 0.74rem;
+    font-weight: 700;
     color: var(--muted);
-    font-size: 0.76rem;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 980px;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-    &:hover {
-      color: var(--text);
-    }
-
-    &.active {
-      background: rgba(255, 255, 255, 0.14);
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    }
   }
 }
 
-.apple-compact-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-
-  .apple-compact-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.84rem;
-    text-align: left;
-
-    thead tr {
-      background: rgba(255, 255, 255, 0.03);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-
-      th {
-        padding: 12px 16px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-      }
-    }
-
-    tbody tr {
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease;
-
-      &:hover {
-        background: rgba(255, 255, 255, 0.04);
-      }
-
-      &.row-recommended {
-        background: rgba(216, 180, 92, 0.04);
-        &:hover {
-          background: rgba(216, 180, 92, 0.07);
-        }
-      }
-
-      &.row-alert {
-        background: rgba(239, 68, 68, 0.04);
-        &:hover {
-          background: rgba(239, 68, 68, 0.07);
-        }
-      }
-
-      &.row-near {
-        background: rgba(245, 158, 11, 0.03);
-        &:hover {
-          background: rgba(245, 158, 11, 0.06);
-        }
-      }
-
-      td {
-        padding: 10px 16px;
-        vertical-align: middle;
-      }
-    }
-  }
-
-  .compact-bank-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .bank-avatar-badge-micro {
-      width: 26px;
-      height: 26px;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.68rem;
-      font-weight: 800;
-      color: var(--gold-strong);
-      flex-shrink: 0;
-    }
-
-    .compact-bank-name {
-      font-size: 0.88rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-  }
-
-  .compact-limit-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .compact-track-bar {
-      width: 64px;
-      height: 5px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 980px;
-      overflow: hidden;
-
-      .compact-track-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #30d158, #34c759);
-        border-radius: 980px;
-
-        &.fill-danger {
-          background: #ff453a;
-        }
-      }
-    }
-
-    .compact-limit-abs {
-      font-size: 0.74rem;
-    }
-  }
+.amount-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-/* ============================================================
-   Neon Pink (Cyber Neon Rose) Crystal Architecture - Dashboard
-   ============================================================ */
-:host-context([data-theme="neon-pink"]) {
-  /* Main Header & Dynamic Island */
-  .apple-main-header {
-    background: rgba(30, 7, 36, 0.78);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-    border: 1.5px solid rgba(255, 45, 135, 0.42);
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 20px rgba(255, 45, 135, 0.18), inset 0 1px 1px rgba(255, 180, 220, 0.2);
-
-    &:hover {
-      border-color: #ff2d87;
-      box-shadow: 0 12px 38px rgba(0, 0, 0, 0.8), 0 0 28px rgba(255, 45, 135, 0.28);
-    }
-  }
-
-  .apple-dynamic-island {
-    background: rgba(22, 5, 28, 0.85);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1.5px solid rgba(255, 45, 135, 0.35);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 180, 220, 0.15);
-
-    &.island-active {
-      background: rgba(26, 6, 34, 0.92);
-      border-color: #ff2d87;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 45, 135, 0.3), inset 0 1px 0 rgba(255, 180, 220, 0.2);
-    }
-  }
-
-  /* Segmented Navigation Bar */
-  .apple-segmented-bar {
-    background: rgba(20, 4, 25, 0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1.5px solid rgba(255, 45, 135, 0.35);
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
-
-    .apple-segmented-tab.active {
-      background: linear-gradient(135deg, rgba(255, 45, 135, 0.25) 0%, rgba(200, 20, 100, 0.15) 100%);
-      border: 1px solid rgba(255, 45, 135, 0.5);
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 45, 135, 0.25), inset 0 1px 0 rgba(255, 180, 220, 0.2);
-      color: #ffffff;
-    }
-  }
-
-  /* Bento KPI Cards */
-  .apple-kpi-card {
-    background: linear-gradient(145deg, rgba(38, 8, 44, 0.78) 0%, rgba(18, 4, 22, 0.88) 100%) !important;
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-    border: 1.5px solid rgba(255, 45, 135, 0.42) !important;
-    border-radius: var(--radius-lg, 18px);
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 18px rgba(255, 45, 135, 0.15), inset 0 1px 1px rgba(255, 180, 220, 0.18);
-
-    &:hover {
-      border-color: #ff2d87 !important;
-      transform: translateY(-2px);
-      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 28px rgba(255, 45, 135, 0.3), inset 0 1px 2px rgba(255, 200, 230, 0.28);
-    }
-
-    .apple-kpi-val {
-      &.positive {
-        color: #00f0ff;
-        text-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
-      }
-      &.negative {
-        color: #ff2a55;
-        text-shadow: 0 0 10px rgba(255, 42, 85, 0.35);
-      }
-    }
-  }
-
-  /* Section Containers */
-  .apple-card-section {
-    background: linear-gradient(145deg, rgba(38, 8, 44, 0.78) 0%, rgba(18, 4, 22, 0.88) 100%) !important;
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-    border: 1.5px solid rgba(255, 45, 135, 0.42) !important;
-    border-radius: 20px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 22px rgba(255, 45, 135, 0.18), inset 0 1px 1px rgba(255, 180, 220, 0.2);
-  }
-
-  /* Multi-Bank Treasury Cards */
-  .apple-bank-card {
-    background: rgba(34, 8, 40, 0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1.5px solid rgba(255, 45, 135, 0.35);
-    border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 45, 135, 0.12), inset 0 1px 0 rgba(255, 180, 220, 0.15);
-
-    &:hover {
-      border-color: #ff2d87;
-      background: rgba(42, 10, 50, 0.85);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 24px rgba(255, 45, 135, 0.25);
-    }
-
-    &.card-recommended {
-      border-color: #ff2d87;
-      background: rgba(255, 45, 135, 0.12);
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 45, 135, 0.28), inset 0 0 0 1px rgba(255, 45, 135, 0.4);
-    }
-
-    &.card-alert {
-      border-color: #ff2a55;
-      background: rgba(255, 42, 85, 0.1);
-    }
-
-    .apple-bank-velocity-capsule {
-      background: rgba(20, 4, 25, 0.7);
-      border: 1px solid rgba(255, 45, 135, 0.25);
-    }
-  }
-
-  /* Multi-Agent Swarm Tiles */
-  .apple-agent-tile {
-    background: rgba(34, 8, 40, 0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1.5px solid rgba(255, 45, 135, 0.35);
-    border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 45, 135, 0.12), inset 0 1px 0 rgba(255, 180, 220, 0.15);
-
-    &:hover {
-      border-color: #ff2d87;
-      background: rgba(42, 10, 50, 0.85);
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 24px rgba(255, 45, 135, 0.25);
-    }
-
-    .agent-status-badge {
-      background: rgba(0, 240, 255, 0.15);
-      border-color: rgba(0, 240, 255, 0.35);
-      color: #00f0ff;
-
-      .agent-pulse-dot {
-        background: #00f0ff;
-        box-shadow: 0 0 8px #00f0ff;
-      }
-    }
-  }
-
-  /* Compact Track Fill */
-  .compact-track-bar {
-    background: rgba(255, 45, 135, 0.15);
-
-    .compact-track-fill {
-      background: linear-gradient(90deg, #ff4da6, #ff2d87);
-
-      &.fill-danger {
-        background: #ff2a55;
-      }
-    }
-  }
+.injection-error-banner {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(255, 95, 109, 0.14);
+  border: 1px solid rgba(255, 95, 109, 0.4);
+  color: var(--danger);
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
-/* ═══════════════════════════════════════════════════
-   Apple Pro HUD Bar & Institutional Cockpit Styles
-   ═══════════════════════════════════════════════════ */
-.apple-hud-bar {
+.preflight-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.preflight-loss-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  background: linear-gradient(135deg, rgba(20, 24, 33, 0.8) 0%, rgba(13, 16, 23, 0.9) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-xl);
-  padding: 10px 18px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(16px);
-  flex-wrap: wrap;
-
-  .hud-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .hud-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .hud-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    border-radius: var(--radius-full);
-    font-size: 0.82rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: all 0.18s ease;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.16);
-      transform: translateY(-1px);
-    }
-
-    &.live {
-      background: rgba(16, 185, 129, 0.1);
-      border-color: rgba(16, 185, 129, 0.25);
-      color: #34d399;
-    }
-
-    &.account {
-      background: rgba(216, 180, 92, 0.08);
-      border-color: rgba(216, 180, 92, 0.2);
-      color: #f1f5f9;
-    }
-
-    &.obi {
-      background: rgba(99, 102, 241, 0.1);
-      border-color: rgba(99, 102, 241, 0.25);
-      color: #a5b4fc;
-      cursor: default;
-    }
-
-    .hud-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 6px #10b981;
-      animation: pulse-dot 2s infinite ease-in-out;
-    }
-
-    .hud-sub {
-      opacity: 0.8;
-      font-size: 0.78rem;
-    }
-  }
+  gap: 0.75rem;
 }
 
-.cockpit-three-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-  margin-top: 14px;
-
-  .cockpit-tile {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 16px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: var(--radius-lg);
-  }
-
-  .cockpit-metric-row {
-    display: flex;
-    justify-content: space-between;
-    margin: 12px 0 8px;
-
-    .cockpit-label {
-      font-size: 0.72rem;
-      color: var(--muted);
-      display: block;
-      margin-bottom: 2px;
-    }
-
-    .cockpit-val {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #fff;
-    }
-  }
-
-  .cockpit-valuation-box {
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.82rem;
-    margin-bottom: 10px;
-
-    &.positive {
-      color: #34d399;
-      border-color: rgba(52, 211, 153, 0.25);
-      background: rgba(52, 211, 153, 0.05);
-    }
-
-    &.negative {
-      color: #f87171;
-      border-color: rgba(248, 113, 113, 0.25);
-      background: rgba(248, 113, 113, 0.05);
-    }
-  }
-
-  .obi-gauge-wrap {
-    margin: 12px 0 8px;
-
-    .obi-track-bar {
-      height: 8px;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-
-      .obi-track-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #ef4444 0%, #d8b45c 50%, #10b981 100%);
-        transition: width 0.3s ease;
-      }
-    }
-
-    .obi-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.72rem;
-      color: var(--muted);
-      margin-top: 4px;
-    }
-  }
-
-  .obi-guidance-box {
-    background: rgba(255, 255, 255, 0.03);
-    padding: 8px 10px;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-
-    .guidance-text {
-      font-size: 0.76rem;
-      color: var(--gold);
-      line-height: 1.35;
-      display: block;
-    }
-  }
-
-  .divergence-info-box {
-    margin: 10px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-
-    .div-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.82rem;
-    }
-  }
-
-  .yield-sweep-box {
-    background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(216, 180, 92, 0.02) 100%);
-    border: 1px solid rgba(216, 180, 92, 0.2);
-    border-radius: 8px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-
-    .yield-header {
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: var(--gold-strong);
-      margin-bottom: 4px;
-    }
-
-    .yield-detail {
-      margin: 0;
-      font-size: 0.75rem;
-      color: #f1f5f9;
-    }
-  }
+:host :focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
-
-
-
+@media (prefers-reduced-motion: reduce) {
+  .spatial-aurora-canvas .aurora-bloom,
+  .island-pulse-dot,
+  .telemetry-status-dot,
+  .spin-icon {
+    animation: none !important;
+  }
+}
