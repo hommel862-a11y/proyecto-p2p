@@ -36,6 +36,7 @@
     .nav-section-label,
     .nav a span,
     .nav a .nav-tag,
+    .sidebar-alpha-card,
     .sidebar-foot {
       display: none;
     }
@@ -222,27 +223,147 @@
 }
 
 .nav a:hover {
-  background: rgba(216, 180, 92, 0.07);
+  background: rgba(216, 180, 92, 0.08);
   color: var(--text);
-  transform: translateX(2px);
-  border-color: rgba(216, 180, 92, 0.16);
+  transform: perspective(600px) translateX(4px) translateZ(8px);
+  border-color: rgba(216, 180, 92, 0.22);
 }
-.nav a:hover svg { opacity: 1; color: var(--gold-strong); }
+.nav a:hover svg {
+  opacity: 1;
+  color: var(--gold-strong);
+  transform: scale(1.12) rotate(-4deg);
+}
 
 .nav a.active {
-  background: linear-gradient(90deg, rgba(216, 180, 92, 0.16) 0%, rgba(216, 180, 92, 0.04) 100%);
+  background: linear-gradient(90deg, rgba(216, 180, 92, 0.18) 0%, rgba(47, 208, 143, 0.06) 65%, transparent 100%);
   color: var(--text);
-  border-color: rgba(216, 180, 92, 0.32);
+  border-color: rgba(216, 180, 92, 0.34);
   box-shadow:
     inset 3px 0 0 var(--gold),
-    0 4px 14px -4px rgba(0, 0, 0, 0.4),
-    0 0 16px rgba(216, 180, 92, 0.08);
+    0 6px 18px -6px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(216, 180, 92, 0.12);
   font-weight: 700;
 }
 .nav a.active svg {
   color: var(--gold);
   opacity: 1;
-  filter: drop-shadow(0 0 5px var(--glow-gold));
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 6px var(--glow-gold));
+}
+
+/* ============================================================
+   Sidebar Live Alpha Signal Card (TradeVision Style)
+   ============================================================ */
+
+.sidebar-alpha-card {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(155deg, rgba(16, 26, 46, 0.9), rgba(8, 13, 25, 0.94));
+  border: 1px solid var(--line-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 24px -12px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: transform 0.22s var(--ease-out), border-color 0.22s ease, box-shadow 0.22s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(216, 180, 92, 0.42);
+  }
+
+  &.alpha-optimal {
+    border-color: rgba(47, 208, 143, 0.42);
+    background: linear-gradient(155deg, rgba(16, 42, 38, 0.85), rgba(8, 15, 26, 0.95));
+    box-shadow:
+      inset 0 1px 0 rgba(47, 208, 143, 0.2),
+      0 10px 26px -12px rgba(47, 208, 143, 0.25);
+  }
+}
+
+.alpha-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.alpha-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.alpha-pulse-ring {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--glow-gold);
+  animation: alphaPulse 2s ease-in-out infinite;
+}
+
+.sidebar-alpha-card.alpha-optimal .alpha-pulse-ring {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--glow-accent);
+}
+
+.alpha-conf {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--gold-strong);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(216, 180, 92, 0.14);
+  border: 1px solid rgba(216, 180, 92, 0.3);
+}
+
+.sidebar-alpha-card.alpha-optimal .alpha-conf {
+  color: var(--accent);
+  background: rgba(47, 208, 143, 0.14);
+  border-color: rgba(47, 208, 143, 0.35);
+}
+
+.alpha-state-title {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.alpha-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.alpha-radar-link {
+  color: var(--accent-2);
+  font-weight: 700;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+    color: var(--gold-strong);
+  }
+}
+
+@keyframes alphaPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.65;
+  }
 }
 
 /* ============================================================
@@ -900,17 +1021,50 @@
       border: none;
       cursor: pointer;
       min-height: 48px;
-      transition: color 0.15s ease-out;
+      position: relative;
+      transition: color 0.18s ease-out, transform 0.2s var(--ease-out);
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 22%;
+        right: 22%;
+        height: 2.5px;
+        border-radius: 0 0 4px 4px;
+        background: linear-gradient(90deg, var(--accent), var(--gold));
+        box-shadow: 0 2px 12px var(--glow-accent);
+        opacity: 0;
+        transform: scaleX(0.3);
+        transition: opacity 0.22s ease, transform 0.24s var(--ease-out);
+      }
 
       svg {
         width: 20px;
         height: 20px;
         opacity: 0.75;
+        transition: transform 0.2s var(--ease-out), opacity 0.18s ease, filter 0.2s ease;
       }
 
-      &.active, &:hover {
+      &.active {
         color: var(--gold);
         font-weight: 700;
+
+        &::before {
+          opacity: 1;
+          transform: scaleX(1);
+        }
+
+        svg {
+          opacity: 1;
+          color: var(--accent);
+          transform: translateY(-2px) scale(1.1);
+          filter: drop-shadow(0 0 7px var(--glow-accent));
+        }
+      }
+
+      &:hover {
+        color: var(--gold);
 
         svg {
           opacity: 1;
@@ -1067,4 +1221,32 @@
     }
   }
 }
+
+[data-theme="light"] {
+  .sidebar-alpha-card {
+    background: linear-gradient(155deg, #ffffff, #f2f5fc);
+    border-color: var(--line-strong);
+    box-shadow: 0 10px 24px -14px rgba(20, 33, 61, 0.16);
+
+    &.alpha-optimal {
+      background: linear-gradient(155deg, #f3fcf8, #eaf8f2);
+      border-color: rgba(15, 157, 106, 0.4);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alpha-pulse-ring {
+    animation: none !important;
+  }
+  .nav a,
+  .nav a svg,
+  .mobile-bottom-nav .bottom-tab,
+  .mobile-bottom-nav .bottom-tab svg,
+  .sidebar-alpha-card {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 

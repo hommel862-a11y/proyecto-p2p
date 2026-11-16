@@ -105,6 +105,22 @@
         <span>Guía</span>
       </a>
     </nav>
+
+    <div class="sidebar-alpha-card" [class.alpha-optimal]="sidebarAlphaSignal().isOptimal">
+      <div class="alpha-card-head">
+        <span class="alpha-eyebrow">
+          <span class="alpha-pulse-ring" aria-hidden="true"></span>
+          ALPHA SIGNAL
+        </span>
+        <span class="alpha-conf font-mono">{{ sidebarAlphaSignal().confidence }}%</span>
+      </div>
+      <strong class="alpha-state-title">{{ sidebarAlphaSignal().label }}</strong>
+      <div class="alpha-meta font-mono">
+        <span>Spread: {{ sidebarAlphaSignal().spreadPct | number: '1.2-2' }}%</span>
+        <a routerLink="/radar" class="alpha-radar-link">Radar →</a>
+      </div>
+    </div>
+
     <div class="sidebar-foot">
       <span class="foot-pulse-dot" aria-hidden="true"></span>
       <span>v{{ version() }} · P2P Decisor</span>

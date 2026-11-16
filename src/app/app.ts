@@ -1,4 +1,5 @@
 import { Component, signal, computed, inject, DestroyRef } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { ToastComponent } from './core/toast.component';
 import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
@@ -15,6 +16,7 @@ export type AppTheme = 'dark' | 'apple-dark' | 'neon-pink' | 'light';
 
 @Component({
   imports: [
+    DecimalPipe,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
@@ -41,6 +43,24 @@ export class App {
 
   readonly hasActiveApis = computed<boolean>(() => {
     return !!this.cotizave.apiKey();
+  });
+
+  readonly sidebarAlphaSignal = computed(() => {
+    const depth = this.binance.marketDepth();
+    const spreadPct = depth?.spreadPct ?? 0;
+    const hasLiveDepth = depth !== null && depth !== undefined;
+    const isOptimal = spreadPct >= 0.5;
+    const confidence = hasLiveDepth
+      ? Math.min(98, Math.max(42, Math.round(55 + spreadPct * 24)))
+      : 50;
+
+    return {
+      isOptimal,
+      hasLiveDepth,
+      spreadPct,
+      confidence,
+      label: isOptimal ? 'VENTANA ACTIVA' : hasLiveDepth ? 'SPREAD COMPRIMIDO' : 'ESPERANDO L2',
+    };
   });
   readonly theme = signal<AppTheme>(this.initialTheme());
   readonly themeLabel = computed<string>(() => {

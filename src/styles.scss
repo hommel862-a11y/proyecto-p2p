@@ -3566,4 +3566,69 @@ button.quick-fill-chip,
   }
 }
 
+/* ============================================================
+   Spatial 3D Interactive Layer & GPU Motion Primitives
+   ============================================================ */
+.spatial-tilt-3d {
+  --tilt-rx: 0deg;
+  --tilt-ry: 0deg;
+  --mx: 50%;
+  --my: 50%;
+  --tilt-active: 0;
+  transform-style: preserve-3d;
+  transform: perspective(1000px) rotateX(var(--tilt-rx)) rotateY(var(--tilt-ry));
+  transition:
+    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s ease,
+    box-shadow 0.28s ease;
+  will-change: transform;
+  position: relative;
+}
+
+.spatial-tilt-3d::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: calc(var(--tilt-active) * 0.65);
+  background: radial-gradient(
+    280px circle at var(--mx) var(--my),
+    rgba(255, 255, 255, 0.12),
+    transparent 65%
+  );
+  transition: opacity 0.25s ease;
+  z-index: 1;
+}
+
+.spatial-z-mid {
+  transform: translateZ(14px);
+}
+
+.spatial-z-float {
+  transform: translateZ(28px);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), filter 0.28s ease;
+}
+
+.spatial-tilt-3d:hover .spatial-z-float {
+  transform: translateZ(36px) scale(1.06);
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .spatial-tilt-3d {
+    transform: none !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    will-change: auto;
+  }
+  .spatial-tilt-3d::after {
+    display: none;
+  }
+  .spatial-z-mid,
+  .spatial-z-float {
+    transform: none !important;
+  }
+}
+
+
 

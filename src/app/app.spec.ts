@@ -27,12 +27,13 @@ describe('App', () => {
     expect(fixture.componentInstance).toBeTruthy();
   }, 15000);
 
-  it('should render a nav with 17 feature links and mobile bottom nav', () => {
+  it('should render a nav with 18 feature links, live alpha signal card, and mobile bottom nav', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(17);
-    expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(5);
+    expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(18);
+    expect(compiled.querySelectorAll('.mobile-bottom-nav .bottom-tab')).toHaveLength(6);
+    expect(compiled.querySelector('.sidebar-alpha-card')?.textContent).toContain('ALPHA SIGNAL');
   }, 15000);
 
   describe('theme toggle', () => {
