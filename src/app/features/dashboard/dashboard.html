@@ -215,203 +215,106 @@
         <span class="tab-icon">📈</span>
         <span>Desempeño Semanal</span>
       </button>
+
+      <div class="segmented-organize-actions">
+        <button
+          type="button"
+          class="apple-segmented-tab organize-toggle-btn"
+          [class.active]="layoutService.organizeMode()"
+          (click)="layoutService.toggleOrganizeMode()"
+          title="Activar o desactivar modo de reorganización 3D de bloques"
+        >
+          <span class="tab-icon">🎛️</span>
+          <span>{{ layoutService.organizeMode() ? 'Listo' : 'Organizar 3D' }}</span>
+        </button>
+        @if (layoutService.organizeMode() || isSectionOrderCustom()) {
+          <button
+            type="button"
+            class="apple-segmented-tab organize-reset-btn"
+            (click)="layoutService.resetLayout()"
+            title="Restablecer orden original de bloques y rieles"
+          >
+            <span>↺ Restablecer</span>
+          </button>
+        }
+      </div>
     </nav>
   </div>
 
   <!-- ═══════════════════════════════════════════════════
-       3. Specular Glass Bento KPI Strip — Today's Performance
+       3+. Modular Spatial 3D Sections (Reorderable Cockpit)
        ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'performance') {
-    <section class="apple-bento-kpi-grid">
-      <!-- KPI 1: Ganancia Neta VES -->
+  @for (secId of layoutService.sectionOrder(); track secId; let secIdx = $index; let lastSec = $last) {
+    @if (isSectionVisible(secId)) {
       <div
-        class="apple-kpi-card glass-tier-2"
-        [class.kpi-glow-accent]="dashboard().today.pnlVes > 0"
-        [class.kpi-glow-danger]="dashboard().today.pnlVes < 0"
-        (click)="goToStats()"
-        role="button"
-        tabindex="0"
-        (keydown.enter)="goToStats()"
+        class="spatial-section-slot"
+        [class.organize-active]="layoutService.organizeMode()"
+        [class.is-dragging]="draggedSectionId() === secId"
+        [class.is-drag-over]="dragOverSectionId() === secId"
+        [attr.draggable]="layoutService.organizeMode()"
+        (dragstart)="onSectionDragStart(secId, $event)"
+        (dragover)="onSectionDragOver(secId, $event)"
+        (drop)="onSectionDrop(secId, $event)"
+        (dragend)="onSectionDragEnd()"
       >
-        <div class="apple-kpi-header">
-          <span class="apple-kpi-title">Ganancia Neta (VES)</span>
-          <span class="apple-kpi-icon">🇻🇪</span>
-        </div>
-        <div
-          class="apple-kpi-val font-mono"
-          [class.positive]="dashboard().today.pnlVes > 0"
-          [class.negative]="dashboard().today.pnlVes < 0"
-        >
-          <app-animated-counter [value]="dashboard().today.pnlVes" suffix="VES" />
-        </div>
-        <div class="apple-kpi-footer">
-          <span class="apple-kpi-subtext">Resultado consolidado hoy</span>
-          <span class="apple-kpi-link">Ver historial →</span>
-        </div>
-      </div>
-
-      <!-- KPI 2: Ganancia Neta USDT -->
-      <div
-        class="apple-kpi-card glass-tier-2"
-        [class.kpi-glow-accent]="dashboard().today.pnlUsdt > 0"
-        [class.kpi-glow-danger]="dashboard().today.pnlUsdt < 0"
-        (click)="goToStats()"
-        role="button"
-        tabindex="0"
-        (keydown.enter)="goToStats()"
-      >
-        <div class="apple-kpi-header">
-          <span class="apple-kpi-title">Ganancia Neta (USDT)</span>
-          <span class="apple-kpi-icon">₮</span>
-        </div>
-        <div
-          class="apple-kpi-val font-mono"
-          [class.positive]="dashboard().today.pnlUsdt > 0"
-          [class.negative]="dashboard().today.pnlUsdt < 0"
-        >
-          <app-animated-counter [value]="dashboard().today.pnlUsdt" prefix="₮ " [decimals]="2" />
-        </div>
-        <div class="apple-kpi-footer">
-          <span class="apple-kpi-subtext">En divisa dura de arbitraje</span>
-          <span class="apple-kpi-link">Ver métricas →</span>
-        </div>
-      </div>
-
-      <!-- KPI 3: Operaciones Hoy & Racha -->
-      <div
-        class="apple-kpi-card glass-tier-2"
-        (click)="goToLog()"
-        role="button"
-        tabindex="0"
-        (keydown.enter)="goToLog()"
-      >
-        <div class="apple-kpi-header">
-          <span class="apple-kpi-title">Operaciones Hoy</span>
-          <span class="apple-pill-mini" [class.live]="dashboard().today.zeroErrorStreak > 0">
-            🛡️ Racha {{ dashboard().today.zeroErrorStreak }}
-          </span>
-        </div>
-        <div class="apple-kpi-val font-mono">
-          {{ dashboard().today.operations }} <span class="apple-kpi-unit">órdenes</span>
-        </div>
-        <div class="apple-kpi-footer">
-          <span class="apple-kpi-subtext font-mono">
-            Exposición: {{ fmtUsd(dashboard().today.exposure) }}
-          </span>
-          <span class="apple-kpi-link">Libro →</span>
-        </div>
-      </div>
-
-      <!-- KPI 4: Meta Diaria Interactiva In-Place -->
-      <div
-        class="apple-kpi-card apple-card-progress glass-tier-2 kpi-glow-gold"
-        (click)="!editingDailyTarget() && goToIncome()"
-        role="button"
-        tabindex="0"
-        (keydown.enter)="!editingDailyTarget() && goToIncome()"
-      >
-        <div class="apple-kpi-header">
-          <span class="apple-kpi-title">
-            {{ activeDailyGoalPlan() ? '📌 Meta Diaria Fijada' : 'Meta Diaria de Ingresos' }}
-          </span>
-          <div class="kpi-target-actions" (click)="$event.stopPropagation()">
-            <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
-            <button
-              type="button"
-              class="btn-inline-edit-target"
-              (click)="openDailyTargetEditor($event)"
-              title="Ajustar meta diaria en USDT directamente desde aquí"
-            >
-              ✏️
-            </button>
-          </div>
-        </div>
-
-        @if (editingDailyTarget()) {
-          <div class="inline-target-editor" (click)="$event.stopPropagation()">
-            <div class="preset-chips-row">
-              @for (preset of dailyTargetPresets; track preset) {
-                <button
-                  type="button"
-                  class="preset-chip font-mono"
-                  [class.active]="dailyTarget() === preset"
-                  (click)="saveDailyTarget(preset, $event)"
-                >
-                  ${{ preset }}
-                </button>
-              }
-            </div>
-            <div class="custom-target-input-row">
-              <input
-                type="number"
-                min="1"
-                step="5"
-                class="target-mini-input font-mono"
-                [ngModel]="dailyTargetDraft()"
-                (ngModelChange)="dailyTargetDraft.set(+$event)"
-                (keydown.enter)="saveDailyTarget(undefined, $event)"
-                aria-label="Nueva meta diaria en USDT"
-              />
+        @if (layoutService.organizeMode()) {
+          <div class="organize-handle-bar glass-tier-3">
+            <span class="organize-drag-hint">⋮⋮ {{ sectionLabels[secId] }}</span>
+            <div class="organize-step-btns">
               <button
                 type="button"
-                class="apple-pill-btn apple-btn-primary btn-micro"
-                (click)="saveDailyTarget(undefined, $event)"
+                class="apple-pill-btn apple-btn-secondary btn-micro"
+                [disabled]="secIdx === 0"
+                (click)="moveSectionByOffset(secId, -1)"
+                aria-label="Subir sección"
               >
-                Guardar
+                ↑
               </button>
               <button
                 type="button"
                 class="apple-pill-btn apple-btn-secondary btn-micro"
-                (click)="cancelDailyTargetEditor($event)"
+                [disabled]="lastSec"
+                (click)="moveSectionByOffset(secId, 1)"
+                aria-label="Bajar sección"
               >
-                ✕
+                ↓
               </button>
             </div>
           </div>
-        } @else {
-          @if (dailyDrawdownPct() > 0) {
-            <div class="apple-kpi-val font-mono negative">
-              -{{ (dashboard().today.pnlUsdt * -1) | num }} USDT ({{ dailyDrawdownPct() }}% DD)
-            </div>
-            <div class="apple-track-bar">
-              <div class="apple-track-fill fill-danger" [style.width.%]="dailyDrawdownPct()"></div>
-            </div>
-          } @else {
-            <div class="kpi-progress-value-row">
-              <div class="apple-kpi-val font-mono gold-text">
-                {{ dailyProgress() }}%
-              </div>
-              <span class="kpi-remaining-tag font-mono">
-                @if (remainingDailyTargetUsdt() > 0) {
-                  Faltan {{ remainingDailyTargetUsdt() | num }} ₮
-                } @else {
-                  🏆 ¡Meta Lograda!
-                }
-              </span>
-            </div>
-            <div class="apple-track-bar">
-              <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
-            </div>
-          }
-          <div class="apple-kpi-footer">
-            @if (activeDailyGoalPlan(); as plan) {
-              <span class="apple-kpi-subtext font-mono">
-                {{ plan.desiredCyclesPerDay }} vueltas @ {{ plan.requiredSellPriceVes | num }} Bs
-              </span>
-            } @else if (dailyDrawdownPct() > 0) {
-              <span class="apple-kpi-subtext negative">Drawdown activo vs límite diario</span>
-            } @else {
-              <span class="apple-kpi-subtext">Avance hacia el objetivo diario</span>
-            }
-            <span class="apple-kpi-link">Calculadora →</span>
-          </div>
         }
-      </div>
-    </section>
+
+        @switch (secId) {
+          @case ('kpis') {
+            <app-kpi-bento-strip
+              [pnlVes]="dashboard().today.pnlVes"
+              [pnlUsdt]="dashboard().today.pnlUsdt"
+              [operations]="dashboard().today.operations"
+              [zeroErrorStreak]="dashboard().today.zeroErrorStreak"
+              [exposureUsd]="dashboard().today.exposure"
+              [dailyTarget]="dailyTarget()"
+              [dailyProgress]="dailyProgress()"
+              [dailyDrawdownPct]="dailyDrawdownPct()"
+              [remainingDailyTargetUsdt]="remainingDailyTargetUsdt()"
+              [editingDailyTarget]="editingDailyTarget()"
+              [dailyTargetDraft]="dailyTargetDraft()"
+              [dailyTargetPresets]="dailyTargetPresets"
+              [activePlanCycles]="activeDailyGoalPlan()?.desiredCyclesPerDay ?? null"
+              [activePlanSellPrice]="activeDailyGoalPlan()?.requiredSellPriceVes ?? null"
+              [vesSparkline]="kpiSparklines().ves"
+              [usdtSparkline]="kpiSparklines().usdt"
+              [opsSparkline]="kpiSparklines().ops"
+              (navigateStats)="goToStats()"
+              (navigateLog)="goToLog()"
+              (navigateIncome)="goToIncome()"
+              (openTargetEditor)="openDailyTargetEditor($event)"
+              (saveTarget)="onSaveTargetFromStrip($event)"
+              (cancelTargetEditor)="cancelDailyTargetEditor($event)"
+              (targetDraftChange)="dailyTargetDraft.set($event)"
+            />
 
     <!-- 3B. Interactive One-Tap Arbitrage & Ticket Simulator (Client Engagement Loop) -->
     @if (simulatedTradeOutcome(); as sim) {
-      <section class="spatial-simulator-ribbon glass-tier-2" aria-label="Simulador rápido de ticket y retorno neto">
+      <section appSpatialTilt3d [tiltMaxDeg]="2" class="spatial-simulator-ribbon glass-tier-2" aria-label="Simulador rápido de ticket y retorno neto">
         <div class="sim-left">
           <div class="sim-title-block">
             <span class="sim-eyebrow">⚡ SIMULADOR TÁCTICO EN VIVO</span>
@@ -463,12 +366,12 @@
         </div>
       </section>
     }
-  }
+          }
 
-  <!-- ═══════════════════════════════════════════════════
-       3C. Mesa Cambiaria BCV (14 Bancos) & Pulso Spot Institucional
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'treasury') {
+          @case ('mesa-bcv') {
+    <!-- ═══════════════════════════════════════════════════
+         3C. Mesa Cambiaria BCV (14 Bancos) & Pulso Spot Institucional
+         ═══════════════════════════════════════════════════ -->
     @if (fxDeskSummary(); as fx) {
       <section class="mesa-bcv-executive-strip glass-tier-2" aria-label="Mesa Cambiaria BCV 14 Bancos y Pulso Spot">
         <div class="mesa-strip-left">
@@ -535,12 +438,23 @@
         </div>
       </section>
     }
-  }
+          }
 
-  <!-- ═══════════════════════════════════════════════════
-       4. Asymmetric Bento Row (7 / 5) — FIFO Inventory, OBI & Forensic Risk
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'treasury' || activeTab() === 'agents') {
+          @case ('tactical') {
+    <!-- ═══════════════════════════════════════════════════
+         4. Asymmetric Bento Row (7 / 5) — FIFO Inventory, OBI, L2 Gauge & Swarm Radar
+         ═══════════════════════════════════════════════════ -->
+    <app-l2-radar-gauge
+      [pressureScore]="l2PressureTelemetry().score"
+      [pressureLabel]="l2PressureTelemetry().label"
+      [spreadPct]="l2PressureTelemetry().spreadPct"
+      [bcvGapPct]="l2PressureTelemetry().bcvGapPct"
+      [isBcvWindowOpen]="l2PressureTelemetry().isBcvWindowOpen"
+      [swarmAgents]="swarmAgents()"
+      (refreshSwarm)="runSwarmHealthCheck()"
+      (openRadar)="goToRadar()"
+      (openAgents)="goToAgents()"
+    />
     <div class="quantum-bento-grid bento-stretch-row">
       @if (activeTab() === 'all' || activeTab() === 'treasury') {
         <!-- Left (Span 7): Posición de Inventario FIFO, Microestructura (OBI) & Yield -->
@@ -815,12 +729,26 @@
         </section>
       }
     </div>
-  }
+          }
 
-  <!-- ═══════════════════════════════════════════════════
-       5. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid (With Rail & Health Filters)
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'treasury') {
+          @case ('sankey') {
+    <!-- ═══════════════════════════════════════════════════
+         4B. Interactive Sankey Capital Flow & Movable Rail Nodes
+         ═══════════════════════════════════════════════════ -->
+    <app-sankey-rails-flow
+      [rails]="sankeyRailNodes()"
+      [netProfitUsdt]="dashboard().today.pnlUsdt"
+      [netProfitVes]="dashboard().today.pnlVes"
+      [roiPct]="sankeyNetRoiPct()"
+      (operateRail)="quickOperate($event)"
+      (injectLiquidity)="openLiquidityModal()"
+    />
+          }
+
+          @case ('treasury') {
+    <!-- ═══════════════════════════════════════════════════
+         5. Unified Multi-Bank Treasury & Anti-SUDEBAN Grid (With Rail & Health Filters)
+         ═══════════════════════════════════════════════════ -->
     <section class="apple-card-section glass-tier-1">
       <div class="apple-section-header">
         <div class="apple-section-title-wrap">
@@ -1246,12 +1174,12 @@
         </div>
       }
     </section>
-  }
+          }
 
-  <!-- ═══════════════════════════════════════════════════
-       6. Asymmetric Intelligence Bento Row (6 / 6) — Macro BCV + Swarm IA
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'agents') {
+          @case ('intelligence') {
+    <!-- ═══════════════════════════════════════════════════
+         6. Asymmetric Intelligence Bento Row (6 / 6) — Macro BCV + Swarm IA
+         ═══════════════════════════════════════════════════ -->
     <div class="quantum-bento-grid bento-stretch-row">
       <!-- Left (Span 6): Macro & Regulatory BCV Intelligence (MCP Decisor) -->
       <section class="apple-card-section glass-tier-1 bento-span-6">
@@ -1427,12 +1355,12 @@
         </div>
       </section>
     </div>
-  }
+          }
 
-  <!-- ═══════════════════════════════════════════════════
-       7. Asymmetric Performance & Ledger Row (7 / 5) — 7D Chart + Recent Ops
-       ═══════════════════════════════════════════════════ -->
-  @if (activeTab() === 'all' || activeTab() === 'performance') {
+          @case ('performance') {
+    <!-- ═══════════════════════════════════════════════════
+         7. Asymmetric Performance & Ledger Row (7 / 5) — 7D Chart + Recent Ops
+         ═══════════════════════════════════════════════════ -->
     <div class="quantum-bento-grid bento-stretch-row">
       <!-- Left (Span 7): Weekly Performance Chart -->
       <section class="apple-card-section glass-tier-1 bento-span-7">
@@ -1676,6 +1604,10 @@
         }
       </section>
     </div>
+          }
+        }
+      </div>
+    }
   }
 
   <!-- ═══════════════════════════════════════════════════

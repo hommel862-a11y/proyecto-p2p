@@ -1,0 +1,355 @@
+<section class="apple-bento-kpi-grid" aria-label="Métricas Principales de Desempeño">
+  <!-- ═══════════════════════════════════════════════════
+       KPI 1: Ganancia Neta VES
+       ═══════════════════════════════════════════════════ -->
+  <div
+    class="apple-kpi-card glass-tier-2 spatial-tilt-3d"
+    appSpatialTilt3d
+    [tiltMaxDeg]="6"
+    [class.kpi-glow-accent]="pnlVes() > 0"
+    [class.kpi-glow-danger]="pnlVes() < 0"
+    (click)="onCardClick(1)"
+    (keydown.enter)="onCardClick(1)"
+    role="button"
+    tabindex="0"
+    aria-label="Ganancia Neta en Bolívares. Click para ver historial."
+  >
+    <div class="apple-kpi-header">
+      <span class="apple-kpi-title">Ganancia Neta (VES)</span>
+      <span class="apple-kpi-icon spatial-z-float" aria-hidden="true">🇻🇪</span>
+    </div>
+
+    <div class="kpi-mid-content spatial-z-mid">
+      <div
+        class="apple-kpi-val font-mono"
+        [class.positive]="pnlVes() > 0"
+        [class.negative]="pnlVes() < 0"
+      >
+        <app-animated-counter [value]="pnlVes()" suffix="VES" />
+      </div>
+
+      @if (vesSparklinePaths().line) {
+        <div class="kpi-sparkline-wrap">
+          <svg
+            class="kpi-sparkline-svg"
+            viewBox="0 0 120 32"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="vesGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" [attr.stop-color]="pnlVes() >= 0 ? 'var(--accent)' : 'var(--danger)'" stop-opacity="0.3" />
+                <stop offset="100%" [attr.stop-color]="pnlVes() >= 0 ? 'var(--accent)' : 'var(--danger)'" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path class="sparkline-area" [attr.d]="vesSparklinePaths().area" fill="url(#vesGrad)" />
+            <path
+              class="sparkline-line"
+              [attr.d]="vesSparklinePaths().line"
+              fill="none"
+              [attr.stroke]="pnlVes() >= 0 ? 'var(--accent)' : 'var(--danger)'"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      }
+    </div>
+
+    <div class="apple-kpi-footer">
+      <span class="apple-kpi-subtext">Resultado consolidado hoy</span>
+      <span class="apple-kpi-link">Ver historial →</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       KPI 2: Ganancia Neta USDT
+       ═══════════════════════════════════════════════════ -->
+  <div
+    class="apple-kpi-card glass-tier-2 spatial-tilt-3d"
+    appSpatialTilt3d
+    [tiltMaxDeg]="6"
+    [class.kpi-glow-accent]="pnlUsdt() > 0"
+    [class.kpi-glow-danger]="pnlUsdt() < 0"
+    (click)="onCardClick(2)"
+    (keydown.enter)="onCardClick(2)"
+    role="button"
+    tabindex="0"
+    aria-label="Ganancia Neta en USDT. Click para ver métricas."
+  >
+    <div class="apple-kpi-header">
+      <span class="apple-kpi-title">Ganancia Neta (USDT)</span>
+      <span class="apple-kpi-icon spatial-z-float" aria-hidden="true">₮</span>
+    </div>
+
+    <div class="kpi-mid-content spatial-z-mid">
+      <div
+        class="apple-kpi-val font-mono"
+        [class.positive]="pnlUsdt() > 0"
+        [class.negative]="pnlUsdt() < 0"
+      >
+        <app-animated-counter [value]="pnlUsdt()" prefix="₮ " [decimals]="2" />
+      </div>
+
+      @if (usdtSparklinePaths().line) {
+        <div class="kpi-sparkline-wrap">
+          <svg
+            class="kpi-sparkline-svg"
+            viewBox="0 0 120 32"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="usdtGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" [attr.stop-color]="pnlUsdt() >= 0 ? 'var(--accent)' : 'var(--danger)'" stop-opacity="0.3" />
+                <stop offset="100%" [attr.stop-color]="pnlUsdt() >= 0 ? 'var(--accent)' : 'var(--danger)'" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path class="sparkline-area" [attr.d]="usdtSparklinePaths().area" fill="url(#usdtGrad)" />
+            <path
+              class="sparkline-line"
+              [attr.d]="usdtSparklinePaths().line"
+              fill="none"
+              [attr.stroke]="pnlUsdt() >= 0 ? 'var(--accent)' : 'var(--danger)'"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      }
+    </div>
+
+    <div class="apple-kpi-footer">
+      <span class="apple-kpi-subtext">En divisa dura de arbitraje</span>
+      <span class="apple-kpi-link">Ver métricas →</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       KPI 3: Operaciones Hoy & Racha
+       ═══════════════════════════════════════════════════ -->
+  <div
+    class="apple-kpi-card glass-tier-2 spatial-tilt-3d"
+    appSpatialTilt3d
+    [tiltMaxDeg]="6"
+    (click)="onCardClick(3)"
+    (keydown.enter)="onCardClick(3)"
+    role="button"
+    tabindex="0"
+    aria-label="Operaciones de hoy. Click para ir al libro."
+  >
+    <div class="apple-kpi-header">
+      <span class="apple-kpi-title">Operaciones Hoy</span>
+      <span
+        class="apple-pill-mini spatial-z-float"
+        [class.live]="zeroErrorStreak() > 0"
+      >
+        🛡️ Racha {{ zeroErrorStreak() }}
+      </span>
+    </div>
+
+    <div class="kpi-mid-content spatial-z-mid">
+      <div class="apple-kpi-val font-mono">
+        {{ operations() }} <span class="apple-kpi-unit">órdenes</span>
+      </div>
+
+      @if (opsSparklinePaths().line) {
+        <div class="kpi-sparkline-wrap">
+          <svg
+            class="kpi-sparkline-svg"
+            viewBox="0 0 120 32"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="opsGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--accent-2)" stop-opacity="0.3" />
+                <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path class="sparkline-area" [attr.d]="opsSparklinePaths().area" fill="url(#opsGrad)" />
+            <path
+              class="sparkline-line"
+              [attr.d]="opsSparklinePaths().line"
+              fill="none"
+              stroke="var(--accent-2)"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      }
+    </div>
+
+    <div class="apple-kpi-footer">
+      <span class="apple-kpi-subtext font-mono">
+        Exposición: {{ formattedExposure() }}
+      </span>
+      <span class="apple-kpi-link">Libro →</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       KPI 4: Meta Diaria Interactiva In-Place & Radial Ring
+       ═══════════════════════════════════════════════════ -->
+  <div
+    class="apple-kpi-card apple-card-progress glass-tier-2 kpi-glow-gold spatial-tilt-3d"
+    appSpatialTilt3d
+    [tiltMaxDeg]="6"
+    (click)="onCardClick(4)"
+    (keydown.enter)="onCardClick(4)"
+    role="button"
+    tabindex="0"
+    aria-label="Meta Diaria de Ingresos. Click para calculadora."
+  >
+    <div class="apple-kpi-header">
+      <span class="apple-kpi-title">
+        {{ activePlanCycles() !== null ? '📌 Meta Diaria Fijada' : 'Meta Diaria de Ingresos' }}
+      </span>
+      <div class="kpi-target-actions spatial-z-float">
+        <span class="apple-pill-mini gold font-mono">{{ dailyTarget() }} USDT</span>
+        @if (!editingDailyTarget()) {
+          <button
+            type="button"
+            class="btn-inline-edit-target"
+            (click)="onOpenTargetEditor($event)"
+            title="Ajustar meta diaria en USDT directamente desde aquí"
+            aria-label="Editar meta diaria"
+          >
+            ✏️
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (editingDailyTarget()) {
+      <div class="inline-target-editor spatial-z-mid">
+        <div class="preset-chips-row">
+          @for (preset of dailyTargetPresets(); track preset) {
+            <button
+              type="button"
+              class="preset-chip font-mono"
+              [class.active]="dailyTarget() === preset"
+              (click)="onPresetClick(preset, $event)"
+            >
+              ${{ preset }}
+            </button>
+          }
+        </div>
+        <div class="custom-target-input-row">
+          <input
+            type="number"
+            min="1"
+            step="5"
+            class="target-mini-input font-mono"
+            [ngModel]="dailyTargetDraft()"
+            (ngModelChange)="onDraftChange(+$event)"
+            (click)="$event.stopPropagation()"
+            (keydown.enter)="onSaveCustom($event)"
+            aria-label="Nueva meta diaria en USDT"
+          />
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-primary btn-micro btn-save-target"
+            (click)="onSaveCustom($event)"
+          >
+            Guardar
+          </button>
+          <button
+            type="button"
+            class="apple-pill-btn apple-btn-secondary btn-micro btn-cancel-target"
+            (click)="onCancelEditor($event)"
+            aria-label="Cancelar edición de meta"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    } @else {
+      <div class="kpi-mid-content spatial-z-mid">
+        @if (dailyDrawdownPct() > 0) {
+          <div class="kpi-progress-radial-layout">
+            <div class="radial-ring-box" aria-hidden="true">
+              <svg class="radial-ring-svg" viewBox="0 0 56 56">
+                <circle class="radial-ring-track" cx="28" cy="28" r="24" />
+                <circle
+                  class="radial-ring-progress drawdown"
+                  cx="28"
+                  cy="28"
+                  r="24"
+                  [attr.stroke-dasharray]="RING_CIRCUMFERENCE"
+                  [attr.stroke-dashoffset]="radialDrawdownOffset()"
+                />
+              </svg>
+              <span class="radial-ring-icon">⚠️</span>
+            </div>
+            <div class="radial-ring-info">
+              <div class="apple-kpi-val font-mono negative">
+                -{{ formatRemaining(pnlUsdt() * -1) }} USDT ({{ dailyDrawdownPct() }}% DD)
+              </div>
+              <div class="apple-track-bar">
+                <div class="apple-track-fill fill-danger" [style.width.%]="dailyDrawdownPct()"></div>
+              </div>
+            </div>
+          </div>
+        } @else {
+          <div class="kpi-progress-radial-layout">
+            <div class="radial-ring-box" aria-hidden="true">
+              <svg class="radial-ring-svg" viewBox="0 0 56 56">
+                <defs>
+                  <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="var(--gold)" />
+                    <stop offset="100%" stop-color="var(--accent)" />
+                  </linearGradient>
+                </defs>
+                <circle class="radial-ring-track" cx="28" cy="28" r="24" />
+                <circle
+                  class="radial-ring-progress"
+                  cx="28"
+                  cy="28"
+                  r="24"
+                  [attr.stroke-dasharray]="RING_CIRCUMFERENCE"
+                  [attr.stroke-dashoffset]="radialProgressOffset()"
+                />
+              </svg>
+              <span class="radial-ring-pct font-mono">{{ dailyProgress() }}%</span>
+            </div>
+            <div class="radial-ring-info">
+              <div class="kpi-progress-value-row">
+                <div class="apple-kpi-val font-mono gold-text">
+                  {{ dailyProgress() }}%
+                </div>
+                <span class="kpi-remaining-tag font-mono">
+                  @if (remainingDailyTargetUsdt() > 0) {
+                    Faltan {{ formatRemaining(remainingDailyTargetUsdt()) }} ₮
+                  } @else {
+                    🏆 ¡Meta Lograda!
+                  }
+                </span>
+              </div>
+              <div class="apple-track-bar">
+                <div class="apple-track-fill" [style.width.%]="dailyProgress()"></div>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="apple-kpi-footer">
+        @if (activePlanCycles() !== null) {
+          <span class="apple-kpi-subtext font-mono">
+            {{ activePlanCycles() }} vueltas @ {{ formatPrice(activePlanSellPrice()) }} Bs
+          </span>
+        } @else if (dailyDrawdownPct() > 0) {
+          <span class="apple-kpi-subtext negative">Drawdown activo vs límite diario</span>
+        } @else {
+          <span class="apple-kpi-subtext">Avance hacia el objetivo diario</span>
+        }
+        <span class="apple-kpi-link">Calculadora →</span>
+      </div>
+    }
+  </div>
+</section>

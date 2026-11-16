@@ -62,6 +62,20 @@ import {
 } from '@p2p/core';
 import { FormsModule } from '@angular/forms';
 import { AnimatedCounterComponent } from '../../shared/ui/animated-counter';
+import { SpatialTilt3dDirective } from '../../shared/ui/spatial-tilt-3d.directive';
+import { KpiBentoStripComponent } from './components/kpi-bento-strip/kpi-bento-strip.component';
+import { L2RadarGaugeComponent } from './components/l2-radar-gauge/l2-radar-gauge.component';
+import {
+  SankeyRailsFlowComponent,
+  type SankeyRailHealth,
+  type SankeyRailNodeDto,
+} from './components/sankey-rails-flow/sankey-rails-flow.component';
+import {
+  DEFAULT_SECTION_ORDER,
+  DashboardLayoutService,
+  type DashboardSectionId,
+  type WorkflowRailNodeId,
+} from './services/dashboard-layout.service';
 
 export interface McpVolatilityForecastDto {
   windowHours?: number;
@@ -132,7 +146,17 @@ export interface AlphaPulseStatus {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, AnimatedCounterComponent, ...FORMAT_PIPES],
+  imports: [
+    CommonModule,
+    RouterLink,
+    FormsModule,
+    AnimatedCounterComponent,
+    SpatialTilt3dDirective,
+    KpiBentoStripComponent,
+    L2RadarGaugeComponent,
+    SankeyRailsFlowComponent,
+    ...FORMAT_PIPES,
+  ],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -153,6 +177,10 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly telemetryService = inject(TelemetryService);
   readonly telegramService = inject(TelegramWorkerService);
   readonly spotMarketService = inject(SpotMarketService);
+  readonly layoutService = inject(DashboardLayoutService);
+
+  readonly draggedSectionId = signal<DashboardSectionId | null>(null);
+  readonly dragOverSectionId = signal<DashboardSectionId | null>(null);
 
   readonly telemetry = this.telemetryService.telemetry;
 
@@ -1197,6 +1225,203 @@ export class Dashboard implements OnInit, OnDestroy {
   /** Chart bar → stats calendar for that day (forward-compat query param). */
   goToDay(day: string): void {
     void this.router.navigate(['/stats'], { queryParams: { day } });
+  }
+
+  /** Navigate directly to Radar Cuantitativo L2. */
+  goToRadar(): void {
+    void this.router.navigate(['/radar']);
+  }
+
+  /** Navigate directly to Agent Studio. */
+  goToAgents(): void {
+    void this.router.navigate(['/agents']);
+  }
+
+  /** Sparkline series derived strictly from chronological 7-day history for KPI Bento cards. */
+  readonly kpiSparklines = computed(() => {
+    const week = this.chronologicalWeek();
+    if (week.length === 0) {
+      return { ves: [0], usdt: [0], ops: [0] };
+    }
+    const sellPrice = this.binanceService.marketDepth()?.bestSellPrice || this.manualParallelRate() || 800;
+    return {
+      ves: week.map((d) => Math.round(d.pnlVes)),
+      usdt: week.map((d) => +(sellPrice > 0 ? d.pnlVes / sellPrice : 0).toFixed(2)),
+      ops: week.map((d) => d.operations),
+    };
+  });
+
+  /** Synthesized L2 pressure & BCV risk telemetry for L2RadarGaugeComponent. */
+  readonly l2PressureTelemetry = computed(() => {
+    const obi = this.orderBookImbalance();
+    const pulse = this.alphaPulse();
+    const bcv = this.bcvIntelligence();
+    const rawScore = obi?.gaugePercent ?? (pulse.state === 'ALPHA_WINDOW' ? 78 : pulse.state === 'RISK_GUARD' ? 28 : 56);
+    const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+    const label =
+      pulse.state === 'RISK_GUARD' || pulse.isBcvWindowActive
+        ? 'RIESGO BCV'
+        : score >= 68
+          ? 'ÓPTIMO'
+          : score >= 40
+            ? 'CAUTELA'
+            : 'RIESGO';
+
+    return {
+      score,
+      label,
+      spreadPct: pulse.spreadPct,
+      bcvGapPct: +(bcv.gap.gapPct ?? 0).toFixed(2),
+      isBcvWindowOpen: pulse.isBcvWindowActive,
+    };
+  });
+
+  /** Live bank/exchange rail aggregates feeding the interactive Sankey flow. */
+  readonly sankeyRailNodes = computed<readonly SankeyRailNodeDto[]>(() => {
+    const accounts = this.unifiedAccounts();
+    const railDefs: readonly {
+      id: WorkflowRailNodeId;
+      label: string;
+      match: (a: UnifiedAccountView) => boolean;
+      defaultOperate: string;
+    }[] = [
+      {
+        id: 'BANESCO',
+        label: 'Banesco',
+        match: (a) => a.bankCode === 'BANESCO' || a.bankName.toLowerCase().includes('banesco'),
+        defaultOperate: 'Banesco',
+      },
+      {
+        id: 'PAGO_MOVIL',
+        label: 'Pago Móvil',
+        match: (a) => a.rail === 'PAGO_MOVIL',
+        defaultOperate: 'Pago Móvil',
+      },
+      {
+        id: 'PROVINCIAL',
+        label: 'Provincial',
+        match: (a) => a.bankCode === 'PROVINCIAL' || a.bankName.toLowerCase().includes('provincial'),
+        defaultOperate: 'Provincial',
+      },
+      {
+        id: 'MERCANTIL',
+        label: 'Mercantil',
+        match: (a) => a.bankCode === 'MERCANTIL' || a.bankName.toLowerCase().includes('mercantil'),
+        defaultOperate: 'Mercantil',
+      },
+      {
+        id: 'BINANCE_SPOT',
+        label: 'Binance Spot',
+        match: (a) => a.bankName.toLowerCase().includes('binance') || a.bankCode === 'BDV',
+        defaultOperate: 'Binance Spot',
+      },
+    ];
+
+    return railDefs.map((def) => {
+      const matched = accounts.filter(def.match);
+      const balanceVes = matched.reduce((sum, a) => sum + Math.max(0, a.currentBalanceVes), 0);
+      const avgConsumed =
+        matched.length > 0
+          ? Math.round(matched.reduce((sum, a) => sum + a.consumedLimitPct, 0) / matched.length)
+          : 0;
+      const hasAlert = matched.some((a) => a.isOverLimit || a.status === 'DISABLED');
+      const hasWarn = matched.some((a) => a.isNearLimit);
+      const health: SankeyRailHealth = hasAlert ? 'danger' : hasWarn ? 'warn' : 'optimal';
+      const statusLabel =
+        health === 'danger' ? 'LÍMITE' : health === 'warn' ? 'ROTANDO' : 'ÓPTIMO';
+
+      return {
+        id: def.id,
+        label: def.label,
+        balanceVes,
+        consumedPct: avgConsumed,
+        statusLabel,
+        health,
+        bankNameForOperate: matched[0]?.bankName || def.defaultOperate,
+      };
+    });
+  });
+
+  readonly sankeyNetRoiPct = computed<number>(() => {
+    const spread = this.binanceService.marketDepth()?.spreadPct;
+    if (typeof spread === 'number' && Number.isFinite(spread) && spread > 0) {
+      return +spread.toFixed(2);
+    }
+    return this.simulatedTradeOutcome()?.spreadPct ?? 0;
+  });
+
+  readonly isSectionOrderCustom = computed<boolean>(() => {
+    const current = this.layoutService.sectionOrder();
+    return current.some((id, idx) => id !== DEFAULT_SECTION_ORDER[idx]);
+  });
+
+  readonly sectionLabels: Record<DashboardSectionId, string> = {
+    kpis: 'Indicadores KPI & Simulador',
+    'mesa-bcv': 'Mesa Cambiaria BCV',
+    tactical: 'Cockpit Táctico (FIFO · L2 · Swarm IA)',
+    sankey: 'Flujo de Capital por Rieles (Sankey)',
+    treasury: 'Tesorería & Rotación Anti-SUDEBAN',
+    intelligence: 'Inteligencia Macro & Swarm',
+    performance: 'Rendimiento 7D & Operaciones',
+  };
+
+  onSaveTargetFromStrip(payload: { preset?: number; event?: Event }): void {
+    this.saveDailyTarget(payload.preset, payload.event);
+  }
+
+  onSectionDragStart(sectionId: DashboardSectionId, event: DragEvent): void {
+    if (!this.layoutService.organizeMode()) return;
+    this.draggedSectionId.set(sectionId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', sectionId);
+    }
+  }
+
+  onSectionDragOver(sectionId: DashboardSectionId, event: DragEvent): void {
+    if (!this.layoutService.organizeMode() || !this.draggedSectionId()) return;
+    event.preventDefault();
+    this.dragOverSectionId.set(sectionId);
+  }
+
+  onSectionDrop(targetId: DashboardSectionId, event: DragEvent): void {
+    event.preventDefault();
+    const fromId = this.draggedSectionId();
+    if (fromId && fromId !== targetId) {
+      this.layoutService.moveSection(fromId, targetId);
+    }
+    this.draggedSectionId.set(null);
+    this.dragOverSectionId.set(null);
+  }
+
+  onSectionDragEnd(): void {
+    this.draggedSectionId.set(null);
+    this.dragOverSectionId.set(null);
+  }
+
+  moveSectionByOffset(sectionId: DashboardSectionId, delta: -1 | 1): void {
+    const order = this.layoutService.sectionOrder();
+    const idx = order.indexOf(sectionId);
+    const nextIdx = idx + delta;
+    if (idx === -1 || nextIdx < 0 || nextIdx >= order.length) return;
+    this.layoutService.moveSection(sectionId, order[nextIdx]);
+  }
+
+  isSectionVisible(sectionId: DashboardSectionId): boolean {
+    const tab = this.activeTab();
+    switch (sectionId) {
+      case 'kpis':
+      case 'performance':
+        return tab === 'all' || tab === 'performance';
+      case 'mesa-bcv':
+      case 'sankey':
+      case 'treasury':
+        return tab === 'all' || tab === 'treasury';
+      case 'tactical':
+        return tab === 'all' || tab === 'treasury' || tab === 'agents';
+      case 'intelligence':
+        return tab === 'all' || tab === 'agents';
+    }
   }
 
   /** Risk verdict → risk rules editor. */

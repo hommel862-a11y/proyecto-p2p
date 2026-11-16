@@ -1,0 +1,275 @@
+<section class="sankey-rails-cockpit" aria-label="Flujo de Capital y Rieles de Tesorería">
+  <!-- Cockpit Header -->
+  <header class="cockpit-header">
+    <div class="cockpit-title-group">
+      <div class="badge-live-stream">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span>SANKEY WORKFLOW</span>
+      </div>
+      <h3 class="cockpit-title">Flujo de Rieles & Sankey de Capital</h3>
+      <p class="cockpit-subtitle">
+        Supervisión dinámica de liquidez multiriel canalizada hacia Profit Neto orbital
+      </p>
+    </div>
+
+    <div class="cockpit-actions">
+      @if (isCustomOrder()) {
+        <button
+          type="button"
+          class="btn-action btn-reset-order"
+          (click)="resetRailOrder()"
+          aria-label="Restablecer orden predeterminado de rieles"
+          title="Restablecer orden predeterminado"
+        >
+          <span class="btn-icon" aria-hidden="true">↺</span>
+          <span>Restablecer flujo</span>
+        </button>
+      }
+
+      <button
+        type="button"
+        class="btn-action btn-inject-liquidity"
+        (click)="onInject()"
+        aria-label="Inyectar liquidez de tesorería"
+      >
+        <span class="btn-icon" aria-hidden="true">+</span>
+        <span>Inyectar Liquidez</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Interactive Workflow Cockpit Body -->
+  <div class="cockpit-body">
+    <!-- Left Column: Movable Rail Nodes -->
+    <div
+      class="rails-column"
+      role="list"
+      aria-label="Nodos de rieles bancarios reorganizables"
+    >
+      @for (rail of orderedRails(); track rail.id; let idx = $index; let isFirst = $first; let isLast = $last) {
+        <article
+          class="rail-node-card"
+          role="listitem"
+          appSpatialTilt3d
+          [tiltMaxDeg]="5"
+          [class.is-active]="activeRailId() === rail.id"
+          [class.is-dragging]="draggedRailId() === rail.id"
+          [class.is-drag-over]="dragOverRailId() === rail.id"
+          [class.health-optimal]="rail.health === 'optimal'"
+          [class.health-warn]="rail.health === 'warn'"
+          [class.health-danger]="rail.health === 'danger'"
+          [draggable]="true"
+          (dragstart)="onDragStart($event, rail.id)"
+          (dragover)="onDragOver($event, rail.id)"
+          (dragleave)="onDragLeave($event, rail.id)"
+          (drop)="onDrop($event, rail.id)"
+          (dragend)="onDragEnd()"
+          (click)="selectRail(rail.id)"
+          tabindex="0"
+          (keydown.enter)="selectRail(rail.id)"
+          (keydown.space)="selectRail(rail.id)"
+        >
+          <!-- Drag Handle -->
+          <div class="drag-handle" aria-hidden="true" title="Arrastrar nodo para reordenar flujo">
+            ⋮⋮
+          </div>
+
+          <!-- Rail Main Info -->
+          <div class="rail-content">
+            <div class="rail-header">
+              <span class="rail-label">{{ rail.label }}</span>
+              <span class="rail-health-badge" [class]="rail.health">
+                {{ rail.statusLabel }}
+              </span>
+            </div>
+
+            <div class="rail-metric-row">
+              <span class="rail-balance">
+                <strong>{{ formatVes(rail.balanceVes) }}</strong>
+                <small>VES</small>
+              </span>
+              <span class="rail-cupo-tag">{{ rail.consumedPct }}% cupo</span>
+            </div>
+
+            <!-- Cupo Progress Mini-bar -->
+            <div
+              class="cupo-progress-track"
+              role="progressbar"
+              [attr.aria-valuenow]="rail.consumedPct"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-label]="'Cupo consumido ' + rail.consumedPct + '%'"
+            >
+              <div
+                class="cupo-progress-fill"
+                [style.width.%]="rail.consumedPct"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Accessible Reorder Controls -->
+          <div class="reorder-controls">
+            <button
+              type="button"
+              class="btn-reorder btn-reorder-up"
+              [disabled]="isFirst"
+              (click)="moveRailUp(rail.id); $event.stopPropagation()"
+              aria-label="Mover riel hacia arriba"
+              title="Mover arriba"
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              class="btn-reorder btn-reorder-down"
+              [disabled]="isLast"
+              (click)="moveRailDown(rail.id); $event.stopPropagation()"
+              aria-label="Mover riel hacia abajo"
+              title="Mover abajo"
+            >
+              ▼
+            </button>
+          </div>
+        </article>
+      }
+    </div>
+
+    <!-- Center Column: Animated Bezier Sankey Streams -->
+    <div class="sankey-canvas-container" aria-hidden="true">
+      <svg
+        class="sankey-canvas"
+        viewBox="0 0 560 300"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          @for (stream of sankeyStreams(); track stream.railId) {
+            <linearGradient
+              [id]="stream.gradientId"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="0%"
+            >
+              <stop offset="0%" [attr.stop-color]="stream.color" stop-opacity="0.85" />
+              <stop offset="65%" [attr.stop-color]="stream.color" stop-opacity="0.45" />
+              <stop offset="100%" stop-color="var(--gold, #d8b45c)" stop-opacity="0.95" />
+            </linearGradient>
+          }
+        </defs>
+
+        @for (stream of sankeyStreams(); track stream.railId) {
+          <g
+            class="sankey-stream-group"
+            [class.is-active]="activeRailId() === stream.railId"
+            [class.is-dimmed]="activeRailId() !== null && activeRailId() !== stream.railId"
+          >
+            <!-- Background Glow Tube -->
+            <path
+              class="sankey-stream-glow"
+              [attr.d]="stream.path"
+              [attr.stroke]="'url(#' + stream.gradientId + ')'"
+              [attr.stroke-width]="stream.strokeWidth + 4"
+            />
+            <!-- Main Fluid Stream Path -->
+            <path
+              class="sankey-stream-path"
+              [attr.d]="stream.path"
+              [attr.stroke]="'url(#' + stream.gradientId + ')'"
+              [attr.stroke-width]="stream.strokeWidth"
+            />
+            <!-- Animated Dash Energy Flow -->
+            <path
+              class="sankey-energy-pulse"
+              [attr.d]="stream.path"
+              [attr.stroke]="stream.color"
+              [style.animation-delay]="stream.pulseDelay"
+            />
+          </g>
+        }
+      </svg>
+    </div>
+
+    <!-- Right Column: Orbital Profit Neto Ring -->
+    <div class="profit-column">
+      <div
+        class="orbital-profit-ring"
+        appSpatialTilt3d
+        [tiltMaxDeg]="7"
+        tabindex="0"
+        aria-label="Panel de Profit Neto y Rendimiento Orbital"
+      >
+        <!-- Orbital Decorative SVG Rings -->
+        <svg class="ring-svg" viewBox="0 0 160 160" aria-hidden="true">
+          <circle class="ring-track" cx="80" cy="80" r="70" />
+          <circle class="ring-orbit-dash" cx="80" cy="80" r="70" />
+          <circle class="ring-core-glow" cx="80" cy="80" r="60" />
+        </svg>
+
+        <!-- Center Readout -->
+        <div class="ring-content">
+          <span class="profit-ring-label">PROFIT NETO</span>
+          <strong class="profit-val-usdt">+{{ formatUsd(netProfitUsdt()) }} ₮</strong>
+          <span class="profit-val-ves">+{{ formatVes(netProfitVes()) }} Bs</span>
+          <div class="profit-roi-pill">
+            <span>ROI: +{{ roiPct() }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tactical Action Popover Card -->
+  @if (activeRail(); as active) {
+    <div
+      class="rail-popover"
+      role="dialog"
+      aria-label="Detalles de riel operativo"
+    >
+      <header class="popover-header">
+        <div class="popover-title-box">
+          <span class="popover-eyebrow">CONTROL TÁCTICO DE RIEL</span>
+          <h4 class="popover-rail-name">{{ active.label }}</h4>
+        </div>
+        <button
+          type="button"
+          class="btn-close-popover"
+          (click)="closePopover()"
+          aria-label="Cerrar popover de riel"
+          title="Cerrar"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div class="popover-body">
+        <div class="popover-stat-grid">
+          <div class="popover-stat">
+            <span class="stat-name">Balance VES</span>
+            <strong class="stat-val">{{ formatVes(active.balanceVes) }} Bs</strong>
+          </div>
+          <div class="popover-stat">
+            <span class="stat-name">Cupo Consumido</span>
+            <strong class="stat-val">{{ active.consumedPct }}%</strong>
+          </div>
+          <div class="popover-stat">
+            <span class="stat-name">Estado</span>
+            <span class="stat-badge" [class]="active.health">
+              {{ active.statusLabel }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="popover-footer">
+        <button
+          type="button"
+          class="btn-operate-rail"
+          (click)="onOperate(active)"
+          aria-label="Operar este riel de forma inmediata"
+        >
+          <span>⚡ Operar Riel</span>
+        </button>
+      </footer>
+    </div>
+  }
+</section>

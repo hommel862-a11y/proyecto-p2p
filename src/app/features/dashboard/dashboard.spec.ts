@@ -487,4 +487,36 @@ describe('Dashboard', () => {
     c.goToMesaBcv(true);
     expect(navSpy).toHaveBeenCalledWith(['/mesa-bcv'], { queryParams: { burst: '1' } });
   });
+
+  it('renders KpiBentoStrip, L2RadarGauge, and SankeyRailsFlow interactive 3D modules', () => {
+    const f = create();
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+
+    expect(el.querySelector('app-kpi-bento-strip')).toBeTruthy();
+    expect(el.querySelector('app-l2-radar-gauge')).toBeTruthy();
+    expect(el.querySelector('app-sankey-rails-flow')).toBeTruthy();
+  });
+
+  it('supports Spatial 3D section reordering via organize mode and resets back to default', () => {
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.layoutService.organizeMode()).toBe(false);
+    c.layoutService.toggleOrganizeMode();
+    expect(c.layoutService.organizeMode()).toBe(true);
+
+    const initialFirst = c.layoutService.sectionOrder()[0];
+    const initialSecond = c.layoutService.sectionOrder()[1];
+    c.moveSectionByOffset(initialSecond, -1);
+
+    expect(c.layoutService.sectionOrder()[0]).toBe(initialSecond);
+    expect(c.layoutService.sectionOrder()[1]).toBe(initialFirst);
+    expect(c.isSectionOrderCustom()).toBe(true);
+
+    c.layoutService.resetLayout();
+    expect(c.layoutService.sectionOrder()[0]).toBe(initialFirst);
+    expect(c.isSectionOrderCustom()).toBe(false);
+  });
 });

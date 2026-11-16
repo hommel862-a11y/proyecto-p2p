@@ -1,0 +1,314 @@
+<section class="l2-radar-cockpit" aria-label="Presión L2, Brecha BCV y Radar Orbital Swarm IA">
+  <!-- Left Card: L2 OrderBook & BCV Pressure Semicircular Gauge -->
+  <article
+    class="cockpit-panel gauge-panel"
+    appSpatialTilt3d
+    [tiltMaxDeg]="4.5"
+    aria-label="Indicador de Presión L2 y Brecha BCV"
+  >
+    <header class="panel-header spatial-z-mid">
+      <div class="header-copy">
+        <span class="panel-eyebrow">PULSO DE LIQUIDEZ &amp; BCV</span>
+        <h3 class="panel-title">Presión L2 / Spread</h3>
+      </div>
+
+      <button
+        type="button"
+        class="panel-action-btn btn-open-radar"
+        (click)="onOpenRadar()"
+        aria-label="Abrir monitor detallado de Radar L2"
+      >
+        <span>Radar L2</span>
+        <span aria-hidden="true">↗</span>
+      </button>
+    </header>
+
+    <div class="gauge-stage spatial-z-float">
+      <svg
+        class="l2-gauge-svg"
+        viewBox="0 0 260 155"
+        role="img"
+        [attr.aria-label]="'Presión L2 ' + clampedScore() + ' de 100, estado ' + pressureLabel()"
+      >
+        <defs>
+          <linearGradient
+            [attr.id]="'l2-gauge-grad-' + uid"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="0%"
+          >
+            <stop offset="0%" stop-color="var(--danger)" />
+            <stop offset="45%" stop-color="var(--warn)" />
+            <stop offset="78%" stop-color="var(--accent)" />
+            <stop offset="100%" stop-color="var(--gold)" />
+          </linearGradient>
+
+          <filter [attr.id]="'l2-glow-' + uid" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- Background Semicircular Track -->
+        <path
+          class="gauge-track"
+          d="M 34 130 A 96 96 0 0 1 226 130"
+          fill="none"
+          stroke-width="14"
+          stroke-linecap="round"
+        />
+
+        <!-- Segmented Reference Ticks -->
+        <g class="gauge-ticks" aria-hidden="true">
+          <line x1="22" y1="130" x2="29" y2="130" />
+          <line x1="53.6" y1="53.6" x2="58.6" y2="58.6" />
+          <line x1="130" y1="22" x2="130" y2="29" />
+          <line x1="206.4" y1="53.6" x2="201.4" y2="58.6" />
+          <line x1="238" y1="130" x2="231" y2="130" />
+        </g>
+
+        <!-- Progress Arc -->
+        <path
+          class="gauge-progress"
+          d="M 34 130 A 96 96 0 0 1 226 130"
+          fill="none"
+          stroke-width="14"
+          stroke-linecap="round"
+          [attr.stroke]="'url(#l2-gauge-grad-' + uid + ')'"
+          [attr.stroke-dasharray]="gaugeArcLength"
+          [attr.stroke-dashoffset]="gaugeDashOffset()"
+          [attr.filter]="'url(#l2-glow-' + uid + ')'"
+        />
+
+        <!-- Animated Tactical Needle -->
+        <g
+          class="gauge-needle"
+          [attr.transform]="'rotate(' + needleDeg() + ' 130 130)'"
+        >
+          <line
+            x1="130"
+            y1="130"
+            x2="130"
+            y2="48"
+            stroke="var(--text)"
+            stroke-width="2.5"
+            stroke-linecap="round"
+          />
+          <circle cx="130" cy="130" r="6" class="needle-hub" />
+        </g>
+
+        <!-- Live Tip Beacon -->
+        <circle
+          class="gauge-tip-dot"
+          [attr.cx]="gaugeTip().x"
+          [attr.cy]="gaugeTip().y"
+          r="5"
+        />
+      </svg>
+
+      <div class="gauge-readout">
+        <div class="gauge-score-row">
+          <span class="gauge-score-value font-mono">{{ clampedScore() }}</span>
+          <span class="gauge-score-max font-mono">/100</span>
+        </div>
+        <span
+          class="pressure-badge"
+          [class.tone-optimal]="pressureTone() === 'optimal'"
+          [class.tone-caution]="pressureTone() === 'caution'"
+          [class.tone-danger]="pressureTone() === 'danger'"
+        >
+          {{ pressureLabel() }}
+        </span>
+      </div>
+    </div>
+
+    <div class="gauge-pills spatial-z-mid">
+      <div class="metric-pill">
+        <span class="pill-label">Spread L2</span>
+        <strong class="pill-value font-mono">{{ spreadPct() | number: '1.2-2' }}%</strong>
+      </div>
+
+      <div class="metric-pill">
+        <span class="pill-label">Brecha BCV</span>
+        <strong class="pill-value font-mono">{{ bcvGapPct() | number: '1.2-2' }}%</strong>
+      </div>
+
+      <div
+        class="metric-pill window-pill"
+        [class.is-open]="isBcvWindowOpen()"
+      >
+        <span class="window-dot" aria-hidden="true"></span>
+        <span class="window-text">
+          {{ isBcvWindowOpen() ? 'Ventana BCV Abierta' : 'Ventana Cerrada' }}
+        </span>
+      </div>
+    </div>
+  </article>
+
+  <!-- Right Card: Animated Swarm IA Orbital Radar Ring + Tactical Inspection -->
+  <article
+    class="cockpit-panel radar-panel"
+    appSpatialTilt3d
+    [tiltMaxDeg]="4.5"
+    aria-label="Radar Orbital de Agentes Swarm IA"
+  >
+    <header class="panel-header spatial-z-mid">
+      <div class="header-copy">
+        <span class="panel-eyebrow">TELEMETRÍA DE AGENTES</span>
+        <h3 class="panel-title">Swarm IA Orbital</h3>
+      </div>
+
+      <div class="header-actions">
+        <span class="swarm-counter font-mono">
+          {{ onlineCount() }}/{{ swarmAgents().length }} ON · {{ totalDecisions() }} DEC
+        </span>
+        <button
+          type="button"
+          class="panel-action-btn btn-open-agents"
+          (click)="onOpenAgents()"
+          aria-label="Abrir consola completa de agentes Swarm"
+        >
+          <span>Agentes</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="radar-workspace">
+      <div class="radar-orbit-stage spatial-z-mid">
+        <svg
+          class="swarm-radar-svg"
+          viewBox="0 0 240 240"
+          role="img"
+          aria-label="Anillo orbital de radar Swarm IA"
+        >
+          <defs>
+            <linearGradient [attr.id]="'radar-sweep-grad-' + uid" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.42" />
+              <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+
+          <!-- Concentric Dashed Rings -->
+          <circle class="radar-ring" cx="120" cy="120" r="34" />
+          <circle class="radar-ring" cx="120" cy="120" r="62" />
+          <circle class="radar-ring radar-ring-orbit" cx="120" cy="120" r="84" />
+          <circle class="radar-ring" cx="120" cy="120" r="108" />
+
+          <!-- Tactical Crosshairs -->
+          <line class="radar-axis" x1="12" y1="120" x2="228" y2="120" />
+          <line class="radar-axis" x1="120" y1="12" x2="120" y2="228" />
+
+          <!-- Agent Orbital Spokes -->
+          @for (node of orbitNodes(); track node.agent.name) {
+            <line
+              class="radar-spoke"
+              [class.is-selected]="activeAgent()?.name === node.agent.name"
+              x1="120"
+              y1="120"
+              [attr.x2]="node.svgX"
+              [attr.y2]="node.svgY"
+            />
+          }
+
+          <!-- GPU Rotating Radar Sweep Beam -->
+          <g class="radar-sweep">
+            <path
+              d="M 120 120 L 120 12 A 108 108 0 0 1 213.5 66 Z"
+              [attr.fill]="'url(#radar-sweep-grad-' + uid + ')'"
+            />
+            <line
+              class="radar-sweep-leading"
+              x1="120"
+              y1="120"
+              x2="120"
+              y2="12"
+            />
+          </g>
+
+          <!-- Core Swarm Hub -->
+          <circle class="radar-core-halo" cx="120" cy="120" r="14" />
+          <circle class="radar-core-dot" cx="120" cy="120" r="5" />
+        </svg>
+
+        <!-- Interactive Agent Blip Nodes -->
+        @for (node of orbitNodes(); track node.agent.name) {
+          <button
+            type="button"
+            class="agent-blip spatial-z-float"
+            [class.status-online]="node.statusTone === 'online'"
+            [class.status-degraded]="node.statusTone === 'degraded'"
+            [class.status-offline]="node.statusTone === 'offline'"
+            [class.is-selected]="activeAgent()?.name === node.agent.name"
+            [style.left.%]="node.leftPct"
+            [style.top.%]="node.topPct"
+            [attr.aria-label]="node.agent.name + ' — ' + node.agent.role + ' (' + node.agent.status + ')'"
+            [attr.aria-pressed]="activeAgent()?.name === node.agent.name"
+            (click)="selectAgent(node.agent)"
+            (mouseenter)="selectAgent(node.agent)"
+            (focus)="selectAgent(node.agent)"
+          >
+            <span class="blip-icon" aria-hidden="true">{{ node.agent.icon }}</span>
+            <span class="blip-pulse" aria-hidden="true"></span>
+          </button>
+        }
+      </div>
+
+      <div class="radar-inspector spatial-z-float">
+        @if (activeAgent(); as agent) {
+          <div class="swarm-detail-card" role="region" [attr.aria-label]="'Detalle de ' + agent.name">
+            <div class="detail-top">
+              <span class="detail-icon" aria-hidden="true">{{ agent.icon }}</span>
+              <div class="detail-titles">
+                <strong class="detail-name">{{ agent.name }}</strong>
+                <span class="detail-role">{{ agent.role }}</span>
+              </div>
+              <span class="detail-status font-mono" [attr.data-status]="agent.status">
+                {{ agent.status }}
+              </span>
+            </div>
+
+            <div class="detail-metrics font-mono">
+              <div class="detail-stat">
+                <span class="stat-lbl">Latencia</span>
+                <strong class="stat-val">{{ agent.lastPingMs }} ms</strong>
+              </div>
+              <div class="detail-stat">
+                <span class="stat-lbl">Decisiones</span>
+                <strong class="stat-val">{{ agent.decisionsCount }}</strong>
+              </div>
+            </div>
+
+            <p class="detail-desc">{{ agent.description }}</p>
+          </div>
+        } @else {
+          <div class="swarm-detail-card is-empty">
+            @if (swarmAgents().length > 0) {
+              <strong class="detail-name">Inspección Orbital Activa</strong>
+              <p class="detail-desc">
+                Toca o pasa el cursor sobre un nodo Swarm en el radar para inspeccionar su rol, latencia y decisiones.
+              </p>
+            } @else {
+              <strong class="detail-name">Sin nodos Swarm activos</strong>
+              <p class="detail-desc">
+                Ejecuta un diagnóstico para sincronizar los agentes autónomos con el radar L2.
+              </p>
+            }
+          </div>
+        }
+
+        <button
+          type="button"
+          class="btn-swarm-diagnose"
+          (click)="onRefreshSwarm()"
+        >
+          Ejecutar Diagnóstico Swarm
+        </button>
+      </div>
+    </div>
+  </article>
+</section>

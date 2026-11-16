@@ -2189,11 +2189,79 @@
   outline-offset: 2px;
 }
 
+/* ==========================================================================
+   Spatial 3D Organize & Drag-to-Reorder Cockpit Controls
+   ========================================================================== */
+.segmented-organize-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.organize-toggle-btn.active {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 0 14px var(--glow-accent);
+}
+
+.spatial-section-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: transform 0.25s var(--ease-out), opacity 0.2s ease, border-color 0.2s ease;
+
+  &.organize-active {
+    padding: 0.65rem;
+    border-radius: 18px;
+    border: 1px dashed rgba(216, 180, 92, 0.36);
+    background: rgba(216, 180, 92, 0.03);
+    cursor: grab;
+  }
+
+  &.is-dragging {
+    opacity: 0.55;
+    transform: scale(0.99);
+  }
+
+  &.is-drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 22px var(--glow-accent);
+  }
+}
+
+.organize-handle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-rim);
+}
+
+.organize-drag-hint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold-strong);
+  letter-spacing: 0.04em;
+}
+
+.organize-step-btns {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spatial-aurora-canvas .aurora-bloom,
   .island-pulse-dot,
   .telemetry-status-dot,
   .spin-icon {
     animation: none !important;
+  }
+  .spatial-section-slot {
+    transition: none !important;
   }
 }
