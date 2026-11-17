@@ -13,8 +13,51 @@
   align-items: start;
   margin-top: 16px;
 
+  .desk-left {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+  }
+
+  .desk-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .desk-center {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  &.quantum-3col-desk {
+    @media (min-width: 1280px) {
+      grid-template-columns: minmax(290px, 0.92fr) minmax(340px, 1.05fr) minmax(360px, 1.15fr);
+
+      .desk-left {
+        grid-column: 1;
+        grid-row: 1;
+      }
+
+      .desk-center {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .desk-right {
+        grid-column: 3;
+        grid-row: 1;
+      }
+    }
+  }
+
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
+
+    .desk-left,
+    .desk-center,
+    .desk-right {
+      grid-column: 1;
+      grid-row: auto;
+    }
   }
 }
 
@@ -22,6 +65,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -3723,6 +3767,8 @@
 }
 
 .l2-offer-row {
+  position: relative;
+  overflow: hidden;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3731,6 +3777,31 @@
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.12s ease;
+
+  > *:not(.l2-depth-bar) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .l2-depth-bar {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    right: 2px;
+    width: var(--l2-depth, 24%);
+    border-radius: 5px;
+    pointer-events: none;
+    z-index: 0;
+    transition: width 0.25s ease;
+
+    &.depth-bar-buy {
+      background: linear-gradient(90deg, transparent 0%, rgba(16, 185, 129, 0.14) 100%);
+    }
+
+    &.depth-bar-sell {
+      background: linear-gradient(90deg, transparent 0%, rgba(56, 189, 248, 0.14) 100%);
+    }
+  }
 
   &:hover { background: rgba(255, 255, 255, 0.06); }
   .l2-offer-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -4116,5 +4187,180 @@
     color: #000;
     font-weight: 800;
     border: none;
+  }
+}
+
+/* ============================================================
+   Quantum Spread Desk — Intelligence Sub-Nav, Breakeven Drawer & Ad Studio Tabs
+   ============================================================ */
+.intel-subnav-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 6px 8px;
+  background: var(--panel-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+
+  .intel-subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+
+    &:hover:not(.active) {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    &.active {
+      color: var(--text);
+      background: color-mix(in srgb, var(--gold) 16%, var(--panel));
+      border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+      font-weight: 700;
+    }
+  }
+}
+
+.be-split-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.spread-ledger-card {
+  padding: 14px 16px;
+
+  .spread-ledger-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .spread-compact-out {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 8px;
+    margin: 0;
+  }
+}
+
+.ad-composer-card {
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+  background: color-mix(in srgb, var(--panel) 88%, var(--gold) 6%);
+  backdrop-filter: blur(20px);
+
+  .ad-studio-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .ad-studio-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 4px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    background: var(--panel-2, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--line);
+
+    .ad-studio-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+
+      &:hover:not(.active) {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      &.active {
+        color: var(--text);
+        background: var(--panel);
+        border-color: color-mix(in srgb, var(--gold) 45%, var(--line));
+        font-weight: 700;
+      }
+
+      .ad-tab-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--danger);
+        &.dot-ok {
+          background: var(--accent);
+        }
+      }
+    }
+  }
+
+  .ad-studio-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 10px;
+    background: var(--panel-2, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .ad-studio-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+
+    .ad-kpi-tile {
+      background: var(--panel-2, rgba(255, 255, 255, 0.03));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .l2-offer-row .l2-depth-bar,
+  .intel-subnav-bar .intel-subtab,
+  .ad-composer-card .ad-studio-tabs .ad-studio-tab {
+    transition: none;
   }
 }

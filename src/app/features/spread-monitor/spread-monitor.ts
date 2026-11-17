@@ -38,6 +38,7 @@ import {
   computeFifoAccounting,
   OPS_KEY,
   type Operation,
+  normalizeCotizaveApiKey,
 } from '@p2p/core';
 import { RisksService } from '../../core/rules';
 import { StorageService } from '../../core/storage';
@@ -68,6 +69,14 @@ import { McpService } from '../../core/mcp.service';
 import { SpotMarketService } from '../../core/spot-market.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
 import { MicrostructureShield } from './components/microstructure-shield.component';
+import { MacroSpotPulseComponent } from './components/macro-spot-pulse.component';
+import { SpatialTilt3dDirective } from '../../shared/ui/spatial-tilt-3d.directive';
+import { SpreadQualityGaugeComponent } from './components/spread-quality-gauge/spread-quality-gauge.component';
+import {
+  BreakevenThermometerComponent,
+  type BreakevenRoiStep,
+  type BreakevenSplitItem,
+} from './components/breakeven-thermometer/breakeven-thermometer.component';
 import {
   buildTriangulationRow,
   computeExecutableGaps,
@@ -95,7 +104,16 @@ interface TradingWindow {
 @Component({
   selector: 'app-spread-monitor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, ...FORMAT_PIPES, CrossExchangeMatrix, MicrostructureShield],
+  imports: [
+    DatePipe,
+    ...FORMAT_PIPES,
+    CrossExchangeMatrix,
+    MicrostructureShield,
+    MacroSpotPulseComponent,
+    SpatialTilt3dDirective,
+    SpreadQualityGaugeComponent,
+    BreakevenThermometerComponent,
+  ],
   templateUrl: './spread-monitor.html',
   styleUrl: './spread-monitor.scss',
 })
@@ -129,6 +147,39 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   );
   readonly selectedAutofillMargin = signal<number>(1.2);
   readonly mcpConsoleExpanded = signal<boolean>(false);
+  readonly adStudioTab = signal<'pricing' | 'banks' | 'rules' | 'publish'>('pricing');
+  readonly beSplitDrawerOpen = signal<boolean>(false);
+  readonly isIntelWorkspace = computed<boolean>(() => {
+    const mode = this.activeMode();
+    return (
+      mode === 'microstructure' ||
+      mode === 'macro_spot' ||
+      mode === 'cross_exchange' ||
+      mode === 'high_demand'
+    );
+  });
+
+  selectWorkspace(workspace: 'spread' | 'breakeven' | 'repricer' | 'intel'): void {
+    if (workspace === 'intel') {
+      if (!this.isIntelWorkspace()) {
+        this.activeMode.set('microstructure');
+      }
+      return;
+    }
+    this.activeMode.set(workspace);
+  }
+
+  l2OfferWidthPct(
+    offer: BinanceOfferSummary,
+    offers: readonly BinanceOfferSummary[],
+  ): number {
+    let maxCap = 0;
+    for (const o of offers) {
+      if (o.maxVes > maxCap) maxCap = o.maxVes;
+    }
+    if (maxCap <= 0 || offer.maxVes <= 0) return 24;
+    return Math.min(100, Math.max(18, Math.round((offer.maxVes / maxCap) * 100)));
+  }
 
   toggleMcpConsole(): void {
     this.mcpConsoleExpanded.update((v) => !v);
@@ -219,6 +270,35 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   });
 
   readonly triangulationThresholdVes = signal<number>(2);
+  readonly cotizaveKeyDraft = signal<string>('');
+  private cotizaveKeyDraftDirty = false;
+
+  onCotizaveKeyInput(value: string): void {
+    this.cotizaveKeyDraftDirty = true;
+    this.cotizaveKeyDraft.set(value);
+  }
+
+  saveCotizaveKey(): void {
+    const trimmed = normalizeCotizaveApiKey(this.cotizaveKeyDraft());
+    this.cotizaveKeyDraftDirty = false;
+    this.cotizaveKeyDraft.set(trimmed);
+    this.cotizave.setApiKey(trimmed);
+    if (trimmed) {
+      void this.cotizave.fetchRates();
+    }
+  }
+
+  async refreshCotizave(): Promise<void> {
+    if (this.cotizaveKeyDraftDirty) {
+      const trimmed = normalizeCotizaveApiKey(this.cotizaveKeyDraft());
+      this.cotizaveKeyDraftDirty = false;
+      this.cotizaveKeyDraft.set(trimmed);
+      if (trimmed !== this.cotizave.apiKey()) {
+        this.cotizave.setApiKey(trimmed);
+      }
+    }
+    await this.cotizave.fetchRates();
+  }
 
   /** Per-account velocity status lookup for the treasury card semáforo chips. */
   readonly velocityByAccount = computed<ReadonlyMap<string, AccountVelocityStatus>>(() => {
@@ -367,7 +447,13 @@ export class SpreadMonitor implements OnInit, OnDestroy {
 
   /** Active mode: standard arbitrage scanner, break-even & maker ad pricing, repricer bot, cross-exchange, microstructure, or high-demand radar */
   readonly activeMode = signal<
-    'spread' | 'breakeven' | 'repricer' | 'cross_exchange' | 'microstructure' | 'high_demand'
+    | 'spread'
+    | 'breakeven'
+    | 'repricer'
+    | 'cross_exchange'
+    | 'microstructure'
+    | 'high_demand'
+    | 'macro_spot'
   >('spread');
 
   readonly buyPrice = signal<number>(800);
@@ -1369,6 +1455,30 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     });
   });
 
+  readonly breakevenLadderSteps = computed<readonly BreakevenRoiStep[]>(() =>
+    this.beRoiLadder().map((step) => ({
+      roiPct: step.roi,
+      priceVes: step.priceVes,
+      profitVes: step.profitVes,
+      profitUsdt: step.profitUsdt,
+    })),
+  );
+
+  readonly breakevenSplitItems = computed<readonly BreakevenSplitItem[]>(() => {
+    const plan = this.portfolioAllocationPlan();
+    const registered = this.accountsService.accounts();
+    return plan.allocations.map((a) => {
+      const acc = registered.find((r) => r.bankName.toUpperCase().includes(a.bankCode));
+      return {
+        bankName: acc?.bankName || a.bankCode,
+        rail: a.priorityRole,
+        allocationUsdt: a.allocatedCapitalUsdt,
+        capacityPct: a.recommendedPct,
+        safeTickets: a.maxRecommendedTickets,
+      };
+    });
+  });
+
   selectRoiLadderStep(roiPct: number, applyToMonitor = false): void {
     this.targetRoiPct.set(roiPct);
     if (applyToMonitor) {
@@ -1702,6 +1812,28 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     });
   });
 
+  readonly spreadQualityScore = computed<number>(() => {
+    const mq = this.marketQuality();
+    if (mq) return Math.min(100, Math.max(0, Math.round(mq.score)));
+    if (!this.result()) return 0;
+    return Math.min(100, Math.max(0, Math.round(this.netRoiPct() * 40)));
+  });
+
+  readonly gaugeVerdictLabel = computed<string>(() => {
+    const kind = this.alert().kind;
+    if (kind === 'favorable') return 'Favorable';
+    if (kind === 'unfavorable') return 'Desfavorable';
+    return 'Neutral';
+  });
+
+  readonly spreadCompoundTiles = computed(() =>
+    this.cycleProjections().map((c) => ({
+      label: c.label,
+      netVes: c.profitVes,
+      netUsdt: c.profitUsdt,
+    })),
+  );
+
   /** Net spread percentage evaluated against the Golden Rule (0.50% min). */
   readonly goldenSpread = computed<GoldenSpreadCheck | null>(() => {
     const r = this.result();
@@ -1851,7 +1983,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     // nadie la vuelva a llenar—. Un `effect` sobre la señal no pierde: cuando la
     // key llega, la dependencia cambia y el auto-refresh arranca solo.
     effect(() => {
-      const hasKey = !!this.cotizave.apiKey();
+      const key = this.cotizave.apiKey();
+      if (!this.cotizaveKeyDraftDirty) {
+        this.cotizaveKeyDraft.set(key);
+      }
+      const hasKey = !!key;
       const repricer = this.activeMode() === 'repricer';
       if (hasKey && !repricer) {
         // 10 min de intervalo contra 15 min de TTL: protege la cuota de Cotizave
@@ -1897,7 +2033,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       modeParam === 'spread' ||
       modeParam === 'microstructure' ||
       modeParam === 'cross_exchange' ||
-      modeParam === 'high_demand'
+      modeParam === 'high_demand' ||
+      modeParam === 'macro_spot'
     ) {
       this.activeMode.set(modeParam);
     }

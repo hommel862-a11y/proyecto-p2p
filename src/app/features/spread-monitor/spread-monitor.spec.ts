@@ -1,6 +1,6 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { SpreadMonitor } from './spread-monitor';
 import { RisksService } from '../../core/rules';
@@ -166,6 +166,10 @@ describe('SpreadMonitor · arranque del auto-refresh de Cotizave', () => {
             setCotizaveApiKey: vi.fn(async () => undefined),
             getBybitCredentials: vi.fn(async () => null),
             setBybitCredentials: vi.fn(async () => undefined),
+            getElDoradoCredentials: vi.fn(async () => null),
+            setElDoradoCredentials: vi.fn(async () => undefined),
+            getBinanceCredentials: vi.fn(async () => null),
+            setBinanceCredentials: vi.fn(async () => undefined),
             // El componente inyecta `BybitP2pService`, que al construirse pide
             // sus credenciales. Sin esto el servicio real lanza un `TypeError`
             // diferido que ensucia el run entero con errores no manejados.
@@ -245,6 +249,10 @@ describe('SpreadMonitor · linaje de Cotizave en la triangulacion', () => {
             setCotizaveApiKey: vi.fn(async () => undefined),
             getBybitCredentials: vi.fn(async () => null),
             setBybitCredentials: vi.fn(async () => undefined),
+            getElDoradoCredentials: vi.fn(async () => null),
+            setElDoradoCredentials: vi.fn(async () => undefined),
+            getBinanceCredentials: vi.fn(async () => null),
+            setBinanceCredentials: vi.fn(async () => undefined),
           },
         },
         {
@@ -444,6 +452,10 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
             setCotizaveApiKey: vi.fn(async () => undefined),
             getBybitCredentials: vi.fn(async () => null),
             setBybitCredentials: vi.fn(async () => undefined),
+            getElDoradoCredentials: vi.fn(async () => null),
+            setElDoradoCredentials: vi.fn(async () => undefined),
+            getBinanceCredentials: vi.fn(async () => null),
+            setBinanceCredentials: vi.fn(async () => undefined),
           },
         },
         {
@@ -671,6 +683,149 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       expect(el.querySelector('.apple-opportunity-tag')).toBeTruthy();
       expect(el.querySelector('.apple-net-box')).toBeTruthy();
       expect(el.querySelector('.apple-btn-apply')).toBeTruthy();
+    });
+
+    it('no persiste ni dispara setApiKey en cada pulsación hasta guardar explícitamente el borrador', () => {
+      mount({ depth: null, bybit: DEMO_BYBIT });
+      const cotizave = TestBed.inject(CotizaveService) as unknown as {
+        apiKey: ReturnType<typeof signal<string>>;
+        setApiKey: (key: string) => void;
+      };
+      const setKeySpy = vi.spyOn(cotizave, 'setApiKey').mockImplementation((key: string) => {
+        cotizave.apiKey.set(key.trim());
+      });
+      const c = fixture.componentInstance;
+
+      fixture.detectChanges();
+      c.onCotizaveKeyInput('c');
+      c.onCotizaveKeyInput('ctz_live_123  ');
+      fixture.detectChanges();
+
+      expect(setKeySpy).not.toHaveBeenCalled();
+
+      c.saveCotizaveKey();
+      expect(setKeySpy).toHaveBeenCalledTimes(1);
+      expect(setKeySpy).toHaveBeenCalledWith('ctz_live_123');
+      expect(cotizave.apiKey()).toBe('ctz_live_123');
+      expect(c.cotizaveKeyDraft()).toBe('ctz_live_123');
+    });
+
+    it('refreshCotizave guarda un borrador pendiente normalizado antes de consultar fetchRates', async () => {
+      mount({ depth: null, bybit: DEMO_BYBIT });
+      const cotizave = TestBed.inject(CotizaveService) as unknown as {
+        apiKey: ReturnType<typeof signal<string>>;
+        setApiKey: (key: string) => void;
+        fetchRates: ReturnType<typeof vi.fn>;
+      };
+      vi.spyOn(cotizave, 'setApiKey').mockImplementation((key: string) => {
+        cotizave.apiKey.set(key);
+      });
+      const c = fixture.componentInstance;
+
+      c.onCotizaveKeyInput('  "ctz_live_refreshed"  ');
+      await c.refreshCotizave();
+
+      expect(cotizave.apiKey()).toBe('ctz_live_refreshed');
+      expect(cotizave.fetchRates).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Quantum Spread Desk v6.0 (Workspaces, Gauge, Thermometer, Ad Studio Tabs)', () => {
+    it('agrupa 4 workspaces y muestra intel-subnav-bar para los submodulos de Inteligencia', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      const el = fixture.nativeElement as HTMLElement;
+
+      const mainTabs = Array.from(el.querySelectorAll('.segmented-control-bar .segmented-tab')).map((b) =>
+        b.textContent?.trim(),
+      );
+      expect(mainTabs.length).toBe(4);
+      expect(el.querySelector('.intel-subnav-bar')).toBeNull();
+      expect(el.querySelector('.trading-desk-layout.quantum-3col-desk')).toBeTruthy();
+      expect(el.querySelector('app-spread-quality-gauge')).toBeTruthy();
+
+      c.selectWorkspace('intel');
+      fixture.detectChanges();
+
+      expect(c.isIntelWorkspace()).toBe(true);
+      expect(c.activeMode()).toBe('microstructure');
+      expect(el.querySelector('.intel-subnav-bar')).toBeTruthy();
+      expect(el.querySelectorAll('.intel-subnav-bar .intel-subtab').length).toBe(4);
+      expect(el.querySelector('app-microstructure-shield')).toBeTruthy();
+
+      c.activeMode.set('cross_exchange');
+      fixture.detectChanges();
+      expect(el.querySelector('app-cross-exchange-matrix')).toBeTruthy();
+      const apiToggle = el.querySelector('app-cross-exchange-matrix button[aria-expanded]') as HTMLButtonElement | null;
+      expect(apiToggle?.getAttribute('aria-expanded')).toBe('false');
+      apiToggle?.click();
+      fixture.detectChanges();
+      expect(apiToggle?.getAttribute('aria-expanded')).toBe('true');
+      expect(el.querySelector('app-cross-exchange-matrix input[placeholder="API Key"]')).toBeTruthy();
+    });
+
+    it('inicializa activeMode=macro_spot desde queryParam ?mode=macro_spot', () => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [SpreadMonitor],
+        providers: [
+          { provide: P2P_STORAGE, useValue: new MemoryStorage() },
+          provideRouter([]),
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { queryParamMap: convertToParamMap({ mode: 'macro_spot' }) } },
+          },
+        ],
+      });
+      TestBed.inject(RisksService).save({ ...DEFAULT_RISK });
+      const f = TestBed.createComponent(SpreadMonitor);
+      f.detectChanges();
+
+      expect(f.componentInstance.activeMode()).toBe('macro_spot');
+      expect(f.componentInstance.isIntelWorkspace()).toBe(true);
+      expect((f.nativeElement as HTMLElement).querySelector('app-macro-spot-pulse')).toBeTruthy();
+    });
+
+    it('en modo breakeven renderiza BreakevenThermometer y colapsa Split $10k por defecto', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.selectWorkspace('breakeven');
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('app-breakeven-thermometer')).toBeTruthy();
+      const splitBtn = el.querySelector('.be-split-toggle-btn') as HTMLButtonElement | null;
+      expect(splitBtn?.getAttribute('aria-expanded')).toBe('false');
+
+      splitBtn?.click();
+      fixture.detectChanges();
+      expect(splitBtn?.getAttribute('aria-expanded')).toBe('true');
+      expect(el.textContent).toContain('Distribución táctica');
+    });
+
+    it('en modo repricer organiza Ad Studio 360 en 4 sub-tabs navegables', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.selectWorkspace('repricer');
+      fixture.detectChanges();
+
+      const el = fixture.nativeElement as HTMLElement;
+      const adTabs = el.querySelectorAll('.ad-studio-tabs .ad-studio-tab');
+      expect(adTabs.length).toBe(4);
+      expect(c.adStudioTab()).toBe('pricing');
+
+      (adTabs[1] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(c.adStudioTab()).toBe('banks');
+
+      (adTabs[2] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(c.adStudioTab()).toBe('rules');
+      expect(el.querySelector('.ad-composer-card textarea')).toBeTruthy();
+
+      (adTabs[3] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(c.adStudioTab()).toBe('publish');
     });
   });
 });

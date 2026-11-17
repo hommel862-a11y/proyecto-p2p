@@ -9,74 +9,52 @@
       <p class="panel-subtitle">Arbitraje institucional en tiempo real, radar de microestructura Binance P2P y control de riesgo cambiario</p>
     </div>
 
-    <!-- Segmented Navigation Controls & Global Actions -->
+    <!-- Segmented Navigation Controls & Global Actions (4 Workspaces) -->
     <div class="desk-header-actions">
       <div class="segmented-control-bar" role="tablist" aria-label="Modo de Operación">
         <button
           type="button"
           class="segmented-tab"
           [class.active]="activeMode() === 'spread'"
-          (click)="activeMode.set('spread')"
+          (click)="selectWorkspace('spread')"
           role="tab"
           [attr.aria-selected]="activeMode() === 'spread'"
         >
           <span class="tab-icon">⚡</span>
-          <span class="tab-text">Arbitraje Directo</span>
+          <span class="tab-text">Ejecución Live</span>
         </button>
         <button
           type="button"
           class="segmented-tab"
           [class.active]="activeMode() === 'breakeven'"
-          (click)="activeMode.set('breakeven')"
+          (click)="selectWorkspace('breakeven')"
           role="tab"
           [attr.aria-selected]="activeMode() === 'breakeven'"
         >
-          <span class="tab-icon">🎯</span>
-          <span class="tab-text">Punto Equilibrio</span>
+          <span class="tab-icon">⚖️</span>
+          <span class="tab-text">Breakeven</span>
         </button>
         <button
           type="button"
           class="segmented-tab"
           [class.active]="activeMode() === 'repricer'"
-          (click)="activeMode.set('repricer')"
+          (click)="selectWorkspace('repricer')"
           role="tab"
           [attr.aria-selected]="activeMode() === 'repricer'"
         >
           <span class="tab-icon">🤖</span>
-          <span class="tab-text">Bot Repricer</span>
+          <span class="tab-text">Repricer Bot</span>
         </button>
         <button
           type="button"
           class="segmented-tab"
-          [class.active]="activeMode() === 'cross_exchange'"
-          (click)="activeMode.set('cross_exchange')"
+          [class.active]="isIntelWorkspace()"
+          (click)="selectWorkspace('intel')"
           role="tab"
-          [attr.aria-selected]="activeMode() === 'cross_exchange'"
+          [attr.aria-selected]="isIntelWorkspace()"
         >
-          <span class="tab-icon">🌐</span>
-          <span class="tab-text">Multi-Exchange</span>
-        </button>
-        <button
-          type="button"
-          class="segmented-tab"
-          [class.active]="activeMode() === 'microstructure'"
-          (click)="activeMode.set('microstructure')"
-          role="tab"
-          [attr.aria-selected]="activeMode() === 'microstructure'"
-        >
-          <span class="tab-icon">🔍</span>
-          <span class="tab-text">Microestructura</span>
-        </button>
-        <button
-          type="button"
-          class="segmented-tab"
-          [class.active]="activeMode() === 'high_demand'"
-          (click)="activeMode.set('high_demand')"
-          role="tab"
-          [attr.aria-selected]="activeMode() === 'high_demand'"
-        >
-          <span class="tab-icon">🎯</span>
-          <span class="tab-text">Alta Demanda (≥$1k)</span>
+          <span class="tab-icon">🛰️</span>
+          <span class="tab-text">Inteligencia</span>
         </button>
       </div>
 
@@ -105,7 +83,60 @@
     </div>
   </div>
 
-  @if (activeMode() === 'cross_exchange') {
+  @if (isIntelWorkspace()) {
+    <nav class="intel-subnav-bar" role="tablist" aria-label="Módulos de Inteligencia de Mercado">
+      <button
+        type="button"
+        class="intel-subtab"
+        [class.active]="activeMode() === 'microstructure'"
+        (click)="activeMode.set('microstructure')"
+        role="tab"
+        [attr.aria-selected]="activeMode() === 'microstructure'"
+      >
+        <span>🔬</span>
+        <span>Microestructura</span>
+      </button>
+      <button
+        type="button"
+        class="intel-subtab"
+        [class.active]="activeMode() === 'macro_spot'"
+        (click)="activeMode.set('macro_spot')"
+        role="tab"
+        [attr.aria-selected]="activeMode() === 'macro_spot'"
+      >
+        <span>📈</span>
+        <span>Pulso Macro & Spot</span>
+      </button>
+      <button
+        type="button"
+        class="intel-subtab"
+        [class.active]="activeMode() === 'cross_exchange'"
+        (click)="activeMode.set('cross_exchange')"
+        role="tab"
+        [attr.aria-selected]="activeMode() === 'cross_exchange'"
+      >
+        <span>🌐</span>
+        <span>Multi-Exchange</span>
+      </button>
+      <button
+        type="button"
+        class="intel-subtab"
+        [class.active]="activeMode() === 'high_demand'"
+        (click)="activeMode.set('high_demand')"
+        role="tab"
+        [attr.aria-selected]="activeMode() === 'high_demand'"
+      >
+        <span>🎯</span>
+        <span>Alta Demanda (≥$1k)</span>
+      </button>
+    </nav>
+  }
+
+  @if (activeMode() === 'macro_spot') {
+    <div style="margin-top: 14px;">
+      <app-macro-spot-pulse />
+    </div>
+  } @else if (activeMode() === 'cross_exchange') {
     <div style="margin-top: 14px;">
       <app-cross-exchange-matrix />
     </div>
@@ -184,6 +215,8 @@
             @for (tier of scan.tiers; track tier.tierUsdt) {
               <div
                 class="apple-tier-card"
+                appSpatialTilt3d
+                [tiltMaxDeg]="5"
                 [class.tier-best-opportunity]="scan.bestOpportunityTier?.tierUsdt === tier.tierUsdt"
                 [class.tier-actionable]="tier.isActionable"
               >
@@ -500,7 +533,7 @@
       }
     </div>
 
-    <div class="trading-desk-layout">
+    <div class="trading-desk-layout" [class.quantum-3col-desk]="activeMode() === 'spread'">
     <!-- ═══════════════════════════════════════════════════
          COLUMNA IZQUIERDA: Configuración & Parámetros
          ═══════════════════════════════════════════════════ -->
@@ -791,7 +824,7 @@
             </div>
           </div>
 
-          <details class="quantum-guard-accordion" open>
+          <details class="quantum-guard-accordion">
             <summary>
               <span class="accordion-summary-left">
                 <span>🛡️</span>
@@ -1025,8 +1058,9 @@
                     <div class="be-wac-lot-row">
                       <span class="be-wac-lot-idx font-mono">#{{ idx + 1 }}</span>
                       <div class="be-wac-field">
-                        <label>Volumen ({{ pair() }})</label>
+                        <label [for]="'wac-vol-' + lot.id">Volumen ({{ pair() }})</label>
                         <input
+                          [id]="'wac-vol-' + lot.id"
                           type="number"
                           min="0"
                           step="1"
@@ -1037,8 +1071,9 @@
                       </div>
                       <span class="be-wac-mult">×</span>
                       <div class="be-wac-field">
-                        <label>Tasa (VES)</label>
+                        <label [for]="'wac-rate-' + lot.id">Tasa (VES)</label>
                         <input
+                          [id]="'wac-rate-' + lot.id"
                           type="number"
                           min="0"
                           step="0.01"
@@ -1351,91 +1386,104 @@
             </div>
           </div>
 
-          <!-- Asignación Institucional de Capital Multi-Banco ($10,000 Portfolio Split) -->
-          <div class="portfolio-split-container" style="margin-top: 14px; padding: 16px 18px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-lg);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="card-icon" style="font-size: 1.1rem;">🏛️</span>
-                <span class="section-eyebrow" style="margin: 0; font-size: 0.85rem; color: var(--text);">
-                  Asignación Institucional Multi-Banco ($10k Split)
+          <!-- Asignación Institucional de Capital Multi-Banco ($10,000 Portfolio Split) — Colapsable -->
+          <div class="portfolio-split-container" style="margin-top: 14px; padding: 12px 16px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-lg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;" [style.margin-bottom]="beSplitDrawerOpen() ? '12px' : '0'">
+              <button
+                type="button"
+                class="be-split-toggle-btn"
+                (click)="beSplitDrawerOpen.set(!beSplitDrawerOpen())"
+                [attr.aria-expanded]="beSplitDrawerOpen()"
+              >
+                <span class="card-icon" style="font-size: 1.05rem;">🏛️</span>
+                <span class="section-eyebrow" style="margin: 0; font-size: 0.82rem; color: var(--text);">
+                  Split Multi-Banco ($10k)
                 </span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="badge badge-accent font-mono" style="font-size: 0.72rem;">
-                  Régimen: {{ portfolioAllocationPlan().limitsRecommendation.regime }}
+                <span class="badge badge-accent font-mono" style="font-size: 0.7rem;">
+                  {{ portfolioAllocationPlan().limitsRecommendation.regime }}
                 </span>
-                <button
-                  type="button"
-                  class="btn-ghost"
-                  style="font-size: 0.72rem; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px;"
-                  (click)="manualBankAllocationMode.set(!manualBankAllocationMode())"
-                  [title]="manualBankAllocationMode() ? 'Cambiar a modo automático' : 'Ajustar montos o porcentajes manualmente'"
-                >
-                  {{ manualBankAllocationMode() ? '⚙️ Modo: Manual' : '🤖 Modo: Automático' }}
-                </button>
-                @if (manualBankAllocationMode()) {
+                <span class="text-muted" style="font-size: 0.72rem;">
+                  {{ beSplitDrawerOpen() ? '▲ Ocultar' : '▼ Ajustar ponderación' }}
+                </span>
+              </button>
+
+              @if (beSplitDrawerOpen()) {
+                <div style="display: flex; align-items: center; gap: 8px;">
                   <button
                     type="button"
                     class="btn-ghost"
-                    style="font-size: 0.72rem; padding: 3px 6px; color: var(--gold);"
-                    (click)="resetBankWeightsToDefault()"
-                    title="Restablecer a 40% Banesco / 35% Mercantil / 25% BDV"
+                    style="font-size: 0.72rem; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px;"
+                    (click)="manualBankAllocationMode.set(!manualBankAllocationMode())"
+                    [title]="manualBankAllocationMode() ? 'Cambiar a modo automático' : 'Ajustar montos o porcentajes manualmente'"
                   >
-                    ↺ Reset (40/35/25)
+                    {{ manualBankAllocationMode() ? '⚙️ Modo: Manual' : '🤖 Modo: Automático' }}
                   </button>
-                }
-              </div>
-            </div>
-
-            <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 12px;">
-              @if (manualBankAllocationMode()) {
-                <strong>Modo Manual Activo:</strong> Ingresa el porcentaje de capital asignado a cada entidad para recalcular montos en USDT y Bs:
-              } @else {
-                Distribución táctica calculada para no saturar los algoritmos de monitoreo de SUDEBAN y banca venezolana:
-              }
-            </p>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px;">
-              @for (alloc of portfolioAllocationPlan().allocations; track alloc.bankCode) {
-                <div style="padding: 12px; background: var(--bg-1); border-radius: 8px; border: 1px solid var(--line); position: relative;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 0.85rem;">
-                    <span style="color: var(--text);">{{ alloc.bankCode }}</span>
-                    @if (manualBankAllocationMode()) {
-                      <div style="display: flex; align-items: center; gap: 2px;">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="1"
-                          [value]="alloc.recommendedPct"
-                          (input)="setManualBankWeight(alloc.bankCode, +$any($event.target).value)"
-                          [attr.aria-label]="'Porcentaje de capital asignado a ' + alloc.bankCode"
-                          style="width: 52px; padding: 2px 4px; font-size: 0.8rem; text-align: right; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 4px; color: var(--gold); font-weight: 700;"
-                        />
-                        <span style="color: var(--gold); font-size: 0.8rem;" aria-hidden="true">%</span>
-                      </div>
-                    } @else {
-                      <span style="color: var(--gold);">{{ alloc.recommendedPct }}%</span>
-                    }
-                  </div>
-                  <div class="font-mono" style="font-size: 1.05rem; margin-top: 6px; color: var(--accent); font-weight: 700;">
-                    {{ alloc.allocatedCapitalUsdt | usdt }}
-                  </div>
-                  <div class="font-mono text-muted" style="font-size: 0.78rem;">
-                    ~{{ alloc.allocatedCapitalVes | ves }}
-                  </div>
-                  <div class="text-muted" style="font-size: 0.72rem; margin-top: 6px; line-height: 1.25;">
-                    {{ alloc.priorityRole }}
-                  </div>
+                  @if (manualBankAllocationMode()) {
+                    <button
+                      type="button"
+                      class="btn-ghost"
+                      style="font-size: 0.72rem; padding: 3px 6px; color: var(--gold);"
+                      (click)="resetBankWeightsToDefault()"
+                      title="Restablecer a 40% Banesco / 35% Mercantil / 25% BDV"
+                    >
+                      ↺ Reset (40/35/25)
+                    </button>
+                  }
                 </div>
               }
             </div>
 
-            <div style="border-top: 1px solid var(--line); padding-top: 10px; font-size: 0.76rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px;">
-              @for (note of portfolioAllocationPlan().strategicNotes; track note) {
-                <div>• {{ note }}</div>
-              }
-            </div>
+            @if (beSplitDrawerOpen()) {
+              <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 12px;">
+                @if (manualBankAllocationMode()) {
+                  <strong>Modo Manual Activo:</strong> Ingresa el porcentaje de capital asignado a cada entidad para recalcular montos en USDT y Bs:
+                } @else {
+                  Distribución táctica calculada para no saturar los algoritmos de monitoreo de SUDEBAN y banca venezolana:
+                }
+              </p>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                @for (alloc of portfolioAllocationPlan().allocations; track alloc.bankCode) {
+                  <div style="padding: 12px; background: var(--bg-1); border-radius: 8px; border: 1px solid var(--line); position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 0.85rem;">
+                      <span style="color: var(--text);">{{ alloc.bankCode }}</span>
+                      @if (manualBankAllocationMode()) {
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            [value]="alloc.recommendedPct"
+                            (input)="setManualBankWeight(alloc.bankCode, +$any($event.target).value)"
+                            [attr.aria-label]="'Porcentaje de capital asignado a ' + alloc.bankCode"
+                            style="width: 52px; padding: 2px 4px; font-size: 0.8rem; text-align: right; background: var(--panel); border: 1px solid var(--gold-border); border-radius: 4px; color: var(--gold); font-weight: 700;"
+                          />
+                          <span style="color: var(--gold); font-size: 0.8rem;" aria-hidden="true">%</span>
+                        </div>
+                      } @else {
+                        <span style="color: var(--gold);">{{ alloc.recommendedPct }}%</span>
+                      }
+                    </div>
+                    <div class="font-mono" style="font-size: 1.05rem; margin-top: 6px; color: var(--accent); font-weight: 700;">
+                      {{ alloc.allocatedCapitalUsdt | usdt }}
+                    </div>
+                    <div class="font-mono text-muted" style="font-size: 0.78rem;">
+                      ~{{ alloc.allocatedCapitalVes | ves }}
+                    </div>
+                    <div class="text-muted" style="font-size: 0.72rem; margin-top: 6px; line-height: 1.25;">
+                      {{ alloc.priorityRole }}
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <div style="border-top: 1px solid var(--line); padding-top: 10px; font-size: 0.76rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px;">
+                @for (note of portfolioAllocationPlan().strategicNotes; track note) {
+                  <div>• {{ note }}</div>
+                }
+              </div>
+            }
           </div>
         </div>
       } @else {
@@ -1590,338 +1638,11 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════
-         COLUMNA DERECHA: Radar Binance P2P, Resultados & Tesorería
+         COLUMNA CENTRAL (Live L2 Book): Radar Binance P2P
          ═══════════════════════════════════════════════════ -->
-    <div class="desk-column desk-right">
-      @if (activeMode() !== 'repricer') {
-        <!-- 1. RESULTADO DE ARBITRAJE BIMONETARIO + MATRIZ DE ROTACIÓN COMPUESTA -->
-        @if (activeMode() === 'spread') {
-          @if (result(); as r) {
-            <div
-              class="arbitrage-result-card cockpit-hero-card"
-              [class.hero-golden]="goldenSpread()?.alertLevel === 'GOLDEN_ZONE'"
-              [class.hero-healthy]="goldenSpread()?.alertLevel === 'HEALTHY'"
-              [class.hero-caution]="goldenSpread()?.alertLevel === 'MARGINAL_CAUTION'"
-              [class.hero-danger]="netGainVes() <= 0 || goldenSpread()?.alertLevel === 'BELOW_THRESHOLD_PAUSE'"
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Resultado Bimonetario de Arbitraje</span>
-                  @if (goldenSpread(); as gs) {
-                    <span
-                      class="badge font-mono"
-                      [class.badge-gold]="gs.alertLevel === 'GOLDEN_ZONE'"
-                      [class.badge-accent]="gs.alertLevel === 'HEALTHY'"
-                      style="font-size: 0.7rem;"
-                    >
-                      {{ gs.alertLevel === 'GOLDEN_ZONE' ? '⭐ GOLDEN SPREAD' : gs.alertLevel === 'HEALTHY' ? '✅ VIABLE' : gs.alertLevel === 'MARGINAL_CAUTION' ? '⚠️ AJUSTADO' : '🚨 PÉRDIDA' }}
-                    </span>
-                  }
-                </div>
-                <span class="font-mono text-muted" style="font-size: 0.78rem;">
-                  Spread: <strong [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} Bs</strong>
-                  · BE: <strong style="color: var(--gold);">{{ liveBreakEvenSellPrice() | num }} Bs</strong>
-                </span>
-              </div>
-
-              <!-- Bimonetary Primary Hero Banner (+USDT & +VES + Net ROI %) -->
-              <div class="bimonetary-hero-banner" [class.is-profit]="netGainVes() > 0" [class.is-loss]="netGainVes() <= 0">
-                <div class="bimonetary-primary">
-                  <span class="bimonetary-eyebrow">Ganancia Neta por Ciclo ({{ buyRole() }}/{{ sellRole() }})</span>
-                  <div class="bimonetary-usdt-row">
-                    <span class="bimonetary-usdt-val font-mono" [class.positive]="netGainUsdt() > 0" [class.negative]="netGainUsdt() < 0">
-                      {{ netGainUsdt() > 0 ? '+' : '' }}{{ netGainUsdt() | num }} {{ pair() }}
-                    </span>
-                    <span class="bimonetary-roi-pill font-mono" [class.pill-pos]="netRoiPct() > 0" [class.pill-neg]="netRoiPct() <= 0">
-                      {{ netRoiPct() > 0 ? '+' : '' }}{{ netRoiPct() | num }}% ROI
-                    </span>
-                  </div>
-                </div>
-                <div class="bimonetary-secondary">
-                  <span class="bimonetary-eyebrow">Liquidación Neta en Bolívares</span>
-                  <span class="profit-amount font-mono" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">
-                    {{ netGainVes() > 0 ? '+' : '' }}{{ netGainVes() | ves }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="out" style="margin: 12px 0 14px; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px;">
-                <div>
-                  <dt>{{ pair() }} recibidos</dt>
-                  <dd class="font-mono">{{ usdtReceived() | usdt }}</dd>
-                </div>
-                <div>
-                  <dt>VES recibidos</dt>
-                  <dd class="font-mono">{{ vesReceived() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Spread unitario</dt>
-                  <dd class="font-mono" [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
-                </div>
-                <div>
-                  <dt>Ganancia de spread</dt>
-                  <dd class="font-mono" [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Recibido neto</dt>
-                  <dd class="font-mono">{{ netVesAfterCommission() | ves }}</dd>
-                </div>
-                <div>
-                  <dt>Ganancia neta</dt>
-                  <dd class="font-mono" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
-                </div>
-              </div>
-
-              <!-- Matriz de Rotación Compuesta Diaria (1x, 3x, 5x, 10x Ciclos) -->
-              <div class="compound-rotation-box">
-                <div class="compound-box-header">
-                  <span class="compound-box-title">🔄 Proyección de Interés Compuesto Diario (Reinvirtiendo Capital + Ganancia)</span>
-                  <span class="compound-box-sub font-mono">Base: {{ baseInvestedCrypto() | num }} {{ pair() }}</span>
-                </div>
-                <div class="compound-cycles-grid">
-                  @for (c of cycleProjections(); track c.cycles) {
-                    <div class="compound-cycle-tile" [class.tile-positive]="c.profitUsdt > 0" [class.tile-highlight]="c.cycles === 5">
-                      <div class="cycle-tile-top">
-                        <span class="cycle-badge font-mono">{{ c.label }}</span>
-                        <span class="cycle-roi font-mono" [class.positive]="c.compoundRoiPct > 0" [class.negative]="c.compoundRoiPct < 0">
-                          {{ c.compoundRoiPct > 0 ? '+' : '' }}{{ c.compoundRoiPct | num }}%
-                        </span>
-                      </div>
-                      <div class="cycle-usdt font-mono" [class.positive]="c.profitUsdt > 0" [class.negative]="c.profitUsdt < 0">
-                        {{ c.profitUsdt > 0 ? '+' : '' }}{{ c.profitUsdt | num }} {{ pair() }}
-                      </div>
-                      <div class="cycle-ves font-mono">
-                        {{ c.profitVes > 0 ? '+' : '' }}{{ c.profitVes | ves }}
-                      </div>
-                    </div>
-                  }
-                </div>
-              </div>
-
-              <div class="actions-bar" style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button type="button" class="btn btn-primary" (click)="startDirectTrade('buy')">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  Iniciar Compra con Cronómetro
-                </button>
-                <button type="button" class="btn btn-secondary" (click)="startDirectTrade('sell')">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  Iniciar Venta con Cronómetro
-                </button>
-                <button type="button" class="btn btn-secondary" (click)="stageFromSpreadToAdStudio('BUY')" title="Enviar precio de compra y lote al Estudio de Anuncios P2P">
-                  📣 Armar Anuncio Compra P2P
-                </button>
-                <button type="button" class="btn btn-secondary" (click)="stageFromSpreadToAdStudio('SELL')" title="Enviar precio de venta y piso de equilibrio al Estudio de Anuncios P2P">
-                  📣 Armar Anuncio Venta P2P
-                </button>
-              </div>
-            </div>
-          }
-        } @else {
-          <!-- Resultado de Break-Even Guiado, Termómetro de Mercado & Escalera ROI -->
-          <div class="arbitrage-result-card be-execution-hero">
-            <div class="be-hero-top-bar">
-              <div>
-                <span class="section-eyebrow" style="margin: 0;">
-                  {{ beCycleDirection() === 'SELL_INVENTORY' ? '🛡️ Defensa de Inventario & Fijación de Venta' : '🔄 Techo de Recompra & Acumulación USDT' }}
-                </span>
-                <div class="text-muted" style="font-size: 0.75rem; margin-top: 2px;">
-                  Paso 3 · Cruza tu punto de equilibrio contra el libro L2 de Binance en vivo antes de publicar
-                </div>
-              </div>
-              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                <span class="badge badge-secondary font-mono" style="font-size: 0.72rem;">
-                  Fricción Total: {{ (buyFeePct() + sellFeePct() + beBankFeePct()) | num }}%
-                </span>
-                <span class="badge badge-gold font-mono" style="font-size: 0.72rem;">
-                  Volumen: {{ amount() | num }} {{ pair() }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Tarjetas Bimonetarias Principales: Piso/Techo Break-Even vs Precio Meta -->
-            @if (beCycleDirection() === 'SELL_INVENTORY') {
-              <div class="be-dual-hero-grid">
-                <div class="be-hero-kpi-box be-floor-box">
-                  <div class="be-kpi-eyebrow">🛡️ PISO MÍNIMO DE DEFENSA (PNL = $0)</div>
-                  <div class="be-kpi-price font-mono">
-                    {{ breakEvenResult().breakEvenPrice | num }} <small>Bs/{{ pair() }}</small>
-                  </div>
-                  <div class="be-kpi-subrow font-mono">
-                    <span>Spread Mín: +{{ breakEvenResult().breakEvenSpread | num }} Bs</span>
-                    <span>•</span>
-                    <span>Costo Total: {{ breakEvenResult().totalCostVes | ves }}</span>
-                  </div>
-                </div>
-
-                <div class="be-hero-kpi-box be-target-box">
-                  <div class="be-kpi-eyebrow">🎯 PRECIO META SUGERIDO (+{{ targetRoiPct() }}% ROI)</div>
-                  <div class="be-kpi-price gold font-mono">
-                    {{ breakEvenResult().targetSellPrice | num }} <small>Bs/{{ pair() }}</small>
-                  </div>
-                  <div class="be-kpi-subrow font-mono">
-                    <span class="positive">+{{ beNetProfitUsdt() | num }} {{ pair() }}</span>
-                    <span>•</span>
-                    <span class="positive">+{{ breakEvenResult().projectedNetProfitVes | ves }}</span>
-                  </div>
-                </div>
-              </div>
-            } @else {
-              <div class="be-dual-hero-grid">
-                <div class="be-hero-kpi-box be-floor-box">
-                  <div class="be-kpi-eyebrow">🛡️ TECHO MÁXIMO DE RECOMPRA (PNL = 0 USDT)</div>
-                  <div class="be-kpi-price font-mono">
-                    {{ reverseBreakEvenResult().breakEvenBuyCeiling | num }} <small>Bs/{{ pair() }}</small>
-                  </div>
-                  <div class="be-kpi-subrow font-mono">
-                    <span>Descuento Mín: -{{ reverseBreakEvenResult().breakEvenSpread | num }} Bs</span>
-                    <span>•</span>
-                    <span>Liquidez Neta: {{ reverseBreakEvenResult().netProceedsVes | ves }}</span>
-                  </div>
-                </div>
-
-                <div class="be-hero-kpi-box be-target-box">
-                  <div class="be-kpi-eyebrow">🎯 RECOMPRA META (+{{ targetRoiPct() }}% ACUMULACIÓN)</div>
-                  <div class="be-kpi-price gold font-mono">
-                    {{ reverseBreakEvenResult().targetBuyPrice | num }} <small>Bs/{{ pair() }}</small>
-                  </div>
-                  <div class="be-kpi-subrow font-mono">
-                    <span class="positive">+{{ reverseBreakEvenResult().projectedNetProfitUsdt | num }} {{ pair() }} extra</span>
-                    <span>•</span>
-                    <span class="positive">+{{ reverseBreakEvenResult().projectedNetProfitVes | ves }}</span>
-                  </div>
-                </div>
-              </div>
-            }
-
-            <!-- Termómetro de Ejecutabilidad en Vivo vs Libro L2 de Binance -->
-            @if (beMarketVerdict(); as mv) {
-              <div
-                class="be-market-thermometer"
-                [class.status-superavit]="mv.status === 'SUPERAVIT_TOP1'"
-                [class.status-queue]="mv.status === 'PROFITABLE_QUEUE'"
-                [class.status-danger]="mv.status === 'BELOW_BREAKEVEN'"
-              >
-                <div class="be-thermo-header">
-                  <div class="be-thermo-headline">
-                    <strong>{{ mv.headline }}</strong>
-                    <span class="be-thermo-sub">{{ mv.guidance }}</span>
-                  </div>
-                  @if (mv.executableTop1Price > 0) {
-                    <div class="be-thermo-live-pill font-mono">
-                      <span>Si ejecutas en Top 1 ({{ mv.executableTop1Price | num }} Bs):</span>
-                      <strong [class.positive]="mv.executableTop1RoiPct > 0" [class.negative]="mv.executableTop1RoiPct < 0">
-                        {{ mv.executableTop1RoiPct > 0 ? '+' : '' }}{{ mv.executableTop1RoiPct | num }}%
-                        ({{ mv.executableTop1ProfitUsdt > 0 ? '+' : '' }}{{ mv.executableTop1ProfitUsdt | num }} {{ pair() }} /
-                        {{ mv.executableTop1ProfitVes > 0 ? '+' : '' }}{{ mv.executableTop1ProfitVes | ves }})
-                      </strong>
-                    </div>
-                  }
-                </div>
-
-                <!-- Corredor Visual de Precios -->
-                <div class="be-price-corridor font-mono">
-                  <div class="corridor-node">
-                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '1. Costo Base' : '1. Venta Ejecutada' }}</span>
-                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? buyPrice() : sellPrice()) | num }} Bs</span>
-                  </div>
-                  <span class="corridor-arrow">→</span>
-                  <div class="corridor-node node-floor">
-                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '2. Piso Break-Even' : '2. Techo Recompra' }}</span>
-                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().breakEvenPrice : reverseBreakEvenResult().breakEvenBuyCeiling) | num }} Bs</span>
-                  </div>
-                  <span class="corridor-arrow">→</span>
-                  <div class="corridor-node node-market">
-                    <span class="node-label">3. Top 1 Binance</span>
-                    <span class="node-val">{{ mv.marketRefPrice > 0 ? (mv.marketRefPrice | num) + ' Bs' : 'Sin datos' }}</span>
-                  </div>
-                  <span class="corridor-arrow">→</span>
-                  <div class="corridor-node node-target">
-                    <span class="node-label">4. Meta ({{ targetRoiPct() }}%)</span>
-                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().targetSellPrice : reverseBreakEvenResult().targetBuyPrice) | num }} Bs</span>
-                  </div>
-                </div>
-              </div>
-            }
-
-            <!-- Escalera Interactiva de Escenarios ROI (5 Escalones) -->
-            <div class="be-ladder-section">
-              <div class="be-ladder-header">
-                <span class="be-ladder-title">🪜 Escalera Táctica de Escenarios ROI (Haz clic en una fila para fijar precio)</span>
-                <span class="text-muted" style="font-size: 0.72rem;">Compara rotación inmediata vs ganancia por espera en cola</span>
-              </div>
-              <div class="be-ladder-table-wrap">
-                <table class="be-ladder-table font-mono">
-                  <thead>
-                    <tr>
-                      <th>Escenario</th>
-                      <th>ROI Neto</th>
-                      <th>{{ beCycleDirection() === 'SELL_INVENTORY' ? 'Precio Venta' : 'Precio Recompra' }}</th>
-                      <th>Brecha Base</th>
-                      <th>Ganancia ({{ pair() }})</th>
-                      <th>Ganancia (VES)</th>
-                      <th>Posición en Libro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (step of beRoiLadder(); track step.roi) {
-                      <tr
-                        class="be-ladder-row"
-                        [class.row-active]="step.isSelected"
-                        [class.row-executable]="step.isImmediate && step.roi > 0"
-                        (click)="selectRoiLadderStep(step.roi)"
-                      >
-                        <td class="font-sans"><strong>{{ step.tag }}</strong></td>
-                        <td>
-                          <span class="be-roi-pill" [class.pill-zero]="step.roi === 0" [class.pill-pos]="step.roi > 0">
-                            +{{ step.roi }}%
-                          </span>
-                        </td>
-                        <td class="be-ladder-price">{{ step.priceVes | num }} Bs</td>
-                        <td>{{ beCycleDirection() === 'SELL_INVENTORY' ? '+' : '-' }}{{ step.spreadVes | num }} Bs</td>
-                        <td [class.positive]="step.profitUsdt > 0">+{{ step.profitUsdt | num }} {{ pair() }}</td>
-                        <td [class.positive]="step.profitVes > 0">+{{ step.profitVes | ves }}</td>
-                        <td>
-                          <span class="be-exec-badge" [class.exec-now]="step.isImmediate" [class.exec-queue]="!step.isImmediate">
-                            {{ step.isImmediate ? '⚡ Top 1 Inmediato' : '⏳ En Cola' }}
-                          </span>
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Barra de Acción 1-Clic y Blindaje de Bots -->
-            <div class="actions-bar be-actions-bar">
-              <button type="button" class="btn btn-primary" (click)="applyTargetSellPrice()">
-                ⚡ {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Fijar Precio Meta en Monitor' : 'Fijar Recompra Meta en Monitor' }}
-              </button>
-
-              <button type="button" class="btn btn-gold-action" (click)="stageFromBreakEvenToAdStudio()">
-                📣 Enviar Precio Meta al Estudio de Anuncios P2P
-              </button>
-
-              @if (beMarketVerdict().executableTop1RoiPct > 0) {
-                <button type="button" class="btn btn-secondary" (click)="applyExecutableTop1FromBreakEven()">
-                  🔥 Salir en Top 1 Rentable ({{ beMarketVerdict().executableTop1Price | num }} Bs · +{{ beMarketVerdict().executableTop1RoiPct | num }}%)
-                </button>
-              }
-
-              <button type="button" class="btn btn-secondary" (click)="anchorBreakEvenToBots()" title="Sincroniza este piso/techo con el Bot Repricer y el Publicador de Anuncios">
-                🛡️ Blindar Piso en Bot Repricer & Publicador
-              </button>
-
-              <button type="button" class="btn btn-secondary" (click)="startDirectTrade(beCycleDirection() === 'SELL_INVENTORY' ? 'sell' : 'buy')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Iniciar Venta con Cronómetro' : 'Iniciar Recompra con Cronómetro' }}
-              </button>
-            </div>
-          </div>
-        }
-
-        <!-- 2. RADAR DE MERCADO P2P EN VIVO + CLEAN MODE + BRACKET SCANNER + LIBRO L2 INTERACTIVO -->
-        <div class="p2p-radar-card">
+    @if (activeMode() !== 'repricer') {
+      <div class="desk-column desk-center" [class.desk-center-spread]="activeMode() === 'spread'">
+        <div class="p2p-radar-card" appSpatialTilt3d [tiltMaxDeg]="3">
           <div class="radar-header">
             <div class="radar-title-group">
               <span class="badge badge-accent">En Vivo (Binance P2P)</span>
@@ -2072,19 +1793,27 @@
               </div>
             </div>
 
-            <!-- Libro de Órdenes L2 Interactivo (Top 5 Compra / Top 5 Venta con 1-Click Sniping) -->
+            <!-- Libro de Órdenes L2 Interactivo con Barras de Liquidez -->
             @if (ob.buyOffers.length > 0 || ob.sellOffers.length > 0) {
               <div class="l2-orderbook-container">
                 <div class="l2-book-column l2-col-buy">
                   <div class="l2-col-header">
-                    <span class="l2-col-title">📗 Top 5 Compra (Punta Ask)</span>
-                    <span class="l2-col-hint">Clic para cargar</span>
+                    <span class="l2-col-title">📗 Top 5 Compra (Ask)</span>
+                    <span class="l2-col-hint">Clic carga precio</span>
                   </div>
                   @if (ob.buyOffers.length === 0) {
                     <div class="l2-empty-row">Sin ofertas en este tramo</div>
                   } @else {
                     @for (o of ob.buyOffers; track o.advNo; let idx = $index) {
-                      <div class="l2-offer-row" (click)="selectOfferFromBook('BUY', o.price, false)">
+                      <div
+                        class="l2-offer-row l2-offer-buy-row"
+                        [style.--l2-depth.%]="l2OfferWidthPct(o, ob.buyOffers)"
+                        role="button"
+                        tabindex="0"
+                        (click)="selectOfferFromBook('BUY', o.price, false)"
+                        (keydown.enter)="selectOfferFromBook('BUY', o.price, false)"
+                      >
+                        <span class="l2-depth-bar depth-bar-buy" aria-hidden="true"></span>
                         <div class="l2-offer-main">
                           <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
                           <div class="l2-merchant-info">
@@ -2112,14 +1841,22 @@
 
                 <div class="l2-book-column l2-col-sell">
                   <div class="l2-col-header">
-                    <span class="l2-col-title">📕 Top 5 Venta (Punta Bid)</span>
-                    <span class="l2-col-hint">Clic para cargar</span>
+                    <span class="l2-col-title">📕 Top 5 Venta (Bid)</span>
+                    <span class="l2-col-hint">Clic carga precio</span>
                   </div>
                   @if (ob.sellOffers.length === 0) {
                     <div class="l2-empty-row">Sin ofertas en este tramo</div>
                   } @else {
                     @for (o of ob.sellOffers; track o.advNo; let idx = $index) {
-                      <div class="l2-offer-row" (click)="selectOfferFromBook('SELL', o.price, false)">
+                      <div
+                        class="l2-offer-row l2-offer-sell-row"
+                        [style.--l2-depth.%]="l2OfferWidthPct(o, ob.sellOffers)"
+                        role="button"
+                        tabindex="0"
+                        (click)="selectOfferFromBook('SELL', o.price, false)"
+                        (keydown.enter)="selectOfferFromBook('SELL', o.price, false)"
+                      >
+                        <span class="l2-depth-bar depth-bar-sell" aria-hidden="true"></span>
                         <div class="l2-offer-main">
                           <span class="l2-rank font-mono">#{{ idx + 1 }}</span>
                           <div class="l2-merchant-info">
@@ -2171,9 +1908,231 @@
             </button>
           }
         </div>
+      </div>
+    }
+
+    <!-- ═══════════════════════════════════════════════════
+         COLUMNA DERECHA: Hero Spatial 3D, Breakeven & Subconsole
+         ═══════════════════════════════════════════════════ -->
+    <div class="desk-column desk-right">
+      @if (activeMode() !== 'repricer') {
+        <!-- 1. RESULTADO SPATIAL 3D (GAUGE / BREAKEVEN THERMOMETER) -->
+        @if (activeMode() === 'spread') {
+          <app-spread-quality-gauge
+            [gainVes]="netGainVes()"
+            [gainUsdt]="netGainUsdt()"
+            [netVesAfterCommission]="netVesAfterCommission()"
+            [unitSpreadVes]="unitSpread()"
+            [roiPct]="netRoiPct()"
+            [qualityScore]="spreadQualityScore()"
+            [isFavorable]="alert().kind === 'favorable'"
+            [verdictLabel]="gaugeVerdictLabel()"
+            [hasResult]="result() !== null"
+            [compoundCycles]="spreadCompoundTiles()"
+            (startBuyTrade)="startDirectTrade('buy')"
+            (startSellTrade)="startDirectTrade('sell')"
+            (openAdStudio)="stageFromSpreadToAdStudio('SELL')"
+          />
+
+          @if (result(); as r) {
+            <div class="arbitrage-result-card spread-ledger-card" appSpatialTilt3d [tiltMaxDeg]="3">
+              <div class="spread-ledger-head">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span class="section-eyebrow" style="margin: 0; padding: 0; border: none;">Desglose Bimonetario</span>
+                  @if (goldenSpread(); as gs) {
+                    <span
+                      class="badge font-mono"
+                      [class.badge-gold]="gs.alertLevel === 'GOLDEN_ZONE'"
+                      [class.badge-accent]="gs.alertLevel === 'HEALTHY'"
+                      style="font-size: 0.7rem;"
+                    >
+                      {{ gs.alertLevel === 'GOLDEN_ZONE' ? '⭐ GOLDEN SPREAD' : gs.alertLevel === 'HEALTHY' ? '✅ VIABLE' : gs.alertLevel === 'MARGINAL_CAUTION' ? '⚠️ AJUSTADO' : '🚨 PÉRDIDA' }}
+                    </span>
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.74rem; padding: 4px 10px;"
+                  (click)="stageFromSpreadToAdStudio('BUY')"
+                  title="Enviar precio de compra y lote al Estudio de Anuncios P2P"
+                >
+                  📣 Armar Anuncio Compra
+                </button>
+              </div>
+
+              <div class="out spread-compact-out">
+                <div>
+                  <dt>{{ pair() }} recibidos</dt>
+                  <dd class="font-mono">{{ usdtReceived() | usdt }}</dd>
+                </div>
+                <div>
+                  <dt>VES recibidos</dt>
+                  <dd class="font-mono">{{ vesReceived() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Spread unitario</dt>
+                  <dd class="font-mono" [class.positive]="unitSpread() > 0" [class.negative]="unitSpread() < 0">{{ unitSpread() | num }} VES/{{ pair() }}</dd>
+                </div>
+                <div>
+                  <dt>Ganancia de spread</dt>
+                  <dd class="font-mono" [class.positive]="gainVes() > 0" [class.negative]="gainVes() < 0">{{ gainVes() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Recibido neto</dt>
+                  <dd class="font-mono">{{ netVesAfterCommission() | ves }}</dd>
+                </div>
+                <div>
+                  <dt>Ganancia neta</dt>
+                  <dd class="font-mono" [class.positive]="netGainVes() > 0" [class.negative]="netGainVes() < 0">{{ netGainVes() | ves }}</dd>
+                </div>
+              </div>
+            </div>
+          }
+        } @else {
+          <!-- Modo Break-Even: Termómetro Spatial 3D + Escalera & Defensa -->
+          <app-breakeven-thermometer
+            [floorPriceVes]="beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().breakEvenPrice : reverseBreakEvenResult().breakEvenBuyCeiling"
+            [targetPriceVes]="beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().targetSellPrice : reverseBreakEvenResult().targetBuyPrice"
+            [targetRoiPct]="targetRoiPct()"
+            [netProfitVes]="beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().projectedNetProfitVes : reverseBreakEvenResult().projectedNetProfitVes"
+            [netProfitUsdt]="beNetProfitUsdt()"
+            [bestBidVes]="filteredOrderbook().effectiveBestSell > 0 ? filteredOrderbook().effectiveBestSell : null"
+            [bestAskVes]="filteredOrderbook().effectiveBestBuy > 0 ? filteredOrderbook().effectiveBestBuy : null"
+            [cycleMode]="beCycleDirection()"
+            [roiLadder]="breakevenLadderSteps()"
+            [multiBankSplits]="breakevenSplitItems()"
+            (selectRoiTarget)="selectRoiLadderStep($event)"
+            (launchTrade)="startDirectTrade(beCycleDirection() === 'SELL_INVENTORY' ? 'sell' : 'buy')"
+          />
+
+          <div class="arbitrage-result-card be-execution-hero" appSpatialTilt3d [tiltMaxDeg]="3">
+            <div class="be-hero-top-bar">
+              <div>
+                <span class="section-eyebrow" style="margin: 0;">
+                  {{ beCycleDirection() === 'SELL_INVENTORY' ? '🛡️ Defensa de Inventario & Escalera Táctica' : '🔄 Techo de Recompra & Acumulación' }}
+                </span>
+                <div class="text-muted" style="font-size: 0.74rem; margin-top: 2px;">
+                  Fricción Total: <strong class="font-mono">{{ (buyFeePct() + sellFeePct() + beBankFeePct()) | num }}%</strong> · Volumen: <strong class="font-mono">{{ amount() | num }} {{ pair() }}</strong>
+                </div>
+              </div>
+            </div>
+
+            @if (beMarketVerdict(); as mv) {
+              <div
+                class="be-market-thermometer"
+                [class.status-superavit]="mv.status === 'SUPERAVIT_TOP1'"
+                [class.status-queue]="mv.status === 'PROFITABLE_QUEUE'"
+                [class.status-danger]="mv.status === 'BELOW_BREAKEVEN'"
+              >
+                <div class="be-thermo-header">
+                  <div class="be-thermo-headline">
+                    <strong>{{ mv.headline }}</strong>
+                    <span class="be-thermo-sub">{{ mv.guidance }}</span>
+                  </div>
+                  @if (mv.executableTop1Price > 0) {
+                    <div class="be-thermo-live-pill font-mono">
+                      <span>Si ejecutas Top 1 ({{ mv.executableTop1Price | num }} Bs):</span>
+                      <strong [class.positive]="mv.executableTop1RoiPct > 0" [class.negative]="mv.executableTop1RoiPct < 0">
+                        {{ mv.executableTop1RoiPct > 0 ? '+' : '' }}{{ mv.executableTop1RoiPct | num }}%
+                        ({{ mv.executableTop1ProfitUsdt > 0 ? '+' : '' }}{{ mv.executableTop1ProfitUsdt | num }} {{ pair() }})
+                      </strong>
+                    </div>
+                  }
+                </div>
+
+                <div class="be-price-corridor font-mono">
+                  <div class="corridor-node">
+                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '1. Costo Base' : '1. Venta Ejecutada' }}</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? buyPrice() : sellPrice()) | num }} Bs</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-floor">
+                    <span class="node-label">{{ beCycleDirection() === 'SELL_INVENTORY' ? '2. Piso BE' : '2. Techo BE' }}</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().breakEvenPrice : reverseBreakEvenResult().breakEvenBuyCeiling) | num }} Bs</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-market">
+                    <span class="node-label">3. Top 1 Binance</span>
+                    <span class="node-val">{{ mv.marketRefPrice > 0 ? (mv.marketRefPrice | num) + ' Bs' : 'Sin datos' }}</span>
+                  </div>
+                  <span class="corridor-arrow">→</span>
+                  <div class="corridor-node node-target">
+                    <span class="node-label">4. Meta ({{ targetRoiPct() }}%)</span>
+                    <span class="node-val">{{ (beCycleDirection() === 'SELL_INVENTORY' ? breakEvenResult().targetSellPrice : reverseBreakEvenResult().targetBuyPrice) | num }} Bs</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            <!-- Escalera Interactiva de Escenarios ROI -->
+            <div class="be-ladder-section">
+              <div class="be-ladder-header">
+                <span class="be-ladder-title">🪜 Escalera Táctica de Escenarios ROI</span>
+                <span class="text-muted" style="font-size: 0.72rem;">Clic para fijar meta</span>
+              </div>
+              <div class="be-ladder-table-wrap">
+                <table class="be-ladder-table font-mono">
+                  <thead>
+                    <tr>
+                      <th>Escenario</th>
+                      <th>ROI</th>
+                      <th>{{ beCycleDirection() === 'SELL_INVENTORY' ? 'Venta' : 'Recompra' }}</th>
+                      <th>Brecha</th>
+                      <th>Ganancia ({{ pair() }})</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (step of beRoiLadder(); track step.roi) {
+                      <tr
+                        class="be-ladder-row"
+                        [class.row-active]="step.isSelected"
+                        [class.row-executable]="step.isImmediate && step.roi > 0"
+                        (click)="selectRoiLadderStep(step.roi)"
+                      >
+                        <td class="font-sans"><strong>{{ step.tag }}</strong></td>
+                        <td>
+                          <span class="be-roi-pill" [class.pill-zero]="step.roi === 0" [class.pill-pos]="step.roi > 0">
+                            +{{ step.roi }}%
+                          </span>
+                        </td>
+                        <td class="be-ladder-price">{{ step.priceVes | num }} Bs</td>
+                        <td>{{ beCycleDirection() === 'SELL_INVENTORY' ? '+' : '-' }}{{ step.spreadVes | num }} Bs</td>
+                        <td [class.positive]="step.profitUsdt > 0">+{{ step.profitUsdt | num }} {{ pair() }}</td>
+                        <td>
+                          <span class="be-exec-badge" [class.exec-now]="step.isImmediate" [class.exec-queue]="!step.isImmediate">
+                            {{ step.isImmediate ? '⚡ Top 1' : '⏳ Cola' }}
+                          </span>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="actions-bar be-actions-bar">
+              <button type="button" class="btn btn-primary" (click)="applyTargetSellPrice()">
+                ⚡ {{ beCycleDirection() === 'SELL_INVENTORY' ? 'Fijar Meta en Monitor' : 'Fijar Recompra en Monitor' }}
+              </button>
+              <button type="button" class="btn btn-gold-action" (click)="stageFromBreakEvenToAdStudio()">
+                📣 Enviar al Estudio 360°
+              </button>
+              @if (beMarketVerdict().executableTop1RoiPct > 0) {
+                <button type="button" class="btn btn-secondary" (click)="applyExecutableTop1FromBreakEven()">
+                  🔥 Salir Top 1 ({{ beMarketVerdict().executableTop1Price | num }} Bs)
+                </button>
+              }
+              <button type="button" class="btn btn-secondary" (click)="anchorBreakEvenToBots()" title="Sincroniza este piso/techo con el Bot Repricer y el Publicador de Anuncios">
+                🛡️ Blindar Piso en Bots
+              </button>
+            </div>
+          </div>
+        }
 
         <!-- 3. SUBCONSOLE ANALÍTICA (SUB-TABS: MICROESTRUCTURA, TRIANGULACIÓN, TESORERÍA) -->
-        <div class="analytics-subconsole">
+        <div class="analytics-subconsole" appSpatialTilt3d [tiltMaxDeg]="2">
           <div class="analytics-subnav">
             <button
               type="button"
@@ -2370,10 +2329,20 @@
                     class="triangulation-key-input"
                     placeholder="ctz_live_..."
                     aria-label="Clave de API de Cotizave"
-                    [value]="cotizave.apiKey()"
-                    (input)="cotizave.setApiKey($any($event.target).value)"
+                    [value]="cotizaveKeyDraft()"
+                    (input)="onCotizaveKeyInput($any($event.target).value)"
+                    (keydown.enter)="saveCotizaveKey()"
                   />
-                  <button type="button" class="btn btn-secondary" (click)="cotizave.fetchRates()" [disabled]="cotizave.loading() || !cotizave.apiKey()" style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;">
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    (click)="saveCotizaveKey()"
+                    [disabled]="cotizave.loading()"
+                    style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;"
+                  >
+                    Guardar
+                  </button>
+                  <button type="button" class="btn btn-secondary" (click)="refreshCotizave()" [disabled]="cotizave.loading() || (!cotizave.apiKey() && !cotizaveKeyDraft().trim())" style="font-size: 0.78rem; padding: 6px 14px; white-space: nowrap;">
                     {{ cotizave.loading() ? '...' : 'Actualizar' }}
                   </button>
                 </div>
@@ -2604,12 +2573,12 @@
           }
         </div>
 
-        <!-- Estudio Operativo de Anuncios P2P 360° (Auto-Composer Inteligente + Copiado Quirúrgico + Escudo Anti-Ban TOS) -->
-        <div class="ad-composer-card" style="margin-top: 14px; padding: 16px; border-radius: 10px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(216, 180, 92, 0.08) 0%, rgba(15, 23, 42, 0.96) 100%);">
+        <!-- Estudio Operativo de Anuncios P2P 360° — Organizado en 4 Sub-Tabs Glass -->
+        <div class="ad-composer-card" appSpatialTilt3d [tiltMaxDeg]="2">
           <!-- Cabecera Principal -->
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+          <div class="ad-studio-header">
             <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 1.4rem;">📣</span>
+              <span style="font-size: 1.35rem;">📣</span>
               <div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <strong style="color: var(--gold); font-size: 0.96rem;">Estudio Operativo de Anuncios P2P 360°</strong>
@@ -2619,21 +2588,20 @@
                     </span>
                   }
                 </div>
-                <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 2px;">
-                  Microestructura L2 en vivo, ruteo de cupos bancarios sin sobregiro, plantillas anti-ban TOS y copiado quirúrgico por campo
+                <div class="text-muted" style="font-size: 0.74rem; margin-top: 2px;">
+                  Microestructura L2 en vivo, ruteo bancario, plantillas anti-ban TOS y publicación 1-clic
                 </div>
               </div>
             </div>
 
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-              <!-- Selector Compra / Venta -->
-              <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.45); border-radius: 6px; padding: 2px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="pill-switch" style="display: flex; background: rgba(0,0,0,0.4); border-radius: 999px; padding: 2px; border: 1px solid var(--line);">
                 <button
                   type="button"
                   class="btn"
                   [style.background]="adComposer.side() === 'BUY' ? 'var(--accent)' : 'transparent'"
-                  [style.color]="adComposer.side() === 'BUY' ? '#fff' : '#94a3b8'"
-                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700;"
+                  [style.color]="adComposer.side() === 'BUY' ? '#fff' : 'var(--muted)'"
+                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700; border-radius: 999px;"
                   (click)="adComposer.setSide('BUY'); adComposer.composeDraft()"
                 >
                   🟢 Comprar USDT
@@ -2642,8 +2610,8 @@
                   type="button"
                   class="btn"
                   [style.background]="adComposer.side() === 'SELL' ? 'var(--gold)' : 'transparent'"
-                  [style.color]="adComposer.side() === 'SELL' ? '#000' : '#94a3b8'"
-                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700;"
+                  [style.color]="adComposer.side() === 'SELL' ? '#000' : 'var(--muted)'"
+                  style="font-size: 0.74rem; padding: 4px 10px; border: none; font-weight: 700; border-radius: 999px;"
                   (click)="adComposer.setSide('SELL'); adComposer.composeDraft()"
                 >
                   🟡 Vender USDT
@@ -2663,365 +2631,411 @@
             </div>
           </div>
 
-          <!-- Panel de Configuración Operativa del Anuncio -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-            <!-- 1. Modo de Precio: Estrategia vs Fijo -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">FIJACIÓN DE PRECIO</span>
-                <button
-                  type="button"
-                  class="btn btn-ghost"
-                  style="font-size: 0.66rem; padding: 1px 6px; height: auto;"
-                  (click)="adComposer.useCustomPrice.set(!adComposer.useCustomPrice()); adComposer.composeDraft()"
-                >
-                  {{ adComposer.useCustomPrice() ? '🎯 Precio Fijo' : '🤖 Automático L2' }}
-                </button>
-              </div>
-              @if (adComposer.useCustomPrice()) {
-                <input
-                  type="number"
-                  step="0.01"
-                  class="font-mono"
-                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--gold); background: rgba(0,0,0,0.5); color: var(--gold); font-size: 0.82rem;"
-                  [value]="adComposer.customPriceVes()"
-                  (input)="adComposer.customPriceVes.set(+$any($event.target).value); adComposer.composeDraft()"
-                  placeholder="Precio fijo Bs"
-                />
-              } @else {
-                <select
-                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
-                  [value]="adComposer.strategy()"
-                  (change)="adComposer.strategy.set($any($event.target).value); adComposer.composeDraft()"
-                >
-                  <option value="TOP_1">🥇 Top 1 Líder</option>
-                  <option value="UNDERCUT">⚔️ Superar Top 1 (±Paso)</option>
-                  <option value="MATCH">🤝 Igualar Top 1</option>
-                  <option value="TOP_2">🥈 Top 2 Seguro</option>
-                  <option value="TOP_3">🥉 Top 3 Conservador</option>
-                </select>
-              }
-            </div>
-
-            <!-- 2. Lote Objetivo USDT (0 = Cupo Bancario Total) -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">LOTE OBJETIVO (USDT)</span>
-                <div style="display: flex; gap: 3px;">
-                  @for (preset of [0, 250, 500, 1000]; track preset) {
-                    <button
-                      type="button"
-                      style="font-size: 0.62rem; padding: 1px 4px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #cbd5e1; cursor: pointer;"
-                      [style.border-color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : 'rgba(255,255,255,0.15)'"
-                      [style.color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : '#cbd5e1'"
-                      (click)="adComposer.targetAssetAmountUsdt.set(preset); adComposer.composeDraft()"
-                    >
-                      {{ preset === 0 ? 'Máx' : '$' + preset }}
-                    </button>
-                  }
-                </div>
-              </div>
-              <input
-                type="number"
-                min="0"
-                step="10"
-                class="font-mono"
-                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.45); color: #38bdf8; font-size: 0.82rem;"
-                [value]="adComposer.targetAssetAmountUsdt()"
-                (input)="adComposer.targetAssetAmountUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
-                placeholder="0 = Cupo Bancario Total"
-              />
-            </div>
-
-            <!-- 3. Ticket Mínimo Anti-Pitufeo -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">TICKET MÍN (ANTI-PITUFEI)</span>
-                <span class="font-mono" style="font-size: 0.66rem; color: #64748b;">USDT</span>
-              </div>
-              <input
-                type="number"
-                min="5"
-                step="5"
-                class="font-mono"
-                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.45); color: #f8fafc; font-size: 0.82rem;"
-                [value]="adComposer.minTicketUsdt()"
-                (input)="adComposer.minTicketUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
-              />
-            </div>
-
-            <!-- 4. Ruteo Bancario Inteligente -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">CUENTA BANCARIA DESTINO</span>
-              </div>
-              <select
-                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
-                [value]="adComposer.preferredBank() ?? ''"
-                (change)="adComposer.preferredBank.set($any($event.target).value || null); adComposer.composeDraft()"
-              >
-                <option value="">⚡ Auto (Mayor Cupo Disponible)</option>
-                @for (b of adComposer.activeBankOptions(); track b.bankName + b.alias) {
-                  <option [value]="b.bankName">
-                    {{ b.bankName }} ({{ b.remainingVes | num }} Bs libres)
-                  </option>
-                }
-              </select>
-            </div>
-
-            <!-- 5. Plantilla Operativa -->
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">PLANTILLA DE ANUNCIO</span>
-              </div>
-              <select
-                style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 0.78rem;"
-                [value]="adComposer.selectedTemplateName()"
-                (change)="adComposer.applyTemplate($any($event.target).value)"
-              >
-                @for (tpl of adComposer.availableTemplates(); track tpl.name) {
-                  <option [value]="tpl.name">{{ tpl.name }}</option>
-                }
-              </select>
-            </div>
+          <!-- Barra de 4 Sub-Tabs del Ad Studio -->
+          <div class="ad-studio-tabs" role="tablist" aria-label="Secciones del Estudio de Anuncios">
+            <button
+              type="button"
+              class="ad-studio-tab"
+              [class.active]="adStudioTab() === 'pricing'"
+              (click)="adStudioTab.set('pricing')"
+              role="tab"
+              [attr.aria-selected]="adStudioTab() === 'pricing'"
+            >
+              💰 Precio & Lote
+            </button>
+            <button
+              type="button"
+              class="ad-studio-tab"
+              [class.active]="adStudioTab() === 'banks'"
+              (click)="adStudioTab.set('banks')"
+              role="tab"
+              [attr.aria-selected]="adStudioTab() === 'banks'"
+            >
+              🏦 Banco & Cupo
+            </button>
+            <button
+              type="button"
+              class="ad-studio-tab"
+              [class.active]="adStudioTab() === 'rules'"
+              (click)="adStudioTab.set('rules')"
+              role="tab"
+              [attr.aria-selected]="adStudioTab() === 'rules'"
+            >
+              🛡️ Textos & TOS
+            </button>
+            <button
+              type="button"
+              class="ad-studio-tab"
+              [class.active]="adStudioTab() === 'publish'"
+              (click)="adStudioTab.set('publish')"
+              role="tab"
+              [attr.aria-selected]="adStudioTab() === 'publish'"
+            >
+              🚀 Publicar 1-Clic
+              <span class="ad-tab-dot" [class.dot-ok]="adComposer.readyToPublish()"></span>
+            </button>
           </div>
 
-          @if (adComposer.currentDraft(); as draft) {
-            <!-- Matriz de Parámetros Listos para Binance + Copiado Quirúrgico 1-Clic -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.06);">
-              <!-- Precio + Rango en Cola L2 -->
-              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(216,180,92,0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.68rem; color: #94a3b8;">PRECIO A PUBLICAR</span>
+          <!-- TAB 1: PRECIO & LOTE -->
+          @if (adStudioTab() === 'pricing') {
+            <div class="ad-studio-grid">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted); font-weight: 600;">FIJACIÓN DE PRECIO</span>
                   <button
                     type="button"
-                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
-                    (click)="adComposer.copyField('price', 'Precio del anuncio', draft.price)"
+                    class="btn btn-ghost"
+                    style="font-size: 0.66rem; padding: 1px 6px; height: auto;"
+                    (click)="adComposer.useCustomPrice.set(!adComposer.useCustomPrice()); adComposer.composeDraft()"
                   >
-                    {{ adComposer.copiedFieldKey() === 'price' ? '✅ Copiado' : '📋 Copiar' }}
+                    {{ adComposer.useCustomPrice() ? '🎯 Precio Fijo' : '🤖 Automático L2' }}
                   </button>
                 </div>
-                <strong style="font-size: 1.15rem; color: var(--gold); display: block; margin-top: 2px;" class="font-mono">
-                  {{ draft.priceFormatted }}
-                </strong>
-                <div style="font-size: 0.68rem; color: #38bdf8; margin-top: 3px;" class="font-mono">
-                  🏆 Puesto #{{ draft.queueRank }} · {{ draft.volumeAheadUsdt | num }} USDT delante
-                </div>
-              </div>
-
-              <!-- Monto Total USDT -->
-              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(56,189,248,0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.68rem; color: #94a3b8;">MONTO TOTAL USDT</span>
-                  <button
-                    type="button"
-                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
-                    (click)="adComposer.copyField('amountUsdt', 'Monto total USDT', draft.totalAssetAmountUsdt)"
+                @if (adComposer.useCustomPrice()) {
+                  <input
+                    type="number"
+                    step="0.01"
+                    class="font-mono"
+                    style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--gold); background: rgba(0,0,0,0.4); color: var(--gold); font-size: 0.82rem;"
+                    [value]="adComposer.customPriceVes()"
+                    (input)="adComposer.customPriceVes.set(+$any($event.target).value); adComposer.composeDraft()"
+                    placeholder="Precio fijo Bs"
+                  />
+                } @else {
+                  <select
+                    style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 0.78rem;"
+                    [value]="adComposer.strategy()"
+                    (change)="adComposer.strategy.set($any($event.target).value); adComposer.composeDraft()"
                   >
-                    {{ adComposer.copiedFieldKey() === 'amountUsdt' ? '✅ Copiado' : '📋 Copiar' }}
-                  </button>
-                </div>
-                <strong style="font-size: 1.05rem; color: #38bdf8; display: block; margin-top: 2px;" class="font-mono">
-                  {{ draft.totalAssetAmountUsdt | num }} USDT
-                </strong>
-                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
-                  Cupo libre: {{ draft.selectedAccountCupoRemainingVes | num }} Bs
-                </div>
+                    <option value="TOP_1">🥇 Top 1 Líder</option>
+                    <option value="UNDERCUT">⚔️ Superar Top 1 (±Paso)</option>
+                    <option value="MATCH">🤝 Igualar Top 1</option>
+                    <option value="TOP_2">🥈 Top 2 Seguro</option>
+                    <option value="TOP_3">🥉 Top 3 Conservador</option>
+                  </select>
+                }
               </div>
 
-              <!-- Límite Mínimo Bs -->
-              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.07);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.68rem; color: #94a3b8;">LÍMITE MÍNIMO (BS)</span>
-                  <button
-                    type="button"
-                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer;"
-                    (click)="adComposer.copyField('minVes', 'Límite Mínimo Bs', draft.minLimitVes)"
-                  >
-                    {{ adComposer.copiedFieldKey() === 'minVes' ? '✅ Copiado' : '📋 Copiar' }}
-                  </button>
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted); font-weight: 600;">LOTE OBJETIVO (USDT)</span>
+                  <div style="display: flex; gap: 3px;">
+                    @for (preset of [0, 250, 500, 1000]; track preset) {
+                      <button
+                        type="button"
+                        style="font-size: 0.62rem; padding: 1px 4px; border-radius: 3px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); color: var(--text); cursor: pointer;"
+                        [style.border-color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : 'var(--line)'"
+                        [style.color]="adComposer.targetAssetAmountUsdt() === preset ? 'var(--gold)' : 'var(--text)'"
+                        (click)="adComposer.targetAssetAmountUsdt.set(preset); adComposer.composeDraft()"
+                      >
+                        {{ preset === 0 ? 'Máx' : '$' + preset }}
+                      </button>
+                    }
+                  </div>
                 </div>
-                <strong style="font-size: 0.96rem; color: #f1f5f9; display: block; margin-top: 2px;" class="font-mono">
-                  {{ draft.minLimitVes | num }} Bs
-                </strong>
-                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
-                  ≈ ${{ draft.minLimitUsdt | num }} USDT por orden
-                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  class="font-mono"
+                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: rgba(0,0,0,0.4); color: #38bdf8; font-size: 0.82rem;"
+                  [value]="adComposer.targetAssetAmountUsdt()"
+                  (input)="adComposer.targetAssetAmountUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
+                  placeholder="0 = Cupo Bancario Total"
+                />
               </div>
 
-              <!-- Límite Máximo Bs -->
-              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.07);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.68rem; color: #94a3b8;">LÍMITE MÁXIMO (BS)</span>
-                  <button
-                    type="button"
-                    style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer;"
-                    (click)="adComposer.copyField('maxVes', 'Límite Máximo Bs', draft.maxLimitVes)"
-                  >
-                    {{ adComposer.copiedFieldKey() === 'maxVes' ? '✅ Copiado' : '📋 Copiar' }}
-                  </button>
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted); font-weight: 600;">TICKET MÍN (ANTI-PITUFEO)</span>
+                  <span class="font-mono" style="font-size: 0.66rem; color: var(--muted);">USDT</span>
                 </div>
-                <strong style="font-size: 0.96rem; color: #f1f5f9; display: block; margin-top: 2px;" class="font-mono">
-                  {{ draft.maxLimitVes | num }} Bs
-                </strong>
-                <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 3px;" class="font-mono">
-                  🏦 {{ draft.selectedBank }} ({{ draft.paymentMethods.join(', ') }})
-                </div>
-              </div>
-
-              <!-- Margen Neto Post-Comisión -->
-              <div style="background: rgba(16,185,129,0.06); padding: 8px; border-radius: 6px; border: 1px solid rgba(16,185,129,0.25);">
-                <span style="font-size: 0.68rem; color: #94a3b8; display: block;">RENTABILIDAD NETA CICLO</span>
-                <strong style="font-size: 0.98rem; color: #34d399; display: block; margin-top: 2px;" class="font-mono">
-                  +{{ draft.netSpreadAfterFeePct | num }}% (+${{ draft.expectedNetProfitUsdtPerCycle | num }})
-                </strong>
-                <div style="font-size: 0.68rem; color: #6ee7b7; margin-top: 3px;" class="font-mono">
-                  Bruto: +{{ draft.expectedNetSpreadPct }}% · +{{ draft.expectedProfitVesPerCycle | num }} Bs
-                </div>
+                <input
+                  type="number"
+                  min="5"
+                  step="5"
+                  class="font-mono"
+                  style="width: 100%; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: rgba(0,0,0,0.4); color: var(--text); font-size: 0.82rem;"
+                  [value]="adComposer.minTicketUsdt()"
+                  (input)="adComposer.minTicketUsdt.set(+$any($event.target).value); adComposer.composeDraft()"
+                />
               </div>
             </div>
 
-            <!-- Vista Previa de Ciclo Espejo (Compra + Venta Emparejada) -->
-            @if (adComposer.mirrorCyclePreview(); as mirror) {
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: rgba(15, 23, 42, 0.75); border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.74rem;">
-                <div>
-                  <strong style="color: #38bdf8;">🔄 Ciclo Espejo Emparejado:</strong>
-                  <span class="font-mono" style="margin-left: 6px; color: #e2e8f0;">
-                    Compra {{ mirror.buyPrice | num }} Bs ➔ Venta {{ mirror.sellPrice | num }} Bs (Brecha: {{ mirror.spreadVes > 0 ? '+' : '' }}{{ mirror.spreadVes | num }} Bs)
-                  </span>
+            @if (adComposer.currentDraft(); as draft) {
+              <div class="ad-studio-kpis">
+                <div class="ad-kpi-tile" style="border-color: rgba(216,180,92,0.28);">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.68rem; color: var(--muted);">PRECIO A PUBLICAR</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
+                      (click)="adComposer.copyField('price', 'Precio del anuncio', draft.price)"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'price' ? '✅ Copiado' : '📋 Copiar' }}
+                    </button>
+                  </div>
+                  <strong style="font-size: 1.15rem; color: var(--gold); display: block; margin-top: 2px;" class="font-mono">
+                    {{ draft.priceFormatted }}
+                  </strong>
+                  <div style="font-size: 0.68rem; color: #38bdf8; margin-top: 3px;" class="font-mono">
+                    🏆 Puesto #{{ draft.queueRank }} · {{ draft.volumeAheadUsdt | num }} USDT delante
+                  </div>
                 </div>
-                <div class="font-mono" style="color: #34d399;">
-                  Neto post-fee ({{ draft.makerFeePct * 2 }}%): <strong>+{{ mirror.netSpreadPct | num }}%</strong> · <strong>+${{ mirror.netProfitUsdt | num }} USDT</strong> ({{ mirror.netProfitVes | num }} Bs)
+
+                <div class="ad-kpi-tile" style="border-color: rgba(56,189,248,0.28);">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.68rem; color: var(--muted);">MONTO TOTAL USDT</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
+                      (click)="adComposer.copyField('amountUsdt', 'Monto total USDT', draft.totalAssetAmountUsdt)"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'amountUsdt' ? '✅ Copiado' : '📋 Copiar' }}
+                    </button>
+                  </div>
+                  <strong style="font-size: 1.05rem; color: #38bdf8; display: block; margin-top: 2px;" class="font-mono">
+                    {{ draft.totalAssetAmountUsdt | num }} USDT
+                  </strong>
+                  <div style="font-size: 0.68rem; color: var(--muted); margin-top: 3px;" class="font-mono">
+                    Cupo libre: {{ draft.selectedAccountCupoRemainingVes | num }} Bs
+                  </div>
+                </div>
+
+                <div class="ad-kpi-tile">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.68rem; color: var(--muted);">LÍMITE MÍNIMO (BS)</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer;"
+                      (click)="adComposer.copyField('minVes', 'Límite Mínimo Bs', draft.minLimitVes)"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'minVes' ? '✅ Copiado' : '📋 Copiar' }}
+                    </button>
+                  </div>
+                  <strong style="font-size: 0.96rem; color: var(--text); display: block; margin-top: 2px;" class="font-mono">
+                    {{ draft.minLimitVes | num }} Bs
+                  </strong>
+                  <div style="font-size: 0.68rem; color: var(--muted); margin-top: 3px;" class="font-mono">
+                    ≈ ${{ draft.minLimitUsdt | num }} USDT por orden
+                  </div>
+                </div>
+
+                <div class="ad-kpi-tile">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.68rem; color: var(--muted);">LÍMITE MÁXIMO (BS)</span>
+                    <button
+                      type="button"
+                      style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer;"
+                      (click)="adComposer.copyField('maxVes', 'Límite Máximo Bs', draft.maxLimitVes)"
+                    >
+                      {{ adComposer.copiedFieldKey() === 'maxVes' ? '✅ Copiado' : '📋 Copiar' }}
+                    </button>
+                  </div>
+                  <strong style="font-size: 0.96rem; color: var(--text); display: block; margin-top: 2px;" class="font-mono">
+                    {{ draft.maxLimitVes | num }} Bs
+                  </strong>
+                  <div style="font-size: 0.68rem; color: var(--muted); margin-top: 3px;" class="font-mono">
+                    🏦 {{ draft.selectedBank }}
+                  </div>
+                </div>
+
+                <div class="ad-kpi-tile" style="background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.28);">
+                  <span style="font-size: 0.68rem; color: var(--muted); display: block;">RENTABILIDAD NETA CICLO</span>
+                  <strong style="font-size: 0.98rem; color: #34d399; display: block; margin-top: 2px;" class="font-mono">
+                    +{{ draft.netSpreadAfterFeePct | num }}% (+${{ draft.expectedNetProfitUsdtPerCycle | num }})
+                  </strong>
+                  <div style="font-size: 0.68rem; color: #6ee7b7; margin-top: 3px;" class="font-mono">
+                    Bruto: +{{ draft.expectedNetSpreadPct }}% · +{{ draft.expectedProfitVesPerCycle | num }} Bs
+                  </div>
                 </div>
               </div>
-            }
 
-            <!-- Editor en Vivo de Condiciones & Auto-Reply + Validador Anti-Ban Binance TOS -->
-            <div style="background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                <span style="font-size: 0.75rem; font-weight: 700; color: #e2e8f0;">
-                  📝 Textos Operativos para Pegar en Binance P2P (Paso 2 y Paso 3)
-                </span>
+              @if (adComposer.mirrorCyclePreview(); as mirror) {
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: rgba(0, 0, 0, 0.28); border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 8px 12px; font-size: 0.74rem;">
+                  <div>
+                    <strong style="color: #38bdf8;">🔄 Ciclo Espejo Emparejado:</strong>
+                    <span class="font-mono" style="margin-left: 6px; color: var(--text);">
+                      Compra {{ mirror.buyPrice | num }} Bs ➔ Venta {{ mirror.sellPrice | num }} Bs (Brecha: {{ mirror.spreadVes > 0 ? '+' : '' }}{{ mirror.spreadVes | num }} Bs)
+                    </span>
+                  </div>
+                  <div class="font-mono" style="color: #34d399;">
+                    Neto post-fee ({{ draft.makerFeePct * 2 }}%): <strong>+{{ mirror.netSpreadPct | num }}%</strong> · <strong>+${{ mirror.netProfitUsdt | num }} USDT</strong> ({{ mirror.netProfitVes | num }} Bs)
+                  </div>
+                </div>
+              }
+            } @else {
+              <div style="text-align: center; padding: 14px 8px; color: var(--muted); font-size: 0.8rem;">
+                <button type="button" class="btn btn-primary" (click)="adComposer.composeDraft()" [disabled]="adComposer.isComposing()">
+                  ⚡ Generar Borrador Inteligente 360° Ahora
+                </button>
+              </div>
+            }
+          } @else if (adStudioTab() === 'banks') {
+            <!-- TAB 2: BANCO & CUPO -->
+            <div class="ad-studio-grid">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted); font-weight: 600;">CUENTA BANCARIA DESTINO</span>
+                </div>
+                <select
+                  style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 0.8rem;"
+                  [value]="adComposer.preferredBank() ?? ''"
+                  (change)="adComposer.preferredBank.set($any($event.target).value || null); adComposer.composeDraft()"
+                >
+                  <option value="">⚡ Auto (Mayor Cupo Disponible)</option>
+                  @for (b of adComposer.activeBankOptions(); track b.bankName + b.alias) {
+                    <option [value]="b.bankName">
+                      {{ b.bankName }} ({{ b.remainingVes | num }} Bs libres)
+                    </option>
+                  }
+                </select>
+              </div>
+              @if (adComposer.currentDraft(); as draft) {
+                <div class="ad-kpi-tile">
+                  <span style="font-size: 0.68rem; color: var(--muted); display: block;">RUTEO ACTIVO & MÉTODOS DE PAGO</span>
+                  <strong style="font-size: 0.96rem; color: var(--gold); display: block; margin-top: 2px;">🏦 {{ draft.selectedBank }}</strong>
+                  <div style="font-size: 0.72rem; color: var(--muted); margin-top: 3px;" class="font-mono">
+                    Rieles: {{ draft.paymentMethods.join(', ') }} · Cupo libre: {{ draft.selectedAccountCupoRemainingVes | num }} Bs
+                  </div>
+                </div>
+              }
+            </div>
+          } @else if (adStudioTab() === 'rules') {
+            <!-- TAB 3: TEXTOS & ESCUDO TOS -->
+            <div class="ad-studio-grid" style="margin-bottom: 10px;">
+              <div>
+                <span style="font-size: 0.7rem; color: var(--muted); font-weight: 600; display: block; margin-bottom: 4px;">PLANTILLA DE ANUNCIO</span>
+                <select
+                  style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 0.8rem;"
+                  [value]="adComposer.selectedTemplateName()"
+                  (change)="adComposer.applyTemplate($any($event.target).value)"
+                >
+                  @for (tpl of adComposer.availableTemplates(); track tpl.name) {
+                    <option [value]="tpl.name">{{ tpl.name }}</option>
+                  }
+                </select>
+              </div>
+              <div style="display: flex; align-items: flex-end; justify-content: flex-end;">
                 @if (adComposer.liveValidation(); as val) {
                   @if (val.valid && val.warnings.length === 0) {
-                    <span class="badge" style="font-size: 0.68rem; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35);">
+                    <span class="badge" style="font-size: 0.72rem; background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35);">
                       🛡️ Escudo Anti-Ban Binance TOS: TEXTO LIMPIO
                     </span>
                   } @else {
-                    <span class="badge" style="font-size: 0.68rem; background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);">
+                    <span class="badge" style="font-size: 0.72rem; background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);">
                       ⚠️ Alerta TOS: {{ val.errors.concat(val.warnings).join(' | ') }}
                     </span>
                   }
                 }
               </div>
-
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
-                <!-- Términos y Condiciones -->
-                <div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-size: 0.7rem; color: #94a3b8;">Términos y Condiciones ({{ adComposer.editableTerms().length }}/2000)</span>
-                    <button
-                      type="button"
-                      style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
-                      (click)="adComposer.copyField('terms', 'Términos y Condiciones', adComposer.editableTerms())"
-                    >
-                      {{ adComposer.copiedFieldKey() === 'terms' ? '✅ Condiciones Copiadas' : '📋 Copiar Condiciones' }}
-                    </button>
-                  </div>
-                  <textarea
-                    rows="4"
-                    style="width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15,23,42,0.85); color: #e2e8f0; font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
-                    [value]="adComposer.editableTerms()"
-                    (input)="adComposer.editableTerms.set($any($event.target).value)"
-                  ></textarea>
-                </div>
-
-                <!-- Respuesta Automática (Auto-Reply) -->
-                <div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <span style="font-size: 0.7rem; color: #94a3b8;">Mensaje Automático / Auto-Reply ({{ adComposer.editableAutoReply().length }}/500)</span>
-                    <button
-                      type="button"
-                      style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
-                      (click)="adComposer.copyField('autoReply', 'Mensaje Auto-Reply', adComposer.editableAutoReply())"
-                    >
-                      {{ adComposer.copiedFieldKey() === 'autoReply' ? '✅ Auto-Reply Copiado' : '📋 Copiar Auto-Reply' }}
-                    </button>
-                  </div>
-                  <textarea
-                    rows="4"
-                    style="width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15,23,42,0.85); color: #e2e8f0; font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
-                    [value]="adComposer.editableAutoReply()"
-                    (input)="adComposer.editableAutoReply.set($any($event.target).value)"
-                  ></textarea>
-                </div>
-              </div>
             </div>
 
-            <!-- Banner de Estado de Seguridad / Guardarraíles -->
-            @if (!adComposer.readyToPublish()) {
-              <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 0.75rem; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 1rem;">⚠️</span>
-                <span>
-                  <strong>Freno de seguridad activo:</strong>
-                  @if (draft.guardrails.flags.includes('INVERTED_OR_ZERO_SPREAD')) {
-                    El spread de mercado es negativo o nulo ({{ draft.expectedNetSpreadPct }}%). El sistema no permite publicar a pérdida.
-                  } @else if (draft.guardrails.flags.includes('NO_ACTIVE_BANK_CAPACITY')) {
-                    Tus cuentas bancarias activas están saturadas o no tienen cupo diario restante.
-                  } @else if (!adComposer.liveValidation().valid) {
-                    {{ adComposer.liveValidation().errors.join(' · ') }}
-                  } @else {
-                    {{ draft.guardrails.flags.join(', ') }}
-                  }
-                </span>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted);">Términos y Condiciones ({{ adComposer.editableTerms().length }}/2000)</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(216,180,92,0.4); background: rgba(216,180,92,0.12); color: var(--gold); cursor: pointer;"
+                    (click)="adComposer.copyField('terms', 'Términos y Condiciones', adComposer.editableTerms())"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'terms' ? '✅ Condiciones Copiadas' : '📋 Copiar Condiciones' }}
+                  </button>
+                </div>
+                <textarea
+                  rows="4"
+                  style="width: 100%; border-radius: 6px; border: 1px solid var(--line); background: rgba(0,0,0,0.35); color: var(--text); font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
+                  [value]="adComposer.editableTerms()"
+                  (input)="adComposer.editableTerms.set($any($event.target).value)"
+                ></textarea>
               </div>
-            } @else {
-              <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; font-size: 0.74rem; color: #6ee7b7; display: flex; align-items: center; gap: 6px;">
-                <span>✅</span>
-                <span><strong>Validación aprobada:</strong> Cupo bancario, piso de equilibrio y filtro anti-ban TOS verificados. Listo para publicar en Binance P2P.</span>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.7rem; color: var(--muted);">Mensaje Automático / Auto-Reply ({{ adComposer.editableAutoReply().length }}/500)</span>
+                  <button
+                    type="button"
+                    style="font-size: 0.66rem; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.4); background: rgba(56,189,248,0.12); color: #38bdf8; cursor: pointer;"
+                    (click)="adComposer.copyField('autoReply', 'Mensaje Auto-Reply', adComposer.editableAutoReply())"
+                  >
+                    {{ adComposer.copiedFieldKey() === 'autoReply' ? '✅ Auto-Reply Copiado' : '📋 Copiar Auto-Reply' }}
+                  </button>
+                </div>
+                <textarea
+                  rows="4"
+                  style="width: 100%; border-radius: 6px; border: 1px solid var(--line); background: rgba(0,0,0,0.35); color: var(--text); font-size: 0.74rem; padding: 6px 8px; resize: vertical;"
+                  [value]="adComposer.editableAutoReply()"
+                  (input)="adComposer.editableAutoReply.set($any($event.target).value)"
+                ></textarea>
               </div>
-            }
-
-            <!-- Botones de Acción: Publicar en 1 Clic, Copiar Ficha Completa y Abrir Binance -->
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-              <button
-                type="button"
-                class="btn"
-                [style.background]="adComposer.readyToPublish() ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#ef4444'"
-                style="color: #fff; font-weight: 700; font-size: 0.85rem; padding: 8px 16px; border: none; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
-                [disabled]="adComposer.isPublishing()"
-                (click)="adComposer.publishStagedDraft()"
-              >
-                <span>🚀</span>
-                <span>{{ adComposer.isPublishing() ? 'Publicando en Binance...' : (adComposer.readyToPublish() ? 'PUBLICAR ANUNCIO EN 1 CLIC' : 'PUBLICAR (REVISAR ALERTA)') }}</span>
-              </button>
-
-              <button
-                type="button"
-                class="btn btn-secondary"
-                style="font-size: 0.8rem; padding: 8px 12px;"
-                (click)="copyDraftClipboard()"
-                title="Copiar ficha completa del anuncio"
-              >
-                📋 Copiar Ficha Completa
-              </button>
-
-              <button
-                type="button"
-                class="btn btn-secondary"
-                style="font-size: 0.8rem; padding: 8px 12px;"
-                (click)="adComposer.openBinanceAdvPost()"
-                title="Abrir la página de publicación de anuncios en Binance P2P"
-              >
-                🔗 Abrir Binance P2P
-              </button>
             </div>
           } @else {
-            <div style="text-align: center; padding: 14px 8px; color: #94a3b8; font-size: 0.8rem;">
-              <button type="button" class="btn btn-primary" (click)="adComposer.composeDraft()" [disabled]="adComposer.isComposing()">
-                ⚡ Generar Borrador Inteligente 360° Ahora
-              </button>
-            </div>
+            <!-- TAB 4: REVISAR & PUBLICAR 1-CLIC -->
+            @if (adComposer.currentDraft(); as draft) {
+              @if (!adComposer.readyToPublish()) {
+                <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #fca5a5; display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1rem;">⚠️</span>
+                  <span>
+                    <strong>Freno de seguridad activo:</strong>
+                    @if (draft.guardrails.flags.includes('INVERTED_OR_ZERO_SPREAD')) {
+                      El spread de mercado es negativo o nulo ({{ draft.expectedNetSpreadPct }}%). El sistema no permite publicar a pérdida.
+                    } @else if (draft.guardrails.flags.includes('NO_ACTIVE_BANK_CAPACITY')) {
+                      Tus cuentas bancarias activas están saturadas o no tienen cupo diario restante.
+                    } @else if (!adComposer.liveValidation().valid) {
+                      {{ adComposer.liveValidation().errors.join(' · ') }}
+                    } @else {
+                      {{ draft.guardrails.flags.join(', ') }}
+                    }
+                  </span>
+                </div>
+              } @else {
+                <div style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #6ee7b7; display: flex; align-items: center; gap: 8px;">
+                  <span>✅</span>
+                  <span><strong>Validación aprobada:</strong> Precio {{ draft.priceFormatted }} · {{ draft.totalAssetAmountUsdt | num }} USDT en {{ draft.selectedBank }}. Listo para publicar en Binance P2P.</span>
+                </div>
+              }
+
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <button
+                  type="button"
+                  class="btn"
+                  [style.background]="adComposer.readyToPublish() ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#ef4444'"
+                  style="color: #fff; font-weight: 700; font-size: 0.85rem; padding: 9px 16px; border: none; flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);"
+                  [disabled]="adComposer.isPublishing()"
+                  (click)="adComposer.publishStagedDraft()"
+                >
+                  <span>🚀</span>
+                  <span>{{ adComposer.isPublishing() ? 'Publicando en Binance...' : (adComposer.readyToPublish() ? 'PUBLICAR ANUNCIO EN 1 CLIC' : 'PUBLICAR (REVISAR ALERTA)') }}</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.8rem; padding: 8px 12px;"
+                  (click)="copyDraftClipboard()"
+                  title="Copiar ficha completa del anuncio"
+                >
+                  📋 Copiar Ficha Completa
+                </button>
+
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.8rem; padding: 8px 12px;"
+                  (click)="adComposer.openBinanceAdvPost()"
+                  title="Abrir la página de publicación de anuncios en Binance P2P"
+                >
+                  🔗 Abrir Binance P2P
+                </button>
+              </div>
+            } @else {
+              <div style="text-align: center; padding: 14px 8px; color: var(--muted); font-size: 0.8rem;">
+                <button type="button" class="btn btn-primary" (click)="adComposer.composeDraft()" [disabled]="adComposer.isComposing()">
+                  ⚡ Generar Borrador Inteligente 360° Ahora
+                </button>
+              </div>
+            }
           }
         </div>
 
