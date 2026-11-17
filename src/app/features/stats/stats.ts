@@ -51,6 +51,15 @@ export type StatsWorkspaceTab = 'overview' | 'calendar' | 'session' | 'periods' 
 
 /** Local UI-view key (component-scoped), following the app-wide `p2p.*` storage pattern. */
 const STATS_UI_KEY = 'p2p.stats.ui';
+const COMPLIANCE_META_KEY = 'p2p.stats.compliance-meta';
+
+const DEFAULT_COMPLIANCE_META: ComplianceReportMetadata = {
+  operatorName: 'Operador P2P Independiente',
+  documentId: 'V-00.000.000',
+  economicActivity: 'Intercambio y corretaje de criptoactivos en plataforma P2P',
+  targetBank: 'Banesco Banco Universal',
+  targetAccountNumber: '',
+};
 
 const PERIODS: readonly ExtendedPeriodKind[] = ['day', 'month', 'quarter', 'session', 'calendar'];
 const WORKSPACE_TABS: readonly StatsWorkspaceTab[] = [
@@ -156,6 +165,7 @@ export class Stats {
     }[];
   } | null>(null);
   readonly mcpStressTesting = signal<boolean>(false);
+  readonly mcpStressError = signal<string | null>(null);
   readonly stressUsdtCapital = signal<number>(2500);
   readonly stressVesCapital = signal<number>(150000);
   readonly stressRefRate = signal<number>(800);
@@ -165,11 +175,14 @@ export class Stats {
     status?: string;
     complianceVerdict?: string;
     uniqueCounterpartiesCount?: number | null;
+    counterpartyRiskScore?: number | null;
     flaggedCounterpartiesCount?: number | null;
     isSafeForInstitutionalTrading?: boolean | null;
     unavailableReason?: string;
+    recommendations?: string[] | null;
   } | null>(null);
   readonly mcpAuditing = signal<boolean>(false);
+  readonly mcpAuditError = signal<string | null>(null);
 
   firstRender = true;
   dayAppliedFromParam = false;
@@ -191,12 +204,10 @@ export class Stats {
 
   /** Compliance statement generation state */
   readonly showComplianceModal = signal<boolean>(false);
+  readonly complianceBankAccountId = signal<string>('');
   readonly complianceMeta = signal<ComplianceReportMetadata>({
-    operatorName: 'Operador P2P Independiente',
-    documentId: 'V-00.000.000',
-    economicActivity: 'Intercambio y corretaje de criptoactivos en plataforma P2P',
-    targetBank: 'Banesco Banco Universal',
-    targetAccountNumber: '',
+    ...DEFAULT_COMPLIANCE_META,
+    ...(this.storage.get<Partial<ComplianceReportMetadata>>(COMPLIANCE_META_KEY) ?? {}),
   });
   readonly complianceStartDate = signal<string>('');
   readonly complianceEndDate = signal<string>('');
@@ -298,6 +309,7 @@ export class Stats {
     return generateComplianceStatement(ops, accounts, counterparties, this.complianceMeta(), {
       startDate: this.complianceStartDate() || undefined,
       endDate: this.complianceEndDate() || undefined,
+      bankAccountId: this.complianceBankAccountId() || undefined,
       pair: this.pairFilter(),
     });
   });
@@ -640,7 +652,39 @@ export class Stats {
   }
 
   patchComplianceMeta(partial: Partial<ComplianceReportMetadata>): void {
-    this.complianceMeta.update((curr) => ({ ...curr, ...partial }));
+    this.complianceMeta.update((curr) => {
+      const next = { ...curr, ...partial };
+      this.storage.set(COMPLIANCE_META_KEY, next);
+      return next;
+    });
+  }
+
+  selectComplianceBankAccount(accountId: string): void {
+    this.complianceBankAccountId.set(accountId);
+    if (!accountId) return;
+    const acc = this.accountsService.getAccountById(accountId);
+    if (acc) {
+      this.patchComplianceMeta({
+        targetBank: acc.bankName,
+        targetAccountNumber: acc.accountNumberMasked,
+      });
+    }
+  }
+
+  syncLiveCapitalToStress(): void {
+    const usages = this.accountsService.usages();
+    const totalVes = usages.reduce((sum, u) => sum + Math.max(0, u.currentBalanceVes), 0);
+    if (totalVes > 0) {
+      this.stressVesCapital.set(Math.round(totalVes * 100) / 100);
+    }
+    const openUsdt = Math.max(0, this.fifoSummary().openInventoryAmount);
+    if (openUsdt > 0) {
+      this.stressUsdtCapital.set(Math.round(openUsdt * 100) / 100);
+    }
+    const liveRate = this.liveMarketRate().rate;
+    if (liveRate && liveRate > 0) {
+      this.stressRefRate.set(Math.round(liveRate * 100) / 100);
+    }
   }
 
   openComplianceModal(): void {
@@ -668,8 +712,11 @@ export class Stats {
   }
 
   async runStressTest(): Promise<void> {
+    this.mcpStressError.set(null);
     if (this.stressRefRate() <= 0) {
-      this.toast?.error('Ingresa una tasa de referencia mayor a 0 Bs para simular estrés.');
+      const msg = 'Ingresa una tasa de referencia mayor a 0 Bs para simular estrés.';
+      this.mcpStressError.set(msg);
+      this.toast?.error(msg);
       return;
     }
     this.mcpStressTesting.set(true);
@@ -685,17 +732,22 @@ export class Stats {
           res.result as NonNullable<ReturnType<typeof this.mcpStressResult>>,
         );
       } else {
-        this.toast?.error(res.error || 'No se pudo completar el stress test cambiario.');
+        const msg = res.error || 'No se pudo completar el stress test cambiario.';
+        this.mcpStressError.set(msg);
+        this.toast?.error(msg);
       }
     } catch (err) {
       console.error('[Stats] Error executing stress test:', err);
-      this.toast?.error('Error inesperado al ejecutar stress test cambiario.');
+      const msg = 'Error inesperado al ejecutar stress test cambiario.';
+      this.mcpStressError.set(msg);
+      this.toast?.error(msg);
     } finally {
       this.mcpStressTesting.set(false);
     }
   }
 
   async runCounterpartyAudit(): Promise<void> {
+    this.mcpAuditError.set(null);
     this.mcpAuditing.set(true);
     try {
       const opsCount = this.filteredOps().length;
@@ -710,11 +762,15 @@ export class Stats {
           res.result as NonNullable<ReturnType<typeof this.mcpCounterpartyAuditResult>>,
         );
       } else {
-        this.toast?.error(res.error || 'No se pudo auditar exposición de contrapartes.');
+        const msg = res.error || 'No se pudo auditar exposición de contrapartes.';
+        this.mcpAuditError.set(msg);
+        this.toast?.error(msg);
       }
     } catch (err) {
       console.error('[Stats] Error auditing counterparties:', err);
-      this.toast?.error('Error inesperado al auditar exposición de contrapartes.');
+      const msg = 'Error inesperado al auditar exposición de contrapartes.';
+      this.mcpAuditError.set(msg);
+      this.toast?.error(msg);
     } finally {
       this.mcpAuditing.set(false);
     }

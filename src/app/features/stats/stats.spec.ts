@@ -1,10 +1,11 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Stats } from './stats';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
 import { AccountsService } from '../../core/accounts.service';
+import { McpService } from '../../core/mcp.service';
 import type { Operation } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -209,5 +210,56 @@ describe('Stats', () => {
     c.calendarMonth.set(7);
     expect(c.liveMarketRate().rate).toBeNull();
     expect(c.calendarMonthView().totalPnlUsdt).toBe(0);
+  });
+
+  it('persists complianceMeta and filters complianceStatement by complianceBankAccountId', () => {
+    seed([
+      op({ id: 'a1', bankAccountId: 'banesco-pm-1', vesAmount: 8000, usdtAmount: 10 }),
+      op({ id: 'a2', bankAccountId: 'mercantil-pm-1', vesAmount: 9000, usdtAmount: 11 }),
+    ]);
+
+    const f1 = create();
+    f1.detectChanges();
+    f1.componentInstance.patchComplianceMeta({
+      operatorName: 'Desk Cripto C.A.',
+      documentId: 'J-99999999-1',
+    });
+    f1.componentInstance.selectComplianceBankAccount('mercantil-pm-1');
+    f1.detectChanges();
+
+    expect(f1.componentInstance.complianceStatement().totalOperations).toBe(1);
+    expect(f1.componentInstance.complianceStatement().records[0].id).toBe('a2');
+
+    const f2 = TestBed.createComponent(Stats);
+    f2.detectChanges();
+    expect(f2.componentInstance.complianceMeta().operatorName).toBe('Desk Cripto C.A.');
+    expect(f2.componentInstance.complianceMeta().documentId).toBe('J-99999999-1');
+  });
+
+  it('surfaces MCP errors and preserves UNVERIFIED_NO_COUNTERPARTY_LEDGER verdict honestly', async () => {
+    const mcp = TestBed.inject(McpService);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    c.stressRefRate.set(0);
+    await c.runStressTest();
+    expect(c.mcpStressError()).toContain('mayor a 0');
+
+    vi.spyOn(mcp, 'auditCounterpartyExposure').mockResolvedValueOnce({
+      success: true,
+      result: {
+        complianceVerdict: 'UNVERIFIED_NO_COUNTERPARTY_LEDGER',
+        uniqueCounterpartiesCount: null,
+        unavailableReason: 'NO_COUNTERPARTY_LEDGER',
+        actionable: false,
+      },
+      executionTimeMs: 5,
+    });
+    await c.runCounterpartyAudit();
+    expect(c.mcpAuditError()).toBeNull();
+    expect(c.mcpCounterpartyAuditResult()?.complianceVerdict).toBe(
+      'UNVERIFIED_NO_COUNTERPARTY_LEDGER',
+    );
   });
 });

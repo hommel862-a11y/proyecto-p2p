@@ -14,6 +14,7 @@ import {
 import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { AccountsService } from '../../core/accounts.service';
+import { CounterpartyService } from '../../core/counterparty.service';
 import { CotizaveService } from '../../core/cotizave.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { FinanceAiIngestorService } from '../../core/services/finance-ai-ingestor.service';
@@ -40,6 +41,7 @@ export class ReceiptScanner {
   private readonly storage = inject(StorageService);
   private readonly toast = inject(ToastService);
   private readonly accountsService = inject(AccountsService);
+  private readonly counterpartyService = inject(CounterpartyService, { optional: true });
   private readonly cotizaveService = inject(CotizaveService);
   readonly finance360Service = inject(Finance360Service);
   private readonly aiIngestor = inject(FinanceAiIngestorService);
@@ -434,27 +436,77 @@ export class ReceiptScanner {
   }
 
   /**
-   * Settles to P2P Trading Mesa (Legacy behavior)
+   * Settles a parsed bank receipt to the P2P operation ledger with bank/counterparty matching.
    */
   settleToLedger(record: BankReceiptRecord): void {
     try {
       const now = new Date().toISOString();
+      const activeAccounts = this.accountsService
+        .accounts()
+        .filter((a) => a.bankCode === record.bank && a.status !== 'DISABLED');
+      const prefersMobile = /pago\s*m[oó]vil|pagomovil/i.test(record.rawText || '');
+      const matchedAccount =
+        activeAccounts.find((a) =>
+          prefersMobile ? a.rail === 'PAGO_MOVIL' : a.rail === 'TRANSFERENCIA',
+        ) ?? activeAccounts[0];
+
+      const matchedCounterparty =
+        (record.payerId ? this.counterpartyService?.findByQuery(record.payerId) : undefined) ??
+        (record.payerName ? this.counterpartyService?.findByQuery(record.payerName) : undefined);
+
+      let liveRate = 0;
+      if (this.cotizaveService.ratesProvenance() !== 'none') {
+        const rates = this.cotizaveService.ratesByMarket();
+        for (const key of ['binance', 'parallel', 'oficial']) {
+          const entry = rates[key];
+          if (!entry) continue;
+          const candidate =
+            entry.mid && entry.mid > 0
+              ? entry.mid
+              : entry.ask && entry.bid
+                ? (entry.ask + entry.bid) / 2
+                : entry.ask || entry.bid || 0;
+          if (candidate > 0) {
+            liveRate = Math.round(candidate * 100) / 100;
+            break;
+          }
+        }
+      }
+
+      const vesAmount =
+        record.currency === 'VES'
+          ? record.amount
+          : liveRate > 0
+            ? Math.round(record.amount * liveRate * 100) / 100
+            : 0;
+      const usdtAmount =
+        record.currency === 'USD'
+          ? record.amount
+          : liveRate > 0
+            ? Math.round((record.amount / liveRate) * 10000) / 10000
+            : 0;
+
       const newOp: Operation = {
         id: crypto.randomUUID(),
         timestamp: now,
         type: record.currency === 'VES' ? 'sell' : 'buy',
         pair: 'USDT',
-        vesAmount: record.currency === 'VES' ? record.amount : 0,
-        usdtAmount: record.currency === 'USD' ? record.amount : 0,
-        price: 0,
+        vesAmount,
+        usdtAmount,
+        price: liveRate,
         merchantNote: `Comprobante ${record.bankDisplayName} Ref: ${record.reference}`,
         fees: 0,
         notes: `[Comprobante OCR] ${record.payerName ? 'Pagador: ' + record.payerName : ''} ${record.payerId ? '(' + record.payerId + ')' : ''} | Beneficiario: ${record.beneficiaryName || 'N/A'}`,
         errorFree: !record.antiTriangulationAlert && !record.isDuplicate,
+        bankAccountId: matchedAccount?.id,
+        counterpartyId: matchedCounterparty?.id,
+        payerName: record.payerName,
+        receiptReference: record.reference,
       };
 
-      const currentOps: Operation[] = this.storage.get<Operation[]>(OPS_KEY) ?? [];
-      this.storage.set(OPS_KEY, [newOp, ...currentOps]);
+      const rawOps = this.storage.get<Operation[]>(OPS_KEY);
+      const currentOps: Operation[] = Array.isArray(rawOps) ? rawOps : [];
+      this.storage.set(OPS_KEY, [...currentOps, newOp]);
       this.accountsService.refreshLedger();
 
       this.toast.success(`⚡ Comprobante Ref #${record.reference} asentado en la Mesa P2P.`);
