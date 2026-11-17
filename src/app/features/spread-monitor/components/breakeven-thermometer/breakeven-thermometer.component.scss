@@ -245,3 +245,41 @@
   }
   .be-split-pill:hover, .be-dispatch-cta:hover { transform: none !important; }
 }
+
+:host-context([data-theme="apple-dark"]) {
+  .be-glass-desk {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .be-hero-box,
+  .be-thermo-card,
+  .be-split-drawer {
+    background: #16161f;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .be-hero-box.be-hero-target {
+    background: #16161f;
+    border-left: 3px solid var(--gold, #ffd60a);
+  }
+
+  .be-thermo-stage,
+  .be-legend-item,
+  .be-ladder-table-wrap,
+  .be-split-card {
+    background: #14141a;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .be-dispatch-cta {
+    background: #16161f;
+    border-color: rgba(255, 214, 10, 0.45);
+    color: var(--gold-strong, #ffe247);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  }
+}
