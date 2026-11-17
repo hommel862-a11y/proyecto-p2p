@@ -56,6 +56,7 @@ function aggregate(ops: Operation[], kind: PeriodKind): PeriodStat[] {
     }
   >();
   for (const o of ops) {
+    if (o.type !== 'buy' && o.type !== 'sell') continue;
     const key = periodKey(o.timestamp, kind);
     const acc = map.get(key) ?? {
       operations: 0,

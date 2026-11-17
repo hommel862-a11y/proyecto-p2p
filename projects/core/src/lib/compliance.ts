@@ -27,6 +27,7 @@ export interface ComplianceFilter {
   startDate?: string;
   endDate?: string;
   bankAccountId?: string;
+  pair?: 'all' | 'USDT' | 'EUR';
 }
 
 export interface ComplianceRecordItem {
@@ -42,6 +43,8 @@ export interface ComplianceRecordItem {
   counterpartyAlias: string;
   counterpartyRealName?: string;
   counterpartyDocumentId?: string;
+  receiptReference?: string;
+  payerName?: string;
   complianceVerdict: 'CONFORME' | 'OBSERVACIÓN';
 }
 
@@ -56,6 +59,7 @@ export interface ComplianceStatement {
   totalVesEgresos: number; // Compra de cripto (salidas de VES de la cuenta)
   totalCryptoIn: number; // Cripto comprado
   totalCryptoOut: number; // Cripto vendido
+  totalFeesVes?: number;
   netMarginVes: number;
   records: ComplianceRecordItem[];
   generatedAt: string;
@@ -74,8 +78,13 @@ export function generateComplianceStatement(
   const accountsMap = new Map<string, BankAccount>(accounts.map((a) => [a.id, a]));
   const cpMap = new Map<string, Counterparty>(counterparties.map((c) => [c.id, c]));
 
-  let filtered = [...allOps];
+  let filtered = (Array.isArray(allOps) ? allOps : []).filter(
+    (o) => o.type === 'buy' || o.type === 'sell',
+  );
 
+  if (filter?.pair && filter.pair !== 'all') {
+    filtered = filtered.filter((o) => o.pair === filter.pair);
+  }
   if (filter?.startDate) {
     filtered = filtered.filter((o) => o.timestamp.slice(0, 10) >= filter.startDate!);
   }
@@ -91,6 +100,8 @@ export function generateComplianceStatement(
 
   let totalVesIngresos = 0;
   let totalVesEgresos = 0;
+  let totalSellFeesVes = 0;
+  let totalFeesVes = 0;
   let totalCryptoIn = 0;
   let totalCryptoOut = 0;
 
@@ -98,16 +109,27 @@ export function generateComplianceStatement(
 
   for (const op of filtered) {
     const isBuy = op.type === 'buy';
+    const fee = Number(op.fees) || 0;
+    totalFeesVes += fee;
     if (isBuy) {
-      totalVesEgresos += op.vesAmount + op.fees;
+      totalVesEgresos += op.vesAmount + fee;
       totalCryptoIn += op.usdtAmount;
     } else {
       totalVesIngresos += op.vesAmount;
+      totalSellFeesVes += fee;
       totalCryptoOut += op.usdtAmount;
     }
 
     const acc = op.bankAccountId ? accountsMap.get(op.bankAccountId) : undefined;
     const cp = op.counterpartyId ? cpMap.get(op.counterpartyId) : undefined;
+    const isMesaBcv =
+      op.merchantNote?.startsWith('MESA_BCV:') || op.notes?.includes('MESA_BCV:');
+    const bankAccountName = acc
+      ? `${acc.bankName} (${acc.rail})`
+      : isMesaBcv
+        ? 'Mesa Cambiaria BCV'
+        : 'No asignada';
+    const hasInvalidMetrics = op.price <= 0 || op.vesAmount <= 0 || op.usdtAmount <= 0;
 
     records.push({
       id: op.id,
@@ -117,12 +139,14 @@ export function generateComplianceStatement(
       vesAmount: roundMoney(op.vesAmount, 2),
       cryptoAmount: roundMoney(op.usdtAmount, 4),
       price: roundMoney(op.price, 2),
-      feesVes: roundMoney(op.fees, 2),
-      bankAccountName: acc ? `${acc.bankName} (${acc.rail})` : 'No asignada',
+      feesVes: roundMoney(fee, 2),
+      bankAccountName,
       counterpartyAlias: cp ? cp.alias : op.merchantNote || 'Desconocido',
       counterpartyRealName: cp?.realName,
       counterpartyDocumentId: cp?.documentId,
-      complianceVerdict: op.errorFree ? 'CONFORME' : 'OBSERVACIÓN',
+      receiptReference: op.receiptReference,
+      payerName: op.payerName,
+      complianceVerdict: !op.errorFree || hasInvalidMetrics ? 'OBSERVACIÓN' : 'CONFORME',
     });
   }
 
@@ -140,7 +164,8 @@ export function generateComplianceStatement(
     totalVesEgresos: roundMoney(totalVesEgresos, 2),
     totalCryptoIn: roundMoney(totalCryptoIn, 4),
     totalCryptoOut: roundMoney(totalCryptoOut, 4),
-    netMarginVes: roundMoney(totalVesIngresos - totalVesEgresos, 2),
+    totalFeesVes: roundMoney(totalFeesVes, 2),
+    netMarginVes: roundMoney(totalVesIngresos - totalVesEgresos - totalSellFeesVes, 2),
     records,
     generatedAt: new Date().toISOString(),
   };

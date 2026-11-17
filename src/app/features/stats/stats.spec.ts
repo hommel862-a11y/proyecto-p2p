@@ -1,8 +1,10 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Stats } from './stats';
 import { P2P_STORAGE } from '../../core/storage';
 import { MemoryStorage } from '../../core/memory-storage';
+import { AccountsService } from '../../core/accounts.service';
 import type { Operation } from '@p2p/core';
 
 const OPS_KEY = 'p2p.operations';
@@ -32,7 +34,7 @@ describe('Stats', () => {
     mem = new MemoryStorage();
     TestBed.configureTestingModule({
       imports: [Stats],
-      providers: [{ provide: P2P_STORAGE, useValue: mem }],
+      providers: [provideRouter([]), { provide: P2P_STORAGE, useValue: mem }],
     });
   });
 
@@ -141,5 +143,71 @@ describe('Stats', () => {
     f.detectChanges();
     expect(f.componentInstance.rows().length).toBe(0);
     expect(f.componentInstance.totals().operations).toBe(0);
+  });
+
+  it('reactively updates totals and FIFO spread audit when AccountsService refreshes the ledger', () => {
+    const f = create();
+    f.detectChanges();
+    expect(f.componentInstance.totals().operations).toBe(0);
+    expect(f.componentInstance.spreadDiscipline().assessmentStatus).toBe('NOT_ASSESSED');
+
+    seed([
+      op({
+        id: 'buy-1',
+        type: 'buy',
+        timestamp: '2026-07-15T10:00:00Z',
+        vesAmount: 8000,
+        usdtAmount: 10,
+        price: 800,
+      }),
+      op({
+        id: 'sell-1',
+        type: 'sell',
+        timestamp: '2026-07-15T12:00:00Z',
+        vesAmount: 8160,
+        usdtAmount: 10,
+        price: 816,
+      }),
+    ]);
+
+    const accounts = TestBed.inject(AccountsService);
+    accounts.refreshLedger();
+    f.detectChanges();
+
+    expect(f.componentInstance.totals().operations).toBe(2);
+    expect(f.componentInstance.fifoSummary().realizedPnlVes).toBeCloseTo(160);
+    expect(f.componentInstance.spreadDiscipline().assessmentStatus).toBe('ASSESSED');
+    expect(f.componentInstance.spreadDiscipline().complianceRatePct).toBe(100);
+  });
+
+  it('applies pairFilter consistently across calendarMonthView and complianceStatement', () => {
+    seed([
+      op({ id: 'u1', pair: 'USDT', timestamp: '2026-07-15T10:00:00Z', vesAmount: 8000, usdtAmount: 10 }),
+      op({ id: 'e1', pair: 'EUR', timestamp: '2026-07-15T12:00:00Z', vesAmount: 9000, usdtAmount: 10 }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+    c.calendarYear.set(2026);
+    c.calendarMonth.set(7);
+    c.setPairFilter('EUR');
+    f.detectChanges();
+
+    expect(c.calendarMonthView().totalOperations).toBe(1);
+    expect(c.complianceStatement().totalOperations).toBe(1);
+    expect(c.complianceStatement().records[0].pair).toBe('EUR');
+  });
+
+  it('does not substitute hardcoded 60.0 Bs when no live reference rate is active', () => {
+    seed([
+      op({ id: 'u1', type: 'buy', timestamp: '2026-07-15T10:00:00Z', vesAmount: 8000, usdtAmount: 10, price: 800 }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+    c.calendarYear.set(2026);
+    c.calendarMonth.set(7);
+    expect(c.liveMarketRate().rate).toBeNull();
+    expect(c.calendarMonthView().totalPnlUsdt).toBe(0);
   });
 });

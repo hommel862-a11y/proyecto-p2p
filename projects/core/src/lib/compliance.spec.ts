@@ -100,4 +100,73 @@ describe('Compliance and Justification Statement Engine', () => {
     expect(statement.totalVesIngresos).toBe(82500);
     expect(statement.totalVesEgresos).toBe(0);
   });
+
+  it('excludes assign allocations, deducts sell fees from net margin, and flags invalid ops as OBSERVACIÓN', () => {
+    const extendedOps: Operation[] = [
+      {
+        id: 'assign-op',
+        timestamp: '2026-08-15T08:00:00.000Z',
+        type: 'assign',
+        pair: 'USDT',
+        vesAmount: 40000,
+        usdtAmount: 50,
+        price: 800,
+        merchantNote: '',
+        fees: 0,
+        notes: 'Fondeo inicial',
+        errorFree: true,
+      },
+      {
+        id: 'buy-bcv',
+        timestamp: '2026-08-15T09:00:00.000Z',
+        type: 'buy',
+        pair: 'USDT',
+        vesAmount: 80000,
+        usdtAmount: 100,
+        price: 800,
+        merchantNote: 'MESA_BCV: Banesco',
+        fees: 100,
+        notes: 'MESA_BCV: Banesco',
+        errorFree: true,
+        receiptReference: 'REF-BCV-01',
+      },
+      {
+        id: 'sell-fee',
+        timestamp: '2026-08-15T12:00:00.000Z',
+        type: 'sell',
+        pair: 'USDT',
+        vesAmount: 83000,
+        usdtAmount: 100,
+        price: 830,
+        merchantNote: 'Pago Movil',
+        fees: 250,
+        notes: '',
+        errorFree: true,
+        payerName: 'Pedro Perez',
+      },
+      {
+        id: 'ocr-zero-price',
+        timestamp: '2026-08-15T13:00:00.000Z',
+        type: 'sell',
+        pair: 'USDT',
+        vesAmount: 1000,
+        usdtAmount: 0,
+        price: 0,
+        merchantNote: 'Comprobante OCR',
+        fees: 0,
+        notes: '',
+        errorFree: true,
+      },
+    ];
+
+    const statement = generateComplianceStatement(extendedOps, accounts, counterparties, metadata);
+    expect(statement.totalOperations).toBe(3);
+    expect(statement.totalVesEgresos).toBe(80100);
+    expect(statement.totalVesIngresos).toBe(84000);
+    expect(statement.netMarginVes).toBe(3650); // 84000 - 80100 - 250 sell fee
+    expect(statement.records[0].bankAccountName).toContain('Mesa Cambiaria BCV');
+    expect(statement.records[0].receiptReference).toBe('REF-BCV-01');
+    expect(statement.records[1].payerName).toBe('Pedro Perez');
+    expect(statement.records[2].complianceVerdict).toBe('OBSERVACIÓN');
+  });
 });

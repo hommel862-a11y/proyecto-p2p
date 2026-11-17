@@ -105,4 +105,42 @@ describe('computeStats', () => {
     expect(z.daily).toEqual([]);
     expect(z.quarterly).toEqual([]);
   });
+
+  it('excludes treasury assign entries from trade counts and PnL', () => {
+    const mixed: Operation[] = [
+      {
+        id: 'assign-1',
+        timestamp: '2026-07-15T09:00:00.000Z',
+        type: 'assign',
+        pair: 'USDT',
+        vesAmount: 50000,
+        usdtAmount: 60,
+        price: 833.33,
+        merchantNote: 'fondeo',
+        notes: '',
+        fees: 100,
+        errorFree: true,
+      },
+      op({
+        timestamp: '2026-07-15T10:00:00.000Z',
+        type: 'buy',
+        usdtAmount: 10,
+        vesAmount: 8000,
+        fees: 0,
+      }),
+      op({
+        timestamp: '2026-07-15T11:00:00.000Z',
+        type: 'sell',
+        usdtAmount: 10,
+        vesAmount: 8200,
+        fees: 0,
+      }),
+    ];
+    const s = computeStats(mixed);
+    expect(s.daily).toHaveLength(1);
+    expect(s.daily[0].operations).toBe(2);
+    expect(s.daily[0].volumeUsdt).toBe(20);
+    expect(s.daily[0].pnlVes).toBeCloseTo(200);
+    expect(s.daily[0].fees).toBe(0);
+  });
 });
