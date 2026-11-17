@@ -246,4 +246,119 @@ describe('P2PRadarService', () => {
     expect(summary.averageNetSpreadPct).toBe(3.12);
     expect(summary.interbankCyclesCount).toBe(1);
   });
+
+  it('deduplicates concurrent scanRadar calls via single-flight lock and tolerates partial failures via Promise.allSettled', async () => {
+    const mockOk = {
+      data: [
+        {
+          adv: {
+            advNo: 'OK-1',
+            price: '99.00',
+            surplusAmount: '500',
+            minSingleTransAmount: '1000',
+            maxSingleTransAmount: '50000',
+            payTimeLimit: 15,
+            tradeMethods: [{ payType: 'Banesco' }],
+          },
+          advertiser: {
+            userNo: 'U1',
+            nickName: 'OkMerchant',
+            monthOrderCount: 100,
+            monthFinishRate: 0.99,
+            userType: 'merchant',
+          },
+        },
+      ],
+    };
+
+    let callIdx = 0;
+    const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('p2p.binance.com')) {
+        callIdx++;
+        // Fail every even leg so 1 side succeeds and 1 fails (partial failure)
+        if (callIdx % 2 === 0) {
+          throw new Error('simulated network hiccup');
+        }
+        return { ok: true, status: 200, json: async () => mockOk };
+      }
+      throw new Error('offline bridge');
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    service.activePaymentMethods.set(['Banesco']);
+    const [r1, r2] = await Promise.all([
+      service.scanRadar('USDT', 'VES'),
+      service.scanRadar('USDT', 'VES'),
+    ]);
+
+    expect(r1).toBe(r2);
+    expect(r1.size).toBe(1); // BUY succeeded while SELL failed -> partial result kept
+    expect(service.error()).toContain('Escaneo parcial');
+    vi.unstubAllGlobals();
+  });
+
+  it('prunes deselected bank books immediately and sanitizes null/NaN numeric setters', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            {
+              adv: {
+                advNo: 'A1',
+                price: '100',
+                surplusAmount: '500',
+                minSingleTransAmount: '1000',
+                maxSingleTransAmount: '50000',
+                payTimeLimit: 15,
+              },
+              advertiser: {
+                userNo: 'U1',
+                nickName: 'Trader',
+                monthOrderCount: 90,
+                monthFinishRate: 98.5, // Percentage format > 1 normalized safely
+                userType: 'merchant',
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    service.activePaymentMethods.set(['Banesco', 'Mercantil']);
+    await service.scanRadar();
+    expect(service.radarBooks().size).toBe(4);
+
+    service.togglePaymentMethod('Mercantil');
+    expect(service.radarBooks().has('Mercantil_BUY')).toBe(false);
+    expect(service.radarBooks().has('Mercantil_SELL')).toBe(false);
+    expect(service.radarBooks().size).toBe(2);
+
+    service.setTargetNetMargin(0.5);
+    service.setTargetNetMargin(null as unknown as number);
+    service.setOperatingCapital(Number.NaN);
+    service.setInterbankFriction(-1);
+    expect(service.targetNetMarginPct()).toBe(0.5);
+    expect(service.operatingCapitalUsdt()).toBe(1000);
+    expect(service.interbankFrictionPct()).toBe(0.3);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('resets autoRefreshIntervalSec and countdown when stopAutoRefresh() is called', () => {
+    vi.useFakeTimers();
+    service.setAutoRefreshInterval(10);
+    expect(service.autoRefreshIntervalSec()).toBe(10);
+    expect(service.streamCountdownSec()).toBe(10);
+
+    vi.advanceTimersByTime(3000);
+    expect(service.streamCountdownSec()).toBe(7);
+
+    service.stopAutoRefresh();
+    expect(service.autoRefreshIntervalSec()).toBe(0);
+    expect(service.streamCountdownSec()).toBe(0);
+    vi.useRealTimers();
+  });
 });
