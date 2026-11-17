@@ -650,7 +650,7 @@
   margin: 0 auto;
   background: transparent;
   border-radius: var(--radius-lg);
-  contain: paint;
+  overflow-x: clip;
 }
 .content::before {
   display: none;

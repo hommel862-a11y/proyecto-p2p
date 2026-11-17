@@ -285,7 +285,8 @@ export class AccountsService {
     // `ledgerRevision` is intentionally read to make this computed re-evaluate when
     // the operation ledger is written elsewhere (operation-log persists the same key).
     void this.ledgerRevision();
-    return this.storage.get<Operation[]>(OPS_KEY) ?? [];
+    const raw = this.storage.get<Operation[]>(OPS_KEY);
+    return Array.isArray(raw) ? raw : [];
   });
 
   readonly todayOperations = computed<Operation[]>(() => {

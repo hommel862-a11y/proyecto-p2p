@@ -875,6 +875,34 @@ button:disabled, .btn:disabled {
 }
 .btn-icon-danger svg { width: 16px; height: 16px; }
 
+.btn-icon {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  transition: border-color 0.18s var(--ease-out), color 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
+
+  &:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--line-strong);
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.btn-sm {
+  padding: 7px 13px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+}
+
 /* ============================================================
    Badges & Chips — Luminous Telemetry Tags
    ============================================================ */
@@ -919,6 +947,16 @@ button:disabled, .btn:disabled {
   color: var(--muted);
   background: rgba(147, 163, 191, 0.09);
   border-color: var(--line);
+}
+.badge-danger {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+}
+.badge-warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 42%, transparent);
 }
 
 /* ============================================================
@@ -1202,8 +1240,8 @@ button:disabled, .btn:disabled {
 .corporate-table tr:last-child td {
   border-bottom: none;
 }
-.corporate-table td:last-child,
-.corporate-table th:last-child {
+.corporate-table td:last-child:not(.text-left):not(.text-center),
+.corporate-table th:last-child:not(.text-left):not(.text-center) {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -2230,7 +2268,8 @@ button:disabled, .btn:disabled {
   z-index: 1000;
   padding: 20px;
 }
-.modal-dialog {
+.modal-dialog,
+.modal-content {
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
@@ -2239,6 +2278,9 @@ button:disabled, .btn:disabled {
   width: 100%;
   box-shadow: var(--shadow-lg), 0 0 30px rgba(216, 180, 92, 0.12);
   animation: modalIn 0.25s var(--ease-out);
+}
+.modal-content {
+  max-width: 920px;
 }
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -2539,6 +2581,9 @@ button:disabled, .btn:disabled {
   }
 
   /* Hide app nav, headers, and modal backdrop overlays */
+  .sidebar,
+  .header-bar,
+  .mobile-bottom-nav,
   app-root > header,
   app-root > nav,
   .modal-backdrop {
@@ -2546,6 +2591,12 @@ button:disabled, .btn:disabled {
     background: none !important;
     padding: 0 !important;
     inset: auto !important;
+  }
+
+  .sidebar,
+  .header-bar,
+  .mobile-bottom-nav {
+    display: none !important;
   }
 
   .modal-content {
@@ -2680,6 +2731,27 @@ button:disabled, .btn:disabled {
 
   .mobile-only {
     display: inline-flex !important;
+  }
+
+  .modal-backdrop {
+    z-index: 1200;
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal-dialog,
+  .modal-content {
+    padding: 16px;
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  .toast-container {
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
   }
 }
 

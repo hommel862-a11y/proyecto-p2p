@@ -141,6 +141,7 @@ function sanitizeStatsUi(raw: StatsUiState | null): StatsUiState | null {
   standalone: true,
   imports: [CommonModule, UiCard, UiPanelHeader, UiToolbarSegmented, UiChip],
   templateUrl: './stats.html',
+  styleUrl: './stats.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Stats {
@@ -319,6 +320,11 @@ export class Stats {
   readonly fifoSummary = computed<FifoAccountingSummary>(() =>
     computeFifoAccounting(this.filteredOps()),
   );
+
+  readonly profitFactorLabel = computed<string>(() => {
+    const pf = this.fifoSummary().profitFactor;
+    return Number.isFinite(pf) ? pf.toFixed(2) : '∞';
+  });
 
   /** Golden Rule discipline evaluated strictly over closed FIFO trade pairs (NOT_ASSESSED when empty). */
   readonly spreadDiscipline = computed<SpreadDisciplineResult>(() => {

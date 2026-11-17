@@ -1,154 +1,519 @@
-<section class="panel">
-  <header class="quantum-hero-banner">
+<section class="panel stats-workspace">
+  <header class="quantum-hero-banner stats-hero">
     <div class="quantum-hero-title-group">
       <span class="quantum-eyebrow">
         <span class="quantum-live-dot"></span>
-        AUDIT ANALYTICS &amp; HEATMAP LEDGER
+        ANALÍTICA CUANTITATIVA &amp; CUMPLIMIENTO BANCARIO
       </span>
-      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <h1 style="margin: 0;">Estadísticas</h1>
+      <div class="stats-title-row">
+        <h1>Estadísticas</h1>
         <span class="badge badge-gold font-mono">{{ fmtNum(totals().operations) }} Ops</span>
+        @if (complianceTelemetry().compositeScore !== null) {
+          <span
+            class="badge font-mono"
+            [class.badge-accent]="complianceTelemetry().verdictLabel === 'CONFORME'"
+            [class.badge-danger]="complianceTelemetry().verdictLabel === 'ALERTA'"
+          >
+            Score {{ complianceTelemetry().compositeScore }}/100 · {{ complianceTelemetry().verdictLabel }}
+          </span>
+        } @else {
+          <span class="badge badge-muted font-mono">SIN DATOS</span>
+        }
       </div>
-      <p class="note" style="margin: 2px 0 0;">Rendimiento agrupado de tu registro de operaciones. Los periodos usan la fecha UTC del registro.</p>
+      <p class="note stats-subtitle">
+        Rendimiento FIFO, trazabilidad OCR y auditoría por cuenta bancaria (UTC).
+      </p>
     </div>
-    <div class="quantum-hero-actions">
-      <button type="button" class="btn btn-secondary" style="padding: 7px 14px; font-size: 0.8rem;" (click)="openComplianceModal()">
+
+    <div class="quantum-hero-actions stats-hero-actions">
+      <button type="button" class="btn btn-secondary btn-sm" (click)="exportFilteredCsv()">
+        📥 Exportar CSV
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" (click)="openComplianceModal()">
         📄 Justificación Bancaria (PDF)
       </button>
     </div>
   </header>
 
-  <app-ui-card variant="terminal">
-    <app-ui-panel-header icon="📈" title="Período Operativo & Segmentación">
-      <button uiHeaderActions type="button" class="btn btn-secondary" style="padding: 6px 14px; font-size: 0.8rem;" (click)="openComplianceModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; margin-right: 6px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        Justificación Bancaria (PDF)
-      </button>
-    </app-ui-panel-header>
-
-    <div class="terminal-card-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-      <app-ui-toolbar-segmented>
-        <button type="button" class="btn-ghost" [class.active]="period() === 'day'" (click)="setPeriod('day')" style="padding: 6px 14px; font-size: 0.82rem; border-radius: 8px;">Día</button>
-        <button type="button" class="btn-ghost" [class.active]="period() === 'month'" (click)="setPeriod('month')" style="padding: 6px 14px; font-size: 0.82rem; border-radius: 8px;">Mes</button>
-        <button type="button" class="btn-ghost" [class.active]="period() === 'quarter'" (click)="setPeriod('quarter')" style="padding: 6px 14px; font-size: 0.82rem; border-radius: 8px;">Trimestre</button>
-        <button type="button" class="btn-ghost" [class.active]="period() === 'session'" (click)="setPeriod('session')" style="padding: 6px 14px; font-size: 0.82rem; border-radius: 8px;">Sesiones</button>
-        <button type="button" class="btn-ghost" [class.active]="period() === 'calendar'" (click)="setPeriod('calendar')" style="padding: 6px 14px; font-size: 0.82rem; border-radius: 8px;">📅 Bitácora Calendario</button>
-      </app-ui-toolbar-segmented>
-
-      <div class="terminal-field" style="min-width: 180px; margin: 0;">
-        <div class="input-control-wrap">
-          <span class="input-prefix" aria-hidden="true">PAR</span>
-          <select
-            id="stats-pair-filter"
-            class="terminal-select"
-            [value]="pairFilter()"
-            (change)="setPairFilter($any($event.target).value)"
-            aria-label="Filtrar estadísticas por par comercial"
+  <app-ui-card variant="terminal" class="stats-command-card">
+    <div class="stats-toolbar-row">
+      <div class="stats-tabs-cluster">
+        <app-ui-toolbar-segmented class="stats-tabs-bar" aria-label="Vistas del módulo de cumplimiento">
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="workspaceTab() === 'overview'"
+            (click)="setWorkspaceTab('overview')"
           >
-            <option value="all">Todos los Pares</option>
-            <option value="USDT">USDT / VES</option>
-            <option value="EUR">EUR / VES</option>
-          </select>
-        </div>
+            Resumen 360°
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="workspaceTab() === 'calendar'"
+            (click)="setWorkspaceTab('calendar')"
+          >
+            📅 Bitácora Calendario
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="workspaceTab() === 'session'"
+            (click)="setWorkspaceTab('session')"
+          >
+            Sesiones
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="workspaceTab() === 'stress'"
+            (click)="setWorkspaceTab('stress')"
+          >
+            Estrés &amp; Riesgo
+          </button>
+        </app-ui-toolbar-segmented>
+
+        <app-ui-toolbar-segmented class="stats-period-bar" aria-label="Agrupación temporal">
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="period() === 'day'"
+            (click)="setPeriod('day')"
+          >
+            Día
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="period() === 'month'"
+            (click)="setPeriod('month')"
+          >
+            Mes
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
+            [class.active]="period() === 'quarter'"
+            (click)="setPeriod('quarter')"
+          >
+            Trimestre
+          </button>
+        </app-ui-toolbar-segmented>
       </div>
 
-      @if (dayAppliedFromParam) {
-        <div class="terminal-field" style="min-width: 180px; margin: 0; margin-top: 4px;">
+      <div class="stats-filters-cluster">
+        <div class="terminal-field stats-filter-field">
           <div class="input-control-wrap">
-            <span class="input-prefix" aria-hidden="true">DÍA</span>
-            <button
-              type="button"
-              style="
-                font-size: 0.78rem;
-                padding: 4px 10px;
-                background: rgba(47, 208, 143, 0.15);
-                border: 1px solid rgba(47, 208, 143, 0.35);
-                border-radius: var(--radius);
-                color: var(--accent);
-                cursor: pointer;
-                white-space: nowrap;
-                "
-                (click)="clearDayFilter()"
-                aria-label="Limpiar filtro de día">
-                Día: {{ dayParamDate }} ✕
-            </button>
+            <span class="input-prefix" aria-hidden="true">PAR</span>
+            <select
+              id="stats-pair-filter"
+              class="terminal-select"
+              [value]="pairFilter()"
+              (change)="setPairFilter($any($event.target).value)"
+              aria-label="Filtrar estadísticas por par comercial"
+            >
+              <option value="all">Todos los Pares</option>
+              <option value="USDT">USDT / VES</option>
+              <option value="EUR">EUR / VES</option>
+            </select>
           </div>
         </div>
-      } @else if (selectedCalendarDay(); as day) {
-        <div class="terminal-field" style="min-width: 180px; margin: 0; margin-top: 4px;">
+
+        <div class="terminal-field stats-filter-field">
           <div class="input-control-wrap">
-            <span class="input-prefix" aria-hidden="true">DÍA</span>
-            <button
-              type="button"
-              style="
-                font-size: 0.78rem;
-                padding: 4px 10px;
-                background: rgba(47, 208, 143, 0.15);
-                border: 1px solid rgba(47, 208, 143, 0.35);
-                border-radius: var(--radius);
-                color: var(--accent);
-                cursor: pointer;
-                white-space: nowrap;
-                "
-                (click)="clearDayFilter()"
-                aria-label="Limpiar filtro de día">
-                Día: {{ day.date }} ✕
-            </button>
+            <span class="input-prefix" aria-hidden="true">BCO</span>
+            <select
+              id="stats-bank-filter"
+              class="terminal-select"
+              [value]="bankFilter()"
+              (change)="setBankFilter($any($event.target).value)"
+              aria-label="Filtrar estadísticas por cuenta bancaria"
+            >
+              <option value="">Todos los Bancos</option>
+              @for (acc of accountsService.accounts(); track acc.id) {
+                <option [value]="acc.id">{{ acc.bankName }}</option>
+              }
+            </select>
           </div>
         </div>
-      }
+
+        @if (dayAppliedFromParam) {
+          <button
+            type="button"
+            class="stats-day-chip"
+            (click)="clearDayFilter()"
+            aria-label="Limpiar filtro de día"
+          >
+            Día: {{ dayParamDate }} ✕
+          </button>
+        } @else if (selectedCalendarDay(); as day) {
+          <button
+            type="button"
+            class="stats-day-chip"
+            (click)="clearDayFilter()"
+            aria-label="Limpiar filtro de día"
+          >
+            Día: {{ day.date }} ✕
+          </button>
+        }
+      </div>
     </div>
   </app-ui-card>
 
-  <div class="section-divider"></div>
-  <div class="stat-grid">
+  <!-- 4 Core KPI Tiles (contracts preserved for unit/e2e specs) -->
+  <div class="stat-grid stats-kpi-grid">
     <div class="stat-tile out">
       <span class="stat-label">Operaciones</span>
       <span class="stat-value">{{ fmtNum(totals().operations) }}</span>
+      <span class="stat-hint font-mono">
+        {{ fifoSummary().matches.length }} ciclos FIFO · Win {{ fifoSummary().winRatePct | number:'1.0-1' }}%
+      </span>
     </div>
+
     <div class="stat-tile out">
       <span class="stat-label">Ganancia neta (Bs)</span>
-      <span class="stat-value" [class.verdict]="totals().pnlVes >= 0" [class.alert]="totals().pnlVes < 0" [class.positive]="totals().pnlVes >= 0" [class.negative]="totals().pnlVes < 0">{{ fmtVes(totals().pnlVes) }}</span>
+      <span
+        class="stat-value"
+        [class.verdict]="totals().pnlVes >= 0"
+        [class.alert]="totals().pnlVes < 0"
+        [class.positive]="totals().pnlVes >= 0"
+        [class.negative]="totals().pnlVes < 0"
+      >
+        {{ fmtVes(totals().pnlVes) }}
+      </span>
+      <span class="stat-hint font-mono">FIFO real: {{ fmtVes(fifoSummary().realizedPnlVes) }}</span>
     </div>
+
     <div class="stat-tile out">
       <span class="stat-label">Volumen (USDT)</span>
       <span class="stat-value">{{ fmtUsd(totals().volumeUsdt) }}</span>
+      <span class="stat-hint font-mono">
+        @if (liveMarketRate().rate; as r) {
+          Tasa {{ liveMarketRate().label }}: {{ fmtNum(r) }} Bs
+        } @else {
+          Sin tasa en vivo
+        }
+      </span>
     </div>
+
     <div class="stat-tile out">
       <span class="stat-label">Comisiones (Bs)</span>
       <span class="stat-value">{{ fmtVes(totals().fees) }}</span>
+      <span class="stat-hint font-mono">
+        @if (complianceTelemetry().ocrCoveragePct !== null) {
+          OCR trazable: {{ complianceTelemetry().ocrCoveragePct }}%
+        } @else {
+          OCR trazable: N/D
+        }
+      </span>
     </div>
   </div>
 
-  @if (period() === 'calendar') {
-    <div class="section-divider"></div>
+  <!-- WORKSPACE 1: RESUMEN 360° -->
+  @if (workspaceTab() === 'overview') {
+    @if (rows().length === 0) {
+      <div class="stats-bento-card">
+        <p class="note">
+          Aún no hay operaciones registradas. Usa «Registro de Operaciones» para empezar a acumular datos.
+        </p>
+      </div>
+    } @else {
+      <div class="stats-analytics-grid">
+        <!-- Card 1: SVG Cashflow & Cumulative Equity -->
+        <article class="stats-bento-card flow-card">
+          <div class="bento-card-head">
+            <h3>Flujo Diario &amp; PnL Acumulado</h3>
+            <span class="badge badge-accent font-mono">
+              Profit Factor {{ profitFactorLabel() }}
+            </span>
+          </div>
+
+          <div class="flow-svg-wrap">
+            <svg class="flow-svg" viewBox="0 0 420 140" preserveAspectRatio="none" aria-label="Curva de PnL acumulado">
+              <defs>
+                <linearGradient id="statsEquityGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#30d158" stop-opacity="0.35" />
+                  <stop offset="100%" stop-color="#30d158" stop-opacity="0.02" />
+                </linearGradient>
+              </defs>
+              @if (flowSeries().areaPath) {
+                <path [attr.d]="flowSeries().areaPath" fill="url(#statsEquityGrad)" />
+              }
+              @if (flowSeries().polylinePoints) {
+                <polyline
+                  [attr.points]="flowSeries().polylinePoints"
+                  fill="none"
+                  stroke="#30d158"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              }
+              @for (pt of flowSeries().points; track pt.period) {
+                <circle [attr.cx]="pt.svgX" [attr.cy]="pt.svgY" r="3" fill="#ffd60a" />
+              }
+            </svg>
+          </div>
+
+          <div class="flow-bars-row" aria-label="Barras diarias de rendimiento">
+            @for (pt of flowSeries().points; track pt.period) {
+              <div class="flow-bar-col" [title]="pt.period + ': ' + fmtVes(pt.pnlVes)">
+                <div class="flow-bar-track">
+                  <div
+                    class="flow-bar-fill"
+                    [class.loss]="!pt.isPositive"
+                    [style.height.%]="pt.barHeightPct"
+                  ></div>
+                </div>
+                <span class="flow-bar-label font-mono">{{ pt.shortLabel }}</span>
+              </div>
+            }
+          </div>
+        </article>
+
+        <!-- Card 2: SVG Donut by Bank Account -->
+        <article class="stats-bento-card">
+          <div class="bento-card-head">
+            <h3>Distribución por Banco</h3>
+            @if (bankFilter()) {
+              <button type="button" class="btn btn-secondary btn-sm" (click)="setBankFilter('')">
+                Ver todos
+              </button>
+            }
+          </div>
+
+          <div class="donut-layout">
+            <svg class="donut-svg" viewBox="0 0 112 112" aria-label="Distribución de volumen por banco">
+              <circle
+                cx="56"
+                cy="56"
+                r="42"
+                fill="none"
+                stroke="rgba(255,255,255,0.08)"
+                stroke-width="14"
+              />
+              @for (slice of bankBreakdown(); track slice.key) {
+                <circle
+                  cx="56"
+                  cy="56"
+                  r="42"
+                  fill="none"
+                  [attr.stroke]="slice.color"
+                  stroke-width="14"
+                  [attr.stroke-dasharray]="slice.dashArray"
+                  [attr.stroke-dashoffset]="slice.dashOffset"
+                />
+              }
+            </svg>
+
+            <div class="donut-legend">
+              @for (slice of bankBreakdown(); track slice.key) {
+                <button
+                  type="button"
+                  class="donut-legend-row"
+                  [class.active]="bankFilter() === slice.key"
+                  (click)="slice.key !== 'mesa-bcv' && slice.key !== 'unassigned' ? setBankFilter(bankFilter() === slice.key ? '' : slice.key) : null"
+                >
+                  <span class="legend-dot" [style.background]="slice.color"></span>
+                  <span class="legend-name">{{ slice.label }}</span>
+                  <strong class="font-mono">{{ slice.sharePct }}%</strong>
+                </button>
+              }
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 3: SUDEBAN Discipline & Fraud Telemetry Gauge -->
+        <article class="stats-bento-card">
+          <div class="bento-card-head">
+            <h3>Disciplina &amp; SUDEBAN</h3>
+            <span
+              class="badge font-mono"
+              [class.badge-accent]="spreadDiscipline().assessmentStatus === 'ASSESSED' && !spreadDiscipline().tiltDetected"
+              [class.badge-warn]="spreadDiscipline().tiltDetected && spreadDiscipline().tiltSeverity !== 'SEVERE'"
+              [class.badge-danger]="spreadDiscipline().tiltSeverity === 'SEVERE'"
+              [class.badge-muted]="spreadDiscipline().assessmentStatus === 'NOT_ASSESSED'"
+            >
+              {{ spreadDiscipline().assessmentStatus === 'NOT_ASSESSED' ? 'SIN CICLOS FIFO' : spreadDiscipline().tiltSeverity }}
+            </span>
+          </div>
+
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 120 76" aria-label="Medidor de cumplimiento">
+              <path
+                d="M 16 64 A 44 44 0 0 1 104 64"
+                fill="none"
+                stroke="rgba(255,255,255,0.1)"
+                stroke-width="10"
+                stroke-linecap="round"
+                pathLength="100"
+              />
+              <path
+                d="M 16 64 A 44 44 0 0 1 104 64"
+                fill="none"
+                [attr.stroke]="(complianceTelemetry().compositeScore ?? 0) >= 75 ? '#30d158' : '#ff9f0a'"
+                stroke-width="10"
+                stroke-linecap="round"
+                pathLength="100"
+                [attr.stroke-dasharray]="(complianceTelemetry().compositeScore ?? 0) + ' 100'"
+              />
+            </svg>
+            <div>
+              <div class="gauge-score-text">
+                {{ complianceTelemetry().compositeScore !== null ? complianceTelemetry().compositeScore + '%' : 'N/D' }}
+              </div>
+              <span class="note">Score Compuesto</span>
+            </div>
+          </div>
+
+          <div class="telemetry-bars">
+            <div class="telemetry-bar-item">
+              <div class="telemetry-bar-meta">
+                <span>Regla de Oro (≥0,50%)</span>
+                <strong class="font-mono">
+                  {{ spreadDiscipline().complianceRatePct !== null ? (spreadDiscipline().complianceRatePct + '%') : 'N/D' }}
+                </strong>
+              </div>
+              <div class="telemetry-track">
+                <div class="telemetry-fill" [style.width.%]="spreadDiscipline().complianceRatePct ?? 0"></div>
+              </div>
+            </div>
+
+            <div class="telemetry-bar-item">
+              <div class="telemetry-bar-meta">
+                <span>Trazabilidad OCR</span>
+                <strong class="font-mono">
+                  {{ complianceTelemetry().ocrCoveragePct !== null ? (complianceTelemetry().ocrCoveragePct + '%') : 'N/D' }}
+                </strong>
+              </div>
+              <div class="telemetry-track">
+                <div class="telemetry-fill gold" [style.width.%]="complianceTelemetry().ocrCoveragePct ?? 0"></div>
+              </div>
+            </div>
+
+            <div class="telemetry-bar-item">
+              <div class="telemetry-bar-meta">
+                <span>Top Contraparte</span>
+                <strong class="font-mono">
+                  {{ complianceTelemetry().topCounterpartySharePct !== null ? (complianceTelemetry().topCounterpartySharePct + '%') : 'N/D' }}
+                </strong>
+              </div>
+              <div class="telemetry-track">
+                <div
+                  class="telemetry-fill"
+                  [class.warn]="(complianceTelemetry().topCounterpartySharePct ?? 0) > 20 && (complianceTelemetry().topCounterpartySharePct ?? 0) <= 50"
+                  [class.danger]="(complianceTelemetry().topCounterpartySharePct ?? 0) > 50"
+                  [style.width.%]="complianceTelemetry().topCounterpartySharePct ?? 0"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="stats-bottom-grid">
+        <!-- Bank Velocity Health Today -->
+        <article class="stats-bento-card">
+          <div class="bento-card-head">
+            <h3>Velocidad Bancaria Hoy</h3>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="setWorkspaceTab('stress')">
+              Ir a Estrés &amp; Riesgo →
+            </button>
+          </div>
+          <div class="velocity-list">
+            @for (v of accountsService.accountVelocities().slice(0, 5); track v.accountId) {
+              <div class="velocity-row">
+                <div class="velocity-row-head">
+                  <strong>{{ v.bankName }}</strong>
+                  <span class="font-mono">
+                    {{ v.todayTransactionCount }}/{{ v.maxDailyTransactions }} ops · {{ v.usedPct | number:'1.0-0' }}%
+                  </span>
+                </div>
+                <div class="telemetry-track">
+                  <div
+                    class="telemetry-fill"
+                    [class.warn]="v.isNearThreshold && !v.isAtThreshold"
+                    [class.danger]="v.isAtThreshold"
+                    [style.width.%]="v.usedPct > 100 ? 100 : v.usedPct"
+                  ></div>
+                </div>
+              </div>
+            }
+          </div>
+        </article>
+
+        <!-- Period Breakdown Table (also satisfies E2E Detalle por Período) -->
+        <article class="stats-bento-card data-section">
+          <span class="section-eyebrow">Detalle por Período</span>
+          <div class="table-container">
+            <table class="corporate-table" aria-label="Rendimiento agrupado por período">
+              <thead>
+                <tr>
+                  <th scope="col">{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
+                  <th scope="col">Ops</th>
+                  <th scope="col">Ganancia (Bs)</th>
+                  <th scope="col">Ganancia (USDT)</th>
+                  <th scope="col">Volumen (USDT)</th>
+                  <th scope="col">Comisiones (Bs)</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of rows(); track r.period) {
+                  <tr>
+                    <td class="font-mono">{{ r.period }}</td>
+                    <td class="font-mono">{{ fmtNum(r.operations) }}</td>
+                    <td class="font-mono" [class.positive]="r.pnlVes >= 0" [class.negative]="r.pnlVes < 0">
+                      {{ fmtVes(r.pnlVes) }}
+                    </td>
+                    <td class="font-mono">{{ fmtUsd(r.pnlUsdt) }}</td>
+                    <td class="font-mono">{{ fmtUsd(r.volumeUsdt) }}</td>
+                    <td class="font-mono">{{ fmtVes(r.fees) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    }
+  }
+
+  <!-- WORKSPACE 2: BITÁCORA CALENDARIO -->
+  @if (workspaceTab() === 'calendar') {
     <div class="data-section">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div class="calendar-header-row">
         <div>
           <span class="section-eyebrow">Bitácora Financiera Mensual (Heatmap de Rentabilidad)</span>
-          <h2 style="margin: 4px 0 0; font-size: 1.25rem;">{{ calendarMonthView().monthName }} {{ calendarMonthView().year }}</h2>
+          <h2 class="calendar-header-title">{{ calendarMonthView().monthName }} {{ calendarMonthView().year }}</h2>
         </div>
-        <div class="actions" style="display: flex; gap: 8px;">
-          <button type="button" class="btn btn-secondary" (click)="prevMonth()">◀ Mes Anterior</button>
-          <button type="button" class="btn btn-secondary" (click)="nextMonth()">Mes Siguiente ▶</button>
+        <div class="actions calendar-nav-actions">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="prevMonth()">◀ Mes Anterior</button>
+          <button type="button" class="btn btn-secondary btn-sm" (click)="nextMonth()">Mes Siguiente ▶</button>
         </div>
       </div>
 
-      <!-- Monthly KPI Ribbon -->
-      <div class="stat-grid" style="margin-bottom: 20px;">
+      <div class="stat-grid stats-kpi-grid calendar-kpi-ribbon">
         <div class="stat-tile out">
-          <span class="stat-label">Días Operativos / Efectividad</span>
-          <span class="stat-value">{{ calendarMonthView().activeTradingDays }}d · {{ calendarMonthView().winRatePct | number:'1.0-0' }}% win</span>
+          <span class="stat-label">Días Operativos</span>
+          <span class="stat-value">
+            {{ calendarMonthView().activeTradingDays }}d · {{ calendarMonthView().winRatePct | number:'1.0-0' }}% win
+          </span>
         </div>
         <div class="stat-tile out">
           <span class="stat-label">Ganancia Neta Mes</span>
-          <span class="stat-value" [class.positive]="calendarMonthView().totalPnlVes >= 0" [class.negative]="calendarMonthView().totalPnlVes < 0">
+          <span
+            class="stat-value"
+            [class.positive]="calendarMonthView().totalPnlVes >= 0"
+            [class.negative]="calendarMonthView().totalPnlVes < 0"
+          >
             {{ fmtVes(calendarMonthView().totalPnlVes) }}
           </span>
         </div>
         <div class="stat-tile out">
-          <span class="stat-label">Volumen / Ciclos Totales</span>
-          <span class="stat-value">{{ fmtUsd(calendarMonthView().totalVolumeUsdt) }} ({{ calendarMonthView().totalCycles }} ciclos)</span>
+          <span class="stat-label">Volumen / Ciclos</span>
+          <span class="stat-value">
+            {{ fmtUsd(calendarMonthView().totalVolumeUsdt) }} ({{ calendarMonthView().totalCycles }}c)
+          </span>
         </div>
         <div class="stat-tile out">
           <span class="stat-label">Comisiones Pagadas</span>
@@ -156,22 +521,19 @@
         </div>
       </div>
 
-      <!-- Master-Detail Calendar Bento Grid -->
-      <div class="quantum-bento-grid" style="margin-bottom: 24px; align-items: start;">
-        <!-- Calendar Matrix -->
+      <div class="quantum-bento-grid calendar-master-detail">
         <div
           class="calendar-grid-container"
           [class.bento-span-7]="!!selectedCalendarDay()"
           [class.bento-span-12]="!selectedCalendarDay()"
-          style="background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 0;"
         >
-          <div class="calendar-weekdays" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; font-weight: 600; font-size: 0.8rem; color: var(--gold); margin-bottom: 10px;">
+          <div class="calendar-weekdays">
             <div>DOM</div><div>LUN</div><div>MAR</div><div>MIÉ</div><div>JUE</div><div>VIE</div><div>SÁB</div>
           </div>
-          <div class="calendar-cells" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+          <div class="calendar-cells">
             @for (d of calendarMonthView().days; track $index) {
               @if (d === null) {
-                <div class="calendar-cell empty" style="min-height: 80px; background: rgba(0,0,0,0.1); border-radius: 6px; border: 1px dashed rgba(255,255,255,0.03);"></div>
+                <div class="calendar-cell empty"></div>
               } @else {
                 <button
                   type="button"
@@ -185,28 +547,30 @@
                   [class.loss]="d.hasLoss"
                   (click)="selectDay(d)"
                   [attr.aria-label]="'Día ' + d.dayOfMonth + ': ' + d.operationsCount + ' operaciones'"
-                  style="min-height: 85px; padding: 8px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; justify-content: space-between; text-align: left; background: var(--panel);"
                 >
-                  <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <span class="day-number font-mono" style="font-size: 0.85rem; font-weight: 700;">{{ d.dayOfMonth }}</span>
+                  <div class="calendar-cell-top">
+                    <span class="day-number font-mono">{{ d.dayOfMonth }}</span>
                     @if (d.operationsCount > 0) {
-                      <span class="badge" [class.badge-accent]="!d.hasLoss" [class.badge-danger]="d.hasLoss" style="font-size: 0.65rem; padding: 2px 5px;">
+                      <span
+                        class="badge calendar-cycle-badge"
+                        [class.badge-accent]="!d.hasLoss"
+                        [class.badge-danger]="d.hasLoss"
+                      >
                         {{ d.completedCycles }} {{ d.completedCycles === 1 ? 'vuelta' : 'vueltas' }}
                       </span>
                     }
                   </div>
 
                   @if (d.operationsCount > 0) {
-                    <div style="margin-top: 6px;">
-                      <div class="font-mono" [class.positive]="d.pnlVes >= 0" [class.negative]="d.pnlVes < 0" style="font-size: 0.8rem; font-weight: 700;">
+                    <span class="calendar-mobile-dot" [class.loss]="d.hasLoss" aria-hidden="true"></span>
+                    <div class="calendar-cell-metrics">
+                      <div class="calendar-cell-pnl font-mono" [class.positive]="d.pnlVes >= 0" [class.negative]="d.pnlVes < 0">
                         {{ d.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(d.pnlVes) }}
                       </div>
-                      <div class="text-muted font-mono" style="font-size: 0.7rem;">
-                        {{ fmtUsd(d.volumeUsdt) }}
-                      </div>
+                      <div class="calendar-cell-vol font-mono">{{ fmtUsd(d.volumeUsdt) }}</div>
                     </div>
                   } @else {
-                    <div class="text-muted" style="font-size: 0.7rem; text-align: center; margin-top: 10px;">—</div>
+                    <div class="calendar-cell-idle">—</div>
                   }
                 </button>
               }
@@ -214,26 +578,26 @@
           </div>
         </div>
 
-        <!-- Selected Day Inspection Panel -->
         @if (selectedCalendarDay(); as day) {
-          <div class="section-group bento-span-5 quantum-sticky-col" style="background: var(--bg-1); border: 1px solid var(--gold-border); padding: 18px; border-radius: var(--radius); margin-bottom: 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px;">
+          <div class="day-inspection-panel bento-span-5 quantum-sticky-col">
+            <div class="day-inspection-head">
               <div>
                 <span class="section-eyebrow">Auditoría del Día Seleccionado</span>
-                <h3 style="margin: 2px 0 0; font-size: 1.05rem;">Jornada del {{ day.date }}</h3>
+                <h3>Jornada del {{ day.date }}</h3>
               </div>
-              <div style="text-align: right;">
-                <span class="font-mono" [class.positive]="day.pnlVes >= 0" [class.negative]="day.pnlVes < 0" style="font-size: 1rem; font-weight: 700;">
-                  PnL: {{ day.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(day.pnlVes) }} (~{{ fmtUsd(day.pnlUsdt) }})
-                </span>
-              </div>
+              <span class="day-inspection-pnl font-mono" [class.positive]="day.pnlVes >= 0" [class.negative]="day.pnlVes < 0">
+                PnL: {{ day.pnlVes >= 0 ? '+' : '' }}{{ fmtVes(day.pnlVes) }}
+                @if (liveMarketRate().rate) {
+                  (~{{ fmtUsd(day.pnlUsdt) }})
+                }
+              </span>
             </div>
 
             @if (selectedDayOps().length === 0) {
               <p class="note">Sin operaciones registradas en este día.</p>
             } @else {
               <div class="table-container">
-                <table class="corporate-table" style="font-size: 0.8rem;" aria-label="Auditoría detallada de operaciones del día">
+                <table class="corporate-table" aria-label="Auditoría detallada de operaciones del día">
                   <thead>
                     <tr>
                       <th scope="col">Hora</th>
@@ -249,7 +613,12 @@
                       <tr>
                         <td class="font-mono text-muted">{{ op.timestamp | slice:11:16 }}</td>
                         <td>
-                          <span class="badge" [class.badge-buy]="op.type === 'buy'" [class.badge-sell]="op.type === 'sell'">
+                          <span
+                            class="badge"
+                            [class.badge-buy]="op.type === 'buy'"
+                            [class.badge-sell]="op.type === 'sell'"
+                            [class.badge-muted]="op.type === 'assign'"
+                          >
                             {{ op.type === 'buy' ? 'COMPRA' : op.type === 'sell' ? 'VENTA' : 'ASIGNACIÓN' }}
                           </span>
                         </td>
@@ -267,273 +636,397 @@
         }
       </div>
     </div>
-  } @else if (period() === 'session') {
-    <div class="section-divider"></div>
+  }
+
+  <!-- WORKSPACE 3: SESIONES DE TRADING -->
+  @if (workspaceTab() === 'session') {
     <div class="data-section">
       <span class="section-eyebrow">Historial de Jornadas Operativas</span>
       @if (sessionSummaries().length === 0) {
         <p class="note">No se han registrado sesiones de trading aún. Inicia tu primera jornada desde el Centro de Control.</p>
       } @else {
-        <table class="corporate-table" aria-label="Historial de jornadas operativas registradas">
-          <thead>
-            <tr>
-              <th scope="col">Inicio / Fecha</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Duración</th>
-              <th scope="col">Ops</th>
-              <th scope="col">PnL (Bs)</th>
-              <th scope="col">PnL (USDT)</th>
-              <th scope="col">Rotación</th>
-              <th scope="col">Disciplina</th>
-              <th scope="col">Observaciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (s of sessionSummaries(); track s.session.id) {
+        <div class="table-container">
+          <table class="corporate-table" aria-label="Historial de jornadas operativas registradas">
+            <thead>
               <tr>
-                <td class="font-mono text-muted">{{ s.session.startTime | slice:0:16 }}</td>
-                <td>
-                  <span class="badge" [class.badge-accent]="s.isOpen" [class.badge-muted]="!s.isOpen">
-                    {{ s.isOpen ? 'En curso' : 'Cerrada' }}
-                  </span>
-                </td>
-                <td class="font-mono">{{ formatDuration(s.durationMs) }}</td>
-                <td>{{ s.operationsCount }}</td>
-                <td [class.verdict]="s.pnlVes >= 0" [class.alert]="s.pnlVes < 0">{{ fmtVes(s.pnlVes) }}</td>
-                <td>{{ fmtUsd(s.pnlUsdt) }}</td>
-                <td class="font-mono">{{ s.turnoverRatePerHour }} ops/h</td>
-                <td>{{ formatRating(s.session.disciplineRating) }}</td>
-                <td>{{ s.session.notes || '—' }}</td>
+                <th scope="col">Inicio / Fecha</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Duración</th>
+                <th scope="col">Ops</th>
+                <th scope="col">PnL (Bs)</th>
+                <th scope="col">PnL (USDT)</th>
+                <th scope="col">Rotación</th>
+                <th scope="col">Disciplina</th>
+                <th scope="col" class="text-left">Observaciones</th>
               </tr>
-            }
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @for (s of sessionSummaries(); track s.session.id) {
+                <tr>
+                  <td class="font-mono text-muted">{{ s.session.startTime | slice:0:16 }}</td>
+                  <td>
+                    <span class="badge" [class.badge-accent]="s.isOpen" [class.badge-muted]="!s.isOpen">
+                      {{ s.isOpen ? 'En curso' : 'Cerrada' }}
+                    </span>
+                  </td>
+                  <td class="font-mono">{{ formatDuration(s.durationMs) }}</td>
+                  <td class="font-mono">{{ s.operationsCount }}</td>
+                  <td class="font-mono" [class.positive]="s.pnlVes >= 0" [class.negative]="s.pnlVes < 0">
+                    {{ fmtVes(s.pnlVes) }}
+                  </td>
+                  <td class="font-mono">{{ fmtUsd(s.pnlUsdt) }}</td>
+                  <td class="font-mono">{{ s.turnoverRatePerHour }} ops/h</td>
+                  <td>{{ formatRating(s.session.disciplineRating) }}</td>
+                  <td class="text-left">{{ s.session.notes || '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       }
-    </div>
-  } @else if (rows().length === 0) {
-    <p class="note">Aún no hay operaciones registradas. Usa «Registro de Operaciones» para empezar a acumular datos.</p>
-  } @else {
-    <div class="section-divider"></div>
-    <div class="data-section">
-      <span class="section-eyebrow">Detalle por Período</span>
-      <table class="corporate-table" aria-label="Rendimiento agrupado por período">
-        <thead>
-          <tr>
-            <th scope="col">{{ period() === 'day' ? 'Día' : period() === 'month' ? 'Mes' : 'Trimestre' }}</th>
-            <th scope="col">Ops</th>
-            <th scope="col">Ganancia (Bs)</th>
-            <th scope="col">Ganancia (USDT)</th>
-            <th scope="col">Volumen (USDT)</th>
-            <th scope="col">Comisiones (Bs)</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (r of rows(); track r.period) {
-            <tr>
-              <td>{{ r.period }}</td>
-              <td>{{ fmtNum(r.operations) }}</td>
-              <td [class.verdict]="r.pnlVes >= 0" [class.alert]="r.pnlVes < 0">{{ fmtVes(r.pnlVes) }}</td>
-              <td>{{ fmtUsd(r.pnlUsdt) }}</td>
-              <td>{{ fmtUsd(r.volumeUsdt) }}</td>
-              <td>{{ fmtVes(r.fees) }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
     </div>
   }
 
-  <!-- ═══════════════════════════════════════════════════
-       MCP Institutional Resilience & Counterparty Suite (2 Tools)
-       ═══════════════════════════════════════════════════ -->
-  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 1.5rem; margin-bottom: 1.5rem;">
-    <!-- Tool 1: stress_test_portfolio -->
-    <app-ui-card variant="terminal">
-      <app-ui-panel-header icon="⚡" title="Prueba de Estrés Cambiario & Drawdown">
-        <app-ui-chip uiHeaderActions variant="gold" class="font-mono">MCP: stress_test</app-ui-chip>
-      </app-ui-panel-header>
+  <!-- WORKSPACE 4: ESTRÉS CAMBIARIO & EXPOSICIÓN MCP -->
+  @if (workspaceTab() === 'stress') {
+    <div class="stats-mcp-grid">
+      <!-- Tool 1: stress_test_portfolio -->
+      <app-ui-card variant="terminal">
+        <app-ui-panel-header icon="⚡" title="Prueba de Estrés Cambiario & Drawdown">
+          <app-ui-chip uiHeaderActions variant="gold" class="font-mono">MCP: stress_test</app-ui-chip>
+        </app-ui-panel-header>
 
-      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-        <div class="terminal-field">
-          <label class="terminal-label" for="stress-usdt">Capital USDT</label>
-          <input id="stress-usdt" type="number" class="terminal-input font-mono" [value]="stressUsdtCapital()" (input)="stressUsdtCapital.set(+$any($event.target).value)" />
-        </div>
-        <div class="terminal-field">
-          <label class="terminal-label" for="stress-ves">Capital VES</label>
-          <input id="stress-ves" type="number" class="terminal-input font-mono" [value]="stressVesCapital()" (input)="stressVesCapital.set(+$any($event.target).value)" />
-        </div>
-        <div class="terminal-field">
-          <label class="terminal-label" for="stress-rate">Tasa Ref. (VES)</label>
-          <input id="stress-rate" type="number" class="terminal-input font-mono" [value]="stressRefRate()" (input)="stressRefRate.set(+$any($event.target).value)" />
-        </div>
-      </div>
-
-      <button type="button" class="btn btn-secondary btn-sm" (click)="runStressTest()" [disabled]="mcpStressTesting()" style="width: 100%; margin-bottom: 12px;">
-        {{ mcpStressTesting() ? 'Simulando Escenarios...' : '💥 Ejecutar Stress Test (+10%, +20%, +35%)' }}
-      </button>
-
-      @if (mcpStressResult(); as st) {
-        <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid #f59e0b; font-size: 0.8rem;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span class="text-muted">Valor Inicial Cartera:</span>
-            <strong class="font-mono">{{ st.baselinePortfolioValueUsdt || st.totalPortfolioValueUsdt || (stressUsdtCapital() + (stressVesCapital() / stressRefRate())) | number:'1.2-2' }} USDT</strong>
+        <div class="stats-stress-inputs">
+          <div class="terminal-field">
+            <label class="terminal-label" for="stress-usdt">Capital USDT</label>
+            <input
+              id="stress-usdt"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="stressUsdtCapital()"
+              (input)="stressUsdtCapital.set(+$any($event.target).value)"
+            />
           </div>
-          @if (st.scenarios) {
-            <div style="margin-top: 6px;">
-              <span class="text-muted" style="display: block; margin-bottom: 4px;">Impacto por Salto Cambiario (Devaluación):</span>
-              @for (sc of st.scenarios; track sc.devaluationPct) {
-                <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.75rem;">
+          <div class="terminal-field">
+            <label class="terminal-label" for="stress-ves">Capital VES</label>
+            <input
+              id="stress-ves"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="stressVesCapital()"
+              (input)="stressVesCapital.set(+$any($event.target).value)"
+            />
+          </div>
+          <div class="terminal-field">
+            <label class="terminal-label" for="stress-rate">Tasa Ref. (VES)</label>
+            <input
+              id="stress-rate"
+              type="number"
+              class="terminal-input font-mono"
+              [value]="stressRefRate()"
+              (input)="stressRefRate.set(+$any($event.target).value)"
+            />
+          </div>
+        </div>
+
+        <div class="mcp-action-row">
+          <button type="button" class="btn btn-secondary btn-sm" (click)="syncLiveCapitalToStress()">
+            ↻ Cargar Capital Real
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm mcp-full-btn"
+            (click)="runStressTest()"
+            [disabled]="mcpStressTesting()"
+          >
+            {{ mcpStressTesting() ? 'Simulando Escenarios...' : '💥 Ejecutar Stress Test' }}
+          </button>
+        </div>
+
+        @if (mcpStressError(); as err) {
+          <div class="mcp-result-box danger-accent" role="alert">
+            <span>{{ err }}</span>
+          </div>
+        }
+
+        @if (mcpStressResult(); as st) {
+          <div class="mcp-result-box warn-accent">
+            <div class="mcp-kv-row">
+              <span class="text-muted">Valor Inicial Cartera:</span>
+              <strong class="font-mono">
+                {{
+                  (st.baselinePortfolioValueUsdt ??
+                    st.totalPortfolioValueUsdt ??
+                    (stressRefRate() > 0 ? stressUsdtCapital() + stressVesCapital() / stressRefRate() : 0))
+                    | number:'1.2-2'
+                }}
+                USDT
+              </strong>
+            </div>
+            @if (st.scenarios; as scenarios) {
+              @for (sc of scenarios; track sc.devaluationPct) {
+                <div class="mcp-kv-row">
                   <span>Devaluación +{{ sc.devaluationPct }}%:</span>
-                  <span class="font-mono" style="color: #ef4444;">Pérdida: -{{ sc.lossUsdt || sc.unhedgedLossUsdt | number:'1.2-2' }} USDT</span>
+                  <span class="font-mono negative">
+                    Pérdida: -{{ (sc.lossUsdt ?? sc.unhedgedLossUsdt ?? 0) | number:'1.2-2' }} USDT
+                  </span>
                 </div>
               }
+            } @else {
+              <p class="note">El simulador no devolvió escenarios con la tasa indicada.</p>
+            }
+          </div>
+        }
+      </app-ui-card>
+
+      <!-- Tool 2: audit_counterparty_exposure (Zero Fake Greens!) -->
+      <app-ui-card variant="terminal">
+        <app-ui-panel-header icon="👥" title="Auditoría de Exposición & Contrapartes">
+          <app-ui-chip uiHeaderActions variant="accent" class="font-mono">MCP: counterparty_audit</app-ui-chip>
+        </app-ui-panel-header>
+
+        <div class="mcp-result-box">
+          <div class="mcp-kv-row">
+            <span class="text-muted">Concentración Local (Ledger):</span>
+            <strong class="font-mono">
+              @if (complianceTelemetry().topCounterpartySharePct !== null) {
+                {{ complianceTelemetry().topCounterpartyAlias }} ({{ complianceTelemetry().topCounterpartySharePct }}%)
+              } @else {
+                Sin operaciones registradas
+              }
+            </strong>
+          </div>
+          <div class="mcp-kv-row">
+            <span class="text-muted">Umbral Institucional:</span>
+            <span class="font-mono">≤ 20% por contraparte</span>
+          </div>
+        </div>
+
+        <div class="mcp-action-row mcp-audit-actions">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm mcp-full-btn"
+            (click)="runCounterpartyAudit()"
+            [disabled]="mcpAuditing()"
+          >
+            {{ mcpAuditing() ? 'Auditando...' : '🔍 Ejecutar Auditoría MCP de Contrapartes' }}
+          </button>
+        </div>
+
+        @if (mcpAuditError(); as err) {
+          <div class="mcp-result-box danger-accent" role="alert">
+            <span>{{ err }}</span>
+          </div>
+        }
+
+        @if (mcpCounterpartyAuditResult(); as cpa) {
+          <div
+            class="mcp-result-box"
+            [class.ok-accent]="cpa.complianceVerdict === 'APPROVED_FOR_TRADING' || cpa.isSafeForInstitutionalTrading === true"
+            [class.warn-accent]="cpa.complianceVerdict === 'UNVERIFIED_NO_COUNTERPARTY_LEDGER' || cpa.isSafeForInstitutionalTrading === null"
+            [class.danger-accent]="cpa.complianceVerdict === 'BLOCKED_FRAUD_RISK' || cpa.isSafeForInstitutionalTrading === false"
+          >
+            <div class="mcp-kv-row">
+              <span class="text-muted">Veredicto Motor MCP:</span>
+              <span
+                class="badge font-mono"
+                [class.badge-accent]="cpa.complianceVerdict === 'APPROVED_FOR_TRADING'"
+                [class.badge-warn]="!cpa.complianceVerdict || cpa.complianceVerdict === 'UNVERIFIED_NO_COUNTERPARTY_LEDGER'"
+                [class.badge-danger]="cpa.complianceVerdict === 'BLOCKED_FRAUD_RISK'"
+              >
+                {{ cpa.complianceVerdict || cpa.unavailableReason || 'SIN_VEREDICTO' }}
+              </span>
             </div>
-          }
-        </div>
-      }
-    </app-ui-card>
-
-    <!-- Tool 2: audit_counterparty_exposure -->
-    <app-ui-card variant="terminal">
-      <app-ui-panel-header icon="👥" title="Auditoría de Exposición & Concentración">
-        <app-ui-chip uiHeaderActions variant="accent" class="font-mono">MCP: counterparty_audit</app-ui-chip>
-      </app-ui-panel-header>
-
-      <p class="text-muted" style="font-size: 0.78rem; margin: 0 0 10px;">
-        Verifica si alguna contraparte supera el umbral de concentración institucional del 20% o presenta anomalías de dispersión.
-      </p>
-
-      <button type="button" class="btn btn-secondary btn-sm" (click)="runCounterpartyAudit()" [disabled]="mcpAuditing()" style="width: 100%; margin-bottom: 12px;">
-        {{ mcpAuditing() ? 'Auditando...' : '🔍 Ejecutar Auditoría de Contrapartes' }}
-      </button>
-
-      @if (mcpCounterpartyAuditResult(); as cpa) {
-        <div style="padding: 12px; background: rgba(0,0,0,0.3); border-radius: var(--radius); border-left: 3px solid var(--accent); font-size: 0.8rem;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Estado de Concentración:</span>
-            <span class="badge badge-accent" style="font-size: 0.68rem;">{{ cpa.status || 'DIVERSIFICACIÓN_ÓPTIMA' }}</span>
+            <div class="mcp-kv-row">
+              <span class="text-muted">Contrapartes Únicas (MCP):</span>
+              <strong class="font-mono">
+                {{ cpa.uniqueCounterpartiesCount !== null && cpa.uniqueCounterpartiesCount !== undefined ? cpa.uniqueCounterpartiesCount : 'N/D' }}
+              </strong>
+            </div>
+            <div class="mcp-kv-row">
+              <span class="text-muted">Alertas / Riesgo Triangulación:</span>
+              <strong class="font-mono">
+                @if (cpa.isSafeForInstitutionalTrading === true) {
+                  <span class="positive">Aprobado</span>
+                } @else if (cpa.isSafeForInstitutionalTrading === false) {
+                  <span class="negative">Riesgo / Bloqueado ({{ cpa.flaggedCounterpartiesCount ?? '!' }})</span>
+                } @else {
+                  <span>No verificable ({{ cpa.unavailableReason || 'Sin ledger KYC externo' }})</span>
+                }
+              </strong>
+            </div>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span class="text-muted">Contrapartes Únicas:</span>
-            <strong class="font-mono">{{ cpa.uniqueCounterpartiesCount || totals().operations }}</strong>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span class="text-muted">Riesgo Triangulación:</span>
-            <span style="color: #4ade80;">Bajo (Verificado)</span>
-          </div>
-        </div>
-      }
-    </app-ui-card>
-  </div>
+        }
+      </app-ui-card>
+    </div>
+  }
 
+  <!-- Compliance Justification Modal (Kept direct child of .panel for @media print!) -->
   @if (showComplianceModal()) {
-    <div class="modal-backdrop" role="button" tabindex="0" (click)="$event.target === $event.currentTarget && closeComplianceModal()" (keydown.escape)="closeComplianceModal()" aria-label="Cerrar modal">
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      (click)="$event.target === $event.currentTarget && closeComplianceModal()"
+      (keydown.escape)="closeComplianceModal()"
+      aria-label="Cerrar modal"
+    >
       <div
         class="modal-content compliance-modal-content"
         role="dialog"
         aria-modal="true"
         aria-labelledby="compliance-modal-heading"
         tabindex="-1"
-        style="max-width: 900px; width: 95vw; max-height: 90vh; overflow-y: auto; padding: 24px;"
       >
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 18px;">
+        <div class="compliance-modal-header">
           <div>
-            <h3 id="compliance-modal-heading" style="margin: 0; font-size: 1.25rem;">Informe de Cumplimiento & Justificación Bancaria</h3>
-            <p class="text-muted" style="margin: 4px 0 0; font-size: 0.85rem;">Documento formal para presentar ante entidades bancarias (origen y destino de fondos).</p>
+            <h3 id="compliance-modal-heading">Informe de Cumplimiento &amp; Justificación Bancaria</h3>
+            <p class="text-muted">
+              Documento formal para presentar ante entidades bancarias (origen y destino de fondos).
+            </p>
           </div>
-          <button type="button" class="btn-icon" (click)="closeComplianceModal()" aria-label="Cerrar modal de justificación bancaria">
+          <button
+            type="button"
+            class="btn-icon"
+            (click)="closeComplianceModal()"
+            aria-label="Cerrar modal de justificación bancaria"
+          >
             <span aria-hidden="true">✕</span>
           </button>
         </div>
 
-        <!-- Filter / Metadata Editor -->
-        <app-ui-card variant="terminal">
-          <app-ui-panel-header icon="🏛️" title="Datos del Titular & Banco Destinatario">
-            <app-ui-chip uiHeaderActions variant="gold" class="font-mono">KYC / Compliance</app-ui-chip>
-          </app-ui-panel-header>
-          <div class="terminal-input-grid grid-3">
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-operator-name">
-                <span>Nombre / Razón Social</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-operator-name" class="terminal-input" type="text" [value]="complianceMeta().operatorName" (input)="patchComplianceMeta({ operatorName: $any($event.target).value })" />
+        <div class="compliance-editor-wrap">
+          <app-ui-card variant="terminal">
+            <app-ui-panel-header icon="🏛️" title="Datos del Titular &amp; Banco Destinatario">
+              <app-ui-chip uiHeaderActions variant="gold" class="font-mono">KYC / Compliance</app-ui-chip>
+            </app-ui-panel-header>
+            <div class="terminal-input-grid grid-3">
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-operator-name">Nombre / Razón Social</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-operator-name"
+                    class="terminal-input"
+                    type="text"
+                    [value]="complianceMeta().operatorName"
+                    (input)="patchComplianceMeta({ operatorName: $any($event.target).value })"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-document-id">Cédula / RIF</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-document-id"
+                    class="terminal-input"
+                    type="text"
+                    [value]="complianceMeta().documentId"
+                    (input)="patchComplianceMeta({ documentId: $any($event.target).value })"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-bank-filter">Cuenta Auditada (Filtro)</label>
+                <div class="input-control-wrap">
+                  <select
+                    id="compliance-bank-filter"
+                    class="terminal-select"
+                    [value]="complianceBankAccountId()"
+                    (change)="selectComplianceBankAccount($any($event.target).value)"
+                  >
+                    <option value="">Todas las cuentas vinculadas</option>
+                    @for (acc of accountsService.accounts(); track acc.id) {
+                      <option [value]="acc.id">{{ acc.bankName }} ({{ acc.accountNumberMasked }})</option>
+                    }
+                  </select>
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-target-bank">Banco Destinatario</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-target-bank"
+                    class="terminal-input"
+                    type="text"
+                    [value]="complianceMeta().targetBank"
+                    (input)="patchComplianceMeta({ targetBank: $any($event.target).value })"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-target-account">Número de Cuenta / Teléfono</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-target-account"
+                    class="terminal-input"
+                    type="text"
+                    placeholder="Ej: 0134...1234"
+                    [value]="complianceMeta().targetAccountNumber || ''"
+                    (input)="patchComplianceMeta({ targetAccountNumber: $any($event.target).value })"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-start-date">Fecha Desde</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-start-date"
+                    class="terminal-input"
+                    type="date"
+                    [value]="complianceStartDate()"
+                    (input)="complianceStartDate.set($any($event.target).value)"
+                  />
+                </div>
+              </div>
+
+              <div class="terminal-field">
+                <label class="terminal-label" for="compliance-end-date">Fecha Hasta</label>
+                <div class="input-control-wrap">
+                  <input
+                    id="compliance-end-date"
+                    class="terminal-input"
+                    type="date"
+                    [value]="complianceEndDate()"
+                    (input)="complianceEndDate.set($any($event.target).value)"
+                  />
+                </div>
               </div>
             </div>
+          </app-ui-card>
+        </div>
 
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-document-id">
-                <span>Cédula / RIF</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-document-id" class="terminal-input" type="text" [value]="complianceMeta().documentId" (input)="patchComplianceMeta({ documentId: $any($event.target).value })" />
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-target-bank">
-                <span>Banco Destinatario</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-target-bank" class="terminal-input" type="text" [value]="complianceMeta().targetBank" (input)="patchComplianceMeta({ targetBank: $any($event.target).value })" />
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-target-account">
-                <span>Cuenta Auditada</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-target-account" class="terminal-input" type="text" placeholder="Ej: 0134...1234" [value]="complianceMeta().targetAccountNumber || ''" (input)="patchComplianceMeta({ targetAccountNumber: $any($event.target).value })" />
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-start-date">
-                <span>Fecha Desde</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-start-date" class="terminal-input" type="date" [value]="complianceStartDate()" (input)="complianceStartDate.set($any($event.target).value)" />
-              </div>
-            </div>
-
-            <div class="terminal-field">
-              <label class="terminal-label" for="compliance-end-date">
-                <span>Fecha Hasta</span>
-              </label>
-              <div class="input-control-wrap">
-                <input id="compliance-end-date" class="terminal-input" type="date" [value]="complianceEndDate()" (input)="complianceEndDate.set($any($event.target).value)" />
-              </div>
-            </div>
-          </div>
-        </app-ui-card>
-
-        <!-- Printable Document Container -->
-        <div class="printable-statement" style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; color: var(--text);">
-          <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid var(--gold); padding-bottom: 14px;">
-            <span style="font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; color: var(--gold-strong); font-weight: 700;">Extracto de Auditoría y Trazabilidad Operativa</span>
-            <h2 style="margin: 6px 0; font-size: 1.35rem; color: var(--text);">DECLARACIÓN DE ORIGEN Y DESTINO DE FONDOS P2P</h2>
-            <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">
-              Emitido para: <strong>{{ complianceMeta().targetBank }}</strong> · Período: {{ complianceStatement().period.from }} al {{ complianceStatement().period.to }}
+        <div class="printable-statement">
+          <div class="statement-doc-head">
+            <span class="statement-kicker">Extracto de Auditoría y Trazabilidad Operativa</span>
+            <h2>DECLARACIÓN DE ORIGEN Y DESTINO DE FONDOS P2P</h2>
+            <p>
+              Emitido para: <strong>{{ complianceMeta().targetBank }}</strong> · Período:
+              {{ complianceStatement().period.from }} al {{ complianceStatement().period.to }}
             </p>
           </div>
 
-          <!-- Parties Info -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 0.85rem; margin-bottom: 18px; padding: 12px; background: var(--bg-alt); border-radius: 6px;">
+          <div class="compliance-parties-grid">
             <div>
-              <p style="margin: 3px 0;"><strong>Titular Declarante:</strong> {{ complianceMeta().operatorName }}</p>
-              <p style="margin: 3px 0;"><strong>Identificación:</strong> {{ complianceMeta().documentId }}</p>
-              <p style="margin: 3px 0;"><strong>Actividad Económica:</strong> {{ complianceMeta().economicActivity }}</p>
+              <p><strong>Titular Declarante:</strong> {{ complianceMeta().operatorName }}</p>
+              <p><strong>Identificación:</strong> {{ complianceMeta().documentId }}</p>
+              <p><strong>Actividad Económica:</strong> {{ complianceMeta().economicActivity }}</p>
             </div>
             <div>
-              <p style="margin: 3px 0;"><strong>Entidad Bancaria:</strong> {{ complianceMeta().targetBank }}</p>
-              <p style="margin: 3px 0;"><strong>Cuenta / Riel Auditado:</strong> {{ complianceMeta().targetAccountNumber || 'Todas las cuentas vinculadas' }}</p>
-              <p style="margin: 3px 0;"><strong>Fecha de Generación:</strong> {{ complianceStatement().generatedAt | slice:0:10 }}</p>
+              <p><strong>Entidad Bancaria:</strong> {{ complianceMeta().targetBank }}</p>
+              <p>
+                <strong>Cuenta / Riel Auditado:</strong>
+                {{ complianceMeta().targetAccountNumber || 'Todas las cuentas vinculadas' }}
+              </p>
+              <p><strong>Fecha de Generación:</strong> {{ complianceStatement().generatedAt | slice:0:10 }}</p>
             </div>
           </div>
 
-          <!-- Financial Totals -->
-          <div class="out" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+          <div class="out statement-totals-grid">
             <div>
               <dt>Total Operaciones</dt>
               <dd class="font-mono">{{ complianceStatement().totalOperations }}</dd>
@@ -548,15 +1041,18 @@
             </div>
             <div>
               <dt>Margen Neto Realizado</dt>
-              <dd class="font-mono" [class.positive]="complianceStatement().netMarginVes >= 0" [class.negative]="complianceStatement().netMarginVes < 0">
+              <dd
+                class="font-mono"
+                [class.positive]="complianceStatement().netMarginVes >= 0"
+                [class.negative]="complianceStatement().netMarginVes < 0"
+              >
                 {{ fmtVes(complianceStatement().netMarginVes) }}
               </dd>
             </div>
           </div>
 
-          <!-- Transaction Table -->
-          <div class="table-container" style="margin-bottom: 20px; max-height: 350px; overflow-y: auto;">
-            <table class="corporate-table" style="font-size: 0.8rem;" aria-label="Extracto de operaciones comerciales para justificación bancaria">
+          <div class="table-container statement-table-wrap">
+            <table class="corporate-table" aria-label="Extracto de operaciones comerciales para justificación bancaria">
               <thead>
                 <tr>
                   <th scope="col">Fecha / Hora</th>
@@ -574,59 +1070,70 @@
                   <tr>
                     <td class="font-mono text-muted">{{ rec.date }}</td>
                     <td>
-                      <span class="badge" [class.badge-buy]="rec.type === 'COMPRA'" [class.badge-sell]="rec.type === 'VENTA'" style="font-size: 0.72rem;">
+                      <span class="badge" [class.badge-buy]="rec.type === 'COMPRA'" [class.badge-sell]="rec.type === 'VENTA'">
                         {{ rec.type }}
                       </span>
                     </td>
                     <td class="font-mono text-right">{{ fmtVes(rec.vesAmount) }}</td>
                     <td class="font-mono text-right">{{ fmtUsd(rec.cryptoAmount) }} {{ rec.pair }}</td>
-                    <td class="font-mono text-right">{{ rec.price }}</td>
+                    <td class="font-mono text-right">{{ rec.price | number:'1.2-2' }}</td>
                     <td>
                       <strong>{{ rec.counterpartyRealName || rec.counterpartyAlias }}</strong>
                       @if (rec.counterpartyDocumentId) {
-                        <span class="text-muted" style="font-size: 0.75rem;"> ({{ rec.counterpartyDocumentId }})</span>
+                        <span class="text-muted"> ({{ rec.counterpartyDocumentId }})</span>
+                      }
+                      @if (rec.receiptReference) {
+                        <span class="text-muted font-mono"> · Ref #{{ rec.receiptReference }}</span>
                       }
                     </td>
-                    <td><span class="badge badge-muted" style="font-size: 0.72rem;">{{ rec.bankAccountName }}</span></td>
+                    <td><span class="badge badge-muted">{{ rec.bankAccountName }}</span></td>
                     <td class="text-center">
-                      <span class="badge badge-accent" style="font-size: 0.7rem;">{{ rec.complianceVerdict }}</span>
+                      <span
+                        class="badge"
+                        [class.badge-accent]="rec.complianceVerdict === 'CONFORME'"
+                        [class.badge-danger]="rec.complianceVerdict === 'OBSERVACIÓN'"
+                      >
+                        {{ rec.complianceVerdict }}
+                      </span>
                     </td>
                   </tr>
                 } @empty {
                   <tr>
-                    <td colspan="8" class="empty-state">No se encontraron operaciones registradas en el período seleccionado.</td>
+                    <td colspan="8" class="empty-state">
+                      No se encontraron operaciones registradas en el período seleccionado.
+                    </td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
 
-          <!-- Legal Disclaimer & Signatures -->
-          <div style="border-top: 1px solid var(--border); padding-top: 14px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
-            <p style="margin: 0 0 16px;">
-              <strong>DECLARACIÓN JURADA:</strong> El presente extracto certifica la trazabilidad y legitimidad de los fondos movilizados a través de las cuentas bancarias indicadas. Todas las operaciones corresponden a intercambios comerciales de activos digitales entre particulares en plataformas P2P, ejecutadas bajo estricta verificación de titularidad y cotejo de contrapartes para la prevención de legitimación de capitales y financiamiento al terrorismo.
+          <div class="statement-legal-foot">
+            <p>
+              <strong>DECLARACIÓN JURADA:</strong> El presente extracto certifica la trazabilidad y legitimidad de los fondos movilizados a través de las cuentas bancarias indicadas. Todas las operaciones corresponden a intercambios comerciales de activos digitales entre particulares en plataformas P2P, ejecutadas bajo verificación de titularidad y cotejo de contrapartes para la prevención de legitimación de capitales.
             </p>
-            <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center;">
-              <div style="border-top: 1px solid var(--border); width: 220px; padding-top: 6px;">
+            <div class="compliance-signatures">
+              <div class="signature-block">
                 <strong>{{ complianceMeta().operatorName }}</strong><br />
                 <span>{{ complianceMeta().documentId }}</span><br />
-                <span style="font-size: 0.7rem;">Firma del Operador / Declarante</span>
+                <span>Firma del Operador / Declarante</span>
               </div>
-              <div style="border-top: 1px solid var(--border); width: 220px; padding-top: 6px;">
+              <div class="signature-block">
                 <strong>Recepción Bancaria / Compliance</strong><br />
                 <span>{{ complianceMeta().targetBank }}</span><br />
-                <span style="font-size: 0.7rem;">Sello / Firma de Recepción</span>
+                <span>Sello / Firma de Recepción</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Modal Actions -->
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+        <div class="compliance-modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="exportFilteredCsv()">
+            📥 Descargar CSV
+          </button>
           <button type="button" class="btn btn-secondary" (click)="closeComplianceModal()">Cerrar</button>
           <button type="button" class="btn btn-primary" (click)="printComplianceReport()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Imprimir / Guardar como PDF
+            🖨️ Imprimir / Guardar como PDF
           </button>
         </div>
       </div>
