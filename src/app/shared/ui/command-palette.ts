@@ -702,7 +702,7 @@ export class CommandPalette {
       },
       {
         id: 'nav-stats',
-        label: 'Estadísticas / Cumplimiento',
+        label: 'Analítica & Cumplimiento',
         icon: 'stats',
         hint: '/stats',
         group: 'PLANIFICACIÓN',

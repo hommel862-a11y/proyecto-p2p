@@ -67,16 +67,16 @@ test('switching to Sesiones shows session history section', async ({ page }) => 
   ).toBeVisible();
 });
 
-test('pair filter dropdown is present with All/USDT/VES options', async ({ page }) => {
+test('pair filter dropdown is present with All/USDT/EUR options', async ({ page }) => {
   await goToStats(page);
 
-  const pairSelect = page.locator('label.inline select');
+  const pairSelect = page.locator('#stats-pair-filter');
   await expect(pairSelect).toBeVisible();
   await expect(pairSelect).toHaveValue('all');
   // Check available options.
   const options = pairSelect.locator('option');
   await expect(options).toHaveCount(3);
-  await expect(options.nth(0)).toHaveText('Todos');
+  await expect(options.nth(0)).toHaveText('Todos los Pares');
   await expect(options.nth(1)).toHaveValue('USDT');
   await expect(options.nth(2)).toHaveValue('EUR');
 });
@@ -135,7 +135,7 @@ test('detail table appears after adding operations', async ({ page }) => {
 test('compliance report button is visible', async ({ page }) => {
   await goToStats(page);
 
-  await expect(page.getByRole('button', { name: 'Informe de Cumplimiento' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Justificación Bancaria \(PDF\)/i })).toBeVisible();
 });
 
 test('filtering by USDT pair after adding mixed operations', async ({ page }) => {
@@ -157,7 +157,7 @@ test('filtering by USDT pair after adding mixed operations', async ({ page }) =>
   );
 
   // Filter to USDT only → 1 operation.
-  await page.locator('label.inline select').selectOption('USDT');
+  await page.locator('#stats-pair-filter').selectOption('USDT');
   await expect(page.locator('.stat-grid .stat-tile').nth(0).locator('.stat-value')).toContainText(
     '1',
   );

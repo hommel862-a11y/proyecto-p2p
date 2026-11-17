@@ -1,5 +1,5 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Stats } from './stats';
 import { P2P_STORAGE } from '../../core/storage';
@@ -261,5 +261,95 @@ describe('Stats', () => {
     expect(c.mcpCounterpartyAuditResult()?.complianceVerdict).toBe(
       'UNVERIFIED_NO_COUNTERPARTY_LEDGER',
     );
+  });
+
+  it('renders Resumen 360 SVG analytics, stress view without fake greens, calendar heatmap, and OBSERVACIÓN badge in modal', async () => {
+    seed([
+      op({
+        id: 'b1',
+        type: 'buy',
+        timestamp: '2026-07-15T10:00:00Z',
+        vesAmount: 8000,
+        usdtAmount: 10,
+        price: 800,
+        bankAccountId: 'banesco-pm-1',
+        receiptReference: 'REF-100',
+      }),
+      op({
+        id: 's1',
+        type: 'sell',
+        timestamp: '2026-07-15T12:00:00Z',
+        vesAmount: 8200,
+        usdtAmount: 10,
+        price: 820,
+        bankAccountId: 'banesco-pm-1',
+        errorFree: false,
+      }),
+    ]);
+
+    const f = create();
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+
+    expect(el.querySelector('.flow-svg polyline')).not.toBeNull();
+    expect(el.querySelector('.donut-svg')).not.toBeNull();
+    expect(el.querySelector('.gauge-svg')).not.toBeNull();
+
+    f.componentInstance.setWorkspaceTab('calendar');
+    f.componentInstance.calendarYear.set(2026);
+    f.componentInstance.calendarMonth.set(7);
+    f.detectChanges();
+    const heatCell = el.querySelector('.calendar-cell.day.has-ops') as HTMLElement | null;
+    expect(heatCell).not.toBeNull();
+    expect(heatCell?.style.background || '').toBe('');
+
+    const mcp = TestBed.inject(McpService);
+    vi.spyOn(mcp, 'auditCounterpartyExposure').mockResolvedValueOnce({
+      success: true,
+      result: {
+        complianceVerdict: 'UNVERIFIED_NO_COUNTERPARTY_LEDGER',
+        uniqueCounterpartiesCount: null,
+        unavailableReason: 'NO_COUNTERPARTY_LEDGER',
+        isSafeForInstitutionalTrading: null,
+      },
+      executionTimeMs: 4,
+    });
+    f.componentInstance.setWorkspaceTab('stress');
+    await f.componentInstance.runCounterpartyAudit();
+    f.detectChanges();
+    expect(el.textContent).toContain('UNVERIFIED_NO_COUNTERPARTY_LEDGER');
+    expect(el.textContent).not.toContain('DIVERSIFICACIÓN_ÓPTIMA');
+    expect(el.textContent).not.toContain('Bajo (Verificado)');
+
+    f.componentInstance.openComplianceModal();
+    f.detectChanges();
+    const modal = el.querySelector('[role="dialog"]');
+    expect(modal).not.toBeNull();
+    const obsBadge = modal?.querySelector('.badge-danger');
+    expect(obsBadge?.textContent).toContain('OBSERVACIÓN');
+    f.componentInstance.closeComplianceModal();
+    f.detectChanges();
+    expect(el.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('deep-links ?day=YYYY-MM-DD directly into calendar tab with day selected and clears cleanly', () => {
+    seed([op({ id: 'd1', timestamp: '2026-07-15T10:00:00Z', vesAmount: 8000, usdtAmount: 10 })]);
+    const router = TestBed.inject(Router);
+    const origParse = router.parseUrl.bind(router);
+    vi.spyOn(router, 'parseUrl').mockImplementation(() => origParse('/stats?day=2026-07-15'));
+
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.workspaceTab()).toBe('calendar');
+    expect(c.period()).toBe('calendar');
+    expect(c.selectedCalendarDay()?.date).toBe('2026-07-15');
+    expect((f.nativeElement as HTMLElement).querySelector('.day-inspection-panel')).not.toBeNull();
+
+    c.clearDayFilter();
+    f.detectChanges();
+    expect(c.dayAppliedFromParam).toBe(false);
+    expect(c.selectedCalendarDay()).toBeNull();
   });
 });

@@ -80,7 +80,7 @@ export const routes: Routes = [
   },
   {
     path: 'stats',
-    title: 'Statistics',
+    title: 'Analítica & Cumplimiento',
     loadComponent: () => import('./features/stats/stats').then((m) => m.Stats),
   },
   {
