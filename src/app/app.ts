@@ -1,6 +1,6 @@
 import { Component, signal, computed, inject, DestroyRef } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, NavigationEnd, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { ToastComponent } from './core/toast.component';
 import { HotkeysModalComponent } from './shared/components/hotkeys-modal.component';
 import { CommandPalette } from './shared/ui/command-palette';
@@ -13,6 +13,7 @@ import { BinanceP2pService } from './core/binance-p2p.service';
 import { TelegramWorkerService } from './core/telegram-worker.service';
 
 export type AppTheme = 'dark' | 'apple-dark' | 'neon-pink' | 'light';
+export type SidebarToolsTab = 'quoting' | 'treasury';
 
 @Component({
   imports: [
@@ -38,6 +39,7 @@ export class App {
   readonly telegram = inject(TelegramWorkerService);
   readonly mobileDrawerOpen = signal<boolean>(false);
   readonly sidebarCollapsed = signal<boolean>(this.initialSidebarCollapsed());
+  readonly sidebarToolsTab = signal<SidebarToolsTab>('quoting');
   readonly apiModalOpen = signal<boolean>(false);
   readonly tourModalOpen = signal<boolean>(false);
 
@@ -80,6 +82,7 @@ export class App {
   readonly version = signal<string>('1.5.1');
   readonly hotkeys = inject(HotkeysService);
   readonly isInputFocused = signal<boolean>(false);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
   constructor() {
@@ -91,6 +94,38 @@ export class App {
     this.resolveVersion();
     this.listenThemeToggle();
     this.listenInputFocus();
+    this.listenRouteForSidebarTab();
+  }
+
+  setSidebarToolsTab(tab: SidebarToolsTab): void {
+    this.sidebarToolsTab.set(tab);
+  }
+
+  private listenRouteForSidebarTab(): void {
+    const syncTabFromUrl = (url: string) => {
+      if (
+        url.includes('/finanzas-360') ||
+        url.includes('/receipts') ||
+        url.includes('/stats') ||
+        url.includes('/risk')
+      ) {
+        this.sidebarToolsTab.set('treasury');
+      } else if (
+        url.includes('/income') ||
+        url.includes('/triangulation') ||
+        url.includes('/remittances') ||
+        url.includes('/growth-projector')
+      ) {
+        this.sidebarToolsTab.set('quoting');
+      }
+    };
+    syncTabFromUrl(this.router.url || '');
+    const sub = this.router.events.subscribe((ev) => {
+      if (ev instanceof NavigationEnd) {
+        syncTabFromUrl(ev.urlAfterRedirects || ev.url);
+      }
+    });
+    this.destroyRef.onDestroy(() => sub.unsubscribe());
   }
 
   private listenInputFocus(): void {

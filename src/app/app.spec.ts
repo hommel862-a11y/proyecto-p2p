@@ -175,6 +175,53 @@ describe('App', () => {
       expect(compiled.querySelector('.sidebar')?.classList.contains('collapsed')).toBe(false);
       expect(store.get('p2p.sidebar_collapsed')).toBe('false');
     });
+
+    it('renders the Quantum Glass Command Dock controls (edge toggle, operator card, search pill, recessed tabs, AI dock, alpha orb)', () => {
+      const fixture = TestBed.createComponent(App);
+      const comp = fixture.componentInstance;
+      fixture.detectChanges();
+      const compiled = fixture.nativeElement as HTMLElement;
+
+      // 1. Edge collapse button
+      const edgeToggle = compiled.querySelector('.sidebar-edge-toggle') as HTMLButtonElement | null;
+      expect(edgeToggle).toBeTruthy();
+      edgeToggle?.click();
+      fixture.detectChanges();
+      expect(comp.sidebarCollapsed()).toBe(true);
+      edgeToggle?.click();
+      fixture.detectChanges();
+      expect(comp.sidebarCollapsed()).toBe(false);
+
+      // 2. Operator desk card opens API modal
+      const operatorCard = compiled.querySelector('.sidebar-operator-card') as HTMLButtonElement | null;
+      expect(operatorCard).toBeTruthy();
+      expect(comp.apiModalOpen()).toBe(false);
+      operatorCard?.click();
+      fixture.detectChanges();
+      expect(comp.apiModalOpen()).toBe(true);
+      comp.closeApiModal();
+
+      // 3. Glass search pill triggers Command Palette
+      const searchPill = compiled.querySelector('.sidebar-search-pill') as HTMLButtonElement | null;
+      expect(searchPill).toBeTruthy();
+      const paletteOpenBefore = comp.hotkeys.isPaletteOpen();
+      searchPill?.click();
+      fixture.detectChanges();
+      expect(comp.hotkeys.isPaletteOpen()).toBe(!paletteOpenBefore);
+
+      // 4. Recessed capsule tabs switch between quoting (4) and treasury (4) while preserving all 18 nav links
+      expect(comp.sidebarToolsTab()).toBe('quoting');
+      const treasuryTabBtn = compiled.querySelector('[data-sidebar-tab="treasury"]') as HTMLButtonElement | null;
+      expect(treasuryTabBtn).toBeTruthy();
+      treasuryTabBtn?.click();
+      fixture.detectChanges();
+      expect(comp.sidebarToolsTab()).toBe('treasury');
+      expect(compiled.querySelectorAll('.sidebar .nav a')).toHaveLength(18);
+
+      // 5. 4-tile AI & Governance dock + Alpha Orb
+      expect(compiled.querySelectorAll('.nav-ai-dock-grid a')).toHaveLength(4);
+      expect(compiled.querySelector('.sidebar-alpha-card .alpha-orb')).toBeTruthy();
+    });
   });
 });
 

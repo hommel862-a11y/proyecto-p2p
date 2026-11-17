@@ -1,5 +1,28 @@
 <div class="layout" [class.sidebar-collapsed]="sidebarCollapsed()">
   <aside class="sidebar" [class.collapsed]="sidebarCollapsed()" aria-label="Barra lateral de navegación">
+    <!-- Floating Edge Collapse Pill (macOS / Glass Dock Reference Style) -->
+    <button
+      type="button"
+      class="sidebar-edge-toggle"
+      (click)="toggleSidebar()"
+      [attr.aria-label]="sidebarCollapsed() ? 'Expandir barra lateral' : 'Colapsar barra lateral'"
+      [title]="sidebarCollapsed() ? 'Expandir menú' : 'Colapsar menú'"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="edge-chevron"
+        [class.is-collapsed]="sidebarCollapsed()"
+      >
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      <span class="edge-toggle-tooltip">{{ sidebarCollapsed() ? 'Expandir menú' : 'Colapsar menú' }}</span>
+    </button>
+
     <div class="brand">
       <span class="logo">
         <img src="assets/icons/brand-logo.png" alt="P2P Decisor" class="brand-logo-img" />
@@ -9,115 +32,213 @@
         <span class="brand-label-name">Decisor <small class="brand-edition-tag">QUANTUM</small></span>
       </span>
     </div>
+
+    <!-- Operator Identity & Live API Desk Card -->
+    <button
+      type="button"
+      class="sidebar-operator-card"
+      [class.is-online]="hasActiveApis()"
+      (click)="openApiModal()"
+      [title]="hasActiveApis() ? 'Mesa Institucional · APIs Activas (Configurar)' : 'Mesa Institucional · Modo Manual (Conectar APIs)'"
+    >
+      <span class="operator-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <span class="operator-status-dot" [class.online]="hasActiveApis()"></span>
+      </span>
+      <span class="operator-info">
+        <strong class="operator-title">Mesa Institucional</strong>
+        <small class="operator-sub">
+          <span class="sub-dot" [class.online]="hasActiveApis()"></span>
+          <span>{{ hasActiveApis() ? 'APIs Activas · Nivel Pro' : 'Modo Manual · Nivel Pro' }}</span>
+        </small>
+      </span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="operator-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+
+    <!-- Inline Glass Command Search Trigger (Ctrl+K) -->
+    <button
+      type="button"
+      class="sidebar-search-pill"
+      (click)="hotkeys.togglePalette()"
+      title="Buscar vista o comando rápido (Ctrl+K)"
+      aria-label="Buscar vista o comando rápido"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-pill-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span class="search-pill-text">Buscar vista o comando...</span>
+      <kbd class="search-pill-kbd font-mono">⌘K</kbd>
+    </button>
+
     <nav class="nav" aria-label="Navegación principal">
-      <span class="nav-section-label">⚡ Mesa de Ejecución</span>
-      <a routerLink="/dashboard" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        <span>Centro de Control</span>
-        <small class="nav-tag pro">HUD</small>
-      </a>
-      <a routerLink="/spread" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
-        <span>Monitor de Spread</span>
-        <small class="nav-tag live">LIVE</small>
-      </a>
-      <a routerLink="/radar" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 12l7-7"/><circle cx="12" cy="12" r="2"/></svg>
-        <span>Radar Cuantitativo</span>
-        <small class="nav-tag live">L2</small>
-      </a>
-      <a routerLink="/mesa-bcv" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-        <span>Mesa Cambiaria BCV</span>
-        <small class="nav-tag pro">FX</small>
-      </a>
-      <a routerLink="/log" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
-        <span>Operaciones</span>
-        <small class="nav-tag">FIFO</small>
-      </a>
-      <a routerLink="/compliance-cockpit" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <span>CRM &amp; Contrapartes</span>
-        <small class="nav-tag crm">CRM</small>
-      </a>
+      <!-- NIVEL 1: MESA DE EJECUCIÓN · 6 -->
+      <div class="nav-section-head">
+        <span class="nav-section-label">Mesa de Ejecución</span>
+        <span class="nav-section-count font-mono">6</span>
+      </div>
 
-      <span class="nav-section-label">🧮 Ingeniería &amp; Cotización</span>
-      <a routerLink="/income" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
-        <span>Calculadora</span>
-        <small class="nav-tag">360°</small>
-      </a>
-      <a routerLink="/triangulation" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l10 18H2L12 2z"/><circle cx="12" cy="12" r="2"/></svg>
-        <span>Triangulación</span>
-        <small class="nav-tag pro">3X</small>
-      </a>
-      <a routerLink="/remittances" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        <span>Cotizador de Remesas</span>
-        <small class="nav-tag">FX</small>
-      </a>
-      <a routerLink="/growth-projector" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        <span>Proyector 90D</span>
-        <small class="nav-tag">90D</small>
-      </a>
+      <div class="nav-primary-group">
+        <a routerLink="/dashboard" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Centro de Control">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          <span>Centro de Control</span>
+          <small class="nav-tag pro">HUD</small>
+        </a>
+        <a routerLink="/spread" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Monitor de Spread">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 7 12 10 20 14 4 17 12 21 12"/></svg>
+          <span>Monitor de Spread</span>
+          <small class="nav-tag live">LIVE</small>
+        </a>
+        <a routerLink="/radar" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Radar Cuantitativo L2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 12l7-7"/><circle cx="12" cy="12" r="2"/></svg>
+          <span>Radar Cuantitativo</span>
+          <small class="nav-tag live">L2</small>
+        </a>
+        <a routerLink="/mesa-bcv" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Mesa Cambiaria BCV">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+          <span>Mesa Cambiaria BCV</span>
+          <small class="nav-tag pro">FX</small>
+        </a>
+        <a routerLink="/log" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Operaciones FIFO">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+          <span>Operaciones</span>
+          <small class="nav-tag">FIFO</small>
+        </a>
+        <a routerLink="/compliance-cockpit" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="CRM & Contrapartes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>CRM &amp; Contrapartes</span>
+          <small class="nav-tag crm">CRM</small>
+        </a>
+      </div>
 
-      <span class="nav-section-label">🏛️ Tesorería &amp; Auditoría</span>
-      <a routerLink="/finanzas-360" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        <span>Finanzas 360</span>
-      </a>
-      <a routerLink="/receipts" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        <span>Comprobantes &amp; OCR</span>
-        <small class="nav-tag">OCR</small>
-      </a>
-      <a routerLink="/stats" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/></svg>
-        <span>Analítica &amp; Cumplimiento</span>
-      </a>
-      <a routerLink="/risk" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>
-        <span>Riesgo</span>
-        <small class="nav-tag">BCV</small>
-      </a>
+      <!-- NIVEL 2: INGENIERÍA & TESORERÍA · 8 (Recessed Glass Sub-Container) -->
+      <div class="nav-section-head">
+        <span class="nav-section-label">Ingeniería &amp; Tesorería</span>
+        <span class="nav-section-count font-mono">8</span>
+      </div>
 
-      <span class="nav-section-label">🧠 Núcleo IA &amp; Gobernanza</span>
-      <a routerLink="/copilot" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg>
-        <span>Copiloto IA</span>
-        <small class="nav-tag ai">IA</small>
-      </a>
-      <a routerLink="/agents" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><rect x="4" y="12" width="16" height="8" rx="2"/><circle cx="9" cy="16" r="1"/><circle cx="15" cy="16" r="1"/></svg>
-        <span>Agent Studio</span>
-        <small class="nav-tag ai">SWARM</small>
-      </a>
-      <a routerLink="/mcp" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-        <span>Centro MCP</span>
-        <small class="nav-tag mcp">45</small>
-      </a>
-      <a routerLink="/guide" routerLinkActive="active" ariaCurrentWhenActive="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><polyline points="15 4 15 9 20 9"/><line x1="8" y1="13" x2="13" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
-        <span>Guía</span>
-      </a>
+      <div class="nav-recessed-capsule">
+        <div class="capsule-tabs-bar" role="tablist" aria-label="Subgrupos de Ingeniería y Tesorería">
+          <button
+            type="button"
+            role="tab"
+            class="capsule-tab"
+            data-sidebar-tab="quoting"
+            [class.active]="sidebarToolsTab() === 'quoting'"
+            [attr.aria-selected]="sidebarToolsTab() === 'quoting'"
+            (click)="setSidebarToolsTab('quoting')"
+          >
+            <span>Cotización</span>
+            <small class="tab-badge font-mono">4</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="capsule-tab"
+            data-sidebar-tab="treasury"
+            [class.active]="sidebarToolsTab() === 'treasury'"
+            [attr.aria-selected]="sidebarToolsTab() === 'treasury'"
+            (click)="setSidebarToolsTab('treasury')"
+          >
+            <span>Auditoría</span>
+            <small class="tab-badge font-mono">4</small>
+          </button>
+        </div>
+
+        <div class="capsule-links-group" [class.tab-hidden]="sidebarToolsTab() !== 'quoting'">
+          <a routerLink="/income" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Calculadora 360°">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
+            <span>Calculadora</span>
+            <small class="nav-tag">360°</small>
+          </a>
+          <a routerLink="/triangulation" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Triangulación 3X">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l10 18H2L12 2z"/><circle cx="12" cy="12" r="2"/></svg>
+            <span>Triangulación</span>
+            <small class="nav-tag pro">3X</small>
+          </a>
+          <a routerLink="/remittances" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Cotizador de Remesas">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Cotizador de Remesas</span>
+            <small class="nav-tag">FX</small>
+          </a>
+          <a routerLink="/growth-projector" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Proyector 90D">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+            <span>Proyector 90D</span>
+            <small class="nav-tag">90D</small>
+          </a>
+        </div>
+
+        <div class="capsule-links-group" [class.tab-hidden]="sidebarToolsTab() !== 'treasury'">
+          <a routerLink="/finanzas-360" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Finanzas 360">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            <span>Finanzas 360</span>
+          </a>
+          <a routerLink="/receipts" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Comprobantes & OCR">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Comprobantes &amp; OCR</span>
+            <small class="nav-tag">OCR</small>
+          </a>
+          <a routerLink="/stats" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Analítica & Cumplimiento">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="6" width="3" height="12"/><rect x="16" y="13" width="3" height="5"/></svg>
+            <span>Analítica &amp; Cumplimiento</span>
+          </a>
+          <a routerLink="/risk" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Riesgo BCV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>
+            <span>Riesgo</span>
+            <small class="nav-tag">BCV</small>
+          </a>
+        </div>
+      </div>
+
+      <!-- NIVEL 3: NÚCLEO IA & GOBERNANZA · 4 (4-Tile Compact Tactile Dock) -->
+      <div class="nav-section-head">
+        <span class="nav-section-label">Núcleo IA &amp; Gobernanza</span>
+        <span class="nav-section-count font-mono">4</span>
+      </div>
+
+      <div class="nav-ai-dock-grid">
+        <a routerLink="/copilot" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Copiloto IA">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg>
+          <span>Copiloto IA</span>
+          <small class="nav-tag ai">IA</small>
+        </a>
+        <a routerLink="/agents" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Agent Studio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><rect x="4" y="12" width="16" height="8" rx="2"/><circle cx="9" cy="16" r="1"/><circle cx="15" cy="16" r="1"/></svg>
+          <span>Agent Studio</span>
+          <small class="nav-tag ai">SWARM</small>
+        </a>
+        <a routerLink="/mcp" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Centro MCP (45)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          <span>Centro MCP</span>
+          <small class="nav-tag mcp">45</small>
+        </a>
+        <a routerLink="/guide" routerLinkActive="active" ariaCurrentWhenActive="page" data-tooltip="Guía Institucional">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><polyline points="15 4 15 9 20 9"/><line x1="8" y1="13" x2="13" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          <span>Guía</span>
+        </a>
+      </div>
     </nav>
 
+    <!-- Bottom High-Dopamine Alpha Signal + Quick Orb Card -->
     <div class="sidebar-alpha-card" [class.alpha-optimal]="sidebarAlphaSignal().isOptimal">
-      <div class="alpha-card-head">
-        <span class="alpha-eyebrow">
-          <span class="alpha-pulse-ring" aria-hidden="true"></span>
-          ALPHA SIGNAL
-        </span>
-        <span class="alpha-conf font-mono">{{ sidebarAlphaSignal().confidence }}%</span>
-      </div>
-      <strong class="alpha-state-title">{{ sidebarAlphaSignal().label }}</strong>
-      <div class="alpha-meta font-mono">
-        <span>Spread: {{ sidebarAlphaSignal().spreadPct | number: '1.2-2' }}%</span>
-        <a routerLink="/radar" class="alpha-radar-link">Radar →</a>
+      <a
+        routerLink="/radar"
+        class="alpha-orb"
+        [title]="'ALPHA SIGNAL · ' + sidebarAlphaSignal().label + ' (Spread ' + (sidebarAlphaSignal().spreadPct | number: '1.2-2') + '%)'"
+        aria-label="Abrir Radar Cuantitativo desde Alpha Signal"
+      >
+        <span class="alpha-orb-bolt">⚡</span>
+      </a>
+      <div class="alpha-card-body">
+        <div class="alpha-card-head">
+          <span class="alpha-eyebrow">
+            <span class="alpha-pulse-ring" aria-hidden="true"></span>
+            ALPHA SIGNAL
+          </span>
+          <span class="alpha-conf font-mono">{{ sidebarAlphaSignal().confidence }}%</span>
+        </div>
+        <strong class="alpha-state-title">{{ sidebarAlphaSignal().label }}</strong>
+        <div class="alpha-meta font-mono">
+          <span>Spread: {{ sidebarAlphaSignal().spreadPct | number: '1.2-2' }}%</span>
+          <a routerLink="/radar" class="alpha-radar-link">Radar →</a>
+        </div>
       </div>
     </div>
 
