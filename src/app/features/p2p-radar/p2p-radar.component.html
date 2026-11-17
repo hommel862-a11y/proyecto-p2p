@@ -11,7 +11,7 @@
             <span class="pulse-text">QUANTUM RADAR v3.0</span>
           </div>
           <span class="ring-buffer-pill font-mono" title="Muestras históricas acumuladas en el RingBuffer para detección de Bots y cruces EMA">
-            🧠 RingBuffer: {{ radarService.scanCycleCount() }}/12 muestras
+            🧠 RingBuffer: {{ radarService.bufferSampleCount() }}/12 muestras
           </span>
           @if (radarService.lastUpdated(); as updated) {
             <span class="last-sync-badge font-mono">
@@ -219,28 +219,59 @@
     <!-- Telemetry & Workspace View Switcher Bar -->
     <div class="telemetry-and-views-bar">
       <div class="quick-stats-bar">
-        <div class="stat-pill" (click)="setViewMode('BOOKS')" style="cursor: pointer;">
+        <div
+          class="stat-pill"
+          role="button"
+          tabindex="0"
+          (click)="setViewMode('BOOKS')"
+          (keydown.enter)="setViewMode('BOOKS')"
+          style="cursor: pointer;"
+        >
           <span class="stat-label">Ofertas Limpias:</span>
           <span class="stat-value font-mono">{{ radarService.totalCleanOffers() }}</span>
         </div>
-        <div class="stat-pill" (click)="setViewMode('BOOKS')" style="cursor: pointer;">
+        <div
+          class="stat-pill"
+          role="button"
+          tabindex="0"
+          (click)="setViewMode('BOOKS')"
+          (keydown.enter)="setViewMode('BOOKS')"
+          style="cursor: pointer;"
+        >
           <span class="stat-label">Liquidez Limpia:</span>
           <span class="stat-value font-mono stat-cyan">${{ radarService.totalCleanLiquidityUsdt() | number:'1.0-0' }} USDT</span>
         </div>
         <div
           class="stat-pill"
           [class.warning-pulse]="radarService.totalBotsDetected() > 0"
+          role="button"
+          tabindex="0"
           (click)="setViewMode('FORENSIC')"
+          (keydown.enter)="setViewMode('FORENSIC')"
           style="cursor: pointer;"
         >
           <span class="stat-label">Bots Detectados:</span>
           <span class="stat-value font-mono stat-amber">{{ radarService.totalBotsDetected() }}</span>
         </div>
-        <div class="stat-pill" (click)="setViewMode('FORENSIC')" style="cursor: pointer;">
+        <div
+          class="stat-pill"
+          role="button"
+          tabindex="0"
+          (click)="setViewMode('FORENSIC')"
+          (keydown.enter)="setViewMode('FORENSIC')"
+          style="cursor: pointer;"
+        >
           <span class="stat-label">Señuelos Purgados:</span>
           <span class="stat-value font-mono stat-red">{{ radarService.totalManipulationsDetected() }}</span>
         </div>
-        <div class="stat-pill" (click)="setViewMode('MATRIX')" style="cursor: pointer;">
+        <div
+          class="stat-pill"
+          role="button"
+          tabindex="0"
+          (click)="setViewMode('MATRIX')"
+          (keydown.enter)="setViewMode('MATRIX')"
+          style="cursor: pointer;"
+        >
           <span class="stat-label">Rutas Viables:</span>
           <span class="stat-value font-mono stat-emerald">{{ radarService.viableRoutesCount() }}</span>
         </div>
@@ -379,179 +410,196 @@
       <!-- ════════════════════════════════════════════════════════════════════
            VISTA A: LIBROS MULTIBANCO CON MICROESTRUCTURA Y BARRAS DE LIQUIDEZ
            ════════════════════════════════════════════════════════════════════ -->
+      @if (radarService.error(); as scanErr) {
+        <div class="radar-error-banner" role="alert">
+          <span>⚠️ {{ scanErr }}</span>
+          <button type="button" class="btn-retry-scan" (click)="scanRadar()">Reintentar</button>
+        </div>
+      }
+
       @if (activeViewMode() === 'BOOKS') {
         <div class="banks-grid">
           @for (bank of activeBanks(); track bank) {
-            @let buyBook = getBook(bank, 'BUY');
-            @let sellBook = getBook(bank, 'SELL');
-            @let sellTrend = getTrend(bank, 'SELL');
-            @let buyLiquidity = getBookCleanLiquidityUsdt(bank, 'BUY');
-            @let sellLiquidity = getBookCleanLiquidityUsdt(bank, 'SELL');
+            @if (booksViewModels().get(bank); as vm) {
+              @let buyBook = vm.buyBook;
+              @let sellBook = vm.sellBook;
+              @let sellTrend = vm.sellTrend;
 
-            <div class="bank-column card-surface">
-              <!-- Column Header -->
-              <div class="bank-column-header">
-                <div class="bank-name-badge">
-                  <span class="bank-icon">🏛️</span>
-                  <div class="bank-title-stack">
-                    <span class="bank-title">{{ bankLabels[bank] || bank }}</span>
-                    @if (sellTrend; as trend) {
-                      <span class="bank-advice-sub" [title]="trend.advice">{{ trend.advice }}</span>
+              <div class="bank-column card-surface">
+                <!-- Column Header -->
+                <div class="bank-column-header">
+                  <div class="bank-name-badge">
+                    <span class="bank-icon">🏛️</span>
+                    <div class="bank-title-stack">
+                      <span class="bank-title">{{ bankLabels[bank] || bank }}</span>
+                      @if (sellTrend; as trend) {
+                        <span class="bank-advice-sub" [title]="trend.advice">{{ trend.advice }}</span>
+                      }
+                    </div>
+                    @if (vm.sudebanHealth; as sudeban) {
+                      <span
+                        class="sudeban-health-chip font-mono"
+                        [class.optimal]="sudeban.statusClass === 'optimal'"
+                        [class.warn]="sudeban.statusClass === 'warn'"
+                        [class.blocked]="sudeban.statusClass === 'blocked'"
+                      >
+                        {{ sudeban.label }}
+                      </span>
+                    }
+                    @if (vm.intraSpreadVes !== null && vm.intraSpreadPct !== null) {
+                      <span
+                        class="intra-spread-badge font-mono"
+                        [class.positive]="vm.intraSpreadVes > 0"
+                        [class.negative]="vm.intraSpreadVes <= 0"
+                        title="Spread bruto intra-bancario entre Venta Top #1 y Compra Top #1"
+                      >
+                        Δ {{ vm.intraSpreadVes >= 0 ? '+' : '' }}{{ vm.intraSpreadVes | number:'1.2-2' }} Bs ({{ vm.intraSpreadPct | number:'1.2-2' }}%)
+                      </span>
                     }
                   </div>
-                  @if (buyBook && sellBook && (buyBook.effectiveTopPrice ?? 0) > 0 && (sellBook.effectiveTopPrice ?? 0) > 0) {
-                    @let bankSpreadVes = (sellBook.effectiveTopPrice ?? 0) - (buyBook.effectiveTopPrice ?? 0);
-                    @let bankSpreadPct = ((sellBook.effectiveTopPrice ?? 0) / (buyBook.effectiveTopPrice ?? 1) - 1) * 100;
-                    <span
-                      class="intra-spread-badge font-mono"
-                      [class.positive]="bankSpreadVes > 0"
-                      [class.negative]="bankSpreadVes <= 0"
-                      title="Spread bruto intra-bancario entre Venta Top #1 y Compra Top #1"
-                    >
-                      Δ {{ bankSpreadVes >= 0 ? '+' : '' }}{{ bankSpreadVes | number:'1.2-2' }} Bs ({{ bankSpreadPct | number:'1.2-2' }}%)
-                    </span>
+
+                  <!-- Trend Thermometer + EMA Crossover -->
+                  @if (sellTrend; as trend) {
+                    <div class="trend-badge" [attr.data-trend]="trend.trend" [title]="'EMA Corta: ' + (trend.emaShort | number:'1.2-2') + ' | EMA Larga: ' + (trend.emaLong | number:'1.2-2')">
+                      <span class="trend-arrow">
+                        @if (trend.trend === 'ALCISTA') { ▲ }
+                        @else if (trend.trend === 'BAJISTA') { ▼ }
+                        @else { ◀▶ }
+                      </span>
+                      <span class="trend-text">{{ trend.trend }}</span>
+                      <span class="trend-vwap font-mono">VWAP: {{ trend.currentVWAP | number:'1.2-2' }}</span>
+                    </div>
                   }
                 </div>
 
-                <!-- Trend Thermometer + EMA Crossover -->
-                @if (sellTrend; as trend) {
-                  <div class="trend-badge" [attr.data-trend]="trend.trend" [title]="'EMA Corta: ' + (trend.emaShort | number:'1.2-2') + ' | EMA Larga: ' + (trend.emaLong | number:'1.2-2')">
-                    <span class="trend-arrow">
-                      @if (trend.trend === 'ALCISTA') { ▲ }
-                      @else if (trend.trend === 'BAJISTA') { ▼ }
-                      @else { ◀▶ }
-                    </span>
-                    <span class="trend-text">{{ trend.trend }}</span>
-                    <span class="trend-vwap font-mono">VWAP: {{ trend.currentVWAP | number:'1.2-2' }}</span>
-                  </div>
-                }
-              </div>
-
-              <!-- Subdivided Order Books: BUY and SELL -->
-              <div class="books-split">
-                <!-- BUY SIDE (Comprar USDT) -->
-                <div class="sub-book buy-sub-book">
-                  <div class="sub-book-header">
-                    <div class="sub-book-title-group">
-                      <span class="sub-book-title buy-label">COMPRA (Top 5 Limpio)</span>
-                      <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
-                        💧 ${{ buyLiquidity | number:'1.0-0' }} USDT
-                      </span>
-                    </div>
-                    @if (buyBook && buyBook.effectiveTopPrice) {
-                      <span class="top-rate font-mono buy-color">{{ buyBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
-                    }
-                  </div>
-
-                  <div class="offers-list">
-                    @if (buyBook && buyBook.cleanOffers.length > 0) {
-                      @for (offer of buyBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
-                        @let bot = isOfferBot(bank, 'BUY', offer);
-                        @let depthPct = getOfferDepthPct(bank, 'BUY', offer.surplusAmount);
-                        <div
-                          class="offer-row buy-row"
-                          [class.selected-sim]="simBuyBank() === bank && simBuyPrice() === offer.price"
-                          (click)="selectOfferForSimulation(bank, 'BUY', offer)"
-                          title="Clic para cargar {{ offer.price | number:'1.2-2' }} Bs en Compra del Simulador"
-                        >
-                          <div class="offer-depth-bar buy-depth" [style.width.%]="depthPct"></div>
-                          <div class="offer-rank-col">
-                            <span class="rank-badge">#{{ idx + 1 }}</span>
-                          </div>
-                          <div class="offer-price-col">
-                            <div class="price-and-paytime">
-                              <span class="offer-price font-mono buy-color">{{ offer.price | number:'1.2-2' }}</span>
-                              <span class="paytime-pill font-mono">{{ offer.payTimeLimit }}m</span>
-                            </div>
-                            <span class="offer-user" [class.is-merchant]="offer.isMerchant">
-                              @if (offer.isMerchant) { ★ } {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}% · {{ offer.monthOrderCount }} órd)
-                            </span>
-                          </div>
-                          <div class="offer-volume-col">
-                            <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }} USDT</span>
-                            <span class="offer-limits font-mono">
-                              {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
-                            </span>
-                          </div>
-
-                          @if (bot) {
-                            <div
-                              class="bot-badge"
-                              title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
-                            >
-                              🤖 BOT
-                            </div>
-                          }
-                        </div>
+                <!-- Subdivided Order Books: BUY and SELL -->
+                <div class="books-split">
+                  <!-- BUY SIDE (Comprar USDT) -->
+                  <div class="sub-book buy-sub-book">
+                    <div class="sub-book-header">
+                      <div class="sub-book-title-group">
+                        <span class="sub-book-title buy-label">COMPRA (Top 5 Limpio)</span>
+                        <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
+                          💧 ${{ vm.buyLiquidity | number:'1.0-0' }} USDT
+                        </span>
+                      </div>
+                      @if (buyBook && buyBook.effectiveTopPrice) {
+                        <span class="top-rate font-mono buy-color">{{ buyBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
                       }
-                    } @else {
-                      <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
-                    }
-                  </div>
-                </div>
-
-                <!-- SELL SIDE (Vender USDT) -->
-                <div class="sub-book sell-sub-book">
-                  <div class="sub-book-header">
-                    <div class="sub-book-title-group">
-                      <span class="sub-book-title sell-label">VENTA (Top 5 Limpio)</span>
-                      <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
-                        💧 ${{ sellLiquidity | number:'1.0-0' }} USDT
-                      </span>
                     </div>
-                    @if (sellBook && sellBook.effectiveTopPrice) {
-                      <span class="top-rate font-mono sell-color">{{ sellBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
-                    }
+
+                    <div class="offers-list">
+                      @if (vm.buyTopOffers.length > 0) {
+                        @for (row of vm.buyTopOffers; track row.offer.advNo; let idx = $index) {
+                          <div
+                            class="offer-row buy-row"
+                            role="button"
+                            tabindex="0"
+                            [class.selected-sim]="simBuyBank() === bank && simBuyPrice() === row.offer.price"
+                            (click)="selectOfferForSimulation(bank, 'BUY', row.offer)"
+                            (keydown.enter)="selectOfferForSimulation(bank, 'BUY', row.offer)"
+                            title="Clic para cargar {{ row.offer.price | number:'1.2-2' }} Bs en Compra del Simulador"
+                          >
+                            <div class="offer-depth-bar buy-depth" [style.width.%]="row.depthPct"></div>
+                            <div class="offer-rank-col">
+                              <span class="rank-badge">#{{ idx + 1 }}</span>
+                            </div>
+                            <div class="offer-price-col">
+                              <div class="price-and-paytime">
+                                <span class="offer-price font-mono buy-color">{{ row.offer.price | number:'1.2-2' }}</span>
+                                <span class="paytime-pill font-mono">{{ row.offer.payTimeLimit }}m</span>
+                              </div>
+                              <span class="offer-user" [class.is-merchant]="row.offer.isMerchant">
+                                @if (row.offer.isMerchant) { ★ } {{ row.offer.nickName }} ({{ row.offer.monthFinishRate | number:'1.0-0' }}% · {{ row.offer.monthOrderCount }} órd)
+                              </span>
+                            </div>
+                            <div class="offer-volume-col">
+                              <span class="offer-surplus font-mono">${{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                              <span class="offer-limits font-mono">
+                                {{ row.offer.minSingleTransAmount | number:'1.0-0' }} - {{ row.offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                              </span>
+                            </div>
+
+                            @if (row.bot; as bot) {
+                              <div
+                                class="bot-badge"
+                                title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
+                              >
+                                🤖 BOT
+                              </div>
+                            }
+                          </div>
+                        }
+                      } @else {
+                        <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                      }
+                    </div>
                   </div>
 
-                  <div class="offers-list">
-                    @if (sellBook && sellBook.cleanOffers.length > 0) {
-                      @for (offer of sellBook.cleanOffers.slice(0, 5); track offer.advNo; let idx = $index) {
-                        @let bot = isOfferBot(bank, 'SELL', offer);
-                        @let depthPct = getOfferDepthPct(bank, 'SELL', offer.surplusAmount);
-                        <div
-                          class="offer-row sell-row"
-                          [class.selected-sim]="simSellBank() === bank && simSellPrice() === offer.price"
-                          (click)="selectOfferForSimulation(bank, 'SELL', offer)"
-                          title="Clic para cargar {{ offer.price | number:'1.2-2' }} Bs en Venta del Simulador"
-                        >
-                          <div class="offer-depth-bar sell-depth" [style.width.%]="depthPct"></div>
-                          <div class="offer-rank-col">
-                            <span class="rank-badge">#{{ idx + 1 }}</span>
-                          </div>
-                          <div class="offer-price-col">
-                            <div class="price-and-paytime">
-                              <span class="offer-price font-mono sell-color">{{ offer.price | number:'1.2-2' }}</span>
-                              <span class="paytime-pill font-mono">{{ offer.payTimeLimit }}m</span>
-                            </div>
-                            <span class="offer-user" [class.is-merchant]="offer.isMerchant">
-                              @if (offer.isMerchant) { ★ } {{ offer.nickName }} ({{ offer.monthFinishRate | number:'1.0-0' }}% · {{ offer.monthOrderCount }} órd)
-                            </span>
-                          </div>
-                          <div class="offer-volume-col">
-                            <span class="offer-surplus font-mono">${{ offer.surplusAmount | number:'1.0-0' }} USDT</span>
-                            <span class="offer-limits font-mono">
-                              {{ offer.minSingleTransAmount | number:'1.0-0' }} - {{ offer.maxSingleTransAmount | number:'1.0-0' }} Bs
-                            </span>
-                          </div>
-
-                          @if (bot) {
-                            <div
-                              class="bot-badge"
-                              title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
-                            >
-                              🤖 BOT
-                            </div>
-                          }
-                        </div>
+                  <!-- SELL SIDE (Vender USDT) -->
+                  <div class="sub-book sell-sub-book">
+                    <div class="sub-book-header">
+                      <div class="sub-book-title-group">
+                        <span class="sub-book-title sell-label">VENTA (Top 5 Limpio)</span>
+                        <span class="sub-book-liq font-mono" title="Liquidez limpia acumulada en el Top 5">
+                          💧 ${{ vm.sellLiquidity | number:'1.0-0' }} USDT
+                        </span>
+                      </div>
+                      @if (sellBook && sellBook.effectiveTopPrice) {
+                        <span class="top-rate font-mono sell-color">{{ sellBook.effectiveTopPrice | number:'1.2-2' }} Bs</span>
                       }
-                    } @else {
-                      <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
-                    }
+                    </div>
+
+                    <div class="offers-list">
+                      @if (vm.sellTopOffers.length > 0) {
+                        @for (row of vm.sellTopOffers; track row.offer.advNo; let idx = $index) {
+                          <div
+                            class="offer-row sell-row"
+                            role="button"
+                            tabindex="0"
+                            [class.selected-sim]="simSellBank() === bank && simSellPrice() === row.offer.price"
+                            (click)="selectOfferForSimulation(bank, 'SELL', row.offer)"
+                            (keydown.enter)="selectOfferForSimulation(bank, 'SELL', row.offer)"
+                            title="Clic para cargar {{ row.offer.price | number:'1.2-2' }} Bs en Venta del Simulador"
+                          >
+                            <div class="offer-depth-bar sell-depth" [style.width.%]="row.depthPct"></div>
+                            <div class="offer-rank-col">
+                              <span class="rank-badge">#{{ idx + 1 }}</span>
+                            </div>
+                            <div class="offer-price-col">
+                              <div class="price-and-paytime">
+                                <span class="offer-price font-mono sell-color">{{ row.offer.price | number:'1.2-2' }}</span>
+                                <span class="paytime-pill font-mono">{{ row.offer.payTimeLimit }}m</span>
+                              </div>
+                              <span class="offer-user" [class.is-merchant]="row.offer.isMerchant">
+                                @if (row.offer.isMerchant) { ★ } {{ row.offer.nickName }} ({{ row.offer.monthFinishRate | number:'1.0-0' }}% · {{ row.offer.monthOrderCount }} órd)
+                              </span>
+                            </div>
+                            <div class="offer-volume-col">
+                              <span class="offer-surplus font-mono">${{ row.offer.surplusAmount | number:'1.0-0' }} USDT</span>
+                              <span class="offer-limits font-mono">
+                                {{ row.offer.minSingleTransAmount | number:'1.0-0' }} - {{ row.offer.maxSingleTransAmount | number:'1.0-0' }} Bs
+                              </span>
+                            </div>
+
+                            @if (row.bot; as bot) {
+                              <div
+                                class="bot-badge"
+                                title="Bot Detectado ({{ bot.botType }}): {{ bot.details }}. Contra-precio sugerido: {{ bot.recommendedCounterPrice | number:'1.2-2' }}"
+                              >
+                                🤖 BOT
+                              </div>
+                            }
+                          </div>
+                        }
+                      } @else {
+                        <div class="empty-book-msg">Sin ofertas limpias en este escalón</div>
+                      }
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            }
           }
         </div>
       }
@@ -624,8 +672,10 @@
                 <tbody>
                   @for (route of filteredMatrixRoutes(); track route.routeId) {
                     <tr
+                      tabindex="0"
                       [class.viable-row]="route.metrics.netSpreadPct >= radarService.targetNetMarginPct()"
                       (click)="loadRouteIntoSimulator(route)"
+                      (keydown.enter)="loadRouteIntoSimulator(route)"
                       style="cursor: pointer;"
                     >
                       <td class="font-mono text-muted">#{{ route.rank }}</td>
@@ -634,6 +684,11 @@
                           <strong>{{ bankLabels[route.sourceBank] || route.sourceBank }}</strong>
                           <span class="route-arrow">➔</span>
                           <strong>{{ bankLabels[route.targetBank] || route.targetBank }}</strong>
+                          @if (route.liquidityCoveragePct !== undefined && route.liquidityCoveragePct < 100) {
+                            <span class="coverage-warn-pill font-mono" title="Liquidez limpia cubre parcialmente el capital simulado">
+                              💧 {{ route.liquidityCoveragePct }}%
+                            </span>
+                          }
                         </div>
                       </td>
                       <td>
@@ -986,13 +1041,27 @@
 
           <!-- Break-Even & Target Rates Grid -->
           <div class="tactical-rates-grid">
-            <div class="t-rate-box" (click)="copyRateToClipboard(metrics.breakEvenSellPrice, 'beSell')" title="Clic para copiar Break-Even de Venta">
+            <div
+              class="t-rate-box"
+              role="button"
+              tabindex="0"
+              (click)="copyRateToClipboard(metrics.breakEvenSellPrice, 'beSell')"
+              (keydown.enter)="copyRateToClipboard(metrics.breakEvenSellPrice, 'beSell')"
+              title="Clic para copiar Break-Even de Venta"
+            >
               <span class="t-rate-lbl">Break-Even Venta</span>
               <span class="t-rate-val font-mono stat-amber">{{ metrics.breakEvenSellPrice | number:'1.2-2' }} Bs</span>
               <span class="t-rate-sub font-mono">Compra máx: {{ metrics.breakEvenBuyPrice | number:'1.2-2' }}</span>
             </div>
 
-            <div class="t-rate-box" (click)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')" title="Clic para copiar Tasa Target de Venta">
+            <div
+              class="t-rate-box"
+              role="button"
+              tabindex="0"
+              (click)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')"
+              (keydown.enter)="copyRateToClipboard(metrics.targetSellPrice, 'targetSell')"
+              title="Clic para copiar Tasa Target de Venta"
+            >
               <span class="t-rate-lbl">Target Venta (+{{ radarService.targetNetMarginPct() }}%)</span>
               <span class="t-rate-val font-mono stat-cyan">{{ metrics.targetSellPrice | number:'1.2-2' }} Bs</span>
               <span class="t-rate-sub font-mono">Target Compra: {{ metrics.targetBuyPrice | number:'1.2-2' }}</span>
@@ -1030,14 +1099,24 @@
               <span>💾 Registrar Ciclo Completado en Radar</span>
             </button>
 
-            <button
-              type="button"
-              class="btn-dispatch-crm"
-              (click)="dispatchSimulatedToCrm()"
-              title="Crea un trato en tránsito directamente en el Kanban del CRM & Tesorería"
-            >
-              <span>🚀 Despachar Ruta al CRM Kanban</span>
-            </button>
+            <div class="sim-actions-crm-row">
+              <button
+                type="button"
+                class="btn-dispatch-crm"
+                (click)="dispatchSimulatedToCrm()"
+                title="Crea un trato en tránsito directamente en el Kanban del CRM & Tesorería"
+              >
+                <span>🚀 Despachar al CRM Kanban</span>
+              </button>
+              <button
+                type="button"
+                class="btn-open-crm-link"
+                (click)="openCrmPipeline()"
+                title="Ir al Pipeline CRM & Tesorería"
+              >
+                Abrir CRM →
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -1198,13 +1277,26 @@
        ══════════════════════════════════════════════════════════════════════════ -->
   @if (cleanModalOpen()) {
     <div class="modal-backdrop" (click)="closeCleanModal()">
-      <div class="modal-card card-surface" (click)="$event.stopPropagation()">
+      <div
+        class="modal-card card-surface"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clean-modal-title"
+        (click)="$event.stopPropagation()"
+      >
         <div class="modal-header">
           <div class="modal-title-wrap">
             <span class="shield-lg">🛡️</span>
-            <h3>Reglas de Filtrado: Modo Limpio</h3>
+            <h3 id="clean-modal-title">Reglas de Filtrado: Modo Limpio</h3>
           </div>
-          <button type="button" class="btn-close-modal" (click)="closeCleanModal()">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="closeCleanModal()"
+          >
+            ✕
+          </button>
         </div>
 
         <div class="modal-body">

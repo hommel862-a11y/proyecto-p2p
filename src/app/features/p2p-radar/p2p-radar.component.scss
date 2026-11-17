@@ -1,7 +1,11 @@
 :host {
   display: block;
   width: 100%;
-  color: var(--text-primary, #e2e8f0);
+  --bg-surface: var(--panel, rgba(18, 22, 31, 0.92));
+  --bg-card: var(--panel-2, #12161f);
+  --border-subtle: var(--line, #1e2533);
+  --text-primary: var(--text, #e2e8f0);
+  color: var(--text, #e2e8f0);
   font-family: var(--font-sans, inherit);
 }
 
@@ -866,61 +870,76 @@
   }
 }
 
-.target-action-card {
+.simulator-actions-stack {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 8px;
+  margin-top: 6px;
+}
 
-  .simulator-actions-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 4px;
+.sim-actions-crm-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.btn-open-crm-link {
+  background: var(--input-bg, #0b0e14);
+  border: 1px solid var(--line-strong, #2d3748);
+  color: var(--text, #e2e8f0);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #38bdf8;
+    color: #38bdf8;
+  }
+}
+
+.btn-copy-target {
+  background: var(--panel-2, #1e293b);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+
+  &:hover {
+    background: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
   }
 
-  .btn-copy-target {
-    background: #1e293b;
-    border: 1px solid #3b82f6;
-    color: #60a5fa;
-    padding: 7px 12px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    text-align: center;
-
-    &:hover {
-      background: #3b82f6;
-      color: #ffffff;
-      box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-    }
-
-    &.copied {
-      background: #10b981;
-      border-color: #10b981;
-      color: #ffffff;
-    }
+  &.copied {
+    background: #10b981;
+    border-color: #10b981;
+    color: #ffffff;
   }
+}
 
-  .btn-record-cycle {
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    color: #10b981;
-    padding: 7px 12px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 0.78rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    text-align: center;
+.btn-record-cycle {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
 
-    &:hover {
-      background: #10b981;
-      color: #0b0e14;
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
-    }
+  &:hover {
+    background: #10b981;
+    color: #0b0e14;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
   }
 }
 
@@ -1220,7 +1239,7 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
-  z-index: 200;
+  z-index: 1150;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1534,7 +1553,7 @@
   .radar-sticky-cockpit {
     grid-column: span 4;
     position: sticky;
-    top: 16px;
+    top: 78px;
     min-width: 0;
   }
 
@@ -2102,6 +2121,90 @@
 
   .offer-row {
     padding: 4px 6px;
+  }
+}
+
+/* Error Banner, SUDEBAN Health Chip, Coverage Pill & Mobile Safe Areas */
+.radar-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.42);
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 600;
+
+  .btn-retry-scan {
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.55);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+
+    &:hover {
+      background: #ef4444;
+    }
+  }
+}
+
+.sudeban-health-chip {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong, #2d3748);
+
+  &.optimal {
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #10b981;
+  }
+
+  &.warn {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+  }
+
+  &.blocked {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #ef4444;
+  }
+}
+
+.coverage-warn-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  color: #f59e0b;
+  margin-left: 6px;
+}
+
+:host :focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .radar-container {
+    padding: 12px 12px 136px;
+  }
+
+  .opportunities-ticker-bar {
+    bottom: 64px;
+    z-index: 950;
+    padding: 8px 14px;
   }
 }
 

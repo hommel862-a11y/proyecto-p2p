@@ -1,5 +1,6 @@
 import '@angular/compiler';
 import { Injector } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { P2PRadarComponent } from './p2p-radar.component';
 import { P2PRadarService } from '../../core/p2p-radar.service';
@@ -297,6 +298,41 @@ describe('P2PRadarComponent', () => {
 
     component.dispatchSimulatedToCrm();
     expect(toastMock.success).toHaveBeenCalled();
+  });
+});
+
+describe('P2PRadarComponent DOM & ViewModel', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [P2PRadarComponent],
+    }).compileComponents();
+  });
+
+  it('renders header, caps RingBuffer pill at 12/12, renders error banner, and handles Escape on accessible modal', () => {
+    const fixture = TestBed.createComponent(P2PRadarComponent);
+    const service = TestBed.inject(P2PRadarService);
+    vi.spyOn(service, 'scanRadar').mockResolvedValue(new Map());
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Radar Cuantitativo de Microestructura P2P');
+
+    service.scanCycleCount.set(18);
+    service.error.set('Escudo HTTP 429 activo');
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('12/12 muestras');
+    expect(el.querySelector('.radar-error-banner')?.textContent).toContain('Escudo HTTP 429 activo');
+
+    fixture.componentInstance.openCleanModal();
+    fixture.detectChanges();
+    const dialog = el.querySelector('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
+
+    fixture.componentInstance.onEscapeKey();
+    fixture.detectChanges();
+    expect(el.querySelector('[role="dialog"]')).toBeNull();
   });
 });
 

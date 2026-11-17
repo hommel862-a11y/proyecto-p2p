@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   OnInit,
   OnDestroy,
   computed,
@@ -9,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   P2PRadarService,
   RADAR_BANK_LABELS,
@@ -16,6 +18,7 @@ import {
   type BankPresetId,
   type AutoRefreshIntervalSec,
 } from '../../core/p2p-radar.service';
+import { AccountsService } from '../../core/accounts.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { ToastService } from '../../core/toast.service';
 import {
@@ -26,6 +29,7 @@ import {
   type ArbitrageRoute,
   type BotDetectionResult,
   type MarketTrendResult,
+  type BankCode,
   RADAR_VOLUME_BRACKETS,
 } from '@p2p/core';
 
@@ -33,6 +37,41 @@ export type RadarViewMode = 'BOOKS' | 'MATRIX' | 'FORENSIC';
 export type RadarDensityMode = 'COMFORT' | 'COMPACT';
 export type MatrixRouteFilter = 'ALL' | 'MONOBANK' | 'INTERBANK' | 'VIABLE';
 export type TacticalPriceStrategy = 'TOP1' | 'BEAT_TICK' | 'VWAP' | 'ANTI_BOT';
+
+export interface EnrichedOfferRow {
+  readonly offer: CleanRadarOffer;
+  readonly bot: BotDetectionResult | undefined;
+  readonly depthPct: number;
+}
+
+export interface BankSudebanHealthView {
+  readonly label: string;
+  readonly isBlocked: boolean;
+  readonly statusClass: 'optimal' | 'warn' | 'blocked';
+}
+
+export interface RadarBankViewModel {
+  readonly buyBook: RadarCleanBook | undefined;
+  readonly sellBook: RadarCleanBook | undefined;
+  readonly sellTrend: MarketTrendResult | undefined;
+  readonly buyLiquidity: number;
+  readonly sellLiquidity: number;
+  readonly buyTopOffers: readonly EnrichedOfferRow[];
+  readonly sellTopOffers: readonly EnrichedOfferRow[];
+  readonly intraSpreadVes: number | null;
+  readonly intraSpreadPct: number | null;
+  readonly sudebanHealth: BankSudebanHealthView | null;
+}
+
+const P2P_METHOD_TO_BANK_CODE: Partial<Record<string, BankCode>> = {
+  Banesco: 'BANESCO',
+  Mercantil: 'MERCANTIL',
+  SpecificBank: 'BDV',
+  BBVA: 'PROVINCIAL',
+  BNC: 'BNC',
+  Bancaribe: 'BANCARIBE',
+  Banplus: 'BANPLUS',
+};
 
 @Component({
   selector: 'app-p2p-radar',
@@ -44,6 +83,9 @@ export type TacticalPriceStrategy = 'TOP1' | 'BEAT_TICK' | 'VWAP' | 'ANTI_BOT';
 })
 export class P2PRadarComponent implements OnInit, OnDestroy {
   readonly radarService = inject(P2PRadarService);
+  private readonly accountsService = inject(AccountsService, { optional: true });
+  private readonly router = inject(Router, { optional: true });
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly audioAlerts = inject(AudioAlertsService);
   private readonly toast = inject(ToastService);
 
@@ -93,7 +135,15 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
   readonly modalMaxOutlierDevPct = signal<number>(0.8);
 
   private tickerTimer: ReturnType<typeof setInterval> | null = null;
+  private copiedTimer: ReturnType<typeof setTimeout> | null = null;
   private lastAlertedRouteId: string | null = null;
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.cleanModalOpen()) {
+      this.closeCleanModal();
+    }
+  }
 
   // ─── Computed Properties ───────────────────────────────────────────
   readonly activeBanks = computed(() => this.radarService.activePaymentMethods());
@@ -142,6 +192,95 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     });
   });
 
+  readonly bankHealthMap = computed<Map<string, BankSudebanHealthView>>(() => {
+    const map = new Map<string, BankSudebanHealthView>();
+    const usages = this.accountsService?.usages();
+    if (!usages || usages.length === 0) return map;
+
+    for (const [methodKey, code] of Object.entries(P2P_METHOD_TO_BANK_CODE)) {
+      if (!code) continue;
+      const matching = usages.filter((u) => u.account.bankCode === code);
+      if (matching.length === 0) continue;
+
+      const active = matching.filter((u) => u.account.status !== 'DISABLED');
+      if (active.length === 0) {
+        map.set(methodKey, { label: 'Cuenta Pausada', isBlocked: true, statusClass: 'blocked' });
+        continue;
+      }
+      const best = active.find((u) => !u.isOverLimit && !u.isNearLimit);
+      if (best) {
+        map.set(methodKey, { label: 'SUDEBAN Óptimo', isBlocked: false, statusClass: 'optimal' });
+        continue;
+      }
+      const near = active.find((u) => !u.isOverLimit);
+      if (near) {
+        map.set(methodKey, { label: 'Cupo ≥ 80%', isBlocked: false, statusClass: 'warn' });
+      } else {
+        map.set(methodKey, { label: 'Límite Diario 100%', isBlocked: true, statusClass: 'blocked' });
+      }
+    }
+    return map;
+  });
+
+  /** Precomputed bank card view-models so OnPush 1s countdown never recalculates @for depth/bot rows. */
+  readonly booksViewModels = computed<Map<string, RadarBankViewModel>>(() => {
+    const books = this.radarService.radarBooks();
+    const healths = this.bankHealthMap();
+    const map = new Map<string, RadarBankViewModel>();
+
+    const enrichTop5 = (
+      book: RadarCleanBook | undefined,
+      bots: BotDetectionResult[],
+    ): EnrichedOfferRow[] => {
+      if (!book || book.cleanOffers.length === 0) return [];
+      const top5 = book.cleanOffers.slice(0, 5);
+      let maxSurplus = 1;
+      for (const o of top5) {
+        if (o.surplusAmount > maxSurplus) maxSurplus = o.surplusAmount;
+      }
+      return top5.map((offer) => ({
+        offer,
+        bot: bots.find((b) => b.advertiserNo === offer.advertiserNo),
+        depthPct: Math.min(100, Math.max(8, Math.round((offer.surplusAmount / maxSurplus) * 100))),
+      }));
+    };
+
+    const sumTop5Liquidity = (book: RadarCleanBook | undefined): number => {
+      if (!book) return 0;
+      let total = 0;
+      const limit = Math.min(5, book.cleanOffers.length);
+      for (let i = 0; i < limit; i++) {
+        total += book.cleanOffers[i].surplusAmount || 0;
+      }
+      return total;
+    };
+
+    for (const bank of this.activeBanks()) {
+      const buyBook = books.get(`${bank}_BUY`);
+      const sellBook = books.get(`${bank}_SELL`);
+      const sellTrend = this.radarService.getTrendForBook(bank, 'SELL');
+      const buyBots = this.radarService.getBotsForBook(bank, 'BUY');
+      const sellBots = this.radarService.getBotsForBook(bank, 'SELL');
+      const buyTop = buyBook?.effectiveTopPrice ?? 0;
+      const sellTop = sellBook?.effectiveTopPrice ?? 0;
+
+      map.set(bank, {
+        buyBook,
+        sellBook,
+        sellTrend,
+        buyLiquidity: sumTop5Liquidity(buyBook),
+        sellLiquidity: sumTop5Liquidity(sellBook),
+        buyTopOffers: enrichTop5(buyBook, buyBots),
+        sellTopOffers: enrichTop5(sellBook, sellBots),
+        intraSpreadVes: buyTop > 0 && sellTop > 0 ? sellTop - buyTop : null,
+        intraSpreadPct: buyTop > 0 && sellTop > 0 ? (sellTop / buyTop - 1) * 100 : null,
+        sudebanHealth: healths.get(bank) ?? null,
+      });
+    }
+
+    return map;
+  });
+
   readonly currentTickerRoute = computed<ArbitrageRoute | null>(() => {
     const routes = this.radarService.topRoutes();
     if (routes.length === 0) return null;
@@ -156,6 +295,21 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     this.modalMinFinishRate.set(cfg.minMonthFinishRate);
     this.modalMinOrders.set(cfg.minMonthOrderCount);
     this.modalMaxOutlierDevPct.set(cfg.outlierDeviationPct);
+
+    // Optional deep-link hydration (?bank=Banesco&capital=500)
+    const params = this.route?.snapshot?.queryParamMap;
+    const queryBank = params?.get('bank');
+    if (queryBank && this.availableBanks.includes(queryBank)) {
+      if (!this.radarService.activePaymentMethods().includes(queryBank)) {
+        this.radarService.togglePaymentMethod(queryBank);
+      }
+      this.simBuyBank.set(queryBank);
+      this.simSellBank.set(queryBank);
+    }
+    const queryCap = Number(params?.get('capital'));
+    if (Number.isFinite(queryCap) && queryCap > 0) {
+      this.radarService.setOperatingCapital(queryCap);
+    }
 
     // Initial scan if books are empty
     if (this.radarService.radarBooks().size === 0) {
@@ -179,6 +333,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       clearInterval(this.tickerTimer);
       this.tickerTimer = null;
     }
+    if (this.copiedTimer) {
+      clearTimeout(this.copiedTimer);
+      this.copiedTimer = null;
+    }
     this.radarService.stopAutoRefresh();
   }
 
@@ -187,6 +345,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     const books = await this.radarService.scanRadar();
     if (books.size > 0) {
       this.initSimulatorFromBestRoute();
+      const best = this.radarService.bestRoute();
+      if (best) {
+        this.checkSoundAlert(best);
+      }
     }
   }
 
@@ -334,10 +496,12 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       navigator.clipboard.writeText(rate.toFixed(2));
       this.copiedTarget.set(label);
       this.toast.info(`Tasa copiada: ${rate.toFixed(2)} VES`);
-      setTimeout(() => {
+      if (this.copiedTimer) clearTimeout(this.copiedTimer);
+      this.copiedTimer = setTimeout(() => {
         if (this.copiedTarget() === label) {
           this.copiedTarget.set(null);
         }
+        this.copiedTimer = null;
       }, 2500);
     }
   }
@@ -414,6 +578,10 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
       capitalUsdt: this.radarService.operatingCapitalUsdt(),
       netProfitUsdt: metrics.netProfitUsdt,
     });
+  }
+
+  openCrmPipeline(): void {
+    void this.router?.navigate(['/compliance-cockpit']);
   }
 
   copyDailySummaryToClipboard(): void {
@@ -535,10 +703,14 @@ export class P2PRadarComponent implements OnInit, OnDestroy {
     if (!this.soundAlertsActive()) return;
 
     const targetMargin = this.radarService.targetNetMarginPct();
-    if (
-      route.metrics.netSpreadPct >= targetMargin &&
-      route.routeId !== this.lastAlertedRouteId
-    ) {
+    if (route.metrics.netSpreadPct < targetMargin) {
+      if (this.lastAlertedRouteId === route.routeId) {
+        this.lastAlertedRouteId = null;
+      }
+      return;
+    }
+
+    if (route.routeId !== this.lastAlertedRouteId) {
       this.lastAlertedRouteId = route.routeId;
       this.audioAlerts.playOpportunityAlert();
     }
