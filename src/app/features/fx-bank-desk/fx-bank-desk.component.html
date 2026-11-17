@@ -13,19 +13,19 @@
     </div>
   </nav>
 
-  <!-- ZONA 1: CINTA DE PULSO MACRO & CONTROL DE TELEGRAM -->
+  <!-- ZONA 1: CINTA COMPACTA DE PULSO MACRO & CONTROL DE TELEGRAM -->
   <header class="fx-hero-banner">
     <div class="hero-left">
-      <div class="hero-badge-row">
+      <div class="hero-title-row">
+        <h1 class="hero-title">Mesa BCV · 14 Bancos</h1>
         <span class="window-pill" [class.window-active]="isWindowActive()">
           <span class="pulse-dot"></span>
-          {{ isWindowActive() ? '🟢 VENTANA BCV ACTIVA (09:00 - 13:00 VET)' : '🕒 MODO VIGILANCIA / MENUDEO' }}
+          {{ isWindowActive() ? 'VENTANA ACTIVA' : 'VIGILANCIA' }}
         </span>
-        <span class="provenance-chip font-mono">
-          Fuente BCV: {{ bcvProvenanceLabel() }}
-        </span>
-        <span class="provenance-chip font-mono">
-          Sync: {{ feedFreshnessLabel() }}
+      </div>
+      <div class="hero-badge-row">
+        <span class="provenance-chip font-mono" [title]="'Fuente BCV: ' + bcvProvenanceLabel()">
+          {{ bcvProvenanceLabel() }} · {{ feedFreshnessLabel() }}
         </span>
         <button
           type="button"
@@ -33,13 +33,9 @@
           [disabled]="isRefreshingFeeds()"
           (click)="refreshLiveFeeds()"
         >
-          {{ isRefreshingFeeds() ? '⏳ Sincronizando...' : '🔄 Refrescar BCV + P2P' }}
+          {{ isRefreshingFeeds() ? '⏳ Sync...' : '🔄 Refrescar' }}
         </button>
       </div>
-      <h1 class="hero-title">Mesa Cambiaria BCV &amp; Centinela Multibanco</h1>
-      <p class="hero-subtitle">
-        Coordinación en tiempo real en <strong>14 entidades bancarias (Estado y Privadas)</strong> con cálculo de lote exacto anti-rechazo, protección de sesión WAF y cierre contable FIFO en 1 clic.
-      </p>
     </div>
 
     <div class="hero-metrics-ribbon">
@@ -110,20 +106,11 @@
     </div>
   </header>
 
-  <!-- ZONA 2: SIMULADOR INTERACTIVO "1-SLIDER" Y CASCADA DE RETORNO -->
+  <!-- ZONA 2: SIMULADOR COMPACTO DE PRESUPUESTO Y CASCADA DE RETORNO -->
   <section class="simulator-section" aria-label="Simulador de Inyección y Retorno Neto">
     <div class="sim-controls-card">
       <div class="sim-header">
-        <div>
-          <span class="section-eyebrow">⚡ SIMULADOR INTERACTIVO DE INYECCIÓN</span>
-          <h2 class="sim-title">
-            {{
-              capitalAllocationMode() === 'DISTRIBUTE_TOTAL'
-                ? 'Capital Total a Repartir en Bancos Top'
-                : 'Presupuesto por Cuenta / Simulación Rápida'
-            }}
-          </h2>
-        </div>
+        <span class="section-eyebrow">⚡ SIMULADOR DE PRESUPUESTO</span>
         <div class="sim-header-actions">
           <div class="mode-toggle-group" role="group" aria-label="Modo de asignación de capital">
             <button
@@ -132,7 +119,7 @@
               [class.active]="capitalAllocationMode() === 'PER_BANK'"
               (click)="setCapitalAllocationMode('PER_BANK')"
             >
-              Presupuesto por Banco
+              Por Banco
             </button>
             <button
               type="button"
@@ -140,100 +127,118 @@
               [class.active]="capitalAllocationMode() === 'DISTRIBUTE_TOTAL'"
               (click)="setCapitalAllocationMode('DISTRIBUTE_TOTAL')"
             >
-              Repartir Capital Total
+              Repartir Total
             </button>
           </div>
           <button type="button" class="btn-sync-treasury" (click)="useTotalTreasuryBalance()">
-            🏦 Usar Mi Liquidez Total ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
+            🏦 Mi Saldo ({{ accountsService.treasurySummary().totalBalanceVes | number: '1.0-0' }} Bs)
+          </button>
+          <button
+            type="button"
+            class="btn-rate-toggle"
+            [class.active]="showRateOverrides() || hasManualRates()"
+            [attr.aria-expanded]="showRateOverrides() || hasManualRates()"
+            (click)="showRateOverrides.set(!showRateOverrides())"
+            title="Ajustar manualmente tasas BCV o P2P para simular escenarios"
+          >
+            ⚙️ Tasas{{ hasManualRates() ? ' •' : '' }}
           </button>
         </div>
       </div>
 
-      <div class="slider-row">
-        <input
-          type="range"
-          min="5000"
-          max="1000000"
-          step="5000"
-          [ngModel]="simulatedCapitalVes()"
-          (ngModelChange)="simulatedCapitalVes.set($event)"
-          class="capital-slider"
-          aria-label="Presupuesto en Bolívares a inyectar"
-        />
+      <div class="sim-budget-row">
         <div class="slider-input-group font-mono">
           <span class="currency-prefix">Bs.</span>
           <input
             type="number"
             min="1000"
-            step="1000"
+            step="5000"
             [ngModel]="simulatedCapitalVes()"
             (ngModelChange)="simulatedCapitalVes.set(+$event || 0)"
             class="capital-number-input"
-            aria-label="Monto en Bolívares"
+            aria-label="Monto en Bolívares a simular"
           />
+        </div>
+
+        <div class="sim-preset-chips" role="group" aria-label="Montos rápidos en Bolívares">
+          @for (preset of capitalPresetsVes; track preset) {
+            <button
+              type="button"
+              class="sim-preset-chip font-mono"
+              [class.active]="simulatedCapitalVes() === preset"
+              (click)="simulatedCapitalVes.set(preset)"
+            >
+              {{ preset / 1000 }}k
+            </button>
+          }
         </div>
       </div>
 
-      <div class="manual-rates-bar">
-        <label class="rate-override-field">
-          <span>Tasa BCV (Bs):</span>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Auto"
-            [ngModel]="manualBcvOverride()"
-            (ngModelChange)="manualBcvOverride.set($event ? +$event : null)"
-            class="mini-rate-input font-mono"
-          />
-        </label>
-        <label class="rate-override-field">
-          <span>Tasa P2P (Bs):</span>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Auto"
-            [ngModel]="manualP2pOverride()"
-            (ngModelChange)="manualP2pOverride.set($event ? +$event : null)"
-            class="mini-rate-input font-mono"
-          />
-        </label>
-      </div>
+      @if (showRateOverrides() || hasManualRates()) {
+        <div class="manual-rates-bar">
+          <label class="rate-override-field">
+            <span>BCV (Bs):</span>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Auto"
+              [ngModel]="manualBcvOverride()"
+              (ngModelChange)="manualBcvOverride.set($event ? +$event : null)"
+              class="mini-rate-input font-mono"
+            />
+          </label>
+          <label class="rate-override-field">
+            <span>P2P (Bs):</span>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Auto"
+              [ngModel]="manualP2pOverride()"
+              (ngModelChange)="manualP2pOverride.set($event ? +$event : null)"
+              class="mini-rate-input font-mono"
+            />
+          </label>
+          @if (hasManualRates()) {
+            <button type="button" class="btn-reset-rates" (click)="clearManualOverrides()">
+              Auto
+            </button>
+          }
+        </div>
+      }
     </div>
 
-    <!-- CASCADA DE 3 PASOS: BANCOS -> RIEL USDT -> RETORNO P2P -->
+    <!-- CASCADA COMPACTA DE 3 KPIS: COMPRA -> BÓVEDA -> GANANCIA -->
     <div class="waterfall-cards">
       <div class="wf-step">
-        <span class="wf-step-num">PASO 1 · COMPRA OFICIAL EN BANCOS</span>
+        <span class="wf-step-num">1 · COMPRA BCV</span>
         <strong class="wf-step-val font-mono">${{ evaluationPlan().totalRecommendedUsd | number: '1.0-0' }} USD</strong>
-        <span class="wf-step-sub">
-          Débito: {{ evaluationPlan().totalDeployableVes | number: '1.2-2' }} Bs (Comisión 0.25%-0.50% + buffer incluidos)
+        <span class="wf-step-sub font-mono">
+          {{ evaluationPlan().totalDeployableVes | number: '1.0-0' }} Bs
         </span>
       </div>
 
       <div class="wf-arrow" aria-hidden="true">➔</div>
 
       <div class="wf-step">
-        <span class="wf-step-num">PASO 2 · CONVERSIÓN RIEL A USDT</span>
-        <strong class="wf-step-val accent font-mono">{{ evaluationPlan().totalNetUsdt | number: '1.2-2' }} USDT</strong>
-        <span class="wf-step-sub">
-          Neto libre en bóveda tras fricción de tarjeta internacional / P2P divisas
-        </span>
+        <span class="wf-step-num">2 · BÓVEDA USDT</span>
+        <strong class="wf-step-val accent font-mono">{{ evaluationPlan().totalNetUsdt | number: '1.2-2' }} ₮</strong>
+        <span class="wf-step-sub">Neto post-riel</span>
       </div>
 
       <div class="wf-arrow" aria-hidden="true">➔</div>
 
       <div class="wf-step wf-step-profit">
-        <span class="wf-step-num">PASO 3 · LIQUIDACIÓN P2P Y GANANCIA NETA</span>
+        <span class="wf-step-num">3 · GANANCIA NETA</span>
         @if (evaluationPlan().totalProjectedNetProfitVes !== null) {
           <strong class="wf-step-val gold font-mono">
             +{{ evaluationPlan().totalProjectedNetProfitVes | number: '1.2-2' }} Bs
           </strong>
-          <span class="wf-step-sub">
-            ROI Neto Promedio: <strong>+{{ evaluationPlan().averageNetRoiPct | number: '1.2-2' }}%</strong> ({{ viableTicketsCount() }} bancos listos)
+          <span class="wf-step-sub font-mono">
+            ROI <strong>+{{ evaluationPlan().averageNetRoiPct | number: '1.2-2' }}%</strong> · {{ viableTicketsCount() }} bancos
           </span>
         } @else {
-          <strong class="wf-step-val unavailable font-mono">Esperando tasas...</strong>
-          <span class="wf-step-sub">Activa tasas de contingencia o conecta Cotizave/Binance</span>
+          <strong class="wf-step-val unavailable font-mono">Sin tasas</strong>
+          <span class="wf-step-sub">Conecta feeds o activa ⚙️ Tasas</span>
         }
       </div>
     </div>

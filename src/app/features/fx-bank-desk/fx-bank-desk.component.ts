@@ -58,8 +58,13 @@ export class FxBankDeskComponent implements OnInit, OnDestroy {
   // ─── Interactive Cockpit Controls ──────────────────────────────────────
   readonly sectorFilter = signal<FxSectorFilter>('ALL');
   readonly simulatedCapitalVes = signal<number>(120000);
+  readonly capitalPresetsVes: readonly number[] = [50000, 120000, 250000, 500000];
+  readonly showRateOverrides = signal<boolean>(false);
   readonly manualBcvOverride = signal<number | null>(null);
   readonly manualP2pOverride = signal<number | null>(null);
+  readonly hasManualRates = computed<boolean>(
+    () => this.manualBcvOverride() !== null || this.manualP2pOverride() !== null,
+  );
   readonly soundEnabled = signal<boolean>(true);
   readonly isSendingTelegram = signal<boolean>(false);
   readonly copiedBankId = signal<FxInterventionBankId | null>(null);
