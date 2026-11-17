@@ -1098,3 +1098,96 @@
   font-weight: 700;
   color: var(--muted);
 }
+
+/* ─── APPLE PRO OLED MIDNIGHT OVERRIDES ──────────────────────────────────── */
+:host-context([data-theme="apple-dark"]) {
+  .fx-hero-banner,
+  .fx-quick-nav-bar,
+  .waterfall-strip,
+  .bank-card {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .hero-metrics-ribbon,
+  .wf-step,
+  .bank-aba,
+  .provenance-chip,
+  .exit-rail-select,
+  .signal-toggle-btn,
+  .fx-nav-pill {
+    background: #14141a;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .wf-step.wf-step-profit {
+    background: #16161f;
+    border-color: rgba(255, 214, 10, 0.35);
+  }
+
+  .burst-sequencer-bar {
+    background: rgba(22, 22, 31, 0.94);
+    border-color: rgba(255, 214, 10, 0.42);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  }
+
+  .filter-pill {
+    background: #14141a;
+    border-color: rgba(255, 255, 255, 0.08);
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+
+    &.active {
+      background: #16161f;
+      border-color: rgba(255, 214, 10, 0.45);
+      color: var(--gold-strong, #ffe247);
+    }
+  }
+
+  .btn-burst-trigger {
+    background: #16161f;
+    border-color: rgba(255, 214, 10, 0.38);
+    color: var(--gold-strong, #ffe247);
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 214, 10, 0.12);
+    }
+
+    &.active {
+      background: rgba(255, 69, 58, 0.12);
+      border-color: rgba(255, 69, 58, 0.45);
+      color: #ff453a;
+    }
+  }
+
+  .bank-card {
+    &.card-fluid {
+      border-color: rgba(48, 209, 88, 0.38);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+    }
+
+    &.card-depleted,
+    &.card-blocked {
+      border-color: rgba(255, 69, 58, 0.35);
+    }
+  }
+
+  .sector-tag {
+    background: rgba(10, 132, 255, 0.14);
+    color: #0a84ff;
+
+    &.estado {
+      background: rgba(255, 214, 10, 0.12);
+      color: var(--gold-strong, #ffe247);
+    }
+  }
+
+  .fx-daily-settled-pill {
+    background: rgba(48, 209, 88, 0.12);
+    border-color: rgba(48, 209, 88, 0.32);
+    color: #30d158;
+  }
+}

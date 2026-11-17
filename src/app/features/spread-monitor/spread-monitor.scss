@@ -193,7 +193,7 @@
   background: var(--panel-2);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.2s var(--ease-out);
+  transition: transform 0.2s var(--ease-out), border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 
   &:hover {
     transform: translateY(-1px);
@@ -2575,14 +2575,36 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--muted, rgba(235, 235, 245, 0.6));
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.08);
       border-color: rgba(255, 255, 255, 0.14);
       color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
     }
 
-    &.active {
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    &[class*="bank-"].active,
+    &[class*="bank-"].active:hover:not(:disabled) {
+      background: #16161f;
+      border-color: rgba(255, 255, 255, 0.24);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    &.bank-all.active,
+    &.bank-all.active:hover:not(:disabled) {
+      border-color: var(--gold-border, rgba(255, 214, 10, 0.4));
+      color: var(--gold-strong, #ffe247);
+    }
+  }
+
+  .high-demand-radar-container.apple-radar-panel {
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-color: rgba(255, 255, 255, 0.08);
+
+    &::before {
+      display: none;
     }
   }
 

@@ -1713,12 +1713,17 @@ button:disabled, .btn:disabled {
   .apple-dock-card,
   .quantum-dock-card,
   .apple-kpi-card,
-  .quantum-kpi-card {
+  .quantum-kpi-card,
+  .quantum-hero-banner {
     background: rgba(17, 17, 22, 0.85);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .quantum-hero-banner {
+    border-left: 3px solid var(--gold, #ffd60a);
   }
 
   .apple-dynamic-island,
@@ -2859,6 +2864,70 @@ button:disabled, .btn:disabled {
     0 16px 36px -8px rgba(0, 0, 0, 0.55),
     0 0 24px rgba(216, 180, 92, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Override Quantum Core gold-emerald gradients in Apple Pro OLED Midnight */
+[data-theme="apple-dark"] {
+  .apple-desk-panel .desk-topbar,
+  .trading-desk-panel .desk-main-header,
+  .radar-container .radar-header,
+  .smart-calc-header,
+  .projector-hero,
+  .triangulation-container .tactical-header,
+  .remittances-container .page-header,
+  .finance-360-container .chameleon-header,
+  .risk-cockpit-panel .cockpit-header,
+  .academy-container .academy-hero,
+  .mcp-hub-container .hub-header,
+  .agent-studio-view .studio-header,
+  .copilot-container .copilot-header {
+    background: rgba(17, 17, 22, 0.85) !important;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-left: 3px solid var(--gold, #ffd60a) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  }
+
+  .apple-desk-panel .segmented-pills,
+  .trading-desk-panel .segmented-control-bar,
+  .calc-tab-group,
+  .remittances-container .view-tabs-bar,
+  .finance-360-container .module-nav-dock,
+  .risk-cockpit-panel .cockpit-tabs-bar,
+  .academy-container .guide-nav-bar,
+  .mcp-hub-container .hub-nav,
+  .agent-studio-view .segmented-control,
+  .copilot-container .master-tab-nav {
+    background: #14141a !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .apple-desk-panel .seg-pill.active,
+  .trading-desk-panel .seg-btn.active {
+    background: #1c1c26 !important;
+    border-color: rgba(255, 214, 10, 0.4) !important;
+    color: var(--gold-strong, #ffe247) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45) !important;
+  }
+
+  .radar-container .metric-card,
+  .radar-container .panel-card,
+  .apple-desk-panel .bento-card {
+    border-top-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  }
+
+  .radar-container .metric-card:hover,
+  .radar-container .panel-card:hover,
+  .apple-desk-panel .bento-card:hover,
+  .risk-cockpit-panel .stat-card-surface:hover,
+  .mcp-hub-container .server-card:hover,
+  .agent-studio-view .agent-card:hover {
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  }
 }
 
 /* ============================================================
