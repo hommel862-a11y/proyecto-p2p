@@ -139,6 +139,11 @@ export interface MarketSnapshot {
   readonly nAsks: number;
   /** True when the observation was already stale when it was stored. */
   readonly stale: boolean;
+  /** Optional macro context observed alongside the P2P order book. */
+  readonly btcUsdt?: number;
+  readonly solUsdt?: number;
+  readonly usdcUsdt?: number;
+  readonly bcvVes?: number;
   /** Epoch ms when the book was observed. */
   readonly fetchedAt: number;
   /** Epoch ms when the row was written. */
@@ -362,8 +367,18 @@ export interface RecordMarketSnapshotInput {
   readonly nBids: number;
   readonly nAsks: number;
   readonly stale: boolean;
+  readonly btcUsdt?: number;
+  readonly solUsdt?: number;
+  readonly usdcUsdt?: number;
+  readonly bcvVes?: number;
   /** Epoch ms of the observation; defaults to now. */
   readonly fetchedAt?: number;
+}
+
+export interface MarketSnapshotsFilter {
+  readonly since?: number;
+  readonly until?: number;
+  readonly limit?: number;
 }
 
 export interface OpenDecisionCycleInput {

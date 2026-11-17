@@ -219,6 +219,10 @@ export class InMemoryDecisionJournalRepository implements DecisionJournalReposit
       nBids: input.nBids,
       nAsks: input.nAsks,
       stale: input.stale,
+      ...(input.btcUsdt !== undefined ? { btcUsdt: input.btcUsdt } : {}),
+      ...(input.solUsdt !== undefined ? { solUsdt: input.solUsdt } : {}),
+      ...(input.usdcUsdt !== undefined ? { usdcUsdt: input.usdcUsdt } : {}),
+      ...(input.bcvVes !== undefined ? { bcvVes: input.bcvVes } : {}),
       fetchedAt: input.fetchedAt ?? now,
       createdAt: now,
     };

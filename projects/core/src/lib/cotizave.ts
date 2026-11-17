@@ -63,12 +63,42 @@ function toNum(v: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+const INVISIBLE_KEY_CHARS = /[\u200B-\u200D\uFEFF\r\n]/g;
+
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1).trim();
+  }
+  return value;
+}
+
+/**
+ * Normalize a user-provided Cotizave API key, removing invisible characters,
+ * wrapping quotes, and accidental copy-paste header/env prefixes.
+ */
+export function normalizeCotizaveApiKey(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  let current = raw.replace(INVISIBLE_KEY_CHARS, '').trim();
+  current = stripWrappingQuotes(current);
+  current = current
+    .replace(/^COTIZAVE_API_KEY\s*=\s*/i, '')
+    .replace(/^X-API-Key\s*:\s*/i, '')
+    .replace(/^Authorization\s*:\s*Bearer\s+/i, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+  current = stripWrappingQuotes(current);
+  return current;
+}
+
 /**
  * Build Cotizave API request headers.
  */
 export function buildCotizaveHeaders(apiKey: string): Record<string, string> {
   return {
-    'X-API-Key': apiKey,
+    'X-API-Key': normalizeCotizaveApiKey(apiKey),
     Accept: 'application/json',
   };
 }
@@ -83,12 +113,20 @@ export function normalizeCotizaveRates(payload: unknown): Record<string, Cotizav
   if (!payload || typeof payload !== 'object') return result;
 
   const raw = payload as Record<string, unknown>;
+  const dataObj =
+    raw['data'] && typeof raw['data'] === 'object' && !Array.isArray(raw['data'])
+      ? (raw['data'] as Record<string, unknown>)
+      : null;
 
   const rates: unknown[] = Array.isArray(raw['rates'])
     ? raw['rates']
-    : Array.isArray(raw)
-      ? raw
-      : [];
+    : dataObj && Array.isArray(dataObj['rates'])
+      ? dataObj['rates']
+      : Array.isArray(raw['data'])
+        ? raw['data']
+        : Array.isArray(raw)
+          ? raw
+          : [];
 
   for (const entry of rates) {
     if (!entry || typeof entry !== 'object') continue;

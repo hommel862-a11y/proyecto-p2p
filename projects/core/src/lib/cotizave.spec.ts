@@ -1,17 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildCotizaveHeaders,
+  normalizeCotizaveApiKey,
   normalizeCotizaveRates,
   computeTriangulationGap,
   type CotizaveRate,
 } from './cotizave';
 
 describe('cotizave core', () => {
+  describe('normalizeCotizaveApiKey', () => {
+    it('strips invisible chars, quotes, and copy-pasted env/header prefixes', () => {
+      expect(normalizeCotizaveApiKey('  ctz_live_abc123\u200B\n')).toBe('ctz_live_abc123');
+      expect(normalizeCotizaveApiKey('"ctz_live_abc123"')).toBe('ctz_live_abc123');
+      expect(normalizeCotizaveApiKey("COTIZAVE_API_KEY='ctz_live_abc123'")).toBe(
+        'ctz_live_abc123',
+      );
+      expect(normalizeCotizaveApiKey('X-API-Key: ctz_live_abc123')).toBe('ctz_live_abc123');
+      expect(normalizeCotizaveApiKey('Bearer ctz_live_abc123')).toBe('ctz_live_abc123');
+      expect(normalizeCotizaveApiKey(null)).toBe('');
+    });
+  });
+
   describe('buildCotizaveHeaders', () => {
     it('returns correct headers', () => {
       const h = buildCotizaveHeaders('ctz_live_abc123');
       expect(h['X-API-Key']).toBe('ctz_live_abc123');
       expect(h['Accept']).toBe('application/json');
+    });
+
+    it('normalizes pasted prefixes and quotes when building headers', () => {
+      const h = buildCotizaveHeaders('X-API-Key: "ctz_live_abc123"');
+      expect(h['X-API-Key']).toBe('ctz_live_abc123');
     });
   });
 
@@ -98,6 +117,26 @@ describe('cotizave core', () => {
       const result = normalizeCotizaveRates(arr);
       expect(result['mexc']).toBeDefined();
       expect(result['mexc'].ask).toBe(38);
+    });
+
+    it('handles nested data.rates and data array payloads', () => {
+      const nestedObjPayload = {
+        data: {
+          rates: [
+            { market: 'binance_p2p_ves', type: 'p2p', ask: 810, bid: 805 },
+            { market: 'reference', type: 'reference', mid: 36.5 },
+          ],
+        },
+      };
+      const res1 = normalizeCotizaveRates(nestedObjPayload);
+      expect(res1['binance']?.ask).toBe(810);
+      expect(res1['oficial']?.mid).toBe(36.5);
+
+      const nestedArrPayload = {
+        data: [{ market: 'bybit_p2p_ves', type: 'p2p', ask: 815, bid: 812 }],
+      };
+      const res2 = normalizeCotizaveRates(nestedArrPayload);
+      expect(res2['bybit']?.ask).toBe(815);
     });
 
     it('skips entries without numeric ask/bid/mid', () => {

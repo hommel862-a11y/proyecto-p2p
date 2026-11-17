@@ -18,12 +18,30 @@ export interface DataSourceAvailability {
   reason?: string;
 }
 
+export const CORE_SPOT_BASKET_SYMBOLS = ['BTCUSDT', 'SOLUSDT', 'USDCUSDT'] as const;
+export type CoreSpotBasketSymbol = (typeof CORE_SPOT_BASKET_SYMBOLS)[number];
+
 export interface SpotBookTicker {
   symbol: string;
   bidPrice: number;
   askPrice: number;
   bidQty?: number;
   askQty?: number;
+  midPrice: number;
+  spreadPct: number;
+  timestamp: string;
+}
+
+export interface Spot24hTicker {
+  symbol: string;
+  lastPrice: number;
+  priceChangePct24h: number;
+  highPrice24h: number;
+  lowPrice24h: number;
+  volumeBase24h: number;
+  quoteVolumeUsdt24h: number;
+  bidPrice: number;
+  askPrice: number;
   midPrice: number;
   spreadPct: number;
   timestamp: string;
@@ -132,4 +150,78 @@ export function parseSpotPrice(raw: unknown): SpotPriceTicker | null {
     price,
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Parses a single Binance `/api/v3/ticker/24hr` payload object.
+ * Fails closed (`null`) if prices or bounds are missing, non-finite, or inverted.
+ */
+export function parseSpot24hTicker(raw: unknown): Spot24hTicker | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const record = raw as Record<string, unknown>;
+  const symbol = typeof record['symbol'] === 'string' ? record['symbol'].trim().toUpperCase() : '';
+  if (!symbol) return null;
+
+  const lastPrice = Number(record['lastPrice']);
+  const bidPrice = Number(record['bidPrice']);
+  const askPrice = Number(record['askPrice']);
+  const highPrice24h = Number(record['highPrice']);
+  const lowPrice24h = Number(record['lowPrice']);
+  const priceChangePct24h = Number(record['priceChangePercent'] ?? 0);
+  const volumeBase24h = Number(record['volume'] ?? 0);
+  const quoteVolumeUsdt24h = Number(record['quoteVolume'] ?? 0);
+
+  if (
+    !Number.isFinite(lastPrice) ||
+    !Number.isFinite(bidPrice) ||
+    !Number.isFinite(askPrice) ||
+    lastPrice <= 0 ||
+    bidPrice <= 0 ||
+    askPrice <= 0 ||
+    askPrice < bidPrice
+  ) {
+    return null;
+  }
+
+  const validHigh = Number.isFinite(highPrice24h) && highPrice24h > 0 ? highPrice24h : lastPrice;
+  const validLow = Number.isFinite(lowPrice24h) && lowPrice24h > 0 ? lowPrice24h : lastPrice;
+  const validChangePct = Number.isFinite(priceChangePct24h)
+    ? roundMoney(priceChangePct24h, 2)
+    : 0;
+  const midPrice = roundMoney((bidPrice + askPrice) / 2, 6);
+  const spreadPct = roundMoney(((askPrice - bidPrice) / bidPrice) * 100, 4);
+
+  return {
+    symbol,
+    lastPrice,
+    priceChangePct24h: validChangePct,
+    highPrice24h: validHigh,
+    lowPrice24h: validLow,
+    volumeBase24h: Number.isFinite(volumeBase24h) && volumeBase24h >= 0 ? volumeBase24h : 0,
+    quoteVolumeUsdt24h:
+      Number.isFinite(quoteVolumeUsdt24h) && quoteVolumeUsdt24h >= 0 ? quoteVolumeUsdt24h : 0,
+    bidPrice,
+    askPrice,
+    midPrice,
+    spreadPct,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Parses a batch array (or single object) from `/api/v3/ticker/24hr?symbols=[...]`,
+ * discarding any malformed entry.
+ */
+export function parseSpot24hTickerBatch(raw: unknown): Spot24hTicker[] {
+  if (Array.isArray(raw)) {
+    const out: Spot24hTicker[] = [];
+    for (const item of raw) {
+      const parsed = parseSpot24hTicker(item);
+      if (parsed) out.push(parsed);
+    }
+    return out;
+  }
+  const single = parseSpot24hTicker(raw);
+  return single ? [single] : [];
 }
