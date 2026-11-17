@@ -296,6 +296,24 @@ describe('el transporte de Cotizave, que hasta ahora no tenía una sola prueba',
         Accept: 'application/json',
       });
     });
+
+    it('reutiliza la caché fresca y deduplica llamadas concurrentes para evitar ráfagas HTTP 429', async () => {
+      process.env['COTIZAVE_API_KEY'] = CLAVE;
+      const mock = instalarFetch({ ok: true, status: 200, json: async () => payload });
+
+      const [r1, r2, r3] = await Promise.all([
+        fetchCotizaveOfficialReading(),
+        fetchCotizaveOfficialReading(),
+        fetchCotizaveOfficialReading(),
+      ]);
+      const r4 = await fetchCotizaveOfficialReading();
+
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(r1?.usd).toBe(857.8876);
+      expect(r2?.usd).toBe(857.8876);
+      expect(r3?.usd).toBe(857.8876);
+      expect(r4?.usd).toBe(857.8876);
+    });
   });
 
   describe('sin credencial', () => {

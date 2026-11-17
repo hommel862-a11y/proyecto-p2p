@@ -2194,4 +2194,41 @@ describe('Decision Journal — P2PDatabaseService wiring', () => {
     expect(service.purgeMarketSnapshotsBefore(T0 - 7 * 24 * MS_MINUTE)).toBe(1);
     expect(await journal.getDecisionPerformance()).toHaveLength(1);
   });
+
+  it('persists and queries macro context columns on market_snapshots via listMarketSnapshots', async () => {
+    const journal = service.getDecisionJournal();
+    const s1 = await journal.appendMarketSnapshot({
+      obi: 0.25,
+      bidUsd: 80.5,
+      askUsd: 81.2,
+      nBids: 10,
+      nAsks: 10,
+      stale: false,
+      btcUsdt: 89500.25,
+      solUsdt: 184.5,
+      usdcUsdt: 0.9999,
+      bcvVes: 64.85,
+      fetchedAt: T0 - 10 * MS_MINUTE,
+    });
+    const s2 = await journal.appendMarketSnapshot({
+      obi: -0.1,
+      bidUsd: 80.8,
+      askUsd: 81.4,
+      nBids: 8,
+      nAsks: 12,
+      stale: false,
+      fetchedAt: T0 - 5 * MS_MINUTE,
+    });
+
+    expect(s1.btcUsdt).toBe(89500.25);
+    expect(s1.solUsdt).toBe(184.5);
+    expect(s1.usdcUsdt).toBe(0.9999);
+    expect(s1.bcvVes).toBe(64.85);
+    expect(s2.btcUsdt).toBeUndefined();
+
+    const list = service.listMarketSnapshots({ limit: 10 });
+    expect(list).toHaveLength(2);
+    expect(list[0]).toEqual(s1);
+    expect(list[1]).toEqual(s2);
+  });
 });

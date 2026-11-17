@@ -10,6 +10,8 @@ import {
   setAlphaWatcher,
   setClipboardWatcher,
   getOrchestrator,
+  fetchCotizaveShared,
+  fetchBinanceP2pShared,
 } from './ipc/handlers';
 import { killswitchState, resetKillswitch } from './ipc/killswitch-state';
 import { getTreasurySnapshot } from './ipc/treasury-snapshot';
@@ -225,48 +227,13 @@ function startStaticServer(): Promise<number> {
       return;
     }
     try {
-      const response = await net.fetch(`https://api.cotizave.com/v1/fx/${endpoint}`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          'X-API-Key': apiKey,
-          Accept: 'application/json',
-        },
-      });
-      if (!response.ok) {
-        writeBridgeJson(
-          req,
-          res,
-          response.status,
-          { error: `Cotizave HTTP Error ${response.status}` },
-          COTIZAVE_CORS[0],
-          COTIZAVE_CORS[1],
-        );
-        return;
-      }
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/json')) {
-        writeBridgeJson(
-          req,
-          res,
-          502,
-          { error: 'Cotizave returned non-JSON response' },
-          COTIZAVE_CORS[0],
-          COTIZAVE_CORS[1],
-        );
-        return;
-      }
-      const data = await response.json();
+      const data = await fetchCotizaveShared({ apiKey, endpoint: 'rates' });
       writeBridgeJson(req, res, 200, data, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
-    } catch {
-      writeBridgeJson(
-        req,
-        res,
-        502,
-        { error: 'Servidor Cotizave no accesible' },
-        COTIZAVE_CORS[0],
-        COTIZAVE_CORS[1],
-      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Servidor Cotizave no accesible';
+      const statusMatch = msg.match(/HTTP Error (\d{3})/);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 502;
+      writeBridgeJson(req, res, status, { error: msg }, COTIZAVE_CORS[0], COTIZAVE_CORS[1]);
     }
   }
 
@@ -303,34 +270,17 @@ function startStaticServer(): Promise<number> {
       return;
     }
     try {
-      const response = await net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST',
-        signal: AbortSignal.timeout(15000),
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        writeBridgeJson(
-          req,
-          res,
-          response.status,
-          { error: `Binance HTTP Error ${response.status}` },
-          BINANCE_CORS[0],
-          BINANCE_CORS[1],
-        );
-        return;
-      }
-      const data = await response.json();
-      writeBridgeJson(req, res, 200, data, BINANCE_CORS[0], BINANCE_CORS[1]);
-    } catch {
-      writeBridgeJson(
-        req,
-        res,
-        502,
-        { error: 'Servidor Binance no accesible' },
-        BINANCE_CORS[0],
-        BINANCE_CORS[1],
+      const data = await fetchBinanceP2pShared(
+        (payload && typeof payload === 'object' ? payload : {}) as Parameters<
+          typeof fetchBinanceP2pShared
+        >[0],
       );
+      writeBridgeJson(req, res, 200, data, BINANCE_CORS[0], BINANCE_CORS[1]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Servidor Binance no accesible';
+      const statusMatch = msg.match(/HTTP (\d{3})/);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 502;
+      writeBridgeJson(req, res, status, { error: msg }, BINANCE_CORS[0], BINANCE_CORS[1]);
     }
   }
 

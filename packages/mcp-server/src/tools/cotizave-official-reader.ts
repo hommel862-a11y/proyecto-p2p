@@ -109,6 +109,28 @@ export function parseCotizaveOfficialReading(payload: unknown): BcvLiveReading |
   };
 }
 
+const COTIZAVE_READER_CACHE_TTL_MS = 120_000;
+const COTIZAVE_DEFAULT_429_COOLDOWN_MS = 60_000;
+
+interface CachedOfficialReading {
+  apiKey: string;
+  fetchRef: typeof globalThis.fetch;
+  reading: BcvLiveReading;
+  timestamp: number;
+}
+
+let cachedOfficialReading: CachedOfficialReading | null = null;
+let inFlightOfficialReading: {
+  apiKey: string;
+  fetchRef: typeof globalThis.fetch;
+  promise: Promise<BcvLiveReading | null>;
+} | null = null;
+let officialRateLimitedUntil: {
+  apiKey: string;
+  fetchRef: typeof globalThis.fetch;
+  until: number;
+} | null = null;
+
 /**
  * Fetches the official rate from Cotizave.
  *
@@ -117,24 +139,106 @@ export function parseCotizaveOfficialReading(payload: unknown): BcvLiveReading |
  * number: a missing API key and an unreachable endpoint both mean "no reading",
  * and the caller declares the absence.
  *
- * Set `COTIZAVE_API_KEY` to enable it. `COTIZAVE_RATES_URL` is exported as a
- * constant so a change on their side is a one-line correction, not a search.
+ * Includes singleflight deduplication, a 2-minute fresh cache, and HTTP 429
+ * Retry-After cooldown keyed by `apiKey` and the active `fetch` implementation
+ * so background MCP polling (`get_bcv_rates` every 30s) never exhausts the
+ * operator's Cotizave quota.
  */
 export async function fetchCotizaveOfficialReading(): Promise<BcvLiveReading | null> {
   const apiKey = process.env['COTIZAVE_API_KEY'];
   if (!apiKey) return null;
 
-  try {
-    const response = await fetch(COTIZAVE_RATES_URL, {
-      headers: { 'X-API-Key': apiKey, Accept: 'application/json' },
-      signal: AbortSignal.timeout(10_000),
-    });
+  const currentFetch = globalThis.fetch;
+  const now = Date.now();
 
-    if (!response.ok) return null;
+  if (
+    cachedOfficialReading &&
+    cachedOfficialReading.apiKey === apiKey &&
+    cachedOfficialReading.fetchRef === currentFetch &&
+    now - cachedOfficialReading.timestamp < COTIZAVE_READER_CACHE_TTL_MS
+  ) {
+    return cachedOfficialReading.reading;
+  }
 
-    return parseCotizaveOfficialReading(await response.json());
-  } catch {
-    // A transport failure is an absence, not an error worth surfacing as data.
+  if (
+    officialRateLimitedUntil &&
+    officialRateLimitedUntil.apiKey === apiKey &&
+    officialRateLimitedUntil.fetchRef === currentFetch &&
+    now < officialRateLimitedUntil.until
+  ) {
+    if (
+      cachedOfficialReading &&
+      cachedOfficialReading.apiKey === apiKey &&
+      cachedOfficialReading.fetchRef === currentFetch
+    ) {
+      return cachedOfficialReading.reading;
+    }
     return null;
   }
+
+  if (
+    inFlightOfficialReading &&
+    inFlightOfficialReading.apiKey === apiKey &&
+    inFlightOfficialReading.fetchRef === currentFetch
+  ) {
+    return inFlightOfficialReading.promise;
+  }
+
+  const run = (async (): Promise<BcvLiveReading | null> => {
+    try {
+      const response = await currentFetch(COTIZAVE_RATES_URL, {
+        headers: { 'X-API-Key': apiKey, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryHeader =
+            typeof (response as { headers?: { get?: (k: string) => string | null } }).headers
+              ?.get === 'function'
+              ? response.headers.get('retry-after')
+              : null;
+          const retrySec = retryHeader ? parseInt(retryHeader, 10) : 60;
+          const cooldownMs =
+            Number.isFinite(retrySec) && retrySec > 0
+              ? retrySec * 1000
+              : COTIZAVE_DEFAULT_429_COOLDOWN_MS;
+          officialRateLimitedUntil = {
+            apiKey,
+            fetchRef: currentFetch,
+            until: Date.now() + cooldownMs,
+          };
+          if (
+            cachedOfficialReading &&
+            cachedOfficialReading.apiKey === apiKey &&
+            cachedOfficialReading.fetchRef === currentFetch
+          ) {
+            return cachedOfficialReading.reading;
+          }
+        }
+        return null;
+      }
+
+      const reading = parseCotizaveOfficialReading(await response.json());
+      if (reading) {
+        cachedOfficialReading = {
+          apiKey,
+          fetchRef: currentFetch,
+          reading,
+          timestamp: Date.now(),
+        };
+      }
+      return reading;
+    } catch {
+      // A transport failure is an absence, not an error worth surfacing as data.
+      return null;
+    } finally {
+      if (inFlightOfficialReading?.promise === run) {
+        inFlightOfficialReading = null;
+      }
+    }
+  })();
+
+  inFlightOfficialReading = { apiKey, fetchRef: currentFetch, promise: run };
+  return run;
 }

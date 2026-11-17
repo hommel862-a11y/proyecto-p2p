@@ -143,7 +143,7 @@ export const FALLBACK_MCP_SERVERS: McpServerRuntimeInfo[] = [
       },
       {
         name: 'fetch_cross_exchange_spread',
-        description: 'Compara precios P2P en tiempo real entre Binance, Bybit, OKX y KuCoin.',
+        description: 'Compara precios P2P en tiempo real entre Binance, Bybit y El Dorado.',
       },
       {
         name: 'detect_usdt_depeg',

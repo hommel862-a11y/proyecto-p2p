@@ -76,6 +76,8 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         ipc('p2p:db-list-bank-accounts', filter) as Promise<unknown[]>,
       deleteBankAccount: (id: string) =>
         ipc('p2p:db-delete-bank-account', id) as Promise<boolean>,
+      listMarketSnapshots: (filter?: unknown) =>
+        ipc('p2p:db-list-market-snapshots', filter) as Promise<unknown[]>,
     },
     // The single decision-journal entry point. No raw channel reaches the renderer and
     // the payload is opaque here; `DecisionJournalService` applies the real domain types.
@@ -224,6 +226,7 @@ export const ALLOWED_CHANNELS = [
   'p2p:db-get-bank-account',
   'p2p:db-list-bank-accounts',
   'p2p:db-delete-bank-account',
+  'p2p:db-list-market-snapshots',
   'p2p:db-decision-journal',
   'p2p:killswitch-trigger',
   'p2p:killswitch-status',

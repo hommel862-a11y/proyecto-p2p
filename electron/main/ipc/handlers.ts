@@ -20,6 +20,7 @@ import type {
   DecisionCyclesFilter,
   DecisionJournalRequest,
   DecisionPerformanceFilter,
+  MarketSnapshotsFilter,
   OpenDecisionCycleInput,
   RecordDecisionInput,
   RecordMarketSnapshotInput,
@@ -47,6 +48,8 @@ import {
   seedFinancialSkillMarketData,
   getMarketBook,
   seedBcvRate,
+  getBcvSnapshot,
+  recordVolatilityTick,
   parseCotizaveRatesPayload,
 } from '../skills/market-state';
 import { parseBinanceP2pItems } from '../vendor/p2p-core/binance-p2p';
@@ -67,18 +70,365 @@ interface BinanceIpcCacheEntry {
 }
 
 const binanceIpcCache = new Map<string, BinanceIpcCacheEntry>();
+const binanceInFlight = new Map<string, Promise<unknown>>();
 const BINANCE_CACHE_TTL_MS = 5000;
 const BINANCE_MIN_INTERVAL_MS = 350;
 let lastBinanceNetworkCall = 0;
 let binanceRateLimitedUntil = 0;
 
 interface CotizaveIpcCacheEntry {
+  apiKey: string;
   data: unknown;
   timestamp: number;
 }
 let cotizaveIpcCache: CotizaveIpcCacheEntry | null = null;
-const COTIZAVE_CACHE_TTL_MS = 30_000;
+let cotizaveInFlight: { apiKey: string; promise: Promise<unknown> } | null = null;
+const COTIZAVE_CACHE_TTL_MS = 120_000;
 let cotizaveRateLimitedUntil = 0;
+
+const binanceSpotCache = new Map<string, BinanceIpcCacheEntry>();
+const binanceSpotInFlight = new Map<string, Promise<unknown>>();
+const latestSpotPrices = new Map<string, { price: number; timestamp: number }>();
+const AUTO_SNAPSHOT_INTERVAL_MS = 60_000;
+let lastAutoSnapshotRecordedAt = 0;
+
+/**
+ * Shared singleflight + cached + paced Binance P2P C2C orderbook fetcher.
+ * Used by both `p2p:fetch-binance` IPC and the local HTTP bridge (`/api/binance/p2p`)
+ * so no caller in the main process can bypass pacing or 429 cooldowns.
+ */
+export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promise<unknown> {
+  const asset = params.asset ?? 'USDT';
+  const fiat = params.fiat ?? 'VES';
+  const tradeType = params.tradeType ?? 'BUY';
+  const payTypes = params.payTypes ?? [];
+  const rows = params.rows ?? 10;
+  const cacheKey = `${asset}:${fiat}:${tradeType}:${payTypes.join(',')}:${rows}`;
+
+  const cached = binanceIpcCache.get(cacheKey);
+  const now = Date.now();
+
+  // 1. Si está fresco en caché (< 5s), devolver sin tocar red
+  if (cached && now - cached.timestamp < BINANCE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // 2. Si hay rate-limit activo (HTTP 429 previo)
+  if (now < binanceRateLimitedUntil) {
+    if (cached && now - cached.timestamp < 120_000) {
+      console.warn(
+        `[Binance P2P] Rate-limit activo. Retornando caché previo (${Math.round((now - cached.timestamp) / 1000)}s).`,
+      );
+      return cached.data;
+    }
+    const remainingSec = Math.ceil((binanceRateLimitedUntil - now) / 1000);
+    throw new Error(
+      `Binance P2P en enfriamiento por rate-limit (HTTP 429). Reintentando en ${remainingSec}s.`,
+    );
+  }
+
+  // 3. Singleflight: si ya hay una consulta idéntica en vuelo, compartir su promesa
+  const existingFlight = binanceInFlight.get(cacheKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
+
+  const run = (async (): Promise<unknown> => {
+    // 4. Reserva atómica de turno ANTES del await para evitar que llamadas concurrentes
+    // calculen el mismo delay y despierten en ráfaga simultánea.
+    const nowPacing = Date.now();
+    const scheduledAt = Math.max(nowPacing, lastBinanceNetworkCall + BINANCE_MIN_INTERVAL_MS);
+    lastBinanceNetworkCall = scheduledAt;
+    const waitMs = scheduledAt - nowPacing;
+    if (waitMs > 0) {
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+
+    try {
+      const response = await net.fetch(
+        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+        {
+          method: 'POST',
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            Accept: '*/*',
+            clienttype: 'web',
+            Origin: 'https://p2p.binance.com',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+          },
+          body: JSON.stringify({
+            asset,
+            fiat,
+            tradeType,
+            page: 1,
+            rows,
+            payTypes,
+            countries: [],
+            proMerchantAds: false,
+            shieldMerchantAds: false,
+            filterType: 'all',
+            periods: [],
+          }),
+        },
+      );
+
+      if (response.status === 429) {
+        binanceRateLimitedUntil = Date.now() + 20_000;
+        if (cached) {
+          console.warn('[Binance P2P] HTTP 429 recibido. Usando libro en caché.');
+          return cached.data;
+        }
+        throw new Error('Binance P2P respondió HTTP 429 (Too Many Requests). Enfriamiento activado.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Binance P2P respondió HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
+      try {
+        const offers = parseBinanceP2pItems(data);
+        if (asset === 'USDT' && fiat === 'VES' && offers.length > 0) {
+          const currentBook = getMarketBook();
+          const buyOffers = tradeType === 'BUY' ? offers : (currentBook?.buyOffers ?? []);
+          const sellOffers = tradeType === 'SELL' ? offers : (currentBook?.sellOffers ?? []);
+          seedFinancialSkillMarketData({ buyOffers, sellOffers });
+          if (buyOffers.length > 0 && sellOffers.length > 0) {
+            recordVolatilityTick(undefined, null);
+            const nowSnap = Date.now();
+            if (nowSnap - lastAutoSnapshotRecordedAt >= AUTO_SNAPSHOT_INTERVAL_MS) {
+              lastAutoSnapshotRecordedAt = nowSnap;
+              const askUsd = buyOffers[0]?.price ?? 0;
+              const bidUsd = sellOffers[0]?.price ?? 0;
+              if (askUsd > 0 && bidUsd > 0) {
+                const askVol = buyOffers
+                  .slice(0, 5)
+                  .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
+                const bidVol = sellOffers
+                  .slice(0, 5)
+                  .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
+                const totalVol = bidVol + askVol;
+                const obi = totalVol > 0 ? Number(((bidVol - askVol) / totalVol).toFixed(4)) : 0;
+                const btcEntry = latestSpotPrices.get('BTCUSDT');
+                const solEntry = latestSpotPrices.get('SOLUSDT');
+                const usdcEntry = latestSpotPrices.get('USDCUSDT');
+                const bcvSnap = getBcvSnapshot();
+                const snapshotInput: RecordMarketSnapshotInput = {
+                  obi,
+                  bidUsd,
+                  askUsd,
+                  nBids: sellOffers.length,
+                  nAsks: buyOffers.length,
+                  stale: false,
+                  ...(btcEntry && nowSnap - btcEntry.timestamp < 300_000
+                    ? { btcUsdt: btcEntry.price }
+                    : {}),
+                  ...(solEntry && nowSnap - solEntry.timestamp < 300_000
+                    ? { solUsdt: solEntry.price }
+                    : {}),
+                  ...(usdcEntry && nowSnap - usdcEntry.timestamp < 300_000
+                    ? { usdcUsdt: usdcEntry.price }
+                    : {}),
+                  ...(bcvSnap && bcvSnap.usd > 0 ? { bcvVes: bcvSnap.usd } : {}),
+                };
+                void getDbService()
+                  .getDecisionJournal()
+                  .appendMarketSnapshot(snapshotInput)
+                  .catch(() => {
+                    // Best-effort auto-snapshot persistence
+                  });
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignorar fallo de sincronización de libro
+      }
+      return data;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes('ENOTFOUND') ||
+        message.includes('fetch failed') ||
+        message.includes('aborted') ||
+        message.includes('timeout')
+      ) {
+        throw new Error(
+          'Servidor de Binance P2P no accesible (sin conexión o DNS no disponible)',
+          { cause: err },
+        );
+      }
+      throw new Error(message, { cause: err });
+    } finally {
+      binanceInFlight.delete(cacheKey);
+    }
+  })();
+
+  binanceInFlight.set(cacheKey, run);
+  return run;
+}
+
+function normalizeElectronCotizaveKey(raw: string): string {
+  const cleaned = raw
+    .replace(/[\u200B-\u200D\uFEFF\r\n]/g, '')
+    .trim()
+    .replace(/^(['"])(.*)\1$/, '$2')
+    .trim()
+    .replace(/^COTIZAVE_API_KEY\s*=\s*/i, '')
+    .replace(/^X-API-Key\s*:\s*/i, '')
+    .replace(/^Authorization\s*:\s*Bearer\s+/i, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim()
+    .replace(/^(['"])(.*)\1$/, '$2')
+    .trim();
+  return cleaned;
+}
+
+/**
+ * Shared singleflight + cached + 429-protected Cotizave fetcher.
+ * Used by both `p2p:fetch-cotizave` IPC and the local HTTP bridge (`/api/cotizave/rates`).
+ */
+export async function fetchCotizaveShared(req: CotizaveRequest): Promise<unknown> {
+  if (!req || typeof req.apiKey !== 'string') {
+    throw new Error('Cotizave API key is required');
+  }
+  const trimmedKey = normalizeElectronCotizaveKey(req.apiKey);
+  if (trimmedKey.length === 0) {
+    throw new Error('Cotizave API key is required');
+  }
+  if (req.endpoint !== 'rates') {
+    throw new Error('Cotizave endpoint must be "rates"');
+  }
+  process.env['COTIZAVE_API_KEY'] = trimmedKey;
+
+  if (isSecretStorageAvailable()) {
+    try {
+      const db = getDbService();
+      db.setConfigValue('cotizave_api_key', encryptSecret(trimmedKey));
+      db.setConfigValue('cotizave_api_key_scheme', SECRET_SCHEME);
+    } catch (err) {
+      console.warn('[Cotizave] safeStorage failed to persist API key:', err);
+    }
+  }
+
+  const now = Date.now();
+  if (
+    cotizaveIpcCache &&
+    cotizaveIpcCache.apiKey === trimmedKey &&
+    now - cotizaveIpcCache.timestamp < COTIZAVE_CACHE_TTL_MS
+  ) {
+    return cotizaveIpcCache.data;
+  }
+  if (now < cotizaveRateLimitedUntil) {
+    if (cotizaveIpcCache && cotizaveIpcCache.apiKey === trimmedKey) {
+      console.warn('[Cotizave] Rate limit activo (429). Retornando rates desde caché fresca.');
+      return cotizaveIpcCache.data;
+    }
+    const remainingSec = Math.ceil((cotizaveRateLimitedUntil - now) / 1000);
+    throw new Error(
+      `Cotizave HTTP Error 429: en enfriamiento por rate-limit. Esperá ${remainingSec}s para permitir que se restablezca tu cuota.`,
+    );
+  }
+
+  if (cotizaveInFlight && cotizaveInFlight.apiKey === trimmedKey) {
+    return cotizaveInFlight.promise;
+  }
+
+  const run = (async (): Promise<unknown> => {
+    try {
+      const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
+      const response = await net.fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          'X-API-Key': trimmedKey,
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfterHeader = response.headers.get('retry-after');
+          const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 60;
+          const cooldownMs =
+            Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : 60_000;
+          cotizaveRateLimitedUntil = Date.now() + cooldownMs;
+          if (cotizaveIpcCache && cotizaveIpcCache.apiKey === trimmedKey) {
+            console.warn('[Cotizave] HTTP 429 detectado. Retornando caché previa de tasas.');
+            return cotizaveIpcCache.data;
+          }
+        }
+        const retryAfter = response.headers?.get?.('retry-after');
+        const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
+        let detail = '';
+        if (typeof response.json === 'function') {
+          try {
+            const errBody = (await response.json()) as {
+              code?: unknown;
+              message?: unknown;
+            } | null;
+            if (errBody && typeof errBody === 'object') {
+              const parts = [
+                typeof errBody.code === 'string' ? `[${errBody.code}]` : '',
+                typeof errBody.message === 'string' ? errBody.message : '',
+              ].filter(Boolean);
+              if (parts.length > 0) {
+                detail = `: ${parts.join(' ')}`;
+              }
+            }
+          } catch {
+            // Cuerpo no-JSON o ya consumido
+          }
+        }
+        throw new Error(`Cotizave HTTP Error ${response.status}${retryMsg}${detail}`);
+      }
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Cotizave returned non-JSON response');
+      }
+      const jsonResult = await response.json();
+      cotizaveIpcCache = { apiKey: trimmedKey, data: jsonResult, timestamp: Date.now() };
+      try {
+        const reading = parseCotizaveRatesPayload(jsonResult);
+        if (reading && typeof reading.usd === 'number' && reading.usd > 0) {
+          seedBcvRate({
+            usd: reading.usd,
+            eur: reading.eur,
+            source: reading.source,
+            updatedAt: Date.now(),
+            effectiveDate: reading.effectiveDate,
+          });
+        }
+      } catch {
+        // Ignorar fallo de sincronización BCV
+      }
+      return jsonResult;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes('ENOTFOUND') ||
+        message.includes('fetch failed') ||
+        message.includes('aborted') ||
+        message.includes('timeout')
+      ) {
+        throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)', {
+          cause: err,
+        });
+      }
+      throw new Error(message, { cause: err });
+    } finally {
+      if (cotizaveInFlight?.apiKey === trimmedKey) {
+        cotizaveInFlight = null;
+      }
+    }
+  })();
+
+  cotizaveInFlight = { apiKey: trimmedKey, promise: run };
+  return run;
+}
 
 /**
  * Typed, allow-listed IPC handlers.
@@ -87,6 +437,18 @@ let cotizaveRateLimitedUntil = 0;
  * `crypto:*` handlers leverage OS-native DPAPI / Keychain encryption via safeStorage.
  */
 export function registerIpcHandlers(): void {
+  binanceIpcCache.clear();
+  binanceInFlight.clear();
+  lastBinanceNetworkCall = 0;
+  binanceRateLimitedUntil = 0;
+  cotizaveIpcCache = null;
+  cotizaveInFlight = null;
+  cotizaveRateLimitedUntil = 0;
+  binanceSpotCache.clear();
+  binanceSpotInFlight.clear();
+  latestSpotPrices.clear();
+  lastAutoSnapshotRecordedAt = 0;
+
   const db = getDbService();
 
   // Hidratar COTIZAVE_API_KEY en el entorno si fue persistida de forma segura
@@ -111,149 +473,119 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'p2p:fetch-binance',
     async (_event: IpcMainInvokeEvent, params: BinanceSearchParams): Promise<unknown> => {
-      const asset = params.asset ?? 'USDT';
-      const fiat = params.fiat ?? 'VES';
-      const tradeType = params.tradeType ?? 'BUY';
-      const payTypes = params.payTypes ?? [];
-      const rows = params.rows ?? 10;
-      const cacheKey = `${asset}:${fiat}:${tradeType}:${payTypes.join(',')}:${rows}`;
-
-      const cached = binanceIpcCache.get(cacheKey);
-      const now = Date.now();
-
-      // 1. Si está fresco en caché (< 5s), devolver sin tocar red
-      if (cached && now - cached.timestamp < BINANCE_CACHE_TTL_MS) {
-        return cached.data;
-      }
-
-      // 2. Si hay rate-limit activo (HTTP 429 previo)
-      if (now < binanceRateLimitedUntil) {
-        if (cached && now - cached.timestamp < 120_000) {
-          console.warn(
-            `[Binance P2P] Rate-limit activo. Retornando caché previo (${Math.round((now - cached.timestamp) / 1000)}s).`,
-          );
-          return cached.data;
-        }
-        const remainingSec = Math.ceil((binanceRateLimitedUntil - now) / 1000);
-        throw new Error(
-          `Binance P2P en enfriamiento por rate-limit (HTTP 429). Reintentando en ${remainingSec}s.`,
-        );
-      }
-
-      // 3. Pacing / serialización mínima para evitar ráfagas simultáneas
-      const timeSinceLast = now - lastBinanceNetworkCall;
-      if (timeSinceLast < BINANCE_MIN_INTERVAL_MS) {
-        await new Promise((r) => setTimeout(r, BINANCE_MIN_INTERVAL_MS - timeSinceLast));
-      }
-      lastBinanceNetworkCall = Date.now();
-
-      try {
-        const response = await net.fetch(
-          'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
-          {
-            method: 'POST',
-            signal: AbortSignal.timeout(15000),
-            headers: {
-              'Content-Type': 'application/json',
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-              Accept: '*/*',
-              clienttype: 'web',
-              Origin: 'https://p2p.binance.com',
-              'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-            },
-            body: JSON.stringify({
-              asset,
-              fiat,
-              tradeType,
-              page: 1,
-              rows,
-              payTypes,
-              countries: [],
-              proMerchantAds: false,
-              shieldMerchantAds: false,
-              filterType: 'all',
-              periods: [],
-            }),
-          },
-        );
-
-        if (response.status === 429) {
-          binanceRateLimitedUntil = Date.now() + 20_000;
-          if (cached) {
-            console.warn('[Binance P2P] HTTP 429 recibido. Usando libro en caché.');
-            return cached.data;
-          }
-          throw new Error('Binance P2P respondió HTTP 429 (Too Many Requests). Enfriamiento activado.');
-        }
-
-        if (!response.ok) {
-          throw new Error(`Binance P2P respondió HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
-        try {
-          const offers = parseBinanceP2pItems(data);
-          if (asset === 'USDT' && fiat === 'VES' && offers.length > 0) {
-            const currentBook = getMarketBook();
-            const buyOffers = tradeType === 'BUY' ? offers : (currentBook?.buyOffers ?? []);
-            const sellOffers = tradeType === 'SELL' ? offers : (currentBook?.sellOffers ?? []);
-            seedFinancialSkillMarketData({ buyOffers, sellOffers });
-          }
-        } catch {
-          // Ignorar fallo de sincronización de libro
-        }
-        return data;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          message.includes('ENOTFOUND') ||
-          message.includes('fetch failed') ||
-          message.includes('aborted') ||
-          message.includes('timeout')
-        ) {
-          throw new Error(
-            'Servidor de Binance P2P no accesible (sin conexión o DNS no disponible)',
-            { cause: err },
-          );
-        }
-        throw new Error(message, { cause: err });
-      }
+      return fetchBinanceP2pShared(params);
     },
   );
 
   ipcMain.removeHandler('p2p:fetch-binance-spot');
   ipcMain.handle(
     'p2p:fetch-binance-spot',
-    async (_event: IpcMainInvokeEvent, symbol: string): Promise<unknown> => {
-      const cleanSymbol =
-        typeof symbol === 'string' && symbol.trim() ? symbol.trim().toUpperCase() : 'USDCUSDT';
-      try {
-        const url = `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(cleanSymbol)}`;
-        const response = await net.fetch(url, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (!response.ok) {
-          throw new Error(`Binance Spot HTTP Error ${response.status}`);
-        }
-        return await response.json();
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          message.includes('ENOTFOUND') ||
-          message.includes('fetch failed') ||
-          message.includes('aborted') ||
-          message.includes('timeout')
-        ) {
-          throw new Error('Servidor de Binance Spot no accesible (sin conexión o timeout)', {
-            cause: err,
-          });
-        }
-        throw new Error(message, { cause: err });
+    async (
+      _event: IpcMainInvokeEvent,
+      symbolOrSymbols: string | readonly string[],
+    ): Promise<unknown> => {
+      const isBatch = Array.isArray(symbolOrSymbols);
+      const cleanSymbols = isBatch
+        ? Array.from(
+            new Set(
+              symbolOrSymbols
+                .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+                .map((s) => s.trim().toUpperCase()),
+            ),
+          )
+        : [];
+      const cleanSingle =
+        !isBatch && typeof symbolOrSymbols === 'string' && symbolOrSymbols.trim()
+          ? symbolOrSymbols.trim().toUpperCase()
+          : 'USDCUSDT';
+
+      const cacheKey = isBatch
+        ? `batch:${(cleanSymbols.length > 0 ? cleanSymbols : ['BTCUSDT', 'SOLUSDT', 'USDCUSDT']).join(',')}`
+        : `single:${cleanSingle}`;
+
+      const now = Date.now();
+      const cached = binanceSpotCache.get(cacheKey);
+      if (cached && now - cached.timestamp < BINANCE_CACHE_TTL_MS) {
+        return cached.data;
       }
+
+      const existingFlight = binanceSpotInFlight.get(cacheKey);
+      if (existingFlight) {
+        return existingFlight;
+      }
+
+      const run = (async (): Promise<unknown> => {
+        try {
+          const url = isBatch
+            ? `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(
+                JSON.stringify(
+                  cleanSymbols.length > 0 ? cleanSymbols : ['BTCUSDT', 'SOLUSDT', 'USDCUSDT'],
+                ),
+              )}`
+            : `https://api.binance.com/api/v3/ticker/bookTicker?symbol=${encodeURIComponent(cleanSingle)}`;
+          const response = await net.fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!response.ok) {
+            throw new Error(`Binance Spot HTTP Error ${response.status}`);
+          }
+          const payload = await response.json();
+          const fetchedAt = Date.now();
+          binanceSpotCache.set(cacheKey, { data: payload, timestamp: fetchedAt });
+
+          if (Array.isArray(payload)) {
+            for (const entry of payload) {
+              if (entry && typeof entry === 'object') {
+                const rec = entry as Record<string, unknown>;
+                const sym = typeof rec['symbol'] === 'string' ? rec['symbol'].toUpperCase() : '';
+                const last = Number(rec['lastPrice']);
+                const bid = Number(rec['bidPrice']);
+                const ask = Number(rec['askPrice']);
+                const mid =
+                  Number.isFinite(last) && last > 0
+                    ? last
+                    : Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0
+                      ? (bid + ask) / 2
+                      : 0;
+                if (sym && mid > 0) {
+                  latestSpotPrices.set(sym, { price: mid, timestamp: fetchedAt });
+                }
+              }
+            }
+          } else if (payload && typeof payload === 'object') {
+            const rec = payload as Record<string, unknown>;
+            const sym =
+              typeof rec['symbol'] === 'string' ? rec['symbol'].toUpperCase() : cleanSingle;
+            const bid = Number(rec['bidPrice']);
+            const ask = Number(rec['askPrice']);
+            if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
+              latestSpotPrices.set(sym, { price: (bid + ask) / 2, timestamp: fetchedAt });
+            }
+          }
+
+          return payload;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes('ENOTFOUND') ||
+            message.includes('fetch failed') ||
+            message.includes('aborted') ||
+            message.includes('timeout')
+          ) {
+            throw new Error('Servidor de Binance Spot no accesible (sin conexión o timeout)', {
+              cause: err,
+            });
+          }
+          throw new Error(message, { cause: err });
+        } finally {
+          binanceSpotInFlight.delete(cacheKey);
+        }
+      })();
+
+      binanceSpotInFlight.set(cacheKey, run);
+      return run;
     },
   );
 
@@ -336,90 +668,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     'p2p:fetch-cotizave',
     async (_event: IpcMainInvokeEvent, req: CotizaveRequest): Promise<unknown> => {
-      if (!req || typeof req.apiKey !== 'string' || req.apiKey.trim().length === 0) {
-        throw new Error('Cotizave API key is required');
-      }
-      if (req.endpoint !== 'rates') {
-        throw new Error('Cotizave endpoint must be "rates"');
-      }
-      const trimmedKey = req.apiKey.trim();
-      process.env['COTIZAVE_API_KEY'] = trimmedKey;
-
-      if (isSecretStorageAvailable()) {
-        try {
-          db.setConfigValue('cotizave_api_key', encryptSecret(trimmedKey));
-          db.setConfigValue('cotizave_api_key_scheme', SECRET_SCHEME);
-        } catch (err) {
-          console.warn('[Cotizave] safeStorage failed to persist API key:', err);
-        }
-      }
-
-      const now = Date.now();
-      if (cotizaveIpcCache && now - cotizaveIpcCache.timestamp < COTIZAVE_CACHE_TTL_MS) {
-        return cotizaveIpcCache.data;
-      }
-      if (now < cotizaveRateLimitedUntil && cotizaveIpcCache) {
-        console.warn('[Cotizave] Rate limit activo (429). Retornando rates desde caché fresca.');
-        return cotizaveIpcCache.data;
-      }
-
-      try {
-        const url = `https://api.cotizave.com/v1/fx/${req.endpoint}`;
-        const response = await net.fetch(url, {
-          method: 'GET',
-          signal: AbortSignal.timeout(15000),
-          headers: {
-            'X-API-Key': trimmedKey,
-            Accept: 'application/json',
-          },
-        });
-        if (!response.ok) {
-          if (response.status === 429) {
-            cotizaveRateLimitedUntil = Date.now() + 60_000;
-            if (cotizaveIpcCache) {
-              console.warn('[Cotizave] HTTP 429 detectado. Retornando caché previa de tasas.');
-              return cotizaveIpcCache.data;
-            }
-          }
-          const retryAfter = response.headers.get('retry-after');
-          const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
-          throw new Error(`Cotizave HTTP Error ${response.status}${retryMsg}`);
-        }
-        const contentType = response.headers.get('content-type') ?? '';
-        if (!contentType.includes('application/json')) {
-          throw new Error('Cotizave returned non-JSON response');
-        }
-        const jsonResult = await response.json();
-        cotizaveIpcCache = { data: jsonResult, timestamp: Date.now() };
-        try {
-          const reading = parseCotizaveRatesPayload(jsonResult);
-          if (reading && typeof reading.usd === 'number' && reading.usd > 0) {
-            seedBcvRate({
-              usd: reading.usd,
-              eur: reading.eur,
-              source: reading.source,
-              updatedAt: Date.now(),
-              effectiveDate: reading.effectiveDate,
-            });
-          }
-        } catch {
-          // Ignorar fallo de sincronización BCV
-        }
-        return jsonResult;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          message.includes('ENOTFOUND') ||
-          message.includes('fetch failed') ||
-          message.includes('aborted') ||
-          message.includes('timeout')
-        ) {
-          throw new Error('Servidor Cotizave no accesible (sin conexión o timeout)', {
-            cause: err,
-          });
-        }
-        throw new Error(message, { cause: err });
-      }
+      return fetchCotizaveShared(req);
     },
   );
 
@@ -667,6 +916,19 @@ export function registerIpcHandlers(): void {
         return db.listAuditLogs(params?.limit, params?.category);
       } catch (err) {
         console.warn('[IPC] Error in p2p:db-list-audit-logs:', err);
+        return [];
+      }
+    },
+  );
+
+  ipcMain.removeHandler('p2p:db-list-market-snapshots');
+  ipcMain.handle(
+    'p2p:db-list-market-snapshots',
+    (_event: IpcMainInvokeEvent, filter?: MarketSnapshotsFilter): unknown[] => {
+      try {
+        return db.listMarketSnapshots(filter);
+      } catch (err) {
+        console.warn('[IPC] Error in p2p:db-list-market-snapshots:', err);
         return [];
       }
     },

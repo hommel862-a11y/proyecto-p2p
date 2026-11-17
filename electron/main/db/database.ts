@@ -7,8 +7,13 @@ import type { FsmOrderContext, P2POrderState } from '../../shared/types';
 import {
   SqliteDecisionJournalRepository,
   purgeMarketSnapshotsBefore,
+  listMarketSnapshots,
 } from './decision-journal.repository';
-import type { DecisionJournalRepository } from './decision-journal.repository';
+import type {
+  DecisionJournalRepository,
+  MarketSnapshot,
+  MarketSnapshotsFilter,
+} from './decision-journal.repository';
 import { CustomAgentRepository } from './custom-agent.repository';
 
 export interface InboundBankEventRecord {
@@ -281,6 +286,19 @@ export class P2PDatabaseService {
       this.db.exec(
         `ALTER TABLE strategy_plans ADD COLUMN es_simulated INTEGER NOT NULL DEFAULT 1`,
       );
+    }
+
+    // Column migration: market_snapshots gains optional macro context columns (btc_usdt, sol_usdt, usdc_usdt, bcv_ves).
+    const snapCols = this.db.prepare(`PRAGMA table_info(market_snapshots)`).all() as {
+      name: string;
+    }[];
+    if (snapCols.length > 0) {
+      const existingSnapCols = new Set(snapCols.map((c) => c.name));
+      for (const col of ['btc_usdt', 'sol_usdt', 'usdc_usdt', 'bcv_ves']) {
+        if (!existingSnapCols.has(col)) {
+          this.db.exec(`ALTER TABLE market_snapshots ADD COLUMN ${col} REAL`);
+        }
+      }
     }
 
     // Explicit migration guard: guarantee critical tables and indexes exist on any pre-existing database
@@ -1207,6 +1225,10 @@ export class P2PDatabaseService {
    */
   purgeMarketSnapshotsBefore(cutoff: number): number {
     return purgeMarketSnapshotsBefore(this.db, cutoff);
+  }
+
+  listMarketSnapshots(filter?: MarketSnapshotsFilter): MarketSnapshot[] {
+    return listMarketSnapshots(this.db, filter);
   }
 
   private mapBankAccountRow(r: Record<string, unknown>): BankAccountRecord {

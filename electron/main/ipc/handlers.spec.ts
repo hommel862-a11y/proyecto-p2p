@@ -191,4 +191,53 @@ describe('p2p:fetch-cotizave — puente COTIZAVE_API_KEY y persistencia segura',
 
     expect(process.env['COTIZAVE_API_KEY']).toBe('cz_from_disk_123');
   });
+
+  it('deduplica llamadas concurrentes en vuelo (singleflight) para evitar ráfagas HTTP 429', async () => {
+    vi.mocked(net.fetch).mockClear();
+    const mockJson = { rates: [{ market: 'reference', mid: 36.5 }] };
+    let resolveFetch!: (value: Response) => void;
+    vi.mocked(net.fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const p1 = invokeCotizave({ apiKey: 'cz_singleflight_key', endpoint: 'rates' });
+    const p2 = invokeCotizave({ apiKey: 'cz_singleflight_key', endpoint: 'rates' });
+    const p3 = invokeCotizave({ apiKey: 'cz_singleflight_key', endpoint: 'rates' });
+
+    resolveFetch({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => mockJson,
+    } as unknown as Response);
+
+    const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
+    expect(r1).toEqual(mockJson);
+    expect(r2).toEqual(mockJson);
+    expect(r3).toEqual(mockJson);
+    expect(net.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('normaliza prefijos/comillas al enviar X-API-Key e incluye detalle JSON en errores HTTP 401', async () => {
+    vi.mocked(net.fetch).mockClear();
+    vi.mocked(net.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      headers: { get: () => null },
+      json: async () => ({
+        code: 'invalid_api_key',
+        message: 'API key is missing, invalid, or revoked.',
+      }),
+    } as unknown as Response);
+
+    await expect(
+      invokeCotizave({ apiKey: '  X-API-Key: "cz_pasted_key" \u200B ', endpoint: 'rates' }),
+    ).rejects.toThrow(/Cotizave HTTP Error 401: \[invalid_api_key\]/);
+
+    expect(process.env['COTIZAVE_API_KEY']).toBe('cz_pasted_key');
+    const [, init] = vi.mocked(net.fetch).mock.calls[0];
+    expect((init?.headers as Record<string, string>)['X-API-Key']).toBe('cz_pasted_key');
+  });
 });

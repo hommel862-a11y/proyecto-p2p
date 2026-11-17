@@ -193,7 +193,7 @@ export interface P2PIpcChannels {
     response: unknown;
   };
   'p2p:fetch-binance-spot': {
-    request: string;
+    request: string | readonly string[];
     response: unknown;
   };
   'p2p:fetch-binance-c2c-orders': {
@@ -259,6 +259,10 @@ export interface P2PIpcChannels {
   'p2p:db-delete-bank-account': {
     request: string;
     response: boolean;
+  };
+  'p2p:db-list-market-snapshots': {
+    request: { since?: number; until?: number; limit?: number } | void;
+    response: unknown[];
   };
   'p2p:killswitch-trigger': {
     request: { reason?: string; source?: string };
@@ -559,7 +563,7 @@ export interface TreasurySnapshotDto {
 export interface ElectronAPI {
   getVersion(): Promise<string>;
   fetchBinanceP2p(params: BinanceSearchParams): Promise<unknown>;
-  fetchBinanceSpotTicker(symbol: string): Promise<unknown>;
+  fetchBinanceSpotTicker(symbol: string | readonly string[]): Promise<unknown>;
   fetchBinanceC2cOrders(req: BinanceC2cOrdersFetchRequest): Promise<unknown>;
   fetchCotizave(req: CotizaveRequest): Promise<unknown>;
   fetchBybitP2p(req: BybitP2pFetchRequest): Promise<unknown>;
@@ -612,6 +616,11 @@ export interface ElectronAPI {
     getBankAccount(id: string): Promise<unknown>;
     listBankAccounts(filter?: { status?: string; bankCode?: string }): Promise<unknown[]>;
     deleteBankAccount(id: string): Promise<boolean>;
+    listMarketSnapshots(filter?: {
+      since?: number;
+      until?: number;
+      limit?: number;
+    }): Promise<unknown[]>;
   };
   killswitch: {
     trigger(params?: { reason?: string; source?: string }): Promise<boolean>;

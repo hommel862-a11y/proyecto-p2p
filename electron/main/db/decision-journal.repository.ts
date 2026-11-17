@@ -62,6 +62,10 @@ export interface MarketSnapshot {
   readonly nBids: number;
   readonly nAsks: number;
   readonly stale: boolean;
+  readonly btcUsdt?: number;
+  readonly solUsdt?: number;
+  readonly usdcUsdt?: number;
+  readonly bcvVes?: number;
   readonly fetchedAt: number;
   readonly createdAt: number;
 }
@@ -157,7 +161,17 @@ export interface RecordMarketSnapshotInput {
   readonly nBids: number;
   readonly nAsks: number;
   readonly stale: boolean;
+  readonly btcUsdt?: number;
+  readonly solUsdt?: number;
+  readonly usdcUsdt?: number;
+  readonly bcvVes?: number;
   readonly fetchedAt?: number;
+}
+
+export interface MarketSnapshotsFilter {
+  readonly since?: number;
+  readonly until?: number;
+  readonly limit?: number;
 }
 
 export interface OpenDecisionCycleInput {
@@ -395,7 +409,18 @@ function describeJson(value: unknown): string {
 /** Ratios are rounded to 4 decimals so repeated runs compare exactly. */
 const roundRatio = (value: number): number => Number(value.toFixed(4));
 
+const optNum = (row: Row, key: string): number | undefined => {
+  const value = row[key];
+  if (value === null || value === undefined) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 function mapSnapshot(row: Row): MarketSnapshot {
+  const btcUsdt = optNum(row, 'btc_usdt');
+  const solUsdt = optNum(row, 'sol_usdt');
+  const usdcUsdt = optNum(row, 'usdc_usdt');
+  const bcvVes = optNum(row, 'bcv_ves');
   return {
     id: num(row, 'id'),
     obi: num(row, 'obi'),
@@ -404,6 +429,10 @@ function mapSnapshot(row: Row): MarketSnapshot {
     nBids: num(row, 'n_bids'),
     nAsks: num(row, 'n_asks'),
     stale: bool(row, 'stale'),
+    ...(btcUsdt !== undefined ? { btcUsdt } : {}),
+    ...(solUsdt !== undefined ? { solUsdt } : {}),
+    ...(usdcUsdt !== undefined ? { usdcUsdt } : {}),
+    ...(bcvVes !== undefined ? { bcvVes } : {}),
     fetchedAt: num(row, 'fetched_at'),
     createdAt: num(row, 'created_at'),
   };
@@ -526,9 +555,29 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
    * constructor free of schema access.
    */
   private cycleSequence: number | null = null;
+  private macroColsEnsured = false;
 
   constructor(db: DatabaseSync) {
     this.db = db;
+  }
+
+  private ensureSnapshotMacroColumns(): void {
+    if (this.macroColsEnsured) return;
+    this.macroColsEnsured = true;
+    try {
+      const cols = this.db.prepare('PRAGMA table_info(market_snapshots)').all() as {
+        name: string;
+      }[];
+      if (cols.length === 0) return;
+      const existing = new Set(cols.map((c) => c.name));
+      for (const col of ['btc_usdt', 'sol_usdt', 'usdc_usdt', 'bcv_ves']) {
+        if (!existing.has(col)) {
+          this.db.exec(`ALTER TABLE market_snapshots ADD COLUMN ${col} REAL`);
+        }
+      }
+    } catch {
+      // Best-effort migration for legacy schemas
+    }
   }
 
   private nextCycleSequence(): number {
@@ -541,12 +590,13 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
   }
 
   async appendMarketSnapshot(input: RecordMarketSnapshotInput): Promise<MarketSnapshot> {
+    this.ensureSnapshotMacroColumns();
     const now = Date.now();
     const info = this.db
       .prepare(
         `INSERT INTO market_snapshots
-           (obi, bid_usd, ask_usd, n_bids, n_asks, stale, fetched_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (obi, bid_usd, ask_usd, n_bids, n_asks, stale, btc_usdt, sol_usdt, usdc_usdt, bcv_ves, fetched_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.obi,
@@ -555,6 +605,10 @@ export class SqliteDecisionJournalRepository implements DecisionJournalRepositor
         input.nBids,
         input.nAsks,
         input.stale ? 1 : 0,
+        input.btcUsdt ?? null,
+        input.solUsdt ?? null,
+        input.usdcUsdt ?? null,
+        input.bcvVes ?? null,
         input.fetchedAt ?? now,
         now,
       );
@@ -852,6 +906,42 @@ export function purgeMarketSnapshotsBefore(db: DatabaseSync, cutoff: number): nu
     )
     .run(cutoff);
   return Number(info.changes);
+}
+
+/**
+ * Lists persisted market snapshots in chronological order (`fetched_at ASC`),
+ * bounded by optional `since`, `until`, and `limit` (most recent N when `limit` is set).
+ */
+export function listMarketSnapshots(
+  db: DatabaseSync,
+  filter?: MarketSnapshotsFilter,
+): MarketSnapshot[] {
+  const conditions: string[] = [];
+  const params: number[] = [];
+  if (filter?.since !== undefined && Number.isFinite(filter.since)) {
+    conditions.push('fetched_at >= ?');
+    params.push(filter.since);
+  }
+  if (filter?.until !== undefined && Number.isFinite(filter.until)) {
+    conditions.push('fetched_at <= ?');
+    params.push(filter.until);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit =
+    filter?.limit !== undefined && Number.isFinite(filter.limit) && filter.limit > 0
+      ? Math.min(Math.floor(filter.limit), 5000)
+      : 500;
+  const rows = db
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM market_snapshots
+         ${where}
+         ORDER BY fetched_at DESC, id DESC
+         LIMIT ?
+       ) ORDER BY fetched_at ASC, id ASC`,
+    )
+    .all(...params, limit) as Row[];
+  return rows.map(mapSnapshot);
 }
 
 // ---------------------------------------------------------------------------

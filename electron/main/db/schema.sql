@@ -201,6 +201,10 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
   n_bids INTEGER NOT NULL,
   n_asks INTEGER NOT NULL,
   stale INTEGER NOT NULL CHECK (stale IN (0, 1)),
+  btc_usdt REAL,
+  sol_usdt REAL,
+  usdc_usdt REAL,
+  bcv_ves REAL,
   fetched_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
