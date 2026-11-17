@@ -1,0 +1,207 @@
+<article
+  class="spatial-hero-card"
+  appSpatialTilt3d
+  [tiltMaxDeg]="4"
+  aria-label="Calidad de Spread y Proyección Operativa"
+>
+  <!-- Top Split: Metrics Overview + Gauge Hero -->
+  <div class="hero-top-split">
+    <!-- Left Column: Bimonetary Readout & ROI -->
+    <section class="hero-left-col spatial-z-mid" aria-label="Resumen de Rendimiento y Spread">
+      <header class="metric-header">
+        <span class="eyebrow-tag">ARBITRAJE &amp; SPREAD</span>
+        <h2 class="hero-title">Ganancia Neta Estimada</h2>
+      </header>
+
+      <div class="bimonetary-readout">
+        <div class="primary-figure-group">
+          <span class="primary-figure font-mono">+Bs. {{ gainVes() | number:'1.2-2' }}</span>
+          <span class="crypto-figure font-mono">+{{ gainUsdt() | number:'1.2-2' }} USDT</span>
+        </div>
+
+        <div class="commission-readout">
+          <span class="commission-label">Neto tras comisión:</span>
+          <span class="commission-value font-mono">Bs. {{ netVesAfterCommission() | number:'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <div class="meta-metrics-row">
+        <div class="meta-pill spread-pill">
+          <span class="meta-label">Spread unitario:</span>
+          <span class="meta-value font-mono">Bs. {{ unitSpreadVes() | number:'1.2-2' }}</span>
+        </div>
+
+        <div
+          class="meta-pill roi-pill"
+          [class.positive]="roiPct() >= 0"
+          [class.negative]="roiPct() < 0"
+        >
+          <span class="meta-label">ROI:</span>
+          <span class="meta-value font-mono">{{ roiPct() >= 0 ? '+' : '' }}{{ roiPct() | number:'1.2-2' }}%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Single Semicircular SVG Gauge -->
+    <section class="hero-right-col spatial-z-float" aria-label="Medidor de Calidad de Operación">
+      <div class="gauge-container">
+        <svg
+          class="spread-quality-gauge-svg"
+          viewBox="0 0 260 155"
+          role="img"
+          [attr.aria-label]="'Puntuación de calidad de spread ' + clampedScore() + ' de 100, veredicto ' + verdictLabel()"
+        >
+          <defs>
+            <linearGradient
+              [attr.id]="gradientId()"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="0%"
+            >
+              <stop offset="0%" stop-color="var(--danger)" />
+              <stop offset="35%" stop-color="var(--warn)" />
+              <stop offset="70%" stop-color="var(--accent)" />
+              <stop offset="100%" stop-color="var(--gold)" />
+            </linearGradient>
+
+            <filter [attr.id]="glowFilterId()" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          <!-- Track Background -->
+          <path
+            class="gauge-track"
+            d="M 34 130 A 96 96 0 0 1 226 130"
+            fill="none"
+            stroke-width="14"
+            stroke-linecap="round"
+          />
+
+          <!-- Semantic Ticks -->
+          <g class="gauge-ticks" aria-hidden="true">
+            <line x1="22" y1="130" x2="29" y2="130" />
+            <line x1="53.6" y1="53.6" x2="58.6" y2="58.6" />
+            <line x1="130" y1="22" x2="130" y2="29" />
+            <line x1="206.4" y1="53.6" x2="201.4" y2="58.6" />
+            <line x1="238" y1="130" x2="231" y2="130" />
+          </g>
+
+          <!-- Progress Arc with Gradient and Glow -->
+          <path
+            class="gauge-progress"
+            d="M 34 130 A 96 96 0 0 1 226 130"
+            fill="none"
+            stroke-width="14"
+            stroke-linecap="round"
+            [attr.stroke]="'url(#' + gradientId() + ')'"
+            [attr.stroke-dasharray]="gaugeArcLength"
+            [attr.stroke-dashoffset]="gaugeDashOffset()"
+            [attr.filter]="'url(#' + glowFilterId() + ')'"
+          />
+
+          <!-- Dynamic Needle Indicator -->
+          <g
+            class="gauge-needle"
+            [attr.transform]="'rotate(' + needleDeg() + ' 130 130)'"
+          >
+            <line
+              x1="130"
+              y1="130"
+              x2="130"
+              y2="46"
+              stroke="var(--text)"
+              stroke-width="2.5"
+              stroke-linecap="round"
+            />
+            <circle cx="130" cy="130" r="6" class="needle-hub" />
+          </g>
+
+          <!-- Glowing Head Dot on the Arc -->
+          <circle
+            class="gauge-tip-dot"
+            [attr.cx]="gaugeTip().x"
+            [attr.cy]="gaugeTip().y"
+            r="5"
+          />
+        </svg>
+
+        <!-- Centered Score and Verdict Readout -->
+        <div class="gauge-center-readout">
+          <div class="gauge-score-row">
+            <span class="score-value font-mono">{{ clampedScore() }}</span>
+            <span class="score-denom font-mono">/100</span>
+          </div>
+
+          <span
+            class="verdict-pill"
+            [class.tone-favorable]="isFavorable()"
+            [class.tone-unfavorable]="!isFavorable()"
+          >
+            {{ verdictLabel() }}
+          </span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Middle Strip: Compound Cycles Projection Grid -->
+  @if (compoundCycles().length > 0) {
+    <section class="compound-strip spatial-z-mid" aria-label="Proyección de Interés Compuesto">
+      <header class="compound-strip-header">
+        <span class="compound-title">🔄 Proyección de Interés Compuesto</span>
+        <span class="compound-hint">Reinvirtiendo capital + margen</span>
+      </header>
+
+      <div class="compound-cycles-grid">
+        @for (cycle of compoundCycles(); track cycle.label) {
+          <div class="compound-cycle-tile">
+            <span class="cycle-badge">{{ cycle.label }}</span>
+            <div class="cycle-amounts">
+              <span class="cycle-ves font-mono">+Bs. {{ cycle.netVes | number:'1.2-2' }}</span>
+              <span class="cycle-usdt font-mono">+{{ cycle.netUsdt | number:'1.2-2' }} USDT</span>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- Bottom CTA Bar -->
+  <footer class="cta-action-bar spatial-z-float">
+    <button
+      type="button"
+      class="cta-btn btn-buy"
+      (click)="onStartBuy()"
+      aria-label="🟢 Iniciar Compra en mercado P2P"
+    >
+      <span class="btn-icon" aria-hidden="true">🟢</span>
+      <span class="btn-text">Iniciar Compra</span>
+    </button>
+
+    <button
+      type="button"
+      class="cta-btn btn-sell"
+      (click)="onStartSell()"
+      aria-label="⚡ Iniciar Venta (Log) en registro operativo"
+    >
+      <span class="btn-icon" aria-hidden="true">⚡</span>
+      <span class="btn-text">Iniciar Venta (Log)</span>
+    </button>
+
+    <button
+      type="button"
+      class="cta-btn btn-ad-studio"
+      (click)="onOpenAdStudio()"
+      aria-label="📢 Anuncio 360° para publicación estratégica"
+    >
+      <span class="btn-icon" aria-hidden="true">📢</span>
+      <span class="btn-text">Anuncio 360°</span>
+    </button>
+  </footer>
+</article>

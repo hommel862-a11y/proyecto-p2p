@@ -1,0 +1,260 @@
+<section class="be-glass-desk" aria-label="Termómetro Breakeven y Escalera ROI">
+  <header class="be-desk-header">
+    <div class="be-title-stack">
+      <span class="be-eyebrow">QUANTUM BREAKEVEN DESK</span>
+      <h3 class="be-heading">
+        {{
+          isSellInventory()
+            ? 'Defensa de Piso & Termómetro de Venta'
+            : 'Techo de Recompra & Acumulación USDT'
+        }}
+      </h3>
+    </div>
+    <span class="be-mode-pill font-mono" [class.mode-buy]="!isSellInventory()">
+      {{ isSellInventory() ? 'CICLO VENTA' : 'CICLO RECOMPRA' }}
+    </span>
+  </header>
+
+  <!-- Dual Spatial 3D Hero Boxes -->
+  <div class="be-dual-hero-grid">
+    <article class="be-hero-box be-hero-floor" appSpatialTilt3d [tiltMaxDeg]="5">
+      <div class="be-hero-eyebrow spatial-z-mid">
+        {{
+          isSellInventory()
+            ? '🛡️ Piso Breakeven (PnL $0)'
+            : '🛡️ Techo Breakeven (PnL $0)'
+        }}
+      </div>
+      <div class="be-hero-price spatial-z-float font-mono">
+        {{ floorPriceVes() | num }}
+        <small>Bs</small>
+      </div>
+      <div class="be-hero-meta spatial-z-mid font-mono">
+        <span>
+          {{
+            isSellInventory()
+              ? 'Cobertura neta de costos y comisiones'
+              : 'Límite máximo sin diluir ganancia'
+          }}
+        </span>
+      </div>
+    </article>
+
+    <article class="be-hero-box be-hero-target" appSpatialTilt3d [tiltMaxDeg]="5">
+      <div class="be-hero-eyebrow spatial-z-mid">
+        <span>{{ isSellInventory() ? '🎯 Precio Objetivo' : '🎯 Recompra Objetivo' }}</span>
+        <span class="be-roi-badge font-mono">+{{ targetRoiPct() }}% ROI</span>
+      </div>
+      <div class="be-hero-price be-price-gold spatial-z-float font-mono">
+        {{ targetPriceVes() | num }}
+        <small>Bs</small>
+      </div>
+      <div class="be-hero-meta spatial-z-mid font-mono">
+        <span class="be-profit-accent">
+          {{ netProfitVes() >= 0 ? '+' : '' }}{{ netProfitVes() | ves }}
+        </span>
+        <span class="be-dot-sep" aria-hidden="true">·</span>
+        <span class="be-profit-accent">
+          {{ netProfitUsdt() >= 0 ? '+' : '' }}{{ netProfitUsdt() | usdt }}
+        </span>
+        <span class="be-dot-sep" aria-hidden="true">·</span>
+        <span class="be-gap-chip">
+          Δ {{ targetGapVes() >= 0 ? '+' : '' }}{{ targetGapVes() | num }} Bs
+        </span>
+      </div>
+    </article>
+  </div>
+
+  <!-- Interactive Termómetro de Mercado en Vivo -->
+  <section
+    class="be-thermo-card"
+    [class]="'be-thermo-card tone-' + thermometerVerdict().tone"
+    aria-label="Termómetro de Mercado en Vivo"
+  >
+    <div class="be-thermo-header">
+      <div class="be-thermo-title-wrap">
+        <div class="be-thermo-title-row">
+          <span class="be-live-dot" aria-hidden="true"></span>
+          <h4 class="be-thermo-title">Termómetro de Mercado en Vivo</h4>
+        </div>
+        <p class="be-thermo-headline">{{ thermometerVerdict().headline }}</p>
+        <p class="be-thermo-guidance">{{ thermometerVerdict().guidance }}</p>
+      </div>
+      <span class="be-verdict-pill font-mono">{{ thermometerVerdict().badge }}</span>
+    </div>
+
+    <div class="be-thermo-stage">
+      <div class="be-thermo-rail" role="presentation">
+        <div
+          class="be-thermo-corridor"
+          [style.left.%]="corridorRange().startPct"
+          [style.width.%]="corridorRange().widthPct"
+        ></div>
+
+        @for (marker of thermometerMarkers(); track marker.id) {
+          <div
+            class="be-thermo-marker"
+            [class]="'be-thermo-marker marker-' + marker.tone + ' lane-' + marker.lane"
+            [style.left.%]="marker.positionPct"
+            [attr.data-marker-id]="marker.id"
+            [attr.title]="marker.label + ': ' + (marker.priceVes | num) + ' Bs'"
+          >
+            <span class="be-marker-tag font-mono">{{ marker.label }}</span>
+            <span class="be-marker-dot" aria-hidden="true"></span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="be-thermo-legend">
+      @for (marker of thermometerMarkers(); track marker.id) {
+        <div class="be-legend-item" [class]="'be-legend-item legend-' + marker.tone">
+          <span class="be-legend-swatch" aria-hidden="true"></span>
+          <div class="be-legend-copy">
+            <span class="be-legend-label">{{ marker.label }}</span>
+            <strong class="be-legend-val font-mono">{{ marker.priceVes | num }} Bs</strong>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- 5-row clickable Escalera ROI -->
+  <section class="be-ladder-card" aria-label="Escalera ROI">
+    <div class="be-ladder-header">
+      <h4 class="be-ladder-title">Escalera ROI</h4>
+      <span class="be-ladder-hint">Haz clic en un escalón para fijar tu precio objetivo</span>
+    </div>
+
+    @if (ladderRows().length === 0) {
+      <div class="be-empty-state">Sin escalones ROI configurados para este ciclo.</div>
+    } @else {
+      <div class="be-ladder-table-wrap">
+        <table class="be-ladder-table font-mono">
+          <thead>
+            <tr>
+              <th scope="col">ROI</th>
+              <th scope="col">{{ isSellInventory() ? 'Venta Meta' : 'Recompra' }}</th>
+              <th scope="col">vs Piso</th>
+              <th scope="col">Neto (USDT)</th>
+              <th scope="col">Neto (VES)</th>
+              <th scope="col">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of ladderRows(); track row.roiPct) {
+              <tr
+                class="be-ladder-row"
+                [class.is-active]="row.isActive"
+                [class.is-immediate]="row.isImmediate"
+                tabindex="0"
+                role="button"
+                [attr.aria-pressed]="row.isActive"
+                [attr.aria-label]="
+                  'Seleccionar ROI +' + row.roiPct + '% a ' + (row.priceVes | num) + ' Bs'
+                "
+                (click)="onSelectRoi(row.roiPct)"
+                (keydown.enter)="onSelectRoi(row.roiPct)"
+                (keydown.space)="onSelectRoiSpace($event, row.roiPct)"
+              >
+                <td>
+                  <span class="be-roi-cell" [class.roi-zero]="row.roiPct === 0">
+                    +{{ row.roiPct }}%
+                  </span>
+                </td>
+                <td class="be-cell-strong">{{ row.priceVes | num }} Bs</td>
+                <td>{{ row.spreadVsFloorVes >= 0 ? '+' : '' }}{{ row.spreadVsFloorVes | num }} Bs</td>
+                <td [class.be-profit-accent]="row.profitUsdt > 0">
+                  {{ row.profitUsdt >= 0 ? '+' : '' }}{{ row.profitUsdt | usdt }}
+                </td>
+                <td [class.be-profit-accent]="row.profitVes > 0">
+                  {{ row.profitVes >= 0 ? '+' : '' }}{{ row.profitVes | ves }}
+                </td>
+                <td>
+                  <span class="be-exec-chip" [class.exec-top]="row.isImmediate">
+                    {{ row.execLabel }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <!-- Footer Action Bar & Collapsible Split Multi-Banco ($10k) -->
+  <div class="be-footer-bar">
+    <button
+      type="button"
+      class="be-split-pill"
+      [class.expanded]="splitExpanded()"
+      [attr.aria-expanded]="splitExpanded()"
+      aria-controls="be-split-drawer-panel"
+      (click)="toggleSplitDrawer()"
+    >
+      <span class="be-split-pill-label">
+        Split Multi-Banco ({{ multiBankSplits().length }} bancos)
+      </span>
+      <span class="be-split-pill-cap font-mono">$10k</span>
+      <span class="be-split-chevron" aria-hidden="true">▾</span>
+    </button>
+
+    <button type="button" class="be-dispatch-cta" (click)="onLaunchTrade()">
+      ⚡ Despachar Ciclo al Registro
+    </button>
+  </div>
+
+  @if (splitExpanded()) {
+    <div
+      id="be-split-drawer-panel"
+      class="be-split-drawer"
+      role="region"
+      aria-label="Split Multi-Banco ($10k)"
+    >
+      <div class="be-split-drawer-header">
+        <div>
+          <h4 class="be-split-drawer-title">Split Multi-Banco ($10k)</h4>
+          <p class="be-split-drawer-sub">
+            Distribución táctica de liquidez y límites seguros por riel bancario
+          </p>
+        </div>
+        <span class="be-split-summary font-mono">
+          {{ totalSplitUsdt() | usdt }} · {{ totalSafeTickets() }} tickets
+        </span>
+      </div>
+
+      @if (multiBankSplits().length === 0) {
+        <div class="be-empty-state">
+          No hay distribución multi-banco cargada para este ciclo.
+        </div>
+      } @else {
+        <div class="be-split-grid">
+          @for (split of multiBankSplits(); track split.bankName + split.rail) {
+            <article class="be-split-card">
+              <div class="be-split-card-top">
+                <div>
+                  <strong class="be-split-bank">{{ split.bankName }}</strong>
+                  <span class="be-split-rail">{{ split.rail }}</span>
+                </div>
+                <span class="be-split-pct font-mono">{{ split.capacityPct | num: 0 }}%</span>
+              </div>
+
+              <div class="be-split-bar" role="presentation">
+                <div
+                  class="be-split-bar-fill"
+                  [style.width.%]="split.capacityPct > 100 ? 100 : split.capacityPct < 0 ? 0 : split.capacityPct"
+                ></div>
+              </div>
+
+              <div class="be-split-card-meta font-mono">
+                <span>{{ split.allocationUsdt | usdt }}</span>
+                <span>{{ split.safeTickets }} tickets</span>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </div>
+  }
+</section>

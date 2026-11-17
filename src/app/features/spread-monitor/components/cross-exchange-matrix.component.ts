@@ -32,6 +32,7 @@ export class CrossExchangeMatrix {
   readonly capitalUsdt = signal<number>(500);
   readonly network = signal<TransferNetwork>('BEP20');
   readonly minSpreadPct = signal<number>(0.5);
+  readonly showApiConfig = signal<boolean>(false);
 
   // Live prices with fallbacks
   readonly binanceBuyPrice = computed<number>(() => {
