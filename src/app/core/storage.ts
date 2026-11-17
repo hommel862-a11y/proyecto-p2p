@@ -39,6 +39,10 @@ export class StorageService {
   private readonly idb = inject(IndexedDbStorageService, { optional: true });
   private readonly adapter: StoragePort = new WebStorageAdapter(inject(P2P_STORAGE));
 
+  whenReady(): Promise<void> {
+    return this.idb?.whenReady?.() ?? Promise.resolve();
+  }
+
   get<T>(key: string): T | null {
     if (this.idb) {
       const val = this.idb.get<T>(key);

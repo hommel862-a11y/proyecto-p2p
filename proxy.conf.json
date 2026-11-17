@@ -9,5 +9,13 @@
     "headers": {
       "Origin": "https://p2p.binance.com"
     }
+  },
+  "/api/cotizave": {
+    "target": "https://api.cotizave.com",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/cotizave": "/v1/fx"
+    }
   }
 }

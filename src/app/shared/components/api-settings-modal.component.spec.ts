@@ -15,7 +15,11 @@ describe('ApiSettingsModalComponent', () => {
   const mockCotizave = {
     apiKey: signal(''),
     loading: signal(false),
-    setApiKey: vi.fn(),
+    error: signal<string | null>(null),
+    ratesByMarket: signal<Record<string, unknown>>({}),
+    setApiKey: vi.fn((key: string) => {
+      mockCotizave.apiKey.set(key);
+    }),
     fetchRates: vi.fn().mockResolvedValue(undefined),
   };
 
@@ -47,6 +51,15 @@ describe('ApiSettingsModalComponent', () => {
   };
 
   beforeEach(async () => {
+    mockCotizave.apiKey.set('');
+    mockCotizave.loading.set(false);
+    mockCotizave.error.set(null);
+    mockCotizave.ratesByMarket.set({});
+    mockCotizave.setApiKey.mockClear();
+    mockCotizave.fetchRates.mockReset().mockResolvedValue(undefined);
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+
     await TestBed.configureTestingModule({
       imports: [ApiSettingsModalComponent],
       providers: [
@@ -82,6 +95,57 @@ describe('ApiSettingsModalComponent', () => {
     component.cotizaveKeyInput.set('cz_test_123');
     component.saveCotizave();
     expect(mockCotizave.setApiKey).toHaveBeenCalledWith('cz_test_123');
+  });
+
+  it('syncs cotizaveKeyInput when cotizave.apiKey hydrates asynchronously without overwriting active edits', () => {
+    mockCotizave.apiKey.set('cz_hydrated_key');
+    fixture.detectChanges();
+    expect(component.cotizaveKeyInput()).toBe('cz_hydrated_key');
+
+    component.onCotizaveInput({ target: { value: 'cz_user_typing' } } as unknown as Event);
+    mockCotizave.apiKey.set('cz_other_hydrated');
+    fixture.detectChanges();
+    expect(component.cotizaveKeyInput()).toBe('cz_user_typing');
+  });
+
+  it('shows success toast in testCotizave only when fetchRates succeeds without error and populates rates', async () => {
+    component.cotizaveKeyInput.set('cz_valid_key');
+    mockCotizave.fetchRates.mockImplementation(async () => {
+      mockCotizave.error.set(null);
+      mockCotizave.ratesByMarket.set({
+        binance: { market: 'binance', type: 'p2p', ask: 800, bid: 795 },
+      });
+    });
+
+    await component.testCotizave();
+
+    expect(mockCotizave.setApiKey).toHaveBeenCalledWith('cz_valid_key');
+    expect(mockToast.success).toHaveBeenCalledWith('Conexión con CotizaVe exitosa.', 'API CotizaVe');
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it('does not show false success toast in testCotizave when fetchRates sets an error', async () => {
+    mockCotizave.apiKey.set('cz_invalid_key');
+    mockCotizave.fetchRates.mockImplementation(async () => {
+      mockCotizave.error.set('API key de Cotizave inválida o vencida (HTTP 401).');
+      mockCotizave.ratesByMarket.set({});
+    });
+
+    await component.testCotizave();
+
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('normalizes pasted CotizaVe keys in saveCotizave and rejects empty testCotizave', async () => {
+    component.onCotizaveInput({ target: { value: '  X-API-Key: "cz_pasted_999"  ' } } as unknown as Event);
+    component.saveCotizave();
+    expect(mockCotizave.setApiKey).toHaveBeenCalledWith('cz_pasted_999');
+
+    component.onCotizaveInput({ target: { value: '   ' } } as unknown as Event);
+    await component.testCotizave();
+    expect(mockCotizave.setApiKey).toHaveBeenCalledWith('');
+    expect(mockCotizave.fetchRates).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it('should toggle proxy on Binance service', () => {

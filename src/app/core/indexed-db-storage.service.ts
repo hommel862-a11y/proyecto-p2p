@@ -13,10 +13,16 @@ export const IDB_VERSION = 1;
 export class IndexedDbStorageService {
   private memoryCache = new Map<string, unknown>();
   private isReady = false;
+  private initPromise: Promise<void> | null = null;
   private dbPromise: Promise<IDBDatabase | null> | null = null;
 
   constructor() {
-    this.init();
+    void this.init();
+  }
+
+  /** Resolves once initial localStorage + IndexedDB hydration completes. */
+  whenReady(): Promise<void> {
+    return this.init();
   }
 
   /**
@@ -24,23 +30,28 @@ export class IndexedDbStorageService {
    */
   async init(): Promise<void> {
     if (this.isReady) return;
+    if (this.initPromise) return this.initPromise;
 
-    // 1. Initial hydration from localStorage if available to guarantee instant synchronous reads
-    this.migrateFromLocalStorage();
+    this.initPromise = (async () => {
+      // 1. Initial hydration from localStorage if available to guarantee instant synchronous reads
+      this.migrateFromLocalStorage();
 
-    // 2. Open IndexedDB and hydrate fresh records
-    try {
-      const db = await this.getDb();
-      if (db) {
-        await this.hydrateFromIndexedDb(db);
-        this.isReady = true;
+      // 2. Open IndexedDB and hydrate fresh records
+      try {
+        const db = await this.getDb();
+        if (db) {
+          await this.hydrateFromIndexedDb(db);
+          this.isReady = true;
+        }
+      } catch (err) {
+        console.warn(
+          '[IndexedDbStorage] Initialization warning, relying on memory/localStorage:',
+          err,
+        );
       }
-    } catch (err) {
-      console.warn(
-        '[IndexedDbStorage] Initialization warning, relying on memory/localStorage:',
-        err,
-      );
-    }
+    })();
+
+    return this.initPromise;
   }
 
   private migrateFromLocalStorage(): void {
@@ -49,7 +60,7 @@ export class IndexedDbStorageService {
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('p2p.')) {
+        if (key && (key.startsWith('p2p.') || key.startsWith('p2p_sec_vault:'))) {
           const raw = localStorage.getItem(key);
           if (raw !== null) {
             try {

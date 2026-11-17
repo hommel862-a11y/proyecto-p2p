@@ -39,15 +39,23 @@ export class CredentialStoreService {
   private readonly vault = inject(SecureVaultService);
   private readonly storage = inject(StorageService);
   private static migrationDone = false;
+  private migrationPromise: Promise<void> | null = null;
 
   readonly backend: 'electron' | 'web' = detectBackend();
 
-  private async migrateOnce(): Promise<void> {
-    if (CredentialStoreService.migrationDone) return;
-    CredentialStoreService.migrationDone = true;
-
-    await this.migrateTelegram();
-    await this.migrateCotizave();
+  private migrateOnce(): Promise<void> {
+    if (!CredentialStoreService.migrationDone) {
+      this.migrationPromise = null;
+      CredentialStoreService.migrationDone = true;
+    }
+    if (!this.migrationPromise) {
+      this.migrationPromise = (async () => {
+        await this.storage.whenReady?.();
+        await this.migrateTelegram();
+        await this.migrateCotizave();
+      })();
+    }
+    return this.migrationPromise;
   }
 
   private async migrateTelegram(): Promise<void> {
@@ -113,6 +121,10 @@ export class CredentialStoreService {
 
   async setCotizaveApiKey(key: string): Promise<void> {
     await this.migrateOnce();
+    if (!key) {
+      await this.vault.removeSecret(VAULT_COTIZAVE);
+      return;
+    }
     await this.vault.storeSecret(VAULT_COTIZAVE, key);
   }
 

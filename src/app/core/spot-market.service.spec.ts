@@ -107,4 +107,61 @@ describe('SpotMarketService', () => {
     expect(svc.availability().status).toBe('CACHE');
     expect(svc.availability().provenance).toBe('LOCAL_CACHE');
   });
+
+  it('consulta la canasta spot (BTCUSDT, SOLUSDT, USDCUSDT) en un solo batch y sincroniza bookTickers', async () => {
+    const batchPayload = [
+      {
+        symbol: 'BTCUSDT',
+        bidPrice: '89990.00',
+        bidQty: '1.0',
+        askPrice: '90010.00',
+        askQty: '1.0',
+        lastPrice: '90000.00',
+        priceChangePercent: '3.10',
+        highPrice: '91000.00',
+        lowPrice: '87000.00',
+        volume: '12000',
+        quoteVolume: '1080000000',
+      },
+      {
+        symbol: 'SOLUSDT',
+        bidPrice: '184.50',
+        bidQty: '20.0',
+        askPrice: '185.50',
+        askQty: '20.0',
+        lastPrice: '185.00',
+        priceChangePercent: '5.40',
+        highPrice: '188.00',
+        lowPrice: '175.00',
+        volume: '450000',
+        quoteVolume: '83250000',
+      },
+      {
+        symbol: 'USDCUSDT',
+        bidPrice: '0.9999',
+        bidQty: '50000',
+        askPrice: '1.0001',
+        askQty: '50000',
+        lastPrice: '1.0000',
+        priceChangePercent: '0.00',
+        highPrice: '1.0002',
+        lowPrice: '0.9998',
+        volume: '10000000',
+        quoteVolume: '10000000',
+      },
+    ];
+
+    const fetchBinanceSpotTicker = vi.fn().mockResolvedValue(batchPayload);
+    vi.stubGlobal('window', {
+      electron: { fetchBinanceSpotTicker },
+    });
+
+    const result = await svc.fetchCoreBasket();
+    expect(fetchBinanceSpotTicker).toHaveBeenCalledWith(['BTCUSDT', 'SOLUSDT', 'USDCUSDT']);
+    expect(result.size).toBe(3);
+    expect(svc.btcTicker()?.lastPrice).toBe(90000);
+    expect(svc.solTicker()?.lastPrice).toBe(185);
+    expect(svc.usdcTicker()?.midPrice).toBe(1);
+    expect(svc.getTicker('USDCUSDT')?.midPrice).toBe(1);
+  });
 });

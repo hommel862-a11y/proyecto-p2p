@@ -5,6 +5,7 @@ import { StorageService } from './storage';
 import { NativeHttpService } from './native-http.service';
 import {
   normalizeCotizaveRates,
+  normalizeCotizaveApiKey,
   buildCotizaveHeaders,
   type CotizaveRate,
   CircuitBreaker,
@@ -183,13 +184,16 @@ export class CotizaveService implements OnDestroy {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastAttemptAt = 0;
+  private rejectedApiKey: string | null = null;
+  private apiKeyDirty = false;
+  private readonly hydrationPromise: Promise<void>;
 
   constructor() {
     // `StorageService.get` es síncrono: la caché persistida se hidrata antes de
     // que nadie pueda observar un `ratesByMarket()` vacío. El `hydrate()` async
     // de la API key sigue su curso aparte.
     this.hydrateRatesFromStorage();
-    void this.hydrate();
+    this.hydrationPromise = this.hydrate();
   }
 
   ngOnDestroy(): void {
@@ -354,17 +358,34 @@ export class CotizaveService implements OnDestroy {
   }
 
   private async hydrate(): Promise<void> {
-    const key = await this.credentials.getCotizaveApiKey();
-    if (key) {
-      this.apiKey.set(key);
-      this.toast.info('API key Cotizave cargada desde almacenamiento seguro.', 'Cotizave');
+    try {
+      const rawKey = await this.credentials.getCotizaveApiKey();
+      const key = normalizeCotizaveApiKey(rawKey);
+      if (this.apiKeyDirty) {
+        return;
+      }
+      if (key) {
+        this.apiKey.set(key);
+        if (this.error() === 'Introduce tu Cotizave API key para activar la triangulación') {
+          this.error.set(null);
+        }
+        this.toast.info('API key Cotizave cargada desde almacenamiento seguro.', 'Cotizave');
+      }
+    } catch {
+      // Un fallo del almacén de credenciales no puede bloquear el arranque ni rechazar hydrationPromise.
     }
   }
 
   setApiKey(key: string): void {
-    this.apiKey.set(key);
-    void this.credentials.setCotizaveApiKey(key).catch(() => undefined);
-    if (key) {
+    const normalized = normalizeCotizaveApiKey(key);
+    this.apiKeyDirty = true;
+    this.rejectedApiKey = null;
+    this.apiKey.set(normalized);
+    this.lastAttemptAt = 0;
+    this.circuitBreaker.reset();
+    this.error.set(null);
+    void this.credentials.setCotizaveApiKey(normalized).catch(() => undefined);
+    if (normalized) {
       this.toast.success('API key Cotizave guardada. Puedes sincronizar rates.', 'Cotizave');
     } else {
       this.toast.info('API key Cotizave eliminada.', 'Cotizave');
@@ -388,7 +409,7 @@ export class CotizaveService implements OnDestroy {
    * `'rates'` caller a promise resolved from a different endpoint's response.
    * Keying the map by endpoint keeps those flights independent.
    */
-  private readonly inFlightFetches = new Map<'rates', Promise<void>>();
+  private readonly inFlightFetches = new Map<string, Promise<void>>();
 
   /**
    * Collapses a concurrent burst into the single flight already running.
@@ -401,18 +422,23 @@ export class CotizaveService implements OnDestroy {
    * flight instead of reusing an already-resolved promise.
    */
   async fetchRates(endpoint: 'rates' = 'rates'): Promise<void> {
-    const inFlight = this.inFlightFetches.get(endpoint);
+    if (!this.apiKey() && !this.apiKeyDirty) {
+      await this.hydrationPromise;
+    }
+    const key = normalizeCotizaveApiKey(this.apiKey());
+    const flightKey = `${endpoint}:${key}`;
+    const inFlight = this.inFlightFetches.get(flightKey);
     if (inFlight) {
       await inFlight;
       return;
     }
 
     const flight = this.runFetchRates(endpoint);
-    this.inFlightFetches.set(endpoint, flight);
+    this.inFlightFetches.set(flightKey, flight);
     try {
       await flight;
     } finally {
-      this.inFlightFetches.delete(endpoint);
+      this.inFlightFetches.delete(flightKey);
     }
   }
 
@@ -425,6 +451,13 @@ export class CotizaveService implements OnDestroy {
     endpoint: 'rates' = 'rates',
     maxAgeMs = COTIZAVE_MIN_FETCH_INTERVAL_MS,
   ): Promise<void> {
+    if (!this.apiKey() && !this.apiKeyDirty) {
+      await this.hydrationPromise;
+    }
+    const currentKey = normalizeCotizaveApiKey(this.apiKey());
+    if (this.rejectedApiKey !== null && this.rejectedApiKey === currentKey) {
+      return;
+    }
     if (this.circuitBreaker.getState() === 'OPEN') {
       return;
     }
@@ -486,7 +519,10 @@ export class CotizaveService implements OnDestroy {
   }
 
   private async runFetchRates(endpoint: 'rates'): Promise<void> {
-    const key = this.apiKey();
+    if (!this.apiKey() && !this.apiKeyDirty) {
+      await this.hydrationPromise;
+    }
+    const key = normalizeCotizaveApiKey(this.apiKey());
     if (!key) {
       this.error.set('Introduce tu Cotizave API key para activar la triangulación');
       return;
@@ -594,8 +630,13 @@ export class CotizaveService implements OnDestroy {
           lastError instanceof Error ? lastError.message : '',
         );
         if (lastMsg.includes('HTTP Error 401')) {
+          if (normalizeCotizaveApiKey(this.apiKey()) === key) {
+            this.rejectedApiKey = key;
+          }
+          const detailMatch = lastMsg.match(/HTTP Error 401[^:]*:\s*(.+)$/);
+          const upstreamSuffix = detailMatch?.[1]?.trim() ? ` (${detailMatch[1].trim()})` : '';
           throw new CotizaveDiagnosisError(
-            'API key de Cotizave inválida o vencida (HTTP 401). Revisá tu key en Ajustes → API Keys.',
+            `API key de Cotizave inválida o vencida (HTTP 401). Revisá tu key en Ajustes → API Keys.${upstreamSuffix}`,
             lastError,
           );
         }
@@ -648,8 +689,12 @@ export class CotizaveService implements OnDestroy {
       };
 
       const rates = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
+      if (normalizeCotizaveApiKey(this.apiKey()) !== key) {
+        return;
+      }
 
       if (!servedFromCache) {
+        this.rejectedApiKey = null;
         this.ratesByMarket.set(rates);
         const fetchedAt = new Date();
         this.lastFetched.set(fetchedAt);
@@ -664,6 +709,9 @@ export class CotizaveService implements OnDestroy {
       // antigüedad mostrada en el aviso no mienta. `ratesProvenance` tampoco se
       // toca: los rates que siguen ahí son los mismos de antes, no datos nuevos.
     } catch (err) {
+      if (normalizeCotizaveApiKey(this.apiKey()) !== key) {
+        return;
+      }
       const msg = (err as Error).message || 'No se pudo conectar con Cotizave';
       // La causa de red ya clasificada gana: su mensaje trae el motivo crudo
       // (`Failed to fetch`), el diagnóstico y la acción (incluido el puente local
@@ -686,18 +734,26 @@ export class CotizaveService implements OnDestroy {
       }
       this.toast.error(msg, 'Error Cotizave');
     } finally {
-      this.lastAttemptAt = Date.now();
-      this.loading.set(false);
+      const currentKey = normalizeCotizaveApiKey(this.apiKey());
+      const hasCurrentFlight = Array.from(this.inFlightFetches.keys()).some((k) =>
+        k.endsWith(`:${currentKey}`),
+      );
+      if (currentKey === key) {
+        this.lastAttemptAt = Date.now();
+        this.loading.set(false);
+      } else if (!hasCurrentFlight) {
+        this.loading.set(false);
+      }
     }
   }
 
   startAutoRefresh(intervalMs = 10 * 60_000): void {
     this.stopAutoRefresh();
     this.autoRefresh.set(true);
-    void this.fetchRates();
+    void this.refreshIfStale('rates', intervalMs).catch(() => undefined);
     this.refreshTimer = setInterval(() => {
       if (this.autoRefresh()) {
-        void this.fetchRates();
+        void this.refreshIfStale('rates', intervalMs).catch(() => undefined);
       }
     }, intervalMs);
   }
@@ -755,10 +811,7 @@ export class CotizaveService implements OnDestroy {
       return await this.fetchRatesViaLocalBridge(endpoint, key, signal);
     }
     if (!resp.ok) {
-      const retryAfter =
-        typeof resp.headers?.get === 'function' ? resp.headers.get('retry-after') : null;
-      const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
-      throw new Error(`Cotizave HTTP Error ${resp.status}${retryMsg}`);
+      throw await this.buildCotizaveHttpError('Cotizave', resp);
     }
     return await resp.json();
   }
@@ -769,19 +822,90 @@ export class CotizaveService implements OnDestroy {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const bridgeUrl = `http://127.0.0.1:51857/api/cotizave/${endpoint}`;
-    const bridgeResp = await fetch(bridgeUrl, {
-      method: 'GET',
-      headers: { 'x-api-key': key, Accept: 'application/json' },
-      signal,
-    });
+    let bridgeResp: Response;
+    try {
+      bridgeResp = await fetch(bridgeUrl, {
+        method: 'GET',
+        headers: { 'x-api-key': key, Accept: 'application/json' },
+        signal,
+      });
+    } catch (bridgeErr) {
+      if (this.shouldTryDevProxy()) {
+        return await this.fetchRatesViaDevProxy(endpoint, key, signal, bridgeErr);
+      }
+      throw bridgeErr;
+    }
     if (!bridgeResp.ok) {
-      const retryAfter =
-        typeof bridgeResp.headers?.get === 'function'
-          ? bridgeResp.headers.get('retry-after')
-          : null;
-      const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
-      throw new Error(`Cotizave bridge HTTP Error ${bridgeResp.status}${retryMsg}`);
+      throw await this.buildCotizaveHttpError('Cotizave bridge', bridgeResp);
     }
     return await bridgeResp.json();
   }
+
+  private async buildCotizaveHttpError(source: string, resp: Response): Promise<Error> {
+    const retryAfter =
+      typeof resp.headers?.get === 'function' ? resp.headers.get('retry-after') : null;
+    const retryMsg = retryAfter ? ` (retry-after: ${retryAfter}s)` : '';
+    let detail = '';
+    if (typeof resp.json === 'function') {
+      try {
+        const body = (await resp.json()) as { code?: unknown; message?: unknown } | null;
+        if (body && typeof body === 'object') {
+          const parts = [
+            typeof body.code === 'string' ? `[${body.code}]` : '',
+            typeof body.message === 'string' ? body.message : '',
+          ].filter(Boolean);
+          if (parts.length > 0) {
+            detail = `: ${parts.join(' ')}`;
+          }
+        }
+      } catch {
+        // Ignorar cuerpos no JSON
+      }
+    }
+    return new Error(`${source} HTTP Error ${resp.status}${retryMsg}${detail}`);
+  }
+
+  private shouldTryDevProxy(): boolean {
+    if (typeof window === 'undefined' || !window.location) return false;
+    const { protocol, hostname, port } = window.location;
+    return (
+      (protocol === 'http:' || protocol === 'https:') &&
+      (hostname === 'localhost' || hostname === '127.0.0.1') &&
+      port === '4200'
+    );
+  }
+
+  private async fetchRatesViaDevProxy(
+    endpoint: 'rates',
+    key: string,
+    signal?: AbortSignal,
+    fallbackError?: unknown,
+  ): Promise<unknown> {
+    const proxyUrl = `/api/cotizave/${endpoint}`;
+    const proxyResp = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: buildCotizaveHeaders(key),
+      signal,
+    });
+    if (!proxyResp.ok) {
+      throw await this.buildCotizaveHttpError('Cotizave proxy', proxyResp);
+    }
+    const contentType =
+      typeof proxyResp.headers?.get === 'function'
+        ? (proxyResp.headers.get('content-type') ?? '')
+        : '';
+    if (contentType && !contentType.toLowerCase().includes('application/json')) {
+      throw fallbackError instanceof Error
+        ? fallbackError
+        : new Error('Cotizave dev proxy unavailable (non-JSON response)');
+    }
+    try {
+      return await proxyResp.json();
+    } catch {
+      throw fallbackError instanceof Error
+        ? fallbackError
+        : new Error('Cotizave dev proxy unavailable (invalid JSON)');
+    }
+  }
 }
+

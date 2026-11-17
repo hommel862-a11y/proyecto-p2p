@@ -809,5 +809,227 @@ describe('CotizaveService', () => {
       await svc.refreshIfStale('rates', 0);
       expect(fetchMock.mock.calls.length).toBe(countBefore);
     });
+
+    it('espera a que termine la hidratación asíncrona de la API key antes de consultar en el arranque', async () => {
+      let resolveKey: ((key: string | null) => void) | null = null;
+      const slowKeyPromise = new Promise<string | null>((resolve) => {
+        resolveKey = resolve;
+      });
+
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CredentialStoreService,
+            useValue: {
+              getCotizaveApiKey: vi.fn(() => slowKeyPromise),
+              setCotizaveApiKey: vi.fn(async () => undefined),
+            },
+          },
+          { provide: ToastService, useValue: toast },
+          { provide: P2P_STORAGE, useValue: mem },
+          { provide: IndexedDbStorageService, useValue: idbStub },
+        ],
+      });
+
+      const fetchMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const earlySvc = TestBed.inject(CotizaveService);
+      expect(earlySvc.apiKey()).toBe('');
+
+      // Un componente llama refreshIfStale() en ngOnInit antes de que getCotizaveApiKey resuelva
+      const refreshPromise = earlySvc.refreshIfStale('rates');
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      resolveKey!('  hydrated-key  ');
+      await refreshPromise;
+
+      expect(earlySvc.apiKey()).toBe('hydrated-key');
+      expect(earlySvc.error()).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(earlySvc.ratesByMarket()['binance']).toBeDefined();
+    });
+
+    it('no pisa una API key ingresada manualmente si hydrate() resuelve después de setApiKey()', async () => {
+      let resolveKey: ((key: string | null) => void) | null = null;
+      const slowKeyPromise = new Promise<string | null>((resolve) => {
+        resolveKey = resolve;
+      });
+
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CredentialStoreService,
+            useValue: {
+              getCotizaveApiKey: vi.fn(() => slowKeyPromise),
+              setCotizaveApiKey: vi.fn(async () => undefined),
+            },
+          },
+          { provide: ToastService, useValue: toast },
+          { provide: P2P_STORAGE, useValue: mem },
+          { provide: IndexedDbStorageService, useValue: idbStub },
+        ],
+      });
+
+      const earlySvc = TestBed.inject(CotizaveService);
+      earlySvc.setApiKey('  manual-key  ');
+      expect(earlySvc.apiKey()).toBe('manual-key');
+
+      resolveKey!('stale-stored-key');
+      await Promise.resolve();
+
+      expect(earlySvc.apiKey()).toBe('manual-key');
+    });
+  });
+
+  describe('setApiKey y recuperación de circuito/throttle', () => {
+    it('recorta espacios, limpia errores y reinicia el circuitBreaker y el throttle al actualizar la key', async () => {
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => {
+          throw new Error('Cotizave HTTP Error 401');
+        }),
+      };
+
+      await svc.fetchRates();
+      await svc.fetchRates();
+      await svc.fetchRates();
+      expect(svc.circuitBreaker.getMetrics().state).toBe('OPEN');
+      expect(svc.error()).toContain('401');
+
+      svc.setApiKey('  ctz_live_fixed_key  ');
+
+      expect(svc.apiKey()).toBe('ctz_live_fixed_key');
+      expect(svc.circuitBreaker.getMetrics().state).toBe('CLOSED');
+      expect(svc.error()).toBeNull();
+
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: vi.fn(async () => RATES_PAYLOAD),
+      };
+
+      // Debe permitir consultar de inmediato sin quedar bloqueado por lastAttemptAt ni por el breaker
+      await svc.refreshIfStale('rates');
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+      expect(svc.error()).toBeNull();
+    });
+  });
+
+  describe('fallback al proxy de desarrollo Angular (/api/cotizave)', () => {
+    it('usa /api/cotizave/rates cuando la API directa y el puente local fallan en localhost:4200', async () => {
+      vi.spyOn(
+        svc as unknown as { shouldTryDevProxy: () => boolean },
+        'shouldTryDevProxy',
+      ).mockReturnValue(true);
+
+      const fetchMock = vi
+        .fn<FetchLike>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === 'content-type' ? 'application/json; charset=utf-8' : null,
+          },
+          json: async () => RATES_PAYLOAD,
+        } as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls[2][0]).toBe('/api/cotizave/rates');
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+      expect(svc.error()).toBeNull();
+    });
+
+    it('descarta respuestas text/html del fallback SPA cuando el proxy de desarrollo no está activo', async () => {
+      vi.spyOn(
+        svc as unknown as { shouldTryDevProxy: () => boolean },
+        'shouldTryDevProxy',
+      ).mockReturnValue(true);
+
+      const fetchMock = vi
+        .fn<FetchLike>()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: {
+            get: (name: string) => (name.toLowerCase() === 'content-type' ? 'text/html' : null),
+          },
+          json: async () => ({}),
+        } as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(svc.error()).toContain('Servidor Cotizave no accesible');
+    });
+  });
+
+  describe('manejo de HTTP 401 y vuelos concurrentes al cambiar la key', () => {
+    it('expone el detalle JSON de CotizaVe en HTTP 401 y pausa refreshIfStale hasta actualizar la key', async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => ({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          code: 'invalid_api_key',
+          message: 'API key is missing, invalid, or revoked.',
+        }),
+      }) as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      await svc.fetchRates();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(svc.error()).toContain('401');
+      expect(svc.error()).toContain('invalid_api_key');
+
+      // refreshIfStale no debe seguir disparando llamadas ni toasts con la key ya rechazada
+      await svc.refreshIfStale('rates', 0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // Al corregir la key, se limpia el rechazo y se permite consultar de inmediato
+      const okMock = vi.fn<FetchLike>(async () => jsonResponse(RATES_PAYLOAD));
+      vi.stubGlobal('fetch', okMock);
+      svc.setApiKey('X-API-Key: "ctz_live_nueva"');
+      expect(svc.apiKey()).toBe('ctz_live_nueva');
+
+      await svc.refreshIfStale('rates', 0);
+      expect(okMock).toHaveBeenCalledTimes(1);
+      expect(svc.error()).toBeNull();
+    });
+
+    it('no acopla el vuelo viejo ni deja que su 401 pise la nueva key cuando setApiKey se llama en vuelo', async () => {
+      let rejectOld!: (err: Error) => void;
+      const oldFlightPromise = new Promise<unknown>((_, reject) => {
+        rejectOld = reject;
+      });
+      const ipcMock = vi
+        .fn()
+        .mockImplementationOnce(() => oldFlightPromise)
+        .mockResolvedValueOnce(RATES_PAYLOAD);
+      (window as unknown as Record<string, unknown>)['electron'] = {
+        fetchCotizave: ipcMock,
+      };
+
+      const oldCall = svc.fetchRates();
+      svc.setApiKey('ctz_live_nueva_en_vuelo');
+      const newCall = svc.fetchRates();
+
+      rejectOld(new Error('Cotizave HTTP Error 401'));
+      await Promise.all([oldCall, newCall]);
+
+      expect(ipcMock).toHaveBeenCalledTimes(2);
+      expect(svc.apiKey()).toBe('ctz_live_nueva_en_vuelo');
+      expect(svc.error()).toBeNull();
+      expect(svc.loading()).toBe(false);
+      expect(svc.ratesByMarket()['binance']).toBeDefined();
+    });
   });
 });

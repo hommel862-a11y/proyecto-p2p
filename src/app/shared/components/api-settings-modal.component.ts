@@ -1,6 +1,7 @@
-import { Component, inject, signal, output, computed } from '@angular/core';
+import { Component, inject, signal, output, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { normalizeCotizaveApiKey } from '@p2p/core';
 import { CotizaveService } from '../../core/cotizave.service';
 import { BinanceP2pService } from '../../core/binance-p2p.service';
 import { TelegramWorkerService } from '../../core/telegram-worker.service';
@@ -130,7 +131,7 @@ export const AI_MODELS_BY_PROVIDER: Record<string, AiModelOption[]> = {
                 type="button"
                 class="btn-test"
                 (click)="testCotizave()"
-                [disabled]="!cotizave.apiKey() || cotizave.loading()"
+                [disabled]="(!cotizave.apiKey() && !cotizaveKeyInput().trim()) || cotizave.loading()"
               >
                 {{ cotizave.loading() ? 'Verificando...' : '⚡ Probar Conexión' }}
               </button>
@@ -613,8 +614,18 @@ export class ApiSettingsModalComponent {
 
   readonly showCotizaveKey = signal<boolean>(false);
   readonly cotizaveKeyInput = signal<string>(this.cotizave.apiKey());
+  private cotizaveKeyDirty = false;
   readonly telegramTokenInput = signal<string>(this.telegram.config().botToken || '');
   readonly telegramChatIdInput = signal<string>(this.telegram.config().chatId || '');
+
+  constructor() {
+    effect(() => {
+      const hydratedKey = this.cotizave.apiKey();
+      if (!this.cotizaveKeyDirty) {
+        this.cotizaveKeyInput.set(hydratedKey);
+      }
+    });
+  }
 
   readonly selectedAiProvider = signal<string>(
     this.storage.get<string>('p2p.ai.provider') || 'gemini',
@@ -657,17 +668,36 @@ export class ApiSettingsModalComponent {
 
   onCotizaveInput(event: Event): void {
     const val = (event.target as HTMLInputElement).value;
+    this.cotizaveKeyDirty = true;
     this.cotizaveKeyInput.set(val);
   }
 
   saveCotizave(): void {
-    const key = this.cotizaveKeyInput().trim();
+    const key = normalizeCotizaveApiKey(this.cotizaveKeyInput());
+    this.cotizaveKeyDirty = false;
+    this.cotizaveKeyInput.set(key);
     this.cotizave.setApiKey(key);
   }
 
   async testCotizave(): Promise<void> {
+    const pendingKey = normalizeCotizaveApiKey(this.cotizaveKeyInput());
+    if (this.cotizaveKeyDirty || pendingKey !== this.cotizave.apiKey()) {
+      this.saveCotizave();
+    }
+    if (!this.cotizave.apiKey()) {
+      this.toast.error('Ingresa una API Key de CotizaVe antes de probar la conexión.', 'API CotizaVe');
+      return;
+    }
     try {
       await this.cotizave.fetchRates('rates');
+      const err = this.cotizave.error?.() ?? null;
+      const rates = this.cotizave.ratesByMarket?.() ?? {};
+      if (err || Object.keys(rates).length === 0) {
+        if (!err) {
+          this.toast.error('Error al consultar CotizaVe. Verifica tu API Key.', 'API CotizaVe');
+        }
+        return;
+      }
       this.toast.success('Conexión con CotizaVe exitosa.', 'API CotizaVe');
     } catch {
       this.toast.error('Error al consultar CotizaVe. Verifica tu API Key.', 'API CotizaVe');
