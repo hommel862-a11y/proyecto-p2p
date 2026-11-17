@@ -50,53 +50,19 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FORMAT_PIPES],
   template: `
-    <div class="apple-dock-card" [class.glow-accent]="form().type === 'buy'" [class.glow-danger]="form().type === 'sell'" style="padding: 22px 24px;">
-      <!-- MULTI-SLOT IN-FLIGHT ORDERS BAR + HOTKEYS TELEMETRY -->
-      <div
-        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.07);"
-      >
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <span style="font-size: 0.72rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;">
-            ⚡ Órdenes en Tránsito (Multi-Slot):
-          </span>
-          @for (slot of [0, 1, 2]; track slot) {
-            <button
-              type="button"
-              class="quick-fill-chip font-mono"
-              [class.accent]="activeSlot() === slot && getSlotDraft(slot).type === 'buy'"
-              [class.danger]="activeSlot() === slot && getSlotDraft(slot).type === 'sell'"
-              [class.gold]="activeSlot() !== slot && isSlotOccupied(slot)"
-              style="padding: 5px 12px; font-size: 0.75rem;"
-              (click)="selectSlot(slot)"
-              [title]="'Cambiar a Slot de Orden #' + (slot + 1) + ' (Atajo: Alt+' + (slot + 1) + ')'"
-            >
-              <span>{{ activeSlot() === slot ? '🟢' : isSlotOccupied(slot) ? '⏳' : '⚪' }}</span>
-              <strong>Orden #{{ slot + 1 }}</strong>
-              <span style="opacity: 0.85;">· {{ getSlotSummaryLabel(slot) }}</span>
-            </button>
-          }
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-          <span class="apple-pill-mini muted font-mono" title="Atajos rápidos de teclado activos en el Centro de Operaciones">
-            ⌨️ Alt+V Voz · Alt+1/2/3 Slots · Alt+R SUDEBAN · Ctrl+V Pegar · Ctrl+Enter Registrar
-          </span>
-        </div>
-      </div>
-
-      <div class="terminal-card-header" style="flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+    <div class="apple-dock-card" [class.glow-accent]="form().type === 'buy'" [class.glow-danger]="form().type === 'sell'" style="padding: 18px 20px;">
+      <!-- COMPACT GLASS HEADER + COLLAPSIBLE SECONDARY TOOLS -->
+      <div class="terminal-card-header" style="flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
         <div class="card-header-title">
           <span class="card-icon">{{ editingOpId() ? '✏️' : '⚡' }}</span>
           <span class="card-title">
-            {{ editingOpId() ? 'Editando Operación en Libro Mayor' : 'Nueva Operación en Libro Mayor' }}
+            {{ editingOpId() ? 'Editando Operación' : 'Registro Táctico' }}
           </span>
           @if (editingOpId()) {
-            <span class="apple-pill-mini gold font-mono" style="margin-left: 6px;">
-              MODO EDICIÓN
-            </span>
+            <span class="apple-pill-mini gold font-mono" style="margin-left: 6px;">EDICIÓN</span>
           }
         </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
           <div class="quantum-segmented-switch">
             <button
               type="button"
@@ -119,54 +85,107 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
           </div>
           <button
             type="button"
-            class="apple-pill-btn"
-            [class.apple-btn-danger]="voice.isListening() && voice.activeContext() === 'p2p'"
-            [class.apple-btn-gold]="!(voice.isListening() && voice.activeContext() === 'p2p')"
+            class="quick-fill-chip font-mono"
+            [class.gold]="voice.isListening() && voice.activeContext() === 'p2p'"
             (click)="toggleVoiceDictation()"
-            title="Dicta la operación completa por voz (Ej: 'Venta de 250 USDT a 78.60 por Banesco ref 849312 cédula 18940211') — Atajo: Alt+V"
+            title="Dictar operación por voz (Alt+V)"
           >
-            @if (voice.isListening() && voice.activeContext() === 'p2p') {
-              🔴 Escuchando... (Detener)
-            } @else {
-              🎙️ Dictar Operación (Alt+V)
-            }
+            {{ voice.isListening() && voice.activeContext() === 'p2p' ? '🔴 Voz ON' : '🎙️ Voz' }}
           </button>
           <button
             type="button"
-            class="apple-pill-btn apple-btn-accent"
+            class="quick-fill-chip accent font-mono"
             (click)="pasteAndReconcileFromClipboard()"
-            title="Lee el SMS/comprobante directo de tu portapapeles, concilia y rellena el formulario (Atajo: Ctrl+V)"
+            title="Pegar y conciliar SMS desde portapapeles (Ctrl+V)"
           >
-            📋 Pegar y Conciliar (1-Clic)
+            📋 Pegar
           </button>
           <button
             type="button"
-            class="apple-pill-btn apple-btn-secondary"
+            class="quick-fill-chip font-mono"
+            [class.gold]="showReconciler()"
             (click)="toggleReconciler()"
           >
-            📥 {{ showReconciler() ? 'Ocultar Lector' : 'Lector Manual SMS' }}
+            📥 SMS
           </button>
           @if (form().type === 'buy') {
             <button
               type="button"
-              class="apple-pill-btn apple-btn-gold"
+              class="quick-fill-chip gold font-mono"
               (click)="toggleQrDispatcher()"
             >
-              📲 {{ showQrDispatcher() ? 'Ocultar QR' : 'QR Pago Móvil' }}
+              📲 QR
             </button>
           }
           <button
             type="button"
-            class="apple-pill-btn"
-            [class.apple-btn-accent]="autoCalcMath()"
-            [class.apple-btn-secondary]="!autoCalcMath()"
-            (click)="toggleAutoCalc()"
-            title="Activa o pausa el cálculo bidireccional automático entre Precio, VES y USDT"
+            class="quick-fill-chip font-mono"
+            [class.gold]="showSlotsBar()"
+            (click)="showSlotsBar.set(!showSlotsBar())"
+            title="Órdenes en tránsito (Alt+1/2/3)"
           >
-            {{ autoCalcMath() ? '🔗 Auto-Cálculo: ON' : '⛓️‍💥 Auto-Cálculo: OFF' }}
+            ⚡ Slots ({{ activeSlot() + 1 }}/3)
+          </button>
+          <button
+            type="button"
+            class="quick-fill-chip font-mono"
+            [class.accent]="showChatBar()"
+            (click)="showChatBar.set(!showChatBar())"
+            title="Plantillas rápidas de chat P2P"
+          >
+            💬 Chat
+          </button>
+          <button
+            type="button"
+            class="quick-fill-chip font-mono"
+            [class.accent]="autoCalcMath()"
+            (click)="toggleAutoCalc()"
+            title="Cálculo bidireccional automático"
+          >
+            {{ autoCalcMath() ? '🔗 Auto' : '⛓️‍💥 Manual' }}
+          </button>
+          <button
+            type="button"
+            class="quick-fill-chip font-mono"
+            [class.gold]="showShortcutsHint()"
+            (click)="showShortcutsHint.set(!showShortcutsHint())"
+            title="Ver atajos de teclado"
+          >
+            ⌨️
           </button>
         </div>
       </div>
+
+      @if (showSlotsBar()) {
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line);">
+          <span style="font-size: 0.72rem; font-weight: 800; color: var(--muted); text-transform: uppercase;">
+            Slots en Tránsito:
+          </span>
+          @for (slot of [0, 1, 2]; track slot) {
+            <button
+              type="button"
+              class="quick-fill-chip font-mono"
+              [class.accent]="activeSlot() === slot && getSlotDraft(slot).type === 'buy'"
+              [class.danger]="activeSlot() === slot && getSlotDraft(slot).type === 'sell'"
+              [class.gold]="activeSlot() !== slot && isSlotOccupied(slot)"
+              (click)="selectSlot(slot)"
+              [title]="'Cambiar a Orden #' + (slot + 1) + ' (Alt+' + (slot + 1) + ')'"
+            >
+              <span>{{ activeSlot() === slot ? '🟢' : isSlotOccupied(slot) ? '⏳' : '⚪' }}</span>
+              <strong>#{{ slot + 1 }}</strong>
+              <span style="opacity: 0.85;">· {{ getSlotSummaryLabel(slot) }}</span>
+            </button>
+          }
+        </div>
+      }
+
+      @if (showShortcutsHint()) {
+        <div style="margin-bottom: 12px;">
+          <span class="apple-pill-mini muted font-mono">
+            ⌨️ Alt+V Voz · Alt+1/2/3 Slots · Alt+R SUDEBAN · Ctrl+V Pegar · Ctrl+Enter Registrar
+          </span>
+        </div>
+      }
 
       <!-- PÍLDORA INTERACTIVA DE DICTADO POR VOZ SEMÁNTICO P2P -->
       @if ((voice.isListening() && voice.activeContext() === 'p2p') || lastVoiceCommand()) {
@@ -200,40 +219,26 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
         </div>
       }
 
-      <!-- BARRA TÁCTICA DE COORDINACIÓN RÁPIDA PARA EL CHAT DE BINANCE (1-CLIC) -->
-      <div
-        style="background: rgba(15, 22, 38, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 9px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
-      >
-        <span style="font-size: 0.74rem; font-weight: 700; color: var(--muted); display: flex; align-items: center; gap: 6px;">
-          💬 Coordinación Rápida Chat P2P (Copia al Portapapeles en 1-Clic):
-        </span>
-        <div class="quick-fill-group" style="margin: 0;">
-          <button
-            type="button"
-            class="quick-fill-chip gold"
-            (click)="copyChatTemplate('payment_details')"
-            title="Copia los datos bancarios de la cuenta activa, el monto exacto en Bs y la cláusula anti-terceros"
-          >
-            🏦 1. Enviar Datos de Pago
-          </button>
-          <button
-            type="button"
-            class="quick-fill-chip accent"
-            (click)="copyChatTemplate('verifying')"
-            title="Copia mensaje de recepción y verificación bancaria en curso (60s)"
-          >
-            🔍 2. En Verificación (60s)
-          </button>
-          <button
-            type="button"
-            class="quick-fill-chip accent"
-            (click)="copyChatTemplate('released')"
-            title="Copia mensaje de cierre exitoso y solicitud de calificación positiva"
-          >
-            ✅ 3. Orden Liberada + Fidelizar
-          </button>
+      @if (showChatBar()) {
+        <div
+          style="background: rgba(15, 22, 38, 0.65); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+        >
+          <span style="font-size: 0.74rem; font-weight: 700; color: var(--muted);">
+            💬 Plantillas Chat P2P (1-Clic):
+          </span>
+          <div class="quick-fill-group" style="margin: 0;">
+            <button type="button" class="quick-fill-chip gold" (click)="copyChatTemplate('payment_details')">
+              🏦 1. Datos de Pago
+            </button>
+            <button type="button" class="quick-fill-chip accent" (click)="copyChatTemplate('verifying')">
+              🔍 2. Verificando (60s)
+            </button>
+            <button type="button" class="quick-fill-chip accent" (click)="copyChatTemplate('released')">
+              ✅ 3. Liberada + Fidelizar
+            </button>
+          </div>
         </div>
-      </div>
+      }
 
       <!-- Panel de Ingesta y Conciliación Pasiva -->
       @if (showReconciler()) {
@@ -873,6 +878,9 @@ export class OperationFormComponent {
   readonly showReconciler = signal<boolean>(false);
   readonly showQrDispatcher = signal<boolean>(false);
   readonly showReceiptPreview = signal<boolean>(false);
+  readonly showSlotsBar = signal<boolean>(false);
+  readonly showChatBar = signal<boolean>(false);
+  readonly showShortcutsHint = signal<boolean>(false);
   readonly rawBankNotification = signal<string>('');
   readonly autoCalcMath = signal<boolean>(true);
   readonly qrBankKey = signal<string>('MERCANTIL');

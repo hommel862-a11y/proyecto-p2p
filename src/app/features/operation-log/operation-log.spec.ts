@@ -424,5 +424,34 @@ describe('buildOperationsCsv (CSV ledger export)', () => {
     expect(c.editingOpId()).toBeNull();
     expect(c.form().vesAmount).toBe(55000);
   });
+
+  it('switches tabbed FIFO & SLA dock panels and expands backup drawer on demand', () => {
+    const f = TestBed.createComponent(OperationLog);
+    f.detectChanges();
+    const c = f.componentInstance;
+    const el = f.nativeElement as HTMLElement;
+
+    expect(c.fifoControlTab()).toBe('lots');
+    expect(el.textContent).toContain('Lotes (');
+    expect(el.textContent).toContain('No tenés inventario abierto pendiente de liquidación.');
+
+    c.fifoControlTab.set('cycles');
+    f.detectChanges();
+    expect(el.textContent).toContain('Win Rate Histórico');
+
+    c.fifoControlTab.set('desk');
+    f.detectChanges();
+    expect(el.textContent).toContain('Capital Comprometido');
+    expect(el.textContent).toContain('Profit Factor');
+
+    // Backup panel starts collapsed and expands on button click
+    const toggleBtn = el.querySelector('app-backup-panel button[aria-expanded]') as HTMLButtonElement;
+    expect(toggleBtn).toBeTruthy();
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
+    toggleBtn.click();
+    f.detectChanges();
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(el.textContent).toContain('Exportar CSV (Excel)');
+  });
 });
 

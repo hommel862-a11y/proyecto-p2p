@@ -1,18 +1,34 @@
-import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
 import { AutoBackupService } from '../../core/auto-backup.service';
 
 @Component({
   selector: 'app-backup-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="apple-dock-card" style="padding: 20px 24px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
-        <span class="section-eyebrow" style="margin: 0; font-size: 0.8rem; letter-spacing: 0.04em;">
-          GESTIÓN, AUTOMATIZACIÓN CONTABLE Y RESPALDO
-        </span>
-        <span class="apple-pill-mini gold font-mono">SHA-256 INTEGRITY</span>
+    <div class="apple-dock-card" style="padding: 14px 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span class="section-eyebrow" style="margin: 0; font-size: 0.78rem; letter-spacing: 0.04em;">
+            🛡️ BÓVEDA CONTABLE, FACTURACIÓN &amp; RESPALDO
+          </span>
+          <span class="apple-pill-mini gold font-mono">SHA-256 INTEGRITY</span>
+          <span class="text-muted font-mono" style="font-size: 0.72rem;">
+            {{ autoBackup.snapshots().length }} snapshots · Google Sheets/Drive · RPA
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="apple-pill-btn apple-btn-secondary"
+          [attr.aria-expanded]="expanded()"
+          (click)="expanded.set(!expanded())"
+        >
+          {{ expanded() ? 'Ocultar herramientas ▴' : 'Expandir 9 herramientas ▾' }}
+        </button>
       </div>
 
+      @if (expanded()) {
+        <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);">
       <div class="backup-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
         <button
           type="button"
@@ -192,11 +208,14 @@ import { AutoBackupService } from '../../core/auto-backup.service';
           }
         </div>
       </div>
+        </div>
+      }
     </div>
   `,
 })
 export class BackupPanelComponent {
   readonly autoBackup = inject(AutoBackupService);
+  readonly expanded = signal<boolean>(false);
   readonly downloadJson = output<void>();
   readonly openInvoiceModal = output<void>();
   readonly openRpaReconciler = output<void>();

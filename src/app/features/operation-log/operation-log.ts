@@ -31,6 +31,7 @@ import { OperationTableComponent } from './operation-table.component';
 import { BackupPanelComponent } from './backup-panel.component';
 import { OperationTimerBannerComponent } from './operation-timer-banner.component';
 import { InvoiceModalComponent } from './invoice-modal.component';
+import { SpatialTilt3dDirective } from '../../shared/ui/spatial-tilt-3d.directive';
 import { McpService } from '../../core/mcp.service';
 
 /** CSV header row (es-VE) for the operation-ledger export. */
@@ -137,8 +138,10 @@ const EMPTY_DRAFT: OpDraft = {
     BackupPanelComponent,
     OperationTimerBannerComponent,
     InvoiceModalComponent,
+    SpatialTilt3dDirective,
   ],
   templateUrl: './operation-log.html',
+  styleUrl: './operation-log.scss',
 })
 export class OperationLog {
   private readonly storage = inject(StorageService);
@@ -170,7 +173,39 @@ export class OperationLog {
   readonly pendingImportOps = signal<Operation[] | null>(null);
   readonly showInvoiceModal = signal<boolean>(false);
   readonly showFifoDetails = signal<boolean>(false);
+  readonly fifoControlTab = signal<'lots' | 'cycles' | 'desk'>('lots');
   readonly showRpaModal = signal<boolean>(false);
+
+  readonly disciplinePct = computed<number>(() => {
+    const ops = this.visibleOps();
+    if (ops.length === 0) return 100;
+    const clean = ops.filter((o) => o.errorFree !== false).length;
+    return Math.round((clean / ops.length) * 100);
+  });
+
+  readonly disciplineRingOffset = computed<number>(() => {
+    const circumference = 144.5;
+    const pct = Math.max(0, Math.min(100, this.disciplinePct()));
+    return +(circumference * (1 - pct / 100)).toFixed(2);
+  });
+
+  readonly stockSparklinePath = computed<string>(() => {
+    const recent = this.visibleOps().slice(-7);
+    if (recent.length === 0) return 'M 0,14 L 84,14';
+    if (recent.length === 1) return 'M 0,18 L 84,10';
+    const vals = recent.map((o) => Math.max(0, o.usdtAmount || 0));
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = max - min || 1;
+    const stepX = 84 / (vals.length - 1);
+    return vals
+      .map((v, idx) => {
+        const x = +(idx * stepX).toFixed(1);
+        const y = +(24 - ((v - min) / range) * 18).toFixed(1);
+        return `${idx === 0 ? 'M' : 'L'} ${x},${y}`;
+      })
+      .join(' ');
+  });
   readonly editingOpId = signal<string | null>(null);
 
   /** RPA Batch Reconciler state */

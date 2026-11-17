@@ -74,82 +74,91 @@
   </header>
 
   <!-- ═══════════════════════════════════════════════════
-       2. Apple Bento KPI Cards (Telemetría FIFO Ejecutiva)
+       2. Spatial 3D Bento KPI Cards (Telemetría FIFO Ejecutiva)
        ═══════════════════════════════════════════════════ -->
-  <div class="apple-bento-kpi-grid">
+  <div class="ops-kpi-grid">
     <!-- Card 1: Stock Abierto FIFO -->
-    <div class="apple-kpi-card kpi-gold">
-      <div class="kpi-header">
+    <div class="ops-kpi-card kpi-gold" appSpatialTilt3d [tiltMaxDeg]="4">
+      <div class="ops-kpi-top">
         <span class="kpi-title" style="color: var(--gold-strong);">Stock Abierto (FIFO)</span>
-        <span class="apple-pill-mini gold font-mono">{{ summary().fifo.openLots.length }} LOTES</span>
+        <span class="apple-pill-mini gold font-mono spatial-z-float">{{ summary().fifo.openLots.length }} LOTES</span>
       </div>
-      <div class="kpi-metric font-mono" style="color: var(--gold-strong);">
-        {{ summary().fifo.openInventoryAmount | usdt }}
+      <div class="ops-kpi-main spatial-z-mid">
+        <div class="kpi-metric font-mono" style="color: var(--gold-strong);">
+          {{ summary().fifo.openInventoryAmount | usdt }}
+        </div>
+        <svg class="ops-kpi-spark" viewBox="0 0 84 28" aria-hidden="true">
+          <path [attr.d]="stockSparklinePath()" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" />
+        </svg>
       </div>
       <div class="kpi-footer">
         <span class="text-muted">Exposición neta en libro</span>
         <strong class="font-mono" style="color: var(--text);">{{ summary().exposure | usdt }}</strong>
       </div>
-      <div class="kpi-progress-track">
-        <div class="kpi-progress-bar fill-gold" style="width: 100%;"></div>
-      </div>
     </div>
 
     <!-- Card 2: Costo Promedio VWAP -->
-    <div class="apple-kpi-card kpi-info">
-      <div class="kpi-header">
-        <span class="kpi-title" style="color: #38bdf8;">Costo Promedio VWAP</span>
-        <span class="apple-pill-mini info font-mono">BREAK-EVEN</span>
+    <div class="ops-kpi-card kpi-info" appSpatialTilt3d [tiltMaxDeg]="4">
+      <div class="ops-kpi-top">
+        <span class="kpi-title" style="color: var(--accent-2);">Costo Promedio VWAP</span>
+        <span class="apple-pill-mini info font-mono spatial-z-float">BREAK-EVEN</span>
       </div>
-      <div class="kpi-metric font-mono" style="color: var(--text);">
+      <div class="kpi-metric font-mono spatial-z-mid" style="color: var(--text);">
         {{ summary().fifo.openInventoryAvgPriceVes > 0 ? (summary().fifo.openInventoryAvgPriceVes | ves) : '—' }}
       </div>
       <div class="kpi-footer">
         <span class="text-muted">Salida segura (+1.0%)</span>
         <strong class="font-mono" style="color: var(--gold-strong);">{{ summary().fifo.openInventoryAvgPriceVes > 0 ? ((summary().fifo.openInventoryAvgPriceVes * 1.01) | num) + ' Bs' : '—' }}</strong>
       </div>
-      <div class="kpi-progress-track">
-        <div class="kpi-progress-bar fill-info" style="width: 100%;"></div>
-      </div>
     </div>
 
     <!-- Card 3: PnL Realizado FIFO -->
-    <div class="apple-kpi-card" [class.kpi-accent]="summary().pnlVes >= 0" [class.kpi-danger]="summary().pnlVes < 0">
-      <div class="kpi-header">
-        <span class="kpi-title" [style.color]="summary().pnlVes >= 0 ? '#2fd08f' : '#ef4444'">PnL Realizado FIFO</span>
-        <span class="apple-pill-mini font-mono" [class.live]="summary().pnlVes >= 0" [class.badge-danger]="summary().pnlVes < 0">
+    <div class="ops-kpi-card" appSpatialTilt3d [tiltMaxDeg]="4" [class.kpi-accent]="summary().pnlVes >= 0" [class.kpi-danger]="summary().pnlVes < 0">
+      <div class="ops-kpi-top">
+        <span class="kpi-title" [style.color]="summary().pnlVes >= 0 ? 'var(--accent)' : 'var(--danger)'">PnL Realizado FIFO</span>
+        <span class="apple-pill-mini font-mono spatial-z-float" [class.live]="summary().pnlVes >= 0" [class.badge-danger]="summary().pnlVes < 0">
           WIN {{ summary().fifo.winRatePct }}%
         </span>
       </div>
-      <div class="kpi-metric font-mono" [style.color]="summary().pnlVes >= 0 ? '#2fd08f' : '#ef4444'">
+      <div class="kpi-metric font-mono spatial-z-mid" [style.color]="summary().pnlVes >= 0 ? 'var(--accent)' : 'var(--danger)'">
         {{ summary().pnlVes > 0 ? '+' : '' }}{{ summary().pnlVes | ves }}
       </div>
       <div class="kpi-footer">
         <span class="text-muted">Neto en cripto</span>
-        <strong class="font-mono" [style.color]="summary().pnlUsdt >= 0 ? '#2fd08f' : '#ef4444'">
+        <strong class="font-mono" [style.color]="summary().pnlUsdt >= 0 ? 'var(--accent)' : 'var(--danger)'">
           {{ summary().pnlUsdt > 0 ? '+' : '' }}{{ summary().pnlUsdt | usdt }}
         </strong>
       </div>
-      <div class="kpi-progress-track">
-        <div class="kpi-progress-bar" [class.fill-accent]="summary().pnlVes >= 0" [class.fill-danger]="summary().pnlVes < 0" [style.width.%]="summary().fifo.winRatePct || 100"></div>
-      </div>
     </div>
 
-    <!-- Card 4: Disciplina Operativa & Velocidad -->
-    <div class="apple-kpi-card kpi-accent">
-      <div class="kpi-header">
-        <span class="kpi-title" style="color: #2fd08f;">Disciplina Operativa</span>
-        <span class="apple-pill-mini live font-mono">AUDITADO</span>
+    <!-- Card 4: Disciplina Operativa & Anillo Radial -->
+    <div class="ops-kpi-card kpi-accent" appSpatialTilt3d [tiltMaxDeg]="4">
+      <div class="ops-kpi-top">
+        <span class="kpi-title" style="color: var(--accent);">Disciplina Operativa</span>
+        <span class="apple-pill-mini live font-mono spatial-z-float">AUDITADO</span>
       </div>
-      <div class="kpi-metric font-mono" style="color: #2fd08f;">
-        {{ summary().zeroErrorStreak }} <span style="font-size: 0.95rem; font-weight: 500; color: var(--muted);">ops</span>
+      <div class="ops-kpi-main spatial-z-mid">
+        <div class="kpi-metric font-mono" style="color: var(--accent);">
+          {{ summary().zeroErrorStreak }} <span style="font-size: 0.9rem; font-weight: 500; color: var(--muted);">ops</span>
+        </div>
+        <div class="ops-discipline-ring-wrap" [attr.aria-label]="'Disciplina ' + disciplinePct() + '%'">
+          <svg class="ops-discipline-svg" viewBox="0 0 56 56" aria-hidden="true">
+            <circle class="ring-bg" cx="28" cy="28" r="23" />
+            <circle
+              class="ring-fg"
+              cx="28"
+              cy="28"
+              r="23"
+              stroke-dasharray="144.5"
+              [attr.stroke-dashoffset]="disciplineRingOffset()"
+            />
+          </svg>
+          <span class="ops-ring-pct font-mono">{{ disciplinePct() }}%</span>
+        </div>
       </div>
       <div class="kpi-footer">
         <span class="text-muted">Racha sin discrepancias</span>
         <span class="font-mono text-muted">{{ summary().operations }} registradas</span>
-      </div>
-      <div class="kpi-progress-track">
-        <div class="kpi-progress-bar fill-accent" style="width: 100%;"></div>
       </div>
     </div>
   </div>
@@ -171,42 +180,71 @@
   }
 
   <!-- ═══════════════════════════════════════════════════
-       3. Dock Principal de Ejecución (100% Ancho Proporcional)
+       3. Cockpit Split 55/45 — Registro Táctico + FIFO/SLA Tabulado
        ═══════════════════════════════════════════════════ -->
-  <app-operation-form
-    [form]="form()"
-    [selectedAccountUsage]="selectedAccountUsage()"
-    [limitExceededWarning]="limitExceededWarning()"
-    [duplicateRefWarning]="duplicateRefWarning()"
-    [openInventoryAvgPrice]="summary().fifo.openInventoryAvgPriceVes"
-    [openInventoryAmount]="summary().fifo.openInventoryAmount"
-    [editingOpId]="editingOpId()"
-    [antiTriangulation]="antiTriangulation()"
-    (formChange)="patchForm($event)"
-    (counterpartySelect)="selectCounterparty($event)"
-    (submitForm)="submitFromUi()"
-    (cancelEdit)="cancelEditOperation()" />
+  <div class="ops-split-cockpit">
+    <app-operation-form
+      [form]="form()"
+      [selectedAccountUsage]="selectedAccountUsage()"
+      [limitExceededWarning]="limitExceededWarning()"
+      [duplicateRefWarning]="duplicateRefWarning()"
+      [openInventoryAvgPrice]="summary().fifo.openInventoryAvgPriceVes"
+      [openInventoryAmount]="summary().fifo.openInventoryAmount"
+      [editingOpId]="editingOpId()"
+      [antiTriangulation]="antiTriangulation()"
+      (formChange)="patchForm($event)"
+      (counterpartySelect)="selectCounterparty($event)"
+      (submitForm)="submitFromUi()"
+      (cancelEdit)="cancelEditOperation()" />
 
-  <!-- ═══════════════════════════════════════════════════
-       4. Monitor Táctico FIFO & Control de Mesa (3 Columnas Simétricas)
-       ═══════════════════════════════════════════════════ -->
-  <div class="apple-bento-3col">
-    <!-- Col 1: Lotes Abiertos FIFO -->
-    <div class="apple-dock-card glow-gold" style="padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px;">
-      <div>
-        <div class="terminal-card-header" style="margin-bottom: 12px;">
-          <div class="card-header-title">
-            <span class="card-icon" aria-hidden="true">🟢</span>
-            <h3 class="card-title" style="font-size: 0.85rem; font-weight: 800;">Lotes Abiertos FIFO ({{ summary().fifo.openLots.length }})</h3>
-          </div>
-          <span class="apple-pill-mini gold font-mono">VWAP ACTIVO</span>
+    <aside class="ops-fifo-dock" aria-label="Gestión FIFO y SLA de Mesa">
+      <div class="ops-fifo-head">
+        <div class="card-header-title">
+          <span class="card-icon" aria-hidden="true">⚖️</span>
+          <h3 class="card-title" style="font-size: 0.9rem; font-weight: 800;">Gestión FIFO &amp; SLA</h3>
         </div>
+
+        <div class="fifo-tabs-bar" role="tablist" aria-label="Paneles FIFO y SLA">
+          <button
+            type="button"
+            class="fifo-tab-btn"
+            role="tab"
+            [class.active]="fifoControlTab() === 'lots'"
+            [attr.aria-selected]="fifoControlTab() === 'lots'"
+            (click)="fifoControlTab.set('lots')"
+          >
+            Lotes ({{ summary().fifo.openLots.length }})
+          </button>
+          <button
+            type="button"
+            class="fifo-tab-btn"
+            role="tab"
+            [class.active]="fifoControlTab() === 'cycles'"
+            [attr.aria-selected]="fifoControlTab() === 'cycles'"
+            (click)="fifoControlTab.set('cycles')"
+          >
+            Ciclos ({{ summary().fifo.matches.length }})
+          </button>
+          <button
+            type="button"
+            class="fifo-tab-btn"
+            role="tab"
+            [class.active]="fifoControlTab() === 'desk'"
+            [attr.aria-selected]="fifoControlTab() === 'desk'"
+            (click)="fifoControlTab.set('desk')"
+          >
+            SLA &amp; Tesorería
+          </button>
+        </div>
+      </div>
+
+      @if (fifoControlTab() === 'lots') {
         @if (summary().fifo.openLots.length === 0) {
-          <p class="text-muted" style="font-size: 0.82rem; margin: 0; padding: 18px 0; text-align: center;">
+          <p class="text-muted fifo-empty-msg">
             No tenés inventario abierto pendiente de liquidación.
           </p>
         } @else {
-          <div style="display: flex; flex-direction: column; gap: 8px; max-height: 210px; overflow-y: auto; padding-right: 4px;">
+          <div class="fifo-scroll-list">
             @for (lot of summary().fifo.openLots; track lot.id) {
               <div class="apple-lot-card lot-open">
                 <div style="display: flex; flex-direction: column; gap: 3px;">
@@ -224,41 +262,29 @@
             }
           </div>
         }
-      </div>
 
-      <div style="border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px; display: flex; justify-content: flex-end;">
-        @if (summary().fifo.openInventoryAmount > 0) {
-          <button
-            type="button"
-            class="apple-pill-btn apple-btn-gold"
-            style="width: 100%;"
-            (click)="prepareLiquidateOpenInventory()"
-            title="Carga todo tu inventario abierto en el formulario con tasa de salida Break-Even + 1%"
-          >
-            ⚖️ Liquidar Stock ({{ summary().fifo.openInventoryAmount | usdt }} @ {{ (summary().fifo.openInventoryAvgPriceVes * 1.01) | num }} Bs)
-          </button>
-        } @else {
-          <span class="text-muted font-mono" style="font-size: 0.72rem;">Stock 100% rotado · Listo para nueva compra</span>
-        }
-      </div>
-    </div>
-
-    <!-- Col 2: Últimos Ciclos Cerrados FIFO -->
-    <div class="apple-dock-card glow-accent" style="padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px;">
-      <div>
-        <div class="terminal-card-header" style="margin-bottom: 12px;">
-          <div class="card-header-title">
-            <span class="card-icon" aria-hidden="true">⚖️</span>
-            <h3 class="card-title" style="font-size: 0.85rem; font-weight: 800;">Ciclos Cerrados FIFO ({{ summary().fifo.matches.length }})</h3>
-          </div>
-          <span class="apple-pill-mini live font-mono">REALIZADO</span>
+        <div class="fifo-footer-bar">
+          @if (summary().fifo.openInventoryAmount > 0) {
+            <button
+              type="button"
+              class="apple-pill-btn apple-btn-gold"
+              style="width: 100%;"
+              (click)="prepareLiquidateOpenInventory()"
+              title="Carga todo tu inventario abierto en el formulario con tasa de salida Break-Even + 1%"
+            >
+              ⚖️ Liquidar Stock ({{ summary().fifo.openInventoryAmount | usdt }} @ {{ (summary().fifo.openInventoryAvgPriceVes * 1.01) | num }} Bs)
+            </button>
+          } @else {
+            <span class="text-muted font-mono" style="font-size: 0.72rem;">Stock 100% rotado · Listo para nueva compra</span>
+          }
         </div>
+      } @else if (fifoControlTab() === 'cycles') {
         @if (summary().fifo.matches.length === 0) {
-          <p class="text-muted" style="font-size: 0.82rem; margin: 0; padding: 18px 0; text-align: center;">
+          <p class="text-muted fifo-empty-msg">
             Aún no hay ciclos de compra-venta emparejados.
           </p>
         } @else {
-          <div style="display: flex; flex-direction: column; gap: 8px; max-height: 210px; overflow-y: auto; padding-right: 4px;">
+          <div class="fifo-scroll-list">
             @for (m of summary().fifo.matches.slice().reverse().slice(0, 6); track m.closingOpId + m.openingOpId) {
               <div class="apple-lot-card" [class.lot-win]="m.isWin" [class.lot-loss]="!m.isWin">
                 <div style="display: flex; flex-direction: column; gap: 3px;">
@@ -268,7 +294,7 @@
                   <small class="text-muted font-mono" style="font-size: 0.7rem;">{{ m.openingPriceVes | num }} → {{ m.closingPriceVes | num }} Bs</small>
                 </div>
                 <div style="text-align: right;" class="font-mono">
-                  <div [style.color]="m.isWin ? '#2fd08f' : '#ef4444'" style="font-weight: 800; font-size: 0.86rem;">
+                  <div [style.color]="m.isWin ? 'var(--accent)' : 'var(--danger)'" style="font-weight: 800; font-size: 0.86rem;">
                     {{ m.grossPnlVes > 0 ? '+' : '' }}{{ m.grossPnlVes | ves }}
                   </div>
                   <small class="text-muted" style="font-size: 0.7rem;">{{ m.grossPnlUsdt > 0 ? '+' : '' }}{{ m.grossPnlUsdt }} USDT</small>
@@ -277,54 +303,41 @@
             }
           </div>
         }
-      </div>
 
-      <div style="border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
-        <span class="text-muted">Win Rate Histórico</span>
-        <strong class="font-mono" style="color: #2fd08f;">{{ summary().fifo.winRatePct }}% efectividad</strong>
-      </div>
-    </div>
-
-    <!-- Col 3: Control de Mesa, Cronómetro SLA & Tesorería -->
-    <div class="apple-dock-card" style="padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px;">
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div class="terminal-card-header" style="margin-bottom: 0;">
-          <div class="card-header-title">
-            <span class="card-icon" aria-hidden="true">⏱️</span>
-            <h3 class="card-title" style="font-size: 0.85rem; font-weight: 800;">Control de Mesa & Tesorería</h3>
-          </div>
-          <span class="apple-pill-mini info font-mono">DESK ACTIVO</span>
+        <div class="fifo-footer-bar">
+          <span class="text-muted" style="font-size: 0.75rem;">Win Rate Histórico</span>
+          <strong class="font-mono" style="color: var(--accent); font-size: 0.82rem;">{{ summary().fifo.winRatePct }}% efectividad</strong>
         </div>
-
+      } @else {
         <app-operation-timer-banner />
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div class="apple-lot-card" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px;">
-            <span class="text-muted" style="text-transform: uppercase; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em;">Capital Comprometido</span>
-            <div class="font-mono" style="font-weight: 800; color: var(--text); font-size: 0.92rem;">{{ summary().capitalDeployed | ves }}</div>
+        <div class="ops-desk-stats-grid">
+          <div class="ops-mini-stat">
+            <span class="ops-mini-lbl">Capital Comprometido</span>
+            <div class="ops-mini-val font-mono">{{ summary().capitalDeployed | ves }}</div>
           </div>
-          <div class="apple-lot-card" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px;">
-            <span class="text-muted" style="text-transform: uppercase; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em;">Profit Factor</span>
-            <div class="font-mono" style="font-weight: 800; color: #2fd08f; font-size: 0.92rem;">
+          <div class="ops-mini-stat">
+            <span class="ops-mini-lbl">Profit Factor</span>
+            <div class="ops-mini-val font-mono" style="color: var(--accent);">
               {{ summary().fifo.profitFactor === 1 / 0 ? '∞' : summary().fifo.profitFactor }}
             </div>
           </div>
         </div>
-      </div>
 
-      <div style="border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 10px;">
-        <button
-          type="button"
-          class="apple-pill-btn"
-          [class.apple-btn-gold]="!showTreasuryAssign()"
-          [class.apple-btn-secondary]="showTreasuryAssign()"
-          style="width: 100%;"
-          (click)="toggleTreasuryAssign()"
-        >
-          💰 {{ showTreasuryAssign() ? 'Cancelar Asignación de Tesorería' : 'Asignar Liquidez a Tesorería' }}
-        </button>
-      </div>
-    </div>
+        <div class="fifo-footer-bar">
+          <button
+            type="button"
+            class="apple-pill-btn"
+            [class.apple-btn-gold]="!showTreasuryAssign()"
+            [class.apple-btn-secondary]="showTreasuryAssign()"
+            style="width: 100%;"
+            (click)="toggleTreasuryAssign()"
+          >
+            💰 {{ showTreasuryAssign() ? 'Cancelar Asignación de Tesorería' : 'Asignar Liquidez a Tesorería' }}
+          </button>
+        </div>
+      }
+    </aside>
   </div>
 
   <!-- Panel Desplegable de Asignación de Liquidez a Tesorería -->
