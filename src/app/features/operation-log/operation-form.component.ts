@@ -190,13 +190,13 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- PÍLDORA INTERACTIVA DE DICTADO POR VOZ SEMÁNTICO P2P -->
       @if ((voice.isListening() && voice.activeContext() === 'p2p') || lastVoiceCommand()) {
         <div
-          style="background: rgba(12, 18, 32, 0.88); border: 1px solid rgba(226, 183, 85, 0.42); border-radius: 14px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
+          style="background: var(--panel-2); border: 1px solid var(--gold-border); border-radius: 14px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;"
         >
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
             <span class="apple-pill-mini" [class.badge-danger]="voice.isListening()" [class.live]="!voice.isListening()">
               {{ voice.isListening() ? '🎙️ ESCUCHANDO VOZ EN VIVO' : '✨ DICTADO PROCESADO' }}
             </span>
-            <span class="font-mono" style="font-size: 0.84rem; color: #f8fafc;">
+            <span class="font-mono" style="font-size: 0.84rem; color: var(--text);">
               "{{ voice.isListening() ? (voice.interimTranscript() || 'Habla ahora: ej. Venta de 250 USDT a 78.60 por Banesco ref 849312...') : lastVoiceCommand()?.rawTranscript }}"
             </span>
           </div>
@@ -221,7 +221,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
       @if (showChatBar()) {
         <div
-          style="background: rgba(15, 22, 38, 0.65); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+          style="background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
         >
           <span style="font-size: 0.74rem; font-weight: 700; color: var(--muted);">
             💬 Plantillas Chat P2P (1-Clic):
@@ -243,7 +243,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- Panel de Ingesta y Conciliación Pasiva -->
       @if (showReconciler()) {
         <div
-          style="background: rgba(5, 8, 15, 0.75); border: 1px solid rgba(216, 180, 92, 0.35); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
+          style="background: var(--input-bg); border: 1px solid var(--gold-border); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
         >
           <div
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;"
@@ -283,12 +283,12 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               style="margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
               [style.background]="
                 rec.status === 'VERIFIED_SAFE'
-                  ? 'rgba(47, 208, 143, 0.14)'
-                  : 'rgba(239, 68, 68, 0.14)'
+                  ? 'color-mix(in srgb, var(--accent) 14%, transparent)'
+                  : 'color-mix(in srgb, var(--danger) 14%, transparent)'
               "
-              [style.color]="rec.status === 'VERIFIED_SAFE' ? '#2fd08f' : '#f87171'"
+              [style.color]="rec.status === 'VERIFIED_SAFE' ? 'var(--accent)' : 'var(--danger)'"
               [style.border-left]="
-                rec.status === 'VERIFIED_SAFE' ? '3px solid #2fd08f' : '3px solid #ef4444'
+                rec.status === 'VERIFIED_SAFE' ? '3px solid var(--accent)' : '3px solid var(--danger)'
               "
             >
               <span>{{ rec.message }}</span>
@@ -310,13 +310,13 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
       <!-- Despachador Asistido de Pago Móvil (Human-in-the-Loop) -->
       @if (showQrDispatcher() && form().type === 'buy') {
         <div
-          style="background: rgba(5, 8, 15, 0.75); border: 1px solid rgba(47, 208, 143, 0.35); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
+          style="background: var(--input-bg); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;"
         >
           <div
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;"
           >
             <span
-              style="font-size: 0.78rem; font-weight: 700; color: #2fd08f; text-transform: uppercase; letter-spacing: 0.05em;"
+              style="font-size: 0.78rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em;"
             >
               📲 Despachador QR Pago Móvil ({{ selectedQrBankInfo().name }} — {{ selectedQrBankInfo().code }})
             </span>
@@ -492,7 +492,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
               </button>
             </div>
             @if (form().type === 'sell' && form().price > 0 && openInventoryAvgPrice() > 0 && form().price < openInventoryAvgPrice()) {
-              <div class="pill" style="border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.12); color: #f87171; font-size: 0.72rem; padding: 4px 8px; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+              <div class="pill" style="border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); font-size: 0.72rem; padding: 4px 8px; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
                 <span class="quantum-live-dot danger"></span>
                 <span><strong>Alerta de Margen:</strong> Tasa por debajo de tu costo VWAP ({{ openInventoryAvgPrice() | ves }}). Estás vendiendo a pérdida.</span>
               </div>
@@ -714,7 +714,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (duplicateRefWarning(); as dupWarn) {
           <div
-            style="background: rgba(255, 95, 109, 0.16); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 12px 0 6px;"
+            style="background: color-mix(in srgb, var(--danger) 15%, transparent); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 12px 0 6px;"
             role="alert"
           >
             🚨 <strong>ALERTA ANTI-REPLAY (REFERENCIA DUPLICADA):</strong> {{ dupWarn }}
@@ -723,7 +723,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (coherenceWarning(); as cohWarn) {
           <div
-            style="background: rgba(234, 179, 8, 0.14); border-left: 4px solid var(--gold); padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; color: var(--gold-strong); margin: 10px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
+            style="background: color-mix(in srgb, var(--gold) 14%, transparent); border-left: 4px solid var(--gold); padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; color: var(--gold-strong); margin: 10px 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
             role="alert"
           >
             <span>⚠️ <strong>DESCALCE MATEMÁTICO (FAT-FINGER):</strong> {{ cohWarn }}</span>
@@ -743,8 +743,8 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
             id="op-triangulation-warning"
             [style.background]="
               antiTriangulation().riskLevel === 'CRITICAL'
-                ? 'rgba(255, 95, 109, 0.15)'
-                : 'rgba(239, 201, 76, 0.15)'
+                ? 'color-mix(in srgb, var(--danger) 15%, transparent)'
+                : 'color-mix(in srgb, var(--gold) 15%, transparent)'
             "
             [style.border-left]="
               antiTriangulation().riskLevel === 'CRITICAL'
@@ -769,7 +769,7 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
         @if (limitExceededWarning(); as warn) {
           <div
             id="op-limit-warning"
-            style="background: rgba(255, 95, 109, 0.12); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 8px 0;"
+            style="background: color-mix(in srgb, var(--danger) 12%, transparent); border-left: 4px solid var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 0.84rem; color: var(--danger); margin: 8px 0;"
             role="alert"
           >
             ⚠️ {{ warn }}
@@ -778,9 +778,9 @@ export type OpDraft = Omit<Operation, 'id' | 'timestamp'>;
 
         @if (form().receiptImage) {
           <div
-            style="background: rgba(47, 208, 143, 0.08); border: 1px solid rgba(47, 208, 143, 0.35); padding: 8px 12px; border-radius: 10px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; margin-top: 10px;"
+            style="background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); padding: 8px 12px; border-radius: 10px; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; margin-top: 10px;"
           >
-            <span style="display: flex; align-items: center; gap: 6px; color: #2fd08f;">
+            <span style="display: flex; align-items: center; gap: 6px; color: var(--accent);">
               📸 <strong>Comprobante Bancario Adjunto:</strong> {{ form().receiptReference || 'Captura vinculada' }}
             </span>
             <button

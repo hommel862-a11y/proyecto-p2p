@@ -179,7 +179,7 @@ import { AutoBackupService } from '../../core/auto-backup.service';
               @if (s.checksumSha256) {
                 <span
                   title="Integridad SHA-256 Verificada: {{ s.checksumSha256 }}"
-                  style="color: #2fd08f; font-size: 0.8rem; cursor: help;"
+                  style="color: var(--accent); font-size: 0.8rem; cursor: help;"
                   >🛡️</span
                 >
               }

@@ -275,12 +275,12 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
         <div
           class="modal-backdrop"
           (click)="selectedReceipt.set(null)"
-          style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px;"
+          style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px;"
         >
           <div
             class="terminal-card"
             (click)="$event.stopPropagation()"
-            style="max-width: 480px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; background: #18181b; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);"
+            style="max-width: 480px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg);"
           >
             <div
               style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border);"
@@ -308,7 +308,7 @@ import type { Operation, Counterparty, TradeMatchRecord } from '@p2p/core';
                 />
               }
               <div
-                style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; text-align: left; background: rgba(0, 0, 0, 0.3); padding: 10px; border-radius: 6px;"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; text-align: left; background: var(--panel-2); border: 1px solid var(--line); padding: 10px; border-radius: var(--radius-sm);"
               >
                 <div>
                   <span class="text-muted">Monto:</span>

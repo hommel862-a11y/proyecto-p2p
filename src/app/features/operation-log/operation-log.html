@@ -24,7 +24,7 @@
             <div class="island-metrics font-mono">
               <span>⚡ {{ activeSessionOpsCount() }}/{{ activeSess.targetOps || 20 }} ops ({{ activeSessionProgressPct() }}%)</span>
               <span class="island-sep">·</span>
-              <span [style.color]="summary().pnlVes >= 0 ? '#2fd08f' : '#ef4444'">
+              <span [style.color]="summary().pnlVes >= 0 ? 'var(--accent)' : 'var(--danger)'">
                 {{ summary().pnlVes > 0 ? '+' : '' }}{{ summary().pnlVes | ves }}
               </span>
             </div>
@@ -489,9 +489,9 @@
         </div>
 
         @if (rpaResult(); as rpa) {
-          <div style="background: rgba(5, 8, 15, 0.65); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 14px;">
+          <div style="background: var(--input-bg); border: 1px solid var(--line); border-radius: 14px; padding: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-              <span class="font-mono" style="font-size: 0.82rem; font-weight: 700;" [style.color]="rpa.status === 'RECONCILIATION_BALANCED' ? '#2fd08f' : 'var(--gold-strong)'">
+              <span class="font-mono" style="font-size: 0.82rem; font-weight: 700;" [style.color]="rpa.status === 'RECONCILIATION_BALANCED' ? 'var(--accent)' : 'var(--gold-strong)'">
                 {{ rpa.status === 'RECONCILIATION_BALANCED' ? '✅ CONCILIACIÓN 100% CUADRADA' : '⚠️ DISCREPANCIAS O ABONOS HUÉRFANOS DETECTADOS' }}
               </span>
               <span class="font-mono text-muted" style="font-size: 0.76rem;">
