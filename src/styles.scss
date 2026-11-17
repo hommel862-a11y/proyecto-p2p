@@ -875,34 +875,6 @@ button:disabled, .btn:disabled {
 }
 .btn-icon-danger svg { width: 16px; height: 16px; }
 
-.btn-icon {
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  border-radius: var(--radius-sm);
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none;
-  transition: border-color 0.18s var(--ease-out), color 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
-
-  &:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--line-strong);
-    background: rgba(255, 255, 255, 0.06);
-  }
-}
-
-.btn-sm {
-  padding: 7px 13px;
-  font-size: 0.78rem;
-  border-radius: var(--radius-sm);
-}
-
 /* ============================================================
    Badges & Chips — Luminous Telemetry Tags
    ============================================================ */
@@ -2268,8 +2240,7 @@ button:disabled, .btn:disabled {
   z-index: 1000;
   padding: 20px;
 }
-.modal-dialog,
-.modal-content {
+.modal-dialog {
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
@@ -2278,9 +2249,6 @@ button:disabled, .btn:disabled {
   width: 100%;
   box-shadow: var(--shadow-lg), 0 0 30px rgba(216, 180, 92, 0.12);
   animation: modalIn 0.25s var(--ease-out);
-}
-.modal-content {
-  max-width: 920px;
 }
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -2739,8 +2707,7 @@ button:disabled, .btn:disabled {
     align-items: flex-end;
   }
 
-  .modal-dialog,
-  .modal-content {
+  .modal-dialog {
     padding: 16px;
     max-height: 90dvh;
     overflow-y: auto;

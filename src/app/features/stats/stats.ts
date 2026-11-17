@@ -167,9 +167,9 @@ export class Stats {
   } | null>(null);
   readonly mcpStressTesting = signal<boolean>(false);
   readonly mcpStressError = signal<string | null>(null);
-  readonly stressUsdtCapital = signal<number>(2500);
-  readonly stressVesCapital = signal<number>(150000);
-  readonly stressRefRate = signal<number>(800);
+  readonly stressUsdtCapital = signal<number>(0);
+  readonly stressVesCapital = signal<number>(0);
+  readonly stressRefRate = signal<number>(0);
 
   // MCP Tool: audit_counterparty_exposure
   readonly mcpCounterpartyAuditResult = signal<{
@@ -237,6 +237,7 @@ export class Stats {
         }
       }
     }
+    this.syncLiveCapitalToStress();
   }
 
   private readonly persistEffect = effect(() => {
@@ -336,10 +337,11 @@ export class Stats {
     const opById = new Map(ops.map((o) => [o.id, o]));
     const forensicOps: ForensicOperationRecord[] = [];
     for (const m of fifo.matches) {
-      if (m.openingPriceVes <= 0 || m.closingPriceVes <= 0) continue;
+      if (m.openingPriceVes <= 0 || m.closingPriceVes <= 0 || m.matchedAmount <= 0) continue;
       const closeOp = opById.get(m.closingOpId);
       const openOp = opById.get(m.openingOpId);
-      const spreadPct = ((m.closingPriceVes - m.openingPriceVes) / m.openingPriceVes) * 100;
+      const openingNotionalVes = m.matchedAmount * m.openingPriceVes;
+      const spreadPct = openingNotionalVes > 0 ? (m.grossPnlVes / openingNotionalVes) * 100 : 0;
       forensicOps.push({
         id: m.closingOpId,
         timestamp: closeOp?.timestamp ?? openOp?.timestamp ?? new Date().toISOString(),
@@ -629,6 +631,8 @@ export class Stats {
       this.workspaceTab.set('calendar');
     } else if (p === 'session') {
       this.workspaceTab.set('session');
+    } else {
+      this.workspaceTab.set('overview');
     }
   }
 

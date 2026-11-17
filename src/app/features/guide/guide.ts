@@ -626,7 +626,7 @@ export class Guide {
     },
     {
       id: 'stats',
-      name: 'Analítica & Cumplimiento',
+      name: 'Estadísticas & Cumplimiento',
       route: '/stats',
       icon: '📉',
       category: 'Tesorería & Auditoría',

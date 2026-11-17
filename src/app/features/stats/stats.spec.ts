@@ -352,4 +352,37 @@ describe('Stats', () => {
     expect(c.dayAppliedFromParam).toBe(false);
     expect(c.selectedCalendarDay()).toBeNull();
   });
+
+  it('scores profitable short-first FIFO cycles positively, avoids 800 rate default, and returns to overview on setPeriod', () => {
+    seed([
+      op({
+        id: 'short-open',
+        type: 'sell',
+        timestamp: '2026-07-15T10:00:00Z',
+        vesAmount: 8200,
+        usdtAmount: 10,
+        price: 820,
+      }),
+      op({
+        id: 'short-cover',
+        type: 'buy',
+        timestamp: '2026-07-15T12:00:00Z',
+        vesAmount: 8000,
+        usdtAmount: 10,
+        price: 800,
+      }),
+    ]);
+    const f = create();
+    f.detectChanges();
+    const c = f.componentInstance;
+
+    expect(c.stressRefRate()).toBe(0);
+    expect(c.spreadDiscipline().assessmentStatus).toBe('ASSESSED');
+    expect(c.spreadDiscipline().complianceRatePct).toBe(100);
+
+    c.setWorkspaceTab('stress');
+    expect(c.workspaceTab()).toBe('stress');
+    c.setPeriod('month');
+    expect(c.workspaceTab()).toBe('overview');
+  });
 });

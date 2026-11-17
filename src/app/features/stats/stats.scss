@@ -155,6 +155,35 @@
   flex-wrap: wrap;
 }
 
+.btn-sm {
+  padding: 7px 13px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+}
+
+.stats-close-btn {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--stats-border);
+  color: var(--stats-muted);
+  border-radius: var(--radius-sm);
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  flex-shrink: 0;
+  transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--stats-text);
+    border-color: var(--stats-border-strong);
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
 /* Command Toolbar (Workspaces + Period + Pair + Bank) */
 .stats-command-card {
   margin-bottom: 16px;
@@ -761,6 +790,10 @@
 
 /* Compliance Statement Modal */
 .compliance-modal-content {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 30px rgba(216, 180, 92, 0.12);
   max-width: 920px;
   width: min(95vw, 920px);
   max-height: 90vh;
@@ -969,8 +1002,14 @@
   .stats-tabs-bar button,
   .stats-period-bar button,
   .stats-filter-field select,
-  .stats-day-chip {
+  .stats-day-chip,
+  .stats-workspace .btn,
+  .stats-workspace .stats-close-btn {
     min-height: 44px;
+  }
+
+  .stats-workspace .stats-close-btn {
+    width: 44px;
   }
 
   .stats-filter-field {
