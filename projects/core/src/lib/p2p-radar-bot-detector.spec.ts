@@ -258,5 +258,36 @@ describe('p2p-radar-bot-detector', () => {
       // For BUY, bot ceiling is 98.25, recommended counter is ceiling - 0.01 = 98.24
       expect(bot.recommendedCounterPrice).toBe(98.24);
     });
+
+    it('computes real reactionTimeSecondsAverage and works deterministically on historical timestamps', () => {
+      const baseMs = 1_700_000_000_000;
+      const snapshots: BookSnapshot[] = [0, 8_000, 16_000].map((offset, idx) => ({
+        payMethod: 'Banesco',
+        side: 'SELL',
+        timestampMs: baseMs + offset,
+        entries: [
+          {
+            advNo: 'ADV-HIST',
+            advertiserNo: 'BOT-HIST',
+            nickName: 'HistBot',
+            price: 100 - idx * 0.01,
+            surplusAmount: 200,
+            timestampMs: baseMs + offset,
+            rank: 1,
+          },
+        ],
+      }));
+
+      const bots = detectBotsInHistory(snapshots, 'SELL');
+      expect(bots).toHaveLength(1);
+      expect(bots[0].reactionTimeSecondsAverage).toBe(8);
+    });
+  });
+
+  it('guards NaN/zero inputs in calculateCleanVWAP and calculateEMA', () => {
+    expect(calculateEMA([10, Number.NaN, 20], 0)).toBe(0);
+    expect(
+      calculateCleanVWAP([{ ...MOCK_CLEAN_OFFERS[0], price: Number.NaN, surplusAmount: 0 }], 5),
+    ).toBe(0);
   });
 });

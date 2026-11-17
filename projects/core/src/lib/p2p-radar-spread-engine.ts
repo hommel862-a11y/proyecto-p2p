@@ -6,7 +6,11 @@
  * Zero UI/Angular dependencies. Compatible with Vitest, Node.js and Electron.
  */
 
-import type { P2PUserTier, RadarCleanBook } from './p2p-radar-clean-mode';
+import {
+  computeExecutableCapitalPrice,
+  type P2PUserTier,
+  type RadarCleanBook,
+} from './p2p-radar-clean-mode';
 
 export type ExecutionMode =
   | 'DOBLE_MAKER'
@@ -50,7 +54,9 @@ export interface ArbitrageRoute {
   readonly buyPrice: number;
   readonly executionMode: ExecutionMode;
   readonly metrics: ArbitrageCycleMetrics;
-  readonly rank: number;
+  rank: number;
+  /** Liquidity coverage % of requested operating capital available in clean books (min of buy/sell leg). */
+  readonly liquidityCoveragePct?: number;
 }
 
 export interface MatrixScanOptions {
@@ -87,10 +93,10 @@ export const DEFAULT_MAKER_FEES_PCT: Record<P2PUserTier, number> = {
  * Resolves Maker fee percentage based on user tier and optional override.
  */
 export function resolveMakerFeeRatio(tier: P2PUserTier, customFeePct?: number): number {
-  if (typeof customFeePct === 'number' && customFeePct >= 0) {
-    return Math.round((customFeePct / 100) * 10000) / 10000;
+  if (typeof customFeePct === 'number' && Number.isFinite(customFeePct) && customFeePct >= 0) {
+    return Math.round((customFeePct / 100) * 1_000_000) / 1_000_000;
   }
-  return Math.round((DEFAULT_MAKER_FEES_PCT[tier] / 100) * 10000) / 10000;
+  return Math.round((DEFAULT_MAKER_FEES_PCT[tier] / 100) * 1_000_000) / 1_000_000;
 }
 
 /**
@@ -118,7 +124,15 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
     targetNetMarginPct = 0.35,
   } = params;
 
-  if (buyPrice <= 0 || sellPrice <= 0 || capitalUsdt <= 0) {
+  const invalidCoreInputs =
+    !Number.isFinite(buyPrice) ||
+    !Number.isFinite(sellPrice) ||
+    !Number.isFinite(capitalUsdt) ||
+    buyPrice <= 0 ||
+    sellPrice <= 0 ||
+    capitalUsdt <= 0;
+
+  if (invalidCoreInputs) {
     return {
       grossSpreadPct: 0,
       netSpreadPct: 0,
@@ -155,11 +169,19 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
       break;
   }
 
-  const fiatFrictionRatio = Math.max(0, fiatFrictionPct / 100);
-  const targetMarginRatio = Math.max(0, targetNetMarginPct / 100);
+  const safeFiatFrictionPct = Number.isFinite(fiatFrictionPct) ? Math.max(0, fiatFrictionPct) : 0;
+  const safeTargetMarginPct = Number.isFinite(targetNetMarginPct)
+    ? Math.max(0, targetNetMarginPct)
+    : 0.35;
+
+  const fiatFrictionRatio = Math.min(1, safeFiatFrictionPct / 100);
+  const targetMarginRatio = safeTargetMarginPct / 100;
 
   // K = Friction & fee retention coefficient
-  const retentionK = (1 - feeRatioSell) * (1 - feeRatioBuy) * (1 - fiatFrictionRatio);
+  const retentionK = Math.max(
+    0,
+    (1 - Math.min(1, feeRatioSell)) * (1 - Math.min(1, feeRatioBuy)) * (1 - fiatFrictionRatio),
+  );
 
   const priceRatio = sellPrice / buyPrice;
   const netMultiplier = priceRatio * retentionK;
@@ -174,7 +196,8 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
   // Break-even rates
   const breakEvenSellPrice =
     retentionK > 0 ? Math.round((buyPrice / retentionK) * 10000) / 10000 : 0;
-  const breakEvenBuyPrice = Math.round(sellPrice * retentionK * 10000) / 10000;
+  const breakEvenBuyPrice =
+    retentionK > 0 ? Math.round(sellPrice * retentionK * 10000) / 10000 : 0;
 
   // Target rates for specified net margin
   const targetSellPrice =
@@ -182,7 +205,7 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
       ? Math.round(((buyPrice * (1 + targetMarginRatio)) / retentionK) * 10000) / 10000
       : 0;
   const targetBuyPrice =
-    targetMarginRatio > -1
+    retentionK > 0 && 1 + targetMarginRatio > 0
       ? Math.round(((sellPrice * retentionK) / (1 + targetMarginRatio)) * 10000) / 10000
       : 0;
 
@@ -204,14 +227,14 @@ export function calculateArbitrageCycle(params: ArbitrageCycleParams): Arbitrage
     totalFeesUsdt,
     fiatFrictionCostFiat,
     totalMultiplier: Math.round(netMultiplier * 10000) / 10000,
-    isViable: netSpreadPct > 0,
+    isViable: retentionK > 0 && netSpreadPct > 0,
   };
 }
 
 /**
  * Automatic Matrix Scanner (Blocks x Banks).
  * Cross-references all active payment methods for both monobank and interbank triangular paths.
- * Produces a sorted real-time ranking of the most profitable routes.
+ * Uses capital-weighted executable prices when clean depth is present to prevent Top-1 illusion.
  */
 export function scanArbitrageMatrix(
   radarBooks: Map<string, RadarCleanBook>,
@@ -228,43 +251,52 @@ export function scanArbitrageMatrix(
     customMakerFeeSellPct,
   } = options;
 
-  // Collect distinct payment methods present in the clean books
+  // Pre-resolve distinct payment methods and effective capital-weighted leg quotes once (avoids O(B^2) recomputation)
   const bankSet = new Set<string>();
   for (const book of radarBooks.values()) {
     bankSet.add(book.payMethod);
   }
   const bankList = Array.from(bankSet);
 
+  const sellLegs = new Map<string, { price: number; coveragePct: number }>();
+  const buyLegs = new Map<string, { price: number; coveragePct: number }>();
+
+  for (const bank of bankList) {
+    const sellBook = radarBooks.get(`${bank}_SELL`);
+    if (sellBook && sellBook.cleanCount > 0) {
+      const capQuote = computeExecutableCapitalPrice(sellBook.cleanOffers, capitalUsdt);
+      const price = capQuote.executablePrice ?? sellBook.effectiveTopPrice;
+      if (price != null && Number.isFinite(price) && price > 0) {
+        sellLegs.set(bank, {
+          price,
+          coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
+        });
+      }
+    }
+
+    const buyBook = radarBooks.get(`${bank}_BUY`);
+    if (buyBook && buyBook.cleanCount > 0) {
+      const capQuote = computeExecutableCapitalPrice(buyBook.cleanOffers, capitalUsdt);
+      const price = capQuote.executablePrice ?? buyBook.effectiveTopPrice;
+      if (price != null && Number.isFinite(price) && price > 0) {
+        buyLegs.set(bank, {
+          price,
+          coveragePct: capQuote.executablePrice != null ? capQuote.coveragePct : 100,
+        });
+      }
+    }
+  }
+
   const routes: ArbitrageRoute[] = [];
 
-  for (const sourceBank of bankList) {
-    const sellKey = `${sourceBank}_SELL`;
-    const sellBook = radarBooks.get(sellKey);
-    if (!sellBook || sellBook.cleanCount === 0) {
-      continue;
-    }
-    const sellPrice = sellBook.effectiveTopPrice;
-    if (sellPrice == null || sellPrice <= 0) {
-      continue;
-    }
-
-    for (const targetBank of bankList) {
-      const buyKey = `${targetBank}_BUY`;
-      const buyBook = radarBooks.get(buyKey);
-      if (!buyBook || buyBook.cleanCount === 0) {
-        continue;
-      }
-      const buyPrice = buyBook.effectiveTopPrice;
-      if (buyPrice == null || buyPrice <= 0) {
-        continue;
-      }
-
+  for (const [sourceBank, sellLeg] of sellLegs.entries()) {
+    for (const [targetBank, buyLeg] of buyLegs.entries()) {
       const isInterbank = sourceBank !== targetBank;
       const fiatFrictionPct = isInterbank ? interbankFrictionPct : monobankFrictionPct;
 
       const metrics = calculateArbitrageCycle({
-        buyPrice,
-        sellPrice,
+        buyPrice: buyLeg.price,
+        sellPrice: sellLeg.price,
         capitalUsdt,
         mode,
         userTier,
@@ -274,41 +306,38 @@ export function scanArbitrageMatrix(
         targetNetMarginPct,
       });
 
-      const routeId = `${sourceBank}_TO_${targetBank}`;
-
       routes.push({
-        routeId,
+        routeId: `${sourceBank}_TO_${targetBank}`,
         sourceBank,
         targetBank,
         isInterbank,
-        sellPrice,
-        buyPrice,
+        sellPrice: sellLeg.price,
+        buyPrice: buyLeg.price,
         executionMode: mode,
         metrics,
-        rank: 0, // Assigned after sorting
+        rank: 0,
+        liquidityCoveragePct: Math.min(sellLeg.coveragePct, buyLeg.coveragePct),
       });
     }
   }
 
-  // Sort descending by netSpreadPct (highest profitability first)
+  // Sort in-place descending by netSpreadPct, then assign rank & count viable routes in a single pass
   routes.sort((a, b) => b.metrics.netSpreadPct - a.metrics.netSpreadPct);
 
-  // Assign sequential ranking
-  const rankedRoutes: ArbitrageRoute[] = routes.map((r, index) => ({
-    ...r,
-    rank: index + 1,
-  }));
-
-  const topRoutes = rankedRoutes.slice(0, 3);
-  const bestRoute = rankedRoutes.length > 0 ? rankedRoutes[0] : null;
-  const viableRoutesCount = rankedRoutes.filter((r) => r.metrics.isViable).length;
+  let viableRoutesCount = 0;
+  for (let i = 0; i < routes.length; i++) {
+    routes[i].rank = i + 1;
+    if (routes[i].metrics.isViable) {
+      viableRoutesCount++;
+    }
+  }
 
   return {
-    allRoutes: rankedRoutes,
-    topRoutes,
-    bestRoute,
+    allRoutes: routes,
+    topRoutes: routes.slice(0, 3),
+    bestRoute: routes.length > 0 ? routes[0] : null,
     scannedBanksCount: bankList.length,
-    scannedPairsCount: rankedRoutes.length,
+    scannedPairsCount: routes.length,
     viableRoutesCount,
     timestampMs: Date.now(),
   };

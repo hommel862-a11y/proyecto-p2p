@@ -3,6 +3,7 @@ import {
   auditOfferCleanMode,
   detectPriceOutliers,
   buildCleanRadarBook,
+  computeExecutableCapitalPrice,
   DEFAULT_CLEAN_MODE_CONFIG,
   type RawP2POfferInput,
   type CleanModeConfig,
@@ -161,6 +162,29 @@ describe('p2p-radar-clean-mode', () => {
       expect(cleanBook.makerFeePct).toBe(0.20);
       expect(cleanBook.isHybridEligible).toBe(true);
       expect(cleanBook.effectiveTopPrice).toBe(98.5);
+    });
+
+    it('rejects NaN / non-finite offers and computes capital-weighted executable prices', () => {
+      const nanVerdict = auditOfferCleanMode(
+        { ...MOCK_BASE_OFFER, price: Number.NaN, surplusAmount: Number.NaN },
+        DEFAULT_CLEAN_MODE_CONFIG,
+      );
+      expect(nanVerdict.passed).toBe(false);
+      expect(nanVerdict.reasons).toContain('LIQUIDITY_TRAP');
+
+      const book = buildCleanRadarBook(
+        [
+          { ...MOCK_BASE_OFFER, advNo: 'A1', price: 100.0, surplusAmount: 100 },
+          { ...MOCK_BASE_OFFER, advNo: 'A2', price: 101.0, surplusAmount: 400 },
+        ],
+        'SELL',
+        'Banesco',
+        'VERIFIED',
+      );
+      const quote = computeExecutableCapitalPrice(book.cleanOffers, 500);
+      // (100*100 + 400*101) / 500 = 100.8
+      expect(quote.executablePrice).toBe(100.8);
+      expect(quote.coveragePct).toBe(100);
     });
   });
 });

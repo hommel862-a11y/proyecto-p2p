@@ -79,6 +79,7 @@ export class ZkMarketMesh {
   private readonly localNodeId: string;
   private readonly defaultSalt: string;
   private readonly threatsByHash = new Map<string, BlindThreatRecord>();
+  private readonly confirmedNodesByHash = new Map<string, Set<string>>();
 
   constructor(nodeId?: string, saltDomain: string = DEFAULT_ZK_SALT_DOMAIN) {
     this.localNodeId =
@@ -110,7 +111,12 @@ export class ZkMarketMesh {
 
     const existing = this.threatsByHash.get(blindHash);
     if (existing) {
-      existing.confirmations += 1;
+      const nodes = this.confirmedNodesByHash.get(blindHash) ?? new Set([existing.reporterNodeId]);
+      if (!nodes.has(this.localNodeId)) {
+        nodes.add(this.localNodeId);
+        existing.confirmations = Math.max(existing.confirmations, nodes.size);
+      }
+      this.confirmedNodesByHash.set(blindHash, nodes);
       if (params.severity === 'CRITICAL') existing.severity = 'CRITICAL';
       return existing;
     }
@@ -128,6 +134,7 @@ export class ZkMarketMesh {
     };
 
     this.threatsByHash.set(blindHash, record);
+    this.confirmedNodesByHash.set(blindHash, new Set([this.localNodeId]));
     return record;
   }
 
@@ -183,9 +190,16 @@ export class ZkMarketMesh {
 
       const existing = this.threatsByHash.get(remoteRecord.blindHash);
       if (existing) {
-        // Increment confirmation if reported by a different node
+        // Increment confirmation only when reported by a distinct peer node (anti-replay inflation)
         if (remoteRecord.reporterNodeId !== this.localNodeId) {
-          existing.confirmations += 1;
+          const nodes =
+            this.confirmedNodesByHash.get(remoteRecord.blindHash) ??
+            new Set([existing.reporterNodeId]);
+          if (!nodes.has(remoteRecord.reporterNodeId)) {
+            nodes.add(remoteRecord.reporterNodeId);
+            existing.confirmations += 1;
+            this.confirmedNodesByHash.set(remoteRecord.blindHash, nodes);
+          }
           if (remoteRecord.severity === 'CRITICAL') {
             existing.severity = 'CRITICAL';
           }
@@ -198,6 +212,12 @@ export class ZkMarketMesh {
           ...remoteRecord,
           confirmations: Math.max(1, remoteRecord.confirmations),
         });
+        if (remoteRecord.reporterNodeId) {
+          this.confirmedNodesByHash.set(
+            remoteRecord.blindHash,
+            new Set([remoteRecord.reporterNodeId]),
+          );
+        }
         imported++;
       }
     }
@@ -243,5 +263,6 @@ export class ZkMarketMesh {
 
   clear(): void {
     this.threatsByHash.clear();
+    this.confirmedNodesByHash.clear();
   }
 }

@@ -7,10 +7,12 @@
  */
 
 import type { P2PUserTier, RadarCleanBook } from './p2p-radar-clean-mode';
-import type {
-  ExecutionMode,
-  MatrixScanResult,
-  ArbitrageRoute,
+import {
+  calculateArbitrageCycle,
+  resolveMakerFeeRatio,
+  type ExecutionMode,
+  type MatrixScanResult,
+  type ArbitrageRoute,
 } from './p2p-radar-spread-engine';
 import type { BotDetectionResult, MarketTrendResult } from './p2p-radar-bot-detector';
 
@@ -104,8 +106,9 @@ export function buildRadarHudPayload(params: {
 
   const bestRoute = topRoutes.length > 0 ? topRoutes[0] : null;
 
-  // Map bank target rates
+  // Map bank target rates (accounts for Maker fees & execution mode via spread-engine math)
   const bankTargetRates: Record<string, RadarHudTargetRate> = {};
+  const makerFeeBuyPct = resolveMakerFeeRatio(userTier) * 100;
   for (const bank of activeBanks) {
     const buyBook = radarBooks.get(`${bank}_BUY`);
     const sellBook = radarBooks.get(`${bank}_SELL`);
@@ -115,12 +118,33 @@ export function buildRadarHudPayload(params: {
     const effectiveBuy = buyBook?.effectiveTopPrice ?? 0;
     const effectiveSell = sellBook?.effectiveTopPrice ?? 0;
 
-    // Estimate Maker target rates (+targetNetMarginPct on top of buy or below sell)
-    const marginRatio = targetNetMarginPct / 100;
-    const targetMakerSellPrice =
-      effectiveBuy > 0 ? Math.round(effectiveBuy * (1 + marginRatio) * 100) / 100 : 0;
-    const targetMakerBuyPrice =
-      effectiveSell > 0 ? Math.round((effectiveSell / (1 + marginRatio)) * 100) / 100 : 0;
+    let targetMakerSellPrice = 0;
+    if (effectiveBuy > 0) {
+      const cycleForSell = calculateArbitrageCycle({
+        buyPrice: effectiveBuy,
+        sellPrice: effectiveSell > 0 ? effectiveSell : effectiveBuy,
+        capitalUsdt: operatingCapitalUsdt > 0 ? operatingCapitalUsdt : 100,
+        mode: executionMode,
+        userTier,
+        targetNetMarginPct,
+      });
+      targetMakerSellPrice = Math.round(cycleForSell.targetSellPrice * 100) / 100;
+    }
+
+    let targetMakerBuyPrice = 0;
+    if (effectiveSell > 0) {
+      const cycleForBuy = calculateArbitrageCycle({
+        buyPrice: effectiveBuy > 0 ? effectiveBuy : effectiveSell,
+        sellPrice: effectiveSell,
+        capitalUsdt: operatingCapitalUsdt > 0 ? operatingCapitalUsdt : 100,
+        mode: executionMode,
+        userTier,
+        targetNetMarginPct,
+      });
+      targetMakerBuyPrice = Math.round(cycleForBuy.targetBuyPrice * 100) / 100;
+    } else if (effectiveBuy > 0 && makerFeeBuyPct < 0) {
+      targetMakerBuyPrice = 0;
+    }
 
     bankTargetRates[bank] = {
       bank,
@@ -133,17 +157,20 @@ export function buildRadarHudPayload(params: {
     };
   }
 
-  // Aggregate detected bots across all active banks
+  // Aggregate detected bots across all active banks (safe against underscores in bank codes)
   const detectedBots: RadarHudBotInfo[] = [];
   for (const [key, bots] of botReports.entries()) {
-    const [bank, side] = key.split('_') as [string, 'BUY' | 'SELL'];
+    const sepIdx = key.lastIndexOf('_');
+    const bank = sepIdx > 0 ? key.slice(0, sepIdx) : key;
+    const rawSide = sepIdx > 0 ? key.slice(sepIdx + 1) : 'SELL';
+    const side: 'BUY' | 'SELL' = rawSide === 'BUY' ? 'BUY' : 'SELL';
     for (const b of bots) {
       detectedBots.push({
         advertiserNo: b.advertiserNo,
         nickName: b.nickName,
         botType: b.botType,
         bank,
-        side: side ?? 'SELL',
+        side,
         limitPrice: b.estimatedLimitPrice,
         recommendedCounterPrice: b.recommendedCounterPrice,
       });
@@ -237,14 +264,23 @@ export interface RadarDailyConsolidatedSummary {
   readonly interbankCyclesCount: number;
 }
 
+function safeFinite(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
- * Formats a Date object to standardized YYYY-MM-DD key.
+ * Formats a Date object to standardized YYYY-MM-DD key in America/Caracas timezone (VET, UTC-4).
  */
 export function formatToDateKey(date: Date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
+  try {
+    return safeDate.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+  } catch {
+    const y = safeDate.getUTCFullYear();
+    const m = String(safeDate.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(safeDate.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 }
 
 /**
@@ -263,7 +299,10 @@ export function createCompletedCycleRecord(params: {
   timestamp?: number;
   notes?: string;
 }): RadarCompletedCycleRecord {
-  const ts = params.timestamp ?? Date.now();
+  const ts =
+    typeof params.timestamp === 'number' && Number.isFinite(params.timestamp)
+      ? params.timestamp
+      : Date.now();
   const dateKey = formatToDateKey(new Date(ts));
   const isInterbank = params.sourceBank !== params.targetBank;
   const cycleId = `CYC-${ts}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -276,12 +315,12 @@ export function createCompletedCycleRecord(params: {
     targetBank: params.targetBank,
     isInterbank,
     executionMode: params.executionMode,
-    capitalUsdt: Math.round(params.capitalUsdt * 100) / 100,
-    buyPrice: Math.round(params.buyPrice * 10000) / 10000,
-    sellPrice: Math.round(params.sellPrice * 10000) / 10000,
-    netSpreadPct: Math.round(params.netSpreadPct * 100) / 100,
-    netProfitUsdt: Math.round(params.netProfitUsdt * 100) / 100,
-    netProfitFiat: Math.round(params.netProfitFiat * 100) / 100,
+    capitalUsdt: Math.round(safeFinite(params.capitalUsdt) * 100) / 100,
+    buyPrice: Math.round(safeFinite(params.buyPrice) * 10000) / 10000,
+    sellPrice: Math.round(safeFinite(params.sellPrice) * 10000) / 10000,
+    netSpreadPct: Math.round(safeFinite(params.netSpreadPct) * 100) / 100,
+    netProfitUsdt: Math.round(safeFinite(params.netProfitUsdt) * 100) / 100,
+    netProfitFiat: Math.round(safeFinite(params.netProfitFiat) * 100) / 100,
     notes: params.notes,
   };
 }
@@ -320,12 +359,13 @@ export function consolidateDailyCycles(
   let interbankCount = 0;
 
   for (const r of dailyRecords) {
-    totalTurnover += r.capitalUsdt;
-    totalProfitUsdt += r.netProfitUsdt;
-    totalProfitFiat += r.netProfitFiat;
-    sumSpread += r.netSpreadPct;
-    if (r.netSpreadPct > bestSpread) {
-      bestSpread = r.netSpreadPct;
+    totalTurnover += safeFinite(r.capitalUsdt);
+    totalProfitUsdt += safeFinite(r.netProfitUsdt);
+    totalProfitFiat += safeFinite(r.netProfitFiat);
+    const spread = safeFinite(r.netSpreadPct);
+    sumSpread += spread;
+    if (spread > bestSpread) {
+      bestSpread = spread;
     }
     if (r.isInterbank) {
       interbankCount++;
@@ -342,7 +382,7 @@ export function consolidateDailyCycles(
     totalNetProfitFiat: Math.round(totalProfitFiat * 100) / 100,
     averageNetSpreadPct:
       Math.round((sumSpread / dailyRecords.length) * 100) / 100,
-    bestSpreadPct: Math.round(bestSpread * 100) / 100,
+    bestSpreadPct: Number.isFinite(bestSpread) ? Math.round(bestSpread * 100) / 100 : 0,
     monobankCyclesCount: monobankCount,
     interbankCyclesCount: interbankCount,
   };

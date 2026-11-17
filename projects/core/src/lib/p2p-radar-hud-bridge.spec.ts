@@ -250,5 +250,36 @@ describe('p2p-radar-hud-bridge', () => {
       expect(summary.totalNetProfitUsdt).toBe(0);
       expect(summary.averageNetSpreadPct).toBe(0);
     });
+
+    it('handles bank keys containing underscores without corrupting HUD bot bank names', () => {
+      const botReports = new Map();
+      botReports.set('PAGO_MOVIL_SELL', [
+        {
+          advertiserNo: 'BOT-PM',
+          nickName: 'PmBot',
+          botType: 'BOT_GUERRA_CENTAVOS',
+          confidenceScore: 85,
+          priceStepAverage: 0.01,
+          reactionTimeSecondsAverage: 10,
+          updateCountInWindow: 3,
+          estimatedLimitPrice: 100,
+          recommendedCounterPrice: 100.01,
+          details: 'test',
+        },
+      ]);
+      const payload = buildRadarHudPayload({
+        radarBooks: new Map(),
+        matrixResult: null,
+        botReports,
+        marketTrends: new Map(),
+        userTier: 'VERIFIED',
+        executionMode: 'DOBLE_MAKER',
+        operatingCapitalUsdt: 500,
+        targetNetMarginPct: 0.5,
+        activeBanks: ['PAGO_MOVIL'],
+      });
+      expect(payload.detectedBots[0].bank).toBe('PAGO_MOVIL');
+      expect(payload.detectedBots[0].side).toBe('SELL');
+    });
   });
 });

@@ -106,6 +106,30 @@ export function canonicalJsonStringify(obj: unknown): string {
   return '{' + entries.join(',') + '}';
 }
 
+const SHA256_H_INIT = new Uint32Array(8);
+const SHA256_K = new Uint32Array(64);
+const UTF8_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+
+(() => {
+  const maxWord = 2 ** 32;
+  let primeCounter = 0;
+  const isPrime = (n: number) => {
+    for (let factor = 2; factor * factor <= n; factor++) {
+      if (n % factor === 0) return false;
+    }
+    return true;
+  };
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (isPrime(candidate)) {
+      if (primeCounter < 8) {
+        SHA256_H_INIT[primeCounter] = ((Math.pow(candidate, 1 / 2) * maxWord) | 0) >>> 0;
+      }
+      SHA256_K[primeCounter] = ((Math.pow(candidate, 1 / 3) * maxWord) | 0) >>> 0;
+      primeCounter++;
+    }
+  }
+})();
+
 /**
  * Pure TypeScript SHA-256 implementation (zero external dependencies).
  */
@@ -114,42 +138,29 @@ export function computeSha256(message: string): string {
     return (value >>> amount) | (value << (32 - amount));
   }
 
-  const mathPow = Math.pow;
-  const maxWord = mathPow(2, 32);
+  const encoded = UTF8_ENCODER ? UTF8_ENCODER.encode(message) : null;
+  const byteLen = encoded ? encoded.length : message.length;
   const words: number[] = [];
-  const messageLength = message.length * 8;
+  const messageLength = byteLen * 8;
+  const H = new Uint32Array(SHA256_H_INIT);
 
-  const K: number[] = [];
-  const H: number[] = [];
-
-  let primeCounter = 0;
-  const isPrime = (n: number) => {
-    for (let factor = 2; factor * factor <= n; factor++) {
-      if (n % factor === 0) return false;
+  if (encoded) {
+    for (let i = 0; i < byteLen; i++) {
+      const wordIdx = i >> 2;
+      words[wordIdx] = (words[wordIdx] || 0) | ((encoded[i] & 0xff) << (24 - (i % 4) * 8));
     }
-    return true;
-  };
-
-  for (let candidate = 2; primeCounter < 64; candidate++) {
-    if (isPrime(candidate)) {
-      if (primeCounter < 8) {
-        H[primeCounter] = ((mathPow(candidate, 1 / 2) * maxWord) | 0) >>> 0;
-      }
-      K[primeCounter] = ((mathPow(candidate, 1 / 3) * maxWord) | 0) >>> 0;
-      primeCounter++;
+  } else {
+    for (let i = 0; i < byteLen; i++) {
+      const code = message.charCodeAt(i);
+      const wordIdx = i >> 2;
+      words[wordIdx] = (words[wordIdx] || 0) | ((code & 0xff) << (24 - (i % 4) * 8));
     }
-  }
-
-  for (let i = 0; i < message.length; i++) {
-    const code = message.charCodeAt(i);
-    const wordIdx = i >> 2;
-    words[wordIdx] = (words[wordIdx] || 0) | ((code & 0xff) << (24 - (i % 4) * 8));
   }
 
   // Padding
-  const appendIdx = message.length >> 2;
-  words[appendIdx] = (words[appendIdx] || 0) | (0x80 << (24 - (message.length % 4) * 8));
-  const wordsLen = (((message.length + 8) >> 6) + 1) * 16;
+  const appendIdx = byteLen >> 2;
+  words[appendIdx] = (words[appendIdx] || 0) | (0x80 << (24 - (byteLen % 4) * 8));
+  const wordsLen = (((byteLen + 8) >> 6) + 1) * 16;
   words[wordsLen - 1] = messageLength;
 
   for (let i = 0; i < wordsLen; i += 16) {
@@ -176,7 +187,7 @@ export function computeSha256(message: string): string {
     for (let t = 0; t < 64; t++) {
       const S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
       const ch = (e & f) ^ (~e & g);
-      const temp1 = ((((h + S1) | 0) + ch) | 0) + ((K[t] + w[t]) | 0);
+      const temp1 = ((((h + S1) | 0) + ch) | 0) + ((SHA256_K[t] + w[t]) | 0);
       const S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
       const maj = (a & b) ^ (a & c) ^ (b & c);
       const temp2 = (S0 + maj) | 0;

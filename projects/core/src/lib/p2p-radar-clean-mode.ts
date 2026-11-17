@@ -112,26 +112,31 @@ export function auditOfferCleanMode(
   config: CleanModeConfig,
 ): CleanFilterVerdict {
   if (!config.enabled) {
-    return { passed: true, reasons: [] };
+    const validEnabledOff = Number.isFinite(offer.price) && offer.price > 0;
+    return validEnabledOff ? { passed: true, reasons: [] } : { passed: false, reasons: ['LIQUIDITY_TRAP'] };
   }
 
   const reasons: FilterRejectionReason[] = [];
 
-  // Rule 1: Pay time window check
-  if (offer.payTimeLimit > config.maxPayTimeMinutes) {
+  // Rule 1: Pay time window check (reject NaN / non-finite)
+  if (!Number.isFinite(offer.payTimeLimit) || offer.payTimeLimit < 0 || offer.payTimeLimit > config.maxPayTimeMinutes) {
     reasons.push('PAY_TIME_EXCEEDED');
   }
 
   // Rule 2: Reliability metrics (order volume & completion rate)
-  if (offer.monthFinishRate < config.minMonthFinishRate) {
+  if (!Number.isFinite(offer.monthFinishRate) || offer.monthFinishRate < config.minMonthFinishRate) {
     reasons.push('LOW_FINISH_RATE');
   }
-  if (offer.monthOrderCount < config.minMonthOrderCount) {
+  if (!Number.isFinite(offer.monthOrderCount) || offer.monthOrderCount < config.minMonthOrderCount) {
     reasons.push('LOW_ORDER_COUNT');
   }
 
-  // Rule 3: Liquidity trap check (both available USDT and single trans cap)
+  // Rule 3: Price & Liquidity trap check (valid finite price, available USDT, and single trans cap)
   if (
+    !Number.isFinite(offer.price) ||
+    offer.price <= 0 ||
+    !Number.isFinite(offer.surplusAmount) ||
+    !Number.isFinite(offer.maxSingleTransAmount) ||
     offer.surplusAmount < config.minSurplusUsdt ||
     offer.maxSingleTransAmount < config.minTransAmountVes
   ) {
@@ -145,42 +150,116 @@ export function auditOfferCleanMode(
 }
 
 /**
- * Detects price outliers and manipulative decoy advertisements at the top of book.
- * 
- * If offer #1 deviates significantly from the average of #2 and #3, and its liquidity
- * is fragile, it is isolated as MANIPULACION_DETECTADA so it does not skew the execution rate.
+ * Detects price outliers and manipulative decoy advertisements at the top of book in O(n) single pass.
+ *
+ * If offer #1 deviates significantly from the average of #2 and #3, it is isolated as MANIPULACION_DETECTADA
+ * so it does not skew the execution rate.
  */
 export function detectPriceOutliers(
   candidateOffers: readonly RawP2POfferInput[],
   side: RadarOrderSide,
   deviationThresholdPct: number,
+  maxOutlierSurplusUsdt?: number,
 ): Set<string> {
   const outlierAdvNos = new Set<string>();
 
-  if (candidateOffers.length < 3) {
+  if (
+    candidateOffers.length < 3 ||
+    !Number.isFinite(deviationThresholdPct) ||
+    deviationThresholdPct <= 0
+  ) {
     return outlierAdvNos;
   }
 
-  // Order sorting: BUY -> Descending price (best buyer pays more), SELL -> Ascending price (best seller sells cheaper)
-  const sorted = [...candidateOffers].sort((a, b) =>
-    side === 'BUY' ? b.price - a.price : a.price - b.price,
-  );
+  // Single-pass O(n) top-3 selection (avoids full O(n log n) sort allocation)
+  const isBetter =
+    side === 'BUY'
+      ? (a: RawP2POfferInput, b: RawP2POfferInput) => a.price > b.price
+      : (a: RawP2POfferInput, b: RawP2POfferInput) => a.price < b.price;
 
-  const top1 = sorted[0];
-  const top2 = sorted[1];
-  const top3 = sorted[2];
+  let top1: RawP2POfferInput | null = null;
+  let top2: RawP2POfferInput | null = null;
+  let top3: RawP2POfferInput | null = null;
+
+  for (const offer of candidateOffers) {
+    if (!Number.isFinite(offer.price) || offer.price <= 0) continue;
+    if (!top1 || isBetter(offer, top1)) {
+      top3 = top2;
+      top2 = top1;
+      top1 = offer;
+    } else if (!top2 || isBetter(offer, top2)) {
+      top3 = top2;
+      top2 = offer;
+    } else if (!top3 || isBetter(offer, top3)) {
+      top3 = offer;
+    }
+  }
+
+  if (!top1 || !top2 || !top3) return outlierAdvNos;
 
   const avgBaseline = (top2.price + top3.price) / 2.0;
   if (avgBaseline <= 0) return outlierAdvNos;
 
   const deviationPct = (Math.abs(top1.price - avgBaseline) / avgBaseline) * 100.0;
+  const isThinEnough =
+    typeof maxOutlierSurplusUsdt === 'number' && Number.isFinite(maxOutlierSurplusUsdt)
+      ? top1.surplusAmount <= maxOutlierSurplusUsdt
+      : true;
 
-  // Condition: Extreme price spread combined with thin surplus
-  if (deviationPct >= deviationThresholdPct) {
+  if (deviationPct >= deviationThresholdPct && isThinEnough) {
     outlierAdvNos.add(top1.advNo);
   }
 
   return outlierAdvNos;
+}
+
+/**
+ * Computes the capital-weighted executable VWAP price across sorted clean offers until `capitalUsdt` is filled.
+ * Prevents "Top-1 $30 illusion" when evaluating $500+ operating tickets.
+ */
+export function computeExecutableCapitalPrice(
+  cleanOffers: readonly CleanRadarOffer[],
+  capitalUsdt: number,
+): { executablePrice: number | null; coveragePct: number } {
+  if (cleanOffers.length === 0) {
+    return { executablePrice: null, coveragePct: 0 };
+  }
+  if (!Number.isFinite(capitalUsdt) || capitalUsdt <= 0) {
+    const first = cleanOffers[0];
+    return {
+      executablePrice: Number.isFinite(first.price) && first.price > 0 ? first.price : null,
+      coveragePct: 100,
+    };
+  }
+
+  let remainingUsdt = capitalUsdt;
+  let filledUsdt = 0;
+  let weightedFiat = 0;
+
+  for (const offer of cleanOffers) {
+    if (!Number.isFinite(offer.price) || offer.price <= 0) continue;
+    const avail = Number.isFinite(offer.surplusAmount) && offer.surplusAmount > 0 ? offer.surplusAmount : 0;
+    if (avail <= 0) continue;
+    const take = Math.min(remainingUsdt, avail);
+    weightedFiat += take * offer.price;
+    filledUsdt += take;
+    remainingUsdt -= take;
+    if (remainingUsdt <= 1e-6) break;
+  }
+
+  if (filledUsdt <= 0) {
+    const first = cleanOffers[0];
+    return {
+      executablePrice: Number.isFinite(first.price) && first.price > 0 ? first.price : null,
+      coveragePct: 0,
+    };
+  }
+
+  const coveragePct = Math.min(100, Math.round((filledUsdt / capitalUsdt) * 100));
+  return {
+    executablePrice: Math.round((weightedFiat / filledUsdt) * 10000) / 10000,
+    coveragePct,
+  };
 }
 
 /**
@@ -193,16 +272,26 @@ export function buildCleanRadarBook(
   userTier: P2PUserTier,
   config: CleanModeConfig = DEFAULT_CLEAN_MODE_CONFIG,
 ): RadarCleanBook {
-  // Step 1: Detect Outliers at the top of book
+  // Step 1: Audit base Clean Mode rules first so trap ads do not skew the #2/#3 outlier baseline
+  const baseVerdicts = rawOffers.map((raw) => auditOfferCleanMode(raw, config));
+  const cleanEligibleOffers: RawP2POfferInput[] = [];
+  for (let i = 0; i < rawOffers.length; i++) {
+    if (baseVerdicts[i].passed) {
+      cleanEligibleOffers.push(rawOffers[i]);
+    }
+  }
+
+  const outlierCandidatePool = cleanEligibleOffers.length >= 3 ? cleanEligibleOffers : rawOffers;
   const outlierSet = config.enabled
-    ? detectPriceOutliers(rawOffers, side, config.outlierDeviationPct)
+    ? detectPriceOutliers(outlierCandidatePool, side, config.outlierDeviationPct)
     : new Set<string>();
 
   const cleanOffers: CleanRadarOffer[] = [];
   const rejectedOffers: CleanRadarOffer[] = [];
 
-  for (const raw of rawOffers) {
-    const baseVerdict = auditOfferCleanMode(raw, config);
+  for (let i = 0; i < rawOffers.length; i++) {
+    const raw = rawOffers[i];
+    const baseVerdict = baseVerdicts[i];
     const isOutlier = outlierSet.has(raw.advNo);
 
     const reasons = [...baseVerdict.reasons];

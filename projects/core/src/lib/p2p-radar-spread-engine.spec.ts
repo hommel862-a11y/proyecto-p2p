@@ -231,5 +231,76 @@ describe('p2p-radar-spread-engine', () => {
         result.allRoutes[2].metrics.netSpreadPct,
       );
     });
+
+    it('uses capital-weighted depth to avoid Top-1 shallow liquidity illusion and guards NaN inputs', () => {
+      const shallowBook: RadarCleanBook = {
+        side: 'SELL',
+        payMethod: 'Banesco',
+        userTier: 'VERIFIED',
+        cleanOffers: [
+          {
+            advNo: 'ADV-SHALLOW',
+            advertiserNo: 'USR-1',
+            nickName: 'Shallow1',
+            price: 110.0,
+            surplusAmount: 50,
+            minSingleTransAmount: 100,
+            maxSingleTransAmount: 5000,
+            monthOrderCount: 50,
+            monthFinishRate: 99,
+            payTimeLimit: 15,
+            isMerchant: true,
+            isClean: true,
+            isOutlier: false,
+            verdict: { passed: true, reasons: [] },
+          },
+          {
+            advNo: 'ADV-DEEP',
+            advertiserNo: 'USR-2',
+            nickName: 'Deep2',
+            price: 100.0,
+            surplusAmount: 950,
+            minSingleTransAmount: 100,
+            maxSingleTransAmount: 100000,
+            monthOrderCount: 50,
+            monthFinishRate: 99,
+            payTimeLimit: 15,
+            isMerchant: true,
+            isClean: true,
+            isOutlier: false,
+            verdict: { passed: true, reasons: [] },
+          },
+        ],
+        rejectedOffers: [],
+        rawCount: 2,
+        cleanCount: 2,
+        rejectedCount: 0,
+        effectiveTopPrice: 110.0,
+        makerFeePct: 0.2,
+        takerFeePct: 0.0,
+        isHybridEligible: false,
+      };
+      const books = new Map<string, RadarCleanBook>();
+      books.set('Banesco_SELL', shallowBook);
+      books.set('Banesco_BUY', makeCleanBook('Banesco', 'BUY', 98.0));
+
+      const res = scanArbitrageMatrix(books, {
+        capitalUsdt: 1000,
+        mode: 'DOBLE_MAKER',
+        userTier: 'VERIFIED',
+      });
+      // (50*110 + 950*100) / 1000 = 100.5 instead of shallow 110
+      expect(res.bestRoute?.sellPrice).toBe(100.5);
+      expect(res.bestRoute?.liquidityCoveragePct).toBe(100);
+
+      const nanMetrics = calculateArbitrageCycle({
+        buyPrice: Number.NaN,
+        sellPrice: 100,
+        capitalUsdt: 1000,
+        mode: 'DOBLE_MAKER',
+        userTier: 'VERIFIED',
+      });
+      expect(nanMetrics.isViable).toBe(false);
+    });
   });
 });

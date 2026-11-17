@@ -82,9 +82,10 @@ describe('ZkMarketMesh (Zero-Knowledge Federated Threat Intelligence)', () => {
     expect(match.threat?.threatType).toBe('CHARGEBACK');
     expect(match.confidenceScore).toBeGreaterThanOrEqual(80);
 
-    // If Node B re-ingests same packet, it is updated/ignored properly
+    // If Node B re-ingests same packet, it returns updated and does NOT inflate confirmations beyond distinct nodes
     const reIngest = nodeB.ingestGossipPacket(packet);
     expect(reIngest.updated).toBe(1);
+    expect(nodeB.queryIdentifier('0102-0555-44-4333222111').threat?.confirmations).toBe(1);
   });
 
   it('exports and imports persistent records accurately', () => {

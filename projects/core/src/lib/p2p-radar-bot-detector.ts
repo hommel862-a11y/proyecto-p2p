@@ -95,23 +95,28 @@ export function calculateCleanVWAP(
   cleanOffers: readonly CleanRadarOffer[],
   topN: number = 5,
 ): number {
+  if (!Number.isFinite(topN) || topN <= 0) return 0;
   const slice = cleanOffers.slice(0, topN);
   if (slice.length === 0) return 0;
 
   let totalVolume = 0;
   let weightedSum = 0;
+  let validPriceSum = 0;
+  let validPriceCount = 0;
 
   for (const offer of slice) {
-    if (offer.surplusAmount > 0 && offer.price > 0) {
+    if (!Number.isFinite(offer.price) || offer.price <= 0) continue;
+    validPriceSum += offer.price;
+    validPriceCount++;
+    if (Number.isFinite(offer.surplusAmount) && offer.surplusAmount > 0) {
       totalVolume += offer.surplusAmount;
       weightedSum += offer.price * offer.surplusAmount;
     }
   }
 
-  if (totalVolume === 0) {
-    // Fallback: simple arithmetic average if surplus volume is unavailable
-    const simpleSum = slice.reduce((acc, o) => acc + o.price, 0);
-    return Math.round((simpleSum / slice.length) * 10000) / 10000;
+  if (totalVolume <= 0) {
+    if (validPriceCount === 0) return 0;
+    return Math.round((validPriceSum / validPriceCount) * 10000) / 10000;
   }
 
   return Math.round((weightedSum / totalVolume) * 10000) / 10000;
@@ -121,19 +126,19 @@ export function calculateCleanVWAP(
  * Computes Exponential Moving Average (EMA) over a series of numbers.
  */
 export function calculateEMA(values: readonly number[], period: number): number {
-  if (values.length === 0) return 0;
-  if (values.length <= period) {
-    // Initial SMA seed
-    const sum = values.reduce((acc, v) => acc + v, 0);
-    return Math.round((sum / values.length) * 10000) / 10000;
+  const finiteValues = values.filter((v) => Number.isFinite(v));
+  if (finiteValues.length === 0 || !Number.isFinite(period) || period <= 0) return 0;
+
+  if (finiteValues.length <= period) {
+    const sum = finiteValues.reduce((acc, v) => acc + v, 0);
+    return Math.round((sum / finiteValues.length) * 10000) / 10000;
   }
 
   const multiplier = 2 / (period + 1);
-  // Start with SMA of first period elements
-  let ema = values.slice(0, period).reduce((acc, v) => acc + v, 0) / period;
+  let ema = finiteValues.slice(0, period).reduce((acc, v) => acc + v, 0) / period;
 
-  for (let i = period; i < values.length; i++) {
-    ema = (values[i] - ema) * multiplier + ema;
+  for (let i = period; i < finiteValues.length; i++) {
+    ema = (finiteValues[i] - ema) * multiplier + ema;
   }
 
   return Math.round(ema * 10000) / 10000;
@@ -213,56 +218,87 @@ export function evaluateMarketTrend(
 export function detectBotsInHistory(
   snapshots: readonly BookSnapshot[],
   side: RadarOrderSide,
+  referenceNowMs?: number,
 ): BotDetectionResult[] {
   if (snapshots.length < 2) {
     return [];
   }
 
-  // Aggregate advertiser history across all snapshots
-  const advertiserHistory = new Map<string, AdvertiserSnapshotEntry[]>();
+  // Group by advertiserNo::advNo so separate ads from the same merchant are not mixed,
+  // and determine the latest snapshot timestamp for deterministic historical replay.
+  const adHistory = new Map<string, AdvertiserSnapshotEntry[]>();
+  let latestSnapshotMs = 0;
 
   for (const snap of snapshots) {
+    if (Number.isFinite(snap.timestampMs) && snap.timestampMs > latestSnapshotMs) {
+      latestSnapshotMs = snap.timestampMs;
+    }
     for (const entry of snap.entries) {
-      const list = advertiserHistory.get(entry.advertiserNo) || [];
+      if (!Number.isFinite(entry.price) || entry.price <= 0) continue;
+      const adKey = `${entry.advertiserNo}::${entry.advNo || 'default'}`;
+      let list = adHistory.get(adKey);
+      if (!list) {
+        list = [];
+        adHistory.set(adKey, list);
+      }
       list.push(entry);
-      advertiserHistory.set(entry.advertiserNo, list);
     }
   }
 
   const results: BotDetectionResult[] = [];
-  const twoMinutesAgoMs = Date.now() - 120_000;
+  const anchorMs =
+    typeof referenceNowMs === 'number' && Number.isFinite(referenceNowMs)
+      ? referenceNowMs
+      : latestSnapshotMs > 0
+        ? latestSnapshotMs
+        : Date.now();
+  const twoMinutesAgoMs = anchorMs - 120_000;
 
-  for (const [advertiserNo, history] of advertiserHistory.entries()) {
+  for (const history of adHistory.values()) {
     if (history.length < 2) continue;
 
-    const nickName = history[0].nickName;
+    history.sort((a, b) => a.timestampMs - b.timestampMs);
+
+    const { advertiserNo, nickName } = history[0];
     let pennyWarMatches = 0;
     let pennyStepSum = 0;
     let rateChangesCount = 0;
+    let recentSequentialChanges = 0;
     let negligibleSurplusChanges = 0;
+    let reactionSecSum = 0;
+    let reactionSecCount = 0;
 
-    const pricesObserved = history.map((h) => h.price);
-    const minObservedPrice = Math.min(...pricesObserved);
-    const maxObservedPrice = Math.max(...pricesObserved);
+    let minObservedPrice = history[0].price;
+    let maxObservedPrice = history[0].price;
+
+    // Adaptive minimum step scaled gently for higher nominal rates while keeping 0.01 around ~100 VES
+    const adaptiveMaxStep = Math.max(0.021, minObservedPrice * 0.00025);
 
     for (let i = 1; i < history.length; i++) {
       const prev = history[i - 1];
       const curr = history[i];
 
+      if (curr.price < minObservedPrice) minObservedPrice = curr.price;
+      if (curr.price > maxObservedPrice) maxObservedPrice = curr.price;
+
       const priceDiff = Math.abs(curr.price - prev.price);
       const timeDiffSec = Math.abs(curr.timestampMs - prev.timestampMs) / 1000;
 
-      // Check if price actually changed
       if (priceDiff > 0.0001) {
         rateChangesCount++;
+        if (curr.timestampMs >= twoMinutesAgoMs) {
+          recentSequentialChanges++;
+        }
+        if (Number.isFinite(timeDiffSec) && timeDiffSec > 0) {
+          reactionSecSum += timeDiffSec;
+          reactionSecCount++;
+        }
 
-        // Penny war check: step between 0.009 and 0.021
-        if (priceDiff >= 0.009 && priceDiff <= 0.021) {
+        if (priceDiff >= 0.009 && priceDiff <= adaptiveMaxStep) {
           pennyWarMatches++;
           pennyStepSum += priceDiff;
         }
 
-        // Volume proportionality check
         const surplusDiffRatio =
           prev.surplusAmount > 0
             ? Math.abs(curr.surplusAmount - prev.surplusAmount) / prev.surplusAmount
@@ -274,17 +310,13 @@ export function detectBotsInHistory(
       }
     }
 
-    // Recent updates in the last 2 minutes
-    const recentUpdates = history.filter((h) => h.timestampMs >= twoMinutesAgoMs);
-    const recentRateChanges = new Set(recentUpdates.map((h) => h.price)).size - 1;
-
     let botType: BotClassificationType = 'NONE';
     let confidenceScore = 0;
     let details = 'Comportamiento orgánico manual compatible.';
 
     const isPennyWar = pennyWarMatches >= 2;
     const isHighFrequency =
-      (rateChangesCount >= 3 || recentRateChanges >= 3) && negligibleSurplusChanges >= 2;
+      (rateChangesCount >= 3 || recentSequentialChanges >= 3) && negligibleSurplusChanges >= 2;
 
     if (isPennyWar && isHighFrequency) {
       botType = 'BOT_HIBRIDO';
@@ -302,15 +334,15 @@ export function detectBotsInHistory(
 
     if (botType !== 'NONE') {
       const avgStep = pennyWarMatches > 0 ? pennyStepSum / pennyWarMatches : 0.01;
+      const reactionAvg =
+        reactionSecCount > 0 ? Math.round((reactionSecSum / reactionSecCount) * 10) / 10 : 0;
 
-      // Ceiling / Floor estimation
-      // SELL: Bot goes DOWN to compete -> Floor is min price. Safe counter = floor + 0.01
-      // BUY: Bot goes UP to compete -> Ceiling is max price. Safe counter = ceiling - 0.01
       const limitPrice = side === 'SELL' ? minObservedPrice : maxObservedPrice;
+      const counterStep = limitPrice < 500 ? 0.01 : Math.round(avgStep * 100) / 100 || 0.01;
       const counterPrice =
         side === 'SELL'
-          ? Math.round((limitPrice + 0.01) * 10000) / 10000
-          : Math.round((limitPrice - 0.01) * 10000) / 10000;
+          ? Math.round((limitPrice + counterStep) * 10000) / 10000
+          : Math.round((limitPrice - counterStep) * 10000) / 10000;
 
       results.push({
         advertiserNo,
@@ -318,7 +350,7 @@ export function detectBotsInHistory(
         botType,
         confidenceScore,
         priceStepAverage: Math.round(avgStep * 10000) / 10000,
-        reactionTimeSecondsAverage: 12.0,
+        reactionTimeSecondsAverage: reactionAvg,
         updateCountInWindow: rateChangesCount,
         estimatedLimitPrice: limitPrice,
         recommendedCounterPrice: counterPrice,
