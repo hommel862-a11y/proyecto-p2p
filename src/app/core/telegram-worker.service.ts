@@ -79,6 +79,7 @@ import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
 import { FinanceTelegramBridgeService } from './services/finance-telegram-bridge.service';
 import { FinanceAiIngestorService } from './services/finance-ai-ingestor.service';
+import { P2PRadarService } from './p2p-radar.service';
 import { StorageService } from './storage';
 
 /**
@@ -414,6 +415,7 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly journal = inject(DecisionJournalService, { optional: true });
   private readonly financeBridge = inject(FinanceTelegramBridgeService, { optional: true });
   private readonly aiIngestor = inject(FinanceAiIngestorService, { optional: true });
+  private readonly radarService = inject(P2PRadarService, { optional: true });
   private readonly storage = inject(StorageService);
 
   readonly config = signal<TelegramConfig>({ ...TELEGRAM_DEFAULTS });
@@ -1026,6 +1028,12 @@ export class TelegramWorkerService implements OnDestroy {
           if (dropped > 0) {
             notes.push(
               `Se muestran los ${rows.length} bancos con mayor gap; ${dropped} quedaron fuera del reporte.`,
+            );
+          }
+          const matrixBest = this.radarService?.bestRoute();
+          if (matrixBest && matrixBest.metrics.isViable) {
+            notes.push(
+              `Matriz Cuántica N×N: ${matrixBest.sourceBank} -> ${matrixBest.targetBank} | Spread Neto +${matrixBest.metrics.netSpreadPct.toFixed(2)}% (+$${matrixBest.metrics.netProfitUsdt.toFixed(2)} USDT)`,
             );
           }
         } else {

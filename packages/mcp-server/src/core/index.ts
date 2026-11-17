@@ -174,16 +174,29 @@ export function evaluate(ctx: RuleContext): EvaluateResult {
   };
 }
 
-// ─── ZK Market Mesh (blind hashes) ────────────────────────────────────────────
+// ─── ZK Market Mesh (blind hashes, aligned 1:1 with @p2p/core) ────────────────
 
-export const DEFAULT_ZK_SALT_DOMAIN = 'p2p-decisor-zk-mesh-v1';
+export const DEFAULT_ZK_SALT_DOMAIN = 'p2p-ve-mesh-salt-2026';
+
+export function normalizeIdentifier(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
 
 /**
- * Genera un hash ciego SHA-256 de un identificador con un salt específico.
- * El original NO se almacena — garantiza zero-knowledge.
+ * Genera un hash ciego SHA-256 de un identificador normalizado con el mismo
+ * formato (`${normalized}::${saltDomain}`) de `@p2p/core`.
  */
-export function generateBlindHash(rawIdentifier: string, saltDomain: string): string {
-  return createHash('sha256').update(`${saltDomain}:${rawIdentifier}`).digest('hex');
+export function generateBlindHash(
+  rawIdentifier: string,
+  saltDomain: string = DEFAULT_ZK_SALT_DOMAIN,
+): string {
+  const normalized = normalizeIdentifier(rawIdentifier);
+  if (!normalized) return '';
+  return createHash('sha256').update(`${normalized}::${saltDomain}`).digest('hex');
 }
 
 export interface ThreatRecord {
@@ -212,21 +225,28 @@ export class ZkMarketMesh {
    */
   addFlaggedIdentifier(rawIdentifier: string, saltDomain: string, threat: ThreatRecord): void {
     const hash = generateBlindHash(rawIdentifier, saltDomain);
+    if (!hash) return;
     this.flagged.set(hash, threat);
   }
 
   /**
-   * Consulta un identificador contra la blacklist federada.
+   * Consulta un identificador contra la blacklist federada (escala 0..100 compatible con @p2p/core).
    */
-  queryIdentifier(rawIdentifier: string, saltDomain: string): QueryResult {
+  queryIdentifier(rawIdentifier: string, saltDomain: string = DEFAULT_ZK_SALT_DOMAIN): QueryResult {
     const hash = generateBlindHash(rawIdentifier, saltDomain);
+    if (!hash) {
+      return { isMatch: false, confidenceScore: 0, threat: null };
+    }
     const threat = this.flagged.get(hash) ?? null;
 
     if (threat) {
-      const confidence = Math.min(0.95, 0.5 + threat.confirmations * 0.15);
+      const baseWeight =
+        threat.severity === 'CRITICAL' ? 80 : threat.severity === 'HIGH' ? 60 : 40;
+      const confWeight = Math.min((threat.confirmations ?? 1) * 10, 20);
+      const confidenceScore = Math.min(baseWeight + confWeight, 100);
       return {
         isMatch: true,
-        confidenceScore: Number(confidence.toFixed(2)),
+        confidenceScore,
         threat,
       };
     }

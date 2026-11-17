@@ -11,6 +11,7 @@ import { AccountsService } from './accounts.service';
 import { CotizaveService } from './cotizave.service';
 import { MarketHistoryService } from './market-history.service';
 import { DecisionJournalService } from './decision-journal.service';
+import { P2PRadarService } from './p2p-radar.service';
 import type {
   BinanceP2pMarketDepth,
   TelegramInboundUpdate,
@@ -247,6 +248,7 @@ function workerProviders(): unknown[] {
       provide: CotizaveService,
       useValue: {
         fetchRates: vi.fn(async () => undefined),
+        refreshIfStale: vi.fn(async () => undefined),
         ratesByMarket,
         lastFetched: cotizaveLastFetched,
         ratesProvenance: cotizaveProvenance,
@@ -1470,6 +1472,52 @@ describe('TelegramWorkerService', () => {
       const text = sentText(sendSpy);
       expect(text).toContain('SIN RESULTADOS');
       expect(text).toContain('Sin datos en vivo');
+    });
+
+    it('RADAR_SCAN appends Quantum Radar Matrix N×N highlight when live matrix data exists', async () => {
+      fetchMarketDepth.mockResolvedValue(LIVE_DEPTH);
+      const radarSvc = TestBed.inject(P2PRadarService);
+      radarSvc.matrixScanResult.set({
+        allRoutes: [],
+        topRoutes: [],
+        bestRoute: {
+          routeId: 'Banesco_TO_Mercantil',
+          sourceBank: 'Banesco',
+          targetBank: 'Mercantil',
+          isInterbank: true,
+          sellPrice: 86.4,
+          buyPrice: 85.1,
+          executionMode: 'DOBLE_MAKER',
+          rank: 1,
+          metrics: {
+            grossSpreadPct: 1.53,
+            netSpreadPct: 0.92,
+            grossProfitUsdt: 15.3,
+            netProfitUsdt: 9.2,
+            netProfitFiat: 794.88,
+            breakEvenSellPrice: 85.6,
+            breakEvenBuyPrice: 85.8,
+            targetSellPrice: 86.1,
+            targetBuyPrice: 85.2,
+            totalFeesUsdt: 6.1,
+            fiatFrictionCostFiat: 259,
+            totalMultiplier: 1.0092,
+            isViable: true,
+          },
+        },
+        scannedBanksCount: 2,
+        scannedPairsCount: 4,
+        viableRoutesCount: 1,
+        timestampMs: Date.now(),
+      });
+      const sendSpy = vi.spyOn(svc, 'sendTelegramMessage').mockResolvedValue(true);
+
+      await processIncoming(commandMessage('/radar'), TOKEN, String(CHAT_ID));
+
+      const text = sentPlain(sendSpy);
+      expect(text).toContain('RADAR DE GAPS');
+      expect(text).toContain('Matriz Cuántica');
+      expect(text).toContain('0.92');
     });
 
     it('REPRICE_REQUEST asks for confirmation and shows the confirm/cancel keyboard', async () => {
