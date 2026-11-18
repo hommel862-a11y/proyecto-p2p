@@ -1,11 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { URL } from 'node:url';
-import type {
-  GatewayConfig,
-  InboundReceiptEvent,
-  InboundNormalizedMessage,
-  ArmOutboxSseEvent,
-  ArmOutboxEventType,
+import {
+  GATEWAY_STORAGE_MODES,
+  type GatewayConfig,
+  type InboundReceiptEvent,
+  type InboundNormalizedMessage,
+  type ArmOutboxSseEvent,
+  type ArmOutboxEventType,
+  type StorageHealthResponse,
+  type ReceiptVerifyRequest,
+  type ReceiptVerifyResponse,
 } from './types.js';
 import { verifyMetaSignature, verifyBearerToken } from './crypto-verify.js';
 import { DedupCache } from './dedup-cache.js';
@@ -15,7 +20,9 @@ import {
   dispatchMetaWhatsappMessage,
   fetchAndAnalyzeMetaMediaWithGemini,
 } from './meta-outbound-client.js';
+import { PgArmStore, isArmWorkspaceId, type OutboxListenerHandle } from './pg-store.js';
 import {
+  normalizeBankReference,
   runArmSandboxSimulationTurn,
   scanOutboundMessageDlp,
   evaluateMeta24hFreeWindow,
@@ -46,6 +53,10 @@ export class InboundGatewayServer {
   private readonly server: Server;
   private readonly config: GatewayConfig;
   private readonly dedupCache: DedupCache;
+  private readonly pgStore: PgArmStore | null;
+  private outboxListener: OutboxListenerHandle | null = null;
+  private readonly seenPgOutboxIds: Set<number> = new Set();
+  private readonly memoryVerifiedReceipts: Map<string, string> = new Map();
   private readonly pendingEvents: InboundReceiptEvent[] = [];
   private readonly outboxEvents: ArmOutboxSseEvent[] = [];
   private outboxSeq = 0;
@@ -53,10 +64,22 @@ export class InboundGatewayServer {
   private readonly sseClients: Set<ServerResponse> = new Set();
   private knownDeals: PipelineDeal[] = [];
 
-  constructor(config: GatewayConfig) {
+  constructor(config: GatewayConfig, pgStore?: PgArmStore) {
     this.config = config;
     this.dedupCache = new DedupCache(config.idempotencyTtlSeconds);
-    this.server = createServer((req, res) => this.handleRequest(req, res));
+    this.pgStore =
+      pgStore ??
+      (config.databaseUrl?.trim() ? new PgArmStore(config.databaseUrl.trim()) : null);
+    this.server = createServer((req, res) => {
+      void this.handleRequest(req, res).catch((err: unknown) => {
+        if (!res.headersSent) {
+          this.sendJson(res, 500, {
+            error: 'INTERNAL_SERVER_ERROR',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    });
   }
 
   setKnownDeals(deals: PipelineDeal[]): void {
@@ -150,7 +173,20 @@ export class InboundGatewayServer {
     return queued;
   }
 
-  start(): Promise<number> {
+  async start(): Promise<number> {
+    if (this.pgStore) {
+      try {
+        this.outboxListener = await this.pgStore.startOutboxListener((evt) => {
+          this.handlePgOutboxNotification(evt);
+        });
+      } catch (err: unknown) {
+        console.warn(
+          '[P2P-INBOUND-GATEWAY] Outbox listener deferred:',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
+
     return new Promise((resolve, reject) => {
       this.server.listen(this.config.port, '0.0.0.0', () => {
         const addr = this.server.address();
@@ -161,7 +197,7 @@ export class InboundGatewayServer {
     });
   }
 
-  stop(): Promise<void> {
+  async stop(): Promise<void> {
     this.dedupCache.destroy();
     for (const client of this.sseClients) {
       try {
@@ -171,6 +207,15 @@ export class InboundGatewayServer {
       }
     }
     this.sseClients.clear();
+
+    if (this.outboxListener) {
+      await this.outboxListener.stop();
+      this.outboxListener = null;
+    }
+    if (this.pgStore) {
+      await this.pgStore.close();
+    }
+
     return new Promise((resolve) => {
       this.server.close(() => resolve());
     });
@@ -356,21 +401,31 @@ export class InboundGatewayServer {
       return;
     }
 
+    // Route: GET /api/arm/health/storage (Storage & PostgreSQL RLS/pgvector status)
+    if (method === 'GET' && pathname === '/api/arm/health/storage') {
+      await this.handleStorageHealth(res);
+      return;
+    }
+
+    // Route: POST /api/arm/receipts/verify (Atomic anti-replay bank reference check)
+    if (method === 'POST' && pathname === '/api/arm/receipts/verify') {
+      await this.handleVerifyReceipt(req, res);
+      return;
+    }
+
     // Route: GET /api/arm/outbox (Replay missed ARM outbox events by cursor & workspace)
     if (method === 'GET' && pathname === '/api/arm/outbox') {
       const sinceId = Number(parsedUrl.searchParams.get('sinceId') || 0);
       const workspaceId = (parsedUrl.searchParams.get('workspaceId') || undefined) as
         | ArmWorkspaceId
         | undefined;
-      const events = this.getOutboxEventsSince(sinceId, workspaceId);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          count: events.length,
-          lastEventId: this.outboxSeq,
-          events,
-        }),
-      );
+      const events = await this.fetchOutboxEventsSince(sinceId, workspaceId);
+      const lastEventId = events.reduce((maxId, evt) => Math.max(maxId, evt.id), this.outboxSeq);
+      this.sendJson(res, 200, {
+        count: events.length,
+        lastEventId,
+        events,
+      });
       return;
     }
 
@@ -391,7 +446,7 @@ export class InboundGatewayServer {
       const simulation = runArmSandboxSimulationTurn({ workspaceId, personaId });
 
       let emitted = 0;
-      this.appendArmOutboxEvent(workspaceId, 'pipeline_transition', `sbx-${workspaceId}`, {
+      await this.persistOutboxEvent(workspaceId, 'pipeline_transition', `sbx-${workspaceId}`, {
         fromStageSlug: simulation.fromStageSlug,
         toStageSlug: simulation.toStageSlug,
         updatedScore: simulation.updatedScore,
@@ -400,7 +455,7 @@ export class InboundGatewayServer {
       emitted++;
 
       if (simulation.queuedApproval) {
-        this.appendArmOutboxEvent(workspaceId, 'approval_requested', simulation.queuedApproval.id, {
+        await this.persistOutboxEvent(workspaceId, 'approval_requested', simulation.queuedApproval.id, {
           approval: simulation.queuedApproval,
           isSandbox: true,
         });
@@ -470,7 +525,7 @@ export class InboundGatewayServer {
         templateName: body.templateName,
       });
 
-      const evt = this.appendArmOutboxEvent(
+      const evt = await this.persistOutboxEvent(
         workspaceId,
         'message_received',
         body.recipientPhone || 'outbound',
@@ -519,7 +574,7 @@ export class InboundGatewayServer {
       const decision: ArmApprovalStatus = body.decision || 'APPROVED';
       const approvalId = body.approvalId || `app-${Date.now()}`;
 
-      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', approvalId, {
+      const evt = await this.persistOutboxEvent(workspaceId, 'agent_run', approvalId, {
         approvalId,
         decision,
         approvedText: body.approvedText || null,
@@ -575,7 +630,7 @@ export class InboundGatewayServer {
         agentRole: body.agentRole,
       });
 
-      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', 'replay-dry-run', {
+      const evt = await this.persistOutboxEvent(workspaceId, 'agent_run', 'replay-dry-run', {
         replay,
         circuitBreaker,
       });
@@ -630,7 +685,7 @@ export class InboundGatewayServer {
         estimatedDealValue: body.estimatedDealValue ?? 2400,
       });
 
-      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', 'pre-call-briefing', {
+      const evt = await this.persistOutboxEvent(workspaceId, 'agent_run', 'pre-call-briefing', {
         briefing,
       });
 
@@ -685,7 +740,7 @@ export class InboundGatewayServer {
         sku: body.sku || defaultSku,
       });
 
-      const evt = this.appendArmOutboxEvent(workspaceId, 'approval_requested', processed.approvalEntry.id, {
+      const evt = await this.persistOutboxEvent(workspaceId, 'approval_requested', processed.approvalEntry.id, {
         approval: processed.approvalEntry,
         recommendedStageSlug: processed.recommendedStageSlug,
         detectedSplitPayment: processed.detectedSplitPayment,
@@ -723,7 +778,7 @@ export class InboundGatewayServer {
         return;
       }
 
-      const events = this.runAntiGhostingSweep(body.candidates || []);
+      const events = await this.runAntiGhostingSweepAsync(body.candidates || []);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -789,7 +844,7 @@ export class InboundGatewayServer {
           ? 'pipeline_transition'
           : 'agent_run';
 
-      const evt = this.appendArmOutboxEvent(workspaceId, evtType, defaultLead.id, {
+      const evt = await this.persistOutboxEvent(workspaceId, evtType, defaultLead.id, {
         ...execRes.outboxPayload,
         approval: execRes.approvalEntry,
       });
@@ -817,7 +872,7 @@ export class InboundGatewayServer {
       const queryLastId = Number(parsedUrl.searchParams.get('lastEventId') || 0);
       const resumeCursor = Math.max(headerLastId, queryLastId);
       if (resumeCursor > 0) {
-        const missed = this.getOutboxEventsSince(resumeCursor);
+        const missed = await this.fetchOutboxEventsSince(resumeCursor);
         for (const evt of missed) {
           res.write(`id: ${evt.id}\nevent: arm_event\ndata: ${JSON.stringify(evt)}\n\n`);
         }
@@ -834,6 +889,258 @@ export class InboundGatewayServer {
     // Default 404
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'NOT_FOUND' }));
+  }
+
+  private async handleStorageHealth(res: ServerResponse): Promise<void> {
+    if (!this.pgStore) {
+      const payload: StorageHealthResponse = {
+        ok: true,
+        mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+        postgresConnected: false,
+        rlsActive: false,
+      };
+      this.sendJson(res, 200, payload);
+      return;
+    }
+
+    const health = await this.pgStore.healthCheck();
+    const payload: StorageHealthResponse = {
+      ok: health.connected,
+      mode: GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR,
+      postgresConnected: health.connected,
+      latencyMs: health.latencyMs,
+      rlsActive: health.rlsActive,
+      ...(health.error ? { error: health.error } : {}),
+    };
+    this.sendJson(res, health.connected ? 200 : 503, payload);
+  }
+
+  private async handleVerifyReceipt(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const rawBody = await this.readRawBody(req);
+    let rawJson: unknown;
+    try {
+      rawJson = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      this.sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });
+      return;
+    }
+
+    const validated = this.validateReceiptVerifyPayload(rawJson);
+    if (!validated.ok) {
+      this.sendJson(res, 400, { ok: false, error: validated.error });
+      return;
+    }
+
+    const parsedReq = validated.data;
+    if (this.pgStore) {
+      const result = await this.pgStore.recordPaymentReceipt({
+        workspaceId: parsedReq.workspaceId,
+        bankRailId: parsedReq.bankRailId,
+        referenceCode: parsedReq.referenceCode,
+        amountFiat: parsedReq.amountFiat,
+        currency: parsedReq.currency,
+        dealId: parsedReq.dealId,
+        senderName: parsedReq.senderName,
+        rawText: parsedReq.rawText,
+        channel: parsedReq.channel,
+      });
+
+      const response: ReceiptVerifyResponse = {
+        ok: !result.collision,
+        mode: GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR,
+        recorded: result.recorded,
+        collision: result.collision,
+        workspaceId: parsedReq.workspaceId,
+        bankRailId: parsedReq.bankRailId,
+        normalizedReference: result.normalizedReference,
+        ...(result.receipt?.id ? { receiptId: result.receipt.id } : {}),
+        ...(result.existingReceiptId ? { existingReceiptId: result.existingReceiptId } : {}),
+        ...(result.receipt ? { dealId: result.receipt.dealId } : {}),
+      };
+      this.sendJson(res, result.collision ? 409 : 200, response);
+      return;
+    }
+
+    const normalizedRef = normalizeBankReference(parsedReq.referenceCode);
+    const dedupKey = `${parsedReq.workspaceId}::${parsedReq.bankRailId}::${normalizedRef}`;
+    const existingReceiptId = this.memoryVerifiedReceipts.get(dedupKey);
+    if (existingReceiptId) {
+      const collisionResp: ReceiptVerifyResponse = {
+        ok: false,
+        mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+        recorded: false,
+        collision: true,
+        workspaceId: parsedReq.workspaceId,
+        bankRailId: parsedReq.bankRailId,
+        normalizedReference: normalizedRef,
+        existingReceiptId,
+      };
+      this.sendJson(res, 409, collisionResp);
+      return;
+    }
+
+    const receiptId = `mem-rcpt-${randomUUID()}`;
+    this.memoryVerifiedReceipts.set(dedupKey, receiptId);
+    const okResp: ReceiptVerifyResponse = {
+      ok: true,
+      mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+      recorded: true,
+      collision: false,
+      workspaceId: parsedReq.workspaceId,
+      bankRailId: parsedReq.bankRailId,
+      normalizedReference: normalizedRef,
+      receiptId,
+      dealId: parsedReq.dealId ?? null,
+    };
+    this.sendJson(res, 200, okResp);
+  }
+
+  private validateReceiptVerifyPayload(
+    input: unknown,
+  ): { ok: true; data: ReceiptVerifyRequest } | { ok: false; error: string } {
+    if (typeof input !== 'object' || input === null) {
+      return { ok: false, error: 'INVALID_PAYLOAD' };
+    }
+    const record = input as Record<string, unknown>;
+    if (!isArmWorkspaceId(record['workspaceId'])) {
+      return { ok: false, error: 'INVALID_WORKSPACE_ID' };
+    }
+    const bankRailId = typeof record['bankRailId'] === 'string' ? record['bankRailId'].trim() : '';
+    if (!bankRailId) {
+      return { ok: false, error: 'MISSING_BANK_RAIL_ID' };
+    }
+    const rawRef = typeof record['referenceCode'] === 'string' ? record['referenceCode'] : '';
+    const normalizedRef = normalizeBankReference(rawRef);
+    if (!normalizedRef || normalizedRef.length < 4) {
+      return { ok: false, error: 'INVALID_REFERENCE_CODE' };
+    }
+    const amountFiat = record['amountFiat'];
+    if (typeof amountFiat !== 'number' || !Number.isFinite(amountFiat) || amountFiat <= 0) {
+      return { ok: false, error: 'INVALID_AMOUNT_FIAT' };
+    }
+
+    return {
+      ok: true,
+      data: {
+        workspaceId: record['workspaceId'],
+        bankRailId,
+        referenceCode: normalizedRef,
+        amountFiat,
+        currency: typeof record['currency'] === 'string' ? record['currency'].trim() : undefined,
+        dealId: typeof record['dealId'] === 'string' ? record['dealId'].trim() || undefined : undefined,
+        senderName:
+          typeof record['senderName'] === 'string' ? record['senderName'].trim() || undefined : undefined,
+        rawText: typeof record['rawText'] === 'string' ? record['rawText'] : undefined,
+        channel: typeof record['channel'] === 'string' ? record['channel'].trim() || undefined : undefined,
+      },
+    };
+  }
+
+  private async runAntiGhostingSweepAsync(
+    candidates: ReadonlyArray<{
+      workspaceId: ArmWorkspaceId;
+      leadId: string;
+      leadName: string;
+      lastInboundTimestampMs: number;
+      followupAttempts: number;
+      painPointMemory: string;
+    }>,
+    nowTimestampMs = Date.now(),
+  ): Promise<ArmOutboxSseEvent[]> {
+    if (!this.pgStore) {
+      return this.runAntiGhostingSweep(candidates, nowTimestampMs);
+    }
+
+    const queued: ArmOutboxSseEvent[] = [];
+    for (const c of candidates) {
+      const res = evaluateGhostingFollowUp({
+        workspaceId: c.workspaceId,
+        leadId: c.leadId,
+        leadName: c.leadName,
+        lastInboundTimestampMs: c.lastInboundTimestampMs,
+        nowTimestampMs,
+        followupAttempts: c.followupAttempts,
+        painPointMemory: c.painPointMemory,
+      });
+      if (res.shouldQueueFollowUp && res.approvalEntry) {
+        queued.push(
+          await this.persistOutboxEvent(c.workspaceId, 'approval_requested', res.approvalEntry.id, {
+            approval: res.approvalEntry,
+            requiresHsmTemplate: res.requiresHsmTemplate,
+          }),
+        );
+      }
+    }
+    return queued;
+  }
+
+  private async persistOutboxEvent(
+    workspaceId: ArmWorkspaceId,
+    eventType: ArmOutboxEventType,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): Promise<ArmOutboxSseEvent> {
+    if (!this.pgStore) {
+      return this.appendArmOutboxEvent(workspaceId, eventType, aggregateId, payload);
+    }
+
+    try {
+      const evt = await this.pgStore.appendOutboxEvent(workspaceId, eventType, aggregateId, payload);
+      this.recordAndBroadcastOutboxEvent(evt);
+      return evt;
+    } catch (err: unknown) {
+      console.warn(
+        '[P2P-INBOUND-GATEWAY] PG outbox append failed, using memory fallback:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return this.appendArmOutboxEvent(workspaceId, eventType, aggregateId, payload);
+    }
+  }
+
+  private async fetchOutboxEventsSince(
+    sinceId = 0,
+    workspaceId?: ArmWorkspaceId,
+  ): Promise<ArmOutboxSseEvent[]> {
+    if (!this.pgStore) {
+      return this.getOutboxEventsSince(sinceId, workspaceId);
+    }
+    try {
+      return await this.pgStore.getOutboxEventsSince(sinceId, workspaceId);
+    } catch (err: unknown) {
+      console.warn(
+        '[P2P-INBOUND-GATEWAY] PG outbox query failed, using memory fallback:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return this.getOutboxEventsSince(sinceId, workspaceId);
+    }
+  }
+
+  private handlePgOutboxNotification(evt: ArmOutboxSseEvent): void {
+    if (this.seenPgOutboxIds.has(evt.id)) {
+      return;
+    }
+    this.recordAndBroadcastOutboxEvent(evt);
+  }
+
+  private recordAndBroadcastOutboxEvent(evt: ArmOutboxSseEvent): void {
+    this.seenPgOutboxIds.add(evt.id);
+    if (this.seenPgOutboxIds.size > 2000) {
+      const oldest = this.seenPgOutboxIds.values().next().value;
+      if (typeof oldest === 'number') {
+        this.seenPgOutboxIds.delete(oldest);
+      }
+    }
+    this.outboxSeq = Math.max(this.outboxSeq, evt.id);
+    this.outboxEvents.push(evt);
+    if (this.outboxEvents.length > 1000) {
+      this.outboxEvents.shift();
+    }
+    this.broadcastSseEvent('arm_event', evt, evt.id);
+  }
+
+  private sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
   }
 
   private broadcastSseEvent(event: string, data: unknown, id?: number): void {

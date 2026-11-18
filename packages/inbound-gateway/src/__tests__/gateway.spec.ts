@@ -588,4 +588,319 @@ describe('Inbound Gateway - Server Endpoints', () => {
     expect(sweepBody.success).toBe(true);
     expect(sweepBody.queuedCount).toBe(1);
   });
+
+  it('serves GET /api/arm/health/storage and POST /api/arm/receipts/verify in MEMORY_FALLBACK mode when databaseUrl is omitted', async () => {
+    const healthRes = await fetch(`http://127.0.0.1:${port}/api/arm/health/storage`);
+    expect(healthRes.status).toBe(200);
+    const healthBody = (await healthRes.json()) as {
+      ok: boolean;
+      mode: string;
+      postgresConnected: boolean;
+      rlsActive: boolean;
+    };
+    expect(healthBody).toEqual({
+      ok: true,
+      mode: 'MEMORY_FALLBACK',
+      postgresConnected: false,
+      rlsActive: false,
+    });
+
+    const invalidRes = await fetch(`http://127.0.0.1:${port}/api/arm/receipts/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId: 'P2P_DESK', bankRailId: '', referenceCode: '12', amountFiat: -5 }),
+    });
+    expect(invalidRes.status).toBe(400);
+
+    const firstRes = await fetch(`http://127.0.0.1:${port}/api/arm/receipts/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'P2P_DESK',
+        bankRailId: 'rail-banesco-1',
+        referenceCode: 'REF-445566',
+        amountFiat: 12500,
+        dealId: 'deal-77',
+      }),
+    });
+    expect(firstRes.status).toBe(200);
+    const firstBody = (await firstRes.json()) as {
+      ok: boolean;
+      mode: string;
+      recorded: boolean;
+      collision: boolean;
+      normalizedReference: string;
+    };
+    expect(firstBody.ok).toBe(true);
+    expect(firstBody.mode).toBe('MEMORY_FALLBACK');
+    expect(firstBody.recorded).toBe(true);
+    expect(firstBody.collision).toBe(false);
+    expect(firstBody.normalizedReference).toBe('REF445566');
+
+    // Replay with formatting variation collides cleanly
+    const replayRes = await fetch(`http://127.0.0.1:${port}/api/arm/receipts/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'P2P_DESK',
+        bankRailId: 'rail-banesco-1',
+        referenceCode: 'ref 445566',
+        amountFiat: 12500,
+      }),
+    });
+    expect(replayRes.status).toBe(409);
+    const replayBody = (await replayRes.json()) as {
+      ok: boolean;
+      recorded: boolean;
+      collision: boolean;
+      normalizedReference: string;
+    };
+    expect(replayBody.ok).toBe(false);
+    expect(replayBody.recorded).toBe(false);
+    expect(replayBody.collision).toBe(true);
+    expect(replayBody.normalizedReference).toBe('REF445566');
+
+    // Same reference in another workspace silo is isolated and accepted
+    const otherSiloRes = await fetch(`http://127.0.0.1:${port}/api/arm/receipts/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'FINANCE_360',
+        bankRailId: 'rail-banesco-1',
+        referenceCode: 'REF445566',
+        amountFiat: 12500,
+      }),
+    });
+    expect(otherSiloRes.status).toBe(200);
+  });
+});
+
+describe('Inbound Gateway - PostgreSQL Store Delegation Mode', () => {
+  it('delegates storage health, receipt verification, and outbox queries to PgArmStore when configured', async () => {
+    const { PgArmStore } = await import('../pg-store.js');
+    const mockPgStore = {
+      healthCheck: async () => ({
+        connected: true,
+        latencyMs: 4,
+        rlsActive: true,
+        pgvectorInstalled: true,
+      }),
+      recordPaymentReceipt: async () => ({
+        recorded: false,
+        collision: true,
+        normalizedReference: '99881122',
+        existingReceiptId: 'pg-rcpt-01',
+      }),
+      appendOutboxEvent: async (
+        workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360',
+        eventType: 'pipeline_transition' | 'approval_requested' | 'message_received' | 'agent_run',
+        aggregateId: string,
+        payload: Record<string, unknown>,
+      ) => ({
+        id: 501,
+        workspaceId,
+        eventType,
+        aggregateId,
+        payload,
+        timestamp: 1740000005000,
+      }),
+      getOutboxEventsSince: async () => [
+        {
+          id: 501,
+          workspaceId: 'ARM_B2B' as const,
+          eventType: 'agent_run' as const,
+          aggregateId: 'app-501',
+          payload: { ok: true },
+          timestamp: 1740000005000,
+        },
+      ],
+      startOutboxListener: async () => ({ stop: async () => undefined }),
+      close: async () => undefined,
+    } as unknown as InstanceType<typeof PgArmStore>;
+
+    const pgServer = new InboundGatewayServer(
+      {
+        port: 0,
+        targetScope: 'P2P_DESK',
+        idempotencyTtlSeconds: 60,
+        databaseUrl: 'postgresql://postgres:postgres@localhost:5432/arm',
+      },
+      mockPgStore,
+    );
+    const pgPort = await pgServer.start();
+
+    try {
+      const healthRes = await fetch(`http://127.0.0.1:${pgPort}/api/arm/health/storage`);
+      expect(healthRes.status).toBe(200);
+      const healthBody = (await healthRes.json()) as {
+        ok: boolean;
+        mode: string;
+        postgresConnected: boolean;
+        latencyMs: number;
+        rlsActive: boolean;
+      };
+      expect(healthBody).toEqual({
+        ok: true,
+        mode: 'POSTGRES_PGVECTOR',
+        postgresConnected: true,
+        latencyMs: 4,
+        rlsActive: true,
+      });
+
+      const verifyRes = await fetch(`http://127.0.0.1:${pgPort}/api/arm/receipts/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: 'P2P_DESK',
+          bankRailId: 'rail-1',
+          referenceCode: '99881122',
+          amountFiat: 500,
+        }),
+      });
+      expect(verifyRes.status).toBe(409);
+      const verifyBody = (await verifyRes.json()) as {
+        mode: string;
+        collision: boolean;
+        existingReceiptId: string;
+      };
+      expect(verifyBody.mode).toBe('POSTGRES_PGVECTOR');
+      expect(verifyBody.collision).toBe(true);
+      expect(verifyBody.existingReceiptId).toBe('pg-rcpt-01');
+
+      const outboxRes = await fetch(`http://127.0.0.1:${pgPort}/api/arm/outbox?sinceId=500&workspaceId=ARM_B2B`);
+      expect(outboxRes.status).toBe(200);
+      const outboxBody = (await outboxRes.json()) as { count: number; lastEventId: number };
+      expect(outboxBody.count).toBe(1);
+      expect(outboxBody.lastEventId).toBe(501);
+    } finally {
+      await pgServer.stop();
+    }
+  });
+
+  it('returns 503 on GET /api/arm/health/storage when Postgres is disconnected and streams LISTEN/NOTIFY without duplicates', async () => {
+    const http = await import('node:http');
+    const { PgArmStore } = await import('../pg-store.js');
+    type OutboxCallback = (evt: {
+      id: number;
+      workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
+      eventType: 'pipeline_transition' | 'approval_requested' | 'message_received' | 'agent_run';
+      aggregateId: string;
+      payload: Record<string, unknown>;
+      timestamp: number;
+    }) => void;
+    const listenerRef: { cb: OutboxCallback | null } = { cb: null };
+
+    const mockPgStore = {
+      healthCheck: async () => ({
+        connected: false,
+        latencyMs: 12,
+        rlsActive: false,
+        pgvectorInstalled: false,
+        error: 'connection refused',
+      }),
+      appendOutboxEvent: async (
+        workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360',
+        eventType: 'pipeline_transition' | 'approval_requested' | 'message_received' | 'agent_run',
+        aggregateId: string,
+        payload: Record<string, unknown>,
+      ) => ({
+        id: 800,
+        workspaceId,
+        eventType,
+        aggregateId,
+        payload,
+        timestamp: 1740000008000,
+      }),
+      getOutboxEventsSince: async () => [],
+      startOutboxListener: async (onEvent: OutboxCallback) => {
+        listenerRef.cb = onEvent;
+        return { stop: async () => undefined };
+      },
+      close: async () => undefined,
+    } as unknown as InstanceType<typeof PgArmStore>;
+
+    const pgServer = new InboundGatewayServer(
+      {
+        port: 0,
+        targetScope: 'P2P_DESK',
+        idempotencyTtlSeconds: 60,
+        databaseUrl: 'postgresql://postgres:postgres@localhost:5432/arm',
+      },
+      mockPgStore,
+    );
+    const pgPort = await pgServer.start();
+
+    const receivedIds: number[] = [];
+    const sseReq = http.request(
+      `http://127.0.0.1:${pgPort}/api/events`,
+      { headers: { Accept: 'text/event-stream' } },
+      (res) => {
+        let buffer = '';
+        res.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf8');
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() ?? '';
+          for (const block of blocks) {
+            if (block.includes('event: arm_event')) {
+              const match = block.match(/data: (.*)/);
+              if (match?.[1]) {
+                const parsed = JSON.parse(match[1]) as { id: number };
+                receivedIds.push(parsed.id);
+              }
+            }
+          }
+        });
+      },
+    );
+    sseReq.end();
+
+    try {
+      await new Promise((r) => setTimeout(r, 50));
+
+      const downRes = await fetch(`http://127.0.0.1:${pgPort}/api/arm/health/storage`);
+      expect(downRes.status).toBe(503);
+      const downBody = (await downRes.json()) as {
+        ok: boolean;
+        mode: string;
+        postgresConnected: boolean;
+      };
+      expect(downBody.ok).toBe(false);
+      expect(downBody.mode).toBe('POSTGRES_PGVECTOR');
+      expect(downBody.postgresConnected).toBe(false);
+
+      // Write through gateway (id 800), then simulate PG NOTIFY echoing id 800 + external id 801
+      await fetch(`http://127.0.0.1:${pgPort}/api/arm/approvals/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: 'ARM_B2B', approvalId: 'app-800', decision: 'APPROVED' }),
+      });
+
+      listenerRef.cb?.({
+        id: 800,
+        workspaceId: 'ARM_B2B',
+        eventType: 'agent_run',
+        aggregateId: 'app-800',
+        payload: {},
+        timestamp: 1740000008000,
+      });
+      listenerRef.cb?.({
+        id: 801,
+        workspaceId: 'P2P_DESK',
+        eventType: 'pipeline_transition',
+        aggregateId: 'lead-801',
+        payload: { stage: 'STAGE_2_TRANSIT' },
+        timestamp: 1740000008100,
+      });
+
+      for (let i = 0; i < 20; i++) {
+        if (receivedIds.length >= 2) break;
+        await new Promise((r) => setTimeout(r, 30));
+      }
+
+      expect(receivedIds).toEqual([800, 801]);
+    } finally {
+      sseReq.destroy();
+      await pgServer.stop();
+    }
+  });
 });

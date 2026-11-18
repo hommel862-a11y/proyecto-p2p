@@ -9,6 +9,7 @@ export * from './dedup-cache.js';
 export * from './meta-webhook-parser.js';
 export * from './receipt-intake.js';
 export * from './meta-outbound-client.js';
+export * from './pg-store.js';
 export * from './server.js';
 
 const port = Number(process.env.INBOUND_GATEWAY_PORT || process.env.GATEWAY_PORT || 3030);
@@ -23,6 +24,7 @@ const config: GatewayConfig = {
   apiSecretToken: process.env.API_SECRET_TOKEN,
   targetScope,
   idempotencyTtlSeconds: Number(process.env.IDEMPOTENCY_TTL_SECONDS || 3600),
+  databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
 };
 
 export const serverInstance = new InboundGatewayServer(config);
@@ -32,9 +34,14 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
   serverInstance
     .start()
     .then((listeningPort) => {
-      console.log(`[P2P-INBOUND-GATEWAY] Running on port ${listeningPort} [Scope: ${config.targetScope}]`);
+      const storageMode = config.databaseUrl ? 'POSTGRES_PGVECTOR' : 'MEMORY_FALLBACK';
+      console.log(
+        `[P2P-INBOUND-GATEWAY] Running on port ${listeningPort} [Scope: ${config.targetScope}] [Storage: ${storageMode}]`,
+      );
       console.log(`[P2P-INBOUND-GATEWAY] Endpoints ready:`);
       console.log(`  - GET  /health`);
+      console.log(`  - GET  /api/arm/health/storage`);
+      console.log(`  - POST /api/arm/receipts/verify`);
       console.log(`  - GET  /webhook/meta (verification)`);
       console.log(`  - POST /webhook/meta (HMAC webhook intake)`);
       console.log(`  - POST /api/inbound/receipt (Bearer manual/receipt intake)`);

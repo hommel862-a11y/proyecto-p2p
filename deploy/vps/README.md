@@ -77,13 +77,27 @@ El script instalará automáticamente Node.js 20 LTS, compilará el daemon de Ty
 
 ---
 
-## 3. Alternativa con Docker / Docker Compose
+## 3. Alternativa con Docker / Docker Compose (Incluye PostgreSQL 17 + pgvector)
 
-Si preferís desplegar con Docker:
+El archivo `docker-compose.yml` aprovisiona tres servicios coordinados:
+1. `telegram-sentinel`: Bot de alertas, data lake y monitoreo 24/7 en el puerto `3000`.
+2. `postgres` (`pgvector/pgvector:pg17-alpine`): Base de datos relacional y vectorial con volumen persistente `pg_arm_data`, healthcheck `pg_isready`, aislamiento estricto por silo mediante Row-Level Security (`ARM_B2B`, `P2P_DESK`, `FINANCE_360`) y carga automática de las migraciones `001_init_arm_schema.sql` y `002_crm_unification_and_hardening.sql`.
+3. `inbound-gateway`: Pasarela omnicanal en el puerto `3030` con espera automática (`condition: service_healthy`), escucha en tiempo real `LISTEN/NOTIFY` sobre `arm_outbox_channel` hacia SSE (`/api/events`) y verificación anti-replay de comprobantes (`POST /api/arm/receipts/verify`, `GET /api/arm/health/storage`). Si `DATABASE_URL` no está configurado, opera automáticamente en modo `MEMORY_FALLBACK`.
+
+Para desplegar con Docker Compose:
 
 ```bash
 cd deploy/vps
+cp .env.example .env
+# Edita .env con tus credenciales reales (incluyendo POSTGRES_PASSWORD y DATABASE_URL)
 docker compose up -d --build
+```
+
+Para verificar el estado de PostgreSQL y la salud de almacenamiento del gateway:
+
+```bash
+docker compose ps
+curl -s http://localhost:3030/api/arm/health/storage
 ```
 
 ---
