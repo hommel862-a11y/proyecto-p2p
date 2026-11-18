@@ -200,6 +200,21 @@ describe('InboundGatewayService', () => {
       pgvectorAvailable: true,
     });
 
+    const pgvFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        mode: 'POSTGRES_PGVECTOR',
+        postgresConnected: true,
+        rlsActive: true,
+      }),
+    });
+    globalThis.fetch = pgvFetch as unknown as typeof fetch;
+
+    const pgvHealth = await service.fetchStorageHealth();
+    expect(pgvHealth.mode).toBe('POSTGRES_PGVECTOR');
+    expect(pgvHealth.pgvectorAvailable).toBe(true);
+
     const failingFetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
     globalThis.fetch = failingFetch as unknown as typeof fetch;
 
@@ -271,6 +286,21 @@ describe('InboundGatewayService', () => {
     expect(collision.collision).toBe(true);
     expect(collision.recorded).toBe(false);
     expect(collision.existingDealId).toBe('DEAL-10');
+
+    const backendKeyConflictFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        recorded: false,
+        collision: true,
+        existingReceiptId: 'rcpt-pg-99',
+        error: 'DUPLICATE_RECEIPT',
+      }),
+    });
+    globalThis.fetch = backendKeyConflictFetch as unknown as typeof fetch;
+
+    const backendCollision = await service.verifyReceiptWithGateway(payload);
+    expect(backendCollision.existingDealId).toBe('rcpt-pg-99');
 
     const networkErrorFetch = vi.fn().mockRejectedValue(new Error('Gateway timeout'));
     globalThis.fetch = networkErrorFetch as unknown as typeof fetch;

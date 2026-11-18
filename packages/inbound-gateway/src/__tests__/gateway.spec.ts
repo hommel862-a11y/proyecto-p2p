@@ -654,11 +654,15 @@ describe('Inbound Gateway - Server Endpoints', () => {
       recorded: boolean;
       collision: boolean;
       normalizedReference: string;
+      existingReceiptId?: string;
+      existingDealId?: string | null;
     };
     expect(replayBody.ok).toBe(false);
     expect(replayBody.recorded).toBe(false);
     expect(replayBody.collision).toBe(true);
     expect(replayBody.normalizedReference).toBe('REF445566');
+    expect(replayBody.existingReceiptId).toBeTruthy();
+    expect(replayBody.existingDealId).toBe('deal-77');
 
     // Same reference in another workspace silo is isolated and accepted
     const otherSiloRes = await fetch(`http://127.0.0.1:${port}/api/arm/receipts/verify`, {

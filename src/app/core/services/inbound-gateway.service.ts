@@ -12,6 +12,7 @@ export type GatewayConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED
 
 export const GATEWAY_STORAGE_MODES = {
   POSTGRES: 'POSTGRES',
+  POSTGRES_PGVECTOR: 'POSTGRES_PGVECTOR',
   MEMORY_FALLBACK: 'MEMORY_FALLBACK',
 } as const;
 
@@ -281,18 +282,20 @@ export class InboundGatewayService implements OnDestroy {
       }
 
       const data = (await res.json()) as Partial<GatewayStorageHealth>;
+      const inferredPgvector =
+        typeof data.pgvectorAvailable === 'boolean'
+          ? data.pgvectorAvailable
+          : data.mode === GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR;
       const health: GatewayStorageHealth = {
         ok: data.ok ?? true,
         mode:
           data.mode ??
           (data.postgresConnected
-            ? GATEWAY_STORAGE_MODES.POSTGRES
+            ? GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR
             : GATEWAY_STORAGE_MODES.MEMORY_FALLBACK),
         postgresConnected: Boolean(data.postgresConnected),
         rlsActive: Boolean(data.rlsActive),
-        ...(typeof data.pgvectorAvailable === 'boolean'
-          ? { pgvectorAvailable: data.pgvectorAvailable }
-          : {}),
+        ...(inferredPgvector ? { pgvectorAvailable: true } : typeof data.pgvectorAvailable === 'boolean' ? { pgvectorAvailable: data.pgvectorAvailable } : {}),
       };
       this.storageHealth.set(health);
       return health;
@@ -317,12 +320,21 @@ export class InboundGatewayService implements OnDestroy {
         signal: AbortSignal.timeout(4000),
       });
 
-      let data: Partial<VerifyGatewayReceiptResult> | null = null;
+      let data: (Partial<VerifyGatewayReceiptResult> & {
+        dealId?: string | null;
+        existingReceiptId?: string | null;
+      }) | null = null;
       try {
-        data = (await res.json()) as Partial<VerifyGatewayReceiptResult>;
+        data = (await res.json()) as Partial<VerifyGatewayReceiptResult> & {
+          dealId?: string | null;
+          existingReceiptId?: string | null;
+        };
       } catch {
         data = null;
       }
+
+      const resolvedExistingDealId =
+        data?.existingDealId ?? data?.dealId ?? data?.existingReceiptId ?? null;
 
       if (!res.ok) {
         const collision = Boolean(data?.collision);
@@ -331,7 +343,7 @@ export class InboundGatewayService implements OnDestroy {
           verified: false,
           recorded: false,
           collision,
-          ...(collision ? { existingDealId: data?.existingDealId ?? null } : {}),
+          ...(collision ? { existingDealId: resolvedExistingDealId } : {}),
           ...(data?.mode ? { mode: data.mode } : {}),
           error: data?.error || `HTTP ${res.status}`,
         };
@@ -343,7 +355,7 @@ export class InboundGatewayService implements OnDestroy {
         verified: data?.verified ?? !collision,
         recorded: data?.recorded ?? !collision,
         collision,
-        existingDealId: data?.existingDealId ?? null,
+        existingDealId: resolvedExistingDealId,
         ...(data?.mode ? { mode: data.mode } : {}),
         ...(data?.error ? { error: data.error } : {}),
       };

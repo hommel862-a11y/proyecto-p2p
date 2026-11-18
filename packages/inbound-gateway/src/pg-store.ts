@@ -90,6 +90,7 @@ export interface RecordPaymentReceiptResult {
   normalizedReference: string;
   receipt?: PaymentReceiptRecord;
   existingReceiptId?: string;
+  existingDealId?: string | null;
 }
 
 export interface BankRailUpsertInput {
@@ -519,21 +520,29 @@ export class PgArmStore {
       }
 
       let existingReceiptId: string | undefined;
+      let existingDealId: string | null = null;
       try {
-        existingReceiptId = await this.withWorkspaceTx(input.workspaceId, async (client) => {
+        const found = await this.withWorkspaceTx(input.workspaceId, async (client) => {
           const existingRes = await client.query(
             `
-            SELECT id FROM payment_receipts
+            SELECT id, deal_id FROM payment_receipts
             WHERE workspace_id = $1 AND bank_rail_id = $2 AND reference_code = $3
             LIMIT 1
             `,
             [input.workspaceId, input.bankRailId.trim(), normalizedReference],
           );
           const idVal = existingRes.rows[0]?.['id'];
-          return idVal != null ? String(idVal) : undefined;
+          const dealVal = existingRes.rows[0]?.['deal_id'];
+          return {
+            receiptId: idVal != null ? String(idVal) : undefined,
+            dealId: dealVal != null ? String(dealVal) : null,
+          };
         });
+        existingReceiptId = found.receiptId;
+        existingDealId = found.dealId;
       } catch {
         existingReceiptId = undefined;
+        existingDealId = null;
       }
 
       return {
@@ -541,6 +550,7 @@ export class PgArmStore {
         collision: true,
         normalizedReference,
         existingReceiptId,
+        existingDealId,
       };
     }
   }

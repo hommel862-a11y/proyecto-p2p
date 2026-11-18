@@ -71,5 +71,6 @@ export interface ReceiptVerifyResponse {
   normalizedReference: string;
   receiptId?: string;
   existingReceiptId?: string;
+  existingDealId?: string | null;
   dealId?: string | null;
 }

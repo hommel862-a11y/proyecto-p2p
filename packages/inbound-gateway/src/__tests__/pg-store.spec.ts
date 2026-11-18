@@ -271,8 +271,8 @@ describe('PgArmStore (PostgreSQL + RLS + pgvector)', () => {
             });
             return dupErr;
           }
-          if (text.includes('SELECT id FROM payment_receipts')) {
-            return { rows: [{ id: 'rcpt-uuid-1' }], rowCount: 1 };
+          if (text.includes('FROM payment_receipts') && text.includes('SELECT id')) {
+            return { rows: [{ id: 'rcpt-uuid-1', deal_id: 'deal-101' }], rowCount: 1 };
           }
           return { rows: [], rowCount: 0 };
         });
@@ -311,6 +311,7 @@ describe('PgArmStore (PostgreSQL + RLS + pgvector)', () => {
     expect(replay.collision).toBe(true);
     expect(replay.normalizedReference).toBe('88990011');
     expect(replay.existingReceiptId).toBe('rcpt-uuid-1');
+    expect(replay.existingDealId).toBe('deal-101');
   });
 
   it('upserts bank rails, lists rails by workspace, and records idempotent treasury settlements', async () => {

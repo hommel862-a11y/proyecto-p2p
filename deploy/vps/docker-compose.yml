@@ -3,6 +3,7 @@ services:
     build:
       context: ../../
       dockerfile: deploy/vps/Dockerfile
+      target: telegram-sentinel
     image: p2p-telegram-sentinel:latest
     container_name: p2p-telegram-sentinel
     restart: always
@@ -52,6 +53,7 @@ services:
     build:
       context: ../../
       dockerfile: deploy/vps/Dockerfile
+      target: inbound-gateway
     image: p2p-inbound-gateway:latest
     container_name: p2p-inbound-gateway
     command: ["node", "packages/inbound-gateway/dist/index.js"]

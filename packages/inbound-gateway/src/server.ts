@@ -56,7 +56,8 @@ export class InboundGatewayServer {
   private readonly pgStore: PgArmStore | null;
   private outboxListener: OutboxListenerHandle | null = null;
   private readonly seenPgOutboxIds: Set<number> = new Set();
-  private readonly memoryVerifiedReceipts: Map<string, string> = new Map();
+  private readonly memoryVerifiedReceipts: Map<string, { receiptId: string; dealId: string | null }> =
+    new Map();
   private readonly pendingEvents: InboundReceiptEvent[] = [];
   private readonly outboxEvents: ArmOutboxSseEvent[] = [];
   private outboxSeq = 0;
@@ -955,7 +956,11 @@ export class InboundGatewayServer {
         normalizedReference: result.normalizedReference,
         ...(result.receipt?.id ? { receiptId: result.receipt.id } : {}),
         ...(result.existingReceiptId ? { existingReceiptId: result.existingReceiptId } : {}),
-        ...(result.receipt ? { dealId: result.receipt.dealId } : {}),
+        ...(result.collision
+          ? { existingDealId: result.existingDealId ?? null }
+          : result.receipt
+            ? { dealId: result.receipt.dealId }
+            : {}),
       };
       this.sendJson(res, result.collision ? 409 : 200, response);
       return;
@@ -963,8 +968,8 @@ export class InboundGatewayServer {
 
     const normalizedRef = normalizeBankReference(parsedReq.referenceCode);
     const dedupKey = `${parsedReq.workspaceId}::${parsedReq.bankRailId}::${normalizedRef}`;
-    const existingReceiptId = this.memoryVerifiedReceipts.get(dedupKey);
-    if (existingReceiptId) {
+    const existingEntry = this.memoryVerifiedReceipts.get(dedupKey);
+    if (existingEntry) {
       const collisionResp: ReceiptVerifyResponse = {
         ok: false,
         mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
@@ -973,14 +978,16 @@ export class InboundGatewayServer {
         workspaceId: parsedReq.workspaceId,
         bankRailId: parsedReq.bankRailId,
         normalizedReference: normalizedRef,
-        existingReceiptId,
+        existingReceiptId: existingEntry.receiptId,
+        existingDealId: existingEntry.dealId,
       };
       this.sendJson(res, 409, collisionResp);
       return;
     }
 
     const receiptId = `mem-rcpt-${randomUUID()}`;
-    this.memoryVerifiedReceipts.set(dedupKey, receiptId);
+    const dealId = parsedReq.dealId?.trim() || null;
+    this.memoryVerifiedReceipts.set(dedupKey, { receiptId, dealId });
     const okResp: ReceiptVerifyResponse = {
       ok: true,
       mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
@@ -990,7 +997,7 @@ export class InboundGatewayServer {
       bankRailId: parsedReq.bankRailId,
       normalizedReference: normalizedRef,
       receiptId,
-      dealId: parsedReq.dealId ?? null,
+      dealId,
     };
     this.sendJson(res, 200, okResp);
   }
