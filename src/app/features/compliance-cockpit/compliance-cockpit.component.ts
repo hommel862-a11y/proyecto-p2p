@@ -26,7 +26,6 @@ import {
   buildContactWhatsAppReceipt,
   createDailyProfitSettlementForFinance360,
   calculateBankReconciliationAdjustment,
-  normalizeBankReference,
   CRM_STORAGE_KEYS,
   safeHydrateCrmCollection,
   validateAndSanitizeCrmBackupPayload,
@@ -76,12 +75,10 @@ import {
   type KanbanColumn,
   type InboundReceiptEvent,
   type MessagingChannel,
-  type AiOperatingMode,
   type OmnichannelMessage,
   type OmnichannelConversation,
   type MetaFreeWindowEvaluation,
   type AiTriageResult,
-  type CopyableBankBubbles,
   type CrmDocumentType,
   type BillingLineItem,
   type CrmBillingDocument,
@@ -128,6 +125,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
   private armEventSubscription: Subscription | null = null;
 
   constructor() {
+    this.hydrateArmPersistenceState();
     this.gatewaySubscription = this.inboundGateway.receipt$.subscribe((receipt) => {
       this.handleInboundReceipt(receipt);
     });
@@ -1040,7 +1038,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.promptClosingDeal.set(null);
   }
 
-  executeCloseDealModal(overrideDuplicate: boolean = false): void {
+  executeCloseDealModal(overrideDuplicate = false): void {
     const current = this.promptClosingDeal();
     if (!current) return;
     const ref = current.reference.trim();
@@ -1776,9 +1774,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const items = event.clipboardData?.items;
     if (!items) return;
 
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
+    for (const item of Array.from(items)) {
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
         if (file) {
           event.preventDefault();
           this.handlePastedImageFile(file);
@@ -2133,7 +2131,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.toast.success('Comprobante descargado en PNG.', 'Descargado');
   }
 
-  saveStudioDocument(createDeal: boolean = false): void {
+  saveStudioDocument(createDeal = false): void {
     const contact = this.contacts().find((c) => c.id === this.studioContactId());
     const totals = this.studioTotals();
     const docNum = this.studioDocNumber() || `DOC-${Date.now().toString().slice(-6)}`;
@@ -2468,8 +2466,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
   exportCatalogCsv(entity: CrmCsvCatalogEntity = this.csvCatalogTarget()): void {
     const scope = this.activeScope();
-    let csvContent = '';
-    let prefix = 'crm_catalog';
+    let csvContent: string;
+    let prefix: string;
 
     if (entity === 'CONTACTS') {
       csvContent = serializeContactsToCsv(this.contacts(), scope);
@@ -2598,9 +2596,11 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly editingApprovalText = signal<string>('');
   readonly editingSaveAsExample = signal<boolean>(true);
   readonly selectedArmLeadId = signal<string>('arm-lead-b2b-1');
+  readonly showArmCommandPalette = signal<boolean>(false);
+  readonly armCommandQuery = signal<string>('');
 
   readonly armKanbanCards = signal<
-    Array<{
+    {
       id: string;
       workspaceId: ArmWorkspaceId;
       leadName: string;
@@ -2613,9 +2613,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
       movedByAgentBadge: string;
       dealValueLabel: string;
       freeWindowLabel: string;
-      messages: Array<{ sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }>;
-      toolTraces: Array<{ toolName: string; latencyMs: number; status: string }>;
-    }>
+      messages: { sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }[];
+      toolTraces: { toolName: string; latencyMs: number; status: string }[];
+    }[]
   >([
     {
       id: 'arm-lead-b2b-1',
@@ -2814,6 +2814,64 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly armReplayComparisonResult = signal<ArmReplayComparisonResult | null>(null);
   readonly armCloserPreCallBriefing = signal<ArmCloserPreCallBriefing | null>(null);
 
+  readonly armCommandActions = [
+    { id: 'SILO_B2B', label: 'Cambiar a Silo ARM Comercial B2B', shortcut: '1' },
+    { id: 'SILO_P2P', label: 'Cambiar a Silo Mesa P2P & Liquidez', shortcut: '2' },
+    { id: 'SILO_360', label: 'Cambiar a Silo Finanzas & PyME 360', shortcut: '3' },
+    { id: 'SANDBOX_TURN', label: 'Simular Turno Sandbox ($0 Meta API)', shortcut: 'S' },
+    { id: 'REPLAY_DRY_RUN', label: 'Ejecutar Replay Determinista A/B ($0)', shortcut: 'R' },
+    { id: 'ANTI_GHOSTING', label: 'Escaneo Anti-Ghosting HSM (72h)', shortcut: 'G' },
+    { id: 'PRECALL_BRIEFING', label: 'Generar Briefing 15m Pre-Reunión', shortcut: 'B' },
+    { id: 'SYNC_LOCAL', label: 'Sincronizar Tratos Locales hacia Silos', shortcut: 'L' },
+    { id: 'APPROVE_FIRST', label: 'Aprobar primer ítem en Approval Queue', shortcut: 'A' },
+  ] as const;
+
+  readonly filteredArmCommands = computed(() => {
+    const q = this.armCommandQuery().trim().toLowerCase();
+    if (!q) return [...this.armCommandActions];
+    return this.armCommandActions.filter(
+      (cmd) =>
+        cmd.label.toLowerCase().includes(q) ||
+        cmd.id.toLowerCase().includes(q),
+    );
+  });
+
+  executeArmCommand(cmdId: string): void {
+    this.showArmCommandPalette.set(false);
+    this.armCommandQuery.set('');
+    switch (cmdId) {
+      case 'SILO_B2B':
+        this.setArmSilo('ARM_B2B');
+        break;
+      case 'SILO_P2P':
+        this.setArmSilo('P2P_DESK');
+        break;
+      case 'SILO_360':
+        this.setArmSilo('FINANCE_360');
+        break;
+      case 'SANDBOX_TURN':
+        this.triggerArmSandboxTurn();
+        break;
+      case 'REPLAY_DRY_RUN':
+        this.triggerArmDeterministicReplayDryRun();
+        break;
+      case 'ANTI_GHOSTING':
+        this.triggerAntiGhostingScanForSilo();
+        break;
+      case 'PRECALL_BRIEFING':
+        this.triggerCloserPreCallBriefingForSilo();
+        break;
+      case 'SYNC_LOCAL':
+        this.syncLocalDealsToArmSilos();
+        break;
+      case 'APPROVE_FIRST': {
+        const first = this.armApprovalQueueForSilo()[0];
+        if (first) this.approveArmQueueItem(first.id);
+        break;
+      }
+    }
+  }
+
   setArmSilo(silo: ArmWorkspaceId): void {
     this.activeArmSilo.set(silo);
     if (silo === 'P2P_DESK' || silo === 'FINANCE_360') {
@@ -2824,6 +2882,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
       this.selectedArmLeadId.set(firstCard.id);
     }
     this.editingApprovalId.set(null);
+    this.persistArmState();
   }
 
   selectArmLeadForInspector(cardId: string): void {
@@ -2845,11 +2904,28 @@ export class ComplianceCockpitComponent implements OnDestroy {
           : c,
       ),
     );
+    this.persistArmState();
   }
 
   @HostListener('window:keydown', ['$event'])
   onArmCommandKeydown(event: KeyboardEvent): void {
-    if (this.activeView() !== 'ARM_COMMAND') return;
+    const key = (event.key || '').toLowerCase();
+
+    if ((event.metaKey || event.ctrlKey) && key === 'k') {
+      event.preventDefault();
+      if (this.activeView() !== 'ARM_COMMAND') {
+        this.setView('ARM_COMMAND');
+      }
+      this.showArmCommandPalette.update((v) => !v);
+      return;
+    }
+
+    if (key === 'escape' && this.showArmCommandPalette()) {
+      this.showArmCommandPalette.set(false);
+      return;
+    }
+
+    if (this.activeView() !== 'ARM_COMMAND' || this.showArmCommandPalette()) return;
     const target = event.target as HTMLElement | null;
     if (
       target &&
@@ -2861,7 +2937,6 @@ export class ComplianceCockpitComponent implements OnDestroy {
       return;
     }
 
-    const key = (event.key || '').toLowerCase();
     if (key === '1') {
       this.setArmSilo('ARM_B2B');
       return;
@@ -2920,8 +2995,12 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
     if (sim.queuedApproval) {
       this.armApprovalQueue.set([sim.queuedApproval, ...this.armApprovalQueue()]);
+      if (typeof window !== 'undefined' && window.electron?.arm) {
+        void window.electron.arm.saveApproval(sim.queuedApproval);
+      }
     }
 
+    this.persistArmState();
     this.toast.info(
       `Simulación Sandbox (${silo}) ejecutada a $0 costo Meta API: ${sim.fromStageSlug} → ${sim.toStageSlug}`,
       'ARM Sandbox',
@@ -2947,6 +3026,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
       (target.proposedPayload['previewText'] as string) ||
       target.title;
     const finalMsg = editedText && editedText.trim().length > 0 ? editedText.trim() : proposedMsg;
+    const decision = finalMsg !== proposedMsg ? 'EDITED_AND_APPROVED' : 'APPROVED';
 
     if (saveAsExample && finalMsg !== proposedMsg) {
       const updatedExamples = recordShadowLearningCorrection(this.armShadowExamples(), {
@@ -2965,7 +3045,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
         a.id === id
           ? {
               ...a,
-              status: finalMsg !== proposedMsg ? 'EDITED_AND_APPROVED' : 'APPROVED',
+              status: decision,
               finalApprovedPayload: { ...a.proposedPayload, approvedMessage: finalMsg },
               saveAsExample,
             }
@@ -2987,6 +3067,26 @@ export class ComplianceCockpitComponent implements OnDestroy {
     };
     this.armAutonomousFeed.set([feedEvt, ...this.armAutonomousFeed()]);
     this.editingApprovalId.set(null);
+    this.persistArmState();
+
+    if (typeof window !== 'undefined' && window.electron?.arm) {
+      void window.electron.arm.resolveApproval({
+        id,
+        status: decision,
+        approvedText: finalMsg,
+        saveAsExample,
+      });
+    }
+    if (typeof this.inboundGateway.resolveArmApproval === 'function') {
+      void this.inboundGateway.resolveArmApproval({
+        workspaceId: target.workspaceId,
+        approvalId: id,
+        decision,
+        approvedText: finalMsg,
+        saveAsExample,
+      });
+    }
+
     this.toast.success(`Acción aprobada y despachada en ${target.workspaceId}.`, 'HITL Aprobado');
   }
 
@@ -2997,6 +3097,19 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.armApprovalQueue.set(
       this.armApprovalQueue().map((a) => (a.id === id ? { ...a, status: 'REJECTED' } : a)),
     );
+    this.persistArmState();
+
+    if (typeof window !== 'undefined' && window.electron?.arm) {
+      void window.electron.arm.resolveApproval({ id, status: 'REJECTED' });
+    }
+    if (typeof this.inboundGateway.resolveArmApproval === 'function') {
+      void this.inboundGateway.resolveArmApproval({
+        workspaceId: target.workspaceId,
+        approvalId: id,
+        decision: 'REJECTED',
+      });
+    }
+
     this.toast.warn(
       `Control humano activado para ${target.leadName} (${target.workspaceId}). Agentes en pausa.`,
       'Human Takeover',
@@ -3040,6 +3153,10 @@ export class ComplianceCockpitComponent implements OnDestroy {
       ...this.armAutonomousFeed(),
     ]);
     this.closerNoteTranscript.set('');
+    this.persistArmState();
+    if (typeof window !== 'undefined' && window.electron?.arm) {
+      void window.electron.arm.saveApproval(res.approvalEntry);
+    }
     this.toast.success('Nota post-llamada procesada y propuesta enviada a Approval Queue.', 'Closer Copilot');
   }
 
@@ -3061,6 +3178,10 @@ export class ComplianceCockpitComponent implements OnDestroy {
 
     if (ghostRes.shouldQueueFollowUp && ghostRes.approvalEntry) {
       this.armApprovalQueue.set([ghostRes.approvalEntry, ...this.armApprovalQueue()]);
+      this.persistArmState();
+      if (typeof window !== 'undefined' && window.electron?.arm) {
+        void window.electron.arm.saveApproval(ghostRes.approvalEntry);
+      }
       this.toast.info('Detectado prospecto sin respuesta (72h). Plantilla HSM encolada.', 'Anti-Ghosting');
     }
   }
@@ -3113,6 +3234,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const newCards = migrated.filter((m) => !existingIds.has(m.id));
     if (newCards.length > 0) {
       this.armKanbanCards.set([...newCards, ...this.armKanbanCards()]);
+      this.persistArmState();
       this.toast.success(
         `${newCards.length} trato(s) locales sincronizados hacia P2P_DESK / FINANCE_360 sin cruce de silos.`,
         'Migración Local ARM',
@@ -3121,12 +3243,47 @@ export class ComplianceCockpitComponent implements OnDestroy {
     return newCards.length;
   }
 
+  private hydrateArmPersistenceState(): void {
+    try {
+      const savedSilo = this.storage.get<ArmWorkspaceId>('p2p.arm.active_silo');
+      if (savedSilo === 'ARM_B2B' || savedSilo === 'P2P_DESK' || savedSilo === 'FINANCE_360') {
+        this.activeArmSilo.set(savedSilo);
+      }
+      const savedCards = this.storage.get<ReturnType<typeof this.armKanbanCards>>('p2p.arm.kanban_cards');
+      if (Array.isArray(savedCards) && savedCards.length > 0) {
+        this.armKanbanCards.set(savedCards);
+      }
+      const savedQueue = this.storage.get<ArmApprovalQueueItem[]>('p2p.arm.approval_queue');
+      if (Array.isArray(savedQueue)) {
+        this.armApprovalQueue.set(savedQueue);
+      }
+      const savedShadow = this.storage.get<ArmShadowExample[]>('p2p.arm.shadow_examples');
+      if (Array.isArray(savedShadow)) {
+        this.armShadowExamples.set(savedShadow);
+      }
+    } catch {
+      /* fallback safely */
+    }
+  }
+
+  private persistArmState(): void {
+    try {
+      this.storage.set('p2p.arm.active_silo', this.activeArmSilo());
+      this.storage.set('p2p.arm.kanban_cards', this.armKanbanCards());
+      this.storage.set('p2p.arm.approval_queue', this.armApprovalQueue());
+      this.storage.set('p2p.arm.shadow_examples', this.armShadowExamples());
+    } catch {
+      /* storage quota fallback */
+    }
+  }
+
   private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {
     if (evt.eventType === 'approval_requested' && evt.payload['approval']) {
       const approval = evt.payload['approval'] as ArmApprovalQueueItem;
       const exists = this.armApprovalQueue().some((a) => a.id === approval.id);
       if (!exists) {
         this.armApprovalQueue.set([approval, ...this.armApprovalQueue()]);
+        this.persistArmState();
       }
     }
     if (evt.eventType === 'pipeline_transition') {

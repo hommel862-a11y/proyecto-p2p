@@ -219,8 +219,15 @@
 
   <!-- Modal / Drawer de Creación y Edición -->
   @if (isEditorOpen()) {
-    <div class="modal-backdrop" (click)="closeModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && closeModal()"
+      (keydown.escape)="closeModal()"
+    >
+      <div class="modal-dialog">
         <header class="modal-header">
           <div class="modal-title-group">
             <h2 class="modal-title">
@@ -485,6 +492,40 @@
             </button>
           </footer>
         </form>
+      </div>
+    </div>
+  }
+
+  @if (pendingDeleteAgent(); as doomed) {
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && cancelDeleteAgent()"
+      (keydown.escape)="cancelDeleteAgent()"
+    >
+      <div class="modal-dialog">
+        <header class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-icon">⚠️</span>
+            <h2>Confirmar Eliminación de Agente</h2>
+          </div>
+          <button type="button" class="btn-close" (click)="cancelDeleteAgent()">✕</button>
+        </header>
+        <div class="modal-body">
+          <p>
+            ¿Confirmas la eliminación de <strong>{{ doomed.name }}</strong>? Se removerán sus permisos de skills asignados.
+          </p>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cancelDeleteAgent()">
+            Cancelar
+          </button>
+          <button type="button" class="btn btn-danger" (click)="executeConfirmedDeleteAgent()">
+            Eliminar Agente
+          </button>
+        </footer>
       </div>
     </div>
   }

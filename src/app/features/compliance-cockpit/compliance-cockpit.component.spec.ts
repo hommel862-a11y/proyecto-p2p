@@ -684,6 +684,27 @@ describe('ComplianceCockpitComponent', () => {
       const synced = component.syncLocalDealsToArmSilos();
       expect(synced).toBeGreaterThanOrEqual(0);
     });
+
+    it('opens ⌘K Command Palette, executes commands, and persists ARM state to StorageService (T10)', () => {
+      component.setView('ARM_COMMAND');
+      expect(component.showArmCommandPalette()).toBe(false);
+
+      component.onArmCommandKeydown(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+      expect(component.showArmCommandPalette()).toBe(true);
+
+      component.armCommandQuery.set('replay');
+      expect(component.filteredArmCommands().map((c) => c.id)).toEqual(['REPLAY_DRY_RUN']);
+
+      component.executeArmCommand('REPLAY_DRY_RUN');
+      expect(component.showArmCommandPalette()).toBe(false);
+      expect(component.armReplayComparisonResult()).not.toBeNull();
+
+      component.setArmSilo('FINANCE_360');
+      expect(storageMap.get('p2p.arm.active_silo')).toBe('FINANCE_360');
+
+      component.triggerArmSandboxTurn('PYME_SPLIT_PAYMENT');
+      expect(Array.isArray(storageMap.get('p2p.arm.approval_queue'))).toBe(true);
+    });
   });
 });
 

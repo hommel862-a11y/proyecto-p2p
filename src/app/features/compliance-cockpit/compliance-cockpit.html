@@ -2243,6 +2243,14 @@
             >
               📥 Sincronizar Local
             </button>
+            <button
+              type="button"
+              class="action-btn btn-new-contact"
+              (click)="showArmCommandPalette.set(true)"
+              title="Abrir paleta de comandos rápida (⌘K / Ctrl+K)"
+            >
+              ⌘K Comandos
+            </button>
           </div>
         </header>
 
@@ -2531,6 +2539,48 @@
                     <div class="arm-trace-status">{{ tr.status }}</div>
                   </div>
                 }
+              </div>
+            </div>
+          </div>
+        }
+
+        @if (showArmCommandPalette()) {
+          <div
+            class="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            tabindex="-1"
+            (click)="$event.target === $event.currentTarget && showArmCommandPalette.set(false)"
+            (keydown.escape)="showArmCommandPalette.set(false)"
+          >
+            <div class="modal-dialog arm-command-palette">
+              <div class="modal-header">
+                <div class="modal-title-row">
+                  <span class="m-icon">⌘</span>
+                  <h3 class="modal-title">Paleta de Comandos ARM ({{ activeArmSilo() }})</h3>
+                </div>
+                <button type="button" class="btn-close-modal" (click)="showArmCommandPalette.set(false)">✕</button>
+              </div>
+              <div class="modal-body">
+                <input
+                  type="text"
+                  class="terminal-input"
+                  placeholder="Escribí un comando (silo, sandbox, replay, briefing, aprobar)..."
+                  [ngModel]="armCommandQuery()"
+                  (ngModelChange)="armCommandQuery.set($event)"
+                />
+                <div class="arm-palette-list">
+                  @for (cmd of filteredArmCommands(); track cmd.id) {
+                    <button
+                      type="button"
+                      class="arm-palette-item"
+                      (click)="executeArmCommand(cmd.id)"
+                    >
+                      <span>{{ cmd.label }}</span>
+                      <kbd class="font-mono arm-palette-kbd">{{ cmd.shortcut }}</kbd>
+                    </button>
+                  }
+                </div>
               </div>
             </div>
           </div>

@@ -3452,5 +3452,44 @@
       line-height: 1.4;
     }
   }
+
+  .arm-command-palette {
+    max-width: 560px;
+
+    .arm-palette-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .arm-palette-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--panel-2, #16161f);
+      border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+      color: var(--text, #ffffff);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+
+      &:hover {
+        border-color: var(--accent, #30d158);
+      }
+    }
+
+    .arm-palette-kbd {
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 11px;
+      background: var(--panel, #111116);
+      border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.16));
+      color: var(--accent, #30d158);
+    }
+  }
 }
 

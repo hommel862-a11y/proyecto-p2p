@@ -984,13 +984,13 @@ export interface BuiltArmQuoteResult {
   quoteNumber: string;
   workspaceId: ArmWorkspaceId;
   leadId: string;
-  lineItems: Array<{
+  lineItems: {
     sku: string;
     desc: string;
     qty: number;
     unitPrice: number;
     lineTotal: number;
-  }>;
+  }[];
   subtotal: number;
   discountPct: number;
   discountAmount: number;
@@ -1006,7 +1006,7 @@ export function evaluateAndBuildArmQuote(params: {
   workspaceId: ArmWorkspaceId;
   leadId: string;
   leadName?: string;
-  items: Array<{ sku: string; qty: number }>;
+  items: { sku: string; qty: number }[];
   discountPct: number;
   validDays: number;
   hasSpecialConditions?: boolean;
@@ -1335,12 +1335,12 @@ export interface ArmSandboxSimulationResult {
   fromStageSlug: string;
   toStageSlug: string;
   updatedScore: number;
-  toolTrace: Array<{
+  toolTrace: {
     agentRole: ArmAgentRole;
     toolName: string;
     latencyMs: number;
     outcome: string;
-  }>;
+  }[];
   queuedApproval?: ArmApprovalQueueItem;
 }
 
@@ -1952,7 +1952,7 @@ export function executeArmToolCall(params: {
 
     case 'create_or_submit_quote': {
       try {
-        const rawItems = (params.args['items'] as Array<{ sku: string; qty: number }>) || [];
+        const rawItems = (params.args['items'] as { sku: string; qty: number }[]) || [];
         const details = params.args['approval_request_details'] as Record<string, unknown> | null;
         const quote = evaluateAndBuildArmQuote({
           workspaceId: params.workspaceId,
@@ -2025,12 +2025,12 @@ export interface MigratedArmKanbanCard {
   movedByAgentBadge: string;
   dealValueLabel: string;
   freeWindowLabel: string;
-  messages: Array<{ sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }>;
-  toolTraces: Array<{ toolName: string; latencyMs: number; status: string }>;
+  messages: { sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }[];
+  toolTraces: { toolName: string; latencyMs: number; status: string }[];
 }
 
 export function migrateLocalCrmDealsToArmCards(
-  localDeals: ReadonlyArray<{
+  localDeals: readonly {
     id: string;
     scope: 'P2P_DESK' | 'FINANCE_360';
     title: string;
@@ -2041,7 +2041,7 @@ export function migrateLocalCrmDealsToArmCards(
     totalFiatAmount: number;
     fiatCurrency: string;
     bankReferenceId?: string;
-  }>,
+  }[],
 ): MigratedArmKanbanCard[] {
   return localDeals.map((d) => {
     const workspaceId: ArmWorkspaceId = d.scope === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK';

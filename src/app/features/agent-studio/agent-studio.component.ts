@@ -5,7 +5,6 @@ import { Router } from '@angular/router';
 import {
   AgentStudioService,
   MCP_SKILL_CATALOG,
-  type McpSkillCatalogItem,
 } from '../../core/agent-studio.service';
 import type {
   CustomAgentDto,
@@ -45,6 +44,7 @@ export class AgentStudioComponent {
   readonly isEditorOpen = signal<boolean>(false);
   readonly isEditing = signal<boolean>(false);
   readonly editingAgentId = signal<string | null>(null);
+  readonly pendingDeleteAgent = signal<CustomAgentDto | null>(null);
 
   // Skill filter in editor
   readonly selectedSkillCategory = signal<
@@ -252,13 +252,19 @@ export class AgentStudioComponent {
     this.closeModal();
   }
 
-  async confirmDelete(agent: CustomAgentDto): Promise<void> {
-    const ok = window.confirm(
-      `¿Confirmas la eliminación del agente "${agent.name}"? Esta acción removerá sus permisos de skills.`,
-    );
-    if (ok) {
-      await this.studio.deleteAgent(agent.id);
-    }
+  confirmDelete(agent: CustomAgentDto): void {
+    this.pendingDeleteAgent.set(agent);
+  }
+
+  cancelDeleteAgent(): void {
+    this.pendingDeleteAgent.set(null);
+  }
+
+  async executeConfirmedDeleteAgent(): Promise<void> {
+    const target = this.pendingDeleteAgent();
+    if (!target) return;
+    this.pendingDeleteAgent.set(null);
+    await this.studio.deleteAgent(target.id);
   }
 
   goToCopilotWithAgent(agent: CustomAgentDto): void {
