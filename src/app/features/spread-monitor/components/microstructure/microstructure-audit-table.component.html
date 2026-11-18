@@ -1,0 +1,136 @@
+<section class="audit-card" aria-label="Auditoría forense y ballenas OTC">
+  <header class="audit-header">
+    <div class="audit-header-left">
+      <button
+        type="button"
+        class="audit-collapse-btn"
+        data-testid="audit-collapse-btn"
+        [attr.aria-expanded]="isExpanded()"
+        (click)="toggleExpanded()"
+      >
+        <span class="collapse-caret" [class.is-open]="isExpanded()" aria-hidden="true">▸</span>
+        <span class="audit-title">Auditoría Forense &amp; Ballenas OTC</span>
+        <span class="audit-count-pill num-tabular">{{ allRows().length }} anuncios</span>
+      </button>
+
+      @if (otcWhaleReport(); as whale) {
+        @if (whale.whaleDetected) {
+          <span class="whale-alert-pill num-tabular" data-testid="otc-whale-pill">
+            Ballena OTC: ${{ whale.totalWhaleVolumeUsd | number: '1.0-0' }} USD
+            ({{ whale.whaleBlocks.length }})
+          </span>
+        }
+      }
+    </div>
+
+    <div class="audit-filter-pills" role="group" aria-label="Filtros de auditoría forense">
+      <button
+        type="button"
+        class="filter-pill"
+        [class.active]="activeFilter() === AUDIT_FILTERS.ALL"
+        [attr.aria-pressed]="activeFilter() === AUDIT_FILTERS.ALL"
+        (click)="selectFilter(AUDIT_FILTERS.ALL)"
+      >
+        Todos ({{ filterCounts().ALL }})
+      </button>
+      <button
+        type="button"
+        class="filter-pill"
+        [class.active]="activeFilter() === AUDIT_FILTERS.LEGITIMATE"
+        [attr.aria-pressed]="activeFilter() === AUDIT_FILTERS.LEGITIMATE"
+        (click)="selectFilter(AUDIT_FILTERS.LEGITIMATE)"
+      >
+        Orgánicos ({{ filterCounts().LEGITIMATE }})
+      </button>
+      <button
+        type="button"
+        class="filter-pill"
+        [class.active]="activeFilter() === AUDIT_FILTERS.PURGED"
+        [attr.aria-pressed]="activeFilter() === AUDIT_FILTERS.PURGED"
+        (click)="selectFilter(AUDIT_FILTERS.PURGED)"
+      >
+        Purgados ({{ filterCounts().PURGED }})
+      </button>
+      <button
+        type="button"
+        class="filter-pill"
+        [class.active]="activeFilter() === AUDIT_FILTERS.WHALES"
+        [attr.aria-pressed]="activeFilter() === AUDIT_FILTERS.WHALES"
+        (click)="selectFilter(AUDIT_FILTERS.WHALES)"
+      >
+        Ballenas ({{ filterCounts().WHALES }})
+      </button>
+    </div>
+  </header>
+
+  @if (otcWhaleReport(); as whale) {
+    @if (whale.whaleDetected) {
+      <div class="whale-banner" role="status">
+        <strong>Bloque OTC Institucional (${{ whale.totalWhaleVolumeUsd | number: '1.0-0' }} USD):</strong>
+        <span>{{ whale.rationale }}</span>
+      </div>
+    }
+  }
+
+  @if (isExpanded()) {
+    <div class="audit-table-scroll">
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Comerciante / ID</th>
+            <th>Precio</th>
+            <th>Volumen Máx. (VES / USD)</th>
+            <th>Persistencia</th>
+            <th>Clasificación</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (filteredRows().length === 0) {
+            <tr>
+              <td colspan="5" class="audit-empty-cell">
+                Sin anuncios para el filtro seleccionado ({{ activeFilter() }}).
+              </td>
+            </tr>
+          }
+          @for (row of filteredRows(); track row.offer.advNo || $index) {
+            <tr [class.is-purged]="row.isPurged" [class.is-whale]="row.isWhale">
+              <td>
+                <div class="merchant-cell">
+                  <strong>{{ row.offer.merchantName }}</strong>
+                  @if (row.counterpartyReputation !== 'UNKNOWN' && row.counterpartyReputation !== 'NORMAL') {
+                    <span class="rep-chip">{{ row.counterpartyReputation }}</span>
+                  }
+                </div>
+                <span class="adv-id num-tabular">{{ row.offer.advNo }}</span>
+              </td>
+              <td class="num-tabular">
+                <strong>{{ row.offer.price | number: '1.2-2' }} Bs</strong>
+              </td>
+              <td class="num-tabular">
+                <div>{{ row.offer.maxVes | number: '1.0-0' }} VES</div>
+                <div class="usd-sub">
+                  @if (row.estimatedUsd !== null) {
+                    ${{ row.estimatedUsd | number: '1.0-0' }} USD
+                  } @else {
+                    N/D USD
+                  }
+                </div>
+              </td>
+              <td class="num-tabular">
+                <span class="lifespan-badge">{{ row.lifespanSeconds }}s</span>
+              </td>
+              <td>
+                <span class="category-badge" [attr.data-cat]="row.spoofCategory">
+                  {{ categoryLabel(row.spoofCategory) }}
+                </span>
+                @if (row.isWhale) {
+                  <span class="whale-tag">BALLENA OTC</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

@@ -1,0 +1,227 @@
+<article class="ladder-card" aria-label="DOM convergente Binance P2P limpio versus crudo">
+  <header class="ladder-header">
+    <div class="ladder-title-group">
+      <h3 class="ladder-title">DOM Binance P2P · {{ cleanModeEnabled() ? 'Limpio vs Crudo' : 'Libro Crudo' }}</h3>
+      <span class="ladder-subtitle">
+        20 niveles · {{ purgedCountInBook() }} {{ purgedCountInBook() === 1 ? 'cebo marcado' : 'cebos marcados' }}
+      </span>
+    </div>
+    <span class="mode-badge" [class.is-clean]="cleanModeEnabled()">
+      {{ cleanModeEnabled() ? 'Limpio ON' : 'Crudo' }}
+    </span>
+  </header>
+
+  @if (sellRows().length === 0 && buyRows().length === 0) {
+    <div class="ladder-empty">
+      Sin niveles en el libro de órdenes. Presiona <strong>Escanear</strong> para sincronizar Binance L2.
+    </div>
+  } @else {
+    <!-- SELL / ASK STACK -->
+    <div class="dom-side-label">
+      <span>VENTA (ASK · Tú vendes / Competencia)</span>
+      <span class="num-tabular">Acum. USDT</span>
+    </div>
+
+    <div class="dom-stack dom-asks" role="list" aria-label="Ofertas de venta">
+      @for (row of sellRows(); track row.item.offer.advNo || $index; let idx = $index) {
+        @if (fifoLineIndex() === idx) {
+          <div class="fifo-breakeven-line num-tabular" data-testid="fifo-breakeven-line">
+            <span class="fifo-tag">Piso FIFO Real</span>
+            <strong>{{ liveBreakEvenSellPrice() | number: '1.2-2' }} Bs</strong>
+          </div>
+        }
+
+        <div
+          class="dom-row dom-row-sell"
+          role="listitem"
+          tabindex="0"
+          [class.is-purged]="row.isPurged && cleanModeEnabled()"
+          [class.is-spoof-raw]="row.isPurged && !cleanModeEnabled()"
+          [class.below-breakeven]="row.isBelowBreakEven"
+          [class.is-blocked]="row.item.isBlockedCounterparty"
+          [class.tick-flash-up]="row.item.flashDirection === 'up'"
+          [class.tick-flash-down]="row.item.flashDirection === 'down'"
+          [class.tick-flash-new]="row.item.flashDirection === 'new'"
+          (mouseenter)="onHoverRow(row)"
+          (mouseleave)="onClearHover()"
+          (focusin)="onHoverRow(row)"
+          (focusout)="onClearHover()"
+        >
+          <span class="depth-fill depth-sell" [style.transform]="'scaleX(' + row.depthScaleX + ')'" aria-hidden="true"></span>
+
+          <div class="row-main">
+            <div class="row-top-line">
+              <span class="side-pill sell">Ask</span>
+              <span class="merchant-name" [title]="row.item.offer.merchantName">{{ row.item.offer.merchantName }}</span>
+
+              @if (row.showReputationBadge) {
+                <span class="crm-badge" [attr.data-rep]="row.item.counterpartyReputation">
+                  {{ row.item.counterpartyReputation }}
+                </span>
+              }
+
+              @if (row.isPurged) {
+                <span class="badge-spoof-purged num-tabular">
+                  SPOOF PURGADO · {{ row.item.lifespanSeconds }}s
+                </span>
+              }
+
+              @if (row.isBelowBreakEven) {
+                <span class="badge-below-fifo">Bajo FIFO</span>
+              }
+            </div>
+
+            <div class="row-sub-line num-tabular">
+              <span>{{ row.item.estimatedUsdt | number: '1.0-0' }} USDT</span>
+              <span>· Acum {{ row.cumulativeUsdt | number: '1.0-0' }}</span>
+              @if (row.item.flashDirection === 'up') {
+                <span class="tick-chip up">+{{ row.item.deltaPrice | number: '1.2-2' }}</span>
+              } @else if (row.item.flashDirection === 'down') {
+                <span class="tick-chip down">{{ row.item.deltaPrice | number: '1.2-2' }}</span>
+              } @else if (row.item.isNew || row.item.flashDirection === 'new') {
+                <span class="tick-chip new">NEW</span>
+              }
+            </div>
+          </div>
+
+          <div class="row-right">
+            <span class="row-price num-tabular">{{ row.item.offer.price | number: '1.2-2' }} Bs</span>
+            <button
+              type="button"
+              class="btn-fix-row"
+              data-testid="btn-fix-row"
+              [disabled]="executionLocked()"
+              [attr.aria-disabled]="executionLocked()"
+              [attr.aria-label]="'Fijar precio ' + (row.item.offer.price | number: '1.2-2') + ' Bs de ' + row.item.offer.merchantName"
+              (click)="onFixRow(row)"
+            >
+              Fijar
+            </button>
+          </div>
+        </div>
+      }
+
+      @if (fifoLineIndex() === sellRows().length && liveBreakEvenSellPrice() > 0) {
+        <div class="fifo-breakeven-line num-tabular" data-testid="fifo-breakeven-line">
+          <span class="fifo-tag">Piso FIFO Real</span>
+          <strong>{{ liveBreakEvenSellPrice() | number: '1.2-2' }} Bs</strong>
+        </div>
+      }
+    </div>
+
+    <!-- CENTRAL SPREAD BRIDGE (Functional Liquid Glass) -->
+    <div class="spread-bridge functional-glass" [class.is-trap]="trap()?.isTrap">
+      <div class="bridge-primary-row num-tabular">
+        @if (trap(); as t) {
+          <span class="bridge-spread">
+            Spread: <strong>{{ t.apparentSpreadPct | number: '1.2-2' }}%</strong>
+            → Real Limpio <strong>{{ t.cleanSpreadPct | number: '1.2-2' }}%</strong>
+            ({{ t.cleanSpreadVes | number: '1.2-2' }} Bs)
+          </span>
+        }
+        @if (markovFill(); as mk) {
+          <span class="bridge-markov">
+            Cola #{{ mk.queuePosition }} · Markov {{ mk.fillProbabilityInHorizonPct | number: '1.0-0' }}%
+          </span>
+        }
+      </div>
+
+      @if (trap()?.isTrap) {
+        <div class="trap-alert-strip" role="status">
+          <strong>Trampa de Espejismo ({{ trap()!.severity }}):</strong>
+          <span>{{ trap()!.message }}</span>
+        </div>
+      }
+
+      @if (whatIfPreview(); as preview) {
+        <div class="whatif-strip num-tabular" data-testid="whatif-preview-strip">
+          <span>What-If · {{ preview.merchantName }}:</span>
+          <strong>{{ preview.price | number: '1.2-2' }} Bs</strong>
+          <span>({{ preview.estimatedUsdt | number: '1.0-0' }} USDT)</span>
+          @if (preview.deltaVsBreakEvenVes !== null) {
+            <span [class.negative]="preview.deltaVsBreakEvenVes < 0">
+              vs FIFO: {{ preview.deltaVsBreakEvenVes >= 0 ? '+' : '' }}{{ preview.deltaVsBreakEvenVes | number: '1.2-2' }} Bs
+            </span>
+          }
+          @if (preview.estimatedSpreadPct !== null) {
+            <span>· Est. Spread {{ preview.estimatedSpreadPct | number: '1.2-2' }}%</span>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- BUY / BID STACK -->
+    <div class="dom-side-label">
+      <span>COMPRA (BID · Tú compras / Demanda)</span>
+      <span class="num-tabular">Acum. USDT</span>
+    </div>
+
+    <div class="dom-stack dom-bids" role="list" aria-label="Ofertas de compra">
+      @for (row of buyRows(); track row.item.offer.advNo || $index) {
+        <div
+          class="dom-row dom-row-buy"
+          role="listitem"
+          tabindex="0"
+          [class.is-purged]="row.isPurged && cleanModeEnabled()"
+          [class.is-spoof-raw]="row.isPurged && !cleanModeEnabled()"
+          [class.is-blocked]="row.item.isBlockedCounterparty"
+          [class.tick-flash-up]="row.item.flashDirection === 'up'"
+          [class.tick-flash-down]="row.item.flashDirection === 'down'"
+          [class.tick-flash-new]="row.item.flashDirection === 'new'"
+          (mouseenter)="onHoverRow(row)"
+          (mouseleave)="onClearHover()"
+          (focusin)="onHoverRow(row)"
+          (focusout)="onClearHover()"
+        >
+          <span class="depth-fill depth-buy" [style.transform]="'scaleX(' + row.depthScaleX + ')'" aria-hidden="true"></span>
+
+          <div class="row-main">
+            <div class="row-top-line">
+              <span class="side-pill buy">Bid</span>
+              <span class="merchant-name" [title]="row.item.offer.merchantName">{{ row.item.offer.merchantName }}</span>
+
+              @if (row.showReputationBadge) {
+                <span class="crm-badge" [attr.data-rep]="row.item.counterpartyReputation">
+                  {{ row.item.counterpartyReputation }}
+                </span>
+              }
+
+              @if (row.isPurged) {
+                <span class="badge-spoof-purged num-tabular">
+                  SPOOF PURGADO · {{ row.item.lifespanSeconds }}s
+                </span>
+              }
+            </div>
+
+            <div class="row-sub-line num-tabular">
+              <span>{{ row.item.estimatedUsdt | number: '1.0-0' }} USDT</span>
+              <span>· Acum {{ row.cumulativeUsdt | number: '1.0-0' }}</span>
+              @if (row.item.flashDirection === 'up') {
+                <span class="tick-chip up">+{{ row.item.deltaPrice | number: '1.2-2' }}</span>
+              } @else if (row.item.flashDirection === 'down') {
+                <span class="tick-chip down">{{ row.item.deltaPrice | number: '1.2-2' }}</span>
+              } @else if (row.item.isNew || row.item.flashDirection === 'new') {
+                <span class="tick-chip new">NEW</span>
+              }
+            </div>
+          </div>
+
+          <div class="row-right">
+            <span class="row-price num-tabular">{{ row.item.offer.price | number: '1.2-2' }} Bs</span>
+            <button
+              type="button"
+              class="btn-fix-row"
+              data-testid="btn-fix-row"
+              [disabled]="executionLocked()"
+              [attr.aria-disabled]="executionLocked()"
+              [attr.aria-label]="'Fijar precio ' + (row.item.offer.price | number: '1.2-2') + ' Bs de ' + row.item.offer.merchantName"
+              (click)="onFixRow(row)"
+            >
+              Fijar
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</article>

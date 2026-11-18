@@ -1,0 +1,224 @@
+:host {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.num-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audit-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.audit-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.collapse-caret {
+  display: inline-block;
+  transition: transform 0.18s ease;
+
+  &.is-open {
+    transform: rotate(90deg);
+  }
+}
+
+.audit-count-pill,
+.whale-alert-pill,
+.filter-pill,
+.lifespan-badge,
+.category-badge,
+.whale-tag,
+.rep-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.audit-count-pill {
+  background: var(--input-bg);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.whale-alert-pill {
+  background: color-mix(in srgb, var(--gold) 18%, var(--panel-2));
+  color: var(--gold-strong);
+  border: 1px solid var(--gold-border);
+}
+
+.audit-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-pill {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+
+  &.active {
+    border-color: var(--gold);
+    color: var(--text);
+    background: color-mix(in srgb, var(--gold) 14%, var(--panel-2));
+  }
+}
+
+.whale-banner {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--gold) 12%, var(--panel-2));
+  border: 1px solid var(--gold-border);
+  font-size: 0.74rem;
+  line-height: 1.4;
+
+  strong {
+    color: var(--gold-strong);
+    margin-right: 4px;
+  }
+}
+
+.audit-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+
+  tr.is-purged {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+  }
+
+  tr.is-whale {
+    background: color-mix(in srgb, var(--gold) 8%, transparent);
+  }
+}
+
+.audit-empty-cell {
+  text-align: center;
+  padding: 18px;
+  color: var(--muted);
+}
+
+.merchant-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.adv-id,
+.usd-sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.rep-chip,
+.lifespan-badge {
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.category-badge {
+  border: 1px solid var(--line-strong);
+
+  &[data-cat='LEGITIMATE'] {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  &[data-cat='SPOOF_BAIT'] {
+    color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  }
+  &[data-cat='PHANTOM_LIQUIDITY'],
+  &[data-cat='SUSPICIOUS_HIGH_TURNOVER'] {
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+}
+
+.whale-tag {
+  margin-left: 4px;
+  background: color-mix(in srgb, var(--gold) 20%, var(--panel-2));
+  color: var(--gold-strong);
+}
+
+@media (max-width: 768px) {
+  .audit-collapse-btn,
+  .filter-pill {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapse-caret {
+    transition: none;
+  }
+}

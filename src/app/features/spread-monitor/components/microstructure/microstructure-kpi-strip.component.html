@@ -1,0 +1,188 @@
+<section class="kpi-bento-grid" aria-label="Indicadores cuantitativos clave de microestructura">
+  <!-- 1. Calidad Spread (SQS) -->
+  <article
+    class="kpi-bento-card"
+    appSpatialTilt3d
+    [tiltMaxDeg]="3"
+    [attr.data-tone]="sqsResult()?.verdictTone ?? 'caution'"
+    data-testid="kpi-card-sqs"
+  >
+    <header class="kpi-header">
+      <span class="kpi-eyebrow">CALIDAD SPREAD (SQS)</span>
+      @if (sqsResult(); as sqs) {
+        <span class="verdict-pill" [class]="'verdict-pill tone-' + sqs.verdictTone">
+          {{ sqs.verdictLabel }}
+        </span>
+      } @else {
+        <span class="verdict-pill tone-caution">Sin datos</span>
+      }
+    </header>
+
+    <div class="sqs-gauge-wrap spatial-z-mid">
+      <svg
+        class="sqs-arc-svg"
+        viewBox="0 0 140 82"
+        role="img"
+        [attr.aria-label]="'Puntuación de calidad de spread ' + clampedSqsScore() + ' de 100'"
+      >
+        <defs>
+          <linearGradient [attr.id]="sqsGradientId()" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="var(--danger)" />
+            <stop offset="45%" stop-color="var(--warn)" />
+            <stop offset="75%" stop-color="var(--accent)" />
+            <stop offset="100%" stop-color="var(--accent-2)" />
+          </linearGradient>
+        </defs>
+        <path
+          class="sqs-track"
+          d="M 20 68 A 50 50 0 0 1 120 68"
+          fill="none"
+          stroke-width="9"
+          stroke-linecap="round"
+        />
+        <path
+          class="sqs-progress"
+          d="M 20 68 A 50 50 0 0 1 120 68"
+          fill="none"
+          stroke-width="9"
+          stroke-linecap="round"
+          [attr.stroke]="'url(#' + sqsGradientId() + ')'"
+          [attr.stroke-dasharray]="gaugeArcLength"
+          [style.stroke-dashoffset]="sqsDashOffset()"
+        />
+      </svg>
+
+      <div class="sqs-score-center num-tabular spatial-z-float">
+        @if (sqsResult(); as sqs) {
+          <strong class="sqs-score-value">{{ sqs.score | number: '1.0-0' }}</strong>
+          <span class="sqs-score-denom">/100</span>
+        } @else {
+          <strong class="sqs-score-value">--</strong>
+          <span class="sqs-score-denom">/100</span>
+        }
+      </div>
+    </div>
+
+    <footer class="kpi-foot-row num-tabular">
+      @if (sqsResult(); as sqs) {
+        <span class="foot-metric positive">{{ sqs.netSpreadPct >= 0 ? '+' : '' }}{{ sqs.netSpreadPct | number: '1.2-2' }}% Neto</span>
+        <span
+          class="vol-source-badge"
+          [class.is-measured]="isMeasuredVolatility()"
+          [title]="isMeasuredVolatility() ? 'Volatilidad 4h medida sobre historial real' : 'Referencia por historial insuficiente (<2 muestras)'"
+        >
+          {{ isMeasuredVolatility() ? 'Medida' : 'Ref' }} · {{ sqs.volatility4hPct | number: '1.2-2' }}%
+        </span>
+      } @else {
+        <span class="foot-metric muted">Sin spread activo</span>
+        <span class="vol-source-badge">N/D</span>
+      }
+    </footer>
+  </article>
+
+  <!-- 2. Integridad & VPIN -->
+  <article class="kpi-bento-card" appSpatialTilt3d [tiltMaxDeg]="3" data-testid="kpi-card-integrity">
+    <header class="kpi-header">
+      <span class="kpi-eyebrow">INTEGRIDAD &amp; VPIN</span>
+      <span
+        class="proxy-l2-badge"
+        data-testid="vpin-proxy-badge"
+        [title]="vpinReport()?.proxyDisclaimer ?? 'Proxy estructural L2'"
+      >
+        PROXY L2
+      </span>
+    </header>
+
+    <div class="kpi-main-stat num-tabular spatial-z-mid">
+      <span class="main-stat-value" [class]="'main-stat-value tone-' + integrityStatus().tone">
+        {{ integrityScore() }}<small>/100</small>
+      </span>
+      <span class="status-inline-tag">{{ integrityStatus().label }}</span>
+    </div>
+
+    <div class="vpin-subrow num-tabular">
+      <span>VPIN L2: <strong>{{ (vpinReport()?.vpinScore ?? 0) | number: '1.2-2' }}</strong></span>
+      <span>·</span>
+      <span>{{ purgedTotalCount() }} {{ purgedTotalCount() === 1 ? 'cebo' : 'cebos' }}</span>
+    </div>
+
+    <div class="vpin-bars" aria-hidden="true">
+      @for (h of vpinBars(); track $index) {
+        <span class="vpin-bar" [style.transform]="'scaleY(' + (h / 100) + ')'"></span>
+      }
+    </div>
+
+    <p class="proxy-disclaimer" [title]="vpinReport()?.proxyDisclaimer ?? ''">
+      {{ vpinReport()?.proxyDisclaimer ?? 'Proxy L2 sobre profundidad de anuncios (no cinta de trades ejecutados).' }}
+    </p>
+  </article>
+
+  <!-- 3. VWAP & Slippage (Ticket) -->
+  <article class="kpi-bento-card" appSpatialTilt3d [tiltMaxDeg]="3" data-testid="kpi-card-vwap">
+    <header class="kpi-header">
+      <span class="kpi-eyebrow">VWAP &amp; SLIPPAGE</span>
+      <span class="ticket-chip num-tabular">${{ targetUsdt() | number: '1.0-0' }}</span>
+    </header>
+
+    <div class="kpi-main-stat num-tabular spatial-z-mid">
+      @if ((tradeImpact()?.effectiveVwapPrice ?? 0) > 0) {
+        <span class="main-stat-value">
+          {{ tradeImpact()!.effectiveVwapPrice | number: '1.2-2' }} <small>Bs</small>
+        </span>
+      } @else {
+        <span class="main-stat-value muted">N/D</span>
+      }
+    </div>
+
+    <div class="vwap-telemetry num-tabular">
+      <span>{{ tradeImpact()?.slippageBps ?? 0 }} bps ({{ (tradeImpact()?.slippagePct ?? 0) | number: '1.2-2' }}%)</span>
+      <span>·</span>
+      <span>{{ fillablePct() }}% llenable</span>
+      <span>·</span>
+      <span>~{{ etaSeconds() }}s</span>
+    </div>
+
+    <div class="fill-progress-track" aria-label="Capacidad de llenado del ticket">
+      <div
+        class="fill-progress-bar"
+        [class.is-partial]="fillablePct() < 100"
+        [style.transform]="'scaleX(' + (fillablePct() / 100) + ')'"
+      ></div>
+    </div>
+
+    <p class="kpi-hint-line">{{ tradeImpact()?.actionableRecommendation ?? 'Sincroniza el libro para simular impacto.' }}</p>
+  </article>
+
+  <!-- 4. Pulso 2h & Brecha BCV -->
+  <article class="kpi-bento-card" appSpatialTilt3d [tiltMaxDeg]="3" data-testid="kpi-card-pulse">
+    <header class="kpi-header">
+      <span class="kpi-eyebrow">PULSO 2H &amp; BRECHA BCV</span>
+      <span class="no-model-badge" title="Solo calendario público BCV — sin modelo probabilístico">
+        NO_MODEL
+      </span>
+    </header>
+
+    <div class="kpi-main-stat num-tabular spatial-z-mid">
+      <span class="main-stat-value pulse-dir">
+        {{ driftDirectionLabel() }}
+        <small>({{ (volatility2h()?.expectedSpreadDriftBps ?? 0) >= 0 ? '+' : '' }}{{ volatility2h()?.expectedSpreadDriftBps ?? 0 }} bps)</small>
+      </span>
+    </div>
+
+    <div class="bcv-metrics-row num-tabular">
+      <span class="bcv-level-tag">Régimen: {{ volatilityLevelLabel() }}</span>
+      <span class="bcv-gap-chip" [class.is-unavailable]="!bcvGapLabel().hasGap">
+        Brecha BCV: <strong>{{ bcvGapLabel().pctText }}</strong>
+        @if (bcvGapLabel().hasGap) {
+          <span>({{ bcvGapLabel().vesText }})</span>
+        }
+      </span>
+    </div>
+
+    <footer class="kpi-foot-row">
+      <span class="bcv-schedule-note">
+        Calendario BCV: <strong>{{ bcvSchedulePhaseLabel() }}</strong> · {{ volatility2h()?.bcvWindow?.nextExpectedIntervention ?? 'Lunes / Jueves 09:30 VET' }}
+      </span>
+    </footer>
+  </article>
+</section>

@@ -1,0 +1,314 @@
+<div class="quant-advisor-grid">
+  <!-- CENTER: Multimodal Quantitative Chart & 3 Calibrated Brackets -->
+  <section class="advisor-center-card" aria-label="Gráfica cuantitativa multimodal y tramos de capital">
+    <header class="card-top-bar">
+      <div class="card-title-wrap">
+        <h3 class="card-title">Profundidad Acumulada · Vacíos · Brackets</h3>
+        <span class="card-subtitle num-tabular">
+          @if (avellanedaQuotes(); as aq) {
+            @if (aq.reservationPrice > 0) {
+              Reserva r*: <strong>{{ aq.reservationPrice | number: '1.2-2' }} Bs</strong>
+              · Sesgo: {{ aq.recommendedAction }}
+            } @else {
+              Reserva r*: N/D
+            }
+          }
+        </span>
+      </div>
+
+      <div class="chart-tablist" role="tablist" aria-label="Vistas del gráfico cuantitativo">
+        <button
+          type="button"
+          role="tab"
+          class="chart-tab-btn"
+          [attr.aria-selected]="activeTab() === CHART_TABS.DEPTH"
+          [class.active]="activeTab() === CHART_TABS.DEPTH"
+          (keydown)="onTabKeydown($event)"
+          (click)="setTab(CHART_TABS.DEPTH)"
+        >
+          Profundidad &amp; Reserva r*
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="chart-tab-btn"
+          [attr.aria-selected]="activeTab() === CHART_TABS.SLIPPAGE"
+          [class.active]="activeTab() === CHART_TABS.SLIPPAGE"
+          (keydown)="onTabKeydown($event)"
+          (click)="setTab(CHART_TABS.SLIPPAGE)"
+        >
+          Slippage vs Ticket
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="chart-tab-btn"
+          [attr.aria-selected]="activeTab() === CHART_TABS.PULSE"
+          [class.active]="activeTab() === CHART_TABS.PULSE"
+          (keydown)="onTabKeydown($event)"
+          (click)="setTab(CHART_TABS.PULSE)"
+        >
+          Pulso 4h
+        </button>
+      </div>
+    </header>
+
+    <!-- Chart Stage -->
+    <div class="chart-stage" role="tabpanel">
+      @if (activeTab() === CHART_TABS.DEPTH) {
+        @if (depthGeometry().hasData) {
+          <svg
+            class="quant-svg"
+            viewBox="0 0 400 175"
+            role="img"
+            [attr.aria-label]="'Curva de profundidad acumulada Bid y Ask con reserva r estrella ' + (avellanedaQuotes()?.reservationPrice ?? 0) + ' Bs'"
+          >
+            <!-- Grid lines -->
+            <line x1="20" y1="44" x2="380" y2="44" class="svg-grid-line" />
+            <line x1="20" y1="98" x2="380" y2="98" class="svg-grid-line" />
+            <line x1="20" y1="152" x2="380" y2="152" class="svg-axis-line" />
+
+            <!-- Shaded Liquidity Gaps -->
+            @for (gap of depthGeometry().gapRects; track $index) {
+              <rect
+                [attr.x]="gap.x"
+                y="24"
+                [attr.width]="gap.width"
+                height="128"
+                class="svg-gap-zone"
+              />
+              <text [attr.x]="gap.labelX" y="36" text-anchor="middle" class="svg-gap-label">
+                Vacío {{ gap.gapPct }}%
+              </text>
+            }
+
+            <!-- Cumulative Bid Area + Line -->
+            @if (depthGeometry().bidAreaPoints) {
+              <polygon [attr.points]="depthGeometry().bidAreaPoints" class="svg-bid-area" />
+              <polyline [attr.points]="depthGeometry().bidPoints" fill="none" class="svg-bid-line" />
+            }
+
+            <!-- Cumulative Ask Area + Line -->
+            @if (depthGeometry().askAreaPoints) {
+              <polygon [attr.points]="depthGeometry().askAreaPoints" class="svg-ask-area" />
+              <polyline [attr.points]="depthGeometry().askPoints" fill="none" class="svg-ask-line" />
+            }
+
+            <!-- Avellaneda-Stoikov r* vertical reference -->
+            @if (depthGeometry().reservationX; as rx) {
+              <line [attr.x1]="rx" y1="18" [attr.x2]="rx" y2="152" class="svg-rstar-line" />
+              <text [attr.x]="rx" y="14" text-anchor="middle" class="svg-rstar-label">
+                r* {{ (avellanedaQuotes()?.reservationPrice ?? 0) | number: '1.2-2' }}
+              </text>
+            }
+
+            <!-- FIFO BreakEven vertical dashed line -->
+            @if (depthGeometry().fifoX; as fx) {
+              <line [attr.x1]="fx" y1="22" [attr.x2]="fx" y2="152" class="svg-fifo-line" />
+              <text [attr.x]="fx" y="168" text-anchor="middle" class="svg-fifo-label">
+                FIFO {{ liveBreakEvenSellPrice() | number: '1.2-2' }}
+              </text>
+            }
+          </svg>
+        } @else {
+          <div class="chart-empty-state">Sincroniza el libro L2 para proyectar curvas Bid/Ask y Reserva r*.</div>
+        }
+      } @else if (activeTab() === CHART_TABS.SLIPPAGE) {
+        <div class="slippage-chart-wrap" data-testid="chart-slippage-view">
+          <div class="slippage-bars-grid">
+            @for (bar of slippageBars(); track bar.ticketUsdt) {
+              <div class="slippage-col" [class.is-current]="bar.isCurrent">
+                <span class="slippage-val num-tabular">{{ bar.slippageBps }} bps</span>
+                <div class="slippage-bar-track">
+                  <div class="slippage-bar-fill" [style.transform]="'scaleY(' + (bar.barHeightPct / 100) + ')'"></div>
+                </div>
+                <span class="slippage-label num-tabular">{{ bar.label }}</span>
+              </div>
+            }
+          </div>
+          <p class="chart-footnote num-tabular">
+            Simulación {{ selectedSide() === 'BUY' ? 'Compra' : 'Venta' }} sobre profundidad sanitizada · Ticket actual ${{ targetUsdt() | number: '1.0-0' }}
+          </p>
+        </div>
+      } @else {
+        <div class="pulse-chart-wrap" data-testid="chart-pulse-view">
+          @if (pulseGeometry().hasPoints) {
+            <svg class="quant-svg" viewBox="0 0 400 175" role="img" aria-label="Evolución intradía de tasa media últimos snapshots">
+              <path [attr.d]="pulseGeometry().areaD" class="svg-pulse-area" />
+              <path [attr.d]="pulseGeometry().pathD" fill="none" class="svg-pulse-line" />
+            </svg>
+            <div class="pulse-meta num-tabular">
+              <span>Min: {{ pulseGeometry().minRate | number: '1.2-2' }} Bs</span>
+              <span>Última: {{ pulseGeometry().lastRate | number: '1.2-2' }} Bs</span>
+              <span>Max: {{ pulseGeometry().maxRate | number: '1.2-2' }} Bs</span>
+              <span class="vol-pill">{{ isPulseMeasured() ? 'Medida' : 'Ref' }} · {{ (sqsResult()?.volatility4hPct ?? 0) | number: '1.2-2' }}%</span>
+            </div>
+          } @else {
+            <div class="chart-empty-state">
+              Historial intradía insuficiente (&lt; 2 muestras). Mantén el escaneo activo para medir volatilidad 4h real.
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- 3 Calibrated Capital Brackets -->
+    <div class="brackets-grid" aria-label="Tramos calibrados de capital">
+      @for (item of allBracketsSummary(); track item.bracket.id) {
+        <div class="bracket-card" [class.is-active]="selectedBracket() === item.bracket.id">
+          <div class="bracket-head">
+            <span class="bracket-keycap">{{ bracketKeyNumber(item.bracket.id) }}</span>
+            <strong class="bracket-name">{{ item.bracket.name }}</strong>
+          </div>
+
+          <div class="bracket-ranges num-tabular">
+            <span>{{ item.bracket.minVes | number: '1.0-0' }}–{{ item.bracket.maxVes | number: '1.0-0' }} Bs</span>
+            <span class="bracket-usd">{{ formatBracketUsdtRange(item.bracket.minVes, item.bracket.maxVes) }}</span>
+          </div>
+
+          <div class="bracket-stats num-tabular">
+            <span class="bracket-spread" [class.positive]="item.estimatedGrossSpreadPct > 0">
+              {{ item.estimatedGrossSpreadPct >= 0 ? '+' : '' }}{{ item.estimatedGrossSpreadPct | number: '1.2-2' }}%
+            </span>
+            <span class="bracket-offers">{{ item.result.offers.length }} ofertas</span>
+          </div>
+
+          <button
+            type="button"
+            class="btn-operate-bracket"
+            [disabled]="executionLocked() || !item.hasLiquidity || item.result.bestPrice <= 0"
+            (click)="onOperateBracket(item)"
+          >
+            Operar @if (item.result.bestPrice > 0) { <span class="num-tabular">{{ item.result.bestPrice | number: '1.2-2' }}</span> }
+          </button>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- RIGHT: Real-Time Quantitative Strategist -->
+  <section class="advisor-right-card" aria-label="Estratega cuantitativo en tiempo real">
+    <header class="card-top-bar">
+      <div class="card-title-wrap">
+        <h3 class="card-title">Estratega Cuantitativo en Tiempo Real</h3>
+        @if (makerVsTakerComparison(); as cmp) {
+          <span class="mode-rec-pill" [attr.data-mode]="cmp.recommendedMode">
+            Sugerencia: {{ cmp.recommendedMode }}
+          </span>
+        }
+      </div>
+    </header>
+
+    <!-- Maker vs Taker Comparator -->
+    @if (makerVsTakerComparison(); as cmp) {
+      <div class="maker-taker-grid">
+        <div class="exec-tile" [class.is-recommended]="cmp.recommendedMode === 'MAKER'">
+          <span class="exec-eyebrow">MAKER ÓPTIMO</span>
+          <strong class="exec-roi num-tabular">
+            {{ cmp.maker.roiCyclePct >= 0 ? '+' : '' }}{{ cmp.maker.roiCyclePct | number: '1.2-2' }}%
+          </strong>
+          <span class="exec-prices num-tabular">
+            C {{ cmp.makerBuyPrice | number: '1.2-2' }} · V {{ cmp.makerSellPrice | number: '1.2-2' }} Bs
+          </span>
+          <span class="exec-usd num-tabular">Neto: ${{ cmp.maker.netGainUsd | number: '1.2-2' }}</span>
+        </div>
+
+        <div class="exec-tile" [class.is-recommended]="cmp.recommendedMode === 'TAKER'">
+          <span class="exec-eyebrow">TAKER INMEDIATO</span>
+          <strong class="exec-roi num-tabular">
+            {{ cmp.taker.roiCyclePct >= 0 ? '+' : '' }}{{ cmp.taker.roiCyclePct | number: '1.2-2' }}%
+          </strong>
+          <span class="exec-prices num-tabular">
+            C {{ cmp.takerBuyPrice | number: '1.2-2' }} · V {{ cmp.takerSellPrice | number: '1.2-2' }} Bs
+          </span>
+          <span class="exec-usd num-tabular">Neto: ${{ cmp.taker.netGainUsd | number: '1.2-2' }}</span>
+        </div>
+      </div>
+    }
+
+    <!-- 4-Factor SQS Diagnostic Mini-Bars -->
+    @if (sqsResult(); as sqs) {
+      <div class="sqs-factors-box">
+        <div class="factors-list">
+          @for (factor of sqsFactors(); track factor.key) {
+            <div class="factor-row" [class.is-weakest]="factor.isWeakest">
+              <div class="factor-label-row">
+                <span>{{ factor.label }} <small>({{ factor.weightLabel }})</small></span>
+                <strong class="num-tabular">{{ factor.score | number: '1.0-0' }}</strong>
+              </div>
+              <div class="factor-track">
+                <div class="factor-bar" [style.transform]="'scaleX(' + (factor.score / 100) + ')'"></div>
+              </div>
+            </div>
+          }
+        </div>
+        <p class="causal-hint">
+          <strong>Factor más débil ({{ sqs.weakestFactor }}):</strong> {{ sqs.causalHint }}
+        </p>
+      </div>
+    }
+
+    <!-- TWAP/VWAP Slicing Plan -->
+    @if (slicingPlan(); as plan) {
+      <div class="slicing-box">
+        <div class="slicing-head num-tabular">
+          <span>Slicing {{ plan.executionAlgorithm }}</span>
+          <strong>{{ plan.totalSlices }} tramos · c/{{ plan.sliceIntervalMinutes }}m</strong>
+        </div>
+        <p class="slicing-summary num-tabular">
+          {{ plan.averageSliceAmountUsdt | number: '1.0-0' }} USDT/tramo · Impacto est. {{ plan.expectedMarketImpactPct | number: '1.2-2' }}%
+        </p>
+      </div>
+    }
+
+    <!-- Staleness Lock Banner -->
+    @if (executionLocked()) {
+      <div class="staleness-lock-banner" data-testid="staleness-lock-banner" role="alert">
+        <strong>Bloqueo por frescura ({{ freshnessStatus() }}):</strong>
+        <span>Auto-aplicación 1-clic deshabilitada. Actualiza el libro antes de ejecutar precios.</span>
+      </div>
+    }
+
+    <!-- 1-Click Actions -->
+    <div class="advisor-actions-grid">
+      <button
+        type="button"
+        class="advisor-action-btn primary"
+        data-testid="btn-apply-desk"
+        [disabled]="executionLocked()"
+        [attr.aria-disabled]="executionLocked()"
+        (click)="applyToDesk.emit()"
+      >
+        ⚡ Aplicar a Mesa
+      </button>
+      <button
+        type="button"
+        class="advisor-action-btn secondary"
+        data-testid="btn-send-repricer"
+        [disabled]="executionLocked()"
+        [attr.aria-disabled]="executionLocked()"
+        (click)="sendToRepricer.emit()"
+      >
+        🤖 Enviar a Repricer
+      </button>
+      <button
+        type="button"
+        class="advisor-action-btn secondary"
+        data-testid="btn-open-ad-studio"
+        [disabled]="executionLocked()"
+        [attr.aria-disabled]="executionLocked()"
+        (click)="openAdStudio.emit()"
+      >
+        📢 Anuncio 360°
+      </button>
+      <button
+        type="button"
+        class="advisor-action-btn secondary"
+        data-testid="btn-send-telegram"
+        (click)="sendTelegramAlert.emit()"
+      >
+        📲 Telegram
+      </button>
+    </div>
+  </section>
+</div>
