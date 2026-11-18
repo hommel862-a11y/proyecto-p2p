@@ -83,6 +83,9 @@
 .bento-card {
   padding: 18px;
   display: flex;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 14px;
 }
@@ -571,9 +574,13 @@
     grid-template-columns: 1fr;
   }
 
+  .bento-card {
+    padding: 14px;
+  }
+
   .cashflow-columns {
-    grid-template-columns: repeat(5, minmax(72px, 1fr));
-    overflow-x: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .period-pill,

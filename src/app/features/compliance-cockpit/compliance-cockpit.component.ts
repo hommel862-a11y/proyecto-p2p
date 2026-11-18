@@ -209,7 +209,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
         this.handleIncomingArmOutboxEvent(evt);
       });
     }
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && this.inboundGateway.status() === 'CONNECTED') {
       void this.inboundGateway.fetchStorageHealth?.();
     }
   }
@@ -251,6 +251,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const result = await this.inboundGateway.testConnection(targetUrl);
     this.gatewayTesting.set(false);
     if (result.ok) {
+      void this.inboundGateway.fetchStorageHealth?.(targetUrl);
       this.gatewayTestResult.set({ ok: true, message: `¡Conexión exitosa! Estado: ${result.status}` });
     } else {
       this.gatewayTestResult.set({
