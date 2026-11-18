@@ -15,10 +15,16 @@ import {
   runArmSandboxSimulationTurn,
   scanOutboundMessageDlp,
   evaluateMeta24hFreeWindow,
+  evaluateDealTokenCircuitBreaker,
+  runArmDeterministicReplayComparison,
+  generateCloserPreCallBriefing,
   type PipelineDeal,
   type ArmWorkspaceId,
   type ArmSandboxPersonaId,
   type ArmApprovalStatus,
+  type ArmShadowExample,
+  type ArmAgentRole,
+  type ArmBantData,
 } from '@p2p/core';
 
 export interface CoalescedTurnBatch {
@@ -459,6 +465,113 @@ export class InboundGatewayServer {
           success: true,
           approvalId,
           decision,
+          outboxEventId: evt.id,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/replay/dry-run (Deterministic Prompt A/B Replay + Cost Circuit-Breaker)
+    if (method === 'POST' && pathname === '/api/arm/replay/dry-run') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        leadName?: string;
+        historicalInboundText?: string;
+        shadowStore?: ArmShadowExample[];
+        agentRole?: ArmAgentRole;
+        dailyTokensUsed?: number;
+        estimatedTurnTokens?: number;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const circuitBreaker = evaluateDealTokenCircuitBreaker({
+        workspaceId,
+        dailyTokensUsed: body.dailyTokensUsed ?? 12_400,
+        estimatedTurnTokens: body.estimatedTurnTokens ?? 1_850,
+      });
+
+      const replay = runArmDeterministicReplayComparison({
+        workspaceId,
+        leadName: body.leadName || 'Prospecto Histórico',
+        historicalInboundText:
+          body.historicalInboundText ||
+          '¿Qué descuento me dan en el Plan Enterprise si cerramos hoy?',
+        shadowStore: body.shadowStore || [],
+        agentRole: body.agentRole,
+      });
+
+      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', 'replay-dry-run', {
+        replay,
+        circuitBreaker,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          replay,
+          circuitBreaker,
+          outboxEventId: evt.id,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/closer/pre-call-briefing (15m Pre-Call Closer Executive Briefing)
+    if (method === 'POST' && pathname === '/api/arm/closer/pre-call-briefing') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        leadName?: string;
+        companyName?: string;
+        startsInMinutes?: number;
+        qualificationScore?: number;
+        bantData?: ArmBantData;
+        memoryFacts?: string[];
+        estimatedDealValue?: number;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const briefing = generateCloserPreCallBriefing({
+        workspaceId,
+        leadName: body.leadName || 'Dra. Elena Gómez',
+        companyName: body.companyName || 'Clínica Aurora',
+        startsInMinutes: body.startsInMinutes ?? 15,
+        qualificationScore: body.qualificationScore ?? 92,
+        bantData: body.bantData || {
+          budget: '$2,400 USD aprobados',
+          authority: 'Directora Médica (Decisora)',
+          need_pain_point: 'Migrar de proceso manual en 20 médicos',
+          timeline: 'Esta misma semana',
+        },
+        memoryFacts: body.memoryFacts || ['Solicitó esquema 50/50 o descuento corporativo anual'],
+        estimatedDealValue: body.estimatedDealValue ?? 2400,
+      });
+
+      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', 'pre-call-briefing', {
+        briefing,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          briefing,
           outboxEventId: evt.id,
         }),
       );

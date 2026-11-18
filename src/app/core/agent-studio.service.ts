@@ -440,4 +440,97 @@ export class AgentStudioService {
       this._loading.set(false);
     }
   }
+
+  async seedArmSpecialistPresets(): Promise<number> {
+    const presets: CreateCustomAgentDto[] = [
+      {
+        id: 'arm-router',
+        name: 'Coordinador ARM (Router & Triage)',
+        description: 'Clasificación de intención, sentimiento y handoff entre especialistas o control humano',
+        systemPrompt:
+          'Eres el Agente Coordinador (Router/Triage) de la plataforma ARM. Analiza intención y sentimiento y ejecuta route_conversation hacia SDR_QUALIFIER, QUOTER, SCHEDULER o HUMAN_TAKEOVER.',
+        modelProvider: 'gemini',
+        modelName: 'gemini-3.7-flash',
+        temperature: 0.1,
+        isActive: true,
+        executionMode: 'on_demand',
+        skills: ['route_conversation', 'search_lead_memories'],
+      },
+      {
+        id: 'arm-sdr-qualifier',
+        name: 'Agente SDR & Calificador BANT',
+        description: 'Descubrimiento consultivo BANT, extracción silenciosa de perfil y avance Zero-Click en Kanban',
+        systemPrompt:
+          'Eres el Especialista SDR / Calificador BANT. Realiza máximo una pregunta abierta por turno, extrae BANT con update_lead_bant_and_profile y avanza el Kanban con transition_pipeline_stage.',
+        modelProvider: 'gemini',
+        modelName: 'gemini-3.7-flash',
+        temperature: 0.3,
+        isActive: true,
+        executionMode: 'on_demand',
+        skills: [
+          'update_lead_bant_and_profile',
+          'transition_pipeline_stage',
+          'save_lead_memory_fact',
+          'search_lead_memories',
+          'route_conversation',
+        ],
+      },
+      {
+        id: 'arm-quoter',
+        name: 'Agente Cotizador & Risk Gate HITL',
+        description: 'Estructuración de propuestas formales con precios oficiales de catálogo y umbral de aprobación humana',
+        systemPrompt:
+          'Eres el Especialista Cotizador Comercial ARM. Consulta get_catalog_items y ejecuta create_or_submit_quote respetando estrictamente el Risk Gate Human-in-the-Loop.',
+        modelProvider: 'gemini',
+        modelName: 'gemini-3.7-flash',
+        temperature: 0.0,
+        isActive: true,
+        executionMode: 'on_demand',
+        skills: [
+          'get_catalog_items',
+          'create_or_submit_quote',
+          'transition_pipeline_stage',
+          'save_lead_memory_fact',
+          'route_conversation',
+        ],
+      },
+      {
+        id: 'arm-scheduler',
+        name: 'Agente Scheduler & Closer Briefing',
+        description: 'Consulta de disponibilidad en zona horaria IANA del cliente, reserva de demo y briefing para el closer',
+        systemPrompt:
+          'Eres el Especialista de Agenda (Scheduler) ARM. Verifica horarios con check_calendar_slots y ejecuta book_appointment generando el briefing_for_human.',
+        modelProvider: 'gemini',
+        modelName: 'gemini-3.7-flash',
+        temperature: 0.1,
+        isActive: true,
+        executionMode: 'on_demand',
+        skills: ['check_calendar_slots', 'book_appointment', 'transition_pipeline_stage', 'route_conversation'],
+      },
+      {
+        id: 'arm-followup-daemon',
+        name: 'Daemon Anti-Ghosting & Reactivación HSM',
+        description: 'Escaneo horario de prospectos inactivos (>24h/72h) y encolado de plantillas HSM contextuales',
+        systemPrompt:
+          'Eres el Agente FOLLOW_UP de Reactivación Proactiva ARM. Escanea prospectos estancados fuera de ventana de 24h y encola send_whatsapp_template en la bandeja de aprobación.',
+        modelProvider: 'gemini',
+        modelName: 'gemini-3.7-flash',
+        temperature: 0.2,
+        isActive: true,
+        executionMode: 'ambient_daemon',
+        scheduleIntervalSec: 3600,
+        skills: ['send_whatsapp_template', 'search_lead_memories', 'save_lead_memory_fact'],
+      },
+    ];
+
+    const existingIds = new Set(this._agents().map((a) => a.id));
+    let added = 0;
+    for (const preset of presets) {
+      if (preset.id && !existingIds.has(preset.id)) {
+        await this.createAgent(preset);
+        added += 1;
+      }
+    }
+    return added;
+  }
 }

@@ -662,6 +662,25 @@ describe('ComplianceCockpitComponent', () => {
       component.onArmCommandKeydown(new KeyboardEvent('keydown', { key: '2' }));
       expect(component.activeArmSilo()).toBe('P2P_DESK');
     });
+
+    it('runs Deterministic Prompt A/B Replay, 15m Pre-Call Closer Briefing, and Cost Circuit-Breaker telemetry (T7)', () => {
+      component.setView('ARM_COMMAND');
+      component.setArmSilo('ARM_B2B');
+
+      const cb = component.armTokenCircuitBreakerForSilo();
+      expect(cb.tripped).toBe(false);
+      expect(cb.utilizationPct).toBeGreaterThan(0);
+
+      component.triggerArmDeterministicReplayDryRun();
+      const rep = component.armReplayComparisonResult();
+      expect(rep).not.toBeNull();
+      expect(rep?.metaApiCostUsd).toBe(0);
+
+      component.triggerCloserPreCallBriefingForSilo();
+      const brf = component.armCloserPreCallBriefing();
+      expect(brf).not.toBeNull();
+      expect(brf?.startsInMinutes).toBe(15);
+    });
   });
 });
 

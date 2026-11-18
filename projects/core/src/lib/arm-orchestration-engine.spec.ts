@@ -16,6 +16,9 @@ import {
   recordShadowLearningCorrection,
   selectFewShotExamplesForAgent,
   runArmSandboxSimulationTurn,
+  evaluateDealTokenCircuitBreaker,
+  runArmDeterministicReplayComparison,
+  generateCloserPreCallBriefing,
   type ArmLeadProfile,
   type ArmShadowExample,
 } from './arm-orchestration-engine';
@@ -273,5 +276,69 @@ describe('ARM Multi-Workspace Orchestration Engine (@p2p/core)', () => {
     expect(sandboxTurn.queuedApproval).toBeDefined();
 
     expect(ARM_UNIFIED_TOOL_CONTRACTS.length).toBe(10);
+  });
+
+  it('enforces Cost Circuit-Breaker per deal/day, Deterministic Prompt A/B Replay, and 15m Closer Pre-Call Briefing (T7)', () => {
+    // 1. Cost Circuit-Breaker within budget vs tripped
+    const okBudget = evaluateDealTokenCircuitBreaker({
+      workspaceId: 'ARM_B2B',
+      dailyTokensUsed: 12000,
+      estimatedTurnTokens: 2500,
+    });
+    expect(okBudget.tripped).toBe(false);
+    expect(okBudget.fallbackRole).toBeNull();
+    expect(okBudget.remainingTokens).toBe(30500);
+
+    const trippedBudget = evaluateDealTokenCircuitBreaker({
+      workspaceId: 'P2P_DESK',
+      dailyTokensUsed: 29000,
+      estimatedTurnTokens: 2500,
+    });
+    expect(trippedBudget.tripped).toBe(true);
+    expect(trippedBudget.fallbackRole).toBe('HUMAN_TAKEOVER');
+    expect(trippedBudget.remainingTokens).toBe(0);
+
+    // 2. Deterministic Prompt A/B Replay with Shadow Learning Few-Shot injection
+    const shadowStore = recordShadowLearningCorrection([], {
+      workspaceId: 'ARM_B2B',
+      agentRole: 'QUOTER',
+      actionType: 'APPLY_DISCOUNT',
+      proposedText: 'Le damos 15% de descuento.',
+      approvedText: 'Por tratarse de convenio anual corporativo, dirección autorizó una bonificación del 15% con onboarding bonificado.',
+      saveAsExample: true,
+    });
+
+    const replay = runArmDeterministicReplayComparison({
+      workspaceId: 'ARM_B2B',
+      leadName: 'Dra. Elena Gómez (Clínica Aurora)',
+      historicalInboundText: '¿Qué descuento me dan en el Plan Enterprise si cerramos hoy?',
+      shadowStore,
+      agentRole: 'QUOTER',
+    });
+    expect(replay.metaApiCostUsd).toBe(0);
+    expect(replay.candidateToolCall.injectedFewShotCount).toBe(1);
+    expect(replay.candidateToolCall.proposedReply).toContain('convenio anual corporativo');
+    expect(replay.baselineToolCall.toolName).toBe('create_or_submit_quote');
+
+    // 3. 15-Minute Pre-Call Executive Closer Briefing
+    const briefing = generateCloserPreCallBriefing({
+      workspaceId: 'ARM_B2B',
+      leadName: 'Dra. Elena Gómez',
+      companyName: 'Clínica Aurora',
+      startsInMinutes: 15,
+      qualificationScore: 95,
+      bantData: {
+        budget: '$2,400 USD anuales',
+        authority: 'Directora Médica (Decisora)',
+        need_pain_point: 'Migrar de HubSpot manual para 20 médicos',
+        timeline: 'Esta misma semana',
+      },
+      memoryFacts: ['Pidió pago 50/50 o descuento anual', 'Usa WhatsApp Business en 4 sedes'],
+      estimatedDealValue: 2400,
+    });
+    expect(briefing.startsInMinutes).toBe(15);
+    expect(briefing.workspaceId).toBe('ARM_B2B');
+    expect(briefing.telegramMarkdownPayload).toContain('Clínica Aurora');
+    expect(briefing.telegramMarkdownPayload).toContain('95/100');
   });
 });

@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TestBed } from '@angular/core/testing';
+import { Injector, runInInjectionContext } from '@angular/core';
 import { AgentStudioService, MCP_SKILL_CATALOG } from './agent-studio.service';
 import { ToastService } from './toast.service';
 
 describe('AgentStudioService', () => {
   let service: AgentStudioService;
-  let toast: ToastService;
 
   let store: Map<string, string>;
 
@@ -22,11 +21,10 @@ describe('AgentStudioService', () => {
       },
     } as Storage;
 
-    TestBed.configureTestingModule({
-      providers: [AgentStudioService, ToastService],
+    const injector = Injector.create({
+      providers: [{ provide: ToastService, useValue: new ToastService() }],
     });
-    service = TestBed.inject(AgentStudioService);
-    toast = TestBed.inject(ToastService);
+    service = runInInjectionContext(injector, () => new AgentStudioService());
   });
 
   afterEach(() => {
@@ -117,5 +115,22 @@ describe('AgentStudioService', () => {
     agent = service.agents().find((a) => a.id === 'agent-to-toggle');
     expect(agent).toBeUndefined();
     expect(service.totalCount()).toBe(0);
+  });
+
+  it('should seed the 5 ARM specialist presets idempotently (T7)', async () => {
+    const addedFirst = await service.seedArmSpecialistPresets();
+    expect(addedFirst).toBe(5);
+    expect(service.totalCount()).toBe(5);
+    expect(service.agents().map((a) => a.id)).toEqual([
+      'arm-router',
+      'arm-sdr-qualifier',
+      'arm-quoter',
+      'arm-scheduler',
+      'arm-followup-daemon',
+    ]);
+
+    const addedSecond = await service.seedArmSpecialistPresets();
+    expect(addedSecond).toBe(0);
+    expect(service.totalCount()).toBe(5);
   });
 });

@@ -27,6 +27,11 @@ describe('CustomAgentRepository', () => {
     expect(agents.map((a) => a.id)).toContain('security-sentinel');
     expect(agents.map((a) => a.id)).toContain('risk-gatekeeper');
     expect(agents.map((a) => a.id)).toContain('dispute-auditor');
+    expect(agents.map((a) => a.id)).toContain('arm-router');
+    expect(agents.map((a) => a.id)).toContain('arm-sdr-qualifier');
+    expect(agents.map((a) => a.id)).toContain('arm-quoter');
+    expect(agents.map((a) => a.id)).toContain('arm-scheduler');
+    expect(agents.map((a) => a.id)).toContain('arm-followup-daemon');
   });
 
   it('does not duplicate seeds when called multiple times', () => {

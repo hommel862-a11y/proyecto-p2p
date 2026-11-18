@@ -470,4 +470,47 @@ describe('Inbound Gateway - Server Endpoints', () => {
     expect(resolveBody.success).toBe(true);
     expect(resolveBody.decision).toBe('EDITED_AND_APPROVED');
   });
+
+  it('executes POST /api/arm/replay/dry-run and POST /api/arm/closer/pre-call-briefing (T7)', async () => {
+    const replayRes = await fetch(`http://127.0.0.1:${port}/api/arm/replay/dry-run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        leadName: 'Clínica Aurora',
+        historicalInboundText: '¿Qué descuento me dan en el Plan Enterprise?',
+        dailyTokensUsed: 15000,
+        estimatedTurnTokens: 2000,
+      }),
+    });
+    expect(replayRes.status).toBe(200);
+    const replayBody = (await replayRes.json()) as {
+      success: boolean;
+      replay: { metaApiCostUsd: number };
+      circuitBreaker: { tripped: boolean };
+    };
+    expect(replayBody.success).toBe(true);
+    expect(replayBody.replay.metaApiCostUsd).toBe(0);
+    expect(replayBody.circuitBreaker.tripped).toBe(false);
+
+    const briefingRes = await fetch(`http://127.0.0.1:${port}/api/arm/closer/pre-call-briefing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        leadName: 'Dra. Elena Gómez',
+        companyName: 'Clínica Aurora',
+        startsInMinutes: 15,
+        qualificationScore: 95,
+      }),
+    });
+    expect(briefingRes.status).toBe(200);
+    const briefingBody = (await briefingRes.json()) as {
+      success: boolean;
+      briefing: { startsInMinutes: number; telegramMarkdownPayload: string };
+    };
+    expect(briefingBody.success).toBe(true);
+    expect(briefingBody.briefing.startsInMinutes).toBe(15);
+    expect(briefingBody.briefing.telegramMarkdownPayload).toContain('Clínica Aurora');
+  });
 });

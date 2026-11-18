@@ -1441,3 +1441,219 @@ export function runArmSandboxSimulationTurn(params: {
     queuedApproval: quoteRes.approvalEntry,
   };
 }
+
+// =============================================================================
+// 11. COST CIRCUIT-BREAKER, DETERMINISTIC PROMPT A/B REPLAY & 15M PRE-CALL BRIEFING
+// =============================================================================
+
+export interface ArmTokenCircuitBreakerResult {
+  workspaceId: ArmWorkspaceId;
+  maxTokensPerDealDay: number;
+  dailyTokensUsed: number;
+  projectedTokensTotal: number;
+  remainingTokens: number;
+  utilizationPct: number;
+  tripped: boolean;
+  fallbackRole: 'HUMAN_TAKEOVER' | null;
+  reason: string;
+}
+
+const DEFAULT_MAX_TOKENS_PER_DEAL_DAY: Record<ArmWorkspaceId, number> = {
+  ARM_B2B: 45_000,
+  P2P_DESK: 30_000,
+  FINANCE_360: 35_000,
+};
+
+export function evaluateDealTokenCircuitBreaker(params: {
+  workspaceId: ArmWorkspaceId;
+  dailyTokensUsed: number;
+  estimatedTurnTokens: number;
+  customMaxTokensPerDealDay?: number;
+}): ArmTokenCircuitBreakerResult {
+  const maxTokens =
+    params.customMaxTokensPerDealDay && params.customMaxTokensPerDealDay > 0
+      ? params.customMaxTokensPerDealDay
+      : DEFAULT_MAX_TOKENS_PER_DEAL_DAY[params.workspaceId];
+
+  const used = Math.max(0, Math.floor(params.dailyTokensUsed || 0));
+  const turn = Math.max(0, Math.floor(params.estimatedTurnTokens || 0));
+  const projected = used + turn;
+  const tripped = projected > maxTokens;
+  const remainingTokens = tripped ? 0 : Math.max(0, maxTokens - projected);
+  const utilizationPct = Math.min(100, Math.round((projected / maxTokens) * 100));
+
+  return {
+    workspaceId: params.workspaceId,
+    maxTokensPerDealDay: maxTokens,
+    dailyTokensUsed: used,
+    projectedTokensTotal: projected,
+    remainingTokens,
+    utilizationPct,
+    tripped,
+    fallbackRole: tripped ? 'HUMAN_TAKEOVER' : null,
+    reason: tripped
+      ? `Circuit-Breaker activado en ${params.workspaceId}: ${projected} tokens supera el límite diario por trato (${maxTokens}). Derivado a HUMAN_TAKEOVER.`
+      : `Presupuesto de tokens saludable (${utilizationPct}% utilizado; restan ${remainingTokens} tokens).`,
+  };
+}
+
+export interface ArmReplayComparisonResult {
+  workspaceId: ArmWorkspaceId;
+  leadName: string;
+  agentRole: ArmAgentRole;
+  historicalInboundText: string;
+  metaApiCostUsd: 0;
+  baselineToolCall: {
+    toolName: string;
+    argsPreview: string;
+    proposedReply: string;
+  };
+  candidateToolCall: {
+    toolName: string;
+    argsPreview: string;
+    proposedReply: string;
+    injectedFewShotCount: number;
+  };
+  diffSummary: string;
+}
+
+export function runArmDeterministicReplayComparison(params: {
+  workspaceId: ArmWorkspaceId;
+  leadName: string;
+  historicalInboundText: string;
+  shadowStore: ArmShadowExample[];
+  agentRole?: ArmAgentRole;
+}): ArmReplayComparisonResult {
+  const preRoute = evaluateDeterministicPreRouter({
+    workspaceId: params.workspaceId,
+    conversationStatus: 'AUTOPILOT',
+    currentStageSlug: 'calificado',
+    bantData: {
+      budget: 'Confirmado',
+      authority: 'Decisor',
+      need_pain_point: 'Automatización comercial',
+      timeline: 'Esta semana',
+    },
+    messageText: params.historicalInboundText,
+  });
+
+  const resolvedRole: ArmAgentRole =
+    params.agentRole ??
+    (preRoute.targetRole === 'HUMAN_TAKEOVER' ? 'SDR_QUALIFIER' : preRoute.targetRole);
+
+  const fewShots = selectFewShotExamplesForAgent(
+    params.shadowStore,
+    params.workspaceId,
+    resolvedRole,
+    3,
+  );
+
+  const toolName =
+    resolvedRole === 'QUOTER'
+      ? 'create_or_submit_quote'
+      : resolvedRole === 'SCHEDULER'
+        ? 'book_appointment'
+        : 'update_lead_bant_and_profile';
+
+  const baselineReply =
+    resolvedRole === 'QUOTER'
+      ? `Hola ${params.leadName}, te enviamos la cotización estándar con el precio de lista oficial.`
+      : `Hola ${params.leadName}, tomamos nota de tus requerimientos para avanzar con la propuesta.`;
+
+  const candidateReply =
+    fewShots.length > 0
+      ? `${fewShots[0].approvedText} (${params.leadName})`
+      : `${baselineReply} [Optimizado con anclaje de valor ${params.workspaceId}]`;
+
+  return {
+    workspaceId: params.workspaceId,
+    leadName: params.leadName,
+    agentRole: resolvedRole,
+    historicalInboundText: params.historicalInboundText,
+    metaApiCostUsd: 0,
+    baselineToolCall: {
+      toolName,
+      argsPreview: `role=${resolvedRole} • few_shot=0 • mode=BASELINE`,
+      proposedReply: baselineReply,
+    },
+    candidateToolCall: {
+      toolName,
+      argsPreview: `role=${resolvedRole} • few_shot=${fewShots.length} • mode=SHADOW_CURATED`,
+      proposedReply: candidateReply,
+      injectedFewShotCount: fewShots.length,
+    },
+    diffSummary:
+      fewShots.length > 0
+        ? `El prompt candidato inyectó ${fewShots.length} corrección(es) de Shadow Learning de ${params.workspaceId}, adoptando tu estilo de cierre ejecutivo sin gastar saldo de Meta API.`
+        : `Replay Dry-Run ejecutado en ${params.workspaceId} con 0 ejemplos Few-Shot previos; se recomienda curar una aprobación con [E] Editar + Shadow Learn.`,
+  };
+}
+
+export interface ArmCloserPreCallBriefing {
+  workspaceId: ArmWorkspaceId;
+  leadName: string;
+  companyName: string;
+  startsInMinutes: number;
+  qualificationScore: number;
+  estimatedDealValue: number;
+  bantSummary: string;
+  keyObjectionsAndMemories: string[];
+  recommendedClosingAngle: string;
+  telegramMarkdownPayload: string;
+}
+
+export function generateCloserPreCallBriefing(params: {
+  workspaceId: ArmWorkspaceId;
+  leadName: string;
+  companyName: string;
+  startsInMinutes?: number;
+  qualificationScore: number;
+  bantData: ArmBantData;
+  memoryFacts: string[];
+  estimatedDealValue: number;
+}): ArmCloserPreCallBriefing {
+  const ws = ARM_WORKSPACES[params.workspaceId];
+  const mins = params.startsInMinutes ?? 15;
+  const bantSummary = [
+    `Dolor: ${params.bantData.need_pain_point || 'Por confirmar'}`,
+    `Autoridad: ${params.bantData.authority || 'Por confirmar'}`,
+    `Presupuesto: ${params.bantData.budget || 'Por confirmar'}`,
+    `Plazo: ${params.bantData.timeline || 'Por confirmar'}`,
+  ].join(' | ');
+
+  const recommendedClosingAngle =
+    params.workspaceId === 'ARM_B2B'
+      ? 'Anclar ROI frente al costo operativo manual y ofrecer esquema 50/50 solo si firma esta semana.'
+      : params.workspaceId === 'P2P_DESK'
+        ? 'Confirmar banco emisor, titularidad KYC y ventana de bloqueo de tasa de 15 minutos.'
+        : 'Presentar servicio PyME 360 llave en mano con cronograma de entregables en 2 hitos.';
+
+  const factsBullets =
+    params.memoryFacts.length > 0
+      ? params.memoryFacts.map((f) => `• ${f}`).join('\n')
+      : '• Sin objeciones críticas registradas.';
+
+  const telegramMarkdownPayload = [
+    `🔔 *BRIEFING EJECUTIVO (${mins}m ANTES DE REUNIÓN)*`,
+    `*Silo:* \`${params.workspaceId}\` (${ws.displayName})`,
+    `*Prospecto:* ${params.companyName} — ${params.leadName}`,
+    `*Score BANT:* \`${params.qualificationScore}/100\` • *Valor Est.:* $${params.estimatedDealValue} ${ws.defaultCurrency}`,
+    `*Radiografía BANT:* ${bantSummary}`,
+    `*Memoria Semántica:* \n${factsBullets}`,
+    `*Ángulo de Cierre Sugerido:* ${recommendedClosingAngle}`,
+  ].join('\n');
+
+  return {
+    workspaceId: params.workspaceId,
+    leadName: params.leadName,
+    companyName: params.companyName,
+    startsInMinutes: mins,
+    qualificationScore: params.qualificationScore,
+    estimatedDealValue: params.estimatedDealValue,
+    bantSummary,
+    keyObjectionsAndMemories: params.memoryFacts,
+    recommendedClosingAngle,
+    telegramMarkdownPayload,
+  };
+}
+

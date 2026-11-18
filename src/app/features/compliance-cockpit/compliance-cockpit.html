@@ -2209,7 +2209,7 @@
 
           <div class="arm-silo-actions">
             <span class="arm-telemetry-pill font-mono">
-              Silo: {{ activeArmSilo() }} &bull; Debounce {{ activeArmWorkspaceConfig().debounceWindowMs }}ms &bull; DLP ON
+              Silo: {{ activeArmSilo() }} &bull; Debounce {{ activeArmWorkspaceConfig().debounceWindowMs }}ms &bull; DLP ON &bull; Tokens {{ armTokenCircuitBreakerForSilo().utilizationPct }}%
             </span>
             <button
               type="button"
@@ -2218,6 +2218,14 @@
               title="Simular turno de cliente por IA en Sandbox ($0 Meta API)"
             >
               🧪 Simular Turno Sandbox ($0)
+            </button>
+            <button
+              type="button"
+              class="action-btn btn-new-contact"
+              (click)="triggerArmDeterministicReplayDryRun()"
+              title="Comparar Prompt Base vs. Shadow Learning sobre historial real ($0 Meta API)"
+            >
+              🔄 Replay Dry-Run A/B ($0)
             </button>
             <button
               type="button"
@@ -2424,14 +2432,45 @@
                   [ngModel]="closerNoteTranscript()"
                   (ngModelChange)="closerNoteTranscript.set($event)"
                 ></textarea>
-                <button
-                  type="button"
-                  class="arm-btn arm-btn-approve"
-                  (click)="submitCloserVoiceNoteForArm()"
-                >
-                  ⚡ Procesar Nota Post-Llamada
-                </button>
+                <div class="arm-approval-actions">
+                  <button
+                    type="button"
+                    class="arm-btn arm-btn-approve"
+                    (click)="submitCloserVoiceNoteForArm()"
+                  >
+                    ⚡ Procesar Nota Post-Llamada
+                  </button>
+                  <button
+                    type="button"
+                    class="arm-btn arm-btn-edit"
+                    (click)="triggerCloserPreCallBriefingForSilo()"
+                  >
+                    📲 Briefing 15m Pre-Reunión
+                  </button>
+                </div>
               </div>
+
+              @if (armCloserPreCallBriefing(); as brf) {
+                <div class="arm-feed-item">
+                  <div class="arm-feed-meta font-mono">
+                    <span class="text-emerald">BRIEFING {{ brf.startsInMinutes }}M PRE-CALL</span>
+                    <span>Score {{ brf.qualificationScore }}/100</span>
+                  </div>
+                  <div class="arm-feed-title">{{ brf.companyName }} — {{ brf.leadName }}</div>
+                  <div class="arm-feed-summary">{{ brf.recommendedClosingAngle }}</div>
+                </div>
+              }
+
+              @if (armReplayComparisonResult(); as rep) {
+                <div class="arm-feed-item">
+                  <div class="arm-feed-meta font-mono">
+                    <span class="text-emerald">REPLAY DRY-RUN A/B ($0)</span>
+                    <span>Few-Shot: {{ rep.candidateToolCall.injectedFewShotCount }}</span>
+                  </div>
+                  <div class="arm-feed-title">{{ rep.leadName }} &bull; {{ rep.candidateToolCall.toolName }}()</div>
+                  <div class="arm-feed-summary">{{ rep.diffSummary }}</div>
+                </div>
+              }
 
               <div class="arm-agents-roster">
                 <div class="m-label">Especialistas Activos ({{ activeArmSilo() }}):</div>

@@ -55,6 +55,9 @@ import {
   selectFewShotExamplesForAgent,
   processCloserPostCallNote,
   evaluateGhostingFollowUp,
+  evaluateDealTokenCircuitBreaker,
+  runArmDeterministicReplayComparison,
+  generateCloserPreCallBriefing,
   type CrmImportStrategy,
   type CrmCsvCatalogEntity,
   type WorkspaceScope,
@@ -91,6 +94,8 @@ import {
   type ArmShadowExample,
   type ArmSandboxPersonaId,
   type ArmOutboxSseEvent,
+  type ArmReplayComparisonResult,
+  type ArmCloserPreCallBriefing,
 } from '@p2p/core';
 
 export type CrmModuleView =
@@ -2798,6 +2803,15 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly armShadowExamplesForSilo = computed<ArmShadowExample[]>(() =>
     selectFewShotExamplesForAgent(this.armShadowExamples(), this.activeArmSilo(), 'QUOTER', 10),
   );
+  readonly armTokenCircuitBreakerForSilo = computed(() =>
+    evaluateDealTokenCircuitBreaker({
+      workspaceId: this.activeArmSilo(),
+      dailyTokensUsed: 14_200,
+      estimatedTurnTokens: 1_800,
+    }),
+  );
+  readonly armReplayComparisonResult = signal<ArmReplayComparisonResult | null>(null);
+  readonly armCloserPreCallBriefing = signal<ArmCloserPreCallBriefing | null>(null);
 
   setArmSilo(silo: ArmWorkspaceId): void {
     this.activeArmSilo.set(silo);
@@ -3048,6 +3062,48 @@ export class ComplianceCockpitComponent implements OnDestroy {
       this.armApprovalQueue.set([ghostRes.approvalEntry, ...this.armApprovalQueue()]);
       this.toast.info('Detectado prospecto sin respuesta (72h). Plantilla HSM encolada.', 'Anti-Ghosting');
     }
+  }
+
+  triggerArmDeterministicReplayDryRun(): void {
+    const silo = this.activeArmSilo();
+    const selected = this.selectedArmLeadSplitInspector();
+    const res = runArmDeterministicReplayComparison({
+      workspaceId: silo,
+      leadName: selected ? `${selected.leadName} (${selected.companyName})` : `Prospecto ${silo}`,
+      historicalInboundText:
+        selected?.lastMessagePreview || '¿Qué descuento me dan en el Plan Enterprise si cerramos hoy?',
+      shadowStore: this.armShadowExamples(),
+      agentRole: 'QUOTER',
+    });
+    this.armReplayComparisonResult.set(res);
+    this.toast.info(res.diffSummary, 'Replay Determinista A/B ($0)');
+  }
+
+  triggerCloserPreCallBriefingForSilo(): void {
+    const silo = this.activeArmSilo();
+    const selected = this.selectedArmLeadSplitInspector();
+    const briefing = generateCloserPreCallBriefing({
+      workspaceId: silo,
+      leadName: selected?.leadName || 'Dra. Elena Gómez',
+      companyName: selected?.companyName || 'Clínica Aurora',
+      startsInMinutes: 15,
+      qualificationScore: selected?.qualificationScore ?? 92,
+      bantData: {
+        budget: selected?.dealValueLabel || '$2,400 USD anuales',
+        authority: 'Decisor Principal Confirmado',
+        need_pain_point: selected?.painPointSummary || 'Automatización omnicanal con IA',
+        timeline: 'Esta misma semana',
+      },
+      memoryFacts: [
+        selected?.painPointSummary || 'Solicitó esquema de pago 50/50 o descuento corporativo',
+      ],
+      estimatedDealValue: silo === 'ARM_B2B' ? 2400 : silo === 'FINANCE_360' ? 1850 : 1200,
+    });
+    this.armCloserPreCallBriefing.set(briefing);
+    this.toast.success(
+      `Briefing 15m pre-llamada generado para ${briefing.companyName}.`,
+      'Closer Copilot',
+    );
   }
 
   private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {
