@@ -881,6 +881,8 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
     it('onMicroApplyToDesk y onMicroSendToRepricer transfieren estrategia y piso al Desk/Repricer', () => {
       mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
       const c = fixture.componentInstance;
+      c.buyRole.set('TAKER');
+      c.sellRole.set('TAKER');
 
       c.onMicroApplyToDesk({
         side: 'SELL',
@@ -893,7 +895,21 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       });
       expect(c.sellPrice()).toBe(822.5);
       expect(c.amount()).toBe(750);
+      expect(c.buyRole()).toBe('MAKER');
+      expect(c.sellRole()).toBe('MAKER');
       expect(c.activeMode()).toBe('spread');
+
+      const bankFilterSpy = vi.spyOn(c.binance, 'setBankFilter');
+      c.onMicroApplyToDesk({
+        side: 'BUY',
+        customPriceVes: 815.0,
+        breakEvenSellPrice: 805.0,
+        maxBuyPrice: 815.0,
+        targetAssetAmountUsdt: 750,
+        preferredBank: c.binance.selectedBank(),
+        sourceLabel: 'Microestructura L2',
+      });
+      expect(bankFilterSpy).not.toHaveBeenCalled();
 
       c.onMicroSendToRepricer({
         buyPrice: 814.0,
@@ -906,6 +922,58 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       expect(c.repricer.breakEvenFloor()).toBe(805.0);
       expect(c.repricer.maxBuyPrice()).toBe(814.0);
       expect(c.activeMode()).toBe('repricer');
+    });
+
+    it('toggleMicroSplitDrawer desde microstructure cambia a spread y onMicroOpenAdStudio/Telegram envían contexto completo', async () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+
+      c.activeMode.set('microstructure');
+      c.toggleMicroSplitDrawer();
+      fixture.detectChanges();
+
+      expect(c.microSplitDrawerOpen()).toBe(true);
+      expect(c.activeMode()).toBe('spread');
+
+      const stageSpy = vi.spyOn(c.adComposer, 'stageFromExternal').mockResolvedValue(null);
+      await c.onMicroOpenAdStudio({
+        side: 'SELL',
+        customPriceVes: 823.4,
+        breakEvenSellPrice: 808.2,
+        maxBuyPrice: 815.1,
+        targetAssetAmountUsdt: 600,
+        preferredBank: 'BANESCO',
+        sourceLabel: 'Escudo L2',
+      });
+      expect(c.activeMode()).toBe('repricer');
+      expect(stageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          side: 'SELL',
+          preferredBank: 'BANESCO',
+          targetAssetAmountUsdt: 600,
+        }),
+      );
+
+      const warnSpy = vi.spyOn(c.toast, 'warn');
+      await c.onMicroSendTelegramAlert({
+        title: 'Escudo L2',
+        sqsScore: 84,
+        verdictLabel: 'Óptimo',
+        cleanSpreadPct: 0.92,
+        apparentSpreadPct: 1.05,
+        isTrap: false,
+        trapMessage: 'Sin trampas detectadas',
+        recommendedMode: 'DOBLE_MAKER',
+        makerBuyPrice: 815.1,
+        makerSellPrice: 823.4,
+        bankFilter: 'BANESCO',
+        targetUsdt: 600,
+        summaryText: 'Pulso L2 OK',
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Bot Token'),
+        'Telegram Sentinel',
+      );
     });
   });
 });

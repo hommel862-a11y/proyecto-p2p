@@ -2022,7 +2022,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   }
 
   toggleMicroSplitDrawer(): void {
-    this.microSplitDrawerOpen.update((v) => !v);
+    const nextOpen = !this.microSplitDrawerOpen();
+    this.microSplitDrawerOpen.set(nextOpen);
+    if (nextOpen && this.activeMode() === 'microstructure') {
+      this.activeMode.set('spread');
+    }
   }
 
   onMicroApplyPrice(event: MicrostructureApplyPriceEvent): void {
@@ -2037,11 +2041,13 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       if (payload.side === 'BUY') this.buyPrice.set(payload.customPriceVes);
       else this.sellPrice.set(payload.customPriceVes);
     }
+    this.buyRole.set('MAKER');
+    this.sellRole.set('MAKER');
     if (payload.targetAssetAmountUsdt > 0) {
       this.amount.set(payload.targetAssetAmountUsdt);
       this.unit.set(this.pair() as AmountUnit);
     }
-    if (payload.preferredBank) {
+    if (payload.preferredBank && payload.preferredBank !== this.binance.selectedBank()) {
       this.binance.setBankFilter(payload.preferredBank);
     }
     this.activeMode.set('spread');
@@ -2079,6 +2085,7 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       breakEvenSellPrice: payload.breakEvenSellPrice,
       maxBuyPrice: payload.maxBuyPrice,
       targetAssetAmountUsdt: payload.targetAssetAmountUsdt,
+      preferredBank: payload.preferredBank,
       sourceLabel: payload.sourceLabel,
     });
   }
