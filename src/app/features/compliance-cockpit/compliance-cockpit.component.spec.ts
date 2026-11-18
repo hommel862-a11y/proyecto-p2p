@@ -680,6 +680,9 @@ describe('ComplianceCockpitComponent', () => {
       const brf = component.armCloserPreCallBriefing();
       expect(brf).not.toBeNull();
       expect(brf?.startsInMinutes).toBe(15);
+
+      const synced = component.syncLocalDealsToArmSilos();
+      expect(synced).toBeGreaterThanOrEqual(0);
     });
   });
 });

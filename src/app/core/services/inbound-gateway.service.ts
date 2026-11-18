@@ -1,6 +1,12 @@
 import { Injectable, signal, OnDestroy } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
-import type { InboundReceiptEvent, ArmOutboxSseEvent } from '@p2p/core';
+import type {
+  InboundReceiptEvent,
+  ArmOutboxSseEvent,
+  ArmWorkspaceId,
+  ArmApprovalStatus,
+  ArmToolExecutionResult,
+} from '@p2p/core';
 
 export type GatewayConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
@@ -176,6 +182,43 @@ export class InboundGatewayService implements OnDestroy {
       return Array.isArray(data.events) ? data.events : [];
     } catch {
       return [];
+    }
+  }
+
+  async executeArmTool(params: {
+    workspaceId: ArmWorkspaceId;
+    toolName: string;
+    args: Record<string, unknown>;
+  }): Promise<ArmToolExecutionResult | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/arm/tools/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      return (await res.json()) as ArmToolExecutionResult;
+    } catch {
+      return null;
+    }
+  }
+
+  async resolveArmApproval(params: {
+    workspaceId: ArmWorkspaceId;
+    approvalId: string;
+    decision: ArmApprovalStatus;
+    approvedText?: string;
+    saveAsExample?: boolean;
+  }): Promise<{ success: boolean; outboxEventId?: number } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/arm/approvals/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { success: boolean; outboxEventId?: number };
+    } catch {
+      return null;
     }
   }
 

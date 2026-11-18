@@ -275,4 +275,8 @@ export class AgentStudioComponent {
     const found = this.skillCatalog.find((s) => s.id === skillId);
     return found ? found.name : skillId;
   }
+
+  async installArmSpecialistPresets(): Promise<void> {
+    await this.studio.seedArmSpecialistPresets();
+  }
 }

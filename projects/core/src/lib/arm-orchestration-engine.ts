@@ -1657,3 +1657,294 @@ export function generateCloserPreCallBriefing(params: {
   };
 }
 
+// =============================================================================
+// 12. UNIFIED TOOL RUNNER (EXECUTOR FOR THE 10 STRICT TOOL CONTRACTS) & LOCAL MIGRATOR
+// =============================================================================
+
+export interface ArmToolExecutionResult {
+  ok: boolean;
+  toolName: string;
+  workspaceId: ArmWorkspaceId;
+  errorCode?:
+    | 'UNKNOWN_TOOL'
+    | 'MISSING_REQUIRED_ARGUMENT'
+    | 'STAGE_TRANSITION_REJECTED'
+    | 'QUOTE_VALIDATION_ERROR';
+  errorMessage?: string;
+  updatedLead: ArmLeadProfile;
+  assignedRole?: ArmAgentRole | 'HUMAN_TAKEOVER';
+  approvalEntry?: ArmApprovalQueueItem;
+  outboxPayload: Record<string, unknown>;
+}
+
+export function executeArmToolCall(params: {
+  workspaceId: ArmWorkspaceId;
+  toolName: string;
+  args: Record<string, unknown>;
+  lead: ArmLeadProfile;
+  nowMs?: number;
+}): ArmToolExecutionResult {
+  const now = params.nowMs ?? Date.now();
+  const contract = ARM_UNIFIED_TOOL_CONTRACTS.find(
+    (c) => c.function.name === params.toolName,
+  );
+
+  if (!contract) {
+    return {
+      ok: false,
+      toolName: params.toolName,
+      workspaceId: params.workspaceId,
+      errorCode: 'UNKNOWN_TOOL',
+      errorMessage: `La herramienta '${params.toolName}' no existe en ARM_UNIFIED_TOOL_CONTRACTS.`,
+      updatedLead: params.lead,
+      outboxPayload: {},
+    };
+  }
+
+  // Validate required top-level fields from the strict JSON Schema contract
+  const requiredFields = contract.function.parameters.required || [];
+  for (const reqKey of requiredFields) {
+    const hasNestedWhatsappMsg =
+      reqKey === 'proposed_whatsapp_message' &&
+      typeof (params.args['approval_request_details'] as Record<string, unknown> | undefined)?.[
+        'proposed_whatsapp_message'
+      ] === 'string';
+    if (!(reqKey in params.args) && !hasNestedWhatsappMsg) {
+      return {
+        ok: false,
+        toolName: params.toolName,
+        workspaceId: params.workspaceId,
+        errorCode: 'MISSING_REQUIRED_ARGUMENT',
+        errorMessage: `Falta el parámetro obligatorio '${reqKey}' en ${params.toolName}.`,
+        updatedLead: params.lead,
+        outboxPayload: {},
+      };
+    }
+  }
+
+  switch (params.toolName) {
+    case 'route_conversation': {
+      const targetRole = String(params.args['target_role']) as ArmAgentRole | 'HUMAN_TAKEOVER';
+      return {
+        ok: true,
+        toolName: params.toolName,
+        workspaceId: params.workspaceId,
+        updatedLead: params.lead,
+        assignedRole: targetRole,
+        outboxPayload: {
+          targetRole,
+          detectedIntent: params.args['detected_intent'],
+          sentiment: params.args['sentiment'],
+          handoffContextNote: params.args['handoff_context_note'],
+        },
+      };
+    }
+
+    case 'update_lead_bant_and_profile': {
+      const bantPatch = (params.args['bant_patch'] || {}) as ArmBantData;
+      const merged = mergeBantAndLeadProfile(
+        params.lead,
+        {
+          full_name: (params.args['full_name'] as string | null) ?? null,
+          company_name: (params.args['company_name'] as string | null) ?? null,
+          email: (params.args['email'] as string | null) ?? null,
+          bant_patch: {
+            budget: bantPatch.budget ?? null,
+            authority: bantPatch.authority ?? null,
+            need_pain_point: bantPatch.need_pain_point ?? null,
+            timeline: bantPatch.timeline ?? null,
+          },
+          ai_executive_summary: String(params.args['ai_executive_summary'] || ''),
+          estimated_deal_value: Number(params.args['estimated_deal_value'] || 0),
+        },
+        String(params.args['ai_executive_summary'] || ''),
+      );
+      return {
+        ok: true,
+        toolName: params.toolName,
+        workspaceId: params.workspaceId,
+        updatedLead: merged,
+        outboxPayload: {
+          leadId: merged.id,
+          qualificationScore: merged.qualificationScore,
+          isQualified: merged.isQualified,
+          recommendedStageSlug: merged.recommendedStageSlug,
+        },
+      };
+    }
+
+    case 'transition_pipeline_stage': {
+      const toStageSlug = String(params.args['to_stage_slug'] || '');
+      const reasoning = String(params.args['reasoning'] || '');
+      const check = validateArmStageTransition({
+        workspaceId: params.workspaceId,
+        fromStageSlug: params.lead.currentStageSlug,
+        toStageSlug,
+        triggeredByType: 'AGENT',
+        reasoning,
+      });
+
+      if (!check.allowed) {
+        return {
+          ok: false,
+          toolName: params.toolName,
+          workspaceId: params.workspaceId,
+          errorCode: 'STAGE_TRANSITION_REJECTED',
+          errorMessage: check.reason,
+          updatedLead: params.lead,
+          outboxPayload: { rejectionCode: check.rejectionCode, reason: check.reason },
+        };
+      }
+
+      const updatedLead: ArmLeadProfile = {
+        ...params.lead,
+        currentStageSlug: toStageSlug,
+      };
+      return {
+        ok: true,
+        toolName: params.toolName,
+        workspaceId: params.workspaceId,
+        updatedLead,
+        outboxPayload: {
+          fromStageSlug: params.lead.currentStageSlug,
+          toStageSlug,
+          reasoning,
+        },
+      };
+    }
+
+    case 'create_or_submit_quote': {
+      try {
+        const rawItems = (params.args['items'] as Array<{ sku: string; qty: number }>) || [];
+        const details = params.args['approval_request_details'] as Record<string, unknown> | null;
+        const quote = evaluateAndBuildArmQuote({
+          workspaceId: params.workspaceId,
+          leadId: params.lead.id,
+          leadName: params.lead.fullName || params.lead.companyName || params.lead.id,
+          items: rawItems,
+          discountPct: Number(params.args['discount_pct'] || 0),
+          validDays: Number(params.args['valid_days'] || 7),
+          hasSpecialConditions: Boolean(params.args['has_special_conditions']),
+          proposedWhatsappMessage: details
+            ? String(details['proposed_whatsapp_message'] || '')
+            : undefined,
+          nowMs: now,
+        });
+
+        return {
+          ok: true,
+          toolName: params.toolName,
+          workspaceId: params.workspaceId,
+          updatedLead: {
+            ...params.lead,
+            estimatedDealValue: quote.totalAmount,
+          },
+          approvalEntry: quote.approvalEntry,
+          outboxPayload: {
+            quoteNumber: quote.quoteNumber,
+            totalAmount: quote.totalAmount,
+            requiresHumanApproval: quote.requiresHumanApproval,
+            status: quote.status,
+          },
+        };
+      } catch (err: unknown) {
+        return {
+          ok: false,
+          toolName: params.toolName,
+          workspaceId: params.workspaceId,
+          errorCode: 'QUOTE_VALIDATION_ERROR',
+          errorMessage: err instanceof Error ? err.message : 'Error al construir cotización',
+          updatedLead: params.lead,
+          outboxPayload: {},
+        };
+      }
+    }
+
+    default: {
+      return {
+        ok: true,
+        toolName: params.toolName,
+        workspaceId: params.workspaceId,
+        updatedLead: params.lead,
+        outboxPayload: {
+          executedAt: now,
+          args: params.args,
+        },
+      };
+    }
+  }
+}
+
+export interface MigratedArmKanbanCard {
+  id: string;
+  workspaceId: ArmWorkspaceId;
+  leadName: string;
+  companyName: string;
+  stageSlug: string;
+  qualificationScore: number;
+  painPointSummary: string;
+  lastMessagePreview: string;
+  assignedAgentRole: ArmAgentRole;
+  movedByAgentBadge: string;
+  dealValueLabel: string;
+  freeWindowLabel: string;
+  messages: Array<{ sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }>;
+  toolTraces: Array<{ toolName: string; latencyMs: number; status: string }>;
+}
+
+export function migrateLocalCrmDealsToArmCards(
+  localDeals: ReadonlyArray<{
+    id: string;
+    scope: 'P2P_DESK' | 'FINANCE_360';
+    title: string;
+    contactName: string;
+    bankName: string;
+    stage: string;
+    cryptoAmountUsdt: number;
+    totalFiatAmount: number;
+    fiatCurrency: string;
+    bankReferenceId?: string;
+  }>,
+): MigratedArmKanbanCard[] {
+  return localDeals.map((d) => {
+    const workspaceId: ArmWorkspaceId = d.scope === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK';
+    const stageSlug =
+      workspaceId === 'FINANCE_360'
+        ? d.stage === 'STAGE_4_CLOSED'
+          ? 'pagado-360'
+          : 'presupuestado-360'
+        : d.stage;
+
+    return {
+      id: `local-${d.id}`,
+      workspaceId,
+      leadName: d.contactName,
+      companyName: d.bankName || d.title,
+      stageSlug,
+      qualificationScore: 88,
+      painPointSummary: d.title,
+      lastMessagePreview: d.bankReferenceId
+        ? `Ref Bancaria #${d.bankReferenceId} • ${d.totalFiatAmount} ${d.fiatCurrency}`
+        : `Operación local sincronizada (${d.cryptoAmountUsdt} USDT)`,
+      assignedAgentRole: 'QUOTER',
+      movedByAgentBadge: `Sincronizado Local (${workspaceId})`,
+      dealValueLabel: `${d.cryptoAmountUsdt} USDT`,
+      freeWindowLabel: 'FREE_0_USD • Activo',
+      messages: [
+        {
+          sender: 'LEAD',
+          text: `${d.title} — ${d.totalFiatAmount} ${d.fiatCurrency}`,
+        },
+      ],
+      toolTraces: [
+        {
+          toolName: 'migrateLocalCrmDealsToArmCards',
+          latencyMs: 4,
+          status: `OK → ${workspaceId} (${stageSlug})`,
+        },
+      ],
+    };
+  });
+}
+
+

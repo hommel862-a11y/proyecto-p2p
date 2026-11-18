@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TestBed } from '@angular/core/testing';
 import { InboundGatewayService } from './inbound-gateway.service';
 import type { InboundReceiptEvent } from '@p2p/core';
 
@@ -45,11 +44,7 @@ describe('InboundGatewayService', () => {
     originalEventSource = (globalThis as any).EventSource;
     (globalThis as any).EventSource = MockEventSource;
 
-    TestBed.configureTestingModule({
-      providers: [InboundGatewayService],
-    });
-
-    service = TestBed.inject(InboundGatewayService);
+    service = new InboundGatewayService();
   });
 
   afterEach(() => {
@@ -150,5 +145,30 @@ describe('InboundGatewayService', () => {
     service.connect();
     const reconnected = MockEventSource.instances[MockEventSource.instances.length - 1];
     expect(reconnected.url).toBe('http://127.0.0.1:3030/api/events?lastEventId=42');
+  });
+
+  it('calls executeArmTool and resolveArmApproval over REST (T8)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, success: true, outboxEventId: 99 }),
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const toolRes = await service.executeArmTool({
+      workspaceId: 'ARM_B2B',
+      toolName: 'transition_pipeline_stage',
+      args: { to_stage_slug: 'calificado', reasoning: 'Score >= 70' },
+    });
+    expect(toolRes?.ok).toBe(true);
+
+    const resolveRes = await service.resolveArmApproval({
+      workspaceId: 'ARM_B2B',
+      approvalId: 'app-1',
+      decision: 'APPROVED',
+    });
+    expect(resolveRes?.success).toBe(true);
+
+    globalThis.fetch = originalFetch;
   });
 });

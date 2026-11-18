@@ -18,6 +18,7 @@ import {
   evaluateDealTokenCircuitBreaker,
   runArmDeterministicReplayComparison,
   generateCloserPreCallBriefing,
+  executeArmToolCall,
   type PipelineDeal,
   type ArmWorkspaceId,
   type ArmSandboxPersonaId,
@@ -25,6 +26,7 @@ import {
   type ArmShadowExample,
   type ArmAgentRole,
   type ArmBantData,
+  type ArmLeadProfile,
 } from '@p2p/core';
 
 export interface CoalescedTurnBatch {
@@ -572,6 +574,75 @@ export class InboundGatewayServer {
         JSON.stringify({
           success: true,
           briefing,
+          outboxEventId: evt.id,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/tools/execute (Unified Tool Runner for the 10 strict JSON Schema contracts)
+    if (method === 'POST' && pathname === '/api/arm/tools/execute') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        toolName?: string;
+        args?: Record<string, unknown>;
+        lead?: ArmLeadProfile;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const defaultLead: ArmLeadProfile = body.lead || {
+        id: 'lead-default',
+        workspaceId,
+        fullName: 'Prospecto ARM',
+        companyName: 'Empresa',
+        phoneWhatsapp: '+584140000000',
+        email: null,
+        currentStageSlug: workspaceId === 'ARM_B2B' ? 'en-descubrimiento' : 'STAGE_1_NEW',
+        qualificationScore: 30,
+        isQualified: false,
+        substantiveTurnsCount: 1,
+        bantData: { budget: null, authority: null, need_pain_point: null, timeline: null },
+        aiExecutiveSummary: '',
+        estimatedDealValue: 0,
+        currency: 'USD',
+      };
+
+      const execRes = executeArmToolCall({
+        workspaceId,
+        toolName: body.toolName || '',
+        args: body.args || {},
+        lead: defaultLead,
+      });
+
+      if (!execRes.ok) {
+        res.writeHead(422, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(execRes));
+        return;
+      }
+
+      const evtType: ArmOutboxEventType = execRes.approvalEntry
+        ? 'approval_requested'
+        : body.toolName === 'transition_pipeline_stage'
+          ? 'pipeline_transition'
+          : 'agent_run';
+
+      const evt = this.appendArmOutboxEvent(workspaceId, evtType, defaultLead.id, {
+        ...execRes.outboxPayload,
+        approval: execRes.approvalEntry,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          ...execRes,
           outboxEventId: evt.id,
         }),
       );

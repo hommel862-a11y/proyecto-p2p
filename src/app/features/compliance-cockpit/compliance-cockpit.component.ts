@@ -58,6 +58,7 @@ import {
   evaluateDealTokenCircuitBreaker,
   runArmDeterministicReplayComparison,
   generateCloserPreCallBriefing,
+  migrateLocalCrmDealsToArmCards,
   type CrmImportStrategy,
   type CrmCsvCatalogEntity,
   type WorkspaceScope,
@@ -3104,6 +3105,20 @@ export class ComplianceCockpitComponent implements OnDestroy {
       `Briefing 15m pre-llamada generado para ${briefing.companyName}.`,
       'Closer Copilot',
     );
+  }
+
+  syncLocalDealsToArmSilos(): number {
+    const migrated = migrateLocalCrmDealsToArmCards(this.deals());
+    const existingIds = new Set(this.armKanbanCards().map((c) => c.id));
+    const newCards = migrated.filter((m) => !existingIds.has(m.id));
+    if (newCards.length > 0) {
+      this.armKanbanCards.set([...newCards, ...this.armKanbanCards()]);
+      this.toast.success(
+        `${newCards.length} trato(s) locales sincronizados hacia P2P_DESK / FINANCE_360 sin cruce de silos.`,
+        'Migración Local ARM',
+      );
+    }
+    return newCards.length;
   }
 
   private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {

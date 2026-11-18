@@ -513,4 +513,28 @@ describe('Inbound Gateway - Server Endpoints', () => {
     expect(briefingBody.briefing.startsInMinutes).toBe(15);
     expect(briefingBody.briefing.telegramMarkdownPayload).toContain('Clínica Aurora');
   });
+
+  it('executes POST /api/arm/tools/execute via the Unified Tool Runner (T8)', async () => {
+    const toolRes = await fetch(`http://127.0.0.1:${port}/api/arm/tools/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        toolName: 'transition_pipeline_stage',
+        args: {
+          to_stage_slug: 'calificado',
+          reasoning: 'Score BANT >= 70 confirmado',
+        },
+      }),
+    });
+    expect(toolRes.status).toBe(200);
+    const toolBody = (await toolRes.json()) as {
+      ok: boolean;
+      updatedLead: { currentStageSlug: string };
+      outboxEventId: number;
+    };
+    expect(toolBody.ok).toBe(true);
+    expect(toolBody.updatedLead.currentStageSlug).toBe('calificado');
+    expect(toolBody.outboxEventId).toBeGreaterThan(0);
+  });
 });

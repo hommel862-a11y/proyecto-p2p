@@ -19,6 +19,8 @@ import {
   evaluateDealTokenCircuitBreaker,
   runArmDeterministicReplayComparison,
   generateCloserPreCallBriefing,
+  executeArmToolCall,
+  migrateLocalCrmDealsToArmCards,
   type ArmLeadProfile,
   type ArmShadowExample,
 } from './arm-orchestration-engine';
@@ -340,5 +342,105 @@ describe('ARM Multi-Workspace Orchestration Engine (@p2p/core)', () => {
     expect(briefing.workspaceId).toBe('ARM_B2B');
     expect(briefing.telegramMarkdownPayload).toContain('Clínica Aurora');
     expect(briefing.telegramMarkdownPayload).toContain('95/100');
+  });
+
+  it('executes the Unified Tool Runner (executeArmToolCall) across the 10 strict schemas and migrates local CRM deals into isolated ARM silos (T8)', () => {
+    const baseLead: ArmLeadProfile = {
+      id: 'lead-t8',
+      workspaceId: 'ARM_B2B',
+      fullName: 'Dra. Elena Gómez',
+      companyName: 'Clínica Aurora',
+      phoneWhatsapp: '+584141234567',
+      email: 'elena@clinicaaurora.com',
+      currentStageSlug: 'en-descubrimiento',
+      qualificationScore: 30,
+      isQualified: false,
+      substantiveTurnsCount: 1,
+      bantData: {
+        budget: null,
+        authority: 'Directora Médica',
+        need_pain_point: 'Automatizar citas por WhatsApp',
+        timeline: null,
+      },
+      aiExecutiveSummary: 'Clínica en descubrimiento',
+      estimatedDealValue: 1200,
+      currency: 'USD',
+    };
+
+    // 1. Missing required argument fails strict schema validation
+    const invalidCall = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'route_conversation',
+      args: { target_role: 'QUOTER' },
+      lead: baseLead,
+    });
+    expect(invalidCall.ok).toBe(false);
+    expect(invalidCall.errorCode).toBe('MISSING_REQUIRED_ARGUMENT');
+
+    // 2. Valid update_lead_bant_and_profile updates lead score deterministically
+    const bantCall = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'update_lead_bant_and_profile',
+      args: {
+        full_name: null,
+        company_name: null,
+        email: null,
+        bant_patch: {
+          budget: '$2,400 USD anuales',
+          authority: null,
+          need_pain_point: null,
+          timeline: 'Esta misma semana',
+        },
+        ai_executive_summary: 'Calificada para Plan Enterprise',
+        estimated_deal_value: 2400,
+      },
+      lead: baseLead,
+    });
+    expect(bantCall.ok).toBe(true);
+    expect(bantCall.updatedLead.qualificationScore).toBe(100);
+    expect(bantCall.updatedLead.isQualified).toBe(true);
+
+    // 3. Valid create_or_submit_quote triggers Risk Gate approval entry when discount > 0%
+    const quoteCall = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'create_or_submit_quote',
+      args: {
+        items: [{ sku: 'PLAN-ENTERPRISE', qty: 1 }],
+        discount_pct: 20,
+        valid_days: 7,
+        has_special_conditions: false,
+        approval_request_details: {
+          action_type: 'APPLY_DISCOUNT',
+          title: 'Descuento 20% Plan Enterprise',
+          agent_reasoning: 'Cliente anual con 20 médicos',
+          priority: 'HIGH',
+          proposed_whatsapp_message: 'Te confirmamos el 20% corporativo.',
+        },
+      },
+      lead: bantCall.updatedLead,
+    });
+    expect(quoteCall.ok).toBe(true);
+    expect(quoteCall.approvalEntry).toBeDefined();
+    expect(quoteCall.approvalEntry?.actionType).toBe('APPLY_DISCOUNT');
+
+    // 4. Transparent migration of local CRM deals into isolated P2P_DESK and FINANCE_360 cards
+    const migrated = migrateLocalCrmDealsToArmCards([
+      {
+        id: 'DL-101',
+        scope: 'P2P_DESK',
+        title: 'Lote 800 USDT - Banesco',
+        contactName: 'Inversiones Orinoco',
+        bankName: 'Banesco',
+        stage: 'STAGE_2_TRANSIT',
+        fiatCurrency: 'VES',
+        cryptoAmountUsdt: 800,
+        totalFiatAmount: 42000,
+        bankReferenceId: '998877',
+      },
+    ]);
+    expect(migrated.length).toBe(1);
+    expect(migrated[0].workspaceId).toBe('P2P_DESK');
+    expect(migrated[0].stageSlug).toBe('STAGE_2_TRANSIT');
+    expect(migrated[0].movedByAgentBadge).toContain('Sincronizado Local');
   });
 });

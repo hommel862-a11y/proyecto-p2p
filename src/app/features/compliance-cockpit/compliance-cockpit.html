@@ -2235,6 +2235,14 @@
             >
               ⏱ Escaneo Anti-Ghosting (72h)
             </button>
+            <button
+              type="button"
+              class="action-btn btn-new-contact"
+              (click)="syncLocalDealsToArmSilos()"
+              title="Migrar tratos locales (IndexedDB/Storage) hacia su silo ARM aislado"
+            >
+              📥 Sincronizar Local
+            </button>
           </div>
         </header>
 
