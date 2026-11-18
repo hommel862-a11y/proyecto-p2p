@@ -887,6 +887,99 @@ describe('ComplianceCockpitComponent', () => {
         hotkeys.ngOnDestroy();
       }
     });
+
+    it('renders #voucherCanvas on demand before downloading PNG even if preview was not pre-rendered', () => {
+      const canvas = document.createElement('canvas');
+      canvas.id = 'voucherCanvas';
+      const fillRect = vi.fn();
+      const fillText = vi.fn();
+      const strokeRect = vi.fn();
+      vi.spyOn(canvas, 'getContext').mockReturnValue({
+        fillRect,
+        fillText,
+        strokeRect,
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        font: '',
+        textAlign: 'left',
+      } as unknown as CanvasRenderingContext2D);
+      vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,ZmFrZQ==');
+      document.body.appendChild(canvas);
+
+      try {
+        component.studioDocNumber.set('PRE-TEST-PNG');
+        component.onInboxExportPng('DOWNLOAD');
+        expect(fillRect).toHaveBeenCalled();
+        expect(toastMock.success).toHaveBeenCalled();
+      } finally {
+        canvas.remove();
+      }
+    });
+
+    it('persists non-zero estimatedDealValue when moving ARM cards or syncing local deals to SQLite', () => {
+      const prevElectron = (window as unknown as { electron?: unknown }).electron;
+      const upsertLead = vi.fn(async (lead: unknown) => lead);
+      (window as unknown as { electron?: unknown }).electron = {
+        arm: {
+          upsertLead,
+        },
+      };
+
+      try {
+        component.moveArmCardToStage('arm-lead-b2b-1', 'sesion-agendada');
+        expect(upsertLead).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'arm-lead-b2b-1',
+            estimatedDealValue: 2400,
+          }),
+        );
+
+        component.deals.set([
+          {
+            id: 'DL-SYNC-99',
+            scope: 'P2P_DESK',
+            title: 'Arbitraje Sync SQLite',
+            contactId: 'CT-1',
+            contactName: 'Mesa Sync',
+            bankAccountId: 'BK-1',
+            bankName: 'Banesco',
+            stage: 'STAGE_2_TRANSIT',
+            cryptoAmountUsdt: 1750,
+            fiatCurrency: 'VES',
+            appliedRate: 84,
+            replacementRate: 82,
+            totalFiatAmount: 147000,
+            paidFiatAmount: 0,
+            netProfitUsdt: 42,
+            bankReferenceId: 'REF99',
+            quotedAt: Date.now(),
+            quoteTtlMinutes: 15,
+            isRateExpired: false,
+            timeline: [],
+            createdAt: Date.now(),
+            closedAt: null,
+          },
+        ]);
+
+        const syncedCount = component.syncLocalDealsToArmSilos();
+        expect(syncedCount).toBe(1);
+        expect(upsertLead).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'local-DL-SYNC-99',
+            estimatedDealValue: 1750,
+            currency: 'USDT',
+          }),
+        );
+      } finally {
+        (window as unknown as { electron?: unknown }).electron = prevElectron;
+      }
+    });
   });
 });
 

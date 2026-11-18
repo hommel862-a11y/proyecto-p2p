@@ -215,6 +215,7 @@ describe('CrmInboxStudioComponent', () => {
     expect(el.querySelector('[data-testid="inbox-thread-list"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="inbox-active-chat"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="live-studio-preview"]')).toBeTruthy();
+    expect(el.querySelector('#voucherCanvas')).toBeTruthy();
     expect(el.querySelector('[data-testid="studio-qr-placeholder"]')).toBeTruthy();
     expect(el.textContent).toContain('23h 59m ($0.00)');
     expect(el.textContent).toContain('PRE-2026-01');

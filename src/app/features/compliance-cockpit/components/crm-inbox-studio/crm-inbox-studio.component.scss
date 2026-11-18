@@ -780,3 +780,13 @@
     flex-direction: column;
   }
 }
+
+.sr-only-canvas {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 800px;
+  height: 980px;
+  opacity: 0;
+  pointer-events: none;
+}

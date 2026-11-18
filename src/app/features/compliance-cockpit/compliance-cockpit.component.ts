@@ -2960,6 +2960,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
   }
 
   copyCanvasImageToClipboard(): void {
+    this.renderVoucherCanvas();
     const canvas = document.getElementById('voucherCanvas') as HTMLCanvasElement | null;
     if (!canvas) {
       this.toast.warn('Renderice el comprobante primero.', 'Studio');
@@ -2983,6 +2984,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
   }
 
   downloadCanvasImage(): void {
+    this.renderVoucherCanvas();
     const canvas = document.getElementById('voucherCanvas') as HTMLCanvasElement | null;
     if (!canvas) return;
     const dataUrl = canvas.toDataURL('image/png');
@@ -3849,6 +3851,46 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.selectedArmLeadId.set(cardId);
   }
 
+  private syncArmCardToSqlite(
+    card: Pick<
+      ArmKanbanCardVm,
+      | 'id'
+      | 'workspaceId'
+      | 'leadName'
+      | 'companyName'
+      | 'stageSlug'
+      | 'assignedAgentRole'
+      | 'qualificationScore'
+      | 'painPointSummary'
+      | 'dealValueLabel'
+    > & { estimatedValueNum?: number },
+  ): void {
+    if (typeof window === 'undefined' || !window.electron?.arm?.upsertLead) {
+      return;
+    }
+    const currency = (card.dealValueLabel || '').toUpperCase().includes('USDT') ? 'USDT' : 'USD';
+    void window.electron.arm.upsertLead({
+      id: card.id,
+      workspaceId: card.workspaceId,
+      fullName: card.leadName,
+      companyName: card.companyName,
+      phoneWhatsapp: null,
+      email: null,
+      currentStageSlug: card.stageSlug,
+      assignedAgentRole: card.assignedAgentRole,
+      qualificationScore: card.qualificationScore,
+      bantData: {
+        budget: null,
+        authority: null,
+        need_pain_point: card.painPointSummary,
+        timeline: null,
+      },
+      aiExecutiveSummary: card.painPointSummary,
+      estimatedDealValue: this.parseArmCardMoney(card as ArmKanbanCardVm),
+      currency,
+    });
+  }
+
   moveArmCardToStage(cardId: string, toStageSlug: string, actor: 'AGENT' | 'HUMAN' = 'HUMAN'): void {
     this.armKanbanCards.set(
       this.armKanbanCards().map((c) =>
@@ -3866,22 +3908,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
     );
     this.persistArmState();
     const moved = this.armKanbanCards().find((c) => c.id === cardId);
-    if (moved && typeof window !== 'undefined' && window.electron?.arm) {
-      void window.electron.arm.upsertLead({
-        id: moved.id,
-        workspaceId: moved.workspaceId,
-        fullName: moved.leadName,
-        companyName: moved.companyName,
-        phoneWhatsapp: null,
-        email: null,
-        currentStageSlug: moved.stageSlug,
-        assignedAgentRole: moved.assignedAgentRole,
-        qualificationScore: moved.qualificationScore,
-        bantData: { budget: null, authority: null, need_pain_point: moved.painPointSummary, timeline: null },
-        aiExecutiveSummary: moved.painPointSummary,
-        estimatedDealValue: 0,
-        currency: 'USD',
-      });
+    if (moved) {
+      this.syncArmCardToSqlite(moved);
     }
   }
 
@@ -4223,28 +4251,17 @@ export class ComplianceCockpitComponent implements OnDestroy {
   syncLocalDealsToArmSilos(): number {
     const migrated = migrateLocalCrmDealsToArmCards(this.deals());
     const existingIds = new Set(this.armKanbanCards().map((c) => c.id));
-    const newCards = migrated.filter((m) => !existingIds.has(m.id));
+    const newCards = migrated
+      .filter((m) => !existingIds.has(m.id))
+      .map((card) => ({
+        ...card,
+        estimatedValueNum: this.parseArmCardMoney(card as ArmKanbanCardVm),
+      }));
     if (newCards.length > 0) {
       this.armKanbanCards.set([...newCards, ...this.armKanbanCards()]);
       this.persistArmState();
-      if (typeof window !== 'undefined' && window.electron?.arm) {
-        for (const card of newCards) {
-          void window.electron.arm.upsertLead({
-            id: card.id,
-            workspaceId: card.workspaceId,
-            fullName: card.leadName,
-            companyName: card.companyName,
-            phoneWhatsapp: null,
-            email: null,
-            currentStageSlug: card.stageSlug,
-            assignedAgentRole: card.assignedAgentRole,
-            qualificationScore: card.qualificationScore,
-            bantData: { budget: null, authority: null, need_pain_point: card.painPointSummary, timeline: null },
-            aiExecutiveSummary: card.painPointSummary,
-            estimatedDealValue: 0,
-            currency: 'USD',
-          });
-        }
+      for (const card of newCards) {
+        this.syncArmCardToSqlite(card);
       }
       this.toast.success(
         `${newCards.length} trato(s) locales sincronizados hacia P2P_DESK / FINANCE_360 sin cruce de silos.`,
