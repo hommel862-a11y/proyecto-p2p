@@ -15,6 +15,7 @@ import type {
   MarketSnapshotsFilter,
 } from './decision-journal.repository';
 import { CustomAgentRepository } from './custom-agent.repository';
+import { ArmRepository } from './arm.repository';
 
 export interface InboundBankEventRecord {
   id?: number;
@@ -147,6 +148,7 @@ export class P2PDatabaseService {
    */
   private decisionJournal: DecisionJournalRepository | null = null;
   private customAgentRepo: CustomAgentRepository | null = null;
+  private armRepo: ArmRepository | null = null;
 
   constructor(dbFilePath?: string) {
     let targetPath = dbFilePath;
@@ -425,6 +427,64 @@ export class P2PDatabaseService {
         PRIMARY KEY (agent_id, skill_id)
       );
       CREATE INDEX IF NOT EXISTS idx_custom_agent_skills_agent ON custom_agent_skills(agent_id);
+
+      CREATE TABLE IF NOT EXISTS arm_leads (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+        full_name TEXT,
+        company_name TEXT,
+        phone_whatsapp TEXT,
+        email TEXT,
+        current_stage_slug TEXT NOT NULL,
+        assigned_agent_role TEXT,
+        qualification_score INTEGER NOT NULL DEFAULT 0 CHECK (qualification_score BETWEEN 0 AND 100),
+        bant_json TEXT NOT NULL DEFAULT '{}',
+        ai_executive_summary TEXT,
+        estimated_deal_value REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_arm_leads_workspace_stage ON arm_leads(workspace_id, current_stage_slug);
+
+      CREATE TABLE IF NOT EXISTS arm_approval_queue (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+        idempotency_key TEXT UNIQUE NOT NULL,
+        lead_id TEXT NOT NULL,
+        requested_by_role TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        agent_reasoning TEXT NOT NULL,
+        risk_rule_triggered TEXT NOT NULL,
+        proposed_payload_json TEXT NOT NULL,
+        final_approved_payload_json TEXT,
+        save_as_example INTEGER NOT NULL DEFAULT 0 CHECK (save_as_example IN (0, 1)),
+        status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'EDITED_AND_APPROVED', 'REJECTED', 'EXPIRED')),
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_arm_approval_workspace_status ON arm_approval_queue(workspace_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS arm_outbox_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+        event_type TEXT NOT NULL,
+        aggregate_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_arm_outbox_cursor ON arm_outbox_events(workspace_id, id ASC);
+
+      CREATE TABLE IF NOT EXISTS arm_shadow_examples (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+        agent_role TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        proposed_text TEXT NOT NULL,
+        approved_text TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_arm_shadow_workspace_role ON arm_shadow_examples(workspace_id, agent_role);
     `);
   }
 
@@ -1256,9 +1316,17 @@ export class P2PDatabaseService {
     return this.customAgentRepo;
   }
 
+  getArmRepo(): ArmRepository {
+    if (!this.armRepo) {
+      this.armRepo = new ArmRepository(this.db);
+    }
+    return this.armRepo;
+  }
+
   close(): void {
     this.decisionJournal = null;
     this.customAgentRepo = null;
+    this.armRepo = null;
     this.db.close();
   }
 }

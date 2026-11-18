@@ -8,6 +8,7 @@ export * from './crypto-verify.js';
 export * from './dedup-cache.js';
 export * from './meta-webhook-parser.js';
 export * from './receipt-intake.js';
+export * from './meta-outbound-client.js';
 export * from './server.js';
 
 const port = Number(process.env.INBOUND_GATEWAY_PORT || process.env.GATEWAY_PORT || 3030);

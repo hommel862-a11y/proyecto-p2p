@@ -471,6 +471,7 @@ export type ExecutionProvenance =
   | 'anthropic'
   | 'deepseek'
   | 'qwen'
+  | 'openrouter'
   | 'deterministic'
   | 'heuristic'
   | 'simulated';
@@ -688,6 +689,33 @@ export interface ElectronAPI {
       token: string;
       filePath: string;
     }): Promise<{ success: boolean; base64: string; mimeType: string }>;
+  };
+  arm?: {
+    listLeads(workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360'): Promise<unknown[]>;
+    upsertLead(lead: unknown): Promise<unknown>;
+    listPendingApprovals(workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360'): Promise<unknown[]>;
+    saveApproval(item: unknown): Promise<unknown>;
+    resolveApproval(params: {
+      id: string;
+      status: 'APPROVED' | 'EDITED_AND_APPROVED' | 'REJECTED';
+      approvedText?: string;
+      saveAsExample?: boolean;
+    }): Promise<unknown>;
+    listShadowExamples(params: {
+      workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
+      agentRole?: string;
+      limit?: number;
+    }): Promise<unknown[]>;
+    appendOutboxEvent(params: {
+      workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
+      eventType: string;
+      aggregateId: string;
+      payload: Record<string, unknown>;
+    }): Promise<unknown>;
+    listOutboxSince(params: {
+      sinceId: number;
+      workspaceId?: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
+    }): Promise<unknown[]>;
   };
 }
 

@@ -12,12 +12,18 @@ import { DedupCache } from './dedup-cache.js';
 import { parseMetaWebhookPayload } from './meta-webhook-parser.js';
 import { processInboundMessageToReceipt } from './receipt-intake.js';
 import {
+  dispatchMetaWhatsappMessage,
+  fetchAndAnalyzeMetaMediaWithGemini,
+} from './meta-outbound-client.js';
+import {
   runArmSandboxSimulationTurn,
   scanOutboundMessageDlp,
   evaluateMeta24hFreeWindow,
   evaluateDealTokenCircuitBreaker,
   runArmDeterministicReplayComparison,
   generateCloserPreCallBriefing,
+  processCloserPostCallNote,
+  evaluateGhostingFollowUp,
   executeArmToolCall,
   type PipelineDeal,
   type ArmWorkspaceId,
@@ -108,6 +114,40 @@ export class InboundGatewayServer {
     return this.outboxEvents.filter(
       (e) => e.id > sinceId && (!workspaceId || e.workspaceId === workspaceId),
     );
+  }
+
+  runAntiGhostingSweep(
+    candidates: ReadonlyArray<{
+      workspaceId: ArmWorkspaceId;
+      leadId: string;
+      leadName: string;
+      lastInboundTimestampMs: number;
+      followupAttempts: number;
+      painPointMemory: string;
+    }>,
+    nowTimestampMs = Date.now(),
+  ): ArmOutboxSseEvent[] {
+    const queued: ArmOutboxSseEvent[] = [];
+    for (const c of candidates) {
+      const res = evaluateGhostingFollowUp({
+        workspaceId: c.workspaceId,
+        leadId: c.leadId,
+        leadName: c.leadName,
+        lastInboundTimestampMs: c.lastInboundTimestampMs,
+        nowTimestampMs,
+        followupAttempts: c.followupAttempts,
+        painPointMemory: c.painPointMemory,
+      });
+      if (res.shouldQueueFollowUp && res.approvalEntry) {
+        queued.push(
+          this.appendArmOutboxEvent(c.workspaceId, 'approval_requested', res.approvalEntry.id, {
+            approval: res.approvalEntry,
+            requiresHsmTemplate: res.requiresHsmTemplate,
+          }),
+        );
+      }
+    }
+    return queued;
   }
 
   start(): Promise<number> {
@@ -213,7 +253,22 @@ export class InboundGatewayServer {
           continue;
         }
 
-        const receipt = processInboundMessageToReceipt(msg, this.config.targetScope, this.knownDeals);
+        let effectiveMsg = msg;
+        if (msg.mediaId && msg.mediaType && msg.mediaType !== 'text') {
+          const mediaResult = await fetchAndAnalyzeMetaMediaWithGemini({
+            mediaId: msg.mediaId,
+            mediaType: msg.mediaType,
+            mimeType: msg.mediaMimeType,
+          });
+          if (mediaResult.analyzed && mediaResult.extractedText) {
+            effectiveMsg = {
+              ...msg,
+              text: `${msg.text} ${mediaResult.extractedText}`.trim(),
+            };
+          }
+        }
+
+        const receipt = processInboundMessageToReceipt(effectiveMsg, this.config.targetScope, this.knownDeals);
         if (receipt) {
           this.pendingEvents.push(receipt);
           this.broadcastSseEvent('new_receipt', receipt);
@@ -408,6 +463,13 @@ export class InboundGatewayServer {
         return;
       }
 
+      const delivery = await dispatchMetaWhatsappMessage({
+        workspaceId,
+        recipientPhone: body.recipientPhone || '',
+        text: outboundText,
+        templateName: body.templateName,
+      });
+
       const evt = this.appendArmOutboxEvent(
         workspaceId,
         'message_received',
@@ -418,6 +480,8 @@ export class InboundGatewayServer {
           text: outboundText,
           templateName: body.templateName || null,
           costStatus: windowEval.costStatus,
+          deliveryMode: delivery.mode,
+          metaMessageId: delivery.metaMessageId || null,
         },
       );
 
@@ -427,6 +491,7 @@ export class InboundGatewayServer {
           success: true,
           outboxEventId: evt.id,
           costStatus: windowEval.costStatus,
+          delivery,
         }),
       );
       return;
@@ -575,6 +640,96 @@ export class InboundGatewayServer {
           success: true,
           briefing,
           outboxEventId: evt.id,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/closer/post-call (30s Closer Voice-Note Processor)
+    if (method === 'POST' && pathname === '/api/arm/closer/post-call') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        leadId?: string;
+        leadName?: string;
+        voiceNoteTranscript?: string;
+        sku?: string;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      if (!body.voiceNoteTranscript || !body.voiceNoteTranscript.trim()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'MISSING_TRANSCRIPT' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const defaultSku =
+        workspaceId === 'ARM_B2B'
+          ? 'PLAN-ENTERPRISE'
+          : workspaceId === 'FINANCE_360'
+            ? 'PYME-SERV-360'
+            : 'USDT-LIQ-DESK';
+
+      const processed = processCloserPostCallNote({
+        workspaceId,
+        leadId: body.leadId || `closer-${Date.now()}`,
+        leadName: body.leadName || 'Prospecto Closer',
+        voiceNoteTranscript: body.voiceNoteTranscript.trim(),
+        sku: body.sku || defaultSku,
+      });
+
+      const evt = this.appendArmOutboxEvent(workspaceId, 'approval_requested', processed.approvalEntry.id, {
+        approval: processed.approvalEntry,
+        recommendedStageSlug: processed.recommendedStageSlug,
+        detectedSplitPayment: processed.detectedSplitPayment,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          processed,
+          outboxEventId: evt.id,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/antighosting/sweep (Proactive Follow-Up Worker Sweep)
+    if (method === 'POST' && pathname === '/api/arm/antighosting/sweep') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        candidates?: Array<{
+          workspaceId: ArmWorkspaceId;
+          leadId: string;
+          leadName: string;
+          lastInboundTimestampMs: number;
+          followupAttempts: number;
+          painPointMemory: string;
+        }>;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const events = this.runAntiGhostingSweep(body.candidates || []);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          queuedCount: events.length,
+          events,
         }),
       );
       return;

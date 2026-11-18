@@ -419,4 +419,24 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(Object.keys(api.decisionJournal)).toEqual(['invoke']);
     expect((api.decisionJournal as unknown as Record<string, unknown>).ipcRenderer).toBeUndefined();
   });
+
+  it('exposes the ARM multi-workspace channels strictly in ALLOWED_CHANNELS', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      return Promise.resolve([]);
+    });
+
+    await api.arm?.listLeads('ARM_B2B');
+    await api.arm?.resolveApproval({
+      id: 'app-1',
+      status: 'APPROVED',
+    });
+
+    expect(calls[0]).toEqual({ channel: 'arm:list-leads', args: ['ARM_B2B'] });
+    expect(calls[1].channel).toBe('arm:resolve-approval');
+    expect(ALLOWED_CHANNELS as readonly string[]).toContain('arm:list-leads');
+    expect(ALLOWED_CHANNELS as readonly string[]).toContain('arm:resolve-approval');
+    expect(ALLOWED_CHANNELS as readonly string[]).toContain('arm:list-shadow-examples');
+  });
 });

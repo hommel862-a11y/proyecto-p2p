@@ -65,6 +65,10 @@ import { MicrostructureDataLake } from './data-lake';
 import { RepricerEngine } from './repricer-engine';
 import { CloudAiProxyService } from './ai-proxy';
 import { EncryptedSyncStore } from './sync-store';
+import {
+  handleTelegramCloserCommand,
+  buildTelegramPreCallBriefingCard,
+} from './arm-closer-bridge';
 
 // Configuration from Environment Variables
 const BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN']?.trim() || '';
@@ -75,6 +79,7 @@ const ALPHA_SCAN_INTERVAL_SEC = Number(process.env['ALPHA_SCAN_INTERVAL_SEC']) |
 const MIN_NET_SPREAD_PCT = Number(process.env['MIN_NET_SPREAD_PCT']) || 1.0;
 const HTTP_PORT = Number(process.env['PORT']) || 3000;
 const ELECTRON_BRIDGE_URL = process.env['ELECTRON_BRIDGE_URL']?.trim() || 'http://127.0.0.1:51857';
+const INBOUND_GATEWAY_URL = process.env['INBOUND_GATEWAY_URL']?.trim() || 'http://inbound-gateway:3030';
 
 const COPILOT_SYSTEM_PROMPT = `Sos el Copiloto Estratega de Arbitraje P2P Institucional (P2P Decisor).
 Tu rol es asistir a operadores profesionales de mesa de cambio con análisis cuantitativo riguroso, microestructura de mercado, arbitraje P2P (VES/USDT), triangulaciones, tasas BCV e identificación de riesgos.
@@ -977,6 +982,16 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
 
     default: {
       const raw = (update.message?.text || '').trim();
+      if (raw.toLowerCase().startsWith('/closer')) {
+        const closerRes = await handleTelegramCloserCommand({
+          rawText: raw,
+          gatewayUrl: INBOUND_GATEWAY_URL,
+        });
+        if (closerRes.handled && closerRes.replyMarkdown) {
+          await sendTelegramMessage(BOT_TOKEN, chatId, closerRes.replyMarkdown);
+          break;
+        }
+      }
       if (raw.startsWith('/ask ') || raw.startsWith('/ai ') || raw.startsWith('/ia ')) {
         const query = raw.replace(/^\/(ask|ai|ia)\s+/i, '').trim();
         if (query) {
@@ -1216,6 +1231,42 @@ function startHttpServer(): void {
       const result = syncStore.pull(sinceVersion, deviceId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (url.pathname === '/api/arm/closer/briefing' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', async () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          const briefing = buildTelegramPreCallBriefingCard({
+            workspaceId: parsed.workspaceId || 'ARM_B2B',
+            leadName: parsed.leadName || 'Dra. Elena Gómez',
+            companyName: parsed.companyName || 'Clínica Aurora',
+            startsInMinutes: parsed.startsInMinutes ?? 15,
+            qualificationScore: parsed.qualificationScore ?? 92,
+            bantData: parsed.bantData || {
+              budget: '$2,400 USD',
+              authority: 'Directora',
+              need_pain_point: 'Automatización CRM',
+              timeline: 'Esta semana',
+            },
+            memoryFacts: Array.isArray(parsed.memoryFacts) ? parsed.memoryFacts : [],
+            estimatedDealValue: Number(parsed.estimatedDealValue || 2400),
+          });
+          if (BOT_TOKEN && AUTHORIZED_CHAT_ID) {
+            await sendTelegramMessage(BOT_TOKEN, AUTHORIZED_CHAT_ID, briefing.telegramMarkdownPayload);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok', briefing }));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'Error en briefing ARM' }));
+        }
+      });
       return;
     }
 

@@ -1609,6 +1609,65 @@ export function registerIpcHandlers(): void {
       return db.getCustomAgentRepo().toggleAgent(params.id, params.active);
     },
   );
+
+  // ARM Multi-Workspace SQLite Mirror Handlers
+  ipcMain.removeHandler('arm:list-leads');
+  ipcMain.handle(
+    'arm:list-leads',
+    async (_event: IpcMainInvokeEvent, workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360') => {
+      return db.getArmRepo().listLeads(workspaceId);
+    },
+  );
+
+  ipcMain.removeHandler('arm:upsert-lead');
+  ipcMain.handle('arm:upsert-lead', async (_event: IpcMainInvokeEvent, lead: any) => {
+    return db.getArmRepo().upsertLead(lead);
+  });
+
+  ipcMain.removeHandler('arm:list-approvals');
+  ipcMain.handle(
+    'arm:list-approvals',
+    async (_event: IpcMainInvokeEvent, workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360') => {
+      return db.getArmRepo().listPendingApprovals(workspaceId);
+    },
+  );
+
+  ipcMain.removeHandler('arm:save-approval');
+  ipcMain.handle('arm:save-approval', async (_event: IpcMainInvokeEvent, item: any) => {
+    return db.getArmRepo().saveApproval(item);
+  });
+
+  ipcMain.removeHandler('arm:resolve-approval');
+  ipcMain.handle('arm:resolve-approval', async (_event: IpcMainInvokeEvent, params: any) => {
+    return db.getArmRepo().resolveApproval(params);
+  });
+
+  ipcMain.removeHandler('arm:list-shadow-examples');
+  ipcMain.handle(
+    'arm:list-shadow-examples',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { workspaceId: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360'; agentRole?: string; limit?: number },
+    ) => {
+      return db.getArmRepo().listShadowExamples(params.workspaceId, params.agentRole, params.limit);
+    },
+  );
+
+  ipcMain.removeHandler('arm:append-outbox');
+  ipcMain.handle('arm:append-outbox', async (_event: IpcMainInvokeEvent, params: any) => {
+    return db.getArmRepo().appendOutboxEvent(params);
+  });
+
+  ipcMain.removeHandler('arm:list-outbox');
+  ipcMain.handle(
+    'arm:list-outbox',
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { sinceId: number; workspaceId?: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360' },
+    ) => {
+      return db.getArmRepo().listOutboxSince(params.sinceId, params.workspaceId);
+    },
+  );
 }
 
 let dbInstance: P2PDatabaseService | null = null;

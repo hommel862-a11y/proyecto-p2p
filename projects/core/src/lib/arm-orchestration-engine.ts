@@ -612,6 +612,23 @@ export const ARM_UNIFIED_TOOL_CONTRACTS: ArmToolJsonSchema[] = [
             type: 'string',
             description: 'Mensaje propuesto para acompañar el envío al prospecto.',
           },
+          has_special_conditions: {
+            type: 'boolean',
+            description: 'Indica si existen condiciones especiales de pago o crédito.',
+          },
+          approval_request_details: {
+            type: ['object', 'null'],
+            description: 'Metadatos de escalamiento humano cuando requiere aprobación.',
+            properties: {
+              action_type: { type: 'string', enum: ['SEND_QUOTE', 'APPLY_DISCOUNT'] },
+              title: { type: 'string' },
+              agent_reasoning: { type: 'string' },
+              priority: { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'] },
+              proposed_whatsapp_message: { type: 'string' },
+            },
+            required: ['action_type', 'title', 'agent_reasoning', 'priority', 'proposed_whatsapp_message'],
+            additionalProperties: false,
+          },
         },
         required: ['items', 'discount_pct', 'valid_days', 'proposed_whatsapp_message'],
         additionalProperties: false,
@@ -1668,6 +1685,9 @@ export interface ArmToolExecutionResult {
   errorCode?:
     | 'UNKNOWN_TOOL'
     | 'MISSING_REQUIRED_ARGUMENT'
+    | 'SCHEMA_TYPE_MISMATCH'
+    | 'SCHEMA_ENUM_VIOLATION'
+    | 'UNKNOWN_PROPERTY'
     | 'STAGE_TRANSITION_REJECTED'
     | 'QUOTE_VALIDATION_ERROR';
   errorMessage?: string;
@@ -1675,6 +1695,126 @@ export interface ArmToolExecutionResult {
   assignedRole?: ArmAgentRole | 'HUMAN_TAKEOVER';
   approvalEntry?: ArmApprovalQueueItem;
   outboxPayload: Record<string, unknown>;
+}
+
+interface StrictSchemaValidationError {
+  code:
+    | 'MISSING_REQUIRED_ARGUMENT'
+    | 'SCHEMA_TYPE_MISMATCH'
+    | 'SCHEMA_ENUM_VIOLATION'
+    | 'UNKNOWN_PROPERTY';
+  message: string;
+}
+
+function validateStrictJsonSchemaNode(
+  value: unknown,
+  node: Record<string, unknown>,
+  path: string,
+  toolName: string,
+): StrictSchemaValidationError | null {
+  const rawType = node['type'];
+  const allowedTypes = Array.isArray(rawType)
+    ? rawType.map((t) => String(t).toLowerCase())
+    : rawType
+      ? [String(rawType).toLowerCase()]
+      : [];
+
+  if (value === null) {
+    if (allowedTypes.includes('null')) {
+      return null;
+    }
+    return {
+      code: 'SCHEMA_TYPE_MISMATCH',
+      message: `El parámetro '${path}' en ${toolName} no puede ser null.`,
+    };
+  }
+
+  if (allowedTypes.length > 0) {
+    const typeMatches = allowedTypes.some((t) => {
+      if (t === 'string') return typeof value === 'string';
+      if (t === 'boolean') return typeof value === 'boolean';
+      if (t === 'number') return typeof value === 'number' && Number.isFinite(value);
+      if (t === 'integer') return typeof value === 'number' && Number.isInteger(value);
+      if (t === 'array') return Array.isArray(value);
+      if (t === 'object') return typeof value === 'object' && !Array.isArray(value) && value !== null;
+      return false;
+    });
+    if (!typeMatches) {
+      return {
+        code: 'SCHEMA_TYPE_MISMATCH',
+        message: `El parámetro '${path}' en ${toolName} debe cumplir tipo [${allowedTypes.join(' | ')}].`,
+      };
+    }
+  }
+
+  const enumValues = node['enum'] as unknown[] | undefined;
+  if (Array.isArray(enumValues) && !enumValues.includes(value)) {
+    return {
+      code: 'SCHEMA_ENUM_VIOLATION',
+      message: `Valor inválido '${String(value)}' para '${path}' en ${toolName}. Permitidos: ${enumValues.join(', ')}.`,
+    };
+  }
+
+  if (Array.isArray(value) && node['items'] && typeof node['items'] === 'object') {
+    const itemSchema = node['items'] as Record<string, unknown>;
+    for (let i = 0; i < value.length; i++) {
+      const err = validateStrictJsonSchemaNode(value[i], itemSchema, `${path}[${i}]`, toolName);
+      if (err) return err;
+    }
+  }
+
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    node['properties'] &&
+    typeof node['properties'] === 'object'
+  ) {
+    const obj = value as Record<string, unknown>;
+    const props = node['properties'] as Record<string, Record<string, unknown>>;
+    const required = (node['required'] as string[] | undefined) || [];
+
+    for (const reqKey of required) {
+      const hasNestedWhatsappMsg =
+        path === 'args' &&
+        toolName === 'create_or_submit_quote' &&
+        reqKey === 'proposed_whatsapp_message' &&
+        typeof (obj['approval_request_details'] as Record<string, unknown> | undefined)?.[
+          'proposed_whatsapp_message'
+        ] === 'string';
+      if (!(reqKey in obj) && !hasNestedWhatsappMsg) {
+        return {
+          code: 'MISSING_REQUIRED_ARGUMENT',
+          message: `Falta el parámetro obligatorio '${path === 'args' ? reqKey : `${path}.${reqKey}`}' en ${toolName}.`,
+        };
+      }
+    }
+
+    if (node['additionalProperties'] === false) {
+      for (const k of Object.keys(obj)) {
+        if (!(k in props)) {
+          return {
+            code: 'UNKNOWN_PROPERTY',
+            message: `Propiedad no autorizada '${path === 'args' ? k : `${path}.${k}`}' en contrato estricto ${toolName}.`,
+          };
+        }
+      }
+    }
+
+    for (const [propKey, propSchema] of Object.entries(props)) {
+      if (propKey in obj && obj[propKey] !== undefined) {
+        const err = validateStrictJsonSchemaNode(
+          obj[propKey],
+          propSchema,
+          path === 'args' ? propKey : `${path}.${propKey}`,
+          toolName,
+        );
+        if (err) return err;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function executeArmToolCall(params: {
@@ -1701,25 +1841,22 @@ export function executeArmToolCall(params: {
     };
   }
 
-  // Validate required top-level fields from the strict JSON Schema contract
-  const requiredFields = contract.function.parameters.required || [];
-  for (const reqKey of requiredFields) {
-    const hasNestedWhatsappMsg =
-      reqKey === 'proposed_whatsapp_message' &&
-      typeof (params.args['approval_request_details'] as Record<string, unknown> | undefined)?.[
-        'proposed_whatsapp_message'
-      ] === 'string';
-    if (!(reqKey in params.args) && !hasNestedWhatsappMsg) {
-      return {
-        ok: false,
-        toolName: params.toolName,
-        workspaceId: params.workspaceId,
-        errorCode: 'MISSING_REQUIRED_ARGUMENT',
-        errorMessage: `Falta el parámetro obligatorio '${reqKey}' en ${params.toolName}.`,
-        updatedLead: params.lead,
-        outboxPayload: {},
-      };
-    }
+  const schemaError = validateStrictJsonSchemaNode(
+    params.args,
+    contract.function.parameters as unknown as Record<string, unknown>,
+    'args',
+    params.toolName,
+  );
+  if (schemaError) {
+    return {
+      ok: false,
+      toolName: params.toolName,
+      workspaceId: params.workspaceId,
+      errorCode: schemaError.code,
+      errorMessage: schemaError.message,
+      updatedLead: params.lead,
+      outboxPayload: {},
+    };
   }
 
   switch (params.toolName) {

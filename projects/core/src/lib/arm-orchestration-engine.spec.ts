@@ -443,4 +443,64 @@ describe('ARM Multi-Workspace Orchestration Engine (@p2p/core)', () => {
     expect(migrated[0].stageSlug).toBe('STAGE_2_TRANSIT');
     expect(migrated[0].movedByAgentBadge).toContain('Sincronizado Local');
   });
+
+  it('rejects enum violations, nested integer/type mismatches, and unknown properties in executeArmToolCall (T9)', () => {
+    const baseLead: ArmLeadProfile = {
+      id: 'lead-t9',
+      workspaceId: 'ARM_B2B',
+      fullName: 'Dra. Elena Gómez',
+      companyName: 'Clínica Aurora',
+      phoneWhatsapp: '+584141234567',
+      email: 'elena@clinicaaurora.com',
+      currentStageSlug: 'en-descubrimiento',
+      qualificationScore: 30,
+      isQualified: false,
+      substantiveTurnsCount: 1,
+      bantData: { budget: null, authority: null, need_pain_point: null, timeline: null },
+      aiExecutiveSummary: '',
+      estimatedDealValue: 1200,
+      currency: 'USD',
+    };
+
+    const badEnum = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'route_conversation',
+      args: {
+        target_role: 'QUOTER',
+        detected_intent: 'PRICING_QUOTE',
+        sentiment: 'EXTREMELY_ANGRY',
+        handoff_context_note: 'Test',
+      },
+      lead: baseLead,
+    });
+    expect(badEnum.ok).toBe(false);
+    expect(badEnum.errorCode).toBe('SCHEMA_ENUM_VIOLATION');
+
+    const badNestedType = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'create_or_submit_quote',
+      args: {
+        items: [{ sku: 'PLAN-PRO', qty: 1.5 }],
+        discount_pct: 0,
+        valid_days: 7,
+        proposed_whatsapp_message: 'Hola',
+      },
+      lead: baseLead,
+    });
+    expect(badNestedType.ok).toBe(false);
+    expect(badNestedType.errorCode).toBe('SCHEMA_TYPE_MISMATCH');
+
+    const unknownProp = executeArmToolCall({
+      workspaceId: 'ARM_B2B',
+      toolName: 'save_lead_memory_fact',
+      args: {
+        memory_type: 'PAIN_POINT',
+        fact: 'Usa Excel manual',
+        injected_hallucination: 'bypass',
+      },
+      lead: baseLead,
+    });
+    expect(unknownProp.ok).toBe(false);
+    expect(unknownProp.errorCode).toBe('UNKNOWN_PROPERTY');
+  });
 });

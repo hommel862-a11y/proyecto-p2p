@@ -537,4 +537,55 @@ describe('Inbound Gateway - Server Endpoints', () => {
     expect(toolBody.updatedLead.currentStageSlug).toBe('calificado');
     expect(toolBody.outboxEventId).toBeGreaterThan(0);
   });
+
+  it('processes POST /api/arm/closer/post-call, POST /api/arm/antighosting/sweep, and workspace-isolated Meta phone IDs (T9)', async () => {
+    const { resolveWorkspacePhoneNumberId } = await import('../meta-outbound-client.js');
+    const mockEnv = {
+      META_PHONE_NUMBER_ID_B2B: 'phone-b2b-111',
+      META_PHONE_NUMBER_ID_P2P: 'phone-p2p-222',
+      META_PHONE_NUMBER_ID_360: 'phone-360-333',
+    };
+    expect(resolveWorkspacePhoneNumberId('ARM_B2B', mockEnv)).toBe('phone-b2b-111');
+    expect(resolveWorkspacePhoneNumberId('P2P_DESK', mockEnv)).toBe('phone-p2p-222');
+    expect(resolveWorkspacePhoneNumberId('FINANCE_360', mockEnv)).toBe('phone-360-333');
+
+    const postCallRes = await fetch(`http://127.0.0.1:${port}/api/arm/closer/post-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        leadName: 'Carlos (Clínica Aurora)',
+        voiceNoteTranscript: 'Le gustó el Plan Enterprise pero quiere pagar en 2 partes 50/50',
+      }),
+    });
+    expect(postCallRes.status).toBe(200);
+    const postCallBody = (await postCallRes.json()) as {
+      success: boolean;
+      processed: { detectedSplitPayment: boolean; recommendedStageSlug: string };
+    };
+    expect(postCallBody.success).toBe(true);
+    expect(postCallBody.processed.detectedSplitPayment).toBe(true);
+    expect(postCallBody.processed.recommendedStageSlug).toBe('cotizacion-enviada');
+
+    const sweepRes = await fetch(`http://127.0.0.1:${port}/api/arm/antighosting/sweep`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidates: [
+          {
+            workspaceId: 'ARM_B2B',
+            leadId: 'lead-ghost-1',
+            leadName: 'Dr. Méndez',
+            lastInboundTimestampMs: Date.now() - 48 * 3600 * 1000,
+            followupAttempts: 0,
+            painPointMemory: 'citas perdidas',
+          },
+        ],
+      }),
+    });
+    expect(sweepRes.status).toBe(200);
+    const sweepBody = (await sweepRes.json()) as { success: boolean; queuedCount: number };
+    expect(sweepBody.success).toBe(true);
+    expect(sweepBody.queuedCount).toBe(1);
+  });
 });

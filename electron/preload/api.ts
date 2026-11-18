@@ -173,6 +173,18 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
           mimeType: string;
         }>,
     },
+    arm: {
+      listLeads: (workspaceId) => ipc('arm:list-leads', workspaceId) as Promise<unknown[]>,
+      upsertLead: (lead) => ipc('arm:upsert-lead', lead) as Promise<unknown>,
+      listPendingApprovals: (workspaceId) =>
+        ipc('arm:list-approvals', workspaceId) as Promise<unknown[]>,
+      saveApproval: (item) => ipc('arm:save-approval', item) as Promise<unknown>,
+      resolveApproval: (params) => ipc('arm:resolve-approval', params) as Promise<unknown>,
+      listShadowExamples: (params) =>
+        ipc('arm:list-shadow-examples', params) as Promise<unknown[]>,
+      appendOutboxEvent: (params) => ipc('arm:append-outbox', params) as Promise<unknown>,
+      listOutboxSince: (params) => ipc('arm:list-outbox', params) as Promise<unknown[]>,
+    },
   };
 }
 
@@ -198,6 +210,7 @@ export const EXPOSED_API_KEYS = [
   'clipboard',
   'agents',
   'telegram',
+  'arm',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -267,6 +280,14 @@ export const ALLOWED_CHANNELS = [
   'agents:delete',
   'agents:toggle',
   'p2p:telegram-download-file',
+  'arm:list-leads',
+  'arm:upsert-lead',
+  'arm:list-approvals',
+  'arm:save-approval',
+  'arm:resolve-approval',
+  'arm:list-shadow-examples',
+  'arm:append-outbox',
+  'arm:list-outbox',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels
