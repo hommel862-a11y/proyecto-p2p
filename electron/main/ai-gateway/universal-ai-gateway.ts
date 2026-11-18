@@ -24,6 +24,7 @@ export const DEFAULT_PROVIDER_MODELS: Record<AiProviderType, string> = {
   anthropic: 'claude-3-5-sonnet-20241022',
   deepseek: 'deepseek-chat',
   qwen: 'qwen/qwen-2.5-72b-instruct',
+  openrouter: 'qwen/qwen-2.5-72b-instruct',
 };
 
 export class UniversalAiGateway {
@@ -44,6 +45,7 @@ export class UniversalAiGateway {
       case 'openai':
       case 'deepseek':
       case 'qwen':
+      case 'openrouter':
         return this.completeOpenAiCompatible(provider, config.apiKey, model, messages, tools, config);
       case 'anthropic':
         return this.completeAnthropic(config.apiKey, model, messages, tools, config.temperature);
@@ -88,7 +90,12 @@ export class UniversalAiGateway {
         };
       }
 
-      if (provider === 'openai' || provider === 'deepseek' || provider === 'qwen') {
+      if (
+        provider === 'openai' ||
+        provider === 'deepseek' ||
+        provider === 'qwen' ||
+        provider === 'openrouter'
+      ) {
         const endpoint = this.resolveEndpoint(provider, customEndpoint);
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -619,6 +626,7 @@ export class UniversalAiGateway {
       case 'deepseek':
         return 'https://api.deepseek.com/chat/completions';
       case 'qwen':
+      case 'openrouter':
         return 'https://openrouter.ai/api/v1/chat/completions';
       default:
         return 'https://api.openai.com/v1/chat/completions';
@@ -628,12 +636,35 @@ export class UniversalAiGateway {
   private cleanGeminiSchemaProperties(props: Record<string, any>): Record<string, any> {
     const clean: Record<string, any> = {};
     for (const [k, v] of Object.entries(props || {})) {
+      let rawType = v?.type;
+      let isNullable = Boolean(v?.nullable);
+      if (Array.isArray(rawType)) {
+        isNullable = isNullable || rawType.some((t) => String(t).toLowerCase() === 'null');
+        const primary = rawType.find((t) => String(t).toLowerCase() !== 'null') || 'STRING';
+        rawType = String(primary).toUpperCase();
+      } else {
+        rawType = String(rawType || 'STRING').toUpperCase();
+      }
+
       clean[k] = {
-        type: v.type || 'STRING',
-        description: v.description || '',
+        type: rawType,
+        description: v?.description || '',
       };
-      if (v.enum) clean[k].enum = v.enum;
-      if (v.properties) clean[k].properties = this.cleanGeminiSchemaProperties(v.properties);
+      if (isNullable) clean[k].nullable = true;
+      if (v?.enum) clean[k].enum = v.enum.filter((e: unknown) => e !== null);
+      if (v?.properties) clean[k].properties = this.cleanGeminiSchemaProperties(v.properties);
+      if (v?.required) clean[k].required = v.required;
+      if (v?.items) {
+        const itemSchema: Record<string, any> = {
+          type: String(v.items.type || 'OBJECT').toUpperCase(),
+        };
+        if (v.items.description) itemSchema.description = v.items.description;
+        if (v.items.properties) {
+          itemSchema.properties = this.cleanGeminiSchemaProperties(v.items.properties);
+        }
+        if (v.items.required) itemSchema.required = v.items.required;
+        clean[k].items = itemSchema;
+      }
     }
     return clean;
   }
@@ -641,12 +672,28 @@ export class UniversalAiGateway {
   private cleanOpenAiSchemaProperties(props: Record<string, any>): Record<string, any> {
     const clean: Record<string, any> = {};
     for (const [k, v] of Object.entries(props || {})) {
+      const normalizedType = Array.isArray(v?.type)
+        ? v.type.map((t: unknown) => String(t).toLowerCase())
+        : String(v?.type || 'string').toLowerCase();
+
       clean[k] = {
-        type: (v.type || 'string').toLowerCase(),
-        description: v.description || '',
+        type: normalizedType,
+        description: v?.description || '',
       };
-      if (v.enum) clean[k].enum = v.enum;
-      if (v.properties) clean[k].properties = this.cleanOpenAiSchemaProperties(v.properties);
+      if (v?.enum) clean[k].enum = v.enum;
+      if (v?.properties) clean[k].properties = this.cleanOpenAiSchemaProperties(v.properties);
+      if (v?.required) clean[k].required = v.required;
+      if (v?.items) {
+        const itemSchema: Record<string, any> = {
+          type: String(v.items.type || 'object').toLowerCase(),
+        };
+        if (v.items.description) itemSchema.description = v.items.description;
+        if (v.items.properties) {
+          itemSchema.properties = this.cleanOpenAiSchemaProperties(v.items.properties);
+        }
+        if (v.items.required) itemSchema.required = v.items.required;
+        clean[k].items = itemSchema;
+      }
     }
     return clean;
   }

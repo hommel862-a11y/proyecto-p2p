@@ -3,12 +3,21 @@
  * Supports Google Gemini, OpenAI (ChatGPT), Anthropic (Claude), DeepSeek, and Qwen/OpenRouter.
  */
 
-export type AiProviderType = 'gemini' | 'openai' | 'anthropic' | 'deepseek' | 'qwen';
+export type AiProviderType = 'gemini' | 'openai' | 'anthropic' | 'deepseek' | 'qwen' | 'openrouter';
 
 export interface UniversalToolProperty {
-  type: 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
+  type:
+    | 'STRING'
+    | 'NUMBER'
+    | 'INTEGER'
+    | 'BOOLEAN'
+    | 'ARRAY'
+    | 'OBJECT'
+    | string
+    | string[];
   description: string;
-  enum?: string[];
+  nullable?: boolean;
+  enum?: (string | number | boolean | null)[];
   items?: Record<string, unknown>;
   properties?: Record<string, UniversalToolProperty>;
   required?: string[];
