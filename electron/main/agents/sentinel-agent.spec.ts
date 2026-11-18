@@ -61,5 +61,28 @@ describe('SentinelAgent — declared absence instead of a fabricated rate', () =
     const diagnostic = new SentinelAgent().runMarketDiagnostic();
 
     expect(diagnostic.bcvInterventionRisk).toBe('UNAVAILABLE');
+    expect(diagnostic.flowToxicityRisk).toBe('UNAVAILABLE');
+  });
+
+  it('runMarketDiagnostic lee toxicityClassification real cuando se proveen buckets VPIN', () => {
+    const diagnostic = new SentinelAgent().runMarketDiagnostic({
+      vpinBuckets: [{ buyVolume: 900, sellVolume: 100, totalVolume: 1000 }],
+    });
+
+    expect(diagnostic.flowToxicityRisk).toBe('EXTREME_ADVERSE_SELECTION');
+  });
+
+  it('scanMarket declara VPIN UNAVAILABLE sin buckets y usa vpinScore/toxicityClassification cuando existen', () => {
+    const withoutBuckets = new SentinelAgent().scanMarket({ ...BOOK_ONLY });
+    expect(withoutBuckets.notes.join('\n')).toContain('UNAVAILABLE');
+    expect(withoutBuckets.notes.join('\n')).not.toContain('LOW_RETAIL');
+
+    const withBuckets = new SentinelAgent().scanMarket({
+      ...BOOK_ONLY,
+      vpinBuckets: [{ buyVolume: 850, sellVolume: 150, totalVolume: 1000 }],
+    });
+    const notes = withBuckets.notes.join('\n');
+    expect(notes).toContain('EXTREME_ADVERSE_SELECTION');
+    expect(notes).toContain('70.0%');
   });
 });

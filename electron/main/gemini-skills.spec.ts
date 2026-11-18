@@ -32,6 +32,7 @@ import { predictTwoHourVolatility } from '../../projects/core/src/lib/volatility
 import { simulateTradeImpact } from '../../projects/core/src/lib/trade-impact-simulator';
 import { evaluateFraudRisk } from '../../projects/core/src/lib/fraud-shield';
 import type { BinanceOfferSummary } from '../../projects/core/src/lib/binance-p2p';
+import { ExchangeIntelAgent } from './agents/exchange-intel-agent';
 
 const VENDORED_CORE_FILES = [
   'money',
@@ -471,4 +472,72 @@ describe('gemini-skills: motores reales de @p2p/core (WU 2.1 Fase 2)', () => {
       );
     }
   }, 35000);
+
+  it('trading-skills rechaza entradas NaN, no positivas o ausentes sin fabricar 85.0 ni 50000', () => {
+    const avellanedaMissing = executeFinancialSkill('calculate_optimal_spread_avellaneda', {
+      midPrice: null,
+      currentInventoryUsdt: 5000,
+      targetInventoryUsdt: 5000,
+      volatilityDaily: 0.02,
+    });
+    expect(avellanedaMissing.success).toBe(false);
+    expect(avellanedaMissing.data).toBeNull();
+    expect(avellanedaMissing.unavailableReason).toContain('midPrice');
+    expect(avellanedaMissing.error).not.toContain('85.0');
+
+    const slicingMissing = executeFinancialSkill('compute_optimal_order_slicing_twap_vwap', {
+      totalAmountUsdt: 3000,
+      executionDurationMinutes: 45,
+      estimatedMarketVolumePerHourUsdt: Number.NaN,
+      currentMidPrice: 0,
+      algorithm: 'TWAP',
+    });
+    expect(slicingMissing.success).toBe(false);
+    expect(slicingMissing.data).toBeNull();
+
+    const vpinEmpty = executeFinancialSkill('estimate_adverse_selection_vpin', {
+      buckets: [],
+    });
+    expect(vpinEmpty.success).toBe(false);
+    expect(vpinEmpty.data).toBeNull();
+
+    const markovInvalid = executeFinancialSkill('calculate_maker_fill_probability_markov', {
+      queuePositionIndex: -1,
+      queueAheadVolumeUsdt: 100,
+      recentFillVelocityPerMinuteUsdt: 0,
+    });
+    expect(markovInvalid.success).toBe(false);
+
+    const basisMissing = executeFinancialSkill('calculate_cross_exchange_basis_spread', {
+      capitalUsdt: 1000,
+      platforms: [],
+    });
+    expect(basisMissing.success).toBe(false);
+  });
+
+  it('ExchangeIntelAgent.compareCrossVenueSpreads no inventa El Dorado cuando solo existe Bybit y usa fee dinámico', () => {
+    const agent = new ExchangeIntelAgent();
+
+    const singleVenue = agent.compareCrossVenueSpreads({
+      bybitRate: 88.5,
+      targetAmountUsdt: 1000,
+    });
+    expect(singleVenue.bestBuyVenue).toBe('Bybit P2P');
+    expect(singleVenue.bestSellVenue).not.toBe('El Dorado P2P');
+    expect(singleVenue.bestSellVenue).toBe('UNAVAILABLE');
+    expect(singleVenue.isViable).toBe(false);
+    expect(singleVenue.recommendedRoute).not.toContain('El Dorado P2P');
+
+    const twoVenues = agent.compareCrossVenueSpreads({
+      binanceRate: 88.0,
+      bybitRate: 89.5,
+      targetAmountUsdt: 1000,
+    });
+    expect(twoVenues.bestBuyVenue).toBe('Binance P2P');
+    expect(twoVenues.bestSellVenue).toBe('Bybit P2P');
+    expect(twoVenues.makerTakerDeductionPct).toBe(0.2);
+    expect(twoVenues.grossSpreadPct).toBe(1.7);
+    expect(twoVenues.netSpreadPct).toBe(1.5);
+    expect(twoVenues.isViable).toBe(true);
+  });
 });

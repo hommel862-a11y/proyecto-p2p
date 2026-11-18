@@ -183,8 +183,10 @@ export type RecommendCompetitivePricingInput = z.infer<
 
 export const AnalyzeOrderbookPressureInputSchema = z.object({
   fiat: z.string().default('VES'),
-  bidDepthUsdt: z.number().min(0).default(15000),
-  askDepthUsdt: z.number().min(0).default(12000),
+  asset: z.string().default('USDT'),
+  rows: z.number().int().min(1).max(20).default(20),
+  bidDepthUsdt: z.number().min(0).optional(),
+  askDepthUsdt: z.number().min(0).optional(),
   includeSpoofCheck: z.boolean().default(true),
 });
 export type AnalyzeOrderbookPressureInput = z.infer<typeof AnalyzeOrderbookPressureInputSchema>;

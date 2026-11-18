@@ -36,7 +36,13 @@ vi.mock('electron', () => ({
   desktopCapturer: { getSources: async () => [] },
 }));
 
-const { registerIpcHandlers, getDbService } = await import('./handlers');
+const { registerIpcHandlers, getDbService, fetchBinanceP2pShared } = await import('./handlers');
+const {
+  clearFinancialSkillMarketData,
+  getMarketBook,
+  getVolatilityTicks,
+  recordVolatilityTick,
+} = await import('../skills/market-state');
 const { net } = await import('electron');
 
 interface ProactiveEvalResult {
@@ -239,5 +245,136 @@ describe('p2p:fetch-cotizave — puente COTIZAVE_API_KEY y persistencia segura',
     expect(process.env['COTIZAVE_API_KEY']).toBe('cz_pasted_key');
     const [, init] = vi.mocked(net.fetch).mock.calls[0];
     expect((init?.headers as Record<string, string>)['X-API-Key']).toBe('cz_pasted_key');
+  });
+});
+
+describe('fetchBinanceP2pShared — caché seguro, aislamiento por payTypes y ordenamiento', () => {
+  beforeEach(() => {
+    vi.mocked(net.fetch).mockReset();
+    clearFinancialSkillMarketData();
+    const ticks = getVolatilityTicks();
+    while (ticks.length > 0) ticks.shift();
+    recordVolatilityTick(0, 0);
+    registerIpcHandlers();
+  });
+
+  it('NO escribe respuestas de error o inválidas en binanceIpcCache', async () => {
+    vi.mocked(net.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ code: '000002', message: 'rate error', data: null }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: '000000',
+          data: [{ adv: { advNo: '1', price: '89.50', maxSingleTransAmount: '100000' } }],
+        }),
+      } as unknown as Response);
+
+    await fetchBinanceP2pShared({ asset: 'USDT', fiat: 'VES', tradeType: 'BUY', payTypes: [], rows: 10 });
+    const second = (await fetchBinanceP2pShared({
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'BUY',
+      payTypes: [],
+      rows: 10,
+    })) as { code?: string; data?: unknown[] };
+
+    expect(net.fetch).toHaveBeenCalledTimes(2);
+    expect(second.code).toBe('000000');
+    expect(second.data).toHaveLength(1);
+    expect(getMarketBook()?.bestBuyPrice).toBe(89.5);
+  });
+
+  it('NO contamina getMarketBook ni volatilityTicks cuando payTypes tiene filtro bancario', async () => {
+    vi.mocked(net.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: '000000',
+          data: [{ adv: { advNo: 'b1', price: '95.00', maxSingleTransAmount: '100000' } }],
+        }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: '000000',
+          data: [{ adv: { advNo: 's1', price: '97.00', maxSingleTransAmount: '100000' } }],
+        }),
+      } as unknown as Response);
+
+    await fetchBinanceP2pShared({
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'BUY',
+      payTypes: ['Banesco'],
+      rows: 10,
+    });
+    await fetchBinanceP2pShared({
+      asset: 'USDT',
+      fiat: 'VES',
+      tradeType: 'SELL',
+      payTypes: ['Banesco'],
+      rows: 10,
+    });
+
+    expect(getMarketBook()).toBeNull();
+    expect(getVolatilityTicks()).toHaveLength(0);
+  });
+
+  it('calcula askUsd/bidUsd usando min/max ordenado (no offers[0] sin ordenar) al persistir snapshot', async () => {
+    const db = getDbService();
+    const appendSpy = vi.spyOn(db.getDecisionJournal(), 'appendMarketSnapshot');
+
+    vi.mocked(net.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: '000000',
+          data: [
+            { adv: { advNo: 'b1', price: '91.50', maxSingleTransAmount: '100000' } },
+            { adv: { advNo: 'b2', price: '88.20', maxSingleTransAmount: '100000' } },
+          ],
+        }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: '000000',
+          data: [
+            { adv: { advNo: 's1', price: '89.10', maxSingleTransAmount: '100000' } },
+            { adv: { advNo: 's2', price: '92.40', maxSingleTransAmount: '100000' } },
+          ],
+        }),
+      } as unknown as Response);
+
+    await fetchBinanceP2pShared({ asset: 'USDT', fiat: 'VES', tradeType: 'BUY', payTypes: [], rows: 10 });
+    await fetchBinanceP2pShared({ asset: 'USDT', fiat: 'VES', tradeType: 'SELL', payTypes: [], rows: 10 });
+
+    expect(appendSpy).toHaveBeenCalled();
+    const lastCall = appendSpy.mock.calls.at(-1)?.[0];
+    expect(lastCall?.askUsd).toBe(88.2);
+    expect(lastCall?.bidUsd).toBe(92.4);
+  });
+
+  it('soporta cancelación limpia con AbortSignal abortado', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      (fetchBinanceP2pShared as (p: unknown, opts?: { signal?: AbortSignal }) => Promise<unknown>)(
+        { asset: 'USDT', fiat: 'VES', tradeType: 'BUY', payTypes: [], rows: 10 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow(/abort/i);
+
+    expect(net.fetch).not.toHaveBeenCalled();
   });
 });

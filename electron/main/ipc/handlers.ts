@@ -93,27 +93,121 @@ const AUTO_SNAPSHOT_INTERVAL_MS = 60_000;
 let lastAutoSnapshotRecordedAt = 0;
 
 /**
- * Shared singleflight + cached + paced Binance P2P C2C orderbook fetcher.
- * Used by both `p2p:fetch-binance` IPC and the local HTTP bridge (`/api/binance/p2p`)
- * so no caller in the main process can bypass pacing or 429 cooldowns.
+ * Resets Binance P2P IPC cache, in-flight deduplication, pacing, and rate-limit state.
+ * Exported for deterministic unit testing alongside `registerIpcHandlers`.
  */
-export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promise<unknown> {
+export function clearBinanceP2pCacheForTesting(): void {
+  binanceIpcCache.clear();
+  binanceInFlight.clear();
+  lastBinanceNetworkCall = 0;
+  binanceRateLimitedUntil = 0;
+  lastAutoSnapshotRecordedAt = 0;
+}
+
+function isValidBinanceP2pResponse(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return false;
+  }
+  const rec = payload as { code?: unknown; data?: unknown; success?: unknown };
+  if (!Array.isArray(rec.data)) {
+    return false;
+  }
+  if (rec.code !== undefined && rec.code !== null && String(rec.code) !== '000000') {
+    return false;
+  }
+  if (rec.success === false) {
+    return false;
+  }
+  return true;
+}
+
+function createAbortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  if (reason instanceof Error) return reason;
+  const err = new Error(
+    typeof reason === 'string' && reason.length > 0 ? reason : 'The operation was aborted',
+  );
+  err.name = 'AbortError';
+  return err;
+}
+
+function raceWithAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(createAbortError(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(createAbortError(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (err: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError(signal));
+  }
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError(signal));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+export interface FetchBinanceP2pSharedOptions {
+  signal?: AbortSignal;
+}
+
+/**
+ * Shared singleflight + cached + paced Binance P2P C2C orderbook fetcher.
+ * Used by `p2p:fetch-binance` IPC, the local HTTP bridge (`/api/binance/p2p`),
+ * and `AlphaWatcher` so no caller in the main process bypasses pacing or 429 cooldowns.
+ */
+export async function fetchBinanceP2pShared(
+  params: BinanceSearchParams,
+  options: FetchBinanceP2pSharedOptions = {},
+): Promise<unknown> {
+  if (options.signal?.aborted) {
+    throw createAbortError(options.signal);
+  }
+
   const asset = params.asset ?? 'USDT';
   const fiat = params.fiat ?? 'VES';
   const tradeType = params.tradeType ?? 'BUY';
-  const payTypes = params.payTypes ?? [];
+  const payTypes = Array.isArray(params.payTypes) ? params.payTypes : [];
+  const normalizedPayTypes = payTypes.filter(
+    (p): p is string => typeof p === 'string' && p.trim().length > 0,
+  );
   const rows = params.rows ?? 10;
   const cacheKey = `${asset}:${fiat}:${tradeType}:${payTypes.join(',')}:${rows}`;
 
   const cached = binanceIpcCache.get(cacheKey);
   const now = Date.now();
 
-  // 1. Si está fresco en caché (< 5s), devolver sin tocar red
+  // 1. If fresh in cache (< 5s), return without hitting the network
   if (cached && now - cached.timestamp < BINANCE_CACHE_TTL_MS) {
     return cached.data;
   }
 
-  // 2. Si hay rate-limit activo (HTTP 429 previo)
+  // 2. If HTTP 429 cooldown is active
   if (now < binanceRateLimitedUntil) {
     if (cached && now - cached.timestamp < 120_000) {
       console.warn(
@@ -127,29 +221,32 @@ export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promis
     );
   }
 
-  // 3. Singleflight: si ya hay una consulta idéntica en vuelo, compartir su promesa
+  // 3. Singleflight: share identical in-flight request while isolating per-caller abort
   const existingFlight = binanceInFlight.get(cacheKey);
   if (existingFlight) {
-    return existingFlight;
+    return raceWithAbortSignal(existingFlight, options.signal);
   }
 
   const run = (async (): Promise<unknown> => {
-    // 4. Reserva atómica de turno ANTES del await para evitar que llamadas concurrentes
-    // calculen el mismo delay y despierten en ráfaga simultánea.
+    // 4. Reserve atomic pacing slot BEFORE await so concurrent callers do not burst
     const nowPacing = Date.now();
     const scheduledAt = Math.max(nowPacing, lastBinanceNetworkCall + BINANCE_MIN_INTERVAL_MS);
     lastBinanceNetworkCall = scheduledAt;
     const waitMs = scheduledAt - nowPacing;
     if (waitMs > 0) {
-      await new Promise((r) => setTimeout(r, waitMs));
+      await sleepWithAbort(waitMs, options.signal);
     }
 
+    const timeoutSignal = AbortSignal.timeout(12_000);
+    const requestSignal = options.signal
+      ? AbortSignal.any([timeoutSignal, options.signal])
+      : timeoutSignal;
+
     try {
-      const response = await net.fetch(
-        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
-        {
+      const response = await raceWithAbortSignal(
+        net.fetch('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
           method: 'POST',
-          signal: AbortSignal.timeout(15000),
+          signal: requestSignal,
           headers: {
             'Content-Type': 'application/json',
             'User-Agent':
@@ -172,7 +269,8 @@ export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promis
             filterType: 'all',
             periods: [],
           }),
-        },
+        }),
+        requestSignal,
       );
 
       if (response.status === 429) {
@@ -189,67 +287,87 @@ export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promis
       }
 
       const data = await response.json();
+      if (!isValidBinanceP2pResponse(data)) {
+        return data;
+      }
+
       binanceIpcCache.set(cacheKey, { data, timestamp: Date.now() });
-      try {
-        const offers = parseBinanceP2pItems(data);
-        if (asset === 'USDT' && fiat === 'VES' && offers.length > 0) {
-          const currentBook = getMarketBook();
-          const buyOffers = tradeType === 'BUY' ? offers : (currentBook?.buyOffers ?? []);
-          const sellOffers = tradeType === 'SELL' ? offers : (currentBook?.sellOffers ?? []);
-          seedFinancialSkillMarketData({ buyOffers, sellOffers });
-          if (buyOffers.length > 0 && sellOffers.length > 0) {
-            recordVolatilityTick(undefined, null);
-            const nowSnap = Date.now();
-            if (nowSnap - lastAutoSnapshotRecordedAt >= AUTO_SNAPSHOT_INTERVAL_MS) {
-              lastAutoSnapshotRecordedAt = nowSnap;
-              const askUsd = buyOffers[0]?.price ?? 0;
-              const bidUsd = sellOffers[0]?.price ?? 0;
-              if (askUsd > 0 && bidUsd > 0) {
-                const askVol = buyOffers
-                  .slice(0, 5)
-                  .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
-                const bidVol = sellOffers
-                  .slice(0, 5)
-                  .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
-                const totalVol = bidVol + askVol;
-                const obi = totalVol > 0 ? Number(((bidVol - askVol) / totalVol).toFixed(4)) : 0;
-                const btcEntry = latestSpotPrices.get('BTCUSDT');
-                const solEntry = latestSpotPrices.get('SOLUSDT');
-                const usdcEntry = latestSpotPrices.get('USDCUSDT');
-                const bcvSnap = getBcvSnapshot();
-                const snapshotInput: RecordMarketSnapshotInput = {
-                  obi,
-                  bidUsd,
-                  askUsd,
-                  nBids: sellOffers.length,
-                  nAsks: buyOffers.length,
-                  stale: false,
-                  ...(btcEntry && nowSnap - btcEntry.timestamp < 300_000
-                    ? { btcUsdt: btcEntry.price }
-                    : {}),
-                  ...(solEntry && nowSnap - solEntry.timestamp < 300_000
-                    ? { solUsdt: solEntry.price }
-                    : {}),
-                  ...(usdcEntry && nowSnap - usdcEntry.timestamp < 300_000
-                    ? { usdcUsdt: usdcEntry.price }
-                    : {}),
-                  ...(bcvSnap && bcvSnap.usd > 0 ? { bcvVes: bcvSnap.usd } : {}),
-                };
-                void getDbService()
-                  .getDecisionJournal()
-                  .appendMarketSnapshot(snapshotInput)
-                  .catch(() => {
-                    // Best-effort auto-snapshot persistence
-                  });
+
+      // Only full-market snapshots (payTypes.length === 0) seed global market state & history
+      if (normalizedPayTypes.length === 0 && asset === 'USDT' && fiat === 'VES') {
+        try {
+          const offers = parseBinanceP2pItems(data);
+          if (offers.length > 0) {
+            const sortedOffers = [...offers].sort((a, b) =>
+              tradeType === 'BUY' ? a.price - b.price : b.price - a.price,
+            );
+            const currentBook = getMarketBook();
+            const buyOffers =
+              tradeType === 'BUY'
+                ? sortedOffers
+                : [...(currentBook?.buyOffers ?? [])].sort((a, b) => a.price - b.price);
+            const sellOffers =
+              tradeType === 'SELL'
+                ? sortedOffers
+                : [...(currentBook?.sellOffers ?? [])].sort((a, b) => b.price - a.price);
+            seedFinancialSkillMarketData({ buyOffers, sellOffers });
+            if (buyOffers.length > 0 && sellOffers.length > 0) {
+              recordVolatilityTick(undefined, null);
+              const nowSnap = Date.now();
+              if (nowSnap - lastAutoSnapshotRecordedAt >= AUTO_SNAPSHOT_INTERVAL_MS) {
+                lastAutoSnapshotRecordedAt = nowSnap;
+                const askUsd = Math.min(...buyOffers.map((o) => o.price));
+                const bidUsd = Math.max(...sellOffers.map((o) => o.price));
+                if (askUsd > 0 && bidUsd > 0) {
+                  const askVol = buyOffers
+                    .slice(0, 5)
+                    .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
+                  const bidVol = sellOffers
+                    .slice(0, 5)
+                    .reduce((s, o) => s + (o.price > 0 ? o.maxVes / o.price : 0), 0);
+                  const totalVol = bidVol + askVol;
+                  const obi = totalVol > 0 ? Number(((bidVol - askVol) / totalVol).toFixed(4)) : 0;
+                  const btcEntry = latestSpotPrices.get('BTCUSDT');
+                  const solEntry = latestSpotPrices.get('SOLUSDT');
+                  const usdcEntry = latestSpotPrices.get('USDCUSDT');
+                  const bcvSnap = getBcvSnapshot();
+                  const snapshotInput: RecordMarketSnapshotInput = {
+                    obi,
+                    bidUsd,
+                    askUsd,
+                    nBids: sellOffers.length,
+                    nAsks: buyOffers.length,
+                    stale: false,
+                    ...(btcEntry && nowSnap - btcEntry.timestamp < 300_000
+                      ? { btcUsdt: btcEntry.price }
+                      : {}),
+                    ...(solEntry && nowSnap - solEntry.timestamp < 300_000
+                      ? { solUsdt: solEntry.price }
+                      : {}),
+                    ...(usdcEntry && nowSnap - usdcEntry.timestamp < 300_000
+                      ? { usdcUsdt: usdcEntry.price }
+                      : {}),
+                    ...(bcvSnap && bcvSnap.usd > 0 ? { bcvVes: bcvSnap.usd } : {}),
+                  };
+                  void getDbService()
+                    .getDecisionJournal()
+                    .appendMarketSnapshot(snapshotInput)
+                    .catch(() => {
+                      // Best-effort auto-snapshot persistence
+                    });
+                }
               }
             }
           }
+        } catch {
+          // Ignore book sync failures
         }
-      } catch {
-        // Ignorar fallo de sincronización de libro
       }
       return data;
     } catch (err: unknown) {
+      if (options.signal?.aborted) {
+        throw err instanceof Error ? err : createAbortError(options.signal);
+      }
       const message = err instanceof Error ? err.message : String(err);
       if (
         message.includes('ENOTFOUND') ||
@@ -269,7 +387,7 @@ export async function fetchBinanceP2pShared(params: BinanceSearchParams): Promis
   })();
 
   binanceInFlight.set(cacheKey, run);
-  return run;
+  return raceWithAbortSignal(run, options.signal);
 }
 
 function normalizeElectronCotizaveKey(raw: string): string {
@@ -437,17 +555,13 @@ export async function fetchCotizaveShared(req: CotizaveRequest): Promise<unknown
  * `crypto:*` handlers leverage OS-native DPAPI / Keychain encryption via safeStorage.
  */
 export function registerIpcHandlers(): void {
-  binanceIpcCache.clear();
-  binanceInFlight.clear();
-  lastBinanceNetworkCall = 0;
-  binanceRateLimitedUntil = 0;
+  clearBinanceP2pCacheForTesting();
   cotizaveIpcCache = null;
   cotizaveInFlight = null;
   cotizaveRateLimitedUntil = 0;
   binanceSpotCache.clear();
   binanceSpotInFlight.clear();
   latestSpotPrices.clear();
-  lastAutoSnapshotRecordedAt = 0;
 
   const db = getDbService();
 

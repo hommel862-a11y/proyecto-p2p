@@ -29,6 +29,7 @@ vi.mock('electron', () => ({
 const { AlphaWatcher } = await import('./alpha-watcher');
 const { RiskGatekeeperAgent } = await import('./agents/risk-gatekeeper-agent');
 const { setTreasurySnapshot, clearTreasurySnapshot } = await import('./ipc/treasury-snapshot');
+const { clearBinanceP2pCacheForTesting } = await import('./ipc/handlers');
 
 /**
  * Fake Binance P2P book. Only the top of book is consumed by the watcher, so a single level
@@ -74,6 +75,7 @@ describe('AlphaWatcher — veto institucional antes de persistir (ODD T3 / C1)',
     fetchMock.mockReset();
     shownNotifications.length = 0;
     clearTreasurySnapshot();
+    clearBinanceP2pCacheForTesting();
 
     db = {
       saveStrategyPlan: vi.fn(),
@@ -239,6 +241,7 @@ describe('AlphaWatcher — el monitor macro no mide lo que no midió', () => {
     fetchMock.mockReset();
     shownNotifications.length = 0;
     clearTreasurySnapshot();
+    clearBinanceP2pCacheForTesting();
     setTreasurySnapshot(buildSnapshot());
 
     db = {
@@ -307,5 +310,136 @@ describe('AlphaWatcher — el monitor macro no mide lo que no midió', () => {
 
     expect(db.saveStrategyPlan).toHaveBeenCalledTimes(1);
     expect(evidenceObservations().length).toBe(1);
+  });
+});
+
+describe('AlphaWatcher — fetchBinanceP2pShared, filtro de calidad, conversión USDT y ciclo', () => {
+  let db: Partial<P2PDatabaseService>;
+  let send: ReturnType<typeof vi.fn>;
+  let win: BrowserWindow;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    shownNotifications.length = 0;
+    clearTreasurySnapshot();
+    clearBinanceP2pCacheForTesting();
+    db = {
+      saveStrategyPlan: vi.fn(),
+      recordMarketLearning: vi.fn(),
+      saveEngramObservation: vi.fn(),
+    };
+    send = vi.fn();
+    win = { isDestroyed: () => false, webContents: { send } } as unknown as BrowserWindow;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    clearTreasurySnapshot();
+  });
+
+  it('usa el fetcher compartido inyectable sin tocar net.fetch directo y filtra ofertas bait/outlier', async () => {
+    const sharedFetch = vi.fn(async (params: { tradeType: 'BUY' | 'SELL' }) => {
+      if (params.tradeType === 'BUY') {
+        return {
+          code: '000000',
+          data: [
+            // Low finish-rate bait + extreme outlier
+            { adv: { advNo: 'bait-1', price: '10.00', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'Bait', monthFinishRate: 0.45, monthOrderCount: 3 } },
+            { adv: { advNo: 'good-1', price: '88.00', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'Pro1', monthFinishRate: 0.98, monthOrderCount: 240 } },
+            { adv: { advNo: 'good-2', price: '88.20', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'Pro2', monthFinishRate: 0.97, monthOrderCount: 180 } },
+          ],
+        };
+      }
+      return {
+        code: '000000',
+        data: [
+          { adv: { advNo: 'bait-s', price: '500.00', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'Outlier', monthFinishRate: 0.5, monthOrderCount: 2 } },
+          { adv: { advNo: 'good-s1', price: '89.35', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'ProS1', monthFinishRate: 0.99, monthOrderCount: 300 } },
+          { adv: { advNo: 'good-s2', price: '89.10', maxSingleTransAmount: '250000' }, advertiser: { nickName: 'ProS2', monthFinishRate: 0.96, monthOrderCount: 150 } },
+        ],
+      };
+    });
+
+    setTreasurySnapshot(buildSnapshot());
+    const watcher = new (AlphaWatcher as unknown as new (...args: unknown[]) => InstanceType<typeof AlphaWatcher>)(
+      db as P2PDatabaseService,
+      () => win,
+      new RiskGatekeeperAgent(),
+      sharedFetch,
+    );
+
+    await watcher.runScanCycle();
+
+    expect(sharedFetch).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.saveStrategyPlan).toHaveBeenCalledTimes(1);
+    const plan = (db.saveStrategyPlan as ReturnType<typeof vi.fn>).mock.calls[0][0] as StrategyPlanRecord;
+    // Qualified best buy = 88.00, qualified best sell = 89.35 -> 1.18% net spread
+    expect(plan.expectedNetSpreadPct).toBe(1.18);
+  });
+
+  it('convierte el volumen y límite de tesorería VES a USDT usando la tasa viva antes del Gatekeeper', async () => {
+    // 390,000 VES spent / 440,000 VES limit at ~88.68 VES/USDT = ~4,398 USDT spent vs ~4,962 USDT limit.
+    // Adding 1,000 USDT ticket pushes projected volume to ~5,398 USDT > 4,962 USDT -> MUST VETO!
+    // Without VES->USDT conversion, 390,000 + 1,000 < 440,000 would have wrongly approved.
+    setTreasurySnapshot(
+      buildSnapshot({
+        totalSpentTodayVes: 390000,
+        totalDailyLimitVes: 440000,
+      }),
+    );
+
+    const sharedFetch = vi.fn(async (params: { tradeType: 'BUY' | 'SELL' }) => ({
+      code: '000000',
+      data: [
+        {
+          adv: { advNo: '1', price: params.tradeType === 'BUY' ? '88.00' : '89.35', maxSingleTransAmount: '250000' },
+          advertiser: { monthFinishRate: 0.99, monthOrderCount: 200 },
+        },
+      ],
+    }));
+
+    const watcher = new (AlphaWatcher as unknown as new (...args: unknown[]) => InstanceType<typeof AlphaWatcher>)(
+      db as P2PDatabaseService,
+      () => win,
+      new RiskGatekeeperAgent(),
+      sharedFetch,
+    );
+
+    await watcher.runScanCycle();
+
+    expect(db.saveStrategyPlan).not.toHaveBeenCalled();
+    const payload = send.mock.calls[0] as [string, { persisted: boolean; riskVerdict: { status: string } }];
+    expect(payload[1].persisted).toBe(false);
+    expect(payload[1].riskVerdict.status).toBe('VETOED');
+  });
+
+  it('reinicia el intervalo al cambiar pollIntervalSeconds y registra consecutiveErrors/lastError', async () => {
+    vi.useFakeTimers();
+    const sharedFetch = vi.fn(async () => {
+      throw new Error('Binance timeout simulated');
+    });
+
+    const watcher = new (AlphaWatcher as unknown as new (...args: unknown[]) => InstanceType<typeof AlphaWatcher>)(
+      db as P2PDatabaseService,
+      () => win,
+      new RiskGatekeeperAgent(),
+      sharedFetch,
+    );
+
+    watcher.start();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    watcher.setConfig({ pollIntervalSeconds: 45 });
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 45000);
+
+    await watcher.runScanCycle();
+    const status = watcher.getStatus() as { consecutiveErrors?: number; lastError?: string | null };
+    expect(status.consecutiveErrors).toBe(1);
+    expect(status.lastError).toContain('Binance timeout simulated');
+
+    watcher.stop();
   });
 });

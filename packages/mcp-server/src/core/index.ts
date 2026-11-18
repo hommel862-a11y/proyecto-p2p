@@ -854,6 +854,38 @@ export function computeAutofillTradePrice(
 
 // ─── Phase 3: Crypto Market & Orderbook Microstructure ────────────────────────
 
+export const ORDERBOOK_PROVENANCE = {
+  LIVE: 'LIVE',
+  CACHE: 'CACHE',
+  UNAVAILABLE: 'UNAVAILABLE',
+} as const;
+export type OrderbookProvenance = (typeof ORDERBOOK_PROVENANCE)[keyof typeof ORDERBOOK_PROVENANCE];
+
+export const PRICING_PROVENANCE = {
+  LIVE: 'LIVE',
+  CACHE: 'CACHE',
+  CALLER_MID_FALLBACK: 'CALLER_MID_FALLBACK',
+  UNAVAILABLE: 'UNAVAILABLE',
+} as const;
+export type PricingProvenance = (typeof PRICING_PROVENANCE)[keyof typeof PRICING_PROVENANCE];
+
+export const PRESSURE_PROVENANCE = {
+  LIVE: 'LIVE',
+  CACHE: 'CACHE',
+  CALLER_SUPPLIED: 'CALLER_SUPPLIED',
+  UNAVAILABLE: 'UNAVAILABLE',
+} as const;
+export type PressureProvenance = (typeof PRESSURE_PROVENANCE)[keyof typeof PRESSURE_PROVENANCE];
+
+export const BINANCE_C2C_SEARCH_URL =
+  'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
+export const BINANCE_P2P_EXPECTED_SOURCE =
+  'Binance P2P C2C public adv/search (https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search)';
+
+const ORDERBOOK_CACHE_TTL_MS = 15_000;
+const ORDERBOOK_FETCH_TIMEOUT_MS = 10_000;
+const MAX_BINANCE_ROWS = 20;
+
 export interface BinanceP2POffer {
   advNo: string;
   merchantName: string;
@@ -869,160 +901,309 @@ export interface BinanceP2POrderbookDepth {
   fiat: string;
   asset: string;
   timestamp: string;
-  topBuyPrice: number;
-  topSellPrice: number;
-  spreadVes: number;
-  spreadPct: number;
+  provenance: OrderbookProvenance;
+  actionable: boolean;
+  unavailableReason: string | null;
+  expectedSource: string;
+  topBuyPrice: number | null;
+  topSellPrice: number | null;
+  spreadVes: number | null;
+  spreadPct: number | null;
   totalBuyDepthUsdt: number;
   totalSellDepthUsdt: number;
   buyOffers: BinanceP2POffer[];
   sellOffers: BinanceP2POffer[];
 }
 
-/**
- * Retorna snapshot calibrado del libro de órdenes P2P de Binance para el par especificado.
- */
-export function getBinanceP2POrderbookSnapshot(
-  fiat = 'VES',
-  asset = 'USDT',
-  rows = 10,
+export interface FetchBinanceP2pOrderbookOptions {
+  fiat?: string;
+  asset?: string;
+  rows?: number;
+  fetchImpl?: typeof fetch;
+  bypassCache?: boolean;
+  timeoutMs?: number;
+}
+
+interface OrderbookCacheEntry {
+  depth: BinanceP2POrderbookDepth;
+  fetchedAtMs: number;
+}
+
+const binanceOrderbookCache = new Map<string, OrderbookCacheEntry>();
+
+export function clearBinanceOrderbookCacheForTesting(): void {
+  binanceOrderbookCache.clear();
+}
+
+interface RawBinanceC2cItem {
+  adv?: {
+    advNo?: unknown;
+    price?: unknown;
+    surplusAmount?: unknown;
+    minSingleTransAmount?: unknown;
+    maxSingleTransAmount?: unknown;
+  };
+  advertiser?: {
+    nickName?: unknown;
+    monthFinishRate?: unknown;
+    monthOrderCount?: unknown;
+  };
+}
+
+function parseBinanceC2cOffers(rawPayload: unknown): {
+  ok: boolean;
+  reason: string | null;
+  offers: BinanceP2POffer[];
+} {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return { ok: false, reason: 'INVALID_JSON_PAYLOAD', offers: [] };
+  }
+  const rec = rawPayload as { code?: unknown; success?: unknown; data?: unknown };
+  if (rec.code !== undefined && rec.code !== null && String(rec.code) !== '000000') {
+    return { ok: false, reason: `BINANCE_APP_ERROR_${String(rec.code)}`, offers: [] };
+  }
+  if (rec.success === false) {
+    return { ok: false, reason: 'BINANCE_APP_FAILURE', offers: [] };
+  }
+  if (!Array.isArray(rec.data)) {
+    return { ok: false, reason: 'MISSING_DATA_ARRAY', offers: [] };
+  }
+
+  const offers: BinanceP2POffer[] = [];
+  for (const item of rec.data as RawBinanceC2cItem[]) {
+    const price = Number(item?.adv?.price);
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    const minFiatRaw = Number(item?.adv?.minSingleTransAmount ?? 0);
+    const maxFiatRaw = Number(item?.adv?.maxSingleTransAmount ?? 0);
+    const minFiat = Number.isFinite(minFiatRaw) && minFiatRaw >= 0 ? roundMoney(minFiatRaw, 2) : 0;
+    const maxFiat = Number.isFinite(maxFiatRaw) && maxFiatRaw >= 0 ? roundMoney(maxFiatRaw, 2) : 0;
+
+    const surplusRaw = Number(item?.adv?.surplusAmount);
+    const availableCrypto =
+      Number.isFinite(surplusRaw) && surplusRaw > 0
+        ? roundMoney(surplusRaw, 2)
+        : maxFiat > 0
+          ? roundMoney(maxFiat / price, 2)
+          : 0;
+
+    const finishRaw = Number(item?.advertiser?.monthFinishRate);
+    const monthFinishRate = Number.isFinite(finishRaw) && finishRaw >= 0
+      ? finishRaw <= 1
+        ? roundMoney(finishRaw * 100, 1)
+        : roundMoney(finishRaw, 1)
+      : 0;
+    const ordersRaw = Number(item?.advertiser?.monthOrderCount);
+    const monthOrderCount =
+      Number.isFinite(ordersRaw) && ordersRaw >= 0 ? Math.trunc(ordersRaw) : 0;
+
+    offers.push({
+      advNo: String(item?.adv?.advNo ?? ''),
+      merchantName: String(item?.advertiser?.nickName ?? 'Anonymous'),
+      price: roundMoney(price, 2),
+      availableCrypto,
+      minFiat,
+      maxFiat,
+      monthFinishRate,
+      monthOrderCount,
+    });
+  }
+
+  return { ok: true, reason: null, offers };
+}
+
+function buildUnavailableOrderbook(
+  fiat: string,
+  asset: string,
+  reason: string,
 ): BinanceP2POrderbookDepth {
-  const now = new Date().toISOString();
-
-  // Buy offers (Makers que compran USDT / los takers les venden)
-  // Ordenados de mayor a menor precio
-  const baseBuyOffers: BinanceP2POffer[] = [
-    {
-      advNo: 'ADV-BUY-001',
-      merchantName: 'OroVerde_Express',
-      price: 79.2,
-      availableCrypto: 4500,
-      minFiat: 1000,
-      maxFiat: 350000,
-      monthFinishRate: 99.4,
-      monthOrderCount: 1420,
-    },
-    {
-      advNo: 'ADV-BUY-002',
-      merchantName: 'CaracasExchange',
-      price: 79.15,
-      availableCrypto: 3200,
-      minFiat: 2500,
-      maxFiat: 250000,
-      monthFinishRate: 98.8,
-      monthOrderCount: 890,
-    },
-    {
-      advNo: 'ADV-BUY-003',
-      merchantName: 'BolivarDigital_Pro',
-      price: 79.1,
-      availableCrypto: 6100,
-      minFiat: 1500,
-      maxFiat: 480000,
-      monthFinishRate: 99.1,
-      monthOrderCount: 2150,
-    },
-    {
-      advNo: 'ADV-BUY-004',
-      merchantName: 'VzlaFastPay',
-      price: 79.05,
-      availableCrypto: 2800,
-      minFiat: 500,
-      maxFiat: 220000,
-      monthFinishRate: 97.9,
-      monthOrderCount: 640,
-    },
-    {
-      advNo: 'ADV-BUY-005',
-      merchantName: 'SolidoP2P',
-      price: 79.0,
-      availableCrypto: 5000,
-      minFiat: 3000,
-      maxFiat: 395000,
-      monthFinishRate: 99.5,
-      monthOrderCount: 3100,
-    },
-  ];
-
-  // Sell offers (Makers que venden USDT / los takers les compran)
-  // Ordenados de menor a mayor precio
-  const baseSellOffers: BinanceP2POffer[] = [
-    {
-      advNo: 'ADV-SELL-001',
-      merchantName: 'CriptoMaracaibo',
-      price: 79.8,
-      availableCrypto: 5200,
-      minFiat: 1000,
-      maxFiat: 410000,
-      monthFinishRate: 99.6,
-      monthOrderCount: 1850,
-    },
-    {
-      advNo: 'ADV-SELL-002',
-      merchantName: 'TepuyTrader',
-      price: 79.85,
-      availableCrypto: 3800,
-      minFiat: 2000,
-      maxFiat: 300000,
-      monthFinishRate: 98.9,
-      monthOrderCount: 970,
-    },
-    {
-      advNo: 'ADV-SELL-003',
-      merchantName: 'AndesLiquidity',
-      price: 79.9,
-      availableCrypto: 7100,
-      minFiat: 1500,
-      maxFiat: 560000,
-      monthFinishRate: 99.2,
-      monthOrderCount: 2400,
-    },
-    {
-      advNo: 'ADV-SELL-004',
-      merchantName: 'DeltaCapital_Vzla',
-      price: 79.95,
-      availableCrypto: 2900,
-      minFiat: 1000,
-      maxFiat: 230000,
-      monthFinishRate: 97.8,
-      monthOrderCount: 580,
-    },
-    {
-      advNo: 'ADV-SELL-005',
-      merchantName: 'FinanzasGuayana',
-      price: 80.0,
-      availableCrypto: 4500,
-      minFiat: 4000,
-      maxFiat: 360000,
-      monthFinishRate: 99.4,
-      monthOrderCount: 1620,
-    },
-  ];
-
-  const buyOffers = baseBuyOffers.slice(0, rows);
-  const sellOffers = baseSellOffers.slice(0, rows);
-
-  const topBuyPrice = buyOffers[0]?.price ?? 79.2;
-  const topSellPrice = sellOffers[0]?.price ?? 79.8;
-  const spreadVes = Math.round((topSellPrice - topBuyPrice) * 100) / 100;
-  const spreadPct = Math.round(((topSellPrice - topBuyPrice) / topBuyPrice) * 10000) / 100;
-
-  const totalBuyDepthUsdt = buyOffers.reduce((acc, o) => acc + o.availableCrypto, 0);
-  const totalSellDepthUsdt = sellOffers.reduce((acc, o) => acc + o.availableCrypto, 0);
-
   return {
     fiat,
     asset,
-    timestamp: now,
+    timestamp: new Date().toISOString(),
+    provenance: ORDERBOOK_PROVENANCE.UNAVAILABLE,
+    actionable: false,
+    unavailableReason: reason,
+    expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
+    topBuyPrice: null,
+    topSellPrice: null,
+    spreadVes: null,
+    spreadPct: null,
+    totalBuyDepthUsdt: 0,
+    totalSellDepthUsdt: 0,
+    buyOffers: [],
+    sellOffers: [],
+  };
+}
+
+function sliceOrderbookRows(
+  depth: BinanceP2POrderbookDepth,
+  rows: number,
+  provenance: OrderbookProvenance,
+): BinanceP2POrderbookDepth {
+  const buyOffers = depth.buyOffers.slice(0, rows);
+  const sellOffers = depth.sellOffers.slice(0, rows);
+  const totalBuyDepthUsdt = roundMoney(
+    buyOffers.reduce((acc, o) => acc + o.availableCrypto, 0),
+    2,
+  );
+  const totalSellDepthUsdt = roundMoney(
+    sellOffers.reduce((acc, o) => acc + o.availableCrypto, 0),
+    2,
+  );
+  return {
+    ...depth,
+    provenance,
+    buyOffers,
+    sellOffers,
+    totalBuyDepthUsdt,
+    totalSellDepthUsdt,
+  };
+}
+
+/**
+ * Fetches live Binance P2P C2C depth (`SELL` ads = bids / makers buying crypto;
+ * `BUY` ads = asks / makers selling crypto) with a 15s TTL cache per `${asset}:${fiat}`.
+ * Fails closed with `provenance: 'UNAVAILABLE'` when offline or invalid.
+ */
+export async function fetchLiveBinanceP2pOrderbook(
+  options: FetchBinanceP2pOrderbookOptions = {},
+): Promise<BinanceP2POrderbookDepth> {
+  const fiat = (options.fiat ?? 'VES').trim().toUpperCase() || 'VES';
+  const asset = (options.asset ?? 'USDT').trim().toUpperCase() || 'USDT';
+  const rawRows = Number.isFinite(options.rows) ? Math.trunc(options.rows!) : 10;
+  const rows = Math.min(MAX_BINANCE_ROWS, Math.max(1, rawRows));
+  const cacheKey = `${asset}:${fiat}`;
+  const nowMs = Date.now();
+
+  if (!options.bypassCache) {
+    const cached = binanceOrderbookCache.get(cacheKey);
+    if (cached && nowMs - cached.fetchedAtMs < ORDERBOOK_CACHE_TTL_MS) {
+      return sliceOrderbookRows(cached.depth, rows, ORDERBOOK_PROVENANCE.CACHE);
+    }
+  }
+
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    return buildUnavailableOrderbook(fiat, asset, 'FETCH_UNAVAILABLE');
+  }
+
+  const timeoutMs =
+    typeof options.timeoutMs === 'number' && options.timeoutMs > 0
+      ? options.timeoutMs
+      : ORDERBOOK_FETCH_TIMEOUT_MS;
+
+  const querySide = async (
+    tradeType: 'BUY' | 'SELL',
+  ): Promise<{ ok: boolean; reason: string | null; offers: BinanceP2POffer[] }> => {
+    try {
+      const response = await fetchImpl(BINANCE_C2C_SEARCH_URL, {
+        method: 'POST',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          asset,
+          fiat,
+          tradeType,
+          page: 1,
+          rows: MAX_BINANCE_ROWS,
+          payTypes: [],
+          countries: [],
+          proMerchantAds: false,
+          shieldMerchantAds: false,
+          filterType: 'all',
+          periods: [],
+        }),
+      });
+      if (!response.ok) {
+        return { ok: false, reason: `HTTP_${response.status}`, offers: [] };
+      }
+      const json: unknown = await response.json();
+      return parseBinanceC2cOffers(json);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        reason: msg.toLowerCase().includes('timeout') ? 'TIMEOUT' : 'NETWORK_ERROR',
+        offers: [],
+      };
+    }
+  };
+
+  // Binance C2C: tradeType SELL = makers buying crypto (bids), tradeType BUY = makers selling crypto (asks)
+  const [asksResult, bidsResult] = await Promise.all([querySide('BUY'), querySide('SELL')]);
+  if (!asksResult.ok && !bidsResult.ok) {
+    return buildUnavailableOrderbook(
+      fiat,
+      asset,
+      asksResult.reason ?? bidsResult.reason ?? 'NETWORK_ERROR',
+    );
+  }
+  if (!asksResult.ok || !bidsResult.ok) {
+    return buildUnavailableOrderbook(
+      fiat,
+      asset,
+      asksResult.reason ?? bidsResult.reason ?? 'PARTIAL_ORDERBOOK_ERROR',
+    );
+  }
+
+  const buyOffers = [...bidsResult.offers].sort((a, b) => b.price - a.price);
+  const sellOffers = [...asksResult.offers].sort((a, b) => a.price - b.price);
+
+  if (buyOffers.length === 0 && sellOffers.length === 0) {
+    return buildUnavailableOrderbook(fiat, asset, 'EMPTY_ORDERBOOK');
+  }
+
+  const topBuyPrice = buyOffers.length > 0 ? buyOffers[0]!.price : null;
+  const topSellPrice = sellOffers.length > 0 ? sellOffers[0]!.price : null;
+  const spreadVes =
+    topBuyPrice !== null && topSellPrice !== null ? roundMoney(topSellPrice - topBuyPrice, 2) : null;
+  const spreadPct =
+    topBuyPrice !== null && topSellPrice !== null && topBuyPrice > 0
+      ? roundMoney(((topSellPrice - topBuyPrice) / topBuyPrice) * 100, 2)
+      : null;
+
+  const fullDepth: BinanceP2POrderbookDepth = {
+    fiat,
+    asset,
+    timestamp: new Date().toISOString(),
+    provenance: ORDERBOOK_PROVENANCE.LIVE,
+    actionable: buyOffers.length > 0 && sellOffers.length > 0,
+    unavailableReason: null,
+    expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
     topBuyPrice,
     topSellPrice,
     spreadVes,
     spreadPct,
-    totalBuyDepthUsdt,
-    totalSellDepthUsdt,
+    totalBuyDepthUsdt: roundMoney(
+      buyOffers.reduce((acc, o) => acc + o.availableCrypto, 0),
+      2,
+    ),
+    totalSellDepthUsdt: roundMoney(
+      sellOffers.reduce((acc, o) => acc + o.availableCrypto, 0),
+      2,
+    ),
     buyOffers,
     sellOffers,
   };
+
+  binanceOrderbookCache.set(cacheKey, { depth: fullDepth, fetchedAtMs: Date.now() });
+  return sliceOrderbookRows(fullDepth, rows, ORDERBOOK_PROVENANCE.LIVE);
+}
+
+/**
+ * Async live snapshot accessor for Binance P2P orderbook depth.
+ */
+export async function getBinanceP2POrderbookSnapshot(
+  fiat = 'VES',
+  asset = 'USDT',
+  rows = 10,
+  options: Omit<FetchBinanceP2pOrderbookOptions, 'fiat' | 'asset' | 'rows'> = {},
+): Promise<BinanceP2POrderbookDepth> {
+  return fetchLiveBinanceP2pOrderbook({ fiat, asset, rows, ...options });
 }
 
 export type UsdtDepegStatus = 'PEGGED' | 'DEPEG_DISCOUNT' | 'DEPEG_PREMIUM';
@@ -1094,147 +1275,377 @@ export function detectUsdtDepegParity(
 export interface CompetitivePricingResult {
   side: 'BUY' | 'SELL';
   strategy: 'TOP_1' | 'TOP_2' | 'TOP_3' | 'MATCH';
-  suggestedPrice: number;
-  competitorPrice: number;
+  suggestedPrice: number | null;
+  competitorPrice: number | null;
   stepVes: number;
   targetMarginPct: number;
-  marginVes: number;
+  marginVes: number | null;
   isWithinSafeBoundaries: boolean;
+  provenance: PricingProvenance;
+  actionable: boolean;
+  unavailableReason: string | null;
+  expectedSource: string;
   advice: string;
 }
 
-/**
- * Recomienda precios óptimos para anuncios Maker de Binance P2P garantizando posición en el Top 3.
- */
-export function computeCompetitivePriceRecommendation(input: {
+export interface CompetitivePricingInput {
   side: 'BUY' | 'SELL';
   strategy?: 'TOP_1' | 'TOP_2' | 'TOP_3' | 'MATCH';
   stepVes?: number;
   targetMarginPct?: number;
   breakEvenPrice?: number;
   currentMarketMid?: number;
-}): CompetitivePricingResult {
+  fiat?: string;
+  asset?: string;
+  orderbook?: BinanceP2POrderbookDepth;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Computes Maker ad competitive pricing directly from an observed live orderbook
+ * or an explicit `currentMarketMid`. Fails closed (`UNAVAILABLE`) when neither exists.
+ */
+export async function computeCompetitivePriceRecommendation(
+  input: CompetitivePricingInput,
+): Promise<CompetitivePricingResult> {
   const strategy = input.strategy ?? 'TOP_1';
   const stepVes = input.stepVes ?? 0.01;
   const targetMarginPct = input.targetMarginPct ?? 1.0;
 
-  const orderbook = getBinanceP2POrderbookSnapshot('VES', 'USDT', 5);
-  let competitorPrice: number;
-  let suggestedPrice: number;
-  let isWithinSafeBoundaries = true;
+  const orderbook =
+    input.orderbook ??
+    (await fetchLiveBinanceP2pOrderbook({
+      fiat: input.fiat ?? 'VES',
+      asset: input.asset ?? 'USDT',
+      rows: 10,
+      fetchImpl: input.fetchImpl,
+    }));
 
-  if (input.side === 'BUY') {
-    // Para anuncios de compra (maker compra crypto / taker vende):
-    // El Top 1 paga el precio más alto para atraer al vendedor.
-    const topOffers = orderbook.buyOffers;
-    let targetIndex = 0;
-    if (strategy === 'TOP_2' && topOffers.length >= 2) targetIndex = 1;
-    if (strategy === 'TOP_3' && topOffers.length >= 3) targetIndex = 2;
+  const sideOffers = input.side === 'BUY' ? orderbook.buyOffers : orderbook.sellOffers;
+  const hasLiveBook = orderbook.provenance !== ORDERBOOK_PROVENANCE.UNAVAILABLE && sideOffers.length > 0;
 
-    competitorPrice = topOffers[targetIndex]?.price ?? 79.2;
-    suggestedPrice =
-      strategy === 'MATCH' ? competitorPrice : Math.round((competitorPrice + stepVes) * 100) / 100;
+  if (hasLiveBook) {
+    const desiredIndex = strategy === 'TOP_2' ? 1 : strategy === 'TOP_3' ? 2 : 0;
+    const targetIndex = Math.min(desiredIndex, sideOffers.length - 1);
+    const competitorPrice = sideOffers[targetIndex]!.price;
 
-    // Límite de seguridad: no sobrepagar por encima de techo si se definió
-    if (input.breakEvenPrice && suggestedPrice > input.breakEvenPrice) {
-      isWithinSafeBoundaries = false;
-      suggestedPrice = input.breakEvenPrice;
+    let suggestedPrice =
+      strategy === 'MATCH'
+        ? competitorPrice
+        : input.side === 'BUY'
+          ? roundMoney(competitorPrice + stepVes, 2)
+          : roundMoney(competitorPrice - stepVes, 2);
+
+    let isWithinSafeBoundaries = true;
+    if (input.breakEvenPrice !== undefined && Number.isFinite(input.breakEvenPrice)) {
+      if (input.side === 'BUY' && suggestedPrice > input.breakEvenPrice) {
+        isWithinSafeBoundaries = false;
+        suggestedPrice = roundMoney(input.breakEvenPrice, 2);
+      } else if (input.side === 'SELL' && suggestedPrice < input.breakEvenPrice) {
+        isWithinSafeBoundaries = false;
+        suggestedPrice = roundMoney(input.breakEvenPrice, 2);
+      }
     }
-  } else {
-    // Para anuncios de venta (maker vende crypto / taker compra):
-    // El Top 1 ofrece el precio más bajo para atraer al comprador.
-    const topOffers = orderbook.sellOffers;
-    let targetIndex = 0;
-    if (strategy === 'TOP_2' && topOffers.length >= 2) targetIndex = 1;
-    if (strategy === 'TOP_3' && topOffers.length >= 3) targetIndex = 2;
 
-    competitorPrice = topOffers[targetIndex]?.price ?? 79.8;
-    suggestedPrice =
-      strategy === 'MATCH' ? competitorPrice : Math.round((competitorPrice - stepVes) * 100) / 100;
+    const mid =
+      input.currentMarketMid && Number.isFinite(input.currentMarketMid) && input.currentMarketMid > 0
+        ? input.currentMarketMid
+        : orderbook.topBuyPrice !== null && orderbook.topSellPrice !== null
+          ? (orderbook.topBuyPrice + orderbook.topSellPrice) / 2
+          : competitorPrice;
+    const marginVes = roundMoney(Math.abs(suggestedPrice - mid), 2);
+    const achievedMarginPct =
+      mid > 0
+        ? roundMoney(
+            ((input.side === 'SELL' ? suggestedPrice - mid : mid - suggestedPrice) / mid) * 100,
+            2,
+          )
+        : 0;
 
-    // Límite de seguridad: nunca vender por debajo del precio de coste (break-even floor)
-    if (input.breakEvenPrice && suggestedPrice < input.breakEvenPrice) {
-      isWithinSafeBoundaries = false;
-      suggestedPrice = input.breakEvenPrice;
+    let advice = `${strategy} en lado ${input.side}: fijar anuncio en ${suggestedPrice.toFixed(2)} VES (competidor clave en ${competitorPrice.toFixed(2)} VES).`;
+    if (!isWithinSafeBoundaries) {
+      advice += ` ADVERTENCIA: Ajustado a límite break-even (${input.breakEvenPrice?.toFixed(2)} VES) para proteger rentabilidad.`;
+    } else if (achievedMarginPct < targetMarginPct) {
+      advice += ` Nota: margen actual respecto al mid (${achievedMarginPct.toFixed(2)}%) inferior al objetivo (${targetMarginPct.toFixed(2)}%).`;
     }
+
+    return {
+      side: input.side,
+      strategy,
+      suggestedPrice,
+      competitorPrice,
+      stepVes,
+      targetMarginPct,
+      marginVes,
+      isWithinSafeBoundaries,
+      provenance:
+        orderbook.provenance === ORDERBOOK_PROVENANCE.CACHE
+          ? PRICING_PROVENANCE.CACHE
+          : PRICING_PROVENANCE.LIVE,
+      actionable: true,
+      unavailableReason: null,
+      expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
+      advice,
+    };
   }
 
-  const mid = input.currentMarketMid ?? (orderbook.topBuyPrice + orderbook.topSellPrice) / 2;
-  const marginVes = Math.round(Math.abs(suggestedPrice - mid) * 100) / 100;
+  if (
+    typeof input.currentMarketMid === 'number' &&
+    Number.isFinite(input.currentMarketMid) &&
+    input.currentMarketMid > 0
+  ) {
+    const mid = input.currentMarketMid;
+    let suggestedPrice =
+      input.side === 'BUY'
+        ? roundMoney(mid * (1 - targetMarginPct / 100), 2)
+        : roundMoney(mid * (1 + targetMarginPct / 100), 2);
 
-  let advice = `${strategy} en lado ${input.side}: fijar anuncio en ${suggestedPrice.toFixed(2)} VES (competidor clave en ${competitorPrice.toFixed(2)} VES).`;
-  if (!isWithinSafeBoundaries) {
-    advice += ` ADVERTENCIA: Ajustado a límite break-even (${input.breakEvenPrice?.toFixed(2)} VES) para proteger rentabilidad.`;
+    let isWithinSafeBoundaries = true;
+    if (input.breakEvenPrice !== undefined && Number.isFinite(input.breakEvenPrice)) {
+      if (input.side === 'BUY' && suggestedPrice > input.breakEvenPrice) {
+        isWithinSafeBoundaries = false;
+        suggestedPrice = roundMoney(input.breakEvenPrice, 2);
+      } else if (input.side === 'SELL' && suggestedPrice < input.breakEvenPrice) {
+        isWithinSafeBoundaries = false;
+        suggestedPrice = roundMoney(input.breakEvenPrice, 2);
+      }
+    }
+
+    const marginVes = roundMoney(Math.abs(suggestedPrice - mid), 2);
+    let advice = `Libro en vivo no disponible; precio calibrado desde currentMarketMid (${mid.toFixed(2)} VES) con margen objetivo ${targetMarginPct}% en ${suggestedPrice.toFixed(2)} VES.`;
+    if (!isWithinSafeBoundaries) {
+      advice += ` ADVERTENCIA: Ajustado a límite break-even (${input.breakEvenPrice?.toFixed(2)} VES) para proteger rentabilidad.`;
+    }
+
+    return {
+      side: input.side,
+      strategy,
+      suggestedPrice,
+      competitorPrice: null,
+      stepVes,
+      targetMarginPct,
+      marginVes,
+      isWithinSafeBoundaries,
+      provenance: PRICING_PROVENANCE.CALLER_MID_FALLBACK,
+      actionable: true,
+      unavailableReason: orderbook.unavailableReason ?? 'LIVE_ORDERBOOK_UNAVAILABLE',
+      expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
+      advice,
+    };
   }
 
   return {
     side: input.side,
     strategy,
-    suggestedPrice,
-    competitorPrice,
+    suggestedPrice: null,
+    competitorPrice: null,
     stepVes,
     targetMarginPct,
-    marginVes,
-    isWithinSafeBoundaries,
-    advice,
+    marginVes: null,
+    isWithinSafeBoundaries: false,
+    provenance: PRICING_PROVENANCE.UNAVAILABLE,
+    actionable: false,
+    unavailableReason: orderbook.unavailableReason ?? 'NO_LIVE_ORDERBOOK_OR_MID',
+    expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
+    advice:
+      'UNAVAILABLE: sin libro P2P en vivo ni currentMarketMid explícito. No se sugiere precio para evitar cotizar sobre datos inventados.',
   };
+}
+
+export interface OrderbookLiquidityGap {
+  side: 'BUY' | 'SELL';
+  level: number;
+  fromPrice: number;
+  toPrice: number;
+  gapPct: number;
+  severity: 'MILD' | 'SIGNIFICANT' | 'CRITICAL';
 }
 
 export interface MicrostructurePressureAnalysis {
   fiat: string;
-  bidDepthUsdt: number;
-  askDepthUsdt: number;
-  orderbookImbalanceRatio: number; // 0.0 a 1.0 (bid / total)
-  dominantSide: 'BUY_PRESSURE' | 'SELL_PRESSURE' | 'BALANCED';
-  manipulationRiskScore: number; // 0 a 100
-  phantomLiquidityDetected: boolean;
-  pressureVelocity: 'ACCELERATING' | 'DECELERATING' | 'NEUTRAL';
+  asset: string;
+  bidDepthUsdt: number | null;
+  askDepthUsdt: number | null;
+  orderbookImbalanceRatio: number | null; // 0.0 a 1.0 (bid / total)
+  obiRatio: number | null; // -1.0 a +1.0 ((bid - ask) / total)
+  dominantSide: 'BUY_PRESSURE' | 'SELL_PRESSURE' | 'BALANCED' | 'UNAVAILABLE';
+  manipulationRiskScore: number | null; // 0 a 100
+  phantomLiquidityDetected: boolean | null;
+  pressureVelocity: 'ACCELERATING' | 'DECELERATING' | 'NEUTRAL' | 'UNAVAILABLE';
+  liquidityGaps: OrderbookLiquidityGap[];
+  suspiciousOffersCount: number;
+  provenance: PressureProvenance;
+  actionable: boolean;
+  unavailableReason: string | null;
+  expectedSource: string;
   actionableInsight: string;
 }
 
+function detectLiquidityGaps(
+  offers: readonly BinanceP2POffer[],
+  side: 'BUY' | 'SELL',
+  gapThresholdPct = 0.4,
+): OrderbookLiquidityGap[] {
+  const gaps: OrderbookLiquidityGap[] = [];
+  for (let i = 0; i < offers.length - 1; i++) {
+    const p1 = offers[i]!.price;
+    const p2 = offers[i + 1]!.price;
+    if (p1 <= 0 || p2 <= 0) continue;
+    const diffPct = Math.abs((p2 - p1) / p1) * 100;
+    if (diffPct >= gapThresholdPct) {
+      gaps.push({
+        side,
+        level: i + 1,
+        fromPrice: p1,
+        toPrice: p2,
+        gapPct: roundMoney(diffPct, 2),
+        severity: diffPct >= 1.0 ? 'CRITICAL' : diffPct >= 0.6 ? 'SIGNIFICANT' : 'MILD',
+      });
+    }
+  }
+  return gaps;
+}
+
+function countSuspiciousOffers(offers: readonly BinanceP2POffer[]): number {
+  if (offers.length === 0) return 0;
+  const sortedCrypto = offers.map((o) => o.availableCrypto).sort((a, b) => a - b);
+  const medianCrypto = sortedCrypto[Math.floor(sortedCrypto.length / 2)] ?? 0;
+
+  let suspicious = 0;
+  for (const o of offers) {
+    const lowRep = o.monthFinishRate > 0 && o.monthFinishRate < 75 && o.monthOrderCount < 20;
+    const whaleWall = medianCrypto > 0 && o.availableCrypto >= medianCrypto * 4;
+    if (lowRep || whaleWall) {
+      suspicious += 1;
+    }
+  }
+  return suspicious;
+}
+
 /**
- * Analiza la presión de microestructura del libro P2P (imbalance de volumen, detección de spoofing y liquidez fantasma).
+ * Evaluates P2P orderbook microstructure pressure (`obiRatio` in [-1,+1] and
+ * `orderbookImbalanceRatio` in [0,1]) plus real liquidity gaps and spoof telemetry.
+ * When `bidDepthUsdt`/`askDepthUsdt` are omitted, fetches live Binance P2P depth
+ * instead of fabricating 15000/12000 fallbacks.
  */
-export function analyzeMicrostructurePressure(
+export async function analyzeMicrostructurePressure(
   fiat = 'VES',
-  bidDepthUsdt = 15000,
-  askDepthUsdt = 12000,
+  bidDepthUsdt?: number,
+  askDepthUsdt?: number,
   includeSpoofCheck = true,
-): MicrostructurePressureAnalysis {
-  const total = bidDepthUsdt + askDepthUsdt;
-  const ratio = total > 0 ? Math.round((bidDepthUsdt / total) * 1000) / 1000 : 0.5;
+  options: { asset?: string; rows?: number; fetchImpl?: typeof fetch } = {},
+): Promise<MicrostructurePressureAnalysis> {
+  const asset = (options.asset ?? 'USDT').trim().toUpperCase() || 'USDT';
+  const hasExplicitDepths =
+    typeof bidDepthUsdt === 'number' &&
+    Number.isFinite(bidDepthUsdt) &&
+    bidDepthUsdt >= 0 &&
+    typeof askDepthUsdt === 'number' &&
+    Number.isFinite(askDepthUsdt) &&
+    askDepthUsdt >= 0;
+
+  let resolvedBidDepth: number | null = hasExplicitDepths ? bidDepthUsdt : null;
+  let resolvedAskDepth: number | null = hasExplicitDepths ? askDepthUsdt : null;
+  let provenance: PressureProvenance = hasExplicitDepths
+    ? PRESSURE_PROVENANCE.CALLER_SUPPLIED
+    : PRESSURE_PROVENANCE.UNAVAILABLE;
+  let unavailableReason: string | null = null;
+  let liquidityGaps: OrderbookLiquidityGap[] = [];
+  let suspiciousOffersCount = 0;
+
+  if (!hasExplicitDepths) {
+    const orderbook = await fetchLiveBinanceP2pOrderbook({
+      fiat,
+      asset,
+      rows: options.rows ?? MAX_BINANCE_ROWS,
+      fetchImpl: options.fetchImpl,
+    });
+    if (
+      orderbook.provenance === ORDERBOOK_PROVENANCE.UNAVAILABLE ||
+      (orderbook.buyOffers.length === 0 && orderbook.sellOffers.length === 0)
+    ) {
+      unavailableReason = orderbook.unavailableReason ?? 'SIN_PROFUNDIDAD_NI_LIBRO_EN_VIVO';
+      return {
+        fiat,
+        asset,
+        bidDepthUsdt: null,
+        askDepthUsdt: null,
+        orderbookImbalanceRatio: null,
+        obiRatio: null,
+        dominantSide: 'UNAVAILABLE',
+        manipulationRiskScore: null,
+        phantomLiquidityDetected: null,
+        pressureVelocity: 'UNAVAILABLE',
+        liquidityGaps: [],
+        suspiciousOffersCount: 0,
+        provenance: PRESSURE_PROVENANCE.UNAVAILABLE,
+        actionable: false,
+        unavailableReason,
+        expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
+        actionableInsight:
+          'UNAVAILABLE: sin profundidades explícitas ni libro Binance P2P en vivo; no se calcula presión de microestructura.',
+      };
+    }
+
+    resolvedBidDepth = orderbook.totalBuyDepthUsdt;
+    resolvedAskDepth = orderbook.totalSellDepthUsdt;
+    provenance =
+      orderbook.provenance === ORDERBOOK_PROVENANCE.CACHE
+        ? PRESSURE_PROVENANCE.CACHE
+        : PRESSURE_PROVENANCE.LIVE;
+    liquidityGaps = [
+      ...detectLiquidityGaps(orderbook.buyOffers, 'BUY'),
+      ...detectLiquidityGaps(orderbook.sellOffers, 'SELL'),
+    ];
+    if (includeSpoofCheck) {
+      suspiciousOffersCount =
+        countSuspiciousOffers(orderbook.buyOffers) + countSuspiciousOffers(orderbook.sellOffers);
+    }
+  }
+
+  const bid = resolvedBidDepth!;
+  const ask = resolvedAskDepth!;
+  const total = bid + ask;
+  const orderbookImbalanceRatio = total > 0 ? Math.round((bid / total) * 1000) / 1000 : 0.5;
+  const obiRatio = total > 0 ? Number(Math.max(-1, Math.min(1, (bid - ask) / total)).toFixed(4)) : 0;
 
   let dominantSide: 'BUY_PRESSURE' | 'SELL_PRESSURE' | 'BALANCED' = 'BALANCED';
   let pressureVelocity: 'ACCELERATING' | 'DECELERATING' | 'NEUTRAL' = 'NEUTRAL';
 
-  if (ratio >= 0.58) {
+  if (orderbookImbalanceRatio >= 0.58) {
     dominantSide = 'BUY_PRESSURE';
-    pressureVelocity = ratio >= 0.68 ? 'ACCELERATING' : 'NEUTRAL';
-  } else if (ratio <= 0.42) {
+    pressureVelocity = orderbookImbalanceRatio >= 0.68 ? 'ACCELERATING' : 'NEUTRAL';
+  } else if (orderbookImbalanceRatio <= 0.42) {
     dominantSide = 'SELL_PRESSURE';
-    pressureVelocity = ratio <= 0.32 ? 'ACCELERATING' : 'NEUTRAL';
+    pressureVelocity = orderbookImbalanceRatio <= 0.32 ? 'ACCELERATING' : 'NEUTRAL';
   }
 
-  // Detección heurística de spoofing
-  let manipulationRiskScore = 15; // baseline saludable
+  let manipulationRiskScore = 15;
   let phantomLiquidityDetected = false;
 
   if (includeSpoofCheck) {
-    // Si hay una disparidad artificial superior a 3:1 entre bids y asks con libros poco profundos
-    if (bidDepthUsdt > 3 * askDepthUsdt || askDepthUsdt > 3 * bidDepthUsdt) {
-      manipulationRiskScore = 65;
+    const disparityFlag =
+      (ask > 0 && bid > 3 * ask) ||
+      (bid > 0 && ask > 3 * bid) ||
+      (bid === 0 && ask > 0) ||
+      (ask === 0 && bid > 0);
+    const criticalGaps = liquidityGaps.filter((g) => g.severity === 'CRITICAL').length;
+    if (disparityFlag) {
+      manipulationRiskScore = Math.min(100, 65 + suspiciousOffersCount * 10 + criticalGaps * 5);
       phantomLiquidityDetected = true;
+    } else if (suspiciousOffersCount > 0 || criticalGaps > 0) {
+      manipulationRiskScore = Math.min(100, 25 + suspiciousOffersCount * 20 + criticalGaps * 10);
+      phantomLiquidityDetected = manipulationRiskScore >= 50 || suspiciousOffersCount > 0;
     }
   }
 
   let actionableInsight: string;
   if (dominantSide === 'BUY_PRESSURE') {
-    actionableInsight = `Fuerte presión compradora (${(ratio * 100).toFixed(1)}% bids). Demanda de USDT sólida; los precios tenderán a subir. Subir anuncios de venta con mayor margen.`;
+    actionableInsight = `Fuerte presión compradora (${(orderbookImbalanceRatio * 100).toFixed(1)}% bids, OBI ${obiRatio.toFixed(2)}). Demanda de USDT sólida; los precios tenderán a subir. Subir anuncios de venta con mayor margen.`;
   } else if (dominantSide === 'SELL_PRESSURE') {
-    actionableInsight = `Fuerte presión vendedora (${((1 - ratio) * 100).toFixed(1)}% asks). Exceso de oferta de USDT; riesgo de compresión de precios. Acelerar liquidación de inventario.`;
+    actionableInsight = `Fuerte presión vendedora (${((1 - orderbookImbalanceRatio) * 100).toFixed(1)}% asks, OBI ${obiRatio.toFixed(2)}). Exceso de oferta de USDT; riesgo de compresión de precios. Acelerar liquidación de inventario.`;
   } else {
-    actionableInsight =
-      'Libro de órdenes equilibrado. Flujo bidireccional estable. Rotación continua sin sesgo unidireccional.';
+    actionableInsight = `Libro de órdenes equilibrado (OBI ${obiRatio.toFixed(2)}). Flujo bidireccional estable. Rotación continua sin sesgo unidireccional.`;
   }
 
   if (phantomLiquidityDetected) {
@@ -1244,13 +1655,21 @@ export function analyzeMicrostructurePressure(
 
   return {
     fiat,
-    bidDepthUsdt,
-    askDepthUsdt,
-    orderbookImbalanceRatio: ratio,
+    asset,
+    bidDepthUsdt: bid,
+    askDepthUsdt: ask,
+    orderbookImbalanceRatio,
+    obiRatio,
     dominantSide,
     manipulationRiskScore,
     phantomLiquidityDetected,
     pressureVelocity,
+    liquidityGaps,
+    suspiciousOffersCount,
+    provenance,
+    actionable: true,
+    unavailableReason,
+    expectedSource: BINANCE_P2P_EXPECTED_SOURCE,
     actionableInsight,
   };
 }

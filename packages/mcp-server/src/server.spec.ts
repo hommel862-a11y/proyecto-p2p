@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   calculateSpreadTool,
   evaluateTradeRiskTool,
@@ -22,14 +22,24 @@ import {
   auditCounterpartyExposureTool,
   projectCompoundRunwayTool,
 } from './tools/index.js';
+import { clearBinanceOrderbookCacheForTesting } from './core/index.js';
 import { ratesResources, cryptoResources, portfolioResources } from './resources/index.js';
 import { resetKillswitchForTesting } from './tools/trigger_killswitch.js';
 import { auditService } from './policy/audit.js';
 import { rateLimiter } from './policy/permissions.js';
 
 describe('P2P MCP Server Suite', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     resetKillswitchForTesting();
+    clearBinanceOrderbookCacheForTesting();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    clearBinanceOrderbookCacheForTesting();
+    vi.restoreAllMocks();
   });
 
   describe('Tools: Quantitative & Financial Engines', () => {
@@ -371,18 +381,65 @@ describe('P2P MCP Server Suite', () => {
   });
 
   describe('Phase 3 Tools: Crypto Market Data & Microstructure', () => {
-    it('get_binance_p2p_orderbook parses top bids, asks, spread and liquidity depth', () => {
-      const ob = getBinanceP2POrderbookTool.execute({ fiat: 'VES', asset: 'USDT', rows: 5 });
+    function mockLiveBinanceOrderbookFetch(
+      asks: number[] = [90.1, 90.2, 90.3, 90.4, 90.5],
+      bids: number[] = [89.4, 89.3, 89.2, 89.1, 89.0],
+    ) {
+      globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { tradeType?: 'BUY' | 'SELL' };
+        const prices = body.tradeType === 'BUY' ? asks : bids;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: '000000',
+            data: prices.map((price, idx) => ({
+              adv: {
+                advNo: `${body.tradeType}-${idx}`,
+                price: String(price),
+                surplusAmount: '1500',
+                minSingleTransAmount: '500',
+                maxSingleTransAmount: String(Math.round(1500 * price)),
+              },
+              advertiser: {
+                nickName: `Maker_${body.tradeType}_${idx}`,
+                monthFinishRate: 0.99,
+                monthOrderCount: 200,
+              },
+            })),
+          }),
+        } as unknown as Response;
+      }) as unknown as typeof fetch;
+    }
+
+    it('get_binance_p2p_orderbook parses top bids, asks, spread and liquidity depth', async () => {
+      mockLiveBinanceOrderbookFetch();
+      const ob = await getBinanceP2POrderbookTool.execute({ fiat: 'VES', asset: 'USDT', rows: 5 });
 
       expect(ob.fiat).toBe('VES');
       expect(ob.asset).toBe('USDT');
-      expect(ob.topBuyPrice).toBeGreaterThan(70);
-      expect(ob.topSellPrice).toBeGreaterThan(ob.topBuyPrice);
-      expect(ob.spreadVes).toBeGreaterThan(0);
+      expect(ob.provenance).toBe('LIVE');
+      expect(ob.topBuyPrice).toBe(89.4);
+      expect(ob.topSellPrice).toBe(90.1);
+      expect(ob.spreadVes).toBeCloseTo(0.7, 2);
       expect(ob.totalBuyDepthUsdt).toBeGreaterThan(0);
       expect(ob.totalSellDepthUsdt).toBeGreaterThan(0);
       expect(ob.buyOffersCount).toBe(5);
       expect(ob.sellOffersCount).toBe(5);
+    });
+
+    it('get_binance_p2p_orderbook fails closed with UNAVAILABLE when offline', async () => {
+      globalThis.fetch = vi.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+
+      const ob = await getBinanceP2POrderbookTool.execute({ fiat: 'VES', asset: 'USDT', rows: 5 });
+      expect(ob.provenance).toBe('UNAVAILABLE');
+      expect(ob.actionable).toBe(false);
+      expect(ob.topBuyPrice).toBeNull();
+      expect(ob.topSellPrice).toBeNull();
+      expect(ob.buyOffersCount).toBe(0);
+      expect(ob.sellOffersCount).toBe(0);
     });
 
     it('detect_usdt_depeg monitors parity deviations and alerts on critical depegs', async () => {
@@ -419,52 +476,78 @@ describe('P2P MCP Server Suite', () => {
       }
     });
 
-    it('recommend_competitive_pricing positions Maker ads optimally with safety boundaries', () => {
+    it('recommend_competitive_pricing positions Maker ads optimally with safety boundaries', async () => {
+      mockLiveBinanceOrderbookFetch([90.1, 90.2, 90.3], [89.4, 89.3, 89.2]);
+
       // BUY TOP_1 (outcompete highest bidder)
-      const buyTop1 = recommendCompetitivePricingTool.execute({
+      const buyTop1 = await recommendCompetitivePricingTool.execute({
         side: 'BUY',
         strategy: 'TOP_1',
         stepVes: 0.05,
         targetMarginPct: 1.0,
       });
-      expect(buyTop1.suggestedPrice).toBe(buyTop1.competitorPrice + 0.05);
+      expect(buyTop1.competitorPrice).toBe(89.4);
+      expect(buyTop1.suggestedPrice).toBe(89.45);
       expect(buyTop1.isWithinSafeBoundaries).toBe(true);
 
       // SELL TOP_1 (outcompete lowest ask)
-      const sellTop1 = recommendCompetitivePricingTool.execute({
+      const sellTop1 = await recommendCompetitivePricingTool.execute({
         side: 'SELL',
         strategy: 'TOP_1',
         stepVes: 0.05,
         targetMarginPct: 1.0,
       });
-      expect(sellTop1.suggestedPrice).toBe(sellTop1.competitorPrice - 0.05);
+      expect(sellTop1.competitorPrice).toBe(90.1);
+      expect(sellTop1.suggestedPrice).toBe(90.05);
 
-      // Break-even enforcement (cannot sell below 80.00 if competitor is at 79.80)
-      const constrainedSell = recommendCompetitivePricingTool.execute({
+      // Break-even enforcement (cannot sell below 90.50 if competitor is at 90.10)
+      const constrainedSell = await recommendCompetitivePricingTool.execute({
         side: 'SELL',
         strategy: 'TOP_1',
         stepVes: 0.01,
-        breakEvenPrice: 80.0,
+        targetMarginPct: 1.0,
+        breakEvenPrice: 90.5,
       });
-      expect(constrainedSell.suggestedPrice).toBe(80.0);
+      expect(constrainedSell.suggestedPrice).toBe(90.5);
       expect(constrainedSell.isWithinSafeBoundaries).toBe(false);
       expect(constrainedSell.advice).toContain('ADVERTENCIA');
     });
 
-    it('analyze_orderbook_pressure calculates depth imbalances and flags spoofing disparity', () => {
+    it('recommend_competitive_pricing fails closed when offline without currentMarketMid', async () => {
+      globalThis.fetch = vi.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+
+      const res = await recommendCompetitivePricingTool.execute({
+        side: 'BUY',
+        strategy: 'TOP_1',
+        stepVes: 0.05,
+        targetMarginPct: 1.0,
+      });
+      expect(res.provenance).toBe('UNAVAILABLE');
+      expect(res.actionable).toBe(false);
+      expect(res.suggestedPrice).toBeNull();
+    });
+
+    it('analyze_orderbook_pressure calculates depth imbalances and flags spoofing disparity', async () => {
       // Strong buy pressure
-      const buyPressure = analyzeOrderbookPressureTool.execute({
+      const buyPressure = await analyzeOrderbookPressureTool.execute({
         fiat: 'VES',
+        asset: 'USDT',
+        rows: 20,
         bidDepthUsdt: 25000,
         askDepthUsdt: 10000,
         includeSpoofCheck: false,
       });
       expect(buyPressure.dominantSide).toBe('BUY_PRESSURE');
       expect(buyPressure.orderbookImbalanceRatio).toBeGreaterThan(0.58);
+      expect(buyPressure.obiRatio).toBeGreaterThan(0);
 
       // Spoofing disparity (bid depth 4x ask depth with spoof check enabled)
-      const spoofAlert = analyzeOrderbookPressureTool.execute({
+      const spoofAlert = await analyzeOrderbookPressureTool.execute({
         fiat: 'VES',
+        asset: 'USDT',
+        rows: 20,
         bidDepthUsdt: 45000,
         askDepthUsdt: 9000,
         includeSpoofCheck: true,
@@ -473,27 +556,74 @@ describe('P2P MCP Server Suite', () => {
       expect(spoofAlert.manipulationRiskScore).toBeGreaterThan(50);
       expect(spoofAlert.marketRegime).toBe('MANIPULATED_OR_DISPERSION_RISK');
     });
+
+    it('analyze_orderbook_pressure fails closed without 15000/12000 fallbacks when omitted and offline', async () => {
+      globalThis.fetch = vi.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+
+      const res = await analyzeOrderbookPressureTool.execute({
+        fiat: 'VES',
+        asset: 'USDT',
+        rows: 20,
+        includeSpoofCheck: true,
+      });
+      expect(res.provenance).toBe('UNAVAILABLE');
+      expect(res.actionable).toBe(false);
+      expect(res.bidDepthUsdt).toBeNull();
+      expect(res.askDepthUsdt).toBeNull();
+      expect(res.obiRatio).toBeNull();
+      expect(res.orderbookImbalanceRatio).toBeNull();
+      expect(JSON.stringify(res)).not.toContain('15000');
+      expect(JSON.stringify(res)).not.toContain('12000');
+    });
   });
 
   describe('Phase 3 Resources: Crypto Endpoints', () => {
     it('cryptoResources expose binance-p2p depth and spot volatility endpoints', async () => {
+      globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        const target = String(url);
+        if (target.includes('p2p.binance.com')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { tradeType?: 'BUY' | 'SELL' };
+          const price = body.tradeType === 'BUY' ? '90.10' : '89.40';
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              code: '000000',
+              data: [
+                {
+                  adv: { advNo: '1', price, surplusAmount: '1200', minSingleTransAmount: '500', maxSingleTransAmount: '100000' },
+                  advertiser: { nickName: 'LiveMaker', monthFinishRate: 0.99, monthOrderCount: 300 },
+                },
+              ],
+            }),
+          } as unknown as Response;
+        }
+        throw new Error('spot offline in test');
+      }) as unknown as typeof fetch;
+
       const depthResource = cryptoResources.find((r) => r.uri === 'p2p://market/binance-p2p/depth');
       expect(depthResource).toBeDefined();
       const depthData = (await depthResource?.read()) as any;
+      expect(depthData.provenance).toBe('LIVE');
       expect(depthData.totalLiquidityUsdt).toBeGreaterThan(0);
       expect(depthData.buyOffers.length).toBeGreaterThan(0);
+
+      clearBinanceOrderbookCacheForTesting();
+      globalThis.fetch = vi.fn(async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch;
+      const offlineDepth = (await depthResource?.read()) as any;
+      expect(offlineDepth.status).toBe('UNAVAILABLE_NO_LIVE_FEED');
+      expect(offlineDepth.topBuyPrice).toBeNull();
+      expect(offlineDepth.buyOffers).toEqual([]);
 
       const spotResource = cryptoResources.find((r) => r.uri === 'p2p://market/spot/volatility');
       expect(spotResource).toBeDefined();
       const spotData = (await spotResource?.read()) as any;
-      if (spotData.spotUsdtPrice !== null) {
-        expect(spotData.spotUsdtPrice).toBeCloseTo(1.0, 1);
-        expect(typeof spotData.status).toBe('string');
-        expect(spotData.source).not.toBe('NONE');
-      } else {
-        expect(spotData.status).toBe('UNAVAILABLE_NO_LIVE_FEED');
-        expect(spotData.source).toBe('NONE');
-      }
+      expect(spotData.status).toBe('UNAVAILABLE_NO_LIVE_FEED');
+      expect(spotData.source).toBe('NONE');
     });
   });
 

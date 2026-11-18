@@ -2,7 +2,11 @@
  * Crypto Market Resources — Endpoints de lectura de profundidad P2P y volatilidad spot para agentes IA.
  */
 
-import { getBinanceP2POrderbookSnapshot, detectUsdtDepegParity } from '../core/index.js';
+import {
+  fetchLiveBinanceP2pOrderbook,
+  detectUsdtDepegParity,
+  ORDERBOOK_PROVENANCE,
+} from '../core/index.js';
 import { fetchLiveUsdtSpotReading } from '../tools/usdt-spot-reader.js';
 
 export interface McpResource {
@@ -18,12 +22,34 @@ export const cryptoResources: McpResource[] = [
     uri: 'p2p://market/binance-p2p/depth',
     name: 'Profundidad del Libro P2P (Binance)',
     description:
-      'Snapshot estructurado del libro de órdenes VES/USDT con volumen acumulado, top bids, top asks y spread neto',
+      'Snapshot estructurado del libro de órdenes VES/USDT en vivo con volumen acumulado, top bids, top asks y spread neto',
     mimeType: 'application/json',
-    read: () => {
-      const depth = getBinanceP2POrderbookSnapshot('VES', 'USDT', 10);
+    read: async () => {
+      const depth = await fetchLiveBinanceP2pOrderbook({ fiat: 'VES', asset: 'USDT', rows: 10 });
+      if (depth.provenance === ORDERBOOK_PROVENANCE.UNAVAILABLE) {
+        return {
+          timestamp: depth.timestamp,
+          status: 'UNAVAILABLE_NO_LIVE_FEED',
+          provenance: depth.provenance,
+          actionable: false,
+          unavailableReason: depth.unavailableReason,
+          expectedSource: depth.expectedSource,
+          topBuyPrice: null,
+          topSellPrice: null,
+          spreadVes: null,
+          spreadPct: null,
+          totalLiquidityUsdt: null,
+          buyDepthUsdt: null,
+          sellDepthUsdt: null,
+          buyOffers: [],
+          sellOffers: [],
+        };
+      }
       return {
         timestamp: depth.timestamp,
+        status: depth.provenance,
+        provenance: depth.provenance,
+        actionable: depth.actionable,
         topBuyPrice: depth.topBuyPrice,
         topSellPrice: depth.topSellPrice,
         spreadVes: depth.spreadVes,

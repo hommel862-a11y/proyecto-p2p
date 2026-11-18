@@ -60,7 +60,6 @@ export class ExchangeIntelAgent {
     this.lastActive = Date.now();
 
     const {
-      asset = 'USDT',
       fiat = 'VES',
       targetAmountUsdt = 1000,
       binanceRate,
@@ -68,66 +67,111 @@ export class ExchangeIntelAgent {
       elDoradoRate,
     } = params;
 
-    // Use skill dispatcher to compute mathematical basis spread
+    const venues = [
+      { name: 'Binance P2P', rate: binanceRate },
+      { name: 'Bybit P2P', rate: bybitRate },
+      { name: 'El Dorado P2P', rate: elDoradoRate },
+    ].filter(
+      (v): v is { name: string; rate: number } =>
+        typeof v.rate === 'number' && Number.isFinite(v.rate) && v.rate > 0,
+    );
+
+    if (venues.length < 2) {
+      const onlyVenue = venues[0];
+      return {
+        binancePrice: venues.find((v) => v.name === 'Binance P2P')?.rate,
+        bybitPrice: venues.find((v) => v.name === 'Bybit P2P')?.rate,
+        elDoradoPrice: venues.find((v) => v.name === 'El Dorado P2P')?.rate,
+        bestBuyVenue: onlyVenue?.name ?? 'UNAVAILABLE',
+        bestSellVenue: 'UNAVAILABLE',
+        grossSpreadPct: 0,
+        netSpreadPct: 0,
+        makerTakerDeductionPct: 0,
+        isViable: false,
+        recommendedRoute: onlyVenue
+          ? `Cotización única en ${onlyVenue.name} @ ${onlyVenue.rate.toFixed(2)}: se requieren al menos 2 plataformas con tasa válida para arbitraje espacial.`
+          : 'UNAVAILABLE: sin cotizaciones válidas de múltiples plataformas para comparar.',
+      };
+    }
+
+    const platforms = venues.map((venue) => ({
+      platformName: venue.name,
+      fiatCurrency: fiat,
+      bestBidPrice: venue.rate,
+      bestAskPrice: venue.rate,
+      availableDepthUsdt: targetAmountUsdt,
+      internalTransferFeeUsdt: 0,
+    }));
+
     const skillResult = executeFinancialSkill('calculate_cross_exchange_basis_spread', {
-      buyPlatform: 'Binance P2P',
-      sellPlatform: 'El Dorado P2P',
-      asset,
-      fiat,
-      buyPrice: binanceRate,
-      sellPrice: elDoradoRate,
       capitalUsdt: targetAmountUsdt,
+      platforms,
     });
 
-    const data = skillResult.data as {
-      netSpreadPct?: number;
-      grossSpreadPct?: number;
-      buyPrice?: number;
-      sellPrice?: number;
-      isProfitable?: boolean;
-    } | undefined;
+    const data = skillResult.success
+      ? (skillResult.data as
+          | {
+              buyPlatform?: string;
+              sellPlatform?: string;
+              buyPrice?: number;
+              sellPrice?: number;
+              grossSpreadPct?: number;
+              netSpreadPct?: number;
+              isExecutable?: boolean;
+            }
+          | undefined)
+      : undefined;
 
-    const bRate = binanceRate ?? data?.buyPrice;
-    const dRate = elDoradoRate ?? data?.sellPrice;
-    const byRate = bybitRate;
-
-    // Calculate best venues
-    const venues = [
-      { name: 'Binance P2P', rate: bRate },
-      { name: 'Bybit P2P', rate: byRate },
-      { name: 'El Dorado P2P', rate: dRate },
-    ].filter((v) => typeof v.rate === 'number' && v.rate > 0);
-
-    let bestBuy = venues[0]?.name || 'Binance P2P';
-    let bestSell = venues[1]?.name || 'El Dorado P2P';
-    let minRate = venues[0]?.rate ?? 0;
-    let maxRate = venues[0]?.rate ?? 0;
+    let bestBuy = venues[0].name;
+    let bestSell = venues[0].name;
+    let minRate = venues[0].rate;
+    let maxRate = venues[0].rate;
 
     for (const v of venues) {
-      if (v.rate! < minRate || minRate === 0) {
-        minRate = v.rate!;
+      if (v.rate < minRate) {
+        minRate = v.rate;
         bestBuy = v.name;
       }
-      if (v.rate! > maxRate) {
-        maxRate = v.rate!;
+      if (v.rate > maxRate) {
+        maxRate = v.rate;
         bestSell = v.name;
       }
     }
 
-    const grossSpread = minRate > 0 ? ((maxRate - minRate) / minRate) * 100 : 0;
-    const feeDeduction = 0.25; // Combined maker + taker + transfer fee estimate
-    const netSpread = Math.max(0, grossSpread - feeDeduction);
+    if (data?.buyPlatform && typeof data.buyPrice === 'number' && data.buyPrice > 0) {
+      bestBuy = data.buyPlatform;
+      minRate = data.buyPrice;
+    }
+    if (data?.sellPlatform && typeof data.sellPrice === 'number' && data.sellPrice > 0) {
+      bestSell = data.sellPlatform;
+      maxRate = data.sellPrice;
+    }
+
+    const fallbackGross = minRate > 0 ? ((maxRate - minRate) / minRate) * 100 : 0;
+    const rawGross =
+      typeof data?.grossSpreadPct === 'number' && Number.isFinite(data.grossSpreadPct)
+        ? data.grossSpreadPct
+        : fallbackGross;
+    const rawNet =
+      typeof data?.netSpreadPct === 'number' && Number.isFinite(data.netSpreadPct)
+        ? data.netSpreadPct
+        : rawGross - 0.2;
+    const feeDeduction = Number(Math.max(0, rawGross - rawNet).toFixed(2));
+    const netSpread = Math.max(0, rawNet);
 
     return {
-      binancePrice: bRate,
-      bybitPrice: byRate,
-      elDoradoPrice: dRate,
+      binancePrice: venues.find((v) => v.name === 'Binance P2P')?.rate,
+      bybitPrice: venues.find((v) => v.name === 'Bybit P2P')?.rate,
+      elDoradoPrice: venues.find((v) => v.name === 'El Dorado P2P')?.rate,
       bestBuyVenue: bestBuy,
       bestSellVenue: bestSell,
-      grossSpreadPct: Number(grossSpread.toFixed(2)),
+      grossSpreadPct: Number(rawGross.toFixed(2)),
       netSpreadPct: Number(netSpread.toFixed(2)),
       makerTakerDeductionPct: feeDeduction,
-      isViable: netSpread >= 0.5,
+      isViable:
+        typeof data?.isExecutable === 'boolean'
+          ? data.isExecutable
+          : netSpread >= 0.5 && bestBuy !== bestSell,
       recommendedRoute: `Comprar en ${bestBuy} @ ${minRate > 0 ? minRate.toFixed(2) : 'N/D'} ➔ Vender en ${bestSell} @ ${maxRate > 0 ? maxRate.toFixed(2) : 'N/D'}`,
     };
   }

@@ -11,12 +11,24 @@
  * refused, recorded in Engram, and reported to the Copilot UI with its reason.
  */
 
-import { net, BrowserWindow, Notification } from 'electron';
+import { BrowserWindow, Notification } from 'electron';
 import type { P2PDatabaseService, StrategyPlanRecord } from './db/database';
 import { ProactiveEventEngine } from './agents/proactive-event-engine';
 import { RiskGatekeeperAgent } from './agents/risk-gatekeeper-agent';
 import type { RiskVerdict, StrategistProposal, TreasuryRiskContext } from './agents/types';
 import { getTreasurySnapshot } from './ipc/treasury-snapshot';
+import { fetchBinanceP2pShared } from './ipc/handlers';
+import { parseBinanceP2pItems, type BinanceOfferSummary } from './vendor/p2p-core/binance-p2p';
+import type { BinanceSearchParams } from '../shared/types';
+
+export type FetchBinanceP2pFn = (
+  params: BinanceSearchParams,
+  options?: { signal?: AbortSignal },
+) => Promise<unknown>;
+
+const MIN_QUALIFIED_FINISH_RATE_PCT = 90;
+const MIN_QUALIFIED_ORDER_COUNT = 10;
+const MAX_MEDIAN_DEVIATION_RATIO = 0.3;
 
 /** Commission Binance P2P charges, already deducted from the gross spread in `runScanCycle`. */
 const BINANCE_P2P_COMMISSION_PCT = 0.35;
@@ -49,6 +61,7 @@ export interface AlphaWatcherConfig {
 
 export class AlphaWatcher {
   private timer: NodeJS.Timeout | null = null;
+  private startupTimer: NodeJS.Timeout | null = null;
   private isPolling = false;
   private proactiveEngine: ProactiveEventEngine;
   private config: AlphaWatcherConfig = {
@@ -62,6 +75,9 @@ export class AlphaWatcher {
 
   private scanCount = 0;
   private lastOpportunity: { time: number; netSpreadPct: number; route: string } | null = null;
+  private consecutiveErrors = 0;
+  private lastError: string | null = null;
+  private lastErrorAt: number | null = null;
 
   constructor(
     private db: P2PDatabaseService,
@@ -72,6 +88,7 @@ export class AlphaWatcher {
      * enforcing the veto without any wiring change.
      */
     private riskGatekeeper: RiskGatekeeperAgent = new RiskGatekeeperAgent(),
+    private fetchBinanceP2p: FetchBinanceP2pFn = fetchBinanceP2pShared,
   ) {
     this.proactiveEngine = new ProactiveEventEngine(this.db, (channel, payload) => {
       const win = this.getMainWindow();
@@ -91,6 +108,9 @@ export class AlphaWatcher {
     minNetSpreadPct: number;
     scanCount: number;
     lastOpportunity: unknown;
+    consecutiveErrors: number;
+    lastError: string | null;
+    lastErrorAt: number | null;
   } {
     return {
       enabled: this.isRunning(),
@@ -98,17 +118,42 @@ export class AlphaWatcher {
       minNetSpreadPct: this.config.minNetSpreadPct,
       scanCount: this.scanCount,
       lastOpportunity: this.lastOpportunity,
+      consecutiveErrors: this.consecutiveErrors,
+      lastError: this.lastError,
+      lastErrorAt: this.lastErrorAt,
     };
   }
 
   setConfig(newConfig: Partial<AlphaWatcherConfig>): void {
-    this.config = { ...this.config, ...newConfig };
-    if (newConfig.enabled !== undefined) {
-      if (newConfig.enabled) {
-        this.start();
-      } else {
+    const prevPollInterval = this.config.pollIntervalSeconds;
+    const sanitizedPoll =
+      typeof newConfig.pollIntervalSeconds === 'number' &&
+      Number.isFinite(newConfig.pollIntervalSeconds) &&
+      newConfig.pollIntervalSeconds > 0
+        ? Math.max(5, Math.floor(newConfig.pollIntervalSeconds))
+        : prevPollInterval;
+
+    this.config = {
+      ...this.config,
+      ...newConfig,
+      pollIntervalSeconds: sanitizedPoll,
+    };
+
+    const pollIntervalChanged = sanitizedPoll !== prevPollInterval;
+    if (newConfig.enabled === false) {
+      this.stop();
+      return;
+    }
+    if (newConfig.enabled === true) {
+      if (this.isRunning() && pollIntervalChanged) {
         this.stop();
       }
+      this.start();
+      return;
+    }
+    if (this.isRunning() && pollIntervalChanged) {
+      this.stop();
+      this.start();
     }
   }
 
@@ -118,7 +163,8 @@ export class AlphaWatcher {
     this.timer = setInterval(() => {
       void this.runScanCycle();
     }, this.config.pollIntervalSeconds * 1000);
-    setTimeout(() => {
+    this.startupTimer = setTimeout(() => {
+      this.startupTimer = null;
       void this.runScanCycle();
     }, 5000);
   }
@@ -127,6 +173,10 @@ export class AlphaWatcher {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
     }
     this.config.enabled = false;
   }
@@ -141,14 +191,18 @@ export class AlphaWatcher {
     this.scanCount++;
 
     try {
-      // 1. Fetch top BUY and SELL offers from Binance P2P
-      const [buyOffersRaw, sellOffersRaw] = await Promise.all([
+      // 1. Fetch top BUY and SELL offers through the shared rate-limited Binance P2P path
+      const [buyOffers, sellOffers] = await Promise.all([
         this.fetchBinanceSide('BUY'),
         this.fetchBinanceSide('SELL'),
       ]);
 
-      const bestBuy = buyOffersRaw?.[0]?.price;
-      const bestSell = sellOffersRaw?.[0]?.price;
+      this.consecutiveErrors = 0;
+      this.lastError = null;
+      this.lastErrorAt = null;
+
+      const bestBuy = buyOffers[0]?.price;
+      const bestSell = sellOffers[0]?.price;
 
       if (!bestBuy || !bestSell || bestSell <= bestBuy) {
         return; // Spread is negative or zero (no maker/taker gap)
@@ -157,6 +211,7 @@ export class AlphaWatcher {
       // Calculate gross and net spread deducting standard 0.35% commission
       const grossSpreadPct = ((bestSell - bestBuy) / bestBuy) * 100;
       const netSpreadPct = Number((grossSpreadPct - BINANCE_P2P_COMMISSION_PCT).toFixed(2));
+      const liveMidRateVes = (bestBuy + bestSell) / 2;
 
       if (netSpreadPct >= this.config.minNetSpreadPct) {
         const planId = `ALPHA-${Date.now().toString(36).toUpperCase()}`;
@@ -179,7 +234,12 @@ export class AlphaWatcher {
 
         // Institutional veto BEFORE any persistence: the watcher is an unattended entry
         // point, so it must never reach SQLite without the same audit the swarm applies.
-        const verdict = this.auditWithGatekeeper(plan, grossSpreadPct, netSpreadPct);
+        const verdict = this.auditWithGatekeeper(
+          plan,
+          grossSpreadPct,
+          netSpreadPct,
+          liveMidRateVes,
+        );
         const isVetoed = verdict.status === 'VETOED';
 
         if (isVetoed) {
@@ -260,8 +320,11 @@ export class AlphaWatcher {
       // `recordDeclaredMeasurementAbsence` states the gap once so the operator can see it is
       // unmonitored rather than assume the watcher is watching it.
       this.recordDeclaredMeasurementAbsence();
-    } catch {
-      // Quiet fail on network glitch to avoid noisy polling crashes
+    } catch (err: unknown) {
+      this.consecutiveErrors += 1;
+      this.lastError = err instanceof Error ? err.message : String(err);
+      this.lastErrorAt = Date.now();
+      console.warn(`[AlphaWatcher] Scan error (#${this.consecutiveErrors}): ${this.lastError}`);
     } finally {
       this.isPolling = false;
     }
@@ -269,23 +332,14 @@ export class AlphaWatcher {
 
   /**
    * Audits a detected spread with the Risk Gatekeeper before it becomes a persisted plan.
-   *
-   * This is a deliberately "light" evaluation: it carries only figures the watcher actually
-   * observed. Notably, `mathematicalValidation.monteCarlo` is left undefined on purpose —
-   * the watcher reads top-of-book prices without a depth profile, so any P95 tail estimate
-   * would be fabricated. Omitting the optional field keeps Rule 1.1 out of the audit rather
-   * than feeding the gatekeeper invented numbers; the real protection here comes from Rule 1
-   * (golden spread), the treasury blocks and the bank-health skill.
-   *
-   * The volume/limit pair mixes the treasury's VES aggregates with a USDT ticket, which is
-   * the pre-bridge convention already used by `AgentSwarmOrchestrator`. It is kept for
-   * consistency; note that the unit-free treasury blocks (disabled / over-limit / saturated)
-   * are the checks that actually carry the protection.
+   * Converts VES treasury aggregates to USDT using the observed live P2P rate before running
+   * Rule 2 so volume and limit checks compare apples to apples in USDT.
    */
   private auditWithGatekeeper(
     plan: StrategyPlanRecord,
     grossSpreadPct: number,
     netSpreadPct: number,
+    liveRateVesPerUsdt: number,
   ): RiskVerdict {
     const snapshot = getTreasurySnapshot();
     const treasuryContext: TreasuryRiskContext | null = snapshot
@@ -313,13 +367,19 @@ export class AlphaWatcher {
       recommendedTiming: 'Inmediato',
     };
 
+    const hasLiveRate = Number.isFinite(liveRateVesPerUsdt) && liveRateVesPerUsdt > 0;
+    const dailyVolumeProcessedUsdt =
+      snapshot && hasLiveRate
+        ? Number((snapshot.totalSpentTodayVes / liveRateVesPerUsdt).toFixed(2))
+        : FALLBACK_DAILY_VOLUME_USDT;
+    const dailyLimitUsdt =
+      snapshot && hasLiveRate && snapshot.totalDailyLimitVes > 0
+        ? Number((snapshot.totalDailyLimitVes / liveRateVesPerUsdt).toFixed(2))
+        : FALLBACK_DAILY_LIMIT_USDT;
+
     return this.riskGatekeeper.evaluateProposal(proposal, {
-      dailyVolumeProcessedUsdt: snapshot
-        ? snapshot.totalSpentTodayVes
-        : FALLBACK_DAILY_VOLUME_USDT,
-      dailyLimitUsdt: snapshot
-        ? snapshot.totalDailyLimitVes || FALLBACK_DAILY_LIMIT_USDT
-        : FALLBACK_DAILY_LIMIT_USDT,
+      dailyVolumeProcessedUsdt,
+      dailyLimitUsdt,
       treasurySnapshot: treasuryContext,
     });
   }
@@ -386,48 +446,64 @@ export class AlphaWatcher {
     });
   }
 
-  private async fetchBinanceSide(
-    tradeType: 'BUY' | 'SELL',
-  ): Promise<{ price: number; maxVes: number }[]> {
-    try {
-      const response = await net.fetch(
-        'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
-        {
-          method: 'POST',
-          signal: AbortSignal.timeout(10000),
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-          body: JSON.stringify({
-            asset: this.config.asset,
-            fiat: this.config.fiat,
-            tradeType,
-            page: 1,
-            rows: 5,
-            payTypes: this.config.payTypes,
-            countries: [],
-            proMerchantAds: false,
-            shieldMerchantAds: false,
-            filterType: 'all',
-            periods: [],
-          }),
-        },
-      );
+  private async fetchBinanceSide(tradeType: 'BUY' | 'SELL'): Promise<BinanceOfferSummary[]> {
+    const raw = await this.fetchBinanceP2p(
+      {
+        asset: this.config.asset,
+        fiat: this.config.fiat,
+        tradeType,
+        payTypes: this.config.payTypes,
+        rows: 10,
+      },
+      { signal: AbortSignal.timeout(12_000) },
+    );
 
-      if (!response.ok) return [];
-      const json = (await response.json()) as {
-        data?: { adv?: { price?: string | number; maxSingleTransAmount?: string | number } }[];
-      };
-      const items = json.data || [];
-      return items
-        .map((it) => ({
-          price: Number(it.adv?.price) || 0,
-          maxVes: Number(it.adv?.maxSingleTransAmount) || 0,
-        }))
-        .filter((x) => x.price > 0);
-    } catch {
-      return [];
+    if (!raw || typeof raw !== 'object') {
+      throw new Error(`Invalid Binance P2P response for ${tradeType}`);
     }
+    const payload = raw as { code?: unknown; data?: unknown; success?: unknown };
+    if (
+      !Array.isArray(payload.data) ||
+      (payload.code !== undefined && payload.code !== null && String(payload.code) !== '000000') ||
+      payload.success === false
+    ) {
+      throw new Error(
+        `Binance P2P returned error payload for ${tradeType} (code=${String(payload.code ?? 'invalid')})`,
+      );
+    }
+
+    const offers = parseBinanceP2pItems(raw);
+    return this.filterQualifiedOffers(offers, tradeType);
+  }
+
+  /**
+   * Filters low-reputation bait and price outliers against the book median, then sorts
+   * best-first (`BUY` ascending ask price, `SELL` descending bid price).
+   */
+  private filterQualifiedOffers(
+    offers: readonly BinanceOfferSummary[],
+    tradeType: 'BUY' | 'SELL',
+  ): BinanceOfferSummary[] {
+    const hasAdvertiserTelemetry = offers.some((o) => o.orderCount > 0);
+    let qualified = offers.filter((o) => {
+      if (!Number.isFinite(o.price) || o.price <= 0) return false;
+      if (o.finishRatePct < MIN_QUALIFIED_FINISH_RATE_PCT) return false;
+      if (hasAdvertiserTelemetry && o.orderCount < MIN_QUALIFIED_ORDER_COUNT) return false;
+      return true;
+    });
+
+    if (qualified.length >= 3) {
+      const prices = qualified.map((o) => o.price).sort((a, b) => a - b);
+      const median = prices[Math.floor(prices.length / 2)];
+      if (median > 0) {
+        const minValid = median * (1 - MAX_MEDIAN_DEVIATION_RATIO);
+        const maxValid = median * (1 + MAX_MEDIAN_DEVIATION_RATIO);
+        qualified = qualified.filter((o) => o.price >= minValid && o.price <= maxValid);
+      }
+    }
+
+    return [...qualified].sort((a, b) =>
+      tradeType === 'BUY' ? a.price - b.price : b.price - a.price,
+    );
   }
 }

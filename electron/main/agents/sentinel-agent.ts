@@ -7,6 +7,7 @@
 import type { SentinelSignal, AgentHealthStatus } from './types';
 import { AGENT_MCP_DOMAINS, AGENT_ASSIGNED_SKILLS } from './types';
 import { executeFinancialSkill } from '../gemini-skills';
+import type { VpinBucket } from '../vendor/p2p-core/orderbook-microstructure';
 
 export class SentinelAgent {
   readonly role = 'SENTINEL' as const;
@@ -34,7 +35,7 @@ export class SentinelAgent {
   /**
    * Runs an integrated diagnostic across all assigned MCP domains and skills.
    */
-  runMarketDiagnostic(): {
+  runMarketDiagnostic(params?: { vpinBuckets?: VpinBucket[] }): {
     bankingNetworkOperational: boolean;
     bcvInterventionRisk: string;
     flowToxicityRisk: string;
@@ -44,27 +45,25 @@ export class SentinelAgent {
       { networkStatus?: string; pauseTradingDirective?: boolean } | undefined;
 
     // DECLARED ABSENCE — the BCV leg is not computed.
-    //
-    // This method takes no inputs and no BCV rate is bridged into the Electron process:
-    // `resolveMarketFeed` carries Binance P2P book figures only, and `skills/market-state.ts`
-    // never fetches a BCV official rate. So the `parallelRate: 88.5 / bcvRate: 72.0` pair used
-    // here was not a fallback for a missing reading — it was a full 22.9% gap that the skill
-    // computed and `?? 'NORMAL'` then published as an observed intervention zone. Worse, the
-    // skill coerces both legs to `0` and the vendored `calculateBcvGap` answers a non-positive
-    // rate with `gapPct: 0`, so removing the constants without guarding the call would trade
-    // one invented rate for an invented "no gap". The zone is therefore not computed at all:
-    // no rate is passed, so the honest answer is UNAVAILABLE, not NORMAL.
     const bcvInterventionRisk = 'UNAVAILABLE';
 
-    const vpinRes = executeFinancialSkill('estimate_adverse_selection_vpin', {
-      buckets: [],
-    });
-    const vpinData = vpinRes.data as { toxicityZone?: string } | undefined;
+    let flowToxicityRisk = 'UNAVAILABLE';
+    if (Array.isArray(params?.vpinBuckets) && params.vpinBuckets.length > 0) {
+      const vpinRes = executeFinancialSkill('estimate_adverse_selection_vpin', {
+        buckets: params.vpinBuckets,
+      });
+      const vpinData = vpinRes.success
+        ? (vpinRes.data as { toxicityClassification?: string } | undefined)
+        : undefined;
+      if (vpinData?.toxicityClassification) {
+        flowToxicityRisk = vpinData.toxicityClassification;
+      }
+    }
 
     return {
       bankingNetworkOperational: !bankData?.pauseTradingDirective,
       bcvInterventionRisk,
-      flowToxicityRisk: vpinData?.toxicityZone ?? 'LOW',
+      flowToxicityRisk,
     };
   }
 
@@ -78,6 +77,7 @@ export class SentinelAgent {
     bestAsk?: number;
     bcvRate?: number;
     parallelRate?: number;
+    vpinBuckets?: VpinBucket[];
   }): SentinelSignal {
     this.opsProcessed++;
     this.lastActive = Date.now();
@@ -140,14 +140,19 @@ export class SentinelAgent {
       pauseTradingDirective?: boolean;
     };
 
-    // 4. Evaluate order flow toxicity (VPIN)
-    const vpinRes = executeFinancialSkill('estimate_adverse_selection_vpin', {
-      buckets: [],
-    });
-    const vpinData = vpinRes.data as {
-      vpinMetric?: number;
-      toxicityZone?: string;
-    };
+    // 4. Evaluate order flow toxicity (VPIN) only when real volume buckets exist
+    const hasBuckets = Array.isArray(params?.vpinBuckets) && params.vpinBuckets.length > 0;
+    const vpinRes = hasBuckets
+      ? executeFinancialSkill('estimate_adverse_selection_vpin', {
+          buckets: params!.vpinBuckets,
+        })
+      : undefined;
+    const vpinData = vpinRes?.success
+      ? (vpinRes.data as {
+          vpinScore?: number;
+          toxicityClassification?: string;
+        })
+      : undefined;
 
     if (netSpreadPct >= 0.5) {
       notes.push(
@@ -184,10 +189,16 @@ export class SentinelAgent {
       );
     }
 
-    if (vpinData?.toxicityZone) {
+    if (
+      vpinData?.toxicityClassification &&
+      typeof vpinData.vpinScore === 'number' &&
+      Number.isFinite(vpinData.vpinScore)
+    ) {
       notes.push(
-        `Toxicidad de flujo (VPIN): ${vpinData.toxicityZone} (${((vpinData.vpinMetric ?? 0.15) * 100).toFixed(1)}%).`,
+        `Toxicidad de flujo (VPIN): ${vpinData.toxicityClassification} (${(vpinData.vpinScore * 100).toFixed(1)}%).`,
       );
+    } else {
+      notes.push('Toxicidad de flujo (VPIN): UNAVAILABLE (sin buckets de volumen medidos).');
     }
 
     return {
