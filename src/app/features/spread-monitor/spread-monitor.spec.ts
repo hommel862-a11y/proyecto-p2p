@@ -900,6 +900,7 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       expect(c.activeMode()).toBe('spread');
 
       const bankFilterSpy = vi.spyOn(c.binance, 'setBankFilter');
+      bankFilterSpy.mockClear();
       c.onMicroApplyToDesk({
         side: 'BUY',
         customPriceVes: 815.0,
@@ -907,6 +908,17 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
         maxBuyPrice: 815.0,
         targetAssetAmountUsdt: 750,
         preferredBank: c.binance.selectedBank(),
+        sourceLabel: 'Microestructura L2',
+      });
+      expect(bankFilterSpy).not.toHaveBeenCalled();
+
+      c.onMicroApplyToDesk({
+        side: 'BUY',
+        customPriceVes: 815.0,
+        breakEvenSellPrice: 805.0,
+        maxBuyPrice: 815.0,
+        targetAssetAmountUsdt: 750,
+        preferredBank: 'BANESCO',
         sourceLabel: 'Microestructura L2',
       });
       expect(bankFilterSpy).not.toHaveBeenCalled();

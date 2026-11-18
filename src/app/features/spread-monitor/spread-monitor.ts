@@ -2047,7 +2047,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       this.amount.set(payload.targetAssetAmountUsdt);
       this.unit.set(this.pair() as AmountUnit);
     }
-    if (payload.preferredBank && payload.preferredBank !== this.binance.selectedBank()) {
+    if (
+      payload.preferredBank &&
+      payload.preferredBank.trim().toUpperCase() !==
+        (this.binance.selectedBank() ?? '').trim().toUpperCase()
+    ) {
       this.binance.setBankFilter(payload.preferredBank);
     }
     this.activeMode.set('spread');
