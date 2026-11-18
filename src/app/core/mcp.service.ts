@@ -5,6 +5,16 @@ import { simulateMcpTool } from './mcp/mcp-fallbacks';
 
 export { FALLBACK_MCP_SERVERS };
 
+export const MCP_COMPETITIVE_PRICING_STRATEGIES = {
+  TOP_1: 'TOP_1',
+  TOP_2: 'TOP_2',
+  TOP_3: 'TOP_3',
+  MATCH: 'MATCH',
+} as const;
+
+export type McpCompetitivePricingStrategy =
+  (typeof MCP_COMPETITIVE_PRICING_STRATEGIES)[keyof typeof MCP_COMPETITIVE_PRICING_STRATEGIES];
+
 @Injectable({
   providedIn: 'root',
 })
@@ -246,7 +256,7 @@ export class McpService {
 
   async recommendCompetitivePricing(input: {
     side: 'BUY' | 'SELL';
-    strategy?: 'TOP_1' | 'TOP_2' | 'TOP_3' | 'UNDERCUT';
+    strategy?: McpCompetitivePricingStrategy;
     stepVes?: number;
     targetMarginPct?: number;
     breakEvenPrice?: number;

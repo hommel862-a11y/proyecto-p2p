@@ -1,7 +1,8 @@
-import { Injectable, inject, signal, OnDestroy } from '@angular/core';
+import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core';
 import { ToastService } from './toast.service';
 import { NativeHttpService } from './native-http.service';
 import { StorageService } from './storage';
+import { MarketHistoryService } from './market-history.service';
 import {
   computeMarketDepth,
   BINANCE_PAY_METHODS,
@@ -9,29 +10,97 @@ import {
   CircuitBreaker,
 } from '@p2p/core';
 
-export type BinanceDepthSource = 'LIVE' | 'CACHE';
+export const BINANCE_DEPTH_SOURCES = {
+  LIVE: 'LIVE',
+  CACHE: 'CACHE',
+} as const;
+
+export type BinanceDepthSource = (typeof BINANCE_DEPTH_SOURCES)[keyof typeof BINANCE_DEPTH_SOURCES];
+
+export const BINANCE_FRESHNESS_STATUS = {
+  LIVE: 'LIVE',
+  AGING: 'AGING',
+  STALE: 'STALE',
+  OFFLINE: 'OFFLINE',
+} as const;
+
+export type BinanceFreshnessStatus =
+  (typeof BINANCE_FRESHNESS_STATUS)[keyof typeof BINANCE_FRESHNESS_STATUS];
+
+export const BINANCE_DEPTH_LIVE_TTL_MS = 60_000;
+export const BINANCE_DEPTH_AGING_TTL_MS = 180_000;
+export const BINANCE_DEPTH_DISK_MAX_AGE_MS = 15 * 60_000;
+
+export interface PersistedBinanceDepth {
+  readonly depth: BinanceP2pMarketDepth;
+  readonly fetchedAt: number;
+}
 
 export interface BinanceDepthFetch {
   readonly depth: BinanceP2pMarketDepth;
   readonly source: BinanceDepthSource;
   readonly fetchedAt: number;
+  readonly freshness?: BinanceFreshnessStatus;
 }
 
-const LAST_DEPTH_KEY = 'p2p.binance.lastDepth';
+const LAST_DEPTH_KEY_PREFIX = 'p2p.binance.lastDepth';
 const USE_PROXY_KEY = 'p2p.binance.usePublicCorsProxy';
+
+function buildDiskDepthKey(asset: string, fiat: string, bankKey: string): string {
+  const normAsset = (asset || 'USDT').toUpperCase();
+  const normFiat = (fiat || 'VES').toUpperCase();
+  const normBank = bankKey || 'ALL';
+  return `${LAST_DEPTH_KEY_PREFIX}.${normAsset}.${normFiat}.${normBank}`;
+}
+
+function buildFlightKey(asset: string, fiat: string, bankKey: string): string {
+  return `${(asset || 'USDT').toUpperCase()}:${(fiat || 'VES').toUpperCase()}:${bankKey || 'ALL'}`;
+}
+
+function isValidPersistedDepth(raw: unknown): raw is PersistedBinanceDepth {
+  if (!raw || typeof raw !== 'object') return false;
+  const candidate = raw as Partial<PersistedBinanceDepth>;
+  return (
+    typeof candidate.fetchedAt === 'number' &&
+    Number.isFinite(candidate.fetchedAt) &&
+    candidate.fetchedAt > 0 &&
+    Boolean(candidate.depth && typeof candidate.depth === 'object')
+  );
+}
+
+/**
+ * Classifies market depth freshness honestly from real observation time and source.
+ */
+export function classifyBinanceDepthFreshness(
+  fetchedAt: number | null,
+  hasDepth: boolean,
+  source: BinanceDepthSource | null,
+  nowMs = Date.now(),
+): BinanceFreshnessStatus {
+  if (!hasDepth || fetchedAt === null || !Number.isFinite(fetchedAt)) {
+    return BINANCE_FRESHNESS_STATUS.OFFLINE;
+  }
+  const ageMs = Math.max(0, nowMs - fetchedAt);
+  if (ageMs >= BINANCE_DEPTH_AGING_TTL_MS) {
+    return BINANCE_FRESHNESS_STATUS.STALE;
+  }
+  if (source === BINANCE_DEPTH_SOURCES.CACHE || ageMs >= BINANCE_DEPTH_LIVE_TTL_MS) {
+    return BINANCE_FRESHNESS_STATUS.AGING;
+  }
+  return BINANCE_FRESHNESS_STATUS.LIVE;
+}
 
 @Injectable({ providedIn: 'root' })
 export class BinanceP2pService implements OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly nativeHttp = inject(NativeHttpService, { optional: true });
   private readonly storage = inject(StorageService);
+  private readonly marketHistory = inject(MarketHistoryService, { optional: true });
 
   readonly loading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
-  readonly marketDepth = signal<BinanceP2pMarketDepth | null>(
-    this.storage.get<BinanceP2pMarketDepth>(LAST_DEPTH_KEY) ?? null,
-  );
   readonly selectedBank = signal<string>('ALL');
+  readonly marketDepth = signal<BinanceP2pMarketDepth | null>(null);
   readonly autoRefresh = signal<boolean>(false);
   readonly lastFetched = signal<Date | null>(null);
 
@@ -48,24 +117,51 @@ export class BinanceP2pService implements OnDestroy {
     baseDelayMs: 400,
   });
 
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly depthCache = new Map<string, PersistedBinanceDepth>();
+  private readonly inFlightFetches = new Map<string, Promise<BinanceDepthFetch | null>>();
 
-  /**
-   * Epoch ms de la última consulta que LLEGÓ a Binance. Un acierto de caché no
-   * lo mueve: es la referencia para decir cuán viejo es realmente el libro que
-   * se está re-sirviendo.
-   *
-   * Solo existe si hubo una consulta real, y el camino de caché exige haber
-   * tenido una: la caché se puebla únicamente desde el camino de red.
-   */
-  private liveFetchedAt: number | null = null;
+  private readonly activeAsset = signal<string>('USDT');
+  private readonly activeFiat = signal<string>('VES');
+  private readonly activeFetchedAt = signal<number | null>(null);
+  private readonly activeSource = signal<BinanceDepthSource | null>(null);
+  private readonly freshnessTickMs = signal<number>(Date.now());
+
+  readonly freshnessStatus = computed<BinanceFreshnessStatus>(() => {
+    const depth = this.marketDepth();
+    return classifyBinanceDepthFreshness(
+      this.activeFetchedAt(),
+      depth !== null,
+      this.activeSource(),
+      this.freshnessTickMs(),
+    );
+  });
+
+  readonly depthAgeMs = computed<number | null>(() => {
+    const at = this.activeFetchedAt();
+    if (at === null || this.marketDepth() === null) return null;
+    return Math.max(0, this.freshnessTickMs() - at);
+  });
+
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private freshnessTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    this.hydrateFromStorage('USDT', 'VES', this.selectedBank());
+  }
 
   ngOnDestroy(): void {
     this.stopAutoRefresh();
+    this.clearFreshnessTimer();
   }
 
   setBankFilter(bankKey: string): void {
     this.selectedBank.set(bankKey);
+    const cached = this.getCachedEntry(this.activeAsset(), this.activeFiat(), bankKey);
+    if (cached) {
+      this.applyActiveDepth(cached.depth, cached.fetchedAt, BINANCE_DEPTH_SOURCES.CACHE);
+    } else {
+      this.clearActiveDepth();
+    }
   }
 
   setUsePublicProxy(enabled: boolean): void {
@@ -85,13 +181,16 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
-  startAutoRefresh(intervalMs = 30000, asset = 'USDT'): void {
+  startAutoRefresh(intervalMs = 30000, asset = 'USDT', fiat = 'VES'): void {
     this.stopAutoRefresh();
     this.autoRefresh.set(true);
-    void this.fetchMarketDepth(asset, 'VES', true);
+    if (typeof document === 'undefined' || !document.hidden) {
+      void this.fetchMarketDepth(asset, fiat, true);
+    }
     this.refreshTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       if (this.autoRefresh() && !this.loading()) {
-        void this.fetchMarketDepth(asset, 'VES', true);
+        void this.fetchMarketDepth(asset, fiat, true);
       }
     }, intervalMs);
   }
@@ -104,16 +203,6 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
-  /**
-   * La profundidad, pelada. Es lo que consumen las pantallas.
-   *
-   * Quien tenga que AUDITAR una decisión necesita además saber de dónde salió
-   * el libro, y eso no se puede recuperar del objeto: el camino de caché
-   * devuelve el mismo depth que ya estaba en el signal. Por eso existe
-   * {@link fetchMarketDepthWithSource}, y por eso no se agrega el dato acá: las
-   * pantallas no lo necesitan y `BinanceP2pMarketDepth` es un tipo de core que
-   * además está vendorizado byte a byte.
-   */
   async fetchMarketDepth(
     asset = 'USDT',
     fiat = 'VES',
@@ -123,48 +212,44 @@ export class BinanceP2pService implements OnDestroy {
     return fetched?.depth ?? null;
   }
 
-  /** Promesa en vuelo activa para deduplicar ráfagas simultáneas del renderer */
-  private inFlightFetch: Promise<BinanceDepthFetch | null> | null = null;
-
-  /**
-   * Igual que {@link fetchMarketDepth}, pero además declara la procedencia del
-   * libro: recién observado (`LIVE`) o re-servido desde la caché (`CACHE`).
-   *
-   * El circuit breaker es el único que sabe cuál de los dos caminos se tomó, y
-   * esa información se pierde en cuanto se devuelve el depth suelto. Acá se
-   * captura antes de perderla. `fetchedAt` es el instante real de la
-   * observación: la caché lo conserva congelado en vez de "refrescarlo".
-   */
   async fetchMarketDepthWithSource(
     asset = 'USDT',
     fiat = 'VES',
     silent = false,
   ): Promise<BinanceDepthFetch | null> {
-    if (this.inFlightFetch) {
-      return this.inFlightFetch;
+    const bankKey = this.selectedBank();
+    const flightKey = buildFlightKey(asset, fiat, bankKey);
+    const existingFlight = this.inFlightFetches.get(flightKey);
+    if (existingFlight) {
+      return existingFlight;
     }
-    const fetchPromise = this.doFetchMarketDepthWithSource(asset, fiat, silent);
-    this.inFlightFetch = fetchPromise;
+
+    const fetchPromise = this.doFetchMarketDepthWithSource(asset, fiat, bankKey, silent);
+    this.inFlightFetches.set(flightKey, fetchPromise);
     try {
       return await fetchPromise;
     } finally {
-      this.inFlightFetch = null;
+      if (this.inFlightFetches.get(flightKey) === fetchPromise) {
+        this.inFlightFetches.delete(flightKey);
+      }
     }
   }
 
   private async doFetchMarketDepthWithSource(
-    asset = 'USDT',
-    fiat = 'VES',
-    silent = false,
+    asset: string,
+    fiat: string,
+    bankKey: string,
+    silent: boolean,
   ): Promise<BinanceDepthFetch | null> {
     this.loading.set(true);
     this.error.set(null);
+    this.activeAsset.set(asset);
+    this.activeFiat.set(fiat);
 
-    const bankKey = this.selectedBank();
     const binanceMethod = BINANCE_PAY_METHODS[bankKey] || '';
+    const flightKey = buildFlightKey(asset, fiat, bankKey);
 
     try {
-      /** Se llena SOLO cuando la respuesta llegó; un acierto de caché no lo toca. */
       let observedAt: number | null = null;
 
       const executeNetworkCall = async (signal: AbortSignal) => {
@@ -181,39 +266,43 @@ export class BinanceP2pService implements OnDestroy {
             : null;
 
         if (electronWin?.electron?.fetchBinanceP2p) {
-          const resBuy = await electronWin.electron.fetchBinanceP2p({
-            asset,
-            fiat,
-            tradeType: 'BUY',
-            payTypes: binanceMethod ? [binanceMethod] : [],
-            rows: 20,
-          });
-          await new Promise((r) => setTimeout(r, 200));
-          const resSell = await electronWin.electron.fetchBinanceP2p({
-            asset,
-            fiat,
-            tradeType: 'SELL',
-            payTypes: binanceMethod ? [binanceMethod] : [],
-            rows: 20,
-          });
+          const resBuy = await this.raceWithAbort(
+            electronWin.electron.fetchBinanceP2p({
+              asset,
+              fiat,
+              tradeType: 'BUY',
+              payTypes: binanceMethod ? [binanceMethod] : [],
+              rows: 20,
+            }),
+            signal,
+          );
+          await this.delayWithAbort(200, signal);
+          const resSell = await this.raceWithAbort(
+            electronWin.electron.fetchBinanceP2p({
+              asset,
+              fiat,
+              tradeType: 'SELL',
+              payTypes: binanceMethod ? [binanceMethod] : [],
+              rows: 20,
+            }),
+            signal,
+          );
           buyData = resBuy;
           sellData = resSell;
         } else {
           const resBuy = await this.fetchViaWeb('BUY', asset, fiat, binanceMethod, signal);
-          await new Promise((r) => setTimeout(r, 200));
+          await this.delayWithAbort(200, signal);
           const resSell = await this.fetchViaWeb('SELL', asset, fiat, binanceMethod, signal);
           buyData = resBuy;
           sellData = resSell;
         }
 
-        // El libro quedó observado AHORA. Se marca antes de parsearlo porque lo
-        // que importa es cuándo llegó la respuesta, no cuándo se procesó.
         observedAt = Date.now();
         return computeMarketDepth(buyData, sellData, asset, fiat, binanceMethod);
       };
 
-      const cachedDepth = this.marketDepth();
-      const fallbackHandler = cachedDepth
+      const cachedEntry = this.getCachedEntry(asset, fiat, bankKey);
+      const fallbackHandler = cachedEntry
         ? (): BinanceP2pMarketDepth => {
             if (!silent) {
               this.toast.warn(
@@ -221,27 +310,52 @@ export class BinanceP2pService implements OnDestroy {
                 'Binance P2P',
               );
             }
-            return cachedDepth;
+            return cachedEntry.depth;
           }
         : undefined;
 
       const depth = await this.circuitBreaker.execute(executeNetworkCall, fallbackHandler);
+
       if (observedAt !== null) {
-        this.liveFetchedAt = observedAt;
+        const entry: PersistedBinanceDepth = { depth, fetchedAt: observedAt };
+        this.depthCache.set(flightKey, entry);
+        if (depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
+          this.persistToDisk(asset, fiat, bankKey, entry);
+          this.recordMarketHistory(asset, bankKey, depth);
+        }
+        if (bankKey === this.selectedBank()) {
+          this.applyActiveDepth(depth, observedAt, BINANCE_DEPTH_SOURCES.LIVE);
+        }
+        return {
+          depth,
+          source: BINANCE_DEPTH_SOURCES.LIVE,
+          fetchedAt: observedAt,
+          freshness: classifyBinanceDepthFreshness(
+            observedAt,
+            true,
+            BINANCE_DEPTH_SOURCES.LIVE,
+            observedAt,
+          ),
+        };
       }
-      if (depth && depth.bestBuyPrice > 0 && depth.bestSellPrice > 0) {
-        this.storage.set(LAST_DEPTH_KEY, depth);
+
+      // Cache fallback path: preserve frozen observation timestamp, never stamp Date.now()
+      const frozenAt = cachedEntry!.fetchedAt;
+      if (bankKey === this.selectedBank()) {
+        this.applyActiveDepth(depth, frozenAt, BINANCE_DEPTH_SOURCES.CACHE);
       }
-      this.marketDepth.set(depth);
-      this.lastFetched.set(new Date());
       return {
         depth,
-        source: observedAt === null ? 'CACHE' : 'LIVE',
-        fetchedAt: observedAt ?? this.liveFetchedAt ?? Date.now(),
+        source: BINANCE_DEPTH_SOURCES.CACHE,
+        fetchedAt: frozenAt,
+        freshness: classifyBinanceDepthFreshness(frozenAt, true, BINANCE_DEPTH_SOURCES.CACHE),
       };
     } catch (err) {
       const msg = (err as Error).message || 'No se pudo conectar con Binance P2P';
       this.error.set(msg);
+      if (bankKey === this.selectedBank() && !this.getCachedEntry(asset, fiat, bankKey)) {
+        this.clearActiveDepth();
+      }
       if (!silent) {
         this.toast.error(msg, 'Error Mercado Binance P2P');
       }
@@ -251,6 +365,160 @@ export class BinanceP2pService implements OnDestroy {
     }
   }
 
+  private hydrateFromStorage(asset: string, fiat: string, bankKey: string): void {
+    const entry = this.getCachedEntry(asset, fiat, bankKey);
+    if (entry) {
+      this.applyActiveDepth(entry.depth, entry.fetchedAt, BINANCE_DEPTH_SOURCES.CACHE);
+    }
+  }
+
+  private getCachedEntry(asset: string, fiat: string, bankKey: string): PersistedBinanceDepth | null {
+    const flightKey = buildFlightKey(asset, fiat, bankKey);
+    const inMemory = this.depthCache.get(flightKey);
+    if (inMemory) {
+      return inMemory;
+    }
+
+    const diskKey = buildDiskDepthKey(asset, fiat, bankKey);
+    try {
+      const stored = this.storage.get<unknown>(diskKey);
+      if (!isValidPersistedDepth(stored)) {
+        return null;
+      }
+      const ageMs = Date.now() - stored.fetchedAt;
+      if (!Number.isFinite(ageMs) || ageMs > BINANCE_DEPTH_DISK_MAX_AGE_MS) {
+        this.storage.remove?.(diskKey);
+        return null;
+      }
+      this.depthCache.set(flightKey, stored);
+      return stored;
+    } catch {
+      return null;
+    }
+  }
+
+  private persistToDisk(
+    asset: string,
+    fiat: string,
+    bankKey: string,
+    entry: PersistedBinanceDepth,
+  ): void {
+    try {
+      this.storage.set(buildDiskDepthKey(asset, fiat, bankKey), entry);
+    } catch {
+      // Non-blocking storage fallback
+    }
+  }
+
+  private recordMarketHistory(
+    asset: string,
+    bankKey: string,
+    depth: BinanceP2pMarketDepth,
+  ): void {
+    if (!this.marketHistory) return;
+    const pair: 'USDT' | 'EUR' = asset.toUpperCase() === 'EUR' ? 'EUR' : 'USDT';
+    this.marketHistory.recordSnapshot({
+      pair,
+      bank: bankKey || 'ALL',
+      bestBuyPrice: depth.bestBuyPrice,
+      bestSellPrice: depth.bestSellPrice,
+      spreadVes: depth.spreadVes,
+      spreadPct: depth.spreadPct,
+    });
+  }
+
+  private applyActiveDepth(
+    depth: BinanceP2pMarketDepth,
+    fetchedAt: number,
+    source: BinanceDepthSource,
+  ): void {
+    this.marketDepth.set(depth);
+    this.lastFetched.set(new Date(fetchedAt));
+    this.activeFetchedAt.set(fetchedAt);
+    this.activeSource.set(source);
+    this.freshnessTickMs.set(Date.now());
+    this.scheduleFreshnessTransition(fetchedAt);
+  }
+
+  private clearActiveDepth(): void {
+    this.clearFreshnessTimer();
+    this.marketDepth.set(null);
+    this.lastFetched.set(null);
+    this.activeFetchedAt.set(null);
+    this.activeSource.set(null);
+  }
+
+  private clearFreshnessTimer(): void {
+    if (this.freshnessTimer !== null) {
+      clearTimeout(this.freshnessTimer);
+      this.freshnessTimer = null;
+    }
+  }
+
+  private scheduleFreshnessTransition(fetchedAt: number): void {
+    this.clearFreshnessTimer();
+    const ageMs = Math.max(0, Date.now() - fetchedAt);
+    let nextDelayMs: number | null = null;
+    if (ageMs < BINANCE_DEPTH_LIVE_TTL_MS) {
+      nextDelayMs = BINANCE_DEPTH_LIVE_TTL_MS - ageMs + 1;
+    } else if (ageMs < BINANCE_DEPTH_AGING_TTL_MS) {
+      nextDelayMs = BINANCE_DEPTH_AGING_TTL_MS - ageMs + 1;
+    }
+    if (nextDelayMs === null) return;
+
+    this.freshnessTimer = setTimeout(() => {
+      this.freshnessTimer = null;
+      this.freshnessTickMs.set(Date.now());
+      this.scheduleFreshnessTransition(fetchedAt);
+    }, nextDelayMs);
+  }
+
+  private createAbortError(): Error {
+    return typeof DOMException !== 'undefined'
+      ? new DOMException('The operation was aborted', 'AbortError')
+      : new Error('Aborted');
+  }
+
+  private raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise;
+    if (signal.aborted) {
+      return Promise.reject(this.createAbortError());
+    }
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = () => {
+        reject(this.createAbortError());
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      promise.then(
+        (value) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (err: unknown) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(err);
+        },
+      );
+    });
+  }
+
+  private delayWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return Promise.reject(this.createAbortError());
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(this.createAbortError());
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
   private async fetchViaWeb(
     tradeType: 'BUY' | 'SELL',
     asset: string,
@@ -258,6 +526,10 @@ export class BinanceP2pService implements OnDestroy {
     payType?: string,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    if (signal?.aborted) {
+      throw this.createAbortError();
+    }
+
     const payload = {
       asset,
       fiat,
@@ -287,8 +559,12 @@ export class BinanceP2pService implements OnDestroy {
         signal,
       });
       if (resp.ok) return await resp.json();
-    } catch {
-      // Direct fetch failed (likely browser CORS restriction)
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+
+    if (signal?.aborted) {
+      throw this.createAbortError();
     }
 
     // 2. Dev-server proxy (/api/binance-p2p) when running in browser under ng serve
@@ -300,11 +576,15 @@ export class BinanceP2pService implements OnDestroy {
         signal,
       });
       if (devProxyResp.ok) return await devProxyResp.json();
-    } catch {
-      // Dev proxy not active or failed
+    } catch (err) {
+      if (signal?.aborted) throw err;
     }
 
-    // 3. Fallback: bridge local de la app de escritorio
+    if (signal?.aborted) {
+      throw this.createAbortError();
+    }
+
+    // 3. Fallback: local desktop app bridge
     try {
       const bridgeResp = await fetch('http://127.0.0.1:51857/api/binance/p2p', {
         method: 'POST',
@@ -313,8 +593,12 @@ export class BinanceP2pService implements OnDestroy {
         signal,
       });
       if (bridgeResp.ok) return await bridgeResp.json();
-    } catch {
-      // Bridge not available: fall through to proxy or clear error
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+
+    if (signal?.aborted) {
+      throw this.createAbortError();
     }
 
     // Security check: Only route through proxy if explicitly configured or enabled

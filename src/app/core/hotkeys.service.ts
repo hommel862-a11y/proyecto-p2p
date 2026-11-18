@@ -2,12 +2,35 @@ import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { ToastService } from './toast.service';
 import { BinanceRepricerService } from './binance-repricer.service';
 
-export type HotkeyAction = 'SYNC' | 'FETCH_MARKET' | 'TOGGLE_BOT' | 'KILL_SWITCH' | 'CHEAT_SHEET';
+export const HOTKEY_ACTIONS = {
+  SYNC: 'SYNC',
+  FETCH_MARKET: 'FETCH_MARKET',
+  TOGGLE_BOT: 'TOGGLE_BOT',
+  KILL_SWITCH: 'KILL_SWITCH',
+  CHEAT_SHEET: 'CHEAT_SHEET',
+  TOGGLE_CLEAN_MODE: 'TOGGLE_CLEAN_MODE',
+  APPLY_MAKER_OPTIMAL: 'APPLY_MAKER_OPTIMAL',
+  APPLY_TAKER_VWAP: 'APPLY_TAKER_VWAP',
+  BRACKET_1: 'BRACKET_1',
+  BRACKET_2: 'BRACKET_2',
+  BRACKET_3: 'BRACKET_3',
+} as const;
+
+export type HotkeyAction = (typeof HOTKEY_ACTIONS)[keyof typeof HOTKEY_ACTIONS];
+
+export const HOTKEY_CATEGORIES = {
+  OPERACIONES: 'OPERACIONES',
+  BOT: 'BOT',
+  SISTEMA: 'SISTEMA',
+  MICROESTRUCTURA: 'MICROESTRUCTURA',
+} as const;
+
+export type HotkeyCategory = (typeof HOTKEY_CATEGORIES)[keyof typeof HOTKEY_CATEGORIES];
 
 export interface HotkeyDefinition {
   key: string;
   description: string;
-  category: 'OPERACIONES' | 'BOT' | 'SISTEMA';
+  category: HotkeyCategory;
   action: HotkeyAction;
 }
 
@@ -42,7 +65,52 @@ export const HOTKEYS_CATALOG: HotkeyDefinition[] = [
     category: 'SISTEMA',
     action: 'CHEAT_SHEET',
   },
+  {
+    key: 'L',
+    description: 'Alternar Clean Mode (filtro anti-spoof y liquidez fantasma)',
+    category: 'MICROESTRUCTURA',
+    action: 'TOGGLE_CLEAN_MODE',
+  },
+  {
+    key: 'M',
+    description: 'Aplicar precio óptimo Maker desde Microestructura',
+    category: 'MICROESTRUCTURA',
+    action: 'APPLY_MAKER_OPTIMAL',
+  },
+  {
+    key: 'T',
+    description: 'Aplicar VWAP Taker ejecutable desde Microestructura',
+    category: 'MICROESTRUCTURA',
+    action: 'APPLY_TAKER_VWAP',
+  },
+  {
+    key: '1',
+    description: 'Seleccionar Tramo 1 de capital (Inframundo)',
+    category: 'MICROESTRUCTURA',
+    action: 'BRACKET_1',
+  },
+  {
+    key: '2',
+    description: 'Seleccionar Tramo 2 de capital (Medio)',
+    category: 'MICROESTRUCTURA',
+    action: 'BRACKET_2',
+  },
+  {
+    key: '3',
+    description: 'Seleccionar Tramo 3 de capital (Institucional)',
+    category: 'MICROESTRUCTURA',
+    action: 'BRACKET_3',
+  },
 ];
+
+const MICROSTRUCTURE_KEY_ACTIONS: Readonly<Record<string, HotkeyAction>> = {
+  l: HOTKEY_ACTIONS.TOGGLE_CLEAN_MODE,
+  m: HOTKEY_ACTIONS.APPLY_MAKER_OPTIMAL,
+  t: HOTKEY_ACTIONS.APPLY_TAKER_VWAP,
+  '1': HOTKEY_ACTIONS.BRACKET_1,
+  '2': HOTKEY_ACTIONS.BRACKET_2,
+  '3': HOTKEY_ACTIONS.BRACKET_3,
+};
 
 @Injectable({ providedIn: 'root' })
 export class HotkeysService implements OnDestroy {
@@ -184,6 +252,14 @@ export class HotkeysService implements OnDestroy {
         event.preventDefault();
         this.toggleModal();
         return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        const mappedAction = MICROSTRUCTURE_KEY_ACTIONS[event.key.toLowerCase()];
+        if (mappedAction) {
+          event.preventDefault();
+          this.trigger(mappedAction);
+        }
       }
     };
 

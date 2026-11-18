@@ -361,4 +361,63 @@ describe('P2PRadarService', () => {
     expect(service.streamCountdownSec()).toBe(0);
     vi.useRealTimers();
   });
+
+  it('maps Binance C2C tradeType to SELL for Banesco_BUY (Maker BUY competitors) and BUY for Banesco_SELL (Maker SELL competitors)', async () => {
+    const requestedTradeTypes: string[] = [];
+
+    const makeOffer = (advNo: string, nickName: string, price: string) => ({
+      adv: {
+        advNo,
+        price,
+        surplusAmount: '1500.00',
+        minSingleTransAmount: '20000',
+        maxSingleTransAmount: '150000',
+        payTimeLimit: 15,
+        tradeMethods: [{ payType: 'Banesco' }],
+      },
+      advertiser: {
+        userNo: `USR-${advNo}`,
+        nickName,
+        monthOrderCount: 150,
+        monthFinishRate: 0.99,
+        userType: 'merchant',
+      },
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { tradeType?: string };
+        if (body.tradeType) {
+          requestedTradeTypes.push(body.tradeType);
+        }
+        // Binance tradeType='SELL' returns Maker BUY competitors (paying ~98.50 Bs for USDT)
+        // Binance tradeType='BUY' returns Maker SELL competitors (selling USDT at ~101.20 Bs)
+        const data =
+          body.tradeType === 'SELL'
+            ? [makeOffer('MB1', 'MakerBuyBest', '98.50'), makeOffer('MB2', 'MakerBuy2', '98.20')]
+            : [makeOffer('MS1', 'MakerSellBest', '101.20'), makeOffer('MS2', 'MakerSell2', '101.60')];
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data }),
+        };
+      }),
+    );
+
+    service.activePaymentMethods.set(['Banesco']);
+    const books = await service.scanRadar('USDT', 'VES');
+
+    expect(requestedTradeTypes).toEqual(['SELL', 'BUY']);
+    const buyBook = books.get('Banesco_BUY');
+    const sellBook = books.get('Banesco_SELL');
+
+    expect(buyBook?.cleanOffers[0].nickName).toBe('MakerBuyBest');
+    expect(buyBook?.effectiveTopPrice).toBe(98.5);
+    expect(sellBook?.cleanOffers[0].nickName).toBe('MakerSellBest');
+    expect(sellBook?.effectiveTopPrice).toBe(101.2);
+    expect(service.bestRoute()?.metrics.grossSpreadPct).toBeGreaterThan(2);
+
+    vi.unstubAllGlobals();
+  });
 });

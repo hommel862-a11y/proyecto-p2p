@@ -17,7 +17,6 @@ import {
   type ExecutionMode,
   type ArbitrageCycleParams,
   type ArbitrageCycleMetrics,
-  type ArbitrageRoute,
   type MatrixScanResult,
   type RadarHudPayload,
   type RadarCompletedCycleRecord,
@@ -179,9 +178,9 @@ export class P2PRadarService implements OnDestroy {
   });
 
   readonly allDetectedBots = computed<
-    Array<BotDetectionResult & { payMethod: string; side: RadarOrderSide }>
+    (BotDetectionResult & { payMethod: string; side: RadarOrderSide })[]
   >(() => {
-    const list: Array<BotDetectionResult & { payMethod: string; side: RadarOrderSide }> = [];
+    const list: (BotDetectionResult & { payMethod: string; side: RadarOrderSide })[] = [];
     for (const [key, bots] of this.botReports().entries()) {
       const sepIdx = key.lastIndexOf('_');
       const payMethod = sepIdx > 0 ? key.slice(0, sepIdx) : key;
@@ -194,9 +193,9 @@ export class P2PRadarService implements OnDestroy {
   });
 
   readonly allRejectedOffers = computed<
-    Array<CleanRadarOffer & { payMethod: string; side: RadarOrderSide }>
+    (CleanRadarOffer & { payMethod: string; side: RadarOrderSide })[]
   >(() => {
-    const list: Array<CleanRadarOffer & { payMethod: string; side: RadarOrderSide }> = [];
+    const list: (CleanRadarOffer & { payMethod: string; side: RadarOrderSide })[] = [];
     for (const book of this.radarBooks().values()) {
       for (const rej of book.rejectedOffers) {
         list.push({ ...rej, payMethod: book.payMethod, side: book.side });
@@ -573,11 +572,14 @@ export class P2PRadarService implements OnDestroy {
     externalSignal?: AbortSignal,
   ): Promise<RawP2POfferInput[]> {
     const publisherType = tier === 'VERIFIED' ? 'merchant' : null;
+    // Binance C2C adv/search returns Maker BUY ads when queried with tradeType='SELL',
+    // and Maker SELL ads when queried with tradeType='BUY'.
+    const binanceTradeType: 'BUY' | 'SELL' = side === 'BUY' ? 'SELL' : 'BUY';
 
     const payload = {
       asset,
       fiat,
-      tradeType: side,
+      tradeType: binanceTradeType,
       payTypes: [payType],
       transAmount: transAmount > 0 ? transAmount : undefined,
       publisherType,
@@ -594,7 +596,7 @@ export class P2PRadarService implements OnDestroy {
           })
         : null;
 
-    let responseData: unknown = null;
+    let responseData: unknown;
     const timeoutSignal = AbortSignal.timeout(9000);
     const requestSignal =
       externalSignal && typeof AbortSignal.any === 'function'
@@ -694,7 +696,7 @@ export class P2PRadarService implements OnDestroy {
           minSingleTransAmount?: string | number;
           maxSingleTransAmount?: string | number;
           payTimeLimit?: number;
-          tradeMethods?: Array<{ payType?: string }>;
+          tradeMethods?: { payType?: string }[];
         };
         advertiser?: {
           userNo?: string;
