@@ -1,0 +1,598 @@
+<div class="pipeline-shell">
+  <!-- 1. Streamlined Sub-Toolbar -->
+  <section class="crm-content-card pipeline-toolbar" aria-label="Controles de Pipeline y ARM Autopilot">
+    <div class="toolbar-row">
+      <!-- Mode Toggle -->
+      <div class="segmented-switch" role="tablist" aria-label="Modo de visualización del Pipeline">
+        <button
+          type="button"
+          role="tab"
+          class="switch-pill"
+          data-testid="mode-kanban-btn"
+          [class.is-active]="pipelineMode() === 'LEGACY_BOARD'"
+          [attr.aria-selected]="pipelineMode() === 'LEGACY_BOARD'"
+          (click)="modeChange.emit('LEGACY_BOARD')"
+        >
+          Kanban
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="switch-pill"
+          data-testid="mode-arm-btn"
+          [class.is-active]="pipelineMode() === 'ARM_AUTOPILOT'"
+          [attr.aria-selected]="pipelineMode() === 'ARM_AUTOPILOT'"
+          (click)="modeChange.emit('ARM_AUTOPILOT')"
+        >
+          ARM Autopilot
+        </button>
+      </div>
+
+      <!-- Search Box -->
+      <div class="search-wrap">
+        <svg class="search-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          type="text"
+          class="crm-input search-input"
+          aria-label="Filtrar tratos por cliente, ID, banco o referencia"
+          placeholder="Buscar cliente, #ID, banco o ref..."
+          [value]="dealSearch()"
+          (input)="onSearchInput($event)"
+        />
+        @if (dealSearch()) {
+          <button
+            type="button"
+            class="clear-btn"
+            aria-label="Limpiar búsqueda"
+            (click)="searchChange.emit('')"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        }
+      </div>
+
+      <!-- 3 Core ARM Actions + Persona -->
+      <div class="arm-actions-cluster">
+        <select
+          class="crm-input persona-select"
+          aria-label="Persona de simulación Sandbox"
+          [value]="selectedSandboxPersona()"
+          (change)="onSandboxPersonaSelect($event)"
+        >
+          @for (p of sandboxPersonas; track p.id) {
+            <option [value]="p.id">{{ p.label }}</option>
+          }
+        </select>
+
+        <button
+          type="button"
+          class="crm-btn-glass"
+          data-testid="arm-sandbox-btn"
+          (click)="runSandbox.emit(selectedSandboxPersona())"
+        >
+          Sandbox $0
+        </button>
+
+        <button
+          type="button"
+          class="crm-btn-glass"
+          data-testid="arm-ghosting-btn"
+          (click)="runAntiGhosting.emit()"
+        >
+          Anti-Ghosting 72h
+        </button>
+
+        <button
+          type="button"
+          class="crm-btn-glass"
+          data-testid="arm-replay-btn"
+          (click)="runReplay.emit()"
+        >
+          Replay A/B
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-row is-secondary">
+      <!-- Filter Pills -->
+      <div class="filter-pills" role="group" aria-label="Filtros rápidos de tratos">
+        @for (f of filterOptions; track f.id) {
+          <button
+            type="button"
+            class="crm-btn-glass filter-pill"
+            [class.is-active]="dealFilter() === f.id"
+            (click)="filterChange.emit(f.id)"
+          >
+            <span>{{ f.label }}</span>
+            @if (f.id === 'ALL') {
+              <span class="pill-count crm-tabular">{{ totalDealsCount() }}</span>
+            }
+          </button>
+        }
+      </div>
+
+      <div class="toolbar-meta-actions">
+        <button
+          type="button"
+          class="crm-btn-glass"
+          [class.is-active]="compactView()"
+          (click)="compactToggle.emit()"
+        >
+          {{ compactView() ? 'Vista Expandida' : 'Vista Compacta' }}
+        </button>
+        <button
+          type="button"
+          class="crm-btn-glass"
+          (click)="syncLocal.emit()"
+        >
+          Sincronizar
+        </button>
+        <button
+          type="button"
+          class="crm-btn-glass"
+          aria-label="Abrir paleta de comandos"
+          (click)="openPalette.emit()"
+        >
+          ⌘K
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Main Split Workspace: Board (Left) + Floating Liquid Glass Inspector (Right) -->
+  <div class="pipeline-workspace">
+    <div class="pipeline-main">
+      @if (pipelineMode() === 'LEGACY_BOARD') {
+        <!-- 4-Column Kanban Board -->
+        <div class="kanban-grid" role="region" aria-label="Tablero Kanban de tratos">
+          @for (col of kanbanColumns(); track col.stage; let colIdx = $index) {
+            <section
+              class="kanban-col"
+              data-testid="kanban-col"
+              [attr.aria-label]="'Columna ' + col.label"
+              (dragover)="onDragOver($event)"
+              (drop)="onDrop($event, col.stage)"
+            >
+              <header class="kanban-col-head">
+                <div class="col-head-title">
+                  <span [class]="'step-dot ' + stageToneClass(colIdx)" aria-hidden="true"></span>
+                  <h3 class="col-title">{{ col.label }}</h3>
+                  <span class="col-count crm-tabular">{{ col.deals.length }}</span>
+                </div>
+                <span class="col-vol crm-tabular masked">${{ formatNum(col.totalVolumeUsdt) }}</span>
+              </header>
+
+              <div class="kanban-cards">
+                @if (col.deals.length === 0) {
+                  <div class="empty-col">
+                    <span>Sin tratos en esta etapa</span>
+                    @if (colIdx === 0) {
+                      <button
+                        type="button"
+                        class="crm-btn-glass"
+                        (click)="newDeal.emit()"
+                      >
+                        + Nuevo Trato
+                      </button>
+                    }
+                  </div>
+                } @else {
+                  @for (deal of col.deals; track deal.id) {
+                    <article
+                      class="crm-content-card deal-card"
+                      tabindex="0"
+                      draggable="true"
+                      [attr.data-testid]="'deal-card-' + deal.id"
+                      [class.is-compact]="compactView()"
+                      [class.is-expired]="deal.isRateExpired"
+                      (dragstart)="onDragStart($event, deal.id)"
+                      (keydown)="onDealCardKeyDown($event, deal)"
+                    >
+                      <div class="deal-card-top">
+                        <span class="deal-id crm-tabular">#{{ deal.id }}</span>
+                        <div class="deal-badges">
+                          @if (deal.isRateExpired) {
+                            <span class="crm-status-pill tone-stuck">Tasa Vencida</span>
+                          }
+                          @if (deal.bankReferenceId) {
+                            <span class="ref-chip crm-tabular">Ref {{ deal.bankReferenceId }}</span>
+                          }
+                        </div>
+                      </div>
+
+                      <div class="deal-party-row">
+                        <strong class="party-name">{{ deal.contactName }}</strong>
+                        <span class="bank-tag">{{ deal.bankName }}</span>
+                      </div>
+
+                      <div class="deal-amounts crm-tabular">
+                        <div class="amt-cell">
+                          <span class="amt-lbl">USDT</span>
+                          <strong class="amt-val masked">${{ formatNum(deal.cryptoAmountUsdt) }}</strong>
+                        </div>
+                        <div class="amt-cell">
+                          <span class="amt-lbl">{{ deal.fiatCurrency }}</span>
+                          <strong class="amt-val masked">{{ formatNum(deal.totalFiatAmount) }}</strong>
+                        </div>
+                        <div class="amt-cell">
+                          <span class="amt-lbl">Tasa</span>
+                          <strong class="amt-val">{{ formatNum(deal.appliedRate) }}</strong>
+                        </div>
+                      </div>
+
+                      @if (!compactView()) {
+                        <div class="deal-pnl crm-tabular">
+                          <span>PnL Est.</span>
+                          <strong class="pnl-pos masked">+${{ formatNum(deal.netProfitUsdt) }}</strong>
+                        </div>
+                      }
+
+                      <!-- Max 2 primary actions + overflow menu -->
+                      <div class="deal-actions">
+                        @if (deal.stage === 'STAGE_1_NEW' || deal.stage === 'STAGE_2_TRANSIT') {
+                          <button
+                            type="button"
+                            class="crm-btn-glass action-sm"
+                            data-testid="card-primary-action"
+                            (click)="handleAdvanceDeal(deal)"
+                          >
+                            {{ primaryAdvanceLabel(deal.stage) }}
+                          </button>
+                          <button
+                            type="button"
+                            class="crm-btn-contrast action-sm"
+                            data-testid="card-primary-action"
+                            (click)="settleDeal.emit(deal.id)"
+                          >
+                            Liquidar
+                          </button>
+                        } @else if (deal.stage === 'STAGE_3_VERIFY') {
+                          <button
+                            type="button"
+                            class="crm-btn-contrast action-sm"
+                            data-testid="card-primary-action"
+                            (click)="settleDeal.emit(deal.id)"
+                          >
+                            Liquidar
+                          </button>
+                        } @else {
+                          <span class="crm-status-pill tone-won">Liquidado</span>
+                        }
+
+                        <div class="card-overflow-anchor">
+                          <button
+                            type="button"
+                            class="crm-btn-glass overflow-trigger"
+                            aria-label="Más acciones del trato"
+                            aria-haspopup="menu"
+                            [attr.aria-expanded]="openCardMenuId() === deal.id"
+                            [attr.data-testid]="'card-overflow-btn-' + deal.id"
+                            (click)="toggleCardMenu(deal.id)"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <circle cx="12" cy="12" r="1" />
+                              <circle cx="19" cy="12" r="1" />
+                              <circle cx="5" cy="12" r="1" />
+                            </svg>
+                          </button>
+
+                          @if (openCardMenuId() === deal.id) {
+                            <div class="crm-liquid-glass card-overflow-menu" role="menu" aria-label="Menú contextual del trato">
+                              <button
+                                type="button"
+                                role="menuitem"
+                                class="menu-item"
+                                [attr.data-testid]="'card-menu-chat-' + deal.id"
+                                (click)="handleOpenChat(deal)"
+                              >
+                                Abrir Chat Omnicanal
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                class="menu-item is-danger"
+                                [attr.data-testid]="'card-menu-delete-' + deal.id"
+                                (click)="handleDeleteDeal(deal.id)"
+                              >
+                                Eliminar Trato
+                              </button>
+                            </div>
+                          }
+                        </div>
+                      </div>
+                    </article>
+                  }
+                }
+              </div>
+            </section>
+          }
+        </div>
+      } @else {
+        <!-- ARM Autopilot Board -->
+        <div class="arm-autopilot-area">
+          <div class="arm-stages-row" aria-label="Etapas del pipeline ARM">
+            @for (stg of armStages(); track stg.slug) {
+              <div class="crm-content-card arm-stage-pill" [style.--stage-accent]="stg.colorHex">
+                <span class="stage-pos crm-tabular">0{{ stg.position }}</span>
+                <span class="stage-name">{{ stg.name }}</span>
+                <span class="stage-count crm-tabular">{{ stageCardCount(stg.slug) }}</span>
+              </div>
+            }
+          </div>
+
+          <div class="arm-cards-grid">
+            @if (armCards().length === 0) {
+              <div class="crm-content-card empty-col">
+                <span>Sin leads autónomos en este silo. Ejecuta Sandbox $0 para simular un flujo.</span>
+              </div>
+            } @else {
+              @for (card of armCards(); track card.id) {
+                <article
+                  class="crm-content-card arm-card"
+                  [class.is-selected]="selectedArmCard()?.id === card.id"
+                >
+                  <button
+                    type="button"
+                    class="arm-card-select-btn"
+                    [attr.data-testid]="'arm-card-select-' + card.id"
+                    (click)="selectArmLead.emit(card.id)"
+                  >
+                    <div class="arm-card-head">
+                      <div>
+                        <strong class="party-name">{{ card.companyName }}</strong>
+                        <div class="arm-sub">{{ card.leadName }} · <span class="masked">{{ card.dealValueLabel }}</span></div>
+                      </div>
+                      <span class="score-chip crm-tabular">{{ card.qualificationScore }}/100</span>
+                    </div>
+                    <p class="arm-pain">{{ card.painPointSummary }}</p>
+                    <p class="arm-preview">{{ card.lastMessagePreview }}</p>
+                  </button>
+
+                  <div class="arm-card-foot">
+                    <span class="agent-badge">{{ card.movedByAgentBadge }}</span>
+                    <select
+                      class="crm-input stage-select"
+                      aria-label="Mover lead ARM de etapa"
+                      [attr.data-testid]="'arm-card-stage-' + card.id"
+                      [value]="card.stageSlug"
+                      (change)="onArmStageChange(card.id, $event)"
+                    >
+                      @for (stg of armStages(); track stg.slug) {
+                        <option [value]="stg.slug">{{ stg.name }}</option>
+                      }
+                    </select>
+                  </div>
+                </article>
+              }
+            }
+          </div>
+
+          <section class="crm-content-card arm-feed-panel" aria-label="Feed de actividad autónoma">
+            <header class="inspector-sec-head">
+              <h3 class="sec-title">Actividad Autónoma</h3>
+              <span class="count-tag crm-tabular">{{ armFeed().length }} eventos</span>
+            </header>
+            @if (armFeed().length === 0) {
+              <p class="empty-hint">Sin eventos registrados aún.</p>
+            } @else {
+              <div class="feed-list">
+                @for (ev of armFeed().slice(0, 6); track ev.id) {
+                  <div class="feed-item">
+                    <div class="feed-meta crm-tabular">
+                      <span class="feed-role">{{ ev.agentRole }}</span>
+                      <span>{{ ev.latencyMs }}ms</span>
+                    </div>
+                    <div class="feed-title">{{ ev.leadName }}</div>
+                    <div class="feed-summary">{{ ev.summary }}</div>
+                  </div>
+                }
+              </div>
+            }
+          </section>
+        </div>
+      }
+    </div>
+
+    <!-- 3. Floating Liquid Glass Right Inspector -->
+    <aside class="crm-liquid-glass pipeline-inspector" aria-label="Inspector HITL, Closer Briefing y Trazabilidad">
+      <!-- Section A: HITL Approval Queue [A/E/H] -->
+      <section class="inspector-section">
+        <header class="inspector-sec-head">
+          <h3 class="sec-title">HITL Approval Queue</h3>
+          <span class="shortcut-badge crm-tabular">[A/E/H] · {{ armApprovals().length }}</span>
+        </header>
+
+        @if (armApprovals().length === 0) {
+          <p class="empty-hint">Sin acciones pendientes de aprobación humana.</p>
+        } @else {
+          <div class="hitl-list">
+            @for (item of armApprovals(); track item.id) {
+              <div class="hitl-card">
+                <div class="hitl-head">
+                  <strong>{{ item.title }}</strong>
+                  <span class="role-pill">{{ item.requestedByRole }}</span>
+                </div>
+                <p class="hitl-reason">{{ item.agentReasoning }}</p>
+
+                @if (editingApprovalId() === item.id) {
+                  <div class="hitl-edit-box">
+                    <textarea
+                      class="crm-input"
+                      rows="2"
+                      aria-label="Editar mensaje propuesto"
+                      [value]="editingApprovalText()"
+                      (input)="onEditApprovalInput($event)"
+                    ></textarea>
+                    <label class="shadow-check">
+                      <input
+                        type="checkbox"
+                        [checked]="editingSaveAsExample()"
+                        (change)="onEditSaveExampleToggle($event)"
+                      />
+                      <span>Guardar como Few-Shot (Shadow Learning)</span>
+                    </label>
+                    <div class="hitl-actions">
+                      <button
+                        type="button"
+                        class="crm-btn-contrast action-sm"
+                        [attr.data-testid]="'hitl-confirm-edit-' + item.id"
+                        (click)="approveItem.emit({ id: item.id, text: editingApprovalText(), saveAsExample: editingSaveAsExample() })"
+                      >
+                        Confirmar y Enviar
+                      </button>
+                      <button
+                        type="button"
+                        class="crm-btn-glass action-sm"
+                        (click)="cancelEditApproval.emit()"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="hitl-actions">
+                    <button
+                      type="button"
+                      class="crm-btn-contrast action-sm"
+                      [attr.data-testid]="'hitl-approve-' + item.id"
+                      (click)="approveItem.emit({ id: item.id, saveAsExample: false })"
+                    >
+                      [A] Aprobar
+                    </button>
+                    <button
+                      type="button"
+                      class="crm-btn-glass action-sm"
+                      [attr.data-testid]="'hitl-edit-' + item.id"
+                      (click)="startEditApproval.emit(item)"
+                    >
+                      [E] Editar
+                    </button>
+                    <button
+                      type="button"
+                      class="crm-btn-danger-ghost action-sm"
+                      [attr.data-testid]="'hitl-reject-' + item.id"
+                      (click)="rejectItem.emit(item.id)"
+                    >
+                      [H] Humano
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </section>
+
+      <!-- Section B: Closer 15m Pre-Call Briefing & Replay -->
+      <section class="inspector-section">
+        <header class="inspector-sec-head">
+          <h3 class="sec-title">Closer 15m Pre-Call Briefing</h3>
+          <span class="count-tag crm-tabular">{{ armShadowCount() }} Few-Shot</span>
+        </header>
+
+        <div class="closer-form">
+          <input
+            type="text"
+            class="crm-input"
+            aria-label="Prospecto de nota post-llamada"
+            placeholder="Prospecto (ej. Clínica Aurora)"
+            [value]="closerLeadName()"
+            (input)="onCloserLeadInput($event)"
+          />
+          <textarea
+            class="crm-input"
+            rows="2"
+            aria-label="Transcripción o resumen post-llamada"
+            placeholder="Resumen de llamada (ej. pidió esquema 50/50)..."
+            [value]="closerTranscript()"
+            (input)="onCloserTranscriptInput($event)"
+          ></textarea>
+          <div class="hitl-actions">
+            <button
+              type="button"
+              class="crm-btn-glass action-sm"
+              (click)="submitCloserNote.emit()"
+            >
+              Procesar Nota
+            </button>
+            <button
+              type="button"
+              class="crm-btn-contrast action-sm"
+              (click)="generateBriefing.emit()"
+            >
+              Briefing 15m
+            </button>
+          </div>
+        </div>
+
+        @if (briefing(); as brf) {
+          <div class="briefing-card">
+            <div class="briefing-meta crm-tabular">
+              <span>En {{ brf.startsInMinutes }}m</span>
+              <span>Score {{ brf.qualificationScore }}/100</span>
+            </div>
+            <strong>{{ brf.companyName }} — {{ brf.leadName }}</strong>
+            <p class="briefing-bant">{{ brf.bantSummary }}</p>
+            <p class="briefing-angle">{{ brf.recommendedClosingAngle }}</p>
+          </div>
+        }
+
+        @if (replayResult(); as rep) {
+          <div class="briefing-card">
+            <div class="briefing-meta crm-tabular">
+              <span>Replay A/B ($0)</span>
+              <span>Few-Shot {{ rep.candidateToolCall.injectedFewShotCount }}</span>
+            </div>
+            <strong>{{ rep.leadName }} · {{ rep.candidateToolCall.toolName }}</strong>
+            <p class="briefing-angle">{{ rep.diffSummary }}</p>
+          </div>
+        }
+      </section>
+
+      <!-- Section C: Split Lead Trace -->
+      <section class="inspector-section">
+        <header class="inspector-sec-head">
+          <h3 class="sec-title">Split Lead Trace</h3>
+          @if (selectedArmCard(); as card) {
+            <span class="count-tag">{{ card.freeWindowLabel }}</span>
+          }
+        </header>
+
+        @if (selectedArmCard(); as card) {
+          <div class="trace-box">
+            <div class="trace-lead-head">
+              <strong>{{ card.companyName }}</strong>
+              <span class="muted-txt">{{ card.leadName }}</span>
+            </div>
+
+            <div class="trace-messages">
+              @for (msg of card.messages.slice(-4); track $index) {
+                <div class="trace-bubble" [class.is-agent]="msg.sender === 'AGENT'">
+                  <span class="bubble-sender">{{ msg.sender }}</span>
+                  <span>{{ msg.text }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="trace-tools">
+              @for (tr of card.toolTraces; track $index) {
+                <div class="tool-row crm-tabular">
+                  <span class="tool-name">{{ tr.toolName }}</span>
+                  <span class="tool-meta">{{ tr.latencyMs }}ms · {{ tr.status }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <p class="empty-hint">Selecciona una tarjeta ARM para ver mensajes y traza de herramientas.</p>
+        }
+      </section>
+    </aside>
+  </div>
+</div>

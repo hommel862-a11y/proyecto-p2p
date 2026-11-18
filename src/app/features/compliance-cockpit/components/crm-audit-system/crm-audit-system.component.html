@@ -1,0 +1,357 @@
+<section class="crm-audit-system" aria-label="Auditoría Forense y Sistema PostgreSQL">
+  <div class="audit-bento-grid">
+    <!-- Quadrant 1: SMS Clipboard Parser & Anti-Fraud Ref Verifier -->
+    <article class="crm-content-card bento-quad" data-testid="audit-bento-quadrant">
+      <header class="quad-header">
+        <div>
+          <span class="eyebrow">ZERO-TYPING INTAKE &amp; ANTI-FRAUDE</span>
+          <h2 class="quad-title">Parser SMS &amp; Verificador de Referencias</h2>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      </header>
+
+      <div class="intake-block">
+        <label class="field-label" for="audit-sms-textarea">SMS o Comprobante Bancario</label>
+        <div class="sms-row">
+          <textarea
+            id="audit-sms-textarea"
+            class="crm-input sms-textarea"
+            rows="2"
+            placeholder="Pegue texto de Banesco, Mercantil, BDV o Pago Móvil..."
+            [value]="smsInput()"
+            (input)="smsInputChange.emit(getInputValue($event))"
+          ></textarea>
+          <button
+            type="button"
+            class="crm-btn-primary btn-compact"
+            data-testid="btn-extract-sms"
+            (click)="extractSms.emit()"
+          >
+            Extraer Datos
+          </button>
+        </div>
+
+        @if (parsedSmsPreview(); as preview) {
+          <div class="sms-preview-pill" data-testid="sms-preview-pill">
+            <span>Banco: <strong>{{ preview.bank || 'N/D' }}</strong></span>
+            <span class="crm-tabular">Ref: <strong>{{ preview.reference || 'N/D' }}</strong></span>
+            @if (preview.amount !== undefined) {
+              <span class="crm-tabular">Monto: <strong>{{ preview.amount | number: '1.2-2' }}</strong></span>
+            }
+            @if (preview.confidence !== undefined) {
+              <span class="crm-tabular">Conf: {{ (preview.confidence * 100).toFixed(0) }}%</span>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="verifier-block">
+        <label class="field-label" for="audit-ref-input">Verificación Atómica Anti-Replay</label>
+        <div class="verify-row">
+          <input
+            id="audit-ref-input"
+            type="text"
+            class="crm-input crm-tabular"
+            placeholder="Número de referencia a cotejar..."
+            [value]="refVerifyInput()"
+            (input)="refVerifyInputChange.emit(getInputValue($event))"
+          />
+          <button
+            type="button"
+            class="crm-btn-glass btn-compact"
+            data-testid="btn-verify-ref"
+            (click)="verifyReference.emit()"
+          >
+            Verificar Ref
+          </button>
+        </div>
+
+        <div
+          class="verify-banner"
+          data-testid="ref-verify-banner"
+          [class.is-pass]="refVerifyResult()?.checked && refVerifyResult()?.isUnique"
+          [class.is-collision]="refVerifyResult()?.checked && !refVerifyResult()?.isUnique"
+        >
+          @if (!refVerifyResult()?.checked) {
+            <span class="verify-status-label">PENDIENTE DE VERIFICACIÓN</span>
+            <span class="verify-msg">Ejecuta la comprobación contra libro local y PostgreSQL.</span>
+          } @else if (refVerifyResult()?.isUnique) {
+            <span class="crm-status-pill tone-won">UNIQUE CHECK PASS</span>
+            <span class="verify-msg">{{ refVerifyResult()?.message }}</span>
+          } @else {
+            <span class="crm-status-pill tone-stuck">COLLISION DETECTED</span>
+            <span class="verify-msg">{{ refVerifyResult()?.message }}</span>
+          }
+        </div>
+      </div>
+    </article>
+
+    <!-- Quadrant 2: PostgreSQL 17 + pgvector & Sync Telemetry -->
+    <article class="crm-content-card bento-quad" data-testid="audit-bento-quadrant">
+      <header class="quad-header">
+        <div>
+          <span class="eyebrow">ARQUITECTURA HÍBRIDA DE DATOS</span>
+          <h2 class="quad-title">PostgreSQL 17 + pgvector &amp; Sync Telemetry</h2>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <ellipse cx="12" cy="5" rx="9" ry="3" />
+          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+        </svg>
+      </header>
+
+      <div class="telemetry-nodes">
+        <div class="node-row">
+          <div>
+            <strong class="node-title">PostgreSQL 17 + pgvector</strong>
+            <span class="node-detail">{{ storageHealth().postgresDetail }}</span>
+          </div>
+          <span
+            class="crm-status-pill"
+            [class.tone-won]="storageHealth().postgresStatus === 'CONNECTED'"
+            [class.tone-transit]="storageHealth().postgresStatus === 'LOCAL_FALLBACK'"
+            [class.tone-stuck]="storageHealth().postgresStatus === 'DISCONNECTED'"
+          >
+            {{ storageHealth().postgresStatus }}
+          </span>
+        </div>
+
+        <div class="node-row">
+          <div>
+            <strong class="node-title">Espejo Electron SQLite</strong>
+            <span class="node-detail">{{ storageHealth().sqliteDetail }}</span>
+          </div>
+          <span
+            class="crm-status-pill"
+            [class.tone-won]="storageHealth().sqliteStatus === 'SYNCED'"
+            [class.tone-quoted]="storageHealth().sqliteStatus === 'BROWSER_ONLY'"
+          >
+            {{ storageHealth().sqliteStatus }}
+          </span>
+        </div>
+
+        <div class="node-row">
+          <div>
+            <strong class="node-title">Inbound Gateway SSE</strong>
+            <span class="node-detail">{{ storageHealth().gatewayDetail }}</span>
+          </div>
+          <span
+            class="crm-status-pill"
+            [class.tone-won]="storageHealth().gatewayStatus === 'CONNECTED'"
+            [class.tone-transit]="storageHealth().gatewayStatus === 'CONNECTING'"
+            [class.tone-stuck]="storageHealth().gatewayStatus === 'DISCONNECTED'"
+          >
+            {{ storageHealth().gatewayStatus }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Segmented LED AI Budget Meter -->
+      <div class="budget-meter-card">
+        <div class="budget-head">
+          <span class="eyebrow">PRESUPUESTO DIARIO LLM &amp; VECTOR</span>
+          <strong class="crm-tabular budget-figures">
+            ${{ storageHealth().dailyBudgetUsedUsd | number: '1.2-2' }} / ${{ storageHealth().dailyBudgetCapUsd | number: '1.2-2' }} USD
+          </strong>
+        </div>
+
+        <div class="led-meter-row" [attr.aria-label]="'Uso de presupuesto diario ' + budgetRatioPct() + '%'">
+          @for (idx of ledSegments; track idx) {
+            <span
+              data-testid="budget-led-segment"
+              class="led-segment"
+              [class.is-active]="isLedActive(idx)"
+              [class.is-warn]="budgetRatioPct() >= 70 && budgetRatioPct() < 90"
+              [class.is-danger]="budgetRatioPct() >= 90"
+            ></span>
+          }
+        </div>
+      </div>
+    </article>
+
+    <!-- Quadrant 3: Immutable Forensic & Agent Tool-Calling Audit Log -->
+    <article class="crm-content-card bento-quad" data-testid="audit-bento-quadrant">
+      <header class="quad-header">
+        <div>
+          <span class="eyebrow">TRAZABILIDAD INMUTABLE</span>
+          <h2 class="quad-title">Bitácora Forense &amp; Tool-Calling ({{ filteredActivities().length }})</h2>
+        </div>
+
+        <div class="audit-filters">
+          <input
+            type="search"
+            class="crm-input compact-input"
+            data-testid="audit-search-input"
+            aria-label="Buscar en bitácora forense"
+            placeholder="Buscar evento o ref..."
+            [value]="auditSearch()"
+            (input)="auditSearchChange.emit(getInputValue($event))"
+          />
+          <select
+            class="crm-input compact-select"
+            data-testid="audit-type-select"
+            aria-label="Filtrar por tipo de evento"
+            [value]="auditTypeFilter()"
+            (change)="auditTypeFilterChange.emit(getInputValue($event))"
+          >
+            <option value="ALL">Todos</option>
+            <option value="DEAL_CLOSED">DEAL_CLOSED</option>
+            <option value="DEAL_CREATED">DEAL_CREATED</option>
+            <option value="STAGE_MOVED">STAGE_MOVED</option>
+            <option value="BANK_RECONCILED">BANK_RECONCILED</option>
+            <option value="BALANCE_ADJUSTED">BALANCE_ADJUSTED</option>
+            <option value="EXPOSURE_ALERT">EXPOSURE_ALERT</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="audit-table-wrap">
+        @if (filteredActivities().length === 0) {
+          <p class="empty-copy">Sin eventos registrados bajo el filtro actual.</p>
+        } @else {
+          <table class="crm-hairline-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Descripción</th>
+                <th>Ref</th>
+                <th>USDT</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (act of filteredActivities(); track act.id) {
+                <tr data-testid="audit-log-row">
+                  <td class="crm-tabular">{{ act.timestamp | date: 'short' }}</td>
+                  <td><span class="type-chip">{{ act.type }}</span></td>
+                  <td>{{ act.description }}</td>
+                  <td class="crm-tabular">{{ act.referenceId || '-' }}</td>
+                  <td class="crm-tabular">
+                    {{ act.amountUsdt > 0 ? ('$' + (act.amountUsdt | number: '1.2-2')) : '-' }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    </article>
+
+    <!-- Quadrant 4: 3-Silo Policy & JSON/CSV Portability -->
+    <article class="crm-content-card bento-quad" data-testid="audit-bento-quadrant">
+      <header class="quad-header">
+        <div>
+          <span class="eyebrow">GOBERNANZA MULTI-SILO &amp; BACKUPS</span>
+          <h2 class="quad-title">Política de 3 Silos &amp; Portabilidad JSON/CSV</h2>
+        </div>
+      </header>
+
+      <div class="policy-section">
+        <span class="field-label">Silo Activo</span>
+        <div class="silo-pill-group" role="group" aria-label="Selector de silo activo">
+          @for (silo of siloOptions; track silo.id) {
+            <button
+              type="button"
+              data-testid="audit-silo-btn"
+              class="crm-btn-glass btn-compact"
+              [class.is-active]="activeSilo() === silo.id"
+              (click)="siloChange.emit(silo.id)"
+            >
+              {{ silo.label }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="policy-form-grid">
+        <div class="field-group">
+          <label class="field-label" for="audit-rate-input">Tasa Base Reemplazo (USDT)</label>
+          <input
+            id="audit-rate-input"
+            type="number"
+            step="0.01"
+            class="crm-input crm-tabular"
+            data-testid="replacement-rate-input"
+            [value]="liveReplacementRate()"
+            (input)="onReplacementRateInput($event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="audit-import-strategy">Estrategia al Importar</label>
+          <select
+            id="audit-import-strategy"
+            class="crm-input"
+            data-testid="import-strategy-select"
+            [value]="importStrategy()"
+            (change)="onStrategyChange($event)"
+          >
+            <option value="MERGE">MERGE (Upsert por ID)</option>
+            <option value="REPLACE">REPLACE (Sustituir colección)</option>
+          </select>
+        </div>
+
+        <div class="field-group full-span">
+          <label class="field-label" for="audit-csv-target">Catálogo CSV (RFC-4180)</label>
+          <select
+            id="audit-csv-target"
+            class="crm-input"
+            data-testid="csv-target-select"
+            [value]="csvTarget()"
+            (change)="onCsvTargetChange($event)"
+          >
+            <option value="CONTACTS">Contactos ({{ activeSilo() }})</option>
+            <option value="BANKS">Cuentas Bancarias ({{ activeSilo() }})</option>
+            <option value="ACTIVITIES">Bitácora Forense ({{ activeSilo() }})</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="portability-actions">
+        <button
+          type="button"
+          class="crm-btn-primary btn-compact"
+          data-testid="btn-export-json"
+          (click)="exportJson.emit()"
+        >
+          Exportar JSON
+        </button>
+
+        <label class="crm-btn-glass btn-compact file-trigger">
+          <span>Importar JSON</span>
+          <input
+            type="file"
+            accept=".json"
+            class="sr-only-input"
+            data-testid="import-json-input"
+            aria-label="Importar archivo JSON de respaldo"
+            (change)="onJsonFileChange($event)"
+          />
+        </label>
+
+        <button
+          type="button"
+          class="crm-btn-glass btn-compact"
+          data-testid="btn-export-csv"
+          (click)="exportCsv.emit()"
+        >
+          Exportar CSV ({{ csvTarget() }})
+        </button>
+
+        <label class="crm-btn-glass btn-compact file-trigger">
+          <span>Importar CSV</span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            class="sr-only-input"
+            data-testid="import-csv-input"
+            aria-label="Importar archivo CSV de catálogo"
+            (change)="onCsvFileChange($event)"
+          />
+        </label>
+      </div>
+    </article>
+  </div>
+</section>

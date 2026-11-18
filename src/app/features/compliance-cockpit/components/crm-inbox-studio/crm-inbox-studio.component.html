@@ -1,0 +1,972 @@
+<section class="crm-inbox-studio" aria-label="Omnicanal y Estudio de Facturación">
+  <!-- Floating Functional Sub-Nav Toolbar (Apple Liquid Glass) -->
+  <nav class="inbox-subnav crm-liquid-glass" aria-label="Sub-apartados de Omnicanal">
+    <div class="subnav-pills" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        data-testid="inbox-subtab"
+        class="subnav-pill"
+        [class.is-active]="subTab() === 'INBOX'"
+        [attr.aria-selected]="subTab() === 'INBOX'"
+        (click)="subTabChange.emit('INBOX')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        <span>Bandeja &amp; Copiloto</span>
+        <span class="pill-count crm-tabular">{{ conversations().length }}</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        data-testid="inbox-subtab"
+        class="subnav-pill"
+        [class.is-active]="subTab() === 'STUDIO'"
+        [attr.aria-selected]="subTab() === 'STUDIO'"
+        (click)="subTabChange.emit('STUDIO')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6M8 13h8M8 17h5" />
+        </svg>
+        <span>Estudio HD</span>
+        <span class="pill-count crm-tabular">{{ invoicesOrQuotes().length }}</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        data-testid="inbox-subtab"
+        class="subnav-pill"
+        [class.is-active]="subTab() === 'CONFIG'"
+        [attr.aria-selected]="subTab() === 'CONFIG'"
+        (click)="subTabChange.emit('CONFIG')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.4 1.11H21a2 2 0 0 1 0 4h-.09c-.63.09-1.14.51-1.51 1.11z" />
+        </svg>
+        <span>Meta &amp; Gemini IA</span>
+      </button>
+    </div>
+
+    <div class="subnav-meta">
+      <span class="silo-chip">{{ activeSilo() }}</span>
+      <span class="ai-mode-chip">IA: {{ omnichannelConfig().aiMode }}</span>
+    </div>
+  </nav>
+
+  <!-- ======================================================================= -->
+  <!-- SUB-TAB 1: 3-COLUMN SPLIT (25% THREADS | 41% CHAT & TRIAGE | 34% HD)    -->
+  <!-- ======================================================================= -->
+  @if (subTab() === 'INBOX') {
+    <div class="inbox-three-col">
+      <!-- Column 1 (25%): Thread List -->
+      <aside class="crm-content-card pane-threads" data-testid="inbox-thread-list">
+        <div class="pane-header">
+          <div>
+            <span class="eyebrow">OMNICANAL WA / IG</span>
+            <h2 class="pane-title">Hilos ({{ filteredConversations().length }})</h2>
+          </div>
+          <button
+            type="button"
+            class="crm-btn-primary btn-compact"
+            data-testid="btn-new-chat"
+            (click)="newChat.emit()"
+          >
+            + Nuevo Chat
+          </button>
+        </div>
+
+        <div class="thread-search-wrap">
+          <input
+            type="search"
+            class="crm-input"
+            aria-label="Buscar conversación por cliente o teléfono"
+            placeholder="Buscar cliente, teléfono o @handle..."
+            [value]="chatSearch()"
+            (input)="chatSearchChange.emit(getInputValue($event))"
+          />
+        </div>
+
+        <div class="threads-scroll">
+          @if (filteredConversations().length === 0) {
+            <div class="empty-block">
+              <p class="empty-copy">Sin conversaciones activas que coincidan.</p>
+              <button type="button" class="crm-btn-glass" (click)="newChat.emit()">
+                Iniciar Conversación
+              </button>
+            </div>
+          } @else {
+            @for (conv of filteredConversations(); track conv.id) {
+              @let win = formatWindowBadge(conv.lastInboundTimestamp);
+              <button
+                type="button"
+                data-testid="thread-item"
+                class="thread-card"
+                [class.is-selected]="selectedConversation()?.id === conv.id"
+                (click)="selectConversation.emit(conv.id)"
+              >
+                <div class="thread-top">
+                  <span
+                    class="channel-tag"
+                    [class.is-wa]="conv.channel === 'WHATSAPP'"
+                    [class.is-ig]="conv.channel === 'INSTAGRAM'"
+                  >
+                    {{ conv.channel === 'WHATSAPP' ? 'WA' : 'IG' }}
+                  </span>
+                  <span class="thread-name">{{ conv.contactName }}</span>
+                  @if (conv.unreadCount > 0) {
+                    <span class="unread-badge crm-tabular">{{ conv.unreadCount }}</span>
+                  }
+                </div>
+
+                <div class="thread-handle masked">{{ conv.recipientPhoneOrIgId }}</div>
+                <div class="thread-snippet">
+                  {{
+                    conv.messages.length > 0
+                      ? conv.messages[conv.messages.length - 1].text
+                      : 'Sin mensajes registrados'
+                  }}
+                </div>
+
+                <div class="thread-footer">
+                  <span
+                    class="window-pill"
+                    [class.is-open]="win.isOpen"
+                    [class.is-closed]="!win.isOpen"
+                  >
+                    {{ win.label }}
+                  </span>
+                </div>
+              </button>
+            }
+          }
+        </div>
+      </aside>
+
+      <!-- Column 2 (41%): Active Chat, AI Triage Copilot & 3-Bubble Quick Copy -->
+      <section class="crm-content-card pane-chat" data-testid="inbox-active-chat">
+        @if (!selectedConversation()) {
+          <div class="empty-block empty-centered">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <h3>Seleccione un hilo activo</h3>
+            <p class="empty-copy">
+              Elija una conversación a la izquierda o cree un nuevo chat para iniciar el copiloto IA.
+            </p>
+          </div>
+        } @else if (selectedConversation(); as activeConv) {
+          <header class="chat-header">
+            <div class="chat-identity">
+              <span
+                class="channel-tag"
+                [class.is-wa]="activeConv.channel === 'WHATSAPP'"
+                [class.is-ig]="activeConv.channel === 'INSTAGRAM'"
+              >
+                {{ activeConv.channel }}
+              </span>
+              <div>
+                <h3 class="chat-contact-name">{{ activeConv.contactName }}</h3>
+                <span class="chat-contact-handle masked">{{ activeConv.recipientPhoneOrIgId }}</span>
+              </div>
+            </div>
+
+            <div class="chat-header-badges">
+              <span
+                class="window-pill"
+                [class.is-open]="freeWindowIsOpen()"
+                [class.is-closed]="!freeWindowIsOpen()"
+              >
+                {{ freeWindowRemainingLabel() }}
+              </span>
+              @if (activeConv.linkedDealId) {
+                <span class="deal-link-pill crm-tabular">#{{ activeConv.linkedDealId }}</span>
+              }
+            </div>
+          </header>
+
+          <!-- Collapsible Inbound Simulator -->
+          <details class="sim-accordion">
+            <summary class="sim-summary">
+              <span>Simulador Inbound &amp; Triaje Semántico ({{ omnichannelConfig().aiMode }})</span>
+              <span class="sim-hint">Expandir</span>
+            </summary>
+            <div class="sim-controls">
+              <input
+                type="text"
+                class="crm-input"
+                aria-label="Texto de mensaje entrante simulado"
+                placeholder="Ej: Ya transferí por Pago Móvil ref 987654321"
+                [value]="testInboundText()"
+                (input)="testInboundChange.emit(getInputValue($event))"
+                (keyup.enter)="simulateInboundTriage.emit()"
+              />
+              <button
+                type="button"
+                class="crm-btn-glass"
+                (click)="simulateInboundTriage.emit()"
+              >
+                Simular Triaje
+              </button>
+            </div>
+          </details>
+
+          <!-- AI Triage Copilot Inline Banner -->
+          @if (aiTriage(); as triage) {
+            <div
+              class="triage-banner"
+              data-testid="ai-triage-banner"
+              [class.is-collision]="triage.isDuplicateReference"
+            >
+              <div class="triage-main">
+                <div class="triage-chips">
+                  <span class="crm-status-pill tone-quoted">{{ triage.detectedIntent }}</span>
+                  <span class="crm-status-pill tone-won">{{ triage.targetScope }}</span>
+                  <span class="triage-conf crm-tabular">
+                    Confianza {{ (triage.confidence * 100).toFixed(0) }}%
+                  </span>
+                  @if (triage.extractedReferenceId) {
+                    <span class="ref-chip crm-tabular">Ref: {{ triage.extractedReferenceId }}</span>
+                  }
+                </div>
+                <p class="triage-reply">{{ triage.suggestedReplyText }}</p>
+                @if (triage.isDuplicateReference) {
+                  <p class="triage-collision-warn">
+                    Alerta: referencia ya detectada en el trato #{{ triage.collidingDealId }}
+                  </p>
+                }
+              </div>
+
+              <div class="triage-actions">
+                @if (triage.recommendedKanbanAction !== 'NONE') {
+                  <button
+                    type="button"
+                    class="crm-btn-primary btn-compact"
+                    data-testid="btn-apply-triage"
+                    (click)="applyTriageAction.emit()"
+                  >
+                    {{ triageActionLabel(triage.recommendedKanbanAction) }}
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-dismiss-triage"
+                  (click)="dismissTriage.emit()"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- Gemini Flash OCR Status / Extraction Pill -->
+          @if (isAnalyzingOcr() || ocrResult()) {
+            <div class="ocr-status-bar" data-testid="ocr-result-chip">
+              @if (isAnalyzingOcr()) {
+                <span class="crm-status-pill tone-transit">Analizando captura OCR con Gemini Flash...</span>
+              } @else if (ocrResult(); as ocr) {
+                <span class="crm-status-pill tone-won">OCR Listo</span>
+                <span class="ocr-detail">Banco: <strong>{{ ocr.bank || 'N/D' }}</strong></span>
+                <span class="ocr-detail crm-tabular">Ref: <strong>{{ ocr.reference || 'N/D' }}</strong></span>
+                @if (ocr.amount !== null) {
+                  <span class="ocr-detail crm-tabular">
+                    Monto: <strong>{{ formatFiat(ocr.amount) }} {{ ocr.currency || '' }}</strong>
+                  </span>
+                }
+              }
+            </div>
+          }
+
+          <!-- Message Stream (supports Ctrl+V image OCR paste) -->
+          <div class="chat-stream" (paste)="onChatPaste($event)">
+            @for (msg of activeConv.messages; track msg.id) {
+              <article
+                class="msg-bubble"
+                [class.is-outbound]="msg.direction === 'OUTBOUND'"
+                [class.is-inbound]="msg.direction === 'INBOUND'"
+              >
+                <div class="msg-meta">
+                  <span class="msg-sender">{{ msg.senderHandle }}</span>
+                  <span class="msg-time crm-tabular">{{ msg.timestamp | date: 'HH:mm' }}</span>
+                </div>
+                @if (msg.imageUrl) {
+                  <img [src]="msg.imageUrl" alt="Comprobante de pago adjunto" class="msg-image" />
+                }
+                <p class="msg-text">{{ msg.text }}</p>
+                @if (msg.detectedIntent || msg.extractedReferenceId) {
+                  <div class="msg-tags">
+                    @if (msg.detectedIntent) {
+                      <span class="msg-tag">{{ msg.detectedIntent }}</span>
+                    }
+                    @if (msg.extractedReferenceId) {
+                      <span class="msg-tag crm-tabular">Ref: {{ msg.extractedReferenceId }}</span>
+                    }
+                  </div>
+                }
+              </article>
+            }
+          </div>
+
+          <!-- 3-Bubble Quick Copy Bar & Composer -->
+          <div class="chat-composer-dock">
+            <div class="quick-tools-grid">
+              <div class="tool-row">
+                <select
+                  class="crm-input"
+                  aria-label="Seleccionar banco para 3 burbujas"
+                  [value]="selectedBankIdForBubbles()"
+                  (change)="selectBankForBubbles.emit(getInputValue($event))"
+                >
+                  <option value="">-- Banco para 3 Burbujas --</option>
+                  @for (b of banks(); track b.id) {
+                    <option [value]="b.id">{{ b.bankName }} ({{ b.currency }})</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-generate-bubbles"
+                  [disabled]="!selectedBankIdForBubbles()"
+                  (click)="generateBankBubbles.emit(selectedBankIdForBubbles())"
+                >
+                  Generar 3 Burbujas
+                </button>
+              </div>
+
+              <div class="tool-row">
+                <select
+                  #docSel
+                  class="crm-input"
+                  aria-label="Seleccionar documento para insertar en chat"
+                >
+                  <option value="">-- Insertar Documento --</option>
+                  @for (d of invoicesOrQuotes(); track d.id) {
+                    <option [value]="d.id">
+                      {{ d.docNumber }} · {{ d.contactName }} (${{ d.totalUsdt | number: '1.2-2' }})
+                    </option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-insert-doc"
+                  (click)="onInsertDocClick(docSel.value)"
+                >
+                  Insertar Doc
+                </button>
+              </div>
+            </div>
+
+            @if (bubblePreview(); as bp) {
+              <div class="bubbles-preview-strip" aria-label="Vista previa de 3 burbujas copiables">
+                <span class="bubble-chip">{{ bp.headerBubble }}</span>
+                <span class="bubble-chip crm-tabular">{{ bp.docIdBubble }}</span>
+                <span class="bubble-chip crm-tabular">{{ bp.accountOrPhoneBubble }}</span>
+              </div>
+            }
+
+            <div class="compose-box">
+              <textarea
+                class="crm-input compose-textarea"
+                rows="3"
+                aria-label="Borrador de respuesta al cliente"
+                placeholder="Redacta una respuesta o pega una captura (Ctrl+V) para OCR..."
+                [value]="chatDraft()"
+                (input)="chatDraftChange.emit(getInputValue($event))"
+                (paste)="onChatPaste($event)"
+              ></textarea>
+
+              <div class="compose-actions">
+                <label class="crm-btn-glass btn-compact ocr-upload-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  <span>OCR</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="sr-only-input"
+                    data-testid="ocr-file-input"
+                    aria-label="Subir captura de pago para OCR"
+                    (change)="onOcrFileSelected($event)"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-send-copy"
+                  [disabled]="!chatDraft().trim()"
+                  (click)="sendMessage.emit({ mode: 'COPY' })"
+                >
+                  Copiar
+                </button>
+
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-send-wa-direct"
+                  (click)="sendMessage.emit({ mode: 'WHATSAPP_DIRECT' })"
+                >
+                  WhatsApp Direct
+                </button>
+
+                <button
+                  type="button"
+                  class="crm-btn-primary btn-compact"
+                  data-testid="btn-send-dispatch"
+                  [disabled]="!chatDraft().trim()"
+                  (click)="sendMessage.emit({ mode: 'DISPATCH' })"
+                >
+                  Despachar
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+      </section>
+
+      <!-- Column 3 (34%): Live Studio HD Document Preview -->
+      <aside class="pane-studio-preview" data-testid="live-studio-preview">
+        <ng-container [ngTemplateOutlet]="studioLivePreviewTpl" />
+      </aside>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- SUB-TAB 2: FULL STUDIO EDITOR + LIVE HD PREVIEW                         -->
+  <!-- ======================================================================= -->
+  @if (subTab() === 'STUDIO') {
+    <div class="studio-two-col">
+      <div class="studio-editor-col">
+        <section class="crm-content-card studio-card">
+          <header class="card-head">
+            <div>
+              <span class="eyebrow">EDITOR DOCUMENTAL</span>
+              <h2 class="pane-title">Presupuestos, Facturas y Comprobantes</h2>
+            </div>
+          </header>
+
+          <div class="studio-form-grid">
+            <div class="field-group">
+              <label class="field-label" for="studio-doc-type">Tipo de Documento</label>
+              <select
+                id="studio-doc-type"
+                class="crm-input"
+                [value]="studioState().docType"
+                (change)="onStudioTextField('docType', $event)"
+              >
+                <option value="PRESUPUESTO_QUOTE">Presupuesto / Cotización</option>
+                <option value="FACTURA_INVOICE">Factura Comercial</option>
+                <option value="COMPROBANTE_P2P">Comprobante de Liquidación P2P</option>
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="studio-doc-number">Nº Documento</label>
+              <input
+                id="studio-doc-number"
+                type="text"
+                class="crm-input"
+                data-testid="studio-doc-number"
+                placeholder="Ej: PRE-0001"
+                [value]="studioState().docNumber"
+                (input)="onStudioTextField('docNumber', $event)"
+              />
+            </div>
+
+            <div class="field-group full-span">
+              <label class="field-label" for="studio-contact-id">Cliente / Contacto</label>
+              <select
+                id="studio-contact-id"
+                class="crm-input"
+                [value]="studioState().contactId"
+                (change)="onStudioTextField('contactId', $event)"
+              >
+                <option value="">-- Cliente Directo / Mostrador --</option>
+                @for (c of contacts(); track c.id) {
+                  <option [value]="c.id">{{ c.name }} ({{ c.documentId || 'Sin Doc' }})</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="studio-fiat-currency">Moneda Fiat</label>
+              <select
+                id="studio-fiat-currency"
+                class="crm-input"
+                [value]="studioState().fiatCurrency"
+                (change)="onStudioTextField('fiatCurrency', $event)"
+              >
+                <option value="VES">Bolívares (VES)</option>
+                <option value="COP">Pesos (COP)</option>
+                <option value="USD">Dólares (USD)</option>
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="studio-exchange-rate">Tasa de Cambio</label>
+              <input
+                id="studio-exchange-rate"
+                type="number"
+                class="crm-input crm-tabular"
+                [value]="studioState().exchangeRate"
+                (input)="onStudioNumberField('exchangeRate', $event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="studio-discount">Descuento (USDT)</label>
+              <input
+                id="studio-discount"
+                type="number"
+                class="crm-input crm-tabular"
+                [value]="studioState().discountUsdt"
+                (input)="onStudioNumberField('discountUsdt', $event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="studio-tax">Impuesto / Fee (%)</label>
+              <input
+                id="studio-tax"
+                type="number"
+                class="crm-input crm-tabular"
+                [value]="studioState().taxPct"
+                (input)="onStudioNumberField('taxPct', $event)"
+              />
+            </div>
+
+            <div class="field-group full-span">
+              <label class="field-label" for="studio-bank-id">Cuenta Bancaria Receptora</label>
+              <select
+                id="studio-bank-id"
+                class="crm-input"
+                [value]="studioState().bankAccountId"
+                (change)="onStudioTextField('bankAccountId', $event)"
+              >
+                <option value="">-- Ninguna (Texto libre) --</option>
+                @for (b of banks(); track b.id) {
+                  <option [value]="b.id">{{ b.bankName }} ({{ b.currency }})</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-group full-span">
+              <label class="field-label" for="studio-bank-ref">Referencia Bancaria</label>
+              <input
+                id="studio-bank-ref"
+                type="text"
+                class="crm-input crm-tabular"
+                placeholder="Ej: 198274812"
+                [value]="studioState().bankRefId"
+                (input)="onStudioTextField('bankRefId', $event)"
+              />
+            </div>
+          </div>
+
+          <!-- Line Items -->
+          <div class="items-block">
+            <div class="items-header">
+              <h3>Conceptos e Ítems ({{ studioState().items.length }})</h3>
+              <button
+                type="button"
+                class="crm-btn-glass btn-compact"
+                data-testid="btn-add-studio-item"
+                (click)="addStudioItem.emit()"
+              >
+                + Agregar Ítem
+              </button>
+            </div>
+
+            <div class="table-scroll">
+              <table class="crm-hairline-table">
+                <thead>
+                  <tr>
+                    <th>Cant</th>
+                    <th>Descripción</th>
+                    <th>Categoría</th>
+                    <th>P. Unit ($)</th>
+                    <th>Subtotal</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of studioState().items; track item.id; let idx = $index) {
+                    <tr>
+                      <td>
+                        <input
+                          type="number"
+                          class="crm-input crm-tabular qty-input"
+                          aria-label="Cantidad del ítem"
+                          [value]="item.quantity"
+                          (input)="onStudioItemField(idx, 'quantity', $event)"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          class="crm-input"
+                          aria-label="Descripción del ítem"
+                          [value]="item.description"
+                          (input)="onStudioItemField(idx, 'description', $event)"
+                        />
+                      </td>
+                      <td>
+                        <select
+                          class="crm-input"
+                          aria-label="Categoría del ítem"
+                          [value]="item.category"
+                          (change)="onStudioItemField(idx, 'category', $event)"
+                        >
+                          <option value="PRODUCT">Producto</option>
+                          <option value="LABOR_SERVICE">Mano de Obra</option>
+                          <option value="P2P_EXCHANGE">P2P Cambio</option>
+                          <option value="FEE_OR_TAX">Comisión/Fee</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          class="crm-input crm-tabular price-input"
+                          aria-label="Precio unitario USDT"
+                          [value]="item.unitPriceUsdt"
+                          (input)="onStudioItemField(idx, 'unitPriceUsdt', $event)"
+                        />
+                      </td>
+                      <td class="crm-tabular masked">
+                        ${{ item.quantity * item.unitPriceUsdt | number: '1.2-2' }}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="crm-btn-danger-ghost btn-icon-only"
+                          data-testid="btn-remove-studio-item"
+                          aria-label="Eliminar ítem"
+                          (click)="removeStudioItem.emit(item.id)"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Saved Archive -->
+        <section class="crm-content-card studio-card">
+          <header class="card-head">
+            <div>
+              <span class="eyebrow">ARCHIVO HISTÓRICO</span>
+              <h2 class="pane-title">Documentos Guardados ({{ invoicesOrQuotes().length }})</h2>
+            </div>
+          </header>
+
+          @if (invoicesOrQuotes().length === 0) {
+            <p class="empty-copy">Sin documentos emitidos todavía en esta bóveda.</p>
+          } @else {
+            <div class="table-scroll">
+              <table class="crm-hairline-table">
+                <thead>
+                  <tr>
+                    <th>Nº</th>
+                    <th>Tipo</th>
+                    <th>Cliente</th>
+                    <th>Total USDT</th>
+                    <th>Total Fiat</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (doc of invoicesOrQuotes(); track doc.id) {
+                    <tr>
+                      <td class="crm-tabular">{{ doc.docNumber }}</td>
+                      <td>{{ doc.docType }}</td>
+                      <td>{{ doc.contactName }}</td>
+                      <td class="crm-tabular masked">${{ doc.totalUsdt | number: '1.2-2' }}</td>
+                      <td class="crm-tabular masked">
+                        {{ formatFiat(doc.totalFiat) }} {{ doc.fiatCurrency }}
+                      </td>
+                      <td>
+                        <div class="row-actions">
+                          <button
+                            type="button"
+                            class="crm-btn-glass btn-compact"
+                            (click)="loadSavedDoc.emit(doc)"
+                          >
+                            Cargar
+                          </button>
+                          <button
+                            type="button"
+                            class="crm-btn-danger-ghost btn-compact"
+                            (click)="deleteSavedDoc.emit(doc.id)"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      </div>
+
+      <aside class="studio-preview-col" data-testid="live-studio-preview">
+        <ng-container [ngTemplateOutlet]="studioLivePreviewTpl" />
+      </aside>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- SUB-TAB 3: META API & GEMINI FLASH CONFIGURATION                        -->
+  <!-- ======================================================================= -->
+  @if (subTab() === 'CONFIG') {
+    <section class="crm-content-card config-panel">
+      <header class="card-head">
+        <div>
+          <span class="eyebrow">INTEGRACIONES CLOUD &amp; IA</span>
+          <h2 class="pane-title">Configuración Meta Cloud API &amp; Gemini Flash</h2>
+        </div>
+      </header>
+
+      <div class="config-grid">
+        <div class="field-group">
+          <label class="field-label" for="cfg-business-name">Nombre Comercial de la Mesa</label>
+          <input
+            id="cfg-business-name"
+            type="text"
+            class="crm-input"
+            data-testid="config-business-name"
+            [value]="omnichannelConfig().businessDisplayName"
+            (input)="onConfigField('businessDisplayName', $event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="cfg-ai-mode">Modo Operativo del Asistente</label>
+          <select
+            id="cfg-ai-mode"
+            class="crm-input"
+            data-testid="config-ai-mode"
+            [value]="omnichannelConfig().aiMode"
+            (change)="onConfigField('aiMode', $event)"
+          >
+            <option value="COPILOT_DRAFT">Copiloto 1-Click (Borrador asistido)</option>
+            <option value="AUTOPILOT">Piloto Automático (Respuesta directa)</option>
+            <option value="MANUAL">Manual (Sin sugerencias IA)</option>
+          </select>
+        </div>
+
+        <div class="field-group full-span">
+          <label class="field-label" for="cfg-welcome-p2p">Plantilla Bienvenida Mesa P2P</label>
+          <textarea
+            id="cfg-welcome-p2p"
+            class="crm-input"
+            rows="3"
+            [value]="omnichannelConfig().welcomeTemplateP2p"
+            (input)="onConfigField('welcomeTemplateP2p', $event)"
+          ></textarea>
+        </div>
+
+        <div class="field-group full-span">
+          <label class="field-label" for="cfg-welcome-360">Plantilla Bienvenida Finanzas 360</label>
+          <textarea
+            id="cfg-welcome-360"
+            class="crm-input"
+            rows="3"
+            [value]="omnichannelConfig().welcomeTemplate360"
+            (input)="onConfigField('welcomeTemplate360', $event)"
+          ></textarea>
+        </div>
+
+        <div class="field-group full-span">
+          <label class="field-label" for="cfg-gemini-key">Google Gemini Flash API Key</label>
+          <input
+            id="cfg-gemini-key"
+            type="password"
+            class="crm-input"
+            placeholder="AIzaSy..."
+            [value]="omnichannelConfig().geminiApiKey || ''"
+            (input)="onConfigField('geminiApiKey', $event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="cfg-wa-phone-id">WhatsApp Phone Number ID</label>
+          <input
+            id="cfg-wa-phone-id"
+            type="text"
+            class="crm-input crm-tabular"
+            [value]="omnichannelConfig().whatsappPhoneNumberId || ''"
+            (input)="onConfigField('whatsappPhoneNumberId', $event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="cfg-ig-id">Instagram Account ID</label>
+          <input
+            id="cfg-ig-id"
+            type="text"
+            class="crm-input crm-tabular"
+            [value]="omnichannelConfig().instagramAccountId || ''"
+            (input)="onConfigField('instagramAccountId', $event)"
+          />
+        </div>
+
+        <div class="field-group full-span">
+          <label class="field-label" for="cfg-meta-token">Meta Cloud API Access Token</label>
+          <input
+            id="cfg-meta-token"
+            type="password"
+            class="crm-input"
+            placeholder="EAAB..."
+            [value]="omnichannelConfig().metaAccessToken || ''"
+            (input)="onConfigField('metaAccessToken', $event)"
+          />
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- REUSABLE LIVE STUDIO HD DOCUMENT PREVIEW + QR PLACEHOLDER + 3-BTN DOCK  -->
+  <!-- ======================================================================= -->
+  <ng-template #studioLivePreviewTpl>
+    <div class="hd-preview-shell">
+      <div class="crm-content-card hd-document-card">
+        <div class="hd-doc-header">
+          <div>
+            <span class="eyebrow">{{ omnichannelConfig().businessDisplayName || 'P2P QUANT TREASURY' }}</span>
+            <h3 class="hd-doc-title">{{ docTypeTitle() }}</h3>
+          </div>
+          <div class="hd-doc-num-box">
+            <span class="hd-doc-num crm-tabular">
+              {{ studioState().docNumber || 'BORRADOR' }}
+            </span>
+            <span class="silo-chip">{{ activeSilo() }}</span>
+          </div>
+        </div>
+
+        <div class="hd-client-box">
+          <span class="hd-box-label">EMITIDO A</span>
+          <strong class="hd-client-name">
+            {{ studioSelectedContact()?.name || 'Cliente Directo / Mostrador' }}
+          </strong>
+          <span class="hd-client-meta crm-tabular masked">
+            {{ studioSelectedContact()?.documentId || 'Sin documento' }} ·
+            {{ studioSelectedContact()?.phoneOrContact || 'Sin teléfono' }}
+          </span>
+        </div>
+
+        <div class="hd-items-list">
+          @if (studioState().items.length === 0) {
+            <p class="empty-copy">Sin líneas agregadas al documento.</p>
+          } @else {
+            @for (it of studioState().items; track it.id) {
+              <div class="hd-item-row">
+                <span class="hd-item-desc">{{ it.quantity }}× {{ it.description }}</span>
+                <span class="hd-item-amt crm-tabular masked">
+                  ${{ it.quantity * it.unitPriceUsdt | number: '1.2-2' }}
+                </span>
+              </div>
+            }
+          }
+        </div>
+
+        <div class="hd-totals-box">
+          <div class="hd-total-line">
+            <span>Subtotal</span>
+            <span class="crm-tabular masked">${{ studioComputedTotals().subtotalUsdt | number: '1.2-2' }}</span>
+          </div>
+          @if (studioComputedTotals().discountUsdt > 0) {
+            <div class="hd-total-line">
+              <span>Descuento</span>
+              <span class="crm-tabular masked">-${{ studioComputedTotals().discountUsdt | number: '1.2-2' }}</span>
+            </div>
+          }
+          <div class="hd-total-line is-grand">
+            <span>TOTAL USDT</span>
+            <span class="crm-tabular masked">${{ studioComputedTotals().totalUsdt | number: '1.2-2' }}</span>
+          </div>
+          <div class="hd-total-line is-fiat">
+            <span>TOTAL {{ studioState().fiatCurrency }}</span>
+            <span class="crm-tabular masked">
+              {{ formatFiat(studioComputedTotals().totalFiat) }} {{ studioState().fiatCurrency }}
+            </span>
+          </div>
+        </div>
+
+        <div class="hd-footer-verify">
+          <div class="hd-pay-info">
+            <span class="hd-box-label">RIEL DE PAGO</span>
+            <span class="hd-pay-text">
+              {{ studioSelectedBank()?.bankName || studioState().paymentInstructions || 'Acordado en mesa' }}
+            </span>
+            @if (studioState().bankRefId) {
+              <span class="hd-ref-badge crm-tabular">Ref: {{ studioState().bankRefId }}</span>
+            }
+          </div>
+
+          <!-- Monochrome Vector QR Verification Placeholder -->
+          <div class="hd-qr-box" data-testid="studio-qr-placeholder" aria-label="Código QR de verificación institucional">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v4h-2v-4zm4 2h2v2h-2v-2zm-2-2h2v2h-2v-2z" />
+            </svg>
+            <span class="qr-caption">QR VERIFICADO</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating Liquid Glass 3-Button Dock -->
+      <div class="hd-floating-dock crm-liquid-glass" role="toolbar" aria-label="Acciones rápidas del comprobante">
+        <button
+          type="button"
+          class="crm-btn-glass btn-compact"
+          data-testid="btn-studio-copy-png"
+          (click)="exportStudioPng.emit('COPY')"
+        >
+          Copiar PNG
+        </button>
+        <button
+          type="button"
+          class="crm-btn-glass btn-compact"
+          data-testid="btn-studio-download-png"
+          (click)="exportStudioPng.emit('DOWNLOAD')"
+        >
+          Descargar PNG
+        </button>
+        <button
+          type="button"
+          class="crm-btn-primary btn-compact"
+          data-testid="btn-studio-save-history"
+          (click)="saveStudioDoc.emit(false)"
+        >
+          Guardar
+        </button>
+        @if (subTab() === 'STUDIO') {
+          <button
+            type="button"
+            class="crm-btn-contrast btn-compact"
+            data-testid="btn-studio-save-kanban"
+            (click)="saveStudioDoc.emit(true)"
+          >
+            Pasar a Kanban
+          </button>
+        }
+      </div>
+    </div>
+  </ng-template>
+</section>

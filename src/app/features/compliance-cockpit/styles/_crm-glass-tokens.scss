@@ -1,0 +1,336 @@
+// =============================================================================
+// CRM / ARM SPATIAL LIQUID GLASS TOKENS & PRIMITIVES (4-THEME COMPATIBLE)
+// Disciplina Apple HIG Liquid Glass:
+//   1) Capa Funcional Flotante -> Glass (backdrop-filter + hairline especular)
+//   2) Capa de Contenido -> Materiales elevados opacos/semiopacos (--panel / --panel-2)
+//   3) Fallbacks accesibles -> prefers-reduced-transparency / contrast / motion
+// =============================================================================
+
+:host {
+  --crm-glass-bg: color-mix(in srgb, var(--panel, #111116) 76%, transparent);
+  --crm-glass-bg-strong: color-mix(in srgb, var(--panel-2, #16161f) 88%, transparent);
+  --crm-glass-border: var(--line-strong, rgba(255, 255, 255, 0.14));
+  --crm-hairline: var(--line, rgba(255, 255, 255, 0.08));
+  --crm-surface: var(--panel, #111116);
+  --crm-surface-2: var(--panel-2, #16161f);
+  --crm-row-hover: var(--row-hover, rgba(255, 255, 255, 0.04));
+  --crm-text: var(--text, #ffffff);
+  --crm-muted: var(--muted, rgba(235, 235, 245, 0.62));
+  --crm-pill-active-bg: var(--text, #ffffff);
+  --crm-pill-active-fg: var(--bg-0, #050508);
+  --crm-accent: var(--accent, #30d158);
+  --crm-blue: var(--accent-2, #0a84ff);
+  --crm-gold: var(--gold, #ffd60a);
+  --crm-warn: var(--warn, #ff9f0a);
+  --crm-danger: var(--danger, #ff453a);
+  --crm-radius: var(--radius, 14px);
+  --crm-radius-lg: var(--radius-lg, 18px);
+  --crm-blur: var(--blur-panel, 22px);
+  --crm-shadow: var(--shadow, 0 12px 32px -8px rgba(0, 0, 0, 0.65));
+  --crm-silo-accent: var(--accent-2, #0a84ff);
+  --crm-silo-glow: color-mix(in srgb, var(--crm-silo-accent) 20%, transparent);
+}
+
+:host(.silo-b2b) {
+  --crm-silo-accent: var(--accent, #30d158);
+}
+
+:host(.silo-p2p) {
+  --crm-silo-accent: var(--accent-2, #0a84ff);
+}
+
+:host(.silo-360) {
+  --crm-silo-accent: var(--gold, #ffd60a);
+}
+
+// Floating Functional Layer (Strictly for headers, pill bars, inspectors, sheets)
+.crm-liquid-glass {
+  background: var(--crm-glass-bg);
+  border: 1px solid var(--crm-glass-border);
+  backdrop-filter: blur(var(--crm-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--crm-blur)) saturate(1.4);
+  box-shadow: var(--crm-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+// Content Layer Card (Opaque/Elevated standard material — never glass-on-glass)
+.crm-content-card {
+  background: var(--crm-surface);
+  border: 1px solid var(--crm-hairline);
+  border-radius: var(--crm-radius-lg);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.35);
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &:hover {
+    border-color: var(--crm-glass-border);
+  }
+}
+
+// Localized corner aurora glow for the 4 Hero KPI cards (Ref 1 & 2 signature)
+.crm-kpi-aura {
+  position: relative;
+  overflow: hidden;
+  background: var(--crm-surface);
+  border: 1px solid var(--crm-hairline);
+  border-radius: var(--crm-radius-lg);
+  padding: 16px 18px;
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.9;
+    background: radial-gradient(circle at 88% 12%, var(--kpi-glow, var(--crm-silo-glow)), transparent 60%);
+  }
+
+  &.tone-cyan {
+    --kpi-glow: color-mix(in srgb, var(--crm-blue) 26%, transparent);
+  }
+  &.tone-emerald {
+    --kpi-glow: color-mix(in srgb, var(--crm-accent) 26%, transparent);
+  }
+  &.tone-amber {
+    --kpi-glow: color-mix(in srgb, var(--crm-gold) 24%, transparent);
+  }
+  &.tone-violet {
+    --kpi-glow: rgba(168, 85, 247, 0.24);
+  }
+}
+
+.crm-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+// Button Hierarchy (Apple HIG: max 1-2 prominent actions per view, >=28px desktop / 44px mobile)
+.crm-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--crm-blue);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 150ms ease, transform 120ms ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.crm-btn-contrast {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--crm-pill-active-bg);
+  color: var(--crm-pill-active-fg);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 150ms ease, transform 120ms ease;
+
+  &:hover:not(:disabled) {
+    opacity: 0.92;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.crm-btn-glass {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--crm-glass-border);
+  background: color-mix(in srgb, var(--crm-surface-2) 70%, transparent);
+  color: var(--crm-text);
+  font-weight: 500;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease, border-color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--crm-row-hover);
+    border-color: var(--crm-silo-accent);
+  }
+  &.is-active {
+    background: var(--crm-pill-active-bg);
+    color: var(--crm-pill-active-fg);
+    border-color: transparent;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.crm-btn-danger-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--crm-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--crm-danger) 12%, transparent);
+  color: var(--crm-danger);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--crm-danger) 20%, transparent);
+  }
+}
+
+.crm-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+
+  &.tone-won {
+    background: color-mix(in srgb, var(--crm-accent) 16%, transparent);
+    color: var(--crm-accent);
+    border-color: color-mix(in srgb, var(--crm-accent) 30%, transparent);
+  }
+  &.tone-transit {
+    background: color-mix(in srgb, var(--crm-warn) 16%, transparent);
+    color: var(--crm-warn);
+    border-color: color-mix(in srgb, var(--crm-warn) 30%, transparent);
+  }
+  &.tone-stuck {
+    background: color-mix(in srgb, var(--crm-danger) 16%, transparent);
+    color: var(--crm-danger);
+    border-color: color-mix(in srgb, var(--crm-danger) 30%, transparent);
+  }
+  &.tone-quoted {
+    background: color-mix(in srgb, var(--crm-blue) 16%, transparent);
+    color: var(--crm-blue);
+    border-color: color-mix(in srgb, var(--crm-blue) 30%, transparent);
+  }
+}
+
+.crm-hairline-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--crm-muted);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--crm-hairline);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  td {
+    padding: 11px 12px;
+    font-size: 13px;
+    color: var(--crm-text);
+    border-bottom: 1px solid var(--crm-hairline);
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover td {
+    background: var(--crm-row-hover);
+  }
+}
+
+.crm-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--crm-hairline);
+  background: var(--input-bg, var(--crm-surface-2));
+  color: var(--crm-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 150ms ease;
+
+  &:focus {
+    border-color: var(--crm-silo-accent);
+  }
+}
+
+// Privacy blur helper
+:host-context(.privacy-active) .masked {
+  filter: blur(5px);
+  user-select: none;
+}
+
+// Accessibility Fallbacks (Apple HIG Liquid Glass compliance)
+@media (prefers-reduced-transparency: reduce) {
+  .crm-liquid-glass {
+    background: var(--crm-surface-2) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .crm-liquid-glass,
+  .crm-content-card,
+  .crm-kpi-aura {
+    border-color: var(--crm-text) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-content-card,
+  .crm-kpi-aura,
+  .crm-btn-primary,
+  .crm-btn-glass,
+  .crm-btn-contrast {
+    transition: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .crm-btn-primary,
+  .crm-btn-glass,
+  .crm-btn-contrast,
+  .crm-btn-danger-ghost {
+    min-height: 44px;
+  }
+}

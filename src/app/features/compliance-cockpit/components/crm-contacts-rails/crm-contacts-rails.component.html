@@ -1,0 +1,565 @@
+<section class="crm-contacts-rails" aria-label="Contactos 360 y Rieles Bancarios">
+  <!-- Top Floating Mode Pill Bar (Liquid Glass) -->
+  <nav class="rails-toolbar crm-liquid-glass" aria-label="Navegación de Contactos y Rieles">
+    <div class="mode-pills" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        data-testid="contacts-rails-mode"
+        class="mode-pill"
+        [class.is-active]="subMode() === 'CONTACTS'"
+        [attr.aria-selected]="subMode() === 'CONTACTS'"
+        (click)="subModeChange.emit('CONTACTS')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+        <span>Directorio &amp; Expediente 360°</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        data-testid="contacts-rails-mode"
+        class="mode-pill"
+        [class.is-active]="subMode() === 'RAILS'"
+        [attr.aria-selected]="subMode() === 'RAILS'"
+        (click)="subModeChange.emit('RAILS')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" />
+        </svg>
+        <span>Flota Rieles Bancarios ({{ bankTelemetry().length }})</span>
+      </button>
+    </div>
+
+    <div class="toolbar-actions">
+      @if (subMode() === 'CONTACTS') {
+        <button
+          type="button"
+          class="crm-btn-primary btn-compact"
+          data-testid="btn-new-contact"
+          (click)="newContact.emit()"
+        >
+          + Nuevo Contacto
+        </button>
+      } @else {
+        <button
+          type="button"
+          class="crm-btn-primary btn-compact"
+          data-testid="btn-new-bank"
+          (click)="newBank.emit()"
+        >
+          + Nuevo Banco
+        </button>
+      }
+    </div>
+  </nav>
+
+  <!-- Top 4 .crm-kpi-aura Mini-KPI Cards -->
+  <div class="kpi-aura-grid">
+    <article class="crm-kpi-aura tone-cyan">
+      <span class="kpi-label">Contactos Filtrados</span>
+      <strong class="kpi-value crm-tabular">{{ filteredContacts().length }} / {{ contacts().length }}</strong>
+      <span class="kpi-sub">Padrón en {{ activeSilo() }}</span>
+    </article>
+
+    <article class="crm-kpi-aura tone-emerald">
+      <span class="kpi-label">LTV Seleccionado</span>
+      <strong class="kpi-value crm-tabular masked">${{ selectedContactLtvUsdt() | number: '1.2-2' }}</strong>
+      <span class="kpi-sub">{{ selectedContact()?.name || 'Sin selección' }}</span>
+    </article>
+
+    <article class="crm-kpi-aura tone-amber">
+      <span class="kpi-label">Rieles Operativos</span>
+      <strong class="kpi-value crm-tabular">{{ availableRailsCount() }} / {{ bankTelemetry().length }}</strong>
+      <span class="kpi-sub">Escudo anti-ráfaga activo</span>
+    </article>
+
+    <article class="crm-kpi-aura tone-violet">
+      <span class="kpi-label">Capacidad Fiat Total</span>
+      <strong class="kpi-value crm-tabular masked">{{ formatFiat(totalBankCapacityFiat()) }}</strong>
+      <span class="kpi-sub">Tope diario consolidado</span>
+    </article>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODE A: CONTACTS & EXPEDIENTE 360° + BANK RAILS HEALTH BAR              -->
+  <!-- ======================================================================= -->
+  @if (subMode() === 'CONTACTS') {
+    <div class="master-detail-grid">
+      <!-- Left Column: Directory + Bank Rails Health -->
+      <aside class="directory-column">
+        <section class="crm-content-card directory-card">
+          <header class="card-head">
+            <div>
+              <span class="eyebrow">DIRECTORIO</span>
+              <h2 class="section-title">Padrón CRM ({{ filteredContacts().length }})</h2>
+            </div>
+          </header>
+
+          <input
+            type="search"
+            class="crm-input"
+            aria-label="Buscar contacto por nombre, documento o teléfono"
+            placeholder="Buscar por nombre, cédula o teléfono..."
+            [value]="contactSearch()"
+            (input)="contactSearchChange.emit(getInputValue($event))"
+          />
+
+          <div class="filter-chips" role="group" aria-label="Filtros de contacto">
+            @for (opt of categoryOptions(); track opt.id) {
+              <button
+                type="button"
+                class="filter-chip"
+                [class.is-active]="contactFilter() === opt.id"
+                (click)="contactFilterChange.emit(opt.id)"
+              >
+                {{ opt.label }}
+              </button>
+            }
+          </div>
+
+          <div class="contact-list-scroll">
+            @if (filteredContacts().length === 0) {
+              <div class="empty-box">
+                <p class="empty-copy">Sin contactos que coincidan en {{ activeSilo() }}.</p>
+                <button type="button" class="crm-btn-glass btn-compact" (click)="newContact.emit()">
+                  + Crear Contacto
+                </button>
+              </div>
+            } @else {
+              @for (c of filteredContacts(); track c.id) {
+                <button
+                  type="button"
+                  data-testid="contact-list-item"
+                  class="contact-row-btn"
+                  [class.is-selected]="selectedContact()?.id === c.id"
+                  (click)="selectContact.emit(c.id)"
+                >
+                  <div class="contact-row-top">
+                    <span class="contact-name">{{ c.name }}</span>
+                    <span class="category-badge">{{ c.category }}</span>
+                  </div>
+                  <div class="contact-row-bottom">
+                    <span class="contact-doc crm-tabular masked">{{ c.documentId || 'Sin doc' }}</span>
+                    <span
+                      class="contact-balance crm-tabular masked"
+                      [class.is-pos]="c.pendingBalanceUsdt > 0"
+                      [class.is-neg]="c.pendingBalanceUsdt < 0"
+                    >
+                      {{ c.pendingBalanceUsdt >= 0 ? '+' : '' }}${{ c.pendingBalanceUsdt | number: '1.2-2' }}
+                    </span>
+                  </div>
+                </button>
+              }
+            }
+          </div>
+        </section>
+
+        <!-- Segmented Bank Rails Health Mini-Widget -->
+        <section class="crm-content-card rails-health-card">
+          <header class="card-head">
+            <div>
+              <span class="eyebrow">SALUD DE RIELES</span>
+              <h3 class="section-title">Capacidad Diaria</h3>
+            </div>
+            <button
+              type="button"
+              class="crm-btn-glass btn-compact"
+              (click)="subModeChange.emit('RAILS')"
+            >
+              Ver Flota
+            </button>
+          </header>
+
+          @if (bankTelemetry().length === 0) {
+            <p class="empty-copy">Sin cuentas bancarias registradas.</p>
+          } @else {
+            <div class="health-list">
+              @for (rail of bankTelemetry(); track rail.bankAccountId) {
+                <div class="health-item">
+                  <div class="health-top">
+                    <span class="health-name">{{ rail.bankName }} ({{ rail.currency }})</span>
+                    <span class="crm-tabular health-pct">{{ rail.dailyUsagePct | number: '1.0-0' }}%</span>
+                  </div>
+                  <div class="segmented-bar" [attr.aria-label]="rail.bankName + ' uso ' + rail.dailyUsagePct + '%'">
+                    @for (idx of capacitySegments; track idx) {
+                      <span
+                        class="seg-cell"
+                        [class.is-filled]="isSegmentFilled(rail.dailyUsagePct, idx)"
+                        [class.is-warn]="rail.dailyUsagePct >= 70 && rail.dailyUsagePct < 90"
+                        [class.is-danger]="rail.dailyUsagePct >= 90"
+                      ></span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </section>
+      </aside>
+
+      <!-- Right Column: Expediente 360° -->
+      <section class="crm-content-card dossier-panel" data-testid="expediente-360">
+        @if (!selectedContact()) {
+          <div class="empty-box empty-centered">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <circle cx="12" cy="7" r="4" />
+              <path d="M5.5 21a7.5 7.5 0 0 1 13 0" />
+            </svg>
+            <h3>Expediente Institucional 360°</h3>
+            <p class="empty-copy">
+              Seleccione un contacto del directorio para auditar LTV, cuenta corriente, memoria vectorial y operaciones.
+            </p>
+          </div>
+        } @else if (selectedContact(); as contact) {
+          <header class="dossier-header">
+            <div class="dossier-identity">
+              <div class="avatar-badge">{{ contact.name.slice(0, 2).toUpperCase() }}</div>
+              <div>
+                <div class="dossier-title-row">
+                  <h2 class="dossier-name">{{ contact.name }}</h2>
+                  <span class="category-badge">{{ contact.category }}</span>
+                </div>
+                <div class="dossier-meta crm-tabular masked">
+                  <span>Doc: {{ contact.documentId || 'N/A' }}</span>
+                  <span>Tel: {{ contact.phoneOrContact || 'N/A' }}</span>
+                  <span>Refs verificadas: {{ contact.verifiedReferences.length }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dossier-actions">
+              <button
+                type="button"
+                class="crm-btn-glass btn-compact"
+                data-testid="btn-wa-statement"
+                (click)="sendWaStatement.emit()"
+              >
+                Estado WA
+              </button>
+              <button
+                type="button"
+                class="crm-btn-glass btn-compact"
+                data-testid="btn-open-chat"
+                (click)="openChatForContact.emit(contact)"
+              >
+                Atender en Chat
+              </button>
+              <button
+                type="button"
+                class="crm-btn-primary btn-compact"
+                data-testid="btn-new-deal-contact"
+                (click)="newDealForContact.emit(contact)"
+              >
+                + Nuevo Trato
+              </button>
+            </div>
+          </header>
+
+          <!-- Bento: LTV / Balance / Exposure -->
+          <div class="dossier-bento">
+            <div class="bento-tile">
+              <span class="eyebrow">LTV HISTÓRICO</span>
+              <strong class="bento-val crm-tabular masked">${{ selectedContactLtvUsdt() | number: '1.2-2' }}</strong>
+              <span class="bento-sub">
+                {{ dossierStats().totalDeals }} tratos ({{ dossierStats().closedDeals }} cerrados · +${{ dossierStats().lifetimeProfitUsdt | number: '1.2-2' }})
+              </span>
+            </div>
+
+            <div class="bento-tile">
+              <span class="eyebrow">CUENTA CORRIENTE</span>
+              <strong
+                class="bento-val crm-tabular masked"
+                [class.is-pos]="contact.pendingBalanceUsdt > 0"
+                [class.is-neg]="contact.pendingBalanceUsdt < 0"
+              >
+                {{ contact.pendingBalanceUsdt >= 0 ? '+' : '' }}${{ contact.pendingBalanceUsdt | number: '1.2-2' }}
+              </strong>
+              <span class="bento-sub">
+                @if (contact.pendingBalanceUsdt > 0) {
+                  Saldo a favor del cliente
+                } @else if (contact.pendingBalanceUsdt < 0) {
+                  Cuenta por cobrar al cliente
+                } @else {
+                  Cuenta conciliada ($0.00)
+                }
+              </span>
+            </div>
+
+            <div class="bento-tile">
+              <div class="exposure-head">
+                <span class="eyebrow">EXPOSICIÓN EN TRÁNSITO</span>
+                <span class="crm-tabular exposure-pct">{{ dossierStats().exposurePct }}%</span>
+              </div>
+              <strong class="bento-val crm-tabular masked">
+                ${{ dossierStats().inTransitUsdt | number: '1.2-2' }} / ${{ contact.maxPendingExposureUsdt | number: '1.0-0' }}
+              </strong>
+              <div class="exposure-track">
+                <div
+                  class="exposure-fill"
+                  [style.width.%]="dossierStats().exposurePct"
+                  [class.is-warn]="dossierStats().exposurePct >= 70"
+                  [class.is-danger]="dossierStats().exposurePct >= 95"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inline Quick Balance Adjuster -->
+          <div class="adjuster-bar">
+            <span class="eyebrow">AJUSTE SALDO</span>
+            <input
+              type="number"
+              class="crm-input crm-tabular adjust-input"
+              data-testid="balance-adjust-input"
+              aria-label="Monto en USDT para ajustar saldo"
+              placeholder="Monto USDT"
+              [value]="adjustAmountDraft() ?? ''"
+              (input)="onAdjustAmountInput($event)"
+            />
+            <button
+              type="button"
+              class="crm-btn-glass btn-compact"
+              data-testid="btn-adjust-plus"
+              (click)="emitBalanceAdjustment(1)"
+            >
+              + Abonar
+            </button>
+            <button
+              type="button"
+              class="crm-btn-danger-ghost btn-compact"
+              data-testid="btn-adjust-minus"
+              (click)="emitBalanceAdjustment(-1)"
+            >
+              - Cargar
+            </button>
+            <button
+              type="button"
+              class="crm-btn-contrast btn-compact"
+              data-testid="btn-adjust-zero"
+              (click)="emitBalanceAdjustment(0)"
+            >
+              Saldar $0.00
+            </button>
+          </div>
+
+          <!-- AI Vector Memory Chips (pgvector) -->
+          <div class="memory-section">
+            <span class="eyebrow">MEMORIA VECTORIAL IA (PGVECTOR)</span>
+            <div class="memory-chips">
+              @if (vectorMemories().length === 0) {
+                <span class="memory-empty">Sin preferencias semánticas indexadas aún.</span>
+              } @else {
+                @for (mem of vectorMemories(); track $index) {
+                  <span class="memory-chip">{{ mem }}</span>
+                }
+              }
+            </div>
+          </div>
+
+          <!-- Contact Payment Details -->
+          @if (contact.paymentDetailsText) {
+            <div class="payment-box">
+              <div class="payment-head">
+                <span class="eyebrow">COORDENADAS DE PAGO</span>
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  data-testid="btn-copy-payment-details"
+                  (click)="copyPaymentDetails.emit(contact.paymentDetailsText)"
+                >
+                  Copiar Coordenadas
+                </button>
+              </div>
+              <pre class="payment-pre masked">{{ contact.paymentDetailsText }}</pre>
+            </div>
+          }
+
+          <!-- Hairline Deal & Ledger History Table -->
+          <div class="deals-history">
+            <h3 class="section-title">Historial de Operaciones ({{ selectedContactDeals().length }})</h3>
+            @if (selectedContactDeals().length === 0) {
+              <p class="empty-copy">Sin tratos registrados para este contacto.</p>
+            } @else {
+              <div class="table-scroll">
+                <table class="crm-hairline-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Etapa</th>
+                      <th>Banco</th>
+                      <th>Referencia</th>
+                      <th>Monto USDT</th>
+                      <th>Total Fiat</th>
+                      <th>PnL Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (deal of selectedContactDeals(); track deal.id) {
+                      <tr>
+                        <td class="crm-tabular">#{{ deal.id }}</td>
+                        <td>
+                          <span class="crm-status-pill" [ngClass]="stageToneClass(deal.stage)">
+                            {{ deal.stage }}
+                          </span>
+                        </td>
+                        <td>{{ deal.bankName }}</td>
+                        <td class="crm-tabular">{{ deal.bankReferenceId || 'Pendiente' }}</td>
+                        <td class="crm-tabular masked">${{ deal.cryptoAmountUsdt | number: '1.2-2' }}</td>
+                        <td class="crm-tabular masked">
+                          {{ formatFiat(deal.totalFiatAmount) }} {{ deal.fiatCurrency }}
+                        </td>
+                        <td class="crm-tabular masked">+${{ deal.netProfitUsdt | number: '1.2-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- MODE B: FULL BANK RAILS FLEET                                           -->
+  <!-- ======================================================================= -->
+  @if (subMode() === 'RAILS') {
+    <div class="rails-fleet-grid">
+      @if (bankTelemetry().length === 0) {
+        <section class="crm-content-card empty-box empty-centered fleet-empty">
+          <h3>Cero Cuentas Bancarias</h3>
+          <p class="empty-copy">
+            No hay rieles configurados en {{ activeSilo() }}. Agregue una cuenta para monitorear cupos y ráfagas.
+          </p>
+          <button type="button" class="crm-btn-primary" (click)="newBank.emit()">
+            + Agregar Cuenta Bancaria
+          </button>
+        </section>
+      } @else {
+        @for (b of bankTelemetry(); track b.bankAccountId) {
+          <article
+            class="crm-content-card bank-rail-card"
+            data-testid="bank-rail-card"
+            [class.is-recommended]="b.isRecommended"
+          >
+            <header class="rail-card-head">
+              <div class="rail-title-wrap">
+                <h3 class="rail-name">{{ b.bankName }}</h3>
+                <span class="currency-tag">{{ b.currency }}</span>
+                @if (b.isRecommended) {
+                  <span class="crm-status-pill tone-won">Recomendado</span>
+                }
+              </div>
+              <span
+                class="crm-status-pill"
+                [class.tone-won]="b.status === 'AVAILABLE'"
+                [class.tone-transit]="b.status === 'COOLDOWN_BURST'"
+                [class.tone-stuck]="b.status === 'DAILY_CAP_REACHED'"
+              >
+                {{ b.status }}
+              </span>
+            </header>
+
+            <div class="rail-metrics">
+              <div class="metric-cell">
+                <span class="eyebrow">SALDO EN SISTEMA</span>
+                <strong class="crm-tabular masked">{{ formatFiat(b.currentBalanceFiat) }} {{ b.currency }}</strong>
+              </div>
+              <div class="metric-cell">
+                <span class="eyebrow">RÁFAGA 15 MIN</span>
+                <strong class="crm-tabular">{{ b.recent15MinTxCount }} / {{ b.maxBurstTxPer15Min }} tx</strong>
+              </div>
+              @if (banksById().get(b.bankAccountId); as bankMeta) {
+                <div class="metric-cell">
+                  <span class="eyebrow">COMISIÓN</span>
+                  <strong class="crm-tabular">{{ bankMeta.feePct | number: '1.2-2' }}%</strong>
+                </div>
+              }
+            </div>
+
+            <div class="rail-capacity">
+              <div class="cap-row crm-tabular">
+                <span>Cerrado: {{ formatFiat(b.dailyClosedFiat) }}</span>
+                <span>Tránsito: {{ formatFiat(b.dailyInTransitFiat) }}</span>
+                <span>Tope: {{ formatFiat(b.maxDailyCapFiat) }}</span>
+              </div>
+              <div class="segmented-bar">
+                @for (idx of capacitySegments; track idx) {
+                  <span
+                    class="seg-cell"
+                    [class.is-filled]="isSegmentFilled(b.dailyUsagePct, idx)"
+                    [class.is-warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
+                    [class.is-danger]="b.dailyUsagePct >= 90"
+                  ></span>
+                }
+              </div>
+              <span class="cap-usage-label crm-tabular">{{ b.dailyUsagePct | number: '1.1-1' }}% del cupo diario</span>
+            </div>
+
+            <div class="rail-actions">
+              <button
+                type="button"
+                class="crm-btn-glass btn-compact"
+                data-testid="btn-copy-bank"
+                (click)="copyBankDetails.emit(b.bankAccountId)"
+              >
+                Copiar Datos
+              </button>
+              <button
+                type="button"
+                class="crm-btn-glass btn-compact"
+                data-testid="btn-open-reconcile"
+                (click)="openReconcile(b.bankAccountId, b.currentBalanceFiat)"
+              >
+                Cuadre Real
+              </button>
+              <button
+                type="button"
+                class="crm-btn-danger-ghost btn-compact"
+                data-testid="btn-delete-bank"
+                (click)="deleteBank.emit(b.bankAccountId)"
+              >
+                Eliminar
+              </button>
+            </div>
+
+            @if (reconcilingBankId() === b.bankAccountId) {
+              <div class="reconcile-inline">
+                <input
+                  type="number"
+                  class="crm-input crm-tabular"
+                  data-testid="reconcile-balance-input"
+                  aria-label="Saldo real en banco"
+                  [value]="reconcileBalanceDraft() ?? ''"
+                  (input)="onReconcileInput($event)"
+                />
+                <button
+                  type="button"
+                  class="crm-btn-primary btn-compact"
+                  data-testid="btn-confirm-reconcile"
+                  (click)="confirmReconcile(b.bankAccountId)"
+                >
+                  Asentar
+                </button>
+                <button
+                  type="button"
+                  class="crm-btn-glass btn-compact"
+                  (click)="reconcilingBankId.set(null)"
+                >
+                  Cancelar
+                </button>
+              </div>
+            }
+          </article>
+        }
+      }
+    </div>
+  }
+</section>

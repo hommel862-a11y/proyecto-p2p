@@ -1,0 +1,284 @@
+<div class="overview-shell">
+  <!-- 1. Top Hero KPI Row (4 .crm-kpi-aura cards) -->
+  <section class="overview-kpi-grid" aria-label="Indicadores clave del silo">
+    @if (heroKpis().length === 0) {
+      <div class="crm-content-card empty-box">
+        <span>Sin métricas calculadas aún para {{ siloLabel() }}.</span>
+      </div>
+    } @else {
+      @for (kpi of heroKpis(); track kpi.id) {
+        <button
+          type="button"
+          class="crm-kpi-aura kpi-card-btn"
+          [class]="'crm-kpi-aura kpi-card-btn tone-' + kpi.tone"
+          (click)="kpiDrilldown.emit(kpi)"
+        >
+          <div class="kpi-top">
+            <span class="kpi-label">{{ kpi.label }}</span>
+            <span class="kpi-delta crm-tabular">{{ kpi.deltaLabel }}</span>
+          </div>
+          <div class="kpi-value crm-tabular masked">{{ kpi.value }}</div>
+          <div class="kpi-bottom">
+            <span class="kpi-subtext">{{ kpi.subtext }}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </div>
+        </button>
+      }
+    }
+  </section>
+
+  <!-- 2. Middle 60/40 Bento: Cashflow Spectrum + Deal Type & Velocity -->
+  <section class="overview-bento-mid" aria-label="Flujo de caja y velocidad comercial">
+    <!-- Left 60%: Cashflow & Treasury Spectrum + AI Strategist -->
+    <article class="crm-content-card bento-card">
+      <header class="card-header">
+        <div class="header-titles">
+          <span class="eyebrow">{{ siloLabel() }}</span>
+          <h2 class="card-title">Cashflow &amp; Treasury Spectrum</h2>
+        </div>
+        <div class="header-metric">
+          <span class="metric-caption">Volumen Pipeline</span>
+          <strong class="metric-total crm-tabular masked">{{ totalPipelineVolumeLabel() }}</strong>
+        </div>
+      </header>
+
+      <div class="cashflow-columns" role="list" aria-label="Columnas de flujo por etapa">
+        @for (col of cashflowColumns(); track col.id; let idx = $index) {
+          <div
+            class="cashflow-col"
+            data-testid="cashflow-col"
+            role="listitem"
+            [class.is-highlighted]="col.highlighted"
+          >
+            <span class="col-value crm-tabular masked">{{ col.valueFormatted }}</span>
+            <div class="col-bar-track">
+              <div class="col-bar-fill" [style.height.%]="columnHeightPct(idx, col)"></div>
+            </div>
+            <span class="col-label">{{ col.label }}</span>
+            <span class="col-sublabel">{{ col.sublabel }}</span>
+          </div>
+        }
+      </div>
+
+      <div class="led-spectrum-wrap" aria-label="Espectro de salud de tesorería">
+        <div class="led-spectrum-header">
+          <span class="spectrum-title">Espectro de Liquidez &amp; Riesgo</span>
+          <span class="spectrum-score crm-tabular">{{ clampedHealthScore() }}%</span>
+        </div>
+        <div class="led-spectrum-strip">
+          @for (tick of ledSpectrumTicks(); track tick.index) {
+            <span
+              class="led-tick"
+              data-testid="led-tick"
+              [class]="'led-tick tone-' + tick.tone"
+            ></span>
+          }
+        </div>
+      </div>
+
+      @if (funnelStages().length > 0) {
+        <div class="funnel-mini-strip" aria-label="Resumen de embudo">
+          @for (stage of funnelStages(); track $index) {
+            <div class="funnel-pill">
+              <span class="funnel-lbl">{{ stage.label }}</span>
+              <span class="funnel-val crm-tabular masked">{{ stage.valueLabel }} ({{ stage.count }})</span>
+            </div>
+          }
+        </div>
+      }
+
+      <form class="ai-strategist-bar" (submit)="submitStrategistPrompt($event)">
+        <div class="strategist-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3Z" />
+          </svg>
+        </div>
+        <input
+          type="text"
+          class="crm-input strategist-input"
+          data-testid="ai-strategist-input"
+          aria-label="Consultar al AI Strategist"
+          placeholder="Pregunta al AI Strategist sobre rieles, spread o riesgos..."
+          [value]="strategistPrompt()"
+          (input)="onStrategistInput($event)"
+        />
+        <button
+          type="submit"
+          class="crm-btn-contrast strategist-btn"
+          data-testid="ai-strategist-submit"
+        >
+          <span>Consultar</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </button>
+      </form>
+    </article>
+
+    <!-- Right 40%: Deal Type & Velocity + Period Selector -->
+    <article class="crm-content-card bento-card">
+      <header class="card-header">
+        <div class="header-titles">
+          <span class="eyebrow">Velocidad &amp; Mix</span>
+          <h2 class="card-title">Deal Type &amp; Velocity</h2>
+        </div>
+        <div class="period-pills" role="group" aria-label="Periodo de análisis">
+          @for (period of periodOptions; track period.id) {
+            <button
+              type="button"
+              class="period-pill"
+              [attr.data-testid]="'period-pill-' + period.id"
+              [class.is-active]="selectedPeriod() === period.id"
+              [attr.aria-pressed]="selectedPeriod() === period.id"
+              (click)="periodChange.emit(period.id)"
+            >
+              {{ period.label }}
+            </button>
+          }
+        </div>
+      </header>
+
+      <div class="velocity-kpis-strip">
+        <div class="vel-stat">
+          <span class="vel-lbl">Spread Prom.</span>
+          <strong class="vel-val crm-tabular masked">{{ spreadRateLabel() }}</strong>
+        </div>
+        <div class="vel-stat">
+          <span class="vel-lbl">Tasa Cierre</span>
+          <strong class="vel-val crm-tabular">{{ winRateLabel() }}</strong>
+        </div>
+        <div class="vel-stat">
+          <span class="vel-lbl">Tiempo Cierre</span>
+          <strong class="vel-val crm-tabular">{{ avgCloseLabel() }}</strong>
+        </div>
+      </div>
+
+      <div class="velocity-bars-list">
+        @if (velocityBars().length === 0) {
+          <div class="empty-box">Sin operaciones registradas en este periodo.</div>
+        } @else {
+          @for (bar of velocityBars(); track bar.id) {
+            <div class="velocity-bar-item" data-testid="velocity-bar">
+              <div class="bar-meta">
+                <span class="bar-label">{{ bar.label }}</span>
+                <span class="bar-value crm-tabular masked">{{ bar.formattedValue }}</span>
+              </div>
+              <div class="bar-track">
+                <div
+                  class="bar-fill"
+                  [class]="'bar-fill tone-' + bar.tone"
+                  [style.width.%]="clampPct(bar.ratioPct)"
+                ></div>
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </article>
+  </section>
+
+  <!-- 3. Bottom 28/72 Bento: AI Health Score + Deals Status -->
+  <section class="overview-bento-bot" aria-label="Salud operativa y estado de tratos">
+    <!-- Left 28%: AI Health Score & 1-click Recommendations -->
+    <article class="crm-content-card bento-card">
+      <header class="card-header">
+        <div class="header-titles">
+          <span class="eyebrow">Diagnóstico</span>
+          <h2 class="card-title">AI Health Score</h2>
+        </div>
+        <span class="health-pill crm-tabular" [class]="healthClassification().toneClass">
+          {{ clampedHealthScore() }}% · {{ healthClassification().label }}
+        </span>
+      </header>
+
+      <div class="health-meter-track" role="progressbar" [attr.aria-valuenow]="clampedHealthScore()" aria-valuemin="0" aria-valuemax="100" aria-label="Puntaje de salud AI">
+        <div class="health-meter-fill" [style.width.%]="clampedHealthScore()"></div>
+      </div>
+
+      <div class="recommendations-list" aria-label="Recomendaciones accionables">
+        @if (aiRecommendations().length === 0) {
+          <div class="empty-box">Operación estable. Sin alertas prioritarias.</div>
+        } @else {
+          @for (rec of aiRecommendations(); track rec.id) {
+            <button
+              type="button"
+              class="recommendation-btn"
+              data-testid="health-rec-btn"
+              (click)="recommendationAction.emit(rec)"
+            >
+              <span class="rec-dot" [class]="'rec-dot tone-' + rec.tone" aria-hidden="true"></span>
+              <span class="rec-label">{{ rec.label }}</span>
+              <span class="rec-badge crm-tabular">{{ rec.impactBadge }}</span>
+            </button>
+          }
+        }
+      </div>
+    </article>
+
+    <!-- Right 72%: Deals Status Hairline Table -->
+    <article class="crm-content-card bento-card">
+      <header class="card-header">
+        <div class="header-titles">
+          <span class="eyebrow">Cartera Activa</span>
+          <h2 class="card-title">Deals Status</h2>
+        </div>
+        <span class="count-chip crm-tabular">{{ dealsStatusRows().length }} tratos</span>
+      </header>
+
+      @if (dealsStatusRows().length === 0) {
+        <div class="empty-box">No hay tratos activos para mostrar en esta vista.</div>
+      } @else {
+        <div class="table-scroll">
+          <table class="crm-hairline-table">
+            <thead>
+              <tr>
+                <th scope="col">Contraparte</th>
+                <th scope="col">Último Contacto</th>
+                <th scope="col">Responsable</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of dealsStatusRows(); track row.id) {
+                <tr data-testid="deals-status-row">
+                  <td>
+                    <button
+                      type="button"
+                      class="deal-open-btn"
+                      [attr.data-testid]="'deals-status-open-' + row.id"
+                      (click)="openDealDetail.emit(row)"
+                    >
+                      <span class="deal-counterparty">{{ row.counterparty }}</span>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M7 17 17 7" />
+                        <path d="M7 7h10v10" />
+                      </svg>
+                    </button>
+                  </td>
+                  <td class="muted-cell">{{ row.lastContactLabel }}</td>
+                  <td>
+                    <div class="owner-cell">
+                      <span class="owner-avatar" aria-hidden="true">{{ row.ownerInitials }}</span>
+                      <span>{{ row.ownerLabel }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span [class]="'crm-status-pill tone-' + row.statusTone">
+                      {{ row.statusLabel }}
+                    </span>
+                  </td>
+                  <td class="crm-tabular masked value-cell">{{ row.dealValueFormatted }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </article>
+  </section>
+</div>
