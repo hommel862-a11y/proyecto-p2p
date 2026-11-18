@@ -1,4 +1,13 @@
-import type { ElectronAPI, BacktestRunResult } from '../shared/types';
+import type {
+  ElectronAPI,
+  BacktestRunResult,
+  ArmWorkspaceCode,
+  ArmBankRailRecord,
+  ArmPaymentReceiptInput,
+  ArmPaymentReceiptRecordResult,
+  ArmTreasurySettlementInput,
+  ArmTreasurySettlementResult,
+} from '../shared/types';
 // Type-only, so it is erased at compile time and cannot pull `node:sqlite` (or any
 // other main-process module) into the preload bundle. The reverse direction — the main
 // process importing a type from this file — is deliberately avoided: `electron/tsconfig.json`
@@ -184,6 +193,14 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         ipc('arm:list-shadow-examples', params) as Promise<unknown[]>,
       appendOutboxEvent: (params) => ipc('arm:append-outbox', params) as Promise<unknown>,
       listOutboxSince: (params) => ipc('arm:list-outbox', params) as Promise<unknown[]>,
+      upsertBankRail: (rail: ArmBankRailRecord) =>
+        ipc('arm:upsert-bank-rail', rail) as Promise<ArmBankRailRecord>,
+      listBankRails: (workspaceId: ArmWorkspaceCode) =>
+        ipc('arm:list-bank-rails', workspaceId) as Promise<ArmBankRailRecord[]>,
+      recordPaymentReceipt: (receipt: ArmPaymentReceiptInput) =>
+        ipc('arm:record-payment-receipt', receipt) as Promise<ArmPaymentReceiptRecordResult>,
+      recordTreasurySettlement: (settlement: ArmTreasurySettlementInput) =>
+        ipc('arm:record-treasury-settlement', settlement) as Promise<ArmTreasurySettlementResult>,
     },
   };
 }
@@ -288,6 +305,10 @@ export const ALLOWED_CHANNELS = [
   'arm:list-shadow-examples',
   'arm:append-outbox',
   'arm:list-outbox',
+  'arm:upsert-bank-rail',
+  'arm:list-bank-rails',
+  'arm:record-payment-receipt',
+  'arm:record-treasury-settlement',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels

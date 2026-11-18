@@ -426,6 +426,45 @@ CREATE TABLE IF NOT EXISTS arm_shadow_examples (
 
 CREATE INDEX IF NOT EXISTS idx_arm_shadow_workspace_role ON arm_shadow_examples(workspace_id, agent_role);
 
+CREATE TABLE IF NOT EXISTS arm_bank_rails (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+  bank_name TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  holder_details TEXT,
+  current_balance_fiat REAL NOT NULL DEFAULT 0,
+  max_daily_cap_fiat REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'AVAILABLE',
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_arm_bank_rails_workspace_status ON arm_bank_rails(workspace_id, status);
+
+CREATE TABLE IF NOT EXISTS arm_payment_receipts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL CHECK (workspace_id IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+  bank_rail_id TEXT NOT NULL,
+  reference_code TEXT NOT NULL,
+  amount_fiat REAL NOT NULL DEFAULT 0,
+  deal_id TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE (workspace_id, bank_rail_id, reference_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_arm_payment_receipts_workspace_created ON arm_payment_receipts(workspace_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS arm_treasury_settlements (
+  id TEXT PRIMARY KEY,
+  source_workspace TEXT NOT NULL CHECK (source_workspace IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+  target_workspace TEXT NOT NULL CHECK (target_workspace IN ('ARM_B2B', 'P2P_DESK', 'FINANCE_360')),
+  idempotency_key TEXT UNIQUE NOT NULL,
+  net_profit_usdt REAL NOT NULL,
+  settlement_date TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_arm_treasury_settlements_source_date ON arm_treasury_settlements(source_workspace, settlement_date DESC);
+
 
 
 

@@ -376,6 +376,104 @@ export interface P2PIpcChannels {
     request: { id: string; active?: boolean };
     response: CustomAgentDto | null;
   };
+  'arm:upsert-bank-rail': {
+    request: ArmBankRailRecord;
+    response: ArmBankRailRecord;
+  };
+  'arm:list-bank-rails': {
+    request: ArmWorkspaceCode;
+    response: ArmBankRailRecord[];
+  };
+  'arm:record-payment-receipt': {
+    request: ArmPaymentReceiptInput;
+    response: ArmPaymentReceiptRecordResult;
+  };
+  'arm:record-treasury-settlement': {
+    request: ArmTreasurySettlementInput;
+    response: ArmTreasurySettlementResult;
+  };
+}
+
+export const ARM_WORKSPACES = {
+  ARM_B2B: 'ARM_B2B',
+  P2P_DESK: 'P2P_DESK',
+  FINANCE_360: 'FINANCE_360',
+} as const;
+
+export type ArmWorkspaceCode = (typeof ARM_WORKSPACES)[keyof typeof ARM_WORKSPACES];
+
+export const ARM_BANK_RAIL_STATUSES = {
+  AVAILABLE: 'AVAILABLE',
+  SATURATED: 'SATURATED',
+  COOLDOWN: 'COOLDOWN',
+  DISABLED: 'DISABLED',
+} as const;
+
+export type ArmBankRailStatus =
+  (typeof ARM_BANK_RAIL_STATUSES)[keyof typeof ARM_BANK_RAIL_STATUSES];
+
+export interface ArmBankRailRecord {
+  id: string;
+  workspaceId: ArmWorkspaceCode;
+  bankName: string;
+  currency: string;
+  holderDetails?: string | null;
+  currentBalanceFiat: number;
+  maxDailyCapFiat: number;
+  status?: string;
+  updatedAt?: number;
+}
+
+export interface ArmPaymentReceiptInput {
+  id?: string;
+  workspaceId: ArmWorkspaceCode;
+  bankRailId: string;
+  referenceCode: string;
+  amountFiat?: number;
+  dealId?: string | null;
+  createdAt?: number;
+}
+
+export interface ArmPaymentReceiptRecord {
+  id: string;
+  workspaceId: ArmWorkspaceCode;
+  bankRailId: string;
+  referenceCode: string;
+  amountFiat: number;
+  dealId: string | null;
+  createdAt: number;
+}
+
+export interface ArmPaymentReceiptRecordResult {
+  recorded: boolean;
+  collision: boolean;
+  existingDealId?: string | null;
+}
+
+export interface ArmTreasurySettlementInput {
+  id?: string;
+  sourceWorkspace: ArmWorkspaceCode;
+  targetWorkspace: ArmWorkspaceCode;
+  idempotencyKey: string;
+  netProfitUsdt: number;
+  settlementDate: string;
+  createdAt?: number;
+}
+
+export interface ArmTreasurySettlementRecord {
+  id: string;
+  sourceWorkspace: ArmWorkspaceCode;
+  targetWorkspace: ArmWorkspaceCode;
+  idempotencyKey: string;
+  netProfitUsdt: number;
+  settlementDate: string;
+  createdAt: number;
+}
+
+export interface ArmTreasurySettlementResult {
+  recorded: boolean;
+  duplicate: boolean;
+  settlement: ArmTreasurySettlementRecord;
 }
 
 export interface McpServerRuntimeInfo {
@@ -716,6 +814,12 @@ export interface ElectronAPI {
       sinceId: number;
       workspaceId?: 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
     }): Promise<unknown[]>;
+    upsertBankRail(rail: ArmBankRailRecord): Promise<ArmBankRailRecord>;
+    listBankRails(workspaceId: ArmWorkspaceCode): Promise<ArmBankRailRecord[]>;
+    recordPaymentReceipt(receipt: ArmPaymentReceiptInput): Promise<ArmPaymentReceiptRecordResult>;
+    recordTreasurySettlement(
+      settlement: ArmTreasurySettlementInput,
+    ): Promise<ArmTreasurySettlementResult>;
   };
 }
 

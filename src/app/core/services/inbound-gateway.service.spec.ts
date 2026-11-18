@@ -171,4 +171,115 @@ describe('InboundGatewayService', () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it('fetches storage health and falls back safely when gateway is unreachable', async () => {
+    const originalFetch = globalThis.fetch;
+
+    const okFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        mode: 'POSTGRES',
+        postgresConnected: true,
+        rlsActive: true,
+        pgvectorAvailable: true,
+      }),
+    });
+    globalThis.fetch = okFetch as unknown as typeof fetch;
+
+    const healthy = await service.fetchStorageHealth();
+    expect(okFetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3030/api/arm/health/storage',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(healthy).toEqual({
+      ok: true,
+      mode: 'POSTGRES',
+      postgresConnected: true,
+      rlsActive: true,
+      pgvectorAvailable: true,
+    });
+
+    const failingFetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+    globalThis.fetch = failingFetch as unknown as typeof fetch;
+
+    const fallback = await service.fetchStorageHealth();
+    expect(fallback).toEqual({
+      ok: false,
+      mode: 'MEMORY_FALLBACK',
+      postgresConnected: false,
+      rlsActive: false,
+    });
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it('verifies payment receipts with the gateway and handles collisions and network errors safely', async () => {
+    const originalFetch = globalThis.fetch;
+    const payload = {
+      workspaceId: 'P2P_DESK' as const,
+      bankRailId: 'rail-banesco-1',
+      referenceCode: '88776655',
+      amountFiat: 25000,
+      dealId: 'DEAL-55',
+    };
+
+    const okFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        verified: true,
+        recorded: true,
+        collision: false,
+        mode: 'POSTGRES',
+      }),
+    });
+    globalThis.fetch = okFetch as unknown as typeof fetch;
+
+    const verified = await service.verifyReceiptWithGateway(payload);
+    expect(okFetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:3030/api/arm/receipts/verify',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    );
+    expect(verified).toEqual({
+      ok: true,
+      verified: true,
+      recorded: true,
+      collision: false,
+      existingDealId: null,
+      mode: 'POSTGRES',
+    });
+
+    const conflictFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        recorded: false,
+        collision: true,
+        existingDealId: 'DEAL-10',
+        error: 'DUPLICATE_RECEIPT',
+      }),
+    });
+    globalThis.fetch = conflictFetch as unknown as typeof fetch;
+
+    const collision = await service.verifyReceiptWithGateway(payload);
+    expect(collision.ok).toBe(false);
+    expect(collision.collision).toBe(true);
+    expect(collision.recorded).toBe(false);
+    expect(collision.existingDealId).toBe('DEAL-10');
+
+    const networkErrorFetch = vi.fn().mockRejectedValue(new Error('Gateway timeout'));
+    globalThis.fetch = networkErrorFetch as unknown as typeof fetch;
+
+    const failed = await service.verifyReceiptWithGateway(payload);
+    expect(failed.ok).toBe(false);
+    expect(failed.collision).toBe(false);
+    expect(failed.error).toBe('Gateway timeout');
+
+    globalThis.fetch = originalFetch;
+  });
 });

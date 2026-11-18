@@ -1,6 +1,29 @@
+import crypto from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import {
+  ARM_BANK_RAIL_STATUSES,
+  type ArmWorkspaceCode,
+  type ArmBankRailRecord,
+  type ArmPaymentReceiptInput,
+  type ArmPaymentReceiptRecord,
+  type ArmPaymentReceiptRecordResult,
+  type ArmTreasurySettlementInput,
+  type ArmTreasurySettlementRecord,
+  type ArmTreasurySettlementResult,
+} from '../../shared/types';
 
-export type ArmRepoWorkspaceId = 'ARM_B2B' | 'P2P_DESK' | 'FINANCE_360';
+export type {
+  ArmWorkspaceCode,
+  ArmBankRailRecord,
+  ArmPaymentReceiptInput,
+  ArmPaymentReceiptRecord,
+  ArmPaymentReceiptRecordResult,
+  ArmTreasurySettlementInput,
+  ArmTreasurySettlementRecord,
+  ArmTreasurySettlementResult,
+};
+
+export type ArmRepoWorkspaceId = ArmWorkspaceCode;
 
 export interface ArmLeadRecord {
   id: string;
@@ -68,6 +91,29 @@ function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function requireNonEmptyString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`arm_repository: ${fieldName} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null) return fallback;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function isSqliteUniqueConstraintError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const errWithCode = err as Error & { errcode?: number };
+  return (
+    err.message.includes('UNIQUE constraint failed') ||
+    errWithCode.errcode === 2067 ||
+    errWithCode.errcode === 1555
+  );
 }
 
 export class ArmRepository {
@@ -368,6 +414,273 @@ export class ArmRepository {
       saveAsExample: Number(r['save_as_example'] ?? 0) === 1,
       status: r['status'] as ArmApprovalRecord['status'],
       createdAt: Number(r['created_at']),
+    };
+  }
+
+  /**
+   * Inserts or updates a workspace-scoped bank rail snapshot in the SQLite mirror.
+   */
+  upsertBankRail(rail: ArmBankRailRecord): ArmBankRailRecord {
+    const id = requireNonEmptyString(rail.id, 'id');
+    const bankName = requireNonEmptyString(rail.bankName, 'bankName');
+    const currency = requireNonEmptyString(rail.currency, 'currency');
+    const holderDetails = rail.holderDetails != null ? String(rail.holderDetails) : null;
+    const currentBalanceFiat = toFiniteNumber(rail.currentBalanceFiat, 0);
+    const maxDailyCapFiat = toFiniteNumber(rail.maxDailyCapFiat, 0);
+    const status =
+      typeof rail.status === 'string' && rail.status.trim().length > 0
+        ? rail.status.trim()
+        : ARM_BANK_RAIL_STATUSES.AVAILABLE;
+    const updatedAt = toFiniteNumber(rail.updatedAt, Date.now());
+
+    this.db
+      .prepare(
+        `INSERT INTO arm_bank_rails (
+          id, workspace_id, bank_name, currency, holder_details,
+          current_balance_fiat, max_daily_cap_fiat, status, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          bank_name = excluded.bank_name,
+          currency = excluded.currency,
+          holder_details = excluded.holder_details,
+          current_balance_fiat = excluded.current_balance_fiat,
+          max_daily_cap_fiat = excluded.max_daily_cap_fiat,
+          status = excluded.status,
+          updated_at = excluded.updated_at`,
+      )
+      .run(
+        id,
+        rail.workspaceId,
+        bankName,
+        currency,
+        holderDetails,
+        currentBalanceFiat,
+        maxDailyCapFiat,
+        status,
+        updatedAt,
+      );
+
+    return {
+      id,
+      workspaceId: rail.workspaceId,
+      bankName,
+      currency,
+      holderDetails,
+      currentBalanceFiat,
+      maxDailyCapFiat,
+      status,
+      updatedAt,
+    };
+  }
+
+  /**
+   * Lists all mirrored bank rails for a single workspace silo.
+   */
+  listBankRails(workspaceId: ArmRepoWorkspaceId): ArmBankRailRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM arm_bank_rails
+         WHERE workspace_id = ?
+         ORDER BY updated_at DESC, id ASC`,
+      )
+      .all(workspaceId) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => ({
+      id: String(r['id']),
+      workspaceId: r['workspace_id'] as ArmRepoWorkspaceId,
+      bankName: String(r['bank_name']),
+      currency: String(r['currency']),
+      holderDetails: r['holder_details'] != null ? String(r['holder_details']) : null,
+      currentBalanceFiat: Number(r['current_balance_fiat'] ?? 0),
+      maxDailyCapFiat: Number(r['max_daily_cap_fiat'] ?? 0),
+      status: String(r['status'] || ARM_BANK_RAIL_STATUSES.AVAILABLE),
+      updatedAt: Number(r['updated_at'] ?? 0),
+    }));
+  }
+
+  /**
+   * Atomically records a payment receipt and reports UNIQUE replay collisions.
+   */
+  recordPaymentReceipt(receipt: ArmPaymentReceiptInput): ArmPaymentReceiptRecordResult {
+    const id =
+      typeof receipt.id === 'string' && receipt.id.trim().length > 0
+        ? receipt.id.trim()
+        : `rcp-${crypto.randomUUID()}`;
+    const bankRailId = requireNonEmptyString(receipt.bankRailId, 'bankRailId');
+    const referenceCode = requireNonEmptyString(receipt.referenceCode, 'referenceCode');
+    const amountFiat = toFiniteNumber(receipt.amountFiat, 0);
+    const dealId = receipt.dealId != null ? String(receipt.dealId) : null;
+    const createdAt = toFiniteNumber(receipt.createdAt, Date.now());
+
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO arm_payment_receipts (
+            id, workspace_id, bank_rail_id, reference_code, amount_fiat, deal_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          receipt.workspaceId,
+          bankRailId,
+          referenceCode,
+          amountFiat,
+          dealId,
+          createdAt,
+        );
+
+      return {
+        recorded: true,
+        collision: false,
+      };
+    } catch (err: unknown) {
+      if (!isSqliteUniqueConstraintError(err)) {
+        throw err;
+      }
+
+      const existingByRef = this.db
+        .prepare(
+          `SELECT deal_id FROM arm_payment_receipts
+           WHERE workspace_id = ? AND bank_rail_id = ? AND reference_code = ?
+           LIMIT 1`,
+        )
+        .get(receipt.workspaceId, bankRailId, referenceCode) as
+        | Record<string, unknown>
+        | undefined;
+
+      const existingRow =
+        existingByRef ??
+        (this.db
+          .prepare(`SELECT deal_id FROM arm_payment_receipts WHERE id = ? LIMIT 1`)
+          .get(id) as Record<string, unknown> | undefined);
+
+      return {
+        recorded: false,
+        collision: true,
+        existingDealId:
+          existingRow && existingRow['deal_id'] != null ? String(existingRow['deal_id']) : null,
+      };
+    }
+  }
+
+  /**
+   * Lists recorded payment receipts for a single workspace silo, newest first.
+   */
+  listPaymentReceipts(workspaceId: ArmRepoWorkspaceId, limit = 100): ArmPaymentReceiptRecord[] {
+    const safeLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM arm_payment_receipts
+         WHERE workspace_id = ?
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?`,
+      )
+      .all(workspaceId, safeLimit) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => ({
+      id: String(r['id']),
+      workspaceId: r['workspace_id'] as ArmRepoWorkspaceId,
+      bankRailId: String(r['bank_rail_id']),
+      referenceCode: String(r['reference_code']),
+      amountFiat: Number(r['amount_fiat'] ?? 0),
+      dealId: r['deal_id'] != null ? String(r['deal_id']) : null,
+      createdAt: Number(r['created_at'] ?? 0),
+    }));
+  }
+
+  /**
+   * Persists a cross-silo treasury settlement idempotently via idempotency_key.
+   */
+  recordTreasurySettlement(
+    settlement: ArmTreasurySettlementInput,
+  ): ArmTreasurySettlementResult {
+    const id =
+      typeof settlement.id === 'string' && settlement.id.trim().length > 0
+        ? settlement.id.trim()
+        : `settle-${crypto.randomUUID()}`;
+    const idempotencyKey = requireNonEmptyString(settlement.idempotencyKey, 'idempotencyKey');
+    const settlementDate = requireNonEmptyString(settlement.settlementDate, 'settlementDate');
+    if (
+      typeof settlement.netProfitUsdt !== 'number' ||
+      !Number.isFinite(settlement.netProfitUsdt)
+    ) {
+      throw new Error('arm_repository: netProfitUsdt must be a finite number');
+    }
+    const createdAt = toFiniteNumber(settlement.createdAt, Date.now());
+
+    const info = this.db
+      .prepare(
+        `INSERT INTO arm_treasury_settlements (
+          id, source_workspace, target_workspace, idempotency_key,
+          net_profit_usdt, settlement_date, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(idempotency_key) DO NOTHING`,
+      )
+      .run(
+        id,
+        settlement.sourceWorkspace,
+        settlement.targetWorkspace,
+        idempotencyKey,
+        settlement.netProfitUsdt,
+        settlementDate,
+        createdAt,
+      );
+
+    const existing = this.db
+      .prepare(`SELECT * FROM arm_treasury_settlements WHERE idempotency_key = ? LIMIT 1`)
+      .get(idempotencyKey) as Record<string, unknown> | undefined;
+
+    if (!existing) {
+      throw new Error(`arm_repository: failed to persist settlement for key ${idempotencyKey}`);
+    }
+
+    return {
+      recorded: Number(info.changes) > 0,
+      duplicate: Number(info.changes) === 0,
+      settlement: this.mapTreasurySettlementRow(existing),
+    };
+  }
+
+  /**
+   * Lists treasury settlements, optionally filtered by source workspace.
+   */
+  listTreasurySettlements(
+    sourceWorkspace?: ArmRepoWorkspaceId,
+    limit = 50,
+  ): ArmTreasurySettlementRecord[] {
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+    const rows = (
+      sourceWorkspace
+        ? this.db
+            .prepare(
+              `SELECT * FROM arm_treasury_settlements
+               WHERE source_workspace = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?`,
+            )
+            .all(sourceWorkspace, safeLimit)
+        : this.db
+            .prepare(
+              `SELECT * FROM arm_treasury_settlements
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?`,
+            )
+            .all(safeLimit)
+    ) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => this.mapTreasurySettlementRow(r));
+  }
+
+  private mapTreasurySettlementRow(r: Record<string, unknown>): ArmTreasurySettlementRecord {
+    return {
+      id: String(r['id']),
+      sourceWorkspace: r['source_workspace'] as ArmRepoWorkspaceId,
+      targetWorkspace: r['target_workspace'] as ArmRepoWorkspaceId,
+      idempotencyKey: String(r['idempotency_key']),
+      netProfitUsdt: Number(r['net_profit_usdt'] ?? 0),
+      settlementDate: String(r['settlement_date']),
+      createdAt: Number(r['created_at'] ?? 0),
     };
   }
 }

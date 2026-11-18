@@ -1,18 +1,23 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import { createHmac } from 'crypto';
-import type {
-  P2PIpcChannels,
-  BinanceSearchParams,
-  BinanceC2cOrdersFetchRequest,
-  CotizaveRequest,
-  BybitP2pFetchRequest,
-  ElDoradoQuoteRequest,
-  BacktestRunRequest,
-  BacktestRunResult,
-  ScreenPipeSource,
-  AlphaWatcherConfigDto,
-  TreasurySnapshotDto,
+import {
+  ARM_WORKSPACES,
+  type P2PIpcChannels,
+  type BinanceSearchParams,
+  type BinanceC2cOrdersFetchRequest,
+  type CotizaveRequest,
+  type BybitP2pFetchRequest,
+  type ElDoradoQuoteRequest,
+  type BacktestRunRequest,
+  type BacktestRunResult,
+  type ScreenPipeSource,
+  type AlphaWatcherConfigDto,
+  type TreasurySnapshotDto,
+  type ArmWorkspaceCode,
+  type ArmBankRailRecord,
+  type ArmPaymentReceiptInput,
+  type ArmTreasurySettlementInput,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { parseCloseCyclePayload } from '../db/decision-journal.repository';
@@ -1668,6 +1673,61 @@ export function registerIpcHandlers(): void {
       return db.getArmRepo().listOutboxSince(params.sinceId, params.workspaceId);
     },
   );
+
+  ipcMain.removeHandler('arm:upsert-bank-rail');
+  ipcMain.handle('arm:upsert-bank-rail', async (_event: IpcMainInvokeEvent, rail: unknown) => {
+    const payload = assertRecordPayload(rail, 'arm:upsert-bank-rail');
+    assertArmWorkspaceCode(payload['workspaceId'], 'workspaceId');
+    return db.getArmRepo().upsertBankRail(payload as unknown as ArmBankRailRecord);
+  });
+
+  ipcMain.removeHandler('arm:list-bank-rails');
+  ipcMain.handle(
+    'arm:list-bank-rails',
+    async (_event: IpcMainInvokeEvent, workspaceId: unknown) => {
+      const validWorkspace = assertArmWorkspaceCode(workspaceId, 'workspaceId');
+      return db.getArmRepo().listBankRails(validWorkspace);
+    },
+  );
+
+  ipcMain.removeHandler('arm:record-payment-receipt');
+  ipcMain.handle(
+    'arm:record-payment-receipt',
+    async (_event: IpcMainInvokeEvent, receipt: unknown) => {
+      const payload = assertRecordPayload(receipt, 'arm:record-payment-receipt');
+      assertArmWorkspaceCode(payload['workspaceId'], 'workspaceId');
+      return db.getArmRepo().recordPaymentReceipt(payload as unknown as ArmPaymentReceiptInput);
+    },
+  );
+
+  ipcMain.removeHandler('arm:record-treasury-settlement');
+  ipcMain.handle(
+    'arm:record-treasury-settlement',
+    async (_event: IpcMainInvokeEvent, settlement: unknown) => {
+      const payload = assertRecordPayload(settlement, 'arm:record-treasury-settlement');
+      assertArmWorkspaceCode(payload['sourceWorkspace'], 'sourceWorkspace');
+      assertArmWorkspaceCode(payload['targetWorkspace'], 'targetWorkspace');
+      return db
+        .getArmRepo()
+        .recordTreasurySettlement(payload as unknown as ArmTreasurySettlementInput);
+    },
+  );
+}
+
+const VALID_ARM_WORKSPACES = new Set<string>(Object.values(ARM_WORKSPACES));
+
+function assertArmWorkspaceCode(value: unknown, fieldName: string): ArmWorkspaceCode {
+  if (typeof value !== 'string' || !VALID_ARM_WORKSPACES.has(value)) {
+    throw new Error(`arm_ipc: invalid ${fieldName}`);
+  }
+  return value as ArmWorkspaceCode;
+}
+
+function assertRecordPayload(value: unknown, channel: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`arm_ipc: invalid payload for ${channel}`);
+  }
+  return value as Record<string, unknown>;
 }
 
 let dbInstance: P2PDatabaseService | null = null;

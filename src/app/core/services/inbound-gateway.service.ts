@@ -10,8 +10,49 @@ import type {
 
 export type GatewayConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
+export const GATEWAY_STORAGE_MODES = {
+  POSTGRES: 'POSTGRES',
+  MEMORY_FALLBACK: 'MEMORY_FALLBACK',
+} as const;
+
+export type GatewayStorageMode =
+  (typeof GATEWAY_STORAGE_MODES)[keyof typeof GATEWAY_STORAGE_MODES];
+
+export interface GatewayStorageHealth {
+  ok: boolean;
+  mode: GatewayStorageMode | string;
+  postgresConnected: boolean;
+  rlsActive: boolean;
+  pgvectorAvailable?: boolean;
+}
+
+export interface VerifyGatewayReceiptPayload {
+  workspaceId: ArmWorkspaceId;
+  bankRailId: string;
+  referenceCode: string;
+  amountFiat?: number;
+  dealId?: string | null;
+}
+
+export interface VerifyGatewayReceiptResult {
+  ok: boolean;
+  verified: boolean;
+  recorded: boolean;
+  collision: boolean;
+  existingDealId?: string | null;
+  mode?: GatewayStorageMode | string;
+  error?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class InboundGatewayService implements OnDestroy {
+  private static readonly STORAGE_HEALTH_FALLBACK: GatewayStorageHealth = {
+    ok: false,
+    mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+    postgresConnected: false,
+    rlsActive: false,
+  };
+
   private eventSource: EventSource | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
@@ -25,6 +66,7 @@ export class InboundGatewayService implements OnDestroy {
   readonly lastOutboxEventId = signal<number>(0);
   readonly lastArmEvent = signal<ArmOutboxSseEvent | null>(null);
   readonly lastError = signal<string | null>(null);
+  readonly storageHealth = signal<GatewayStorageHealth | null>(null);
 
   // Observable stream for event consumers
   private readonly receiptSubject = new Subject<InboundReceiptEvent>();
@@ -219,6 +261,100 @@ export class InboundGatewayService implements OnDestroy {
       return (await res.json()) as { success: boolean; outboxEventId?: number };
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Queries gateway PostgreSQL / RLS / pgvector storage health with safe memory-fallback state on network failure.
+   */
+  async fetchStorageHealth(targetUrl?: string): Promise<GatewayStorageHealth> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/api/arm/health/storage`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) {
+        const fallback = { ...InboundGatewayService.STORAGE_HEALTH_FALLBACK };
+        this.storageHealth.set(fallback);
+        return fallback;
+      }
+
+      const data = (await res.json()) as Partial<GatewayStorageHealth>;
+      const health: GatewayStorageHealth = {
+        ok: data.ok ?? true,
+        mode:
+          data.mode ??
+          (data.postgresConnected
+            ? GATEWAY_STORAGE_MODES.POSTGRES
+            : GATEWAY_STORAGE_MODES.MEMORY_FALLBACK),
+        postgresConnected: Boolean(data.postgresConnected),
+        rlsActive: Boolean(data.rlsActive),
+        ...(typeof data.pgvectorAvailable === 'boolean'
+          ? { pgvectorAvailable: data.pgvectorAvailable }
+          : {}),
+      };
+      this.storageHealth.set(health);
+      return health;
+    } catch {
+      const fallback = { ...InboundGatewayService.STORAGE_HEALTH_FALLBACK };
+      this.storageHealth.set(fallback);
+      return fallback;
+    }
+  }
+
+  /**
+   * Verifies a payment reference against the gateway anti-replay ledger with safe error handling.
+   */
+  async verifyReceiptWithGateway(
+    payload: VerifyGatewayReceiptPayload,
+  ): Promise<VerifyGatewayReceiptResult> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/arm/receipts/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(4000),
+      });
+
+      let data: Partial<VerifyGatewayReceiptResult> | null = null;
+      try {
+        data = (await res.json()) as Partial<VerifyGatewayReceiptResult>;
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok) {
+        const collision = Boolean(data?.collision);
+        return {
+          ok: false,
+          verified: false,
+          recorded: false,
+          collision,
+          ...(collision ? { existingDealId: data?.existingDealId ?? null } : {}),
+          ...(data?.mode ? { mode: data.mode } : {}),
+          error: data?.error || `HTTP ${res.status}`,
+        };
+      }
+
+      const collision = Boolean(data?.collision);
+      return {
+        ok: data?.ok ?? !collision,
+        verified: data?.verified ?? !collision,
+        recorded: data?.recorded ?? !collision,
+        collision,
+        existingDealId: data?.existingDealId ?? null,
+        ...(data?.mode ? { mode: data.mode } : {}),
+        ...(data?.error ? { error: data.error } : {}),
+      };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        verified: false,
+        recorded: false,
+        collision: false,
+        error: err instanceof Error ? err.message : 'Error de conexión',
+      };
     }
   }
 

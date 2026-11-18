@@ -132,4 +132,193 @@ describe('ArmRepository (SQLite Multi-Workspace Mirror)', () => {
     expect(replayed).toHaveLength(1);
     expect(replayed[0].aggregateId).toBe('app-2');
   });
+
+  it('upserts and lists bank rails strictly isolated by workspace_id', () => {
+    const first = repo.upsertBankRail({
+      id: 'rail-banesco-1',
+      workspaceId: 'P2P_DESK',
+      bankName: 'Banesco',
+      currency: 'VES',
+      holderDetails: 'Titular Mesa P2P · J-12345678-0',
+      currentBalanceFiat: 120000,
+      maxDailyCapFiat: 500000,
+      status: 'AVAILABLE',
+      updatedAt: 1700000001000,
+    });
+
+    repo.upsertBankRail({
+      id: 'rail-mercantil-360',
+      workspaceId: 'FINANCE_360',
+      bankName: 'Mercantil',
+      currency: 'VES',
+      holderDetails: 'Cuenta Finanzas 360',
+      currentBalanceFiat: 45000,
+      maxDailyCapFiat: 250000,
+      status: 'AVAILABLE',
+      updatedAt: 1700000002000,
+    });
+
+    expect(first.status).toBe('AVAILABLE');
+
+    // Update existing bank rail without creating duplicates
+    const updated = repo.upsertBankRail({
+      id: 'rail-banesco-1',
+      workspaceId: 'P2P_DESK',
+      bankName: 'Banesco',
+      currency: 'VES',
+      holderDetails: 'Titular Mesa P2P · J-12345678-0',
+      currentBalanceFiat: 185000,
+      maxDailyCapFiat: 500000,
+      status: 'SATURATED',
+      updatedAt: 1700000003000,
+    });
+    expect(updated.currentBalanceFiat).toBe(185000);
+    expect(updated.status).toBe('SATURATED');
+
+    const p2pRails = repo.listBankRails('P2P_DESK');
+    const f360Rails = repo.listBankRails('FINANCE_360');
+    const b2bRails = repo.listBankRails('ARM_B2B');
+
+    expect(p2pRails).toHaveLength(1);
+    expect(p2pRails[0].currentBalanceFiat).toBe(185000);
+    expect(p2pRails[0].status).toBe('SATURATED');
+    expect(f360Rails).toHaveLength(1);
+    expect(f360Rails[0].bankName).toBe('Mercantil');
+    expect(b2bRails).toHaveLength(0);
+  });
+
+  it('records payment receipts with atomic UNIQUE anti-replay and workspace isolation', () => {
+    const first = repo.recordPaymentReceipt({
+      id: 'rcp-1',
+      workspaceId: 'P2P_DESK',
+      bankRailId: 'rail-banesco-1',
+      referenceCode: '  88776655  ',
+      amountFiat: 25000,
+      dealId: 'DEAL-101',
+      createdAt: 1700000010000,
+    });
+    expect(first).toEqual({ recorded: true, collision: false });
+
+    // Replay same (workspace_id, bank_rail_id, reference_code) with different id and dealId
+    const collision = repo.recordPaymentReceipt({
+      id: 'rcp-2',
+      workspaceId: 'P2P_DESK',
+      bankRailId: 'rail-banesco-1',
+      referenceCode: '88776655',
+      amountFiat: 25000,
+      dealId: 'DEAL-999',
+      createdAt: 1700000020000,
+    });
+    expect(collision).toEqual({
+      recorded: false,
+      collision: true,
+      existingDealId: 'DEAL-101',
+    });
+
+    // Different workspace with same bank_rail_id + reference_code must succeed (silo isolation)
+    const otherWorkspace = repo.recordPaymentReceipt({
+      id: 'rcp-3',
+      workspaceId: 'FINANCE_360',
+      bankRailId: 'rail-banesco-1',
+      referenceCode: '88776655',
+      amountFiat: 25000,
+      dealId: null,
+      createdAt: 1700000030000,
+    });
+    expect(otherWorkspace).toEqual({ recorded: true, collision: false });
+
+    // Collision when existing row has null dealId returns existingDealId: null
+    const nullDealCollision = repo.recordPaymentReceipt({
+      id: 'rcp-4',
+      workspaceId: 'FINANCE_360',
+      bankRailId: 'rail-banesco-1',
+      referenceCode: '88776655',
+      amountFiat: 25000,
+      dealId: 'DEAL-OTHER',
+    });
+    expect(nullDealCollision).toEqual({
+      recorded: false,
+      collision: true,
+      existingDealId: null,
+    });
+
+    // Invalid workspace must fail closed (CHECK constraint) instead of returning collision
+    expect(() =>
+      repo.recordPaymentReceipt({
+        id: 'rcp-invalid',
+        workspaceId: 'UNKNOWN_SILO' as never,
+        bankRailId: 'rail-banesco-1',
+        referenceCode: '11223344',
+        amountFiat: 100,
+      }),
+    ).toThrow();
+
+    const p2pReceipts = repo.listPaymentReceipts('P2P_DESK', 10);
+    expect(p2pReceipts).toHaveLength(1);
+    expect(p2pReceipts[0].referenceCode).toBe('88776655');
+    expect(p2pReceipts[0].dealId).toBe('DEAL-101');
+  });
+
+  it('records treasury settlements idempotently by idempotency_key', () => {
+    const first = repo.recordTreasurySettlement({
+      id: 'SETTLE-2026-11-18',
+      sourceWorkspace: 'P2P_DESK',
+      targetWorkspace: 'FINANCE_360',
+      idempotencyKey: 'settle:P2P_DESK:FINANCE_360:2026-11-18',
+      netProfitUsdt: 412.55,
+      settlementDate: '2026-11-18',
+      createdAt: 1700000050000,
+    });
+
+    expect(first.recorded).toBe(true);
+    expect(first.duplicate).toBe(false);
+    expect(first.settlement.netProfitUsdt).toBe(412.55);
+
+    const replay = repo.recordTreasurySettlement({
+      id: 'SETTLE-2026-11-18-DUP',
+      sourceWorkspace: 'P2P_DESK',
+      targetWorkspace: 'FINANCE_360',
+      idempotencyKey: 'settle:P2P_DESK:FINANCE_360:2026-11-18',
+      netProfitUsdt: 999.99,
+      settlementDate: '2026-11-18',
+      createdAt: 1700000060000,
+    });
+
+    expect(replay.recorded).toBe(false);
+    expect(replay.duplicate).toBe(true);
+    expect(replay.settlement.id).toBe('SETTLE-2026-11-18');
+    expect(replay.settlement.netProfitUsdt).toBe(412.55);
+
+    const countRow = db
+      .prepare('SELECT COUNT(*) AS cnt FROM arm_treasury_settlements')
+      .get() as { cnt: number };
+    expect(countRow.cnt).toBe(1);
+
+    const settlements = repo.listTreasurySettlements('P2P_DESK');
+    expect(settlements).toHaveLength(1);
+    expect(settlements[0].idempotencyKey).toBe('settle:P2P_DESK:FINANCE_360:2026-11-18');
+    expect(repo.listTreasurySettlements('FINANCE_360')).toHaveLength(0);
+  });
+
+  it('keeps schema.sql and database.ts fallback DDL identical for new ARM mirror tables', () => {
+    const schemaSql = fs.readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf8');
+    const databaseTs = fs.readFileSync(path.resolve(__dirname, 'database.ts'), 'utf8');
+
+    const normalize = (sql: string) => sql.replace(/\s+/g, ' ').trim();
+    const startMarker = 'CREATE TABLE IF NOT EXISTS arm_bank_rails';
+    const endMarker =
+      'CREATE INDEX IF NOT EXISTS idx_arm_treasury_settlements_source_date ON arm_treasury_settlements(source_workspace, settlement_date DESC);';
+
+    const schemaSlice = schemaSql.slice(
+      schemaSql.indexOf(startMarker),
+      schemaSql.indexOf(endMarker) + endMarker.length,
+    );
+    const dbSlice = databaseTs.slice(
+      databaseTs.indexOf(startMarker),
+      databaseTs.indexOf(endMarker) + endMarker.length,
+    );
+
+    expect(schemaSlice.length).toBeGreaterThan(0);
+    expect(normalize(dbSlice)).toBe(normalize(schemaSlice));
+  });
 });

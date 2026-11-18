@@ -439,4 +439,103 @@ describe('Electron preload bridge (secure IPC)', () => {
     expect(ALLOWED_CHANNELS as readonly string[]).toContain('arm:resolve-approval');
     expect(ALLOWED_CHANNELS as readonly string[]).toContain('arm:list-shadow-examples');
   });
+
+  it('forwards ARM bank rail, payment receipt, and treasury settlement channels via ALLOWED_CHANNELS', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'arm:list-bank-rails') {
+        return Promise.resolve([{ id: 'rail-1', workspaceId: 'P2P_DESK', bankName: 'Banesco' }]);
+      }
+      if (channel === 'arm:record-payment-receipt') {
+        return Promise.resolve({ recorded: false, collision: true, existingDealId: 'DEAL-1' });
+      }
+      if (channel === 'arm:record-treasury-settlement') {
+        return Promise.resolve({
+          recorded: true,
+          duplicate: false,
+          settlement: {
+            id: 'SETTLE-1',
+            sourceWorkspace: 'P2P_DESK',
+            targetWorkspace: 'FINANCE_360',
+            idempotencyKey: 'k1',
+            netProfitUsdt: 150,
+            settlementDate: '2026-11-18',
+            createdAt: 1700000000000,
+          },
+        });
+      }
+      return Promise.resolve({ id: 'rail-1' });
+    });
+
+    const railPayload = {
+      id: 'rail-1',
+      workspaceId: 'P2P_DESK' as const,
+      bankName: 'Banesco',
+      currency: 'VES',
+      holderDetails: 'Titular',
+      currentBalanceFiat: 50000,
+      maxDailyCapFiat: 200000,
+      status: 'AVAILABLE',
+    };
+    await api.arm?.upsertBankRail(railPayload);
+    const listed = await api.arm?.listBankRails('P2P_DESK');
+    const receiptRes = await api.arm?.recordPaymentReceipt({
+      workspaceId: 'P2P_DESK',
+      bankRailId: 'rail-1',
+      referenceCode: '99887766',
+      amountFiat: 12000,
+      dealId: 'DEAL-2',
+    });
+    const settlementRes = await api.arm?.recordTreasurySettlement({
+      id: 'SETTLE-1',
+      sourceWorkspace: 'P2P_DESK',
+      targetWorkspace: 'FINANCE_360',
+      idempotencyKey: 'k1',
+      netProfitUsdt: 150,
+      settlementDate: '2026-11-18',
+    });
+
+    expect(listed).toHaveLength(1);
+    expect(receiptRes).toEqual({ recorded: false, collision: true, existingDealId: 'DEAL-1' });
+    expect(settlementRes?.recorded).toBe(true);
+    expect(calls).toEqual([
+      { channel: 'arm:upsert-bank-rail', args: [railPayload] },
+      { channel: 'arm:list-bank-rails', args: ['P2P_DESK'] },
+      {
+        channel: 'arm:record-payment-receipt',
+        args: [
+          {
+            workspaceId: 'P2P_DESK',
+            bankRailId: 'rail-1',
+            referenceCode: '99887766',
+            amountFiat: 12000,
+            dealId: 'DEAL-2',
+          },
+        ],
+      },
+      {
+        channel: 'arm:record-treasury-settlement',
+        args: [
+          {
+            id: 'SETTLE-1',
+            sourceWorkspace: 'P2P_DESK',
+            targetWorkspace: 'FINANCE_360',
+            idempotencyKey: 'k1',
+            netProfitUsdt: 150,
+            settlementDate: '2026-11-18',
+          },
+        ],
+      },
+    ]);
+
+    for (const ch of [
+      'arm:upsert-bank-rail',
+      'arm:list-bank-rails',
+      'arm:record-payment-receipt',
+      'arm:record-treasury-settlement',
+    ]) {
+      expect(ALLOWED_CHANNELS as readonly string[]).toContain(ch);
+    }
+  });
 });
