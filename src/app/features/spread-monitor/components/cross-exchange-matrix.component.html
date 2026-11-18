@@ -1,26 +1,25 @@
-<div class="terminal-input-card" style="margin-bottom: 24px;">
-  <div class="terminal-card-header">
+<div class="terminal-input-card matrix-shell">
+  <div class="terminal-card-header matrix-header">
     <div class="card-header-title">
-      <span class="card-icon">🌐</span>
+      <span class="card-icon" aria-hidden="true">🌐</span>
       <span class="card-title">Matriz de Arbitraje Espacial Multi-Exchange</span>
     </div>
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+
+    <div class="matrix-header-actions">
       <span class="badge badge-accent">Binance • Bybit • El Dorado</span>
       <button
         type="button"
-        class="btn-ghost"
+        class="btn-ghost matrix-action-btn"
         [attr.aria-expanded]="showApiConfig()"
         (click)="showApiConfig.set(!showApiConfig())"
-        style="font-size: 0.75rem; padding: 2px 10px;"
         title="Mostrar u ocultar credenciales API de Bybit y El Dorado"
       >
         ⚙️ {{ showApiConfig() ? 'Ocultar APIs' : 'Configurar APIs' }}
       </button>
       <button
         type="button"
-        class="btn-ghost"
+        class="btn-ghost matrix-action-btn"
         (click)="refreshLiveRates()"
-        style="font-size: 0.75rem; padding: 2px 8px;"
         title="Sincronizar cotizaciones"
       >
         🔄 Sincronizar
@@ -30,113 +29,109 @@
 
   <!-- Collapsible Credentials Config (Bybit + El Dorado) -->
   @if (showApiConfig()) {
-  <div class="terminal-input-grid grid-2" style="margin-bottom: 18px; padding: 12px 0 4px;">
-    <div class="terminal-field">
-      <div class="terminal-label">
-        <span>Bybit P2P — Credenciales</span>
-        <span class="terminal-subtext" title="{{ bybit.statusText() }}">{{ bybit.statusText() }}</span>
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <input
-          type="password"
-          class="terminal-input font-mono"
-          style="flex: 1 1 140px;"
-          placeholder="API Key"
-          [ngModel]="bybitApiKeyInput()"
-          (ngModelChange)="bybitApiKeyInput.set($event)"
-          autocomplete="new-password"
-        />
-        <input
-          type="password"
-          class="terminal-input font-mono"
-          style="flex: 1 1 140px;"
-          placeholder="API Secret"
-          [ngModel]="bybitApiSecretInput()"
-          (ngModelChange)="bybitApiSecretInput.set($event)"
-          autocomplete="new-password"
-        />
-        <button
-          type="button"
-          class="btn-ghost"
-          (click)="saveBybitCredentials()"
-          style="font-size: 0.72rem;"
-        >
-          Guardar
-        </button>
-        @if (bybit.configured()) {
+    <div class="terminal-input-grid grid-2 matrix-creds-panel">
+      <div class="terminal-field">
+        <div class="terminal-label">
+          <span>Bybit P2P — Credenciales</span>
+          <span class="terminal-subtext" [title]="bybit.statusText()">{{ bybit.statusText() }}</span>
+        </div>
+        <div class="creds-row">
+          <input
+            type="password"
+            class="terminal-input font-mono cred-input"
+            placeholder="API Key"
+            aria-label="Bybit API Key"
+            [ngModel]="bybitApiKeyInput()"
+            (ngModelChange)="bybitApiKeyInput.set($event)"
+            autocomplete="new-password"
+          />
+          <input
+            type="password"
+            class="terminal-input font-mono cred-input"
+            placeholder="API Secret"
+            aria-label="Bybit API Secret"
+            [ngModel]="bybitApiSecretInput()"
+            (ngModelChange)="bybitApiSecretInput.set($event)"
+            autocomplete="new-password"
+          />
           <button
             type="button"
-            class="btn-ghost"
-            (click)="clearBybitCredentials()"
-            style="font-size: 0.72rem;"
+            class="btn-ghost cred-btn"
+            (click)="saveBybitCredentials()"
           >
-            Quitar
+            Guardar
           </button>
-        }
+          @if (bybit.configured()) {
+            <button
+              type="button"
+              class="btn-ghost cred-btn"
+              (click)="clearBybitCredentials()"
+            >
+              Quitar
+            </button>
+          }
+        </div>
       </div>
-    </div>
 
-    <div class="terminal-field">
-      <div class="terminal-label">
-        <span>El Dorado — Cuenta API</span>
-        <span class="terminal-subtext" title="{{ elDorado.statusText() }}">{{ elDorado.statusText() }}</span>
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <input
-          type="password"
-          class="terminal-input font-mono"
-          style="flex: 1 1 120px;"
-          placeholder="Client ID"
-          [ngModel]="eldoradoClientIdInput()"
-          (ngModelChange)="eldoradoClientIdInput.set($event)"
-          autocomplete="new-password"
-        />
-        <input
-          type="password"
-          class="terminal-input font-mono"
-          style="flex: 1 1 120px;"
-          placeholder="Referral ID"
-          [ngModel]="eldoradoReferralIdInput()"
-          (ngModelChange)="eldoradoReferralIdInput.set($event)"
-          autocomplete="new-password"
-        />
-        <input
-          type="password"
-          class="terminal-input font-mono"
-          style="flex: 1 1 120px;"
-          placeholder="API Key (opcional)"
-          [ngModel]="eldoradoApiKeyInput()"
-          (ngModelChange)="eldoradoApiKeyInput.set($event)"
-          autocomplete="new-password"
-        />
-        <button
-          type="button"
-          class="btn-ghost"
-          (click)="saveElDoradoCredentials()"
-          style="font-size: 0.72rem;"
-        >
-          Guardar
-        </button>
-        @if (elDorado.configured()) {
+      <div class="terminal-field">
+        <div class="terminal-label">
+          <span>El Dorado — Cuenta API</span>
+          <span class="terminal-subtext" [title]="elDorado.statusText()">{{ elDorado.statusText() }}</span>
+        </div>
+        <div class="creds-row">
+          <input
+            type="password"
+            class="terminal-input font-mono cred-input-sm"
+            placeholder="Client ID"
+            aria-label="El Dorado Client ID"
+            [ngModel]="eldoradoClientIdInput()"
+            (ngModelChange)="eldoradoClientIdInput.set($event)"
+            autocomplete="new-password"
+          />
+          <input
+            type="password"
+            class="terminal-input font-mono cred-input-sm"
+            placeholder="Referral ID"
+            aria-label="El Dorado Referral ID"
+            [ngModel]="eldoradoReferralIdInput()"
+            (ngModelChange)="eldoradoReferralIdInput.set($event)"
+            autocomplete="new-password"
+          />
+          <input
+            type="password"
+            class="terminal-input font-mono cred-input-sm"
+            placeholder="API Key (opcional)"
+            aria-label="El Dorado API Key opcional"
+            [ngModel]="eldoradoApiKeyInput()"
+            (ngModelChange)="eldoradoApiKeyInput.set($event)"
+            autocomplete="new-password"
+          />
           <button
             type="button"
-            class="btn-ghost"
-            (click)="clearElDoradoCredentials()"
-            style="font-size: 0.72rem;"
+            class="btn-ghost cred-btn"
+            (click)="saveElDoradoCredentials()"
           >
-            Quitar
+            Guardar
           </button>
-        }
+          @if (elDorado.configured()) {
+            <button
+              type="button"
+              class="btn-ghost cred-btn"
+              (click)="clearElDoradoCredentials()"
+            >
+              Quitar
+            </button>
+          }
+        </div>
       </div>
     </div>
-  </div>
   }
 
   <!-- Controls Grid -->
-  <div class="terminal-input-grid grid-3" style="margin-bottom: 18px;">
+  <div class="terminal-input-grid grid-3 matrix-controls-grid">
     <div class="terminal-field">
       <label class="terminal-label" for="cross-capital-input">
-        <span>Capital a Operar (USDT)</span>
+        <span>Capital a Operar ({{ activeAsset() }})</span>
         <span class="terminal-subtext">Volumen por ciclo espacial</span>
       </label>
       <div class="input-control-wrap">
@@ -191,13 +186,13 @@
   </div>
 
   <!-- Live Comparison Table by Exchange -->
-  <div class="terminal-card-header" style="padding-top: 10px; margin-bottom: 8px;">
-    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text);">
-      📊 Puntas de Mercado por Plataforma (USDT / VES)
+  <div class="terminal-card-header matrix-section-head">
+    <span class="matrix-section-title">
+      📊 Puntas de Mercado por Plataforma ({{ activeAsset() }} / {{ activeFiat() }})
     </span>
   </div>
 
-  <div style="overflow-x: auto; margin-bottom: 20px;">
+  <div class="matrix-table-scroll matrix-quotes-scroll">
     <table class="matrix-table">
       <thead>
         <tr>
@@ -211,124 +206,142 @@
       </thead>
       <tbody>
         <tr>
-          <td>
-            <span class="badge font-mono" style="background: rgba(243, 186, 47, 0.15); color: #f3ba2f; border: 1px solid rgba(243, 186, 47, 0.4);">
-              BINANCE P2P
-            </span>
+          <td data-label="Exchange">
+            <span class="badge font-mono ex-badge ex-binance">BINANCE P2P</span>
           </td>
-          <td>
-            <strong class="font-mono font-bold" style="color: var(--text);">
-              {{ binanceBuyPrice() | number: '1.2-2' }} VES
-            </strong>
+          <td data-label="Mejor Compra (Ask)">
+            @if (binanceBuyPrice() > 0) {
+              <strong class="font-mono price-primary">
+                {{ binanceBuyPrice() | number: '1.2-2' }} {{ activeFiat() }}
+              </strong>
+            } @else {
+              <span class="font-mono no-feed-value">Sin feed</span>
+            }
           </td>
-          <td>
-            <strong class="font-mono font-bold" style="color: var(--gold);">
-              {{ binanceSellPrice() | number: '1.2-2' }} VES
-            </strong>
+          <td data-label="Mejor Venta (Bid)">
+            @if (binanceSellPrice() > 0) {
+              <strong class="font-mono price-gold">
+                {{ binanceSellPrice() | number: '1.2-2' }} {{ activeFiat() }}
+              </strong>
+            } @else {
+              <span class="font-mono no-feed-value">Sin feed</span>
+            }
           </td>
-          <td>
-            <span class="font-mono" style="font-size: 0.78rem;">
-              {{ calculateSpreadPct(binanceBuyPrice(), binanceSellPrice()) | number: '1.2-2' }}%
-            </span>
+          <td data-label="Spread Plataforma">
+            @if (hasBinanceFeed()) {
+              <span class="font-mono spread-val">
+                {{ calculateSpreadPct(binanceBuyPrice(), binanceSellPrice()) | number: '1.2-2' }}%
+              </span>
+            } @else {
+              <span class="font-mono no-feed-value">N/D</span>
+            }
           </td>
-          <td>
-            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.20 BEP20</span>
+          <td data-label="Tarifa Taker / Retiro">
+            <span class="text-muted font-mono fee-val">{{ withdrawalFeeLabel('BINANCE') }}</span>
           </td>
-          <td>
-            <span class="badge badge-accent" style="font-size: 0.68rem;">EN VIVO (API)</span>
+          <td data-label="Estado Conexión">
+            @if (hasBinanceFeed()) {
+              <span class="badge badge-accent status-badge">EN VIVO (API)</span>
+            } @else {
+              <span class="badge badge-offline status-badge">SIN FEED</span>
+            }
           </td>
         </tr>
 
         <tr>
-          <td>
-            <span class="badge font-mono" style="background: rgba(255, 126, 0, 0.15); color: #ff7e00; border: 1px solid rgba(255, 126, 0, 0.4);">
-              BYBIT P2P
-            </span>
+          <td data-label="Exchange">
+            <span class="badge font-mono ex-badge ex-bybit">BYBIT P2P</span>
           </td>
-          <td>
-            <div class="input-control-wrap" style="max-width: 130px;">
+          <td data-label="Mejor Compra (Ask)">
+            <div class="input-control-wrap price-input-wrap">
               <input
                 type="number"
-                class="terminal-input font-mono"
-                style="padding: 3px 6px; font-size: 0.78rem;"
+                class="terminal-input font-mono price-input"
+                aria-label="Mejor compra Bybit"
                 [ngModel]="bybitBuyPrice()"
                 (ngModelChange)="setBybitBuyPrice($event)"
                 step="0.1"
               />
             </div>
           </td>
-          <td>
-            <div class="input-control-wrap" style="max-width: 130px;">
+          <td data-label="Mejor Venta (Bid)">
+            <div class="input-control-wrap price-input-wrap">
               <input
                 type="number"
-                class="terminal-input font-mono"
-                style="padding: 3px 6px; font-size: 0.78rem;"
+                class="terminal-input font-mono price-input"
+                aria-label="Mejor venta Bybit"
                 [ngModel]="bybitSellPrice()"
                 (ngModelChange)="setBybitSellPrice($event)"
                 step="0.1"
               />
             </div>
           </td>
-          <td>
-            <span class="font-mono" style="font-size: 0.78rem;">
-              {{ calculateSpreadPct(bybitBuyPrice(), bybitSellPrice()) | number: '1.2-2' }}%
-            </span>
-          </td>
-          <td>
-            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.25 BEP20</span>
-          </td>
-          <td>
-            @if (bybit.mode() === 'live') {
-              <span class="badge badge-accent" style="font-size: 0.68rem;" title="{{ bybit.statusText() }}">EN VIVO</span>
+          <td data-label="Spread Plataforma">
+            @if (hasBybitPrices()) {
+              <span class="font-mono spread-val">
+                {{ calculateSpreadPct(bybitBuyPrice(), bybitSellPrice()) | number: '1.2-2' }}%
+              </span>
             } @else {
-              <span class="badge badge-secondary" style="font-size: 0.68rem;" title="{{ bybit.statusText() }}">DEMO</span>
+              <span class="font-mono no-feed-value">N/D</span>
+            }
+          </td>
+          <td data-label="Tarifa Taker / Retiro">
+            <span class="text-muted font-mono fee-val">{{ withdrawalFeeLabel('BYBIT') }}</span>
+          </td>
+          <td data-label="Estado Conexión">
+            @if (bybit.mode() === 'live') {
+              <span class="badge badge-accent status-badge" [title]="bybit.statusText()">EN VIVO</span>
+            } @else {
+              <span class="badge badge-secondary status-badge" [title]="bybit.statusText()">DEMO</span>
             }
           </td>
         </tr>
 
         <tr>
-          <td>
-            <span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);">
-              EL DORADO P2P
-            </span>
+          <td data-label="Exchange">
+            <span class="badge font-mono ex-badge ex-eldorado">EL DORADO P2P</span>
           </td>
-          <td>
-            <div class="input-control-wrap" style="max-width: 130px;">
+          <td data-label="Mejor Compra (Ask)">
+            <div class="input-control-wrap price-input-wrap">
               <input
                 type="number"
-                class="terminal-input font-mono"
-                style="padding: 3px 6px; font-size: 0.78rem;"
+                class="terminal-input font-mono price-input"
+                aria-label="Mejor compra El Dorado"
                 [ngModel]="elDoradoBuyPrice()"
                 (ngModelChange)="setElDoradoBuyPrice($event)"
                 step="0.1"
               />
             </div>
           </td>
-          <td>
-            <div class="input-control-wrap" style="max-width: 130px;">
+          <td data-label="Mejor Venta (Bid)">
+            <div class="input-control-wrap price-input-wrap">
               <input
                 type="number"
-                class="terminal-input font-mono"
-                style="padding: 3px 6px; font-size: 0.78rem;"
+                class="terminal-input font-mono price-input"
+                aria-label="Mejor venta El Dorado"
                 [ngModel]="elDoradoSellPrice()"
                 (ngModelChange)="setElDoradoSellPrice($event)"
                 step="0.1"
               />
             </div>
           </td>
-          <td>
-            <span class="font-mono" style="font-size: 0.78rem;">
-              {{ calculateSpreadPct(elDoradoBuyPrice(), elDoradoSellPrice()) | number: '1.2-2' }}%
-            </span>
-          </td>
-          <td>
-            <span class="text-muted font-mono" style="font-size: 0.75rem;">0.0% / $0.30 BEP20</span>
-          </td>
-          <td>
-            @if (elDorado.mode() === 'live') {
-              <span class="badge badge-accent" style="font-size: 0.68rem;" title="{{ elDorado.statusText() }}">EN VIVO</span>
+          <td data-label="Spread Plataforma">
+            @if (hasElDoradoPrices()) {
+              <span class="font-mono spread-val">
+                {{ calculateSpreadPct(elDoradoBuyPrice(), elDoradoSellPrice()) | number: '1.2-2' }}%
+              </span>
             } @else {
-              <span class="badge badge-secondary" style="font-size: 0.68rem;" title="{{ elDorado.statusText() }}">DEMO</span>
+              <span class="font-mono no-feed-value">N/D</span>
+            }
+          </td>
+          <td data-label="Tarifa Taker / Retiro">
+            <span class="text-muted font-mono fee-val">{{ withdrawalFeeLabel('ELDORADO') }}</span>
+          </td>
+          <td data-label="Estado Conexión">
+            @if (elDorado.mode() === 'live') {
+              <span class="badge badge-accent status-badge" [title]="elDorado.statusText()">EN VIVO</span>
+            } @else {
+              <span class="badge badge-secondary status-badge" [title]="elDorado.statusText()">DEMO</span>
             }
           </td>
         </tr>
@@ -337,20 +350,20 @@
   </div>
 
   <!-- Arbitrage Opportunities Ranking -->
-  <div class="terminal-card-header" style="margin-bottom: 8px;">
-    <span style="font-size: 0.85rem; font-weight: 700; color: var(--gold);">
+  <div class="terminal-card-header matrix-section-head">
+    <span class="matrix-section-title matrix-title-gold">
       ⚡ Rutas de Arbitraje Espacial Detectadas (Ordenadas por Rentabilidad Neta)
     </span>
   </div>
 
   @if (opportunities().length === 0) {
-    <div style="text-align: center; padding: 24px 10px; background: rgba(255, 255, 255, 0.02); border-radius: 6px;">
-      <span class="text-muted" style="font-size: 0.85rem;">
-        No se detectaron brechas de arbitraje neto superiores al {{ minSpreadPct() }}% con las tarifas actuales de red.
+    <div class="matrix-empty-state">
+      <span class="text-muted matrix-empty-text">
+        No se detectaron brechas de arbitraje neto superiores al {{ minSpreadPct() }}% con las cotizaciones y tarifas actuales.
       </span>
     </div>
   } @else {
-    <div style="overflow-x: auto;">
+    <div class="matrix-table-scroll">
       <table class="matrix-table">
         <thead>
           <tr>
@@ -367,50 +380,51 @@
         <tbody>
           @for (opp of opportunities(); track opp.buyExchange + opp.sellExchange) {
             <tr [class.viable-row]="opp.isViable">
-              <td>
-                <div style="display: flex; align-items: center; gap: 6px; font-weight: 700;">
+              <td data-label="Ruta Espacial">
+                <div class="route-cell">
                   <span class="font-mono">{{ opp.buyExchange }}</span>
-                  <span style="color: var(--gold);">➔</span>
+                  <span class="route-arrow" aria-hidden="true">➔</span>
                   <span class="font-mono">{{ opp.sellExchange }}</span>
                 </div>
               </td>
-              <td>
+              <td data-label="Precio Compra">
                 <span class="font-mono">{{ opp.buyPrice | number: '1.2-2' }}</span>
               </td>
-              <td>
+              <td data-label="Precio Venta">
                 <span class="font-mono">{{ opp.sellPrice | number: '1.2-2' }}</span>
               </td>
-              <td>
-                <span class="font-mono font-bold">{{ opp.grossSpreadPct | number: '1.2-2' }}%</span>
+              <td data-label="Spread Bruto">
+                <span class="font-mono spread-bold">{{ opp.grossSpreadPct | number: '1.2-2' }}%</span>
               </td>
-              <td>
-                <span class="text-muted font-mono" style="font-size: 0.75rem;">
+              <td data-label="Comisión Retiro">
+                <span class="text-muted font-mono fee-val">
                   {{ opp.withdrawalFeeUsdt | currency: 'USD' : 'symbol' : '1.2-2' }}
                 </span>
               </td>
-              <td>
+              <td data-label="Spread Neto">
                 <span
-                  class="font-mono font-bold"
-                  [style.color]="opp.netSpreadPct >= minSpreadPct() ? 'var(--accent)' : 'var(--danger)'"
+                  class="font-mono spread-bold"
+                  [class.spread-positive]="opp.netSpreadPct >= minSpreadPct()"
+                  [class.spread-negative]="opp.netSpreadPct < minSpreadPct()"
                 >
                   {{ opp.netSpreadPct | number: '1.2-2' }}%
                 </span>
               </td>
-              <td>
-                <div>
-                  <strong class="font-mono" style="color: var(--gold);">
-                    +{{ opp.netProfitUsdt | number: '1.2-2' }} USDT
+              <td data-label="Ganancia Neta">
+                <div class="profit-cell">
+                  <strong class="font-mono profit-asset">
+                    +{{ opp.netProfitUsdt | number: '1.2-2' }} {{ activeAsset() }}
                   </strong>
-                  <span class="text-muted font-mono" style="font-size: 0.72rem; display: block;">
-                    +{{ opp.netProfitFiat | number: '1.2-2' }} VES
+                  <span class="text-muted font-mono profit-fiat">
+                    +{{ opp.netProfitFiat | number: '1.2-2' }} {{ opp.fiatCurrency }}
                   </span>
                 </div>
               </td>
-              <td>
+              <td data-label="Veredicto">
                 @if (opp.isViable) {
-                  <span class="badge badge-accent" style="font-size: 0.68rem;">EJECUTABLE</span>
+                  <span class="badge badge-accent status-badge">EJECUTABLE</span>
                 } @else {
-                  <span class="badge badge-secondary" style="font-size: 0.68rem;">BAJO MARGEN</span>
+                  <span class="badge badge-secondary status-badge">BAJO MARGEN</span>
                 }
               </td>
             </tr>

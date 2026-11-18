@@ -10,7 +10,7 @@ import {
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { SpotMarketService } from '../../../core/spot-market.service';
 import { DecisionJournalService } from '../../../core/decision-journal.service';
-import type { MarketSnapshot, Spot24hTicker } from '@p2p/core';
+import type { MarketSnapshot } from '@p2p/core';
 
 export interface MacroSparklinePoint {
   x: number;
@@ -35,6 +35,9 @@ export interface MacroAlertItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MacroSpotPulseComponent implements OnInit, OnDestroy {
+  private static nextInstanceId = 0;
+
+  readonly uid = ++MacroSpotPulseComponent.nextInstanceId;
   readonly spotMarket = inject(SpotMarketService);
   private readonly journal = inject(DecisionJournalService);
 

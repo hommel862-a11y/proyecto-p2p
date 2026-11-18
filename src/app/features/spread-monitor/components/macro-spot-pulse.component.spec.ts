@@ -1,10 +1,11 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MacroSpotPulseComponent } from './macro-spot-pulse.component';
 import { SpotMarketService } from '../../../core/spot-market.service';
 import type { Spot24hTicker } from '@p2p/core';
 
 describe('MacroSpotPulseComponent', () => {
+  let fixture: ComponentFixture<MacroSpotPulseComponent>;
   let component: MacroSpotPulseComponent;
   let spotService: SpotMarketService;
 
@@ -15,7 +16,7 @@ describe('MacroSpotPulseComponent', () => {
     });
 
     spotService = TestBed.inject(SpotMarketService);
-    const fixture = TestBed.createComponent(MacroSpotPulseComponent);
+    fixture = TestBed.createComponent(MacroSpotPulseComponent);
     component = fixture.componentInstance;
   });
 
@@ -162,5 +163,41 @@ describe('MacroSpotPulseComponent', () => {
 
     const btcVol = alerts.find((a) => a.id === 'btc-volatility');
     expect(btcVol?.severity).toBe('WARNING');
+  });
+
+  it('activates asset cards via keyboard Enter and Space and keeps aria-pressed synchronized', () => {
+    fixture.detectChanges();
+    const cards = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.asset-card[role="button"]'),
+    ) as HTMLElement[];
+
+    expect(cards).toHaveLength(3);
+    expect(cards[0].getAttribute('aria-pressed')).toBe('true');
+    expect(cards[1].getAttribute('aria-pressed')).toBe('false');
+    expect(cards[2].getAttribute('aria-pressed')).toBe('false');
+
+    // Enter key on SOL card
+    cards[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.selectedAsset()).toBe('SOLUSDT');
+    expect(cards[0].getAttribute('aria-pressed')).toBe('false');
+    expect(cards[1].getAttribute('aria-pressed')).toBe('true');
+    expect(cards[2].getAttribute('aria-pressed')).toBe('false');
+
+    // Space key on USDC card (must prevent page scroll and select card)
+    const spaceEvent = new KeyboardEvent('keydown', {
+      key: ' ',
+      bubbles: true,
+      cancelable: true,
+    });
+    cards[2].dispatchEvent(spaceEvent);
+    fixture.detectChanges();
+
+    expect(spaceEvent.defaultPrevented).toBe(true);
+    expect(component.selectedAsset()).toBe('USDCUSDT');
+    expect(cards[0].getAttribute('aria-pressed')).toBe('false');
+    expect(cards[1].getAttribute('aria-pressed')).toBe('false');
+    expect(cards[2].getAttribute('aria-pressed')).toBe('true');
   });
 });

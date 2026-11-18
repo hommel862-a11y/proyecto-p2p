@@ -9,7 +9,12 @@
     <!-- Left Column: Bimonetary Readout & ROI -->
     <section class="hero-left-col spatial-z-mid" aria-label="Resumen de Rendimiento y Spread">
       <header class="metric-header">
-        <span class="eyebrow-tag">ARBITRAJE &amp; SPREAD</span>
+        <div class="metric-eyebrow-row">
+          <span class="eyebrow-tag">ARBITRAJE &amp; SPREAD</span>
+          @if (scoreSourceLabel(); as sourceLabel) {
+            <span class="score-source-chip">{{ sourceLabel }}</span>
+          }
+        </div>
         <h2 class="hero-title">Ganancia Neta Estimada</h2>
       </header>
 
@@ -147,8 +152,132 @@
           </span>
         </div>
       </div>
+
+      <!-- Hover What-If Preview Delta -->
+      @if (clampedPreviewScore() !== null) {
+        <div class="what-if-preview-pill" role="status" aria-live="polite">
+          <span class="what-if-label">What-If</span>
+          <span class="what-if-scores font-mono">{{ clampedScore() }} → {{ clampedPreviewScore() }}</span>
+          @if (previewRoiDeltaPct() !== null) {
+            <span
+              class="what-if-roi font-mono"
+              [class.positive]="previewRoiDeltaPct()! >= 0"
+              [class.negative]="previewRoiDeltaPct()! < 0"
+            >
+              ({{ previewRoiDeltaPct()! >= 0 ? '+' : '' }}{{ previewRoiDeltaPct()! | number:'1.2-2' }}%)
+            </span>
+          }
+        </div>
+      }
     </section>
   </div>
+
+  <!-- Vista B: 4-Factor SQS Breakdown & Causal Explainability -->
+  @if (factorBars().length > 0 || causalHint() || correctiveActionLabel()) {
+    <section
+      class="sqs-breakdown-panel spatial-z-mid"
+      aria-label="Diagnóstico SQS de 4 Factores y Explicabilidad Causal"
+    >
+      @if (factorBars().length > 0) {
+        <header class="sqs-breakdown-header">
+          <span class="sqs-breakdown-title">Diagnóstico de 4 Factores (SQS)</span>
+          @if (effectiveWeakestFactor()) {
+            <span class="sqs-weakest-chip">Factor limitante resaltado</span>
+          }
+        </header>
+
+        <div class="sqs-factors-list">
+          @for (factor of factorBars(); track factor.key) {
+            <div
+              class="sqs-factor-row"
+              [class.is-weakest]="factor.isWeakest"
+              [attr.data-factor]="factor.key"
+            >
+              <div class="sqs-factor-meta">
+                <div class="sqs-factor-name-group">
+                  <span class="sqs-factor-name">{{ factor.label }}</span>
+                  <span class="sqs-factor-weight font-mono">{{ factor.weightLabel }}</span>
+                  @if (factor.isWeakest) {
+                    <span class="sqs-weakest-tag">Débil</span>
+                  }
+                </div>
+
+                <div class="sqs-factor-values">
+                  @if (factor.metricText) {
+                    <span class="sqs-factor-metric font-mono">{{ factor.metricText }}</span>
+                  }
+                  @if (factor.sourceTag) {
+                    <span class="sqs-source-tag">{{ factor.sourceTag }}</span>
+                  }
+                  <span class="sqs-factor-score font-mono">{{ factor.score }}/100</span>
+                </div>
+              </div>
+
+              <div class="sqs-factor-track" aria-hidden="true">
+                <div
+                  class="sqs-factor-fill"
+                  [class]="'tone-' + factor.tone"
+                  [style.transform]="'scaleX(' + factor.scaleX + ')'"
+                ></div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      @if (causalHint() || correctiveActionLabel()) {
+        <div class="sqs-causal-row" [class.has-action]="!!correctiveActionLabel()">
+          @if (causalHint(); as hint) {
+            <p class="sqs-causal-hint">
+              <span class="causal-icon" aria-hidden="true">💡</span>
+              <span>{{ hint }}</span>
+            </p>
+          }
+
+          @if (correctiveActionLabel(); as actionLabel) {
+            <button
+              type="button"
+              class="sqs-corrective-btn"
+              (click)="onApplyCorrectiveAction()"
+            >
+              {{ actionLabel }}
+            </button>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Top-3 Banks Ranking Pills -->
+  @if (visibleTopBanks().length > 0) {
+    <section class="top-banks-strip spatial-z-mid" aria-label="Top Bancos por Calidad SQS">
+      <header class="top-banks-header">
+        <span class="top-banks-title">Top Bancos por Calidad (SQS)</span>
+        <span class="top-banks-sub">Ordenado por score y ROI</span>
+      </header>
+
+      <div class="top-banks-grid">
+        @for (bank of visibleTopBanks(); track bank.bankCode; let idx = $index) {
+          <div class="top-bank-pill" [class.is-leader]="idx === 0">
+            <div class="top-bank-head">
+              <span class="top-bank-rank font-mono">#{{ idx + 1 }}</span>
+              <span class="top-bank-label">{{ bank.label }}</span>
+            </div>
+            <div class="top-bank-metrics font-mono">
+              <span class="top-bank-score">{{ bank.score }}/100</span>
+              <span
+                class="top-bank-roi"
+                [class.positive]="bank.roiPct >= 0"
+                [class.negative]="bank.roiPct < 0"
+              >
+                {{ bank.roiPct >= 0 ? '+' : '' }}{{ bank.roiPct | number:'1.2-2' }}%
+              </span>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+  }
 
   <!-- Middle Strip: Compound Cycles Projection Grid -->
   @if (compoundCycles().length > 0) {
@@ -172,13 +301,13 @@
     </section>
   }
 
-  <!-- Bottom CTA Bar -->
+  <!-- Bottom CTA Bar (Strictly 3 .cta-btn elements) -->
   <footer class="cta-action-bar spatial-z-float">
     <button
       type="button"
       class="cta-btn btn-buy"
       (click)="onStartBuy()"
-      aria-label="🟢 Iniciar Compra en mercado P2P"
+      aria-label="Iniciar Compra en mercado P2P"
     >
       <span class="btn-icon" aria-hidden="true">🟢</span>
       <span class="btn-text">Iniciar Compra</span>
@@ -188,7 +317,7 @@
       type="button"
       class="cta-btn btn-sell"
       (click)="onStartSell()"
-      aria-label="⚡ Iniciar Venta (Log) en registro operativo"
+      aria-label="Iniciar Venta (Log) en registro operativo"
     >
       <span class="btn-icon" aria-hidden="true">⚡</span>
       <span class="btn-text">Iniciar Venta (Log)</span>
@@ -198,7 +327,7 @@
       type="button"
       class="cta-btn btn-ad-studio"
       (click)="onOpenAdStudio()"
-      aria-label="📢 Anuncio 360° para publicación estratégica"
+      aria-label="Anuncio 360° para publicación estratégica"
     >
       <span class="btn-icon" aria-hidden="true">📢</span>
       <span class="btn-text">Anuncio 360°</span>
