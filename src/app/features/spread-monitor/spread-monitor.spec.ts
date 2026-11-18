@@ -827,5 +827,85 @@ describe('SpreadMonitor · solo brechas ejecutables (Binance <-> Bybit)', () => 
       fixture.detectChanges();
       expect(c.adStudioTab()).toBe('publish');
     });
+
+    it('syncMcpIntelligence no inventa 18000/14000 sin libro ni aplica paridad USDCUSDT en modo EUR', async () => {
+      mount({ depth: null, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      c.setPair('EUR');
+      const analyzeSpy = vi.spyOn(c.mcp, 'analyzeOrderbookPressure');
+
+      await c.syncMcpIntelligence();
+
+      expect(analyzeSpy).not.toHaveBeenCalled();
+      expect(c.mcpPressure().marketRegime).toBe('NO_LIVE_BOOK');
+      expect(c.mcpPricingRecommendation()).toBeNull();
+      expect(c.mcpDepeg().status).toBe('NOT_APPLICABLE_EUR');
+    });
+
+    it('toggleMicroSplitDrawer ancla MicrostructureShield junto al desk en spread', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(c.microSplitDrawerOpen()).toBe(false);
+      expect(el.querySelector('aside.micro-split-drawer')).toBeNull();
+
+      c.toggleMicroSplitDrawer();
+      fixture.detectChanges();
+
+      expect(c.microSplitDrawerOpen()).toBe(true);
+      expect(el.querySelector('aside.micro-split-drawer app-microstructure-shield')).toBeTruthy();
+
+      c.toggleMicroSplitDrawer();
+      fixture.detectChanges();
+      expect(el.querySelector('aside.micro-split-drawer')).toBeNull();
+    });
+
+    it('SpreadQualityGauge refleja roles manuales y handleGaugeCorrectiveAction corrige netMargin a Maker', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+      const el = fixture.nativeElement as HTMLElement;
+
+      expect(c.gaugeScoreSourceLabel()).toContain('Mesa actual');
+      expect(el.querySelectorAll('app-spread-quality-gauge .sqs-factor-row').length).toBe(4);
+
+      c.buyRole.set('TAKER');
+      c.sellRole.set('TAKER');
+      c.handleGaugeCorrectiveAction('netMargin');
+      fixture.detectChanges();
+
+      expect(c.buyRole()).toBe('MAKER');
+      expect(c.sellRole()).toBe('MAKER');
+    });
+
+    it('onMicroApplyToDesk y onMicroSendToRepricer transfieren estrategia y piso al Desk/Repricer', () => {
+      mount({ depth: LIVE_DEPTH, bybit: DEMO_BYBIT });
+      const c = fixture.componentInstance;
+
+      c.onMicroApplyToDesk({
+        side: 'SELL',
+        customPriceVes: 822.5,
+        breakEvenSellPrice: 805.0,
+        maxBuyPrice: 814.0,
+        targetAssetAmountUsdt: 750,
+        preferredBank: 'BANESCO',
+        sourceLabel: 'Microestructura L2',
+      });
+      expect(c.sellPrice()).toBe(822.5);
+      expect(c.amount()).toBe(750);
+      expect(c.activeMode()).toBe('spread');
+
+      c.onMicroSendToRepricer({
+        buyPrice: 814.0,
+        sellPrice: 822.5,
+        strategy: 'TOP_1',
+        breakEvenFloor: 805.0,
+        maxBuyPrice: 814.0,
+        minSpreadVes: 8.5,
+      });
+      expect(c.repricer.breakEvenFloor()).toBe(805.0);
+      expect(c.repricer.maxBuyPrice()).toBe(814.0);
+      expect(c.activeMode()).toBe('repricer');
+    });
   });
 });

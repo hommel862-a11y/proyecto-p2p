@@ -218,6 +218,11 @@
   overflow-x: auto;
   padding-bottom: 2px;
   -webkit-overflow-scrolling: touch;
+
+  @media (min-width: 769px) {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 .bank-quota-pill {

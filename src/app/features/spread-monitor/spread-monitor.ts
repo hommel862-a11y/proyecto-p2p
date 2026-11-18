@@ -34,7 +34,10 @@ import {
   type BracketId,
   evaluateSnipingOpportunity,
   type SnipedOpportunityAlert,
+  getFullDepthOffers,
   type BinanceOfferSummary,
+  type SpreadQualityFactorKey,
+  type SpreadQualityResult,
   computeFifoAccounting,
   OPS_KEY,
   type Operation,
@@ -61,6 +64,12 @@ import { MarketHistoryService } from '../../core/market-history.service';
 import { AudioAlertsService } from '../../core/audio-alerts.service';
 import { SpreadQualityService } from '../../core/spread-quality.service';
 import {
+  MicrostructureEngineService,
+  type MicrostructureDeskPayload,
+  type MicrostructureRepricerPayload,
+} from '../../core/microstructure-engine.service';
+import { CredentialStoreService } from '../../core/credential-store.service';
+import {
   CotizaveService,
   describeCotizaveProvenance,
   formatCotizaveDataAge,
@@ -68,10 +77,18 @@ import {
 import { McpService } from '../../core/mcp.service';
 import { SpotMarketService } from '../../core/spot-market.service';
 import { CrossExchangeMatrix } from './components/cross-exchange-matrix.component';
-import { MicrostructureShield } from './components/microstructure-shield.component';
+import {
+  MicrostructureShield,
+  type MicrostructureApplyPriceEvent,
+  type MicrostructureTelegramPayload,
+  type MicrostructureWhatIfPreview,
+} from './components/microstructure-shield.component';
 import { MacroSpotPulseComponent } from './components/macro-spot-pulse.component';
 import { SpatialTilt3dDirective } from '../../shared/ui/spatial-tilt-3d.directive';
-import { SpreadQualityGaugeComponent } from './components/spread-quality-gauge/spread-quality-gauge.component';
+import {
+  SpreadQualityGaugeComponent,
+  type TopBankGaugeItem,
+} from './components/spread-quality-gauge/spread-quality-gauge.component';
 import {
   BreakevenThermometerComponent,
   type BreakevenRoiStep,
@@ -132,6 +149,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly marketHistory = inject(MarketHistoryService);
   readonly audioAlerts = inject(AudioAlertsService);
   readonly spreadQuality = inject(SpreadQualityService);
+  readonly microEngine = inject(MicrostructureEngineService);
+  private readonly credentials = inject(CredentialStoreService, { optional: true });
   readonly cotizave = inject(CotizaveService);
   readonly mcp = inject(McpService);
   readonly mcpPublisher = inject(McpAdPublisherService);
@@ -149,6 +168,8 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   readonly mcpConsoleExpanded = signal<boolean>(false);
   readonly adStudioTab = signal<'pricing' | 'banks' | 'rules' | 'publish'>('pricing');
   readonly beSplitDrawerOpen = signal<boolean>(false);
+  readonly microSplitDrawerOpen = signal<boolean>(false);
+  readonly microWhatIfPreview = signal<MicrostructureWhatIfPreview | null>(null);
   readonly isIntelWorkspace = computed<boolean>(() => {
     const mode = this.activeMode();
     return (
@@ -234,11 +255,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     actionableInsight: string;
     marketRegime: string;
   }>({
-    orderbookImbalanceRatio: 0.52,
+    orderbookImbalanceRatio: 0.5,
     dominantSide: 'BALANCED',
-    pressureVelocity: 'NEUTRAL',
-    actionableInsight: 'Libro de órdenes equilibrado.',
-    marketRegime: 'BALANCED_LIQUIDITY',
+    pressureVelocity: 'UNAVAILABLE',
+    actionableInsight: 'Sincronizando profundidad P2P para medir presión del libro.',
+    marketRegime: 'NO_LIVE_BOOK',
   });
 
   /** MCP Tool: recommend_competitive_pricing state */
@@ -835,6 +856,10 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       bankFilter: bank,
       stepVes: 0.01,
       breakEvenSellPrice: this.breakEvenResult().breakEvenPrice,
+      bookOrientation:
+        depth && depth.bestBuyPrice > depth.bestSellPrice
+          ? 'BINANCE_TAKER'
+          : 'MAKER_COMPETITORS',
     });
   });
 
@@ -908,72 +933,104 @@ export class SpreadMonitor implements OnInit, OnDestroy {
   async syncMcpIntelligence(): Promise<void> {
     this.mcpSyncing.set(true);
     try {
-      // Feed Binance Spot real: si no hay cotización en vivo no se inventa paridad
-      const spotTicker = await this.spotMarket.fetchBookTicker('USDCUSDT');
-      if (spotTicker && spotTicker.midPrice > 0) {
-        const depegRes = await this.mcp.detectUsdtDepeg({
-          spotUsdtPrice: spotTicker.midPrice,
-          thresholdPct: 0.2,
-        });
-        if (depegRes.success && depegRes.result) {
-          this.mcpDepeg.set(depegRes.result as ReturnType<typeof this.mcpDepeg>);
-        }
-      } else {
+      // Feed Binance Spot real: USDC/USDT parity only applies to USDT mode; EUR reports honest scope
+      if (this.pair() === 'EUR') {
         this.mcpDepeg.set({
           spotUsdtPrice: null,
           parityDeviationPct: null,
           isDepegged: false,
           riskSeverity: 'UNKNOWN',
-          status: 'FEED_UNAVAILABLE',
-          note: this.spotMarket.availability().reason || 'Libro Binance Spot no disponible',
+          status: 'NOT_APPLICABLE_EUR',
+          note: 'Paridad USDC/USDT no aplica en modo EUR/VES.',
         });
+      } else {
+        const spotTicker = await this.spotMarket.fetchBookTicker('USDCUSDT');
+        if (spotTicker && spotTicker.midPrice > 0) {
+          const depegRes = await this.mcp.detectUsdtDepeg({
+            spotUsdtPrice: spotTicker.midPrice,
+            thresholdPct: 0.2,
+          });
+          if (depegRes.success && depegRes.result) {
+            this.mcpDepeg.set(depegRes.result as ReturnType<typeof this.mcpDepeg>);
+          }
+        } else {
+          this.mcpDepeg.set({
+            spotUsdtPrice: null,
+            parityDeviationPct: null,
+            isDepegged: false,
+            riskSeverity: 'UNKNOWN',
+            status: 'FEED_UNAVAILABLE',
+            note: this.spotMarket.availability().reason || 'Libro Binance Spot no disponible',
+          });
+        }
       }
 
       const depth = this.binance.marketDepth();
-      const bidDepth =
-        depth?.buyOffers?.reduce((sum, o) => sum + o.maxVes / (o.price || 1), 0) || 18000;
-      const askDepth =
-        depth?.sellOffers?.reduce((sum, o) => sum + o.maxVes / (o.price || 1), 0) || 14000;
-      const pressureRes = await this.mcp.analyzeOrderbookPressure({
-        fiat: this.pair() === 'EUR' ? 'EUR' : 'VES',
-        bidDepthUsdt: bidDepth,
-        askDepthUsdt: askDepth,
-        includeSpoofCheck: true,
-      });
-      if (pressureRes.success && pressureRes.result) {
-        this.mcpPressure.set(pressureRes.result as ReturnType<typeof this.mcpPressure>);
+      const buyOffers = depth ? getFullDepthOffers(depth, 'BUY') : [];
+      const sellOffers = depth ? getFullDepthOffers(depth, 'SELL') : [];
+      const bidDepth = buyOffers.reduce((sum, o) => sum + (o.price > 0 ? o.maxVes / o.price : 0), 0);
+      const askDepth = sellOffers.reduce(
+        (sum, o) => sum + (o.price > 0 ? o.maxVes / o.price : 0),
+        0,
+      );
+
+      if (bidDepth > 0 || askDepth > 0) {
+        const pressureRes = await this.mcp.analyzeOrderbookPressure({
+          fiat: this.pair() === 'EUR' ? 'EUR' : 'VES',
+          bidDepthUsdt: Number(bidDepth.toFixed(2)),
+          askDepthUsdt: Number(askDepth.toFixed(2)),
+          includeSpoofCheck: true,
+        });
+        if (pressureRes.success && pressureRes.result) {
+          this.mcpPressure.set(pressureRes.result as ReturnType<typeof this.mcpPressure>);
+        }
+      } else {
+        this.mcpPressure.set({
+          orderbookImbalanceRatio: 0.5,
+          dominantSide: 'BALANCED',
+          pressureVelocity: 'UNAVAILABLE',
+          actionableInsight: 'Sin libro Binance P2P en vivo para medir presión de puntas.',
+          marketRegime: 'NO_LIVE_BOOK',
+        });
       }
 
-      const bestBuy = depth?.bestBuyPrice || this.buyPrice();
-      const bestSell = depth?.bestSellPrice || this.sellPrice();
-      const mid = (bestBuy + bestSell) / 2;
-      const buyRec = await this.mcp.recommendCompetitivePricing({
-        side: 'BUY',
-        strategy: 'TOP_1',
-        stepVes: 0.05,
-        targetMarginPct: this.selectedAutofillMargin(),
-        breakEvenPrice: bestBuy * 0.98,
-        currentMarketMid: mid,
-      });
-      const sellRec = await this.mcp.recommendCompetitivePricing({
-        side: 'SELL',
-        strategy: 'TOP_1',
-        stepVes: 0.05,
-        targetMarginPct: this.selectedAutofillMargin(),
-        breakEvenPrice: bestBuy * 1.005,
-        currentMarketMid: mid,
-      });
-
-      if (buyRec.success && sellRec.success) {
-        const buyData = buyRec.result as { suggestedPrice?: number } | undefined;
-        const sellData = sellRec.result as
-          { suggestedPrice?: number; marginVes?: number; advice?: string } | undefined;
-        this.mcpPricingRecommendation.set({
-          buySuggested: buyData?.suggestedPrice ?? bestBuy,
-          sellSuggested: sellData?.suggestedPrice ?? bestSell,
-          marginVes: sellData?.marginVes ?? 0,
-          advice: sellData?.advice ?? '',
+      const bestBuy = depth && depth.bestBuyPrice > 0 ? depth.bestBuyPrice : 0;
+      const bestSell = depth && depth.bestSellPrice > 0 ? depth.bestSellPrice : 0;
+      if (bestBuy > 0 && bestSell > 0) {
+        const mid = (bestBuy + bestSell) / 2;
+        const floor =
+          this.liveBreakEvenSellPrice() > 0 ? this.liveBreakEvenSellPrice() : bestSell;
+        const buyRec = await this.mcp.recommendCompetitivePricing({
+          side: 'BUY',
+          strategy: 'TOP_1',
+          stepVes: 0.05,
+          targetMarginPct: this.selectedAutofillMargin(),
+          breakEvenPrice: bestBuy,
+          currentMarketMid: mid,
         });
+        const sellRec = await this.mcp.recommendCompetitivePricing({
+          side: 'SELL',
+          strategy: 'TOP_1',
+          stepVes: 0.05,
+          targetMarginPct: this.selectedAutofillMargin(),
+          breakEvenPrice: floor,
+          currentMarketMid: mid,
+        });
+
+        if (buyRec.success && sellRec.success) {
+          const buyData = buyRec.result as { suggestedPrice?: number } | undefined;
+          const sellData = sellRec.result as
+            | { suggestedPrice?: number; marginVes?: number; advice?: string }
+            | undefined;
+          this.mcpPricingRecommendation.set({
+            buySuggested: buyData?.suggestedPrice ?? bestBuy,
+            sellSuggested: sellData?.suggestedPrice ?? bestSell,
+            marginVes: sellData?.marginVes ?? 0,
+            advice: sellData?.advice ?? '',
+          });
+        }
+      } else {
+        this.mcpPricingRecommendation.set(null);
       }
       this.mcpLastSynced.set(new Date());
     } catch {
@@ -1812,12 +1869,258 @@ export class SpreadMonitor implements OnInit, OnDestroy {
     });
   });
 
-  readonly spreadQualityScore = computed<number>(() => {
+  /** Live BCV official reference rate from Cotizave (null when absent). */
+  readonly resolvedBcvRateForMicro = computed<number | null>(() => {
+    const rates = this.cotizave.ratesByMarket();
+    const oficial = rates['oficial'] ?? rates['bcv'];
+    const val = oficial?.mid ?? null;
+    return val !== null && Number.isFinite(val) && val > 0 ? val : null;
+  });
+
+  /** Held FIFO open inventory in USDT (fallback to configured capital amount). */
+  readonly microInventoryUsdt = computed<number>(() => {
+    const open = this.fifoInventorySnapshot()?.openAmountUsdt;
+    return open && open > 0 ? open : this.amount();
+  });
+
+  /** Evaluate SQS for current desk inputs using real volatility & bank treasury usage. */
+  readonly manualSpreadQuality = computed<SpreadQualityResult | null>(() => {
+    const buy = this.buyPrice();
+    const sell = this.sellPrice();
+    if (buy <= 0 || sell <= 0) return null;
     const mq = this.marketQuality();
-    if (mq) return Math.min(100, Math.max(0, Math.round(mq.score)));
+    const bankCode: BankCode = mq?.bankCode ?? 'BANESCO';
+    const usagePct = mq?.accountUsagePct ?? this.microEngine.bankQuotaUsagePct();
+    const volPct = mq?.volatility4hPct ?? this.spreadQuality.volatility4hPct();
+    const capital = this.baseInvestedCrypto() > 0 ? this.baseInvestedCrypto() : undefined;
+    return this.spreadQuality.evaluateCustomSpread(
+      buy,
+      sell,
+      bankCode,
+      usagePct,
+      this.buyRole(),
+      this.sellRole(),
+      {
+        volatility4hPct: volPct,
+        isInterbank: mq?.isInterbank ?? false,
+        capitalUsdt: capital,
+      },
+    );
+  });
+
+  readonly activeGaugeQuality = computed<SpreadQualityResult | null>(
+    () => this.manualSpreadQuality() ?? this.marketQuality(),
+  );
+
+  readonly spreadQualityScore = computed<number>(() => {
+    const sqs = this.activeGaugeQuality();
+    if (sqs) return Math.min(100, Math.max(0, Math.round(sqs.score)));
     if (!this.result()) return 0;
     return Math.min(100, Math.max(0, Math.round(this.netRoiPct() * 40)));
   });
+
+  readonly gaugeScoreSourceLabel = computed<string>(() => {
+    if (this.manualSpreadQuality()) {
+      const volSrc = this.spreadQuality.volatilitySource?.() === 'MEASURED' ? 'volatilidad medida' : 'ref. volatilidad';
+      return `Mesa actual (${this.buyRole()}/${this.sellRole()} · ${volSrc})`;
+    }
+    return this.marketQuality() ? 'Libro Binance en vivo' : 'Estimación manual';
+  });
+
+  readonly gaugeCorrectiveActionLabel = computed<string | null>(() => {
+    const q = this.activeGaugeQuality();
+    if (!q || q.score >= 85) return null;
+    switch (q.weakestFactor) {
+      case 'netMargin':
+        return this.buyRole() === 'TAKER' || this.sellRole() === 'TAKER'
+          ? 'Cambiar a Doble Maker'
+          : 'Cargar Mejor Top 1';
+      case 'limitHealth':
+        return 'Rotar a Banco Libre';
+      case 'velocity':
+        return 'Priorizar Banesco / PM';
+      case 'safety':
+        return 'Abrir Microestructura L2';
+      default:
+        return null;
+    }
+  });
+
+  readonly gaugeHoverWhatIf = computed<{ previewScore: number | null; roiDeltaPct: number | null }>(() => {
+    const hover = this.microWhatIfPreview();
+    if (!hover || hover.price <= 0) {
+      return { previewScore: null, roiDeltaPct: null };
+    }
+    const nextBuy = hover.side === 'BUY' ? hover.price : this.buyPrice();
+    const nextSell = hover.side === 'SELL' ? hover.price : this.sellPrice();
+    if (nextBuy <= 0 || nextSell <= 0) {
+      return { previewScore: null, roiDeltaPct: null };
+    }
+    const mq = this.marketQuality();
+    const nextSqs = this.spreadQuality.evaluateCustomSpread(
+      nextBuy,
+      nextSell,
+      mq?.bankCode ?? 'BANESCO',
+      mq?.accountUsagePct ?? this.microEngine.bankQuotaUsagePct(),
+      this.buyRole(),
+      this.sellRole(),
+      {
+        volatility4hPct: mq?.volatility4hPct ?? this.spreadQuality.volatility4hPct(),
+        isInterbank: mq?.isInterbank ?? false,
+      },
+    );
+    if (!nextSqs) return { previewScore: null, roiDeltaPct: null };
+    return {
+      previewScore: Math.round(nextSqs.score),
+      roiDeltaPct: Number((nextSqs.netSpreadPct - this.netRoiPct()).toFixed(2)),
+    };
+  });
+
+  readonly topBanksForGauge = computed<readonly TopBankGaugeItem[]>(() => {
+    const mq = this.marketQuality();
+    const vol = mq?.volatility4hPct ?? this.spreadQuality.volatility4hPct();
+    return this.top3JohnsonBanks().map((b) => ({
+      bankCode: b.bankKey,
+      label: b.bankKey,
+      score: Math.round(
+        Math.max(
+          0,
+          Math.min(100, 60 + b.roiCyclePct * 25 - (vol > 1 ? (vol - 1) * 10 : 0)),
+        ),
+      ),
+      roiPct: b.roiCyclePct,
+    }));
+  });
+
+  handleGaugeCorrectiveAction(weakest: SpreadQualityFactorKey): void {
+    switch (weakest) {
+      case 'netMargin':
+        if (this.buyRole() === 'TAKER' || this.sellRole() === 'TAKER') {
+          this.buyRole.set('MAKER');
+          this.sellRole.set('MAKER');
+          this.toast.info('Roles actualizados a Doble Maker para proteger margen neto.', 'Diagnóstico SQS');
+        } else {
+          this.applyBinancePrices();
+        }
+        break;
+      case 'limitHealth': {
+        const rec = this.accountsService.rotationRecommendation?.();
+        if (rec?.bankCode) {
+          this.selectBank(rec.bankCode);
+        } else {
+          this.selectBank('ALL');
+        }
+        break;
+      }
+      case 'velocity':
+        this.selectBank('BANESCO');
+        break;
+      case 'safety':
+        this.activeMode.set('microstructure');
+        break;
+    }
+  }
+
+  toggleMicroSplitDrawer(): void {
+    this.microSplitDrawerOpen.update((v) => !v);
+  }
+
+  onMicroApplyPrice(event: MicrostructureApplyPriceEvent): void {
+    this.selectOfferFromBook(event.side, event.price, false);
+  }
+
+  onMicroApplyToDesk(payload: MicrostructureDeskPayload): void {
+    const cmp = this.microEngine.makerVsTakerComparison();
+    if (cmp.makerBuyPrice > 0) this.buyPrice.set(cmp.makerBuyPrice);
+    if (cmp.makerSellPrice > 0) this.sellPrice.set(cmp.makerSellPrice);
+    if (payload.customPriceVes > 0) {
+      if (payload.side === 'BUY') this.buyPrice.set(payload.customPriceVes);
+      else this.sellPrice.set(payload.customPriceVes);
+    }
+    if (payload.targetAssetAmountUsdt > 0) {
+      this.amount.set(payload.targetAssetAmountUsdt);
+      this.unit.set(this.pair() as AmountUnit);
+    }
+    if (payload.preferredBank) {
+      this.binance.setBankFilter(payload.preferredBank);
+    }
+    this.activeMode.set('spread');
+    this.toast.success(
+      `Estrategia cargada en Monitor (${this.buyPrice()} / ${this.sellPrice()} Bs · ${this.amount()} ${this.pair()}).`,
+      'Microestructura L2',
+    );
+  }
+
+  onMicroSendToRepricer(payload: MicrostructureRepricerPayload): void {
+    this.repricer.setStrategy(payload.strategy);
+    if (payload.breakEvenFloor > 0) {
+      this.repricer.breakEvenFloor.set(payload.breakEvenFloor);
+      this.adComposer.breakEvenSellPrice.set(payload.breakEvenFloor);
+    }
+    if (payload.maxBuyPrice > 0) {
+      this.repricer.maxBuyPrice.set(payload.maxBuyPrice);
+      this.adComposer.maxBuyPrice.set(payload.maxBuyPrice);
+    }
+    if (payload.minSpreadVes > 0) {
+      this.repricer.minSpreadVes.set(payload.minSpreadVes);
+    }
+    this.activeMode.set('repricer');
+    this.toast.success(
+      `Repricer calibrado desde L2 (Piso ${payload.breakEvenFloor} Bs / Techo Compra ${payload.maxBuyPrice} Bs).`,
+      'Repricer Bot',
+    );
+  }
+
+  async onMicroOpenAdStudio(payload: MicrostructureDeskPayload): Promise<void> {
+    this.activeMode.set('repricer');
+    await this.adComposer.stageFromExternal({
+      side: payload.side,
+      customPriceVes: payload.customPriceVes,
+      breakEvenSellPrice: payload.breakEvenSellPrice,
+      maxBuyPrice: payload.maxBuyPrice,
+      targetAssetAmountUsdt: payload.targetAssetAmountUsdt,
+      sourceLabel: payload.sourceLabel,
+    });
+  }
+
+  async onMicroSendTelegramAlert(payload: MicrostructureTelegramPayload): Promise<void> {
+    const getCfg = (
+      this.credentials as { getTelegramConfig?: () => Promise<{ token?: string; chatId?: string } | null> } | null
+    )?.getTelegramConfig;
+    const cfg = typeof getCfg === 'function' ? await getCfg.call(this.credentials) : null;
+    const token = cfg?.token?.trim() ?? '';
+    const chatId = cfg?.chatId?.trim() ?? '';
+    if (!token || !chatId) {
+      this.toast.warn(
+        'Configura primero tu Bot Token y Chat ID en Reglas de Riesgo > Telegram Sentinel.',
+        'Telegram Sentinel',
+      );
+      return;
+    }
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: payload.summaryText,
+        }),
+      });
+      if (res.ok) {
+        this.toast.success(
+          'Pulso de Microestructura L2 enviado a Telegram Sentinel.',
+          'Telegram Sentinel',
+        );
+      } else {
+        this.toast.warn(
+          `Error HTTP ${res.status} al enviar alerta a Telegram.`,
+          'Telegram Sentinel',
+        );
+      }
+    } catch {
+      this.toast.warn('No se pudo conectar con la API de Telegram.', 'Telegram Sentinel');
+    }
+  }
 
   readonly gaugeVerdictLabel = computed<string>(() => {
     const kind = this.alert().kind;
@@ -1972,6 +2275,11 @@ export class SpreadMonitor implements OnInit, OnDestroy {
       } else {
         this.binance.stopAutoRefresh();
       }
+    });
+
+    effect(() => {
+      this.microEngine.buyRole.set(this.buyRole());
+      this.microEngine.sellRole.set(this.sellRole());
     });
 
     // Cotizave NO se decide en `ngOnInit`: `apiKey` es una señal que el servicio

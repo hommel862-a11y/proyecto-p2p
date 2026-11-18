@@ -142,7 +142,20 @@
     </div>
   } @else if (activeMode() === 'microstructure') {
     <div style="margin-top: 14px;">
-      <app-microstructure-shield />
+      <app-microstructure-shield
+        [liveBreakEvenSellPrice]="liveBreakEvenSellPrice()"
+        [currentInventoryUsdt]="microInventoryUsdt()"
+        [targetInventoryUsdt]="amount()"
+        [bcvRateVes]="resolvedBcvRateForMicro()"
+        [splitDrawerOpen]="microSplitDrawerOpen()"
+        (applyPrice)="onMicroApplyPrice($event)"
+        (applyToDesk)="onMicroApplyToDesk($event)"
+        (sendToRepricer)="onMicroSendToRepricer($event)"
+        (openAdStudio)="onMicroOpenAdStudio($event)"
+        (sendTelegramAlert)="onMicroSendTelegramAlert($event)"
+        (hoverWhatIf)="microWhatIfPreview.set($event)"
+        (togglePinnedDrawer)="toggleMicroSplitDrawer()"
+      />
     </div>
   } @else if (activeMode() === 'high_demand') {
     <!-- ═══════════════════════════════════════════════════
@@ -533,6 +546,7 @@
       }
     </div>
 
+    <div class="desk-pinned-host" [class.has-micro-drawer]="activeMode() === 'spread' && microSplitDrawerOpen()">
     <div class="trading-desk-layout" [class.quantum-3col-desk]="activeMode() === 'spread'">
     <!-- ═══════════════════════════════════════════════════
          COLUMNA IZQUIERDA: Configuración & Parámetros
@@ -1670,6 +1684,18 @@
                   <span class="purged-count-pill font-mono">-{{ filteredOrderbook().purgedCount }} trampas</span>
                 }
               </button>
+              @if (activeMode() === 'spread') {
+                <button
+                  type="button"
+                  class="btn-ghost micro-split-pin-btn"
+                  [class.is-active]="microSplitDrawerOpen()"
+                  [attr.aria-expanded]="microSplitDrawerOpen()"
+                  (click)="toggleMicroSplitDrawer()"
+                  title="Anclar panel Microestructura L2 junto a la mesa (≥1440px)"
+                >
+                  🔬 {{ microSplitDrawerOpen() ? 'Ocultar L2' : 'Anclar L2' }}
+                </button>
+              }
               <button type="button" class="btn btn-secondary" (click)="syncBinancePrices()" [disabled]="binance.loading()" style="font-size: 0.76rem; padding: 4px 10px;" title="Actualizar mercado (F2)">
                 ⚡ Actualizar (F2)
               </button>
@@ -1929,9 +1955,22 @@
             [verdictLabel]="gaugeVerdictLabel()"
             [hasResult]="result() !== null"
             [compoundCycles]="spreadCompoundTiles()"
+            [factors]="activeGaugeQuality()?.factors ?? null"
+            [weakestFactor]="activeGaugeQuality()?.weakestFactor ?? null"
+            [causalHint]="activeGaugeQuality()?.causalHint ?? null"
+            [correctiveActionLabel]="gaugeCorrectiveActionLabel()"
+            [volatility4hPct]="marketQuality()?.volatility4hPct ?? spreadQuality.volatility4hPct()"
+            [volatilitySource]="marketQuality()?.volatilitySource ?? spreadQuality.volatilitySource()"
+            [accountUsagePct]="marketQuality()?.accountUsagePct ?? microEngine.bankQuotaUsagePct()"
+            [bankLabel]="binance.selectedBank()"
+            [scoreSourceLabel]="gaugeScoreSourceLabel()"
+            [previewScore]="gaugeHoverWhatIf().previewScore"
+            [previewRoiDeltaPct]="gaugeHoverWhatIf().roiDeltaPct"
+            [topBanks]="topBanksForGauge()"
             (startBuyTrade)="startDirectTrade('buy')"
             (startSellTrade)="startDirectTrade('sell')"
             (openAdStudio)="stageFromSpreadToAdStudio('SELL')"
+            (applyCorrectiveAction)="handleGaugeCorrectiveAction($event)"
           />
 
           @if (result(); as r) {
@@ -2166,15 +2205,15 @@
           <div class="subnav-content">
             @if (analyticsSubTab() === 'microstructure') {
               @if (marketQuality(); as sqs) {
-                <div class="sqs-indicator-box" style="margin-bottom: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); padding: 12px 14px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700;">Índice de Calidad (SQS):</span>
-                      <span [style.color]="sqs.verdictColor" style="font-weight: 800; font-size: 0.88rem; font-family: var(--font-mono);">
+                <div class="sqs-indicator-box sqs-indicator-surface">
+                  <div class="sqs-indicator-head">
+                    <div class="sqs-indicator-title-group">
+                      <span class="sqs-indicator-eyebrow">Índice de Calidad (SQS):</span>
+                      <span class="sqs-verdict-score font-mono" [attr.data-tone]="sqs.verdictTone">
                         {{ sqs.score }}/100 — {{ sqs.verdictLabel }}
                       </span>
                     </div>
-                    <span style="font-size: 0.74rem; color: var(--gold); font-family: var(--font-mono); font-weight: 600;">
+                    <span class="sqs-net-margin font-mono">
                       Margen Neto: {{ sqs.netSpreadPct }}%
                     </span>
                   </div>
@@ -2189,7 +2228,10 @@
                     </span>
                     <span class="guard-text">{{ guardText() }}</span>
                   </div>
-                  <p style="margin: 8px 0 0; font-size: 0.75rem; color: var(--muted); line-height: 1.35;">
+                  @if (sqs.causalHint) {
+                    <p class="sqs-causal-note">↳ {{ sqs.causalHint }}</p>
+                  }
+                  <p class="sqs-recommendation-note">
                     💡 {{ sqs.recommendation }}
                   </p>
                 </div>
@@ -2269,7 +2311,7 @@
                       @else { ⚖️ Estable }
                     </span>
                   </div>
-                  <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; justify-content: center;">
+                  <div class="sparkline-canvas-wrap">
                     <svg viewBox="0 0 280 44" style="width: 100%; height: 44px; overflow: visible;">
                       <polyline
                         fill="none"
@@ -3112,6 +3154,36 @@
         </div>
       }
     </div>
+  </div>
+  @if (activeMode() === 'spread' && microSplitDrawerOpen()) {
+    <aside class="micro-split-drawer" aria-label="Panel Anclado de Microestructura L2">
+      <div class="micro-split-drawer-header">
+        <span class="badge badge-accent font-mono">L2 ANCLADO (≥1440px)</span>
+        <button
+          type="button"
+          class="btn-ghost micro-split-close-btn"
+          (click)="microSplitDrawerOpen.set(false)"
+          aria-label="Cerrar panel anclado de Microestructura"
+        >
+          ✕ Cerrar L2
+        </button>
+      </div>
+      <app-microstructure-shield
+        [liveBreakEvenSellPrice]="liveBreakEvenSellPrice()"
+        [currentInventoryUsdt]="microInventoryUsdt()"
+        [targetInventoryUsdt]="amount()"
+        [bcvRateVes]="resolvedBcvRateForMicro()"
+        [splitDrawerOpen]="microSplitDrawerOpen()"
+        (applyPrice)="onMicroApplyPrice($event)"
+        (applyToDesk)="onMicroApplyToDesk($event)"
+        (sendToRepricer)="onMicroSendToRepricer($event)"
+        (openAdStudio)="onMicroOpenAdStudio($event)"
+        (sendTelegramAlert)="onMicroSendTelegramAlert($event)"
+        (hoverWhatIf)="microWhatIfPreview.set($event)"
+        (togglePinnedDrawer)="toggleMicroSplitDrawer()"
+      />
+    </aside>
+  }
   </div>
   }
 </section>

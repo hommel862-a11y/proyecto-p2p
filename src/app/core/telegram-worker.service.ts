@@ -1063,6 +1063,10 @@ export class TelegramWorkerService implements OnDestroy {
           merchantLevel: 'STANDARD',
           bankFilter: params.bank,
           stepVes: 0.01,
+          bookOrientation:
+            depth && depth.bestBuyPrice > depth.bestSellPrice
+              ? 'BINANCE_TAKER'
+              : 'MAKER_COMPETITORS',
         });
 
         // If user requested a specific tier, filter rows to that tier
