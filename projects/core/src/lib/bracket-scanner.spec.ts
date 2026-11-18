@@ -102,4 +102,56 @@ describe('BracketScanner & OTC Whale Detector', () => {
     expect(report.totalWhaleVolumeUsd).toBe(350000);
     expect(report.recommendedAction).toBe('PAUSE_BUYS_PHANTOM_CORRECTION');
   });
+
+  it('sorts bestPrice deterministically by side and guards NaN exchange rates or volumes', () => {
+    const unsorted: BinanceOfferSummary[] = [
+      {
+        advNo: 'u-1',
+        price: 805,
+        minVes: 5000,
+        maxVes: 25000, // overlaps Inframundo [5k, 15k] and exceeds $20 * 800 = 16,000 VES safety floor
+        finishRatePct: 98,
+        orderCount: 100,
+        merchantName: 'HigherAsk',
+        payMethods: ['Banesco'],
+      },
+      {
+        advNo: 'u-2',
+        price: 798,
+        minVes: 5000,
+        maxVes: 25000,
+        finishRatePct: 99,
+        orderCount: 200,
+        merchantName: 'LowerAsk',
+        payMethods: ['Banesco'],
+      },
+      {
+        advNo: 'u-nan',
+        price: Number.NaN,
+        minVes: 5000,
+        maxVes: Number.NaN,
+        finishRatePct: 99,
+        orderCount: 100,
+        merchantName: 'Broken',
+        payMethods: ['Banesco'],
+      },
+    ];
+
+    const buyRes = filterOffersByBracket(unsorted, 'INFRAMUNDO', {
+      exchangeRateVesPerUsd: 800,
+      side: 'BUY',
+    });
+    expect(buyRes.offers).toHaveLength(2);
+    expect(buyRes.bestPrice).toBe(798);
+
+    const sellRes = filterOffersByBracket(unsorted, 'INFRAMUNDO', {
+      exchangeRateVesPerUsd: 800,
+      side: 'SELL',
+    });
+    expect(sellRes.bestPrice).toBe(805);
+
+    const whaleNan = detectOtcWhaleBlocks(unsorted, Number.NaN, 100000);
+    expect(whaleNan.whaleDetected).toBe(false);
+    expect(whaleNan.totalWhaleVolumeUsd).toBe(0);
+  });
 });

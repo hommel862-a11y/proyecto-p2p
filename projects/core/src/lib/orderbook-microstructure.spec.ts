@@ -263,5 +263,104 @@ describe('Orderbook Microstructure: Detección de Spoofing & Liquidez Fantasma',
       expect(res.fillProbabilityInHorizonPct).toBeGreaterThan(80);
       expect(res.recommendedPricingAdjustment).toBe(0);
     });
+
+    it('NO clasifica como SPOOF_BAIT una oferta profunda legítima en snapshot #1 (t=1s sin desaparecer)', () => {
+      const t0 = 1700000000000;
+      const deepMerchant: BinanceOfferSummary = {
+        advNo: 'ADV-DEEP-INST',
+        merchantName: 'MesaInstitucional',
+        price: 801.0,
+        minVes: 10000,
+        maxVes: 300000, // > 3x mediana, pero activa y con 98% cierre
+        finishRatePct: 98.0,
+        orderCount: 450,
+        payMethods: ['Banesco'],
+      };
+      tracker.ingestSnapshot([...mockBaseOffers, deepMerchant], 'SELL', t0);
+      const report = tracker.generateSpoofReport(t0);
+      const classified = report.classifiedOrders.find((o) => o.advNo === 'ADV-DEEP-INST');
+      expect(classified?.category).toBe('LEGITIMATE');
+      expect(report.spoofBaitCount).toBe(0);
+    });
+
+    it('computeMicrostructureSanitizedDepth aísla métricas por lado y clearSide limpia solo ese lado', () => {
+      const t0 = 1700000000000;
+      const buyPhantom: BinanceOfferSummary = {
+        advNo: 'ADV-BUY-PHANTOM',
+        merchantName: 'FakeBuyWhale',
+        price: 790.0,
+        minVes: 50000,
+        maxVes: 900000,
+        finishRatePct: 92,
+        orderCount: 50,
+        payMethods: ['Banesco'],
+      };
+      tracker.ingestSnapshot([buyPhantom], 'BUY', t0);
+      tracker.ingestSnapshot(mockBaseOffers, 'SELL', t0);
+      const t1 = t0 + 60 * 1000;
+      tracker.ingestSnapshot([], 'BUY', t1); // BUY phantom desapareció
+      tracker.ingestSnapshot(mockBaseOffers, 'SELL', t1); // SELL completamente limpio
+
+      const sellDepth = computeMicrostructureSanitizedDepth(mockBaseOffers, 'SELL', 100, tracker, t1);
+      expect(sellDepth.manipulationDetected).toBe(false);
+      expect(sellDepth.purgedPhantomVolumeVes).toBe(0);
+
+      tracker.clearSide('BUY');
+      const reportAll = tracker.generateSpoofReport(t1);
+      expect(reportAll.totalTracked).toBe(2);
+    });
+
+    it('Avellaneda-Stoikov, VPIN y Slicing TWAP/VWAP resisten inventarios grandes, gamma=0, maxParticipation y NaN', async () => {
+      const { computeAvellanedaStoikovQuotes, calculateVpinMetric, computeOrderSlicingPlan } =
+        await import('./orderbook-microstructure');
+
+      const hugeInv = computeAvellanedaStoikovQuotes({
+        midPrice: 85.0,
+        currentInventoryUsdt: 60000,
+        targetInventoryUsdt: 2000,
+        volatilityDaily: 0.02,
+        riskAversionGamma: 0.1,
+      });
+      expect(hugeInv.reservationPrice).toBeGreaterThan(0);
+      expect(hugeInv.optimalBidPrice).toBeGreaterThan(0);
+      expect(hugeInv.optimalAskPrice).toBeGreaterThan(hugeInv.optimalBidPrice);
+
+      const zeroGamma = computeAvellanedaStoikovQuotes({
+        midPrice: 85.0,
+        currentInventoryUsdt: 2000,
+        targetInventoryUsdt: 2000,
+        volatilityDaily: 0.02,
+        riskAversionGamma: 0,
+      });
+      expect(Number.isFinite(zeroGamma.reservationPrice)).toBe(true);
+      expect(Number.isFinite(zeroGamma.optimalAskPrice)).toBe(true);
+
+      const vpinNan = calculateVpinMetric({
+        buckets: [{ buyVolume: Number.NaN, sellVolume: 100, totalVolume: 100 }],
+      });
+      expect(Number.isFinite(vpinNan.vpinScore)).toBe(true);
+
+      const vwapPlan = computeOrderSlicingPlan({
+        totalAmountUsdt: 10000,
+        executionDurationMinutes: 60,
+        estimatedMarketVolumePerHourUsdt: 40000,
+        currentMidPrice: 85.0,
+        maxMarketParticipationPct: 5,
+        algorithm: 'VWAP',
+      });
+      const vwapSum = vwapPlan.slices.reduce((acc, s) => acc + s.sliceAmountUsdt, 0);
+      expect(vwapSum).toBeCloseTo(10000, 1);
+      expect(vwapPlan.totalSlices).toBeGreaterThanOrEqual(5);
+
+      const invalidPlan = computeOrderSlicingPlan({
+        totalAmountUsdt: Number.NaN,
+        executionDurationMinutes: 60,
+        estimatedMarketVolumePerHourUsdt: 40000,
+        currentMidPrice: 85.0,
+        algorithm: 'TWAP',
+      });
+      expect(invalidPlan.slices).toEqual([]);
+      expect(invalidPlan.expectedMarketImpactPct).toBe(0);
+    });
   });
 });

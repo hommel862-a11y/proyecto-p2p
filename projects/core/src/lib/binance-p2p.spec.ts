@@ -126,4 +126,54 @@ describe('Binance P2P Market Depth Engine', () => {
     // Spread: 822 - 802.5 = 19.50 VES
     expect(depth.spreadVes).toBe(19.5);
   });
+
+  it('preserves fullBuyOffers and fullSellOffers (up to 20 sorted) while keeping 5-row top slices and discarding NaN prices', () => {
+    const manyBuys = {
+      data: Array.from({ length: 12 }, (_, idx) => ({
+        adv: {
+          advNo: `b-${idx}`,
+          price: String(812 - idx), // deliberately reverse order: 812 down to 801
+          minSingleTransAmount: '500',
+          maxSingleTransAmount: '25000',
+          tradeMethods: [{ tradeMethodName: 'Banesco' }],
+        },
+        advertiser: { nickName: `MakerB${idx}`, monthOrderCount: 100, monthFinishRate: 0.98 },
+      })).concat([
+        {
+          adv: {
+            advNo: 'b-nan',
+            price: 'NaN',
+            minSingleTransAmount: '500',
+            maxSingleTransAmount: '25000',
+            tradeMethods: [{ tradeMethodName: 'Banesco' }],
+          },
+          advertiser: { nickName: 'Broken', monthOrderCount: 10, monthFinishRate: 0.9 },
+        },
+      ]),
+    };
+    const manySells = {
+      data: Array.from({ length: 12 }, (_, idx) => ({
+        adv: {
+          advNo: `s-${idx}`,
+          price: String(780 + idx), // deliberately ascending: 780 up to 791
+          minSingleTransAmount: '500',
+          maxSingleTransAmount: '25000',
+          tradeMethods: [{ tradeMethodName: 'Banesco' }],
+        },
+        advertiser: { nickName: `MakerS${idx}`, monthOrderCount: 100, monthFinishRate: 0.98 },
+      })),
+    };
+
+    const depth = computeMarketDepth(manyBuys, manySells, 'USDT', 'VES');
+    expect(depth.buyOffers).toHaveLength(5);
+    expect(depth.sellOffers).toHaveLength(5);
+    expect(depth.fullBuyOffers).toHaveLength(12);
+    expect(depth.fullSellOffers).toHaveLength(12);
+    // fullBuyOffers sorted ascending (cheapest asks first)
+    expect(depth.fullBuyOffers?.[0].price).toBe(801);
+    expect(depth.fullBuyOffers?.[11].price).toBe(812);
+    // fullSellOffers sorted descending (highest bids first)
+    expect(depth.fullSellOffers?.[0].price).toBe(791);
+    expect(depth.fullSellOffers?.[11].price).toBe(780);
+  });
 });

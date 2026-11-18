@@ -64,6 +64,8 @@ export interface BracketFilterOptions {
   minSafetyFloorUsd?: number;
   /** Discard ads flagged as promoted or sponsored */
   filterPromoted?: boolean;
+  /** Side orientation for deterministic bestPrice sorting (default: 'BUY' ascending) */
+  side?: 'BUY' | 'SELL';
 }
 
 export interface FilteredBracketResult {
@@ -84,31 +86,48 @@ export function filterOffersByBracket(
   options: BracketFilterOptions = {},
 ): FilteredBracketResult {
   const bracket = CAPITAL_BRACKETS[bracketId];
-  const rate = options.exchangeRateVesPerUsd && options.exchangeRateVesPerUsd > 0 ? options.exchangeRateVesPerUsd : 70;
-  const safetyFloorUsd = options.minSafetyFloorUsd ?? 20;
+  const rawRate = options.exchangeRateVesPerUsd;
+  const rate = typeof rawRate === 'number' && Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 70;
+  const rawFloor = options.minSafetyFloorUsd ?? 20;
+  const safetyFloorUsd = Number.isFinite(rawFloor) && rawFloor >= 0 ? rawFloor : 20;
   const minSafetyFloorVes = safetyFloorUsd * rate;
   const filterPromoted = options.filterPromoted ?? true;
 
   let purgedDustCount = 0;
   let purgedPromotedCount = 0;
 
-  const filtered = offers.filter((o) => {
-    // 1. Promoted / sponsored filter (Binance tags or bait markers)
-    if (filterPromoted && (o.merchantName?.toLowerCase().includes('promoted') || o.merchantName?.toLowerCase().includes('patrocinado'))) {
-      purgedPromotedCount++;
-      return false;
-    }
+  const filtered = offers
+    .filter((o) => {
+      if (
+        !Number.isFinite(o.price) ||
+        o.price <= 0 ||
+        !Number.isFinite(o.minVes) ||
+        !Number.isFinite(o.maxVes) ||
+        o.maxVes <= 0
+      ) {
+        return false;
+      }
 
-    // 2. $20 USD safety floor: maximum order capacity must be at least the safety floor
-    if (o.maxVes < minSafetyFloorVes) {
-      purgedDustCount++;
-      return false;
-    }
+      // 1. Promoted / sponsored filter (Binance tags or bait markers)
+      if (
+        filterPromoted &&
+        (o.merchantName?.toLowerCase().includes('promoted') ||
+          o.merchantName?.toLowerCase().includes('patrocinado'))
+      ) {
+        purgedPromotedCount++;
+        return false;
+      }
 
-    // 3. Bracket range intersection: offer must overlap with [minVes, maxVes]
-    const overlaps = o.maxVes >= bracket.minVes && o.minVes <= bracket.maxVes;
-    return overlaps;
-  });
+      // 2. $20 USD safety floor: maximum order capacity must be at least the safety floor
+      if (o.maxVes < minSafetyFloorVes) {
+        purgedDustCount++;
+        return false;
+      }
+
+      // 3. Bracket range intersection: offer must overlap with [minVes, maxVes]
+      return o.maxVes >= bracket.minVes && o.minVes <= bracket.maxVes;
+    })
+    .sort((a, b) => (options.side === 'SELL' ? b.price - a.price : a.price - b.price));
 
   const bestPrice = filtered.length > 0 ? filtered[0].price : 0;
   const totalVolumeVes = filtered.reduce((acc, o) => acc + o.maxVes, 0);
@@ -153,7 +172,12 @@ export function detectOtcWhaleBlocks(
   exchangeRateVesPerUsd = 70,
   thresholdUsd = 100000,
 ): OtcWhaleReport {
-  if (!offers || offers.length === 0 || exchangeRateVesPerUsd <= 0) {
+  if (
+    !offers ||
+    offers.length === 0 ||
+    !Number.isFinite(exchangeRateVesPerUsd) ||
+    exchangeRateVesPerUsd <= 0
+  ) {
     return {
       whaleDetected: false,
       totalWhaleVolumeUsd: 0,
@@ -163,12 +187,18 @@ export function detectOtcWhaleBlocks(
     };
   }
 
-  const top10VolumeVes = offers.slice(0, 10).reduce((acc, o) => acc + o.maxVes, 0);
+  const validOffers = offers.filter(
+    (o) => Number.isFinite(o.maxVes) && o.maxVes > 0 && Number.isFinite(o.price) && o.price > 0,
+  );
+  const top10VolumeVes = [...validOffers]
+    .sort((a, b) => b.maxVes - a.maxVes)
+    .slice(0, 10)
+    .reduce((acc, o) => acc + o.maxVes, 0);
 
   const whaleBlocks: OtcWhaleBlock[] = [];
   let totalWhaleVolumeUsd = 0;
 
-  for (const o of offers) {
+  for (const o of validOffers) {
     const volUsd = o.maxVes / exchangeRateVesPerUsd;
     if (volUsd >= thresholdUsd) {
       const share = top10VolumeVes > 0 ? roundMoney((o.maxVes / top10VolumeVes) * 100, 1) : 0;

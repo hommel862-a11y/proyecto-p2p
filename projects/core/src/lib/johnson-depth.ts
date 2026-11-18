@@ -5,6 +5,8 @@
  */
 import {
   BINANCE_PAY_METHODS,
+  filterOffersByPayMethod,
+  getFullDepthOffers,
   type BinanceOfferSummary,
   type BinanceP2pMarketDepth,
 } from './binance-p2p';
@@ -38,13 +40,18 @@ export function computeVolumeWeightedPrice(
   const maxDeviation = options.maxPriceDeviationFactor ?? 3;
   const minFinishRate = options.minFinishRatePct ?? 0;
 
-  if (!offers || offers.length === 0 || targetUsdt <= 0) {
+  if (!offers || offers.length === 0 || !Number.isFinite(targetUsdt) || targetUsdt <= 0) {
     return { price: 0, fillableUsdt: 0 };
   }
 
   // 1) Filtro base: precio y volumen positivos + reputación mínima
   let candidates = offers.filter(
-    (o) => o.price > 0 && o.maxVes > 0 && o.finishRatePct >= minFinishRate,
+    (o) =>
+      Number.isFinite(o.price) &&
+      o.price > 0 &&
+      Number.isFinite(o.maxVes) &&
+      o.maxVes > 0 &&
+      o.finishRatePct >= minFinishRate,
   );
   if (candidates.length === 0) return { price: 0, fillableUsdt: 0 };
 
@@ -107,8 +114,16 @@ export function calculateDepthQuality(
   if (!depth.bestBuyPrice || !depth.bestSellPrice) return 0;
 
   const targetVol = Math.max(req.targetUsdt, req.minLiquidityUsdt);
-  const buyUsdt = computeVolumeWeightedPrice(depth.buyOffers, 'SELL', targetVol).fillableUsdt;
-  const sellUsdt = computeVolumeWeightedPrice(depth.sellOffers, 'BUY', targetVol).fillableUsdt;
+  const buyUsdt = computeVolumeWeightedPrice(
+    getFullDepthOffers(depth, 'BUY'),
+    'BUY',
+    targetVol,
+  ).fillableUsdt;
+  const sellUsdt = computeVolumeWeightedPrice(
+    getFullDepthOffers(depth, 'SELL'),
+    'SELL',
+    targetVol,
+  ).fillableUsdt;
 
   // 1. Ratio de balance buy/sell (50%)
   const total = buyUsdt + sellUsdt;
@@ -138,8 +153,16 @@ export function calculateLiquidityScore(
 ): number {
   const minLiquidity = req.minLiquidityUsdt;
   const evalTarget = Math.max(req.targetUsdt, minLiquidity * 2);
-  const buyUsdt = computeVolumeWeightedPrice(depth.buyOffers, 'SELL', evalTarget).fillableUsdt;
-  const sellUsdt = computeVolumeWeightedPrice(depth.sellOffers, 'BUY', evalTarget).fillableUsdt;
+  const buyUsdt = computeVolumeWeightedPrice(
+    getFullDepthOffers(depth, 'BUY'),
+    'BUY',
+    evalTarget,
+  ).fillableUsdt;
+  const sellUsdt = computeVolumeWeightedPrice(
+    getFullDepthOffers(depth, 'SELL'),
+    'SELL',
+    evalTarget,
+  ).fillableUsdt;
   const avgVolume = (buyUsdt + sellUsdt) / 2;
 
   if (avgVolume >= minLiquidity * 2) return 100;
@@ -217,13 +240,14 @@ export function computeBankProfits(
   config: JohnsonBankConfig = DEFAULT_JOHNSON_BANK_CONFIG,
 ): JohnsonBankProfit[] {
   const results: JohnsonBankProfit[] = [];
+  const fullBuyPool = getFullDepthOffers(depth, 'BUY');
+  const fullSellPool = getFullDepthOffers(depth, 'SELL');
 
   for (const bankKey of bankKeys) {
     const bankName = BINANCE_PAY_METHODS[bankKey] ?? '';
-    const filter = (o: BinanceOfferSummary) => (bankName ? o.payMethods.includes(bankName) : true);
 
-    const buyList = depth.buyOffers.filter(filter);
-    const sellList = depth.sellOffers.filter(filter);
+    const buyList = bankName ? filterOffersByPayMethod(fullBuyPool, bankName) : fullBuyPool;
+    const sellList = bankName ? filterOffersByPayMethod(fullSellPool, bankName) : fullSellPool;
 
     const buy = computeVolumeWeightedPrice(buyList, 'BUY', req.targetUsdt);
     const sell = computeVolumeWeightedPrice(sellList, 'SELL', req.targetUsdt);

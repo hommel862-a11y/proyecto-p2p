@@ -140,4 +140,43 @@ describe('Market Scanner: Radar de Alta Demanda (Core)', () => {
     expect(tier1k?.isActionable).toBe(false);
     expect(tier1k?.statusNote).toContain('Spread comprimido');
   });
+
+  it('supports BINANCE_TAKER orientation from computeMarketDepth without inverting buy/sell Maker quotes', () => {
+    // Real Binance Venezuela semantics in computeMarketDepth:
+    // depth.buyOffers (tradeType='BUY' -> makers SELLING USDT, lowest first: 79.45..79.80)
+    // depth.sellOffers (tradeType='SELL' -> makers BUYING USDT, highest first: 78.40..78.10)
+    const binanceDepth: BinanceP2pMarketDepth = {
+      asset: 'USDT',
+      fiat: 'VES',
+      bestBuyPrice: 79.45,
+      bestSellPrice: 78.4,
+      spreadVes: -1.05,
+      spreadPct: -1.32,
+      updatedAt: new Date().toISOString(),
+      buyOffers: [
+        mockOffer(79.45, 5000, 300000, 98, 400, 'Banesco'),
+        mockOffer(79.6, 5000, 300000, 98, 350, 'Banesco'),
+      ],
+      sellOffers: [
+        mockOffer(78.4, 5000, 300000, 98, 400, 'Banesco'),
+        mockOffer(78.2, 5000, 300000, 98, 350, 'Banesco'),
+      ],
+    };
+
+    const result = computeHighDemandScan(binanceDepth, {
+      merchantLevel: 'STANDARD',
+      bankFilter: 'Banesco',
+      stepVes: 0.01,
+      bookOrientation: 'BINANCE_TAKER',
+    });
+
+    const tier1k = result.tiers.find((t) => t.tierUsdt === 1000);
+    expect(tier1k).toBeDefined();
+    // Maker BUY competes in sellOffers (78.40 + 0.01 = 78.41)
+    expect(tier1k?.suggestedBuyPrice).toBe(78.41);
+    // Maker SELL competes in buyOffers (79.45 - 0.01 = 79.44)
+    expect(tier1k?.suggestedSellPrice).toBe(79.44);
+    expect(tier1k?.isActionable).toBe(true);
+    expect(tier1k?.netSpreadPct).toBeGreaterThan(0.5);
+  });
 });

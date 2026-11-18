@@ -66,13 +66,15 @@ export function calculateOrderBookImbalance(
   const minUsdt = options.minOrderUsdt ?? 20;
   const gapThreshold = options.gapThresholdPct ?? 0.4;
 
-  // Filter and extract top K valid liquidity levels
+  // Filter, sort deterministically (BUY ascending asks, SELL descending bids), and extract top K
   const validBuy = buyOffers
-    .filter((o) => o.price > 0 && o.maxVes / o.price >= minUsdt)
+    .filter((o) => Number.isFinite(o.price) && o.price > 0 && Number.isFinite(o.maxVes) && o.maxVes / o.price >= minUsdt)
+    .sort((a, b) => a.price - b.price)
     .slice(0, depthK);
 
   const validSell = sellOffers
-    .filter((o) => o.price > 0 && o.maxVes / o.price >= minUsdt)
+    .filter((o) => Number.isFinite(o.price) && o.price > 0 && Number.isFinite(o.maxVes) && o.maxVes / o.price >= minUsdt)
+    .sort((a, b) => b.price - a.price)
     .slice(0, depthK);
 
   const buyVolumeUsdt = roundMoney(

@@ -9,7 +9,11 @@
  */
 
 import { roundMoney } from './money';
-import type { BinanceOfferSummary, BinanceP2pMarketDepth } from './binance-p2p';
+import {
+  getFullDepthOffers,
+  type BinanceOfferSummary,
+  type BinanceP2pMarketDepth,
+} from './binance-p2p';
 
 /**
  * Standard capital tiers for high-demand / institutional P2P trading.
@@ -51,6 +55,12 @@ export interface HighDemandScanOptions {
   maxBuyPrice?: number;
   /** Volatility safety cushion in VES (e.g. 0.10 Bs) if market is unstable. Default: 0.01 */
   stepVes?: number;
+  /**
+   * Orderbook input convention:
+   * - 'MAKER_COMPETITORS' (default): depth.buyOffers = Maker BUY competitors (highest first), depth.sellOffers = Maker SELL competitors (lowest first).
+   * - 'BINANCE_TAKER': output of computeMarketDepth() where depth.sellOffers (tradeType='SELL') = Maker BUY competitors and depth.buyOffers (tradeType='BUY') = Maker SELL competitors.
+   */
+  bookOrientation?: 'MAKER_COMPETITORS' | 'BINANCE_TAKER';
 }
 
 export interface TierOpportunityRow {
@@ -106,10 +116,14 @@ export function filterQualifiedCompetitors(
 }
 
 /**
- * Normalizes payment method string for comparison.
+ * Normalizes payment method string for comparison (accent-insensitive).
  */
 function normalizePaymentMethod(method: string): string {
-  return method.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return method
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -170,14 +184,23 @@ export function computeHighDemandScan(
   // Reference exchange rate to convert USDT tiers to VES
   const refRate = (depth.bestBuyPrice + depth.bestSellPrice) / 2;
 
+  const fullBuyPool = getFullDepthOffers(depth, 'BUY');
+  const fullSellPool = getFullDepthOffers(depth, 'SELL');
+  // In BINANCE_TAKER mode (raw computeMarketDepth output), depth.sellOffers (tradeType='SELL')
+  // holds Maker BUY competitors, and depth.buyOffers (tradeType='BUY') holds Maker SELL competitors.
+  const rawMakerBuyCompetitors =
+    options.bookOrientation === 'BINANCE_TAKER' ? fullSellPool : fullBuyPool;
+  const rawMakerSellCompetitors =
+    options.bookOrientation === 'BINANCE_TAKER' ? fullBuyPool : fullSellPool;
+
   // 1. Filter qualified competitors
   const qualifiedBuys = filterQualifiedCompetitors(
-    depth.buyOffers ?? [],
+    rawMakerBuyCompetitors,
     options.filterCriteria,
   ).filter((o) => offerMatchesBank(o, bankFilter));
 
   const qualifiedSells = filterQualifiedCompetitors(
-    depth.sellOffers ?? [],
+    rawMakerSellCompetitors,
     options.filterCriteria,
   ).filter((o) => offerMatchesBank(o, bankFilter));
 

@@ -322,4 +322,62 @@ describe('buildJohnsonMarketQuality', () => {
     expect(q.recommendation).toBe('AVOID');
     expect(q.bankProfits[0].netGainVes).toBe(0);
   });
+
+  it('usa fullBuyOffers/fullSellOffers, match normalizado de Pago Móvil/BDV y protege NaN targetUsdt', () => {
+    expect(computeVolumeWeightedPrice(makeOffers([800, 810], 500 * 800), 'BUY', Number.NaN)).toEqual({
+      price: 0,
+      fillableUsdt: 0,
+    });
+
+    const depth = {
+      asset: 'USDT',
+      fiat: 'VES',
+      bestBuyPrice: 800,
+      bestSellPrice: 825,
+      spreadVes: 25,
+      spreadPct: 3.12,
+      updatedAt: new Date().toISOString(),
+      buyOffers: [],
+      sellOffers: [],
+      fullBuyOffers: [
+        {
+          advNo: 'pm-b1',
+          price: 800,
+          merchantName: 'PM1',
+          finishRatePct: 99,
+          orderCount: 100,
+          minVes: 100,
+          maxVes: 800 * 800,
+          payMethods: ['Pago Móvil'],
+        },
+        {
+          advNo: 'pm-b2',
+          price: 810,
+          merchantName: 'PM2',
+          finishRatePct: 99,
+          orderCount: 100,
+          minVes: 100,
+          maxVes: 810 * 800,
+          payMethods: ['Banco de Venezuela'],
+        },
+      ],
+      fullSellOffers: [
+        {
+          advNo: 'pm-s1',
+          price: 825,
+          merchantName: 'PMS1',
+          finishRatePct: 99,
+          orderCount: 100,
+          minVes: 100,
+          maxVes: 825 * 800,
+          payMethods: ['Pago Móvil', 'Banco de Venezuela'],
+        },
+      ],
+    } as const as any;
+
+    const quality = buildJohnsonMarketQuality(depth, ['PAGO_MOVIL', 'BDV'], REQUIRED);
+    expect(quality.liquidityScore).toBeGreaterThanOrEqual(75);
+    expect(quality.bankProfits.find((b) => b.bankKey === 'PAGO_MOVIL')?.fillableUsdt).toBe(500);
+    expect(quality.bankProfits.find((b) => b.bankKey === 'BDV')?.fillableUsdt).toBe(500);
+  });
 });

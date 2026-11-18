@@ -147,16 +147,24 @@ export interface SpreadQualityInput {
   sellPrice: number;
   volatility4hPct?: number; // Estimated price shift stddev or range in last 4h (e.g. 0.5%)
   bankCode?: BankCode; // Primary operational bank
+  sourceBank?: BankCode;
+  targetBank?: BankCode;
+  isInterbank?: boolean;
+  capitalUsdt?: number;
   accountUsagePct?: number; // Consumed limit % (0 to 100)
   buyRole?: P2PRole;
   sellRole?: P2PRole;
 }
 
+export type SpreadQualityFactorKey = 'netMargin' | 'safety' | 'velocity' | 'limitHealth';
+export type SpreadQualityTone = 'optimal' | 'healthy' | 'caution' | 'toxic';
+
 export interface SpreadQualityResult {
   score: number; // 0 to 100
   verdict: SpreadQualityVerdict;
+  verdictTone: SpreadQualityTone;
   verdictLabel: string;
-  verdictColor: string; // Hex code or CSS class reference
+  verdictColor: string; // Backward-compatible hex reference
   nominalSpreadPct: number;
   netSpreadPct: number;
   safetyCorridorPct: number;
@@ -166,6 +174,8 @@ export interface SpreadQualityResult {
     velocityScore: number; // 0 to 100 (25% weight)
     limitHealthScore: number; // 0 to 100 (15% weight)
   };
+  weakestFactor: SpreadQualityFactorKey;
+  causalHint: string;
   recommendation: string;
 }
 
@@ -298,27 +308,39 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
     sellPrice,
     volatility4hPct = 0.4,
     bankCode = 'BANESCO',
+    sourceBank,
+    targetBank,
+    isInterbank = false,
+    capitalUsdt = 1000,
     accountUsagePct = 25,
     buyRole = 'MAKER',
     sellRole = 'MAKER',
   } = input;
 
-  if (buyPrice <= 0 || sellPrice <= 0) {
+  if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice) || buyPrice <= 0 || sellPrice <= 0) {
     throw new Error('Prices must be positive');
   }
 
+  const effectiveSourceBank = sourceBank ?? bankCode;
+  const effectiveTargetBank = targetBank ?? bankCode;
+  const safeCapital = Number.isFinite(capitalUsdt) && capitalUsdt > 0 ? capitalUsdt : 1000;
+  const safeVolatility =
+    Number.isFinite(volatility4hPct) && volatility4hPct >= 0 ? volatility4hPct : 0.4;
+  const safeUsage =
+    Number.isFinite(accountUsagePct) ? Math.min(100, Math.max(0, accountUsagePct)) : 25;
+
   const nominalSpreadPct = ((sellPrice - buyPrice) / buyPrice) * 100;
 
-  // Run a reference 1,000 USDT cycle to measure net margin:
+  // Run reference cycle to measure net margin:
   const refCycle = computeArbitrageCycle({
-    capitalUsdt: 1000,
+    capitalUsdt: safeCapital,
     buyPrice,
     sellPrice,
     buyRole,
     sellRole,
-    sourceBank: bankCode,
-    targetBank: bankCode,
-    isInterbank: false,
+    sourceBank: effectiveSourceBank,
+    targetBank: effectiveTargetBank,
+    isInterbank,
   });
 
   const netSpreadPct = refCycle.roiCyclePct;
@@ -329,17 +351,17 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
 
   // Factor 2: Safety Corridor vs Volatility (25% weight)
   // Target: Net spread must be at least 2.5x the 4h volatility to get 100 pts.
-  const corridorRatio = volatility4hPct > 0 ? netSpreadPct / volatility4hPct : 2.5;
+  const corridorRatio = safeVolatility > 0 ? netSpreadPct / safeVolatility : 2.5;
   const safetyScore = Math.min(100, Math.max(0, (corridorRatio / 2.5) * 100));
   const safetyCorridorPct = corridorRatio;
 
   // Factor 3: Bank Rail Velocity Score (25% weight)
-  const bankInfo = VENEZUELAN_BANK_FEES[bankCode] ?? VENEZUELAN_BANK_FEES.OTRO;
+  const bankInfo = VENEZUELAN_BANK_FEES[effectiveTargetBank] ?? VENEZUELAN_BANK_FEES.OTRO;
   const velocityScore = bankInfo.velocityScore;
 
   // Factor 4: Account Limit Health Score (15% weight)
   // 0% usage -> 100 score; 80% usage -> 40 score; 100% usage -> 0 score.
-  const limitHealthScore = Math.min(100, Math.max(0, (100 - accountUsagePct) * 1.25));
+  const limitHealthScore = Math.min(100, Math.max(0, (100 - safeUsage) * 1.25));
 
   // Weighted total:
   const rawScore =
@@ -347,32 +369,71 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
 
   const score = Math.round(Math.min(100, Math.max(0, rawScore)));
 
+  const roundedFactors = {
+    netMarginScore: Math.round(netMarginScore),
+    safetyScore: Math.round(safetyScore),
+    velocityScore: Math.round(velocityScore),
+    limitHealthScore: Math.round(limitHealthScore),
+  };
+
+  const factorEntries: { key: SpreadQualityFactorKey; val: number }[] = [
+    { key: 'netMargin', val: roundedFactors.netMarginScore },
+    { key: 'safety', val: roundedFactors.safetyScore },
+    { key: 'velocity', val: roundedFactors.velocityScore },
+    { key: 'limitHealth', val: roundedFactors.limitHealthScore },
+  ];
+  const weakest = factorEntries.reduce((min, cur) => (cur.val < min.val ? cur : min), factorEntries[0]);
+
+  let causalHint: string;
+  switch (weakest.key) {
+    case 'netMargin':
+      causalHint =
+        buyRole === 'TAKER' || sellRole === 'TAKER' || isInterbank
+          ? 'Margen neto comprimido por comisiones o fricción interbancaria; evaluar Maker mismo banco.'
+          : 'Margen neto ajustado frente al benchmark institucional (1.50%).';
+      break;
+    case 'safety':
+      causalHint = `Volatilidad reciente (${safeVolatility.toFixed(2)}%) reduce el colchón frente al spread neto.`;
+      break;
+    case 'velocity':
+      causalHint = `Velocidad bancaria de ${bankInfo.name} es inferior a Banesco/Mercantil; rotación más lenta.`;
+      break;
+    case 'limitHealth':
+      causalHint = `Uso de cupo diario elevado (${Math.round(safeUsage)}%); considerar rotar hacia otro banco libre.`;
+      break;
+  }
+
   // Determine Verdict:
   let verdict: SpreadQualityVerdict;
+  let verdictTone: SpreadQualityTone;
   let verdictLabel: string;
   let verdictColor: string;
   let recommendation: string;
 
   if (score >= 85) {
     verdict = 'OPTIMAL';
+    verdictTone = 'optimal';
     verdictLabel = 'Óptimo / Expansivo';
     verdictColor = '#10b981'; // Green
     recommendation =
       'Spread robusto con excelente colchón. Operar con máximo volumen y posicionamiento Top 1.';
   } else if (score >= 65) {
     verdict = 'HEALTHY';
+    verdictTone = 'healthy';
     verdictLabel = 'Saludable / Normal';
     verdictColor = '#f59e0b'; // Amber
     recommendation =
       'Operativa estándar. Mantener posición Top 2/Top 3 con margen objetivo de 1.2% - 1.8%.';
   } else if (score >= 45) {
     verdict = 'CAUTION';
+    verdictTone = 'caution';
     verdictLabel = 'Ajustado / Cauteloso';
     verdictColor = '#f97316'; // Orange
     recommendation =
       'Margen comprimido. Operar solo como Maker (evitar órdenes Taker). Reducir tamaño de lote.';
   } else {
     verdict = 'TOXIC';
+    verdictTone = 'toxic';
     verdictLabel = 'Tóxico / Inviable';
     verdictColor = '#ef4444'; // Red
     recommendation =
@@ -382,17 +443,15 @@ export function computeSpreadQualityScore(input: SpreadQualityInput): SpreadQual
   return {
     score,
     verdict,
+    verdictTone,
     verdictLabel,
     verdictColor,
     nominalSpreadPct: Number(nominalSpreadPct.toFixed(2)),
     netSpreadPct: Number(netSpreadPct.toFixed(2)),
     safetyCorridorPct: Number(safetyCorridorPct.toFixed(2)),
-    factors: {
-      netMarginScore: Math.round(netMarginScore),
-      safetyScore: Math.round(safetyScore),
-      velocityScore: Math.round(velocityScore),
-      limitHealthScore: Math.round(limitHealthScore),
-    },
+    factors: roundedFactors,
+    weakestFactor: weakest.key,
+    causalHint,
     recommendation,
   };
 }

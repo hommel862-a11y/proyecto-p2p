@@ -50,7 +50,29 @@ export interface BinanceP2pMarketDepth {
   spreadPct: number;
   buyOffers: BinanceOfferSummary[];
   sellOffers: BinanceOfferSummary[];
+  /** Full sorted offers (up to 20 per side) for deep microstructure/VWAP engines. */
+  fullBuyOffers?: BinanceOfferSummary[];
+  /** Full sorted offers (up to 20 per side) for deep microstructure/VWAP engines. */
+  fullSellOffers?: BinanceOfferSummary[];
   updatedAt: string;
+}
+
+/**
+ * Returns full-depth offers when available, falling back to top-5 `buyOffers`/`sellOffers`.
+ */
+export function getFullDepthOffers(
+  depth: BinanceP2pMarketDepth | null | undefined,
+  side: 'BUY' | 'SELL',
+): BinanceOfferSummary[] {
+  if (!depth) return [];
+  if (side === 'BUY') {
+    return depth.fullBuyOffers && depth.fullBuyOffers.length > 0
+      ? depth.fullBuyOffers
+      : (depth.buyOffers ?? []);
+  }
+  return depth.fullSellOffers && depth.fullSellOffers.length > 0
+    ? depth.fullSellOffers
+    : (depth.sellOffers ?? []);
 }
 
 /**
@@ -122,7 +144,12 @@ export function parseBinanceP2pItems(data: unknown): BinanceOfferSummary[] {
     if (!adv || !adv.price) continue;
 
     const price = Number(adv.price);
-    if (isNaN(price) || price <= 0) continue;
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    const rawMin = Number(adv.minSingleTransAmount ?? 0);
+    const rawMax = Number(adv.maxSingleTransAmount ?? 0);
+    const rawFinish = Number(advertiser?.monthFinishRate ?? 1);
+    const rawOrders = Number(advertiser?.monthOrderCount ?? 0);
 
     const payMethods = (adv.tradeMethods ?? [])
       .map((m) => m.tradeMethodName ?? m.identifier ?? '')
@@ -132,10 +159,10 @@ export function parseBinanceP2pItems(data: unknown): BinanceOfferSummary[] {
       advNo: String(adv.advNo ?? ''),
       price: roundMoney(price, 2),
       merchantName: advertiser?.nickName ?? 'Anónimo',
-      finishRatePct: Math.round((advertiser?.monthFinishRate ?? 1) * 100),
-      orderCount: advertiser?.monthOrderCount ?? 0,
-      minVes: roundMoney(Number(adv.minSingleTransAmount ?? 0), 2),
-      maxVes: roundMoney(Number(adv.maxSingleTransAmount ?? 0), 2),
+      finishRatePct: Number.isFinite(rawFinish) ? Math.round(rawFinish * 100) : 100,
+      orderCount: Number.isFinite(rawOrders) ? rawOrders : 0,
+      minVes: Number.isFinite(rawMin) && rawMin >= 0 ? roundMoney(rawMin, 2) : 0,
+      maxVes: Number.isFinite(rawMax) && rawMax >= 0 ? roundMoney(rawMax, 2) : 0,
       payMethods,
     });
   }
@@ -143,8 +170,16 @@ export function parseBinanceP2pItems(data: unknown): BinanceOfferSummary[] {
   return offers;
 }
 
+function normalizeMethod(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 /**
- * Filter offer list by a specific payment method (fuzzy search).
+ * Filter offer list by a specific payment method (fuzzy search, accent-insensitive).
  */
 export function filterOffersByPayMethod(
   offers: readonly BinanceOfferSummary[],
@@ -153,15 +188,8 @@ export function filterOffersByPayMethod(
   if (!methodName || methodName.trim().length === 0 || methodName.toUpperCase() === 'ALL') {
     return [...offers];
   }
-  const norm = methodName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return offers.filter((o) =>
-    o.payMethods.some((pm) =>
-      pm
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '')
-        .includes(norm),
-    ),
-  );
+  const norm = normalizeMethod(methodName);
+  return offers.filter((o) => o.payMethods.some((pm) => normalizeMethod(pm).includes(norm)));
 }
 
 /**
@@ -177,14 +205,18 @@ export function computeMarketDepth(
   fiat = 'VES',
   filterMethod?: string,
 ): BinanceP2pMarketDepth {
-  const buyOffers = filterOffersByPayMethod(parseBinanceP2pItems(buyAdsRaw), filterMethod);
-  const sellOffers = filterOffersByPayMethod(parseBinanceP2pItems(sellAdsRaw), filterMethod);
+  const buyOffers = filterOffersByPayMethod(parseBinanceP2pItems(buyAdsRaw), filterMethod).sort(
+    (a, b) => a.price - b.price,
+  );
+  const sellOffers = filterOffersByPayMethod(parseBinanceP2pItems(sellAdsRaw), filterMethod).sort(
+    (a, b) => b.price - a.price,
+  );
 
   // Lowest buy price available
-  const bestBuyPrice = buyOffers.length > 0 ? Math.min(...buyOffers.map((o) => o.price)) : 0;
+  const bestBuyPrice = buyOffers.length > 0 ? buyOffers[0].price : 0;
 
   // Highest sell price available
-  const bestSellPrice = sellOffers.length > 0 ? Math.max(...sellOffers.map((o) => o.price)) : 0;
+  const bestSellPrice = sellOffers.length > 0 ? sellOffers[0].price : 0;
 
   let spreadVes = 0;
   let spreadPct = 0;
@@ -203,6 +235,8 @@ export function computeMarketDepth(
     spreadPct,
     buyOffers: buyOffers.slice(0, 5),
     sellOffers: sellOffers.slice(0, 5),
+    fullBuyOffers: buyOffers.slice(0, 20),
+    fullSellOffers: sellOffers.slice(0, 20),
     updatedAt: new Date().toISOString(),
   };
 }

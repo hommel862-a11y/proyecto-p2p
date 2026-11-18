@@ -133,6 +133,28 @@ describe('Spread Quality & Arbitrage Cascade Domain Logic', () => {
       expect(res.verdictLabel).toContain('Tóxico');
       expect(res.recommendation).toContain('Pausa');
     });
+
+    it('expone verdictTone, weakestFactor, causalHint y soporta isInterbank/capitalUsdt', () => {
+      const takerInterbank = computeSpreadQualityScore({
+        buyPrice: 80,
+        sellPrice: 81.2, // +1.50% nominal
+        volatility4hPct: 0.3,
+        bankCode: 'MERCANTIL',
+        sourceBank: 'BANESCO',
+        targetBank: 'MERCANTIL',
+        isInterbank: true,
+        capitalUsdt: 500,
+        accountUsagePct: 88,
+        buyRole: 'TAKER',
+        sellRole: 'TAKER',
+      });
+
+      expect(takerInterbank.verdictTone).toBeDefined();
+      expect(takerInterbank.weakestFactor).toBe('limitHealth');
+      expect(takerInterbank.causalHint).toContain('cupo');
+      // 1.50% nominal minus ~0.60% interbank friction => netSpreadPct < 1.0%
+      expect(takerInterbank.netSpreadPct).toBeLessThan(1.1);
+    });
   });
 
   describe('planReverseGoal', () => {

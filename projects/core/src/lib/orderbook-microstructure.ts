@@ -126,10 +126,11 @@ export class OrderPersistenceTracker {
   }
 
   /**
-   * Genera el reporte de spoofing y liquidez fantasma para el estado actual.
+   * Genera el reporte de spoofing y liquidez fantasma para el estado actual (opcionalmente filtrado por lado).
    */
-  generateSpoofReport(nowMs = Date.now()): SpoofReport {
-    const orders = Array.from(this.tracked.values());
+  generateSpoofReport(nowMs = Date.now(), sideFilter?: 'BUY' | 'SELL'): SpoofReport {
+    const allOrders = Array.from(this.tracked.values());
+    const orders = sideFilter ? allOrders.filter((o) => o.side === sideFilter) : allOrders;
     if (orders.length === 0) {
       return {
         timestampMs: nowMs,
@@ -191,8 +192,15 @@ export class OrderPersistenceTracker {
       }
 
       // 2. Detección de Anuncio Cebo / Spoofing (Spoof Bait)
-      // Anuncios con vida muy corta (< 75s) que desaparecen o tienen precio agresivo con reputación deficiente
-      if (activeAgeSec < 75 && (isDisappeared || order.finishRatePct < 85 || volumeRatio > 2.0)) {
+      // Solo clasifica cuando desaparece en <75s o muestra baja reputación extrema repetida en >=2 snapshots.
+      // Nunca penaliza anuncios legítimos activos en el snapshot #1 solo por su tamaño.
+      const repeatedLowRep =
+        !isDisappeared &&
+        order.snapshotsPresent >= 2 &&
+        activeAgeSec < 75 &&
+        order.finishRatePct < 75 &&
+        order.lastOrderCount < 20;
+      if ((isDisappeared && activeAgeSec < 75) || repeatedLowRep) {
         classified.push({
           advNo: order.advNo,
           merchantName: order.merchantName,
@@ -268,6 +276,14 @@ export class OrderPersistenceTracker {
   clear(): void {
     this.tracked.clear();
   }
+
+  clearSide(side: 'BUY' | 'SELL'): void {
+    for (const [advNo, order] of this.tracked.entries()) {
+      if (order.side === side) {
+        this.tracked.delete(advNo);
+      }
+    }
+  }
 }
 
 /**
@@ -297,7 +313,7 @@ export function computeMicrostructureSanitizedDepth(
   nowMs = Date.now(),
   options: JohnsonDepthOptions = {},
 ): SanitizedDepthResult {
-  const report = tracker.generateSpoofReport(nowMs);
+  const report = tracker.generateSpoofReport(nowMs, side);
   const sanitized = sanitizeOffers(offers, report);
 
   const purgedSpoofCount = offers.length - sanitized.length;
@@ -356,25 +372,54 @@ export function computeAvellanedaStoikovQuotes(
     orderbookLiquidityDensityK = 1.5,
   } = input;
 
-  const q = currentInventoryUsdt - targetInventoryUsdt;
-  const sigmaSquared = Math.pow(volatilityDaily, 2);
-  const timeHorizon = Math.max(0.01, Math.min(1.0, timeRemainingFraction));
+  if (!Number.isFinite(midPrice) || midPrice <= 0) {
+    return {
+      reservationPrice: 0,
+      optimalHalfSpread: 0,
+      optimalBidPrice: 0,
+      optimalAskPrice: 0,
+      inventorySkewUsdt: 0,
+      inventoryRiskPremium: 0,
+      recommendedAction: 'HOLD',
+    };
+  }
 
-  // Reservation Price: r(s, q, t) = s - q * gamma * sigma^2 * (T - t)
-  const inventoryDiscount = q * riskAversionGamma * sigmaSquared * timeHorizon * midPrice;
-  const reservationPrice = midPrice - inventoryDiscount;
+  const safeCurrent = Number.isFinite(currentInventoryUsdt) ? currentInventoryUsdt : 0;
+  const safeTarget = Number.isFinite(targetInventoryUsdt) && targetInventoryUsdt > 0 ? targetInventoryUsdt : 0;
+  const q = safeCurrent - safeTarget;
+  const safeVol =
+    Number.isFinite(volatilityDaily) && volatilityDaily >= 0 ? Math.min(volatilityDaily, 0.5) : 0.02;
+  const safeGamma =
+    Number.isFinite(riskAversionGamma) && riskAversionGamma > 0.001 ? riskAversionGamma : 0.1;
+  const safeKappa =
+    Number.isFinite(orderbookLiquidityDensityK) && orderbookLiquidityDensityK > 0.01
+      ? orderbookLiquidityDensityK
+      : 1.5;
+  const sigmaSquared = Math.pow(safeVol, 2);
+  const timeHorizon = Number.isFinite(timeRemainingFraction)
+    ? Math.max(0.01, Math.min(1.0, timeRemainingFraction))
+    : 1.0;
+
+  // Normalize inventory skew proportionally so extreme balances never push reservationPrice negative.
+  const denomUsdt = safeTarget > 0 ? safeTarget : 1000;
+  const normalizedSkew = Math.max(-5, Math.min(5, q / denomUsdt));
+  const rawInventoryDiscount = normalizedSkew * safeGamma * sigmaSquared * timeHorizon * midPrice * 15;
+  const maxDiscount = midPrice * 0.15;
+  const inventoryDiscount = Math.max(-maxDiscount, Math.min(maxDiscount, rawInventoryDiscount));
+  const reservationPrice = Math.max(0.01, midPrice - inventoryDiscount);
 
   // Optimal spread: s = (2 / gamma) * ln(1 + gamma / kappa)
-  const baseSpread =
-    (2 / riskAversionGamma) *
-    Math.log(1 + riskAversionGamma / Math.max(0.01, orderbookLiquidityDensityK));
-  const optimalHalfSpread = (baseSpread * midPrice) / 200; // Ajustado a porcentaje de precio
+  const baseSpread = (2 / safeGamma) * Math.log(1 + safeGamma / safeKappa);
+  const optimalHalfSpread = Math.max(0.01, (baseSpread * midPrice) / 200);
 
-  const optimalBidPrice = Math.round((reservationPrice - optimalHalfSpread) * 100) / 100;
-  const optimalAskPrice = Math.round((reservationPrice + optimalHalfSpread) * 100) / 100;
+  const optimalBidPrice = Math.max(0.01, Math.round((reservationPrice - optimalHalfSpread) * 100) / 100);
+  const optimalAskPrice = Math.max(
+    optimalBidPrice + 0.01,
+    Math.round((reservationPrice + optimalHalfSpread) * 100) / 100,
+  );
 
   let recommendedAction: AvellanedaStoikovResult['recommendedAction'] = 'HOLD';
-  const inventoryRatio = targetInventoryUsdt > 0 ? q / targetInventoryUsdt : 0;
+  const inventoryRatio = safeTarget > 0 ? q / safeTarget : 0;
 
   if (inventoryRatio > 0.4) {
     recommendedAction = inventoryRatio > 0.8 ? 'AGGRESSIVE_UNLOAD' : 'SKEW_SELL';
@@ -430,21 +475,28 @@ export function calculateVpinMetric(input: VpinAnalysisInput): VpinAnalysisResul
     };
   }
 
+  const safeThreshold =
+    Number.isFinite(toxicityThreshold) && toxicityThreshold >= 0 ? toxicityThreshold : 0.25;
   let totalAbsoluteOrderImbalance = 0;
   let totalVolume = 0;
   let toxicCount = 0;
 
   for (const b of buckets) {
-    const imbalance = Math.abs(b.buyVolume - b.sellVolume);
+    const buyVol = Number.isFinite(b.buyVolume) && b.buyVolume >= 0 ? b.buyVolume : 0;
+    const sellVol = Number.isFinite(b.sellVolume) && b.sellVolume >= 0 ? b.sellVolume : 0;
+    const bucketVol = Number.isFinite(b.totalVolume) && b.totalVolume >= 0 ? b.totalVolume : buyVol + sellVol;
+    if (bucketVol <= 0) continue;
+
+    const imbalance = Math.abs(buyVol - sellVol);
     totalAbsoluteOrderImbalance += imbalance;
-    totalVolume += b.totalVolume;
-    if (b.totalVolume > 0 && imbalance / b.totalVolume >= toxicityThreshold) {
+    totalVolume += bucketVol;
+    if (imbalance / bucketVol >= safeThreshold) {
       toxicCount++;
     }
   }
 
-  const vpinScore =
-    totalVolume > 0 ? Math.round((totalAbsoluteOrderImbalance / totalVolume) * 1000) / 1000 : 0.1;
+  const rawVpin = totalVolume > 0 ? totalAbsoluteOrderImbalance / totalVolume : 0.1;
+  const vpinScore = Math.max(0, Math.min(1, Math.round(rawVpin * 1000) / 1000));
 
   let toxicityClassification: VpinAnalysisResult['toxicityClassification'] = 'LOW_RETAIL';
   let multiplier = 1.0;
@@ -515,31 +567,75 @@ export function computeOrderSlicingPlan(
     executionDurationMinutes,
     estimatedMarketVolumePerHourUsdt,
     currentMidPrice,
+    maxMarketParticipationPct = 15,
     algorithm = 'TWAP',
   } = input;
 
-  const durationHours = executionDurationMinutes / 60;
-  const projectedTotalMarketVolume = estimatedMarketVolumePerHourUsdt * durationHours;
+  if (
+    !Number.isFinite(totalAmountUsdt) ||
+    totalAmountUsdt <= 0 ||
+    !Number.isFinite(currentMidPrice) ||
+    currentMidPrice <= 0
+  ) {
+    return {
+      slices: [],
+      totalSlices: 0,
+      averageSliceAmountUsdt: 0,
+      sliceIntervalMinutes: 0,
+      expectedMarketImpactPct: 0,
+      executionAlgorithm: algorithm,
+      summary: 'Monto o precio no válido para fragmentación.',
+    };
+  }
+
+  const safeDurationMin =
+    Number.isFinite(executionDurationMinutes) && executionDurationMinutes >= 0
+      ? executionDurationMinutes
+      : 60;
+  const safeHourlyVol =
+    Number.isFinite(estimatedMarketVolumePerHourUsdt) && estimatedMarketVolumePerHourUsdt >= 0
+      ? estimatedMarketVolumePerHourUsdt
+      : 0;
+  const durationHours = safeDurationMin / 60;
+  const projectedTotalMarketVolume = safeHourlyVol * durationHours;
 
   const participationRate =
     projectedTotalMarketVolume > 0 ? (totalAmountUsdt / projectedTotalMarketVolume) * 100 : 100;
 
   const targetSliceSize = Math.max(300, Math.min(2500, totalAmountUsdt / 5));
   const rawSlices = Math.ceil(totalAmountUsdt / targetSliceSize);
-  const totalSlices = Math.max(3, Math.min(24, rawSlices));
-  const sliceIntervalMinutes = Math.max(2, Math.round(executionDurationMinutes / totalSlices));
+  const safeMaxParticipation =
+    Number.isFinite(maxMarketParticipationPct) && maxMarketParticipationPct > 0
+      ? maxMarketParticipationPct
+      : 15;
+  const minSlicesByParticipation =
+    projectedTotalMarketVolume > 0 && participationRate > safeMaxParticipation
+      ? Math.ceil(participationRate / safeMaxParticipation)
+      : 3;
+  const totalSlices = Math.max(3, Math.min(24, Math.max(rawSlices, minSlicesByParticipation)));
+  const sliceIntervalMinutes = Math.max(2, Math.round(safeDurationMin / totalSlices));
 
-  const slices: OrderSliceSchedule[] = [];
-  const baseSliceUsdt = totalAmountUsdt / totalSlices;
-
+  const weights: number[] = [];
   for (let i = 0; i < totalSlices; i++) {
-    let weight = 1.0;
     if (algorithm === 'VWAP') {
       const normalizedTime = (i / (totalSlices - 1 || 1)) * 2 - 1;
-      weight = 0.8 + 0.4 * Math.pow(normalizedTime, 2);
+      weights.push(0.8 + 0.4 * Math.pow(normalizedTime, 2));
+    } else {
+      weights.push(1.0);
     }
+  }
+  const weightSum = weights.reduce((acc, w) => acc + w, 0) || totalSlices;
 
-    const sliceUsdt = Math.round(baseSliceUsdt * weight * 100) / 100;
+  const slices: OrderSliceSchedule[] = [];
+  let allocatedUsdt = 0;
+
+  for (let i = 0; i < totalSlices; i++) {
+    const isLast = i === totalSlices - 1;
+    const rawSliceUsdt = isLast
+      ? totalAmountUsdt - allocatedUsdt
+      : (totalAmountUsdt * weights[i]) / weightSum;
+    const sliceUsdt = Math.max(0, Math.round(rawSliceUsdt * 100) / 100);
+    allocatedUsdt += sliceUsdt;
     const sliceVes = Math.round(sliceUsdt * currentMidPrice * 100) / 100;
 
     slices.push({
@@ -550,14 +646,13 @@ export function computeOrderSlicingPlan(
       targetPrice: currentMidPrice,
       participationRatePct:
         Math.round(
-          (sliceUsdt /
-            Math.max(1, (estimatedMarketVolumePerHourUsdt / 60) * sliceIntervalMinutes)) *
-            1000,
+          (sliceUsdt / Math.max(1, (safeHourlyVol / 60) * sliceIntervalMinutes)) * 1000,
         ) / 10,
     });
   }
 
-  const expectedMarketImpactPct = Math.round(0.4 * Math.sqrt(participationRate / 100) * 100) / 100;
+  const expectedMarketImpactPct =
+    Math.round(0.4 * Math.sqrt(Math.max(0, participationRate) / 100) * 100) / 100;
 
   return {
     slices,
