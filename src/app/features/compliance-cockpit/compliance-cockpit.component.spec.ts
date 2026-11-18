@@ -1,5 +1,6 @@
 import '@angular/compiler';
 import { Injector, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComplianceCockpitComponent } from './compliance-cockpit.component';
@@ -8,6 +9,7 @@ import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
+import { HotkeysService } from '../../core/hotkeys.service';
 import {
   CRM_STORAGE_KEYS,
   type PipelineDeal,
@@ -704,6 +706,186 @@ describe('ComplianceCockpitComponent', () => {
 
       component.triggerArmSandboxTurn('PYME_SPLIT_PAYMENT');
       expect(Array.isArray(storageMap.get('p2p.arm.approval_queue'))).toBe(true);
+    });
+  });
+
+  describe('T5 Overhaul: 5-Module Nav, Silo Unification, Live KPIs, SQLite Hydration & Scoped Ctrl+K', () => {
+    it('maps legacy 8 views to unified 5 primaryNav pills and restores pipeline/rails submodes', () => {
+      component.setView('DASHBOARD');
+      expect(component.primaryNav()).toBe('OVERVIEW');
+
+      component.setView('KANBAN');
+      expect(component.primaryNav()).toBe('PIPELINE');
+      expect(component.pipelineViewMode()).toBe('LEGACY_BOARD');
+
+      component.setView('ARM_COMMAND');
+      expect(component.primaryNav()).toBe('PIPELINE');
+      expect(component.pipelineViewMode()).toBe('ARM_AUTOPILOT');
+
+      component.onPrimaryNavSelect('INBOX_STUDIO');
+      expect(component.activeView()).toBe('OMNICHANNEL');
+      expect(component.primaryNav()).toBe('INBOX_STUDIO');
+
+      component.onContactsRailsSubModeChange('RAILS');
+      expect(component.activeView()).toBe('BANKS');
+      expect(component.primaryNav()).toBe('CONTACTS_RAILS');
+
+      component.onPrimaryNavSelect('PIPELINE');
+      expect(component.activeView()).toBe('ARM_COMMAND');
+
+      component.setView('SETTINGS');
+      expect(component.primaryNav()).toBe('AUDIT_SYSTEM');
+    });
+
+    it('synchronizes activeScope and activeArmSilo bidirectionally', () => {
+      component.setScope('FINANCE_360');
+      expect(component.activeScope()).toBe('FINANCE_360');
+      expect(component.activeArmSilo()).toBe('FINANCE_360');
+      expect(storageMap.get(CRM_STORAGE_KEYS.ACTIVE_SCOPE)).toBe('FINANCE_360');
+
+      component.setArmSilo('P2P_DESK');
+      expect(component.activeArmSilo()).toBe('P2P_DESK');
+      expect(component.activeScope()).toBe('P2P_DESK');
+      expect(storageMap.get(CRM_STORAGE_KEYS.ACTIVE_SCOPE)).toBe('P2P_DESK');
+    });
+
+    it('computes armExecutiveKpisForSilo and overviewHeroKpis dynamically from live store state', () => {
+      component.setArmSilo('ARM_B2B');
+      const beforeValue = component.armExecutiveKpisForSilo()[0].value;
+      expect(component.armExecutiveKpisForSilo()[0].label).toContain('MRR');
+
+      component.armKanbanCards.update((cards) => [
+        ...cards,
+        {
+          id: 'arm-live-new',
+          workspaceId: 'ARM_B2B',
+          leadName: 'Live Enterprise',
+          companyName: 'Corp Live',
+          stageSlug: 'ganado',
+          qualificationScore: 92,
+          painPointSummary: 'Automatización live',
+          lastMessagePreview: 'Listos para firmar',
+          assignedAgentRole: 'QUOTER',
+          movedByAgentBadge: 'Movido por Humano',
+          dealValueLabel: '$10,000 USD',
+          estimatedValueNum: 10000,
+          freeWindowLabel: 'FREE_0_USD',
+          messages: [],
+          toolTraces: [{ toolName: 'create_quote', latencyMs: 500, status: 'OK' }],
+        },
+      ]);
+
+      const afterValue = component.armExecutiveKpisForSilo()[0].value;
+      expect(afterValue).not.toBe(beforeValue);
+      expect(afterValue).toContain('14,800.00');
+      expect(component.overviewHeroKpis()[0].value).toContain('14,800.00');
+    });
+
+    it('hydrates persisted arm_leads and arm_bank_rails from Electron SQLite IPC', async () => {
+      const prevElectron = (window as unknown as { electron?: unknown }).electron;
+      const listLeads = vi.fn(async (ws: string) =>
+        ws === 'ARM_B2B'
+          ? [
+              {
+                id: 'sqlite-lead-1',
+                workspaceId: 'ARM_B2B',
+                fullName: 'Lucía SQLite',
+                companyName: 'Andes Salud',
+                currentStageSlug: 'calificado',
+                assignedAgentRole: 'SDR_QUALIFIER',
+                qualificationScore: 91,
+                bantData: { need_pain_point: 'Triage WhatsApp' },
+                aiExecutiveSummary: 'Lead hidratado desde SQLite',
+                estimatedDealValue: 6400,
+                currency: 'USD',
+              },
+            ]
+          : [],
+      );
+      const listBankRails = vi.fn(async (ws: string) =>
+        ws === 'P2P_DESK'
+          ? [
+              {
+                id: 'sqlite-rail-1',
+                workspaceId: 'P2P_DESK',
+                bankName: 'Banesco SQLite Mirror',
+                currency: 'VES',
+                holderDetails: 'Titular Mirror',
+                currentBalanceFiat: 95000,
+                maxDailyCapFiat: 250000,
+              },
+            ]
+          : [],
+      );
+
+      (window as unknown as { electron?: unknown }).electron = {
+        arm: {
+          listLeads,
+          listPendingApprovals: vi.fn(async () => []),
+          listShadowExamples: vi.fn(async () => []),
+          listBankRails,
+        },
+      };
+
+      try {
+        const injector = Injector.create({
+          providers: [
+            { provide: StorageService, useValue: storageMock },
+            { provide: ToastService, useValue: toastMock },
+            { provide: Router, useValue: routerMock },
+            { provide: Finance360Service, useValue: finance360Mock },
+            { provide: InboundGatewayService, useValue: inboundGatewayMock },
+            ComplianceCockpitComponent,
+          ],
+        });
+        const electronComponent = injector.get(ComplianceCockpitComponent);
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(listLeads).toHaveBeenCalled();
+        expect(
+          electronComponent.armKanbanCards().some((c) => c.id === 'sqlite-lead-1' && c.leadName === 'Lucía SQLite'),
+        ).toBe(true);
+        expect(electronComponent.banks().some((b) => b.id === 'sqlite-rail-1')).toBe(true);
+        electronComponent.ngOnDestroy();
+      } finally {
+        (window as unknown as { electron?: unknown }).electron = prevElectron;
+      }
+    });
+
+    it('integrates with HotkeysService so Ctrl+K toggles only the CRM palette without collision', () => {
+      TestBed.configureTestingModule({});
+      const hotkeys = TestBed.inject(HotkeysService);
+      const injector = Injector.create({
+        providers: [
+          { provide: StorageService, useValue: storageMock },
+          { provide: ToastService, useValue: toastMock },
+          { provide: Router, useValue: routerMock },
+          { provide: Finance360Service, useValue: finance360Mock },
+          { provide: InboundGatewayService, useValue: inboundGatewayMock },
+          { provide: HotkeysService, useValue: hotkeys },
+          ComplianceCockpitComponent,
+        ],
+      });
+      const scopedComponent = injector.get(ComplianceCockpitComponent);
+      try {
+        expect(scopedComponent.showArmCommandPalette()).toBe(false);
+        expect(hotkeys.isPaletteOpen()).toBe(false);
+
+        const ctrlK = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true });
+        window.dispatchEvent(ctrlK);
+        // Also simulate window HostListener dispatch on Angular runtime event
+        Object.defineProperty(ctrlK, 'currentTarget', { value: window, configurable: true });
+        scopedComponent.onArmCommandKeydown(ctrlK);
+
+        expect(scopedComponent.showArmCommandPalette()).toBe(true);
+        expect(hotkeys.isPaletteOpen()).toBe(false);
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(scopedComponent.showArmCommandPalette()).toBe(false);
+      } finally {
+        scopedComponent.ngOnDestroy();
+        hotkeys.ngOnDestroy();
+      }
     });
   });
 });

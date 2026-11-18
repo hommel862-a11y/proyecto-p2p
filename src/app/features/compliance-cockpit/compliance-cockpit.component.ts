@@ -15,7 +15,44 @@ import { StorageService } from '../../core/storage';
 import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
+import { HotkeysService } from '../../core/hotkeys.service';
 import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
+import { CrmCommandHeaderComponent } from './components/crm-command-header/crm-command-header.component';
+import { CrmOverviewComponent } from './components/crm-overview/crm-overview.component';
+import {
+  CrmPipelineComponent,
+  type CrmPipelineMode,
+  type PipelineKanbanColumnInput,
+} from './components/crm-pipeline/crm-pipeline.component';
+import {
+  CrmInboxStudioComponent,
+  type ExportPngMode,
+  type InboxStudioState,
+  type SendMessageCommand,
+} from './components/crm-inbox-studio/crm-inbox-studio.component';
+import {
+  CrmContactsRailsComponent,
+  type AdjustBalancePayload,
+  type ContactsRailsSubMode,
+  type ReconcileBankPayload,
+} from './components/crm-contacts-rails/crm-contacts-rails.component';
+import {
+  CrmAuditSystemComponent,
+  type ParsedSmsPreview,
+  type RefVerifyResult,
+} from './components/crm-audit-system/crm-audit-system.component';
+import type {
+  ArmKanbanCardVm,
+  CrmCashflowColumn,
+  CrmDealsStatusRow,
+  CrmHealthRecommendation,
+  CrmHeroKpiCard,
+  CrmOverviewPeriod,
+  CrmPrimaryNavId,
+  CrmSiloExecutiveKpi,
+  CrmStorageHealthTelemetry,
+  CrmVelocityBarItem,
+} from './crm-ui.models';
 import {
   compileCrmWorkspaceState,
   transitionDealStage,
@@ -96,6 +133,22 @@ import {
   type ArmCloserPreCallBriefing,
 } from '@p2p/core';
 
+interface ElectronArmLeadDto {
+  id: string;
+  workspaceId: ArmWorkspaceId;
+  fullName: string | null;
+  companyName: string | null;
+  currentStageSlug: string;
+  assignedAgentRole: string | null;
+  qualificationScore: number;
+  bantData?: {
+    need_pain_point?: string | null;
+  };
+  aiExecutiveSummary: string | null;
+  estimatedDealValue: number;
+  currency: string;
+}
+
 export type CrmModuleView =
   | 'DASHBOARD'
   | 'KANBAN'
@@ -109,7 +162,16 @@ export type CrmModuleView =
 @Component({
   selector: 'app-compliance-cockpit',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    CrmCommandHeaderComponent,
+    CrmOverviewComponent,
+    CrmPipelineComponent,
+    CrmInboxStudioComponent,
+    CrmContactsRailsComponent,
+    CrmAuditSystemComponent,
+  ],
   templateUrl: './compliance-cockpit.html',
   styleUrls: ['./compliance-cockpit.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -120,12 +182,25 @@ export class ComplianceCockpitComponent implements OnDestroy {
   private readonly router = inject(Router);
   private readonly finance360 = inject(Finance360Service);
   readonly inboundGateway = inject(InboundGatewayService);
+  private readonly hotkeys = inject(HotkeysService, { optional: true });
 
   private gatewaySubscription: Subscription | null = null;
   private armEventSubscription: Subscription | null = null;
+  private unregisterScopedPalette: (() => void) | null = null;
 
   constructor() {
     this.hydrateArmPersistenceState();
+    this.unregisterScopedPalette =
+      this.hotkeys?.registerScopedPalette(
+        () => this.showArmCommandPalette.update((v) => !v),
+        () => {
+          if (this.showArmCommandPalette()) {
+            this.showArmCommandPalette.set(false);
+            return true;
+          }
+          return false;
+        },
+      ) ?? null;
     this.gatewaySubscription = this.inboundGateway.receipt$.subscribe((receipt) => {
       this.handleInboundReceipt(receipt);
     });
@@ -134,11 +209,16 @@ export class ComplianceCockpitComponent implements OnDestroy {
         this.handleIncomingArmOutboxEvent(evt);
       });
     }
+    if (typeof window !== 'undefined') {
+      void this.inboundGateway.fetchStorageHealth?.();
+    }
   }
 
   ngOnDestroy(): void {
     this.gatewaySubscription?.unsubscribe();
     this.armEventSubscription?.unsubscribe();
+    this.unregisterScopedPalette?.();
+    this.unregisterScopedPalette = null;
   }
 
   readonly showGatewayConfigModal = signal<boolean>(false);
@@ -653,10 +733,479 @@ export class ComplianceCockpitComponent implements OnDestroy {
   // ---------------------------------------------------------------------------
   // ACTIONS: SCOPE & VIEW NAVIGATION
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // ACTIONS: SCOPE, UNIFIED 5-PILL NAVIGATION & SUBCOMPONENT VIEWMODELS
+  // ---------------------------------------------------------------------------
+  readonly contactsRailsSubMode = signal<ContactsRailsSubMode>('CONTACTS');
+  readonly overviewPeriod = signal<CrmOverviewPeriod>('TODAY');
+  readonly preferredPipelineMode = signal<CrmPipelineMode>('LEGACY_BOARD');
+  readonly aiStrategistInsight = signal<string | null>(null);
+  readonly gatewayRefVerifyState = signal<{ ref: string; result: RefVerifyResult } | null>(null);
+
+  readonly primaryNav = computed<CrmPrimaryNavId>(() => {
+    switch (this.activeView()) {
+      case 'DASHBOARD':
+        return 'OVERVIEW';
+      case 'KANBAN':
+      case 'ARM_COMMAND':
+        return 'PIPELINE';
+      case 'OMNICHANNEL':
+        return 'INBOX_STUDIO';
+      case 'CONTACTS':
+      case 'BANKS':
+        return 'CONTACTS_RAILS';
+      case 'ACTIVITIES':
+      case 'SETTINGS':
+      default:
+        return 'AUDIT_SYSTEM';
+    }
+  });
+
+  readonly pipelineViewMode = computed<CrmPipelineMode>(() =>
+    this.activeView() === 'ARM_COMMAND' ? 'ARM_AUTOPILOT' : 'LEGACY_BOARD',
+  );
+
+  readonly pipelineKanbanColumns = computed<PipelineKanbanColumnInput[]>(() =>
+    this.filteredKanbanColumnsList().map((col) => ({
+      stage: col.stage,
+      label: col.label,
+      deals: col.deals,
+      totalVolumeUsdt: col.totalUsdt,
+    })),
+  );
+
+  readonly activeConvFreeWindowLabel = computed<string>(() => {
+    const fw = this.activeConvFreeWindow();
+    if (!fw.isOpen) return 'Ventana 24h Cerrada';
+    const hrs = Math.floor(fw.remainingMinutes / 60);
+    const mins = fw.remainingMinutes % 60;
+    return `${fw.costStatus} • ${hrs}h ${mins}m rest.`;
+  });
+
+  readonly scopedBanks = computed<CrmBankAccount[]>(() =>
+    this.banks().filter((b) => b.scope === this.activeScope()),
+  );
+
+  readonly scopedInvoices = computed<CrmBillingDocument[]>(() =>
+    this.invoicesOrQuotes().filter((d) => d.scope === this.activeScope()),
+  );
+
+  readonly totalBankCapacityFiat = computed<number>(() =>
+    this.scopedBanks().reduce((sum, b) => sum + (b.maxDailyCapFiat || 0), 0),
+  );
+
+  readonly inboxStudioStateVm = computed<InboxStudioState>(() => {
+    const totals = this.studioTotals();
+    return {
+      docType: this.studioDocType(),
+      contactId: this.studioContactId(),
+      docNumber: this.studioDocNumber(),
+      fiatCurrency: this.studioFiatCurrency(),
+      exchangeRate: this.studioExchangeRate(),
+      discountUsdt: this.studioDiscountUsdt(),
+      taxPct: this.studioTaxPct(),
+      bankAccountId: this.studioBankAccountId(),
+      bankRefId: this.studioBankRefId(),
+      paymentInstructions: this.studioPaymentInstructions(),
+      items: this.studioItems(),
+      totalUsdt: totals.totalUsdt,
+      totalFiat: totals.totalFiat,
+    };
+  });
+
+  readonly selectedContactVectorMemories = computed<string[]>(() => {
+    const contact = this.selectedContact();
+    if (!contact) return [];
+    const memories: string[] = [];
+    memories.push(
+      `Perfil ${contact.category} • Cupo máx $${this.formatDecimal(contact.maxPendingExposureUsdt)} USDT`,
+    );
+    if (contact.paymentDetailsText?.trim()) {
+      memories.push(`Riel preferido: ${contact.paymentDetailsText.trim()}`);
+    }
+    for (const ref of contact.verifiedReferences.slice(0, 4)) {
+      memories.push(`Ref bancaria verificada #${ref}`);
+    }
+    const matchingArmCards = this.armKanbanCards().filter(
+      (c) =>
+        c.leadName.toLowerCase().includes(contact.name.toLowerCase()) ||
+        c.companyName.toLowerCase().includes(contact.name.toLowerCase()),
+    );
+    for (const card of matchingArmCards) {
+      if (card.painPointSummary) {
+        memories.push(`[${card.workspaceId}] ${card.painPointSummary}`);
+      }
+    }
+    return memories;
+  });
+
+  readonly auditStorageHealth = computed<CrmStorageHealthTelemetry>(() => {
+    const gwStatus = this.inboundGateway.status();
+    const remoteHealth = this.inboundGateway.storageHealth?.() ?? null;
+    const cb = this.armTokenCircuitBreakerForSilo();
+    const sqliteAvailable = typeof window !== 'undefined' && Boolean(window.electron?.arm);
+    const postgresStatus: CrmStorageHealthTelemetry['postgresStatus'] = remoteHealth?.postgresConnected
+      ? 'CONNECTED'
+      : gwStatus === 'CONNECTED'
+        ? 'LOCAL_FALLBACK'
+        : 'DISCONNECTED';
+
+    return {
+      postgresStatus,
+      postgresDetail: remoteHealth?.postgresConnected
+        ? `PG17 + RLS (${remoteHealth.pgvectorAvailable ? 'pgvector HNSW ON' : 'SQL relacional'})`
+        : gwStatus === 'CONNECTED'
+          ? 'Gateway en Memory Fallback (define DATABASE_URL para PG17)'
+          : 'Sin enlace Gateway — operando local-first',
+      sqliteStatus: sqliteAvailable ? 'SYNCED' : 'BROWSER_ONLY',
+      sqliteDetail: sqliteAvailable
+        ? 'Espejo SQLite Desktop activo (WAL + idempotencia)'
+        : 'Modo Web (StorageService cifrado local)',
+      gatewayStatus: gwStatus,
+      gatewayDetail:
+        gwStatus === 'CONNECTED'
+          ? `SSE Stream conectado (${this.inboundGateway.totalReceiptsReceived()} eventos)`
+          : 'Esperando enlace 127.0.0.1:3030',
+      dailyBudgetUsedUsd: Math.round((cb.utilizationPct / 100) * 10 * 100) / 100,
+      dailyBudgetCapUsd: 10,
+    };
+  });
+
+  readonly auditParsedSmsPreview = computed<ParsedSmsPreview | null>(() => {
+    if (!this.rawClipboardInput().trim()) return null;
+    const parsed = this.parsedClipboard();
+    if (!parsed.detectedBank && !parsed.referenceId && parsed.amountFiat === null) {
+      return null;
+    }
+    return {
+      bank: parsed.detectedBank ?? undefined,
+      reference: parsed.referenceId ?? undefined,
+      amount: parsed.amountFiat ?? undefined,
+      confidence: parsed.referenceId && parsed.amountFiat ? 96 : parsed.referenceId ? 85 : 68,
+    };
+  });
+
+  readonly auditRefVerifyResult = computed<RefVerifyResult | null>(() => {
+    const ref = this.candidateRef().trim();
+    if (!ref) return null;
+    const gwOverride = this.gatewayRefVerifyState();
+    if (gwOverride && gwOverride.ref === ref) {
+      return gwOverride.result;
+    }
+    const check = this.referenceCheck();
+    return {
+      checked: true,
+      isUnique: !check.isDuplicate,
+      message: check.isDuplicate
+        ? `Colisión local en trato #${check.existingDeal?.id ?? 'N/D'} (${check.existingDeal?.contactName ?? ''})`
+        : 'Referencia única en historial local',
+    };
+  });
+
+  private readonly periodFilteredDeals = computed<PipelineDeal[]>(() => {
+    const allDeals = this.workspaceState().deals;
+    const period = this.overviewPeriod();
+    if (period === 'ALL') return allDeals;
+    const now = this.clockTick();
+    const dayMs = 86_400_000;
+    const cutoff =
+      period === 'TODAY' ? now - dayMs : period === '7D' ? now - 7 * dayMs : now - 30 * dayMs;
+    return allDeals.filter((d) => d.createdAt >= cutoff);
+  });
+
+  readonly overviewPipelineVolumeLabel = computed<string>(() => {
+    const vol = this.periodFilteredDeals().reduce((sum, d) => sum + d.cryptoAmountUsdt, 0);
+    return `$${this.formatDecimal(vol)} USDT`;
+  });
+
+  readonly overviewSpreadRateLabel = computed<string>(() => {
+    const eff = this.kpis().spreadEfficiencyPct;
+    return `${eff.toFixed(2)}%`;
+  });
+
+  readonly overviewAvgCloseLabel = computed<string>(() => {
+    const closed = this.periodFilteredDeals().filter(
+      (d) => d.stage === 'STAGE_4_CLOSED' && d.closedAt && d.closedAt >= d.createdAt,
+    );
+    if (closed.length === 0) return '—';
+    const avgMin = Math.round(
+      closed.reduce((sum, d) => sum + ((d.closedAt ?? d.createdAt) - d.createdAt), 0) /
+        closed.length /
+        60_000,
+    );
+    return avgMin < 60 ? `${Math.max(1, avgMin)}m` : `${(avgMin / 60).toFixed(1)}h`;
+  });
+
+  readonly overviewHeroKpis = computed<CrmHeroKpiCard[]>(() => {
+    const kpi = this.kpis();
+    const summary = this.pipelineConversionSummary();
+    const fleet = this.bankFleetSummary();
+    const silo = this.activeArmSilo();
+    const armKpis = this.armExecutiveKpisForSilo();
+
+    if (silo === 'ARM_B2B') {
+      return [
+        {
+          id: 'arm-mrr',
+          label: armKpis[0]?.label ?? 'Pipeline MRR/ARR',
+          value: armKpis[0]?.value ?? '$0 MRR',
+          deltaLabel: armKpis[0]?.sub ?? 'Silo ARM B2B',
+          tone: 'emerald',
+          subtext: `${this.armKanbanCardsForSilo().length} cuentas activas`,
+          targetNav: 'PIPELINE',
+        },
+        {
+          id: 'arm-conv',
+          label: armKpis[1]?.label ?? 'Conversión Autónoma',
+          value: armKpis[1]?.value ?? '0.0%',
+          deltaLabel: armKpis[1]?.sub ?? 'Calificación BANT',
+          tone: 'cyan',
+          subtext: 'SDR & Scheduler en vivo',
+          targetNav: 'PIPELINE',
+        },
+        {
+          id: 'arm-sla',
+          label: armKpis[2]?.label ?? 'SLA Respuesta IA',
+          value: armKpis[2]?.value ?? '0.0s',
+          deltaLabel: armKpis[2]?.sub ?? 'Ejecuciones',
+          tone: 'violet',
+          subtext: 'Sin intervención manual',
+          targetNav: 'INBOX_STUDIO',
+        },
+        {
+          id: 'arm-hitl',
+          label: 'Cola HITL Pendiente',
+          value: `${this.armApprovalQueueForSilo().length}`,
+          deltaLabel: armKpis[3]?.value ?? '$0 USD',
+          tone: 'amber',
+          subtext: 'Revisión humana segura',
+          targetNav: 'PIPELINE',
+        },
+      ];
+    }
+
+    const periodDeals = this.periodFilteredDeals();
+    const periodProfit = periodDeals
+      .filter((d) => d.stage === 'STAGE_4_CLOSED')
+      .reduce((s, d) => s + d.netProfitUsdt, 0);
+    const openInbox = this.filteredConversations().filter((c) => c.unreadCount > 0).length;
+
+    return [
+      {
+        id: 'pnl-net',
+        label: silo === 'FINANCE_360' ? 'Utilidad Neta Facturada' : 'PnL Neto Cerrado',
+        value: `$${this.formatDecimal(this.overviewPeriod() === 'TODAY' ? kpi.closedNetProfitTodayUsdt : periodProfit)}`,
+        deltaLabel: `${kpi.spreadEfficiencyPct.toFixed(2)}% spread`,
+        tone: 'emerald',
+        subtext: `${kpi.closedTradesCountToday} operaciones cerradas hoy`,
+        targetNav: 'PIPELINE',
+      },
+      {
+        id: 'transit-vol',
+        label: 'Volumen En Tránsito',
+        value: `$${this.formatDecimal(kpi.inTransitVolumeUsdt)}`,
+        deltaLabel: `${summary.totalDeals} tratos en tablero`,
+        tone: 'cyan',
+        subtext: `${summary.expiredCount} con tasa vencida`,
+        targetNav: 'PIPELINE',
+      },
+      {
+        id: 'win-rate',
+        label: 'Conversión & Triaje',
+        value: `${summary.conversionRatePct}%`,
+        deltaLabel: `${openInbox} chats sin leer`,
+        tone: 'violet',
+        subtext: `${this.filteredConversations().length} hilos omnicanal activos`,
+        targetNav: 'INBOX_STUDIO',
+      },
+      {
+        id: 'rails-cap',
+        label: 'Salud Rieles Bancarios',
+        value: `${fleet.availableCount}/${fleet.totalCount}`,
+        deltaLabel: `${fleet.avgUsagePct}% uso cupo`,
+        tone: 'amber',
+        subtext: `${this.workspaceState().contacts.length} contrapartes registradas`,
+        targetNav: 'CONTACTS_RAILS',
+      },
+    ];
+  });
+
+  readonly overviewCashflowColumns = computed<CrmCashflowColumn[]>(() => {
+    const kpi = this.kpis();
+    const transitTotal = this.periodFilteredDeals()
+      .filter((d) => d.stage === 'STAGE_2_TRANSIT' || d.stage === 'STAGE_3_VERIFY')
+      .reduce((s, d) => s + d.cryptoAmountUsdt, 0);
+    const banksCount = this.scopedBanks().length;
+    const totalVes = this.bankFleetSummary().totalVesBalance;
+
+    return [
+      {
+        id: 'cf-liquidity',
+        label: 'Liquidez Rieles',
+        valueFormatted: `${this.formatDecimal(totalVes)} VES`,
+        sublabel: `${banksCount} cuentas activas`,
+      },
+      {
+        id: 'cf-volume',
+        label: 'Volumen Liquidado',
+        valueFormatted: `$${this.formatDecimal(kpi.closedVolumeTodayUsdt)}`,
+        sublabel: `${kpi.closedTradesCountToday} operaciones`,
+      },
+      {
+        id: 'cf-transit',
+        label: 'Reserva Tránsito',
+        valueFormatted: `$${this.formatDecimal(transitTotal)}`,
+        sublabel: 'Cupo retenido',
+        highlighted: transitTotal > 0,
+      },
+      {
+        id: 'cf-receivable',
+        label: 'Por Cobrar',
+        valueFormatted: `$${this.formatDecimal(kpi.totalReceivablesUsdt)}`,
+        sublabel: 'Saldos positivos',
+      },
+      {
+        id: 'cf-net',
+        label: 'PnL Neto Hoy',
+        valueFormatted: `$${this.formatDecimal(kpi.closedNetProfitTodayUsdt)}`,
+        sublabel: this.isTodaySettled() ? 'Transferido 360' : 'Listo para corte',
+        highlighted: kpi.closedNetProfitTodayUsdt > 0,
+      },
+    ];
+  });
+
+  readonly overviewVelocityBars = computed<CrmVelocityBarItem[]>(() => {
+    const cols = this.kanbanColumnsList();
+    const maxVol = Math.max(1, ...cols.map((c) => c.totalUsdt));
+    const tones: CrmVelocityBarItem['tone'][] = ['cyan', 'amber', 'danger', 'emerald'];
+    return cols.map((col, idx) => ({
+      id: col.stage,
+      label: `${col.label} (${col.deals.length})`,
+      formattedValue: `$${this.formatDecimal(col.totalUsdt)} USDT`,
+      ratioPct: col.totalUsdt > 0 ? Math.max(6, Math.round((col.totalUsdt / maxVol) * 100)) : 0,
+      tone: tones[idx] ?? 'cyan',
+    }));
+  });
+
+  readonly overviewFunnelStages = computed(() =>
+    this.kanbanColumnsList().map((col) => ({
+      label: col.label,
+      count: col.deals.length,
+      valueLabel: `$${this.formatDecimal(col.totalUsdt)}`,
+    })),
+  );
+
+  readonly overviewDealsRows = computed<CrmDealsStatusRow[]>(() => {
+    const stageToneMap: Record<PipelineStage, { label: string; tone: CrmDealsStatusRow['statusTone'] }> = {
+      STAGE_1_NEW: { label: 'Cotizado', tone: 'quoted' },
+      STAGE_2_TRANSIT: { label: 'En Tránsito', tone: 'transit' },
+      STAGE_3_VERIFY: { label: 'Verificando', tone: 'stuck' },
+      STAGE_4_CLOSED: { label: 'Liquidado', tone: 'won' },
+    };
+
+    return [...this.periodFilteredDeals()]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 8)
+      .map((deal) => {
+        const mapped = deal.isRateExpired && deal.stage !== 'STAGE_4_CLOSED'
+          ? { label: 'Tasa Vencida', tone: 'stuck' as const }
+          : stageToneMap[deal.stage];
+        const initials = (deal.contactName || 'CL')
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() ?? '')
+          .join('');
+        return {
+          id: deal.id,
+          counterparty: deal.contactName,
+          lastContactLabel: new Date(deal.createdAt).toLocaleTimeString('es-VE', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          ownerLabel: deal.bankName || this.activeArmSilo(),
+          ownerInitials: initials || 'CL',
+          statusLabel: mapped.label,
+          statusTone: mapped.tone,
+          dealValueFormatted: `$${this.formatDecimal(deal.cryptoAmountUsdt)}`,
+          rawDeal: deal,
+        };
+      });
+  });
+
+  readonly overviewAiHealthScore = computed<number>(() => {
+    const summary = this.pipelineConversionSummary();
+    const fleet = this.bankFleetSummary();
+    const pendingHitl = this.armApprovalQueueForSilo().length;
+    const gwConnected = this.inboundGateway.status() === 'CONNECTED';
+
+    let score = 62;
+    score += Math.min(20, Math.round(summary.conversionRatePct * 0.25));
+    score += gwConnected ? 10 : 0;
+    score += fleet.totalCount > 0 && fleet.capReachedCount === 0 ? 8 : 0;
+    score -= Math.min(18, summary.expiredCount * 6);
+    score -= Math.min(10, pendingHitl * 2);
+    score -= fleet.capReachedCount * 8;
+    return Math.max(15, Math.min(100, Math.round(score)));
+  });
+
+  readonly overviewAiRecommendations = computed<CrmHealthRecommendation[]>(() => {
+    const recs: CrmHealthRecommendation[] = [];
+    const summary = this.pipelineConversionSummary();
+    const fleet = this.bankFleetSummary();
+    const pendingHitl = this.armApprovalQueueForSilo().length;
+
+    if (summary.expiredCount > 0) {
+      recs.push({
+        id: 'rec-expired',
+        label: `Recotizar ${summary.expiredCount} trato(s) con tasa TTL expirada`,
+        impactBadge: 'Protege spread',
+        tone: 'amber',
+        actionId: 'OPEN_EXPIRED_DEALS',
+      });
+    }
+    if (pendingHitl > 0) {
+      recs.push({
+        id: 'rec-hitl',
+        label: `Revisar ${pendingHitl} aprobación(es) HITL en cola ARM`,
+        impactBadge: 'Desbloquea cierre',
+        tone: 'blue',
+        actionId: 'OPEN_ARM_HITL',
+      });
+    }
+    if (fleet.capReachedCount > 0 || fleet.totalCount === 0) {
+      recs.push({
+        id: 'rec-rails',
+        label:
+          fleet.totalCount === 0
+            ? 'Configurar tu primer riel bancario para enrutamiento automático'
+            : `${fleet.capReachedCount} banco(s) al límite diario — rotar liquidez`,
+        impactBadge: 'Anti-bloqueo',
+        tone: 'amber',
+        actionId: 'OPEN_RAILS',
+      });
+    }
+    if (recs.length === 0) {
+      recs.push({
+        id: 'rec-ok',
+        label: 'Ejecutar escaneo Anti-Ghosting HSM y sincronizar tratos ARM',
+        impactBadge: '+Conversión',
+        tone: 'emerald',
+        actionId: 'SYNC_ARM',
+      });
+    }
+    return recs;
+  });
+
   setScope(scope: WorkspaceScope): void {
     this.activeScope.set(scope);
     this.storage.set(CRM_STORAGE_KEYS.ACTIVE_SCOPE, scope);
+    this.activeArmSilo.set(scope);
+    const firstCard = this.armKanbanCards().find((c) => c.workspaceId === scope);
+    if (firstCard) {
+      this.selectedArmLeadId.set(firstCard.id);
+    }
     this.selectedContactId.set(null);
+    this.persistArmState();
     this.toast.info(
       scope === 'P2P_DESK'
         ? 'Bóveda P2P / OTC activada.'
@@ -668,6 +1217,264 @@ export class ComplianceCockpitComponent implements OnDestroy {
   setView(view: CrmModuleView): void {
     this.activeView.set(view);
     this.storage.set(CRM_STORAGE_KEYS.ACTIVE_VIEW, view);
+    if (view === 'ARM_COMMAND') {
+      this.preferredPipelineMode.set('ARM_AUTOPILOT');
+    } else if (view === 'KANBAN') {
+      this.preferredPipelineMode.set('LEGACY_BOARD');
+    } else if (view === 'BANKS') {
+      this.contactsRailsSubMode.set('RAILS');
+    } else if (view === 'CONTACTS') {
+      this.contactsRailsSubMode.set('CONTACTS');
+    }
+  }
+
+  onPrimaryNavSelect(nav: CrmPrimaryNavId): void {
+    switch (nav) {
+      case 'OVERVIEW':
+        this.setView('DASHBOARD');
+        break;
+      case 'PIPELINE':
+        this.setView(this.preferredPipelineMode() === 'ARM_AUTOPILOT' ? 'ARM_COMMAND' : 'KANBAN');
+        break;
+      case 'INBOX_STUDIO':
+        this.setView('OMNICHANNEL');
+        break;
+      case 'CONTACTS_RAILS':
+        this.setView(this.contactsRailsSubMode() === 'RAILS' ? 'BANKS' : 'CONTACTS');
+        break;
+      case 'AUDIT_SYSTEM':
+        this.setView('ACTIVITIES');
+        break;
+    }
+  }
+
+  onQuickCreateOption(option: 'NEW_DEAL' | 'NEW_CONTACT' | 'NEW_BANK' | 'NEW_CHAT'): void {
+    if (option === 'NEW_DEAL') {
+      this.openNewDealModal();
+      return;
+    }
+    if (option === 'NEW_CONTACT') {
+      this.showAddContactModal.set(true);
+      return;
+    }
+    if (option === 'NEW_BANK') {
+      this.showAddBankModal.set(true);
+      return;
+    }
+    this.openNewChatModal();
+  }
+
+  onPipelineModeChange(mode: CrmPipelineMode): void {
+    this.preferredPipelineMode.set(mode);
+    this.setView(mode === 'ARM_AUTOPILOT' ? 'ARM_COMMAND' : 'KANBAN');
+  }
+
+  onContactsRailsSubModeChange(mode: ContactsRailsSubMode): void {
+    this.contactsRailsSubMode.set(mode);
+    this.setView(mode === 'RAILS' ? 'BANKS' : 'CONTACTS');
+  }
+
+  onKanbanFilterChange(mode: string): void {
+    if (mode === 'ALL' || mode === 'EXPIRED' || mode === 'WITH_REF' || mode === 'HIGH_VALUE') {
+      this.kanbanFilterMode.set(mode);
+    }
+  }
+
+  onPipelineAdvanceDeal(payload: { dealId: string; targetStage: string }): void {
+    this.moveDealToStage(payload.dealId, payload.targetStage as PipelineStage);
+  }
+
+  onOverviewKpiDrilldown(card: CrmHeroKpiCard): void {
+    if (card.targetNav) {
+      this.onPrimaryNavSelect(card.targetNav);
+    }
+  }
+
+  onOverviewAskStrategist(prompt: string): void {
+    const kpi = this.kpis();
+    const summary = this.pipelineConversionSummary();
+    const diagnostic =
+      `Diagnóstico "${prompt}": ${summary.totalDeals} tratos activos (${summary.conversionRatePct}% cierre), ` +
+      `$${this.formatDecimal(kpi.inTransitVolumeUsdt)} en tránsito, ${summary.expiredCount} tasas vencidas ` +
+      `y ${this.armApprovalQueueForSilo().length} ítems en cola HITL.`;
+    this.aiStrategistInsight.set(diagnostic);
+    this.toast.info(diagnostic, 'AI Strategist');
+  }
+
+  onOverviewRecommendationAction(rec: CrmHealthRecommendation): void {
+    if (rec.actionId === 'OPEN_EXPIRED_DEALS') {
+      this.kanbanFilterMode.set('EXPIRED');
+      this.onPipelineModeChange('LEGACY_BOARD');
+      return;
+    }
+    if (rec.actionId === 'OPEN_ARM_HITL') {
+      this.onPipelineModeChange('ARM_AUTOPILOT');
+      return;
+    }
+    if (rec.actionId === 'OPEN_RAILS') {
+      this.onContactsRailsSubModeChange('RAILS');
+      return;
+    }
+    this.onPipelineModeChange('ARM_AUTOPILOT');
+    this.triggerAntiGhostingScanForSilo();
+  }
+
+  onOverviewOpenDeal(row: CrmDealsStatusRow): void {
+    if (row.rawDeal) {
+      this.openOmnichannelForDeal(row.rawDeal);
+      return;
+    }
+    this.onPrimaryNavSelect('PIPELINE');
+  }
+
+  onInboxSendMessage(cmd: SendMessageCommand): void {
+    if (cmd.mode === 'WHATSAPP_DIRECT') {
+      this.openWhatsAppDirectForActiveChat();
+      return;
+    }
+    if (cmd.mode === 'COPY') {
+      this.copyFullDraftText();
+      return;
+    }
+    this.sendChatMessage();
+  }
+
+  onInboxOcrPaste(payload: File | string): void {
+    if (typeof payload === 'string') {
+      void this.processReceiptOcr(payload);
+      return;
+    }
+    this.handlePastedImageFile(payload);
+  }
+
+  onInboxStudioFieldChange(patch: Record<string, unknown>): void {
+    if ('docType' in patch && patch['docType']) {
+      this.studioDocType.set(patch['docType'] as CrmDocumentType);
+    }
+    if ('contactId' in patch) {
+      this.studioContactId.set(String(patch['contactId'] ?? ''));
+    }
+    if ('docNumber' in patch) {
+      this.studioDocNumber.set(String(patch['docNumber'] ?? ''));
+    }
+    if ('fiatCurrency' in patch && patch['fiatCurrency']) {
+      this.studioFiatCurrency.set(patch['fiatCurrency'] as FiatCurrency);
+    }
+    if ('exchangeRate' in patch) {
+      this.studioExchangeRate.set(Number(patch['exchangeRate']) || 0);
+    }
+    if ('discountUsdt' in patch) {
+      this.studioDiscountUsdt.set(Number(patch['discountUsdt']) || 0);
+    }
+    if ('taxPct' in patch) {
+      this.studioTaxPct.set(Number(patch['taxPct']) || 0);
+    }
+    if ('bankAccountId' in patch) {
+      this.studioBankAccountId.set(String(patch['bankAccountId'] ?? ''));
+    }
+    if ('bankRefId' in patch) {
+      this.studioBankRefId.set(String(patch['bankRefId'] ?? ''));
+    }
+    if ('paymentInstructions' in patch) {
+      this.studioPaymentInstructions.set(String(patch['paymentInstructions'] ?? ''));
+    }
+    if ('items' in patch && Array.isArray(patch['items'])) {
+      this.studioItems.set(patch['items'] as BillingLineItem[]);
+    }
+    setTimeout(() => this.renderVoucherCanvas(), 50);
+  }
+
+  onInboxExportPng(mode: ExportPngMode): void {
+    if (mode === 'COPY') {
+      this.copyCanvasImageToClipboard();
+      return;
+    }
+    this.downloadCanvasImage();
+  }
+
+  onInboxConfigUpdate(patch: Record<string, unknown>): void {
+    for (const [key, val] of Object.entries(patch)) {
+      this.updateOmnichannelConfig(key as keyof OmnichannelIntegrationConfig, val);
+    }
+  }
+
+  onAdjustContactBalance(payload: AdjustBalancePayload): void {
+    if (this.selectedContactId() !== payload.contactId) {
+      this.selectedContactId.set(payload.contactId);
+    }
+    if (payload.settleZero) {
+      this.adjustContactBalance('ZERO');
+      return;
+    }
+    if (payload.deltaUsdt === 0) return;
+    this.contactBalanceAdjustAmount.set(Math.abs(payload.deltaUsdt));
+    this.adjustContactBalance(payload.deltaUsdt > 0 ? 'POSITIVE' : 'NEGATIVE');
+  }
+
+  onReconcileBank(payload: ReconcileBankPayload): void {
+    this.realBankBalanceInput.set(payload.realBalanceFiat);
+    this.applyBankReconciliation(payload.bankId);
+  }
+
+  onAuditVerifyReference(): void {
+    const ref = this.candidateRef().trim();
+    if (!ref) return;
+    const local = this.referenceCheck();
+    if (local.isDuplicate) {
+      this.gatewayRefVerifyState.set({
+        ref,
+        result: {
+          checked: true,
+          isUnique: false,
+          message: `Colisión local detectada en trato #${local.existingDeal?.id ?? 'N/D'}`,
+        },
+      });
+      this.toast.warn(`Referencia #${ref} ya registrada localmente.`, 'Anti-Fraude');
+      return;
+    }
+    if (this.inboundGateway.status() === 'CONNECTED' && this.inboundGateway.verifyReceiptWithGateway) {
+      const firstBankId = this.scopedBanks()[0]?.id ?? 'default-rail';
+      void this.inboundGateway
+        .verifyReceiptWithGateway({
+          workspaceId: this.activeArmSilo(),
+          bankRailId: firstBankId,
+          referenceCode: ref,
+        })
+        .then((res) => {
+          this.gatewayRefVerifyState.set({
+            ref,
+            result: {
+              checked: true,
+              isUnique: !res.collision,
+              message: res.collision
+                ? `Colisión reportada por Gateway/PSQL (${res.existingDealId ?? 'N/D'})`
+                : `Referencia #${ref} verificada sin colisiones (${res.mode ?? 'GATEWAY'})`,
+            },
+          });
+        });
+      return;
+    }
+    this.gatewayRefVerifyState.set({
+      ref,
+      result: {
+        checked: true,
+        isUnique: true,
+        message: `Referencia #${ref} única en bóveda local`,
+      },
+    });
+  }
+
+  onAuditReplacementRateChange(rate: number): void {
+    if (Number.isFinite(rate) && rate > 0) {
+      this.liveReplacementRate.set(rate);
+    }
+  }
+
+  private formatDecimal(val: number): string {
+    return (Number.isFinite(val) ? val : 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   }
 
   togglePrivacyMode(): void {
@@ -707,6 +1514,17 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const nextSettlements = [...existing, payload];
     this.settlements.set(nextSettlements);
     this.storage.set(CRM_STORAGE_KEYS.SETTLEMENTS, nextSettlements);
+
+    if (typeof window !== 'undefined' && window.electron?.arm?.recordTreasurySettlement) {
+      void window.electron.arm.recordTreasurySettlement({
+        sourceWorkspace: 'P2P_DESK',
+        targetWorkspace: 'FINANCE_360',
+        idempotencyKey: payload.settlementId,
+        netProfitUsdt: payload.netProfitUsdt,
+        settlementDate: payload.dateIso,
+        createdAt: payload.timestamp,
+      });
+    }
 
     try {
       this.finance360.addIncome({
@@ -1103,6 +1921,32 @@ export class ComplianceCockpitComponent implements OnDestroy {
       this.contacts.set(nextContacts);
       this.storage.set(CRM_STORAGE_KEYS.CONTACTS, nextContacts);
 
+      const touchedBank = nextBanks.find((b) => b.id === deal.bankAccountId);
+      if (touchedBank) {
+        this.syncBankRailToSqlite(touchedBank);
+      }
+      if (targetRef) {
+        if (typeof window !== 'undefined' && window.electron?.arm?.recordPaymentReceipt) {
+          void window.electron.arm.recordPaymentReceipt({
+            workspaceId: this.activeArmSilo(),
+            bankRailId: deal.bankAccountId,
+            referenceCode: targetRef,
+            amountFiat: deal.totalFiatAmount,
+            dealId: deal.id,
+            createdAt: now,
+          });
+        }
+        if (this.inboundGateway.status() === 'CONNECTED') {
+          void this.inboundGateway.verifyReceiptWithGateway?.({
+            workspaceId: this.activeArmSilo(),
+            bankRailId: deal.bankAccountId,
+            referenceCode: targetRef,
+            amountFiat: deal.totalFiatAmount,
+            dealId: deal.id,
+          });
+        }
+      }
+
       this.logActivity({
         type: 'DEAL_CLOSED',
         description: `Trato #${deal.id} liquidado (+${updated.netProfitUsdt} USDT PnL) en ${deal.bankName}`,
@@ -1374,6 +2218,23 @@ export class ComplianceCockpitComponent implements OnDestroy {
   // ---------------------------------------------------------------------------
   // ACTIONS: BANKS & RECONCILIATION
   // ---------------------------------------------------------------------------
+  private syncBankRailToSqlite(bank: CrmBankAccount): void {
+    if (typeof window === 'undefined' || !window.electron?.arm?.upsertBankRail) {
+      return;
+    }
+    void window.electron.arm.upsertBankRail({
+      id: bank.id,
+      workspaceId: bank.scope === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK',
+      bankName: bank.bankName,
+      currency: bank.currency,
+      holderDetails: bank.holderDetailsText,
+      currentBalanceFiat: bank.currentBalanceFiat,
+      maxDailyCapFiat: bank.maxDailyCapFiat,
+      status: 'AVAILABLE',
+      updatedAt: Date.now(),
+    });
+  }
+
   saveNewBank(): void {
     const name = this.newBankName().trim();
     if (!name) {
@@ -1396,6 +2257,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const nextBanks = [...this.banks(), newBank];
     this.banks.set(nextBanks);
     this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
+    this.syncBankRailToSqlite(newBank);
 
     this.showAddBankModal.set(false);
     this.newBankName.set('');
@@ -1416,12 +2278,14 @@ export class ComplianceCockpitComponent implements OnDestroy {
     if (!bank) return;
 
     const adj = calculateBankReconciliationAdjustment(bank.currentBalanceFiat, realBalance);
+    const updatedBank: CrmBankAccount = { ...bank, currentBalanceFiat: realBalance };
 
     const nextBanks = this.banks().map((b) =>
-      b.id === bankId ? { ...b, currentBalanceFiat: realBalance } : b,
+      b.id === bankId ? updatedBank : b,
     );
     this.banks.set(nextBanks);
     this.storage.set(CRM_STORAGE_KEYS.BANKS, nextBanks);
+    this.syncBankRailToSqlite(updatedBank);
     this.reconcilingBankId.set(null);
 
     this.logActivity({
@@ -2455,12 +3319,18 @@ export class ComplianceCockpitComponent implements OnDestroy {
   importDataJson(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
+    this.importDataJsonFile(input.files[0]);
+  }
 
-    const file = input.files[0];
+  importDataJsonFile(file: File): void {
+    this.readTextFile(file, (content) => {
+      this.applyBackupJsonText(content, this.importStrategy());
+    });
+  }
+
+  private readTextFile(file: File, onLoaded: (content: string) => void): void {
     const reader = new FileReader();
-    reader.onload = () => {
-      this.applyBackupJsonText(String(reader.result ?? ''), this.importStrategy());
-    };
+    reader.onload = () => onLoaded(String(reader.result ?? ''));
     reader.readAsText(file);
   }
 
@@ -2538,17 +3408,17 @@ export class ComplianceCockpitComponent implements OnDestroy {
   importCatalogCsv(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
+    this.importCatalogCsvFile(input.files[0]);
+  }
 
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
+  importCatalogCsvFile(file: File): void {
+    this.readTextFile(file, (content) => {
       this.applyCatalogCsvText(
-        String(reader.result ?? ''),
+        content,
         this.csvCatalogTarget(),
         this.importStrategy(),
       );
-    };
-    reader.readAsText(file);
+    });
   }
 
   private notifyCsvImportResult(
@@ -2599,24 +3469,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly showArmCommandPalette = signal<boolean>(false);
   readonly armCommandQuery = signal<string>('');
 
-  readonly armKanbanCards = signal<
-    {
-      id: string;
-      workspaceId: ArmWorkspaceId;
-      leadName: string;
-      companyName: string;
-      stageSlug: string;
-      qualificationScore: number;
-      painPointSummary: string;
-      lastMessagePreview: string;
-      assignedAgentRole: string;
-      movedByAgentBadge: string;
-      dealValueLabel: string;
-      freeWindowLabel: string;
-      messages: { sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }[];
-      toolTraces: { toolName: string; latencyMs: number; status: string }[];
-    }[]
-  >([
+  readonly armKanbanCards = signal<ArmKanbanCardVm[]>([
     {
       id: 'arm-lead-b2b-1',
       workspaceId: 'ARM_B2B',
@@ -2751,29 +3604,126 @@ export class ComplianceCockpitComponent implements OnDestroy {
     },
   ]);
 
-  readonly armExecutiveKpisForSilo = computed(() => {
+  private parseArmCardMoney(card: ArmKanbanCardVm): number {
+    if (typeof card.estimatedValueNum === 'number' && Number.isFinite(card.estimatedValueNum)) {
+      return Math.max(0, card.estimatedValueNum);
+    }
+    const raw = (card.dealValueLabel || '').replace(/,/g, '');
+    const match = raw.match(/\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : 0;
+  }
+
+  readonly armExecutiveKpisForSilo = computed<CrmSiloExecutiveKpi[]>(() => {
     const silo = this.activeArmSilo();
+    const cards = this.armKanbanCards().filter((c) => c.workspaceId === silo);
+    const pendingHitl = this.armApprovalQueue().filter(
+      (a) => a.workspaceId === silo && a.status === 'PENDING',
+    );
+    const feed = this.armAutonomousFeed().filter((f) => f.workspaceId === silo);
+    const latencies = [
+      ...cards.flatMap((c) => c.toolTraces.map((t) => t.latencyMs)),
+      ...feed.map((f) => f.latencyMs),
+    ].filter((ms) => Number.isFinite(ms) && ms > 0);
+    const avgLatencySec =
+      latencies.length > 0
+        ? (latencies.reduce((a, b) => a + b, 0) / latencies.length / 1000).toFixed(2)
+        : '0.00';
+
+    const qualifiedCount = cards.filter((c) => c.qualificationScore >= 75).length;
+    const convPct = cards.length > 0 ? Math.round((qualifiedCount / cards.length) * 1000) / 10 : 0;
+    const cardsTotalVal = cards.reduce((sum, c) => sum + this.parseArmCardMoney(c), 0);
+
     if (silo === 'P2P_DESK') {
+      const p2pDeals = this.deals().filter((d) => d.scope === 'P2P_DESK');
+      const p2pTransitUsdt = p2pDeals
+        .filter((d) => d.stage !== 'STAGE_4_CLOSED')
+        .reduce((sum, d) => sum + d.cryptoAmountUsdt, 0);
+      const p2pRails = this.banks().filter((b) => b.scope === 'P2P_DESK').length;
+      const totalTransitUsdt = Math.round((p2pTransitUsdt + cardsTotalVal) * 100) / 100;
+
       return [
-        { label: 'Volumen En Tránsito', value: '14,850 USDT', sub: 'Cupo Banesco / Mercantil' },
-        { label: 'Conversión Autónoma', value: '81.4%', sub: 'Triaje + 3-Burbujas' },
-        { label: 'SLA Respuesta & OCR', value: '0.9s', sub: 'Gemini Vision + Regex' },
-        { label: 'Colisiones Frenadas', value: '100% Seguro', sub: 'Regla Anti-Fraude Activa' },
+        {
+          label: 'Volumen En Tránsito',
+          value: `${this.formatDecimal(totalTransitUsdt)} USDT`,
+          sub: `${p2pDeals.length} tratos • ${cards.length} leads`,
+        },
+        {
+          label: 'Conversión Autónoma',
+          value: `${convPct.toFixed(1)}%`,
+          sub: `${qualifiedCount}/${cards.length} leads calificados`,
+        },
+        {
+          label: 'SLA Respuesta & OCR',
+          value: `${avgLatencySec}s`,
+          sub: `${latencies.length} trazas medidas`,
+        },
+        {
+          label: 'Escudo Anti-Fraude',
+          value: `${pendingHitl.length} HITL`,
+          sub: `${p2pRails} rieles • ${feed.length} eventos`,
+        },
       ];
     }
+
     if (silo === 'FINANCE_360') {
+      const f360Deals = this.deals().filter((d) => d.scope === 'FINANCE_360');
+      const closed360Usd = f360Deals
+        .filter((d) => d.stage === 'STAGE_4_CLOSED')
+        .reduce((sum, d) => sum + d.cryptoAmountUsdt, 0);
+      const open360Usd = f360Deals
+        .filter((d) => d.stage !== 'STAGE_4_CLOSED')
+        .reduce((sum, d) => sum + d.cryptoAmountUsdt, 0);
+      const budgetedUsd = Math.round((open360Usd + cardsTotalVal) * 100) / 100;
+
       return [
-        { label: 'Pipeline Presupuestado', value: '$12,400 USD', sub: 'QuoteEngine Unificado' },
-        { label: 'Conversión Autónoma', value: '72.0%', sub: 'Cotizador + Cobranza' },
-        { label: 'SLA Respuesta IA', value: '1.5s', sub: 'WhatsApp & Instagram' },
-        { label: 'Ingresos Facturados 360', value: '$8,950 USD', sub: 'Sincronizado Gavetas 50/30/20' },
+        {
+          label: 'Pipeline Presupuestado',
+          value: `$${this.formatDecimal(budgetedUsd)} USD`,
+          sub: `${cards.length} leads • ${f360Deals.length} tratos 360`,
+        },
+        {
+          label: 'Conversión Autónoma',
+          value: `${convPct.toFixed(1)}%`,
+          sub: `${pendingHitl.length} aprobaciones HITL`,
+        },
+        {
+          label: 'SLA Respuesta IA',
+          value: `${avgLatencySec}s`,
+          sub: `${latencies.length} trazas medidas`,
+        },
+        {
+          label: 'Ingresos Facturados 360',
+          value: `$${this.formatDecimal(closed360Usd)} USD`,
+          sub: 'Sincronizado Gavetas 360',
+        },
       ];
     }
+
+    const wonOrScheduledUsd = cards
+      .filter((c) => c.stageSlug === 'sesion-agendada' || c.stageSlug === 'ganado' || c.stageSlug === 'propuesta-enviada')
+      .reduce((sum, c) => sum + this.parseArmCardMoney(c), 0);
+
     return [
-      { label: 'Valor Pipeline (MRR/ARR)', value: '$48,500 MRR', sub: '$582k ARR proyectado' },
-      { label: 'Tasa Conversión Autónoma', value: '64.2%', sub: 'SDR BANT + Scheduler' },
-      { label: 'SLA de Respuesta IA', value: '1.8s', sub: 'Debounce 3.0s Coalescing' },
-      { label: 'Ingresos Cerrados', value: '$19,200 USD', sub: '14 cuentas corporativas' },
+      {
+        label: 'Valor Pipeline (MRR/ARR)',
+        value: `$${this.formatDecimal(cardsTotalVal)} MRR`,
+        sub: `$${this.formatDecimal(cardsTotalVal * 12)} ARR proyectado`,
+      },
+      {
+        label: 'Tasa Conversión Autónoma',
+        value: `${convPct.toFixed(1)}%`,
+        sub: `${qualifiedCount}/${cards.length} cuentas BANT >=75`,
+      },
+      {
+        label: 'SLA de Respuesta IA',
+        value: `${avgLatencySec}s`,
+        sub: `${latencies.length} trazas ejecutadas`,
+      },
+      {
+        label: 'Pipeline Calificado / Cerrado',
+        value: `$${this.formatDecimal(wonOrScheduledUsd)} USD`,
+        sub: `${cards.length} cuentas • ${pendingHitl.length} cola HITL`,
+      },
     ];
   });
 
@@ -2883,7 +3833,9 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.activeArmSilo.set(silo);
     if (silo === 'P2P_DESK' || silo === 'FINANCE_360') {
       this.activeScope.set(silo);
+      this.storage.set(CRM_STORAGE_KEYS.ACTIVE_SCOPE, silo);
     }
+    this.selectedContactId.set(null);
     const firstCard = this.armKanbanCards().find((c) => c.workspaceId === silo);
     if (firstCard) {
       this.selectedArmLeadId.set(firstCard.id);
@@ -2935,8 +3887,12 @@ export class ComplianceCockpitComponent implements OnDestroy {
   @HostListener('window:keydown', ['$event'])
   onArmCommandKeydown(event: KeyboardEvent): void {
     const key = (event.key || '').toLowerCase();
+    const fromWindowDom = typeof window !== 'undefined' && event.currentTarget === window;
 
     if ((event.metaKey || event.ctrlKey) && key === 'k') {
+      if (fromWindowDom && this.hotkeys) {
+        return;
+      }
       event.preventDefault();
       if (this.activeView() !== 'ARM_COMMAND') {
         this.setView('ARM_COMMAND');
@@ -2950,7 +3906,13 @@ export class ComplianceCockpitComponent implements OnDestroy {
       return;
     }
 
-    if (this.activeView() !== 'ARM_COMMAND' || this.showArmCommandPalette()) return;
+    if (
+      this.activeView() !== 'ARM_COMMAND' ||
+      this.showArmCommandPalette() ||
+      this.editingApprovalId()
+    ) {
+      return;
+    }
     const target = event.target as HTMLElement | null;
     if (
       target &&
@@ -2972,6 +3934,10 @@ export class ComplianceCockpitComponent implements OnDestroy {
     }
     if (key === '3') {
       this.setArmSilo('FINANCE_360');
+      return;
+    }
+
+    if (fromWindowDom && event.defaultPrevented) {
       return;
     }
 
@@ -3318,12 +4284,56 @@ export class ComplianceCockpitComponent implements OnDestroy {
     if (!armApi) return;
     try {
       const silos: ArmWorkspaceId[] = ['ARM_B2B', 'P2P_DESK', 'FINANCE_360'];
+      const mergedCards = [...this.armKanbanCards()];
+      const cardIndexById = new Map<string, number>();
+      mergedCards.forEach((card, idx) => cardIndexById.set(card.id, idx));
+      let leadsUpdated = false;
+
       const mergedApprovals = [...this.armApprovalQueue()];
       const approvalIds = new Set(mergedApprovals.map((a) => a.id));
       const mergedShadow = [...this.armShadowExamples()];
       const shadowIds = new Set(mergedShadow.map((s) => s.id));
+      const mergedBanks = [...this.banks()];
+      const bankIds = new Set(mergedBanks.map((b) => b.id));
+      let banksUpdated = false;
 
       for (const ws of silos) {
+        const remoteLeads = (await armApi.listLeads?.(ws)) as ElectronArmLeadDto[] | undefined;
+        for (const lead of remoteLeads || []) {
+          if (!lead || !lead.id) continue;
+          const existingIdx = cardIndexById.get(lead.id);
+          const valueNum = Number(lead.estimatedDealValue ?? 0);
+          const formattedVal =
+            lead.currency === 'USDT'
+              ? `${this.formatDecimal(valueNum)} USDT`
+              : `$${this.formatDecimal(valueNum)} ${lead.currency || 'USD'}`;
+          const mappedCard: ArmKanbanCardVm = {
+            id: lead.id,
+            workspaceId: lead.workspaceId ?? ws,
+            leadName: lead.fullName || lead.companyName || lead.id,
+            companyName: lead.companyName || lead.workspaceId,
+            stageSlug: lead.currentStageSlug,
+            qualificationScore: Number(lead.qualificationScore ?? 0),
+            painPointSummary:
+              lead.bantData?.need_pain_point || lead.aiExecutiveSummary || 'Sincronizado SQLite',
+            lastMessagePreview: lead.aiExecutiveSummary || 'Hydrated from Electron SQLite',
+            assignedAgentRole: lead.assignedAgentRole || 'SDR_QUALIFIER',
+            movedByAgentBadge: `SQLite (${lead.assignedAgentRole || 'ARM'})`,
+            dealValueLabel: formattedVal,
+            estimatedValueNum: valueNum,
+            freeWindowLabel: 'SQLite Local-First',
+            messages: existingIdx !== undefined ? mergedCards[existingIdx].messages : [],
+            toolTraces: existingIdx !== undefined ? mergedCards[existingIdx].toolTraces : [],
+          };
+          if (existingIdx !== undefined) {
+            mergedCards[existingIdx] = { ...mergedCards[existingIdx], ...mappedCard };
+          } else {
+            cardIndexById.set(lead.id, mergedCards.length);
+            mergedCards.push(mappedCard);
+          }
+          leadsUpdated = true;
+        }
+
         const remoteApprovals = (await armApi.listPendingApprovals(ws)) as ArmApprovalQueueItem[];
         for (const item of remoteApprovals || []) {
           if (item && item.id && !approvalIds.has(item.id)) {
@@ -3338,8 +4348,34 @@ export class ComplianceCockpitComponent implements OnDestroy {
             mergedShadow.push(ex);
           }
         }
+
+        const remoteRails = await armApi.listBankRails?.(ws);
+        for (const rail of remoteRails || []) {
+          if (rail && rail.id && !bankIds.has(rail.id)) {
+            bankIds.add(rail.id);
+            mergedBanks.push({
+              id: rail.id,
+              scope: rail.workspaceId === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK',
+              bankName: rail.bankName,
+              currency: (rail.currency as FiatCurrency) || 'VES',
+              holderDetailsText: rail.holderDetails || rail.bankName,
+              currentBalanceFiat: Number(rail.currentBalanceFiat ?? 0),
+              maxDailyCapFiat: Number(rail.maxDailyCapFiat ?? 50000),
+              feePct: 0.3,
+              maxBurstTxPer15Min: 5,
+            });
+            banksUpdated = true;
+          }
+        }
       }
 
+      if (leadsUpdated) {
+        this.armKanbanCards.set(mergedCards);
+      }
+      if (banksUpdated) {
+        this.banks.set(mergedBanks);
+        this.storage.set(CRM_STORAGE_KEYS.BANKS, mergedBanks);
+      }
       if (mergedApprovals.length > this.armApprovalQueue().length) {
         this.armApprovalQueue.set(mergedApprovals);
       }

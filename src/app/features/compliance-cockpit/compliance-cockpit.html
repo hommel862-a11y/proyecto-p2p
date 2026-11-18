@@ -1,3050 +1,781 @@
-<div
-  class="compliance-cockpit-container"
+<main
+  class="crm-cockpit-shell"
+  [class.silo-b2b]="activeArmSilo() === 'ARM_B2B'"
+  [class.silo-p2p]="activeArmSilo() === 'P2P_DESK'"
+  [class.silo-360]="activeArmSilo() === 'FINANCE_360'"
   [class.privacy-active]="privacyMode()"
-  [class.scope-360]="activeScope() === 'FINANCE_360'"
 >
-  <!-- 1. BARRA SUPERIOR GLOBAL (QUANTUM COMMAND HEADER) -->
-  <header class="cockpit-top-bar quantum-hero-banner">
-    <div class="brand-zone">
-      <div class="brand-badge">
-        <span class="live-pulse"></span>
-        <span class="badge-text">
-          {{ activeScope() === 'P2P_DESK' ? 'P2P QUANT TREASURY' : 'FINANCE 360 ENTERPRISE' }}
-        </span>
-      </div>
-      <div class="brand-titles">
-        <div class="title-row-inline">
-          <h1 class="cockpit-title">CRM Financiero &amp; Pipeline Operativo</h1>
-          <span class="crm-telemetry-chip font-mono" title="Tasa base de reemplazo activa">
-            Base: {{ liveReplacementRate() | number:'1.2-2' }}
-          </span>
-          <span class="crm-telemetry-chip emerald font-mono" title="Tasa de conversión del pipeline">
-            Conv: {{ pipelineConversionSummary().conversionRatePct }}%
-          </span>
-          <span class="crm-telemetry-chip cyan font-mono" title="Rieles bancarios disponibles">
-            Rieles: {{ bankFleetSummary().availableCount }}/{{ bankFleetSummary().totalCount }}
-          </span>
-        </div>
-        <span class="cockpit-subtitle">
-          Máquina de Estados Cuántica &bull; Reserva de Cupo en Tránsito &bull; Doble Bóveda Desacoplada
-        </span>
-      </div>
-    </div>
+  <app-crm-command-header
+    [activeSilo]="activeArmSilo()"
+    [activeNav]="primaryNav()"
+    [gatewayStatus]="inboundGateway.status()"
+    [privacyMode]="privacyMode()"
+    [pipelineCount]="pipelineConversionSummary().totalDeals"
+    [inboxCount]="filteredConversations().length"
+    [pendingApprovalsCount]="armApprovalQueueForSilo().length"
+    [dailyProfitTodayUsdt]="kpis().closedNetProfitTodayUsdt"
+    [isTodaySettled]="isTodaySettled()"
+    [liveReplacementRate]="liveReplacementRate()"
+    [conversionRatePct]="pipelineConversionSummary().conversionRatePct"
+    [railsSummaryLabel]="bankFleetSummary().availableCount + '/' + bankFleetSummary().totalCount"
+    (siloChange)="setArmSilo($event)"
+    (navChange)="onPrimaryNavSelect($event)"
+    (openPalette)="showArmCommandPalette.set(true)"
+    (gatewayClick)="onGatewayPillClick()"
+    (quickCreate)="onQuickCreateOption($event)"
+    (togglePrivacy)="togglePrivacyMode()"
+    (settleProfit)="transferDailyProfitToFinance360()"
+  />
 
-    <!-- SELECTOR DE BÓVEDA (DUAL-LEDGER) -->
-    <div class="vault-switcher-group">
-      <div class="vault-segmented-control" role="tablist" aria-label="Selección de Bóveda">
-        <button
-          type="button"
-          class="vault-btn"
-          [class.active]="activeScope() === 'P2P_DESK'"
-          (click)="setScope('P2P_DESK')"
-          role="tab"
-          [attr.aria-selected]="activeScope() === 'P2P_DESK'"
-        >
-          <span class="vault-icon">⚡</span>
-          <span class="vault-text">MESA P2P / OTC</span>
-        </button>
-
-        <button
-          type="button"
-          class="vault-btn"
-          [class.active]="activeScope() === 'FINANCE_360'"
-          (click)="setScope('FINANCE_360')"
-          role="tab"
-          [attr.aria-selected]="activeScope() === 'FINANCE_360'"
-        >
-          <span class="vault-icon">🏛️</span>
-          <span class="vault-text">FINANZAS 360 CRM</span>
-        </button>
+  @if (aiStrategistInsight(); as insight) {
+    <div class="crm-strategist-banner crm-liquid-glass" role="status">
+      <div class="strategist-copy">
+        <span class="strategist-tag">AI Strategist</span>
+        <span>{{ insight }}</span>
       </div>
-    </div>
-
-    <!-- ACCIONES RÁPIDAS GLOBALES -->
-    <div class="header-right-actions">
-      <!-- INDICADOR INBOUND GATEWAY -->
       <button
         type="button"
-        class="gateway-status-pill"
-        [class.connected]="inboundGateway.status() === 'CONNECTED'"
-        [class.connecting]="inboundGateway.status() === 'CONNECTING'"
-        [class.disconnected]="inboundGateway.status() === 'DISCONNECTED'"
-        [attr.title]="inboundGateway.status() === 'CONNECTED' ? 'Inbound Gateway conectado: Webhooks WhatsApp & Instagram activos' : 'Inbound Gateway inactivo. Click para reconectar.'"
-        (click)="onGatewayPillClick()"
-        role="status"
-        aria-label="Estado del Inbound Webhook Gateway"
+        class="crm-btn-glass btn-dismiss-banner"
+        aria-label="Cerrar diagnóstico"
+        (click)="aiStrategistInsight.set(null)"
       >
-        <span class="status-dot"></span>
-        <span class="gateway-label">
-          @if (inboundGateway.status() === 'CONNECTED') {
-            Gateway Activo
-          } @else if (inboundGateway.status() === 'CONNECTING') {
-            Reconectando...
-          } @else {
-            Gateway Off
-          }
-        </span>
-      </button>
-
-      <div class="crm-action-dock">
-        <button
-          type="button"
-          class="action-btn btn-new-deal"
-          (click)="openNewDealModal()"
-          title="Crear un nuevo acuerdo o cotización en el pipeline"
-        >
-          <span class="btn-icon">⚡</span>
-          <span>+ Nuevo Trato</span>
-        </button>
-
-        <button
-          type="button"
-          class="action-btn btn-new-contact"
-          (click)="showAddContactModal.set(true)"
-          title="Registrar un nuevo cliente o contacto"
-        >
-          <span class="btn-icon">👤</span>
-          <span>+ Contacto</span>
-        </button>
-
-        <button
-          type="button"
-          class="action-btn btn-new-bank"
-          (click)="showAddBankModal.set(true)"
-          title="Agregar una cuenta bancaria o riel de pago"
-        >
-          <span class="btn-icon">🏦</span>
-          <span>+ Banco</span>
-        </button>
-      </div>
-
-      @if (activeScope() === 'P2P_DESK') {
-        <button
-          type="button"
-          class="action-btn bridge-settle-btn"
-          [class.settled]="isTodaySettled()"
-          [disabled]="isTodaySettled() || kpis().closedNetProfitTodayUsdt <= 0"
-          (click)="transferDailyProfitToFinance360()"
-          title="Transferir ganancia neta cerrada hoy hacia Finanzas 360"
-        >
-          <span class="btn-icon">💰</span>
-          @if (isTodaySettled()) {
-            <span>Ganancia Enviada (#SETTLE)</span>
-          } @else {
-            <span>Corte a Finanzas 360 (+${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }})</span>
-          }
-        </button>
-      }
-
-      <button
-        type="button"
-        class="action-btn privacy-toggle-btn"
-        [class.active]="privacyMode()"
-        (click)="togglePrivacyMode()"
-        title="Alternar Modo Privacidad para vista cliente (Alt+P)"
-      >
-        <span class="btn-icon">{{ privacyMode() ? '👁️' : '🔒' }}</span>
-        <span>{{ privacyMode() ? 'Privacidad [ON]' : 'Privacidad [Alt+P]' }}</span>
+        ×
       </button>
     </div>
-  </header>
+  }
 
-  <!-- 2. BARRA DE NAVEGACIÓN MODULAR STICKY (7 MÓDULOS) -->
-  <nav class="module-nav-bar cockpit-tabs-bar" aria-label="Módulos del CRM">
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'DASHBOARD'"
-      (click)="setView('DASHBOARD')"
-    >
-      <span class="tab-icon">📊</span>
-      <span class="tab-text">Cockpit Ejecutivo</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'KANBAN'"
-      (click)="setView('KANBAN')"
-    >
-      <span class="tab-icon">📋</span>
-      <span class="tab-text">Pipeline Kanban</span>
-      <span class="tab-badge">{{ workspaceState().deals.length }}</span>
-      @if (pipelineConversionSummary().expiredCount > 0) {
-        <span class="tab-alert-dot" title="Hay cotizaciones con tasa vencida">!</span>
+  <section class="crm-workspace-stage">
+    @switch (primaryNav()) {
+      @case ('OVERVIEW') {
+        <app-crm-overview
+          [activeSilo]="activeArmSilo()"
+          [heroKpis]="overviewHeroKpis()"
+          [cashflowColumns]="overviewCashflowColumns()"
+          [velocityBars]="overviewVelocityBars()"
+          [totalPipelineVolumeLabel]="overviewPipelineVolumeLabel()"
+          [selectedPeriod]="overviewPeriod()"
+          [aiHealthScorePct]="overviewAiHealthScore()"
+          [aiRecommendations]="overviewAiRecommendations()"
+          [dealsStatusRows]="overviewDealsRows()"
+          [funnelStages]="overviewFunnelStages()"
+          [spreadRateLabel]="overviewSpreadRateLabel()"
+          [winRateLabel]="pipelineConversionSummary().conversionRatePct + '%'"
+          [avgCloseLabel]="overviewAvgCloseLabel()"
+          [privacyMode]="privacyMode()"
+          (kpiDrilldown)="onOverviewKpiDrilldown($event)"
+          (periodChange)="overviewPeriod.set($event)"
+          (askAiStrategist)="onOverviewAskStrategist($event)"
+          (recommendationAction)="onOverviewRecommendationAction($event)"
+          (openDealDetail)="onOverviewOpenDeal($event)"
+        />
       }
-    </button>
 
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'CONTACTS'"
-      (click)="setView('CONTACTS')"
+      @case ('PIPELINE') {
+        <app-crm-pipeline
+          [activeSilo]="activeArmSilo()"
+          [pipelineMode]="pipelineViewMode()"
+          [deals]="workspaceState().deals"
+          [kanbanColumns]="pipelineKanbanColumns()"
+          [armStages]="armStagesForSilo()"
+          [armCards]="armKanbanCardsForSilo()"
+          [armApprovals]="armApprovalQueueForSilo()"
+          [armFeed]="armAutonomousFeedForSilo()"
+          [armShadowCount]="armShadowExamplesForSilo().length"
+          [selectedArmCard]="selectedArmLeadSplitInspector()"
+          [briefing]="armCloserPreCallBriefing()"
+          [replayResult]="armReplayComparisonResult()"
+          [selectedSandboxPersona]="selectedSandboxPersona()"
+          [dealFilter]="kanbanFilterMode()"
+          [dealSearch]="kanbanSearchQuery()"
+          [compactView]="kanbanCompactMode()"
+          [editingApprovalId]="editingApprovalId()"
+          [editingApprovalText]="editingApprovalText()"
+          [editingSaveAsExample]="editingSaveAsExample()"
+          [closerLeadName]="closerNoteLeadName()"
+          [closerTranscript]="closerNoteTranscript()"
+          [privacyMode]="privacyMode()"
+          (modeChange)="onPipelineModeChange($event)"
+          (filterChange)="onKanbanFilterChange($event)"
+          (searchChange)="kanbanSearchQuery.set($event)"
+          (compactToggle)="kanbanCompactMode.set(!kanbanCompactMode())"
+          (newDeal)="openNewDealModal()"
+          (advanceDeal)="onPipelineAdvanceDeal($event)"
+          (settleDeal)="moveDealToStage($event, 'STAGE_4_CLOSED')"
+          (deleteDeal)="deleteDeal($event)"
+          (openDealChat)="openOmnichannelForDeal($event)"
+          (selectArmLead)="selectArmLeadForInspector($event)"
+          (moveArmStage)="moveArmCardToStage($event.cardId, $event.stageSlug)"
+          (runSandbox)="triggerArmSandboxTurn($event)"
+          (runReplay)="triggerArmDeterministicReplayDryRun()"
+          (runAntiGhosting)="triggerAntiGhostingScanForSilo()"
+          (syncLocal)="syncLocalDealsToArmSilos()"
+          (openPalette)="showArmCommandPalette.set(true)"
+          (approveItem)="approveArmQueueItem($event.id, $event.text, $event.saveAsExample)"
+          (rejectItem)="takeoverHumanFromArmQueue($event)"
+          (startEditApproval)="startEditArmApproval($event)"
+          (cancelEditApproval)="editingApprovalId.set(null)"
+          (editApprovalTextChange)="editingApprovalText.set($event)"
+          (editSaveAsExampleChange)="editingSaveAsExample.set($event)"
+          (generateBriefing)="triggerCloserPreCallBriefingForSilo()"
+          (submitCloserNote)="submitCloserVoiceNoteForArm()"
+          (closerLeadNameChange)="closerNoteLeadName.set($event)"
+          (closerTranscriptChange)="closerNoteTranscript.set($event)"
+          (sandboxPersonaChange)="selectedSandboxPersona.set($event)"
+        />
+      }
+
+      @case ('INBOX_STUDIO') {
+        <app-crm-inbox-studio
+          [activeSilo]="activeArmSilo()"
+          [subTab]="omnichannelSubTab()"
+          [conversations]="filteredConversations()"
+          [selectedConversation]="activeConversation()"
+          [chatSearch]="chatSearchTerm()"
+          [chatDraft]="chatDraftText()"
+          [testInboundText]="testInboundText()"
+          [aiTriage]="activeAiTriage()"
+          [banks]="scopedBanks()"
+          [contacts]="workspaceState().contacts"
+          [selectedBankIdForBubbles]="selectedBankForBubbles()"
+          [isAnalyzingOcr]="isAnalyzingOcr()"
+          [ocrResult]="ocrExtractedResult()"
+          [invoicesOrQuotes]="scopedInvoices()"
+          [omnichannelConfig]="omnichannelConfig()"
+          [studioState]="inboxStudioStateVm()"
+          [freeWindowRemainingLabel]="activeConvFreeWindowLabel()"
+          [freeWindowIsOpen]="activeConvFreeWindow().isOpen"
+          [privacyMode]="privacyMode()"
+          (subTabChange)="omnichannelSubTab.set($event)"
+          (selectConversation)="selectConversation($event)"
+          (newChat)="openNewChatModal()"
+          (chatSearchChange)="chatSearchTerm.set($event)"
+          (chatDraftChange)="chatDraftText.set($event)"
+          (sendMessage)="onInboxSendMessage($event)"
+          (testInboundChange)="testInboundText.set($event)"
+          (simulateInboundTriage)="simulateIncomingCustomerMessage()"
+          (applyTriageAction)="applyTriageAction()"
+          (dismissTriage)="activeAiTriage.set(null)"
+          (selectBankForBubbles)="selectedBankForBubbles.set($event)"
+          (generateBankBubbles)="sendBankBubblesToChat($event)"
+          (ocrPasteFile)="onInboxOcrPaste($event)"
+          (insertDocInChat)="insertDocTemplateIntoChat($event)"
+          (studioFieldChange)="onInboxStudioFieldChange($event)"
+          (addStudioItem)="addStudioItem()"
+          (removeStudioItem)="removeStudioItem($event)"
+          (saveStudioDoc)="saveStudioDocument($event)"
+          (exportStudioPng)="onInboxExportPng($event)"
+          (loadSavedDoc)="loadStudioDocument($event)"
+          (deleteSavedDoc)="deleteStudioDocument($event)"
+          (updateConfig)="onInboxConfigUpdate($event)"
+        />
+      }
+
+      @case ('CONTACTS_RAILS') {
+        <app-crm-contacts-rails
+          [activeSilo]="activeArmSilo()"
+          [subMode]="contactsRailsSubMode()"
+          [contacts]="workspaceState().contacts"
+          [selectedContact]="selectedContact()"
+          [selectedContactDeals]="selectedContactDeals()"
+          [selectedContactLtvUsdt]="selectedContactMetrics().lifetimeVolumeUsdt"
+          [vectorMemories]="selectedContactVectorMemories()"
+          [contactSearch]="contactSearchQuery()"
+          [contactFilter]="contactCategoryFilter()"
+          [banks]="scopedBanks()"
+          [bankTelemetry]="workspaceState().bankTelemetry"
+          [totalBankCapacityFiat]="totalBankCapacityFiat()"
+          [availableRailsCount]="bankFleetSummary().availableCount"
+          [privacyMode]="privacyMode()"
+          (subModeChange)="onContactsRailsSubModeChange($event)"
+          (selectContact)="selectContact($event)"
+          (contactSearchChange)="contactSearchQuery.set($event)"
+          (contactFilterChange)="contactCategoryFilter.set($any($event))"
+          (newContact)="showAddContactModal.set(true)"
+          (adjustBalance)="onAdjustContactBalance($event)"
+          (sendWaStatement)="copyWhatsAppReceipt()"
+          (openChatForContact)="openOmnichannelForContact($event)"
+          (newDealForContact)="selectContact($event.id); openNewDealModal()"
+          (copyPaymentDetails)="copyText($event, 'Datos de pago')"
+          (newBank)="showAddBankModal.set(true)"
+          (copyBankDetails)="copyBankHolderDetails($event)"
+          (reconcileBank)="onReconcileBank($event)"
+          (deleteBank)="deleteBank($event)"
+        />
+      }
+
+      @case ('AUDIT_SYSTEM') {
+        <app-crm-audit-system
+          [activeSilo]="activeArmSilo()"
+          [activities]="workspaceState().activities"
+          [storageHealth]="auditStorageHealth()"
+          [smsInput]="rawClipboardInput()"
+          [parsedSmsPreview]="auditParsedSmsPreview()"
+          [refVerifyInput]="candidateRef()"
+          [refVerifyResult]="auditRefVerifyResult()"
+          [auditSearch]="activitySearchQuery()"
+          [auditTypeFilter]="activityTypeFilter()"
+          [liveReplacementRate]="liveReplacementRate()"
+          [importStrategy]="importStrategy()"
+          [csvTarget]="csvCatalogTarget()"
+          (smsInputChange)="rawClipboardInput.set($event)"
+          (extractSms)="applyParsedClipboard()"
+          (refVerifyInputChange)="candidateRef.set($event)"
+          (verifyReference)="onAuditVerifyReference()"
+          (auditSearchChange)="activitySearchQuery.set($event)"
+          (auditTypeFilterChange)="activityTypeFilter.set($event)"
+          (siloChange)="setArmSilo($event)"
+          (replacementRateChange)="onAuditReplacementRateChange($event)"
+          (importStrategyChange)="importStrategy.set($event)"
+          (csvTargetChange)="csvCatalogTarget.set($event)"
+          (exportJson)="exportDataJson()"
+          (exportCsv)="exportCatalogCsv()"
+          (importJsonFile)="importDataJsonFile($event)"
+          (importCsvFile)="importCatalogCsvFile($event)"
+        />
+      }
+    }
+  </section>
+
+  <!-- 1. PALETA DE COMANDOS UNIFICADA (Ctrl+K / Cmd+K) -->
+  @if (showArmCommandPalette()) {
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-palette-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showArmCommandPalette.set(false)"
+      (keydown.escape)="showArmCommandPalette.set(false)"
     >
-      <span class="tab-icon">👥</span>
-      <span class="tab-text">Contactos 360°</span>
-      <span class="tab-badge">{{ workspaceState().contacts.length }}</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'BANKS'"
-      (click)="setView('BANKS')"
-    >
-      <span class="tab-icon">🏦</span>
-      <span class="tab-text">Bancos y Escudo</span>
-      <span class="tab-badge">{{ workspaceState().bankTelemetry.length }}</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'ACTIVITIES'"
-      (click)="setView('ACTIVITIES')"
-    >
-      <span class="tab-icon">📑</span>
-      <span class="tab-text">Parser &amp; Auditoría</span>
-      <span class="tab-badge">{{ workspaceState().activities.length }}</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'OMNICHANNEL'"
-      (click)="setView('OMNICHANNEL')"
-    >
-      <span class="tab-icon">💬</span>
-      <span class="tab-text">Omnicanal &amp; Studio HD</span>
-      <span class="tab-badge">{{ filteredConversations().length }}</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'ARM_COMMAND'"
-      (click)="setView('ARM_COMMAND')"
-    >
-      <span class="tab-icon">🤖</span>
-      <span class="tab-text">ARM Command &amp; Sandbox</span>
-      <span class="tab-badge">{{ armApprovalQueueForSilo().length }}</span>
-    </button>
-
-    <button
-      type="button"
-      class="nav-tab-btn"
-      [class.active]="activeView() === 'SETTINGS'"
-      (click)="setView('SETTINGS')"
-    >
-      <span class="tab-icon">⚙️</span>
-      <span class="tab-text">Ajustes &amp; Portabilidad</span>
-    </button>
-  </nav>
-
-  <!-- 3. VISTAS MODULARES -->
-  <main class="cockpit-main-content">
-    <!-- ======================================================================= -->
-    <!-- VISTA 1: DASHBOARD DE TESORERÍA & KPIS -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'DASHBOARD') {
-      <div class="view-dashboard-container">
-        <!-- 4 Tarjetas KPI Interactivas -->
-        <section class="kpi-ribbon-grid" aria-label="KPIs de Tesorería">
-          <div class="kpi-card interactive" [class.positive]="kpis().closedNetProfitTodayUsdt > 0" (click)="setView('KANBAN')">
-            <div class="kpi-header">
-              <span class="kpi-tag">01 · GANANCIA CERRADA HOY</span>
-              <span class="kpi-badge badge-success">{{ kpis().closedTradesCountToday }} cerrados</span>
-            </div>
-            <div class="kpi-body">
-              @if (privacyMode()) {
-                <span class="kpi-val masked">AUDITADO OK</span>
-              } @else {
-                <span class="kpi-val highlight">+${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }}</span>
-                <span class="kpi-unit">USDT</span>
-              }
-            </div>
-            <div class="kpi-footer">
-              <span>Margen ponderado: <strong>{{ kpis().spreadEfficiencyPct | number:'1.2-2' }}%</strong></span>
-              <span class="kpi-link-hint">Ver Pipeline →</span>
-            </div>
-          </div>
-
-          <div class="kpi-card interactive" (click)="setView('KANBAN')">
-            <div class="kpi-header">
-              <span class="kpi-tag">02 · VOLUMEN LIQUIDADO HOY</span>
-              <span class="kpi-badge badge-blue">Liquidado</span>
-            </div>
-            <div class="kpi-body">
-              @if (privacyMode()) {
-                <span class="kpi-val masked">CONFIDENCIAL</span>
-              } @else {
-                <span class="kpi-val">${{ kpis().closedVolumeTodayUsdt | number:'1.2-2' }}</span>
-                <span class="kpi-unit">USDT</span>
-              }
-            </div>
-            <div class="kpi-footer">
-              <span>Bóveda activa: <strong>{{ activeScope() }}</strong></span>
-              <span class="kpi-link-hint">Auditar →</span>
-            </div>
-          </div>
-
-          <div class="kpi-card interactive" [class.warn]="kpis().inTransitVolumeUsdt > 0" (click)="setView('KANBAN')">
-            <div class="kpi-header">
-              <span class="kpi-tag">03 · VOLUMEN EN TRÁNSITO</span>
-              <span class="kpi-badge badge-amber">Reserva Activa</span>
-            </div>
-            <div class="kpi-body">
-              @if (privacyMode()) {
-                <span class="kpi-val masked">RESERVADO</span>
-              } @else {
-                <span class="kpi-val text-amber">${{ kpis().inTransitVolumeUsdt | number:'1.2-2' }}</span>
-                <span class="kpi-unit">USDT</span>
-              }
-            </div>
-            <div class="kpi-footer">
-              <span>Cupo reservado en rieles bancarios</span>
-              <span class="kpi-link-hint">Destrabar →</span>
-            </div>
-          </div>
-
-          <div class="kpi-card interactive" (click)="setView('CONTACTS')">
-            <div class="kpi-header">
-              <span class="kpi-tag">04 · CUENTAS POR COBRAR / PAGAR</span>
-              <span class="kpi-badge badge-neutral">Cuenta Corriente</span>
-            </div>
-            <div class="kpi-body">
-              <div class="receivables-col">
-                <span class="lbl">Por Cobrar:</span>
-                <span class="val text-red font-mono">${{ kpis().totalReceivablesUsdt | number:'1.2-2' }}</span>
-              </div>
-              <div class="receivables-col">
-                <span class="lbl">Por Pagar:</span>
-                <span class="val text-emerald font-mono">${{ kpis().totalPayablesUsdt | number:'1.2-2' }}</span>
-              </div>
-            </div>
-            <div class="kpi-footer">
-              <span>Saldos vivos de contrapartes</span>
-              <span class="kpi-link-hint">Directorio →</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- TIRA DE EMBUDO DE CONVERSIÓN DEL PIPELINE (4 ETAPAS EN VIVO) -->
-        <section class="crm-funnel-ribbon" aria-label="Embudo de Etapas del Pipeline">
-          @for (col of kanbanColumnsList(); track col.stage; let idx = $index) {
-            <div
-              class="funnel-stage-pill"
-              [class.stage-1]="idx === 0"
-              [class.stage-2]="idx === 1"
-              [class.stage-3]="idx === 2"
-              [class.stage-4]="idx === 3"
-              (click)="setView('KANBAN')"
-            >
-              <div class="f-top">
-                <span class="quantum-step-badge">ETAPA 0{{ idx + 1 }}</span>
-                <span class="f-count font-mono">{{ col.deals.length }} ops</span>
-              </div>
-              <div class="f-mid">
-                <span class="f-title">{{ col.label }}</span>
-                <span class="f-usdt font-mono">${{ col.totalUsdt | number:'1.2-2' }}</span>
-              </div>
-              <div class="f-bar-track">
-                <div
-                  class="f-bar-fill"
-                  [style.width.%]="pipelineConversionSummary().totalPipelineUsdt > 0 ? (col.totalUsdt / pipelineConversionSummary().totalPipelineUsdt) * 100 : 0"
-                ></div>
-              </div>
-            </div>
-          }
-        </section>
-
-        <!-- BENTO GRID PRINCIPAL DEL DASHBOARD (7 + 5) -->
-        <div class="quantum-bento-grid dashboard-mid-grid">
-          <!-- Columna Izquierda (7 cols): Curva Intradía + Quick SMS Intake -->
-          <div class="bento-span-7" style="display: flex; flex-direction: column; gap: 16px;">
-            <div class="cockpit-card chart-audit-card">
-              <div class="card-section-header">
-                <div class="title-with-pill">
-                  <span class="quantum-step-badge">TELEMETRÍA</span>
-                  <h2 class="section-title">Curva Intradía de Ganancias Liquidadas (USDT)</h2>
-                </div>
-                <span class="chart-tag">HOY: {{ todayDateIso() }}</span>
-              </div>
-
-              <div class="dynamic-svg-chart-container">
-                @if (!workspaceState().svgPath || kpis().closedTradesCountToday === 0) {
-                  <div class="chart-empty-state">
-                    <span class="chart-empty-icon">📊</span>
-                    <p>Sin operaciones liquidadas hoy para graficar trayectoria.</p>
-                    <span class="chart-empty-sub">Mueve tratos a "Liquidado / Cerrado" en el Kanban o usa "+ Nuevo Trato" para visualizar la curva en tiempo real.</span>
-                  </div>
-                } @else {
-                  <svg class="performance-svg" viewBox="0 0 600 200" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="crmProfitGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#10b981" stop-opacity="0.32" />
-                        <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <line x1="0" y1="50" x2="600" y2="50" stroke="#27272a" stroke-dasharray="3,3" />
-                    <line x1="0" y1="100" x2="600" y2="100" stroke="#27272a" stroke-dasharray="3,3" />
-                    <line x1="0" y1="150" x2="600" y2="150" stroke="#27272a" stroke-dasharray="3,3" />
-                    <path [attr.d]="workspaceState().svgPath" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                  <div class="chart-footer-metrics">
-                    <span>Partida: $0.00 USDT</span>
-                    <span>Operaciones hoy: {{ kpis().closedTradesCountToday }}</span>
-                    <span class="text-emerald">Cierre actual: +${{ kpis().closedNetProfitTodayUsdt | number:'1.2-2' }} USDT</span>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- Ingesta Rápida Zero-Typing desde el Cockpit Ejecutivo -->
-            <div class="cockpit-card quick-intake-dashboard-card">
-              <div class="card-section-header">
-                <div class="title-with-pill">
-                  <span class="quantum-step-badge">ZERO-TYPING</span>
-                  <h2 class="section-title">Escáner Rápido de Referencia Bancaria y SMS</h2>
-                </div>
-                <button type="button" class="mini-btn-primary" (click)="setView('ACTIVITIES')">
-                  Abrir Consola Forense →
-                </button>
-              </div>
-              <div class="quick-verifier-strip">
-                <input
-                  type="text"
-                  class="terminal-input"
-                  placeholder="Pegar número de referencia para verificar colisión instantánea..."
-                  [ngModel]="candidateRef()"
-                  (ngModelChange)="candidateRef.set($event)"
-                />
-                <div class="quick-ref-status" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
-                  @if (!candidateRef().trim()) {
-                    <span class="muted">ESPERANDO REFERENCIA</span>
-                  } @else if (!referenceCheck().isDuplicate) {
-                    <span class="green">✅ LIBRE PARA LIQUIDAR</span>
-                  } @else {
-                    <span class="red">🚨 DUPLICADA (#{{ referenceCheck().existingDeal?.id }})</span>
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Columna Derecha (5 cols): Escudo de Rieles Bancarios + Últimas Actividades -->
-          <div class="bento-span-5 quantum-sticky-col" style="display: flex; flex-direction: column; gap: 16px;">
-            <div class="cockpit-card recommended-banks-summary">
-              <div class="card-section-header">
-                <div class="title-with-pill">
-                  <span class="quantum-step-badge">ESCUDO</span>
-                  <h2 class="section-title">Salud de Rieles Bancarios</h2>
-                </div>
-                @if (workspaceState().recommendedBankId) {
-                  <span class="badge-recommended">★ Riel Óptimo Activo</span>
-                }
-              </div>
-
-              <div class="bank-mini-summary-list">
-                @if (workspaceState().bankTelemetry.length === 0) {
-                  <div class="empty-state-box mini-empty">
-                    <p class="empty-desc">No hay bancos registrados para {{ activeScope() }}.</p>
-                    <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Banco</button>
-                  </div>
-                } @else {
-                  @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
-                    <div class="bank-mini-row" [class.recommended]="b.isRecommended" [class.cooldown]="b.status === 'COOLDOWN_BURST'">
-                      <div class="b-info" style="flex: 1; margin-right: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <span class="b-name">{{ b.bankName }} ({{ b.currency }})</span>
-                          <span class="b-cap font-mono">{{ b.dailyUsagePct | number:'1.1-1' }}%</span>
-                        </div>
-                        <div class="mini-progress-track">
-                          <div
-                            class="mini-progress-fill"
-                            [style.width.%]="b.dailyUsagePct > 100 ? 100 : b.dailyUsagePct"
-                            [class.warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
-                            [class.danger]="b.dailyUsagePct >= 90"
-                          ></div>
-                        </div>
-                        <span class="b-cap">Saldo: {{ b.currentBalanceFiat | number:'1.0-0' }} {{ b.currency }} &bull; Ráfaga: {{ b.recent15MinTxCount }}/{{ b.maxBurstTxPer15Min }}</span>
-                      </div>
-                      <div class="b-stat">
-                        <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
-                          {{ b.status === 'AVAILABLE' ? 'ACTIVO' : b.status === 'COOLDOWN_BURST' ? 'RÁFAGA' : 'TOPE' }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-                }
-              </div>
-            </div>
-
-            <!-- Feed de Eventos Recientes -->
-            <div class="cockpit-card dashboard-recent-activity">
-              <div class="card-section-header">
-                <div class="title-with-pill">
-                  <span class="quantum-step-badge">PULSO</span>
-                  <h2 class="section-title">Últimos Eventos de Bóveda</h2>
-                </div>
-                <span class="chart-tag">{{ workspaceState().activities.length }} total</span>
-              </div>
-              <div class="mini-activity-feed">
-                @if (workspaceState().activities.length === 0) {
-                  <p class="empty-desc" style="margin: 0; font-size: 11px; color: #71717a;">Sin eventos registrados aún.</p>
-                } @else {
-                  @for (act of workspaceState().activities.slice(0, 4); track act.id) {
-                    <div class="mini-act-item">
-                      <span class="mini-act-badge font-mono">{{ act.type }}</span>
-                      <span class="mini-act-text">{{ act.description }}</span>
-                    </div>
-                  }
-                }
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 2: PIPELINE KANBAN INTERACTIVO (4 ETAPAS + BARRA DE FILTROS) -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'KANBAN') {
-      <div class="view-kanban-container">
-        <!-- BARRA DE COMANDOS, BÚSQUEDA Y DENSIDAD DEL KANBAN -->
-        <div class="kanban-command-toolbar">
-          <div class="kanban-search-box">
-            <span class="search-icon">🔍</span>
-            <input
-              type="text"
-              class="terminal-input kanban-filter-input"
-              placeholder="Filtrar tratos por cliente, #ID, banco o referencia..."
-              [ngModel]="kanbanSearchQuery()"
-              (ngModelChange)="kanbanSearchQuery.set($event)"
-            />
-            @if (kanbanSearchQuery()) {
-              <button type="button" class="btn-clear-search" (click)="kanbanSearchQuery.set('')">✕</button>
-            }
-          </div>
-
-          <div class="kanban-filter-pills" role="group" aria-label="Filtros rápidos de Kanban">
-            <button
-              type="button"
-              class="k-filter-pill"
-              [class.active]="kanbanFilterMode() === 'ALL'"
-              (click)="kanbanFilterMode.set('ALL')"
-            >
-              Todos ({{ pipelineConversionSummary().totalDeals }})
-            </button>
-            <button
-              type="button"
-              class="k-filter-pill warn"
-              [class.active]="kanbanFilterMode() === 'EXPIRED'"
-              (click)="kanbanFilterMode.set('EXPIRED')"
-            >
-              ⚠️ Tasa Vencida ({{ pipelineConversionSummary().expiredCount }})
-            </button>
-            <button
-              type="button"
-              class="k-filter-pill cyan"
-              [class.active]="kanbanFilterMode() === 'WITH_REF'"
-              (click)="kanbanFilterMode.set('WITH_REF')"
-            >
-              🔗 Con Referencia
-            </button>
-            <button
-              type="button"
-              class="k-filter-pill emerald"
-              [class.active]="kanbanFilterMode() === 'HIGH_VALUE'"
-              (click)="kanbanFilterMode.set('HIGH_VALUE')"
-            >
-              💎 Alto Valor (+$500)
-            </button>
-          </div>
-
-          <div class="kanban-density-actions">
-            <button
-              type="button"
-              class="k-density-btn"
-              [class.active]="kanbanCompactMode()"
-              (click)="kanbanCompactMode.set(!kanbanCompactMode())"
-              title="Alternar densidad visual de las tarjetas"
-            >
-              {{ kanbanCompactMode() ? '📐 Vista Expandida' : '⚡ Vista Compacta' }}
-            </button>
-            <button type="button" class="mini-btn-primary" (click)="openNewDealModal()">
-              + Nuevo Trato
-            </button>
-          </div>
-        </div>
-
-        <div class="kanban-board-grid" role="region" aria-label="Tablero Kanban de Operaciones">
-          @for (col of filteredKanbanColumnsList(); track col.stage; let colIdx = $index) {
-            <div
-              class="kanban-column"
-              [class.stage-col-1]="colIdx === 0"
-              [class.stage-col-2]="colIdx === 1"
-              [class.stage-col-3]="colIdx === 2"
-              [class.stage-col-4]="colIdx === 3"
-              role="region"
-              [attr.aria-label]="'Columna ' + col.label + ', ' + col.deals.length + ' operaciones'"
-              (dragover)="onDragOver($event)"
-              (drop)="onDrop($event, col.stage)"
-            >
-              <!-- Cabecera de la Columna -->
-              <div class="kanban-column-header">
-                <div class="col-title-group">
-                  <span class="quantum-step-badge">0{{ colIdx + 1 }}</span>
-                  <h3 class="col-title">{{ col.label }}</h3>
-                  <span class="col-count-badge" [attr.aria-label]="col.deals.length + ' operaciones'">{{ col.deals.length }}</span>
-                </div>
-                <div class="col-totals">
-                  <span class="total-usdt font-mono">${{ col.totalUsdt | number:'1.2-2' }}</span>
-                  <span class="total-fiat font-mono">{{ col.totalFiat | number:'1.0-0' }}</span>
-                </div>
-              </div>
-
-              <!-- Lista de Tarjetas en la Columna -->
-              <div class="kanban-cards-stream" role="list" [attr.aria-label]="'Lista de tratos en ' + col.label">
-                @if (col.deals.length === 0) {
-                  <div class="kanban-empty-slot">
-                    <span class="empty-slot-icon">📭</span>
-                    <span>Sin operaciones en esta etapa</span>
-                  </div>
-                } @else {
-                  @for (d of col.deals; track d.id) {
-                    <div
-                      class="kanban-deal-card"
-                      [class.compact-card]="kanbanCompactMode()"
-                      role="listitem"
-                      tabindex="0"
-                      draggable="true"
-                      (dragstart)="onDragStart($event, d.id)"
-                      (keydown)="onCardKeyDown($event, d)"
-                      [attr.aria-label]="'Trato ' + d.id + ' para ' + d.contactName + ', ' + d.cryptoAmountUsdt + ' USDT en ' + col.label + '. Use flechas o teclas 1 a 4 para mover.'"
-                      [class.expired]="d.isRateExpired"
-                      [class.closed]="d.stage === 'STAGE_4_CLOSED'"
-                    >
-                      <!-- Top de la Tarjeta -->
-                      <div class="card-head-row">
-                        <span class="card-id font-mono">#{{ d.id }}</span>
-                        <div class="card-badges">
-                          @if (d.isRateExpired) {
-                            <span class="badge-expired" title="Cotización vencida por tiempo límite">⚠️ TASA VENCIDA</span>
-                          }
-                          @if (d.bankReferenceId) {
-                            <span
-                              class="badge-ref font-mono"
-                              (click)="copyText(d.bankReferenceId, 'Referencia #' + d.bankReferenceId); $event.stopPropagation()"
-                              title="Clic para copiar referencia"
-                            >
-                              Ref: {{ d.bankReferenceId }} 📋
-                            </span>
-                          }
-                        </div>
-                      </div>
-
-                      <!-- Cliente y Banco -->
-                      <div class="card-contact-row">
-                        <span class="contact-name" (click)="selectContact(d.contactId); setView('CONTACTS')" [attr.aria-label]="'Ver expediente del contacto ' + d.contactName">
-                          <span class="contact-avatar-mini">{{ d.contactName.slice(0, 2).toUpperCase() }}</span>
-                          {{ d.contactName }}
-                        </span>
-                        <span class="bank-pill">🏦 {{ d.bankName }}</span>
-                      </div>
-
-                      <!-- Montos y Tasa -->
-                      <div class="card-financials-row">
-                        <div class="f-col">
-                          <span class="f-lbl">Monto USDT</span>
-                          <span class="f-val font-mono highlight">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</span>
-                        </div>
-                        <div class="f-col">
-                          <span class="f-lbl">Total {{ d.fiatCurrency }}</span>
-                          <span class="f-val font-mono">{{ d.totalFiatAmount | number:'1.2-2' }}</span>
-                        </div>
-                        <div class="f-col">
-                          <span class="f-lbl">Tasa</span>
-                          <span class="f-val font-mono">{{ d.appliedRate | number:'1.2-2' }}</span>
-                        </div>
-                      </div>
-
-                      <!-- Ganancia Neta -->
-                      @if (!kanbanCompactMode()) {
-                        <div class="card-pnl-row">
-                          <span class="pnl-lbl">PnL Neto Estimado:</span>
-                          <span class="pnl-val font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }} USDT</span>
-                        </div>
-                      }
-
-                      <!-- Acciones de Avance de Etapa -->
-                      <div class="card-pipeline-actions">
-                        @if (d.stage === 'STAGE_1_NEW') {
-                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_2_TRANSIT')" [attr.aria-label]="'Avanzar trato ' + d.id + ' a En Tránsito'">
-                            ➔ En Tránsito
-                          </button>
-                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" title="Liquidar directamente" [attr.aria-label]="'Liquidar trato ' + d.id + ' directamente'">
-                            ⚡ Liquidar
-                          </button>
-                        } @else if (d.stage === 'STAGE_2_TRANSIT') {
-                          <button type="button" class="btn-step-next" (click)="moveDealToStage(d.id, 'STAGE_3_VERIFY')" [attr.aria-label]="'Avanzar trato ' + d.id + ' a Verificar Referencia'">
-                            ➔ Verificar Ref
-                          </button>
-                          <button type="button" class="btn-step-direct" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" [attr.aria-label]="'Liquidar trato ' + d.id + ' directamente'">
-                            ⚡ Liquidar
-                          </button>
-                        } @else if (d.stage === 'STAGE_3_VERIFY') {
-                          <button type="button" class="btn-step-success" (click)="moveDealToStage(d.id, 'STAGE_4_CLOSED')" [attr.aria-label]="'Liquidar y cerrar trato ' + d.id">
-                            ✅ Liquidar / Cerrar
-                          </button>
-                        } @else {
-                          <span class="closed-label font-mono">✓ Liquidado en Bóveda</span>
-                        }
-
-                        <button type="button" class="btn-chat-deal" (click)="openOmnichannelForDeal(d)" title="Atender por WhatsApp o Instagram" [attr.aria-label]="'Atender trato ' + d.id + ' en Omnicanal'">
-                          💬
-                        </button>
-
-                        <button type="button" class="btn-del-deal" (click)="deleteDeal(d.id)" title="Eliminar trato" [attr.aria-label]="'Eliminar trato ' + d.id">
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  }
-                }
-              </div>
-            </div>
-          }
-        </div>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 3: CONTACTOS CRM & EXPEDIENTE 360° (MASTER-DETAIL STICKY) -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'CONTACTS') {
-      <div class="view-contacts-container">
-        <!-- Panel Izquierdo: Directorio y Buscador -->
-        <aside class="contacts-sidebar quantum-sticky-col">
-          <div class="sidebar-header">
-            <div>
-              <span class="quantum-step-badge">DIRECTORIO</span>
-              <h2 class="sidebar-title" style="margin-top: 4px;">Padrón CRM ({{ filteredContacts().length }})</h2>
-            </div>
-            <button type="button" class="mini-btn-primary" (click)="showAddContactModal.set(true)">
-              + Nuevo Contacto
-            </button>
-          </div>
-
-          <div class="contact-search-bar">
-            <input
-              type="text"
-              class="terminal-input search-input"
-              placeholder="Buscar por nombre, cédula o teléfono..."
-              [ngModel]="contactSearchQuery()"
-              (ngModelChange)="contactSearchQuery.set($event)"
-            />
-          </div>
-
-          <!-- Píldoras de Filtro Rápido de Contactos -->
-          <div class="contact-filter-chips">
-            <button
-              type="button"
-              class="c-filter-chip"
-              [class.active]="contactCategoryFilter() === 'ALL'"
-              (click)="contactCategoryFilter.set('ALL')"
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              class="c-filter-chip"
-              [class.active]="contactCategoryFilter() === 'WITH_BALANCE'"
-              (click)="contactCategoryFilter.set('WITH_BALANCE')"
-            >
-              ⚖️ Con Saldo
-            </button>
-            @if (activeScope() === 'P2P_DESK') {
-              <button
-                type="button"
-                class="c-filter-chip"
-                [class.active]="contactCategoryFilter() === 'VIP_OTC'"
-                (click)="contactCategoryFilter.set('VIP_OTC')"
-              >
-                💎 VIP OTC
-              </button>
-              <button
-                type="button"
-                class="c-filter-chip"
-                [class.active]="contactCategoryFilter() === 'CLIENT_P2P'"
-                (click)="contactCategoryFilter.set('CLIENT_P2P')"
-              >
-                👤 Cliente P2P
-              </button>
-            } @else {
-              <button
-                type="button"
-                class="c-filter-chip"
-                [class.active]="contactCategoryFilter() === 'SUPPLIER_360'"
-                (click)="contactCategoryFilter.set('SUPPLIER_360')"
-              >
-                🏭 Proveedor
-              </button>
-              <button
-                type="button"
-                class="c-filter-chip"
-                [class.active]="contactCategoryFilter() === 'CLIENT_360'"
-                (click)="contactCategoryFilter.set('CLIENT_360')"
-              >
-                🏢 Cliente 360
-              </button>
-            }
-          </div>
-
-          <div class="contacts-scroll-list">
-            @if (filteredContacts().length === 0) {
-              <div class="empty-state-box mini-empty">
-                <p class="empty-desc">No hay contactos que coincidan en {{ activeScope() }}.</p>
-                <button type="button" class="btn-empty-action" (click)="showAddContactModal.set(true)">+ Crear Contacto</button>
-              </div>
-            } @else {
-              @for (c of filteredContacts(); track c.id) {
-                <div
-                  class="contact-tile-row"
-                  [class.selected]="c.id === selectedContactId()"
-                  (click)="selectContact(c.id)"
-                >
-                  <div class="c-head">
-                    <span class="c-name">{{ c.name }}</span>
-                    <span class="c-cat-pill">{{ c.category }}</span>
-                  </div>
-                  <div class="c-sub">
-                    <span class="c-doc font-mono">{{ c.documentId || 'Sin documento' }}</span>
-                    <span class="c-bal font-mono" [class.bal-pos]="c.pendingBalanceUsdt > 0" [class.bal-neg]="c.pendingBalanceUsdt < 0">
-                      {{ c.pendingBalanceUsdt >= 0 ? '+' : '' }}${{ c.pendingBalanceUsdt | number:'1.2-2' }}
-                    </span>
-                  </div>
-                </div>
-              }
-            }
-          </div>
-        </aside>
-
-        <!-- Panel Derecho: Expediente 360° -->
-        <section class="contact-dossier-main">
-          @if (!selectedContact()) {
-            <div class="empty-state-box dossier-empty">
-              <span class="empty-icon">👤</span>
-              <h3 class="empty-heading">Expediente Institucional 360°</h3>
-              <p class="empty-desc">Seleccione un contacto del directorio lateral para auditar su límite de riesgo crediticio, estado de cuenta corriente, datos de pago y operaciones históricas.</p>
-            </div>
-          } @else {
-            <div class="dossier-card-expanded">
-              <!-- Cabecera del Contacto -->
-              <div class="dossier-header-row">
-                <div class="d-avatar-big">{{ selectedContact()?.name?.slice(0, 2)?.toUpperCase() }}</div>
-                <div class="d-titles">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <h2 class="d-name">{{ selectedContact()?.name }}</h2>
-                    <span class="quantum-step-badge">{{ selectedContact()?.category }}</span>
-                  </div>
-                  <div class="d-meta-row">
-                    <span class="meta-tag font-mono">🪪 Doc: {{ selectedContact()?.documentId || 'N/A' }}</span>
-                    <span class="meta-tag font-mono">📱 Tel: {{ selectedContact()?.phoneOrContact || 'N/A' }}</span>
-                    <span class="meta-tag font-mono">🔗 Refs verificadas: {{ selectedContact()?.verifiedReferences?.length || 0 }}</span>
-                  </div>
-                </div>
-                <div class="d-top-actions">
-                  <button type="button" class="btn-action-wa" (click)="copyWhatsAppReceipt()">
-                    📲 Estado de Cuenta WA
-                  </button>
-                  <button type="button" class="btn-action-wa btn-omni-jump" (click)="openOmnichannelForContact(selectedContact())">
-                    💬 Atender / Facturar
-                  </button>
-                  <button type="button" class="mini-btn-primary" (click)="openNewDealModal()">
-                    ⚡ + Trato
-                  </button>
-                </div>
-              </div>
-
-              <!-- Tira de 4 KPIs de Valor de Vida del Cliente (LTV) -->
-              <div class="dossier-ltv-ribbon">
-                <div class="ltv-cell">
-                  <span class="ltv-lbl">Operaciones Totales</span>
-                  <span class="ltv-val font-mono">{{ selectedContactMetrics().totalDeals }} ({{ selectedContactMetrics().closedDeals }} cerradas)</span>
-                </div>
-                <div class="ltv-cell">
-                  <span class="ltv-lbl">Volumen Histórico</span>
-                  <span class="ltv-val font-mono text-blue">${{ selectedContactMetrics().lifetimeVolumeUsdt | number:'1.2-2' }} USDT</span>
-                </div>
-                <div class="ltv-cell">
-                  <span class="ltv-lbl">PnL Neto Generado</span>
-                  <span class="ltv-val font-mono text-emerald">+${{ selectedContactMetrics().lifetimeProfitUsdt | number:'1.2-2' }} USDT</span>
-                </div>
-                <div class="ltv-cell">
-                  <span class="ltv-lbl">En Tránsito Ahora</span>
-                  <span class="ltv-val font-mono text-amber">${{ selectedContactMetrics().inTransitExposureUsdt | number:'1.2-2' }} USDT</span>
-                </div>
-              </div>
-
-              <!-- Saldo de Cuenta Corriente y Límite de Exposición -->
-              <div class="dossier-balance-grid">
-                <!-- Saldo Corriente -->
-                <div class="balance-hero-box" [class.pos]="(selectedContact()?.pendingBalanceUsdt ?? 0) > 0" [class.neg]="(selectedContact()?.pendingBalanceUsdt ?? 0) < 0">
-                  <span class="lbl">SALDO DE CUENTA CORRIENTE</span>
-                  <div class="val-row">
-                    <span class="val font-mono">
-                      {{ (selectedContact()?.pendingBalanceUsdt ?? 0) >= 0 ? '+' : '' }}${{ (selectedContact()?.pendingBalanceUsdt ?? 0) | number:'1.2-2' }} USDT
-                    </span>
-                    <span class="status-desc">
-                      @if ((selectedContact()?.pendingBalanceUsdt ?? 0) > 0) { Saldo a favor del cliente (Por Pagar) }
-                      @else if ((selectedContact()?.pendingBalanceUsdt ?? 0) < 0) { Cuenta por cobrar al cliente }
-                      @else { Cuenta conciliada al día ($0.00) }
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Límite de Exposición Flotante con Barra de Riesgo -->
-                <div class="exposure-hero-box">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span class="lbl">CUPO DE EXPOSICIÓN EN TRÁNSITO</span>
-                    <span class="font-mono" style="font-size: 11px; color: #38bdf8;">{{ selectedContactMetrics().exposurePct }}% en uso</span>
-                  </div>
-                  <div class="val-row">
-                    <span class="val font-mono">${{ selectedContact()?.maxPendingExposureUsdt | number:'1.0-0' }} USDT</span>
-                    <div class="mini-progress-track" style="margin: 6px 0;">
-                      <div
-                        class="mini-progress-fill"
-                        [style.width.%]="selectedContactMetrics().exposurePct"
-                        [class.warn]="selectedContactMetrics().exposurePct >= 70"
-                        [class.danger]="selectedContactMetrics().exposurePct >= 95"
-                      ></div>
-                    </div>
-                    <span class="status-desc">Escudo contra saturación de órdenes abiertas sin confirmar</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Ajustador de Saldo Rápido -->
-              <div class="balance-adjuster-bar">
-                <span class="quantum-step-badge">AJUSTE RÁPIDO</span>
-                <span class="bar-lbl">Cuenta Corriente:</span>
-                <input
-                  type="number"
-                  class="terminal-input adj-input"
-                  placeholder="Monto USDT"
-                  [ngModel]="contactBalanceAdjustAmount()"
-                  (ngModelChange)="contactBalanceAdjustAmount.set($event)"
-                />
-                <button type="button" class="btn-adj-plus" (click)="adjustContactBalance('POSITIVE')">+ Abonar (A Favor)</button>
-                <button type="button" class="btn-adj-minus" (click)="adjustContactBalance('NEGATIVE')">- Cargar (Deuda)</button>
-                <button type="button" class="btn-adj-zero" (click)="adjustContactBalance('ZERO')">✓ Saldar a $0.00</button>
-              </div>
-
-              <!-- Datos de Pago para 1-Click Copy -->
-              @if (selectedContact()?.paymentDetailsText) {
-                <div class="payment-details-box">
-                  <div class="box-head">
-                    <span class="box-title">🏦 Coordenadas Bancarias / Pago Móvil del Contacto:</span>
-                    <button type="button" class="mini-copy-btn" (click)="copyText(selectedContact()?.paymentDetailsText || '', 'Datos de pago')">
-                      📋 Copiar Coordenadas
-                    </button>
-                  </div>
-                  <pre class="box-pre">{{ selectedContact()?.paymentDetailsText }}</pre>
-                </div>
-              }
-
-              <!-- Historial de Operaciones en el Pipeline -->
-              <div class="contact-deals-history">
-                <h3 class="history-title">Historial de Operaciones del Contacto ({{ selectedContactDeals().length }})</h3>
-                <div class="deals-table-wrapper">
-                  @if (selectedContactDeals().length === 0) {
-                    <p class="empty-desc">Sin tratos registrados para este contacto.</p>
-                  } @else {
-                    <table class="deals-mini-table corporate-table">
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Etapa</th>
-                          <th>Banco</th>
-                          <th>Referencia</th>
-                          <th class="text-right">Monto USDT</th>
-                          <th class="text-right">Total Fiat</th>
-                          <th class="text-right">PnL Neto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (d of selectedContactDeals(); track d.id) {
-                          <tr>
-                            <td class="font-mono">#{{ d.id }}</td>
-                            <td><span class="stage-tag font-mono">{{ d.stage }}</span></td>
-                            <td>{{ d.bankName }}</td>
-                            <td class="font-mono text-blue">{{ d.bankReferenceId || 'Pendiente' }}</td>
-                            <td class="text-right font-mono">${{ d.cryptoAmountUsdt | number:'1.2-2' }}</td>
-                            <td class="text-right font-mono">{{ d.totalFiatAmount | number:'1.2-2' }} {{ d.fiatCurrency }}</td>
-                            <td class="text-right font-mono text-emerald">+${{ d.netProfitUsdt | number:'1.2-2' }}</td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  }
-                </div>
-              </div>
-            </div>
-          }
-        </section>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 4: BANCOS Y ESCUDO DE RIELES -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'BANKS') {
-      <div class="view-banks-container">
-        <div class="banks-header-actions">
-          <div>
-            <span class="quantum-step-badge">TESORERÍA &amp; LÍMITES</span>
-            <h2 class="section-title" style="margin-top: 4px;">Escudo de Cuentas Bancarias Operativas ({{ activeScope() }})</h2>
-          </div>
-          <button type="button" class="mini-btn-primary" (click)="showAddBankModal.set(true)">
-            + Agregar Nueva Cuenta Bancaria
-          </button>
-        </div>
-
-        <!-- TIRA DE TELEMETRÍA GLOBAL DE FLOTA BANCARIA -->
-        <div class="kpi-ribbon-grid" style="margin-bottom: 4px;">
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-tag">RIELES DISPONIBLES</span>
-              <span class="kpi-badge badge-success">Operativos</span>
-            </div>
-            <div class="kpi-body">
-              <span class="kpi-val highlight font-mono">{{ bankFleetSummary().availableCount }} / {{ bankFleetSummary().totalCount }}</span>
-              <span class="kpi-unit">Cuentas</span>
-            </div>
-          </div>
-
-          <div class="kpi-card" [class.warn]="bankFleetSummary().cooldownCount > 0">
-            <div class="kpi-header">
-              <span class="kpi-tag">ENFRIAMIENTO ANTI-RÁFAGA</span>
-              <span class="kpi-badge badge-amber">Ventana 15m</span>
-            </div>
-            <div class="kpi-body">
-              <span class="kpi-val text-amber font-mono">{{ bankFleetSummary().cooldownCount }}</span>
-              <span class="kpi-unit">en pausa</span>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-tag">USO PROMEDIO DE CUPO</span>
-              <span class="kpi-badge badge-blue">Capacidad Diaria</span>
-            </div>
-            <div class="kpi-body">
-              <span class="kpi-val font-mono">{{ bankFleetSummary().avgUsagePct | number:'1.1-1' }}%</span>
-              <span class="kpi-unit">del tope</span>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-tag">LIQUIDEZ VES CONSOLIDADA</span>
-              <span class="kpi-badge badge-neutral">Saldo en Sistema</span>
-            </div>
-            <div class="kpi-body">
-              <span class="kpi-val font-mono">{{ bankFleetSummary().totalVesBalance | number:'1.2-2' }}</span>
-              <span class="kpi-unit">VES</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="bank-cards-grid">
-          @if (workspaceState().bankTelemetry.length === 0) {
-            <div class="empty-state-box full-grid">
-              <span class="empty-icon">🏦</span>
-              <h3 class="empty-heading">Cero Cuentas Bancarias</h3>
-              <p class="empty-desc">No hay rieles configurados para la bóveda {{ activeScope() }}. Agregue una cuenta para controlar cupos y ráfagas.</p>
-              <button type="button" class="btn-empty-action" (click)="showAddBankModal.set(true)">+ Crear Cuenta</button>
-            </div>
-          } @else {
-            @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
-              <div
-                class="bank-shield-tile"
-                [class.recommended]="b.isRecommended"
-                [class.cooldown]="b.status === 'COOLDOWN_BURST'"
-                [class.cap-full]="b.status === 'DAILY_CAP_REACHED'"
-              >
-                <!-- Head -->
-                <div class="tile-head">
-                  <div class="b-title-group">
-                    <span class="b-name">{{ b.bankName }}</span>
-                    <span class="b-currency">{{ b.currency }}</span>
-                    @if (b.isRecommended) {
-                      <span class="b-recom-badge">★ RECOMENDADO</span>
-                    }
-                  </div>
-                  <span class="status-pill" [class.pill-green]="b.status === 'AVAILABLE'" [class.pill-amber]="b.status === 'COOLDOWN_BURST'" [class.pill-red]="b.status === 'DAILY_CAP_REACHED'">
-                    {{ b.status }}
-                  </span>
-                </div>
-
-                <!-- Balances & Burst -->
-                <div class="tile-metrics-grid">
-                  <div class="m-item">
-                    <span class="m-lbl">Saldo en Sistema:</span>
-                    <span class="m-val font-mono">{{ b.currentBalanceFiat | number:'1.2-2' }} {{ b.currency }}</span>
-                  </div>
-                  <div class="m-item">
-                    <span class="m-lbl">Ráfaga 15 min:</span>
-                    <span class="m-val font-mono" [class.text-red]="b.recent15MinTxCount >= b.maxBurstTxPer15Min">
-                      {{ b.recent15MinTxCount }} / {{ b.maxBurstTxPer15Min }} tx
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Cupo: Cerrado vs En Tránsito -->
-                <div class="capacity-breakdown-bar">
-                  <div class="cap-labels">
-                    <span>Cerrado: {{ b.dailyClosedFiat | number:'1.0-0' }}</span>
-                    <span>En Tránsito: {{ b.dailyInTransitFiat | number:'1.0-0' }}</span>
-                    <span>Tope: {{ b.maxDailyCapFiat | number:'1.0-0' }}</span>
-                  </div>
-                  <div class="progress-track">
-                    <div
-                      class="progress-fill"
-                      [style.width.%]="b.dailyUsagePct > 100 ? 100 : b.dailyUsagePct"
-                      [class.fill-warn]="b.dailyUsagePct >= 70 && b.dailyUsagePct < 90"
-                      [class.fill-danger]="b.dailyUsagePct >= 90"
-                    ></div>
-                  </div>
-                  <span class="usage-text">{{ b.dailyUsagePct | number:'1.1-1' }}% del tope diario utilizado</span>
-                </div>
-
-                <!-- Acciones Rápidas -->
-                <div class="tile-actions-row">
-                  <button
-                    type="button"
-                    class="btn-tile-act"
-                    (click)="copyBankHolderDetails(b.bankAccountId)"
-                    title="Copiar datos de pago en formato de 3 burbujas"
-                  >
-                    📋 Copiar Datos
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-tile-act"
-                    (click)="openReconciliation(b.bankAccountId, b.currentBalanceFiat)"
-                  >
-                    ⚖️ Cuadre Real
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-tile-act btn-del"
-                    (click)="deleteBank(b.bankAccountId)"
-                  >
-                    🗑️
-                  </button>
-                </div>
-
-                <!-- Inline Cuadre -->
-                @if (reconcilingBankId() === b.bankAccountId) {
-                  <div class="reconcile-box">
-                    <span class="rec-title">Ajustar Saldo Real Bancario:</span>
-                    <div class="rec-inputs">
-                      <input
-                        type="number"
-                        class="terminal-input rec-field"
-                        placeholder="Saldo real en banco"
-                        [ngModel]="realBankBalanceInput()"
-                        (ngModelChange)="realBankBalanceInput.set($event)"
-                      />
-                      <button type="button" class="btn-rec-confirm" (click)="applyBankReconciliation(b.bankAccountId)">
-                        ✓ Asentar
-                      </button>
-                      <button type="button" class="btn-rec-cancel" (click)="reconcilingBankId.set(null)">✕</button>
-                    </div>
-                  </div>
-                }
-              </div>
-            }
-          }
-        </div>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 5: ACTIVIDADES & PARSER INTELIGENTE (SPLIT-COCKPIT 5 + 7) -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'ACTIVITIES') {
-      <div class="view-activities-container quantum-bento-grid">
-        <!-- Columna Izquierda Sticky (5 cols): Parser SMS + Verificador Anti-Estafa -->
-        <div class="bento-span-5 quantum-sticky-col" style="display: flex; flex-direction: column; gap: 16px;">
-          <!-- Submódulo 1: Parser Inteligente de Portapapeles / SMS -->
-          <div class="cockpit-card clipboard-parser-card">
-            <div class="card-section-header">
-              <div class="title-with-pill">
-                <span class="quantum-step-badge">PASO 01</span>
-                <h2 class="section-title">Parser Inteligente de Comprobantes &amp; SMS</h2>
-              </div>
-              <span class="chart-tag">Zero-Typing Intake</span>
-            </div>
-
-            <div class="parser-body">
-              <p class="parser-desc">Pegue el texto del SMS o comprobante bancario (Banesco, Mercantil, BDV, Bancolombia, etc.) para extraer banco, monto y referencia en 1 clic:</p>
-              <div class="parser-input-row">
-                <textarea
-                  class="terminal-input parser-textarea"
-                  rows="3"
-                  placeholder="Pegue aquí el texto: 'Banesco Pago Móvil: Aprobado por Bs. 85.000,00... Ref: 12345678'"
-                  [ngModel]="rawClipboardInput()"
-                  (ngModelChange)="rawClipboardInput.set($event)"
-                ></textarea>
-                <button type="button" class="btn-apply-parser" (click)="applyParsedClipboard()">
-                  ⚡ Extraer Datos
-                </button>
-              </div>
-
-              @if (parsedClipboard().amountFiat || parsedClipboard().referenceId) {
-                <div class="parser-results-pill">
-                  <span><strong>Banco:</strong> {{ parsedClipboard().detectedBank || 'Detectado' }}</span>
-                  <span><strong>Monto:</strong> {{ parsedClipboard().amountFiat | number:'1.2-2' }} {{ parsedClipboard().currency }}</span>
-                  <span><strong>Referencia:</strong> {{ parsedClipboard().referenceId || 'N/A' }}</span>
-                </div>
-              }
-            </div>
-          </div>
-
-          <!-- Submódulo 2: Verificador Anti-Fraude en Tiempo Real -->
-          <div class="cockpit-card reference-verifier-card">
-            <div class="card-section-header">
-              <div class="title-with-pill">
-                <span class="quantum-step-badge">PASO 02</span>
-                <h2 class="section-title">Verificador de Referencias Anti-Estafa</h2>
-              </div>
-            </div>
-            <div class="verifier-body">
-              <div class="verifier-input-group">
-                <input
-                  type="text"
-                  class="terminal-input"
-                  placeholder="Escriba o pegue número de referencia para verificar duplicidad..."
-                  [ngModel]="candidateRef()"
-                  (ngModelChange)="candidateRef.set($event)"
-                />
-                <div class="ref-badge" [class.free]="!referenceCheck().isDuplicate && candidateRef().length >= 4" [class.dup]="referenceCheck().isDuplicate">
-                  @if (!candidateRef().trim()) {
-                    <span class="muted">INGRESE REFERENCIA</span>
-                  } @else if (!referenceCheck().isDuplicate) {
-                    <span class="green">✅ REFERENCIA LIBRE</span>
-                  } @else {
-                    <span class="red">🚨 YA REGISTRADA</span>
-                  }
-                </div>
-              </div>
-              @if (referenceCheck().isDuplicate && referenceCheck().existingDeal; as ed) {
-                <div class="dup-alert-banner">
-                  <span>⚠️ Utilizada en trato <strong>#{{ ed.id }}</strong> ({{ ed.contactName }} por {{ ed.totalFiatAmount | number:'1.2-2' }} {{ ed.fiatCurrency }})</span>
-                </div>
-              }
-            </div>
-          </div>
-        </div>
-
-        <!-- Columna Derecha (7 cols): Bitácora de Auditoría Inmutable con Filtros -->
-        <div class="bento-span-7">
-          <div class="cockpit-card activity-audit-card">
-            <div class="card-section-header">
-              <div class="title-with-pill">
-                <span class="quantum-step-badge">AUDITORÍA</span>
-                <h2 class="section-title">Bitácora Forense Inmutable ({{ filteredActivities().length }})</h2>
-              </div>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <input
-                  type="text"
-                  class="terminal-input"
-                  style="width: 190px; height: 30px; font-size: 11px;"
-                  placeholder="Buscar evento o ref..."
-                  [ngModel]="activitySearchQuery()"
-                  (ngModelChange)="activitySearchQuery.set($event)"
-                />
-                <select
-                  class="terminal-select"
-                  style="width: 140px; height: 30px; font-size: 11px;"
-                  [ngModel]="activityTypeFilter()"
-                  (ngModelChange)="activityTypeFilter.set($event)"
-                >
-                  <option value="ALL">Todos los tipos</option>
-                  <option value="DEAL_CLOSED">DEAL_CLOSED</option>
-                  <option value="DEAL_CREATED">DEAL_CREATED</option>
-                  <option value="STAGE_MOVED">STAGE_MOVED</option>
-                  <option value="BANK_RECONCILED">BANK_RECONCILED</option>
-                  <option value="BALANCE_ADJUSTED">BALANCE_ADJUSTED</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="activity-timeline-list">
-              @if (filteredActivities().length === 0) {
-                <p class="empty-desc">Sin eventos que coincidan con el filtro actual en la bitácora.</p>
-              } @else {
-                @for (act of filteredActivities(); track act.id) {
-                  <div class="activity-timeline-row">
-                    <span class="act-time font-mono">{{ act.timestamp | date:'short' }}</span>
-                    <span class="act-type-badge font-mono">{{ act.type }}</span>
-                    <span class="act-desc">{{ act.description }}</span>
-                    @if (act.amountUsdt > 0) {
-                      <span class="act-amt font-mono">${{ act.amountUsdt | number:'1.2-2' }} USDT</span>
-                    }
-                  </div>
-                }
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 6: AJUSTES & COPIA DE SEGURIDAD -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'SETTINGS') {
-      <div class="view-settings-container">
-        <div class="cockpit-card settings-card">
-          <div class="card-section-header">
-            <div class="title-with-pill">
-              <span class="quantum-step-badge">PARÁMETROS</span>
-              <h2 class="section-title">Configuración Operativa de la Mesa</h2>
-            </div>
-          </div>
-
-          <div class="settings-form-grid">
-            <div class="s-field">
-              <label class="s-lbl">Tasa Base de Reemplazo (Costo USDT)</label>
-              <input
-                type="number"
-                class="terminal-input"
-                [ngModel]="liveReplacementRate()"
-                (ngModelChange)="liveReplacementRate.set($event)"
-              />
-              <span class="s-help">Usada por defecto en la calculadora comercial de nuevos tratos.</span>
-            </div>
-
-            <div class="s-field">
-              <label class="s-lbl">Bóveda Activa de Trabajo</label>
-              <select
-                class="terminal-select"
-                [ngModel]="activeScope()"
-                (ngModelChange)="setScope($event)"
-              >
-                <option value="P2P_DESK">MESA P2P / OTC (Arbitraje, rotación rápida)</option>
-                <option value="FINANCE_360">FINANZAS 360 CRM (Patrimonio, proveedores)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="cockpit-card backup-card">
-          <div class="card-section-header">
-            <div class="title-with-pill">
-              <span class="quantum-step-badge">PORTABILIDAD</span>
-              <h2 class="section-title">Copia de Seguridad &amp; Portabilidad Dual (JSON + CSV)</h2>
-            </div>
-          </div>
-
-          <div class="settings-form-grid" style="margin-bottom: 16px;">
-            <div class="s-field">
-              <label class="s-lbl" for="crm-import-strategy-select">Modo de Conciliación al Importar</label>
-              <select
-                id="crm-import-strategy-select"
-                class="terminal-select"
-                [ngModel]="importStrategy()"
-                (ngModelChange)="importStrategy.set($event)"
-              >
-                <option value="MERGE">FUSIONAR (Upsert por ID — preserva registros existentes)</option>
-                <option value="REPLACE">REEMPLAZAR (Sustituye la colección completa)</option>
-              </select>
-              <span class="s-help">En modo FUSIONAR, los registros existentes de ambas bóvedas se conservan salvo actualización por mismo ID.</span>
-            </div>
-
-            <div class="s-field">
-              <label class="s-lbl" for="crm-csv-catalog-select">Catálogo Plano CSV (Excel / Sheets)</label>
-              <select
-                id="crm-csv-catalog-select"
-                class="terminal-select"
-                [ngModel]="csvCatalogTarget()"
-                (ngModelChange)="csvCatalogTarget.set($event)"
-              >
-                <option value="CONTACTS">Agenda de Contactos ({{ activeScope() }})</option>
-                <option value="BANKS">Cuentas Bancarias ({{ activeScope() }})</option>
-                <option value="ACTIVITIES">Bitácora de Actividades ({{ activeScope() }})</option>
-              </select>
-              <span class="s-help">Selecciona qué catálogo plano deseas exportar o cargar en formato CSV RFC-4180.</span>
-            </div>
-          </div>
-
-          <div class="backup-actions-grid">
-            <div class="b-action-item">
-              <h3>Respaldo Completo con Estado (JSON)</h3>
-              <p>Descarga un archivo JSON con todos los tratos (incluyendo línea de tiempo), clientes, bancos y bitácora.</p>
-              <button type="button" class="btn-backup-export" (click)="exportDataJson()">
-                📥 Descargar Copia JSON
-              </button>
-            </div>
-
-            <div class="b-action-item">
-              <h3>Restaurar o Fusionar Respaldo (JSON)</h3>
-              <p>Carga un archivo JSON aplicando el modo <strong>{{ importStrategy() }}</strong> con validación de bóveda y finitud.</p>
-              <input
-                type="file"
-                accept=".json"
-                aria-label="Importar archivo JSON de respaldo"
-                class="file-input"
-                (change)="importDataJson($event)"
-              />
-            </div>
-
-            <div class="b-action-item">
-              <h3>Exportar Catálogo a Planilla (CSV)</h3>
-              <p>Descarga el catálogo seleccionado (<strong>{{ csvCatalogTarget() }}</strong>) de la bóveda activa en CSV compatible con Excel.</p>
-              <button type="button" class="btn-backup-export" (click)="exportCatalogCsv()">
-                📊 Exportar Catálogo CSV ({{ csvCatalogTarget() }})
-              </button>
-            </div>
-
-            <div class="b-action-item">
-              <h3>Importar Catálogo desde Planilla (CSV)</h3>
-              <p>Carga masiva de <strong>{{ csvCatalogTarget() }}</strong> en modo <strong>{{ importStrategy() }}</strong> validando cifras finitas.</p>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                aria-label="Importar archivo CSV de catálogo"
-                class="file-input"
-                (change)="importCatalogCsv($event)"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 7: 💬 OMNICANAL, FACTURADOR & IA -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'OMNICHANNEL') {
-      <div class="view-omnichannel-container">
-        <!-- Sub-navegación Omnicanal (3 Sub-espacios) -->
-        <div class="omni-subnav-bar">
-          <button
-            type="button"
-            class="omni-subnav-btn"
-            [class.active]="omnichannelSubTab() === 'INBOX'"
-            (click)="omnichannelSubTab.set('INBOX')"
-          >
-            <span class="icon">📥</span>
-            <span>Bandeja WhatsApp &amp; Instagram + Copiloto IA</span>
-            <span class="pill-badge">{{ filteredConversations().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            class="omni-subnav-btn"
-            [class.active]="omnichannelSubTab() === 'STUDIO'"
-            (click)="omnichannelSubTab.set('STUDIO'); renderVoucherCanvas()"
-          >
-            <span class="icon">🧾</span>
-            <span>Estudio de Presupuestos, Facturas y Comprobantes</span>
-            <span class="pill-badge">{{ invoicesOrQuotes().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            class="omni-subnav-btn"
-            [class.active]="omnichannelSubTab() === 'CONFIG'"
-            (click)="omnichannelSubTab.set('CONFIG')"
-          >
-            <span class="icon">🤖</span>
-            <span>Configuración Gratuita Meta API &amp; Gemini Flash IA</span>
-          </button>
-        </div>
-
-        <!-- =================================================================== -->
-        <!-- SUB-VISTA A: 📥 BANDEJA DE MENSAJERÍA + COPILOTO IA -->
-        <!-- =================================================================== -->
-        @if (omnichannelSubTab() === 'INBOX') {
-          <div class="omni-inbox-layout">
-            <!-- Sidebar: Lista de Conversaciones -->
-            <aside class="inbox-conversations-sidebar">
-              <div class="sidebar-header">
-                <div class="sidebar-title-row">
-                  <span class="s-title">CHATS ({{ activeScope() }})</span>
-                  <button type="button" class="btn-new-chat" (click)="openNewChatModal()">+ Nuevo Chat</button>
-                </div>
-                <div class="sidebar-search">
-                  <input
-                    type="text"
-                    class="terminal-input search-input"
-                    placeholder="Buscar cliente o teléfono..."
-                    [ngModel]="chatSearchTerm()"
-                    (ngModelChange)="chatSearchTerm.set($event)"
-                  />
-                </div>
-              </div>
-
-              <div class="conversations-scroll-list">
-                @if (filteredConversations().length === 0) {
-                  <div class="empty-inbox-state">
-                    <span class="e-icon">💬</span>
-                    <p>Sin conversaciones activas en {{ activeScope() }}.</p>
-                    <button type="button" class="btn-start-chat" (click)="openNewChatModal()">Iniciar Conversación</button>
-                  </div>
-                } @else {
-                  @for (conv of filteredConversations(); track conv.id) {
-                    <div
-                      class="conversation-item-card"
-                      [class.active]="(activeConversation() ? activeConversation()!.id : '') === conv.id"
-                      (click)="selectConversation(conv.id)"
-                    >
-                      <div class="conv-head">
-                        <span class="channel-pill" [class.whatsapp]="conv.channel === 'WHATSAPP'" [class.instagram]="conv.channel === 'INSTAGRAM'">
-                          {{ conv.channel === 'WHATSAPP' ? 'WA' : 'IG' }}
-                        </span>
-                        <span class="conv-name">{{ conv.contactName }}</span>
-                        @if (conv.unreadCount > 0) {
-                          <span class="unread-pill">{{ conv.unreadCount }}</span>
-                        }
-                      </div>
-
-                      <div class="conv-sub-row">
-                        <span class="conv-phone font-mono">{{ conv.recipientPhoneOrIgId }}</span>
-                      </div>
-
-                      <div class="conv-snippet">
-                        {{ conv.messages.length > 0 ? conv.messages[conv.messages.length - 1].text : 'Sin mensajes aún' }}
-                      </div>
-
-                      <!-- 24h Free Window Badge -->
-                      <div class="conv-free-window">
-                        @let fw = evaluateConversationFreeWindow(conv);
-                        @if (fw.isOpen) {
-                          <span class="badge-window-free" title="Dentro de la ventana de costo $0.00 de Meta">
-                            ⚡ Ventana Gratis: {{ (fw.remainingMinutes / 60) | number:'1.0-0' }}h {{ (fw.remainingMinutes % 60) }}m ($0.00)
-                          </span>
-                        } @else {
-                          <span class="badge-window-expired" title="Ventana de 24h vencida. Respuestas vía Meta Cloud requieren plantilla aprobada">
-                            ⌛ Ventana Cerrada (Plantilla)
-                          </span>
-                        }
-                      </div>
-                    </div>
-                  }
-                }
-              </div>
-            </aside>
-
-            <!-- Centro: Chat Stream & Quick Dispatch -->
-            <section class="inbox-chat-pane">
-              @if (!activeConversation()) {
-                <div class="empty-chat-pane">
-                  <span class="empty-icon">👈</span>
-                  <h3>Seleccione una conversación</h3>
-                  <p>Haga clic en una conversación a la izquierda o cree un nuevo chat para interactuar.</p>
-                </div>
-              } @else if (activeConversation(); as actConv) {
-                <!-- Cabecera del Chat Activo -->
-                <div class="chat-header-bar">
-                  <div class="chat-contact-info">
-                    <span class="channel-badge-big" [class.whatsapp]="actConv.channel === 'WHATSAPP'" [class.instagram]="actConv.channel === 'INSTAGRAM'">
-                      {{ actConv.channel }}
-                    </span>
-                    <div class="contact-titles">
-                      <h3 class="c-name">{{ actConv.contactName }}</h3>
-                      <span class="c-phone font-mono">{{ actConv.recipientPhoneOrIgId }}</span>
-                    </div>
-                  </div>
-
-                  <div class="chat-header-badges">
-                    @let fw = activeConvFreeWindow();
-                    @if (fw.isOpen) {
-                      <span class="header-window-pill open">
-                        ⚡ Ventana Gratuita 24h Activa: {{ (fw.remainingMinutes / 60) | number:'1.0-0' }}h {{ (fw.remainingMinutes % 60) }}m ($0.00)
-                      </span>
-                    } @else {
-                      <span class="header-window-pill closed">
-                        ⌛ Ventana 24h Vencida (Requiere Plantilla Meta)
-                      </span>
-                    }
-
-                    @if (actConv.linkedDealId) {
-                      <span class="linked-deal-pill font-mono" (click)="setView('KANBAN')">
-                        Trato: #{{ actConv.linkedDealId }}
-                      </span>
-                    }
-
-                    <button
-                      type="button"
-                      class="mini-btn-primary"
-                      (click)="omnichannelSubTab.set('STUDIO'); renderVoucherCanvas()"
-                      title="Abrir Estudio de Facturación para este cliente"
-                    >
-                      🧾 Emitir Comprobante
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Barra de Simulación / Test de Triaje IA Colapsable -->
-                <details class="ai-simulation-bar quantum-guard-accordion" style="margin: 0; border-radius: 0; border-left: none; border-right: none;">
-                  <summary style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
-                    <div class="sim-title-row">
-                      <span class="sim-badge">TEST LAB IA</span>
-                      <span class="sim-label">Simulador de Mensaje Entrante &amp; Triaje Semántico ({{ omnichannelConfig().aiMode }})</span>
-                    </div>
-                    <span class="font-mono" style="font-size: 10px; color: #94a3b8;">Expandir / Plegar ▾</span>
-                  </summary>
-                  <div class="sim-input-row" style="margin-top: 8px;">
-                    <input
-                      type="text"
-                      class="terminal-input sim-text-input"
-                      placeholder="Ej: Hola, a qué tasa tienen el USDT por Pago Móvil? / Ya te transferí, ref 987654321"
-                      [ngModel]="testInboundText()"
-                      (ngModelChange)="testInboundText.set($event)"
-                      (keyup.enter)="simulateIncomingCustomerMessage()"
-                    />
-                    <button type="button" class="btn-simulate-send" (click)="simulateIncomingCustomerMessage()">
-                      🤖 Simular Inbound &amp; Triaje
-                    </button>
-                  </div>
-                </details>
-
-                <!-- Banner de Recomendación / Triaje Activo -->
-                @if (activeAiTriage(); as t) {
-                  <div class="triage-banner" [class.collision]="t.isDuplicateReference">
-                    <div class="triage-info-col">
-                      <div class="triage-head">
-                        <span class="triage-intent-pill">{{ t.detectedIntent }}</span>
-                        <span class="triage-scope-pill">{{ t.targetScope }}</span>
-                        <span class="triage-conf">Confianza: {{ (t.confidence * 100).toFixed(0) }}%</span>
-                        @if (t.extractedReferenceId) {
-                          <span class="triage-ref font-mono">Ref: {{ t.extractedReferenceId }}</span>
-                        }
-                      </div>
-                      <p class="triage-msg">{{ t.suggestedReplyText }}</p>
-                      @if (t.isDuplicateReference) {
-                        <span class="triage-alert-text">⚠️ Referencia ya existente en el trato #{{ t.collidingDealId }}</span>
-                      }
-                    </div>
-
-                    <div class="triage-action-col">
-                      @if (t.recommendedKanbanAction === 'CREATE_P2P_DEAL') {
-                        <button type="button" class="btn-triage-execute" (click)="applyTriageAction()">
-                          ⚡ Crear Trato P2P en Kanban
-                        </button>
-                      } @else if (t.recommendedKanbanAction === 'CREATE_360_QUOTE_DEAL') {
-                        <button type="button" class="btn-triage-execute" (click)="applyTriageAction()">
-                          🏛️ Crear Cotización 360 en Kanban
-                        </button>
-                      } @else if (t.recommendedKanbanAction === 'ATTACH_PAYMENT_REF') {
-                        <button type="button" class="btn-triage-execute" (click)="applyTriageAction()">
-                          📌 Adjuntar Ref y Avanzar Trato
-                        </button>
-                      }
-                      <button type="button" class="btn-triage-dismiss" (click)="activeAiTriage.set(null)">✕ Descartar</button>
-                    </div>
-                  </div>
-                }
-
-                <!-- Chat Stream -->
-                <div class="chat-messages-stream" (paste)="onGlobalPaste($event)">
-                  @for (msg of actConv.messages; track msg.id) {
-                    <div class="message-bubble-wrapper" [class.outbound]="msg.direction === 'OUTBOUND'" [class.inbound]="msg.direction === 'INBOUND'">
-                      <div class="bubble-content">
-                        <div class="bubble-meta">
-                          <span class="sender-name">{{ msg.senderHandle }}</span>
-                          <span class="msg-time">{{ msg.timestamp | date:'HH:mm' }}</span>
-                        </div>
-
-                        @if (msg.imageUrl) {
-                          <div class="bubble-image-preview">
-                            <img [src]="msg.imageUrl" alt="Captura de Comprobante" class="receipt-thumb" />
-                          </div>
-                        }
-
-                        <p class="bubble-text">{{ msg.text }}</p>
-
-                        @if (msg.detectedIntent) {
-                          <div class="bubble-tag-row">
-                            <span class="intent-tag font-mono">{{ msg.detectedIntent }}</span>
-                            @if (msg.extractedReferenceId) {
-                              <span class="ref-tag font-mono">Ref: {{ msg.extractedReferenceId }}</span>
-                            }
-                          </div>
-                        }
-                      </div>
-                    </div>
-                  }
-                </div>
-
-                <!-- Barra de Acciones Rápidas (3 Burbujas Bancarias & Documentos) -->
-                <div class="chat-quick-dispatch-bar">
-                  <div class="dispatch-tools-row">
-                    <!-- Selector de Banco para 3 Burbujas -->
-                    <div class="tool-group">
-                      <select class="terminal-select mini-select" [ngModel]="selectedBankForBubbles()" (ngModelChange)="selectedBankForBubbles.set($event)">
-                        <option value="">-- Banco para Burbujas --</option>
-                        @for (b of banks(); track b.id) {
-                          <option [value]="b.id">{{ b.bankName }} ({{ b.currency }})</option>
-                        }
-                      </select>
-                      <button type="button" class="btn-tool-action" (click)="sendBankBubblesToChat(selectedBankForBubbles())" [disabled]="!selectedBankForBubbles()">
-                        📲 Generar 3 Burbujas (Fácil Copiar)
-                      </button>
-                    </div>
-
-                    <!-- Selector de Documento para Inyectar -->
-                    <div class="tool-group">
-                      <select class="terminal-select mini-select" #docSel>
-                        <option value="">-- Insertar Documento --</option>
-                        @for (d of invoicesOrQuotes(); track d.id) {
-                          <option [value]="d.id">{{ d.docNumber }} - {{ d.contactName }} (${{ d.totalUsdt | number:'1.2-2' }})</option>
-                        }
-                      </select>
-                      <button type="button" class="btn-tool-action" (click)="insertDocTemplateIntoChat(docSel.value)" [disabled]="!docSel.value">
-                        🧾 Insertar en Chat
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Textarea de Redacción y Despacho -->
-                  <div class="chat-input-row">
-                    <textarea
-                      class="terminal-textarea chat-compose-area"
-                      placeholder="Escribe una respuesta para el cliente o presiona Ctrl+V para pegar una captura de pago..."
-                      rows="3"
-                      [ngModel]="chatDraftText()"
-                      (ngModelChange)="chatDraftText.set($event)"
-                    ></textarea>
-
-                    <div class="chat-send-actions">
-                      <button type="button" class="btn-dispatch-send" (click)="sendChatMessage()" [disabled]="!chatDraftText().trim()">
-                        🚀 Despachar
-                      </button>
-                      <button type="button" class="btn-dispatch-wa" (click)="openWhatsAppDirectForActiveChat()" title="Abrir en WhatsApp Web / Desktop ($0.00)">
-                        🟢 WhatsApp Direct
-                      </button>
-                      <button type="button" class="btn-dispatch-copy" (click)="copyFullDraftText()" title="Copiar todo el texto al portapapeles">
-                        📋 Copiar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              }
-            </section>
-          </div>
-        }
-
-        <!-- =================================================================== -->
-        <!-- SUB-VISTA B: 🧾 ESTUDIO DE PRESUPUESTOS, FACTURAS Y COMPROBANTES -->
-        <!-- =================================================================== -->
-        @if (omnichannelSubTab() === 'STUDIO') {
-          <div class="omni-studio-layout">
-            <!-- Columna Izquierda: Formulario & Editor de Ítems -->
-            <div class="studio-editor-column">
-              <div class="cockpit-card">
-                <div class="card-section-header">
-                  <div class="title-with-pill">
-                    <span class="quantum-step-badge">PASO 01</span>
-                    <h2 class="section-title">Editor de Presupuestos, Facturas y Comprobantes</h2>
-                  </div>
-                </div>
-
-                <div class="modal-form-grid">
-                  <!-- Tipo de Documento -->
-                  <div class="m-field">
-                    <label class="m-label">Tipo de Documento *</label>
-                    <select
-                      class="terminal-select"
-                      [ngModel]="studioDocType()"
-                      (ngModelChange)="studioDocType.set($event); renderVoucherCanvas()"
-                    >
-                      <option value="PRESUPUESTO_QUOTE">Presupuesto / Cotización</option>
-                      <option value="FACTURA_INVOICE">Factura Comercial</option>
-                      <option value="COMPROBANTE_P2P">Comprobante de Liquidación P2P</option>
-                    </select>
-                  </div>
-
-                  <!-- Número de Documento -->
-                  <div class="m-field">
-                    <label class="m-label">Nº de Documento</label>
-                    <input
-                      type="text"
-                      class="terminal-input"
-                      placeholder="Ej: PRE-0001"
-                      [ngModel]="studioDocNumber()"
-                      (ngModelChange)="studioDocNumber.set($event); renderVoucherCanvas()"
-                    />
-                  </div>
-
-                  <!-- Contacto / Cliente -->
-                  <div class="m-field full-width">
-                    <label class="m-label">Cliente / Contacto *</label>
-                    <select
-                      class="terminal-select"
-                      [ngModel]="studioContactId()"
-                      (ngModelChange)="studioContactId.set($event); renderVoucherCanvas()"
-                    >
-                      <option value="">-- Seleccionar Contacto --</option>
-                      @for (c of contacts(); track c.id) {
-                        <option [value]="c.id">{{ c.name }} ({{ c.documentId || 'Sin Doc' }})</option>
-                      }
-                    </select>
-                  </div>
-
-                  <!-- Moneda Fiat y Tasa -->
-                  <div class="m-field">
-                    <label class="m-label">Moneda Fiat</label>
-                    <select
-                      class="terminal-select"
-                      [ngModel]="studioFiatCurrency()"
-                      (ngModelChange)="studioFiatCurrency.set($event); renderVoucherCanvas()"
-                    >
-                      <option value="VES">Bolívares (VES)</option>
-                      <option value="COP">Pesos (COP)</option>
-                      <option value="USD">Dólares (USD)</option>
-                    </select>
-                  </div>
-
-                  <div class="m-field">
-                    <label class="m-label">Tasa de Cambio</label>
-                    <input
-                      type="number"
-                      class="terminal-input"
-                      [ngModel]="studioExchangeRate()"
-                      (ngModelChange)="studioExchangeRate.set($event); renderVoucherCanvas()"
-                    />
-                  </div>
-
-                  <!-- Descuento e Impuesto -->
-                  <div class="m-field">
-                    <label class="m-label">Descuento (USDT)</label>
-                    <input
-                      type="number"
-                      class="terminal-input"
-                      [ngModel]="studioDiscountUsdt()"
-                      (ngModelChange)="studioDiscountUsdt.set($event); renderVoucherCanvas()"
-                    />
-                  </div>
-
-                  <div class="m-field">
-                    <label class="m-label">Impuesto / Comisión (%)</label>
-                    <input
-                      type="number"
-                      class="terminal-input"
-                      [ngModel]="studioTaxPct()"
-                      (ngModelChange)="studioTaxPct.set($event); renderVoucherCanvas()"
-                    />
-                  </div>
-
-                  <!-- Cuenta Bancaria Asociada -->
-                  <div class="m-field full-width">
-                    <label class="m-label">Cuenta Bancaria para Datos de Pago</label>
-                    <select
-                      class="terminal-select"
-                      [ngModel]="studioBankAccountId()"
-                      (ngModelChange)="studioBankAccountId.set($event); renderVoucherCanvas()"
-                    >
-                      <option value="">-- Ninguna (Usar texto libre) --</option>
-                      @for (b of banks(); track b.id) {
-                        <option [value]="b.id">{{ b.bankName }} ({{ b.currency }})</option>
-                      }
-                    </select>
-                  </div>
-
-                  <!-- Referencia Bancaria (para liquidación) -->
-                  <div class="m-field full-width">
-                    <label class="m-label">Número de Referencia Bancaria (Opcional)</label>
-                    <input
-                      type="text"
-                      class="terminal-input"
-                      placeholder="Ej: 198274812"
-                      [ngModel]="studioBankRefId()"
-                      (ngModelChange)="studioBankRefId.set($event); renderVoucherCanvas()"
-                    />
-                  </div>
-                </div>
-
-                <!-- Tabla Dinámica de Ítems -->
-                <div class="studio-items-section">
-                  <div class="items-head-row">
-                    <h3 class="items-title">Ítems / Servicios / Repuestos ({{ studioItems().length }})</h3>
-                    <button type="button" class="btn-add-item" (click)="addStudioItem()">+ Agregar Ítem</button>
-                  </div>
-
-                  <div class="items-table-wrapper">
-                    <table class="items-table">
-                      <thead>
-                        <tr>
-                          <th>Cant</th>
-                          <th>Descripción</th>
-                          <th>Categoría</th>
-                          <th>P. Unit ($)</th>
-                          <th>Total ($)</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (it of studioItems(); track it.id; let idx = $index) {
-                          <tr>
-                            <td style="width: 70px;">
-                              <input
-                                type="number"
-                                class="terminal-input item-num-input"
-                                [ngModel]="it.quantity"
-                                (ngModelChange)="updateStudioItem(idx, 'quantity', $event)"
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                class="terminal-input item-desc-input"
-                                [ngModel]="it.description"
-                                (ngModelChange)="updateStudioItem(idx, 'description', $event)"
-                              />
-                            </td>
-                            <td style="width: 140px;">
-                              <select
-                                class="terminal-select item-cat-select"
-                                [ngModel]="it.category"
-                                (ngModelChange)="updateStudioItem(idx, 'category', $event)"
-                              >
-                                <option value="PRODUCT">Producto</option>
-                                <option value="LABOR_SERVICE">Mano de Obra</option>
-                                <option value="P2P_EXCHANGE">P2P Cambio</option>
-                                <option value="FEE_OR_TAX">Comisión/Fee</option>
-                              </select>
-                            </td>
-                            <td style="width: 100px;">
-                              <input
-                                type="number"
-                                class="terminal-input item-price-input"
-                                [ngModel]="it.unitPriceUsdt"
-                                (ngModelChange)="updateStudioItem(idx, 'unitPriceUsdt', $event)"
-                              />
-                            </td>
-                            <td class="font-mono text-emerald" style="width: 90px; text-align: right;">
-                              ${{ (it.quantity * it.unitPriceUsdt) | number:'1.2-2' }}
-                            </td>
-                            <td style="width: 40px; text-align: center;">
-                              <button type="button" class="btn-del-item" (click)="removeStudioItem(it.id)">✕</button>
-                            </td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <!-- Resumen de Totales Reactivos -->
-                <div class="studio-totals-ribbon">
-                  <div class="t-col">
-                    <span class="t-lbl">Subtotal:</span>
-                    <span class="t-val font-mono">${{ studioTotals().subtotalUsdt | number:'1.2-2' }}</span>
-                  </div>
-                  <div class="t-col">
-                    <span class="t-lbl">Descuento:</span>
-                    <span class="t-val font-mono text-amber">-${{ studioTotals().discountUsdt | number:'1.2-2' }}</span>
-                  </div>
-                  <div class="t-col">
-                    <span class="t-lbl">TOTAL USDT:</span>
-                    <span class="t-val font-mono highlight text-emerald">${{ studioTotals().totalUsdt | number:'1.2-2' }}</span>
-                  </div>
-                  <div class="t-col">
-                    <span class="t-lbl">TOTAL {{ studioFiatCurrency() }}:</span>
-                    <span class="t-val font-mono text-blue">{{ studioTotals().totalFiat | number:'1.2-2' }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Historial de Documentos Guardados -->
-              <div class="cockpit-card studio-history-card">
-                <div class="card-section-header">
-                  <div class="title-with-pill">
-                    <span class="quantum-step-badge">ARCHIVO</span>
-                    <h2 class="section-title">Documentos Generados ({{ invoicesOrQuotes().length }})</h2>
-                  </div>
-                </div>
-
-                @if (invoicesOrQuotes().length === 0) {
-                  <p class="empty-desc">Sin documentos generados aún en esta bóveda.</p>
-                } @else {
-                  <div class="deals-table-wrapper">
-                    <table class="deals-mini-table corporate-table">
-                      <thead>
-                        <tr>
-                          <th>Nº</th>
-                          <th>Tipo</th>
-                          <th>Cliente</th>
-                          <th>Fecha</th>
-                          <th class="text-right">Total USDT</th>
-                          <th class="text-right">Total Fiat</th>
-                          <th>Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (doc of invoicesOrQuotes(); track doc.id) {
-                          <tr>
-                            <td class="font-mono text-blue">{{ doc.docNumber }}</td>
-                            <td><span class="stage-tag font-mono">{{ doc.docType }}</span></td>
-                            <td>{{ doc.contactName }}</td>
-                            <td>{{ doc.createdAt | date:'dd/MM/yyyy' }}</td>
-                            <td class="text-right font-mono text-emerald">${{ doc.totalUsdt | number:'1.2-2' }}</td>
-                            <td class="text-right font-mono">{{ doc.totalFiat | number:'1.2-2' }} {{ doc.fiatCurrency }}</td>
-                            <td>
-                              <button type="button" class="mini-copy-btn" (click)="loadStudioDocument(doc)">✏️ Cargar</button>
-                              <button type="button" class="btn-del-deal" (click)="deleteStudioDocument(doc.id)" title="Eliminar">🗑️</button>
-                            </td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <!-- Columna Derecha Sticky: Vista Previa Canvas HD & Acciones de 1 Clic -->
-            <div class="studio-preview-column quantum-sticky-col">
-              <div class="cockpit-card canvas-card">
-                <div class="card-section-header">
-                  <div class="title-with-pill">
-                    <span class="quantum-step-badge">PASO 02 · LIVE HD</span>
-                    <h2 class="section-title">Tarjeta Institucional HD (Canvas 2D)</h2>
-                  </div>
-                  <button type="button" class="btn-render-refresh" (click)="renderVoucherCanvas()">
-                    🔄 Refrescar Canvas
-                  </button>
-                </div>
-
-                <div class="canvas-scroll-container">
-                  <canvas id="voucherCanvas" class="hd-voucher-canvas"></canvas>
-                </div>
-
-                <div class="canvas-actions-bar">
-                  <button type="button" class="btn-canvas-action copy" (click)="copyCanvasImageToClipboard()">
-                    🖼️ Copiar Imagen PNG (Portapapeles)
-                  </button>
-                  <button type="button" class="btn-canvas-action download" (click)="downloadCanvasImage()">
-                    💾 Descargar PNG
-                  </button>
-                  <button type="button" class="btn-canvas-action wa" (click)="sendStudioDocViaWhatsApp()">
-                    📲 Enviar WhatsApp Direct
-                  </button>
-                  <button type="button" class="btn-canvas-action kanban" (click)="saveStudioDocument(true)">
-                    📌 Pasar a Tablero Kanban
-                  </button>
-                  <button type="button" class="btn-canvas-action save" (click)="saveStudioDocument(false)">
-                    💾 Guardar en Historial
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-
-        <!-- =================================================================== -->
-        <!-- SUB-VISTA C: 🤖 CONFIGURACIÓN META API & GEMINI FLASH IA -->
-        <!-- =================================================================== -->
-        @if (omnichannelSubTab() === 'CONFIG') {
-          <div class="omni-config-layout">
-            <div class="cockpit-card config-form-card">
-              <div class="card-section-header">
-                <div class="title-with-pill">
-                  <span class="icon">🤖</span>
-                  <h2 class="section-title">Configuración de Integración Meta API &amp; Gemini Flash IA</h2>
-                </div>
-              </div>
-
-              <div class="config-grid">
-                <!-- Nombre Comercial -->
-                <div class="m-field full-width">
-                  <label class="m-label">Nombre Comercial de la Empresa o Mesa</label>
-                  <input
-                    type="text"
-                    class="terminal-input"
-                    placeholder="Ej: P2P Quant Treasury"
-                    [ngModel]="omnichannelConfig().businessDisplayName"
-                    (ngModelChange)="updateOmnichannelConfig('businessDisplayName', $event)"
-                  />
-                  <span class="s-help">Aparecerá en los mensajes de bienvenida y en el encabezado de las facturas.</span>
-                </div>
-
-                <!-- Modo de Operación de IA -->
-                <div class="m-field full-width">
-                  <label class="m-label">Modo de Operación del Asistente IA</label>
-                  <select
-                    class="terminal-select"
-                    [ngModel]="omnichannelConfig().aiMode"
-                    (ngModelChange)="updateOmnichannelConfig('aiMode', $event)"
-                  >
-                    <option value="COPILOT_DRAFT">Copiloto 1-Click (Redacta sugerencia para aprobación del operador)</option>
-                    <option value="AUTOPILOT">Piloto Automático (Responde en simulación y API automáticamente)</option>
-                    <option value="MANUAL">Manual (Sin sugerencias automáticas)</option>
-                  </select>
-                </div>
-
-                <!-- Plantilla de Bienvenida P2P -->
-                <div class="m-field full-width">
-                  <label class="m-label">Mensaje de Bienvenida / Triaje - Mesa P2P</label>
-                  <textarea
-                    class="terminal-textarea"
-                    rows="3"
-                    [ngModel]="omnichannelConfig().welcomeTemplateP2p"
-                    (ngModelChange)="updateOmnichannelConfig('welcomeTemplateP2p', $event)"
-                  ></textarea>
-                </div>
-
-                <!-- Plantilla de Bienvenida Finanzas 360 -->
-                <div class="m-field full-width">
-                  <label class="m-label">Mensaje de Bienvenida / Triaje - Finanzas 360 &amp; Facturación</label>
-                  <textarea
-                    class="terminal-textarea"
-                    rows="3"
-                    [ngModel]="omnichannelConfig().welcomeTemplate360"
-                    (ngModelChange)="updateOmnichannelConfig('welcomeTemplate360', $event)"
-                  ></textarea>
-                </div>
-
-                <!-- API Key Gemini Flash -->
-                <div class="m-field full-width">
-                  <label class="m-label">Google Gemini Flash API Key (Gratuita)</label>
-                  <input
-                    type="password"
-                    class="terminal-input"
-                    placeholder="AIzaSy..."
-                    [ngModel]="omnichannelConfig().geminiApiKey"
-                    (ngModelChange)="updateOmnichannelConfig('geminiApiKey', $event)"
-                  />
-                  <span class="s-help">Habilita el análisis visual de comprobantes pegados con Ctrl+V y triaje semántico avanzado.</span>
-                </div>
-
-                <!-- Credenciales Opcionales Meta Cloud API -->
-                <div class="m-field">
-                  <label class="m-label">WhatsApp Phone Number ID (Meta Cloud)</label>
-                  <input
-                    type="text"
-                    class="terminal-input"
-                    placeholder="10982736152..."
-                    [ngModel]="omnichannelConfig().whatsappPhoneNumberId"
-                    (ngModelChange)="updateOmnichannelConfig('whatsappPhoneNumberId', $event)"
-                  />
-                </div>
-
-                <div class="m-field">
-                  <label class="m-label">Instagram Account ID (Opcional)</label>
-                  <input
-                    type="text"
-                    class="terminal-input"
-                    placeholder="ig_business_..."
-                    [ngModel]="omnichannelConfig().instagramAccountId"
-                    (ngModelChange)="updateOmnichannelConfig('instagramAccountId', $event)"
-                  />
-                </div>
-
-                <div class="m-field full-width">
-                  <label class="m-label">Meta Cloud API Access Token</label>
-                  <input
-                    type="password"
-                    class="terminal-input"
-                    placeholder="EAAB..."
-                    [ngModel]="omnichannelConfig().metaAccessToken"
-                    (ngModelChange)="updateOmnichannelConfig('metaAccessToken', $event)"
-                  />
-                  <span class="s-help">Opcional. Si no se configura token, el sistema utiliza <strong>WhatsApp Direct ($0.00)</strong> sin requerir servidores externos.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      </div>
-    }
-
-    <!-- ======================================================================= -->
-    <!-- VISTA 8: ARM COMMAND CENTER, HITL QUEUE, SANDBOX & CLOSER COPILOT -->
-    <!-- ======================================================================= -->
-    @if (activeView() === 'ARM_COMMAND') {
-      <section class="arm-command-view" aria-label="Centro de Comando ARM Multi-Workspace">
-        <!-- 1. Silo Switcher & Telemetry Strip -->
-        <header class="arm-silo-bar">
-          <div class="arm-silo-tabs" role="tablist" aria-label="Silos Impermeables ARM">
-            <button
-              type="button"
-              class="arm-silo-btn"
-              [class.active]="activeArmSilo() === 'ARM_B2B'"
-              (click)="setArmSilo('ARM_B2B')"
-              role="tab"
-              [attr.aria-selected]="activeArmSilo() === 'ARM_B2B'"
-            >
-              🟢 ARM Comercial B2B
-            </button>
-            <button
-              type="button"
-              class="arm-silo-btn"
-              [class.active]="activeArmSilo() === 'P2P_DESK'"
-              (click)="setArmSilo('P2P_DESK')"
-              role="tab"
-              [attr.aria-selected]="activeArmSilo() === 'P2P_DESK'"
-            >
-              🔵 Mesa P2P &amp; Liquidez
-            </button>
-            <button
-              type="button"
-              class="arm-silo-btn"
-              [class.active]="activeArmSilo() === 'FINANCE_360'"
-              (click)="setArmSilo('FINANCE_360')"
-              role="tab"
-              [attr.aria-selected]="activeArmSilo() === 'FINANCE_360'"
-            >
-              🟣 Finanzas &amp; PyME 360
-            </button>
-          </div>
-
-          <div class="arm-silo-actions">
-            <span class="arm-telemetry-pill font-mono">
-              Silo: {{ activeArmSilo() }} &bull; Debounce {{ activeArmWorkspaceConfig().debounceWindowMs }}ms &bull; DLP ON &bull; Tokens {{ armTokenCircuitBreakerForSilo().utilizationPct }}%
-            </span>
-            <button
-              type="button"
-              class="action-btn btn-new-deal"
-              (click)="triggerArmSandboxTurn()"
-              title="Simular turno de cliente por IA en Sandbox ($0 Meta API)"
-            >
-              🧪 Simular Turno Sandbox ($0)
-            </button>
-            <button
-              type="button"
-              class="action-btn btn-new-contact"
-              (click)="triggerArmDeterministicReplayDryRun()"
-              title="Comparar Prompt Base vs. Shadow Learning sobre historial real ($0 Meta API)"
-            >
-              🔄 Replay Dry-Run A/B ($0)
-            </button>
-            <button
-              type="button"
-              class="action-btn btn-new-contact"
-              (click)="triggerAntiGhostingScanForSilo()"
-              title="Escanear prospectos inactivos >24h y encolar plantilla HSM"
-            >
-              ⏱ Escaneo Anti-Ghosting (72h)
-            </button>
-            <button
-              type="button"
-              class="action-btn btn-new-contact"
-              (click)="syncLocalDealsToArmSilos()"
-              title="Migrar tratos locales (IndexedDB/Storage) hacia su silo ARM aislado"
-            >
-              📥 Sincronizar Local
-            </button>
-            <button
-              type="button"
-              class="action-btn btn-new-contact"
-              (click)="showArmCommandPalette.set(true)"
-              title="Abrir paleta de comandos rápida (⌘K / Ctrl+K)"
-            >
-              ⌘K Comandos
-            </button>
-          </div>
-        </header>
-
-        <!-- 2. Cómo va el negocio: 4 Executive KPIs in Live Mode -->
-        <div class="arm-kpi-strip" aria-label="Cómo va el negocio — Métricas en Vivo">
-          @for (kpi of armExecutiveKpisForSilo(); track kpi.label) {
-            <div class="arm-kpi-card">
-              <span class="arm-kpi-lbl">{{ kpi.label }}</span>
-              <span class="arm-kpi-val font-mono text-emerald">{{ kpi.value }}</span>
-              <span class="arm-kpi-sub">{{ kpi.sub }}</span>
-            </div>
-          }
-        </div>
-
-        <!-- 3. Pipeline Zero-Click Stages Strip for Active Silo -->
-        <div class="arm-stages-strip">
-          @for (stg of armStagesForSilo(); track stg.slug) {
-            <div class="arm-stage-pill" [style.border-color]="stg.colorHex">
-              <span class="stg-pos font-mono">0{{ stg.position }}</span>
-              <span class="stg-name">{{ stg.name }}</span>
-              <span class="stg-slug font-mono">{{ stg.slug }}</span>
-            </div>
-          }
-        </div>
-
-        <!-- 4. Zero-Click Autonomous Kanban Cards + Accessible Stage Override -->
-        <div class="arm-kanban-cards-grid">
-          @for (card of armKanbanCardsForSilo(); track card.id) {
-            <div
-              class="arm-kanban-card"
-              [class.selected]="selectedArmLeadId() === card.id"
-              (click)="selectArmLeadForInspector(card.id)"
-            >
-              <div class="arm-card-top">
-                <div>
-                  <div class="arm-card-title">{{ card.companyName }}</div>
-                  <div class="arm-card-sub">{{ card.leadName }} &bull; {{ card.dealValueLabel }}</div>
-                </div>
-                <span class="font-mono arm-score-badge">{{ card.qualificationScore }}/100</span>
-              </div>
-              <div class="arm-card-pain">{{ card.painPointSummary }}</div>
-              <div class="arm-card-msg font-mono">{{ card.lastMessagePreview }}</div>
-              <div class="arm-card-footer">
-                <span class="arm-moved-badge font-mono">⚡ {{ card.movedByAgentBadge }}</span>
-                <select
-                  class="terminal-select arm-move-select"
-                  aria-label="Mover tarjeta a etapa"
-                  [ngModel]="card.stageSlug"
-                  (click)="$event.stopPropagation()"
-                  (ngModelChange)="moveArmCardToStage(card.id, $event, 'HUMAN')"
-                >
-                  @for (stg of armStagesForSilo(); track stg.slug) {
-                    <option [value]="stg.slug">Mover a → {{ stg.name }}</option>
-                  }
-                </select>
-              </div>
-            </div>
-          }
-        </div>
-
-        <!-- 3. Three Executive Panels: Autonomous Feed | Approval Queue HITL | Closer & Shadow Learning -->
-        <div class="arm-three-panels-grid">
-          <!-- Panel 1: Lo que pasó (Feed de Actividad Autónoma) -->
-          <div class="arm-panel">
-            <div class="arm-panel-header">
-              <h4>⚡ Lo que pasó (Feed Autónomo)</h4>
-              <span class="font-mono arm-count-chip">{{ armAutonomousFeedForSilo().length }} eventos</span>
-            </div>
-            <div class="arm-panel-body">
-              @if (armAutonomousFeedForSilo().length === 0) {
-                <div class="arm-empty-state">
-                  Sin eventos autónomos aún en <strong>{{ activeArmSilo() }}</strong>. Ejecutá <em>Simular Turno Sandbox ($0)</em> para probar el flujo de agentes.
-                </div>
-              } @else {
-                @for (ev of armAutonomousFeedForSilo(); track ev.id) {
-                  <div class="arm-feed-item">
-                    <div class="arm-feed-meta font-mono">
-                      <span class="text-emerald">{{ ev.agentRole }}</span>
-                      <span>{{ ev.latencyMs }}ms</span>
-                    </div>
-                    <div class="arm-feed-title">{{ ev.leadName }}</div>
-                    <div class="arm-feed-summary">{{ ev.summary }}</div>
-                  </div>
-                }
-              }
-            </div>
-          </div>
-
-          <!-- Panel 2: Lo que espera tu aprobación (Approval Queue HITL) -->
-          <div class="arm-panel arm-panel-hitl">
-            <div class="arm-panel-header">
-              <h4>🛡️ Lo que espera tu aprobación (Approval Queue)</h4>
-              <span class="font-mono arm-count-chip warn">{{ armApprovalQueueForSilo().length }} pendientes</span>
-            </div>
-            <div class="arm-panel-body">
-              @if (armApprovalQueueForSilo().length === 0) {
-                <div class="arm-empty-state">
-                  Bandeja de aprobación limpia en <strong>{{ activeArmSilo() }}</strong>.
-                </div>
-              } @else {
-                @for (item of armApprovalQueueForSilo(); track item.id) {
-                  <div class="arm-approval-card">
-                    <div class="arm-approval-top">
-                      <span class="arm-approval-title">{{ item.title }}</span>
-                      <span class="font-mono arm-role-tag">{{ item.requestedByRole }}</span>
-                    </div>
-                    <div class="arm-approval-reason">
-                      <strong>Regla Risk Gate:</strong> {{ item.agentReasoning }}
-                    </div>
-
-                    @if (editingApprovalId() === item.id) {
-                      <div class="arm-edit-box">
-                        <textarea
-                          class="terminal-input"
-                          rows="2"
-                          [ngModel]="editingApprovalText()"
-                          (ngModelChange)="editingApprovalText.set($event)"
-                        ></textarea>
-                        <label class="arm-shadow-check">
-                          <input
-                            type="checkbox"
-                            [ngModel]="editingSaveAsExample()"
-                            (ngModelChange)="editingSaveAsExample.set($event)"
-                          />
-                          <span>Guardar corrección como ejemplo Few-Shot (Shadow Learning en {{ activeArmSilo() }})</span>
-                        </label>
-                        <div class="arm-approval-actions">
-                          <button
-                            type="button"
-                            class="arm-btn arm-btn-approve"
-                            (click)="approveArmQueueItem(item.id, editingApprovalText(), editingSaveAsExample())"
-                          >
-                            ✓ Confirmar Edición y Enviar
-                          </button>
-                          <button
-                            type="button"
-                            class="arm-btn arm-btn-edit"
-                            (click)="editingApprovalId.set(null)"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      </div>
-                    } @else {
-                      <div class="arm-approval-actions">
-                        <button
-                          type="button"
-                          class="arm-btn arm-btn-approve"
-                          (click)="approveArmQueueItem(item.id)"
-                        >
-                          [A] Aprobar y Enviar
-                        </button>
-                        <button
-                          type="button"
-                          class="arm-btn arm-btn-edit"
-                          (click)="startEditArmApproval(item)"
-                        >
-                          [E] Editar + Shadow Learn
-                        </button>
-                        <button
-                          type="button"
-                          class="arm-btn arm-btn-takeover"
-                          (click)="takeoverHumanFromArmQueue(item.id)"
-                        >
-                          [H] Tomar Control Humano
-                        </button>
-                      </div>
-                    }
-                  </div>
-                }
-              }
-            </div>
-          </div>
-
-          <!-- Panel 3: Closer Intelligence & Shadow Learning Memory -->
-          <div class="arm-panel">
-            <div class="arm-panel-header">
-              <h4>🎙️ Closer Copilot &amp; Shadow Learning</h4>
-              <span class="font-mono arm-count-chip">{{ armShadowExamplesForSilo().length }} Few-Shot</span>
-            </div>
-            <div class="arm-panel-body">
-              <div class="arm-closer-box">
-                <label class="m-label">Nota Post-Llamada (30s) &rarr; Actualizar Pipeline &amp; Cotizador</label>
-                <input
-                  type="text"
-                  class="terminal-input"
-                  placeholder="Prospecto (ej. Clínica Aurora)"
-                  [ngModel]="closerNoteLeadName()"
-                  (ngModelChange)="closerNoteLeadName.set($event)"
-                />
-                <textarea
-                  class="terminal-input"
-                  rows="2"
-                  placeholder="Ej: Hablé con Carlos, le gustó el Plan Enterprise pero quiere pagar en 2 partes 50/50"
-                  [ngModel]="closerNoteTranscript()"
-                  (ngModelChange)="closerNoteTranscript.set($event)"
-                ></textarea>
-                <div class="arm-approval-actions">
-                  <button
-                    type="button"
-                    class="arm-btn arm-btn-approve"
-                    (click)="submitCloserVoiceNoteForArm()"
-                  >
-                    ⚡ Procesar Nota Post-Llamada
-                  </button>
-                  <button
-                    type="button"
-                    class="arm-btn arm-btn-edit"
-                    (click)="triggerCloserPreCallBriefingForSilo()"
-                  >
-                    📲 Briefing 15m Pre-Reunión
-                  </button>
-                </div>
-              </div>
-
-              @if (armCloserPreCallBriefing(); as brf) {
-                <div class="arm-feed-item">
-                  <div class="arm-feed-meta font-mono">
-                    <span class="text-emerald">BRIEFING {{ brf.startsInMinutes }}M PRE-CALL</span>
-                    <span>Score {{ brf.qualificationScore }}/100</span>
-                  </div>
-                  <div class="arm-feed-title">{{ brf.companyName }} — {{ brf.leadName }}</div>
-                  <div class="arm-feed-summary">{{ brf.recommendedClosingAngle }}</div>
-                </div>
-              }
-
-              @if (armReplayComparisonResult(); as rep) {
-                <div class="arm-feed-item">
-                  <div class="arm-feed-meta font-mono">
-                    <span class="text-emerald">REPLAY DRY-RUN A/B ($0)</span>
-                    <span>Few-Shot: {{ rep.candidateToolCall.injectedFewShotCount }}</span>
-                  </div>
-                  <div class="arm-feed-title">{{ rep.leadName }} &bull; {{ rep.candidateToolCall.toolName }}()</div>
-                  <div class="arm-feed-summary">{{ rep.diffSummary }}</div>
-                </div>
-              }
-
-              <div class="arm-agents-roster">
-                <div class="m-label">Especialistas Activos ({{ activeArmSilo() }}):</div>
-                @for (ag of armAgentsForSilo(); track ag.id) {
-                  <div class="arm-agent-row font-mono">
-                    <span class="text-emerald">{{ ag.role }}</span>
-                    <span>Temp {{ ag.temperature }} &bull; {{ ag.enabledTools.length }} tools</span>
-                  </div>
-                }
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 5. Split View Contact Detail: Live Omnichannel Chat (Left) + Tool-Calling Traceability (Right) -->
-        @if (selectedArmLeadSplitInspector(); as insp) {
-          <div class="arm-split-inspector" aria-label="Vista Dividida de Contacto y Trazabilidad">
-            <div class="arm-split-left">
-              <div class="arm-panel-header">
-                <h4>💬 Chat Omnicanal en Vivo — {{ insp.companyName }} ({{ insp.leadName }})</h4>
-                <span class="font-mono arm-count-chip">{{ insp.freeWindowLabel }}</span>
-              </div>
-              <div class="arm-panel-body">
-                @for (msg of insp.messages; track msg.text) {
-                  <div class="arm-chat-bubble" [class.agent]="msg.sender === 'AGENT'">
-                    <div class="arm-chat-head font-mono">
-                      <span>{{ msg.sender === 'LEAD' ? 'PROSPECTO' : 'AGENTE ' + insp.assignedAgentRole }}</span>
-                      @if (msg.mediaBadge) {
-                        <span class="text-emerald">{{ msg.mediaBadge }}</span>
-                      }
-                    </div>
-                    <div class="arm-chat-text">{{ msg.text }}</div>
-                  </div>
-                }
-              </div>
-            </div>
-
-            <div class="arm-split-right">
-              <div class="arm-panel-header">
-                <h4>🔍 Evolución en Pipeline &amp; Trazabilidad Tool-Calling</h4>
-                <span class="font-mono arm-count-chip">Etapa: {{ insp.stageSlug }}</span>
-              </div>
-              <div class="arm-panel-body">
-                @for (tr of insp.toolTraces; track tr.toolName) {
-                  <div class="arm-trace-row font-mono">
-                    <div class="arm-trace-top">
-                      <span class="text-emerald">{{ tr.toolName }}()</span>
-                      <span>{{ tr.latencyMs }}ms</span>
-                    </div>
-                    <div class="arm-trace-status">{{ tr.status }}</div>
-                  </div>
-                }
-              </div>
-            </div>
-          </div>
-        }
-
-        @if (showArmCommandPalette()) {
-          <div
-            class="modal-backdrop"
-            role="dialog"
-            aria-modal="true"
-            tabindex="-1"
-            (click)="$event.target === $event.currentTarget && showArmCommandPalette.set(false)"
-            (keydown.escape)="showArmCommandPalette.set(false)"
-          >
-            <div class="modal-dialog arm-command-palette">
-              <div class="modal-header">
-                <div class="modal-title-row">
-                  <span class="m-icon">⌘</span>
-                  <h3 class="modal-title">Paleta de Comandos ARM ({{ activeArmSilo() }})</h3>
-                </div>
-                <button type="button" class="btn-close-modal" (click)="showArmCommandPalette.set(false)">✕</button>
-              </div>
-              <div class="modal-body">
-                <input
-                  type="text"
-                  class="terminal-input"
-                  placeholder="Escribí un comando (silo, sandbox, replay, briefing, aprobar)..."
-                  [ngModel]="armCommandQuery()"
-                  (ngModelChange)="armCommandQuery.set($event)"
-                  (keydown.enter)="executeFirstMatchedArmCommand()"
-                />
-                <div class="arm-palette-list">
-                  @for (cmd of filteredArmCommands(); track cmd.id) {
-                    <button
-                      type="button"
-                      class="arm-palette-item"
-                      (click)="executeArmCommand(cmd.id)"
-                    >
-                      <span>{{ cmd.label }}</span>
-                      <kbd class="font-mono arm-palette-kbd">{{ cmd.shortcut }}</kbd>
-                    </button>
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-        }
-      </section>
-    }
-  </main>
-
-  <!-- ======================================================================= -->
-  <!-- MODALES GLOBALES -->
-  <!-- ======================================================================= -->
-
-  <!-- MODAL: NUEVA CONVERSACIÓN OMNICANAL -->
-  @if (showNewChatModal()) {
-    <div class="modal-backdrop" (click)="showNewChatModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+      <div class="modal-dialog modal-palette crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">💬</span>
-            <h3 class="modal-title">Iniciar Nueva Conversación ({{ activeScope() }})</h3>
+            <h3 id="modal-palette-title" class="modal-title">Paleta de Comandos CRM / ARM</h3>
           </div>
-          <button type="button" class="btn-close-modal" (click)="showNewChatModal.set(false)">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar paleta"
+            (click)="showArmCommandPalette.set(false)"
+          >
+            ×
+          </button>
         </div>
+        <div class="modal-body">
+          <input
+            type="text"
+            class="crm-input palette-search-input"
+            placeholder="Buscar comando o atajo (ej: replay, silo, sandbox, sync)..."
+            [ngModel]="armCommandQuery()"
+            (ngModelChange)="armCommandQuery.set($event)"
+            (keydown.enter)="executeFirstMatchedArmCommand()"
+          />
+          <div class="palette-command-list">
+            @for (cmd of filteredArmCommands(); track cmd.id) {
+              <button
+                type="button"
+                class="palette-command-item"
+                (click)="executeArmCommand(cmd.id)"
+              >
+                <span class="palette-cmd-label">{{ cmd.label }}</span>
+                <kbd class="palette-cmd-kbd">{{ cmd.shortcut }}</kbd>
+              </button>
+            }
+            @if (filteredArmCommands().length === 0) {
+              <p class="modal-empty-hint">No hay comandos que coincidan con "{{ armCommandQuery() }}".</p>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
 
+  <!-- 2. MODAL NUEVO CHAT OMNICANAL -->
+  @if (showNewChatModal()) {
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-new-chat-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showNewChatModal.set(false)"
+      (keydown.escape)="showNewChatModal.set(false)"
+    >
+      <div class="modal-dialog crm-liquid-glass">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <h3 id="modal-new-chat-title" class="modal-title">Iniciar Nueva Conversación</h3>
+          </div>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="showNewChatModal.set(false)"
+          >
+            ×
+          </button>
+        </div>
         <div class="modal-body">
           <div class="modal-form-grid">
             <div class="m-field">
-              <label class="m-label">Canal de Mensajería *</label>
+              <label class="m-label" for="new-chat-channel">Canal</label>
               <select
-                class="terminal-select"
+                id="new-chat-channel"
+                class="crm-input"
                 [ngModel]="newChatChannel()"
                 (ngModelChange)="newChatChannel.set($event)"
               >
                 <option value="WHATSAPP">WhatsApp</option>
-                <option value="INSTAGRAM">Instagram DM</option>
+                <option value="INSTAGRAM">Instagram</option>
+                <option value="TELEGRAM">Telegram</option>
               </select>
             </div>
-
             <div class="m-field">
-              <label class="m-label">Asociar a Contacto Registrado</label>
+              <label class="m-label" for="new-chat-contact">Contacto Asociado</label>
               <select
-                class="terminal-select"
+                id="new-chat-contact"
+                class="crm-input"
                 [ngModel]="newChatContactId()"
                 (ngModelChange)="onNewChatContactSelected($event)"
               >
-                <option value="">-- Nuevo / Sin Registrar --</option>
-                @for (c of contacts(); track c.id) {
-                  <option [value]="c.id">{{ c.name }} ({{ c.documentId || 'Sin Doc' }})</option>
+                <option value="">-- Contacto manual --</option>
+                @for (c of workspaceState().contacts; track c.id) {
+                  <option [value]="c.id">{{ c.name }}</option>
                 }
               </select>
             </div>
-
-            <div class="m-field full-width">
-              <label class="m-label">Nombre del Destinatario *</label>
+            <div class="m-field">
+              <label class="m-label" for="new-chat-name">Nombre Visible</label>
               <input
+                id="new-chat-name"
                 type="text"
-                class="terminal-input"
-                placeholder="Ej: María Rodríguez"
+                class="crm-input"
+                placeholder="Nombre del cliente"
                 [ngModel]="newChatName()"
                 (ngModelChange)="newChatName.set($event)"
               />
             </div>
-
-            <div class="m-field full-width">
-              <label class="m-label">Número de Teléfono o Instagram Handle *</label>
+            <div class="m-field">
+              <label class="m-label" for="new-chat-recipient">Teléfono / Usuario IG</label>
               <input
+                id="new-chat-recipient"
                 type="text"
-                class="terminal-input"
-                placeholder="Ej: +584141234567 o @cliente_p2p"
+                class="crm-input"
+                placeholder="+58 412... o @usuario"
                 [ngModel]="newChatRecipient()"
                 (ngModelChange)="newChatRecipient.set($event)"
               />
             </div>
           </div>
         </div>
-
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="showNewChatModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-save" (click)="createNewConversation()">
-            💬 Iniciar Chat
-          </button>
+          <button type="button" class="crm-btn-glass" (click)="showNewChatModal.set(false)">Cancelar</button>
+          <button type="button" class="crm-btn-primary" (click)="createNewConversation()">Abrir Hilo</button>
         </div>
       </div>
     </div>
   }
 
-  <!-- MODAL: NUEVO TRATO -->
+  <!-- 3. MODAL NUEVO TRATO / OPERACIÓN -->
   @if (showAddDealModal()) {
-    <div class="modal-backdrop" (click)="showAddDealModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-new-deal-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showAddDealModal.set(false)"
+      (keydown.escape)="showAddDealModal.set(false)"
+    >
+      <div class="modal-dialog crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">⚡</span>
-            <h3 class="modal-title">Nuevo Trato / Operación ({{ activeScope() }})</h3>
+            <h3 id="modal-new-deal-title" class="modal-title">Nuevo Trato en Pipeline</h3>
           </div>
-          <button type="button" class="btn-close-modal" (click)="showAddDealModal.set(false)">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="showAddDealModal.set(false)"
+          >
+            ×
+          </button>
         </div>
-
         <div class="modal-body">
           <div class="modal-form-grid">
-            <!-- Cliente -->
-            <div class="m-field full-width">
-              <label class="m-label">Contacto / Cliente *</label>
+            <div class="m-field">
+              <label class="m-label" for="deal-contact">Contraparte / Cliente</label>
               <select
-                class="terminal-select"
+                id="deal-contact"
+                class="crm-input"
                 [ngModel]="dealContactId()"
                 (ngModelChange)="dealContactId.set($event)"
               >
-                <option value="">-- Seleccionar Contacto --</option>
+                <option value="">-- Seleccionar contacto --</option>
                 @for (c of workspaceState().contacts; track c.id) {
-                  <option [value]="c.id">{{ c.name }} ({{ c.documentId || 'Sin Doc' }})</option>
+                  <option [value]="c.id">{{ c.name }}</option>
                 }
               </select>
             </div>
-
-            <!-- Banco -->
-            <div class="m-field full-width">
-              <label class="m-label">Cuenta Bancaria Operativa *</label>
+            <div class="m-field">
+              <label class="m-label" for="deal-bank">Riel Bancario</label>
               <select
-                class="terminal-select"
+                id="deal-bank"
+                class="crm-input"
                 [ngModel]="dealBankAccountId()"
                 (ngModelChange)="dealBankAccountId.set($event)"
               >
-                <option value="">-- Seleccionar Banco --</option>
-                @for (b of workspaceState().bankTelemetry; track b.bankAccountId) {
-                  <option [value]="b.bankAccountId" [disabled]="b.status !== 'AVAILABLE'">
-                    {{ b.bankName }} ({{ b.currency }}) - {{ b.status }}
-                  </option>
+                <option value="">-- Seleccionar banco --</option>
+                @for (b of scopedBanks(); track b.id) {
+                  <option [value]="b.id">{{ b.bankName }} ({{ b.currency }})</option>
                 }
               </select>
             </div>
-
-            <!-- Monto USDT -->
             <div class="m-field">
-              <label class="m-label">Monto (USDT) *</label>
+              <label class="m-label" for="deal-usdt">Monto (USDT)</label>
               <input
+                id="deal-usdt"
                 type="number"
-                class="terminal-input"
-                placeholder="Ej: 1000"
+                class="crm-input"
+                placeholder="100.00"
                 [ngModel]="dealAmountUsdt()"
                 (ngModelChange)="dealAmountUsdt.set($event)"
               />
             </div>
-
-            <!-- Tasa Cliente -->
             <div class="m-field">
-              <label class="m-label">Tasa al Cliente *</label>
+              <label class="m-label" for="deal-rate">Tasa Pactada</label>
               <input
+                id="deal-rate"
                 type="number"
-                class="terminal-input"
-                placeholder="Ej: 84.50"
+                class="crm-input"
                 [ngModel]="dealAppliedRate()"
                 (ngModelChange)="dealAppliedRate.set($event)"
               />
             </div>
-
-            <!-- Tasa Reemplazo -->
             <div class="m-field">
-              <label class="m-label">Tasa Costo / Reemplazo</label>
+              <label class="m-label" for="deal-repl-rate">Tasa de Reposición</label>
               <input
+                id="deal-repl-rate"
                 type="number"
-                class="terminal-input"
-                placeholder="Ej: 82.00"
+                class="crm-input"
                 [ngModel]="dealReplacementRate()"
                 (ngModelChange)="dealReplacementRate.set($event)"
               />
             </div>
-
-            <!-- TTL en minutos -->
             <div class="m-field">
-              <label class="m-label">Límite de Tasa (Minutos TTL)</label>
+              <label class="m-label" for="deal-ttl">TTL Reserva (Min)</label>
               <input
+                id="deal-ttl"
                 type="number"
-                class="terminal-input"
-                placeholder="15"
+                class="crm-input"
                 [ngModel]="dealQuoteTtlMinutes()"
                 (ngModelChange)="dealQuoteTtlMinutes.set($event)"
               />
             </div>
-
-            <!-- Referencia preliminar opcional -->
             <div class="m-field full-width">
-              <label class="m-label">Referencia / Comprobante (Opcional si es cotización)</label>
+              <label class="m-label" for="deal-ref">Referencia Bancaria (Opcional)</label>
               <input
+                id="deal-ref"
                 type="text"
-                class="terminal-input"
-                placeholder="Ej: 12345678"
+                class="crm-input"
+                placeholder="Últimos dígitos o ID de comprobante"
                 [ngModel]="dealReferenceId()"
                 (ngModelChange)="dealReferenceId.set($event)"
               />
             </div>
-
-            <!-- Vista Previa de Cotización Comercial -->
-            <div class="quote-preview-box full-width">
-              <div class="q-row">
-                <span>Total Fiat a Cobrar:</span>
-                <span class="font-mono">{{ dealCommercialQuote().totalFiatToCollect | number:'1.2-2' }}</span>
-              </div>
-              <div class="q-row">
-                <span>Ganancia Neta Estimada:</span>
-                <span class="font-mono text-emerald">+${{ dealCommercialQuote().netProfitUsdt | number:'1.2-2' }} USDT</span>
-              </div>
-              <div class="q-row">
-                <span>Margen Porcentual:</span>
-                <span class="font-mono text-blue">{{ dealCommercialQuote().marginPct | number:'1.2-2' }}%</span>
+            <div class="m-field full-width">
+              <div class="quote-preview-box">
+                <div class="q-row">
+                  <span>Fiat Estimado a Recibir</span>
+                  <strong class="crm-tabular">{{ dealCommercialQuote().totalFiatToCollect | number:'1.2-2' }}</strong>
+                </div>
+                <div class="q-row">
+                  <span>Margen / PnL Neto Proyectado</span>
+                  <strong class="text-positive crm-tabular">
+                    +{{ dealCommercialQuote().netProfitUsdt | number:'1.2-2' }} USDT
+                    ({{ dealCommercialQuote().marginPct | number:'1.2-2' }}%)
+                  </strong>
+                </div>
               </div>
             </div>
           </div>
         </div>
-
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="showAddDealModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-quote" (click)="saveNewDeal(false)">+ Crear en Cotizado</button>
-          <button type="button" class="btn-confirm-direct" (click)="saveNewDeal(true)">⚡ Liquidar Directo</button>
+          <button type="button" class="crm-btn-glass" (click)="showAddDealModal.set(false)">Cancelar</button>
+          <button type="button" class="crm-btn-glass" (click)="saveNewDeal(false)">Crear en Cotizado</button>
+          <button type="button" class="crm-btn-primary" (click)="saveNewDeal(true)">Liquidar Directo</button>
         </div>
       </div>
     </div>
   }
 
-  <!-- MODAL: NUEVO CONTACTO -->
+  <!-- 4. MODAL NUEVO CONTACTO / CONTRAPARTE -->
   @if (showAddContactModal()) {
-    <div class="modal-backdrop" (click)="showAddContactModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-new-contact-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showAddContactModal.set(false)"
+      (keydown.escape)="showAddContactModal.set(false)"
+    >
+      <div class="modal-dialog crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">👤</span>
-            <h3 class="modal-title">Nuevo Contacto ({{ activeScope() }})</h3>
+            <h3 id="modal-new-contact-title" class="modal-title">Registrar Nueva Contraparte</h3>
           </div>
-          <button type="button" class="btn-close-modal" (click)="showAddContactModal.set(false)">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="showAddContactModal.set(false)"
+          >
+            ×
+          </button>
         </div>
-
         <div class="modal-body">
           <div class="modal-form-grid">
-            <div class="m-field full-width">
-              <label class="m-label">Nombre del Contacto o Empresa *</label>
+            <div class="m-field">
+              <label class="m-label" for="contact-name">Nombre / Razón Social</label>
               <input
+                id="contact-name"
                 type="text"
-                class="terminal-input"
-                placeholder="Ej: Carlos Mendoza"
+                class="crm-input"
                 [ngModel]="newContactName()"
                 (ngModelChange)="newContactName.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Documento / Cédula / RIF</label>
+              <label class="m-label" for="contact-doc">Documento / RIF / ID</label>
               <input
+                id="contact-doc"
                 type="text"
-                class="terminal-input"
-                placeholder="V-12345678"
+                class="crm-input"
                 [ngModel]="newContactDocId()"
                 (ngModelChange)="newContactDocId.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Teléfono / WhatsApp</label>
+              <label class="m-label" for="contact-phone">WhatsApp / Teléfono</label>
               <input
+                id="contact-phone"
                 type="text"
-                class="terminal-input"
-                placeholder="+584141234567"
+                class="crm-input"
                 [ngModel]="newContactPhone()"
                 (ngModelChange)="newContactPhone.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Categoría</label>
+              <label class="m-label" for="contact-cat">Categoría</label>
               <select
-                class="terminal-select"
+                id="contact-cat"
+                class="crm-input"
                 [ngModel]="newContactCategory()"
                 (ngModelChange)="newContactCategory.set($event)"
               >
-                @if (activeScope() === 'P2P_DESK') {
-                  <option value="CLIENT_P2P">Cliente P2P Habitual</option>
-                  <option value="VIP_OTC">Cliente VIP OTC</option>
-                } @else {
-                  <option value="SUPPLIER_360">Proveedor Comercial</option>
-                  <option value="CLIENT_360">Cliente Comercial</option>
-                }
+                <option value="CLIENT_P2P">Cliente P2P</option>
+                <option value="VIP_OTC">VIP OTC</option>
+                <option value="CLIENT_360">Cliente 360</option>
+                <option value="SUPPLIER_360">Proveedor 360</option>
               </select>
             </div>
-
-            <div class="m-field">
-              <label class="m-label">Tope Máximo Exposición Flotante (USDT)</label>
+            <div class="m-field full-width">
+              <label class="m-label" for="contact-exp">Exposición Máxima Segura (USDT)</label>
               <input
+                id="contact-exp"
                 type="number"
-                class="terminal-input"
-                placeholder="5000"
+                class="crm-input"
                 [ngModel]="newContactMaxExposure()"
                 (ngModelChange)="newContactMaxExposure.set($event)"
               />
             </div>
-
             <div class="m-field full-width">
-              <label class="m-label">Datos Bancarios / Pago Móvil del Contacto</label>
+              <label class="m-label" for="contact-pay">Datos de Pago / Riel Habitual</label>
               <textarea
-                class="terminal-input"
-                rows="2"
-                placeholder="Banesco / 0414-1234567 / V-12345678"
+                id="contact-pay"
+                rows="3"
+                class="crm-input"
                 [ngModel]="newContactPaymentDetails()"
                 (ngModelChange)="newContactPaymentDetails.set($event)"
               ></textarea>
             </div>
           </div>
         </div>
-
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="showAddContactModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-save" (click)="saveNewContact()">Guardar Contacto</button>
+          <button type="button" class="crm-btn-glass" (click)="showAddContactModal.set(false)">Cancelar</button>
+          <button type="button" class="crm-btn-primary" (click)="saveNewContact()">Guardar Contacto</button>
         </div>
       </div>
     </div>
   }
 
-  <!-- MODAL: AGREGAR BANCO -->
+  <!-- 5. MODAL NUEVO BANCO / RIEL DE PAGO -->
   @if (showAddBankModal()) {
-    <div class="modal-backdrop" (click)="showAddBankModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-new-bank-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showAddBankModal.set(false)"
+      (keydown.escape)="showAddBankModal.set(false)"
+    >
+      <div class="modal-dialog crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">🏦</span>
-            <h3 class="modal-title">Agregar Cuenta Bancaria ({{ activeScope() }})</h3>
+            <h3 id="modal-new-bank-title" class="modal-title">Agregar Riel Bancario</h3>
           </div>
-          <button type="button" class="btn-close-modal" (click)="showAddBankModal.set(false)">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="showAddBankModal.set(false)"
+          >
+            ×
+          </button>
         </div>
-
         <div class="modal-body">
           <div class="modal-form-grid">
             <div class="m-field">
-              <label class="m-label">Nombre del Banco o Riel *</label>
+              <label class="m-label" for="bank-name">Nombre del Banco / Billetera</label>
               <input
+                id="bank-name"
                 type="text"
-                class="terminal-input"
+                class="crm-input"
                 placeholder="Ej: Banesco Pago Móvil"
                 [ngModel]="newBankName()"
                 (ngModelChange)="newBankName.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Moneda *</label>
+              <label class="m-label" for="bank-curr">Moneda</label>
               <select
-                class="terminal-select"
+                id="bank-curr"
+                class="crm-input"
                 [ngModel]="newBankCurrency()"
                 (ngModelChange)="newBankCurrency.set($event)"
               >
-                <option value="VES">VES (Bolívares)</option>
-                <option value="COP">COP (Pesos Colombianos)</option>
-                <option value="USD">USD (Dólares)</option>
+                <option value="VES">VES</option>
+                <option value="USD">USD</option>
+                <option value="COP">COP</option>
+                <option value="EUR">EUR</option>
               </select>
             </div>
-
             <div class="m-field">
-              <label class="m-label">Saldo Inicial Fiat</label>
+              <label class="m-label" for="bank-init">Saldo Inicial</label>
               <input
+                id="bank-init"
                 type="number"
-                class="terminal-input"
-                placeholder="0.00"
+                class="crm-input"
                 [ngModel]="newBankInitialBalance()"
                 (ngModelChange)="newBankInitialBalance.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Tope Diario Fiat</label>
+              <label class="m-label" for="bank-cap">Límite Diario Fiat</label>
               <input
+                id="bank-cap"
                 type="number"
-                class="terminal-input"
-                placeholder="50000"
+                class="crm-input"
                 [ngModel]="newBankDailyCap()"
                 (ngModelChange)="newBankDailyCap.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Comisión Bancaria (%)</label>
+              <label class="m-label" for="bank-fee">Comisión Operativa (%)</label>
               <input
+                id="bank-fee"
                 type="number"
-                class="terminal-input"
-                placeholder="0.3"
+                class="crm-input"
                 [ngModel]="newBankFeePct()"
                 (ngModelChange)="newBankFeePct.set($event)"
               />
             </div>
-
             <div class="m-field">
-              <label class="m-label">Máx Ráfagas en 15 Minutos</label>
+              <label class="m-label" for="bank-burst">Ráfaga Máx / 15m</label>
               <input
+                id="bank-burst"
                 type="number"
-                class="terminal-input"
-                placeholder="5"
+                class="crm-input"
                 [ngModel]="newBankBurstMax()"
                 (ngModelChange)="newBankBurstMax.set($event)"
               />
             </div>
-
             <div class="m-field full-width">
-              <label class="m-label">Datos del Titular para 1-Click Copy</label>
+              <label class="m-label" for="bank-holder">Datos para Copiar (Titular / Cédula / Cuenta)</label>
               <textarea
-                class="terminal-input"
-                rows="2"
-                placeholder="Titular: Inversiones Skalix C.A. / RIF: J-12345678 / Pago Móvil: 0414-1234567"
+                id="bank-holder"
+                rows="3"
+                class="crm-input"
                 [ngModel]="newBankHolderDetails()"
                 (ngModelChange)="newBankHolderDetails.set($event)"
               ></textarea>
             </div>
           </div>
         </div>
-
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="showAddBankModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-confirm-save" (click)="saveNewBank()">Guardar Cuenta</button>
+          <button type="button" class="crm-btn-glass" (click)="showAddBankModal.set(false)">Cancelar</button>
+          <button type="button" class="crm-btn-primary" (click)="saveNewBank()">Guardar Cuenta</button>
         </div>
       </div>
     </div>
   }
 
-  <!-- MODAL: LIQUIDAR TRATO (STAGE_4_CLOSED) NON-BLOCKING -->
+  <!-- 6. MODAL CIERRE Y VERIFICACIÓN DE REFERENCIA -->
   @if (promptClosingDeal(); as p) {
-    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-close-deal-title" (click)="cancelCloseDealModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-close-deal-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && cancelCloseDealModal()"
+      (keydown.escape)="cancelCloseDealModal()"
+    >
+      <div class="modal-dialog crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">⚡</span>
-            <h3 id="modal-close-deal-title" class="modal-title">Liquidar Operación #{{ p.deal.id }}</h3>
+            <h3 id="modal-close-deal-title" class="modal-title">Liquidar Trato #{{ p.deal.id }}</h3>
           </div>
-          <button type="button" class="btn-close-modal" aria-label="Cerrar modal" (click)="cancelCloseDealModal()">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="cancelCloseDealModal()"
+          >
+            ×
+          </button>
         </div>
-
         <div class="modal-body">
-          <p style="color: #94a3b8; font-size: 13px; margin-bottom: 16px;">
-            Para cerrar y liquidar la operación de <strong>{{ p.deal.cryptoAmountUsdt }} USDT</strong> ({{ p.deal.contactName }}), ingrese el número de comprobante o referencia bancaria:
+          <p class="modal-lead-copy">
+            Contraparte: <strong>{{ p.deal.contactName }}</strong> • Monto: <strong>{{ p.deal.cryptoAmountUsdt }} USDT</strong>
           </p>
-
-          <div class="m-field full-width">
-            <label class="m-label" for="close-deal-ref-input">Número de Referencia Bancaria *</label>
+          <div class="m-field">
+            <label class="m-label" for="close-deal-ref">Número de Referencia Bancaria</label>
             <input
-              id="close-deal-ref-input"
+              id="close-deal-ref"
               type="text"
-              class="terminal-input"
-              placeholder="Ej: 83948123"
+              class="crm-input"
+              placeholder="Ej: 8849201"
               [ngModel]="p.reference"
               (ngModelChange)="updateCloseDealRef($event)"
-              autofocus
             />
           </div>
-
           @if (p.isDuplicate) {
-            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 6px; padding: 12px; margin-top: 14px; color: #fca5a5; font-size: 12px;">
-              ⚠️ <strong>ALERTA DE COLISIÓN:</strong> Esta referencia ya fue utilizada en la operación #{{ p.collidingDealId }}. ¿Desea forzar la liquidación con esta misma referencia?
+            <div class="modal-alert-danger" role="alert">
+              Colisión Anti-Fraude: referencia ya utilizada en trato #{{ p.collidingDealId || 'previo' }}.
             </div>
           }
         </div>
-
         <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="cancelCloseDealModal()">Cancelar</button>
+          <button type="button" class="crm-btn-glass" (click)="cancelCloseDealModal()">Cancelar</button>
           @if (p.isDuplicate) {
-            <button type="button" class="btn-confirm-save" style="background: #dc2626;" (click)="executeCloseDealModal(true)">
-              Forzar Liquidación Duplicada
+            <button type="button" class="crm-btn-danger-solid" (click)="executeCloseDealModal(true)">
+              Forzar Liquidación
             </button>
           } @else {
-            <button type="button" class="btn-confirm-save" (click)="executeCloseDealModal(false)">
+            <button type="button" class="crm-btn-primary" (click)="executeCloseDealModal(false)">
               Confirmar Liquidación
             </button>
           }
@@ -3053,30 +784,39 @@
     </div>
   }
 
-  <!-- MODAL: CONFIRMACIÓN GENÉRICA NON-BLOCKING (ELECTRON-SAFE) -->
+  <!-- 7. MODAL CONFIRMACIÓN SEGURA -->
   @if (confirmModal(); as c) {
-    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title" (click)="closeConfirmModal()">
-      <div class="modal-dialog" (click)="$event.stopPropagation()" style="max-width: 440px;">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-confirm-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && closeConfirmModal()"
+      (keydown.escape)="closeConfirmModal()"
+    >
+      <div class="modal-dialog modal-dialog-sm crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">⚠️</span>
             <h3 id="modal-confirm-title" class="modal-title">{{ c.title }}</h3>
           </div>
-          <button type="button" class="btn-close-modal" aria-label="Cerrar modal" (click)="closeConfirmModal()">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; white-space: pre-line; margin: 0;">
-            {{ c.message }}
-          </p>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-cancel" (click)="closeConfirmModal()">Cancelar</button>
           <button
             type="button"
-            class="btn-confirm-save"
-            [style.background]="c.isDestructive ? '#dc2626' : '#2563eb'"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="closeConfirmModal()"
+          >
+            ×
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-lead-copy">{{ c.message }}</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="crm-btn-glass" (click)="closeConfirmModal()">Cancelar</button>
+          <button
+            type="button"
+            [class]="c.isDestructive ? 'crm-btn-danger-solid' : 'crm-btn-primary'"
             (click)="c.onConfirm()"
           >
             {{ c.confirmLabel || 'Confirmar' }}
@@ -3086,93 +826,93 @@
     </div>
   }
 
-  <!-- MODAL: CONFIGURACIÓN Y ESTADO DEL INBOUND GATEWAY -->
+  <!-- 8. MODAL CONFIGURACIÓN INBOUND GATEWAY & PSQL -->
   @if (showGatewayConfigModal()) {
-    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-gateway-title" (click)="showGatewayConfigModal.set(false)">
-      <div class="modal-dialog" (click)="$event.stopPropagation()" style="max-width: 500px;">
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-gateway-title"
+      tabindex="-1"
+      (click)="$event.target === $event.currentTarget && showGatewayConfigModal.set(false)"
+      (keydown.escape)="showGatewayConfigModal.set(false)"
+    >
+      <div class="modal-dialog modal-dialog-md crm-liquid-glass">
         <div class="modal-header">
           <div class="modal-title-row">
-            <span class="m-icon">⚡</span>
-            <h3 id="modal-gateway-title" class="modal-title">Configuración Inbound Gateway</h3>
+            <h3 id="modal-gateway-title" class="modal-title">Enlace Inbound Gateway & PostgreSQL</h3>
           </div>
-          <button type="button" class="btn-close-modal" aria-label="Cerrar modal" (click)="showGatewayConfigModal.set(false)">✕</button>
+          <button
+            type="button"
+            class="btn-close-modal"
+            aria-label="Cerrar modal"
+            (click)="showGatewayConfigModal.set(false)"
+          >
+            ×
+          </button>
         </div>
-
-        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
-          <div style="font-size: 13px; color: #94a3b8; line-height: 1.5;">
-            El Inbound Gateway recibe webhooks de WhatsApp, Instagram y comprobantes bancarios vía SSE.
-            En Android, debés apuntar a la IP Wi-Fi de tu PC.
-          </div>
-
-          <div class="m-field full-width">
-            <label class="m-label">URL del Gateway (SSE &amp; REST)</label>
+        <div class="modal-body">
+          <div class="m-field">
+            <label class="m-label" for="gateway-url-input">URL del Gateway SSE / API</label>
             <input
+              id="gateway-url-input"
               type="text"
-              class="terminal-input"
+              class="crm-input"
               [ngModel]="gatewayUrlInput()"
               (ngModelChange)="gatewayUrlInput.set($event)"
-              placeholder="http://192.168.123.7:3030 o http://127.0.0.1:3030"
             />
           </div>
-
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">Atajos de Conexión:</span>
-            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-              <button
-                type="button"
-                class="btn-tag"
-                style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; cursor: pointer;"
-                (click)="setGatewayUrlPreset('http://127.0.0.1:3030')"
-              >
-                PC Localhost (127.0.0.1:3030)
-              </button>
-              <button
-                type="button"
-                class="btn-tag"
-                style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(216,180,92,0.12); border: 1px solid rgba(216,180,92,0.3); color: #f0d48a; cursor: pointer;"
-                (click)="setGatewayUrlPreset('http://192.168.123.7:3030')"
-              >
-                Wi-Fi Móvil (192.168.123.7:3030)
-              </button>
-              <button
-                type="button"
-                class="btn-tag"
-                style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; cursor: pointer;"
-                (click)="setGatewayUrlPreset('http://10.0.2.2:3030')"
-              >
-                Emulador Android (10.0.2.2:3030)
-              </button>
-            </div>
-          </div>
-
-          @if (gatewayTestResult(); as res) {
-            <div
-              [style.background]="res.ok ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)'"
-              [style.border]="res.ok ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)'"
-              [style.color]="res.ok ? '#4ade80' : '#f87171'"
-              style="padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.4;"
+          <div class="gateway-presets">
+            <button
+              type="button"
+              class="crm-btn-glass"
+              (click)="setGatewayUrlPreset('http://127.0.0.1:3030')"
             >
-              {{ res.message }}
+              Local Desktop (127.0.0.1)
+            </button>
+            <button
+              type="button"
+              class="crm-btn-glass"
+              (click)="setGatewayUrlPreset('http://192.168.123.7:3030')"
+            >
+              Red LAN (192.168.123.7)
+            </button>
+            <button
+              type="button"
+              class="crm-btn-glass"
+              (click)="setGatewayUrlPreset('http://10.0.2.2:3030')"
+            >
+              Emulador Android (10.0.2.2)
+            </button>
+          </div>
+          @if (gatewayTestResult(); as gwRes) {
+            <div
+              class="gateway-test-banner"
+              [class.is-ok]="gwRes.ok"
+              [class.is-error]="!gwRes.ok"
+              role="status"
+            >
+              {{ gwRes.message }}
             </div>
           }
         </div>
-
-        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="modal-footer">
           <button
             type="button"
-            class="btn-cancel"
+            class="crm-btn-glass"
             [disabled]="gatewayTesting()"
             (click)="testGatewayConnection()"
-            style="color: #93c5fd; border-color: rgba(147, 197, 253, 0.3);"
           >
-            {{ gatewayTesting() ? 'Probando...' : '🔍 Probar Conexión' }}
+            {{ gatewayTesting() ? 'Probando...' : 'Probar Conexión' }}
           </button>
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn-cancel" (click)="showGatewayConfigModal.set(false)">Cancelar</button>
-            <button type="button" class="btn-confirm-save" (click)="saveAndConnectGateway()">Guardar y Conectar</button>
-          </div>
+          <button type="button" class="crm-btn-glass" (click)="showGatewayConfigModal.set(false)">
+            Cancelar
+          </button>
+          <button type="button" class="crm-btn-primary" (click)="saveAndConnectGateway()">
+            Guardar y Conectar
+          </button>
         </div>
       </div>
     </div>
   }
-</div>
+</main>

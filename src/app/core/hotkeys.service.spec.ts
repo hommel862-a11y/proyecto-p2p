@@ -106,4 +106,35 @@ describe('HotkeysService', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', metaKey: true }));
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it('routes Ctrl+K / Cmd+K to a registered scoped palette without opening global palette', () => {
+    let scopedOpen = false;
+    const unregister = service.registerScopedPalette(
+      () => {
+        scopedOpen = !scopedOpen;
+      },
+      () => {
+        if (!scopedOpen) return false;
+        scopedOpen = false;
+        return true;
+      }
+    );
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+    expect(scopedOpen).toBe(true);
+    expect(service.isPaletteOpen()).toBe(false);
+
+    // Escape closes the scoped palette first instead of triggering bot kill-switch
+    repricer.start();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(scopedOpen).toBe(false);
+    expect(repricer.isActive()).toBe(true);
+    repricer.killSwitch();
+
+    unregister();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'K', metaKey: true }));
+    expect(scopedOpen).toBe(false);
+    expect(service.isPaletteOpen()).toBe(true);
+  });
 });

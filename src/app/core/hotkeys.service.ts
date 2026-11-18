@@ -121,6 +121,8 @@ export class HotkeysService implements OnDestroy {
   readonly isPaletteOpen = signal<boolean>(false);
   private readonly listeners = new Map<HotkeyAction, Set<() => void>>();
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private scopedPaletteHandler: (() => void) | null = null;
+  private scopedEscapeHandler: (() => boolean) | null = null;
 
   constructor() {
     this.initGlobalListener();
@@ -131,6 +133,30 @@ export class HotkeysService implements OnDestroy {
       window.removeEventListener('keydown', this.keydownHandler);
       this.keydownHandler = null;
     }
+    this.scopedPaletteHandler = null;
+    this.scopedEscapeHandler = null;
+  }
+
+  /**
+   * Registers a module-local Ctrl+K / Cmd+K palette handler so workspace routes
+   * (such as CRM / ARM) override the global palette instead of opening both at once.
+   */
+  registerScopedPalette(
+    onTogglePalette: () => void,
+    onEscape?: () => boolean
+  ): () => void {
+    this.scopedPaletteHandler = onTogglePalette;
+    this.scopedEscapeHandler = onEscape ?? null;
+    if (this.isPaletteOpen()) {
+      this.closePalette();
+    }
+
+    return () => {
+      if (this.scopedPaletteHandler === onTogglePalette) {
+        this.scopedPaletteHandler = null;
+        this.scopedEscapeHandler = null;
+      }
+    };
   }
 
   register(action: HotkeyAction, callback: () => void): () => void {
@@ -193,15 +219,24 @@ export class HotkeysService implements OnDestroy {
           target.tagName === 'SELECT' ||
           target.isContentEditable);
 
-      // Ctrl+K / Cmd+K opens palette
-      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+      // Ctrl+K / Cmd+K opens scoped palette if registered, otherwise global palette
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        this.togglePalette();
+        if (this.scopedPaletteHandler) {
+          this.scopedPaletteHandler();
+        } else {
+          this.togglePalette();
+        }
         return;
       }
 
-      // ESC always closes palette, then modal, then kills bot — even inside inputs
+      // ESC closes scoped palette first, then global palette, cheat sheet modal, then kills bot
       if (event.key === 'Escape') {
+        if (this.scopedEscapeHandler?.()) {
+          event.preventDefault();
+          return;
+        }
+
         if (this.isPaletteOpen()) {
           this.closePalette();
           event.preventDefault();
