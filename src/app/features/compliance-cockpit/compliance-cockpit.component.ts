@@ -46,6 +46,15 @@ import {
   buildGeminiMultimodalOcrPayload,
   parseGeminiOcrResponse,
   formatFiatNumber,
+  ARM_WORKSPACES,
+  getWorkspaceStages,
+  getWorkspaceAgents,
+  getWorkspaceCatalog,
+  runArmSandboxSimulationTurn,
+  recordShadowLearningCorrection,
+  selectFewShotExamplesForAgent,
+  processCloserPostCallNote,
+  evaluateGhostingFollowUp,
   type CrmImportStrategy,
   type CrmCsvCatalogEntity,
   type WorkspaceScope,
@@ -74,6 +83,14 @@ import {
   type CrmBillingDocument,
   type OmnichannelIntegrationConfig,
   type GeminiOcrParsedResult,
+  type ArmWorkspaceId,
+  type ArmPipelineStageConfig,
+  type ArmAgentDefinition,
+  type ArmApprovalQueueItem,
+  type ArmAutonomousFeedEvent,
+  type ArmShadowExample,
+  type ArmSandboxPersonaId,
+  type ArmOutboxSseEvent,
 } from '@p2p/core';
 
 export type CrmModuleView =
@@ -83,6 +100,7 @@ export type CrmModuleView =
   | 'BANKS'
   | 'ACTIVITIES'
   | 'OMNICHANNEL'
+  | 'ARM_COMMAND'
   | 'SETTINGS';
 
 @Component({
@@ -101,15 +119,22 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly inboundGateway = inject(InboundGatewayService);
 
   private gatewaySubscription: Subscription | null = null;
+  private armEventSubscription: Subscription | null = null;
 
   constructor() {
     this.gatewaySubscription = this.inboundGateway.receipt$.subscribe((receipt) => {
       this.handleInboundReceipt(receipt);
     });
+    if (this.inboundGateway.armEvent$) {
+      this.armEventSubscription = this.inboundGateway.armEvent$.subscribe((evt: ArmOutboxSseEvent) => {
+        this.handleIncomingArmOutboxEvent(evt);
+      });
+    }
   }
 
   ngOnDestroy(): void {
     this.gatewaySubscription?.unsubscribe();
+    this.armEventSubscription?.unsubscribe();
   }
 
   readonly showGatewayConfigModal = signal<boolean>(false);
@@ -2551,6 +2576,250 @@ export class ComplianceCockpitComponent implements OnDestroy {
     const nextActivities = [newEntry, ...this.activities()].slice(0, 100);
     this.activities.set(nextActivities);
     this.storage.set(CRM_STORAGE_KEYS.ACTIVITIES, nextActivities);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 11. ARM MULTI-WORKSPACE COMMAND CENTER, HITL QUEUE, SANDBOX & CLOSER COPILOT
+  // ---------------------------------------------------------------------------
+  readonly activeArmSilo = signal<ArmWorkspaceId>('ARM_B2B');
+  readonly armApprovalQueue = signal<ArmApprovalQueueItem[]>([]);
+  readonly armAutonomousFeed = signal<ArmAutonomousFeedEvent[]>([]);
+  readonly armShadowExamples = signal<ArmShadowExample[]>([]);
+  readonly selectedSandboxPersona = signal<ArmSandboxPersonaId>('SKEPTICAL_DISCOUNT_30');
+  readonly closerNoteLeadName = signal<string>('Clínica Aurora');
+  readonly closerNoteTranscript = signal<string>('');
+  readonly editingApprovalId = signal<string | null>(null);
+  readonly editingApprovalText = signal<string>('');
+  readonly editingSaveAsExample = signal<boolean>(true);
+
+  readonly activeArmWorkspaceConfig = computed(() => ARM_WORKSPACES[this.activeArmSilo()]);
+  readonly armStagesForSilo = computed<ArmPipelineStageConfig[]>(() =>
+    getWorkspaceStages(this.activeArmSilo()),
+  );
+  readonly armAgentsForSilo = computed<ArmAgentDefinition[]>(() =>
+    getWorkspaceAgents(this.activeArmSilo()),
+  );
+  readonly armApprovalQueueForSilo = computed<ArmApprovalQueueItem[]>(() =>
+    this.armApprovalQueue().filter(
+      (item) => item.workspaceId === this.activeArmSilo() && item.status === 'PENDING',
+    ),
+  );
+  readonly armAutonomousFeedForSilo = computed<ArmAutonomousFeedEvent[]>(() =>
+    this.armAutonomousFeed().filter((f) => f.workspaceId === this.activeArmSilo()),
+  );
+  readonly armShadowExamplesForSilo = computed<ArmShadowExample[]>(() =>
+    selectFewShotExamplesForAgent(this.armShadowExamples(), this.activeArmSilo(), 'QUOTER', 10),
+  );
+
+  setArmSilo(silo: ArmWorkspaceId): void {
+    this.activeArmSilo.set(silo);
+    if (silo === 'P2P_DESK' || silo === 'FINANCE_360') {
+      this.activeScope.set(silo);
+    }
+    this.editingApprovalId.set(null);
+  }
+
+  triggerArmSandboxTurn(personaOverride?: ArmSandboxPersonaId): void {
+    const silo = this.activeArmSilo();
+    const persona =
+      personaOverride ??
+      (silo === 'P2P_DESK'
+        ? 'P2P_SPOOFED_RECEIPT'
+        : silo === 'FINANCE_360'
+          ? 'PYME_SPLIT_PAYMENT'
+          : this.selectedSandboxPersona());
+
+    const sim = runArmSandboxSimulationTurn({
+      workspaceId: silo,
+      personaId: persona,
+    });
+
+    const newEvents: ArmAutonomousFeedEvent[] = sim.toolTrace.map((t, idx) => ({
+      id: `feed-${Date.now()}-${idx}`,
+      workspaceId: silo,
+      agentRole: t.agentRole,
+      agentName: `${t.agentRole} (${silo})`,
+      leadId: `sbx-${silo.toLowerCase()}`,
+      leadName: sim.queuedApproval?.leadName || `[Sandbox] ${silo}`,
+      toolName: t.toolName,
+      summary: `${t.toolName} → ${t.outcome} (Movido: ${sim.fromStageSlug} → ${sim.toStageSlug})`,
+      latencyMs: t.latencyMs,
+      timestamp: Date.now(),
+      isSandbox: true,
+    }));
+
+    this.armAutonomousFeed.set([...newEvents, ...this.armAutonomousFeed()].slice(0, 60));
+
+    if (sim.queuedApproval) {
+      this.armApprovalQueue.set([sim.queuedApproval, ...this.armApprovalQueue()]);
+    }
+
+    this.toast.info(
+      `Simulación Sandbox (${silo}) ejecutada a $0 costo Meta API: ${sim.fromStageSlug} → ${sim.toStageSlug}`,
+      'ARM Sandbox',
+    );
+  }
+
+  startEditArmApproval(item: ArmApprovalQueueItem): void {
+    this.editingApprovalId.set(item.id);
+    const msg =
+      (item.proposedPayload['proposedWhatsappMessage'] as string) ||
+      (item.proposedPayload['previewText'] as string) ||
+      JSON.stringify(item.proposedPayload);
+    this.editingApprovalText.set(msg);
+    this.editingSaveAsExample.set(true);
+  }
+
+  approveArmQueueItem(id: string, editedText?: string, saveAsExample = false): void {
+    const target = this.armApprovalQueue().find((a) => a.id === id);
+    if (!target) return;
+
+    const proposedMsg =
+      (target.proposedPayload['proposedWhatsappMessage'] as string) ||
+      (target.proposedPayload['previewText'] as string) ||
+      target.title;
+    const finalMsg = editedText && editedText.trim().length > 0 ? editedText.trim() : proposedMsg;
+
+    if (saveAsExample && finalMsg !== proposedMsg) {
+      const updatedExamples = recordShadowLearningCorrection(this.armShadowExamples(), {
+        workspaceId: target.workspaceId,
+        agentRole: target.requestedByRole,
+        actionType: target.actionType,
+        proposedText: proposedMsg,
+        approvedText: finalMsg,
+        saveAsExample: true,
+      });
+      this.armShadowExamples.set(updatedExamples);
+    }
+
+    this.armApprovalQueue.set(
+      this.armApprovalQueue().map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              status: finalMsg !== proposedMsg ? 'EDITED_AND_APPROVED' : 'APPROVED',
+              finalApprovedPayload: { ...a.proposedPayload, approvedMessage: finalMsg },
+              saveAsExample,
+            }
+          : a,
+      ),
+    );
+
+    const feedEvt: ArmAutonomousFeedEvent = {
+      id: `feed-app-${Date.now()}`,
+      workspaceId: target.workspaceId,
+      agentRole: target.requestedByRole,
+      agentName: `${target.requestedByRole} [HITL OK]`,
+      leadId: target.leadId,
+      leadName: target.leadName,
+      toolName: target.toolName,
+      summary: `Aprobado por Humano: ${target.title}`,
+      latencyMs: 15,
+      timestamp: Date.now(),
+    };
+    this.armAutonomousFeed.set([feedEvt, ...this.armAutonomousFeed()]);
+    this.editingApprovalId.set(null);
+    this.toast.success(`Acción aprobada y despachada en ${target.workspaceId}.`, 'HITL Aprobado');
+  }
+
+  takeoverHumanFromArmQueue(id: string): void {
+    const target = this.armApprovalQueue().find((a) => a.id === id);
+    if (!target) return;
+
+    this.armApprovalQueue.set(
+      this.armApprovalQueue().map((a) => (a.id === id ? { ...a, status: 'REJECTED' } : a)),
+    );
+    this.toast.warn(
+      `Control humano activado para ${target.leadName} (${target.workspaceId}). Agentes en pausa.`,
+      'Human Takeover',
+    );
+  }
+
+  submitCloserVoiceNoteForArm(): void {
+    const transcript = this.closerNoteTranscript().trim();
+    if (!transcript) {
+      this.toast.warn('Ingresá o dictá la nota post-llamada de 30s del closer.', 'Closer Copilot');
+      return;
+    }
+
+    const silo = this.activeArmSilo();
+    const defaultSku =
+      getWorkspaceCatalog(silo)[0]?.sku ||
+      (silo === 'ARM_B2B' ? 'PLAN-ENTERPRISE' : 'PYME-SERV-360');
+
+    const res = processCloserPostCallNote({
+      workspaceId: silo,
+      leadId: `closer-lead-${Date.now()}`,
+      leadName: this.closerNoteLeadName().trim() || 'Prospecto Closer',
+      voiceNoteTranscript: transcript,
+      sku: defaultSku,
+    });
+
+    this.armApprovalQueue.set([res.approvalEntry, ...this.armApprovalQueue()]);
+    this.armAutonomousFeed.set([
+      {
+        id: `feed-closer-${Date.now()}`,
+        workspaceId: silo,
+        agentRole: 'QUOTER',
+        agentName: 'Closer Copilot AI',
+        leadId: res.approvalEntry.leadId,
+        leadName: res.approvalEntry.leadName,
+        toolName: 'processCloserPostCallNote',
+        summary: `${res.executiveNotes} → Etapa sugerida: ${res.recommendedStageSlug}`,
+        latencyMs: 92,
+        timestamp: Date.now(),
+      },
+      ...this.armAutonomousFeed(),
+    ]);
+    this.closerNoteTranscript.set('');
+    this.toast.success('Nota post-llamada procesada y propuesta enviada a Approval Queue.', 'Closer Copilot');
+  }
+
+  triggerAntiGhostingScanForSilo(): void {
+    const silo = this.activeArmSilo();
+    const now = Date.now();
+    const ghostRes = evaluateGhostingFollowUp({
+      workspaceId: silo,
+      leadId: `ghost-${silo.toLowerCase()}`,
+      leadName: silo === 'ARM_B2B' ? 'Dr. Méndez (Clínica Norte)' : 'Cliente Inactivo 72h',
+      lastInboundTimestampMs: now - 72 * 3600 * 1000,
+      nowTimestampMs: now,
+      followupAttempts: 1,
+      painPointMemory:
+        silo === 'ARM_B2B'
+          ? 'automatizar agenda y reducir ausentismo de pacientes'
+          : 'liquidación rápida sin fricción bancaria',
+    });
+
+    if (ghostRes.shouldQueueFollowUp && ghostRes.approvalEntry) {
+      this.armApprovalQueue.set([ghostRes.approvalEntry, ...this.armApprovalQueue()]);
+      this.toast.info('Detectado prospecto sin respuesta (72h). Plantilla HSM encolada.', 'Anti-Ghosting');
+    }
+  }
+
+  private handleIncomingArmOutboxEvent(evt: ArmOutboxSseEvent): void {
+    if (evt.eventType === 'approval_requested' && evt.payload['approval']) {
+      const approval = evt.payload['approval'] as ArmApprovalQueueItem;
+      const exists = this.armApprovalQueue().some((a) => a.id === approval.id);
+      if (!exists) {
+        this.armApprovalQueue.set([approval, ...this.armApprovalQueue()]);
+      }
+    }
+    if (evt.eventType === 'pipeline_transition') {
+      const feedEvt: ArmAutonomousFeedEvent = {
+        id: `sse-${evt.id}`,
+        workspaceId: evt.workspaceId,
+        agentRole: 'SDR_QUALIFIER',
+        agentName: `SSE Outbox #${evt.id}`,
+        leadId: evt.aggregateId,
+        leadName: evt.aggregateId,
+        toolName: 'transition_pipeline_stage',
+        summary: `Transición SSE: ${evt.payload['fromStageSlug']} → ${evt.payload['toStageSlug']}`,
+        latencyMs: 25,
+        timestamp: evt.timestamp,
+      };
+      this.armAutonomousFeed.set([feedEvt, ...this.armAutonomousFeed()].slice(0, 60));
+    }
   }
 }
 

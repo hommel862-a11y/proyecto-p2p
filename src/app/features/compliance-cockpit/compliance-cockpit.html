@@ -222,6 +222,17 @@
     <button
       type="button"
       class="nav-tab-btn"
+      [class.active]="activeView() === 'ARM_COMMAND'"
+      (click)="setView('ARM_COMMAND')"
+    >
+      <span class="tab-icon">🤖</span>
+      <span class="tab-text">ARM Command &amp; Sandbox</span>
+      <span class="tab-badge">{{ armApprovalQueueForSilo().length }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="nav-tab-btn"
       [class.active]="activeView() === 'SETTINGS'"
       (click)="setView('SETTINGS')"
     >
@@ -2154,6 +2165,241 @@
           </div>
         }
       </div>
+    }
+
+    <!-- ======================================================================= -->
+    <!-- VISTA 8: ARM COMMAND CENTER, HITL QUEUE, SANDBOX & CLOSER COPILOT -->
+    <!-- ======================================================================= -->
+    @if (activeView() === 'ARM_COMMAND') {
+      <section class="arm-command-view" aria-label="Centro de Comando ARM Multi-Workspace">
+        <!-- 1. Silo Switcher & Telemetry Strip -->
+        <header class="arm-silo-bar">
+          <div class="arm-silo-tabs" role="tablist" aria-label="Silos Impermeables ARM">
+            <button
+              type="button"
+              class="arm-silo-btn"
+              [class.active]="activeArmSilo() === 'ARM_B2B'"
+              (click)="setArmSilo('ARM_B2B')"
+              role="tab"
+              [attr.aria-selected]="activeArmSilo() === 'ARM_B2B'"
+            >
+              🟢 ARM Comercial B2B
+            </button>
+            <button
+              type="button"
+              class="arm-silo-btn"
+              [class.active]="activeArmSilo() === 'P2P_DESK'"
+              (click)="setArmSilo('P2P_DESK')"
+              role="tab"
+              [attr.aria-selected]="activeArmSilo() === 'P2P_DESK'"
+            >
+              🔵 Mesa P2P &amp; Liquidez
+            </button>
+            <button
+              type="button"
+              class="arm-silo-btn"
+              [class.active]="activeArmSilo() === 'FINANCE_360'"
+              (click)="setArmSilo('FINANCE_360')"
+              role="tab"
+              [attr.aria-selected]="activeArmSilo() === 'FINANCE_360'"
+            >
+              🟣 Finanzas &amp; PyME 360
+            </button>
+          </div>
+
+          <div class="arm-silo-actions">
+            <span class="arm-telemetry-pill font-mono">
+              Silo: {{ activeArmSilo() }} &bull; Debounce {{ activeArmWorkspaceConfig().debounceWindowMs }}ms &bull; DLP ON
+            </span>
+            <button
+              type="button"
+              class="action-btn btn-new-deal"
+              (click)="triggerArmSandboxTurn()"
+              title="Simular turno de cliente por IA en Sandbox ($0 Meta API)"
+            >
+              🧪 Simular Turno Sandbox ($0)
+            </button>
+            <button
+              type="button"
+              class="action-btn btn-new-contact"
+              (click)="triggerAntiGhostingScanForSilo()"
+              title="Escanear prospectos inactivos >24h y encolar plantilla HSM"
+            >
+              ⏱ Escaneo Anti-Ghosting (72h)
+            </button>
+          </div>
+        </header>
+
+        <!-- 2. Pipeline Zero-Click Stages Strip for Active Silo -->
+        <div class="arm-stages-strip">
+          @for (stg of armStagesForSilo(); track stg.slug) {
+            <div class="arm-stage-pill" [style.border-color]="stg.colorHex">
+              <span class="stg-pos font-mono">0{{ stg.position }}</span>
+              <span class="stg-name">{{ stg.name }}</span>
+              <span class="stg-slug font-mono">{{ stg.slug }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- 3. Three Executive Panels: Autonomous Feed | Approval Queue HITL | Closer & Shadow Learning -->
+        <div class="arm-three-panels-grid">
+          <!-- Panel 1: Lo que pasó (Feed de Actividad Autónoma) -->
+          <div class="arm-panel">
+            <div class="arm-panel-header">
+              <h4>⚡ Lo que pasó (Feed Autónomo)</h4>
+              <span class="font-mono arm-count-chip">{{ armAutonomousFeedForSilo().length }} eventos</span>
+            </div>
+            <div class="arm-panel-body">
+              @if (armAutonomousFeedForSilo().length === 0) {
+                <div class="arm-empty-state">
+                  Sin eventos autónomos aún en <strong>{{ activeArmSilo() }}</strong>. Ejecutá <em>Simular Turno Sandbox ($0)</em> para probar el flujo de agentes.
+                </div>
+              } @else {
+                @for (ev of armAutonomousFeedForSilo(); track ev.id) {
+                  <div class="arm-feed-item">
+                    <div class="arm-feed-meta font-mono">
+                      <span class="text-emerald">{{ ev.agentRole }}</span>
+                      <span>{{ ev.latencyMs }}ms</span>
+                    </div>
+                    <div class="arm-feed-title">{{ ev.leadName }}</div>
+                    <div class="arm-feed-summary">{{ ev.summary }}</div>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+
+          <!-- Panel 2: Lo que espera tu aprobación (Approval Queue HITL) -->
+          <div class="arm-panel arm-panel-hitl">
+            <div class="arm-panel-header">
+              <h4>🛡️ Lo que espera tu aprobación (Approval Queue)</h4>
+              <span class="font-mono arm-count-chip warn">{{ armApprovalQueueForSilo().length }} pendientes</span>
+            </div>
+            <div class="arm-panel-body">
+              @if (armApprovalQueueForSilo().length === 0) {
+                <div class="arm-empty-state">
+                  Bandeja de aprobación limpia en <strong>{{ activeArmSilo() }}</strong>.
+                </div>
+              } @else {
+                @for (item of armApprovalQueueForSilo(); track item.id) {
+                  <div class="arm-approval-card">
+                    <div class="arm-approval-top">
+                      <span class="arm-approval-title">{{ item.title }}</span>
+                      <span class="font-mono arm-role-tag">{{ item.requestedByRole }}</span>
+                    </div>
+                    <div class="arm-approval-reason">
+                      <strong>Regla Risk Gate:</strong> {{ item.agentReasoning }}
+                    </div>
+
+                    @if (editingApprovalId() === item.id) {
+                      <div class="arm-edit-box">
+                        <textarea
+                          class="terminal-input"
+                          rows="2"
+                          [ngModel]="editingApprovalText()"
+                          (ngModelChange)="editingApprovalText.set($event)"
+                        ></textarea>
+                        <label class="arm-shadow-check">
+                          <input
+                            type="checkbox"
+                            [ngModel]="editingSaveAsExample()"
+                            (ngModelChange)="editingSaveAsExample.set($event)"
+                          />
+                          <span>Guardar corrección como ejemplo Few-Shot (Shadow Learning en {{ activeArmSilo() }})</span>
+                        </label>
+                        <div class="arm-approval-actions">
+                          <button
+                            type="button"
+                            class="arm-btn arm-btn-approve"
+                            (click)="approveArmQueueItem(item.id, editingApprovalText(), editingSaveAsExample())"
+                          >
+                            ✓ Confirmar Edición y Enviar
+                          </button>
+                          <button
+                            type="button"
+                            class="arm-btn arm-btn-edit"
+                            (click)="editingApprovalId.set(null)"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    } @else {
+                      <div class="arm-approval-actions">
+                        <button
+                          type="button"
+                          class="arm-btn arm-btn-approve"
+                          (click)="approveArmQueueItem(item.id)"
+                        >
+                          [A] Aprobar y Enviar
+                        </button>
+                        <button
+                          type="button"
+                          class="arm-btn arm-btn-edit"
+                          (click)="startEditArmApproval(item)"
+                        >
+                          [E] Editar + Shadow Learn
+                        </button>
+                        <button
+                          type="button"
+                          class="arm-btn arm-btn-takeover"
+                          (click)="takeoverHumanFromArmQueue(item.id)"
+                        >
+                          [H] Tomar Control Humano
+                        </button>
+                      </div>
+                    }
+                  </div>
+                }
+              }
+            </div>
+          </div>
+
+          <!-- Panel 3: Closer Intelligence & Shadow Learning Memory -->
+          <div class="arm-panel">
+            <div class="arm-panel-header">
+              <h4>🎙️ Closer Copilot &amp; Shadow Learning</h4>
+              <span class="font-mono arm-count-chip">{{ armShadowExamplesForSilo().length }} Few-Shot</span>
+            </div>
+            <div class="arm-panel-body">
+              <div class="arm-closer-box">
+                <label class="m-label">Nota Post-Llamada (30s) &rarr; Actualizar Pipeline &amp; Cotizador</label>
+                <input
+                  type="text"
+                  class="terminal-input"
+                  placeholder="Prospecto (ej. Clínica Aurora)"
+                  [ngModel]="closerNoteLeadName()"
+                  (ngModelChange)="closerNoteLeadName.set($event)"
+                />
+                <textarea
+                  class="terminal-input"
+                  rows="2"
+                  placeholder="Ej: Hablé con Carlos, le gustó el Plan Enterprise pero quiere pagar en 2 partes 50/50"
+                  [ngModel]="closerNoteTranscript()"
+                  (ngModelChange)="closerNoteTranscript.set($event)"
+                ></textarea>
+                <button
+                  type="button"
+                  class="arm-btn arm-btn-approve"
+                  (click)="submitCloserVoiceNoteForArm()"
+                >
+                  ⚡ Procesar Nota Post-Llamada
+                </button>
+              </div>
+
+              <div class="arm-agents-roster">
+                <div class="m-label">Especialistas Activos ({{ activeArmSilo() }}):</div>
+                @for (ag of armAgentsForSilo(); track ag.id) {
+                  <div class="arm-agent-row font-mono">
+                    <span class="text-emerald">{{ ag.role }}</span>
+                    <span>Temp {{ ag.temperature }} &bull; {{ ag.enabledTools.length }} tools</span>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     }
   </main>
 

@@ -130,4 +130,25 @@ describe('InboundGatewayService', () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it('tracks ARM outbox event IDs and passes lastEventId cursor on reconnect', () => {
+    const instance = MockEventSource.instances[0];
+    instance.onopen?.();
+
+    instance.emit('arm_event', {
+      id: 42,
+      workspaceId: 'ARM_B2B',
+      eventType: 'pipeline_transition',
+      aggregateId: 'lead-1',
+      payload: { toStageSlug: 'calificado' },
+      timestamp: Date.now(),
+    });
+
+    expect(service.lastOutboxEventId()).toBe(42);
+    expect(service.lastArmEvent()?.workspaceId).toBe('ARM_B2B');
+
+    service.connect();
+    const reconnected = MockEventSource.instances[MockEventSource.instances.length - 1];
+    expect(reconnected.url).toBe('http://127.0.0.1:3030/api/events?lastEventId=42');
+  });
 });

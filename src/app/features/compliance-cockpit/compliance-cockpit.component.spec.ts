@@ -575,5 +575,55 @@ describe('ComplianceCockpitComponent', () => {
       expect(component.banks()[0].id).toBe('BNK-360-1');
     });
   });
+
+  describe('Phase 6: ARM Multi-Workspace Command Center, HITL Queue, Sandbox & Shadow Learning (S1-S6)', () => {
+    it('isolates ARM silos (ARM_B2B, P2P_DESK, FINANCE_360) and runs $0-cost Sandbox turns', () => {
+      component.setView('ARM_COMMAND');
+      expect(component.activeView()).toBe('ARM_COMMAND');
+
+      component.setArmSilo('ARM_B2B');
+      expect(component.activeArmSilo()).toBe('ARM_B2B');
+      expect(component.armStagesForSilo().map((s) => s.slug)).toContain('sesion-agendada');
+
+      component.triggerArmSandboxTurn('SKEPTICAL_DISCOUNT_30');
+      expect(component.armApprovalQueueForSilo().length).toBeGreaterThanOrEqual(1);
+      expect(component.armAutonomousFeedForSilo().length).toBeGreaterThanOrEqual(1);
+
+      // Switching silo to P2P_DESK must show zero B2B approvals (strict isolation)
+      component.setArmSilo('P2P_DESK');
+      const b2bLeaked = component
+        .armApprovalQueueForSilo()
+        .some((a) => a.workspaceId === 'ARM_B2B');
+      expect(b2bLeaked).toBe(false);
+    });
+
+    it('approves HITL items with Shadow Learning curation and processes Closer post-call notes', () => {
+      component.setArmSilo('ARM_B2B');
+      component.triggerArmSandboxTurn('SKEPTICAL_DISCOUNT_30');
+
+      const pendingItem = component.armApprovalQueueForSilo()[0];
+      expect(pendingItem).toBeDefined();
+
+      component.approveArmQueueItem(
+        pendingItem.id,
+        'Dra. Gómez, dirección aprobó un 15% corporativo por pago anual.',
+        true,
+      );
+
+      expect(component.armShadowExamplesForSilo().length).toBe(1);
+      expect(component.armShadowExamplesForSilo()[0].workspaceId).toBe('ARM_B2B');
+
+      // Closer post-call 30s note
+      component.closerNoteLeadName.set('Carlos (Clínica Aurora)');
+      component.closerNoteTranscript.set('Hablé con Carlos, quiere el Plan Enterprise pero pagar en 2 partes 50/50');
+      component.submitCloserVoiceNoteForArm();
+
+      const closerQueued = component
+        .armApprovalQueueForSilo()
+        .find((a) => a.riskRuleTriggered === 'CLOSER_POST_CALL_CUSTOM_TERMS');
+      expect(closerQueued).toBeDefined();
+    });
+  });
 });
+
 
