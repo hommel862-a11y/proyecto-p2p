@@ -47,7 +47,9 @@ export class AgentStudioComponent {
   readonly editingAgentId = signal<string | null>(null);
 
   // Skill filter in editor
-  readonly selectedSkillCategory = signal<'ALL' | 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION'>('ALL');
+  readonly selectedSkillCategory = signal<
+    'ALL' | 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION' | 'ARM_CRM'
+  >('ALL');
 
   // Form State
   readonly form = signal<AgentFormState>({

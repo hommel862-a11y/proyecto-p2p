@@ -20,3 +20,24 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  inbound-gateway:
+    build:
+      context: ../../
+      dockerfile: deploy/vps/Dockerfile
+    image: p2p-inbound-gateway:latest
+    container_name: p2p-inbound-gateway
+    command: ["node", "packages/inbound-gateway/dist/index.js"]
+    restart: always
+    ports:
+      - "3030:3030"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - INBOUND_GATEWAY_PORT=3030
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -9,7 +9,7 @@ import { ToastService } from './toast.service';
 export interface McpSkillCatalogItem {
   id: string;
   name: string;
-  category: 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION';
+  category: 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION' | 'ARM_CRM';
   description: string;
 }
 
@@ -176,6 +176,68 @@ export const MCP_SKILL_CATALOG: readonly McpSkillCatalogItem[] = [
     name: 'Alerta Multicanal',
     category: 'CONCILIACION',
     description: 'Despacha notificaciones de alta prioridad a Telegram Bot y webhooks configurados.',
+  },
+
+  // ARM & OMNICHANNEL CRM (10 CONTRATOS ESTRICTOS)
+  {
+    id: 'route_conversation',
+    name: 'Router & Triage de Conversación',
+    category: 'ARM_CRM',
+    description: 'Delega el control de la conversación al especialista adecuado o a un humano dentro del mismo silo.',
+  },
+  {
+    id: 'update_lead_bant_and_profile',
+    name: 'Extractor Silencioso BANT & Perfil',
+    category: 'ARM_CRM',
+    description: 'Extrae Presupuesto, Autoridad, Necesidad y Tiempo sin sobrescribir datos previos y calcula el score en @p2p/core.',
+  },
+  {
+    id: 'transition_pipeline_stage',
+    name: 'Motor de Transición Kanban (Zero-Click)',
+    category: 'ARM_CRM',
+    description: 'Valida en la FSM e inserta en pipeline_transitions emitiendo evento SSE en vivo.',
+  },
+  {
+    id: 'save_lead_memory_fact',
+    name: 'Memoria Atómica de Largo Plazo',
+    category: 'ARM_CRM',
+    description: 'Guarda dolores, objeciones, preferencias y stack tecnológico del prospecto en lead_memories.',
+  },
+  {
+    id: 'search_lead_memories',
+    name: 'Búsqueda Semántica de Memoria (RAG)',
+    category: 'ARM_CRM',
+    description: 'Recupera hechos históricos y objeciones previas del prospecto aislados por workspace_id.',
+  },
+  {
+    id: 'get_catalog_items',
+    name: 'Consulta de Catálogo Oficial',
+    category: 'ARM_CRM',
+    description: 'Lee SKUs, precios unitarios y políticas de descuento del silo activo antes de cotizar.',
+  },
+  {
+    id: 'create_or_submit_quote',
+    name: 'Cotizador Formal con Risk Gate HITL',
+    category: 'ARM_CRM',
+    description: 'Estructura cotizaciones con precios oficiales y encola en approval_queue cuando supera umbrales de descuento o monto.',
+  },
+  {
+    id: 'check_calendar_slots',
+    name: 'Consulta de Disponibilidad de Agenda',
+    category: 'ARM_CRM',
+    description: 'Verifica horarios libres del closer normalizados a la zona horaria IANA del prospecto.',
+  },
+  {
+    id: 'book_appointment',
+    name: 'Agendador de Demos & Closer Briefing',
+    category: 'ARM_CRM',
+    description: 'Confirma reunión en calendario, genera el briefing ejecutivo para el closer y mueve a sesion-agendada.',
+  },
+  {
+    id: 'send_whatsapp_template',
+    name: 'Despacho de Plantilla HSM Anti-Ghosting',
+    category: 'ARM_CRM',
+    description: 'Envía o encola plantillas HSM aprobadas por Meta cuando expiró la ventana gratuita de 24 horas.',
   },
 ];
 

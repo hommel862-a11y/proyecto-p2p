@@ -38,8 +38,12 @@ describe('AgentStudioService', () => {
     expect(MCP_SKILL_CATALOG.length).toBeGreaterThan(15);
     const tradingSkills = MCP_SKILL_CATALOG.filter((s) => s.category === 'TRADING');
     const riskSkills = MCP_SKILL_CATALOG.filter((s) => s.category === 'RIESGO');
+    const armSkills = MCP_SKILL_CATALOG.filter((s) => s.category === 'ARM_CRM');
     expect(tradingSkills.length).toBeGreaterThan(0);
     expect(riskSkills.length).toBeGreaterThan(0);
+    expect(armSkills.length).toBe(10);
+    expect(armSkills.map((s) => s.id)).toContain('route_conversation');
+    expect(armSkills.map((s) => s.id)).toContain('create_or_submit_quote');
   });
 
   it('should create and retrieve custom agents in localStorage fallback', async () => {

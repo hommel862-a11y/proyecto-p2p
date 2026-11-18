@@ -273,5 +273,6 @@ export const ALLOWED_CHANNELS = [
 export const ALLOWED_LISTEN_CHANNELS = [
   'p2p:clipboard-payment-detected',
   'copilot:alpha-opportunity-detected',
+  'copilot:proactive-event-alert',
   'p2p:killswitch-triggered',
 ] as const;

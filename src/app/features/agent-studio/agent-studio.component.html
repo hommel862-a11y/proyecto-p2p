@@ -435,6 +435,14 @@
               >
                 Conciliación & Cloud
               </button>
+              <button
+                type="button"
+                class="tab-btn"
+                [class.active]="selectedSkillCategory() === 'ARM_CRM'"
+                (click)="selectedSkillCategory.set('ARM_CRM')"
+              >
+                🤖 ARM &amp; Omnicanal
+              </button>
             </div>
 
             <!-- Skills List Grid -->
