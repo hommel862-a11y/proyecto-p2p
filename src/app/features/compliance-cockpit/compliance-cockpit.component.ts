@@ -2872,6 +2872,13 @@ export class ComplianceCockpitComponent implements OnDestroy {
     }
   }
 
+  executeFirstMatchedArmCommand(): void {
+    const first = this.filteredArmCommands()[0];
+    if (first) {
+      this.executeArmCommand(first.id);
+    }
+  }
+
   setArmSilo(silo: ArmWorkspaceId): void {
     this.activeArmSilo.set(silo);
     if (silo === 'P2P_DESK' || silo === 'FINANCE_360') {
@@ -2905,6 +2912,24 @@ export class ComplianceCockpitComponent implements OnDestroy {
       ),
     );
     this.persistArmState();
+    const moved = this.armKanbanCards().find((c) => c.id === cardId);
+    if (moved && typeof window !== 'undefined' && window.electron?.arm) {
+      void window.electron.arm.upsertLead({
+        id: moved.id,
+        workspaceId: moved.workspaceId,
+        fullName: moved.leadName,
+        companyName: moved.companyName,
+        phoneWhatsapp: null,
+        email: null,
+        currentStageSlug: moved.stageSlug,
+        assignedAgentRole: moved.assignedAgentRole,
+        qualificationScore: moved.qualificationScore,
+        bantData: { budget: null, authority: null, need_pain_point: moved.painPointSummary, timeline: null },
+        aiExecutiveSummary: moved.painPointSummary,
+        estimatedDealValue: 0,
+        currency: 'USD',
+      });
+    }
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -3235,6 +3260,25 @@ export class ComplianceCockpitComponent implements OnDestroy {
     if (newCards.length > 0) {
       this.armKanbanCards.set([...newCards, ...this.armKanbanCards()]);
       this.persistArmState();
+      if (typeof window !== 'undefined' && window.electron?.arm) {
+        for (const card of newCards) {
+          void window.electron.arm.upsertLead({
+            id: card.id,
+            workspaceId: card.workspaceId,
+            fullName: card.leadName,
+            companyName: card.companyName,
+            phoneWhatsapp: null,
+            email: null,
+            currentStageSlug: card.stageSlug,
+            assignedAgentRole: card.assignedAgentRole,
+            qualificationScore: card.qualificationScore,
+            bantData: { budget: null, authority: null, need_pain_point: card.painPointSummary, timeline: null },
+            aiExecutiveSummary: card.painPointSummary,
+            estimatedDealValue: 0,
+            currency: 'USD',
+          });
+        }
+      }
       this.toast.success(
         `${newCards.length} trato(s) locales sincronizados hacia P2P_DESK / FINANCE_360 sin cruce de silos.`,
         'Migración Local ARM',
@@ -3263,6 +3307,47 @@ export class ComplianceCockpitComponent implements OnDestroy {
       }
     } catch {
       /* fallback safely */
+    }
+    if (typeof window !== 'undefined' && window.electron?.arm) {
+      void this.hydrateFromElectronArmRepo();
+    }
+  }
+
+  private async hydrateFromElectronArmRepo(): Promise<void> {
+    const armApi = window.electron?.arm;
+    if (!armApi) return;
+    try {
+      const silos: ArmWorkspaceId[] = ['ARM_B2B', 'P2P_DESK', 'FINANCE_360'];
+      const mergedApprovals = [...this.armApprovalQueue()];
+      const approvalIds = new Set(mergedApprovals.map((a) => a.id));
+      const mergedShadow = [...this.armShadowExamples()];
+      const shadowIds = new Set(mergedShadow.map((s) => s.id));
+
+      for (const ws of silos) {
+        const remoteApprovals = (await armApi.listPendingApprovals(ws)) as ArmApprovalQueueItem[];
+        for (const item of remoteApprovals || []) {
+          if (item && item.id && !approvalIds.has(item.id)) {
+            approvalIds.add(item.id);
+            mergedApprovals.push(item);
+          }
+        }
+        const remoteShadows = (await armApi.listShadowExamples({ workspaceId: ws, limit: 20 })) as ArmShadowExample[];
+        for (const ex of remoteShadows || []) {
+          if (ex && ex.id && !shadowIds.has(ex.id)) {
+            shadowIds.add(ex.id);
+            mergedShadow.push(ex);
+          }
+        }
+      }
+
+      if (mergedApprovals.length > this.armApprovalQueue().length) {
+        this.armApprovalQueue.set(mergedApprovals);
+      }
+      if (mergedShadow.length > this.armShadowExamples().length) {
+        this.armShadowExamples.set(mergedShadow);
+      }
+    } catch {
+      /* desktop sqlite optional hydration */
     }
   }
 

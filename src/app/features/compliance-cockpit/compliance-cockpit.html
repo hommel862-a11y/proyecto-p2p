@@ -2568,6 +2568,7 @@
                   placeholder="Escribí un comando (silo, sandbox, replay, briefing, aprobar)..."
                   [ngModel]="armCommandQuery()"
                   (ngModelChange)="armCommandQuery.set($event)"
+                  (keydown.enter)="executeFirstMatchedArmCommand()"
                 />
                 <div class="arm-palette-list">
                   @for (cmd of filteredArmCommands(); track cmd.id) {

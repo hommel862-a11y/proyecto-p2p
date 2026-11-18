@@ -695,7 +695,7 @@ describe('ComplianceCockpitComponent', () => {
       component.armCommandQuery.set('replay');
       expect(component.filteredArmCommands().map((c) => c.id)).toEqual(['REPLAY_DRY_RUN']);
 
-      component.executeArmCommand('REPLAY_DRY_RUN');
+      component.executeFirstMatchedArmCommand();
       expect(component.showArmCommandPalette()).toBe(false);
       expect(component.armReplayComparisonResult()).not.toBeNull();
 
