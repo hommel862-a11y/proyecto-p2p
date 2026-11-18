@@ -13,9 +13,12 @@ import { parseMetaWebhookPayload } from './meta-webhook-parser.js';
 import { processInboundMessageToReceipt } from './receipt-intake.js';
 import {
   runArmSandboxSimulationTurn,
+  scanOutboundMessageDlp,
+  evaluateMeta24hFreeWindow,
   type PipelineDeal,
   type ArmWorkspaceId,
   type ArmSandboxPersonaId,
+  type ArmApprovalStatus,
 } from '@p2p/core';
 
 export interface CoalescedTurnBatch {
@@ -347,6 +350,116 @@ export class InboundGatewayServer {
           success: true,
           outboxEventsEmitted: emitted,
           simulation,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/outbound/send (Enforces Outbound DLP + Meta 24h Free Window before dispatch)
+    if (method === 'POST' && pathname === '/api/arm/outbound/send') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        recipientPhone?: string;
+        text?: string;
+        templateName?: string;
+        lastInboundTimestampMs?: number | null;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const outboundText = body.text || '';
+
+      const dlpCheck = scanOutboundMessageDlp({ workspaceId, outboundText });
+      if (!dlpCheck.safe) {
+        res.writeHead(422, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'OUTBOUND_DLP_VIOLATION',
+            violations: dlpCheck.violations,
+          }),
+        );
+        return;
+      }
+
+      const windowEval = evaluateMeta24hFreeWindow(body.lastInboundTimestampMs ?? null);
+      if (!windowEval.isOpen && !body.templateName) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'META_24H_WINDOW_CLOSED_HSM_REQUIRED',
+            costStatus: windowEval.costStatus,
+          }),
+        );
+        return;
+      }
+
+      const evt = this.appendArmOutboxEvent(
+        workspaceId,
+        'message_received',
+        body.recipientPhone || 'outbound',
+        {
+          direction: 'OUTBOUND',
+          recipientPhone: body.recipientPhone || '',
+          text: outboundText,
+          templateName: body.templateName || null,
+          costStatus: windowEval.costStatus,
+        },
+      );
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          outboxEventId: evt.id,
+          costStatus: windowEval.costStatus,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/approvals/resolve (1-Click HITL Approval / Edit / Reject)
+    if (method === 'POST' && pathname === '/api/arm/approvals/resolve') {
+      const rawBody = await this.readRawBody(req);
+      let body: {
+        workspaceId?: ArmWorkspaceId;
+        approvalId?: string;
+        decision?: ArmApprovalStatus;
+        approvedText?: string;
+        saveAsExample?: boolean;
+      };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const decision: ArmApprovalStatus = body.decision || 'APPROVED';
+      const approvalId = body.approvalId || `app-${Date.now()}`;
+
+      const evt = this.appendArmOutboxEvent(workspaceId, 'agent_run', approvalId, {
+        approvalId,
+        decision,
+        approvedText: body.approvedText || null,
+        saveAsExample: Boolean(body.saveAsExample),
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          approvalId,
+          decision,
+          outboxEventId: evt.id,
         }),
       );
       return;

@@ -53,4 +53,49 @@ describe('UniversalAiGateway Schema Sanitizer & Multi-Provider Normalization', (
     const endpoint = gateway.resolveEndpoint('openrouter');
     expect(endpoint).toBe('https://openrouter.ai/api/v1/chat/completions');
   });
+
+  it('omits googleSearch grounding in completeGemini when enableGoogleSearch is false', async () => {
+    const gateway = new UniversalAiGateway();
+    let capturedBody: any = null;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: any, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'Routed OK' }] } }],
+        }),
+      } as any;
+    }) as any;
+
+    try {
+      await gateway.complete(
+        {
+          provider: 'gemini',
+          apiKey: 'test-key',
+          model: 'gemini-3.7-flash',
+          enableGoogleSearch: false,
+        },
+        [{ role: 'user', content: 'Hola' }],
+        [
+          {
+            name: 'route_conversation',
+            description: 'Route',
+            parameters: {
+              type: 'OBJECT',
+              properties: { target_role: { type: 'STRING', description: 'Role' } },
+              required: ['target_role'],
+            },
+          },
+        ],
+      );
+
+      expect(capturedBody).not.toBeNull();
+      const hasGoogleSearch = (capturedBody.tools || []).some((t: any) => 'googleSearch' in t);
+      expect(hasGoogleSearch).toBe(false);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });

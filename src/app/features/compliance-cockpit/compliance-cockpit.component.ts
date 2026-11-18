@@ -2591,6 +2591,194 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly editingApprovalId = signal<string | null>(null);
   readonly editingApprovalText = signal<string>('');
   readonly editingSaveAsExample = signal<boolean>(true);
+  readonly selectedArmLeadId = signal<string>('arm-lead-b2b-1');
+
+  readonly armKanbanCards = signal<
+    Array<{
+      id: string;
+      workspaceId: ArmWorkspaceId;
+      leadName: string;
+      companyName: string;
+      stageSlug: string;
+      qualificationScore: number;
+      painPointSummary: string;
+      lastMessagePreview: string;
+      assignedAgentRole: string;
+      movedByAgentBadge: string;
+      dealValueLabel: string;
+      freeWindowLabel: string;
+      messages: Array<{ sender: 'LEAD' | 'AGENT'; text: string; mediaBadge?: string }>;
+      toolTraces: Array<{ toolName: string; latencyMs: number; status: string }>;
+    }>
+  >([
+    {
+      id: 'arm-lead-b2b-1',
+      workspaceId: 'ARM_B2B',
+      leadName: 'Dra. Elena Gómez',
+      companyName: 'Clínica Aurora (18 Médicos)',
+      stageSlug: 'calificado',
+      qualificationScore: 88,
+      painPointSummary: 'HubSpot actual es caro y manual; busca migrar en 30 días.',
+      lastMessagePreview: '🎤 [Nota de Voz 0:47s]: "¿Qué descuento anual tienen para 18 médicos?"',
+      assignedAgentRole: 'QUOTER',
+      movedByAgentBadge: 'Movido por Agente SDR_QUALIFIER',
+      dealValueLabel: '$2,400 USD / año',
+      freeWindowLabel: 'FREE_0_USD • 18h 40m rest.',
+      messages: [
+        {
+          sender: 'LEAD',
+          text: 'Somos 18 especialistas en Clínica Aurora, buscamos migrar este mes si el plan anual cierra en presupuesto.',
+          mediaBadge: '🎤 Nota de Voz 0:47s (Transcrita por Gemini Flash)',
+        },
+        {
+          sender: 'AGENT',
+          text: '¡Clarísimo Dra. Gómez! El Plan Enterprise anual cubre las 18 agendas médicas. Ya escalé el 15% de descuento corporativo a dirección comercial.',
+        },
+      ],
+      toolTraces: [
+        { toolName: 'route_conversation', latencyMs: 38, status: 'OK → SDR_QUALIFIER' },
+        { toolName: 'update_lead_bant_and_profile', latencyMs: 112, status: 'OK → Score @p2p/core: 88/100' },
+        { toolName: 'transition_pipeline_stage', latencyMs: 44, status: 'OK → en-descubrimiento → calificado' },
+        { toolName: 'create_or_submit_quote', latencyMs: 165, status: 'BLOCKED_BY_RISK_GATE → approval_queue' },
+      ],
+    },
+    {
+      id: 'arm-lead-b2b-2',
+      workspaceId: 'ARM_B2B',
+      leadName: 'Dr. Ricardo Méndez',
+      companyName: 'Grupo Médico Ávila',
+      stageSlug: 'sesion-agendada',
+      qualificationScore: 94,
+      painPointSummary: 'Ausentismo del 28% en citas médicas por falta de confirmación WhatsApp.',
+      lastMessagePreview: 'Confirmado mañana 10:00 AM (elena@grupoavila.com)',
+      assignedAgentRole: 'SCHEDULER',
+      movedByAgentBadge: 'Movido por Agente SCHEDULER',
+      dealValueLabel: '$1,200 USD / año',
+      freeWindowLabel: 'FREE_0_USD • 22h 15m rest.',
+      messages: [
+        { sender: 'LEAD', text: 'Me sirve mañana a las 10:00 AM, mi correo es rmendez@grupoavila.com' },
+        { sender: 'AGENT', text: 'Reunión confirmada para mañana 10:00 AM. Ya envié el enlace y el briefing ejecutivo.' },
+      ],
+      toolTraces: [
+        { toolName: 'check_calendar_slots', latencyMs: 85, status: 'OK → 2 horarios libres propuestos' },
+        { toolName: 'book_appointment', latencyMs: 140, status: 'OK → Briefing Closer generado' },
+      ],
+    },
+    {
+      id: 'arm-lead-b2b-3',
+      workspaceId: 'ARM_B2B',
+      leadName: 'Lic. Valeria Torres',
+      companyName: 'Lab BioSalud (12 Sedes)',
+      stageSlug: 'en-descubrimiento',
+      qualificationScore: 62,
+      painPointSummary: 'Cotizaciones manuales en Excel demoran 48h en responderse.',
+      lastMessagePreview: '📄 [PDF Adjunto]: Presupuesto actual de proveedor previo',
+      assignedAgentRole: 'SDR_QUALIFIER',
+      movedByAgentBadge: 'Movido por Agente ROUTER',
+      dealValueLabel: '$1,200 USD / año',
+      freeWindowLabel: 'FREE_0_USD • 14h 10m rest.',
+      messages: [
+        {
+          sender: 'LEAD',
+          text: 'Te paso el presupuesto que nos dieron hoy para ver si ustedes automatizan esto por WhatsApp.',
+          mediaBadge: '📄 PDF Adjunto (Analizado por Vision)',
+        },
+      ],
+      toolTraces: [
+        { toolName: 'route_conversation', latencyMs: 31, status: 'OK → SDR_QUALIFIER' },
+        { toolName: 'save_lead_memory_fact', latencyMs: 52, status: 'OK → PAIN_POINT guardado' },
+      ],
+    },
+    {
+      id: 'arm-lead-p2p-1',
+      workspaceId: 'P2P_DESK',
+      leadName: 'Carlos M. (VIP OTC)',
+      companyName: 'Mesa Cambiaria Banesco',
+      stageSlug: 'STAGE_3_VERIFY',
+      qualificationScore: 95,
+      painPointSummary: 'Liquidación inmediata lote 1,200 USDT vía Pago Móvil Banesco.',
+      lastMessagePreview: '📷 [Captura Banesco Ref #8849201 • 45,000 VES]',
+      assignedAgentRole: 'QUOTER',
+      movedByAgentBadge: 'Movido por Agente P2P_OCR_SHIELD',
+      dealValueLabel: '1,200 USDT',
+      freeWindowLabel: 'TTL Tasa: 11m restantes',
+      messages: [
+        {
+          sender: 'LEAD',
+          text: '[Comprobante Banesco Ref #8849201 por 45,000.00 VES]',
+          mediaBadge: '📷 Captura sin texto (Extraída por Gemini OCR)',
+        },
+        {
+          sender: 'AGENT',
+          text: 'Comprobante #8849201 recibido sin colisión. En espera de visto bueno de tesorería para liberar.',
+        },
+      ],
+      toolTraces: [
+        { toolName: 'verifyReferenceCollision', latencyMs: 14, status: 'OK → isDuplicate: false' },
+        { toolName: 'transition_pipeline_stage', latencyMs: 49, status: 'BLOCKED_HITL → STAGE_4_CLOSED requiere humano' },
+      ],
+    },
+    {
+      id: 'arm-lead-360-1',
+      workspaceId: 'FINANCE_360',
+      leadName: 'Distribuidora Sol C.A.',
+      companyName: 'PyME Mayorista',
+      stageSlug: 'presupuestado-360',
+      qualificationScore: 84,
+      painPointSummary: 'Requiere esquema de pago fraccionado 50% anticipo / 50% a 30 días.',
+      lastMessagePreview: '🎤 [Audio 0:28s]: "Si nos aprueban 50/50 cerramos hoy"',
+      assignedAgentRole: 'QUOTER',
+      movedByAgentBadge: 'Movido por Agente PYME_QUOTER',
+      dealValueLabel: '$1,850 USD',
+      freeWindowLabel: 'FREE_0_USD • 21h 00m rest.',
+      messages: [
+        {
+          sender: 'LEAD',
+          text: 'Vimos el presupuesto de $1,850 USD, ¿podemos pagar 50% hoy y 50% a 30 días?',
+          mediaBadge: '🎤 Nota de Voz 0:28s',
+        },
+      ],
+      toolTraces: [
+        { toolName: 'get_catalog_items', latencyMs: 22, status: 'OK → SKU PYME-SERV-360' },
+        { toolName: 'create_or_submit_quote', latencyMs: 98, status: 'QUEUED_HITL → Crédito 50/50' },
+      ],
+    },
+  ]);
+
+  readonly armExecutiveKpisForSilo = computed(() => {
+    const silo = this.activeArmSilo();
+    if (silo === 'P2P_DESK') {
+      return [
+        { label: 'Volumen En Tránsito', value: '14,850 USDT', sub: 'Cupo Banesco / Mercantil' },
+        { label: 'Conversión Autónoma', value: '81.4%', sub: 'Triaje + 3-Burbujas' },
+        { label: 'SLA Respuesta & OCR', value: '0.9s', sub: 'Gemini Vision + Regex' },
+        { label: 'Colisiones Frenadas', value: '100% Seguro', sub: 'Regla Anti-Fraude Activa' },
+      ];
+    }
+    if (silo === 'FINANCE_360') {
+      return [
+        { label: 'Pipeline Presupuestado', value: '$12,400 USD', sub: 'QuoteEngine Unificado' },
+        { label: 'Conversión Autónoma', value: '72.0%', sub: 'Cotizador + Cobranza' },
+        { label: 'SLA Respuesta IA', value: '1.5s', sub: 'WhatsApp & Instagram' },
+        { label: 'Ingresos Facturados 360', value: '$8,950 USD', sub: 'Sincronizado Gavetas 50/30/20' },
+      ];
+    }
+    return [
+      { label: 'Valor Pipeline (MRR/ARR)', value: '$48,500 MRR', sub: '$582k ARR proyectado' },
+      { label: 'Tasa Conversión Autónoma', value: '64.2%', sub: 'SDR BANT + Scheduler' },
+      { label: 'SLA de Respuesta IA', value: '1.8s', sub: 'Debounce 3.0s Coalescing' },
+      { label: 'Ingresos Cerrados', value: '$19,200 USD', sub: '14 cuentas corporativas' },
+    ];
+  });
+
+  readonly armKanbanCardsForSilo = computed(() =>
+    this.armKanbanCards().filter((c) => c.workspaceId === this.activeArmSilo()),
+  );
+
+  readonly selectedArmLeadSplitInspector = computed(() => {
+    const cards = this.armKanbanCardsForSilo();
+    return cards.find((c) => c.id === this.selectedArmLeadId()) ?? cards[0] ?? null;
+  });
 
   readonly activeArmWorkspaceConfig = computed(() => ARM_WORKSPACES[this.activeArmSilo()]);
   readonly armStagesForSilo = computed<ArmPipelineStageConfig[]>(() =>
@@ -2616,7 +2804,72 @@ export class ComplianceCockpitComponent implements OnDestroy {
     if (silo === 'P2P_DESK' || silo === 'FINANCE_360') {
       this.activeScope.set(silo);
     }
+    const firstCard = this.armKanbanCards().find((c) => c.workspaceId === silo);
+    if (firstCard) {
+      this.selectedArmLeadId.set(firstCard.id);
+    }
     this.editingApprovalId.set(null);
+  }
+
+  selectArmLeadForInspector(cardId: string): void {
+    this.selectedArmLeadId.set(cardId);
+  }
+
+  moveArmCardToStage(cardId: string, toStageSlug: string, actor: 'AGENT' | 'HUMAN' = 'HUMAN'): void {
+    this.armKanbanCards.set(
+      this.armKanbanCards().map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              stageSlug: toStageSlug,
+              movedByAgentBadge:
+                actor === 'AGENT'
+                  ? `Movido por Agente ${c.assignedAgentRole}`
+                  : 'Movido por Humano (Override)',
+            }
+          : c,
+      ),
+    );
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  onArmCommandKeydown(event: KeyboardEvent): void {
+    if (this.activeView() !== 'ARM_COMMAND') return;
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
+    const key = (event.key || '').toLowerCase();
+    if (key === '1') {
+      this.setArmSilo('ARM_B2B');
+      return;
+    }
+    if (key === '2') {
+      this.setArmSilo('P2P_DESK');
+      return;
+    }
+    if (key === '3') {
+      this.setArmSilo('FINANCE_360');
+      return;
+    }
+
+    const firstPending = this.armApprovalQueueForSilo()[0];
+    if (!firstPending) return;
+
+    if (key === 'a') {
+      this.approveArmQueueItem(firstPending.id);
+    } else if (key === 'e') {
+      this.startEditArmApproval(firstPending);
+    } else if (key === 'h') {
+      this.takeoverHumanFromArmQueue(firstPending.id);
+    }
   }
 
   triggerArmSandboxTurn(personaOverride?: ArmSandboxPersonaId): void {

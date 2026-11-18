@@ -60,6 +60,7 @@ export interface AiGatewayConfig {
   customEndpoint?: string;
   temperature?: number;
   maxTokens?: number;
+  enableGoogleSearch?: boolean;
 }
 
 export interface GroundingSource {

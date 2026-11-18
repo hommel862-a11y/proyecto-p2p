@@ -623,6 +623,45 @@ describe('ComplianceCockpitComponent', () => {
         .find((a) => a.riskRuleTriggered === 'CLOSER_POST_CALL_CUSTOM_TERMS');
       expect(closerQueued).toBeDefined();
     });
+
+    it('renders live Executive KPIs, Zero-Click Kanban cards with "Movido por Agente X", Split Contact Inspector, and Keyboard-First hotkeys (S2, S3, S6)', () => {
+      component.setView('ARM_COMMAND');
+      component.setArmSilo('ARM_B2B');
+
+      // 1. Live Executive KPIs per silo
+      const kpis = component.armExecutiveKpisForSilo();
+      expect(kpis.length).toBe(4);
+      expect(kpis[0].label).toContain('MRR');
+
+      // 2. Zero-Click Kanban cards with "Movido por Agente X" badge & accessible stage transition
+      const cards = component.armKanbanCardsForSilo();
+      expect(cards.length).toBeGreaterThanOrEqual(3);
+      expect(cards[0].movedByAgentBadge).toContain('Movido por Agente');
+
+      const targetCard = cards[0];
+      component.moveArmCardToStage(targetCard.id, 'sesion-agendada');
+      const movedCard = component.armKanbanCardsForSilo().find((c) => c.id === targetCard.id);
+      expect(movedCard?.stageSlug).toBe('sesion-agendada');
+      expect(movedCard?.movedByAgentBadge).toContain('Movido por Humano');
+
+      // 3. Split Contact Inspector (live omnichannel chat + tool execution trace)
+      component.selectArmLeadForInspector(targetCard.id);
+      const inspector = component.selectedArmLeadSplitInspector();
+      expect(inspector).not.toBeNull();
+      expect(inspector?.messages.length).toBeGreaterThan(0);
+      expect(inspector?.toolTraces.length).toBeGreaterThan(0);
+
+      // 4. Keyboard-first hotkeys (1/2/3 silo switch & A to approve pending item)
+      component.triggerArmSandboxTurn('SKEPTICAL_DISCOUNT_30');
+      const pendingBefore = component.armApprovalQueueForSilo().length;
+      expect(pendingBefore).toBeGreaterThan(0);
+
+      component.onArmCommandKeydown(new KeyboardEvent('keydown', { key: 'a' }));
+      expect(component.armApprovalQueueForSilo().length).toBe(pendingBefore - 1);
+
+      component.onArmCommandKeydown(new KeyboardEvent('keydown', { key: '2' }));
+      expect(component.activeArmSilo()).toBe('P2P_DESK');
+    });
   });
 });
 

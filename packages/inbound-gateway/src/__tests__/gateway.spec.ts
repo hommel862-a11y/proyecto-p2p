@@ -420,4 +420,54 @@ describe('Inbound Gateway - Server Endpoints', () => {
     expect(outboxData.events.length).toBeGreaterThanOrEqual(2);
     expect(outboxData.events[0].workspaceId).toBe('ARM_B2B');
   });
+
+  it('resolves HITL approvals via POST /api/arm/approvals/resolve and enforces Outbound DLP + Meta 24h window in POST /api/arm/outbound/send (S3, S4, S5)', async () => {
+    // 1. Outbound DLP blocks cross-silo P2P bank rails inside ARM_B2B
+    const dlpRes = await fetch(`http://127.0.0.1:${port}/api/arm/outbound/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        recipientPhone: '+584141112233',
+        text: 'Transfiere por Pago Móvil 0134-1234 para liberar USDT.',
+        lastInboundTimestampMs: Date.now() - 1000 * 60 * 30, // 30m ago (window open)
+      }),
+    });
+    expect(dlpRes.status).toBe(422);
+    const dlpBody = await dlpRes.json();
+    expect(dlpBody.error).toBe('OUTBOUND_DLP_VIOLATION');
+    expect(dlpBody.violations).toContain('CROSS_SILO_P2P_RAIL_IN_B2B');
+
+    // 2. Expired Meta 24h window blocks free-text outbound unless templateName is provided
+    const expiredRes = await fetch(`http://127.0.0.1:${port}/api/arm/outbound/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        recipientPhone: '+584141112233',
+        text: 'Hola Dra. Gómez, seguimiento libre fuera de 24h',
+        lastInboundTimestampMs: Date.now() - 1000 * 3600 * 48, // 48h ago (window closed)
+      }),
+    });
+    expect(expiredRes.status).toBe(409);
+    const expiredBody = await expiredRes.json();
+    expect(expiredBody.error).toBe('META_24H_WINDOW_CLOSED_HSM_REQUIRED');
+
+    // 3. Approval resolution endpoint records decision and emits SSE outbox event
+    const resolveRes = await fetch(`http://127.0.0.1:${port}/api/arm/approvals/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        approvalId: 'app-test-204',
+        decision: 'EDITED_AND_APPROVED',
+        approvedText: 'Dra. Gómez, dirección autorizó el 15% de descuento anual.',
+        saveAsExample: true,
+      }),
+    });
+    expect(resolveRes.status).toBe(200);
+    const resolveBody = await resolveRes.json();
+    expect(resolveBody.success).toBe(true);
+    expect(resolveBody.decision).toBe('EDITED_AND_APPROVED');
+  });
 });

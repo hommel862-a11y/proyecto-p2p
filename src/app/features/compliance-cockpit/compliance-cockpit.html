@@ -2230,13 +2230,59 @@
           </div>
         </header>
 
-        <!-- 2. Pipeline Zero-Click Stages Strip for Active Silo -->
+        <!-- 2. Cómo va el negocio: 4 Executive KPIs in Live Mode -->
+        <div class="arm-kpi-strip" aria-label="Cómo va el negocio — Métricas en Vivo">
+          @for (kpi of armExecutiveKpisForSilo(); track kpi.label) {
+            <div class="arm-kpi-card">
+              <span class="arm-kpi-lbl">{{ kpi.label }}</span>
+              <span class="arm-kpi-val font-mono text-emerald">{{ kpi.value }}</span>
+              <span class="arm-kpi-sub">{{ kpi.sub }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- 3. Pipeline Zero-Click Stages Strip for Active Silo -->
         <div class="arm-stages-strip">
           @for (stg of armStagesForSilo(); track stg.slug) {
             <div class="arm-stage-pill" [style.border-color]="stg.colorHex">
               <span class="stg-pos font-mono">0{{ stg.position }}</span>
               <span class="stg-name">{{ stg.name }}</span>
               <span class="stg-slug font-mono">{{ stg.slug }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- 4. Zero-Click Autonomous Kanban Cards + Accessible Stage Override -->
+        <div class="arm-kanban-cards-grid">
+          @for (card of armKanbanCardsForSilo(); track card.id) {
+            <div
+              class="arm-kanban-card"
+              [class.selected]="selectedArmLeadId() === card.id"
+              (click)="selectArmLeadForInspector(card.id)"
+            >
+              <div class="arm-card-top">
+                <div>
+                  <div class="arm-card-title">{{ card.companyName }}</div>
+                  <div class="arm-card-sub">{{ card.leadName }} &bull; {{ card.dealValueLabel }}</div>
+                </div>
+                <span class="font-mono arm-score-badge">{{ card.qualificationScore }}/100</span>
+              </div>
+              <div class="arm-card-pain">{{ card.painPointSummary }}</div>
+              <div class="arm-card-msg font-mono">{{ card.lastMessagePreview }}</div>
+              <div class="arm-card-footer">
+                <span class="arm-moved-badge font-mono">⚡ {{ card.movedByAgentBadge }}</span>
+                <select
+                  class="terminal-select arm-move-select"
+                  aria-label="Mover tarjeta a etapa"
+                  [ngModel]="card.stageSlug"
+                  (click)="$event.stopPropagation()"
+                  (ngModelChange)="moveArmCardToStage(card.id, $event, 'HUMAN')"
+                >
+                  @for (stg of armStagesForSilo(); track stg.slug) {
+                    <option [value]="stg.slug">Mover a → {{ stg.name }}</option>
+                  }
+                </select>
+              </div>
             </div>
           }
         </div>
@@ -2399,6 +2445,49 @@
             </div>
           </div>
         </div>
+
+        <!-- 5. Split View Contact Detail: Live Omnichannel Chat (Left) + Tool-Calling Traceability (Right) -->
+        @if (selectedArmLeadSplitInspector(); as insp) {
+          <div class="arm-split-inspector" aria-label="Vista Dividida de Contacto y Trazabilidad">
+            <div class="arm-split-left">
+              <div class="arm-panel-header">
+                <h4>💬 Chat Omnicanal en Vivo — {{ insp.companyName }} ({{ insp.leadName }})</h4>
+                <span class="font-mono arm-count-chip">{{ insp.freeWindowLabel }}</span>
+              </div>
+              <div class="arm-panel-body">
+                @for (msg of insp.messages; track msg.text) {
+                  <div class="arm-chat-bubble" [class.agent]="msg.sender === 'AGENT'">
+                    <div class="arm-chat-head font-mono">
+                      <span>{{ msg.sender === 'LEAD' ? 'PROSPECTO' : 'AGENTE ' + insp.assignedAgentRole }}</span>
+                      @if (msg.mediaBadge) {
+                        <span class="text-emerald">{{ msg.mediaBadge }}</span>
+                      }
+                    </div>
+                    <div class="arm-chat-text">{{ msg.text }}</div>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="arm-split-right">
+              <div class="arm-panel-header">
+                <h4>🔍 Evolución en Pipeline &amp; Trazabilidad Tool-Calling</h4>
+                <span class="font-mono arm-count-chip">Etapa: {{ insp.stageSlug }}</span>
+              </div>
+              <div class="arm-panel-body">
+                @for (tr of insp.toolTraces; track tr.toolName) {
+                  <div class="arm-trace-row font-mono">
+                    <div class="arm-trace-top">
+                      <span class="text-emerald">{{ tr.toolName }}()</span>
+                      <span>{{ tr.latencyMs }}ms</span>
+                    </div>
+                    <div class="arm-trace-status">{{ tr.status }}</div>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
       </section>
     }
   </main>

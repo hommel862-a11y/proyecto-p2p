@@ -41,7 +41,14 @@ export class UniversalAiGateway {
 
     switch (provider) {
       case 'gemini':
-        return this.completeGemini(config.apiKey, model, messages, tools, config.temperature);
+        return this.completeGemini(
+          config.apiKey,
+          model,
+          messages,
+          tools,
+          config.temperature,
+          config.enableGoogleSearch,
+        );
       case 'openai':
       case 'deepseek':
       case 'qwen':
@@ -177,6 +184,7 @@ export class UniversalAiGateway {
     messages: ChatMessage[],
     tools: UniversalToolDefinition[],
     temperature = 0.2,
+    enableGoogleSearch = true,
   ): Promise<AiCompletionResult> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -260,8 +268,10 @@ export class UniversalAiGateway {
     if (functionDeclarations.length > 0) {
       geminiTools.push({ functionDeclarations });
     }
-    // Enable real-time Google Search Grounding for live factual intelligence
-    geminiTools.push({ googleSearch: {} });
+    // Enable real-time Google Search Grounding unless explicitly disabled for deterministic CRM agents
+    if (enableGoogleSearch !== false) {
+      geminiTools.push({ googleSearch: {} });
+    }
 
     if (geminiTools.length > 0) {
       body['tools'] = geminiTools;
