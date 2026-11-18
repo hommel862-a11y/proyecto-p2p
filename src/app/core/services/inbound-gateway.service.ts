@@ -1,6 +1,6 @@
 import { Injectable, signal, OnDestroy } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
-import type { InboundReceiptEvent } from '@p2p/core';
+import type { InboundReceiptEvent, ArmOutboxSseEvent } from '@p2p/core';
 
 export type GatewayConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED';
 
@@ -16,11 +16,16 @@ export class InboundGatewayService implements OnDestroy {
   readonly status = signal<GatewayConnectionStatus>('DISCONNECTED');
   readonly lastReceipt = signal<InboundReceiptEvent | null>(null);
   readonly totalReceiptsReceived = signal<number>(0);
+  readonly lastOutboxEventId = signal<number>(0);
+  readonly lastArmEvent = signal<ArmOutboxSseEvent | null>(null);
   readonly lastError = signal<string | null>(null);
 
   // Observable stream for event consumers
   private readonly receiptSubject = new Subject<InboundReceiptEvent>();
   readonly receipt$: Observable<InboundReceiptEvent> = this.receiptSubject.asObservable();
+
+  private readonly armEventSubject = new Subject<ArmOutboxSseEvent>();
+  readonly armEvent$: Observable<ArmOutboxSseEvent> = this.armEventSubject.asObservable();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -87,7 +92,9 @@ export class InboundGatewayService implements OnDestroy {
     this.lastError.set(null);
 
     try {
-      const sseUrl = `${this.baseUrl}/api/events`;
+      const cursor = this.lastOutboxEventId();
+      const sseUrl =
+        cursor > 0 ? `${this.baseUrl}/api/events?lastEventId=${cursor}` : `${this.baseUrl}/api/events`;
       this.eventSource = new EventSource(sseUrl);
 
       this.eventSource.onopen = () => {
@@ -106,6 +113,19 @@ export class InboundGatewayService implements OnDestroy {
           }
         } catch (err) {
           console.warn('[InboundGatewayService] Error parsing incoming receipt event:', err);
+        }
+      });
+
+      this.eventSource.addEventListener('arm_event', (event: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(event.data) as ArmOutboxSseEvent;
+          if (parsed && typeof parsed.id === 'number' && parsed.workspaceId) {
+            this.lastOutboxEventId.set(Math.max(this.lastOutboxEventId(), parsed.id));
+            this.lastArmEvent.set(parsed);
+            this.armEventSubject.next(parsed);
+          }
+        } catch (err) {
+          console.warn('[InboundGatewayService] Error parsing incoming ARM event:', err);
         }
       });
 

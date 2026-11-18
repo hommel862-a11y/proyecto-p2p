@@ -1,17 +1,38 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { URL } from 'node:url';
-import type { GatewayConfig, InboundReceiptEvent, InboundNormalizedMessage } from './types.js';
+import type {
+  GatewayConfig,
+  InboundReceiptEvent,
+  InboundNormalizedMessage,
+  ArmOutboxSseEvent,
+  ArmOutboxEventType,
+} from './types.js';
 import { verifyMetaSignature, verifyBearerToken } from './crypto-verify.js';
 import { DedupCache } from './dedup-cache.js';
 import { parseMetaWebhookPayload } from './meta-webhook-parser.js';
 import { processInboundMessageToReceipt } from './receipt-intake.js';
-import type { PipelineDeal } from '@p2p/core';
+import {
+  runArmSandboxSimulationTurn,
+  type PipelineDeal,
+  type ArmWorkspaceId,
+  type ArmSandboxPersonaId,
+} from '@p2p/core';
+
+export interface CoalescedTurnBatch {
+  conversationKey: string;
+  messageCount: number;
+  combinedText: string;
+  flushedAt: number;
+}
 
 export class InboundGatewayServer {
   private readonly server: Server;
   private readonly config: GatewayConfig;
   private readonly dedupCache: DedupCache;
   private readonly pendingEvents: InboundReceiptEvent[] = [];
+  private readonly outboxEvents: ArmOutboxSseEvent[] = [];
+  private outboxSeq = 0;
+  private readonly coalesceBuffers: Map<string, string[]> = new Map();
   private readonly sseClients: Set<ServerResponse> = new Set();
   private knownDeals: PipelineDeal[] = [];
 
@@ -31,6 +52,51 @@ export class InboundGatewayServer {
 
   clearPendingEvents(): void {
     this.pendingEvents.length = 0;
+  }
+
+  ingestBurstMessageForCoalescing(conversationKey: string, messageText: string): void {
+    const trimmed = (messageText || '').trim();
+    if (!trimmed) return;
+    const list = this.coalesceBuffers.get(conversationKey) ?? [];
+    list.push(trimmed);
+    this.coalesceBuffers.set(conversationKey, list);
+  }
+
+  flushCoalescedConversation(conversationKey: string): CoalescedTurnBatch | null {
+    const list = this.coalesceBuffers.get(conversationKey);
+    if (!list || list.length === 0) return null;
+    this.coalesceBuffers.delete(conversationKey);
+    return {
+      conversationKey,
+      messageCount: list.length,
+      combinedText: list.join('\n'),
+      flushedAt: Date.now(),
+    };
+  }
+
+  appendArmOutboxEvent(
+    workspaceId: ArmWorkspaceId,
+    eventType: ArmOutboxEventType,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): ArmOutboxSseEvent {
+    const evt: ArmOutboxSseEvent = {
+      id: ++this.outboxSeq,
+      workspaceId,
+      eventType,
+      aggregateId,
+      payload,
+      timestamp: Date.now(),
+    };
+    this.outboxEvents.push(evt);
+    this.broadcastSseEvent('arm_event', evt, evt.id);
+    return evt;
+  }
+
+  getOutboxEventsSince(sinceId = 0, workspaceId?: ArmWorkspaceId): ArmOutboxSseEvent[] {
+    return this.outboxEvents.filter(
+      (e) => e.id > sinceId && (!workspaceId || e.workspaceId === workspaceId),
+    );
   }
 
   start(): Promise<number> {
@@ -224,6 +290,68 @@ export class InboundGatewayServer {
       return;
     }
 
+    // Route: GET /api/arm/outbox (Replay missed ARM outbox events by cursor & workspace)
+    if (method === 'GET' && pathname === '/api/arm/outbox') {
+      const sinceId = Number(parsedUrl.searchParams.get('sinceId') || 0);
+      const workspaceId = (parsedUrl.searchParams.get('workspaceId') || undefined) as
+        | ArmWorkspaceId
+        | undefined;
+      const events = this.getOutboxEventsSince(sinceId, workspaceId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          count: events.length,
+          lastEventId: this.outboxSeq,
+          events,
+        }),
+      );
+      return;
+    }
+
+    // Route: POST /api/arm/sandbox/turn (Run $0-cost simulated customer turn & emit SSE outbox events)
+    if (method === 'POST' && pathname === '/api/arm/sandbox/turn') {
+      const rawBody = await this.readRawBody(req);
+      let body: { workspaceId?: ArmWorkspaceId; personaId?: ArmSandboxPersonaId };
+      try {
+        body = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+
+      const workspaceId: ArmWorkspaceId = body.workspaceId || 'ARM_B2B';
+      const personaId: ArmSandboxPersonaId = body.personaId || 'SKEPTICAL_DISCOUNT_30';
+      const simulation = runArmSandboxSimulationTurn({ workspaceId, personaId });
+
+      let emitted = 0;
+      this.appendArmOutboxEvent(workspaceId, 'pipeline_transition', `sbx-${workspaceId}`, {
+        fromStageSlug: simulation.fromStageSlug,
+        toStageSlug: simulation.toStageSlug,
+        updatedScore: simulation.updatedScore,
+        isSandbox: true,
+      });
+      emitted++;
+
+      if (simulation.queuedApproval) {
+        this.appendArmOutboxEvent(workspaceId, 'approval_requested', simulation.queuedApproval.id, {
+          approval: simulation.queuedApproval,
+          isSandbox: true,
+        });
+        emitted++;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          outboxEventsEmitted: emitted,
+          simulation,
+        }),
+      );
+      return;
+    }
+
     // Route: GET /api/events (Server-Sent Events stream for instant CRM refresh)
     if (method === 'GET' && pathname === '/api/events') {
       res.writeHead(200, {
@@ -232,6 +360,17 @@ export class InboundGatewayServer {
         'Connection': 'keep-alive',
       });
       res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
+
+      const headerLastId = Number(req.headers['last-event-id'] || 0);
+      const queryLastId = Number(parsedUrl.searchParams.get('lastEventId') || 0);
+      const resumeCursor = Math.max(headerLastId, queryLastId);
+      if (resumeCursor > 0) {
+        const missed = this.getOutboxEventsSince(resumeCursor);
+        for (const evt of missed) {
+          res.write(`id: ${evt.id}\nevent: arm_event\ndata: ${JSON.stringify(evt)}\n\n`);
+        }
+      }
+
       this.sseClients.add(res);
 
       req.on('close', () => {
@@ -245,8 +384,9 @@ export class InboundGatewayServer {
     res.end(JSON.stringify({ error: 'NOT_FOUND' }));
   }
 
-  private broadcastSseEvent(event: string, data: unknown): void {
-    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  private broadcastSseEvent(event: string, data: unknown, id?: number): void {
+    const idPrefix = typeof id === 'number' ? `id: ${id}\n` : '';
+    const payload = `${idPrefix}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of this.sseClients) {
       try {
         client.write(payload);

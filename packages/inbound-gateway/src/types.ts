@@ -1,16 +1,22 @@
 import type {
   WorkspaceScope,
   InboundChannel,
+  InboundMediaType,
   InboundSender,
   InboundNormalizedMessage,
   InboundReceiptEvent,
+  ArmOutboxEventType,
+  ArmOutboxSseEvent,
 } from '@p2p/core';
 
 export type {
   InboundChannel,
+  InboundMediaType,
   InboundSender,
   InboundNormalizedMessage,
   InboundReceiptEvent,
+  ArmOutboxEventType,
+  ArmOutboxSseEvent,
 };
 
 export interface GatewayConfig {

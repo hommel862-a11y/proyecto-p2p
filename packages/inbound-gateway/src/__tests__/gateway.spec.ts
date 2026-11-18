@@ -343,4 +343,81 @@ describe('Inbound Gateway - Server Endpoints', () => {
 
     expect(res.status).toBe(401);
   });
+
+  it('extracts captionless receipt images and WhatsApp voice notes without dropping them (S5)', () => {
+    const mediaPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_MEDIA',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                contacts: [{ profile: { name: 'Dra. Gómez' }, wa_id: '584149998877' }],
+                messages: [
+                  {
+                    from: '584149998877',
+                    id: 'wamid.audio.01',
+                    timestamp: '1740000200',
+                    type: 'audio',
+                    audio: { id: 'media-audio-123', mime_type: 'audio/ogg; codecs=opus', voice: true },
+                  },
+                  {
+                    from: '584149998877',
+                    id: 'wamid.image.02',
+                    timestamp: '1740000205',
+                    type: 'image',
+                    image: { id: 'media-img-456', mime_type: 'image/jpeg' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const parsed = parseMetaWebhookPayload(mediaPayload);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].mediaId).toBe('media-audio-123');
+    expect(parsed[0].mediaType).toBe('voice');
+    expect(parsed[0].text).toContain('[Nota de Voz]');
+    expect(parsed[1].mediaId).toBe('media-img-456');
+    expect(parsed[1].mediaType).toBe('image');
+    expect(parsed[1].text).toContain('[Imagen Adjunta]');
+  });
+
+  it('coalesces burst messages in 3s debounce window and serves POST /api/arm/sandbox/turn + outbox cursor (S2, S5)', async () => {
+    server.ingestBurstMessageForCoalescing('ARM_B2B:conv-1', 'Hola');
+    server.ingestBurstMessageForCoalescing('ARM_B2B:conv-1', 'Somos 18 médicos en Clínica Aurora');
+    server.ingestBurstMessageForCoalescing('ARM_B2B:conv-1', '¿Cuánto cuesta el Plan Enterprise anual?');
+
+    const coalesced = server.flushCoalescedConversation('ARM_B2B:conv-1');
+    expect(coalesced).not.toBeNull();
+    expect(coalesced?.messageCount).toBe(3);
+    expect(coalesced?.combinedText).toBe(
+      'Hola\nSomos 18 médicos en Clínica Aurora\n¿Cuánto cuesta el Plan Enterprise anual?',
+    );
+
+    const sbxRes = await fetch(`http://127.0.0.1:${port}/api/arm/sandbox/turn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId: 'ARM_B2B',
+        personaId: 'SKEPTICAL_DISCOUNT_30',
+      }),
+    });
+    expect(sbxRes.status).toBe(200);
+    const sbxBody = await sbxRes.json();
+    expect(sbxBody.success).toBe(true);
+    expect(sbxBody.simulation.isSandbox).toBe(true);
+    expect(sbxBody.outboxEventsEmitted).toBeGreaterThanOrEqual(2);
+
+    const outboxRes = await fetch(`http://127.0.0.1:${port}/api/arm/outbox?sinceId=0&workspaceId=ARM_B2B`);
+    expect(outboxRes.status).toBe(200);
+    const outboxData = await outboxRes.json();
+    expect(outboxData.events.length).toBeGreaterThanOrEqual(2);
+    expect(outboxData.events[0].workspaceId).toBe('ARM_B2B');
+  });
 });

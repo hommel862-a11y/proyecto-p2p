@@ -15,8 +15,10 @@ interface MetaWebhookEntry {
         timestamp?: string | number;
         type?: string;
         text?: { body?: string };
-        image?: { caption?: string; id?: string };
-        document?: { caption?: string; filename?: string };
+        image?: { caption?: string; id?: string; mime_type?: string };
+        audio?: { id?: string; mime_type?: string; voice?: boolean };
+        voice?: { id?: string; mime_type?: string };
+        document?: { caption?: string; filename?: string; id?: string; mime_type?: string };
       }>;
     };
   }>;
@@ -86,12 +88,30 @@ export function parseMetaWebhookPayload(rawPayload: unknown): InboundNormalizedM
             : (typeof msg.timestamp === 'number' ? msg.timestamp * 1000 : Date.now());
 
           let text = '';
+          let mediaId: string | undefined;
+          let mediaMimeType: string | undefined;
+          let mediaType: 'text' | 'image' | 'audio' | 'voice' | 'document' = 'text';
+
           if (msg.type === 'text' && msg.text?.body) {
             text = msg.text.body;
-          } else if (msg.type === 'image' && msg.image?.caption) {
-            text = msg.image.caption;
-          } else if (msg.type === 'document' && msg.document?.caption) {
-            text = msg.document.caption;
+            mediaType = 'text';
+          } else if (msg.type === 'image') {
+            mediaId = msg.image?.id;
+            mediaMimeType = msg.image?.mime_type;
+            mediaType = 'image';
+            text = msg.image?.caption?.trim() || '[Imagen Adjunta]';
+          } else if (msg.type === 'audio' || msg.type === 'voice') {
+            mediaId = msg.audio?.id || msg.voice?.id;
+            mediaMimeType = msg.audio?.mime_type || msg.voice?.mime_type;
+            mediaType = msg.audio?.voice || msg.type === 'voice' ? 'voice' : 'audio';
+            text = '[Nota de Voz]';
+          } else if (msg.type === 'document') {
+            mediaId = msg.document?.id;
+            mediaMimeType = msg.document?.mime_type;
+            mediaType = 'document';
+            text =
+              msg.document?.caption?.trim() ||
+              (msg.document?.filename ? `[Documento Adjunto: ${msg.document.filename}]` : '[Documento Adjunto]');
           }
 
           if (text.trim().length > 0) {
@@ -105,6 +125,9 @@ export function parseMetaWebhookPayload(rawPayload: unknown): InboundNormalizedM
               },
               text: text.trim(),
               timestamp,
+              mediaId,
+              mediaMimeType,
+              mediaType,
               rawPayloadId: msgId,
             });
           }
