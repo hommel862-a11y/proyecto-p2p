@@ -1,7 +1,10 @@
-import 'dotenv/config';
+import { loadGatewayEnv } from './env-loader.js';
+import { resolvePgConnectionConfig } from './pg-config.js';
 import type { WorkspaceScope } from '@p2p/core';
 import type { GatewayConfig } from './types.js';
 import { InboundGatewayServer } from './server.js';
+
+loadGatewayEnv();
 
 export * from './types.js';
 export * from './crypto-verify.js';
@@ -9,6 +12,9 @@ export * from './dedup-cache.js';
 export * from './meta-webhook-parser.js';
 export * from './receipt-intake.js';
 export * from './meta-outbound-client.js';
+export * from './pg-config.js';
+export * from './env-loader.js';
+export * from './migrate.js';
 export * from './pg-store.js';
 export * from './server.js';
 
@@ -31,6 +37,16 @@ export const serverInstance = new InboundGatewayServer(config);
 
 // Only start listening when executed directly
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+  if (config.databaseUrl) {
+    try {
+      const resolved = resolvePgConnectionConfig(config.databaseUrl);
+      for (const warning of resolved.warnings) {
+        console.warn(`[P2P-INBOUND-GATEWAY] WARNING: ${warning}`);
+      }
+    } catch {
+      // PgArmStore startup path handles connection string errors explicitly
+    }
+  }
   serverInstance
     .start()
     .then((listeningPort) => {

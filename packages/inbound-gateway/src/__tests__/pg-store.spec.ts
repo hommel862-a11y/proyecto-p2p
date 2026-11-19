@@ -574,4 +574,114 @@ describe('PgArmStore (PostgreSQL + RLS + pgvector)', () => {
     expect(dupSettlement.duplicate).toBe(true);
     expect(dupSettlement.settlement?.id).toBe('settle-existing-1');
   });
+
+  it('persists and retrieves Finance 360 snapshots strictly under FINANCE_360 RLS transaction context', async () => {
+    const clients: FakePoolClient[] = [];
+    const sampleSnapshot = {
+      version: 2,
+      assets: [
+        {
+          id: 'vault-1',
+          name: 'Zelle Personal',
+          channel: 'zelle',
+          scope: 'personal',
+          currency: 'USD',
+          balance: 500,
+        },
+      ],
+      liabilities: [],
+      incomes: [
+        {
+          id: 'inc-1',
+          title: 'Consultoría',
+          scope: 'business',
+          category: 'freelance',
+          channel: 'zelle',
+          vaultId: 'vault-1',
+          triMonetary: {
+            amount_original: 500,
+            currency: 'USD',
+            bcv_rate: 45,
+            parallel_rate: 52,
+            amount_usd: 500,
+            amount_ves: 22500,
+          },
+          date: '2026-11-18',
+          referenceNumber: 'REF-100',
+        },
+      ],
+      expenses: [],
+      casheaPlans: [],
+      providers: [],
+      inventory: [],
+      quotes: [],
+      goals: [],
+      recurringRules: [],
+      casheaMerchantSales: [],
+      lastUpdated: '2026-11-18T14:00:00-04:00',
+    };
+
+    const mockPool = {
+      connect: vi.fn(async () => {
+        const client = new FakePoolClient((text) => {
+          if (text.includes('INSERT INTO f360_snapshots')) {
+            return {
+              rows: [
+                {
+                  workspace_id: 'FINANCE_360',
+                  schema_version: 2,
+                  snapshot_json: sampleSnapshot,
+                  checksum: 'a'.repeat(64),
+                  version: 1,
+                  updated_at: new Date('2026-11-18T14:00:00.000Z'),
+                },
+              ],
+              rowCount: 1,
+            };
+          }
+          if (text.includes('SELECT workspace_id, schema_version, snapshot_json')) {
+            return {
+              rows: [
+                {
+                  workspace_id: 'FINANCE_360',
+                  schema_version: 2,
+                  snapshot_json: sampleSnapshot,
+                  checksum: 'a'.repeat(64),
+                  version: 1,
+                  updated_at: new Date('2026-11-18T14:00:00.000Z'),
+                },
+              ],
+              rowCount: 1,
+            };
+          }
+          return { rows: [], rowCount: 0 };
+        });
+        clients.push(client);
+        return client;
+      }),
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+      end: vi.fn(async () => undefined),
+    };
+
+    const store = new PgArmStore('postgresql://postgres:postgres@localhost:5432/arm', {
+      pool: mockPool,
+      createListenerClient: () => listenerClient,
+    });
+
+    const saved = await store.saveFinance360Snapshot(sampleSnapshot);
+    expect(saved.workspaceId).toBe('FINANCE_360');
+    expect(saved.version).toBe(1);
+    expect(saved.snapshot.assets).toHaveLength(1);
+    expect(clients[0]?.queries[1]?.values).toEqual(['FINANCE_360']);
+    expect(clients[0]?.queries.some((q) => q.text.includes('INSERT INTO f360_vaults'))).toBe(true);
+    expect(
+      clients[0]?.queries.some((q) => q.text.includes('INSERT INTO f360_ledger_entries')),
+    ).toBe(true);
+
+    const loaded = await store.getFinance360Snapshot();
+    expect(loaded).not.toBeNull();
+    expect(loaded?.workspaceId).toBe('FINANCE_360');
+    expect(loaded?.snapshot.incomes).toHaveLength(1);
+    expect(clients[1]?.queries[1]?.values).toEqual(['FINANCE_360']);
+  });
 });

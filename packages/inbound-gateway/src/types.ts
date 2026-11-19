@@ -35,9 +35,59 @@ export interface GatewayConfig {
   metaAppSecret?: string;
   metaVerifyToken?: string;
   apiSecretToken?: string;
+  authToken?: string;
+  requireAuth?: boolean;
+  allowedOrigin?: string;
   targetScope: WorkspaceScope;
   idempotencyTtlSeconds: number;
   databaseUrl?: string;
+}
+
+export interface F360SnapshotPayload {
+  version: number;
+  assets: readonly Record<string, unknown>[];
+  liabilities: readonly Record<string, unknown>[];
+  incomes: readonly Record<string, unknown>[];
+  expenses: readonly Record<string, unknown>[];
+  ledgerEntries?: readonly Record<string, unknown>[];
+  casheaPlans: readonly Record<string, unknown>[];
+  providers: readonly Record<string, unknown>[];
+  inventory: readonly Record<string, unknown>[];
+  quotes: readonly Record<string, unknown>[];
+  goals?: readonly Record<string, unknown>[];
+  recurringRules?: readonly Record<string, unknown>[];
+  casheaProfile?: Record<string, unknown> | null;
+  casheaMerchantSales?: readonly Record<string, unknown>[];
+  drawerLedger?: readonly Record<string, unknown>[];
+  reconciliations?: readonly Record<string, unknown>[];
+  businessProfile?: Record<string, unknown> | null;
+  lastUpdated: string;
+}
+
+export interface F360StoredSnapshot {
+  workspaceId: 'FINANCE_360';
+  version: number;
+  schemaVersion: number;
+  checksum: string;
+  updatedAt: number;
+  snapshot: F360SnapshotPayload;
+}
+
+export interface F360SnapshotGetResponse {
+  ok: boolean;
+  mode: GatewayStorageMode;
+  workspaceId: 'FINANCE_360';
+  found: boolean;
+  data: F360StoredSnapshot | null;
+}
+
+export interface F360SnapshotPutResponse {
+  ok: boolean;
+  mode: GatewayStorageMode;
+  workspaceId: 'FINANCE_360';
+  version: number;
+  checksum: string;
+  updatedAt: number;
 }
 
 export interface StorageHealthResponse {
@@ -46,6 +96,9 @@ export interface StorageHealthResponse {
   postgresConnected: boolean;
   latencyMs?: number;
   rlsActive: boolean;
+  pgvectorAvailable?: boolean;
+  outboxListenerConnected?: boolean;
+  warnings?: string[];
   error?: string;
 }
 

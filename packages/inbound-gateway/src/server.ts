@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { URL } from 'node:url';
 import {
   GATEWAY_STORAGE_MODES,
@@ -11,6 +11,10 @@ import {
   type StorageHealthResponse,
   type ReceiptVerifyRequest,
   type ReceiptVerifyResponse,
+  type F360SnapshotPayload,
+  type F360StoredSnapshot,
+  type F360SnapshotGetResponse,
+  type F360SnapshotPutResponse,
 } from './types.js';
 import { verifyMetaSignature, verifyBearerToken } from './crypto-verify.js';
 import { DedupCache } from './dedup-cache.js';
@@ -58,6 +62,7 @@ export class InboundGatewayServer {
   private readonly seenPgOutboxIds: Set<number> = new Set();
   private readonly memoryVerifiedReceipts: Map<string, { receiptId: string; dealId: string | null }> =
     new Map();
+  private memoryF360Snapshot: F360StoredSnapshot | null = null;
   private readonly pendingEvents: InboundReceiptEvent[] = [];
   private readonly outboxEvents: ArmOutboxSseEvent[] = [];
   private outboxSeq = 0;
@@ -177,9 +182,22 @@ export class InboundGatewayServer {
   async start(): Promise<number> {
     if (this.pgStore) {
       try {
-        this.outboxListener = await this.pgStore.startOutboxListener((evt) => {
-          this.handlePgOutboxNotification(evt);
-        });
+        this.outboxListener = await this.pgStore.startOutboxListener(
+          (evt) => {
+            this.handlePgOutboxNotification(evt);
+          },
+          {
+            retryOnInitialFailure: true,
+            onStateChange: (state, err) => {
+              if (state === 'reconnecting' && err) {
+                console.warn(
+                  '[P2P-INBOUND-GATEWAY] Outbox listener reconnecting:',
+                  err.message,
+                );
+              }
+            },
+          },
+        );
       } catch (err: unknown) {
         console.warn(
           '[P2P-INBOUND-GATEWAY] Outbox listener deferred:',
@@ -227,10 +245,8 @@ export class InboundGatewayServer {
     const pathname = parsedUrl.pathname;
     const method = req.method?.toUpperCase() ?? 'GET';
 
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Hub-Signature-256');
+    // CORS headers (restricted when INBOUND_GATEWAY_ALLOWED_ORIGIN or config.allowedOrigin is set)
+    this.applyCorsHeaders(req, res);
 
     if (method === 'OPTIONS') {
       res.writeHead(204);
@@ -247,6 +263,23 @@ export class InboundGatewayServer {
         cachedEvents: this.dedupCache.size(),
         pendingReceipts: this.pendingEvents.length,
       }));
+      return;
+    }
+
+    // Fail-closed Bearer authentication guard for /api/arm/*, /api/f360/*, and /api/events*
+    if (this.isProtectedApiPath(pathname) && !this.enforceProtectedRouteAuth(req, res)) {
+      return;
+    }
+
+    // Route: GET /api/f360/snapshot (Fetch canonical Finance 360 institutional ledger snapshot)
+    if (method === 'GET' && pathname === '/api/f360/snapshot') {
+      await this.handleGetF360Snapshot(res);
+      return;
+    }
+
+    // Route: PUT /api/f360/snapshot (Persist canonical Finance 360 institutional ledger snapshot)
+    if (method === 'PUT' && pathname === '/api/f360/snapshot') {
+      await this.handlePutF360Snapshot(req, res);
       return;
     }
 
@@ -404,7 +437,10 @@ export class InboundGatewayServer {
 
     // Route: GET /api/arm/health/storage (Storage & PostgreSQL RLS/pgvector status)
     if (method === 'GET' && pathname === '/api/arm/health/storage') {
-      await this.handleStorageHealth(res);
+      const includeDiagnostics =
+        parsedUrl.searchParams.get('verbose') === '1' ||
+        parsedUrl.searchParams.get('diagnostics') === '1';
+      await this.handleStorageHealth(res, includeDiagnostics);
       return;
     }
 
@@ -892,25 +928,225 @@ export class InboundGatewayServer {
     res.end(JSON.stringify({ error: 'NOT_FOUND' }));
   }
 
-  private async handleStorageHealth(res: ServerResponse): Promise<void> {
+  private applyCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
+    const rawAllowed = (
+      this.config.allowedOrigin ??
+      process.env['INBOUND_GATEWAY_ALLOWED_ORIGIN'] ??
+      ''
+    ).trim();
+
+    if (rawAllowed.length > 0) {
+      const allowedOrigins = rawAllowed
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+      const reqOrigin = typeof req.headers.origin === 'string' ? req.headers.origin.trim() : '';
+      res.setHeader('Vary', 'Origin');
+      if (reqOrigin && allowedOrigins.includes(reqOrigin)) {
+        res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+      } else if (!reqOrigin && allowedOrigins.length === 1) {
+        res.setHeader('Access-Control-Allow-Origin', allowedOrigins[0]);
+      }
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Hub-Signature-256');
+  }
+
+  private isProtectedApiPath(pathname: string): boolean {
+    return (
+      pathname === '/api/arm' ||
+      pathname.startsWith('/api/arm/') ||
+      pathname === '/api/f360' ||
+      pathname.startsWith('/api/f360/') ||
+      pathname === '/api/events' ||
+      pathname.startsWith('/api/events/')
+    );
+  }
+
+  private enforceProtectedRouteAuth(req: IncomingMessage, res: ServerResponse): boolean {
+    const configuredToken = (
+      this.config.authToken ??
+      process.env['INBOUND_GATEWAY_AUTH_TOKEN'] ??
+      ''
+    ).trim();
+
+    if (configuredToken.length > 0) {
+      if (!verifyBearerToken(req.headers.authorization, configuredToken)) {
+        this.sendJson(res, 401, { error: 'UNAUTHORIZED' });
+        return false;
+      }
+      return true;
+    }
+
+    if (this.config.requireAuth === true) {
+      this.sendJson(res, 401, { error: 'UNAUTHORIZED' });
+      return false;
+    }
+
+    return true;
+  }
+
+  private async handleGetF360Snapshot(res: ServerResponse): Promise<void> {
+    if (this.pgStore) {
+      const data = await this.pgStore.getFinance360Snapshot();
+      const response: F360SnapshotGetResponse = {
+        ok: true,
+        mode: GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR,
+        workspaceId: 'FINANCE_360',
+        found: Boolean(data),
+        data,
+      };
+      this.sendJson(res, 200, response);
+      return;
+    }
+
+    const response: F360SnapshotGetResponse = {
+      ok: true,
+      mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+      workspaceId: 'FINANCE_360',
+      found: Boolean(this.memoryF360Snapshot),
+      data: this.memoryF360Snapshot,
+    };
+    this.sendJson(res, 200, response);
+  }
+
+  private async handlePutF360Snapshot(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const rawBody = await this.readRawBody(req);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      this.sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });
+      return;
+    }
+
+    const validated = this.validateF360SnapshotPayload(parsed);
+    if (!validated.ok) {
+      this.sendJson(res, 400, { ok: false, error: validated.error });
+      return;
+    }
+
+    if (this.pgStore) {
+      try {
+        const saved = await this.pgStore.saveFinance360Snapshot(validated.data);
+        const response: F360SnapshotPutResponse = {
+          ok: true,
+          mode: GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR,
+          workspaceId: 'FINANCE_360',
+          version: saved.version,
+          checksum: saved.checksum,
+          updatedAt: saved.updatedAt,
+        };
+        this.sendJson(res, 200, response);
+      } catch (err: unknown) {
+        const isUniqueViolation =
+          typeof err === 'object' && err !== null && 'code' in err && err.code === '23505';
+        if (isUniqueViolation) {
+          this.sendJson(res, 409, { ok: false, error: 'DUPLICATE_REFERENCE' });
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
+    const serialized = JSON.stringify(validated.data);
+    const checksum = createHash('sha256').update(serialized).digest('hex');
+    const updatedAt = Date.now();
+    const version = (this.memoryF360Snapshot?.version ?? 0) + 1;
+    const schemaVersion = Math.max(1, Math.round(Number(validated.data.version || 2)));
+
+    this.memoryF360Snapshot = {
+      workspaceId: 'FINANCE_360',
+      version,
+      schemaVersion,
+      checksum,
+      updatedAt,
+      snapshot: validated.data,
+    };
+
+    const response: F360SnapshotPutResponse = {
+      ok: true,
+      mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
+      workspaceId: 'FINANCE_360',
+      version,
+      checksum,
+      updatedAt,
+    };
+    this.sendJson(res, 200, response);
+  }
+
+  private validateF360SnapshotPayload(
+    input: unknown,
+  ): { ok: true; data: F360SnapshotPayload } | { ok: false; error: string } {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+      return { ok: false, error: 'INVALID_SNAPSHOT_PAYLOAD' };
+    }
+    const record = input as Record<string, unknown>;
+    if (record['workspaceId'] !== undefined && record['workspaceId'] !== 'FINANCE_360') {
+      return { ok: false, error: 'INVALID_WORKSPACE_ID' };
+    }
+    const requiredArrayKeys = [
+      'assets',
+      'liabilities',
+      'incomes',
+      'expenses',
+      'casheaPlans',
+      'providers',
+      'inventory',
+      'quotes',
+    ];
+    for (const key of requiredArrayKeys) {
+      if (!Array.isArray(record[key])) {
+        return { ok: false, error: `MISSING_OR_INVALID_${key.toUpperCase()}` };
+      }
+    }
+    return { ok: true, data: input as F360SnapshotPayload };
+  }
+
+  private async handleStorageHealth(
+    res: ServerResponse,
+    includeDiagnostics = false,
+  ): Promise<void> {
     if (!this.pgStore) {
       const payload: StorageHealthResponse = {
         ok: true,
         mode: GATEWAY_STORAGE_MODES.MEMORY_FALLBACK,
         postgresConnected: false,
         rlsActive: false,
+        ...(includeDiagnostics
+          ? { pgvectorAvailable: false, outboxListenerConnected: false }
+          : {}),
       };
       this.sendJson(res, 200, payload);
       return;
     }
 
     const health = await this.pgStore.healthCheck();
+    const warnings =
+      typeof this.pgStore.getConnectionWarnings === 'function'
+        ? this.pgStore.getConnectionWarnings()
+        : [];
+    const listenerConnected =
+      typeof this.pgStore.isOutboxListenerConnected === 'function'
+        ? this.pgStore.isOutboxListenerConnected()
+        : Boolean(this.outboxListener);
     const payload: StorageHealthResponse = {
       ok: health.connected,
       mode: GATEWAY_STORAGE_MODES.POSTGRES_PGVECTOR,
       postgresConnected: health.connected,
       latencyMs: health.latencyMs,
       rlsActive: health.rlsActive,
+      ...(includeDiagnostics
+        ? {
+            pgvectorAvailable: health.pgvectorInstalled,
+            outboxListenerConnected: listenerConnected,
+          }
+        : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
       ...(health.error ? { error: health.error } : {}),
     };
     this.sendJson(res, health.connected ? 200 : 503, payload);

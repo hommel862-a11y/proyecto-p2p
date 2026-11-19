@@ -7,8 +7,10 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "npx tsx src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && esbuild src/migrate.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/migrate.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist/index.js",
+    "migrate": "node dist/migrate.js",
+    "check:db": "node dist/migrate.js --check",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

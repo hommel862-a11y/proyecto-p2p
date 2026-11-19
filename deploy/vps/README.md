@@ -102,7 +102,37 @@ curl -s http://localhost:3030/api/arm/health/storage
 
 ---
 
-## 4. Comandos de Monitoreo y Mantenimiento
+## 4. Alternativa Sin Docker — Opción B (Node Local / PM2 + Supabase o Neon)
+
+Si no tenés Docker ni `psql` instalados (por ejemplo en Windows o un VPS ligero), podés correr el gateway directo en Node conectado a un **PostgreSQL 17 + `pgvector` administrado** (Supabase o Neon):
+
+1. **Configurá `DATABASE_URL`** en el `.env` raíz o en `deploy/vps/.env` usando la URL **Direct / Session (puerto `5432`)** con TLS activo.
+   - Evitá el Transaction Pooler (puerto `6543` / `pgbouncer=true`) porque interrumpe `LISTEN arm_outbox_channel` para SSE.
+   - Si el proveedor usa un certificado de pooler propio, configurá `DATABASE_SSL_CA_PATH` (recomendado) o `sslmode=no-verify`.
+2. **Compilá, verificá requisitos y aplicá las migraciones sin `psql`:**
+   ```bash
+   npm run inbound:build
+   npm run inbound:check:db
+   npm run inbound:migrate
+   ```
+   *(El runner registra cada archivo aplicado en `public.arm_schema_migrations`, adopta automáticamente `001_init_arm_schema.sql` si la base ya existía y acepta `--only=001,002` si querés limitar migraciones).*
+3. **Levantá el gateway con reconexión automática (`startOutboxListener` con backoff exponencial):**
+   ```bash
+   npm run inbound:start
+   ```
+   O en VPS Linux con PM2 junto al bot:
+   ```bash
+   pm2 start packages/inbound-gateway/dist/index.js --name "p2p-inbound-gateway"
+   pm2 save
+   ```
+4. **Comprobá salud, RLS, `pgvector` y estado del listener:**
+   ```bash
+   curl -s "http://127.0.0.1:3030/api/arm/health/storage?verbose=1"
+   ```
+
+---
+
+## 5. Comandos de Monitoreo y Mantenimiento
 
 * **Ver logs del bot en vivo:**
   ```bash

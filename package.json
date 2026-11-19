@@ -37,6 +37,8 @@
     "inbound:build": "npm run build --prefix packages/inbound-gateway",
     "inbound:dev": "npm run dev --prefix packages/inbound-gateway",
     "inbound:start": "npm run start --prefix packages/inbound-gateway",
+    "inbound:migrate": "npm run migrate --prefix packages/inbound-gateway",
+    "inbound:check:db": "npm run check:db --prefix packages/inbound-gateway",
     "inbound:test": "npm test --prefix packages/inbound-gateway",
     "inbound:typecheck": "npm run typecheck --prefix packages/inbound-gateway",
     "inbound:simulate": "node scripts/simulate-inbound-receipt.cjs",

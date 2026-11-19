@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Pool, Client, type Notification } from 'pg';
 import {
   normalizeBankReference,
@@ -6,6 +6,8 @@ import {
   type ArmOutboxEventType,
   type ArmOutboxSseEvent,
 } from '@p2p/core';
+import type { F360SnapshotPayload, F360StoredSnapshot } from './types.js';
+import { resolvePgConnectionConfig, formatPgSslHint, type PgSslOption } from './pg-config.js';
 
 export const ARM_WORKSPACE_IDS = ['ARM_B2B', 'P2P_DESK', 'FINANCE_360'] as const;
 
@@ -172,6 +174,26 @@ export interface OutboxListenerHandle {
   stop: () => Promise<void>;
 }
 
+export type OutboxListenerState = 'connecting' | 'listening' | 'reconnecting' | 'stopped';
+
+export interface StartOutboxListenerOptions {
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  jitterRatio?: number;
+  retryOnInitialFailure?: boolean;
+  onStateChange?: (state: OutboxListenerState, error?: Error) => void;
+}
+
+interface OutboxListenerSession {
+  stopped: boolean;
+  client: PgListenerClientLike | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  reconnectScheduled: boolean;
+  attempt: number;
+  onEvent: (event: ArmOutboxSseEvent) => void;
+  options: StartOutboxListenerOptions;
+}
+
 function isPgUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === '23505';
 }
@@ -268,6 +290,48 @@ function mapBankRailRow(row: PgQueryResultRow): BankRailRecord {
   };
 }
 
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toRecordArray(value: unknown): readonly Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecordObject) : [];
+}
+
+function toPgString(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  return fallback;
+}
+
+function toPgNullableString(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  return null;
+}
+
+function toFinitePgNumber(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function toNullablePgNumber(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function mapF360SnapshotRow(row: PgQueryResultRow): F360StoredSnapshot {
+  const snapshotRecord = parseJsonRecord(row['snapshot_json']) as unknown as F360SnapshotPayload;
+  return {
+    workspaceId: 'FINANCE_360',
+    version: Number(row['version'] ?? 1),
+    schemaVersion: Number(row['schema_version'] ?? 2),
+    checksum: String(row['checksum'] ?? ''),
+    updatedAt: toEpochMs(row['updated_at']),
+    snapshot: snapshotRecord,
+  };
+}
+
 function mapTreasurySettlementRow(row: PgQueryResultRow): TreasurySettlementRecord {
   const rawWorkspace = row['workspace_id'];
   return {
@@ -293,19 +357,27 @@ function mapTreasurySettlementRow(row: PgQueryResultRow): TreasurySettlementReco
  */
 export class PgArmStore {
   private readonly databaseUrl: string;
+  private readonly sslConfig?: PgSslOption;
+  private readonly connectionWarnings: string[];
   private readonly pool: PgPoolLike;
   private readonly createListenerClient: () => PgListenerClientLike;
   private listenerClient: PgListenerClientLike | null = null;
+  private listenerConnected = false;
+  private activeListenerSession: OutboxListenerSession | null = null;
 
   constructor(databaseUrl: string, deps?: PgArmStoreDeps) {
     if (!databaseUrl || !databaseUrl.trim()) {
       throw new Error('DATABASE_URL must be a non-empty PostgreSQL connection string');
     }
-    this.databaseUrl = databaseUrl.trim();
+    const resolved = resolvePgConnectionConfig(databaseUrl);
+    this.databaseUrl = resolved.connectionString;
+    this.sslConfig = resolved.ssl;
+    this.connectionWarnings = resolved.warnings;
     this.pool =
       deps?.pool ??
       (new Pool({
         connectionString: this.databaseUrl,
+        ...(this.sslConfig !== undefined ? { ssl: this.sslConfig } : {}),
         max: 10,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 5_000,
@@ -313,13 +385,25 @@ export class PgArmStore {
 
     if (typeof this.pool.on === 'function') {
       this.pool.on('error', (err: Error) => {
-        console.warn('[PgArmStore] Idle pool client error:', err.message);
+        console.warn('[PgArmStore] Idle pool client error:', formatPgSslHint(err));
       });
     }
 
     this.createListenerClient =
       deps?.createListenerClient ??
-      (() => new Client({ connectionString: this.databaseUrl }) as unknown as PgListenerClientLike);
+      (() =>
+        new Client({
+          connectionString: this.databaseUrl,
+          ...(this.sslConfig !== undefined ? { ssl: this.sslConfig } : {}),
+        }) as unknown as PgListenerClientLike);
+  }
+
+  getConnectionWarnings(): string[] {
+    return [...this.connectionWarnings];
+  }
+
+  isOutboxListenerConnected(): boolean {
+    return this.listenerConnected;
   }
 
   /**
@@ -520,7 +604,7 @@ export class PgArmStore {
       }
 
       let existingReceiptId: string | undefined;
-      let existingDealId: string | null = null;
+      let existingDealId: string | null;
       try {
         const found = await this.withWorkspaceTx(input.workspaceId, async (client) => {
           const existingRes = await client.query(
@@ -685,43 +769,511 @@ export class PgArmStore {
     });
   }
 
+  async getFinance360Snapshot(): Promise<F360StoredSnapshot | null> {
+    return this.withWorkspaceTx('FINANCE_360', async (client) => {
+      const res = await client.query(
+        `
+        SELECT workspace_id, schema_version, snapshot_json, checksum, version, updated_at
+        FROM f360_snapshots
+        WHERE workspace_id = $1
+        LIMIT 1
+        `,
+        ['FINANCE_360'],
+      );
+      const row = res.rows[0];
+      if (!row) return null;
+      return mapF360SnapshotRow(row);
+    });
+  }
+
+  async saveFinance360Snapshot(snapshot: F360SnapshotPayload): Promise<F360StoredSnapshot> {
+    if (!isRecordObject(snapshot)) {
+      throw new Error('Invalid Finance 360 snapshot payload');
+    }
+    const raw = snapshot as unknown as Record<string, unknown>;
+    if (raw['workspaceId'] !== undefined && raw['workspaceId'] !== 'FINANCE_360') {
+      throw new Error('Finance 360 snapshot must target workspace FINANCE_360');
+    }
+
+    const schemaVersion = Math.max(1, Math.round(toFinitePgNumber(raw['version'], 2)));
+    const serialized = JSON.stringify(snapshot);
+    const checksum = createHash('sha256').update(serialized).digest('hex');
+
+    const assets = toRecordArray(raw['assets']);
+    const liabilities = toRecordArray(raw['liabilities']);
+    const incomes = toRecordArray(raw['incomes']);
+    const expenses = toRecordArray(raw['expenses']);
+    const explicitLedger = toRecordArray(raw['ledgerEntries']);
+    const casheaPlans = toRecordArray(raw['casheaPlans']);
+    const providers = toRecordArray(raw['providers']);
+    const inventory = toRecordArray(raw['inventory']);
+    const quotes = toRecordArray(raw['quotes']);
+    const goals = toRecordArray(raw['goals']);
+    const recurringRules = toRecordArray(raw['recurringRules']);
+    const casheaMerchantSales = toRecordArray(raw['casheaMerchantSales']);
+    const casheaProfile = isRecordObject(raw['casheaProfile']) ? raw['casheaProfile'] : null;
+
+    return this.withWorkspaceTx('FINANCE_360', async (client) => {
+      const snapRes = await client.query(
+        `
+        INSERT INTO f360_snapshots (workspace_id, schema_version, snapshot_json, checksum, version)
+        VALUES ($1, $2, $3::jsonb, $4, 1)
+        ON CONFLICT (workspace_id) DO UPDATE SET
+          schema_version = EXCLUDED.schema_version,
+          snapshot_json = EXCLUDED.snapshot_json,
+          checksum = EXCLUDED.checksum,
+          version = f360_snapshots.version + 1
+        RETURNING workspace_id, schema_version, snapshot_json, checksum, version, updated_at
+        `,
+        ['FINANCE_360', schemaVersion, serialized, checksum],
+      );
+
+      const savedRow = snapRes.rows[0];
+      if (!savedRow) {
+        throw new Error('Failed to persist Finance 360 snapshot');
+      }
+
+      const nextVersion = Number(savedRow['version'] ?? 1);
+
+      // Sync normalized relational tables atomically under FINANCE_360 RLS
+      const clearTables = [
+        'f360_ledger_entries',
+        'f360_liabilities',
+        'f360_cashea_installments',
+        'f360_cashea_plans',
+        'f360_cashea_merchant_sales',
+        'f360_providers',
+        'f360_inventory_items',
+        'f360_quotes',
+        'f360_goals',
+        'f360_recurring_rules',
+        'f360_vaults',
+      ];
+      for (const table of clearTables) {
+        await client.query(`DELETE FROM ${table} WHERE workspace_id = $1`, ['FINANCE_360']);
+      }
+
+      for (const vault of assets) {
+        await client.query(
+          `
+          INSERT INTO f360_vaults (
+            id, workspace_id, name, channel, scope, currency, vault_kind,
+            balance, opening_balance, bank_code, account_number_masked,
+            is_fixed_asset, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `,
+          [
+            toPgString(vault['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(vault['name'], 'Bóveda'),
+            toPgString(vault['channel'], 'other'),
+            toPgString(vault['scope'], 'personal'),
+            toPgString(vault['currency'], 'USD').toUpperCase(),
+            toPgString(vault['vaultKind'] ?? vault['vault_kind'], 'liquid'),
+            toFinitePgNumber(vault['balance'], 0),
+            toFinitePgNumber(vault['openingBalance'] ?? vault['opening_balance'], 0),
+            typeof vault['bankCode'] === 'string' ? vault['bankCode'].trim() : '',
+            typeof vault['accountNumberMasked'] === 'string'
+              ? vault['accountNumberMasked'].trim()
+              : '',
+            vault['isFixedAsset'] === true,
+            nextVersion,
+          ],
+        );
+      }
+
+      const seenEntryIds = new Set<string>();
+      const ledgerItems: Array<{ item: Record<string, unknown>; defaultType: string }> = [
+        ...incomes.map((item) => ({ item, defaultType: 'INCOME' })),
+        ...expenses.map((item) => ({ item, defaultType: 'EXPENSE' })),
+        ...explicitLedger.map((item) => ({ item, defaultType: 'EXPENSE' })),
+      ];
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+      for (const { item, defaultType } of ledgerItems) {
+        const id = toPgString(item['id'], randomUUID());
+        if (seenEntryIds.has(id)) continue;
+        seenEntryIds.add(id);
+
+        const tri = isRecordObject(item['triMonetary']) ? item['triMonetary'] : {};
+        const rawEntryType = toPgString(item['entryType'] ?? item['entry_type'], defaultType).toUpperCase();
+        const entryType = [
+          'INCOME',
+          'EXPENSE',
+          'TRANSFER_OUT',
+          'TRANSFER_IN',
+          'GOAL_RESERVE',
+        ].includes(rawEntryType)
+          ? rawEntryType
+          : defaultType;
+
+        await client.query(
+          `
+          INSERT INTO f360_ledger_entries (
+            id, workspace_id, entry_type, entry_group_id, title, scope, category, channel,
+            vault_id, liability_id, goal_id, quote_id, amount_original, currency,
+            bcv_rate, parallel_rate, eur_usd_rate, amount_usd, amount_ves,
+            entry_date, reference_number, notes, drawer_allocation, metadata, version
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8,
+            $9, $10, $11, $12, $13, $14,
+            $15, $16, $17, $18, $19,
+            $20, $21, $22, $23, $24::jsonb, $25
+          )
+          `,
+          [
+            id,
+            'FINANCE_360',
+            entryType,
+            toPgNullableString(item['entryGroupId'] ?? item['entry_group_id']),
+            toPgString(item['title'], 'Movimiento'),
+            toPgString(item['scope'], 'personal'),
+            toPgString(item['category'], 'other'),
+            toPgString(item['channel'], 'other'),
+            toPgNullableString(item['vaultId'] ?? item['vault_id']),
+            toPgNullableString(item['liabilityId'] ?? item['liability_id']),
+            toPgNullableString(item['goalId'] ?? item['goal_id']),
+            toPgNullableString(item['quoteId'] ?? item['quote_id']),
+            toFinitePgNumber(tri['amount_original'] ?? item['amountOriginal'], 0),
+            toPgString(tri['currency'] ?? item['currency'], 'USD').toUpperCase(),
+            toNullablePgNumber(tri['bcv_rate'] ?? item['bcvRate']),
+            toNullablePgNumber(tri['parallel_rate'] ?? item['parallelRate']),
+            toNullablePgNumber(tri['eur_usd_rate'] ?? item['eurUsdRate']),
+            toFinitePgNumber(tri['amount_usd'] ?? item['amountUsd'], 0),
+            toFinitePgNumber(tri['amount_ves'] ?? item['amountVes'], 0),
+            toPgString(item['date'] ?? item['entryDate'] ?? item['entry_date'], todayIso),
+            toPgNullableString(item['referenceNumber'] ?? item['reference_number']),
+            toPgNullableString(item['notes']),
+            toPgNullableString(item['drawerAllocation'] ?? item['drawer_allocation']),
+            JSON.stringify(item['metadata'] ?? item['p2pBridgeMetadata'] ?? {}),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const liab of liabilities) {
+        const tri = isRecordObject(liab['triMonetary']) ? liab['triMonetary'] : {};
+        await client.query(
+          `
+          INSERT INTO f360_liabilities (
+            id, workspace_id, title, creditor, scope, category, amount_usd, amount_ves,
+            bcv_rate, due_date, status, amount_paid, remaining_amount,
+            cashea_plan_id, provider_id, notes, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          `,
+          [
+            toPgString(liab['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(liab['title'], 'Compromiso'),
+            toPgString(liab['creditor'], 'Acreedor'),
+            toPgString(liab['scope'], 'personal'),
+            toPgString(liab['category'], 'other'),
+            toFinitePgNumber(tri['amount_usd'] ?? liab['amountUsd'], 0),
+            toFinitePgNumber(tri['amount_ves'] ?? liab['amountVes'], 0),
+            toNullablePgNumber(tri['bcv_rate'] ?? liab['bcvRate']),
+            toPgString(liab['dueDate'] ?? liab['due_date'], todayIso),
+            toPgString(liab['status'], 'pending'),
+            toFinitePgNumber(liab['amountPaid'] ?? liab['amount_paid'], 0),
+            toFinitePgNumber(
+              liab['remainingAmount'] ?? liab['remaining_amount'],
+              toFinitePgNumber(tri['amount_usd'], 0),
+            ),
+            toPgNullableString(liab['casheaPlanId'] ?? liab['cashea_plan_id']),
+            toPgNullableString(liab['providerId'] ?? liab['provider_id']),
+            toPgNullableString(liab['notes']),
+            nextVersion,
+          ],
+        );
+      }
+
+      if (casheaProfile) {
+        await client.query(
+          `
+          INSERT INTO f360_cashea_profiles (
+            workspace_id, club_level, principal_limit_usd, cotidiana_limit_usd,
+            total_paid_usd, paid_installments_count, next_recalc_date,
+            merchant_mode_enabled, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (workspace_id) DO UPDATE SET
+            club_level = EXCLUDED.club_level,
+            principal_limit_usd = EXCLUDED.principal_limit_usd,
+            cotidiana_limit_usd = EXCLUDED.cotidiana_limit_usd,
+            total_paid_usd = EXCLUDED.total_paid_usd,
+            paid_installments_count = EXCLUDED.paid_installments_count,
+            next_recalc_date = EXCLUDED.next_recalc_date,
+            merchant_mode_enabled = EXCLUDED.merchant_mode_enabled,
+            version = f360_cashea_profiles.version + 1
+          `,
+          [
+            'FINANCE_360',
+            Math.max(1, Math.min(6, Math.round(toFinitePgNumber(casheaProfile['clubLevel'], 1)))),
+            toFinitePgNumber(casheaProfile['principalLimitUsd'], 0),
+            toFinitePgNumber(casheaProfile['cotidianaLimitUsd'], 0),
+            toFinitePgNumber(casheaProfile['totalPaidUsd'], 0),
+            Math.max(0, Math.round(toFinitePgNumber(casheaProfile['paidInstallmentsCount'], 0))),
+            toPgNullableString(casheaProfile['nextRecalcDate']),
+            casheaProfile['merchantModeEnabled'] === true,
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const plan of casheaPlans) {
+        const planId = toPgString(plan['id'], randomUUID());
+        const creditLine = toPgString(plan['creditLine'] ?? plan['credit_line'], 'principal');
+        const clubLevel = Math.max(
+          1,
+          Math.min(6, Math.round(toFinitePgNumber(plan['clubLevel'] ?? plan['club_level'], 1))),
+        );
+        const initialPct = toFinitePgNumber(plan['initialPercentage'] ?? plan['initialPct'], 60);
+        const initialPaymentUsd = toFinitePgNumber(plan['initialPaymentUsd'], 0);
+
+        await client.query(
+          `
+          INSERT INTO f360_cashea_plans (
+            id, workspace_id, product_name, store_name, credit_line, club_level,
+            total_price_usd, initial_pct, initial_payment_usd, installments_count,
+            installment_amount_usd, installment_frequency_days, start_date, status, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          `,
+          [
+            planId,
+            'FINANCE_360',
+            toPgString(plan['productName'] ?? plan['product_name'], 'Compra Cashea'),
+            toPgString(plan['storeName'] ?? plan['store_name'], ''),
+            creditLine,
+            clubLevel,
+            toFinitePgNumber(plan['totalPriceUsd'], 0),
+            initialPct,
+            initialPaymentUsd,
+            Math.max(1, Math.round(toFinitePgNumber(plan['numberOfInstallments'], 3))),
+            toFinitePgNumber(plan['installmentAmountUsd'], 0),
+            Math.max(1, Math.round(toFinitePgNumber(plan['installmentFrequencyDays'], 14))),
+            toPgString(plan['startDate'] ?? plan['start_date'], todayIso),
+            toPgString(plan['status'], 'active'),
+            nextVersion,
+          ],
+        );
+
+        const installments = toRecordArray(plan['installments']);
+        for (const inst of installments) {
+          await client.query(
+            `
+            INSERT INTO f360_cashea_installments (
+              workspace_id, plan_id, installment_number, credit_line, club_level,
+              initial_pct, initial_payment_usd, status, due_date, amount_usd,
+              amount_paid_usd, paid_ves, bcv_rate_applied, reactivation_fee_usd, version
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            `,
+            [
+              'FINANCE_360',
+              planId,
+              Math.max(1, Math.round(toFinitePgNumber(inst['number'] ?? inst['installmentNumber'], 1))),
+              creditLine,
+              clubLevel,
+              initialPct,
+              initialPaymentUsd,
+              toPgString(inst['status'], 'pending'),
+              toPgString(inst['dueDate'] ?? inst['due_date'], todayIso),
+              toFinitePgNumber(inst['amountUsd'], 0),
+              toFinitePgNumber(inst['amountPaidUsd'], 0),
+              toNullablePgNumber(inst['paidVes']),
+              toNullablePgNumber(inst['bcvRateApplied']),
+              toFinitePgNumber(inst['reactivationFeeUsd'], 0),
+              nextVersion,
+            ],
+          );
+        }
+      }
+
+      for (const sale of casheaMerchantSales) {
+        await client.query(
+          `
+          INSERT INTO f360_cashea_merchant_sales (
+            id, workspace_id, sale_date, concept, sale_amount_usd, replacement_cost_usd,
+            bcv_rate, parallel_rate, initial_pct, installments_count,
+            mdr_commission_pct, advance_fee_pct, uses_weekly_advance,
+            net_profit_usd, status, metadata, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17)
+          `,
+          [
+            toPgString(sale['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(sale['saleDate'] ?? sale['sale_date'], todayIso),
+            toPgString(sale['concept'], 'Venta Aliado'),
+            toFinitePgNumber(sale['saleAmountUsd'], 0),
+            toFinitePgNumber(sale['replacementCostUsd'], 0),
+            toFinitePgNumber(sale['bcvRate'], 0),
+            toFinitePgNumber(sale['parallelRate'], 0),
+            toFinitePgNumber(sale['initialPct'], 40),
+            Math.max(1, Math.round(toFinitePgNumber(sale['installmentsCount'], 3))),
+            toFinitePgNumber(sale['mdrCommissionPct'], 4),
+            toFinitePgNumber(sale['advanceFeePct'], 0),
+            sale['usesWeeklyAdvance'] === true,
+            toFinitePgNumber(sale['netProfitUsd'], 0),
+            toPgString(sale['status'], 'pending'),
+            JSON.stringify(sale['metadata'] ?? {}),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const provider of providers) {
+        await client.query(
+          `
+          INSERT INTO f360_providers (
+            id, workspace_id, name, category, phone, bank_details, outstanding_debt_usd, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `,
+          [
+            toPgString(provider['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(provider['name'], 'Proveedor'),
+            toPgString(provider['category'], 'general'),
+            typeof provider['phone'] === 'string' ? provider['phone'].trim() : '',
+            typeof provider['bankDetails'] === 'string' ? provider['bankDetails'].trim() : '',
+            toFinitePgNumber(provider['outstandingDebtUsd'], 0),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const item of inventory) {
+        await client.query(
+          `
+          INSERT INTO f360_inventory_items (
+            id, workspace_id, name, sku, category, current_stock, minimum_stock,
+            optimal_stock, unit_cost_usd, selling_price_usd, status, last_movement_at, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `,
+          [
+            toPgString(item['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(item['name'], 'Artículo'),
+            toPgNullableString(item['sku']),
+            toPgString(item['category'], 'general'),
+            toFinitePgNumber(item['currentStock'], 0),
+            toFinitePgNumber(item['minimumStock'], 0),
+            toFinitePgNumber(item['optimalStock'], 0),
+            toFinitePgNumber(item['unitCostUsd'], 0),
+            toFinitePgNumber(item['sellingPriceUsd'], 0),
+            toPgString(item['status'], 'optimal'),
+            toPgNullableString(item['lastMovementAt'] ?? item['last_movement_at']),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const quote of quotes) {
+        await client.query(
+          `
+          INSERT INTO f360_quotes (
+            id, workspace_id, quote_number, client_name, client_doc, quote_type,
+            labor_type, line_items, totals, status, bcv_rate_applied, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12)
+          `,
+          [
+            toPgString(quote['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(quote['quoteNumber'] ?? quote['quote_number'], `Q-${Date.now()}`),
+            toPgString(quote['clientName'] ?? quote['client_name'], 'Cliente'),
+            toPgNullableString(quote['clientDoc'] ?? quote['client_doc']),
+            toPgString(quote['type'] ?? quote['quoteType'], 'custom_universal'),
+            toPgString(quote['laborType'] ?? quote['labor_type'], 'project_fixed'),
+            JSON.stringify(Array.isArray(quote['lineItems']) ? quote['lineItems'] : []),
+            JSON.stringify(
+              isRecordObject(quote['totals'])
+                ? quote['totals']
+                : { totalPriceUsd: toFinitePgNumber(quote['totalPriceUsd'], 0) },
+            ),
+            toPgString(quote['status'], 'draft'),
+            toFinitePgNumber(quote['bcvRateApplied'], 0),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const goal of goals) {
+        await client.query(
+          `
+          INSERT INTO f360_goals (
+            id, workspace_id, title, target_amount_usd, current_amount_usd,
+            scope, deadline, category, vault_id, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          `,
+          [
+            toPgString(goal['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(goal['title'], 'Meta'),
+            toFinitePgNumber(goal['targetAmountUsd'], 0),
+            toFinitePgNumber(goal['currentAmountUsd'], 0),
+            toPgString(goal['scope'], 'personal'),
+            toPgNullableString(goal['deadline']),
+            toPgString(goal['category'], 'savings'),
+            toPgNullableString(goal['vaultId'] ?? goal['vault_id']),
+            nextVersion,
+          ],
+        );
+      }
+
+      for (const rule of recurringRules) {
+        await client.query(
+          `
+          INSERT INTO f360_recurring_rules (
+            id, workspace_id, title, entry_type, scope, category, channel, vault_id,
+            amount_original, currency, cadence, next_run_date, last_run_date,
+            is_active, metadata, version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16)
+          `,
+          [
+            toPgString(rule['id'], randomUUID()),
+            'FINANCE_360',
+            toPgString(rule['title'], 'Regla recurrente'),
+            toPgString(rule['entryType'] ?? rule['entry_type'], 'EXPENSE').toUpperCase(),
+            toPgString(rule['scope'], 'personal'),
+            toPgString(rule['category'], 'other'),
+            toPgString(rule['channel'], 'other'),
+            toPgNullableString(rule['vaultId'] ?? rule['vault_id']),
+            toFinitePgNumber(rule['amountOriginal'] ?? rule['amount'], 0),
+            toPgString(rule['currency'], 'USD').toUpperCase(),
+            toPgString(rule['cadence'], 'monthly'),
+            toPgString(rule['nextRunDate'] ?? rule['next_run_date'], todayIso),
+            toPgNullableString(rule['lastRunDate'] ?? rule['last_run_date']),
+            rule['isActive'] !== false,
+            JSON.stringify(rule['metadata'] ?? {}),
+            nextVersion,
+          ],
+        );
+      }
+
+      return mapF360SnapshotRow(savedRow);
+    });
+  }
+
   async startOutboxListener(
     onEvent: (event: ArmOutboxSseEvent) => void,
+    options: StartOutboxListenerOptions = {},
   ): Promise<OutboxListenerHandle> {
-    if (this.listenerClient) {
+    if (this.activeListenerSession || this.listenerClient) {
       await this.stopActiveListener();
     }
 
-    const client = this.createListenerClient();
-    this.listenerClient = client;
+    const session: OutboxListenerSession = {
+      stopped: false,
+      client: null,
+      reconnectTimer: null,
+      reconnectScheduled: false,
+      attempt: 0,
+      onEvent,
+      options,
+    };
+    this.activeListenerSession = session;
 
-    client.on('notification', (msg: Notification) => {
-      if (msg.channel !== 'arm_outbox_channel' || !msg.payload) {
-        return;
-      }
-      try {
-        const parsed: unknown = JSON.parse(msg.payload);
-        if (typeof parsed !== 'object' || parsed === null) return;
-        const mapped = mapOutboxRow(parsed as PgQueryResultRow);
-        onEvent(mapped);
-      } catch (err: unknown) {
-        console.warn(
-          '[PgArmStore] Failed to parse arm_outbox_channel notification:',
-          err instanceof Error ? err.message : String(err),
-        );
-      }
-    });
-
-    client.on('error', (err: Error) => {
-      console.warn('[PgArmStore] Outbox listener client error:', err.message);
-    });
-
-    await client.connect();
-    await client.query('LISTEN arm_outbox_channel');
+    await this.connectOutboxSession(session, true);
 
     return {
       stop: async () => {
-        if (this.listenerClient === client) {
+        if (this.activeListenerSession === session) {
           await this.stopActiveListener();
         }
       },
@@ -733,9 +1285,164 @@ export class PgArmStore {
     await this.pool.end();
   }
 
+  private notifyListenerState(
+    session: OutboxListenerSession,
+    state: OutboxListenerState,
+    error?: Error,
+  ): void {
+    try {
+      session.options.onStateChange?.(state, error);
+    } catch {
+      // Never let telemetry callbacks break listener lifecycle
+    }
+  }
+
+  private async connectOutboxSession(
+    session: OutboxListenerSession,
+    isInitialAttempt: boolean,
+  ): Promise<void> {
+    if (session.stopped || this.activeListenerSession !== session) {
+      return;
+    }
+
+    const client = this.createListenerClient();
+    session.client = client;
+    this.listenerClient = client;
+    this.notifyListenerState(session, 'connecting');
+
+    const handleDisconnect = (err?: Error) => {
+      if (
+        session.stopped ||
+        this.activeListenerSession !== session ||
+        session.client !== client
+      ) {
+        return;
+      }
+      session.client = null;
+      if (this.listenerClient === client) {
+        this.listenerClient = null;
+      }
+      this.listenerConnected = false;
+      void client.end().catch(() => undefined);
+      this.scheduleOutboxReconnect(session, err);
+    };
+
+    client.on('notification', (msg: Notification) => {
+      if (session.stopped || msg.channel !== 'arm_outbox_channel' || !msg.payload) {
+        return;
+      }
+      try {
+        const parsed: unknown = JSON.parse(msg.payload);
+        if (typeof parsed !== 'object' || parsed === null) return;
+        const mapped = mapOutboxRow(parsed as PgQueryResultRow);
+        session.onEvent(mapped);
+      } catch (err: unknown) {
+        console.warn(
+          '[PgArmStore] Failed to parse arm_outbox_channel notification:',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    });
+
+    client.on('error', (err: Error) => {
+      console.warn('[PgArmStore] Outbox listener client error:', formatPgSslHint(err));
+      handleDisconnect(err);
+    });
+
+    const eventEmitter = client as unknown as {
+      on?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+    };
+    if (typeof eventEmitter.on === 'function') {
+      eventEmitter.on('end', () => {
+        handleDisconnect();
+      });
+    }
+
+    try {
+      await client.connect();
+      if (session.stopped || this.activeListenerSession !== session) {
+        await client.end().catch(() => undefined);
+        return;
+      }
+      await client.query('LISTEN arm_outbox_channel');
+      if (session.stopped || this.activeListenerSession !== session) {
+        await client.end().catch(() => undefined);
+        return;
+      }
+      session.attempt = 0;
+      this.listenerConnected = true;
+      this.notifyListenerState(session, 'listening');
+    } catch (err: unknown) {
+      const normalizedErr = err instanceof Error ? err : new Error(String(err));
+      session.client = null;
+      if (this.listenerClient === client) {
+        this.listenerClient = null;
+      }
+      this.listenerConnected = false;
+      await client.end().catch(() => undefined);
+
+      if (session.stopped || this.activeListenerSession !== session) {
+        return;
+      }
+
+      if (isInitialAttempt && !session.options.retryOnInitialFailure) {
+        await this.stopActiveListener();
+        throw err;
+      }
+
+      this.scheduleOutboxReconnect(session, normalizedErr);
+    }
+  }
+
+  private scheduleOutboxReconnect(session: OutboxListenerSession, error?: Error): void {
+    if (
+      session.stopped ||
+      session.reconnectScheduled ||
+      this.activeListenerSession !== session
+    ) {
+      return;
+    }
+
+    session.reconnectScheduled = true;
+    const baseDelayMs = Math.max(10, session.options.baseDelayMs ?? 1_000);
+    const maxDelayMs = Math.max(baseDelayMs, session.options.maxDelayMs ?? 30_000);
+    const jitterRatio = Math.max(0, session.options.jitterRatio ?? 0.2);
+    const rawDelay = Math.min(maxDelayMs, baseDelayMs * 2 ** session.attempt);
+    const jitter = jitterRatio > 0 ? Math.round(rawDelay * jitterRatio * Math.random()) : 0;
+    const delayMs = Math.min(maxDelayMs, rawDelay + jitter);
+    session.attempt += 1;
+
+    this.notifyListenerState(session, 'reconnecting', error);
+    session.reconnectTimer = setTimeout(() => {
+      session.reconnectTimer = null;
+      session.reconnectScheduled = false;
+      if (!session.stopped && this.activeListenerSession === session) {
+        void this.connectOutboxSession(session, false);
+      }
+    }, delayMs);
+    if (typeof session.reconnectTimer.unref === 'function') {
+      session.reconnectTimer.unref();
+    }
+  }
+
   private async stopActiveListener(): Promise<void> {
-    const client = this.listenerClient;
+    const session = this.activeListenerSession;
+    this.activeListenerSession = null;
+    const client = session?.client ?? this.listenerClient;
     this.listenerClient = null;
+    this.listenerConnected = false;
+
+    if (session) {
+      session.stopped = true;
+      session.client = null;
+      session.reconnectScheduled = false;
+      if (session.reconnectTimer) {
+        clearTimeout(session.reconnectTimer);
+        session.reconnectTimer = null;
+      }
+      this.notifyListenerState(session, 'stopped');
+    }
+
     if (!client) return;
     try {
       await client.query('UNLISTEN arm_outbox_channel');

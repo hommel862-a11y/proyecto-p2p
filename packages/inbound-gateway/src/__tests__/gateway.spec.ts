@@ -908,3 +908,235 @@ describe('Inbound Gateway - PostgreSQL Store Delegation Mode', () => {
     }
   });
 });
+
+describe('Inbound Gateway - Bearer Auth Hardening, CORS & Finance 360 Snapshot Sync (S3)', () => {
+  afterEach(() => {
+    delete process.env['INBOUND_GATEWAY_AUTH_TOKEN'];
+    delete process.env['INBOUND_GATEWAY_ALLOWED_ORIGIN'];
+  });
+
+  it('enforces INBOUND_GATEWAY_AUTH_TOKEN across /api/arm/*, /api/f360/*, and /api/events* while keeping /health public', async () => {
+    process.env['INBOUND_GATEWAY_AUTH_TOKEN'] = 'f360-gateway-secret-token';
+    process.env['INBOUND_GATEWAY_ALLOWED_ORIGIN'] = 'https://app.homel360.local';
+
+    const securedServer = new InboundGatewayServer({
+      port: 0,
+      targetScope: 'FINANCE_360',
+      idempotencyTtlSeconds: 60,
+    });
+    const securedPort = await securedServer.start();
+
+    try {
+      // /health stays public for liveness checks
+      const healthRes = await fetch(`http://127.0.0.1:${securedPort}/health`, {
+        headers: { Origin: 'https://app.homel360.local' },
+      });
+      expect(healthRes.status).toBe(200);
+      expect(healthRes.headers.get('access-control-allow-origin')).toBe(
+        'https://app.homel360.local',
+      );
+
+      // Disallowed origin MUST NOT receive wildcard '*'
+      const evilOriginRes = await fetch(`http://127.0.0.1:${securedPort}/health`, {
+        headers: { Origin: 'https://evil.example' },
+      });
+      expect(evilOriginRes.headers.get('access-control-allow-origin')).toBeNull();
+
+      // Protected routes reject missing / invalid Bearer token
+      for (const path of [
+        '/api/arm/health/storage',
+        '/api/arm/outbox',
+        '/api/f360/snapshot',
+        '/api/events/pending',
+        '/api/events',
+      ]) {
+        const unauthRes = await fetch(`http://127.0.0.1:${securedPort}${path}`);
+        expect(unauthRes.status).toBe(401);
+
+        const badTokenRes = await fetch(`http://127.0.0.1:${securedPort}${path}`, {
+          headers: { Authorization: 'Bearer invalid-token' },
+        });
+        expect(badTokenRes.status).toBe(401);
+      }
+
+      // Valid Bearer token succeeds on protected routes
+      const authHeaders = {
+        Authorization: 'Bearer f360-gateway-secret-token',
+        'Content-Type': 'application/json',
+      };
+      const storageRes = await fetch(`http://127.0.0.1:${securedPort}/api/arm/health/storage`, {
+        headers: authHeaders,
+      });
+      expect(storageRes.status).toBe(200);
+
+      const pendingRes = await fetch(`http://127.0.0.1:${securedPort}/api/events/pending`, {
+        headers: authHeaders,
+      });
+      expect(pendingRes.status).toBe(200);
+
+      const emptySnapRes = await fetch(`http://127.0.0.1:${securedPort}/api/f360/snapshot`, {
+        headers: authHeaders,
+      });
+      expect(emptySnapRes.status).toBe(200);
+      const emptySnapBody = (await emptySnapRes.json()) as {
+        ok: boolean;
+        mode: string;
+        found: boolean;
+        data: unknown;
+      };
+      expect(emptySnapBody.ok).toBe(true);
+      expect(emptySnapBody.mode).toBe('MEMORY_FALLBACK');
+      expect(emptySnapBody.found).toBe(false);
+      expect(emptySnapBody.data).toBeNull();
+
+      // PUT /api/f360/snapshot roundtrip in memory fallback mode
+      const putRes = await fetch(`http://127.0.0.1:${securedPort}/api/f360/snapshot`, {
+        method: 'PUT',
+        headers: authHeaders,
+        body: JSON.stringify({
+          version: 2,
+          assets: [{ id: 'v1', name: 'Banesco', currency: 'VES', balance: 50000 }],
+          liabilities: [],
+          incomes: [],
+          expenses: [],
+          casheaPlans: [],
+          providers: [],
+          inventory: [],
+          quotes: [],
+          lastUpdated: '2026-11-18T15:00:00-04:00',
+        }),
+      });
+      expect(putRes.status).toBe(200);
+      const putBody = (await putRes.json()) as {
+        ok: boolean;
+        mode: string;
+        workspaceId: string;
+        version: number;
+        checksum: string;
+      };
+      expect(putBody.ok).toBe(true);
+      expect(putBody.mode).toBe('MEMORY_FALLBACK');
+      expect(putBody.workspaceId).toBe('FINANCE_360');
+      expect(putBody.version).toBe(1);
+      expect(putBody.checksum).toMatch(/^[a-f0-9]{64}$/);
+
+      const getRes = await fetch(`http://127.0.0.1:${securedPort}/api/f360/snapshot`, {
+        headers: authHeaders,
+      });
+      expect(getRes.status).toBe(200);
+      const getBody = (await getRes.json()) as {
+        ok: boolean;
+        found: boolean;
+        data: { version: number; snapshot: { assets: unknown[] } };
+      };
+      expect(getBody.found).toBe(true);
+      expect(getBody.data.version).toBe(1);
+      expect(getBody.data.snapshot.assets).toHaveLength(1);
+    } finally {
+      await securedServer.stop();
+    }
+  });
+
+  it('fails closed on protected routes when requireAuth is enabled without a configured token', async () => {
+    const failClosedServer = new InboundGatewayServer({
+      port: 0,
+      targetScope: 'FINANCE_360',
+      idempotencyTtlSeconds: 60,
+      requireAuth: true,
+    });
+    const fcPort = await failClosedServer.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${fcPort}/api/f360/snapshot`);
+      expect(res.status).toBe(401);
+    } finally {
+      await failClosedServer.stop();
+    }
+  });
+
+  it('delegates GET/PUT /api/f360/snapshot to PgArmStore when PostgreSQL is configured', async () => {
+    const { PgArmStore } = await import('../pg-store.js');
+    let stored: unknown = null;
+    const mockPgStore = {
+      healthCheck: async () => ({
+        connected: true,
+        latencyMs: 3,
+        rlsActive: true,
+        pgvectorInstalled: true,
+      }),
+      getFinance360Snapshot: async () => stored,
+      saveFinance360Snapshot: async (snapshot: Record<string, unknown>) => {
+        stored = {
+          workspaceId: 'FINANCE_360',
+          version: 7,
+          schemaVersion: 2,
+          checksum: 'f'.repeat(64),
+          updatedAt: 1740000010000,
+          snapshot,
+        };
+        return stored;
+      },
+      startOutboxListener: async () => ({ stop: async () => undefined }),
+      close: async () => undefined,
+    } as unknown as InstanceType<typeof PgArmStore>;
+
+    const pgServer = new InboundGatewayServer(
+      {
+        port: 0,
+        targetScope: 'FINANCE_360',
+        idempotencyTtlSeconds: 60,
+        databaseUrl: 'postgresql://postgres:postgres@localhost:5432/arm',
+        authToken: 'pg-f360-token',
+      },
+      mockPgStore,
+    );
+    const pgPort = await pgServer.start();
+
+    try {
+      const headers = {
+        Authorization: 'Bearer pg-f360-token',
+        'Content-Type': 'application/json',
+      };
+      const putRes = await fetch(`http://127.0.0.1:${pgPort}/api/f360/snapshot`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          version: 2,
+          assets: [{ id: 'v-pg-1', name: 'Binance USDT', currency: 'USDT', balance: 1200 }],
+          liabilities: [],
+          incomes: [],
+          expenses: [],
+          casheaPlans: [],
+          providers: [],
+          inventory: [],
+          quotes: [],
+          lastUpdated: '2026-11-18T16:00:00-04:00',
+        }),
+      });
+      expect(putRes.status).toBe(200);
+      const putBody = (await putRes.json()) as { mode: string; version: number };
+      expect(putBody.mode).toBe('POSTGRES_PGVECTOR');
+      expect(putBody.version).toBe(7);
+
+      const getRes = await fetch(`http://127.0.0.1:${pgPort}/api/f360/snapshot`, { headers });
+      expect(getRes.status).toBe(200);
+      const getBody = (await getRes.json()) as {
+        mode: string;
+        found: boolean;
+        data: { version: number };
+      };
+      expect(getBody.mode).toBe('POSTGRES_PGVECTOR');
+      expect(getBody.found).toBe(true);
+      expect(getBody.data.version).toBe(7);
+
+      // Invalid snapshot shape returns 400
+      const invalidRes = await fetch(`http://127.0.0.1:${pgPort}/api/f360/snapshot`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ workspaceId: 'P2P_DESK', assets: [] }),
+      });
+      expect(invalidRes.status).toBe(400);
+    } finally {
+      await pgServer.stop();
+    }
+  });
+});
