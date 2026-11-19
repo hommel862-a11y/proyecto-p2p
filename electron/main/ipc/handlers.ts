@@ -18,6 +18,13 @@ import {
   type ArmBankRailRecord,
   type ArmPaymentReceiptInput,
   type ArmTreasurySettlementInput,
+  type Finance360SnapshotPayload,
+  type Finance360StoredSnapshot,
+  type Finance360SaveSnapshotResult,
+  type Finance360AiAnalyzeRequest,
+  type Finance360AiAnalyzeResult,
+  type Finance360ExportPdfRequest,
+  type Finance360ExportPdfResult,
 } from '../../shared/types';
 import { P2PDatabaseService } from '../db/database';
 import { parseCloseCyclePayload } from '../db/decision-journal.repository';
@@ -1712,6 +1719,280 @@ export function registerIpcHandlers(): void {
         .recordTreasurySettlement(payload as unknown as ArmTreasurySettlementInput);
     },
   );
+
+  // Finanzas 360 Institutional Ledger, Main-Process Gemini Proxy & Sandboxed PDF Export
+  ipcMain.removeHandler('f360:get-snapshot');
+  ipcMain.handle('f360:get-snapshot', async (): Promise<Finance360StoredSnapshot | null> => {
+    return db.finance360.getSnapshot();
+  });
+
+  ipcMain.removeHandler('f360:save-snapshot');
+  ipcMain.handle(
+    'f360:save-snapshot',
+    async (
+      _event: IpcMainInvokeEvent,
+      snapshot: unknown,
+    ): Promise<Finance360SaveSnapshotResult> => {
+      const payload = assertFinance360RecordPayload(snapshot, 'f360:save-snapshot');
+      return db.finance360.saveSnapshot(payload as unknown as Finance360SnapshotPayload);
+    },
+  );
+
+  ipcMain.removeHandler('f360:ai-analyze');
+  ipcMain.handle(
+    'f360:ai-analyze',
+    async (
+      _event: IpcMainInvokeEvent,
+      request: unknown,
+    ): Promise<Finance360AiAnalyzeResult> => {
+      return handleFinance360AiAnalyze(request, db, orchestrator);
+    },
+  );
+
+  ipcMain.removeHandler('f360:export-pdf');
+  ipcMain.handle(
+    'f360:export-pdf',
+    async (
+      _event: IpcMainInvokeEvent,
+      request: unknown,
+    ): Promise<Finance360ExportPdfResult> => {
+      return handleFinance360ExportPdf(request);
+    },
+  );
+}
+
+const F360_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'] as const;
+const MAX_F360_PROMPT_LENGTH = 200_000;
+const MAX_F360_HTML_LENGTH = 5_000_000;
+
+function assertFinance360RecordPayload(value: unknown, channel: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`f360_ipc: invalid payload for ${channel}`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function resolveMainGeminiKeyForF360(
+  db: P2PDatabaseService,
+  orchestrator: GeminiOrchestrator,
+): string | null {
+  const fromOrchestrator = orchestrator.getEffectiveApiKey('gemini')?.trim();
+  if (fromOrchestrator) {
+    return fromOrchestrator;
+  }
+
+  const envKey = process.env['GEMINI_API_KEY']?.trim();
+  if (envKey) {
+    return envKey;
+  }
+
+  if (isSecretStorageAvailable()) {
+    const keyPairs: ReadonlyArray<readonly [string, string]> = [
+      ['ai_api_key_gemini', 'ai_api_key_scheme_gemini'],
+      ['gemini_api_key', 'gemini_api_key_scheme'],
+    ];
+    for (const [valueKey, schemeKey] of keyPairs) {
+      const stored = db.getConfigValue(valueKey);
+      const scheme = db.getConfigValue(schemeKey);
+      if (stored && scheme === SECRET_SCHEME) {
+        try {
+          const decrypted = decryptSecret(stored).trim();
+          if (decrypted) return decrypted;
+        } catch {
+          // Ignore undecryptable credential
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+async function handleFinance360AiAnalyze(
+  rawRequest: unknown,
+  db: P2PDatabaseService,
+  orchestrator: GeminiOrchestrator,
+): Promise<Finance360AiAnalyzeResult> {
+  if (typeof rawRequest !== 'object' || rawRequest === null || Array.isArray(rawRequest)) {
+    return { ok: false, text: '', model: '', error: 'INVALID_REQUEST_PAYLOAD' };
+  }
+
+  const req = rawRequest as Partial<Finance360AiAnalyzeRequest>;
+  const prompt = typeof req.prompt === 'string' ? req.prompt.trim() : '';
+  if (!prompt || prompt.length > MAX_F360_PROMPT_LENGTH) {
+    return { ok: false, text: '', model: '', error: 'INVALID_PROMPT' };
+  }
+
+  const apiKey = resolveMainGeminiKeyForF360(db, orchestrator);
+  if (!apiKey) {
+    return { ok: false, text: '', model: '', error: 'GEMINI_API_KEY_NOT_CONFIGURED' };
+  }
+
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
+  if (req.inlineData && typeof req.inlineData === 'object') {
+    const mimeType =
+      typeof req.inlineData.mimeType === 'string' ? req.inlineData.mimeType.trim() : '';
+    const data = typeof req.inlineData.data === 'string' ? req.inlineData.data.trim() : '';
+    if (mimeType && data) {
+      parts.push({
+        inline_data: {
+          mime_type: mimeType,
+          data,
+        },
+      });
+    }
+  }
+
+  const temperature =
+    typeof req.temperature === 'number' &&
+    Number.isFinite(req.temperature) &&
+    req.temperature >= 0 &&
+    req.temperature <= 2
+      ? req.temperature
+      : 0.1;
+
+  const generationConfig: Record<string, unknown> = { temperature };
+  if (typeof req.responseMimeType === 'string' && req.responseMimeType.trim().length > 0) {
+    generationConfig['responseMimeType'] = req.responseMimeType.trim();
+  }
+
+  const envPreferredModel = process.env['F360_GEMINI_MODEL']?.trim();
+  const candidateModels = Array.from(
+    new Set(
+      envPreferredModel
+        ? [envPreferredModel, ...F360_GEMINI_FALLBACK_MODELS]
+        : [...F360_GEMINI_FALLBACK_MODELS],
+    ),
+  );
+
+  let lastModel = candidateModels[0] ?? 'gemini-2.5-flash';
+  let lastError = 'GEMINI_REQUEST_FAILED';
+
+  for (const model of candidateModels) {
+    lastModel = model;
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      const response = await net.fetch(endpoint, {
+        method: 'POST',
+        signal: AbortSignal.timeout(30_000),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts }],
+          generationConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+        lastError = `GEMINI_HTTP_${response.status}${errBody ? `: ${errBody.slice(0, 180)}` : ''}`;
+        continue;
+      }
+
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: unknown }>;
+          };
+        }>;
+      };
+
+      const extractedText = (data.candidates?.[0]?.content?.parts ?? [])
+        .map((p) => (typeof p.text === 'string' ? p.text : ''))
+        .join('')
+        .trim();
+
+      if (!extractedText) {
+        lastError = 'GEMINI_EMPTY_RESPONSE';
+        continue;
+      }
+
+      return {
+        ok: true,
+        text: extractedText,
+        model,
+      };
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return {
+    ok: false,
+    text: '',
+    model: lastModel,
+    error: lastError,
+  };
+}
+
+function sanitizePdfFilename(raw?: string): string {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return 'finanzas-360.pdf';
+  }
+  const base = path.basename(raw.trim()).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const cleaned = base.replace(/^\.+/, '') || 'finanzas-360';
+  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
+}
+
+async function handleFinance360ExportPdf(rawRequest: unknown): Promise<Finance360ExportPdfResult> {
+  if (typeof rawRequest !== 'object' || rawRequest === null || Array.isArray(rawRequest)) {
+    return { ok: false, error: 'INVALID_PDF_REQUEST' };
+  }
+
+  const req = rawRequest as Partial<Finance360ExportPdfRequest>;
+  const html = typeof req.html === 'string' ? req.html.trim() : '';
+  if (!html || html.length > MAX_F360_HTML_LENGTH) {
+    return { ok: false, error: 'INVALID_HTML_CONTENT' };
+  }
+
+  const filename = sanitizePdfFilename(req.filename);
+  const electronModule = await import('electron');
+  const BrowserWindowCtor = electronModule.BrowserWindow;
+  if (typeof BrowserWindowCtor !== 'function') {
+    return { ok: false, error: 'BROWSER_WINDOW_UNAVAILABLE' };
+  }
+
+  let pdfWindow: InstanceType<typeof BrowserWindowCtor> | null = null;
+  try {
+    pdfWindow = new BrowserWindowCtor({
+      show: false,
+      width: 816,
+      height: 1056,
+      webPreferences: {
+        javascript: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        plugins: false,
+      },
+    });
+
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    await pdfWindow.loadURL(dataUrl);
+    const pdfBuffer = await pdfWindow.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'Letter',
+    });
+
+    return {
+      ok: true,
+      base64: Buffer.from(pdfBuffer).toString('base64'),
+      filename,
+    };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    if (pdfWindow && !pdfWindow.isDestroyed()) {
+      pdfWindow.destroy();
+    }
+  }
 }
 
 const VALID_ARM_WORKSPACES = new Set<string>(Object.values(ARM_WORKSPACES));

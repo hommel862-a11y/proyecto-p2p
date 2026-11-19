@@ -392,6 +392,142 @@ export interface P2PIpcChannels {
     request: ArmTreasurySettlementInput;
     response: ArmTreasurySettlementResult;
   };
+  'f360:get-snapshot': {
+    request: void;
+    response: Finance360StoredSnapshot | null;
+  };
+  'f360:save-snapshot': {
+    request: Finance360SnapshotPayload;
+    response: Finance360SaveSnapshotResult;
+  };
+  'f360:ai-analyze': {
+    request: Finance360AiAnalyzeRequest;
+    response: Finance360AiAnalyzeResult;
+  };
+  'f360:export-pdf': {
+    request: Finance360ExportPdfRequest;
+    response: Finance360ExportPdfResult;
+  };
+}
+
+export const F360_LEDGER_ENTRY_TYPES = {
+  INCOME: 'INCOME',
+  EXPENSE: 'EXPENSE',
+  TRANSFER_OUT: 'TRANSFER_OUT',
+  TRANSFER_IN: 'TRANSFER_IN',
+  GOAL_RESERVE: 'GOAL_RESERVE',
+} as const;
+
+export type Finance360LedgerEntryType =
+  (typeof F360_LEDGER_ENTRY_TYPES)[keyof typeof F360_LEDGER_ENTRY_TYPES];
+
+export interface Finance360SnapshotPayload {
+  version: number;
+  assets: readonly Record<string, unknown>[];
+  liabilities: readonly Record<string, unknown>[];
+  incomes: readonly Record<string, unknown>[];
+  expenses: readonly Record<string, unknown>[];
+  ledgerEntries?: readonly Record<string, unknown>[];
+  casheaPlans: readonly Record<string, unknown>[];
+  providers: readonly Record<string, unknown>[];
+  inventory: readonly Record<string, unknown>[];
+  quotes: readonly Record<string, unknown>[];
+  goals?: readonly Record<string, unknown>[];
+  recurringRules?: readonly Record<string, unknown>[];
+  casheaProfile?: Record<string, unknown> | null;
+  casheaMerchantSales?: readonly Record<string, unknown>[];
+  drawerLedger?: readonly Record<string, unknown>[];
+  reconciliations?: readonly Record<string, unknown>[];
+  businessProfile?: Record<string, unknown> | null;
+  lastUpdated: string;
+}
+
+export interface Finance360EntityCounts {
+  vaults: number;
+  ledgerEntries: number;
+  liabilities: number;
+  casheaPlans: number;
+  quotes: number;
+  providers: number;
+  inventoryItems: number;
+  goals: number;
+  recurringRules: number;
+  casheaMerchantSales: number;
+}
+
+export interface Finance360StoredSnapshot {
+  workspaceId: 'FINANCE_360';
+  version: number;
+  schemaVersion: number;
+  checksum: string;
+  updatedAt: number;
+  snapshot: Finance360SnapshotPayload;
+}
+
+export interface Finance360SaveSnapshotResult {
+  ok: boolean;
+  workspaceId: 'FINANCE_360';
+  version: number;
+  checksum: string;
+  updatedAt: number;
+  counts: Finance360EntityCounts;
+}
+
+export interface Finance360AuditLogEntry {
+  id: string;
+  timestamp: string;
+  category: string;
+  action: string;
+  details?: string;
+  severity: string;
+  createdAt: number;
+}
+
+export interface Finance360AuditSummary {
+  workspaceId: 'FINANCE_360';
+  snapshotVersion: number;
+  updatedAt: number | null;
+  checksum: string | null;
+  counts: Finance360EntityCounts;
+  recentAuditLogs: readonly Finance360AuditLogEntry[];
+}
+
+export interface Finance360AiInlineData {
+  mimeType: string;
+  data: string;
+}
+
+export interface Finance360AiAnalyzeRequest {
+  prompt: string;
+  inlineData?: Finance360AiInlineData;
+  temperature?: number;
+  responseMimeType?: string;
+}
+
+export interface Finance360AiAnalyzeResult {
+  ok: boolean;
+  text: string;
+  model: string;
+  error?: string;
+}
+
+export interface Finance360ExportPdfRequest {
+  html: string;
+  filename?: string;
+}
+
+export interface Finance360ExportPdfResult {
+  ok: boolean;
+  base64?: string;
+  filename?: string;
+  error?: string;
+}
+
+export interface Finance360ElectronBridge {
+  getSnapshot(): Promise<Finance360StoredSnapshot | null>;
+  saveSnapshot(snapshot: Finance360SnapshotPayload): Promise<Finance360SaveSnapshotResult>;
+  aiAnalyze(request: Finance360AiAnalyzeRequest): Promise<Finance360AiAnalyzeResult>;
+  exportPdf(request: Finance360ExportPdfRequest): Promise<Finance360ExportPdfResult>;
 }
 
 export const ARM_WORKSPACES = {
@@ -821,6 +957,7 @@ export interface ElectronAPI {
       settlement: ArmTreasurySettlementInput,
     ): Promise<ArmTreasurySettlementResult>;
   };
+  finance360: Finance360ElectronBridge;
 }
 
 declare global {

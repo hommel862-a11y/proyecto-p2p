@@ -7,6 +7,13 @@ import type {
   ArmPaymentReceiptRecordResult,
   ArmTreasurySettlementInput,
   ArmTreasurySettlementResult,
+  Finance360SnapshotPayload,
+  Finance360StoredSnapshot,
+  Finance360SaveSnapshotResult,
+  Finance360AiAnalyzeRequest,
+  Finance360AiAnalyzeResult,
+  Finance360ExportPdfRequest,
+  Finance360ExportPdfResult,
 } from '../shared/types';
 // Type-only, so it is erased at compile time and cannot pull `node:sqlite` (or any
 // other main-process module) into the preload bundle. The reverse direction — the main
@@ -202,6 +209,15 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
       recordTreasurySettlement: (settlement: ArmTreasurySettlementInput) =>
         ipc('arm:record-treasury-settlement', settlement) as Promise<ArmTreasurySettlementResult>,
     },
+    finance360: {
+      getSnapshot: () => ipc('f360:get-snapshot') as Promise<Finance360StoredSnapshot | null>,
+      saveSnapshot: (snapshot: Finance360SnapshotPayload) =>
+        ipc('f360:save-snapshot', snapshot) as Promise<Finance360SaveSnapshotResult>,
+      aiAnalyze: (request: Finance360AiAnalyzeRequest) =>
+        ipc('f360:ai-analyze', request) as Promise<Finance360AiAnalyzeResult>,
+      exportPdf: (request: Finance360ExportPdfRequest) =>
+        ipc('f360:export-pdf', request) as Promise<Finance360ExportPdfResult>,
+    },
   };
 }
 
@@ -228,6 +244,7 @@ export const EXPOSED_API_KEYS = [
   'agents',
   'telegram',
   'arm',
+  'finance360',
 ] as const;
 
 // The channels the bridge is permitted to forward. Anything else must be
@@ -309,6 +326,10 @@ export const ALLOWED_CHANNELS = [
   'arm:list-bank-rails',
   'arm:record-payment-receipt',
   'arm:record-treasury-settlement',
+  'f360:get-snapshot',
+  'f360:save-snapshot',
+  'f360:ai-analyze',
+  'f360:export-pdf',
 ] as const;
 
 // Allow-listed server-to-renderer push event channels

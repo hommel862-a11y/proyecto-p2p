@@ -538,4 +538,112 @@ describe('Electron preload bridge (secure IPC)', () => {
       expect(ALLOWED_CHANNELS as readonly string[]).toContain(ch);
     }
   });
+
+  it('exposes the finance360 fail-closed channels and forwards all 4 operations accurately', async () => {
+    const calls: { channel: string; args: unknown[] }[] = [];
+    const api = createP2PApi((channel, ...args) => {
+      calls.push({ channel, args });
+      if (channel === 'f360:get-snapshot') {
+        return Promise.resolve({
+          workspaceId: 'FINANCE_360',
+          version: 3,
+          schemaVersion: 2,
+          checksum: 'abc123',
+          updatedAt: 1700000000000,
+          snapshot: {
+            version: 2,
+            assets: [],
+            liabilities: [],
+            incomes: [],
+            expenses: [],
+            casheaPlans: [],
+            providers: [],
+            inventory: [],
+            quotes: [],
+            lastUpdated: '2026-11-18T12:00:00-04:00',
+          },
+        });
+      }
+      if (channel === 'f360:save-snapshot') {
+        return Promise.resolve({
+          ok: true,
+          workspaceId: 'FINANCE_360',
+          version: 4,
+          checksum: 'def456',
+          updatedAt: 1700000001000,
+          counts: {
+            vaults: 0,
+            ledgerEntries: 0,
+            liabilities: 0,
+            casheaPlans: 0,
+            quotes: 0,
+            providers: 0,
+            inventoryItems: 0,
+            goals: 0,
+            recurringRules: 0,
+            casheaMerchantSales: 0,
+          },
+        });
+      }
+      if (channel === 'f360:ai-analyze') {
+        return Promise.resolve({ ok: true, text: '{"amount": 25}', model: 'gemini-2.5-flash' });
+      }
+      if (channel === 'f360:export-pdf') {
+        return Promise.resolve({ ok: true, base64: 'JVBERi0xLjQ=', filename: 'quote.pdf' });
+      }
+      return Promise.resolve(null);
+    });
+
+    expect(EXPOSED_API_KEYS as readonly string[]).toContain('finance360');
+    const f360Channels = [
+      'f360:get-snapshot',
+      'f360:save-snapshot',
+      'f360:ai-analyze',
+      'f360:export-pdf',
+    ];
+    for (const ch of f360Channels) {
+      expect(ALLOWED_CHANNELS as readonly string[]).toContain(ch);
+    }
+
+    const snap = await api.finance360.getSnapshot();
+    const savePayload = {
+      version: 2,
+      assets: [],
+      liabilities: [],
+      incomes: [],
+      expenses: [],
+      casheaPlans: [],
+      providers: [],
+      inventory: [],
+      quotes: [],
+      lastUpdated: '2026-11-18T12:00:00-04:00',
+    };
+    const saved = await api.finance360.saveSnapshot(savePayload);
+    const aiRes = await api.finance360.aiAnalyze({
+      prompt: 'Extrae datos',
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    });
+    const pdfRes = await api.finance360.exportPdf({
+      html: '<h1>Presupuesto</h1>',
+      filename: 'quote.pdf',
+    });
+
+    expect(snap?.version).toBe(3);
+    expect(saved.ok).toBe(true);
+    expect(aiRes.model).toBe('gemini-2.5-flash');
+    expect(pdfRes.base64).toBe('JVBERi0xLjQ=');
+    expect(calls).toEqual([
+      { channel: 'f360:get-snapshot', args: [] },
+      { channel: 'f360:save-snapshot', args: [savePayload] },
+      {
+        channel: 'f360:ai-analyze',
+        args: [{ prompt: 'Extrae datos', temperature: 0.1, responseMimeType: 'application/json' }],
+      },
+      {
+        channel: 'f360:export-pdf',
+        args: [{ html: '<h1>Presupuesto</h1>', filename: 'quote.pdf' }],
+      },
+    ]);
+  });
 });

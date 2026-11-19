@@ -16,6 +16,7 @@ import type {
 } from './decision-journal.repository';
 import { CustomAgentRepository } from './custom-agent.repository';
 import { ArmRepository } from './arm.repository';
+import { Finance360Repository } from './finance360.repository';
 
 export interface InboundBankEventRecord {
   id?: number;
@@ -149,6 +150,7 @@ export class P2PDatabaseService {
   private decisionJournal: DecisionJournalRepository | null = null;
   private customAgentRepo: CustomAgentRepository | null = null;
   private armRepo: ArmRepository | null = null;
+  private finance360Repo: Finance360Repository | null = null;
 
   constructor(dbFilePath?: string) {
     let targetPath = dbFilePath;
@@ -521,6 +523,213 @@ export class P2PDatabaseService {
         created_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_arm_treasury_settlements_source_date ON arm_treasury_settlements(source_workspace, settlement_date DESC);
+
+      CREATE TABLE IF NOT EXISTS f360_snapshots (
+        workspace_id TEXT PRIMARY KEY CHECK (workspace_id = 'FINANCE_360'),
+        schema_version INTEGER NOT NULL DEFAULT 2,
+        snapshot_json TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS f360_vaults (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        name TEXT NOT NULL,
+        channel TEXT NOT NULL DEFAULT 'other',
+        scope TEXT NOT NULL DEFAULT 'personal',
+        currency TEXT NOT NULL DEFAULT 'USD',
+        vault_kind TEXT NOT NULL DEFAULT 'liquid',
+        balance REAL NOT NULL DEFAULT 0,
+        opening_balance REAL NOT NULL DEFAULT 0,
+        bank_code TEXT NOT NULL DEFAULT '',
+        account_number_masked TEXT NOT NULL DEFAULT '',
+        is_fixed_asset INTEGER NOT NULL DEFAULT 0 CHECK (is_fixed_asset IN (0, 1)),
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_vaults_workspace_scope ON f360_vaults(workspace_id, scope, currency);
+
+      CREATE TABLE IF NOT EXISTS f360_ledger_entries (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        entry_type TEXT NOT NULL CHECK (entry_type IN ('INCOME', 'EXPENSE', 'TRANSFER_OUT', 'TRANSFER_IN', 'GOAL_RESERVE')),
+        entry_group_id TEXT,
+        title TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'personal',
+        category TEXT NOT NULL DEFAULT 'other',
+        channel TEXT NOT NULL DEFAULT 'other',
+        vault_id TEXT,
+        liability_id TEXT,
+        goal_id TEXT,
+        quote_id TEXT,
+        amount_original REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        bcv_rate REAL,
+        parallel_rate REAL,
+        eur_usd_rate REAL,
+        amount_usd REAL NOT NULL DEFAULT 0,
+        amount_ves REAL NOT NULL DEFAULT 0,
+        entry_date TEXT NOT NULL,
+        reference_number TEXT,
+        notes TEXT,
+        drawer_allocation TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_ledger_workspace_date ON f360_ledger_entries(workspace_id, entry_date DESC, created_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_f360_ledger_ref ON f360_ledger_entries(workspace_id, vault_id, reference_number)
+        WHERE vault_id IS NOT NULL AND reference_number IS NOT NULL AND reference_number <> '';
+
+      CREATE TABLE IF NOT EXISTS f360_liabilities (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        title TEXT NOT NULL,
+        creditor TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'personal',
+        category TEXT NOT NULL DEFAULT 'other',
+        amount_usd REAL NOT NULL DEFAULT 0,
+        amount_ves REAL NOT NULL DEFAULT 0,
+        bcv_rate REAL,
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        amount_paid REAL NOT NULL DEFAULT 0,
+        remaining_amount REAL NOT NULL DEFAULT 0,
+        cashea_plan_id TEXT,
+        provider_id TEXT,
+        notes TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_liabilities_workspace_due ON f360_liabilities(workspace_id, status, due_date ASC);
+
+      CREATE TABLE IF NOT EXISTS f360_cashea_plans (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        product_name TEXT NOT NULL,
+        store_name TEXT NOT NULL DEFAULT '',
+        credit_line TEXT NOT NULL DEFAULT 'principal',
+        club_level INTEGER NOT NULL DEFAULT 1,
+        total_price_usd REAL NOT NULL DEFAULT 0,
+        initial_pct REAL NOT NULL DEFAULT 60,
+        initial_payment_usd REAL NOT NULL DEFAULT 0,
+        installments_count INTEGER NOT NULL DEFAULT 3,
+        installment_amount_usd REAL NOT NULL DEFAULT 0,
+        start_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        installments_json TEXT NOT NULL DEFAULT '[]',
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_cashea_plans_workspace_status ON f360_cashea_plans(workspace_id, status);
+
+      CREATE TABLE IF NOT EXISTS f360_quotes (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        quote_number TEXT NOT NULL,
+        client_name TEXT NOT NULL,
+        client_doc TEXT,
+        quote_type TEXT NOT NULL DEFAULT 'custom_universal',
+        labor_type TEXT NOT NULL DEFAULT 'project_fixed',
+        line_items_json TEXT NOT NULL DEFAULT '[]',
+        totals_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'draft',
+        bcv_rate_applied REAL NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_quotes_workspace_status ON f360_quotes(workspace_id, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS f360_providers (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'general',
+        phone TEXT NOT NULL DEFAULT '',
+        bank_details TEXT NOT NULL DEFAULT '',
+        outstanding_debt_usd REAL NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_providers_workspace_name ON f360_providers(workspace_id, name ASC);
+
+      CREATE TABLE IF NOT EXISTS f360_inventory_items (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        name TEXT NOT NULL,
+        sku TEXT,
+        category TEXT NOT NULL DEFAULT 'general',
+        current_stock REAL NOT NULL DEFAULT 0,
+        minimum_stock REAL NOT NULL DEFAULT 0,
+        optimal_stock REAL NOT NULL DEFAULT 0,
+        unit_cost_usd REAL NOT NULL DEFAULT 0,
+        selling_price_usd REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'optimal',
+        last_movement_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_inventory_workspace_movement ON f360_inventory_items(workspace_id, last_movement_at ASC);
+
+      CREATE TABLE IF NOT EXISTS f360_goals (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        title TEXT NOT NULL,
+        target_amount_usd REAL NOT NULL DEFAULT 0,
+        current_amount_usd REAL NOT NULL DEFAULT 0,
+        scope TEXT NOT NULL DEFAULT 'personal',
+        deadline TEXT,
+        category TEXT NOT NULL DEFAULT 'savings',
+        vault_id TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_goals_workspace_scope ON f360_goals(workspace_id, scope);
+
+      CREATE TABLE IF NOT EXISTS f360_recurring_rules (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        title TEXT NOT NULL,
+        entry_type TEXT NOT NULL DEFAULT 'EXPENSE',
+        scope TEXT NOT NULL DEFAULT 'personal',
+        category TEXT NOT NULL DEFAULT 'other',
+        channel TEXT NOT NULL DEFAULT 'other',
+        vault_id TEXT,
+        amount_original REAL NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        cadence TEXT NOT NULL DEFAULT 'monthly',
+        next_run_date TEXT NOT NULL,
+        last_run_date TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_recurring_workspace_next ON f360_recurring_rules(workspace_id, is_active, next_run_date ASC);
+
+      CREATE TABLE IF NOT EXISTS f360_cashea_merchant_sales (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL DEFAULT 'FINANCE_360' CHECK (workspace_id = 'FINANCE_360'),
+        sale_date TEXT NOT NULL,
+        concept TEXT NOT NULL,
+        sale_amount_usd REAL NOT NULL DEFAULT 0,
+        replacement_cost_usd REAL NOT NULL DEFAULT 0,
+        bcv_rate REAL NOT NULL DEFAULT 0,
+        parallel_rate REAL NOT NULL DEFAULT 0,
+        initial_pct REAL NOT NULL DEFAULT 40,
+        installments_count INTEGER NOT NULL DEFAULT 3,
+        mdr_commission_pct REAL NOT NULL DEFAULT 4,
+        advance_fee_pct REAL NOT NULL DEFAULT 0,
+        uses_weekly_advance INTEGER NOT NULL DEFAULT 0 CHECK (uses_weekly_advance IN (0, 1)),
+        net_profit_usd REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_f360_merchant_sales_workspace_date ON f360_cashea_merchant_sales(workspace_id, sale_date DESC);
     `);
   }
 
@@ -1359,10 +1568,22 @@ export class P2PDatabaseService {
     return this.armRepo;
   }
 
+  getFinance360Repo(): Finance360Repository {
+    if (!this.finance360Repo) {
+      this.finance360Repo = new Finance360Repository(this.db);
+    }
+    return this.finance360Repo;
+  }
+
+  get finance360(): Finance360Repository {
+    return this.getFinance360Repo();
+  }
+
   close(): void {
     this.decisionJournal = null;
     this.customAgentRepo = null;
     this.armRepo = null;
+    this.finance360Repo = null;
     this.db.close();
   }
 }
