@@ -16,7 +16,7 @@ import { ToastService } from '../../core/toast.service';
 import { Finance360Service } from '../../core/finance-360.service';
 import { InboundGatewayService } from '../../core/services/inbound-gateway.service';
 import { HotkeysService } from '../../core/hotkeys.service';
-import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
+import { todayVetIso } from '../../core/models/finance-360.models';
 import { CrmCommandHeaderComponent } from './components/crm-command-header/crm-command-header.component';
 import { CrmOverviewComponent } from './components/crm-overview/crm-overview.component';
 import {
@@ -1528,25 +1528,46 @@ export class ComplianceCockpitComponent implements OnDestroy {
     }
 
     try {
-      this.finance360.addIncome({
-        title: `Corte Diario P2P Desk (${payload.dateIso})`,
+      const availableVaults = this.finance360.assets?.() ?? [];
+      const targetVault =
+        availableVaults.find(
+          (v) => (v.channel === 'crypto' || v.currency === 'USDT') && v.channel !== 'receivable',
+        ) ??
+        availableVaults.find(
+          (v) => v.scope === 'business' && v.currency === 'USD' && v.channel !== 'receivable',
+        );
+
+      const bridgeRes = this.finance360.settleP2pProfitToFinance360({
+        netProfitUsdt: payload.netProfitUsdt,
+        tradesCount: payload.tradesCount,
+        dateIso: todayVetIso(new Date(payload.timestamp)),
+        settlementId: payload.settlementId,
+        vaultId: targetVault?.id,
         scope: 'business',
-        category: 'p2p_profit',
-        channel: 'crypto',
-        triMonetary: computeTriMonetaryAmount(payload.netProfitUsdt, 'USDT', 1, 1),
-        date: payload.dateIso,
-        referenceNumber: payload.settlementId,
+        title: `Corte Diario P2P Desk (${payload.dateIso})`,
         notes: `Liquidación automática P2P #${payload.settlementId} (${payload.tradesCount} operaciones cerradas).`,
-        p2pBridgeMetadata: {
-          operationsCount: payload.tradesCount,
-          realizedPnlVes: 0,
-          realizedPnlUsdt: payload.netProfitUsdt,
-          importedAt: new Date(payload.timestamp).toISOString(),
-        },
       });
 
+      if (bridgeRes.alreadySettled) {
+        this.toast.warn('La ganancia de hoy ya fue transferida a Finanzas 360.', 'Corte Diario');
+        return;
+      }
+
+      if (!bridgeRes.success) {
+        this.toast.warn(
+          `No se pudo acreditar el corte #${payload.settlementId} en Finanzas 360.`,
+          'Puente Liquidación 360',
+        );
+        return;
+      }
+
+      const vaultLabel = targetVault ? ` en ${targetVault.name}` : '';
+      const rateSuffix =
+        bridgeRes.bcvRateApplied > 0
+          ? ` (BCV ${bridgeRes.bcvRateApplied.toFixed(2)} Bs)`
+          : ' (sin tasa BCV en vivo)';
       this.toast.success(
-        `💰 +$${payload.netProfitUsdt.toFixed(2)} USDT transferidos a Finanzas 360 (#${payload.settlementId}).`,
+        `+$${payload.netProfitUsdt.toFixed(2)} USDT transferidos a Finanzas 360 (#${payload.settlementId})${vaultLabel}${rateSuffix}.`,
         'Puente Liquidación 360',
       );
     } catch {

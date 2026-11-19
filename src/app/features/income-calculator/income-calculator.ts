@@ -49,7 +49,11 @@ import { AdComposerService } from '../../core/ad-composer.service';
 import { TradeTimerService } from '../../core/trade-timer.service';
 import { CotizaveService } from '../../core/cotizave.service';
 import { MarketHistoryService } from '../../core/market-history.service';
-import { computeTriMonetaryAmount } from '../../core/models/finance-360.models';
+import {
+  computeTriMonetaryAmount,
+  generateFinanceId,
+  todayVetIso,
+} from '../../core/models/finance-360.models';
 
 export type CalcViewMode = 'cycle' | 'reverse' | 'compound' | 'team' | 'classic' | 'mcp-portfolio';
 
@@ -1044,7 +1048,7 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     this.teamOperators.update((list) => [
       ...list,
       {
-        id: `op-${Date.now()}`,
+        id: generateFinanceId('op'),
         name: `Cajero ${idx} (Multibanco)`,
         assignedCapitalUsdt: 1500,
         commissionSplitPct: 25,
@@ -1097,14 +1101,18 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     const par = this.teamReferenceRate() > 0 ? this.teamReferenceRate() : this.finance360.currentParallelRate();
     const amountUsd = Number(alloc.operatorDailyTakeUsdt.toFixed(2));
     const amountVes = Number((amountUsd * par).toFixed(2));
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayVetIso();
+    const availableVaults = this.finance360.state().assets;
+    const targetVault =
+      availableVaults.find((v) => v.scope === 'business' && v.channel !== 'receivable') ??
+      availableVaults.find((v) => v.channel !== 'receivable');
 
     const expenseEntry = this.finance360.addExpense({
       title: `Comisión Cajero P2P: ${alloc.operator.name}`,
       scope: 'business',
       category: 'payroll',
-      channel: 'crypto',
-      vaultId: 'vault-pyme-caja',
+      channel: targetVault?.channel ?? 'crypto',
+      vaultId: targetVault?.id,
       drawerAllocation: 'drawer_operations',
       triMonetary: computeTriMonetaryAmount(amountUsd, 'USD', bcv, par),
       date: today,
@@ -1112,7 +1120,7 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     });
 
     const record: OperatorSettlementRecord = {
-      id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: generateFinanceId('settle'),
       operatorId: alloc.operator.id,
       operatorName: alloc.operator.name,
       commissionSplitPct: alloc.operator.commissionSplitPct,
@@ -1452,7 +1460,7 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     void this.router.navigate(['/log']);
   }
 
-  /** Mode C 1-Click Execution: Transfer today's harvested profit from Binance USDT to Cold/Safe Vault in Finance 360. */
+  /** Mode C 1-Click Execution: Transfer today's harvested profit from crypto operating vault to cold/safe vault in Finance 360. */
   harvestTodayToColdVault(): void {
     const comp = this.compoundResult();
     if (!comp) return;
@@ -1463,9 +1471,49 @@ export class IncomeCalculator implements OnInit, OnDestroy {
     const harvestShareFrac = Math.max(0.1, (100 - this.compoundReinvestmentRate()) / 100);
     const amountUsd = Number(Math.max(1, day1ProfitUsdt * harvestShareFrac).toFixed(2));
 
-    this.finance360.transferBetweenVaults('vault-binance-usdt', 'vault-cash-usd', amountUsd);
+    const vaults = this.finance360.state().assets.filter((v) => v.channel !== 'receivable');
+    const sourceVault =
+      vaults.find(
+        (v) => v.channel === 'crypto' || v.currency === 'USDT' || /binance|usdt|cripto/i.test(v.name),
+      ) ?? vaults.find((v) => v.currency === 'USD');
+    const targetVault =
+      vaults.find(
+        (v) =>
+          v.id !== sourceVault?.id &&
+          (v.channel === 'cash' || v.channel === 'zelle' || v.currency === 'USD'),
+      ) ?? vaults.find((v) => v.id !== sourceVault?.id);
+
+    if (!sourceVault || !targetVault) {
+      this.toast.warn(
+        'Configura una bóveda origen (USDT/Cripto) y una bóveda destino (Caja/USD) en Finanzas 360 antes de ejecutar la cosecha patrimonial.',
+      );
+      return;
+    }
+
+    const res = this.finance360.transferBetweenVaults(
+      sourceVault.id,
+      targetVault.id,
+      amountUsd,
+      'Cosecha patrimonial ejecutada desde Calculadora de Ingresos P2P',
+    );
+
+    if (!res.success) {
+      if (res.reason === 'INSUFFICIENT_FUNDS') {
+        this.toast.warn(
+          `Saldo insuficiente en "${sourceVault.name}" (${sourceVault.balance.toFixed(2)} ${sourceVault.currency}) para transferir $${amountUsd.toFixed(2)}.`,
+        );
+      } else if (res.reason === 'MISSING_FX_RATE') {
+        this.toast.warn(
+          'No hay tasa BCV en vivo para convertir entre las monedas de las bóvedas seleccionadas.',
+        );
+      } else {
+        this.toast.warn('No se pudo completar la transferencia patrimonial en Finanzas 360.');
+      }
+      return;
+    }
+
     this.toast.success(
-      `Cosecha Patrimonial ejecutada: $${amountUsd.toFixed(2)} USD transferidos de Capital Operativo (Binance) a Bóveda Fría / Caja Fuerte en Finanzas 360°.`,
+      `Cosecha patrimonial ejecutada: ${amountUsd.toFixed(2)} ${sourceVault.currency} de "${sourceVault.name}" acreditados como ${res.creditedAmount.toFixed(2)} ${res.targetCurrency} en "${targetVault.name}".`,
     );
   }
 
