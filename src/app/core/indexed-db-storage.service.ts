@@ -1,20 +1,59 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 
 export const IDB_DATABASE_NAME = 'p2p_web_storage';
 export const IDB_STORE_NAME = 'key_value_store';
 export const IDB_VERSION = 1;
 
+function getSafeLocalStorage(): Storage | null {
+  try {
+    if (
+      typeof globalThis.localStorage !== 'undefined' &&
+      typeof globalThis.localStorage?.getItem === 'function' &&
+      typeof globalThis.localStorage?.setItem === 'function'
+    ) {
+      return globalThis.localStorage;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function isQuotaExceededError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const record = err as Record<string, unknown>;
+  const name = typeof record['name'] === 'string' ? record['name'] : '';
+  const message = typeof record['message'] === 'string' ? record['message'] : '';
+  const code = typeof record['code'] === 'number' ? record['code'] : -1;
+
+  return (
+    name === 'QuotaExceededError' ||
+    name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    code === 22 ||
+    code === 1014 ||
+    /quota/i.test(message)
+  );
+}
+
 /**
  * Institutional L1 In-Memory + L2 IndexedDB Storage Engine.
  * Provides instant O(1) synchronous reads via memory cache while persisting
- * asynchronously into IndexedDB, overcoming the 5MB browser quota of localStorage.
+ * asynchronously into IndexedDB, exposing deterministic hydration and quota telemetry.
  */
 @Injectable({ providedIn: 'root' })
 export class IndexedDbStorageService {
-  private memoryCache = new Map<string, unknown>();
+  private readonly memoryCache = new Map<string, unknown>();
+  private readonly dirtyKeys = new Set<string>();
+  private readonly hydrationListeners = new Set<() => void>();
   private isReady = false;
   private initPromise: Promise<void> | null = null;
   private dbPromise: Promise<IDBDatabase | null> | null = null;
+
+  /** Reactive flag indicating initial localStorage + IndexedDB hydration has completed. */
+  readonly hydrated = signal<boolean>(false);
+
+  /** Reactive flag raised whenever a localStorage or IndexedDB write exceeds storage quota. */
+  readonly quotaExceeded = signal<boolean>(false);
 
   constructor() {
     void this.init();
@@ -23,6 +62,28 @@ export class IndexedDbStorageService {
   /** Resolves once initial localStorage + IndexedDB hydration completes. */
   whenReady(): Promise<void> {
     return this.init();
+  }
+
+  /**
+   * Registers a callback invoked once initial hydration completes (or immediately if already hydrated).
+   * Returns an unsubscribe function.
+   */
+  onHydrated(callback: () => void): () => void {
+    if (this.hydrated()) {
+      try {
+        callback();
+      } catch (err: unknown) {
+        console.warn('[IndexedDbStorage] onHydrated callback error:', err);
+      }
+      return () => {
+        return;
+      };
+    }
+
+    this.hydrationListeners.add(callback);
+    return () => {
+      this.hydrationListeners.delete(callback);
+    };
   }
 
   /**
@@ -36,32 +97,52 @@ export class IndexedDbStorageService {
       // 1. Initial hydration from localStorage if available to guarantee instant synchronous reads
       this.migrateFromLocalStorage();
 
-      // 2. Open IndexedDB and hydrate fresh records
+      // 2. Open IndexedDB and hydrate persisted records
       try {
         const db = await this.getDb();
         if (db) {
           await this.hydrateFromIndexedDb(db);
-          this.isReady = true;
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.warn(
           '[IndexedDbStorage] Initialization warning, relying on memory/localStorage:',
           err,
         );
+      } finally {
+        this.isReady = true;
+        this.dirtyKeys.clear();
+        this.hydrated.set(true);
+        this.flushHydrationListeners();
       }
     })();
 
     return this.initPromise;
   }
 
+  private flushHydrationListeners(): void {
+    for (const listener of this.hydrationListeners) {
+      try {
+        listener();
+      } catch (err: unknown) {
+        console.warn('[IndexedDbStorage] onHydrated listener error:', err);
+      }
+    }
+    this.hydrationListeners.clear();
+  }
+
   private migrateFromLocalStorage(): void {
-    if (typeof globalThis.localStorage === 'undefined') return;
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
 
     try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('p2p.') || key.startsWith('p2p_sec_vault:'))) {
-          const raw = localStorage.getItem(key);
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (
+          key &&
+          !this.dirtyKeys.has(key) &&
+          (key.startsWith('p2p.') || key.startsWith('p2p_sec_vault:'))
+        ) {
+          const raw = storage.getItem(key);
           if (raw !== null) {
             try {
               this.memoryCache.set(key, JSON.parse(raw));
@@ -72,7 +153,7 @@ export class IndexedDbStorageService {
         }
       }
     } catch {
-      // ignore
+      // ignore restricted storage contexts
     }
   }
 
@@ -86,7 +167,10 @@ export class IndexedDbStorageService {
         req.onsuccess = (e) => {
           const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
           if (cursor) {
-            this.memoryCache.set(String(cursor.key), cursor.value);
+            const key = String(cursor.key);
+            if (!this.dirtyKeys.has(key)) {
+              this.memoryCache.set(key, cursor.value);
+            }
             cursor.continue();
           } else {
             resolve();
@@ -153,16 +237,17 @@ export class IndexedDbStorageService {
     }
 
     // Secondary fallback to localStorage
-    if (typeof globalThis.localStorage !== 'undefined') {
+    const storage = getSafeLocalStorage();
+    if (storage) {
       try {
-        const raw = localStorage.getItem(key);
+        const raw = storage.getItem(key);
         if (raw !== null) {
-          const parsed = JSON.parse(raw);
+          const parsed: unknown = JSON.parse(raw);
           this.memoryCache.set(key, parsed);
           return parsed as T;
         }
       } catch {
-        // ignore
+        // ignore parse or storage access errors
       }
     }
 
@@ -171,16 +256,32 @@ export class IndexedDbStorageService {
 
   /**
    * Synchronous L1 cache update with asynchronous L2 write-through to IndexedDB.
+   * Surfaces QuotaExceededError via the `quotaExceeded` signal instead of swallowing it silently.
    */
   set<T>(key: string, value: T): void {
+    if (!this.isReady) {
+      this.dirtyKeys.add(key);
+    }
     this.memoryCache.set(key, value);
 
-    // Also mirror critical smaller keys to localStorage for backward compatibility
-    if (typeof globalThis.localStorage !== 'undefined') {
+    // Mirror to localStorage for backward compatibility while surfacing quota exhaustion
+    const storage = getSafeLocalStorage();
+    if (storage) {
       try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch {
-        // Quota exceeded in localStorage is completely safe now because IndexedDB handles large payloads!
+        storage.setItem(key, JSON.stringify(value));
+        if (this.quotaExceeded()) {
+          this.quotaExceeded.set(false);
+        }
+      } catch (err: unknown) {
+        if (isQuotaExceededError(err)) {
+          this.quotaExceeded.set(true);
+          console.warn(
+            `[IndexedDbStorage] localStorage quota exceeded while mirroring key "${key}". Persisting in IndexedDB.`,
+            err,
+          );
+        } else {
+          console.warn(`[IndexedDbStorage] localStorage mirror failed for key "${key}":`, err);
+        }
       }
     }
 
@@ -195,18 +296,30 @@ export class IndexedDbStorageService {
 
       const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
       const store = tx.objectStore(IDB_STORE_NAME);
-      store.put(value, key);
-    } catch (err) {
+      const req = store.put(value, key);
+      req.onerror = () => {
+        if (isQuotaExceededError(req.error)) {
+          this.quotaExceeded.set(true);
+        }
+      };
+    } catch (err: unknown) {
+      if (isQuotaExceededError(err)) {
+        this.quotaExceeded.set(true);
+      }
       console.warn(`[IndexedDbStorage] Async persistence error for key ${key}:`, err);
     }
   }
 
   remove(key: string): void {
+    if (!this.isReady) {
+      this.dirtyKeys.add(key);
+    }
     this.memoryCache.delete(key);
 
-    if (typeof globalThis.localStorage !== 'undefined') {
+    const storage = getSafeLocalStorage();
+    if (storage) {
       try {
-        localStorage.removeItem(key);
+        storage.removeItem(key);
       } catch {
         // ignore
       }
@@ -237,14 +350,14 @@ export class IndexedDbStorageService {
 
   importAll(json: string): void {
     try {
-      const parsed = JSON.parse(json);
+      const parsed: unknown = JSON.parse(json);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         for (const [k, v] of Object.entries(parsed)) {
           this.set(k, v);
         }
       }
     } catch {
-      // ignore
+      // ignore invalid JSON
     }
   }
 }

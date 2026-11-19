@@ -17,8 +17,63 @@ export interface CashReceiptData {
   notes?: string;
 }
 
+interface ElectronExportPdfRequest {
+  html: string;
+  filename: string;
+}
+
+interface ElectronExportPdfResponse {
+  success?: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+interface Finance360PdfBridge {
+  exportPdf?: (req: ElectronExportPdfRequest) => Promise<ElectronExportPdfResponse | boolean | void>;
+}
+
+const HTML_ESCAPE_MAP: Readonly<Record<string, string>> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+  '`': '&#96;',
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getElectronPdfBridge(): Finance360PdfBridge | null {
+  if (typeof window === 'undefined') return null;
+  const winRecord = window as unknown as Record<string, unknown>;
+  const electronVal = winRecord['electron'];
+  if (!isRecord(electronVal)) return null;
+  const f360 = electronVal['finance360'];
+  if (!isRecord(f360)) return null;
+  return f360 as Finance360PdfBridge;
+}
+
+function sanitizePdfFilename(receiptNumber: string): string {
+  const cleaned = receiptNumber
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const stem = cleaned.length > 0 ? cleaned.slice(0, 64) : 'comprobante_pago';
+  return `${stem}.pdf`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CashReceiptGeneratorService {
+  /**
+   * Strictly escapes HTML special characters to neutralize stored/DOM XSS vectors.
+   */
+  escapeHtml(value: string | null | undefined): string {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/[&<>"'`]/g, (char) => HTML_ESCAPE_MAP[char] ?? char);
+  }
+
   /**
    * Generates a unique sequential receipt number: REC-YYYYMMDD-XXXX
    */
@@ -29,26 +84,51 @@ export class CashReceiptGeneratorService {
   }
 
   /**
-   * Builds an institutional, print-ready HTML template formatted for
+   * Builds an institutional, XSS-safe, print-ready HTML template formatted for
    * both mobile screens and A4/Letter thermal/desk printers.
    */
   generateReceiptHtml(data: CashReceiptData): string {
+    const safeUsd = Number.isFinite(data.amountUsd) ? data.amountUsd : 0;
+    const safeVes = Number.isFinite(data.amountVes) ? data.amountVes : 0;
+    const safeBcv = Number.isFinite(data.bcvRateApplied) ? data.bcvRateApplied : 0;
+
     const formattedUsd = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(data.amountUsd);
+    }).format(safeUsd);
 
     const formattedVes = new Intl.NumberFormat('es-VE', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(data.amountVes);
+    }).format(safeVes);
+
+    const receiptNumber = this.escapeHtml(data.receiptNumber);
+    const date = this.escapeHtml(data.date);
+    const payerName = this.escapeHtml(data.payerName);
+    const payerIdDoc = data.payerIdDoc ? this.escapeHtml(data.payerIdDoc) : '';
+    const receiverName = this.escapeHtml(data.receiverName);
+    const receiverIdDoc = data.receiverIdDoc ? this.escapeHtml(data.receiverIdDoc) : '';
+    const paymentMethod = this.escapeHtml(data.paymentMethod);
+    const businessName = this.escapeHtml(data.businessName || 'Transacción Particular');
+    const concept = this.escapeHtml(data.concept);
+    const notes = data.notes ? this.escapeHtml(data.notes) : '';
+    const emittedAt = this.escapeHtml(new Date().toLocaleString());
+
+    const notesSection = notes
+      ? `
+    <div class="concept-box">
+      <div class="item-label">Notas Adicionales</div>
+      <div class="concept-text">${notes}</div>
+    </div>`
+      : '';
 
     return `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Comprobante de Pago - ${data.receiptNumber}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+  <title>Comprobante de Pago - ${receiptNumber}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -146,7 +226,7 @@ export class CashReceiptGeneratorService {
       border: 1px solid #e2e8f0;
       border-radius: 8px;
       padding: 16px;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
     }
     .concept-text {
       font-size: 14px;
@@ -189,39 +269,39 @@ export class CashReceiptGeneratorService {
         <div class="badge">${data.scope === 'business' ? 'COMPROBANTE COMERCIAL / PYME' : 'COMPROBANTE PERSONAL'}</div>
       </div>
       <div class="receipt-id">
-        <h3>${data.receiptNumber}</h3>
-        <p>Fecha: ${data.date}</p>
+        <h3>${receiptNumber}</h3>
+        <p>Fecha: ${date}</p>
       </div>
     </div>
 
     <div class="amount-banner">
       <div class="amount-main">${formattedUsd}</div>
-      <div class="amount-secondary">Equivalente: Bs ${formattedVes} (Tasa BCV: ${data.bcvRateApplied.toFixed(2)})</div>
+      <div class="amount-secondary">Equivalente: Bs ${formattedVes} (Tasa BCV: ${safeBcv.toFixed(2)})</div>
     </div>
 
     <div class="grid">
       <div>
         <div class="item-label">Pagador / Cliente</div>
-        <div class="item-value">${data.payerName} ${data.payerIdDoc ? `(CI/RIF: ${data.payerIdDoc})` : ''}</div>
+        <div class="item-value">${payerName}${payerIdDoc ? ` (CI/RIF: ${payerIdDoc})` : ''}</div>
       </div>
       <div>
         <div class="item-label">Beneficiario / Receptor</div>
-        <div class="item-value">${data.receiverName} ${data.receiverIdDoc ? `(CI/RIF: ${data.receiverIdDoc})` : ''}</div>
+        <div class="item-value">${receiverName}${receiverIdDoc ? ` (CI/RIF: ${receiverIdDoc})` : ''}</div>
       </div>
       <div>
         <div class="item-label">Método de Pago</div>
-        <div class="item-value">${data.paymentMethod}</div>
+        <div class="item-value">${paymentMethod}</div>
       </div>
       <div>
         <div class="item-label">Entidad / Comercio</div>
-        <div class="item-value">${data.businessName || 'Transacción Particular'}</div>
+        <div class="item-value">${businessName}</div>
       </div>
     </div>
 
     <div class="concept-box">
       <div class="item-label">Concepto del Pago</div>
-      <div class="concept-text">${data.concept}</div>
-    </div>
+      <div class="concept-text">${concept}</div>
+    </div>${notesSection}
 
     <div class="signatures">
       <div>
@@ -233,7 +313,7 @@ export class CashReceiptGeneratorService {
     </div>
 
     <div class="footer">
-      Documento probatorio interno emitido por Homel Suite 360 • Fecha de emisión: ${new Date().toLocaleString()}
+      Documento probatorio interno emitido por Homel Suite 360 • Fecha de emisión: ${emittedAt}
     </div>
   </div>
 </body>
@@ -242,18 +322,64 @@ export class CashReceiptGeneratorService {
   }
 
   /**
-   * Opens the print dialog for this receipt.
+   * Exports via Electron's native sandboxed PDF exporter when available,
+   * or prints safely via a script-free sandboxed iframe and Blob URL in web mode.
    */
-  printReceipt(data: CashReceiptData): void {
+  async printReceipt(data: CashReceiptData): Promise<void> {
     const html = this.generateReceiptHtml(data);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
+    const filename = sanitizePdfFilename(data.receiptNumber);
+
+    const electronPdf = getElectronPdfBridge();
+    if (electronPdf?.exportPdf) {
+      await electronPdf.exportPdf({ html, filename });
+      return;
     }
+
+    if (typeof document === 'undefined' || !document.body) {
+      return;
+    }
+
+    this.printViaSandboxedIframe(html);
+  }
+
+  private printViaSandboxedIframe(html: string): void {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-modals allow-same-origin');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+
+    let blobUrl: string | null = null;
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      blobUrl = URL.createObjectURL(blob);
+      iframe.src = blobUrl;
+    } else {
+      iframe.srcdoc = html;
+    }
+
+    const cleanup = () => {
+      if (blobUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(blobUrl);
+        blobUrl = null;
+      }
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } finally {
+        setTimeout(cleanup, 1000);
+      }
+    };
+
+    document.body.appendChild(iframe);
   }
 }
