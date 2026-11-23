@@ -16,6 +16,7 @@ export * from './pg-config.js';
 export * from './env-loader.js';
 export * from './migrate.js';
 export * from './pg-store.js';
+export * from './whatsapp-qr-bridge.js';
 export * from './server.js';
 
 const port = Number(process.env.INBOUND_GATEWAY_PORT || process.env.GATEWAY_PORT || 3030);

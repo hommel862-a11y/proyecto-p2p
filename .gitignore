@@ -98,5 +98,6 @@ mi_operaciones_binance.csv
 /packages/telegram-daemon/dist/
 /packages/inbound-gateway/dist/
 .telegram_offset
+.wa-qr-auth/
 elec.out.log
 

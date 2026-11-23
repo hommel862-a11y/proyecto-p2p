@@ -2,7 +2,7 @@ import type { ArmWorkspaceId, InboundMediaType } from '@p2p/core';
 
 export interface MetaOutboundDispatchResult {
   delivered: boolean;
-  mode: 'LIVE_META_GRAPH' | 'DRY_RUN_NO_META_CREDENTIALS' | 'META_API_ERROR';
+  mode: 'LIVE_META_GRAPH' | 'LIVE_WHATSAPP_QR' | 'DRY_RUN_NO_META_CREDENTIALS' | 'META_API_ERROR';
   workspaceId: ArmWorkspaceId;
   phoneNumberId?: string;
   metaMessageId?: string;

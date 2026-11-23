@@ -73,6 +73,23 @@ export interface GatewayMetaConfigStatus {
   hasAppSecret: boolean;
 }
 
+export type WhatsAppQrConnectionStatus =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'QR_READY'
+  | 'CONNECTED'
+  | 'ERROR';
+
+export interface WhatsAppQrStatus {
+  ok?: boolean;
+  status: WhatsAppQrConnectionStatus;
+  qrDataUrl: string | null;
+  connectedPhone: string | null;
+  connectedName: string | null;
+  lastError: string | null;
+  updatedAt: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class InboundGatewayService implements OnDestroy {
   private static readonly STORAGE_HEALTH_FALLBACK: GatewayStorageHealth = {
@@ -97,6 +114,7 @@ export class InboundGatewayService implements OnDestroy {
   readonly lastArmEvent = signal<ArmOutboxSseEvent | null>(null);
   readonly lastError = signal<string | null>(null);
   readonly storageHealth = signal<GatewayStorageHealth | null>(null);
+  readonly waQrStatus = signal<WhatsAppQrStatus | null>(null);
 
   // Observable stream for event consumers
   private readonly receiptSubject = new Subject<InboundReceiptEvent>();
@@ -304,6 +322,17 @@ export class InboundGatewayService implements OnDestroy {
           }
         } catch (err) {
           console.warn('[InboundGatewayService] Error parsing incoming ARM event:', err);
+        }
+      });
+
+      this.eventSource.addEventListener('wa_qr_status', (event: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(event.data) as WhatsAppQrStatus;
+          if (parsed && typeof parsed.status === 'string') {
+            this.waQrStatus.set(parsed);
+          }
+        } catch (err) {
+          console.warn('[InboundGatewayService] Error parsing incoming WhatsApp QR status:', err);
         }
       });
 
@@ -552,6 +581,63 @@ export class InboundGatewayService implements OnDestroy {
       });
       if (!res.ok) return null;
       return (await res.json()) as GatewayMetaConfigStatus;
+    } catch {
+      return null;
+    }
+  }
+
+  async fetchWhatsAppQrStatus(targetUrl?: string): Promise<WhatsAppQrStatus | null> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const headers = this.buildHeaders();
+      const res = await fetch(`${url}/api/arm/whatsapp-qr/status`, {
+        method: 'GET',
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as WhatsAppQrStatus;
+      this.waQrStatus.set(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  async connectWhatsAppQr(targetUrl?: string): Promise<WhatsAppQrStatus | null> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/api/arm/whatsapp-qr/connect`, {
+        method: 'POST',
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as WhatsAppQrStatus;
+      this.waQrStatus.set(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  async disconnectWhatsAppQr(
+    clearSession = false,
+    targetUrl?: string,
+  ): Promise<WhatsAppQrStatus | null> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/api/arm/whatsapp-qr/disconnect`, {
+        method: 'POST',
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ clearSession }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as WhatsAppQrStatus;
+      this.waQrStatus.set(data);
+      return data;
     } catch {
       return null;
     }

@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "npx tsx src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && esbuild src/migrate.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/migrate.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --external:@whiskeysockets/baileys --external:qrcode --external:pino --outfile=dist/index.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && esbuild src/migrate.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/migrate.js \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist/index.js",
     "migrate": "node dist/migrate.js",
     "check:db": "node dist/migrate.js --check",
@@ -26,12 +26,16 @@
   "author": "P2P Decisor Contributors",
   "license": "MIT",
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^16.4.7",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
     "esbuild": "^0.25.0",
     "tsx": "^4.19.0",
     "typescript": "~5.6.0",

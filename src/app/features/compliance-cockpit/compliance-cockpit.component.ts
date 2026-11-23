@@ -232,6 +232,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly metaAppSecretInput = signal<string>('');
   readonly metaVerifyTokenInput = signal<string>('p2p-verify-secret');
   readonly metaConfigStatus = signal<'LIVE_META_GRAPH' | 'DRY_RUN_NO_META_CREDENTIALS'>('DRY_RUN_NO_META_CREDENTIALS');
+  readonly waQrStatus = computed(() => this.inboundGateway.waQrStatus?.() ?? null);
+  readonly waQrBusy = signal<boolean>(false);
   readonly gatewayTesting = signal<boolean>(false);
   readonly gatewayTestResult = signal<{ ok: boolean; message: string } | null>(null);
 
@@ -240,6 +242,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.gatewayAuthTokenInput.set(this.inboundGateway.getAuthToken?.() ?? '');
     this.gatewayTestResult.set(null);
     void this.loadMetaConfigFromGateway();
+    void this.inboundGateway.fetchWhatsAppQrStatus?.(this.gatewayUrlInput().trim());
 
     if (this.inboundGateway.status() === 'CONNECTED') {
       this.toast.info(
@@ -248,6 +251,44 @@ export class ComplianceCockpitComponent implements OnDestroy {
       );
     }
     this.showGatewayConfigModal.set(true);
+  }
+
+  async connectWhatsAppQr(): Promise<void> {
+    if (typeof this.inboundGateway.connectWhatsAppQr !== 'function') return;
+    this.waQrBusy.set(true);
+    const targetUrl = this.gatewayUrlInput().trim();
+    const res = await this.inboundGateway.connectWhatsAppQr(targetUrl);
+    this.waQrBusy.set(false);
+    if (!res) {
+      this.toast.warn(
+        'No se pudo iniciar el puente WhatsApp QR. Verificá que el Gateway esté activo.',
+        'WhatsApp QR',
+      );
+      return;
+    }
+    if (res.status === 'CONNECTED') {
+      this.toast.success(
+        `WhatsApp conectado (${res.connectedPhone || 'Dispositivo vinculado'}).`,
+        'WhatsApp QR',
+      );
+    } else if (res.status === 'QR_READY') {
+      this.toast.info(
+        'Escaneá el código QR desde WhatsApp Business → Dispositivos vinculados.',
+        'QR Listo',
+      );
+    }
+  }
+
+  async disconnectWhatsAppQr(clearSession = false): Promise<void> {
+    if (typeof this.inboundGateway.disconnectWhatsAppQr !== 'function') return;
+    this.waQrBusy.set(true);
+    const targetUrl = this.gatewayUrlInput().trim();
+    await this.inboundGateway.disconnectWhatsAppQr(clearSession, targetUrl);
+    this.waQrBusy.set(false);
+    this.toast.info(
+      clearSession ? 'Sesión WhatsApp QR eliminada.' : 'WhatsApp QR desconectado.',
+      'WhatsApp QR',
+    );
   }
 
   setGatewayUrlPreset(presetUrl: string): void {

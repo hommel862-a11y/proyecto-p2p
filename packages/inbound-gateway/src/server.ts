@@ -28,6 +28,7 @@ import {
   fetchAndAnalyzeMetaMediaWithGemini,
 } from './meta-outbound-client.js';
 import { PgArmStore, isArmWorkspaceId, type OutboxListenerHandle } from './pg-store.js';
+import { WhatsAppQrBridge } from './whatsapp-qr-bridge.js';
 import {
   normalizeBankReference,
   runArmSandboxSimulationTurn,
@@ -72,6 +73,7 @@ export class InboundGatewayServer {
   private readonly coalesceBuffers: Map<string, string[]> = new Map();
   private readonly sseClients: Set<ServerResponse> = new Set();
   private knownDeals: PipelineDeal[] = [];
+  private readonly waQrBridge: WhatsAppQrBridge;
 
   constructor(config: GatewayConfig, pgStore?: PgArmStore) {
     this.config = config;
@@ -79,6 +81,17 @@ export class InboundGatewayServer {
     this.pgStore =
       pgStore ??
       (config.databaseUrl?.trim() ? new PgArmStore(config.databaseUrl.trim()) : null);
+    const repoRoot = findMonorepoRoot(process.cwd()) ?? process.cwd();
+    const waAuthDir = process.env['WA_QR_AUTH_DIR']?.trim() || join(repoRoot, '.wa-qr-auth');
+    this.waQrBridge = new WhatsAppQrBridge({
+      authDir: waAuthDir,
+      onInboundMessage: async (msg) => {
+        await this.handleWhatsAppQrInbound(msg);
+      },
+      onStateChange: (state) => {
+        this.broadcastSseEvent('wa_qr_status', state);
+      },
+    });
     this.server = createServer((req, res) => {
       void this.handleRequest(req, res).catch((err: unknown) => {
         if (!res.headersSent) {
@@ -213,6 +226,13 @@ export class InboundGatewayServer {
       this.server.listen(this.config.port, '0.0.0.0', () => {
         const addr = this.server.address();
         const port = typeof addr === 'object' && addr ? addr.port : this.config.port;
+        if (
+          process.env['NODE_ENV'] !== 'test' &&
+          !process.env['VITEST'] &&
+          this.waQrBridge.hasSavedSession()
+        ) {
+          void this.waQrBridge.connect();
+        }
         resolve(port);
       });
       this.server.on('error', reject);
@@ -221,6 +241,7 @@ export class InboundGatewayServer {
 
   async stop(): Promise<void> {
     this.dedupCache.destroy();
+    await this.waQrBridge.stop();
     for (const client of this.sseClients) {
       try {
         client.end();
@@ -431,6 +452,45 @@ export class InboundGatewayServer {
       return;
     }
 
+    // Route: GET /api/arm/whatsapp-qr/status (Linked Devices QR bridge status)
+    if (method === 'GET' && pathname === '/api/arm/whatsapp-qr/status') {
+      this.sendJson(res, 200, {
+        ok: true,
+        ...this.waQrBridge.getState(),
+      });
+      return;
+    }
+
+    // Route: POST /api/arm/whatsapp-qr/connect (Start Baileys socket and generate QR)
+    if (method === 'POST' && pathname === '/api/arm/whatsapp-qr/connect') {
+      const state = await this.waQrBridge.connect();
+      this.sendJson(res, 200, {
+        ok: true,
+        ...state,
+      });
+      return;
+    }
+
+    // Route: POST /api/arm/whatsapp-qr/disconnect (Disconnect or wipe linked session)
+    if (method === 'POST' && pathname === '/api/arm/whatsapp-qr/disconnect') {
+      const rawBody = await this.readRawBody(req);
+      let clearSession = false;
+      if (rawBody.length > 0) {
+        try {
+          const parsed = JSON.parse(rawBody.toString('utf8')) as { clearSession?: boolean };
+          clearSession = Boolean(parsed.clearSession);
+        } catch {
+          // ignore malformed optional body
+        }
+      }
+      const state = await this.waQrBridge.disconnect(clearSession);
+      this.sendJson(res, 200, {
+        ok: true,
+        ...state,
+      });
+      return;
+    }
+
     // Route: GET /api/events/pending (Desktop app pulls pending receipts)
     if (method === 'GET' && pathname === '/api/events/pending') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -573,12 +633,28 @@ export class InboundGatewayServer {
         return;
       }
 
-      const delivery = await dispatchMetaWhatsappMessage({
+      let delivery = await dispatchMetaWhatsappMessage({
         workspaceId,
         recipientPhone: body.recipientPhone || '',
         text: outboundText,
         templateName: body.templateName,
       });
+
+      if (
+        delivery.mode === 'DRY_RUN_NO_META_CREDENTIALS' &&
+        this.waQrBridge.isConnected() &&
+        body.recipientPhone
+      ) {
+        const qrRes = await this.waQrBridge.sendText(body.recipientPhone, outboundText);
+        if (qrRes.ok) {
+          delivery = {
+            delivered: true,
+            workspaceId,
+            mode: 'LIVE_WHATSAPP_QR',
+            metaMessageId: qrRes.messageId,
+          };
+        }
+      }
 
       const evt = await this.persistOutboxEvent(
         workspaceId,
@@ -1529,6 +1605,32 @@ export class InboundGatewayServer {
       this.outboxEvents.shift();
     }
     this.broadcastSseEvent('arm_event', evt, evt.id);
+  }
+
+  private async handleWhatsAppQrInbound(msg: InboundNormalizedMessage): Promise<void> {
+    if (this.dedupCache.checkAndRecord(msg.eventId)) {
+      return;
+    }
+
+    const receipt = processInboundMessageToReceipt(msg, this.config.targetScope, this.knownDeals);
+    if (receipt) {
+      this.pendingEvents.push(receipt);
+      this.broadcastSseEvent('new_receipt', receipt);
+    }
+
+    const defaultWorkspace: ArmWorkspaceId =
+      this.config.targetScope === 'FINANCE_360' ? 'FINANCE_360' : 'P2P_DESK';
+    await this.persistOutboxEvent(defaultWorkspace, 'message_received', msg.sender.id, {
+      direction: 'INBOUND',
+      channel: 'WHATSAPP',
+      transport: 'WHATSAPP_QR',
+      senderPhone: msg.sender.id,
+      senderName: msg.sender.name || msg.sender.id,
+      text: msg.text,
+      mediaType: msg.mediaType || 'text',
+      timestamp: msg.timestamp,
+      receiptDetected: Boolean(receipt),
+    });
   }
 
   private sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
