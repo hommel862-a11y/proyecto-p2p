@@ -384,6 +384,32 @@ describe('PgArmStore.startOutboxListener resilience (exponential backoff)', () =
       expect(sseOkRes.status).toBe(200);
       expect(sseOkRes.headers.get('content-type')).toContain('text/event-stream');
       controller.abort();
+
+      // Omnichannel Meta config endpoint updates and reads WhatsApp, Instagram & Facebook IDs
+      const saveMetaRes = await fetch(`http://127.0.0.1:${port}/api/arm/meta/config`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer super-secret-sse-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumberId: '1092837465',
+          whatsappDisplayPhone: '+584121234567',
+          igBusinessAccountId: '17841400000',
+          fbPageId: '1020304050',
+          accessToken: 'EAAB-test-token',
+          appSecret: 'meta-secret-123',
+          persistToEnv: false,
+        }),
+      });
+      expect(saveMetaRes.status).toBe(200);
+      const savedMeta = (await saveMetaRes.json()) as Record<string, unknown>;
+      expect(savedMeta['mode']).toBe('LIVE_META_GRAPH');
+      expect(savedMeta['phoneNumberId']).toBe('1092837465');
+      expect(savedMeta['igBusinessAccountId']).toBe('17841400000');
+      expect(savedMeta['fbPageId']).toBe('1020304050');
+      expect(savedMeta['hasAccessToken']).toBe(true);
+      expect(savedMeta['hasAppSecret']).toBe(true);
     } finally {
       await server.stop();
     }

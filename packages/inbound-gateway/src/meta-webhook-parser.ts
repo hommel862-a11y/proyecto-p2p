@@ -135,29 +135,48 @@ export function parseMetaWebhookPayload(rawPayload: unknown): InboundNormalizedM
       }
     }
 
-    // 2. Instagram Messaging Webhook Format
-    if (objectType === 'instagram' || entry.messaging) {
+    // 2. Instagram & Facebook Page Messenger Webhook Format
+    if (objectType === 'instagram' || objectType === 'page' || entry.messaging) {
+      const isFacebookPage = objectType === 'page';
       const messages = entry.messaging ?? [];
       for (const item of messages) {
         const msg = item.message;
         if (!msg) continue;
 
-        const senderId = item.sender?.id ?? 'UNKNOWN_IG_USER';
-        const msgId = msg.mid || `ig-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const senderId = item.sender?.id ?? (isFacebookPage ? 'UNKNOWN_FB_USER' : 'UNKNOWN_IG_USER');
+        const prefix = isFacebookPage ? 'fb' : 'ig';
+        const msgId = msg.mid || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const timestamp = item.timestamp ?? Date.now();
-        const text = msg.text ?? '';
+        let text = (msg.text ?? '').trim();
+        let mediaType: 'text' | 'image' | 'audio' | 'voice' | 'document' = 'text';
 
-        if (text.trim().length > 0) {
+        if (!text && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+          const firstAtt = msg.attachments[0];
+          const attType = (firstAtt?.type ?? '').toLowerCase();
+          if (attType === 'image') {
+            mediaType = 'image';
+            text = '[Imagen Adjunta]';
+          } else if (attType === 'audio') {
+            mediaType = 'voice';
+            text = '[Nota de Voz]';
+          } else if (attType) {
+            mediaType = 'document';
+            text = `[Adjunto ${attType}]`;
+          }
+        }
+
+        if (text.length > 0) {
           results.push({
             eventId: msgId,
             channel: 'INSTAGRAM',
             sender: {
               id: senderId,
-              name: `IG User ${senderId.slice(-4)}`,
+              name: `${isFacebookPage ? 'FB' : 'IG'} User ${senderId.slice(-4)}`,
               channel: 'INSTAGRAM',
             },
-            text: text.trim(),
+            text,
             timestamp,
+            mediaType,
             rawPayloadId: msgId,
           });
         }

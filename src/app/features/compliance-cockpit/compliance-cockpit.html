@@ -899,6 +899,83 @@
               Emulador Android (10.0.2.2)
             </button>
           </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--line, rgba(255,255,255,0.1)); margin: 12px 0;" />
+
+          <div class="m-field">
+            <label class="m-label" for="meta-wa-phone-input">
+              WhatsApp Business (Número y Phone Number ID de Meta)
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <input
+                id="meta-wa-phone-input"
+                type="text"
+                class="crm-input"
+                placeholder="+58 412... (Número visible)"
+                [ngModel]="metaWhatsappPhoneInput()"
+                (ngModelChange)="metaWhatsappPhoneInput.set($event)"
+              />
+              <input
+                id="meta-phone-id-input"
+                type="text"
+                class="crm-input"
+                placeholder="Phone Number ID (ej. 1049283...)"
+                [ngModel]="metaPhoneNumberIdInput()"
+                (ngModelChange)="metaPhoneNumberIdInput.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="m-field">
+            <label class="m-label" for="meta-ig-id-input">
+              Instagram Business Account ID &amp; Facebook Page ID
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <input
+                id="meta-ig-id-input"
+                type="text"
+                class="crm-input"
+                placeholder="Instagram Business ID"
+                [ngModel]="metaIgAccountIdInput()"
+                (ngModelChange)="metaIgAccountIdInput.set($event)"
+              />
+              <input
+                id="meta-fb-page-id-input"
+                type="text"
+                class="crm-input"
+                placeholder="Facebook Page ID"
+                [ngModel]="metaFbPageIdInput()"
+                (ngModelChange)="metaFbPageIdInput.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="m-field">
+            <label class="m-label" for="meta-access-token-input">
+              Meta Permanent Access Token &amp; App Secret (Graph API v21.0)
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <input
+                id="meta-access-token-input"
+                type="password"
+                autocomplete="off"
+                class="crm-input"
+                placeholder="META_ACCESS_TOKEN (EAA...)"
+                [ngModel]="metaAccessTokenInput()"
+                (ngModelChange)="metaAccessTokenInput.set($event)"
+              />
+              <input
+                id="meta-app-secret-input"
+                type="password"
+                autocomplete="off"
+                class="crm-input"
+                placeholder="META_APP_SECRET (HMAC)"
+                [ngModel]="metaAppSecretInput()"
+                (ngModelChange)="metaAppSecretInput.set($event)"
+              />
+            </div>
+          </div>
+
           @if (gatewayTestResult(); as gwRes) {
             <div
               class="gateway-test-banner"
@@ -911,6 +988,13 @@
           }
         </div>
         <div class="modal-footer">
+          <button
+            type="button"
+            class="crm-btn-danger-ghost"
+            (click)="resetArmToZero()"
+          >
+            Resetear CRM a $0
+          </button>
           <button
             type="button"
             class="crm-btn-glass"

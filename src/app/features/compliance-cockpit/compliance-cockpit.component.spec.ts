@@ -629,6 +629,7 @@ describe('ComplianceCockpitComponent', () => {
     it('renders live Executive KPIs, Zero-Click Kanban cards with "Movido por Agente X", Split Contact Inspector, and Keyboard-First hotkeys (S2, S3, S6)', () => {
       component.setView('ARM_COMMAND');
       component.setArmSilo('ARM_B2B');
+      component.loadArmDemoSeed();
 
       // 1. Live Executive KPIs per silo
       const kpis = component.armExecutiveKpisForSilo();
@@ -751,6 +752,10 @@ describe('ComplianceCockpitComponent', () => {
 
     it('computes armExecutiveKpisForSilo and overviewHeroKpis dynamically from live store state', () => {
       component.setArmSilo('ARM_B2B');
+      expect(component.armKanbanCards()).toHaveLength(0);
+      expect(component.armExecutiveKpisForSilo()[0].value).toContain('0.00');
+
+      component.loadArmDemoSeed();
       const beforeValue = component.armExecutiveKpisForSilo()[0].value;
       expect(component.armExecutiveKpisForSilo()[0].label).toContain('MRR');
 
@@ -932,6 +937,7 @@ describe('ComplianceCockpitComponent', () => {
       };
 
       try {
+        component.loadArmDemoSeed();
         component.moveArmCardToStage('arm-lead-b2b-1', 'sesion-agendada');
         expect(upsertLead).toHaveBeenCalledWith(
           expect.objectContaining({

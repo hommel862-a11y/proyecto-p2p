@@ -224,6 +224,14 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly showGatewayConfigModal = signal<boolean>(false);
   readonly gatewayUrlInput = signal<string>(this.inboundGateway.getGatewayUrl());
   readonly gatewayAuthTokenInput = signal<string>(this.inboundGateway.getAuthToken?.() ?? '');
+  readonly metaPhoneNumberIdInput = signal<string>('');
+  readonly metaWhatsappPhoneInput = signal<string>('');
+  readonly metaIgAccountIdInput = signal<string>('');
+  readonly metaFbPageIdInput = signal<string>('');
+  readonly metaAccessTokenInput = signal<string>('');
+  readonly metaAppSecretInput = signal<string>('');
+  readonly metaVerifyTokenInput = signal<string>('p2p-verify-secret');
+  readonly metaConfigStatus = signal<'LIVE_META_GRAPH' | 'DRY_RUN_NO_META_CREDENTIALS'>('DRY_RUN_NO_META_CREDENTIALS');
   readonly gatewayTesting = signal<boolean>(false);
   readonly gatewayTestResult = signal<{ ok: boolean; message: string } | null>(null);
 
@@ -231,6 +239,7 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.gatewayUrlInput.set(this.inboundGateway.getGatewayUrl());
     this.gatewayAuthTokenInput.set(this.inboundGateway.getAuthToken?.() ?? '');
     this.gatewayTestResult.set(null);
+    void this.loadMetaConfigFromGateway();
 
     if (this.inboundGateway.status() === 'CONNECTED') {
       this.toast.info(
@@ -269,8 +278,41 @@ export class ComplianceCockpitComponent implements OnDestroy {
     this.inboundGateway.setAuthToken?.(this.gatewayAuthTokenInput().trim());
     this.inboundGateway.setGatewayUrl(targetUrl);
     void this.inboundGateway.fetchStorageHealth?.(targetUrl);
+    void this.persistMetaConfigToGateway(targetUrl);
     this.showGatewayConfigModal.set(false);
-    this.toast.success(`Guardada URL del Gateway: ${targetUrl}`, 'Gateway Configurado');
+    this.toast.success(`Guardada configuración del Gateway y Meta Cloud API (${targetUrl})`, 'Gateway Configurado');
+  }
+
+  private async loadMetaConfigFromGateway(): Promise<void> {
+    const cfg = await this.inboundGateway.fetchMetaConfig?.(this.gatewayUrlInput().trim());
+    if (!cfg) return;
+    this.metaPhoneNumberIdInput.set(cfg.phoneNumberId || '');
+    this.metaWhatsappPhoneInput.set(cfg.whatsappDisplayPhone || '');
+    this.metaIgAccountIdInput.set(cfg.igBusinessAccountId || '');
+    this.metaFbPageIdInput.set(cfg.fbPageId || '');
+    this.metaVerifyTokenInput.set(cfg.verifyToken || 'p2p-verify-secret');
+    this.metaConfigStatus.set(cfg.mode);
+  }
+
+  private async persistMetaConfigToGateway(targetUrl: string): Promise<void> {
+    if (typeof this.inboundGateway.saveMetaConfig !== 'function') return;
+    const saved = await this.inboundGateway.saveMetaConfig(
+      {
+        phoneNumberId: this.metaPhoneNumberIdInput().trim(),
+        whatsappDisplayPhone: this.metaWhatsappPhoneInput().trim(),
+        igBusinessAccountId: this.metaIgAccountIdInput().trim(),
+        fbPageId: this.metaFbPageIdInput().trim(),
+        verifyToken: this.metaVerifyTokenInput().trim() || 'p2p-verify-secret',
+        ...(this.metaAccessTokenInput().trim() ? { accessToken: this.metaAccessTokenInput().trim() } : {}),
+        ...(this.metaAppSecretInput().trim() ? { appSecret: this.metaAppSecretInput().trim() } : {}),
+      },
+      targetUrl,
+    );
+    if (saved) {
+      this.metaConfigStatus.set(saved.mode);
+      this.metaAccessTokenInput.set('');
+      this.metaAppSecretInput.set('');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3493,11 +3535,19 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly editingApprovalId = signal<string | null>(null);
   readonly editingApprovalText = signal<string>('');
   readonly editingSaveAsExample = signal<boolean>(true);
-  readonly selectedArmLeadId = signal<string>('arm-lead-b2b-1');
+  readonly selectedArmLeadId = signal<string>('');
   readonly showArmCommandPalette = signal<boolean>(false);
   readonly armCommandQuery = signal<string>('');
 
-  readonly armKanbanCards = signal<ArmKanbanCardVm[]>([
+  private static readonly DEMO_ARM_CARD_IDS = new Set([
+    'arm-lead-b2b-1',
+    'arm-lead-b2b-2',
+    'arm-lead-b2b-3',
+    'arm-lead-p2p-1',
+    'arm-lead-360-1',
+  ]);
+
+  private static readonly DEMO_ARM_KANBAN_CARDS: readonly ArmKanbanCardVm[] = [
     {
       id: 'arm-lead-b2b-1',
       workspaceId: 'ARM_B2B',
@@ -3630,7 +3680,34 @@ export class ComplianceCockpitComponent implements OnDestroy {
         { toolName: 'create_or_submit_quote', latencyMs: 98, status: 'QUEUED_HITL → Crédito 50/50' },
       ],
     },
-  ]);
+  ];
+
+  // Zero-Seed default: starts at $0.00 / 0% / 0 traces / 0 HITL until real inbound or explicit demo load
+  readonly armKanbanCards = signal<ArmKanbanCardVm[]>([]);
+
+  loadArmDemoSeed(): void {
+    this.storage.set('p2p.arm.demo_enabled', true);
+    this.armKanbanCards.set(
+      ComplianceCockpitComponent.DEMO_ARM_KANBAN_CARDS.map((card) => ({
+        ...card,
+        messages: [...card.messages],
+        toolTraces: [...card.toolTraces],
+      })),
+    );
+    this.selectedArmLeadId.set('arm-lead-b2b-1');
+    this.persistArmState();
+  }
+
+  resetArmToZero(): void {
+    this.storage.set('p2p.arm.demo_enabled', false);
+    this.armKanbanCards.set([]);
+    this.armApprovalQueue.set([]);
+    this.armAutonomousFeed.set([]);
+    this.armShadowExamples.set([]);
+    this.selectedArmLeadId.set('');
+    this.persistArmState();
+    this.toast.success('CRM / ARM reiniciado en $0.00 (Zero-Seed activo).', 'CRM Limpio');
+  }
 
   private parseArmCardMoney(card: ArmKanbanCardVm): number {
     if (typeof card.estimatedValueNum === 'number' && Number.isFinite(card.estimatedValueNum)) {
@@ -3782,13 +3859,16 @@ export class ComplianceCockpitComponent implements OnDestroy {
   readonly armShadowExamplesForSilo = computed<ArmShadowExample[]>(() =>
     selectFewShotExamplesForAgent(this.armShadowExamples(), this.activeArmSilo(), 'QUOTER', 10),
   );
-  readonly armTokenCircuitBreakerForSilo = computed(() =>
-    evaluateDealTokenCircuitBreaker({
+  readonly armTokenCircuitBreakerForSilo = computed(() => {
+    const traceCount =
+      this.armKanbanCardsForSilo().reduce((sum, c) => sum + c.toolTraces.length, 0) +
+      this.armAutonomousFeedForSilo().length;
+    return evaluateDealTokenCircuitBreaker({
       workspaceId: this.activeArmSilo(),
-      dailyTokensUsed: 14_200,
+      dailyTokensUsed: traceCount * 1_180,
       estimatedTurnTokens: 1_800,
-    }),
-  );
+    });
+  });
   readonly armReplayComparisonResult = signal<ArmReplayComparisonResult | null>(null);
   readonly armCloserPreCallBriefing = signal<ArmCloserPreCallBriefing | null>(null);
 
@@ -3802,6 +3882,8 @@ export class ComplianceCockpitComponent implements OnDestroy {
     { id: 'PRECALL_BRIEFING', label: 'Generar Briefing 15m Pre-Reunión', shortcut: 'B' },
     { id: 'SYNC_LOCAL', label: 'Sincronizar Tratos Locales hacia Silos', shortcut: 'L' },
     { id: 'APPROVE_FIRST', label: 'Aprobar primer ítem en Approval Queue', shortcut: 'A' },
+    { id: 'RESET_ARM_ZERO', label: 'Resetear CRM / ARM a $0.00 (Zero-Seed)', shortcut: '0' },
+    { id: 'LOAD_ARM_DEMO', label: 'Cargar Datos Demo Sandbox ARM', shortcut: 'D' },
   ] as const;
 
   readonly filteredArmCommands = computed(() => {
@@ -3847,6 +3929,12 @@ export class ComplianceCockpitComponent implements OnDestroy {
         if (first) this.approveArmQueueItem(first.id);
         break;
       }
+      case 'RESET_ARM_ZERO':
+        this.resetArmToZero();
+        break;
+      case 'LOAD_ARM_DEMO':
+        this.loadArmDemoSeed();
+        break;
     }
   }
 
@@ -4302,9 +4390,16 @@ export class ComplianceCockpitComponent implements OnDestroy {
       if (savedSilo === 'ARM_B2B' || savedSilo === 'P2P_DESK' || savedSilo === 'FINANCE_360') {
         this.activeArmSilo.set(savedSilo);
       }
+      const demoEnabled = this.storage.get<boolean>('p2p.arm.demo_enabled') === true;
       const savedCards = this.storage.get<ReturnType<typeof this.armKanbanCards>>('p2p.arm.kanban_cards');
-      if (Array.isArray(savedCards) && savedCards.length > 0) {
-        this.armKanbanCards.set(savedCards);
+      if (Array.isArray(savedCards)) {
+        const filtered = demoEnabled
+          ? savedCards
+          : savedCards.filter((c) => !ComplianceCockpitComponent.DEMO_ARM_CARD_IDS.has(c.id));
+        this.armKanbanCards.set(filtered);
+        if (filtered.length !== savedCards.length) {
+          this.storage.set('p2p.arm.kanban_cards', filtered);
+        }
       }
       const savedQueue = this.storage.get<ArmApprovalQueueItem[]>('p2p.arm.approval_queue');
       if (Array.isArray(savedQueue)) {

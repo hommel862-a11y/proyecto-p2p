@@ -20,13 +20,14 @@ export function resolveWorkspacePhoneNumberId(
   workspaceId: ArmWorkspaceId,
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
+  const sharedFallback = env['META_PHONE_NUMBER_ID']?.trim() || undefined;
   switch (workspaceId) {
     case 'ARM_B2B':
-      return env['META_PHONE_NUMBER_ID_B2B']?.trim() || undefined;
+      return env['META_PHONE_NUMBER_ID_B2B']?.trim() || sharedFallback;
     case 'P2P_DESK':
-      return env['META_PHONE_NUMBER_ID_P2P']?.trim() || undefined;
+      return env['META_PHONE_NUMBER_ID_P2P']?.trim() || sharedFallback;
     case 'FINANCE_360':
-      return env['META_PHONE_NUMBER_ID_360']?.trim() || undefined;
+      return env['META_PHONE_NUMBER_ID_360']?.trim() || sharedFallback;
   }
 }
 

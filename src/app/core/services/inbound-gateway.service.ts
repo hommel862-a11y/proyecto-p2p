@@ -45,6 +45,34 @@ export interface VerifyGatewayReceiptResult {
   error?: string;
 }
 
+export interface GatewayMetaConfigPayload {
+  phoneNumberId?: string;
+  phoneNumberIdB2b?: string;
+  phoneNumberIdP2p?: string;
+  phoneNumberId360?: string;
+  whatsappDisplayPhone?: string;
+  igBusinessAccountId?: string;
+  fbPageId?: string;
+  verifyToken?: string;
+  accessToken?: string;
+  appSecret?: string;
+}
+
+export interface GatewayMetaConfigStatus {
+  ok: boolean;
+  mode: 'LIVE_META_GRAPH' | 'DRY_RUN_NO_META_CREDENTIALS';
+  phoneNumberId: string;
+  phoneNumberIdB2b: string;
+  phoneNumberIdP2p: string;
+  phoneNumberId360: string;
+  whatsappDisplayPhone: string;
+  igBusinessAccountId: string;
+  fbPageId: string;
+  verifyToken: string;
+  hasAccessToken: boolean;
+  hasAppSecret: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class InboundGatewayService implements OnDestroy {
   private static readonly STORAGE_HEALTH_FALLBACK: GatewayStorageHealth = {
@@ -492,6 +520,41 @@ export class InboundGatewayService implements OnDestroy {
     this.reconnectTimer = setTimeout(() => {
       this.connect();
     }, delayMs);
+  }
+
+  async fetchMetaConfig(targetUrl?: string): Promise<GatewayMetaConfigStatus | null> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const headers = this.buildHeaders();
+      const res = await fetch(`${url}/api/arm/meta/config`, {
+        method: 'GET',
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as GatewayMetaConfigStatus;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveMetaConfig(
+    payload: GatewayMetaConfigPayload,
+    targetUrl?: string,
+  ): Promise<GatewayMetaConfigStatus | null> {
+    const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${url}/api/arm/meta/config`, {
+        method: 'POST',
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as GatewayMetaConfigStatus;
+    } catch {
+      return null;
+    }
   }
 
   ngOnDestroy(): void {

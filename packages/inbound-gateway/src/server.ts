@@ -1,6 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { URL } from 'node:url';
+import { findMonorepoRoot } from './env-loader.js';
 import {
   GATEWAY_STORAGE_MODES,
   type GatewayConfig,
@@ -445,6 +448,18 @@ export class InboundGatewayServer {
         parsedUrl.searchParams.get('diagnostics') === '1';
       await this.handleStorageHealth(res, includeDiagnostics);
       return;
+    }
+
+    // Route: GET & POST /api/arm/meta/config (Omnichannel WhatsApp, Instagram & Facebook setup)
+    if (pathname === '/api/arm/meta/config') {
+      if (method === 'GET') {
+        this.handleGetMetaConfig(res);
+        return;
+      }
+      if (method === 'POST') {
+        await this.handleSaveMetaConfig(req, res);
+        return;
+      }
     }
 
     // Route: POST /api/arm/receipts/verify (Atomic anti-replay bank reference check)
@@ -1170,6 +1185,121 @@ export class InboundGatewayServer {
       ...(health.error ? { error: health.error } : {}),
     };
     this.sendJson(res, health.connected ? 200 : 503, payload);
+  }
+
+  private handleGetMetaConfig(res: ServerResponse): void {
+    const phoneId =
+      process.env['META_PHONE_NUMBER_ID']?.trim() ||
+      process.env['META_PHONE_NUMBER_ID_P2P']?.trim() ||
+      process.env['META_PHONE_NUMBER_ID_B2B']?.trim() ||
+      process.env['META_PHONE_NUMBER_ID_360']?.trim() ||
+      '';
+    const hasAccessToken = Boolean(process.env['META_ACCESS_TOKEN']?.trim());
+    const hasAppSecret = Boolean(
+      (this.config.metaAppSecret ?? process.env['META_APP_SECRET'])?.trim(),
+    );
+
+    this.sendJson(res, 200, {
+      ok: true,
+      mode: hasAccessToken && phoneId ? 'LIVE_META_GRAPH' : 'DRY_RUN_NO_META_CREDENTIALS',
+      phoneNumberId: phoneId,
+      phoneNumberIdB2b: process.env['META_PHONE_NUMBER_ID_B2B']?.trim() || phoneId,
+      phoneNumberIdP2p: process.env['META_PHONE_NUMBER_ID_P2P']?.trim() || phoneId,
+      phoneNumberId360: process.env['META_PHONE_NUMBER_ID_360']?.trim() || phoneId,
+      whatsappDisplayPhone: process.env['META_WHATSAPP_DISPLAY_PHONE']?.trim() || '',
+      igBusinessAccountId: process.env['META_IG_BUSINESS_ACCOUNT_ID']?.trim() || '',
+      fbPageId: process.env['META_FB_PAGE_ID']?.trim() || '',
+      verifyToken:
+        this.config.metaVerifyToken ||
+        process.env['META_VERIFY_TOKEN']?.trim() ||
+        'p2p-verify-secret',
+      hasAccessToken,
+      hasAppSecret,
+    });
+  }
+
+  private async handleSaveMetaConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const rawBody = await this.readRawBody(req);
+    let body: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(rawBody.toString('utf8'));
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        this.sendJson(res, 400, { ok: false, error: 'INVALID_PAYLOAD' });
+        return;
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      this.sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });
+      return;
+    }
+
+    const str = (k: string): string | undefined =>
+      typeof body[k] === 'string' ? (body[k] as string).trim() : undefined;
+
+    const sharedPhoneId = str('phoneNumberId');
+    const updates: Record<string, string> = {};
+
+    if (sharedPhoneId !== undefined) {
+      updates['META_PHONE_NUMBER_ID'] = sharedPhoneId;
+      updates['META_PHONE_NUMBER_ID_B2B'] = str('phoneNumberIdB2b') || sharedPhoneId;
+      updates['META_PHONE_NUMBER_ID_P2P'] = str('phoneNumberIdP2p') || sharedPhoneId;
+      updates['META_PHONE_NUMBER_ID_360'] = str('phoneNumberId360') || sharedPhoneId;
+    } else {
+      if (str('phoneNumberIdB2b') !== undefined) {
+        updates['META_PHONE_NUMBER_ID_B2B'] = str('phoneNumberIdB2b')!;
+      }
+      if (str('phoneNumberIdP2p') !== undefined) {
+        updates['META_PHONE_NUMBER_ID_P2P'] = str('phoneNumberIdP2p')!;
+      }
+      if (str('phoneNumberId360') !== undefined) {
+        updates['META_PHONE_NUMBER_ID_360'] = str('phoneNumberId360')!;
+      }
+    }
+
+    if (str('whatsappDisplayPhone') !== undefined) {
+      updates['META_WHATSAPP_DISPLAY_PHONE'] = str('whatsappDisplayPhone')!;
+    }
+    if (str('igBusinessAccountId') !== undefined) {
+      updates['META_IG_BUSINESS_ACCOUNT_ID'] = str('igBusinessAccountId')!;
+    }
+    if (str('fbPageId') !== undefined) {
+      updates['META_FB_PAGE_ID'] = str('fbPageId')!;
+    }
+    if (str('verifyToken') !== undefined && str('verifyToken')!.length > 0) {
+      updates['META_VERIFY_TOKEN'] = str('verifyToken')!;
+      this.config.metaVerifyToken = str('verifyToken')!;
+    }
+    if (str('accessToken') !== undefined && str('accessToken')!.length > 0) {
+      updates['META_ACCESS_TOKEN'] = str('accessToken')!;
+    }
+    if (str('appSecret') !== undefined && str('appSecret')!.length > 0) {
+      updates['META_APP_SECRET'] = str('appSecret')!;
+      this.config.metaAppSecret = str('appSecret')!;
+    }
+
+    for (const [k, v] of Object.entries(updates)) {
+      process.env[k] = v;
+    }
+
+    if (process.env['NODE_ENV'] !== 'test' && !process.env['VITEST'] && body['persistToEnv'] !== false) {
+      try {
+        const repoRoot = findMonorepoRoot(process.cwd());
+        const envPath = join(repoRoot, '.env');
+        let content = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+        for (const [k, v] of Object.entries(updates)) {
+          const line = `${k}=${v}`;
+          const re = new RegExp(`^${k}=.*$`, 'm');
+          content = re.test(content)
+            ? content.replace(re, line)
+            : `${content.trimEnd()}${content.trim() ? '\n' : ''}${line}\n`;
+        }
+        writeFileSync(envPath, content, 'utf8');
+      } catch {
+        // Non-fatal if read-only fs
+      }
+    }
+
+    this.handleGetMetaConfig(res);
   }
 
   private async handleVerifyReceipt(req: IncomingMessage, res: ServerResponse): Promise<void> {
