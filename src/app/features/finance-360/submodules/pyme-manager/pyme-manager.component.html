@@ -1,898 +1,2067 @@
-<div class="pyme-manager-container">
-  <!-- PYME TABS SELECTOR -->
-  <div class="pyme-tabs-row" role="tablist">
-    <button
-      type="button"
-      class="pyme-tab-pill"
-      [class.active]="activePymeTab() === 'drawers'"
-      (click)="activePymeTab.set('drawers')"
-    >
-      🔒 Cortafuegos 3 Gavetas
-    </button>
-    <button
-      type="button"
-      class="pyme-tab-pill"
-      [class.active]="activePymeTab() === 'providers'"
-      (click)="activePymeTab.set('providers')"
-    >
-      🚚 Directorio Proveedores ({{ providers().length }})
-    </button>
-    <button
-      type="button"
-      class="pyme-tab-pill"
-      [class.active]="activePymeTab() === 'inventory'"
-      (click)="activePymeTab.set('inventory')"
-    >
-      📦 Inventario Semáforo ({{ inventory().length }})
-    </button>
-  </div>
-
-  <!-- TAB 1: 3-DRAWER FIREWALL -->
-  @if (activePymeTab() === 'drawers') {
-    <div class="drawers-section">
-      <div class="pyme-card">
-        <div class="card-header">
-          <div class="header-badges-row">
-            <span class="pyme-badge">PROTECCIÓN DE CAPITAL PYME</span>
-            <span class="bcv-badge">Tasa BCV: Bs {{ financeService.currentBcvRate() | number: '1.2-2' }}</span>
-          </div>
-          <h3>Regla de Oro: Las 3 Gavetas Intocables</h3>
-          <p class="card-subtitle">
-            Blindá tu negocio separando cada dólar que entra. Garantizá el dinero para recomprar insumos y pagar nómina antes de calcular ganancias.
-          </p>
-        </div>
-
-        <!-- INFLOW PANEL: VENTA VS INYECCIÓN DE CAPITAL -->
-        <div class="inflow-panel">
-          <div class="inflow-type-selector">
-            <button
-              type="button"
-              class="type-pill"
-              [class.active]="inflowType() === 'sale'"
-              (click)="inflowType.set('sale')"
-            >
-              💼 Venta Comercial / Orden de Trabajo
-            </button>
-            <button
-              type="button"
-              class="type-pill"
-              [class.active]="inflowType() === 'capital_injection'"
-              (click)="inflowType.set('capital_injection')"
-            >
-              💰 Inyección de Capital / Fondeo Directo
-            </button>
-          </div>
-
-          <div class="sale-sim-row">
-            <div class="form-group flex-2">
-              <label>
-                {{ inflowType() === 'sale' ? 'Concepto de la Venta / Orden de Trabajo' : 'Motivo del Fondeo / Aporte' }}
-              </label>
-              <input
-                type="text"
-                class="form-control"
-                [placeholder]="inflowType() === 'sale' ? 'Ej. Reparación y Pintura Guardafango, Venta Repuestos...' : 'Ej. Aporte para fondo de nómina y compra de pintura...'"
-                [ngModel]="saleConcept()"
-                (ngModelChange)="saleConcept.set($event)"
-              />
-            </div>
-
-            <div class="form-group flex-1">
-              <label>Monto ($ USD)</label>
-              <div class="input-with-sub">
-                <input
-                  type="number"
-                  class="form-control big-input"
-                  placeholder="250"
-                  [ngModel]="saleAmount()"
-                  (ngModelChange)="saleAmount.set($event)"
-                />
-                <span class="sub-conversion">
-                  ≈ Bs {{ ((saleAmount() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
-                </span>
-              </div>
-            </div>
-
-            <div class="form-group flex-1">
-              <label>Bóveda Receptora</label>
-              <select
-                class="form-control"
-                [ngModel]="targetVaultId()"
-                (ngModelChange)="targetVaultId.set($event)"
-              >
-                @for (v of financeService.state().assets; track v.id) {
-                  <option [value]="v.id">
-                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
-                  </option>
-                }
-              </select>
-            </div>
-          </div>
-
-          <!-- DRAWER PRESETS & SLIDERS -->
-          <div class="presets-container">
-            <div class="presets-header">
-              <span class="presets-title">⚙️ Modelo de Reparto para las 3 Gavetas:</span>
-              <div class="presets-pills">
-                @for (preset of drawerPresets; track preset.id) {
-                  <button
-                    type="button"
-                    class="preset-btn"
-                    [class.active]="activePreset() === preset.id"
-                    [title]="preset.description"
-                    (click)="applyPreset(preset)"
-                  >
-                    {{ preset.label }}
-                  </button>
-                }
-              </div>
-            </div>
-
-            <div class="sliders-row">
-              <div class="slider-item">
-                <div class="slider-label">
-                  <span class="d-label d1-c">Gaveta 1 · Insumos:</span>
-                  <strong>{{ drawer1Percent() }}%</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  class="range-slider d1-slider"
-                  [ngModel]="drawer1Percent()"
-                  (ngModelChange)="setCustomPercent(1, $event)"
-                />
-              </div>
-
-              <div class="slider-item">
-                <div class="slider-label">
-                  <span class="d-label d2-c">Gaveta 2 · Nómina & Fijos:</span>
-                  <strong>{{ drawer2Percent() }}%</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  class="range-slider d2-slider"
-                  [ngModel]="drawer2Percent()"
-                  (ngModelChange)="setCustomPercent(2, $event)"
-                />
-              </div>
-
-              <div class="slider-item">
-                <div class="slider-label">
-                  <span class="d-label d3-c">Gaveta 3 · Utilidad & CAPEX:</span>
-                  <strong>{{ drawer3Percent() }}%</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  class="range-slider d3-slider"
-                  [ngModel]="drawer3Percent()"
-                  (ngModelChange)="setCustomPercent(3, $event)"
-                />
-              </div>
-
-              <div class="slider-status">
-                @if (percentSum() === 100) {
-                  <span class="badge-valid">✓ 100% Repartido</span>
-                } @else {
-                  <span class="badge-invalid">⚠️ Suma: {{ percentSum() }}% (debe ser 100%)</span>
-                }
-              </div>
-            </div>
-
-            <div class="inflow-action-row">
-              <button
-                type="button"
-                class="btn-settle-inflow"
-                [disabled]="percentSum() !== 100 || (saleAmount() || 0) <= 0"
-                (click)="settleSaleInLedger()"
-              >
-                {{ inflowType() === 'sale' ? '💾 Asentar Venta y Distribuir en Gavetas' : '💰 Acreditar Fondeo y Distribuir en Gavetas' }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        @let split = drawerSplit();
-        @let liveDrawers = financeService.pymeDrawersTelemetry();
-
-        <!-- THE 3 DRAWERS GRID -->
-        <div class="drawers-grid">
-          <!-- GAVETA 1 -->
-          <div class="drawer-card drawer-replenishment">
-            <div class="drawer-top">
-              <span class="drawer-tag">GAVETA 1 · REPOSICIÓN</span>
-              <span class="drawer-lock">🔒 INTOCABLE</span>
-            </div>
-            <h4>Insumos & Mercancía</h4>
-            <div class="drawer-amount">
-              <strong class="amount-usd">${{ split.drawer1.usd | number: '1.2-2' }} USD</strong>
-              <span class="amount-ves">≈ Bs {{ split.drawer1.ves | number: '1.2-2' }}</span>
-            </div>
-
-            <!-- TELEMETRY TELEGRAPH -->
-            <div class="telemetry-box box-blue">
-              <div class="telemetry-row highlight">
-                <span>Fondo Real Disponible:</span>
-                <strong>${{ liveDrawers.drawer1AvailableUsd | number: '1.2-2' }} USD</strong>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Total Asignado:</span>
-                <span>${{ liveDrawers.drawer1AllocatedUsd | number: '1.2-2' }} USD</span>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Ejecutado en Insumos:</span>
-                <span>${{ liveDrawers.merchExpensesUsd | number: '1.2-2' }} USD</span>
-              </div>
-            </div>
-
-            <p class="drawer-desc">
-              Garantiza que el negocio nunca se descapitalice al comprar materia prima, pintura o reponer inventario.
-            </p>
-
-            <div class="drawer-bottom-actions">
-              <div class="drawer-pct-badge">{{ drawer1Percent() }}% de la entrada</div>
-              <button
-                type="button"
-                class="btn-drawer-action btn-d1"
-                (click)="openDisbursementModal(1)"
-              >
-                📦 Comprar Insumos
-              </button>
-            </div>
-          </div>
-
-          <!-- GAVETA 2 -->
-          <div class="drawer-card drawer-operational">
-            <div class="drawer-top">
-              <span class="drawer-tag">GAVETA 2 · OPERATIVA</span>
-              <span class="drawer-icon">👥 NÓMINA & FIJOS</span>
-            </div>
-            <h4>Operatividad & Sueldos</h4>
-            <div class="drawer-amount">
-              <strong class="amount-usd">${{ split.drawer2.usd | number: '1.2-2' }} USD</strong>
-              <span class="amount-ves">≈ Bs {{ split.drawer2.ves | number: '1.2-2' }}</span>
-            </div>
-
-            <!-- TELEMETRY TELEGRAPH -->
-            <div class="telemetry-box box-amber">
-              <div class="telemetry-row highlight">
-                <span>Fondo Real Disponible:</span>
-                <strong class="gold-text">${{ liveDrawers.drawer2AvailableUsd | number: '1.2-2' }} USD</strong>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Total Asignado:</span>
-                <span>${{ liveDrawers.drawer2AllocatedUsd | number: '1.2-2' }} USD</span>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Pagado en Nómina y Fijos:</span>
-                <span>${{ liveDrawers.opsExpensesUsd | number: '1.2-2' }} USD</span>
-              </div>
-            </div>
-
-            <p class="drawer-desc">
-              Sueldos de operarios, quincenas, alquiler, electricidad, internet y servicios básicos del local.
-            </p>
-
-            <div class="drawer-bottom-actions dual-actions">
-              <button
-                type="button"
-                class="btn-drawer-action btn-payroll-main"
-                (click)="openPayrollModal()"
-              >
-                👥 Pagar Nómina
-              </button>
-              <button
-                type="button"
-                class="btn-drawer-action btn-d2-sub"
-                (click)="openDisbursementModal(2)"
-              >
-                ⚡ Gasto Fijo
-              </button>
-            </div>
-          </div>
-
-          <!-- GAVETA 3 -->
-          <div class="drawer-card drawer-profit">
-            <div class="drawer-top">
-              <span class="drawer-tag">GAVETA 3 · UTILIDAD</span>
-              <span class="drawer-icon">💎 GANANCIA NETA</span>
-            </div>
-            <h4>Ganancia Libre & CAPEX</h4>
-            <div class="drawer-amount">
-              <strong class="amount-usd">${{ split.drawer3.usd | number: '1.2-2' }} USD</strong>
-              <span class="amount-ves">≈ Bs {{ split.drawer3.ves | number: '1.2-2' }}</span>
-            </div>
-
-            <!-- TELEMETRY TELEGRAPH -->
-            <div class="telemetry-box box-emerald">
-              <div class="telemetry-row highlight">
-                <span>Fondo Real Disponible:</span>
-                <strong class="green-text">${{ liveDrawers.drawer3AvailableUsd | number: '1.2-2' }} USD</strong>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Total Asignado:</span>
-                <span>${{ liveDrawers.drawer3AllocatedUsd | number: '1.2-2' }} USD</span>
-              </div>
-              <div class="telemetry-row sub">
-                <span>Invertido en CAPEX / Retiros:</span>
-                <span>${{ liveDrawers.capexExpensesUsd | number: '1.2-2' }} USD</span>
-              </div>
-            </div>
-
-            <p class="drawer-desc">
-              Utilidad neta real distribuible a los socios o fondo de reinversión para comprar maquinaria y herramientas.
-            </p>
-
-            <div class="drawer-bottom-actions">
-              <div class="drawer-pct-badge">{{ drawer3Percent() }}% de la entrada</div>
-              <button
-                type="button"
-                class="btn-drawer-action btn-d3"
-                (click)="openDisbursementModal(3)"
-              >
-                💎 Retiro / CAPEX
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- RECENT DRAWER MOVEMENTS AUDIT TABLE -->
-        <div class="drawer-audit-section">
-          <div class="audit-header">
-            <h4>📋 Auditoría de Desembolsos Recientes (Salidas de Gavetas)</h4>
-            <span class="audit-badge">{{ recentDrawerMovements().length }} movimientos</span>
-          </div>
-
-          @if (recentDrawerMovements().length === 0) {
-            <div class="empty-audit">
-              <p>Aún no has registrado desembolsos desde las gavetas. Asentá un pago de nómina o compra para auditarlo acá.</p>
-            </div>
+<div class="pyme-shell">
+  <!-- FLOATING LIQUID GLASS CONTROL BAR + SUB-NAVIGATION CAPSULE -->
+  <header class="pyme-command-bar f360-liquid-glass">
+    <div class="command-top-row">
+      <div class="command-title-block">
+        <span class="section-kicker">Tesorería Comercial &amp; Control Operativo</span>
+        <div class="title-with-meta">
+          <h2 class="command-title">Gestión Pyme</h2>
+          @if (financeService.currentBcvRate() > 0) {
+            <span class="f360-status-pill tone-cyan f360-tabular">
+              BCV Bs {{ financeService.currentBcvRate() | number: '1.2-2' }}
+            </span>
           } @else {
-            <div class="audit-table-wrapper">
-              <table class="audit-table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Gaveta</th>
-                    <th>Concepto / Destinatario</th>
-                    <th>Cuenta de Salida</th>
-                    <th>Monto USD</th>
-                    <th>Equivalente VES</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (mov of recentDrawerMovements(); track mov.id) {
-                    <tr>
-                      <td class="date-col">{{ mov.date }}</td>
-                      <td>
-                        @if (mov.drawerAllocation === 'drawer_operations' || mov.category === 'payroll') {
-                          <span class="pill-badge pill-amber">Gaveta 2 · Nómina</span>
-                        } @else if (mov.drawerAllocation === 'drawer_merchandise' || mov.category === 'provider_merchandise') {
-                          <span class="pill-badge pill-blue">Gaveta 1 · Insumos</span>
-                        } @else {
-                          <span class="pill-badge pill-emerald">Gaveta 3 · CAPEX</span>
-                        }
-                      </td>
-                      <td class="desc-col">
-                        <strong>{{ mov.title }}</strong>
-                        @if (mov.notes) {
-                          <span class="mov-notes">{{ mov.notes }}</span>
-                        }
-                      </td>
-                      <td>{{ getVaultName(mov.vaultId) }}</td>
-                      <td class="amount-usd-col">
-                        ${{ mov.triMonetary.amount_usd | number: '1.2-2' }}
-                      </td>
-                      <td class="amount-ves-col">
-                        Bs {{ mov.triMonetary.amount_ves | number: '1.2-2' }}
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
+            <span class="f360-status-pill tone-warn">BCV sin datos</span>
           }
         </div>
       </div>
-    </div>
-  }
 
-  <!-- TAB 2: PROVIDERS DIRECTORY -->
-  @if (activePymeTab() === 'providers') {
-    <div class="providers-section">
-      <div class="pyme-card">
-        <div class="card-header-action">
+      <!-- Unobtrusive Opt-In Switch for Cashea Merchant Ally -->
+      <div class="ally-toggle-wrap">
+        <input
+          id="pyme-cashea-ally-toggle"
+          type="checkbox"
+          role="switch"
+          class="ally-switch-input"
+          [checked]="casheaAllyEnabled()"
+          (change)="onCasheaAllySwitchChange($event)"
+        />
+        <label for="pyme-cashea-ally-toggle" class="ally-switch-label">
+          <span class="switch-track" aria-hidden="true">
+            <span class="switch-thumb"></span>
+          </span>
+          <span class="switch-text">Activar Modo Aliado Cashea</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Sub-Navigation Capsule -->
+    <nav class="pyme-tabs-capsule" role="tablist" aria-label="Secciones de Gestión Pyme">
+      <button
+        id="pyme-tab-drawers"
+        type="button"
+        role="tab"
+        class="capsule-tab"
+        [class.is-active]="effectiveActiveTab() === 'drawers'"
+        [attr.aria-selected]="effectiveActiveTab() === 'drawers'"
+        (click)="selectTab('drawers')"
+      >
+        <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+          <line x1="3" y1="15" x2="21" y2="15" />
+        </svg>
+        <span>3 Gavetas</span>
+      </button>
+
+      <button
+        id="pyme-tab-providers"
+        type="button"
+        role="tab"
+        class="capsule-tab"
+        [class.is-active]="effectiveActiveTab() === 'providers'"
+        [attr.aria-selected]="effectiveActiveTab() === 'providers'"
+        (click)="selectTab('providers')"
+      >
+        <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+        <span>Proveedores CxP</span>
+        <span class="tab-count f360-tabular">{{ providers().length }}</span>
+      </button>
+
+      <button
+        id="pyme-tab-inventory"
+        type="button"
+        role="tab"
+        class="capsule-tab"
+        [class.is-active]="effectiveActiveTab() === 'inventory'"
+        [attr.aria-selected]="effectiveActiveTab() === 'inventory'"
+        (click)="selectTab('inventory')"
+      >
+        <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <line x1="12" y1="22.08" x2="12" y2="12" />
+        </svg>
+        <span>Inventario</span>
+        <span class="tab-count f360-tabular">{{ inventory().length }}</span>
+      </button>
+
+      <button
+        id="pyme-tab-recurring"
+        type="button"
+        role="tab"
+        class="capsule-tab"
+        [class.is-active]="effectiveActiveTab() === 'recurring'"
+        [attr.aria-selected]="effectiveActiveTab() === 'recurring'"
+        (click)="selectTab('recurring')"
+      >
+        <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10" />
+          <polyline points="1 20 1 14 7 14" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        <span>Recurrencias</span>
+        <span class="tab-count f360-tabular">{{ activeRecurringCount() }}</span>
+      </button>
+
+      @if (casheaAllyEnabled()) {
+        <button
+          id="pyme-tab-cashea-ally"
+          type="button"
+          role="tab"
+          class="capsule-tab"
+          [class.is-active]="effectiveActiveTab() === 'cashea_ally'"
+          [attr.aria-selected]="effectiveActiveTab() === 'cashea_ally'"
+          (click)="selectTab('cashea_ally')"
+        >
+          <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <line x1="2" y1="10" x2="22" y2="10" />
+          </svg>
+          <span>Cashea Aliado</span>
+        </button>
+      }
+    </nav>
+  </header>
+
+  <!-- ======================================================================= -->
+  <!-- TAB 1: CORTAFUEGOS DE 3 GAVETAS INTOCABLES                              -->
+  <!-- ======================================================================= -->
+  @if (effectiveActiveTab() === 'drawers') {
+    @let split = drawerSplit();
+    @let liveDrawers = financeService.pymeDrawersTelemetry();
+
+    <section class="tab-panel" role="tabpanel" aria-labelledby="pyme-tab-drawers">
+      @if (liveDrawers.hasOverdraft) {
+        <div class="alert-banner tone-danger" role="alert">
+          <svg class="alert-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
           <div>
-            <span class="pyme-badge">COMPROMISOS CON TERCEROS</span>
-            <h3>Directorio de Proveedores</h3>
-            <p class="card-subtitle">
-              Deuda total pendiente: <strong class="gold-text">${{ totalProviderDebtUsd() | number: '1.2-2' }} USD</strong>
-            </p>
+            <strong>Sobregiro auditado en Gavetas:</strong>
+            una o más gavetas operan con saldo negativo real. Reasigne capital o registre ingresos antes de autorizar nuevos retiros.
           </div>
-          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <select
-              class="form-control"
-              style="padding: 6px 10px; font-size: 0.78rem; min-width: 190px;"
-              [ngModel]="selectedProviderVaultId()"
-              (ngModelChange)="selectedProviderVaultId.set($event)"
-            >
-              @for (v of financeService.state().assets; track v.id) {
-                <option [value]="v.id">Debitar: {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
-              }
-            </select>
+        </div>
+      }
+
+      <!-- 3 DRAWERS LIVE TELEMETRY GRID -->
+      <div class="drawers-grid">
+        <!-- GAVETA 1 -->
+        <article
+          class="drawer-card f360-kpi-aura tone-cyan"
+          [class.is-overdraft]="liveDrawers.drawer1AvailableUsd < 0"
+          [class.tone-danger]="liveDrawers.drawer1AvailableUsd < 0"
+        >
+          <div class="drawer-head">
+            <span class="drawer-kicker">Gaveta 1 · Reposición</span>
+            @if (liveDrawers.drawer1AvailableUsd < 0) {
+              <span class="f360-status-pill tone-danger">Sobregiro</span>
+            } @else {
+              <span class="f360-status-pill tone-cyan">{{ drawer1Percent() }}% entrada</span>
+            }
+          </div>
+          <h3 class="drawer-title">Insumos y Mercancía</h3>
+          <div class="drawer-primary-metric privacy-mask f360-tabular" [class.text-danger]="liveDrawers.drawer1AvailableUsd < 0">
+            {{ formatSignedUsd(liveDrawers.drawer1AvailableUsd) }}
+            <span class="metric-unit">USD</span>
+          </div>
+          <p class="drawer-ves-sub privacy-mask f360-tabular">
+            @if (financeService.currentBcvRate() > 0) {
+              {{ formatSignedVes(liveDrawers.drawer1AvailableVes) }} · Entrada simulada +${{ split.drawer1.usd | number: '1.2-2' }}
+            } @else {
+              Entrada simulada +${{ split.drawer1.usd | number: '1.2-2' }} USD
+            }
+          </p>
+
+          <dl class="drawer-stats-list f360-tabular">
+            <div class="stat-line">
+              <dt>Acumulado asignado</dt>
+              <dd class="privacy-mask">${{ liveDrawers.drawer1AllocatedUsd | number: '1.2-2' }}</dd>
+            </div>
+            <div class="stat-line">
+              <dt>Ejecutado en insumos</dt>
+              <dd class="privacy-mask">${{ liveDrawers.merchExpensesUsd | number: '1.2-2' }}</dd>
+            </div>
+          </dl>
+
+          <div class="drawer-actions">
             <button
               type="button"
-              class="btn-primary-small"
-              (click)="showAddProviderModal.set(true)"
+              class="f360-btn-glass"
+              (click)="openDisbursementModal(1)"
             >
-              + Nuevo Proveedor
+              Comprar Insumos
+            </button>
+          </div>
+        </article>
+
+        <!-- GAVETA 2 -->
+        <article
+          class="drawer-card f360-kpi-aura tone-warn"
+          [class.is-overdraft]="liveDrawers.drawer2AvailableUsd < 0"
+          [class.tone-danger]="liveDrawers.drawer2AvailableUsd < 0"
+        >
+          <div class="drawer-head">
+            <span class="drawer-kicker">Gaveta 2 · Operativa</span>
+            @if (liveDrawers.drawer2AvailableUsd < 0) {
+              <span class="f360-status-pill tone-danger">Sobregiro</span>
+            } @else {
+              <span class="f360-status-pill tone-warn">{{ drawer2Percent() }}% entrada</span>
+            }
+          </div>
+          <h3 class="drawer-title">Nómina y Gastos Fijos</h3>
+          <div class="drawer-primary-metric privacy-mask f360-tabular" [class.text-danger]="liveDrawers.drawer2AvailableUsd < 0">
+            {{ formatSignedUsd(liveDrawers.drawer2AvailableUsd) }}
+            <span class="metric-unit">USD</span>
+          </div>
+          <p class="drawer-ves-sub privacy-mask f360-tabular">
+            @if (financeService.currentBcvRate() > 0) {
+              {{ formatSignedVes(liveDrawers.drawer2AvailableVes) }} · Entrada simulada +${{ split.drawer2.usd | number: '1.2-2' }}
+            } @else {
+              Entrada simulada +${{ split.drawer2.usd | number: '1.2-2' }} USD
+            }
+          </p>
+
+          <dl class="drawer-stats-list f360-tabular">
+            <div class="stat-line">
+              <dt>Acumulado asignado</dt>
+              <dd class="privacy-mask">${{ liveDrawers.drawer2AllocatedUsd | number: '1.2-2' }}</dd>
+            </div>
+            <div class="stat-line">
+              <dt>Ejecutado en nómina y fijos</dt>
+              <dd class="privacy-mask">${{ liveDrawers.opsExpensesUsd | number: '1.2-2' }}</dd>
+            </div>
+          </dl>
+
+          <div class="drawer-actions dual">
+            <button
+              type="button"
+              class="f360-btn-glass"
+              (click)="openPayrollModal()"
+            >
+              Pagar Nómina
+            </button>
+            <button
+              type="button"
+              class="f360-btn-ghost"
+              (click)="openDisbursementModal(2)"
+            >
+              Gasto Fijo
+            </button>
+          </div>
+        </article>
+
+        <!-- GAVETA 3 -->
+        <article
+          class="drawer-card f360-kpi-aura tone-emerald"
+          [class.is-overdraft]="liveDrawers.drawer3AvailableUsd < 0"
+          [class.tone-danger]="liveDrawers.drawer3AvailableUsd < 0"
+        >
+          <div class="drawer-head">
+            <span class="drawer-kicker">Gaveta 3 · Utilidad y CAPEX</span>
+            @if (liveDrawers.drawer3AvailableUsd < 0) {
+              <span class="f360-status-pill tone-danger">Sobregiro</span>
+            } @else {
+              <span class="f360-status-pill tone-emerald">{{ drawer3Percent() }}% entrada</span>
+            }
+          </div>
+          <h3 class="drawer-title">Ganancia Libre y Reinversión</h3>
+          <div class="drawer-primary-metric privacy-mask f360-tabular" [class.text-danger]="liveDrawers.drawer3AvailableUsd < 0">
+            {{ formatSignedUsd(liveDrawers.drawer3AvailableUsd) }}
+            <span class="metric-unit">USD</span>
+          </div>
+          <p class="drawer-ves-sub privacy-mask f360-tabular">
+            @if (financeService.currentBcvRate() > 0) {
+              {{ formatSignedVes(liveDrawers.drawer3AvailableVes) }} · Entrada simulada +${{ split.drawer3.usd | number: '1.2-2' }}
+            } @else {
+              Entrada simulada +${{ split.drawer3.usd | number: '1.2-2' }} USD
+            }
+          </p>
+
+          <dl class="drawer-stats-list f360-tabular">
+            <div class="stat-line">
+              <dt>Acumulado asignado</dt>
+              <dd class="privacy-mask">${{ liveDrawers.drawer3AllocatedUsd | number: '1.2-2' }}</dd>
+            </div>
+            <div class="stat-line">
+              <dt>Invertido en CAPEX / retiros</dt>
+              <dd class="privacy-mask">${{ liveDrawers.capexExpensesUsd | number: '1.2-2' }}</dd>
+            </div>
+          </dl>
+
+          <div class="drawer-actions">
+            <button
+              type="button"
+              class="f360-btn-glass"
+              (click)="openDisbursementModal(3)"
+            >
+              Retiro / CAPEX
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <!-- INFLOW ALLOCATION CARD -->
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head">
+          <div>
+            <span class="section-kicker">Ingreso Comercial o Fondeo Directo</span>
+            <h3 class="panel-title">Cortafuegos de Reparto Automático</h3>
+          </div>
+          <div class="segmented-toggle" role="group" aria-label="Tipo de entrada Pyme">
+            <button
+              type="button"
+              class="seg-btn"
+              [class.is-active]="inflowType() === 'sale'"
+              (click)="inflowType.set('sale')"
+            >
+              Venta Comercial
+            </button>
+            <button
+              type="button"
+              class="seg-btn"
+              [class.is-active]="inflowType() === 'capital_injection'"
+              (click)="inflowType.set('capital_injection')"
+            >
+              Inyección de Capital
             </button>
           </div>
         </div>
 
-        @if (providers().length === 0) {
-          <div class="empty-list">
-            <p>No tienes proveedores registrados.</p>
+        <div class="form-grid-3">
+          <div class="field-group span-2-md">
+            <label for="pyme-sale-concept">
+              {{ inflowType() === 'sale' ? 'Concepto de la Venta u Orden' : 'Motivo del Fondeo / Aporte' }}
+            </label>
+            <input
+              id="pyme-sale-concept"
+              type="text"
+              class="f360-input"
+              [placeholder]="inflowType() === 'sale' ? 'Ej. Reparación general, venta de repuestos...' : 'Ej. Capital operativo inicial para nómina e insumos...'"
+              [ngModel]="saleConcept()"
+              (ngModelChange)="saleConcept.set($event)"
+            />
           </div>
-        } @else {
-          <div class="providers-list">
-            @for (prov of providers(); track prov.id) {
-              <div class="provider-row-card">
-                <div class="prov-left">
-                  <strong class="prov-name">{{ prov.name }}</strong>
-                  <span class="prov-category">{{ prov.category }}</span>
-                  @if (prov.phone) {
-                    <span class="prov-phone">📞 {{ prov.phone }} · {{ prov.bankDetails }}</span>
-                  }
-                </div>
-                <div class="prov-right">
-                  <div class="prov-debt-box">
-                    <span class="debt-label">Saldo Pendiente:</span>
-                    <strong class="debt-val" [class.has-debt]="prov.outstandingDebtUsd > 0">
-                      ${{ prov.outstandingDebtUsd | number: '1.2-2' }} USD
-                    </strong>
-                  </div>
-                  @if (prov.outstandingDebtUsd > 0) {
-                    <button
-                      type="button"
-                      class="btn-pay-provider"
-                      (click)="payProviderDebt(prov, Math.min(50, prov.outstandingDebtUsd))"
-                    >
-                      Abonar $50
-                    </button>
-                  }
-                  <button
-                    type="button"
-                    class="btn-trash"
-                    title="Eliminar proveedor"
-                    (click)="deleteProvider(prov)"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
+
+          <div class="field-group">
+            <label for="pyme-sale-amount">Monto (USD)</label>
+            <input
+              id="pyme-sale-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              class="f360-input f360-tabular"
+              placeholder="250.00"
+              [ngModel]="saleAmount()"
+              (ngModelChange)="saleAmount.set($event)"
+            />
+            @if (financeService.currentBcvRate() > 0) {
+              <span class="field-hint f360-tabular">
+                Equivalente: Bs {{ split.totalVes | number: '1.2-2' }}
+              </span>
             }
           </div>
-        }
-      </div>
-    </div>
-  }
 
-  <!-- TAB 3: INVENTORY SEMÁFORO -->
-  @if (activePymeTab() === 'inventory') {
-    <div class="inventory-section">
-      <div class="pyme-card">
-        <div class="card-header-action">
-          <div>
-            <span class="pyme-badge">CONTROL DE INSUMOS & STOCK</span>
-            <h3>Inventario Semáforo</h3>
-            <p class="card-subtitle">
-              Artículos críticos con stock mínimo o agotado: <strong class="red-text">{{ inventoryCriticalCount() }}</strong>
-            </p>
+          <div class="field-group">
+            <label for="pyme-target-vault">Bóveda Receptora</label>
+            <select
+              id="pyme-target-vault"
+              class="f360-input"
+              [ngModel]="targetVaultId()"
+              (ngModelChange)="targetVaultId.set($event)"
+            >
+              @if (liquidVaults().length === 0) {
+                <option value="">Sin bóvedas registradas (flujo directo)</option>
+              } @else {
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">
+                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.2-2' }})
+                  </option>
+                }
+              }
+            </select>
           </div>
+        </div>
+
+        <!-- Presets & Sliders -->
+        <div class="presets-bar">
+          <span class="field-label-inline">Modelo de distribución:</span>
+          <div class="preset-pills">
+            @for (preset of drawerPresets; track preset.id) {
+              <button
+                type="button"
+                class="f360-btn-glass btn-compact"
+                [class.is-active]="activePreset() === preset.id"
+                [title]="preset.description"
+                (click)="applyPreset(preset)"
+              >
+                {{ preset.label }}
+              </button>
+            }
+          </div>
+          <span
+            class="f360-status-pill f360-tabular"
+            [class.tone-emerald]="percentSum() === 100"
+            [class.tone-danger]="percentSum() !== 100"
+          >
+            {{ percentSum() === 100 ? '100% distribuido' : 'Suma ' + percentSum() + '% (requiere 100%)' }}
+          </span>
+        </div>
+
+        <div class="sliders-grid">
+          <div class="slider-card">
+            <div class="slider-top">
+              <label for="pyme-slider-d1">Gaveta 1 · Insumos</label>
+              <strong class="f360-tabular">{{ drawer1Percent() }}% (${{ split.drawer1.usd | number: '1.2-2' }})</strong>
+            </div>
+            <input
+              id="pyme-slider-d1"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="range-input range-cyan"
+              [ngModel]="drawer1Percent()"
+              (ngModelChange)="setCustomPercent(1, $event)"
+            />
+          </div>
+
+          <div class="slider-card">
+            <div class="slider-top">
+              <label for="pyme-slider-d2">Gaveta 2 · Operativa</label>
+              <strong class="f360-tabular">{{ drawer2Percent() }}% (${{ split.drawer2.usd | number: '1.2-2' }})</strong>
+            </div>
+            <input
+              id="pyme-slider-d2"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="range-input range-warn"
+              [ngModel]="drawer2Percent()"
+              (ngModelChange)="setCustomPercent(2, $event)"
+            />
+          </div>
+
+          <div class="slider-card">
+            <div class="slider-top">
+              <label for="pyme-slider-d3">Gaveta 3 · Utilidad / CAPEX</label>
+              <strong class="f360-tabular">{{ drawer3Percent() }}% (${{ split.drawer3.usd | number: '1.2-2' }})</strong>
+            </div>
+            <input
+              id="pyme-slider-d3"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="range-input range-emerald"
+              [ngModel]="drawer3Percent()"
+              (ngModelChange)="setCustomPercent(3, $event)"
+            />
+          </div>
+        </div>
+
+        <div class="card-footer-cta">
           <button
             type="button"
-            class="btn-primary-small"
-            (click)="showAddItemModal.set(true)"
+            class="f360-btn-primary"
+            [disabled]="percentSum() !== 100 || (saleAmount() || 0) <= 0"
+            (click)="settleSaleInLedger()"
           >
-            + Nuevo Insumo
+            {{ inflowType() === 'sale' ? 'Asentar Venta en 3 Gavetas' : 'Acreditar Capital en 3 Gavetas' }}
           </button>
         </div>
+      </article>
 
-        @if (inventory().length === 0) {
-          <div class="empty-list">
-            <p>No hay artículos registrados en el catálogo de inventario.</p>
+      <!-- AUDIT TABLE -->
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head">
+          <div>
+            <span class="section-kicker">Trazabilidad Contable</span>
+            <h3 class="panel-title">Auditoría de Desembolsos por Gaveta</h3>
           </div>
-        } @else {
-          <div class="inventory-grid">
-            @for (item of inventory(); track item.id) {
-              <div class="inv-card" [class.border-critical]="item.currentStock <= item.minimumStock">
-                <div class="inv-card-header">
-                  <div>
-                    <strong class="inv-title">{{ item.name }}</strong>
-                    <span class="inv-category">{{ item.category }}</span>
-                  </div>
-                  <span
-                    class="status-chip"
-                    [class.chip-optimal]="item.currentStock > item.minimumStock"
-                    [class.chip-low]="item.currentStock <= item.minimumStock && item.currentStock > 0"
-                    [class.chip-depleted]="item.currentStock <= 0"
-                  >
-                    {{ item.currentStock <= 0 ? 'AGOTADO' : (item.currentStock <= item.minimumStock ? 'BAJO' : 'ÓPTIMO') }}
-                  </span>
-                </div>
-
-                <div class="inv-metrics-row">
-                  <div class="metric-col">
-                    <span class="metric-lbl">Costo Unit.:</span>
-                    <strong>${{ item.unitCostUsd | number: '1.2-2' }} USD</strong>
-                  </div>
-                  <div class="metric-col">
-                    <span class="metric-lbl">Precio Venta:</span>
-                    <strong>${{ item.sellingPriceUsd | number: '1.2-2' }} USD</strong>
-                  </div>
-                  <div class="metric-col">
-                    <span class="metric-lbl">Stock Mínimo:</span>
-                    <span>{{ item.minimumStock }} u.</span>
-                  </div>
-                </div>
-
-                <div class="inv-card-footer">
-                  <div class="restock-actions">
-                    <button
-                      type="button"
-                      class="btn-restock btn-restock-cash"
-                      title="Reponer stock con débito de bóveda en libro mayor"
-                      (click)="restockItem(item, 'vault')"
-                    >
-                      📦 De Contado
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-restock btn-restock-credit"
-                      title="Reponer stock con pasivo de crédito comercial a 14 días"
-                      (click)="restockItem(item, 'provider_credit')"
-                    >
-                      🚚 A Crédito
-                    </button>
-                  </div>
-
-                  <div class="stock-stepper">
-                    <button type="button" class="btn-step" (click)="adjustStock(item, -1)">-</button>
-                    <span class="stock-qty">{{ item.currentStock }}</span>
-                    <button type="button" class="btn-step" (click)="adjustStock(item, 1)">+</button>
-                  </div>
-
-                  <button
-                    type="button"
-                    class="btn-trash"
-                    title="Eliminar insumo del catálogo"
-                    (click)="deleteInventoryItem(item)"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            }
-          </div>
-        }
-      </div>
-    </div>
-  }
-
-  <!-- ============================================================ -->
-  <!-- MODAL 1: PAGO DE NÓMINA (GAVETA 2)                          -->
-  <!-- ============================================================ -->
-  @if (showPayrollModal()) {
-    <div class="modal-backdrop" (click)="closePayrollModal()">
-      <div class="modal-card modal-lg" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <div class="modal-title-box">
-            <span class="modal-tag amber-tag">GAVETA 2 · OPERATIVA</span>
-            <h3>👥 Liquidación de Nómina y Sueldos</h3>
-          </div>
-          <button type="button" class="btn-close" (click)="closePayrollModal()">✕</button>
+          <span class="f360-status-pill tone-cyan f360-tabular">
+            {{ recentDrawerMovements().length }} registros
+          </span>
         </div>
 
-        <div class="modal-body">
-          <div class="modal-alert-box">
-            <span>Fondo Disponible en Gaveta 2:</span>
-            <strong class="gold-text">
-              ${{ financeService.pymeDrawersTelemetry().drawer2AvailableUsd | number: '1.2-2' }} USD
-            </strong>
+        @if (recentDrawerMovements().length === 0) {
+          <p class="empty-copy">
+            No existen desembolsos empresariales registrados todavía. Registre una compra, nómina o gasto operativo para auditar su gaveta correspondiente.
+          </p>
+        } @else {
+          <div class="table-scroll">
+            <table class="f360-hairline-table">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Gaveta Auditada</th>
+                  <th scope="col">Concepto</th>
+                  <th scope="col">Bóveda</th>
+                  <th scope="col" class="num-col">USD</th>
+                  <th scope="col" class="num-col">VES</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (mov of recentDrawerMovements(); track mov.id) {
+                  @let auditMeta = getDrawerAuditMeta(mov);
+                  <tr>
+                    <td class="f360-tabular muted-cell">{{ mov.date }}</td>
+                    <td>
+                      <span class="f360-status-pill" [class]="auditMeta.toneClass">
+                        {{ auditMeta.label }}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="cell-primary">{{ mov.title }}</div>
+                      @if (mov.notes) {
+                        <div class="cell-secondary">{{ mov.notes }}</div>
+                      }
+                    </td>
+                    <td class="muted-cell">{{ getVaultName(mov.vaultId) }}</td>
+                    <td class="num-col f360-tabular privacy-mask">
+                      ${{ mov.triMonetary.amount_usd | number: '1.2-2' }}
+                    </td>
+                    <td class="num-col f360-tabular muted-cell privacy-mask">
+                      Bs {{ mov.triMonetary.amount_ves | number: '1.2-2' }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </article>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- TAB 2: PROVEEDORES CxP (CONCILIADO CON PASIVOS)                         -->
+  <!-- ======================================================================= -->
+  @if (effectiveActiveTab() === 'providers') {
+    <section class="tab-panel" role="tabpanel" aria-labelledby="pyme-tab-providers">
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head wrap">
+          <div>
+            <span class="section-kicker">Cuentas por Pagar · Conciliado con Pasivos</span>
+            <h3 class="panel-title">Proveedores Comerciales</h3>
+            <p class="panel-sub privacy-mask f360-tabular">
+              Deuda total conciliada: <strong>${{ totalProviderDebtUsd() | number: '1.2-2' }} USD</strong>
+            </p>
           </div>
 
-          <div class="form-row-dual">
-            <div class="form-group flex-2">
-              <label>Nombre del Colaborador / Cargo *</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Carlos Gómez - Mecánico Líder"
-                [ngModel]="payrollEmployeeName()"
-                (ngModelChange)="payrollEmployeeName.set($event)"
-              />
-            </div>
-            <div class="form-group flex-1">
-              <label>Período de Pago</label>
+          <div class="toolbar-controls">
+            <div class="inline-select-group">
+              <label for="pyme-provider-vault">Bóveda de pago</label>
               <select
-                class="form-control"
-                [ngModel]="payrollPeriod()"
-                (ngModelChange)="payrollPeriod.set($event)"
+                id="pyme-provider-vault"
+                class="f360-input"
+                [ngModel]="selectedProviderVaultId()"
+                (ngModelChange)="selectedProviderVaultId.set($event)"
               >
-                <option value="Quincena 1">Quincena 1</option>
-                <option value="Quincena 2">Quincena 2</option>
-                <option value="Semanal">Semanal</option>
-                <option value="Mensual">Mensual</option>
-                <option value="Bono Producción">Bono Producción</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>Monto a Liquidar ($ USD) *</label>
-              <div class="input-with-sub">
-                <input
-                  type="number"
-                  class="form-control big-input"
-                  placeholder="80"
-                  [ngModel]="payrollAmountUsd()"
-                  (ngModelChange)="payrollAmountUsd.set($event)"
-                />
-                <span class="sub-conversion">
-                  ≈ Bs {{ ((payrollAmountUsd() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
-                </span>
-              </div>
-            </div>
-
-            <div class="form-group flex-1">
-              <label>Cuenta / Bóveda de Salida *</label>
-              <select
-                class="form-control"
-                [ngModel]="payrollVaultId()"
-                (ngModelChange)="payrollVaultId.set($event)"
-              >
-                @for (v of financeService.state().assets; track v.id) {
-                  <option [value]="v.id">
-                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
-                  </option>
+                @if (liquidVaults().length === 0) {
+                  <option value="">Sin bóvedas registradas</option>
+                } @else {
+                  @for (v of liquidVaults(); track v.id) {
+                    <option [value]="v.id">
+                      {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.2-2' }})
+                    </option>
+                  }
                 }
               </select>
             </div>
-          </div>
-
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>N° Referencia Bancaria / Pago Móvil (Opcional)</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. 984521"
-                [ngModel]="payrollRef()"
-                (ngModelChange)="payrollRef.set($event)"
-              />
-            </div>
-            <div class="form-group flex-1">
-              <label>Notas / Observaciones</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Liquidación horas extras pintura"
-                [ngModel]="payrollNotes()"
-                (ngModelChange)="payrollNotes.set($event)"
-              />
-            </div>
+            <button
+              type="button"
+              class="f360-btn-primary"
+              (click)="showAddProviderModal.set(true)"
+            >
+              Nuevo Proveedor
+            </button>
           </div>
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="closePayrollModal()">
-            Cancelar
+        @if (providerRows().length === 0) {
+          <p class="empty-copy">
+            No hay proveedores registrados. Agregue un proveedor para gestionar facturas y abonos parciales vinculados automáticamente a Pasivos.
+          </p>
+        } @else {
+          <div class="rows-stack">
+            @for (row of providerRows(); track row.provider.id) {
+              <div class="entity-row">
+                <div class="entity-info">
+                  <div class="entity-title-row">
+                    <strong>{{ row.provider.name }}</strong>
+                    <span class="f360-status-pill tone-cyan">{{ row.provider.category }}</span>
+                    @if (row.hasOverdue) {
+                      <span class="f360-status-pill tone-danger">Factura vencida</span>
+                    }
+                  </div>
+                  <div class="entity-meta">
+                    <span>{{ row.provider.phone }}</span>
+                    <span>{{ row.provider.bankDetails }}</span>
+                    @if (row.linkedOpenCount > 0) {
+                      <span>{{ row.linkedOpenCount }} pasivo(s) abierto(s)</span>
+                    }
+                    @if (row.earliestDueDate) {
+                      <span class="f360-tabular">Próx. vencimiento: {{ row.earliestDueDate }}</span>
+                    }
+                  </div>
+                </div>
+
+                <div class="entity-actions">
+                  <div class="debt-summary">
+                    <span class="debt-caption">Saldo conciliado</span>
+                    <strong
+                      class="debt-amount f360-tabular privacy-mask"
+                      [class.text-warn]="row.unifiedDebtUsd > 0"
+                      [class.text-accent]="row.unifiedDebtUsd === 0"
+                    >
+                      ${{ row.unifiedDebtUsd | number: '1.2-2' }} USD
+                    </strong>
+                  </div>
+
+                  @if (row.unifiedDebtUsd > 0) {
+                    <div class="custom-pay-controls">
+                      <label [attr.for]="'pay-input-' + row.provider.id" class="sr-only">
+                        Monto de abono parcial para {{ row.provider.name }}
+                      </label>
+                      <input
+                        [id]="'pay-input-' + row.provider.id"
+                        type="number"
+                        min="0.01"
+                        [max]="row.unifiedDebtUsd"
+                        step="0.01"
+                        class="f360-input compact-num f360-tabular"
+                        placeholder="Abono USD"
+                        [ngModel]="getProviderPaymentAmount(row.provider.id)"
+                        (ngModelChange)="setProviderPaymentAmount(row.provider.id, $event)"
+                      />
+                      <button
+                        type="button"
+                        class="f360-btn-glass btn-compact"
+                        (click)="submitCustomProviderPayment(row.provider)"
+                      >
+                        Abonar
+                      </button>
+                      <button
+                        type="button"
+                        class="f360-btn-primary btn-compact"
+                        (click)="settleProviderFullDebt(row.provider)"
+                      >
+                        Liquidar Total
+                      </button>
+                    </div>
+                  }
+
+                  <button
+                    type="button"
+                    class="f360-icon-btn"
+                    [attr.aria-label]="'Eliminar proveedor ' + row.provider.name"
+                    (click)="deleteProvider(row.provider)"
+                  >
+                    <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </article>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- TAB 3: INVENTARIO SEMÁFORO & MERCANCÍA FRÍA                             -->
+  <!-- ======================================================================= -->
+  @if (effectiveActiveTab() === 'inventory') {
+    <section class="tab-panel" role="tabpanel" aria-labelledby="pyme-tab-inventory">
+      <div class="kpi-strip-4">
+        <div class="f360-kpi-aura tone-emerald mini-kpi">
+          <span class="mini-kpi-label">Óptimo</span>
+          <strong class="mini-kpi-val f360-tabular">{{ inventoryOptimalCount() }}</strong>
+        </div>
+        <div class="f360-kpi-aura tone-warn mini-kpi">
+          <span class="mini-kpi-label">Reponer</span>
+          <strong class="mini-kpi-val f360-tabular">{{ inventoryLowCount() }}</strong>
+        </div>
+        <div class="f360-kpi-aura tone-danger mini-kpi">
+          <span class="mini-kpi-label">Crítico / Agotado</span>
+          <strong class="mini-kpi-val f360-tabular">{{ inventoryCriticalCount() }}</strong>
+        </div>
+        <div
+          class="f360-kpi-aura mini-kpi"
+          [class.tone-warn]="coldInventoryItems().length > 0"
+          [class.tone-cyan]="coldInventoryItems().length === 0"
+        >
+          <span class="mini-kpi-label">Mercancía Fría (&gt;45d)</span>
+          <strong class="mini-kpi-val f360-tabular">{{ coldInventoryItems().length }}</strong>
+        </div>
+      </div>
+
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head wrap">
+          <div>
+            <span class="section-kicker">Control de Existencias &amp; Rotación</span>
+            <h3 class="panel-title">Catálogo de Inventario</h3>
+          </div>
+
+          <div class="toolbar-controls">
+            <div class="inline-select-group">
+              <label for="pyme-restock-vault">Bóveda contado</label>
+              <select
+                id="pyme-restock-vault"
+                class="f360-input"
+                [ngModel]="restockVaultId()"
+                (ngModelChange)="restockVaultId.set($event)"
+              >
+                @if (liquidVaults().length === 0) {
+                  <option value="">Sin bóvedas</option>
+                } @else {
+                  @for (v of liquidVaults(); track v.id) {
+                    <option [value]="v.id">{{ v.name }}</option>
+                  }
+                }
+              </select>
+            </div>
+
+            <div class="inline-select-group">
+              <label for="pyme-restock-provider">Proveedor crédito</label>
+              <select
+                id="pyme-restock-provider"
+                class="f360-input"
+                [ngModel]="restockProviderId()"
+                (ngModelChange)="restockProviderId.set($event)"
+              >
+                @if (providers().length === 0) {
+                  <option value="">Sin proveedores</option>
+                } @else {
+                  @for (p of providers(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                }
+              </select>
+            </div>
+
+            <button
+              type="button"
+              class="f360-btn-primary"
+              (click)="openAddItemModal()"
+            >
+              Nuevo Insumo
+            </button>
+          </div>
+        </div>
+
+        @if (inventory().length === 0) {
+          <p class="empty-copy">
+            No hay artículos registrados en inventario. Cree su catálogo con SKU, costo unitario y stock mínimo para activar el semáforo operativo.
+          </p>
+        } @else {
+          <div class="inventory-grid">
+            @for (item of inventory(); track item.id) {
+              @let isCold = coldInventoryIds().has(item.id);
+              <article
+                class="inv-card"
+                [class.is-critical]="item.currentStock <= 0"
+                [class.is-low]="item.currentStock > 0 && item.currentStock <= item.minimumStock"
+              >
+                <div class="inv-head">
+                  <div>
+                    <h4 class="inv-name">{{ item.name }}</h4>
+                    <div class="inv-sub">
+                      <span>{{ item.category }}</span>
+                      @if (item.sku) {
+                        <span class="sku-tag f360-tabular">SKU: {{ item.sku }}</span>
+                      }
+                    </div>
+                  </div>
+                  <div class="inv-badges">
+                    @if (item.currentStock <= 0) {
+                      <span class="f360-status-pill tone-danger">Crítico</span>
+                    } @else if (item.currentStock <= item.minimumStock) {
+                      <span class="f360-status-pill tone-warn">Reponer</span>
+                    } @else {
+                      <span class="f360-status-pill tone-emerald">Óptimo</span>
+                    }
+                    @if (isCold) {
+                      <span class="f360-status-pill tone-warn">Mercancía Fría (&gt;45d)</span>
+                    }
+                  </div>
+                </div>
+
+                <dl class="inv-metrics f360-tabular">
+                  <div>
+                    <dt>Costo Unit.</dt>
+                    <dd class="privacy-mask">${{ item.unitCostUsd | number: '1.2-2' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Venta Unit.</dt>
+                    <dd class="privacy-mask">${{ item.sellingPriceUsd | number: '1.2-2' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Mín / Óptimo</dt>
+                    <dd>{{ item.minimumStock }} / {{ item.optimalStock }}</dd>
+                  </div>
+                </dl>
+
+                <div class="inv-footer">
+                  <div class="inv-btn-row">
+                    <button
+                      type="button"
+                      class="f360-btn-glass btn-compact"
+                      (click)="openRestockModal(item, 'vault')"
+                    >
+                      Reponer Contado
+                    </button>
+                    <button
+                      type="button"
+                      class="f360-btn-glass btn-compact"
+                      (click)="openRestockModal(item, 'provider_credit')"
+                    >
+                      A Crédito
+                    </button>
+                    <button
+                      type="button"
+                      class="f360-btn-ghost btn-compact"
+                      (click)="openEditItemModal(item)"
+                    >
+                      Editar
+                    </button>
+                  </div>
+
+                  <div class="stepper-and-del">
+                    <div class="stock-stepper">
+                      <button
+                        type="button"
+                        class="step-btn"
+                        [attr.aria-label]="'Reducir stock de ' + item.name"
+                        (click)="adjustStock(item, -1)"
+                      >
+                        -
+                      </button>
+                      <span class="step-val f360-tabular">{{ item.currentStock }}</span>
+                      <button
+                        type="button"
+                        class="step-btn"
+                        [attr.aria-label]="'Aumentar stock de ' + item.name"
+                        (click)="adjustStock(item, 1)"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="f360-icon-btn"
+                      [attr.aria-label]="'Eliminar artículo ' + item.name"
+                      (click)="deleteInventoryItem(item)"
+                    >
+                      <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            }
+          </div>
+        }
+      </article>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- TAB 4: MOTOR DE REGLAS DE RECURRENCIA                                   -->
+  <!-- ======================================================================= -->
+  @if (effectiveActiveTab() === 'recurring') {
+    <section class="tab-panel" role="tabpanel" aria-labelledby="pyme-tab-recurring">
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head wrap">
+          <div>
+            <span class="section-kicker">Automatización Operativa VET</span>
+            <h3 class="panel-title">Motor de Reglas de Recurrencia</h3>
+            <p class="panel-sub f360-tabular">
+              Activas: <strong>{{ activeRecurringCount() }}</strong> · Vencidas hoy: <strong>{{ dueRecurringCount() }}</strong>
+            </p>
+          </div>
+
+          <div class="toolbar-controls">
+            <button
+              type="button"
+              class="f360-btn-glass"
+              (click)="showRecurringForm.set(!showRecurringForm())"
+            >
+              {{ showRecurringForm() ? 'Ocultar Formulario' : 'Nueva Regla' }}
+            </button>
+            <button
+              type="button"
+              class="f360-btn-primary"
+              (click)="materializeDueRulesNow()"
+            >
+              Aplicar vencidas hoy
+            </button>
+          </div>
+        </div>
+
+        @if (showRecurringForm()) {
+          <div class="inline-form-box">
+            <div class="form-grid-3">
+              <div class="field-group">
+                <label for="rec-title">Descripción de la Regla</label>
+                <input
+                  id="rec-title"
+                  type="text"
+                  class="f360-input"
+                  placeholder="Ej. Alquiler local, Nómina quincenal..."
+                  [ngModel]="recTitle()"
+                  (ngModelChange)="recTitle.set($event)"
+                />
+              </div>
+
+              <div class="field-group">
+                <label for="rec-type">Tipo de Asiento</label>
+                <select
+                  id="rec-type"
+                  class="f360-input"
+                  [ngModel]="recType()"
+                  (ngModelChange)="setRecurringType($event)"
+                >
+                  <option value="expense">Gasto Operativo</option>
+                  <option value="liability">Compromiso / Pasivo</option>
+                  <option value="income">Ingreso Recurrente</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="rec-category">Categoría Contable</label>
+                <select
+                  id="rec-category"
+                  class="f360-input"
+                  [ngModel]="recCategory()"
+                  (ngModelChange)="recCategory.set($event)"
+                >
+                  @for (cat of availableRecurringCategories(); track cat.value) {
+                    <option [value]="cat.value">{{ cat.label }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="rec-frequency">Frecuencia</label>
+                <select
+                  id="rec-frequency"
+                  class="f360-input"
+                  [ngModel]="recFrequency()"
+                  (ngModelChange)="recFrequency.set($event)"
+                >
+                  <option value="weekly">Semanal (7D)</option>
+                  <option value="biweekly">Quincenal (14D)</option>
+                  <option value="monthly">Mensual</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="rec-amount">Monto</label>
+                <div class="amount-currency-pair">
+                  <input
+                    id="rec-amount"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    class="f360-input f360-tabular"
+                    placeholder="120.00"
+                    [ngModel]="recAmount()"
+                    (ngModelChange)="recAmount.set($event)"
+                  />
+                  <label for="rec-currency" class="sr-only">Moneda de la regla recurrente</label>
+                  <select
+                    id="rec-currency"
+                    class="f360-input currency-select"
+                    [ngModel]="recCurrency()"
+                    (ngModelChange)="recCurrency.set($event)"
+                  >
+                    @for (cur of currencyOptions; track cur) {
+                      <option [value]="cur">{{ cur }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label for="rec-due-date">Próxima Fecha (VET)</label>
+                <input
+                  id="rec-due-date"
+                  type="date"
+                  class="f360-input f360-tabular"
+                  [ngModel]="recNextDueDate()"
+                  (ngModelChange)="recNextDueDate.set($event)"
+                />
+              </div>
+
+              <div class="field-group">
+                <label for="rec-vault">Bóveda Asociada</label>
+                <select
+                  id="rec-vault"
+                  class="f360-input"
+                  [ngModel]="recVaultId()"
+                  (ngModelChange)="recVaultId.set($event)"
+                >
+                  @if (liquidVaults().length === 0) {
+                    <option value="">Flujo directo</option>
+                  } @else {
+                    @for (v of liquidVaults(); track v.id) {
+                      <option [value]="v.id">{{ v.name }}</option>
+                    }
+                  }
+                </select>
+              </div>
+
+              <div class="field-group span-2-md">
+                <label for="rec-notes">Notas (opcional)</label>
+                <input
+                  id="rec-notes"
+                  type="text"
+                  class="f360-input"
+                  placeholder="Referencia contractual o detalle..."
+                  [ngModel]="recNotes()"
+                  (ngModelChange)="recNotes.set($event)"
+                />
+              </div>
+            </div>
+
+            <div class="card-footer-cta">
+              <button
+                type="button"
+                class="f360-btn-primary"
+                (click)="saveRecurringRule()"
+              >
+                Guardar Regla Recurrente
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (recurringRules().length === 0) {
+          <p class="empty-copy">
+            No hay reglas de recurrencia configuradas. Programe nómina, alquiler o servicios fijos para materializarlos automáticamente sin duplicados.
+          </p>
+        } @else {
+          <div class="rows-stack">
+            @for (rule of recurringRules(); track rule.id) {
+              <div class="entity-row" [class.is-paused]="!rule.active">
+                <div class="entity-info">
+                  <div class="entity-title-row">
+                    <strong>{{ rule.title }}</strong>
+                    <span class="f360-status-pill tone-cyan">{{ getFrequencyLabel(rule.frequency) }}</span>
+                    @if (!rule.active) {
+                      <span class="f360-status-pill tone-warn">Pausada</span>
+                    } @else if (isRuleDueTodayOrPast(rule)) {
+                      <span class="f360-status-pill tone-danger">Vencida hoy</span>
+                    } @else {
+                      <span class="f360-status-pill tone-emerald">Activa</span>
+                    }
+                  </div>
+                  <div class="entity-meta f360-tabular">
+                    <span>Próximo corte: {{ rule.nextDueDate }}</span>
+                    @if (rule.lastMaterializedDate) {
+                      <span>Última aplicación: {{ rule.lastMaterializedDate }}</span>
+                    }
+                    <span>Bóveda: {{ getVaultName(rule.vaultId) }}</span>
+                  </div>
+                </div>
+
+                <div class="entity-actions">
+                  <strong class="debt-amount f360-tabular privacy-mask">
+                    {{ rule.currency }} {{ rule.amount | number: '1.2-2' }}
+                  </strong>
+                  <button
+                    type="button"
+                    class="f360-btn-glass btn-compact"
+                    (click)="toggleRecurringRule(rule.id)"
+                  >
+                    {{ rule.active ? 'Pausar' : 'Reactivar' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="f360-icon-btn"
+                    [attr.aria-label]="'Eliminar regla ' + rule.title"
+                    (click)="deleteRecurringRule(rule.id)"
+                  >
+                    <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </article>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- TAB 5 (OPT-IN): CASHEA PARA NEGOCIOS (MODO ALIADO)                      -->
+  <!-- ======================================================================= -->
+  @if (effectiveActiveTab() === 'cashea_ally' && casheaAllyEnabled()) {
+    @let sim = casheaAllySimulation();
+    @let allyStats = pendingMerchantSalesStats();
+
+    <section class="tab-panel" role="tabpanel" aria-labelledby="pyme-tab-cashea-ally">
+      <div class="ally-layout-grid">
+        <!-- SIMULATOR CARD -->
+        <article class="f360-content-card panel-card">
+          <div class="panel-card-head">
+            <div>
+              <span class="section-kicker">Cashea para Negocios · Evaluación Objetiva</span>
+              <h3 class="panel-title">Simulador de Margen Neto Real</h3>
+            </div>
+            <span class="f360-status-pill tone-gold f360-tabular">
+              Brecha FX: {{ sim.fxGapPercent | number: '1.2-2' }}%
+            </span>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="field-group">
+              <label for="ally-sale-title">Concepto / Producto</label>
+              <input
+                id="ally-sale-title"
+                type="text"
+                class="f360-input"
+                placeholder="Ej. Juego de cauchos, servicio retail..."
+                [ngModel]="allySaleTitle()"
+                (ngModelChange)="allySaleTitle.set($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="ally-customer">Cliente (opcional)</label>
+              <input
+                id="ally-customer"
+                type="text"
+                class="f360-input"
+                placeholder="Nombre del comprador"
+                [ngModel]="allyCustomerName()"
+                (ngModelChange)="allyCustomerName.set($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="ally-gross-sale">Precio de Venta (USD)</label>
+              <input
+                id="ally-gross-sale"
+                type="number"
+                min="0"
+                step="0.01"
+                class="f360-input f360-tabular"
+                [ngModel]="allyGrossSaleUsd()"
+                (ngModelChange)="allyGrossSaleUsd.set($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="ally-cost-goods">Costo de Reposición Real (USD)</label>
+              <input
+                id="ally-cost-goods"
+                type="number"
+                min="0"
+                step="0.01"
+                class="f360-input f360-tabular"
+                [ngModel]="allyCostOfGoodsUsd()"
+                (ngModelChange)="allyCostOfGoodsUsd.set($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="ally-mdr-pct">Comisión MDR Cashea (%)</label>
+              <input
+                id="ally-mdr-pct"
+                type="number"
+                min="0"
+                max="25"
+                step="0.25"
+                class="f360-input f360-tabular"
+                [ngModel]="allyMdrPercent()"
+                (ngModelChange)="allyMdrPercent.set($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="ally-advance-pct">Adelanto Semanal 7D (+2% a 4%)</label>
+              <div class="inline-check-input">
+                <input
+                  id="ally-advance-toggle"
+                  type="checkbox"
+                  [checked]="allyUseWeeklyAdvance()"
+                  (change)="onWeeklyAdvanceToggle($event)"
+                />
+                <label for="ally-advance-toggle" class="check-caption">Activar</label>
+                <input
+                  id="ally-advance-pct"
+                  type="number"
+                  min="0"
+                  max="15"
+                  step="0.5"
+                  class="f360-input compact-num f360-tabular"
+                  [disabled]="!allyUseWeeklyAdvance()"
+                  [ngModel]="allyWeeklyAdvancePercent()"
+                  (ngModelChange)="allyWeeklyAdvancePercent.set($event)"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="presets-bar compact-presets">
+            <span class="field-label-inline">MDR por rubro:</span>
+            <div class="preset-pills">
+              @for (preset of mdrPresets; track preset.id) {
+                <button
+                  type="button"
+                  class="f360-btn-glass btn-compact"
+                  [class.is-active]="allyMdrPercent() === preset.mdrPercent"
+                  (click)="applyMdrPreset(preset)"
+                >
+                  {{ preset.label }} {{ preset.mdrPercent }}%
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="form-grid-4">
+            <div class="field-group">
+              <label for="ally-bcv-rate">Tasa BCV</label>
+              <input
+                id="ally-bcv-rate"
+                type="number"
+                min="0"
+                step="0.01"
+                class="f360-input f360-tabular"
+                [placeholder]="financeService.currentBcvRate() | number: '1.2-2'"
+                [ngModel]="allyBcvOverride() ?? effectiveAllyBcvRate()"
+                (ngModelChange)="allyBcvOverride.set($event)"
+              />
+            </div>
+            <div class="field-group">
+              <label for="ally-par-rate">Tasa Reposición</label>
+              <input
+                id="ally-par-rate"
+                type="number"
+                min="0"
+                step="0.01"
+                class="f360-input f360-tabular"
+                [placeholder]="financeService.currentParallelRate() | number: '1.2-2'"
+                [ngModel]="allyParallelOverride() ?? effectiveAllyParallelRate()"
+                (ngModelChange)="allyParallelOverride.set($event)"
+              />
+            </div>
+            <div class="field-group">
+              <label for="ally-min-monthly">Mínimo Mensual ($)</label>
+              <input
+                id="ally-min-monthly"
+                type="number"
+                min="0"
+                step="10"
+                class="f360-input f360-tabular"
+                [ngModel]="allyMonthlyMinimumUsd()"
+                (ngModelChange)="allyMonthlyMinimumUsd.set($event)"
+              />
+            </div>
+            <div class="field-group">
+              <label for="ally-activation-fee">Activación ($50–$200 + IVA)</label>
+              <input
+                id="ally-activation-fee"
+                type="number"
+                min="0"
+                step="10"
+                class="f360-input f360-tabular"
+                [ngModel]="allyActivationFeeUsd()"
+                (ngModelChange)="allyActivationFeeUsd.set($event)"
+              />
+            </div>
+          </div>
+
+          <div class="card-footer-cta">
+            <button
+              type="button"
+              class="f360-btn-primary"
+              [disabled]="(allyGrossSaleUsd() || 0) <= 0"
+              (click)="registerAllySale()"
+            >
+              Registrar Venta Aliado
+            </button>
+          </div>
+        </article>
+
+        <!-- SIMULATION DIAGNOSTIC RESULT -->
+        <article class="f360-content-card panel-card">
+          <div class="panel-card-head">
+            <div>
+              <span class="section-kicker">Diagnóstico Financiero Real</span>
+              <h3 class="panel-title">Resultado Neto y Break-Even</h3>
+            </div>
+            @if (sim.isSellingAtLoss) {
+              <span class="f360-status-pill tone-danger">Venta a pérdida real</span>
+            } @else {
+              <span class="f360-status-pill tone-emerald">Margen positivo</span>
+            }
+          </div>
+
+          @if (sim.isSellingAtLoss) {
+            <div class="alert-banner tone-danger ally-loss-alert" role="alert">
+              <svg class="alert-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <div>
+                <strong>Alerta de descapitalización ({{ formatSignedUsd(sim.realNetProfitUsd) }} USD):</strong>
+                tras descontar MDR, adelanto y brecha cambiaria de reposición, esta operación se ubica por debajo de su costo de reposición.
+                <p class="policy-note-inline">{{ sim.surchargeProhibitionWarning }}</p>
+              </div>
+            </div>
+          } @else {
+            <div class="policy-box">
+              {{ sim.surchargeProhibitionWarning }}
+            </div>
+          }
+
+          <div class="ally-kpi-pair">
+            <div class="f360-kpi-aura mini-kpi" [class.tone-danger]="sim.isSellingAtLoss" [class.tone-emerald]="!sim.isSellingAtLoss">
+              <span class="mini-kpi-label">Margen Neto Real (USD)</span>
+              <strong class="mini-kpi-val f360-tabular privacy-mask" [class.text-danger]="sim.isSellingAtLoss">
+                {{ formatSignedUsd(sim.realNetProfitUsd) }}
+              </strong>
+            </div>
+            <div class="f360-kpi-aura mini-kpi" [class.tone-danger]="sim.isSellingAtLoss" [class.tone-cyan]="!sim.isSellingAtLoss">
+              <span class="mini-kpi-label">Margen Neto Real (%)</span>
+              <strong class="mini-kpi-val f360-tabular" [class.text-danger]="sim.isSellingAtLoss">
+                {{ sim.realNetMarginPercent | number: '1.2-2' }}%
+              </strong>
+            </div>
+          </div>
+
+          <dl class="breakdown-dl f360-tabular">
+            <div class="stat-line">
+              <dt>Comisión MDR ({{ sim.mdrPercent }}%)</dt>
+              <dd>-${{ sim.mdrFeeUsd | number: '1.2-2' }}</dd>
+            </div>
+            @if (sim.weeklyAdvanceFeeUsd > 0) {
+              <div class="stat-line">
+                <dt>Adelanto Semanal ({{ sim.weeklyAdvanceFeePercent }}%)</dt>
+                <dd>-${{ sim.weeklyAdvanceFeeUsd | number: '1.2-2' }}</dd>
+              </div>
+            }
+            <div class="stat-line">
+              <dt>Liquidación Neta a BCV</dt>
+              <dd class="privacy-mask">${{ sim.settlementUsdAtBcv | number: '1.2-2' }} (Bs {{ sim.settlementVes | number: '1.2-2' }})</dd>
+            </div>
+            <div class="stat-line">
+              <dt>Erosión por Brecha FX ({{ sim.fxGapPercent | number: '1.2-2' }}%)</dt>
+              <dd class="text-warn">-${{ sim.fxGapErosionUsd | number: '1.2-2' }}</dd>
+            </div>
+            <div class="stat-line">
+              <dt>Poder Real de Reposición</dt>
+              <dd class="privacy-mask">${{ sim.realReplacementUsd | number: '1.2-2' }}</dd>
+            </div>
+          </dl>
+
+          <div class="breakeven-box f360-tabular">
+            <span class="section-kicker">Break-Even Mensual de Contrato Aliado</span>
+            <div class="stat-line">
+              <span>Volumen para cubrir mínimo mensual (${{ sim.monthlyMinimumFeeUsd | number: '1.0-0' }}/mes)</span>
+              <strong>${{ sim.monthlyBreakEvenVolumeUsd | number: '1.2-2' }} USD/mes</strong>
+            </div>
+            <div class="stat-line">
+              <span>Volumen para amortizar mínimo + activación (${{ sim.activationFeeUsd | number: '1.0-0' }} + IVA)</span>
+              <strong>
+                @if (sim.profitBreakEvenVolumeUsd > 0) {
+                  ${{ sim.profitBreakEvenVolumeUsd | number: '1.2-2' }} USD
+                } @else {
+                  No viable (margen negativo)
+                }
+              </strong>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- MERCHANT SALES CONCILIATION LIST -->
+      <article class="f360-content-card panel-card">
+        <div class="panel-card-head wrap">
+          <div>
+            <span class="section-kicker">Conciliación de Cortes Semanales → 3 Gavetas</span>
+            <h3 class="panel-title">Ventas Cashea Aliado</h3>
+            <p class="panel-sub f360-tabular privacy-mask">
+              Por liquidar: <strong>{{ allyStats.pendingCount }}</strong> (${{ allyStats.pendingReceivableUsd | number: '1.2-2' }} USD) · Liquidadas: <strong>{{ allyStats.settledCount }}</strong> (${{ allyStats.settledTotalUsd | number: '1.2-2' }} USD)
+            </p>
+          </div>
+
+          <div class="inline-select-group">
+            <label for="ally-settle-vault">Bóveda de liquidación</label>
+            <select
+              id="ally-settle-vault"
+              class="f360-input"
+              [ngModel]="casheaSettleVaultId()"
+              (ngModelChange)="casheaSettleVaultId.set($event)"
+            >
+              @if (liquidVaults().length === 0) {
+                <option value="">Sin bóvedas registradas</option>
+              } @else {
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }}</option>
+                }
+              }
+            </select>
+          </div>
+        </div>
+
+        @if (merchantSales().length === 0) {
+          <p class="empty-copy">
+            Aún no hay ventas Cashea Aliado registradas. Simule una operación arriba y regístrela para conciliar su corte hacia las 3 Gavetas.
+          </p>
+        } @else {
+          <div class="rows-stack">
+            @for (sale of merchantSales(); track sale.id) {
+              <div class="entity-row">
+                <div class="entity-info">
+                  <div class="entity-title-row">
+                    <strong>{{ sale.title }}</strong>
+                    @if (sale.status === 'settled') {
+                      <span class="f360-status-pill tone-emerald">Liquidada</span>
+                    } @else {
+                      <span class="f360-status-pill tone-warn">Corte estimado: {{ sale.expectedSettlementDate }}</span>
+                    }
+                    @if (sale.isSellingAtLoss) {
+                      <span class="f360-status-pill tone-danger">Pérdida real</span>
+                    }
+                  </div>
+                  <div class="entity-meta f360-tabular">
+                    <span>Venta: {{ sale.saleDate }}</span>
+                    <span>Bruto: ${{ sale.grossSaleUsd | number: '1.2-2' }}</span>
+                    <span>MDR {{ sale.mdrPercent }}%: -${{ sale.mdrFeeUsd | number: '1.2-2' }}</span>
+                    <span>Margen real: {{ formatSignedUsd(sale.realNetProfitUsd) }}</span>
+                  </div>
+                </div>
+
+                <div class="entity-actions">
+                  <div class="debt-summary">
+                    <span class="debt-caption">Neto a liquidar</span>
+                    <strong class="debt-amount f360-tabular privacy-mask">
+                      ${{ sale.netReceivableUsd | number: '1.2-2' }} USD
+                    </strong>
+                  </div>
+
+                  @if (sale.status === 'pending_settlement') {
+                    <button
+                      type="button"
+                      class="f360-btn-primary btn-compact"
+                      (click)="settleAllySale(sale.id)"
+                    >
+                      Liquidar Corte a 3 Gavetas
+                    </button>
+                  } @else {
+                    <span class="muted-cell">{{ getVaultName(sale.settledVaultId) }}</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </article>
+    </section>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: PAGO DE NÓMINA (GAVETA 2)                                        -->
+  <!-- ======================================================================= -->
+  @if (showPayrollModal()) {
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="payroll-modal-title">
+      <button
+        type="button"
+        class="modal-backdrop-btn"
+        aria-label="Cerrar modal de nómina"
+        (click)="closePayrollModal()"
+      ></button>
+      <div class="modal-sheet f360-liquid-glass">
+        <div class="modal-head">
+          <div>
+            <span class="section-kicker">Gaveta 2 · Operativa</span>
+            <h3 id="payroll-modal-title" class="panel-title">Liquidación de Nómina</h3>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closePayrollModal()">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
+        </div>
+
+        <div class="modal-balance-strip f360-tabular">
+          <span>Disponible actual Gaveta 2:</span>
+          <strong [class.text-danger]="financeService.pymeDrawersTelemetry().drawer2AvailableUsd < 0">
+            {{ formatSignedUsd(financeService.pymeDrawersTelemetry().drawer2AvailableUsd) }} USD
+          </strong>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="field-group">
+            <label for="payroll-employee">Colaborador o Cargo</label>
+            <input
+              id="payroll-employee"
+              type="text"
+              class="f360-input"
+              placeholder="Ej. Carlos Gómez - Técnico"
+              [ngModel]="payrollEmployeeName()"
+              (ngModelChange)="payrollEmployeeName.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="payroll-period">Período</label>
+            <select
+              id="payroll-period"
+              class="f360-input"
+              [ngModel]="payrollPeriod()"
+              (ngModelChange)="payrollPeriod.set($event)"
+            >
+              <option value="Quincena 1">Quincena 1</option>
+              <option value="Quincena 2">Quincena 2</option>
+              <option value="Semanal">Semanal</option>
+              <option value="Mensual">Mensual</option>
+              <option value="Bono Producción">Bono Producción</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="payroll-amount">Monto (USD)</label>
+            <input
+              id="payroll-amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="f360-input f360-tabular"
+              placeholder="80.00"
+              [ngModel]="payrollAmountUsd()"
+              (ngModelChange)="payrollAmountUsd.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="payroll-vault">Bóveda de Salida</label>
+            <select
+              id="payroll-vault"
+              class="f360-input"
+              [ngModel]="payrollVaultId()"
+              (ngModelChange)="payrollVaultId.set($event)"
+            >
+              @if (liquidVaults().length === 0) {
+                <option value="">Sin bóvedas registradas</option>
+              } @else {
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.2-2' }})</option>
+                }
+              }
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="payroll-ref">Referencia Bancaria</label>
+            <input
+              id="payroll-ref"
+              type="text"
+              class="f360-input"
+              placeholder="Opcional"
+              [ngModel]="payrollRef()"
+              (ngModelChange)="payrollRef.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="payroll-notes">Observaciones</label>
+            <input
+              id="payroll-notes"
+              type="text"
+              class="f360-input"
+              placeholder="Opcional"
+              [ngModel]="payrollNotes()"
+              (ngModelChange)="payrollNotes.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="f360-btn-ghost" (click)="closePayrollModal()">Cancelar</button>
           <button
             type="button"
-            class="btn-primary"
-            style="background: #f59e0b; color: #020617; border-color: #f59e0b;"
-            [disabled]="!payrollEmployeeName() || (payrollAmountUsd() || 0) <= 0"
+            class="f360-btn-primary"
+            [disabled]="!payrollEmployeeName().trim() || (payrollAmountUsd() || 0) <= 0"
             (click)="confirmPayrollDisbursement()"
           >
-            👥 Confirmar y Pagar Nómina
+            Confirmar Pago de Nómina
           </button>
         </div>
       </div>
     </div>
   }
 
-  <!-- ============================================================ -->
-  <!-- MODAL 2: DESEMBOLSO GENERAL DE GAVETA (1, 2 ó 3)            -->
-  <!-- ============================================================ -->
+  <!-- ======================================================================= -->
+  <!-- MODAL: DESEMBOLSO DE GAVETA                                             -->
+  <!-- ======================================================================= -->
   @if (showDisbursementModal()) {
-    <div class="modal-backdrop" (click)="closeDisbursementModal()">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <div class="modal-title-box">
-            <span
-              class="modal-tag"
-              [class.blue-tag]="disburseDrawer() === 1"
-              [class.amber-tag]="disburseDrawer() === 2"
-              [class.emerald-tag]="disburseDrawer() === 3"
-            >
-              GAVETA {{ disburseDrawer() }} · {{ disburseDrawer() === 1 ? 'REPOSICIÓN' : (disburseDrawer() === 2 ? 'OPERATIVA' : 'CAPEX / UTILIDAD') }}
-            </span>
-            <h3>💸 Registrar Desembolso</h3>
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="disburse-modal-title">
+      <button
+        type="button"
+        class="modal-backdrop-btn"
+        aria-label="Cerrar modal de desembolso"
+        (click)="closeDisbursementModal()"
+      ></button>
+      <div class="modal-sheet f360-liquid-glass">
+        <div class="modal-head">
+          <div>
+            <span class="section-kicker">Gaveta {{ disburseDrawer() }}</span>
+            <h3 id="disburse-modal-title" class="panel-title">Registrar Desembolso</h3>
           </div>
-          <button type="button" class="btn-close" (click)="closeDisbursementModal()">✕</button>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeDisbursementModal()">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Concepto del Desembolso *</label>
+        <div class="form-grid-2">
+          <div class="field-group span-2">
+            <label for="disburse-title">Concepto del Desembolso</label>
             <input
+              id="disburse-title"
               type="text"
-              class="form-control"
-              [placeholder]="disburseDrawer() === 1 ? 'Ej. Compra de thinner, lijas y pintura' : (disburseDrawer() === 2 ? 'Ej. Pago luz comercial o alquiler' : 'Ej. Compra de compresor o retiro socio')"
+              class="f360-input"
               [ngModel]="disburseTitle()"
               (ngModelChange)="disburseTitle.set($event)"
             />
           </div>
 
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>Monto ($ USD) *</label>
-              <div class="input-with-sub">
-                <input
-                  type="number"
-                  class="form-control big-input"
-                  placeholder="50"
-                  [ngModel]="disburseAmountUsd()"
-                  (ngModelChange)="disburseAmountUsd.set($event)"
-                />
-                <span class="sub-conversion">
-                  ≈ Bs {{ ((disburseAmountUsd() || 0) * financeService.currentBcvRate()) | number: '1.2-2' }}
-                </span>
-              </div>
-            </div>
+          <div class="field-group">
+            <label for="disburse-amount">Monto (USD)</label>
+            <input
+              id="disburse-amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="f360-input f360-tabular"
+              [ngModel]="disburseAmountUsd()"
+              (ngModelChange)="disburseAmountUsd.set($event)"
+            />
+          </div>
 
-            <div class="form-group flex-1">
-              <label>Cuenta / Bóveda de Salida *</label>
+          <div class="field-group">
+            <label for="disburse-vault">Bóveda de Salida</label>
+            <select
+              id="disburse-vault"
+              class="f360-input"
+              [ngModel]="disburseVaultId()"
+              (ngModelChange)="disburseVaultId.set($event)"
+            >
+              @if (liquidVaults().length === 0) {
+                <option value="">Sin bóvedas registradas</option>
+              } @else {
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.2-2' }})</option>
+                }
+              }
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="disburse-ref">Referencia</label>
+            <input
+              id="disburse-ref"
+              type="text"
+              class="f360-input"
+              placeholder="Opcional"
+              [ngModel]="disburseRef()"
+              (ngModelChange)="disburseRef.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="disburse-notes">Notas</label>
+            <input
+              id="disburse-notes"
+              type="text"
+              class="f360-input"
+              placeholder="Opcional"
+              [ngModel]="disburseNotes()"
+              (ngModelChange)="disburseNotes.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="f360-btn-ghost" (click)="closeDisbursementModal()">Cancelar</button>
+          <button
+            type="button"
+            class="f360-btn-primary"
+            [disabled]="!disburseTitle().trim() || (disburseAmountUsd() || 0) <= 0"
+            (click)="confirmDisbursement()"
+          >
+            Confirmar Desembolso
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: NUEVO PROVEEDOR                                                  -->
+  <!-- ======================================================================= -->
+  @if (showAddProviderModal()) {
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="prov-modal-title">
+      <button
+        type="button"
+        class="modal-backdrop-btn"
+        aria-label="Cerrar modal de proveedor"
+        (click)="showAddProviderModal.set(false)"
+      ></button>
+      <div class="modal-sheet f360-liquid-glass">
+        <div class="modal-head">
+          <div>
+            <span class="section-kicker">Directorio Comercial</span>
+            <h3 id="prov-modal-title" class="panel-title">Registrar Proveedor</h3>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="showAddProviderModal.set(false)">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="field-group span-2">
+            <label for="prov-name">Razón Social o Nombre</label>
+            <input
+              id="prov-name"
+              type="text"
+              class="f360-input"
+              placeholder="Ej. Distribuidora Central C.A."
+              [ngModel]="provName()"
+              (ngModelChange)="provName.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="prov-category">Rubro / Categoría</label>
+            <input
+              id="prov-category"
+              type="text"
+              class="f360-input"
+              [ngModel]="provCategory()"
+              (ngModelChange)="provCategory.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="prov-debt">Saldo Inicial Pendiente (USD)</label>
+            <input
+              id="prov-debt"
+              type="number"
+              min="0"
+              step="0.01"
+              class="f360-input f360-tabular"
+              [ngModel]="provDebt()"
+              (ngModelChange)="provDebt.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="prov-phone">Teléfono</label>
+            <input
+              id="prov-phone"
+              type="text"
+              class="f360-input"
+              placeholder="0414-0000000"
+              [ngModel]="provPhone()"
+              (ngModelChange)="provPhone.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="prov-bank">Datos Bancarios / Pago Móvil</label>
+            <input
+              id="prov-bank"
+              type="text"
+              class="f360-input"
+              placeholder="Banco, cuenta o RIF"
+              [ngModel]="provBankDetails()"
+              (ngModelChange)="provBankDetails.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="f360-btn-ghost" (click)="showAddProviderModal.set(false)">Cancelar</button>
+          <button type="button" class="f360-btn-primary" (click)="saveProvider()">Guardar Proveedor</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: AGREGAR / EDITAR ARTÍCULO DE INVENTARIO                          -->
+  <!-- ======================================================================= -->
+  @if (showItemModal()) {
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="item-modal-title">
+      <button
+        type="button"
+        class="modal-backdrop-btn"
+        aria-label="Cerrar modal de inventario"
+        (click)="closeItemModal()"
+      ></button>
+      <div class="modal-sheet f360-liquid-glass">
+        <div class="modal-head">
+          <div>
+            <span class="section-kicker">Catálogo de Inventario</span>
+            <h3 id="item-modal-title" class="panel-title">
+              {{ editingItemId() ? 'Editar Artículo' : 'Nuevo Artículo' }}
+            </h3>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeItemModal()">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="field-group span-2">
+            <label for="inv-item-name">Nombre del Artículo / Insumo</label>
+            <input
+              id="inv-item-name"
+              type="text"
+              class="f360-input"
+              placeholder="Ej. Barniz HS 2K 1 Litro"
+              [ngModel]="itemName()"
+              (ngModelChange)="itemName.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-sku">Código SKU</label>
+            <input
+              id="inv-item-sku"
+              type="text"
+              class="f360-input f360-tabular"
+              placeholder="Ej. BRN-2K-01"
+              [ngModel]="itemSku()"
+              (ngModelChange)="itemSku.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-cat">Categoría</label>
+            <input
+              id="inv-item-cat"
+              type="text"
+              class="f360-input"
+              [ngModel]="itemCategory()"
+              (ngModelChange)="itemCategory.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-stock">Stock Actual</label>
+            <input
+              id="inv-item-stock"
+              type="number"
+              min="0"
+              step="1"
+              class="f360-input f360-tabular"
+              [ngModel]="itemStock()"
+              (ngModelChange)="itemStock.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-min">Stock Mínimo</label>
+            <input
+              id="inv-item-min"
+              type="number"
+              min="0"
+              step="1"
+              class="f360-input f360-tabular"
+              [ngModel]="itemMinStock()"
+              (ngModelChange)="itemMinStock.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-optimal">Stock Óptimo</label>
+            <input
+              id="inv-item-optimal"
+              type="number"
+              min="0"
+              step="1"
+              class="f360-input f360-tabular"
+              [ngModel]="itemOptimalStock()"
+              (ngModelChange)="itemOptimalStock.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="inv-item-cost">Costo Unitario (USD)</label>
+            <input
+              id="inv-item-cost"
+              type="number"
+              min="0"
+              step="0.01"
+              class="f360-input f360-tabular"
+              [ngModel]="itemCost()"
+              (ngModelChange)="itemCost.set($event)"
+            />
+          </div>
+
+          <div class="field-group span-2">
+            <label for="inv-item-price">Precio de Venta (USD)</label>
+            <input
+              id="inv-item-price"
+              type="number"
+              min="0"
+              step="0.01"
+              class="f360-input f360-tabular"
+              [ngModel]="itemPrice()"
+              (ngModelChange)="itemPrice.set($event)"
+            />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="f360-btn-ghost" (click)="closeItemModal()">Cancelar</button>
+          <button type="button" class="f360-btn-primary" (click)="saveInventoryItem()">
+            {{ editingItemId() ? 'Guardar Cambios' : 'Registrar Artículo' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: REPOSICIÓN DE STOCK CON BÓVEDA / PROVEEDOR EXPLÍCITO             -->
+  <!-- ======================================================================= -->
+  @if (showRestockModal() && restockTargetItem()) {
+    @let target = restockTargetItem()!;
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="restock-modal-title">
+      <button
+        type="button"
+        class="modal-backdrop-btn"
+        aria-label="Cerrar modal de reposición"
+        (click)="closeRestockModal()"
+      ></button>
+      <div class="modal-sheet f360-liquid-glass">
+        <div class="modal-head">
+          <div>
+            <span class="section-kicker">Reposición Contabilizada</span>
+            <h3 id="restock-modal-title" class="panel-title">{{ target.name }}</h3>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeRestockModal()">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="field-group">
+            <label for="restock-qty">Unidades a Reponer</label>
+            <input
+              id="restock-qty"
+              type="number"
+              min="1"
+              step="1"
+              class="f360-input f360-tabular"
+              [ngModel]="restockQuantity()"
+              (ngModelChange)="restockQuantity.set($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="restock-mode">Modalidad de Pago</label>
+            <select
+              id="restock-mode"
+              class="f360-input"
+              [ngModel]="restockMode()"
+              (ngModelChange)="restockMode.set($event)"
+            >
+              <option value="vault">De Contado (Bóveda)</option>
+              <option value="provider_credit">A Crédito (Proveedor 14D)</option>
+            </select>
+          </div>
+
+          @if (restockMode() === 'vault') {
+            <div class="field-group span-2">
+              <label for="restock-modal-vault">Bóveda a Debitar</label>
               <select
-                class="form-control"
-                [ngModel]="disburseVaultId()"
-                (ngModelChange)="disburseVaultId.set($event)"
+                id="restock-modal-vault"
+                class="f360-input"
+                [ngModel]="restockVaultId()"
+                (ngModelChange)="restockVaultId.set($event)"
               >
-                @for (v of financeService.state().assets; track v.id) {
-                  <option [value]="v.id">
-                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
-                  </option>
+                @if (liquidVaults().length === 0) {
+                  <option value="">Sin bóvedas registradas</option>
+                } @else {
+                  @for (v of liquidVaults(); track v.id) {
+                    <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.2-2' }})</option>
+                  }
                 }
               </select>
             </div>
-          </div>
-
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>N° Referencia (Opcional)</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Transferencia 1042"
-                [ngModel]="disburseRef()"
-                (ngModelChange)="disburseRef.set($event)"
-              />
+          } @else {
+            <div class="field-group span-2">
+              <label for="restock-modal-provider">Proveedor de Crédito (obligatorio)</label>
+              <select
+                id="restock-modal-provider"
+                class="f360-input"
+                [ngModel]="restockProviderId()"
+                (ngModelChange)="restockProviderId.set($event)"
+              >
+                @if (providers().length === 0) {
+                  <option value="">Sin proveedores registrados</option>
+                } @else {
+                  @for (p of providers(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                }
+              </select>
             </div>
-            <div class="form-group flex-1">
-              <label>Notas / Factura</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Factura N° 4501"
-                [ngModel]="disburseNotes()"
-                (ngModelChange)="disburseNotes.set($event)"
-              />
-            </div>
-          </div>
+          }
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="closeDisbursementModal()">
-            Cancelar
+        <div class="modal-balance-strip f360-tabular">
+          <span>Costo total de reposición:</span>
+          <strong>${{ ((restockQuantity() || 0) * target.unitCostUsd) | number: '1.2-2' }} USD</strong>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="f360-btn-ghost" (click)="closeRestockModal()">Cancelar</button>
+          <button type="button" class="f360-btn-primary" (click)="confirmRestockModal()">
+            Confirmar Reposición
           </button>
-          <button
-            type="button"
-            class="btn-primary"
-            [disabled]="!disburseTitle() || (disburseAmountUsd() || 0) <= 0"
-            (click)="confirmDisbursement()"
-          >
-            💸 Confirmar Desembolso
-          </button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- MODAL: AGREGAR PROVEEDOR -->
-  @if (showAddProviderModal()) {
-    <div class="modal-backdrop" (click)="showAddProviderModal.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>🚚 Registrar Nuevo Proveedor</h3>
-          <button type="button" class="btn-close" (click)="showAddProviderModal.set(false)">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Nombre de la Empresa o Proveedor</label>
-            <input type="text" class="form-control" [ngModel]="provName()" (ngModelChange)="provName.set($event)" placeholder="ej. Pinturas Dupont, Distribuidora San Martín" />
-          </div>
-          <div class="form-group">
-            <label>Categoría</label>
-            <input type="text" class="form-control" [ngModel]="provCategory()" (ngModelChange)="provCategory.set($event)" placeholder="ej. Pinturas, Repuestos, Ferretería" />
-          </div>
-          <div class="form-group">
-            <label>Teléfono de Contacto</label>
-            <input type="text" class="form-control" [ngModel]="provPhone()" (ngModelChange)="provPhone.set($event)" placeholder="0414-1234567" />
-          </div>
-          <div class="form-group">
-            <label>Datos Bancarios / Pago Móvil</label>
-            <input type="text" class="form-control" [ngModel]="provBankDetails()" (ngModelChange)="provBankDetails.set($event)" placeholder="Banesco 0134... C.I. 123456" />
-          </div>
-          <div class="form-group">
-            <label>Saldo Inicial por Pagar ($ USD)</label>
-            <input type="number" class="form-control" [ngModel]="provDebt()" (ngModelChange)="provDebt.set($event)" placeholder="0" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="showAddProviderModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveProvider()">Guardar Proveedor</button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- MODAL: AGREGAR INSUMO -->
-  @if (showAddItemModal()) {
-    <div class="modal-backdrop" (click)="showAddItemModal.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>📦 Añadir Artículo al Inventario</h3>
-          <button type="button" class="btn-close" (click)="showAddItemModal.set(false)">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Descripción del Artículo</label>
-            <input type="text" class="form-control" [ngModel]="itemName()" (ngModelChange)="itemName.set($event)" placeholder="ej. Fondo 2K Poliuretano, Lija de Agua #600" />
-          </div>
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>Stock Actual</label>
-              <input type="number" class="form-control" [ngModel]="itemStock()" (ngModelChange)="itemStock.set($event)" placeholder="10" />
-            </div>
-            <div class="form-group flex-1">
-              <label>Stock Mínimo (Alerta)</label>
-              <input type="number" class="form-control" [ngModel]="itemMinStock()" (ngModelChange)="itemMinStock.set($event)" placeholder="5" />
-            </div>
-          </div>
-          <div class="form-row-dual">
-            <div class="form-group flex-1">
-              <label>Costo Unitario ($ USD)</label>
-              <input type="number" class="form-control" [ngModel]="itemCost()" (ngModelChange)="itemCost.set($event)" placeholder="15" />
-            </div>
-            <div class="form-group flex-1">
-              <label>Precio Venta ($ USD)</label>
-              <input type="number" class="form-control" [ngModel]="itemPrice()" (ngModelChange)="itemPrice.set($event)" placeholder="25" />
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="showAddItemModal.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveInventoryItem()">Guardar Insumo</button>
         </div>
       </div>
     </div>
