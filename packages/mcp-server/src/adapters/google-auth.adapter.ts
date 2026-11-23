@@ -20,9 +20,14 @@ export interface GoogleAuthStatus {
 
 class GoogleAuthAdapter {
   private config: GoogleAuthConfig = {};
+  private readonly folderIdCache = new Map<string, string>();
 
   constructor() {
     this.detectEnvironmentCredentials();
+  }
+
+  clearFolderCache(): void {
+    this.folderIdCache.clear();
   }
 
   detectEnvironmentCredentials(): void {
@@ -34,6 +39,100 @@ class GoogleAuthAdapter {
       apiKey: process.env['GOOGLE_API_KEY'],
       accessToken: process.env['GOOGLE_ACCESS_TOKEN'],
     };
+  }
+
+  /**
+   * Resolves a hierarchical Drive folder path (e.g. `/HOMEL_360/Backups`) into a real
+   * Google Drive folder ID, creating missing folder segments via Drive API v3 and caching
+   * resolved IDs in memory.
+   */
+  async resolveFolderPath(folderPath: string, token: string): Promise<string | null> {
+    if (!token || !folderPath) return null;
+
+    const segments = folderPath
+      .split(/[/\\]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s !== '.' && s !== '..');
+
+    if (segments.length === 0) return null;
+
+    const fullCacheKey = segments.join('/');
+    const cachedFull = this.folderIdCache.get(fullCacheKey);
+    if (cachedFull) return cachedFull;
+
+    let parentId: string | null = null;
+
+    for (let idx = 0; idx < segments.length; idx++) {
+      const segment = segments[idx];
+      if (!segment) continue;
+
+      const prefixKey = segments.slice(0, idx + 1).join('/');
+      const cachedPrefix = this.folderIdCache.get(prefixKey);
+      if (cachedPrefix) {
+        parentId = cachedPrefix;
+        continue;
+      }
+
+      const escapedName = segment.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const parentClause = parentId ? `'${parentId}' in parents` : `'root' in parents`;
+      const query = `mimeType='application/vnd.google-apps.folder' and name='${escapedName}' and trashed=false and ${parentClause}`;
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=1`;
+
+      let resolvedId: string | null = null;
+      try {
+        const searchRes = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+        if (!searchRes.ok) {
+          return null;
+        }
+        const searchJson = (await searchRes.json()) as {
+          files?: Array<{ id?: string; name?: string }>;
+        };
+        const existingId = searchJson.files?.[0]?.id;
+        if (existingId) {
+          resolvedId = existingId;
+        } else {
+          const createBody: Record<string, unknown> = {
+            name: segment,
+            mimeType: 'application/vnd.google-apps.folder',
+          };
+          if (parentId) {
+            createBody['parents'] = [parentId];
+          }
+          const createRes = await fetch(
+            'https://www.googleapis.com/drive/v3/files?fields=id,name',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(createBody),
+            },
+          );
+          if (!createRes.ok) {
+            return null;
+          }
+          const createdJson = (await createRes.json()) as { id?: string };
+          if (!createdJson.id) {
+            return null;
+          }
+          resolvedId = createdJson.id;
+        }
+      } catch {
+        return null;
+      }
+
+      this.folderIdCache.set(prefixKey, resolvedId);
+      parentId = resolvedId;
+    }
+
+    return parentId;
   }
 
   getStatus(): GoogleAuthStatus {
@@ -79,86 +178,152 @@ class GoogleAuthAdapter {
   }
 
   /**
-   * Uploads file to Google Drive or simulates the upload if credentials are not configured.
+   * Uploads file to Google Drive or simulates the upload only when credentials are unconfigured.
+   * When credentials are configured (LIVE), resolves hierarchical folderPath values to real
+   * Drive folder IDs and honestly reports DISCONNECTED on auth/network/API failures.
    */
   async uploadDriveFile(params: {
     name: string;
     mimeType: string;
     data: string; // base64 or string content
     folderId?: string;
+    folderPath?: string;
   }): Promise<{
     fileId: string;
     name: string;
     webViewLink: string;
     downloadLink: string;
-    mode: 'LIVE' | 'SIMULATED';
+    mode: 'LIVE' | 'SIMULATED' | 'DISCONNECTED';
     sizeBytes: number;
+    resolvedFolderId?: string;
+    error?: string;
   }> {
     const status = this.getStatus();
     const sizeBytes = Buffer.byteLength(params.data, 'utf8');
 
+    let effectiveFolderPath = params.folderPath?.trim() || undefined;
+    let effectiveFolderId = params.folderId?.trim() || undefined;
+
+    // Never pass a Unix/Windows path directly in Drive metadata.parents
+    if (effectiveFolderId && (effectiveFolderId.includes('/') || effectiveFolderId.includes('\\'))) {
+      effectiveFolderPath = effectiveFolderPath || effectiveFolderId;
+      effectiveFolderId = undefined;
+    }
+
     if (status.mode === 'LIVE') {
-      // In live mode, call Google Drive API v3 (multipart upload)
-      // If live call fails, it falls back with an explicit error
       try {
         const token = await this.getAccessToken();
-        if (token) {
-          const boundary = '-------314159265358979323846';
-          const delimiter = `\r\n--${boundary}\r\n`;
-          const closeDelimiter = `\r\n--${boundary}--`;
-
-          const metadata: Record<string, unknown> = {
+        if (!token) {
+          return {
+            fileId: '',
             name: params.name,
-            mimeType: params.mimeType,
+            webViewLink: '',
+            downloadLink: '',
+            mode: 'DISCONNECTED',
+            sizeBytes,
+            error:
+              'Credenciales configuradas pero sin token OAuth2 activo (GOOGLE_ACCESS_TOKEN) para carga en vivo.',
           };
-          if (params.folderId) {
-            metadata['parents'] = [params.folderId];
-          }
+        }
 
-          const isBase64 = !params.data.startsWith('{') && !params.data.startsWith('[');
-          const fileBuffer = isBase64
-            ? Buffer.from(params.data, 'base64')
-            : Buffer.from(params.data, 'utf8');
-
-          const multipartRequestBody = Buffer.concat([
-            Buffer.from(
-              `${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n${delimiter}Content-Type: ${params.mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n`,
-            ),
-            Buffer.from(fileBuffer.toString('base64')),
-            Buffer.from(closeDelimiter),
-          ]);
-
-          const res = await fetch(
-            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink',
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': `multipart/related; boundary=${boundary}`,
-              },
-              body: multipartRequestBody,
-            },
-          );
-
-          if (res.ok) {
-            const json: any = await res.json();
+        if (!effectiveFolderId && effectiveFolderPath) {
+          const resolvedId = await this.resolveFolderPath(effectiveFolderPath, token);
+          if (!resolvedId) {
             return {
-              fileId: json.id,
-              name: json.name || params.name,
-              webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`,
-              downloadLink:
-                json.webContentLink || `https://drive.google.com/uc?id=${json.id}&export=download`,
-              mode: 'LIVE',
+              fileId: '',
+              name: params.name,
+              webViewLink: '',
+              downloadLink: '',
+              mode: 'DISCONNECTED',
               sizeBytes,
+              error: `No se pudo resolver ni crear la ruta de carpeta en Google Drive: ${effectiveFolderPath}`,
             };
           }
+          effectiveFolderId = resolvedId;
         }
+
+        const boundary = '-------314159265358979323846';
+        const delimiter = `\r\n--${boundary}\r\n`;
+        const closeDelimiter = `\r\n--${boundary}--`;
+
+        const metadata: Record<string, unknown> = {
+          name: params.name,
+          mimeType: params.mimeType,
+        };
+        if (
+          effectiveFolderId &&
+          !effectiveFolderId.includes('/') &&
+          !effectiveFolderId.includes('\\')
+        ) {
+          metadata['parents'] = [effectiveFolderId];
+        }
+
+        const isBase64 = !params.data.startsWith('{') && !params.data.startsWith('[');
+        const fileBuffer = isBase64
+          ? Buffer.from(params.data, 'base64')
+          : Buffer.from(params.data, 'utf8');
+
+        const multipartRequestBody = Buffer.concat([
+          Buffer.from(
+            `${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n${delimiter}Content-Type: ${params.mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n`,
+          ),
+          Buffer.from(fileBuffer.toString('base64')),
+          Buffer.from(closeDelimiter),
+        ]);
+
+        const res = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': `multipart/related; boundary=${boundary}`,
+            },
+            body: multipartRequestBody,
+          },
+        );
+
+        if (res.ok) {
+          const json: any = await res.json();
+          return {
+            fileId: json.id,
+            name: json.name || params.name,
+            webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`,
+            downloadLink:
+              json.webContentLink || `https://drive.google.com/uc?id=${json.id}&export=download`,
+            mode: 'LIVE',
+            sizeBytes,
+            resolvedFolderId: effectiveFolderId,
+          };
+        }
+
+        const errorBody = await res.text().catch(() => '');
+        return {
+          fileId: '',
+          name: params.name,
+          webViewLink: '',
+          downloadLink: '',
+          mode: 'DISCONNECTED',
+          sizeBytes,
+          resolvedFolderId: effectiveFolderId,
+          error: `Google Drive HTTP ${res.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ''}`,
+        };
       } catch (err) {
-        console.warn('[GoogleAuthAdapter] Live upload failed, using simulated response:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          fileId: '',
+          name: params.name,
+          webViewLink: '',
+          downloadLink: '',
+          mode: 'DISCONNECTED',
+          sizeBytes,
+          resolvedFolderId: effectiveFolderId,
+          error: `Error de red al subir a Google Drive: ${message}`,
+        };
       }
     }
 
-    // Simulated / offline safe fallback
+    // Simulated / offline safe fallback ONLY when no credentials are configured
     const simulatedId = `1gDrive_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
     return {
       fileId: simulatedId,

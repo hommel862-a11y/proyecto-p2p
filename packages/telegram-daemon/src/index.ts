@@ -1,18 +1,24 @@
 import dotenv from 'dotenv';
+import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const IS_TEST_IMPORT =
+  process.env['TELEGRAM_DAEMON_TEST_IMPORT'] === 'true' || Boolean(process.env['VITEST']);
+
 // Load .env from cwd, packages/telegram-daemon or deploy/vps
-dotenv.config();
-const potentialEnvPaths = [
-  path.resolve(process.cwd(), '.env'),
-  path.resolve(process.cwd(), 'packages/telegram-daemon/.env'),
-  path.resolve(process.cwd(), 'deploy/vps/.env'),
-];
-for (const envPath of potentialEnvPaths) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
+if (!IS_TEST_IMPORT) {
+  dotenv.config();
+  const potentialEnvPaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'packages/telegram-daemon/.env'),
+    path.resolve(process.cwd(), 'deploy/vps/.env'),
+  ];
+  for (const envPath of potentialEnvPaths) {
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+    }
   }
 }
 import {
@@ -354,26 +360,310 @@ async function answerCallbackQuery(token: string, callbackQueryId: string, text?
   }
 }
 
+// ─── HTTP Bearer Auth & Finanzas 360 Telegram Command Routing ───
+
+const CASHEA_LEVEL_INITIAL_PCT: Record<number, number> = {
+  1: 60,
+  2: 50,
+  3: 40,
+  4: 40,
+  5: 40,
+  6: 40,
+};
+
+export function isProtectedDaemonEndpoint(pathname: string): boolean {
+  return (
+    pathname === '/api/ai/chat' ||
+    pathname === '/api/sync' ||
+    pathname.startsWith('/api/sync/')
+  );
+}
+
+/**
+ * Constant-time Bearer token verification using SHA-256 + `crypto.timingSafeEqual`.
+ * When `expectedToken` is empty, Bearer auth is optional and passes through.
+ */
+export function verifyDaemonBearerAuth(
+  authHeader: string | string[] | undefined,
+  expectedToken: string,
+): boolean {
+  const cleanExpected = expectedToken.trim();
+  if (!cleanExpected) return true;
+  if (typeof authHeader !== 'string') return false;
+
+  const match = /^Bearer\s+(\S+)$/i.exec(authHeader.trim());
+  if (!match || !match[1]) return false;
+
+  const providedHash = crypto.createHash('sha256').update(match[1], 'utf8').digest();
+  const expectedHash = crypto.createHash('sha256').update(cleanExpected, 'utf8').digest();
+  return crypto.timingSafeEqual(providedHash, expectedHash);
+}
+
+function parseStrictPositiveAmount(rawToken: string | undefined): number | null {
+  if (!rawToken) return null;
+  const trimmed = rawToken.trim();
+  const match = /^\$?(\d+(?:[.,]\d{1,2})?)$/.exec(trimmed);
+  if (!match || !match[1]) return null;
+  const numeric = Number(match[1].replace(',', '.'));
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.round(numeric * 100) / 100;
+}
+
+export interface ParsedF360Command {
+  isF360Command: boolean;
+  valid: boolean;
+  command?: 'expense' | 'income' | 'cashea' | 'summary';
+  payload?: Record<string, unknown>;
+  replyMarkdown: string;
+}
+
+function escapeInlineCode(text: string): string {
+  return text.replace(/([`\\])/g, '\\$1');
+}
+
+export function parseFinance360TelegramCommand(rawText: string): ParsedF360Command {
+  const trimmed = rawText.trim();
+  const matchPrefix = /^(#gasto|#ingreso|#cashea|#resumen|#360|\/360|\/finanzas)(?:\s+([\s\S]*))?$/i.exec(
+    trimmed,
+  );
+  if (!matchPrefix || !matchPrefix[1]) {
+    return { isF360Command: false, valid: false, replyMarkdown: '' };
+  }
+
+  const trigger = matchPrefix[1].toLowerCase();
+  const argsRaw = (matchPrefix[2] || '').trim();
+  const parts = argsRaw ? argsRaw.split(/\s+/) : [];
+
+  if (trigger === '#resumen' || trigger === '#360' || trigger === '/360' || trigger === '/finanzas') {
+    return {
+      isF360Command: true,
+      valid: true,
+      command: 'summary',
+      payload: { trigger },
+      replyMarkdown:
+        `*Finanzas 360*\n\n` +
+        `${escapeMarkdownV2('Comandos disponibles para el libro de Finanzas 360:')}\n` +
+        `• \`#gasto 25 USD Gasolina pyme\`\n` +
+        `• \`#ingreso 200 USD Cobro servicio pyme\`\n` +
+        `• \`#cashea 180 4 Nevera\` ${escapeMarkdownV2('(niveles 1 a 6)')}\n` +
+        `• \`#resumen\` ${escapeMarkdownV2('o')} \`/360\` ${escapeMarkdownV2('(consulta de patrimonio y vencimientos)')}`,
+    };
+  }
+
+  if (trigger === '#gasto' || trigger === '#ingreso') {
+    const isExpense = trigger === '#gasto';
+    const commandKey = isExpense ? 'expense' : 'income';
+    const example = isExpense
+      ? '#gasto 25 USD Gasolina pyme'
+      : '#ingreso 200 USD Cobro servicio pyme';
+
+    const amount = parseStrictPositiveAmount(parts[0]);
+    if (amount === null) {
+      return {
+        isF360Command: true,
+        valid: false,
+        command: commandKey,
+        replyMarkdown:
+          `⚠️ *${escapeMarkdownV2('Monto inválido en')}* \`${escapeInlineCode(trigger)}\`\n\n` +
+          `${escapeMarkdownV2('Ingresa un monto numérico positivo válido. Ejemplo:')}\n` +
+          `\`${escapeInlineCode(example)}\``,
+      };
+    }
+
+    let currency: 'USD' | 'USDT' | 'VES' | 'EUR' = 'USD';
+    let descStart = 1;
+    const token2 = (parts[1] || '').toUpperCase();
+    if (token2 === 'USD' || token2 === '$') {
+      currency = 'USD';
+      descStart = 2;
+    } else if (token2 === 'USDT') {
+      currency = 'USDT';
+      descStart = 2;
+    } else if (token2 === 'BS' || token2 === 'VES') {
+      currency = 'VES';
+      descStart = 2;
+    } else if (token2 === 'EUR') {
+      currency = 'EUR';
+      descStart = 2;
+    }
+
+    const remaining = parts.slice(descStart).join(' ').trim();
+    let scope: 'personal' | 'business' = 'personal';
+    let title = remaining || (isExpense ? 'Gasto Telegram' : 'Ingreso Telegram');
+
+    if (/\b(pyme|negocio)$/i.test(remaining)) {
+      scope = 'business';
+      title =
+        remaining.replace(/\b(pyme|negocio)$/i, '').trim() ||
+        (isExpense ? 'Gasto Comercial' : 'Ingreso Comercial');
+    } else if (/\bpersonal$/i.test(remaining)) {
+      scope = 'personal';
+      title =
+        remaining.replace(/\bpersonal$/i, '').trim() ||
+        (isExpense ? 'Gasto Personal' : 'Ingreso Personal');
+    }
+
+    const label = isExpense ? 'Gasto validado' : 'Ingreso validado';
+    const scopeLabel = scope === 'business' ? 'Pyme / Negocio' : 'Personal';
+
+    return {
+      isF360Command: true,
+      valid: true,
+      command: commandKey,
+      payload: { amount, currency, scope, title },
+      replyMarkdown:
+        `📊 *${escapeMarkdownV2(`Finanzas 360 — ${label}`)}*\n\n` +
+        `• *${escapeMarkdownV2('Concepto:') }* ${escapeMarkdownV2(title)}\n` +
+        `• *${escapeMarkdownV2('Monto:') }* \`${escapeInlineCode(`${amount.toFixed(2)} ${currency}`)}\`\n` +
+        `• *${escapeMarkdownV2('Ámbito:') }* ${escapeMarkdownV2(scopeLabel)}`,
+    };
+  }
+
+  // #cashea <amount> <level 1-6> [product]
+  const amount = parseStrictPositiveAmount(parts[0]);
+  const levelStr = parts[1] || '';
+  const isStrictInt = /^\d+$/.test(levelStr);
+  const levelNum = isStrictInt ? Number.parseInt(levelStr, 10) : Number.NaN;
+
+  if (amount === null || !Number.isInteger(levelNum) || levelNum < 1 || levelNum > 6) {
+    return {
+      isF360Command: true,
+      valid: false,
+      command: 'cashea',
+      replyMarkdown:
+        `⚠️ *${escapeMarkdownV2('Formato inválido en')}* \`#cashea\`\n\n` +
+        `${escapeMarkdownV2('Indica un monto numérico positivo y un nivel Cashea válido entre 1 y 6. Ejemplo:')}\n` +
+        `\`#cashea 180 4 Nevera Mabe\``,
+    };
+  }
+
+  const product = parts.slice(2).join(' ').trim() || 'Compra Cashea';
+  const initialPct = CASHEA_LEVEL_INITIAL_PCT[levelNum] ?? 40;
+  const initialPaymentUsd = Math.round(amount * (initialPct / 100) * 100) / 100;
+  const financedUsd = Math.max(0, Math.round((amount - initialPaymentUsd) * 100) / 100);
+  const installmentUsd = Math.round((financedUsd / 3) * 100) / 100;
+
+  return {
+    isF360Command: true,
+    valid: true,
+    command: 'cashea',
+    payload: {
+      amount,
+      level: levelNum,
+      product,
+      initialPercent: initialPct,
+      initialPaymentUsd,
+      installmentAmountUsd: installmentUsd,
+      installmentsCount: 3,
+    },
+    replyMarkdown:
+      `💳 *${escapeMarkdownV2(`Finanzas 360 — Plan Cashea Nivel ${levelNum}`)}*\n\n` +
+      `• *${escapeMarkdownV2('Artículo:')}* ${escapeMarkdownV2(product)}\n` +
+      `• *${escapeMarkdownV2('Precio total:')}* \`${escapeInlineCode(`$${amount.toFixed(2)} USD`)}\`\n` +
+      `• *${escapeMarkdownV2(`Inicial (${initialPct}%):`)}* \`${escapeInlineCode(`$${initialPaymentUsd.toFixed(2)} USD`)}\`\n` +
+      `• *${escapeMarkdownV2('3 cuotas quincenales:')}* \`${escapeInlineCode(`$${installmentUsd.toFixed(2)} USD`)}\``,
+  };
+}
+
+export async function handleFinance360TelegramCommand(
+  rawText: string,
+  deps?: {
+    electronBridgeUrl?: string;
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{
+  handled: boolean;
+  valid: boolean;
+  forwarded: boolean;
+  replyMarkdown: string;
+}> {
+  const parsed = parseFinance360TelegramCommand(rawText);
+  if (!parsed.isF360Command) {
+    return { handled: false, valid: false, forwarded: false, replyMarkdown: '' };
+  }
+
+  if (!parsed.valid) {
+    return {
+      handled: true,
+      valid: false,
+      forwarded: false,
+      replyMarkdown: parsed.replyMarkdown,
+    };
+  }
+
+  const bridgeUrl = deps?.electronBridgeUrl ?? ELECTRON_BRIDGE_URL;
+  const fetchFn = deps?.fetchImpl ?? fetch;
+
+  try {
+    const statusRes = await fetchFn(`${bridgeUrl}/api/orchestrator/status`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (statusRes.ok) {
+      const forwardRes = await fetchFn(`${bridgeUrl}/api/f360/telegram-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command: parsed.command,
+          rawText: rawText.trim(),
+          payload: parsed.payload,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (forwardRes.ok) {
+        const data = (await forwardRes.json()) as {
+          replyMarkdown?: string;
+          replyText?: string;
+          message?: string;
+        };
+        const replyMarkdown =
+          typeof data.replyMarkdown === 'string' && data.replyMarkdown.trim().length > 0
+            ? data.replyMarkdown
+            : escapeMarkdownV2(
+                data.replyText ||
+                  data.message ||
+                  'Operación procesada por el terminal Finanzas 360.',
+              );
+        return { handled: true, valid: true, forwarded: true, replyMarkdown };
+      }
+    }
+  } catch {
+    // Bridge offline or unreachable; fall through to honest offline status message
+  }
+
+  const offlineNotice = escapeMarkdownV2(
+    'El terminal de escritorio Finanzas 360 está desconectado en este momento. Conecta el puente Electron para guardar este registro en el libro contable.',
+  );
+
+  return {
+    handled: true,
+    valid: true,
+    forwarded: false,
+    replyMarkdown: `${parsed.replyMarkdown}\n\nℹ️ _${offlineNotice}_`,
+  };
+}
+
 // Sentinel State
 let isRunning = true;
-let currentOffset = loadStoredOffset();
+let currentOffset = IS_TEST_IMPORT ? 0 : loadStoredOffset();
 let isKillswitchActive = false;
 let lastAlertTimestamp = 0;
 
-console.log('═══════════════════════════════════════════════════════════════════════');
-console.log('  P2P DECISOR — TELEGRAM SENTINEL 2.0 & DATA LAKE CLOUD DAEMON');
-console.log('═══════════════════════════════════════════════════════════════════════');
-console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? 'SÍ (' + BOT_TOKEN.slice(0, 8) + '...)' : 'NO'}`);
-console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || 'TODOS (No restringido)'}`);
-console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? 'SÍ' : 'NO'}`);
-console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
-console.log(`  Repreciador Autónomo:   ${repricerEngine.getState().isActive ? 'ACTIVO' : 'INACTIVO'}`);
-console.log(`  HTTP API Port:          ${HTTP_PORT}`);
-console.log('───────────────────────────────────────────────────────────────────────');
+if (!IS_TEST_IMPORT) {
+  console.log('═══════════════════════════════════════════════════════════════════════');
+  console.log('  P2P DECISOR — TELEGRAM SENTINEL 2.0 & DATA LAKE CLOUD DAEMON');
+  console.log('═══════════════════════════════════════════════════════════════════════');
+  console.log(`  Bot Token Configurado:  ${BOT_TOKEN ? 'SÍ (' + BOT_TOKEN.slice(0, 8) + '...)' : 'NO'}`);
+  console.log(`  Chat ID Autorizado:     ${AUTHORIZED_CHAT_ID || 'TODOS (No restringido)'}`);
+  console.log(`  CotizaVe API Key:       ${COTIZAVE_API_KEY ? 'SÍ' : 'NO'}`);
+  console.log(`  Data Lake Activo:       ${dataLake.getStats().totalTicks} ticks en memoria`);
+  console.log(`  Repreciador Autónomo:   ${repricerEngine.getState().isActive ? 'ACTIVO' : 'INACTIVO'}`);
+  console.log(`  HTTP API Port:          ${HTTP_PORT}`);
+  console.log('───────────────────────────────────────────────────────────────────────');
 
-if (!BOT_TOKEN) {
-  console.error('[Daemon] FATAL: TELEGRAM_BOT_TOKEN no está definido en el archivo .env o variables de entorno.');
-  process.exit(1);
+  if (!BOT_TOKEN) {
+    console.error('[Daemon] FATAL: TELEGRAM_BOT_TOKEN no está definido en el archivo .env o variables de entorno.');
+    process.exit(1);
+  }
 }
 
 // Message Processing
@@ -388,6 +678,16 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
     await sendTelegramMessage(BOT_TOKEN, chatId, dispatch.responseMarkdown);
     console.warn(`[Daemon] Intento de acceso no autorizado desde Chat ID ${chatId}`);
     return;
+  }
+
+  // Intercept Finanzas 360 commands (#gasto, #ingreso, #cashea, #resumen, /360) before generic COPILOT_CHAT fallback
+  const inboundRawText = (update.message?.text || '').trim();
+  if (inboundRawText) {
+    const f360Result = await handleFinance360TelegramCommand(inboundRawText);
+    if (f360Result.handled) {
+      await sendTelegramMessage(BOT_TOKEN, chatId, f360Result.replyMarkdown);
+      return;
+    }
   }
 
   console.log(`[Daemon] Comando recibido: action=${dispatch.action}, rawText="${update.message?.text || update.callback_query?.data || ''}"`);
@@ -595,7 +895,7 @@ async function handleUpdate(update: TelegramInboundUpdate): Promise<void> {
           try {
             const geminiKey = process.env['GEMINI_API_KEY'].trim();
             const geminiModel = process.env['GEMINI_MODEL']?.trim() || 'gemini-2.0-flash';
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`;
             const prompt = `Analiza este comprobante de pago bancario / transferencia / Pago Móvil (Venezuela o Colombia).
 Extrae en formato JSON exacto:
 {
@@ -610,7 +910,10 @@ Si algún dato no aparece, usa null o cadena vacía. Devuelve ÚNICAMENTE el JSO
 
             const gRes = await fetch(geminiUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': geminiKey,
+              },
               body: JSON.stringify({
                 contents: [
                   {
@@ -1127,6 +1430,24 @@ function startHttpServer(): void {
       return;
     }
 
+    // Optional Bearer token authentication on sensitive endpoints (/api/sync/* and /api/ai/chat)
+    const configuredDaemonAuthToken = process.env['TELEGRAM_DAEMON_AUTH_TOKEN']?.trim() || '';
+    if (configuredDaemonAuthToken && isProtectedDaemonEndpoint(url.pathname)) {
+      if (!verifyDaemonBearerAuth(req.headers['authorization'], configuredDaemonAuthToken)) {
+        res.writeHead(401, {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Bearer realm="p2p-telegram-daemon"',
+        });
+        res.end(
+          JSON.stringify({
+            error: 'Unauthorized',
+            message: 'Token Bearer requerido o inválido.',
+          }),
+        );
+        return;
+      }
+    }
+
     if (url.pathname === '/api/market/heatmap') {
       const days = Number(url.searchParams.get('days')) || 30;
       const heatmap = dataLake.getHeatmap(days);
@@ -1287,10 +1608,12 @@ function shutdown(signal: string): void {
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+if (!IS_TEST_IMPORT) {
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-// Launch All Services
-startHttpServer();
-void startPolling();
-void startAlphaWatcher();
+  // Launch All Services
+  startHttpServer();
+  void startPolling();
+  void startAlphaWatcher();
+}

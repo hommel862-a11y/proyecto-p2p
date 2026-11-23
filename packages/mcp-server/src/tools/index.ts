@@ -58,6 +58,15 @@ import { processConciergeInquiryTool } from './process_concierge_inquiry.js';
 import { predictBcvMacroRegimeTool } from './predict_bcv_macro_regime.js';
 import { optimizeTreasuryIdleYieldTool } from './optimize_treasury_idle_yield.js';
 import { executeBrowserOperatorTaskTool } from './execute_browser_operator_task.js';
+// Finanzas 360 (HOMEL 360) Institutional Tools
+import {
+  f360GetTreasurySummaryTool,
+  f360AnalyzeCasheaCapacityTool,
+  f360SimulateCasheaAllyMarginTool,
+  f360CheckPymeDrawersAndStockTool,
+  f360GenerateQuoteEstimateTool,
+  f360AuditOverdueAndRunwayTool,
+} from './f360_tools.js';
 
 export const ALL_MCP_TOOLS = [
   calculateSpreadTool,
@@ -120,6 +129,13 @@ export const ALL_MCP_TOOLS = [
   predictBcvMacroRegimeTool,
   optimizeTreasuryIdleYieldTool,
   executeBrowserOperatorTaskTool,
+  // Finanzas 360 (HOMEL 360) Institutional Tools
+  f360GetTreasurySummaryTool,
+  f360AnalyzeCasheaCapacityTool,
+  f360SimulateCasheaAllyMarginTool,
+  f360CheckPymeDrawersAndStockTool,
+  f360GenerateQuoteEstimateTool,
+  f360AuditOverdueAndRunwayTool,
 ];
 
 export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
@@ -139,6 +155,20 @@ export const MCP_TOOLS_BY_SERVER: Record<string, typeof ALL_MCP_TOOLS> = {
     predictBcvMacroRegimeTool,
     optimizeTreasuryIdleYieldTool,
     executeBrowserOperatorTaskTool,
+    f360GetTreasurySummaryTool,
+    f360AnalyzeCasheaCapacityTool,
+    f360SimulateCasheaAllyMarginTool,
+    f360CheckPymeDrawersAndStockTool,
+    f360GenerateQuoteEstimateTool,
+    f360AuditOverdueAndRunwayTool,
+  ],
+  'p2p-finance-360': [
+    f360GetTreasurySummaryTool,
+    f360AnalyzeCasheaCapacityTool,
+    f360SimulateCasheaAllyMarginTool,
+    f360CheckPymeDrawersAndStockTool,
+    f360GenerateQuoteEstimateTool,
+    f360AuditOverdueAndRunwayTool,
   ],
   'p2p-aml-forensics': [
     screenWalletAddressTool,
@@ -263,4 +293,11 @@ export {
   predictBcvMacroRegimeTool,
   optimizeTreasuryIdleYieldTool,
   executeBrowserOperatorTaskTool,
+  // Finanzas 360 (HOMEL 360) Institutional Tools
+  f360GetTreasurySummaryTool,
+  f360AnalyzeCasheaCapacityTool,
+  f360SimulateCasheaAllyMarginTool,
+  f360CheckPymeDrawersAndStockTool,
+  f360GenerateQuoteEstimateTool,
+  f360AuditOverdueAndRunwayTool,
 };

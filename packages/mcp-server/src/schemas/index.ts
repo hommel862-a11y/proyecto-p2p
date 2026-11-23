@@ -271,6 +271,7 @@ export const GdriveSyncDbBackupInputSchema = z.object({
   backupType: z.enum(['ledger_json', 'sqlite_dump', 'audit_snapshot']).default('ledger_json'),
   dataPayload: z.string().min(2, 'dataPayload no puede estar vacío'),
   folderId: z.string().optional(),
+  folderPath: z.string().optional(),
   encrypt: z.boolean().default(false),
 });
 export type GdriveSyncDbBackupInput = z.infer<typeof GdriveSyncDbBackupInputSchema>;
@@ -686,5 +687,225 @@ export const ExecuteBrowserOperatorTaskInputSchema = z.object({
   headless: z.boolean().default(true),
 });
 export type ExecuteBrowserOperatorTaskInput = z.infer<typeof ExecuteBrowserOperatorTaskInputSchema>;
+
+// ==========================================
+// FINANZAS 360 (HOMEL 360) INSTITUTIONAL TOOLS
+// ==========================================
+
+export const F360GetTreasurySummaryInputSchema = z.object({
+  vaults: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        currency: z.enum(['USD', 'USDT', 'VES', 'EUR']),
+        balance: z.number(),
+        scope: z.enum(['all', 'personal', 'business']).optional(),
+        isFixedAsset: z.boolean().optional(),
+        channel: z.string().optional(),
+      }),
+    )
+    .default([]),
+  liabilities: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        title: z.string().min(1),
+        remainingAmountUsd: z.number().min(0),
+        dueDate: z.string().min(10),
+        status: z.enum(['pending', 'partially_paid', 'paid', 'overdue']).optional(),
+        scope: z.enum(['all', 'personal', 'business']).optional(),
+      }),
+    )
+    .default([]),
+  bcvRate: z.number().optional(),
+  parallelRate: z.number().optional(),
+  eurUsdRate: z.number().optional(),
+  scope: z.enum(['all', 'personal', 'business']).default('all'),
+  referenceDateIso: z.string().optional(),
+});
+export type F360GetTreasurySummaryInput = z.infer<typeof F360GetTreasurySummaryInputSchema>;
+
+export const F360AnalyzeCasheaCapacityInputSchema = z.object({
+  productPriceUsd: z.number().positive('El precio del producto debe ser mayor a 0'),
+  level: z.number().int().min(1).max(6).default(1),
+  creditLine: z.enum(['principal', 'cotidiana', 'vehicular']).default('principal'),
+  installmentsCount: z.number().int().min(1).max(24).default(3),
+  customInitialPercent: z.number().min(0).max(95).optional(),
+  zeroInitialCampaign: z.boolean().default(false),
+  biweeklySavingsCapacityUsd: z.number().min(0).default(0),
+  expectedBiweeklyInflationPct: z.number().min(0).max(50).default(0),
+  existingDueDatesUsd: z
+    .array(
+      z.object({
+        dueDate: z.string().min(10),
+        amountUsd: z.number().min(0),
+        label: z.string().optional(),
+      }),
+    )
+    .default([]),
+  collisionWindowDays: z.number().int().min(0).max(7).default(2),
+  creditLimitUsd: z.number().min(0).optional(),
+  usedCreditUsd: z.number().min(0).optional(),
+  bcvRate: z.number().optional(),
+  startDateIso: z.string().optional(),
+  firstDueDateIso: z.string().optional(),
+});
+export type F360AnalyzeCasheaCapacityInput = z.infer<typeof F360AnalyzeCasheaCapacityInputSchema>;
+
+export const F360SimulateCasheaAllyMarginInputSchema = z.object({
+  salePriceUsd: z.number().positive('El precio de venta debe ser mayor a 0'),
+  costOfGoodsUsd: z.number().min(0),
+  mdrPercent: z.number().min(2).max(6).default(4),
+  useWeeklyAdvance: z.boolean().default(false),
+  weeklyAdvanceFeePercent: z.number().min(2).max(4).default(3),
+  bcvRate: z.number().optional(),
+  parallelRate: z.number().optional(),
+  monthlyVolumeUsd: z.number().min(0).optional(),
+  monthlyMinimumFeeUsd: z.number().min(0).default(100),
+  activationFeeUsd: z.number().min(0).default(0),
+});
+export type F360SimulateCasheaAllyMarginInput = z.infer<
+  typeof F360SimulateCasheaAllyMarginInputSchema
+>;
+
+export const F360CheckPymeDrawersAndStockInputSchema = z.object({
+  openingCapitalUsd: z.number().min(0).default(0),
+  drawerPercentages: z
+    .object({
+      drawer1_replenishment: z.number().min(0).default(50),
+      drawer2_operations: z.number().min(0).default(30),
+      drawer3_profit: z.number().min(0).default(20),
+    })
+    .default({
+      drawer1_replenishment: 50,
+      drawer2_operations: 30,
+      drawer3_profit: 20,
+    }),
+  businessIncomes: z
+    .array(
+      z.object({
+        amountUsd: z.number().min(0),
+        drawerAllocations: z
+          .object({
+            drawer1Usd: z.number(),
+            drawer2Usd: z.number(),
+            drawer3Usd: z.number(),
+          })
+          .optional(),
+      }),
+    )
+    .default([]),
+  businessExpenses: z
+    .array(
+      z.object({
+        amountUsd: z.number().min(0),
+        category: z.string().default('other'),
+        drawer: z
+          .enum(['drawer1_replenishment', 'drawer2_operations', 'drawer3_profit'])
+          .optional(),
+      }),
+    )
+    .default([]),
+  inventory: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        currentStock: z.number(),
+        minimumStock: z.number().min(0),
+        unitCostUsd: z.number().min(0),
+        sellingPriceUsd: z.number().min(0).optional(),
+        lastSoldAt: z.string().optional(),
+        daysSinceLastSale: z.number().min(0).optional(),
+      }),
+    )
+    .default([]),
+  providers: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        outstandingDebtUsd: z.number().min(0),
+        dueDate: z.string().optional(),
+      }),
+    )
+    .default([]),
+  referenceDateIso: z.string().optional(),
+  coldStockThresholdDays: z.number().int().min(1).default(45),
+});
+export type F360CheckPymeDrawersAndStockInput = z.infer<
+  typeof F360CheckPymeDrawersAndStockInputSchema
+>;
+
+export const F360GenerateQuoteEstimateInputSchema = z.object({
+  industry: z.enum(['workshop', 'construction', 'services']).default('workshop'),
+  lineItems: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        category: z.enum(['material', 'labor', 'logistics']).default('material'),
+        name: z.string().min(1),
+        quantity: z.number().positive(),
+        unit: z.string().default('und'),
+        unitCostUsd: z.number().min(0),
+      }),
+    )
+    .min(1, 'Se requiere al menos una partida en el presupuesto'),
+  laborMode: z.enum(['percentage', 'per_m2', 'daily_rate', 'fixed']).default('percentage'),
+  laborPercentage: z.number().min(0).max(300).default(0),
+  laborUnits: z.number().min(0).default(0),
+  laborUnitRateUsd: z.number().min(0).default(0),
+  includeTechnicalWaste: z.boolean().default(false),
+  technicalWastePercent: z.number().min(0).max(50).optional(),
+  profitMarginPercent: z.number().min(0).max(500).default(25),
+  discountPercent: z.number().min(0).max(100).default(0),
+  applyIva: z.boolean().default(false),
+  ivaPercent: z.number().min(0).max(50).default(16),
+  applyIgtf: z.boolean().default(false),
+  igtfPercent: z.number().min(0).max(20).default(3),
+  advancePercent: z.number().min(0).max(100).default(50),
+  bcvRate: z.number().optional(),
+});
+export type F360GenerateQuoteEstimateInput = z.infer<typeof F360GenerateQuoteEstimateInputSchema>;
+
+export const F360AuditOverdueAndRunwayInputSchema = z.object({
+  liquidAssetsUsd: z.number().min(0),
+  liabilities: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        title: z.string().min(1),
+        remainingAmountUsd: z.number().min(0),
+        dueDate: z.string().min(10),
+        status: z.enum(['pending', 'partially_paid', 'paid', 'overdue']).optional(),
+      }),
+    )
+    .default([]),
+  casheaInstallments: z
+    .array(
+      z.object({
+        planId: z.string().optional(),
+        productName: z.string().optional(),
+        installmentNumber: z.number().int().positive(),
+        dueDate: z.string().min(10),
+        amountUsd: z.number().min(0),
+        status: z.enum(['pending', 'paid', 'overdue']).default('pending'),
+      }),
+    )
+    .default([]),
+  expenses: z
+    .array(
+      z.object({
+        date: z.string().min(10),
+        amountUsd: z.number().min(0),
+        category: z.string().optional(),
+      }),
+    )
+    .default([]),
+  burnWindowDays: z.number().int().min(1).max(365).default(30),
+  referenceDateIso: z.string().optional(),
+});
+export type F360AuditOverdueAndRunwayInput = z.infer<typeof F360AuditOverdueAndRunwayInputSchema>;
 
 
