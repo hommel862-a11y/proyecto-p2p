@@ -10,6 +10,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HotkeysService } from '../../core/hotkeys.service';
 import {
+  Agencia360ApiService,
+  type Ag360InboxFileEntry,
+} from './agencia-360-api.service';
+import {
   AG360_CLIP_SOURCE,
   AG360_SUB_TAB,
   AG360_VERTICAL,
@@ -35,6 +39,10 @@ import {
 export class Agencia360Component {
   private readonly hotkeys = inject(HotkeysService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly api = inject(Agencia360ApiService);
+
+  readonly backendOnline = signal<boolean>(false);
+  readonly inboxFiles = signal<Ag360InboxFileEntry[]>([]);
 
   readonly SUB_TAB = AG360_SUB_TAB;
   readonly CLIP_SOURCE = AG360_CLIP_SOURCE;
@@ -322,6 +330,20 @@ export class Agencia360Component {
       () => this.handleScopedEscape(),
     );
     this.destroyRef.onDestroy(() => unregister());
+    void this.refreshBackendStatus();
+  }
+
+  async refreshBackendStatus(): Promise<void> {
+    const health = await this.api.checkHealth();
+    this.backendOnline.set(health !== null && health.status === 'ok');
+  }
+
+  async scanAuthorizedInbox(): Promise<void> {
+    const res = await this.api.listAuthorizedInbox();
+    if (res) {
+      this.inboxFiles.set(res.files);
+      this.backendOnline.set(true);
+    }
   }
 
   selectSubTab(tab: Ag360SubTab): void {
@@ -348,6 +370,9 @@ export class Agencia360Component {
           : item,
       ),
     );
+    if (this.backendOnline()) {
+      void this.api.approveHitl(approvalId);
+    }
   }
 
   rejectHitlProposal(approvalId: string): void {
@@ -358,6 +383,9 @@ export class Agencia360Component {
           : item,
       ),
     );
+    if (this.backendOnline()) {
+      void this.api.rejectHitl(approvalId);
+    }
   }
 
   toggleScopedPalette(): void {

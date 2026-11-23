@@ -1,15 +1,21 @@
+from dataclasses import asdict
 import json
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from app.core.config import get_settings, now_vet
 from app.core.security import (
+    ALLOWED_VIDEO_EXTENSIONS,
     BrandCredentialVault,
     validate_local_inbox_path,
     SecurityViolationError,
 )
 from app.services.treasury import TreasuryService, TreasuryError
+from app.services.video_pipeline import VideoPipelineService
+from app.services.viral_clips import ViralClipsService
+from app.services.flyer_pipeline import FlyerPipelineService
 from app.agents.creative_director import CreativeDirectorAgent
 from app.agents.compliance_auditor import ComplianceAuditorAgent, ComplianceError
 from app.agents.vault_controller import VaultControllerAgent
@@ -17,6 +23,7 @@ from app.agents.trafficker import TraffickerAgent, TraffickerGateError
 from app.integrations.telegram_bot import TelegramHitlBotService
 from app.integrations.meta_ads import MetaAdsIntegration
 from app.integrations.arm_bridge import ArmBridgeService, ArmWebhookAuthError
+from app.workers.tasks import SingleConcurrencyVideoLock, VideoWorkerBusyError
 
 app = FastAPI(
     title="Agencia Digital 360 — Execution Module API",
@@ -26,6 +33,21 @@ app = FastAPI(
         "surgical viral clip extractor, Nano Banana flyer studio, and multi-platform "
         "ad trafficker for Venezuela & LATAM."
     ),
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:4200",
+        "http://127.0.0.1:4200",
+        "http://localhost:3030",
+        "http://127.0.0.1:3030",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "docs" / "arm_webhook_contract.json"
@@ -52,6 +74,16 @@ arm_bridge_service = ArmBridgeService(
     meta_ads=meta_ads_integration,
     hmac_secret=settings_instance.arm_webhook_hmac_secret,
 )
+video_pipeline_service = VideoPipelineService(
+    mpt_api_url=settings_instance.moneyprinter_api_url,
+)
+viral_clips_service = ViralClipsService(
+    allowed_inbox_root=settings_instance.local_inbox_dir,
+)
+flyer_pipeline_service = FlyerPipelineService(
+    output_dir=settings_instance.storage_dir / "flyers",
+)
+video_concurrency_lock = SingleConcurrencyVideoLock()
 
 
 class BrandVaultRegisterPayload(BaseModel):
@@ -62,6 +94,53 @@ class BrandVaultRegisterPayload(BaseModel):
     spend_cap_usd: float = Field(..., gt=0)
     initial_vault_usd: float = Field(default=0.0, ge=0)
     alert_threshold_pct: float = Field(default=20.0, ge=5.0, le=50.0)
+
+
+class VaultTopupPayload(BaseModel):
+    brand_id: str
+    amount_usd: float = Field(..., gt=0)
+    note: str = "USDT Vault Top-up"
+
+
+class BriefGeneratePayload(BaseModel):
+    brand_id: str
+    product_or_offer: str
+    target_audience_ve: str = "Venezuela & LATAM"
+    custom_audio_path: Optional[str] = None
+
+
+class ViralLocalClipPayload(BaseModel):
+    brand_id: str
+    filename: str
+    start_sec: float = Field(..., ge=0)
+    end_sec: float = Field(..., gt=0)
+
+
+class ViralYoutubeClipPayload(BaseModel):
+    brand_id: str
+    youtube_url: str
+    start_timestamp: str
+    end_timestamp: str
+
+
+class FlyerGeneratePayload(BaseModel):
+    brand_id: str
+    brand_slug: str
+    headline: str
+    price_badge: str
+    cta_text: str
+    nano_banana_prompt: str
+    aspect_ratio: str = "9:16"
+
+
+class HitlStageCampaignPayload(BaseModel):
+    brand_id: str
+    ad_account_brand_id: str
+    pixel_brand_id: str
+    platform: str
+    campaign_name: str
+    daily_budget_usd: float = Field(..., gt=0)
+    copy_text: str
 
 
 class TelegramWebhookPayload(BaseModel):
@@ -117,6 +196,59 @@ def verify_inbox_file(filename: str) -> dict:
     }
 
 
+@app.get("/api/v1/sandbox/list-inbox")
+def list_authorized_inbox_files() -> dict:
+    settings = get_settings()
+    inbox_root = settings.local_inbox_dir
+    files: list[dict] = []
+    if inbox_root.exists() and inbox_root.is_dir():
+        for entry in sorted(inbox_root.iterdir()):
+            if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
+                files.append(
+                    {
+                        "filename": entry.name,
+                        "size_mb": round(entry.stat().st_size / (1024 * 1024), 2),
+                        "extension": entry.suffix.lower(),
+                    }
+                )
+    return {
+        "authorized_inbox_dir": str(inbox_root),
+        "mode": "READ_ONLY",
+        "files": files,
+    }
+
+
+@app.get("/api/v1/treasury/brands")
+def list_brand_vaults() -> dict:
+    items = []
+    for state in treasury_service._brands.values():
+        used = state.accumulated_spend_usd + state.reserved_spend_usd
+        rem_ratio = round((max(0.0, state.spend_cap_usd - used) / state.spend_cap_usd) * 100.0, 2)
+        roas = (
+            round(state.attributed_revenue_usd / state.accumulated_spend_usd, 2)
+            if state.accumulated_spend_usd > 0
+            else 0.0
+        )
+        items.append(
+            {
+                "brand_id": state.brand_id,
+                "slug": state.slug,
+                "display_name": state.display_name,
+                "industry_vertical": state.industry_vertical,
+                "vault_balance_usd": state.vault_balance_usd,
+                "spend_cap_usd": state.spend_cap_usd,
+                "accumulated_spend_usd": state.accumulated_spend_usd,
+                "reserved_spend_usd": state.reserved_spend_usd,
+                "attributed_revenue_usd": state.attributed_revenue_usd,
+                "closed_won_count": state.closed_won_count,
+                "roas": roas,
+                "remaining_ratio_pct": rem_ratio,
+                "low_balance_alert_20pct": rem_ratio <= state.alert_threshold_pct,
+            }
+        )
+    return {"brands": items}
+
+
 @app.post("/api/v1/treasury/brands")
 def register_brand_vault(payload: BrandVaultRegisterPayload) -> dict:
     state = treasury_service.register_brand(
@@ -135,6 +267,147 @@ def register_brand_vault(payload: BrandVaultRegisterPayload) -> dict:
         "vault_balance_usd": state.vault_balance_usd,
         "alert_threshold_pct": state.alert_threshold_pct,
     }
+
+
+@app.post("/api/v1/treasury/topup")
+def topup_brand_vault(payload: VaultTopupPayload) -> dict:
+    try:
+        record = treasury_service.topup_vault(
+            brand_id=payload.brand_id,
+            amount_usd=payload.amount_usd,
+            note=payload.note,
+        )
+        return {
+            "entry_id": record.entry_id,
+            "brand_id": record.brand_id,
+            "amount_usd": record.amount_usd,
+            "balance_after_usd": record.balance_after_usd,
+            "remaining_ratio_pct": record.remaining_ratio_pct,
+        }
+    except (TreasuryError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/agents/briefs/generate")
+def generate_ai_creative_brief(payload: BriefGeneratePayload) -> dict:
+    try:
+        brand = treasury_service.get_brand(payload.brand_id)
+        brief = creative_director_agent.create_brief(
+            brand_id=payload.brand_id,
+            industry_vertical=brand.industry_vertical,
+            product_or_offer=payload.product_or_offer,
+            target_audience_ve=payload.target_audience_ve,
+            custom_audio_path=payload.custom_audio_path,
+        )
+        audit = compliance_auditor_agent.audit_creative(
+            brand_id=payload.brand_id,
+            industry_vertical=brand.industry_vertical,
+            copy_text=brief.direct_response_copy,
+        )
+        return {
+            "brief_id": brief.brief_id,
+            "brand_id": brief.brand_id,
+            "ai_models_used": brief.ai_models_used,
+            "hooks": [asdict(h) for h in brief.hooks],
+            "direct_response_copy": audit.approved_copy,
+            "nano_banana_flyer_prompt": brief.nano_banana_flyer_prompt,
+            "compliance": asdict(audit),
+        }
+    except (TreasuryError, ComplianceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/viral-clips/prepare-local")
+def prepare_local_viral_clip(payload: ViralLocalClipPayload) -> dict:
+    settings = get_settings()
+    candidate = str(settings.local_inbox_dir / payload.filename)
+    try:
+        with video_concurrency_lock.acquire(f"local_{payload.filename}"):
+            return viral_clips_service.prepare_local_inbox_clip(
+                brand_id=payload.brand_id,
+                file_path=candidate,
+                start_sec=payload.start_sec,
+                end_sec=payload.end_sec,
+            )
+    except SecurityViolationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (VideoWorkerBusyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/viral-clips/prepare-youtube")
+def prepare_youtube_surgical_clip(payload: ViralYoutubeClipPayload) -> dict:
+    try:
+        with video_concurrency_lock.acquire(f"yt_{payload.start_timestamp}"):
+            return viral_clips_service.prepare_youtube_surgical_clip(
+                brand_id=payload.brand_id,
+                youtube_url=payload.youtube_url,
+                start_timestamp=payload.start_timestamp,
+                end_timestamp=payload.end_timestamp,
+            )
+    except (VideoWorkerBusyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/flyers/generate")
+def generate_commercial_flyer(payload: FlyerGeneratePayload) -> dict:
+    try:
+        res = flyer_pipeline_service.generate_commercial_flyer(
+            brand_id=payload.brand_id,
+            brand_slug=payload.brand_slug,
+            headline=payload.headline,
+            price_badge=payload.price_badge,
+            cta_text=payload.cta_text,
+            nano_banana_prompt=payload.nano_banana_prompt,
+            aspect_ratio=payload.aspect_ratio,
+        )
+        res["dimensions"] = list(res["dimensions"])
+        return res
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/hitl/proposals")
+def list_hitl_proposals() -> dict:
+    return {"proposals": list(trafficker_agent._proposals.values())}
+
+
+@app.post("/api/v1/hitl/proposals")
+def stage_hitl_proposal(payload: HitlStageCampaignPayload) -> dict:
+    try:
+        return trafficker_agent.stage_campaign_for_hitl(
+            brand_id=payload.brand_id,
+            ad_account_brand_id=payload.ad_account_brand_id,
+            pixel_brand_id=payload.pixel_brand_id,
+            platform=payload.platform,
+            campaign_name=payload.campaign_name,
+            daily_budget_usd=payload.daily_budget_usd,
+            copy_text=payload.copy_text,
+        )
+    except (TreasuryError, ComplianceError, TraffickerGateError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/hitl/{approval_id}/approve")
+def approve_hitl_proposal(approval_id: str) -> dict:
+    try:
+        return trafficker_agent.approve_hitl_and_deploy(
+            approval_id=approval_id,
+            decided_by="dashboard_operator",
+        )
+    except (TreasuryError, TraffickerGateError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/hitl/{approval_id}/reject")
+def reject_hitl_proposal(approval_id: str) -> dict:
+    try:
+        return trafficker_agent.reject_hitl_and_release(
+            approval_id=approval_id,
+            decided_by="dashboard_operator",
+        )
+    except (TreasuryError, TraffickerGateError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/telegram/webhook")

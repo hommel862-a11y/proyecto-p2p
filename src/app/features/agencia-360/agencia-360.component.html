@@ -39,6 +39,15 @@
     </button>
 
     <div class="cmd-right">
+      <button
+        type="button"
+        class="ag360-status-pill font-mono"
+        [class.emerald]="backendOnline()"
+        [class.cyan]="!backendOnline()"
+        (click)="refreshBackendStatus()"
+      >
+        {{ backendOnline() ? 'FastAPI :8090 ONLINE' : 'FastAPI :8090 OFFLINE (Local)' }}
+      </button>
       <span class="ag360-status-pill emerald font-mono">
         Worker Video: {{ workerConcurrencyLimit }}/1 IDLE
       </span>
