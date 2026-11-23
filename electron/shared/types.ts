@@ -105,7 +105,7 @@ export interface ClipboardPaymentPayload {
   bankDisplayName: string;
   reference: string;
   amount: number;
-  currency: 'VES' | 'COP' | 'USD';
+  currency: 'VES' | 'COP' | 'USD' | 'USDT' | 'EUR';
   payerName?: string;
   payerId?: string;
   beneficiaryPhone?: string;
