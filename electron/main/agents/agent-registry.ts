@@ -123,15 +123,18 @@ export const DEFAULT_BUILTIN_AGENTS: RegisteredAgentDto[] = [
     role: 'FINANCE_CFO',
     avatar: '💼',
     description:
-      'Cruce de sueldos fijos, ventas comerciales Pyme, monitoreo de cuotas Cashea a 14 días y proyección de runway anti-quiebre.',
+      'Cruce de sueldos fijos, ventas comerciales Pyme, monitoreo de cuotas Cashea Niveles 1-6 a 14 días y proyección de runway anti-quiebre.',
     tools: [
+      'f360_get_treasury_summary',
+      'f360_analyze_cashea_capacity',
+      'f360_audit_overdue_and_runway',
+      'gdrive_sync_db_backup',
       'gdrive_backup_receipt',
       'gsheets_sync_trade',
-      'gdrive_sync_db_backup',
       'forecast_cash_flow_and_reconciliation',
     ],
     systemPromptModifier:
-      'Director financiero y tesorero 360. Monitoreá liquidez a 14 días, alertá sobre cuotas Cashea y preservá el cortafuegos de 3 gavetas.',
+      'Director financiero y tesorero 360. Monitorea liquidez a 14 días, alerta sobre cuotas Cashea vencidas o próximas y preserva el cortafuegos de 3 gavetas.',
     enabled: true,
     isCustom: false,
   },
@@ -141,10 +144,71 @@ export const DEFAULT_BUILTIN_AGENTS: RegisteredAgentDto[] = [
     role: 'QUOTE_ARCHITECT',
     avatar: '📝',
     description:
-      'Cotizaciones técnicas de talleres mecánicos/latonería y obras civiles por m² con +10% de merma técnica y exportación de doble PDF.',
-    tools: ['gdrive_backup_receipt', 'gsheets_sync_trade'],
+      'Cotizaciones técnicas de talleres mecánicos/latonería y obras civiles por m² con +10% de merma técnica y exportación de doble PDF prorrateado.',
+    tools: [
+      'f360_generate_quote_estimate',
+      'f360_check_pyme_drawers_and_stock',
+      'gdrive_backup_receipt',
+      'gsheets_sync_trade',
+    ],
     systemPromptModifier:
-      'Arquitecto de presupuestos y cotizaciones técnicas. Exigí anticipos que cubran el 100% de materiales y 10% de merma técnica.',
+      'Arquitecto de presupuestos y cotizaciones técnicas. Exige anticipos que cubran el 100% de materiales y 10% de merma técnica con verificación previa de inventario.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'pyme-payroll-agent',
+    name: 'Agente de Nómina y Gaveta 2',
+    role: 'PYME_PAYROLL',
+    avatar: '👥',
+    description:
+      'Audita la provisión quincenal y mensual de nómina operativa dentro de la Gaveta 2, detectando déficits de liquidez antes de la fecha de pago.',
+    tools: ['f360_check_pyme_drawers_and_stock', 'f360_audit_overdue_and_runway'],
+    systemPromptModifier:
+      'Especialista en nómina operativa y Gaveta 2 de Pyme. Garantiza cobertura puntual de sueldos, comisiones y gastos fijos sin comprometer la Gaveta 1 de mercancía.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'pyme-providers-agent',
+    name: 'Agente de Proveedores CxP y Gaveta 1',
+    role: 'PYME_PROVIDERS',
+    avatar: '📦',
+    description:
+      'Supervisa cuentas por pagar a proveedores (CxP), rotación de reposición en Gaveta 1 y conciliación con la tesorería global 360.',
+    tools: ['f360_check_pyme_drawers_and_stock', 'f360_get_treasury_summary'],
+    systemPromptModifier:
+      'Especialista en cuentas por pagar a proveedores y Gaveta 1. Prioriza compromisos críticos de reposición y evita sobregiros de capital de trabajo.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'pyme-stock-agent',
+    name: 'Agente de Inventario y Mercancía Fría',
+    role: 'PYME_STOCK',
+    avatar: '📊',
+    description:
+      'Monitorea niveles de stock crítico, detecta mercancía fría sin rotación (> 45 días) y valida disponibilidad de materiales para presupuestos.',
+    tools: ['f360_check_pyme_drawers_and_stock', 'f360_generate_quote_estimate'],
+    systemPromptModifier:
+      'Especialista en inventario y control de mercancía fría. Identifica capital inmovilizado mayor a 45 días y respalda cotizaciones con costos actualizados.',
+    enabled: true,
+    isCustom: false,
+  },
+  {
+    id: 'pyme-capex-agent',
+    name: 'Agente de Utilidad, CAPEX y Cashea Aliado',
+    role: 'PYME_CAPEX',
+    avatar: '🏛️',
+    description:
+      'Evalúa márgenes netos reales en Cashea Modo Aliado (MDR, adelanto semanal y brecha cambiaria) y resguarda la utilidad retenida en Gaveta 3 (CAPEX).',
+    tools: [
+      'f360_simulate_cashea_ally_margin',
+      'f360_check_pyme_drawers_and_stock',
+      'f360_get_treasury_summary',
+    ],
+    systemPromptModifier:
+      'Especialista en utilidad neta, reinversión CAPEX (Gaveta 3) y Cashea Modo Aliado. Calcula rentabilidad real descontando comisiones y reposición cambiaria sin recargos prohibidos.',
     enabled: true,
     isCustom: false,
   },

@@ -79,6 +79,7 @@ import Tesseract from 'tesseract.js';
 import { DecisionJournalService, IN_MEMORY_JOURNAL_REASON } from './decision-journal.service';
 import { FinanceTelegramBridgeService } from './services/finance-telegram-bridge.service';
 import { FinanceAiIngestorService } from './services/finance-ai-ingestor.service';
+import { VoiceDictationService } from './voice-dictation.service';
 import { P2PRadarService } from './p2p-radar.service';
 import { StorageService } from './storage';
 
@@ -415,6 +416,7 @@ export class TelegramWorkerService implements OnDestroy {
   private readonly journal = inject(DecisionJournalService, { optional: true });
   private readonly financeBridge = inject(FinanceTelegramBridgeService, { optional: true });
   private readonly aiIngestor = inject(FinanceAiIngestorService, { optional: true });
+  private readonly voiceDictation = inject(VoiceDictationService, { optional: true });
   private readonly radarService = inject(P2PRadarService, { optional: true });
   private readonly storage = inject(StorageService);
 
@@ -761,13 +763,42 @@ export class TelegramWorkerService implements OnDestroy {
       return;
     }
 
-    // Inbound Finance 360 Commands (#gasto, #ingreso, #cashea, #resumen, /finanzas, /360)
-    const rawText = (update.message?.text || update.message?.caption || '').trim();
+    const messageWithMedia = update.message as
+      | (NonNullable<TelegramInboundUpdate['message']> & {
+          voice?: { file_id: string; mime_type?: string; duration?: number };
+          audio?: { file_id: string; mime_type?: string; duration?: number };
+        })
+      | undefined;
+    const voiceMedia = messageWithMedia?.voice ?? messageWithMedia?.audio;
+    const hasPhotoOrDoc = Boolean(
+      (update.message?.photo && update.message.photo.length > 0) ||
+        update.message?.document?.file_id,
+    );
+
+    // Inbound Voice Notes -> Finanzas 360 (never touches P2P ledger or crashes offline)
+    if (voiceMedia?.file_id && this.financeBridge) {
+      await this.processVoiceNoteFile(
+        token,
+        chatId,
+        voiceMedia.file_id,
+        voiceMedia.mime_type || 'audio/ogg',
+        update.message?.caption,
+      );
+      return;
+    }
+
+    // Inbound Finance 360 Text Commands (#gasto, #ingreso, #cashea, #resumen, /finanzas, /360)
+    // Photos/documents with Finanzas 360 captions flow through AUDIT_RECEIPT so OCR + AI run first.
+    const rawText = (update.message?.text || (!hasPhotoOrDoc ? update.message?.caption : '') || '').trim();
     if (
+      !hasPhotoOrDoc &&
       this.financeBridge &&
       (rawText.startsWith('#') || rawText.startsWith('/finanzas') || rawText.startsWith('/360'))
     ) {
-      const bridgeResult = this.financeBridge.processInboundTelegramCommand(rawText);
+      const bridgeResult = this.financeBridge.processInboundTelegramCommand(rawText, {
+        authorized: true,
+        chatId,
+      });
       if (bridgeResult.action !== 'unknown') {
         await this.sendTelegramMessage(token, chatId, bridgeResult.replyText);
         this.addLog({
@@ -1001,7 +1032,7 @@ export class TelegramWorkerService implements OnDestroy {
             chatId,
             `🔍 *COMPROBANTE RECIBIDO*: Descargando y procesando extracción OCR\\.\\.\\.`,
           );
-          void this.processReceiptFile(token, chatId, dispatch.fileId);
+          void this.processReceiptFile(token, chatId, dispatch.fileId, update.message?.caption);
           this.addLog({
             time: timeStr,
             command: 'Foto Comprobante',
@@ -1906,83 +1937,224 @@ export class TelegramWorkerService implements OnDestroy {
     return { run: run as (options: unknown) => Promise<BacktestBridgeResult> };
   }
 
-  private async processReceiptFile(
+  /**
+   * Dispatches the daily Finanzas 360 executive summary using stored Telegram credentials.
+   */
+  async dispatchFinance360DailyBriefing(): Promise<boolean> {
+    if (!this.financeBridge) return false;
+    let cfg = this.config();
+    if (!cfg.botToken || !cfg.chatId) {
+      cfg = await this.getConfig();
+    }
+    if (!cfg.botToken || !cfg.chatId) {
+      return false;
+    }
+    this.financeBridge.setTelegramWorker(this);
+    return this.financeBridge.sendDailyBriefingToTelegram(cfg.botToken, cfg.chatId);
+  }
+
+  private isFinance360Caption(caption?: string): boolean {
+    if (!caption) return false;
+    return /(?:^|\s)(?:#gasto|#ingreso|#cashea|#360|#finanzas|\/360|\/finanzas)\b/i.test(
+      caption.trim(),
+    );
+  }
+
+  private async downloadTelegramFileBase64(
     token: string,
-    chatId: number | string,
     fileId: string,
-  ): Promise<void> {
-    try {
-      // 1. Obtener la ruta del archivo desde Telegram API
-      const fileMetaRes = await fetch(
-        `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,
-      );
-      if (!fileMetaRes.ok) throw new Error('No se pudo obtener el archivo de Telegram');
-      const fileMeta = (await fileMetaRes.json()) as { ok: boolean; result?: { file_path?: string } };
-      const filePath = fileMeta.result?.file_path;
-      if (!filePath) throw new Error('Telegram no devolvió la ruta del archivo');
+    defaultMime: string,
+  ): Promise<{ base64Data: string; mimeType: string; filePath: string }> {
+    const fileMetaRes = await fetch(
+      `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,
+    );
+    if (!fileMetaRes.ok) throw new Error('No se pudo obtener el archivo de Telegram');
+    const fileMeta = (await fileMetaRes.json()) as { ok: boolean; result?: { file_path?: string } };
+    const filePath = fileMeta.result?.file_path;
+    if (!filePath) throw new Error('Telegram no devolvió la ruta del archivo');
 
-      // 2. Descarga multi-nivel para evitar bloqueos CORS
-      let base64Data: string | null = null;
-      let mimeType = 'image/jpeg';
-      if (filePath.toLowerCase().endsWith('.png')) mimeType = 'image/png';
-      else if (filePath.toLowerCase().endsWith('.webp')) mimeType = 'image/webp';
-      else if (filePath.toLowerCase().endsWith('.pdf')) mimeType = 'application/pdf';
+    let base64Data: string | null = null;
+    let mimeType = defaultMime;
+    const lowerPath = filePath.toLowerCase();
+    if (lowerPath.endsWith('.png')) mimeType = 'image/png';
+    else if (lowerPath.endsWith('.webp')) mimeType = 'image/webp';
+    else if (lowerPath.endsWith('.pdf')) mimeType = 'application/pdf';
+    else if (lowerPath.endsWith('.oga') || lowerPath.endsWith('.ogg')) mimeType = 'audio/ogg';
+    else if (lowerPath.endsWith('.mp3')) mimeType = 'audio/mpeg';
+    else if (lowerPath.endsWith('.m4a') || lowerPath.endsWith('.mp4')) mimeType = 'audio/mp4';
 
-      // Nivel A: Puente IPC de Electron nativo (net.fetch sin restricciones CORS)
-      const shell = (globalThis as unknown as Record<string, unknown>)['electron'] as any;
-      if (shell?.telegram?.downloadFile) {
-        try {
-          const ipcRes = await shell.telegram.downloadFile({ token, filePath });
-          if (ipcRes?.success && ipcRes.base64) {
-            base64Data = ipcRes.base64;
-            if (ipcRes.mimeType) mimeType = ipcRes.mimeType;
-          }
-        } catch (ipcErr) {
-          console.warn('[TelegramWorker] Falló descarga vía IPC Electron:', ipcErr);
+    // Nivel A: Puente IPC de Electron nativo (net.fetch sin restricciones CORS)
+    const shell = (globalThis as unknown as Record<string, unknown>)['electron'] as any;
+    if (shell?.telegram?.downloadFile) {
+      try {
+        const ipcRes = await shell.telegram.downloadFile({ token, filePath });
+        if (ipcRes?.success && ipcRes.base64) {
+          base64Data = ipcRes.base64;
+          if (ipcRes.mimeType) mimeType = ipcRes.mimeType;
         }
+      } catch (ipcErr) {
+        console.warn('[TelegramWorker] Falló descarga vía IPC Electron:', ipcErr);
       }
+    }
 
-      // Nivel B: Servidor HTTP local (Bridge CORS en puerto 51857)
-      if (!base64Data) {
-        try {
-          const bridgeUrl = `http://localhost:51857/api/telegram/file?token=${encodeURIComponent(token)}&filePath=${encodeURIComponent(filePath)}`;
-          const bridgeRes = await fetch(bridgeUrl);
-          if (bridgeRes.ok) {
-            const buf = await bridgeRes.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            base64Data = btoa(binary);
-            const ct = bridgeRes.headers.get('content-type');
-            if (ct) mimeType = ct;
-          }
-        } catch {
-          // Servidor local no disponible o error
-        }
-      }
-
-      // Nivel C: Fallback a fetch directo (si no hay restricciones de CORS)
-      if (!base64Data) {
-        const directUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
-        const directRes = await fetch(directUrl);
-        if (directRes.ok) {
-          const buf = await directRes.arrayBuffer();
+    // Nivel B: Servidor HTTP local (Bridge CORS en puerto 51857)
+    if (!base64Data) {
+      try {
+        const bridgeUrl = `http://localhost:51857/api/telegram/file?token=${encodeURIComponent(token)}&filePath=${encodeURIComponent(filePath)}`;
+        const bridgeRes = await fetch(bridgeUrl);
+        if (bridgeRes.ok) {
+          const buf = await bridgeRes.arrayBuffer();
           const bytes = new Uint8Array(buf);
           let binary = '';
           for (let i = 0; i < bytes.byteLength; i++) {
             binary += String.fromCharCode(bytes[i]);
           }
           base64Data = btoa(binary);
-          const ct = directRes.headers.get('content-type');
+          const ct = bridgeRes.headers.get('content-type');
           if (ct) mimeType = ct;
+        }
+      } catch {
+        // Servidor local no disponible o error
+      }
+    }
+
+    // Nivel C: Fallback a fetch directo (si no hay restricciones de CORS)
+    if (!base64Data) {
+      const directUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+      const directRes = await fetch(directUrl);
+      if (directRes.ok) {
+        const buf = await directRes.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        base64Data = btoa(binary);
+        const ct = directRes.headers.get('content-type');
+        if (ct) mimeType = ct;
+      }
+    }
+
+    if (!base64Data) {
+      throw new Error('No se pudo descargar el archivo de Telegram a través de ningún canal.');
+    }
+
+    return { base64Data, mimeType, filePath };
+  }
+
+  private async processVoiceNoteFile(
+    token: string,
+    chatId: number | string,
+    fileId: string,
+    mimeType = 'audio/ogg',
+    caption?: string,
+  ): Promise<void> {
+    if (!this.financeBridge) return;
+    const timeStr = new Date().toLocaleTimeString('es-VE');
+
+    try {
+      const downloaded = await this.downloadTelegramFileBase64(token, fileId, mimeType);
+      let transcript = '';
+
+      if (this.voiceDictation) {
+        try {
+          const outcome = await this.voiceDictation.transcribeAudio(
+            downloaded.base64Data,
+            downloaded.mimeType,
+          );
+          if (outcome.status === 'ok' && outcome.transcript) {
+            transcript = outcome.transcript.trim();
+          }
+        } catch (voiceErr) {
+          console.warn('[TelegramWorker] Error al transcribir nota de voz:', voiceErr);
         }
       }
 
-      if (!base64Data) {
-        throw new Error('No se pudo descargar la imagen del comprobante a través de ningún canal.');
+      if (transcript) {
+        const bridgeRes = this.financeBridge.ingestVoiceTranscript(transcript, {
+          authorized: true,
+          chatId,
+        });
+        await this.sendTelegramMessage(token, chatId, bridgeRes.replyText);
+        this.addLog({
+          time: timeStr,
+          command: 'Nota de Voz',
+          action: 'FINANCE_360',
+          status: bridgeRes.success ? 'SUCCESS' : 'ERROR',
+          details: bridgeRes.action,
+        });
+        return;
       }
+
+      if (this.aiIngestor) {
+        try {
+          const aiDoc = await this.aiIngestor.transcribeAndClassifyAudio(
+            downloaded.base64Data,
+            downloaded.mimeType,
+          );
+          if (aiDoc.amount > 0) {
+            const bridgeRes = this.financeBridge.ingestPhotoReceipt(aiDoc, caption, {
+              authorized: true,
+              chatId,
+            });
+            await this.sendTelegramMessage(token, chatId, bridgeRes.replyText);
+            this.addLog({
+              time: timeStr,
+              command: 'Nota de Voz IA',
+              action: 'FINANCE_360',
+              status: bridgeRes.success ? 'SUCCESS' : 'ERROR',
+              details: bridgeRes.action,
+            });
+            return;
+          }
+        } catch (aiVoiceErr) {
+          console.warn('[TelegramWorker] Error en clasificación de audio IA:', aiVoiceErr);
+        }
+      }
+
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        '🎙️ *Nota de voz no procesada:* No fue posible transcribir el audio en modo desconectado o sin clave de IA configurada\\. No se registró ningún movimiento\\.',
+      );
+      this.addLog({
+        time: timeStr,
+        command: 'Nota de Voz',
+        action: 'FINANCE_360',
+        status: 'ERROR',
+        details: 'transcripción no disponible',
+      });
+    } catch (err: unknown) {
+      console.warn('[TelegramWorker] Error procesando nota de voz:', err);
+      const errMsg = err instanceof Error ? err.message : 'Error al procesar audio';
+      await this.sendTelegramMessage(
+        token,
+        chatId,
+        `⚠️ *Error al procesar nota de voz:* ${escapeMarkdownV2(errMsg)}`,
+      );
+      this.addLog({
+        time: timeStr,
+        command: 'Nota de Voz',
+        action: 'FINANCE_360',
+        status: 'ERROR',
+        details: errMsg,
+      });
+    }
+  }
+
+  private async processReceiptFile(
+    token: string,
+    chatId: number | string,
+    fileId: string,
+    caption?: string,
+  ): Promise<void> {
+    try {
+      // 1-2. Descarga multi-nivel para evitar bloqueos CORS
+      const { base64Data, mimeType } = await this.downloadTelegramFileBase64(
+        token,
+        fileId,
+        'image/jpeg',
+      );
 
       // 3. Crear Blob local en memoria para Tesseract (garantiza cero CORS)
       const binaryString = atob(base64Data);
@@ -2010,6 +2182,35 @@ export class TelegramWorkerService implements OnDestroy {
         } catch (aiErr) {
           console.warn('[TelegramWorker] Error en análisis multimodal con IA:', aiErr);
         }
+      }
+
+      // 5b. AISLAMIENTO ESTRICTO FINANZAS 360:
+      // Fotos Cashea o con caption Finanzas 360 (#gasto, #ingreso, #cashea, #360, #finanzas)
+      // se enrutan EXCLUSIVAMENTE al puente Finanzas 360 y NUNCA contaminan `p2p.operations` (OPS_KEY).
+      const targetsFinance360 =
+        Boolean(aiParsed?.isCashea) ||
+        /\bcashea\b/i.test(text) ||
+        this.isFinance360Caption(caption);
+
+      if (targetsFinance360 && this.financeBridge) {
+        const liveBcv = this.cotizave.ratesByMarket()['oficial']?.mid ?? 0;
+        const docForBridge =
+          aiParsed ?? (this.aiIngestor ? this.aiIngestor.parseWithHeuristics(text, liveBcv) : null);
+        const bridgeRes = this.financeBridge.ingestPhotoReceipt(docForBridge, caption, {
+          authorized: true,
+          chatId,
+        });
+        await this.sendTelegramMessage(token, chatId, bridgeRes.replyText);
+        this.addLog({
+          time: new Date().toLocaleTimeString('es-VE'),
+          command:
+            caption?.trim().split(/\s+/)[0] ||
+            (docForBridge?.isCashea ? 'Foto Cashea' : 'Foto 360'),
+          action: 'FINANCE_360',
+          status: bridgeRes.success ? 'SUCCESS' : 'ERROR',
+          details: bridgeRes.action,
+        });
+        return;
       }
 
       // 6. Parseo heurístico de reglas bancarias locales
@@ -2069,7 +2270,7 @@ export class TelegramWorkerService implements OnDestroy {
           depth?.bestBuyPrice ||
           depth?.bestSellPrice ||
           this.cotizave.ratesByMarket()['oficial']?.mid ||
-          60;
+          0;
         const usdtAmount = marketPrice > 0 ? roundMoney(finalAmount / marketPrice, 2) : 0;
 
         // Buscar cuenta bancaria asociada en el inventario de cuentas

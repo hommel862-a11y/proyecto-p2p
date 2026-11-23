@@ -105,6 +105,25 @@
               <option value="other">📌 Otro Gasto</option>
             </select>
           </div>
+        } @else if (financePillar() === 'income') {
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="text-muted" for="finance-income-category" style="font-size: 0.78rem;">Categoría:</label>
+            <select
+              id="finance-income-category"
+              aria-label="Categoría de ingreso"
+              [ngModel]="financeIncomeCategory()"
+              (ngModelChange)="financeIncomeCategory.set($event)"
+              class="form-select"
+              style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;"
+            >
+              <option value="business_sale">Venta Comercial Pyme</option>
+              <option value="quote_advance">Anticipo de Presupuesto</option>
+              <option value="salary">Sueldo / Salario</option>
+              <option value="freelance">Honorarios / Freelance</option>
+              <option value="investment">Rendimiento / Inversión</option>
+              <option value="other">Otro Ingreso</option>
+            </select>
+          </div>
         }
 
         <!-- Vault -->

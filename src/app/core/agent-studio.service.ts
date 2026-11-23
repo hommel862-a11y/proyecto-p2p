@@ -9,7 +9,7 @@ import { ToastService } from './toast.service';
 export interface McpSkillCatalogItem {
   id: string;
   name: string;
-  category: 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION' | 'ARM_CRM';
+  category: 'TRADING' | 'RIESGO' | 'SEGURIDAD' | 'CONCILIACION' | 'ARM_CRM' | 'FINANCE_360';
   description: string;
 }
 
@@ -238,6 +238,147 @@ export const MCP_SKILL_CATALOG: readonly McpSkillCatalogItem[] = [
     name: 'Despacho de Plantilla HSM Anti-Ghosting',
     category: 'ARM_CRM',
     description: 'Envía o encola plantillas HSM aprobadas por Meta cuando expiró la ventana gratuita de 24 horas.',
+  },
+
+  // FINANZAS 360 & PYME (6 CONTRATOS INSTITUCIONALES)
+  {
+    id: 'f360_get_treasury_summary',
+    name: 'Resumen de Tesorería 360',
+    category: 'FINANCE_360',
+    description:
+      'Calcula patrimonio neto, activos líquidos en USD/VES/EUR/USDT, pasivos totales, brecha cambiaria y salud de liquidez a 14 días.',
+  },
+  {
+    id: 'f360_analyze_cashea_capacity',
+    name: 'Capacidad y Niveles Cashea (N1-N6)',
+    category: 'FINANCE_360',
+    description:
+      'Evalúa cupo disponible en Línea Principal y Línea Cotidiana (Niveles 1-6 Araguaney), colisiones quincenales a 14 días y riesgo de mora.',
+  },
+  {
+    id: 'f360_simulate_cashea_ally_margin',
+    name: 'Simulador Margen Cashea Modo Aliado',
+    category: 'FINANCE_360',
+    description:
+      'Simula margen neto real para comercios aliados descontando comisión MDR, adelanto semanal, brecha de reposición cambiaria y punto de equilibrio.',
+  },
+  {
+    id: 'f360_check_pyme_drawers_and_stock',
+    name: 'Auditoría 3 Gavetas Pyme e Inventario',
+    category: 'FINANCE_360',
+    description:
+      'Audita balances acumulativos de las 3 gavetas (Mercancía, Operación/Nómina, CAPEX), cuentas por pagar a proveedores y alertas de mercancía fría (> 45 días).',
+  },
+  {
+    id: 'f360_generate_quote_estimate',
+    name: 'Estimador Técnico de Presupuestos 360',
+    category: 'FINANCE_360',
+    description:
+      'Estructura presupuestos técnicos prorrateados con merma técnica (+10%), mano de obra dual, IVA/IGTF opcional y anticipo blindado.',
+  },
+  {
+    id: 'f360_audit_overdue_and_runway',
+    name: 'Auditoría de Vencidos y Runway 14D',
+    category: 'FINANCE_360',
+    description:
+      'Identifica pasivos y cuotas Cashea vencidas o próximas a vencer, proyecta runway operativo y detecta riesgo de quiebre de caja.',
+  },
+];
+
+export const FINANCE_360_SPECIALIST_PRESETS: readonly CreateCustomAgentDto[] = [
+  {
+    id: 'finance-cfo',
+    name: 'CFO Virtual & Tesorería 360',
+    description:
+      'Cruce de ingresos fijos, ventas Pyme, monitoreo de cuotas Cashea Niveles 1-6 a 14 días y proyección de runway anti-quiebre',
+    systemPrompt:
+      'Eres el CFO Virtual y Tesorero de Finanzas 360. Audita liquidez a 14 días, supervisa vencimientos Cashea y preserva la integridad contable de bóvedas y 3 gavetas.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: [
+      'f360_get_treasury_summary',
+      'f360_analyze_cashea_capacity',
+      'f360_audit_overdue_and_runway',
+      'gdrive_backup_receipt',
+      'gsheets_sync_trade',
+    ],
+  },
+  {
+    id: 'quote-architect',
+    name: 'Cotizador & Presupuestos 360',
+    description:
+      'Cotizaciones técnicas multi-industria con +10% de merma técnica, verificación de inventario y anticipo blindado',
+    systemPrompt:
+      'Eres el Arquitecto de Presupuestos 360. Verifica stock y gavetas antes de cotizar, aplica merma técnica y protege el anticipo del 100% de materiales.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: ['f360_generate_quote_estimate', 'f360_check_pyme_drawers_and_stock'],
+  },
+  {
+    id: 'pyme-payroll-agent',
+    name: 'Agente de Nómina y Gaveta 2',
+    description:
+      'Control de provisión de nómina operativa, gastos fijos de Gaveta 2 y alertas tempranas de liquidez quincenal',
+    systemPrompt:
+      'Eres el Agente de Nómina y Gaveta 2. Verifica fondos disponibles para nómina y vencimientos operativos próximos sin vulnerar la Gaveta 1 de proveedores.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: ['f360_check_pyme_drawers_and_stock', 'f360_audit_overdue_and_runway'],
+  },
+  {
+    id: 'pyme-providers-agent',
+    name: 'Agente de Proveedores CxP y Gaveta 1',
+    description:
+      'Seguimiento de cuentas por pagar a proveedores (CxP), reposición en Gaveta 1 y conciliación con tesorería',
+    systemPrompt:
+      'Eres el Agente de Proveedores CxP y Gaveta 1. Prioriza compromisos de reposición de mercancía y garantiza solvencia antes de autorizar desembolsos.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: ['f360_check_pyme_drawers_and_stock', 'f360_get_treasury_summary'],
+  },
+  {
+    id: 'pyme-stock-agent',
+    name: 'Agente de Inventario y Mercancía Fría',
+    description:
+      'Auditoría de rotación de inventario, detección de mercancía fría (> 45 días) y soporte de costos para presupuestos',
+    systemPrompt:
+      'Eres el Agente de Inventario y Mercancía Fría. Identifica SKUs inmovilizados por más de 45 días y suministra costos reales de reposición a cotizaciones.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: ['f360_check_pyme_drawers_and_stock', 'f360_generate_quote_estimate'],
+  },
+  {
+    id: 'pyme-capex-agent',
+    name: 'Agente de Utilidad, CAPEX y Cashea Aliado',
+    description:
+      'Simulación de margen neto real en Cashea Modo Aliado, punto de equilibrio de contrato y resguardo de Gaveta 3 (CAPEX)',
+    systemPrompt:
+      'Eres el Agente de Utilidad, CAPEX y Cashea Aliado. Evalúa márgenes descontando MDR, adelanto semanal y brecha de reposición cambiaria sin recargos al cliente.',
+    modelProvider: 'gemini',
+    modelName: 'gemini-3.7-flash',
+    temperature: 0.1,
+    isActive: true,
+    executionMode: 'on_demand',
+    skills: [
+      'f360_simulate_cashea_ally_margin',
+      'f360_check_pyme_drawers_and_stock',
+      'f360_get_treasury_summary',
+    ],
   },
 ];
 
@@ -526,6 +667,18 @@ export class AgentStudioService {
     const existingIds = new Set(this._agents().map((a) => a.id));
     let added = 0;
     for (const preset of presets) {
+      if (preset.id && !existingIds.has(preset.id)) {
+        await this.createAgent(preset);
+        added += 1;
+      }
+    }
+    return added;
+  }
+
+  async seedFinance360SpecialistPresets(): Promise<number> {
+    const existingIds = new Set(this._agents().map((a) => a.id));
+    let added = 0;
+    for (const preset of FINANCE_360_SPECIALIST_PRESETS) {
       if (preset.id && !existingIds.has(preset.id)) {
         await this.createAgent(preset);
         added += 1;

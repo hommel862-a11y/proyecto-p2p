@@ -17,10 +17,17 @@ import { AccountsService } from '../../core/accounts.service';
 import { CounterpartyService } from '../../core/counterparty.service';
 import { CotizaveService } from '../../core/cotizave.service';
 import { Finance360Service } from '../../core/finance-360.service';
-import { FinanceAiIngestorService } from '../../core/services/finance-ai-ingestor.service';
+import {
+  FinanceAiIngestorService,
+  type ParsedFinancialDocument,
+} from '../../core/services/finance-ai-ingestor.service';
 import { CashReceiptGeneratorService } from '../../core/services/cash-receipt-generator.service';
 import {
+  addCalendarDays,
   computeTriMonetaryAmount,
+  roundMoney,
+  todayVetIso,
+  type CurrencyCode,
   type FinanceScope,
   type ExpenseCategory,
   type IncomeCategory,
@@ -64,6 +71,8 @@ export class ReceiptScanner {
   readonly manualTextInput = signal<string>('');
   readonly receipts = signal<BankReceiptRecord[]>([]);
   readonly receiptAudits = signal<Map<string, FraudShieldAuditResult>>(new Map());
+  readonly aiMetadataByReceiptId = signal<Map<string, ParsedFinancialDocument>>(new Map());
+  readonly settledReceiptIds = signal<Set<string>>(new Set());
   readonly selectedAudit = signal<FraudShieldAuditResult | null>(null);
 
   readonly expectedCounterparty = signal<string>('');
@@ -152,11 +161,13 @@ export class ReceiptScanner {
       });
       const base64 = await base64Promise;
 
+      const base64Clean = base64.includes(',') ? base64.split(',')[1] : base64;
+
       this.progressPct.set(90);
       this.progressStatus.set('Analizando con IA Multimodal...');
 
       const aiResult = await this.aiIngestor.analyzeReceiptImage(
-        base64,
+        base64Clean,
         file.type || 'image/jpeg',
         extractedText,
       );
@@ -169,15 +180,17 @@ export class ReceiptScanner {
           this.financePillar.set('expense');
           this.financeExpenseCategory.set('cashea_installment');
         } else if (aiResult.scope) {
-          this.financeScope.set(aiResult.scope);
+          this.financeScope.set(aiResult.scope === 'all' ? 'personal' : aiResult.scope);
           this.financePillar.set(aiResult.pillar);
-          if (aiResult.expenseCategory) {
+          if (aiResult.pillar === 'income' && aiResult.incomeCategory) {
+            this.financeIncomeCategory.set(aiResult.incomeCategory);
+          } else if (aiResult.expenseCategory) {
             this.financeExpenseCategory.set(aiResult.expenseCategory);
           }
         }
       }
 
-      this.ingestReceiptText(extractedText);
+      this.ingestReceiptText(extractedText, aiResult);
       this.toast.success('Comprobante digitalizado y analizado con éxito.');
     } catch {
       this.toast.error('Error al ejecutar el reconocimiento OCR local.');
@@ -260,7 +273,7 @@ export class ReceiptScanner {
     this.toast.success('Texto bancario procesado correctamente.');
   }
 
-  private ingestReceiptText(text: string): void {
+  private ingestReceiptText(text: string, aiMeta?: ParsedFinancialDocument | null): void {
     const currentOps: Operation[] = this.storage.get<Operation[]>(OPS_KEY) ?? [];
     const knownRefs = currentOps
       .map((o: Operation) => {
@@ -271,10 +284,35 @@ export class ReceiptScanner {
       })
       .filter((r: string) => r.length > 0);
 
-    const parsed = parseBankReceiptText(text, {
+    const parsedBase = parseBankReceiptText(text, {
       knownReferences: knownRefs,
       expectedCounterpartyName: this.expectedCounterparty().trim() || undefined,
     });
+
+    const mergedAmount =
+      (!parsedBase.amount || parsedBase.amount <= 0) && aiMeta && aiMeta.amount > 0
+        ? aiMeta.amount
+        : parsedBase.amount;
+    const isSyntheticRef =
+      !parsedBase.reference ||
+      parsedBase.reference === 'N/A' ||
+      parsedBase.reference === 'SIN-REF' ||
+      /^REF-\d{6}$/.test(parsedBase.reference);
+    const mergedReference =
+      isSyntheticRef && aiMeta?.referenceNumber ? aiMeta.referenceNumber : parsedBase.reference;
+    const mergedCurrency: BankReceiptRecord['currency'] =
+      aiMeta?.currency === 'USD' || aiMeta?.currency === 'VES'
+        ? aiMeta.currency
+        : parsedBase.currency;
+    const mergedBeneficiary = parsedBase.beneficiaryName || aiMeta?.entityName || undefined;
+
+    const parsed: BankReceiptRecord = {
+      ...parsedBase,
+      amount: mergedAmount,
+      reference: mergedReference,
+      currency: mergedCurrency,
+      beneficiaryName: mergedBeneficiary,
+    };
 
     const audit = evaluateFraudRisk({
       orderId: `ORD-${Date.now().toString().slice(-6)}`,
@@ -293,6 +331,13 @@ export class ReceiptScanner {
       next.set(parsed.id, audit);
       return next;
     });
+    if (aiMeta) {
+      this.aiMetadataByReceiptId.update((map) => {
+        const next = new Map(map);
+        next.set(parsed.id, aiMeta);
+        return next;
+      });
+    }
   }
 
   recomputeAudits(): void {
@@ -402,6 +447,16 @@ export class ReceiptScanner {
       next.delete(id);
       return next;
     });
+    this.aiMetadataByReceiptId.update((map) => {
+      const next = new Map(map);
+      next.delete(id);
+      return next;
+    });
+    this.settledReceiptIds.update((set) => {
+      const next = new Set(set);
+      next.delete(id);
+      return next;
+    });
     if (this.selectedAudit()?.orderId.endsWith(id.slice(-6))) {
       this.selectedAudit.set(null);
     }
@@ -410,6 +465,8 @@ export class ReceiptScanner {
   clearReceipts(): void {
     this.receipts.set([]);
     this.receiptAudits.set(new Map());
+    this.aiMetadataByReceiptId.set(new Map());
+    this.settledReceiptIds.set(new Set());
     this.selectedAudit.set(null);
   }
 
@@ -516,47 +573,133 @@ export class ReceiptScanner {
   }
 
   /**
-   * Settles to Finance 360 Portfolio with frozen rate, completely isolated from P2P!
+   * Settles to Finance 360 Portfolio with live frozen rate, Cashea installment linking,
+   * duplicate-settlement protection, and strict isolation from P2P.
    */
-  settleToFinance360(record: BankReceiptRecord): void {
+  settleToFinance360(
+    record: BankReceiptRecord,
+    options?: { allowDuplicateOverride?: boolean },
+  ): void {
     try {
-      const bcv = this.cotizaveService.ratesByMarket()['oficial']?.mid ?? 60.0;
-      const par = this.cotizaveService.ratesByMarket()['parallel']?.mid ?? bcv * 1.15;
-      const currency = (record.currency === 'USD' ? 'USD' : 'VES') as 'USD' | 'VES';
-      const tri = computeTriMonetaryAmount(record.amount, currency, bcv, par);
+      const aiMeta = this.aiMetadataByReceiptId().get(record.id);
+      const reference = (aiMeta?.referenceNumber || record.reference || '').trim();
+      const vaultId = this.selectedVaultId() || undefined;
+      const allowDuplicate = Boolean(options?.allowDuplicateOverride);
+
+      if (!allowDuplicate) {
+        if (this.settledReceiptIds().has(record.id)) {
+          this.toast.warn('Este comprobante ya fue asentado en Finanzas 360.');
+          return;
+        }
+        if (
+          reference &&
+          reference !== 'N/A' &&
+          this.finance360Service.isDuplicateReference(reference, vaultId)
+        ) {
+          this.toast.warn(
+            `La referencia #${reference} ya existe en Finanzas 360. Usa sobrescritura explícita si deseas duplicarla.`,
+          );
+          return;
+        }
+      }
+
+      const bcv = this.finance360Service.currentBcvRate();
+      const par = this.finance360Service.currentParallelRate();
+      const currency = this.resolveFinance360Currency(record, aiMeta);
+      const effectiveAmount = record.amount > 0 ? record.amount : (aiMeta?.amount ?? 0);
       const pillar = this.financePillar();
       const scope = this.financeScope();
-      const vaultId = this.selectedVaultId() || undefined;
-      const channel: PaymentChannel = currency === 'VES' ? 'bs_bank' : 'cash';
+      const channel: PaymentChannel =
+        currency === 'VES' ? 'bs_bank' : currency === 'USDT' ? 'crypto' : 'cash';
+      const dateIso =
+        aiMeta?.date && /^\d{4}-\d{2}-\d{2}$/.test(aiMeta.date)
+          ? aiMeta.date
+          : record.timestamp && /^\d{4}-\d{2}-\d{2}/.test(record.timestamp)
+            ? record.timestamp.slice(0, 10)
+            : todayVetIso();
 
-      const title = `${record.bankDisplayName}: Ref #${record.reference} (${record.payerName || 'Pago recibido'})`;
+      const isCashea = Boolean(
+        aiMeta?.isCashea ||
+          this.financeExpenseCategory() === 'cashea_installment' ||
+          /cashea/i.test(record.rawText || ''),
+      );
+
+      if (isCashea && pillar === 'expense') {
+        const activePlans = (this.finance360Service.state().casheaPlans ?? []).filter(
+          (p) => p.status === 'active',
+        );
+        const searchHaystack =
+          `${aiMeta?.title ?? ''} ${aiMeta?.entityName ?? ''} ${record.rawText ?? ''}`.toLowerCase();
+        const matchedPlan =
+          activePlans.find(
+            (p) =>
+              searchHaystack.includes(p.productName.toLowerCase()) ||
+              searchHaystack.includes(p.storeName.toLowerCase()),
+          ) ?? activePlans.find((p) => p.installments.some((inst) => inst.status !== 'paid'));
+
+        if (matchedPlan) {
+          const unpaid = matchedPlan.installments.filter((inst) => inst.status !== 'paid');
+          const targetInstallment =
+            (aiMeta?.casheaInstallmentNumber
+              ? unpaid.find((inst) => inst.number === aiMeta.casheaInstallmentNumber)
+              : undefined) ??
+            unpaid.find((inst) => Math.abs(inst.amountUsd - effectiveAmount) <= 0.5) ??
+            unpaid[0];
+
+          if (targetInstallment) {
+            this.finance360Service.markCasheaInstallmentPaid(
+              matchedPlan.id,
+              targetInstallment.number,
+              reference || undefined,
+              bcv,
+              vaultId,
+            );
+            this.settledReceiptIds.update((set) => new Set(set).add(record.id));
+            this.toast.success(
+              `Cuota #${targetInstallment.number} de Cashea (${matchedPlan.productName}) conciliada en Finanzas 360.`,
+            );
+            return;
+          }
+        }
+      }
+
+      const tri = computeTriMonetaryAmount(effectiveAmount, currency, bcv, par);
+      const title =
+        aiMeta?.title?.trim() ||
+        `${record.bankDisplayName}: Ref #${reference || 'N/A'} (${record.payerName || 'Pago recibido'})`;
 
       if (pillar === 'expense') {
-        this.finance360Service.addExpense({
-          title,
-          scope,
-          category: this.financeExpenseCategory(),
-          channel,
-          vaultId,
-          triMonetary: tri,
-          date: record.timestamp ? record.timestamp.split('T')[0] : new Date().toISOString().split('T')[0],
-          referenceNumber: record.reference,
-          notes: `Asentado desde Scanner OCR. Beneficiario: ${record.beneficiaryName || 'N/A'}`,
-        });
-        this.toast.success(`💼 Gasto ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
+        this.finance360Service.addExpense(
+          {
+            title,
+            scope,
+            category: this.financeExpenseCategory(),
+            channel,
+            vaultId,
+            triMonetary: tri,
+            date: dateIso,
+            referenceNumber: reference || undefined,
+            notes: `Asentado desde Scanner OCR. Beneficiario: ${record.beneficiaryName || 'N/A'}`,
+          },
+          { allowDuplicateRef: allowDuplicate },
+        );
+        this.toast.success(`Gasto ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
       } else if (pillar === 'income') {
-        this.finance360Service.addIncome({
-          title,
-          scope,
-          category: this.financeIncomeCategory(),
-          channel,
-          vaultId,
-          triMonetary: tri,
-          date: record.timestamp ? record.timestamp.split('T')[0] : new Date().toISOString().split('T')[0],
-          referenceNumber: record.reference,
-          notes: `Asentado desde Scanner OCR. Pagador: ${record.payerName || 'N/A'}`,
-        });
-        this.toast.success(`💼 Ingreso ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
+        this.finance360Service.addIncome(
+          {
+            title,
+            scope,
+            category: this.financeIncomeCategory(),
+            channel,
+            vaultId,
+            triMonetary: tri,
+            date: dateIso,
+            referenceNumber: reference || undefined,
+            notes: `Asentado desde Scanner OCR. Pagador: ${record.payerName || 'N/A'}`,
+          },
+          { allowDuplicateRef: allowDuplicate },
+        );
+        this.toast.success(`Ingreso ($${tri.amount_usd} USD) asentado en Finanzas 360.`);
       } else {
         this.finance360Service.addLiability({
           title,
@@ -564,40 +707,67 @@ export class ReceiptScanner {
           scope,
           category: 'other',
           triMonetary: tri,
-          dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+          dueDate: addCalendarDays(dateIso, 14),
           status: 'pending',
           amountPaid: 0,
           remainingAmount: tri.amount_usd,
-          notes: `Factura/Pasivo pendiente asentado desde Scanner.`,
+          notes: 'Factura/Pasivo pendiente asentado desde Scanner.',
         });
-        this.toast.success(`💼 Pasivo pendiente ($${tri.amount_usd} USD) agendado a 14 días.`);
+        this.toast.success(`Pasivo pendiente ($${tri.amount_usd} USD) agendado a 14 días.`);
       }
+
+      this.settledReceiptIds.update((set) => new Set(set).add(record.id));
     } catch {
       this.toast.error('Error al asentar en el Portafolio 360.');
     }
   }
 
+  private resolveFinance360Currency(
+    record: BankReceiptRecord,
+    aiMeta?: ParsedFinancialDocument,
+  ): CurrencyCode {
+    if (aiMeta?.currency && ['USD', 'VES', 'USDT', 'EUR'].includes(aiMeta.currency)) {
+      return aiMeta.currency;
+    }
+    const raw = record.rawText || '';
+    if (/\bEUR\b|€/i.test(raw)) return 'EUR';
+    if (/\bUSDT\b/i.test(raw)) return 'USDT';
+    if (record.currency === 'USD') return 'USD';
+    return 'VES';
+  }
+
   /**
-   * Generates and prints an internal cash receipt
+   * Generates and prints an internal cash receipt using live BCV rate and configurable business profile.
    */
   generateCashReceipt(record: BankReceiptRecord): void {
-    const bcv = this.cotizaveService.ratesByMarket()['oficial']?.mid ?? 60.0;
-    const amountVes = record.currency === 'VES' ? record.amount : record.amount * bcv;
-    const amountUsd = record.currency === 'USD' ? record.amount : record.amount / bcv;
+    const aiMeta = this.aiMetadataByReceiptId().get(record.id);
+    const bcv = this.finance360Service.currentBcvRate();
+    const currency = this.resolveFinance360Currency(record, aiMeta);
+    const amountVes =
+      currency === 'VES' ? roundMoney(record.amount) : bcv > 0 ? roundMoney(record.amount * bcv) : 0;
+    const amountUsd =
+      currency === 'USD' || currency === 'USDT'
+        ? roundMoney(record.amount)
+        : currency === 'VES'
+          ? bcv > 0
+            ? roundMoney(record.amount / bcv)
+            : 0
+          : roundMoney(record.amount);
+    const bizName = this.finance360Service.pymeProfile().businessName?.trim() || 'Mi Negocio';
 
     this.cashReceiptService.printReceipt({
       receiptNumber: this.cashReceiptService.generateReceiptNumber(),
-      date: new Date().toISOString().split('T')[0],
+      date: todayVetIso(),
       payerName: record.payerName || 'Cliente Particular',
       payerIdDoc: record.payerId || undefined,
-      receiverName: record.beneficiaryName || 'Administración Homel 360',
+      receiverName: record.beneficiaryName || bizName,
       concept: `Pago por ${record.bankDisplayName} - Ref #${record.reference}`,
-      amountUsd: Math.round(amountUsd * 100) / 100,
-      amountVes: Math.round(amountVes * 100) / 100,
+      amountUsd,
+      amountVes,
       bcvRateApplied: bcv,
       paymentMethod: `${record.bankDisplayName} (Ref: ${record.reference})`,
       scope: this.financeScope(),
-      businessName: this.financeScope() === 'business' ? 'Operaciones Pyme' : undefined,
+      businessName: this.financeScope() === 'business' ? bizName : undefined,
     });
   }
 }
