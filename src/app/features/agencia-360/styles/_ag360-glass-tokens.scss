@@ -1,0 +1,196 @@
+/* ============================================================================
+ * AGENCIA DIGITAL 360 — Spatial Liquid Glass Token Partial
+ * Supports all 4 themes (dark, apple-dark, light, neon-pink) with 0 hardcoded hex
+ * Enforces Apple HIG 2-Layer Liquid Glass Discipline
+ * ============================================================================ */
+
+:host {
+  --ag360-bg-0: var(--bg-0);
+  --ag360-bg-1: var(--bg-1);
+  --ag360-panel: var(--panel);
+  --ag360-panel-2: var(--panel-2);
+  --ag360-line: var(--line);
+  --ag360-line-strong: var(--line-strong);
+  --ag360-text: var(--text);
+  --ag360-muted: var(--muted);
+  --ag360-accent: var(--accent);
+  --ag360-accent-2: var(--accent-2);
+  --ag360-gold: var(--gold);
+  --ag360-warn: var(--warn);
+  --ag360-danger: var(--danger);
+  --ag360-radius: var(--radius);
+  --ag360-radius-lg: var(--radius-lg);
+  --ag360-blur: var(--blur-panel);
+  --ag360-shadow: var(--shadow);
+  --ag360-pill-active-bg: var(--text);
+  --ag360-pill-active-fg: var(--bg-0);
+
+  display: block;
+  color: var(--ag360-text);
+}
+
+/* Layer 1: Floating Functional Layer (Command Header, 6-Pill Nav Capsule, Ctrl+K Modal) */
+.ag360-liquid-glass {
+  background: color-mix(in srgb, var(--ag360-panel) 78%, transparent);
+  backdrop-filter: blur(var(--ag360-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--ag360-blur)) saturate(1.4);
+  border: 1px solid var(--ag360-line-strong);
+  box-shadow: var(--ag360-shadow);
+}
+
+/* Layer 2: Opaque Content Cards & Localized Corner KPI Auras */
+.ag360-content-card {
+  background: var(--ag360-panel);
+  border: 1px solid var(--ag360-line);
+  border-radius: var(--ag360-radius);
+  padding: 14px 16px;
+}
+
+.ag360-kpi-aura {
+  background: var(--ag360-panel);
+  border: 1px solid var(--ag360-line);
+  border-radius: var(--ag360-radius);
+  padding: 13px 15px;
+  position: relative;
+  overflow: hidden;
+
+  &.tone-emerald {
+    background:
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--ag360-accent) 22%, transparent), transparent 55%),
+      var(--ag360-panel);
+    border-color: color-mix(in srgb, var(--ag360-accent) 36%, var(--ag360-line));
+  }
+
+  &.tone-cyan {
+    background:
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--ag360-accent-2) 22%, transparent), transparent 55%),
+      var(--ag360-panel);
+    border-color: color-mix(in srgb, var(--ag360-accent-2) 36%, var(--ag360-line));
+  }
+
+  &.tone-gold {
+    background:
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--ag360-gold) 22%, transparent), transparent 55%),
+      var(--ag360-panel);
+    border-color: color-mix(in srgb, var(--ag360-gold) 36%, var(--ag360-line));
+  }
+
+  &.tone-danger {
+    background:
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--ag360-danger) 22%, transparent), transparent 55%),
+      var(--ag360-panel);
+    border-color: color-mix(in srgb, var(--ag360-danger) 40%, var(--ag360-line));
+  }
+}
+
+.ag360-btn-primary {
+  background: var(--ag360-accent);
+  color: var(--ag360-bg-0);
+  border: 1px solid color-mix(in srgb, var(--ag360-accent) 70%, var(--ag360-text));
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ag360-btn-glass {
+  background: color-mix(in srgb, var(--ag360-panel-2) 82%, transparent);
+  color: var(--ag360-text);
+  border: 1px solid var(--ag360-line-strong);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ag360-btn-danger {
+  background: color-mix(in srgb, var(--ag360-danger) 18%, var(--ag360-panel));
+  color: var(--ag360-danger);
+  border: 1px solid color-mix(in srgb, var(--ag360-danger) 45%, var(--ag360-line));
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ag360-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--ag360-line-strong);
+  background: var(--ag360-panel-2);
+  color: var(--ag360-text);
+
+  &.emerald {
+    color: var(--ag360-accent);
+    border-color: color-mix(in srgb, var(--ag360-accent) 42%, var(--ag360-line));
+  }
+
+  &.cyan {
+    color: var(--ag360-accent-2);
+    border-color: color-mix(in srgb, var(--ag360-accent-2) 42%, var(--ag360-line));
+  }
+
+  &.gold {
+    color: var(--ag360-gold);
+    border-color: color-mix(in srgb, var(--ag360-gold) 42%, var(--ag360-line));
+  }
+
+  &.danger {
+    color: var(--ag360-danger);
+    border-color: color-mix(in srgb, var(--ag360-danger) 45%, var(--ag360-line));
+  }
+}
+
+.ag360-hairline-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th {
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ag360-muted);
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--ag360-line);
+  }
+
+  td {
+    padding: 8px;
+    border-bottom: 1px solid var(--ag360-line);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ag360-liquid-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--ag360-panel-2);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .ag360-liquid-glass,
+  .ag360-content-card,
+  .ag360-kpi-aura {
+    border-color: var(--ag360-text);
+  }
+}
+
+@media (max-width: 768px) {
+  .ag360-btn-primary,
+  .ag360-btn-glass,
+  .ag360-btn-danger {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

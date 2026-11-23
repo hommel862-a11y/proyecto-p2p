@@ -107,4 +107,12 @@ export const routes: Routes = [
         (m) => m.ComplianceCockpitComponent,
       ),
   },
+  {
+    path: 'agencia-360',
+    title: 'Agencia Digital 360 — Módulo de Ejecución',
+    loadComponent: () =>
+      import('./features/agencia-360/agencia-360.component').then(
+        (m) => m.Agencia360Component,
+      ),
+  },
 ];
