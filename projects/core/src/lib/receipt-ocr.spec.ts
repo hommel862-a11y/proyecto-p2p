@@ -5,6 +5,7 @@ import {
   parseReceiptAmount,
   extractReference,
   exportReceiptsToCSV,
+  sanitizeCsvCell,
 } from './receipt-ocr';
 
 describe('Receipt OCR Parser Domain Engine', () => {
@@ -41,6 +42,31 @@ describe('Receipt OCR Parser Domain Engine', () => {
       expect(detectBankType('Nequi ¡Enviaste plata!')).toBe('NEQUI');
       expect(detectBankType('Zinli send money receipt')).toBe('ZINLI');
       expect(detectBankType('El Dorado P2P order')).toBe('EL_DORADO');
+    });
+
+    it('detects extended international banks, wallets and C2P with proper precedence', () => {
+      expect(detectBankType('Banesco Panamá Transferencia Internacional')).toBe('BANESCO_PANAMA');
+      expect(detectBankType('Banesco Panama Online Banking')).toBe('BANESCO_PANAMA');
+      expect(detectBankType('Mercantil Panamá Recibo ACH')).toBe('MERCANTIL_PANAMA');
+      expect(detectBankType('Mercantil Panama Transfer')).toBe('MERCANTIL_PANAMA');
+      expect(detectBankType('Pago realizado con Zelle')).toBe('ZELLE');
+      expect(detectBankType('Wally Tech wallet transfer')).toBe('WALLY');
+      expect(detectBankType('Binance Pay Order Completed')).toBe('BINANCE_PAY');
+      expect(detectBankType('Cuota Cashea aprobada')).toBe('CASHEA');
+      expect(detectBankType('Facebank International wire receipt')).toBe('FACEBANK');
+      expect(detectBankType('Pago Móvil C2P confirmado')).toBe('PAGO_MOVIL_C2P');
+      expect(detectBankType('Cobro con Clave de Pago exitoso')).toBe('PAGO_MOVIL_C2P');
+    });
+  });
+
+  describe('extractReference', () => {
+    it('extracts Zelle confirmation codes, Binance Pay Order IDs and Cashea refs', () => {
+      expect(extractReference('Zelle Payment Confirmation # ZEL9847261A')).toBe('ZEL9847261A');
+      expect(extractReference('Confirmación: 9K8L7M6N5')).toBe('9K8L7M6N5');
+      expect(extractReference('Binance Pay Order ID: 284759102837465910')).toBe('284759102837465910');
+      expect(extractReference('ID de orden: BP-94820194')).toBe('BP-94820194');
+      expect(extractReference('Compra aprobada Cashea CSH-2026-849201')).toBe('CSH-2026-849201');
+      expect(extractReference('Transferencia completada 284759102837465910')).toBe('284759102837465910');
     });
   });
 
@@ -169,9 +195,62 @@ describe('Receipt OCR Parser Domain Engine', () => {
 
       expect(result.isDuplicate).toBe(true);
     });
+
+    it('detects USDT, EUR, USD and extended bank receipts accurately', () => {
+      const binancePay = parseBankReceiptText(`
+        Binance Pay
+        Payment Successful
+        Order ID: 284759102837465910
+        Amount: 250.00 USDT
+      `);
+      expect(binancePay.bank).toBe('BINANCE_PAY');
+      expect(binancePay.currency).toBe('USDT');
+      expect(binancePay.amount).toBe(250);
+      expect(binancePay.reference).toBe('284759102837465910');
+
+      const eurTransfer = parseBankReceiptText(`
+        Facebank International
+        Transferencia enviada
+        Referencia: FBK9847261
+        Monto: € 180,50 EUR
+      `);
+      expect(eurTransfer.bank).toBe('FACEBANK');
+      expect(eurTransfer.currency).toBe('EUR');
+      expect(eurTransfer.amount).toBe(180.5);
+
+      const zelleReceipt = parseBankReceiptText(`
+        Zelle Payment
+        Confirmation # ZEL9847261A
+        Amount: $ 320.00
+      `);
+      expect(zelleReceipt.bank).toBe('ZELLE');
+      expect(zelleReceipt.currency).toBe('USD');
+      expect(zelleReceipt.amount).toBe(320);
+      expect(zelleReceipt.reference).toBe('ZEL9847261A');
+
+      const casheaReceipt = parseBankReceiptText(`
+        Cashea Cuota Pagada
+        Comprobante: CSH-8492019
+        Monto: $ 45.00
+      `);
+      expect(casheaReceipt.bank).toBe('CASHEA');
+      expect(casheaReceipt.currency).toBe('USD');
+      expect(casheaReceipt.reference).toBe('CSH-8492019');
+    });
   });
 
-  describe('exportReceiptsToCSV', () => {
+  describe('sanitizeCsvCell & exportReceiptsToCSV', () => {
+    it('neutralizes spreadsheet formula injection prefixes and escapes RFC 4180 quotes', () => {
+      expect(sanitizeCsvCell('=CMD("calc")')).toBe(`"'=CMD(""calc"")"`);
+      expect(sanitizeCsvCell('+SUM(A1:A2)')).toBe(`"'+SUM(A1:A2)"`);
+      expect(sanitizeCsvCell('-500')).toBe(`"'-500"`);
+      expect(sanitizeCsvCell('@HYPERLINK("http://x")')).toBe(`"'@HYPERLINK(""http://x"")"`);
+      expect(sanitizeCsvCell('\t=1+1')).toBe(`"'\t=1+1"`);
+      expect(sanitizeCsvCell('\r=1+1')).toBe(`"'\r=1+1"`);
+      expect(sanitizeCsvCell('Normal "quoted" text')).toBe(`"Normal ""quoted"" text"`);
+      expect(sanitizeCsvCell(null)).toBe(`""`);
+    });
+
     it('generates Excel-compatible UTF-8 BOM CSV string', () => {
       const sample = parseBankReceiptText(`
         BDV Pago Móvil
@@ -185,6 +264,23 @@ describe('Receipt OCR Parser Domain Engine', () => {
       expect(csv).toContain('12345678');
       expect(csv).toContain('1500.00');
       expect(csv).toContain('Banco de Venezuela');
+    });
+
+    it('sanitizes formula-injected fields inside exported CSV rows', () => {
+      const malicious = {
+        ...parseBankReceiptText(`
+          Zelle
+          Confirmation # ZEL9847261A
+          Amount: $ 100.00
+        `),
+        payerName: '=HYPERLINK("https://evil.example","Click")',
+        beneficiaryName: '+1+1',
+      };
+
+      const csv = exportReceiptsToCSV([malicious]);
+      expect(csv).toContain(`"'=HYPERLINK(""https://evil.example"",""Click"")"`);
+      expect(csv).toContain(`"'+1+1"`);
+      expect(csv).not.toContain(`"=HYPERLINK`);
     });
   });
 });

@@ -42,7 +42,7 @@ export interface NameMatchResult {
 export interface FraudEvaluationParams {
   orderId: string;
   orderAmount: number;
-  orderCurrency: 'VES' | 'COP' | 'USD';
+  orderCurrency: 'VES' | 'COP' | 'USD' | 'USDT' | 'EUR';
   advertiserVerifiedName: string;
   advertiserIdDocument?: string;
   receipt:
@@ -235,6 +235,10 @@ function isTrivialSequence(str: string): boolean {
   // All same characters (e.g. 00000000, 99999999)
   if (/^(.)\1+$/.test(str)) return true;
 
+  // Digit core is all same digits (e.g. BP00000000, CSH999999)
+  const digitsOnly = str.replace(/\D/g, '');
+  if (digitsOnly.length >= 6 && /^(.)\1+$/.test(digitsOnly)) return true;
+
   // Simple ascending or descending sequences of digits
   const sequentialPatterns = ['0123456789', '1234567890', '9876543210', '12345678', '87654321'];
   for (const seq of sequentialPatterns) {
@@ -392,6 +396,45 @@ export function validateBankReference(
         reason: isAlnum ? undefined : `Código de operación inválido: "${reference}".`,
       };
     }
+    case 'ZELLE':
+    case 'WALLY':
+    case 'BINANCE_PAY':
+    case 'CASHEA':
+    case 'FACEBANK': {
+      const isValidWalletRef = /^[A-Za-z0-9]{6,24}$/.test(reference) && /\d/.test(reference);
+      return {
+        isValid: isValidWalletRef,
+        bank,
+        reference,
+        expectedFormat: '6 a 24 caracteres alfanuméricos con al menos un dígito',
+        reason: isValidWalletRef
+          ? undefined
+          : `Código de confirmación ${bank} inválido: "${reference}".`,
+      };
+    }
+    case 'BANESCO_PANAMA':
+    case 'MERCANTIL_PANAMA': {
+      const isValidPanamaRef = /^(?:[A-Za-z]{2,4})?\d{6,16}$/.test(reference);
+      return {
+        isValid: isValidPanamaRef,
+        bank,
+        reference,
+        expectedFormat: '6 a 16 dígitos numéricos (prefijo opcional de 2 a 4 letras)',
+        reason: isValidPanamaRef
+          ? undefined
+          : `Referencia bancaria internacional inválida: "${reference}".`,
+      };
+    }
+    case 'PAGO_MOVIL_C2P': {
+      const isDigits = /^\d{6,16}$/.test(reference);
+      return {
+        isValid: isDigits,
+        bank,
+        reference,
+        expectedFormat: '6 a 16 dígitos numéricos (Pago Móvil C2P)',
+        reason: isDigits ? undefined : `Referencia Pago Móvil C2P inválida: "${reference}".`,
+      };
+    }
     default: {
       const hasMinLength = reference.length >= 5 && /\d/.test(reference);
       return {
@@ -496,12 +539,27 @@ export function evaluateFraudRisk(params: FraudEvaluationParams): FraudShieldAud
     );
   }
 
-  // 6. Blacklist Check
-  const normPayerId = receipt.payerId ? normalizeText(receipt.payerId) : '';
-  const isIdBlacklisted = blacklistedIds.some((b) => normPayerId.includes(normalizeText(b)));
-  const isRefBlacklisted = blacklistedReferences.some(
-    (b) => normalizeText(b) === normalizeText(reference),
-  );
+  // 6. Blacklist Check (normalized for case, dashes, spaces and optional nationality prefix)
+  const normalizeIdentifier = (value: string): string => normalizeText(value).replace(/\s+/g, '');
+  const normPayerId = receipt.payerId ? normalizeIdentifier(receipt.payerId) : '';
+  const payerIdDigits = normPayerId.replace(/\D/g, '');
+  const isIdBlacklisted =
+    normPayerId.length > 0 &&
+    blacklistedIds.some((b) => {
+      const normB = normalizeIdentifier(b);
+      if (!normB) return false;
+      if (normPayerId === normB) return true;
+      const bDigits = normB.replace(/\D/g, '');
+      return bDigits.length >= 6 && payerIdDigits.length >= 6 && payerIdDigits === bDigits;
+    });
+
+  const normRef = reference ? normalizeIdentifier(reference) : '';
+  const isRefBlacklisted =
+    normRef.length > 0 &&
+    blacklistedReferences.some((b) => {
+      const normB = normalizeIdentifier(b);
+      return normB.length > 0 && normB === normRef;
+    });
 
   if (isIdBlacklisted || isRefBlacklisted) {
     flags.push('BLACKLISTED_ENTITY');

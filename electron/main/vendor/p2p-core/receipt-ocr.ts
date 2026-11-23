@@ -18,13 +18,21 @@ export type BankType =
   | 'NEQUI'
   | 'ZINLI'
   | 'EL_DORADO'
+  | 'ZELLE'
+  | 'WALLY'
+  | 'BINANCE_PAY'
+  | 'CASHEA'
+  | 'FACEBANK'
+  | 'BANESCO_PANAMA'
+  | 'MERCANTIL_PANAMA'
+  | 'PAGO_MOVIL_C2P'
   | 'UNKNOWN';
 
 export interface BankReceiptRecord {
   id: string;
   reference: string;
   amount: number;
-  currency: 'VES' | 'COP' | 'USD';
+  currency: 'VES' | 'COP' | 'USD' | 'USDT' | 'EUR';
   bank: BankType;
   bankDisplayName: string;
   payerName?: string;
@@ -52,6 +60,14 @@ const BANK_NAMES: Record<BankType, string> = {
   NEQUI: 'Nequi Colombia',
   ZINLI: 'Zinli Wallet',
   EL_DORADO: 'El Dorado P2P',
+  ZELLE: 'Zelle',
+  WALLY: 'Wally Tech',
+  BINANCE_PAY: 'Binance Pay',
+  CASHEA: 'Cashea',
+  FACEBANK: 'Facebank International',
+  BANESCO_PANAMA: 'Banesco Panamá',
+  MERCANTIL_PANAMA: 'Mercantil Panamá',
+  PAGO_MOVIL_C2P: 'Pago Móvil C2P',
   UNKNOWN: 'Comprobante Desconocido',
 };
 
@@ -99,6 +115,15 @@ export function parseReceiptAmount(str: string): number {
  */
 export function detectBankType(text: string): BankType {
   const lower = text.toLowerCase();
+  // Specific regional/international variants must precede generic domestic bank names
+  if (lower.includes('banesco panam')) return 'BANESCO_PANAMA';
+  if (lower.includes('mercantil panam')) return 'MERCANTIL_PANAMA';
+  if (lower.includes('cashea')) return 'CASHEA';
+  if (lower.includes('binance pay') || lower.includes('binancepay')) return 'BINANCE_PAY';
+  if (lower.includes('wally')) return 'WALLY';
+  if (lower.includes('facebank')) return 'FACEBANK';
+  if (lower.includes('zelle')) return 'ZELLE';
+  if (/\bc2p\b/.test(lower) || lower.includes('clave de pago')) return 'PAGO_MOVIL_C2P';
   if (lower.includes('banesco')) return 'BANESCO';
   if (
     lower.includes('bdv') ||
@@ -130,10 +155,15 @@ export function detectBankType(text: string): BankType {
  */
 export function extractReference(text: string): string {
   const patterns = [
+    /(?:order\s*id|id\s*de\s*orden)[:\s#]+([A-Za-z0-9-]{6,24})/i,
+    /(?:confirmation\s*(?:number|code|id)?|c[oó]digo\s*de\s*confirmaci[oó]n|confirmaci[oó]n)[:\s#]+([A-Za-z0-9-]{6,24})/i,
     /(?:referencia|ref\.?|comprobante|nro\.?\s*de\s*referencia)[:\s#]+([A-Za-z0-9-]{5,24})/i,
     /(?:id\s*de\s*transacci[oó]n|transaction\s*id|id)[:\s#]+([A-Za-z0-9-]{5,24})/i,
     /(?:nro\.?\s*de\s*operaci[oó]n|nro\.?\s*operaci[oó]n)[:\s#]+([0-9]{6,24})/i,
+    /\b(CSH-[A-Za-z0-9-]{4,20})\b/i, // Cashea reference e.g. CSH-2026-849201
+    /\b(BP-[A-Za-z0-9-]{4,20})\b/i, // Binance Pay reference e.g. BP-94820194
     /\b(M[0-9]{6,12})\b/i, // Nequi style e.g. M9482014
+    /\b([0-9]{16,20})\b/, // Binance Pay raw 16-20 digit Order ID
     /\b([0-9]{8,14})\b/, // Raw 8-14 digit numbers
   ];
 
@@ -189,20 +219,37 @@ export function parseBankReceiptText(
   const reference = extractReference(rawText);
 
   // Currency detection
-  let currency: 'VES' | 'COP' | 'USD';
+  let currency: 'VES' | 'COP' | 'USD' | 'USDT' | 'EUR';
   const lower = rawText.toLowerCase();
   if (
+    bank === 'BINANCE_PAY' ||
+    lower.includes('usdt') ||
+    lower.includes('tether') ||
+    lower.includes('binance pay')
+  ) {
+    currency = 'USDT';
+  } else if (/\beur\b/.test(lower) || lower.includes('€') || /\beuros?\b/.test(lower)) {
+    currency = 'EUR';
+  } else if (
     bank === 'BANCOLOMBIA' ||
     bank === 'NEQUI' ||
-    lower.includes('cop') ||
+    /\bcop\b/.test(lower) ||
     lower.includes('pesos')
   ) {
     currency = 'COP';
   } else if (
+    bank === 'ZELLE' ||
+    bank === 'WALLY' ||
+    bank === 'FACEBANK' ||
+    bank === 'BANESCO_PANAMA' ||
+    bank === 'MERCANTIL_PANAMA' ||
+    bank === 'CASHEA' ||
     bank === 'ZINLI' ||
-    lower.includes('usd') ||
+    lower.includes('panam') ||
+    /\busd\b/.test(lower) ||
     lower.includes('dólares') ||
-    lower.includes('dolares')
+    lower.includes('dolares') ||
+    lower.includes('$')
   ) {
     currency = 'USD';
   } else {
@@ -211,10 +258,11 @@ export function parseBankReceiptText(
 
   // Amount extraction
   let amount = 0;
-  // Match lines with Monto, Valor, Importe, Bs., $ or Cuanto
+  // Match lines with Monto, Valor, Importe, Amount, Bs., €, $, USDT, EUR or Cuanto
   const amountPatterns = [
-    /(?:monto|valor|importe|total|cu[aá]nto)[:\s$Bs]*([0-9.,]+)/i,
-    /(?:bs\.?|ves)\s*([0-9.,]+)/i,
+    /(?:monto|valor|importe|total|cu[aá]nto|amount)[:\s$€Bs]*([0-9.,]+)/i,
+    /(?:bs\.?|ves|usdt|eur|usd|€)\s*([0-9.,]+)/i,
+    /([0-9.,]+)\s*(?:usdt|eur|usd|€)/i,
     /\$\s*([0-9.,]+)/i,
     /([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2}))\s*(?:bs|ves)?/i,
   ];
@@ -387,6 +435,17 @@ export function parseBankReceiptText(
 }
 
 /**
+ * Sanitizes a CSV cell value against spreadsheet formula injection (=, +, -, @, \t, \r)
+ * and applies RFC 4180 quoting.
+ */
+export function sanitizeCsvCell(val: unknown): string {
+  const raw = val === null || val === undefined ? '' : String(val);
+  const neutralized = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  const escaped = neutralized.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
+/**
  * Exports a collection of parsed bank receipts to an Excel-compatible CSV string (BOM UTF-8).
  */
 export function exportReceiptsToCSV(receipts: BankReceiptRecord[]): string {
@@ -406,21 +465,23 @@ export function exportReceiptsToCSV(receipts: BankReceiptRecord[]): string {
     'Alerta Triangulación',
   ];
 
-  const rows = receipts.map((r) => [
-    `"${r.id}"`,
-    `"${r.bankDisplayName}"`,
-    `"${r.reference}"`,
-    r.amount.toFixed(2),
-    `"${r.currency}"`,
-    `"${r.payerName || ''}"`,
-    `"${r.payerId || ''}"`,
-    `"${r.beneficiaryName || ''}"`,
-    `"${r.beneficiaryPhone || ''}"`,
-    `"${r.timestamp || ''}"`,
-    `${(r.confidenceScore * 100).toFixed(0)}%`,
-    r.isDuplicate ? '"SI"' : '"NO"',
-    r.antiTriangulationAlert ? '"ALERTA"' : '"OK"',
-  ]);
+  const rows = receipts.map((r) =>
+    [
+      r.id,
+      r.bankDisplayName,
+      r.reference,
+      r.amount.toFixed(2),
+      r.currency,
+      r.payerName || '',
+      r.payerId || '',
+      r.beneficiaryName || '',
+      r.beneficiaryPhone || '',
+      r.timestamp || '',
+      `${(r.confidenceScore * 100).toFixed(0)}%`,
+      r.isDuplicate ? 'SI' : 'NO',
+      r.antiTriangulationAlert ? 'ALERTA' : 'OK',
+    ].map(sanitizeCsvCell),
+  );
 
   const csvContent = [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\r\n');
   return `\uFEFF${csvContent}`; // Add UTF-8 BOM so Excel opens with proper accents and signs

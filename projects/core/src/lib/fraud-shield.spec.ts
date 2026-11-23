@@ -71,6 +71,28 @@ describe('FraudShield: Escudo Forense Anti-Fraude & Detección de Estafa Triangu
       const res = validateBankReference('NEQUI', 'M9482014');
       expect(res.isValid).toBe(true);
     });
+
+    it('debe validar referencias de los nuevos bancos y billeteras (Zelle, Wally, Binance Pay, Cashea, Facebank, Panamá, C2P)', () => {
+      expect(validateBankReference('ZELLE', 'ZEL9847261A').isValid).toBe(true);
+      expect(validateBankReference('WALLY', 'WLY-4829104').isValid).toBe(true);
+      expect(validateBankReference('BINANCE_PAY', '284759102837465910').isValid).toBe(true);
+      expect(validateBankReference('BINANCE_PAY', 'BP-94820194').isValid).toBe(true);
+      expect(validateBankReference('CASHEA', 'CSH-8492019').isValid).toBe(true);
+      expect(validateBankReference('FACEBANK', 'FBK9847261').isValid).toBe(true);
+      expect(validateBankReference('BANESCO_PANAMA', '98472610').isValid).toBe(true);
+      expect(validateBankReference('MERCANTIL_PANAMA', 'ACH98472610').isValid).toBe(true);
+      expect(validateBankReference('PAGO_MOVIL_C2P', '0098472610').isValid).toBe(true);
+    });
+
+    it('debe rechazar referencias vacías, triviales o malformadas en los nuevos bancos y billeteras', () => {
+      expect(validateBankReference('ZELLE', '').isValid).toBe(false);
+      expect(validateBankReference('ZELLE', '12345678').isValid).toBe(false);
+      expect(validateBankReference('BINANCE_PAY', 'BP-00000000').isValid).toBe(false);
+      expect(validateBankReference('CASHEA', 'CSH-12345678').isValid).toBe(false);
+      expect(validateBankReference('WALLY', 'ABC').isValid).toBe(false);
+      expect(validateBankReference('PAGO_MOVIL_C2P', 'ABC98472').isValid).toBe(false);
+      expect(validateBankReference('FACEBANK', 'ONLYLETTERS').isValid).toBe(false);
+    });
   });
 
   describe('evaluateFraudRisk (Scoring Forense y Detección de Estafa)', () => {
@@ -159,6 +181,80 @@ describe('FraudShield: Escudo Forense Anti-Fraude & Detección de Estafa Triangu
       expect(audit.riskLevel).toBe('CRITICAL');
       expect(audit.flags).toContain('BLACKLISTED_ENTITY');
       expect(audit.recommendation).toBe('LOCK_AND_DISPUTE');
+    });
+
+    it('debe normalizar mayúsculas, guiones y espacios al cruzar blacklistedIds y blacklistedReferences', () => {
+      const auditLowerNoDash = evaluateFraudRisk({
+        orderId: 'ORD-1004B',
+        orderAmount: 5400.0,
+        orderCurrency: 'VES',
+        advertiserVerifiedName: 'Carlos Perez',
+        receipt: { ...validReceipt, payerId: 'V-19283746' },
+        blacklistedIds: ['v19283746'],
+      });
+      expect(auditLowerNoDash.flags).toContain('BLACKLISTED_ENTITY');
+      expect(auditLowerNoDash.riskLevel).toBe('CRITICAL');
+
+      const auditDigitsOnly = evaluateFraudRisk({
+        orderId: 'ORD-1004C',
+        orderAmount: 5400.0,
+        orderCurrency: 'VES',
+        advertiserVerifiedName: 'Carlos Perez',
+        receipt: { ...validReceipt, payerId: 'V-19283746' },
+        blacklistedIds: ['19283746'],
+      });
+      expect(auditDigitsOnly.flags).toContain('BLACKLISTED_ENTITY');
+
+      const auditBlacklistedRef = evaluateFraudRisk({
+        orderId: 'ORD-1004D',
+        orderAmount: 150.0,
+        orderCurrency: 'USDT',
+        advertiserVerifiedName: 'Carlos Perez',
+        receipt: {
+          ...validReceipt,
+          bank: 'BINANCE_PAY',
+          currency: 'USDT',
+          amount: 150.0,
+          reference: 'BP-94820194',
+        },
+        blacklistedReferences: ['bp 94820194'],
+      });
+      expect(auditBlacklistedRef.flags).toContain('BLACKLISTED_ENTITY');
+      expect(auditBlacklistedRef.riskLevel).toBe('CRITICAL');
+    });
+
+    it('debe soportar divisas extendidas USDT y EUR en evaluateFraudRisk', () => {
+      const usdtAudit = evaluateFraudRisk({
+        orderId: 'ORD-USDT-1',
+        orderAmount: 250.0,
+        orderCurrency: 'USDT',
+        advertiserVerifiedName: 'Carlos Perez',
+        receipt: {
+          ...validReceipt,
+          bank: 'BINANCE_PAY',
+          currency: 'USDT',
+          amount: 250.0,
+          reference: '284759102837465910',
+        },
+      });
+      expect(usdtAudit.riskLevel).toBe('SAFE');
+      expect(usdtAudit.flags).toEqual([]);
+
+      const eurAudit = evaluateFraudRisk({
+        orderId: 'ORD-EUR-1',
+        orderAmount: 100.0,
+        orderCurrency: 'EUR',
+        advertiserVerifiedName: 'Carlos Perez',
+        receipt: {
+          ...validReceipt,
+          bank: 'FACEBANK',
+          currency: 'EUR',
+          amount: 100.0,
+          reference: 'FBK9847261',
+        },
+      });
+      expect(eurAudit.riskLevel).toBe('SAFE');
+      expect(eurAudit.flags).toEqual([]);
     });
 
     it('debe detectar reutilización rápida de referencia bancaria (RAPID_REPEAT_REFERENCE)', () => {
