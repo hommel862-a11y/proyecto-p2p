@@ -79,15 +79,16 @@ test.describe('Comprobantes & OCR Forense — 4 Themes, Split-View, Ctrl+K & Mob
       .first()
       .getByRole('button', { name: 'Inspeccionar' })
       .click();
-    await expect(page.locator('app-ocr-forensic-inspector')).toBeVisible();
+    const inspectorDialog = page.locator('app-ocr-forensic-inspector [role="dialog"]');
+    await expect(inspectorDialog).toBeVisible();
 
-    const refInput = page.locator('app-ocr-forensic-inspector input[name="reference"]');
+    const refInput = inspectorDialog.locator('input[name="reference"]');
     await refInput.fill('99112233');
     await expect(page.locator('.ocr-table tbody tr').first()).toContainText('99112233');
 
     // Close inspector on Escape
     await page.keyboard.press('Escape');
-    await expect(page.locator('app-ocr-forensic-inspector')).toHaveCount(0);
+    await expect(inspectorDialog).toHaveCount(0);
 
     // 3. Scoped Ctrl+K overrides global palette
     await page.keyboard.press('Control+k');
