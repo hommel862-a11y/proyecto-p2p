@@ -1,0 +1,338 @@
+// =============================================================================
+// COMPROBANTES & OCR FORENSE — SPATIAL LIQUID GLASS TOKENS (4-THEME COMPATIBLE)
+// Apple HIG Liquid Glass 2-Layer Discipline:
+//   1) Floating Functional Layer -> .ocr-liquid-glass (command bars, popovers)
+//   2) Content Layer -> .ocr-content-card & .ocr-kpi-aura (opaque elevated var(--panel))
+//   3) Accessible Fallbacks -> prefers-reduced-transparency, prefers-contrast, prefers-reduced-motion
+// =============================================================================
+
+:host {
+  --ocr-glass-bg: color-mix(in srgb, var(--panel) 78%, transparent);
+  --ocr-glass-bg-strong: color-mix(in srgb, var(--panel-2) 88%, transparent);
+  --ocr-glass-border: var(--line-strong);
+  --ocr-hairline: var(--line);
+  --ocr-surface: var(--panel);
+  --ocr-surface-2: var(--panel-2);
+  --ocr-input-bg: var(--input-bg);
+  --ocr-row-hover: var(--row-hover);
+  --ocr-text: var(--text);
+  --ocr-muted: var(--muted);
+  --ocr-pill-active-bg: var(--text);
+  --ocr-pill-active-fg: var(--bg-0);
+  --ocr-accent: var(--accent);
+  --ocr-accent-2: var(--accent-2);
+  --ocr-gold: var(--gold);
+  --ocr-warn: var(--warn);
+  --ocr-danger: var(--danger);
+  --ocr-radius: var(--radius);
+  --ocr-radius-lg: var(--radius-lg);
+  --ocr-blur: var(--blur-panel);
+  --ocr-shadow: var(--shadow);
+  --ocr-mode-accent: var(--accent-2);
+  --ocr-mode-glow: color-mix(in srgb, var(--ocr-mode-accent) 22%, transparent);
+}
+
+:host(.mode-p2p) {
+  --ocr-mode-accent: var(--accent-2);
+}
+
+:host(.mode-finance360) {
+  --ocr-mode-accent: var(--gold);
+}
+
+// 1) Floating Functional Layer (command bars, popovers, routing bars)
+.ocr-liquid-glass {
+  background: var(--ocr-glass-bg);
+  border: 1px solid var(--ocr-glass-border);
+  backdrop-filter: blur(var(--ocr-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--ocr-blur)) saturate(1.4);
+  box-shadow:
+    var(--ocr-shadow),
+    inset 0 1px 0 color-mix(in srgb, var(--ocr-text) 10%, transparent);
+}
+
+// 2) Content Layer Card (opaque elevated surface — never glass-on-glass)
+.ocr-content-card {
+  background: var(--ocr-surface);
+  border: 1px solid var(--ocr-hairline);
+  border-radius: var(--ocr-radius-lg);
+  box-shadow: 0 10px 26px -14px color-mix(in srgb, var(--bg-0) 45%, transparent);
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &:hover {
+    border-color: var(--ocr-glass-border);
+  }
+}
+
+// Localized Corner Radial Aura for Hero KPI Cards
+.ocr-kpi-aura {
+  position: relative;
+  overflow: hidden;
+  background: var(--ocr-surface);
+  border: 1px solid var(--ocr-hairline);
+  border-radius: var(--ocr-radius-lg);
+  padding: 16px 18px;
+  transition: border-color 180ms ease, transform 180ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.92;
+    background: radial-gradient(
+      circle at 88% 12%,
+      var(--ocr-kpi-glow, var(--ocr-mode-glow)),
+      transparent 62%
+    );
+  }
+
+  &.tone-cyan {
+    --ocr-kpi-glow: color-mix(in srgb, var(--ocr-accent-2) 26%, transparent);
+  }
+
+  &.tone-gold {
+    --ocr-kpi-glow: color-mix(in srgb, var(--ocr-gold) 24%, transparent);
+  }
+
+  &.tone-emerald {
+    --ocr-kpi-glow: color-mix(in srgb, var(--ocr-accent) 26%, transparent);
+  }
+
+  &.tone-warn {
+    --ocr-kpi-glow: color-mix(in srgb, var(--ocr-warn) 24%, transparent);
+  }
+
+  &.tone-danger {
+    --ocr-kpi-glow: color-mix(in srgb, var(--ocr-danger) 26%, transparent);
+  }
+}
+
+.ocr-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// Button Hierarchy (1 prominent CTA per view, clean secondary/ghost/danger/icon controls)
+.ocr-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--ocr-accent-2);
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 150ms ease, transform 120ms ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ocr-mode-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.ocr-btn-glass {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--ocr-glass-border);
+  background: color-mix(in srgb, var(--ocr-surface-2) 72%, transparent);
+  color: var(--ocr-text);
+  font-weight: 500;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease, border-color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--ocr-row-hover);
+    border-color: var(--ocr-mode-accent);
+  }
+
+  &.is-active {
+    background: var(--ocr-pill-active-bg);
+    color: var(--ocr-pill-active-fg);
+    border-color: transparent;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ocr-mode-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.ocr-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--ocr-hairline);
+  background: color-mix(in srgb, var(--ocr-surface-2) 70%, transparent);
+  color: var(--ocr-text);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background: var(--ocr-row-hover);
+    border-color: var(--ocr-glass-border);
+  }
+
+  &.is-active {
+    background: var(--ocr-pill-active-bg);
+    color: var(--ocr-pill-active-fg);
+    border-color: transparent;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ocr-mode-accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.ocr-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+
+  &.tone-emerald {
+    background: color-mix(in srgb, var(--ocr-accent) 16%, transparent);
+    color: var(--ocr-accent);
+    border-color: color-mix(in srgb, var(--ocr-accent) 32%, transparent);
+  }
+
+  &.tone-cyan {
+    background: color-mix(in srgb, var(--ocr-accent-2) 16%, transparent);
+    color: var(--ocr-accent-2);
+    border-color: color-mix(in srgb, var(--ocr-accent-2) 32%, transparent);
+  }
+
+  &.tone-gold {
+    background: color-mix(in srgb, var(--ocr-gold) 16%, transparent);
+    color: var(--ocr-gold);
+    border-color: color-mix(in srgb, var(--ocr-gold) 32%, transparent);
+  }
+
+  &.tone-warn {
+    background: color-mix(in srgb, var(--ocr-warn) 16%, transparent);
+    color: var(--ocr-warn);
+    border-color: color-mix(in srgb, var(--ocr-warn) 32%, transparent);
+  }
+
+  &.tone-danger {
+    background: color-mix(in srgb, var(--ocr-danger) 16%, transparent);
+    color: var(--ocr-danger);
+    border-color: color-mix(in srgb, var(--ocr-danger) 32%, transparent);
+  }
+}
+
+.ocr-input,
+.ocr-select {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--ocr-hairline);
+  background: var(--ocr-input-bg);
+  color: var(--ocr-text);
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 150ms ease;
+
+  &:focus {
+    border-color: var(--ocr-mode-accent);
+  }
+}
+
+// Accessibility Fallbacks (Apple HIG Liquid Glass compliance)
+@media (prefers-reduced-transparency: reduce) {
+  .ocr-liquid-glass {
+    background: var(--ocr-surface-2) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .ocr-liquid-glass,
+  .ocr-content-card,
+  .ocr-kpi-aura {
+    border-color: var(--ocr-text) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ocr-content-card,
+  .ocr-kpi-aura,
+  .ocr-btn-primary,
+  .ocr-btn-glass,
+  .ocr-icon-btn {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .ocr-btn-primary,
+  .ocr-btn-glass {
+    min-height: 44px;
+  }
+
+  .ocr-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

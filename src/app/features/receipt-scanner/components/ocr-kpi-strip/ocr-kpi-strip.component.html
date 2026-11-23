@@ -1,0 +1,114 @@
+<section class="ocr-kpi-grid" aria-label="Indicadores clave de auditoría OCR">
+  <!-- KPI 1: Comprobantes Auditados -->
+  <article class="ocr-kpi-aura tone-cyan" data-testid="ocr-kpi-audited">
+    <div class="kpi-head">
+      <span class="kpi-label">Comprobantes Auditados</span>
+      <span class="kpi-icon" aria-hidden="true">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="8" y1="13" x2="16" y2="13" />
+          <line x1="8" y1="17" x2="13" y2="17" />
+        </svg>
+      </span>
+    </div>
+    <p class="kpi-value ocr-tabular">{{ summary().totalAudited }}</p>
+    <p class="kpi-sub ocr-tabular">
+      {{ summary().p2pCount }} P2P · {{ summary().finance360Count }} Finanzas 360
+    </p>
+  </article>
+
+  <!-- KPI 2: Volumen Verificado -->
+  <article class="ocr-kpi-aura tone-gold" data-testid="ocr-kpi-volume">
+    <div class="kpi-head">
+      <span class="kpi-label">Volumen Verificado</span>
+      <span class="kpi-icon" aria-hidden="true">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M14.5 9a2.5 2.5 0 0 0-5 0c0 2 5 1.5 5 4a2.5 2.5 0 0 1-5 0" />
+          <line x1="12" y1="5.5" x2="12" y2="18.5" />
+        </svg>
+      </span>
+    </div>
+    <p class="kpi-value ocr-tabular">${{ formattedVerifiedUsd() }} USD</p>
+    @if (hasLiveBcvRate()) {
+      <p class="kpi-sub ocr-tabular">Bs. {{ formattedVerifiedVes() }} BCV</p>
+    } @else {
+      <p class="kpi-sub is-offline">Tasa BCV offline</p>
+    }
+  </article>
+
+  <!-- KPI 3: Escudo Anti-Fraude -->
+  <article class="ocr-kpi-aura tone-emerald" data-testid="ocr-kpi-shield">
+    <div class="kpi-head">
+      <span class="kpi-label">Escudo Anti-Fraude</span>
+      <span class="kpi-icon" aria-hidden="true">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      </span>
+    </div>
+    <p class="kpi-value ocr-tabular">{{ clampedSafeRatePct() }}% SAFE</p>
+    <p class="kpi-sub ocr-tabular">
+      {{ summary().safeCount }} OK · {{ summary().warningCount }} Advertencias ·
+      {{ summary().criticalCount }} Bloqueados
+    </p>
+  </article>
+
+  <!-- KPI 4: Pendientes de Asentar -->
+  <article class="ocr-kpi-aura tone-warn" data-testid="ocr-kpi-pending">
+    <div class="kpi-head">
+      <span class="kpi-label">Pendientes de Asentar</span>
+      <span class="kpi-icon" aria-hidden="true">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <polyline points="12 7 12 12 15 15" />
+        </svg>
+      </span>
+    </div>
+    <p class="kpi-value ocr-tabular">{{ summary().pendingCount }}</p>
+    <p class="kpi-sub ocr-tabular">
+      ${{ formattedPendingUsd() }} USD por conciliar
+      @if (summary().casheaPendingCount > 0) {
+        <span> · {{ summary().casheaPendingCount }} Cashea</span>
+      }
+    </p>
+  </article>
+</section>

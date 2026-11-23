@@ -1,0 +1,322 @@
+<header class="ocr-header-shell">
+  <div class="ocr-liquid-glass command-bar">
+    <!-- Left: Monochrome Scan Emblem + Title + Segmented Mode Switch -->
+    <div class="header-leading">
+      <div class="brand-lockup">
+        <span class="brand-emblem" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <line x1="7" y1="12" x2="17" y2="12" />
+          </svg>
+        </span>
+        <div class="brand-copy">
+          <span class="brand-title">Comprobantes &amp; OCR Forense</span>
+          @if (blacklistedCount() > 0) {
+            <span class="ocr-status-pill tone-emerald brand-shield-chip ocr-tabular">
+              Escudo: {{ blacklistedCount() }}
+            </span>
+          }
+        </div>
+      </div>
+
+      <div class="mode-capsule" role="tablist" aria-label="Destino contable del comprobante">
+        @for (mode of destinationOptions; track mode.id) {
+          <button
+            type="button"
+            role="tab"
+            class="mode-pill"
+            [attr.data-testid]="'ocr-mode-' + mode.id"
+            [attr.aria-selected]="destinationMode() === mode.id"
+            [attr.title]="mode.hint"
+            [class.is-active]="destinationMode() === mode.id"
+            (click)="selectMode(mode.id)"
+          >
+            <span class="mode-dot" aria-hidden="true"></span>
+            <span>{{ mode.label }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Center: Search Command Palette Pill -->
+    <div class="header-center">
+      <button
+        type="button"
+        class="search-trigger-pill"
+        data-testid="ocr-search-trigger"
+        aria-label="Buscar referencia, pagador o banco con paleta de comandos"
+        (click)="openPalette.emit()"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <span class="search-placeholder">Buscar referencia, pagador, banco...</span>
+        <kbd class="kbd-chip">⌘K</kbd>
+      </button>
+    </div>
+
+    <!-- Right: Single Primary CTA + Circular Overflow Menu -->
+    <div class="header-trailing">
+      <button
+        type="button"
+        class="ocr-btn-primary capture-cta"
+        data-testid="ocr-primary-capture"
+        [disabled]="isProcessing()"
+        (click)="triggerCapture.emit()"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <span>+ Capturar / Pegar</span>
+      </button>
+
+      <div class="ocr-popover-anchor">
+        <button
+          type="button"
+          class="ocr-icon-btn"
+          data-testid="ocr-overflow-trigger"
+          aria-label="Más opciones de sesión OCR"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="overflowOpen()"
+          [class.is-active]="overflowOpen()"
+          (click)="toggleOverflow()"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
+          </svg>
+        </button>
+
+        @if (overflowOpen()) {
+          <div
+            class="ocr-liquid-glass glass-popover"
+            role="menu"
+            aria-label="Acciones secundarias OCR"
+          >
+            @if (hasScreenPipe()) {
+              <button
+                type="button"
+                role="menuitem"
+                class="popover-item"
+                data-testid="ocr-overflow-screen_pipe"
+                [disabled]="isProcessing()"
+                (click)="emitOverflowAction('screen_pipe')"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <path d="M8 21h8" />
+                  <path d="M12 17v4" />
+                </svg>
+                <span>Screen Pipe</span>
+              </button>
+            }
+
+            <button
+              type="button"
+              role="menuitem"
+              class="popover-item"
+              data-testid="ocr-overflow-export_csv"
+              [disabled]="receiptsCount() === 0"
+              (click)="emitOverflowAction('export_csv')"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Exportar CSV Seguro</span>
+            </button>
+
+            <div class="popover-divider" role="separator"></div>
+
+            <button
+              type="button"
+              role="menuitem"
+              class="popover-item is-danger"
+              data-testid="ocr-overflow-clear_session"
+              [disabled]="receiptsCount() === 0"
+              (click)="emitOverflowAction('clear_session')"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+              </svg>
+              <span>Limpiar sesión</span>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsible Finance 360 Routing Row (ONLY in finance360 mode) -->
+  @if (destinationMode() === 'finance360') {
+    <div
+      class="ocr-liquid-glass routing-bar"
+      data-testid="ocr-f360-routing-bar"
+      role="region"
+      aria-label="Enrutamiento contable para Finanzas 360"
+    >
+      <div class="routing-field">
+        <label class="routing-label" for="ocr-f360-scope">Ámbito</label>
+        <select
+          id="ocr-f360-scope"
+          class="ocr-select"
+          [value]="routing().scope"
+          (change)="onScopeChange($event)"
+        >
+          @for (opt of scopeOptions; track opt.value) {
+            <option [value]="opt.value" [selected]="routing().scope === opt.value">
+              {{ opt.label }}
+            </option>
+          }
+        </select>
+      </div>
+
+      <div class="routing-field">
+        <label class="routing-label" for="ocr-f360-pillar">Pilar</label>
+        <select
+          id="ocr-f360-pillar"
+          class="ocr-select"
+          [value]="routing().pillar"
+          (change)="onPillarChange($event)"
+        >
+          @for (opt of pillarOptions; track opt.value) {
+            <option [value]="opt.value" [selected]="routing().pillar === opt.value">
+              {{ opt.label }}
+            </option>
+          }
+        </select>
+      </div>
+
+      @if (routing().pillar === 'expense') {
+        <div class="routing-field">
+          <label class="routing-label" for="ocr-f360-expense-category">Categoría</label>
+          <select
+            id="ocr-f360-expense-category"
+            class="ocr-select"
+            [value]="routing().expenseCategory"
+            (change)="onExpenseCategoryChange($event)"
+          >
+            @for (opt of expenseCategoryOptions; track opt.value) {
+              <option [value]="opt.value" [selected]="routing().expenseCategory === opt.value">
+                {{ opt.label }}
+              </option>
+            }
+          </select>
+        </div>
+      } @else if (routing().pillar === 'income') {
+        <div class="routing-field">
+          <label class="routing-label" for="finance-income-category">Categoría</label>
+          <select
+            id="finance-income-category"
+            aria-label="Categoría de ingreso"
+            class="ocr-select"
+            [value]="routing().incomeCategory"
+            (change)="onIncomeCategoryChange($event)"
+          >
+            @for (opt of incomeCategoryOptions; track opt.value) {
+              <option [value]="opt.value" [selected]="routing().incomeCategory === opt.value">
+                {{ opt.label }}
+              </option>
+            }
+          </select>
+        </div>
+      }
+
+      <div class="routing-field">
+        <label class="routing-label" for="ocr-f360-vault">Bóveda</label>
+        <select
+          id="ocr-f360-vault"
+          class="ocr-select"
+          [value]="routing().vaultId"
+          (change)="onVaultChange($event)"
+        >
+          <option value="" [selected]="routing().vaultId === ''">(Sin debitar cuenta)</option>
+          @for (vault of vaults(); track vault.id) {
+            <option [value]="vault.id" [selected]="routing().vaultId === vault.id">
+              {{ vault.name }} ({{ vault.currency }})
+            </option>
+          }
+        </select>
+      </div>
+    </div>
+  }
+</header>

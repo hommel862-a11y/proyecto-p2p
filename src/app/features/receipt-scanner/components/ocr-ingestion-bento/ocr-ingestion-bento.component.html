@@ -1,0 +1,229 @@
+<section class="ocr-ingestion-grid" aria-label="Ingestión de comprobantes y cruce de identidad">
+  <!-- Column 1: 01 · Lote (Multi-file dropzone + Screen Pipe + Batch progress) -->
+  <article class="ocr-content-card bento-card">
+    <div class="bento-head">
+      <div class="bento-title-group">
+        <span class="step-chip">01 · Lote</span>
+        <h3 class="bento-title">Captura / Lote OCR</h3>
+      </div>
+      <div class="bento-actions">
+        @if (hasScreenPipe()) {
+          <button
+            type="button"
+            class="ocr-btn-glass screen-pipe-btn"
+            data-testid="ocr-bento-screen-pipe"
+            [disabled]="batchProgress().active"
+            (click)="screenPipeRequested.emit()"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8" />
+              <path d="M12 17v4" />
+            </svg>
+            <span>Screen Pipe</span>
+          </button>
+        }
+        <span class="ocr-status-pill tone-cyan kbd-pill">Ctrl+V</span>
+      </div>
+    </div>
+
+    <input
+      #fileInput
+      id="ocr-batch-file-input"
+      type="file"
+      accept="image/*"
+      multiple
+      class="sr-only"
+      data-testid="ocr-file-input"
+      (change)="onFileInputChange($event)"
+    />
+
+    <button
+      type="button"
+      class="ocr-dropzone"
+      data-testid="ocr-dropzone"
+      [class.is-dragging]="isDragging()"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+      (click)="fileInput.click()"
+    >
+      <span class="dropzone-icon" aria-hidden="true">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+      </span>
+      <span class="dropzone-title">Arrastra uno o varios comprobantes aquí</span>
+      <span class="dropzone-hint">
+        BDV, Banesco, Mercantil, Zelle, Wally, Binance Pay, Cashea, Zinli
+      </span>
+    </button>
+
+    @if (batchProgress().active) {
+      <div
+        class="batch-progress-box"
+        data-testid="ocr-batch-progress"
+        role="progressbar"
+        aria-label="Progreso de análisis OCR por lote"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        [attr.aria-valuenow]="clampedProgressPct()"
+      >
+        <div class="batch-progress-meta">
+          <span class="batch-status">{{ batchProgress().statusLabel }}</span>
+          <span class="batch-counter ocr-tabular">
+            {{ batchProgress().currentIndex }} / {{ batchProgress().totalFiles }} ·
+            {{ clampedProgressPct() }}%
+          </span>
+        </div>
+        <div class="batch-track">
+          <div class="batch-fill" [style.width.%]="clampedProgressPct()"></div>
+        </div>
+      </div>
+    }
+  </article>
+
+  <!-- Column 2: 02 · SMS (Monospace bank text ingestion) -->
+  <article class="ocr-content-card bento-card">
+    <div class="bento-head">
+      <div class="bento-title-group">
+        <span class="step-chip">02 · SMS</span>
+        <h3 class="bento-title">Texto Bancario</h3>
+      </div>
+      <span class="ocr-status-pill tone-gold">Inmediato</span>
+    </div>
+
+    <div class="field-group is-grow">
+      <label class="field-label" for="ocr-manual-sms">Pega el texto del recibo o SMS bancario</label>
+      <textarea
+        id="ocr-manual-sms"
+        class="ocr-input sms-textarea"
+        data-testid="ocr-manual-sms"
+        rows="5"
+        [value]="manualText()"
+        (input)="onManualTextInput($event)"
+        placeholder="Ej: BDV: Pago Móvil exitoso por Bs. 2.450,00 ref 0001234567 a Juan Pérez..."
+      ></textarea>
+    </div>
+
+    <button
+      type="button"
+      class="ocr-btn-primary sms-submit-btn"
+      data-testid="ocr-submit-sms"
+      [disabled]="!manualText().trim()"
+      (click)="submitManualText()"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+      <span>Procesar Texto Bancario</span>
+    </button>
+  </article>
+
+  <!-- Column 3: 03 · Escudo (Identity cross-check + Counterparty datalist + Blacklist badge) -->
+  <article class="ocr-content-card bento-card">
+    <div class="bento-head">
+      <div class="bento-title-group">
+        <span class="step-chip">03 · Escudo</span>
+        <h3 class="bento-title">Cruce de Identidad</h3>
+      </div>
+      <span
+        class="ocr-status-pill ocr-tabular"
+        data-testid="ocr-blacklist-badge"
+        [class.tone-danger]="isBlacklistedMatch()"
+        [class.tone-emerald]="!isBlacklistedMatch()"
+      >
+        Lista Negra Activa ({{ blacklistedCount() }} registros)
+      </span>
+    </div>
+
+    <div class="shield-fields">
+      <div class="field-group">
+        <label class="field-label" for="ocr-expected-counterparty">Titular Verificado</label>
+        <input
+          id="ocr-expected-counterparty"
+          type="text"
+          class="ocr-input"
+          list="ocr-counterparty-suggestions"
+          [value]="identityCheck().expectedCounterparty"
+          (input)="onExpectedCounterpartyInput($event)"
+          placeholder="Nombre de contraparte verificada"
+          autocomplete="off"
+        />
+        <datalist id="ocr-counterparty-suggestions">
+          @for (item of counterpartySuggestions(); track item.id) {
+            <option [value]="item.name">
+              {{ item.documentId ? item.documentId + (item.isBlacklisted ? ' · Lista Negra' : '') : item.isBlacklisted ? 'Lista Negra' : '' }}
+            </option>
+          }
+        </datalist>
+      </div>
+
+      <div class="shield-row-two">
+        <div class="field-group">
+          <label class="field-label" for="ocr-expected-id">Cédula / RIF</label>
+          <input
+            id="ocr-expected-id"
+            type="text"
+            class="ocr-input ocr-tabular"
+            [value]="identityCheck().expectedId"
+            (input)="onExpectedIdInput($event)"
+            placeholder="V-12345678"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="ocr-expected-amount">Monto Esperado</label>
+          <input
+            id="ocr-expected-amount"
+            type="number"
+            min="0"
+            step="0.01"
+            class="ocr-input ocr-tabular"
+            [value]="identityCheck().expectedAmount ?? ''"
+            (input)="onExpectedAmountInput($event)"
+            placeholder="0.00"
+          />
+        </div>
+      </div>
+
+      @if (isBlacklistedMatch()) {
+        <p class="blacklist-alert" role="alert">
+          Alerta forense: esta contraparte figura en la Lista Negra local.
+        </p>
+      }
+    </div>
+  </article>
+</section>
