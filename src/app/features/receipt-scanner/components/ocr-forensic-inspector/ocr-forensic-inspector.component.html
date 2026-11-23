@@ -1,0 +1,425 @@
+<div class="ocr-inspector-overlay">
+  <button
+    type="button"
+    class="ocr-modal-backdrop"
+    aria-label="Cerrar inspector forense"
+    (click)="onClose()"
+  ></button>
+
+  <section
+    class="ocr-inspector-dialog ocr-content-card"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="ocr-inspector-title"
+  >
+    <header class="inspector-header">
+      <div class="header-title-group">
+        <span class="header-emblem" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        </span>
+        <div>
+          <h2 id="ocr-inspector-title" class="inspector-title">Inspector Forense de Comprobante</h2>
+          <p class="inspector-subtitle">
+            <span>{{ draftReceipt().bankDisplayName }}</span>
+            <span class="sep" aria-hidden="true">/</span>
+            <span class="ocr-tabular">{{ draftReceipt().reference || 'Sin referencia' }}</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        @if (casheaMatchLabel(); as casheaLabel) {
+          <span class="ocr-status-pill tone-gold" data-testid="ocr-cashea-badge">
+            {{ casheaLabel }}
+          </span>
+        }
+        <span
+          class="ocr-status-pill"
+          [class.tone-cyan]="destinationMode() === 'p2p'"
+          [class.tone-gold]="destinationMode() === 'finance360'"
+        >
+          {{ destinationMode() === 'p2p' ? 'Mesa P2P' : 'Finanzas 360' }}
+        </span>
+        <button
+          type="button"
+          class="ocr-icon-btn"
+          aria-label="Cerrar inspector"
+          data-testid="ocr-inspector-close"
+          (click)="onClose()"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="inspector-split">
+      <!-- Left Column: Calibrated Receipt Image Viewer -->
+      <div class="viewer-column">
+        <div class="viewer-toolbar ocr-liquid-glass" role="toolbar" aria-label="Controles de imagen del comprobante">
+          <div class="toolbar-group" role="group" aria-label="Nivel de zoom">
+            @for (level of zoomOptions; track level) {
+              <button
+                type="button"
+                class="ocr-btn-glass toolbar-chip ocr-tabular"
+                [class.is-active]="zoomLevel() === level"
+                [attr.aria-pressed]="zoomLevel() === level"
+                [attr.data-testid]="'ocr-zoom-' + level"
+                [disabled]="!thumbnailDataUrl()"
+                (click)="setZoom(level)"
+              >
+                {{ level }}%
+              </button>
+            }
+          </div>
+
+          <div class="toolbar-group">
+            <button
+              type="button"
+              class="ocr-btn-glass toolbar-chip"
+              data-testid="ocr-rotate-btn"
+              [disabled]="!thumbnailDataUrl()"
+              (click)="rotateRight()"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+              <span>+90°</span>
+            </button>
+
+            <button
+              type="button"
+              class="ocr-btn-glass toolbar-chip"
+              data-testid="ocr-contrast-btn"
+              [class.is-active]="autoContrast()"
+              [attr.aria-pressed]="autoContrast()"
+              [disabled]="!thumbnailDataUrl()"
+              (click)="toggleAutoContrast()"
+            >
+              Auto-Contraste
+            </button>
+
+            <button
+              type="button"
+              class="ocr-btn-glass toolbar-chip"
+              data-testid="ocr-invert-btn"
+              [class.is-active]="invertDark()"
+              [attr.aria-pressed]="invertDark()"
+              [disabled]="!thumbnailDataUrl()"
+              (click)="toggleInvertDark()"
+            >
+              Invertir Dark
+            </button>
+          </div>
+        </div>
+
+        <div class="viewer-stage">
+          <span class="confidence-badge ocr-status-pill tone-cyan ocr-tabular">
+            Confianza OCR: {{ confidencePct() }}%
+          </span>
+
+          @if (thumbnailDataUrl(); as imgSrc) {
+            <div class="image-scroll-frame">
+              <img
+                class="receipt-preview-img"
+                data-testid="ocr-inspector-image"
+                [src]="imgSrc"
+                [alt]="'Comprobante ' + draftReceipt().bankDisplayName + ' ' + draftReceipt().reference"
+                [style.transform]="imageTransform()"
+                [style.filter]="imageFilter()"
+              />
+            </div>
+          } @else {
+            <div class="raw-text-fallback" data-testid="ocr-raw-text-fallback">
+              <div class="raw-fallback-head">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M8 13h8" />
+                  <path d="M8 17h6" />
+                </svg>
+                <span>Texto crudo ingerido (SMS / Portapapeles)</span>
+              </div>
+              <pre class="raw-text-pre">{{ draftReceipt().rawText || 'Sin contenido de texto crudo disponible.' }}</pre>
+            </div>
+          }
+        </div>
+
+        <footer class="viewer-footer">
+          <span class="engine-label">Motor Híbrido: Canvas 2x + Tesseract + Visión IA</span>
+          @if (shortImageHash(); as hashChip) {
+            <span
+              class="sha-chip ocr-tabular"
+              data-testid="ocr-sha256-chip"
+              [attr.title]="'SHA-256: ' + imageHash()"
+            >
+              SHA-256 {{ hashChip }}
+            </span>
+          }
+        </footer>
+      </div>
+
+      <!-- Right Column: Forensic Risk Verdict + Live Editable Form + Actions -->
+      <div class="forensic-column">
+        <!-- Forensic Risk Verdict Card -->
+        <section
+          class="verdict-card"
+          [class]="verdictToneClass()"
+          data-testid="ocr-verdict-card"
+          aria-label="Veredicto de riesgo forense"
+        >
+          @if (audit(); as currentAudit) {
+            <div class="verdict-top">
+              <div class="verdict-meta">
+                <span class="verdict-level">{{ verdictLabel() }}</span>
+                <p class="verdict-headline">{{ currentAudit.summaryHeadline }}</p>
+              </div>
+              <div class="score-badge ocr-tabular" aria-label="Puntaje de riesgo">
+                <span class="score-value">{{ currentAudit.overallScore }}</span>
+                <span class="score-max">/100</span>
+              </div>
+            </div>
+
+            @if (currentAudit.flags.length > 0) {
+              <div class="flag-list" aria-label="Alertas forenses detectadas">
+                @for (flag of currentAudit.flags; track flag) {
+                  <span
+                    class="ocr-status-pill"
+                    [class.tone-danger]="currentAudit.riskLevel === 'CRITICAL'"
+                    [class.tone-warn]="currentAudit.riskLevel !== 'CRITICAL'"
+                    [attr.data-flag]="flag"
+                  >
+                    {{ flagLabel(flag) }}
+                  </span>
+                }
+              </div>
+            }
+
+            <div class="check-tiles">
+              <div class="check-tile">
+                <span class="tile-label">Similitud Titular</span>
+                <strong class="tile-value ocr-tabular">{{ nameSimilarityPct() }}%</strong>
+              </div>
+              <div class="check-tile">
+                <span class="tile-label">Integridad Referencia</span>
+                <strong class="tile-value">
+                  {{ currentAudit.referenceValidation.isValid ? 'Válida' : 'Inválida' }}
+                </strong>
+              </div>
+              <div class="check-tile">
+                <span class="tile-label">Diferencia Monto</span>
+                <strong class="tile-value ocr-tabular">{{ formattedAmountDiff() }}</strong>
+              </div>
+            </div>
+          } @else {
+            <div class="verdict-empty">
+              <span class="verdict-level">Sin Auditoría Activa</span>
+              <p class="verdict-headline">
+                Edite cualquier campo del comprobante para recalcular el riesgo forense en tiempo real.
+              </p>
+            </div>
+          }
+        </section>
+
+        <!-- Pre-Settlement Live Editable Form -->
+        <form class="editor-form" (submit)="$event.preventDefault()" aria-label="Edición pre-asiento del comprobante">
+          <div class="form-grid">
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-bank">Banco / Red</label>
+              <select
+                id="ocr-insp-bank"
+                name="bank"
+                class="ocr-select"
+                [ngModel]="draftReceipt().bank"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onBankChange($event)"
+              >
+                @for (option of bankOptions; track option.value) {
+                  <option [value]="option.value">{{ option.label }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-reference">Referencia Bancaria</label>
+              <input
+                id="ocr-insp-reference"
+                name="reference"
+                type="text"
+                class="ocr-input ocr-tabular"
+                [ngModel]="draftReceipt().reference"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onReferenceChange($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-amount">Monto</label>
+              <input
+                id="ocr-insp-amount"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0"
+                class="ocr-input ocr-tabular"
+                [ngModel]="draftReceipt().amount"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onAmountChange($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-currency">Divisa</label>
+              <select
+                id="ocr-insp-currency"
+                name="currency"
+                class="ocr-select"
+                [ngModel]="draftReceipt().currency"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onCurrencyChange($event)"
+              >
+                @for (curr of currencyOptions; track curr) {
+                  <option [value]="curr">{{ curr }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-payer-name">Pagador</label>
+              <input
+                id="ocr-insp-payer-name"
+                name="payerName"
+                type="text"
+                class="ocr-input"
+                [ngModel]="draftReceipt().payerName ?? ''"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onPayerNameChange($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-payer-id">Cédula / RIF</label>
+              <input
+                id="ocr-insp-payer-id"
+                name="payerId"
+                type="text"
+                class="ocr-input ocr-tabular"
+                [ngModel]="draftReceipt().payerId ?? ''"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onPayerIdChange($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-beneficiary">Beneficiario</label>
+              <input
+                id="ocr-insp-beneficiary"
+                name="beneficiaryName"
+                type="text"
+                class="ocr-input"
+                [ngModel]="draftReceipt().beneficiaryName ?? ''"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onBeneficiaryNameChange($event)"
+              />
+            </div>
+
+            <div class="field-group">
+              <label class="field-label" for="ocr-insp-timestamp">Fecha</label>
+              <input
+                id="ocr-insp-timestamp"
+                name="timestamp"
+                type="text"
+                class="ocr-input ocr-tabular"
+                [ngModel]="draftReceipt().timestamp ?? ''"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="onTimestampChange($event)"
+              />
+            </div>
+          </div>
+        </form>
+
+        <!-- Action Footer -->
+        <footer class="inspector-actions">
+          <div class="secondary-actions">
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-dossier-es"
+              [disabled]="!audit()"
+              (click)="onEmitDossierEs()"
+            >
+              Expediente ES
+            </button>
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-dossier-en"
+              [disabled]="!audit()"
+              (click)="onEmitDossierEn()"
+            >
+              Dossier EN
+            </button>
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-chat-warning"
+              [disabled]="!audit()"
+              (click)="onEmitChatWarning()"
+            >
+              Aviso Tercero
+            </button>
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-refund"
+              [disabled]="!audit()"
+              (click)="onEmitRefundInstructions()"
+            >
+              Reembolso
+            </button>
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-pdf"
+              (click)="onGeneratePdf()"
+            >
+              Recibo PDF
+            </button>
+            <button
+              type="button"
+              class="ocr-btn-glass"
+              data-testid="ocr-btn-drive"
+              [class.is-active]="isDriveBackedUp()"
+              [disabled]="isDriveBackedUp() || isBackingUpDrive()"
+              (click)="onBackupToDrive()"
+            >
+              @if (isDriveBackedUp()) {
+                En Drive
+              } @else if (isBackingUpDrive()) {
+                Subiendo...
+              } @else {
+                Respaldo Drive
+              }
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="ocr-btn-primary settle-cta"
+            data-testid="ocr-btn-settle"
+            [disabled]="isSettled()"
+            (click)="onConfirmSettle()"
+          >
+            {{ isSettled() ? 'Ya Asentado' : 'Confirmar y Asentar' }}
+          </button>
+        </footer>
+      </div>
+    </div>
+  </section>
+</div>
