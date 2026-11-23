@@ -1,8 +1,16 @@
 import json
 from pathlib import Path
+from typing import Optional
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from app.core.config import get_settings, now_vet
 from app.core.security import validate_local_inbox_path, SecurityViolationError
+from app.services.treasury import TreasuryService, TreasuryError
+from app.agents.creative_director import CreativeDirectorAgent
+from app.agents.compliance_auditor import ComplianceAuditorAgent, ComplianceError
+from app.agents.vault_controller import VaultControllerAgent
+from app.agents.trafficker import TraffickerAgent, TraffickerGateError
+from app.integrations.telegram_bot import TelegramHitlBotService
 
 app = FastAPI(
     title="Agencia Digital 360 — Execution Module API",
@@ -15,6 +23,41 @@ app = FastAPI(
 )
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "docs" / "arm_webhook_contract.json"
+
+treasury_service = TreasuryService()
+creative_director_agent = CreativeDirectorAgent()
+compliance_auditor_agent = ComplianceAuditorAgent()
+vault_controller_agent = VaultControllerAgent(treasury_service)
+trafficker_agent = TraffickerAgent(
+    treasury=treasury_service,
+    auditor=compliance_auditor_agent,
+    vault_controller=vault_controller_agent,
+)
+telegram_hitl_service = TelegramHitlBotService(
+    treasury=treasury_service,
+    creative_director=creative_director_agent,
+    trafficker=trafficker_agent,
+)
+
+
+class BrandVaultRegisterPayload(BaseModel):
+    brand_id: str
+    slug: str
+    display_name: str
+    industry_vertical: str
+    spend_cap_usd: float = Field(..., gt=0)
+    initial_vault_usd: float = Field(default=0.0, ge=0)
+    alert_threshold_pct: float = Field(default=20.0, ge=5.0, le=50.0)
+
+
+class TelegramWebhookPayload(BaseModel):
+    chat_id: str
+    update_type: str  # VOICE_NOTE | CALLBACK_QUERY
+    brand_id: Optional[str] = None
+    voice_duration_sec: Optional[int] = None
+    voice_transcript: Optional[str] = None
+    requested_budget_usd: Optional[float] = None
+    callback_data: Optional[str] = None
 
 
 @app.get("/api/v1/health")
@@ -58,3 +101,47 @@ def verify_inbox_file(filename: str) -> dict:
         "resolved_path": str(resolved),
         "mode": "READ_ONLY",
     }
+
+
+@app.post("/api/v1/treasury/brands")
+def register_brand_vault(payload: BrandVaultRegisterPayload) -> dict:
+    state = treasury_service.register_brand(
+        brand_id=payload.brand_id,
+        slug=payload.slug,
+        display_name=payload.display_name,
+        industry_vertical=payload.industry_vertical,
+        spend_cap_usd=payload.spend_cap_usd,
+        initial_vault_usd=payload.initial_vault_usd,
+        alert_threshold_pct=payload.alert_threshold_pct,
+    )
+    return {
+        "brand_id": state.brand_id,
+        "slug": state.slug,
+        "spend_cap_usd": state.spend_cap_usd,
+        "vault_balance_usd": state.vault_balance_usd,
+        "alert_threshold_pct": state.alert_threshold_pct,
+    }
+
+
+@app.post("/api/v1/telegram/webhook")
+def handle_telegram_webhook(payload: TelegramWebhookPayload) -> dict:
+    try:
+        if payload.update_type == "VOICE_NOTE":
+            if not payload.brand_id or not payload.voice_transcript or not payload.requested_budget_usd:
+                raise HTTPException(status_code=400, detail="Missing brand_id, voice_transcript, or requested_budget_usd")
+            return telegram_hitl_service.handle_voice_note_brief(
+                chat_id=payload.chat_id,
+                brand_id=payload.brand_id,
+                voice_transcript=payload.voice_transcript,
+                requested_budget_usd=payload.requested_budget_usd,
+            )
+        if payload.update_type == "CALLBACK_QUERY":
+            if not payload.callback_data:
+                raise HTTPException(status_code=400, detail="Missing callback_data")
+            return telegram_hitl_service.handle_callback_query(
+                chat_id=payload.chat_id,
+                callback_data=payload.callback_data,
+            )
+        raise HTTPException(status_code=400, detail=f"Unsupported update_type: {payload.update_type}")
+    except (TreasuryError, ComplianceError, TraffickerGateError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
