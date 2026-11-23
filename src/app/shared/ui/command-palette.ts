@@ -555,7 +555,15 @@ export class CommandPalette {
   }
 
   private buildCommands(): PaletteCommand[] {
-    const groupsOrder = ['TESORERÍA & BANCOS', 'MISIÓN', 'PLANIFICACIÓN', 'IA & AUTOMATIZACIÓN', 'CONFIG', 'ACCIONES'];
+    const groupsOrder = [
+      'TESORERÍA & BANCOS',
+      'FINANZAS 360',
+      'MISIÓN',
+      'PLANIFICACIÓN',
+      'IA & AUTOMATIZACIÓN',
+      'CONFIG',
+      'ACCIONES',
+    ];
 
     const bankCommands: PaletteCommand[] = this.accountsService.accounts().map((acc) => ({
       id: `inject-${acc.id}`,
@@ -686,11 +694,65 @@ export class CommandPalette {
       },
       {
         id: 'nav-finance-360',
-        label: 'Finanzas 360° & Patrimonio',
-        icon: '🏦',
+        label: 'Finanzas 360° & Patrimonio (Overview)',
+        icon: 'dashboard',
         hint: '/finanzas-360',
-        group: 'PLANIFICACIÓN',
+        group: 'FINANZAS 360',
         action: () => void this.router.navigate(['/finanzas-360']),
+      },
+      {
+        id: 'f360-quick-expense',
+        label: 'Finanzas 360: Registrar Gasto Rápido',
+        icon: 'income',
+        hint: 'Nuevo egreso',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { action: 'expense' } }),
+      },
+      {
+        id: 'f360-quick-income',
+        label: 'Finanzas 360: Registrar Ingreso',
+        icon: 'income',
+        hint: 'Nuevo ingreso',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { action: 'income' } }),
+      },
+      {
+        id: 'f360-quick-audio',
+        label: 'Finanzas 360: Dictar Movimiento por Voz / IA',
+        icon: 'spread',
+        hint: 'Alt+V',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { action: 'audio' } }),
+      },
+      {
+        id: 'f360-tab-cashea',
+        label: 'Finanzas 360: Simulador Cashea 14D (N1–N6)',
+        icon: 'stats',
+        hint: 'Cashea',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { tab: 'cashea' } }),
+      },
+      {
+        id: 'f360-tab-quotes',
+        label: 'Finanzas 360: Constructor de Presupuestos',
+        icon: 'guide',
+        hint: 'Pyme PDF',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { tab: 'quotes' } }),
+      },
+      {
+        id: 'f360-sync-drive',
+        label: 'Finanzas 360: Sincronizar Respaldo Google Drive',
+        icon: 'log',
+        hint: 'Drive',
+        group: 'FINANZAS 360',
+        action: () =>
+          void this.router.navigate(['/finanzas-360'], { queryParams: { action: 'sync_drive' } }),
       },
       {
         id: 'nav-scanner',

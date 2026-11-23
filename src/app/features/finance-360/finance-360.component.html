@@ -1,1615 +1,787 @@
-<section class="finance-360-container">
-  <!-- INSTITUTIONAL HEADER & PERSISTENT NAVIGATION DOCK -->
-  <header class="chameleon-header">
-    <div class="brand-badge-row">
-      <div class="suite-title">
-        <div class="brand-emblem">💎</div>
-        <div>
-          <div class="title-line">
-            <h2>HOMEL <span class="gold-text">360</span></h2>
-            <span class="tier-badge">PRIVATE WEALTH &amp; PYME</span>
+<div class="f360-shell">
+  <app-f360-command-header
+    [activeScope]="financeService.scope()"
+    [activeTab]="activeTab()"
+    [horizon]="selectedHorizon()"
+    [privacyMode]="privacyMode()"
+    [overdueCount]="overdueCount()"
+    [vaultsCount]="vaultsCount()"
+    [casheaActiveCount]="casheaActiveCount()"
+    [pymeAlertsCount]="pymeAlertsCount()"
+    [driveSyncing]="driveSyncing()"
+    (scopeChange)="setScope($event)"
+    (tabChange)="selectTab($event)"
+    (horizonChange)="selectHorizon($event)"
+    (openPalette)="toggleScopedPalette()"
+    (quickAction)="handleQuickAction($event)"
+    (overflowAction)="handleOverflowAction($event)"
+  />
+
+  <input
+    #restoreJsonInput
+    type="file"
+    accept=".json,application/json"
+    class="sr-only"
+    aria-label="Restaurar respaldo JSON"
+    (change)="onRestoreJsonSelected($event)"
+  />
+
+  <main class="f360-stage" [attr.data-active-tab]="activeTab()">
+    @switch (activeTab()) {
+      @case ('overview') {
+        <app-f360-overview
+          [activeScope]="financeService.scope()"
+          [horizon]="selectedHorizon()"
+          [privacyMode]="privacyMode()"
+          [netWorthUsd]="financeService.netWorthUsd()"
+          [netWorthVes]="financeService.netWorthVes()"
+          [bcvRate]="financeService.currentBcvRate()"
+          [periodIncomeUsd]="periodPnlReport().totalIncomeUsd"
+          [periodExpenseUsd]="periodPnlReport().totalExpensesUsd"
+          [periodExpenseCount]="periodPnlReport().expenseCount"
+          [liquidity]="overviewLiquiditySummary()"
+          [cashflowSeries]="overviewCashflowSeries()"
+          [pnlLines]="overviewPnlLines()"
+          [todayP2pProfitUsd]="todayP2pSummary().pnlUsdt"
+          [isP2pImportedToday]="isP2pProfitImportedToday()"
+          [upcomingItems]="overviewUpcomingItems()"
+          [recentActivity]="ledgerRows()"
+          [goals]="financeService.goals()"
+          (quickAction)="handleQuickAction($event)"
+          (navigateTab)="selectTab($event)"
+          (payLiability)="openPayLiabilityModal($event)"
+          (deleteLiability)="handleDeleteLiability($event)"
+          (contributeGoal)="openContributeGoalModal($event)"
+          (deleteGoal)="handleDeleteGoal($event)"
+        />
+      }
+
+      @case ('vaults') {
+        <app-f360-vaults-ledger
+          [activeScope]="financeService.scope()"
+          [assets]="financeService.assets()"
+          [totalAssetsUsd]="financeService.totalAssetsUsd()"
+          [bcvRate]="financeService.currentBcvRate()"
+          [parallelRate]="financeService.currentParallelRate()"
+          [eurUsdRate]="financeService.currentEurUsdRate()"
+          [vesExposure]="vesExposureView()"
+          [ledgerRows]="ledgerRows()"
+          [reconciliations]="financeService.state().vaultReconciliations ?? []"
+          [privacyMode]="privacyMode()"
+          (openNewVault)="openNewVaultModal()"
+          (openTransfer)="openTransferModal($event)"
+          (updateVaultBalance)="handleUpdateVaultBalance($event)"
+          (deleteVault)="handleDeleteVault($event)"
+          (updateMovement)="handleUpdateMovement($event)"
+          (deleteMovement)="handleDeleteMovement($event)"
+          (reconcileVault)="handleReconcileVault($event)"
+        />
+      }
+
+      @case ('analytics') {
+        <app-finance-analytics
+          [horizon]="selectedHorizon()"
+          [privacyMode]="privacyMode()"
+        />
+      }
+
+      @case ('cashea') {
+        <app-cashea-calculator [privacyMode]="privacyMode()" />
+      }
+
+      @case ('pyme_quotes') {
+        <section class="pyme-quotes-switch-bar f360-liquid-glass" aria-label="Submódulos Pyme y Presupuestos">
+          <div class="switch-capsule" role="tablist" aria-label="Selector Pyme y Presupuestos">
+            <button
+              type="button"
+              role="tab"
+              class="switch-pill"
+              data-testid="subtab-pyme"
+              [class.is-active]="pymeSubTab() === 'pyme'"
+              [attr.aria-selected]="pymeSubTab() === 'pyme'"
+              (click)="pymeSubTab.set('pyme')"
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+                <line x1="9" y1="10" x2="9" y2="20" />
+              </svg>
+              <span>Pyme 3 Gavetas</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              class="switch-pill"
+              data-testid="subtab-quotes"
+              [class.is-active]="pymeSubTab() === 'quotes'"
+              [attr.aria-selected]="pymeSubTab() === 'quotes'"
+              (click)="pymeSubTab.set('quotes')"
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="8" y1="13" x2="16" y2="13" />
+                <line x1="8" y1="17" x2="13" y2="17" />
+              </svg>
+              <span>Presupuestos Doble PDF</span>
+            </button>
           </div>
-          <p class="subtitle">Centro de Comando Patrimonial Tri-Monetario (USD · USDT · VES)</p>
-        </div>
-      </div>
+          <span class="switch-meta">
+            {{ pymeSubTab() === 'pyme' ? 'Cortafuegos 3 Gavetas · CxP · Stock · Modo Aliado Cashea' : 'Prorrateo Comercial · Motor Laboral Dual · Exportación PDF' }}
+          </span>
+        </section>
 
-      <div class="header-controls-right">
-        <!-- Demo Seeder & Purge Controls (Segmented Capsule) -->
-        <div class="toolbar-segmented" role="group" aria-label="Gestión de datos de portafolio">
-          <button
-            type="button"
-            class="btn-ghost"
-            title="Cargar movimientos realistas de demostración para explorar gráficas y analíticas"
-            (click)="loadDemoPortfolio()"
-          >
-            ✨ Demo
-          </button>
-          <button
-            type="button"
-            class="btn-ghost"
-            style="color: #fca5a5;"
-            title="Eliminar únicamente las transacciones y pasivos demo generados"
-            (click)="clearDemoPortfolio()"
-          >
-            🧹 Limpiar
-          </button>
-          <button
-            type="button"
-            class="btn-ghost"
-            style="color: #fda4af;"
-            title="Vaciar completamente todo el portafolio y reiniciar libro a cero"
-            (click)="resetFullPortfolio()"
-          >
-            🔄 Reset
-          </button>
-        </div>
-
-        <!-- Chameleon Scope Switch -->
-        <div class="chameleon-pill-group" role="tablist">
-          <button
-            type="button"
-            class="chameleon-pill"
-            [class.active]="financeService.scope() === 'all'"
-            (click)="setScope('all')"
-          >
-            🌐 Consolidado
-          </button>
-          <button
-            type="button"
-            class="chameleon-pill"
-            [class.active]="financeService.scope() === 'personal'"
-            (click)="setScope('personal')"
-          >
-            👤 Personal
-          </button>
-          <button
-            type="button"
-            class="chameleon-pill"
-            [class.active]="financeService.scope() === 'business'"
-            (click)="setScope('business')"
-          >
-            🏢 Pyme / Taller
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- PERSISTENT SUBMODULE NAVIGATION DOCK -->
-    <nav class="module-nav-dock" aria-label="Navegación Portafolio 360">
-      <button
-        type="button"
-        class="dock-tab"
-        [class.active]="activeTab() === 'overview'"
-        (click)="activeTab.set('overview')"
-      >
-        <span class="dock-icon">🏛️</span>
-        <span> Comando 360</span>
-      </button>
-      <button
-        type="button"
-        class="dock-tab"
-        [class.active]="activeTab() === 'analytics'"
-        (click)="activeTab.set('analytics')"
-      >
-        <span class="dock-icon">📊</span>
-        <span>CFO &amp; Estadísticas</span>
-        <span class="dock-pill">PRO</span>
-      </button>
-      <button
-        type="button"
-        class="dock-tab"
-        [class.active]="activeTab() === 'cashea'"
-        (click)="activeTab.set('cashea')"
-      >
-        <span class="dock-icon">⚡</span>
-        <span>Cashea 14D</span>
-        @if (financeService.state().casheaPlans.length > 0) {
-          <span class="dock-count">{{ financeService.state().casheaPlans.length }}</span>
+        @if (pymeSubTab() === 'pyme') {
+          <app-pyme-manager [privacyMode]="privacyMode()" />
+        } @else {
+          <app-quote-builder [privacyMode]="privacyMode()" />
         }
-      </button>
-      <button
-        type="button"
-        class="dock-tab"
-        [class.active]="activeTab() === 'pyme'"
-        (click)="activeTab.set('pyme')"
-      >
-        <span class="dock-icon">🏢</span>
-        <span>Pyme 3 Gavetas</span>
-        <span class="dock-count">{{ financeService.state().providers.length }}</span>
-      </button>
-      <button
-        type="button"
-        class="dock-tab"
-        [class.active]="activeTab() === 'quotes'"
-        (click)="activeTab.set('quotes')"
-      >
-        <span class="dock-icon">📝</span>
-        <span>Presupuestos</span>
-        @if (financeService.state().quotes.length > 0) {
-          <span class="dock-count">{{ financeService.state().quotes.length }}</span>
-        }
-      </button>
-    </nav>
-  </header>
+      }
+    }
+  </main>
 
-  @if (activeTab() === 'overview') {
-    <div class="command-center-grid">
-      <!-- ==================== LEFT / MAIN COLUMN ==================== -->
-      <div class="cc-main-col">
-        <!-- MASTER CARD: PATRIMONIO CONSOLIDADO (PRIVATE BANKING HERO) -->
-        @let vesExp = financeService.vesExposureTelemetry();
-        <div class="net-worth-banner">
-          <div class="nw-top-row">
-            <div>
-              <div class="net-worth-label">PATRIMONIO NETO CONSOLIDADO</div>
-              <div class="net-worth-amount-row">
-                <h1 class="net-worth-usd">
-                  ${{ financeService.netWorthUsd() | number: '1.2-2' }}
-                  <span class="currency-tag">USD</span>
-                </h1>
-              </div>
-              <div class="net-worth-ves">
-                <span>≈ Bs {{ financeService.netWorthVes() | number: '1.2-2' }}</span>
-                <span class="rate-badge">
-                  🏛️ BCV: {{ financeService.currentBcvRate() | number: '1.2-2' }}
-                </span>
-                <span class="rate-badge rate-parallel">
-                  ⚡ Paralelo: {{ financeService.currentParallelRate() | number: '1.2-2' }}
-                  @if (vesExp.rateGapPct > 0) {
-                    (Brecha {{ vesExp.rateGapPct | number: '1.1-1' }}%)
-                  }
-                </span>
-              </div>
-            </div>
-
-            <div class="nw-quick-cta-group">
-              <button
-                type="button"
-                class="btn-hero-action transfer"
-                style="background: rgba(226, 183, 85, 0.16); border-color: rgba(226, 183, 85, 0.45); color: #facc15;"
-                (click)="openQuickModal('audio')"
-                title="Dicta un gasto o ingreso por voz en lenguaje natural (Atajo: Alt+V)"
-              >
-                🎙️ Dictar (Alt+V)
-              </button>
-              <button type="button" class="btn-hero-action income" (click)="openQuickModal('income')">
-                ➕ Ingreso
-              </button>
-              <button type="button" class="btn-hero-action expense" (click)="openQuickModal('expense')">
-                ➖ Gasto
-              </button>
-              <button type="button" class="btn-hero-action transfer" (click)="openTransferModal()">
-                🔄 Transferir
-              </button>
-            </div>
-          </div>
-
-          <!-- SOLVENCY & ASSET VS LIABILITY RATIO BAR -->
-          <div class="solvency-meter-box">
-            <div class="solvency-labels">
-              <span class="solv-assets">
-                🟢 Activos Líquidos: <strong>${{ financeService.totalAssetsUsd() | number: '1.2-2' }}</strong>
-              </span>
-              <span class="solv-ratio">Índice de Solvencia: {{ solvencyRatioPercent() }}%</span>
-              <span class="solv-liabilities">
-                🔴 Pasivos Pendientes: <strong>${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }}</strong>
-              </span>
-            </div>
-            <div class="solvency-track">
-              <div class="solvency-fill" [style.width.%]="solvencyRatioPercent()"></div>
-            </div>
-          </div>
-
-          <div class="assets-liabilities-chips">
-            <div class="chip chip-vaults">
-              <span>🏦 Bóvedas Activas: <strong>{{ financeService.assets().length }}</strong></span>
-            </div>
-            <div class="chip" [class.chip-warn]="vesExp.isHighExposure">
-              <span>
-                🛡️ Exposición en Bs: <strong>{{ vesExp.exposurePct | number: '1.1-1' }}%</strong>
-                (${{ vesExp.vesEquivalentUsd | number: '1.2-2' }} USD)
-              </span>
-            </div>
-            @if (vesExp.erosionLoss5PctUsd > 0) {
-              <div class="chip chip-deval">
-                <span>
-                  📉 Salto BCV +5%: <strong>-${{ vesExp.erosionLoss5PctUsd | number: '1.2-2' }} USD</strong>
-                </span>
-              </div>
-            }
-          </div>
-        </div>
-
-        <!-- INTERACTIVE METALLIC ASSET VAULTS DECK -->
-        <div class="vaults-deck-section">
-          <div class="section-title-row">
-            <div>
-              <h3>💳 Bóvedas &amp; Liquidez Tri-Monetaria</h3>
-              <p class="section-sub">Tarjetas patrimoniales con conversión BCV en tiempo real y ajuste instantáneo</p>
-            </div>
-            <div class="vault-header-actions">
-              <button type="button" class="btn-vault-util" (click)="openTransferModal()">
-                🔄 Transferir Fondos
-              </button>
-              <button type="button" class="btn-vault-util primary" (click)="openNewVaultModal()">
-                + Nueva Bóveda
-              </button>
-            </div>
-          </div>
-
-          <div class="metallic-vaults-grid">
-            @for (vault of financeService.assets(); track vault.id) {
-              @let sharePct = getVaultSharePercent(vault);
-              <div
-                class="metallic-vault-card"
-                [class.theme-usd]="vault.currency === 'USD'"
-                [class.theme-usdt]="vault.currency === 'USDT'"
-                [class.theme-ves]="vault.currency === 'VES'"
-              >
-                <div class="card-ambient-glow"></div>
-
-                <div class="vault-card-top">
-                  <div class="vault-chip-group">
-                    <span class="emv-chip"></span>
-                    <span class="vault-icon-badge">{{ getVaultIcon(vault) }}</span>
-                    <div>
-                      <strong class="vault-name">{{ vault.name }}</strong>
-                      <span class="vault-scope-tag">
-                        {{ vault.scope === 'business' ? '🏢 Pyme / Taller' : '👤 Personal' }}
-                      </span>
-                    </div>
-                  </div>
-                  <span class="currency-pill" [attr.data-curr]="vault.currency">
-                    {{ vault.currency }}
-                  </span>
-                </div>
-
-                <!-- Balance Display, Inline Edit, or Arqueo Reconcile -->
-                @if (editingVaultId() === vault.id) {
-                  <div class="vault-inline-edit">
-                    <input
-                      type="number"
-                      class="vault-edit-input"
-                      [ngModel]="editingVaultBalance()"
-                      (ngModelChange)="editingVaultBalance.set($event)"
-                      placeholder="Nuevo saldo"
-                    />
-                    <button type="button" class="btn-inline-save" (click)="saveVaultBalance(vault)">
-                      ✓
-                    </button>
-                    <button type="button" class="btn-inline-cancel" (click)="cancelEditVaultBalance()">
-                      ✕
-                    </button>
-                  </div>
-                } @else if (reconcilingVaultId() === vault.id) {
-                  <div class="vault-inline-edit" style="border: 1px solid rgba(56, 189, 248, 0.45); background: rgba(15, 23, 42, 0.85); padding: 6px; border-radius: 8px;">
-                    <div style="font-size: 0.7rem; color: #38bdf8; font-weight: 700; width: 100%; margin-bottom: 4px;">
-                      ⚖️ Saldo Real Físico / Banco (Arqueo):
-                    </div>
-                    <div style="display: flex; gap: 4px; width: 100%;">
-                      <input
-                        type="number"
-                        class="vault-edit-input"
-                        style="flex: 1;"
-                        [ngModel]="reconcileActualBalance()"
-                        (ngModelChange)="reconcileActualBalance.set($event)"
-                        placeholder="Saldo real"
-                      />
-                      <button type="button" class="btn-inline-save" style="background: #0284c7; color: #fff; padding: 0 8px;" (click)="saveReconcileVault(vault)">
-                        ✓ Ajustar
-                      </button>
-                      <button type="button" class="btn-inline-cancel" (click)="cancelReconcileVault()">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                } @else {
-                  <div class="vault-balance-block">
-                    <div class="primary-balance">
-                      @if (vault.currency === 'VES') {
-                        <span class="curr-sym">Bs</span>
-                        {{ vault.balance | number: '1.2-2' }}
-                      } @else {
-                        <span class="curr-sym">$</span>
-                        {{ vault.balance | number: '1.2-2' }}
-                        <span class="curr-code">{{ vault.currency }}</span>
-                      }
-                    </div>
-                    <div class="secondary-equivalent">
-                      {{ getVaultEquivalentLabel(vault) }}
-                    </div>
-                  </div>
-                }
-
-                <!-- Share bar & VES Inflation Risk Tag -->
-                <div class="vault-card-footer">
-                  <div class="vault-share-bar">
-                    <div class="share-label">
-                      <span>Peso en Cartera</span>
-                      <strong>{{ sharePct }}%</strong>
-                    </div>
-                    <div class="share-track">
-                      <div class="share-fill" [style.width.%]="sharePct"></div>
-                    </div>
-                  </div>
-
-                  <div class="vault-card-actions">
-                    <button
-                      type="button"
-                      class="btn-card-mini"
-                      title="Arqueo: verificar saldo real y asentar descuadre automáticamente"
-                      (click)="startReconcileVault(vault)"
-                    >
-                      ⚖️ Arqueo
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-card-mini"
-                      title="Ajustar saldo manual"
-                      (click)="startEditVaultBalance(vault)"
-                    >
-                      ✏️ Saldo
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-card-mini"
-                      title="Transferir desde esta bóveda"
-                      (click)="openTransferModal(vault.id)"
-                    >
-                      🔄 Mover
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-card-mini"
-                      style="color: #f87171; border-color: rgba(239, 68, 68, 0.35);"
-                      title="Eliminar esta bóveda"
-                      (click)="deleteVault(vault)"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-
-        <!-- UNIFIED CHRONOLOGICAL LEDGER FEED -->
-        <div class="recent-movements-section">
-          <div class="ledger-header-bar">
-            <div>
-              <h3>📋 Libro Mayor Cronológico</h3>
-              <span class="section-sub">Auditoría tri-monetaria con tasa BCV histórica congelada</span>
-            </div>
-
-            <div class="ledger-filters">
-              <div class="filter-pills">
-                <button
-                  type="button"
-                  class="filter-pill"
-                  [class.active]="movementFilter() === 'all'"
-                  (click)="movementFilter.set('all')"
-                >
-                  Todos ({{ financeService.unifiedMovements().length }})
-                </button>
-                <button
-                  type="button"
-                  class="filter-pill income"
-                  [class.active]="movementFilter() === 'income'"
-                  (click)="movementFilter.set('income')"
-                >
-                  🟢 Ingresos
-                </button>
-                <button
-                  type="button"
-                  class="filter-pill expense"
-                  [class.active]="movementFilter() === 'expense'"
-                  (click)="movementFilter.set('expense')"
-                >
-                  🔴 Gastos
-                </button>
-              </div>
-
-              <input
-                type="text"
-                class="ledger-search-input"
-                placeholder="🔍 Buscar concepto, categoría o bóveda..."
-                [ngModel]="movementSearch()"
-                (ngModelChange)="movementSearch.set($event)"
-              />
-            </div>
-          </div>
-
-          @let movements = filteredMovements();
-          @if (movements.length === 0) {
-            <div class="empty-state">
-              <span class="empty-icon">📭</span>
-              <h4>Sin movimientos en esta vista</h4>
-              <p>Registra un ingreso/gasto o carga el portafolio ejecutivo de prueba para activar todas las métricas.</p>
-              <div class="empty-cta-row">
-                <button type="button" class="btn-empty-demo" (click)="loadDemoPortfolio()">
-                  ✨ Cargar Portafolio Demo Realista
-                </button>
-                <button type="button" class="btn-empty-add" (click)="openQuickModal('expense')">
-                  ➕ Registrar Movimiento
-                </button>
-              </div>
-            </div>
-          } @else {
-            <div class="movements-list">
-              @for (item of movements.slice(0, 18); track item.id) {
-                <div class="movement-row" [class.income-row]="item.type === 'income'" [class.expense-row]="item.type === 'expense'">
-                  <div class="row-icon-badge" [class.inc]="item.type === 'income'" [class.exp]="item.type === 'expense'">
-                    @if (item.type === 'income') { ↗ } @else { ↘ }
-                  </div>
-
-                  @if (editingMovementId() === item.id) {
-                    <div style="flex: 1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0;">
-                      <input
-                        type="text"
-                        class="form-control"
-                        style="flex: 2; min-width: 140px; padding: 4px 8px; font-size: 0.8rem;"
-                        [ngModel]="editingMovementTitle()"
-                        (ngModelChange)="editingMovementTitle.set($event)"
-                        placeholder="Descripción"
-                      />
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <span style="font-size: 0.8rem; color: #94a3b8;">$</span>
-                        <input
-                          type="number"
-                          class="form-control font-mono"
-                          style="width: 85px; padding: 4px 6px; font-size: 0.8rem;"
-                          [ngModel]="editingMovementAmountUsd()"
-                          (ngModelChange)="editingMovementAmountUsd.set($event)"
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div style="display: flex; gap: 4px;">
-                        <button
-                          type="button"
-                          class="btn-inline-save"
-                          style="padding: 4px 8px; font-size: 0.75rem;"
-                          title="Guardar cambios"
-                          (click)="saveEditMovement(item)"
-                        >
-                          ✓ Guardar
-                        </button>
-                        <button
-                          type="button"
-                          class="btn-inline-cancel"
-                          style="padding: 4px 8px; font-size: 0.75rem;"
-                          (click)="cancelEditMovement()"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  } @else {
-                    <div class="row-details">
-                      <div class="row-title-line">
-                        <strong>{{ item.title }}</strong>
-                        <span class="row-cat-pill">{{ item.categoryLabel }}</span>
-                        <span class="row-scope-pill">
-                          {{ item.scope === 'business' ? '🏢 Pyme' : '👤 Personal' }}
-                        </span>
-                      </div>
-                      <div class="row-meta">
-                        <span>📅 {{ item.date }}</span>
-                        <span>· 🏦 {{ item.vaultName }}</span>
-                        <span>· Tasa BCV: {{ item.bcvRateApplied | number: '1.2-2' }}</span>
-                      </div>
-                    </div>
-
-                    <div class="row-right-block">
-                      <div class="row-amount" [class.income-amount]="item.type === 'income'" [class.expense-amount]="item.type === 'expense'">
-                        {{ item.type === 'income' ? '+' : '-' }}${{ item.amountUsd | number: '1.2-2' }} USD
-                      </div>
-                      <div class="row-ves-sub">
-                        Bs {{ item.amountVes | number: '1.2-2' }}
-                      </div>
-                    </div>
-
-                    <div style="display: flex; gap: 5px; align-items: center;">
-                      <button
-                        type="button"
-                        style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #cbd5e1; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 0.75rem;"
-                        title="Editar concepto y monto de este movimiento"
-                        (click)="startEditMovement(item)"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-delete-mov"
-                        title="Eliminar movimiento y revertir saldo en bóveda"
-                        (click)="removeMovement(item)"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- ==================== RIGHT / TELEMETRY & MODULES COLUMN ==================== -->
-      <aside class="cc-side-col">
-        <!-- 14-DAY LIQUIDITY HEALTH SEMAPHORE -->
-        @let health = financeService.liquidityHealthStatus();
-        <div
-          class="health-semaphore-card"
-          [class.optimal]="health.status === 'optimal'"
-          [class.warning]="health.status === 'warning'"
-          [class.critical]="health.status === 'critical'"
-        >
-          <div class="health-icon">
-            @if (health.status === 'optimal') { 🟢 }
-            @else if (health.status === 'warning') { 🟡 }
-            @else { 🚨 }
-          </div>
-          <div class="health-info">
-            <div class="semaphore-kicker">SEMÁFORO DE LIQUIDEZ A 14 DÍAS</div>
-            <strong class="health-title">{{ health.label }}</strong>
-            <p class="health-desc">
-              @if (health.due14DaysUsd > 0) {
-                Compromisos próximos 14 días: <strong>${{ health.due14DaysUsd | number: '1.2-2' }} USD</strong>
-                (Liquidez libre: ${{ financeService.totalAssetsUsd() | number: '1.2-2' }} USD)
-              } @else {
-                Cero cuotas exigibles en los próximos 14 días. Liquidez libre al 100%.
-              }
-            </p>
-          </div>
-        </div>
-
-        <!-- P2P UNIDIRECTIONAL PROFIT BRIDGE -->
-        @let todaySummary = todayP2pSummary();
-        <div class="p2p-bridge-banner">
-          <div class="bridge-content">
-            <div class="bridge-tag">
-              <span class="pulse-indicator"></span>
-              <span>PUENTE UNIDIRECCIONAL · MESA P2P AISLADA</span>
-            </div>
-            <div class="bridge-stats">
-              @if (todaySummary.pnlVes > 0 || todaySummary.pnlUsdt > 0) {
-                <div class="profit-highlight">
-                  Profit P2P de Hoy: <strong>+${{ todaySummary.pnlUsdt | number: '1.2-2' }} USD</strong>
-                  <span class="ves-sub">(+Bs {{ todaySummary.pnlVes | number: '1.2-2' }})</span>
-                </div>
-              } @else {
-                <div class="profit-highlight muted">
-                  Sin ganancia neta cerrada hoy en la mesa P2P (Capital P2P 100% blindado).
-                </div>
-              }
-            </div>
-          </div>
-
-          <div class="bridge-action">
-            @if (isP2pProfitImportedToday()) {
-              <span class="badge-synced">✅ Profit Importado Hoy</span>
-            } @else {
-              <button
-                type="button"
-                class="btn-import-p2p"
-                [disabled]="todaySummary.pnlVes <= 0 && todaySummary.pnlUsdt <= 0"
-                (click)="triggerP2pImport()"
-              >
-                💰 Importar Ganancia Neta P2P
-              </button>
-            }
-          </div>
-        </div>
-
-        <!-- URGENT UPCOMING COMMITMENTS (7 DAYS) -->
-        @let upcoming = financeService.upcomingLiabilities7Days();
-        <div class="upcoming-commitments-section">
-          <div class="section-title-row">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <h3>⏳ Vencimientos (7 Días)</h3>
-              <span class="count-badge">{{ upcoming.length }}</span>
-            </div>
-            <button
-              type="button"
-              class="btn-vault-util primary"
-              style="padding: 5px 10px; font-size: 0.72rem;"
-              (click)="openNewLiabilityModal()"
-            >
-              + Nuevo Pasivo
-            </button>
-          </div>
-
-          @if (upcoming.length > 0) {
-            <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #94a3b8;">
-              <span>Debitar pago de:</span>
-              <select
-                class="form-control"
-                style="padding: 4px 8px; font-size: 0.75rem; flex: 1;"
-                [ngModel]="selectedLiabilityVaultId()"
-                (ngModelChange)="selectedLiabilityVaultId.set($event)"
-              >
-                @for (v of financeService.state().assets; track v.id) {
-                  <option [value]="v.id">
-                    {{ getVaultIcon(v) }} {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})
-                  </option>
-                }
-              </select>
-            </div>
-          }
-
-          @if (upcoming.length === 0) {
-            <div class="no-commitments-box">
-              <span>✅ Sin cuotas venciendo esta semana.</span>
-            </div>
-          } @else {
-            <div class="commitments-scroll">
-              @for (item of upcoming; track item.id) {
-                <div class="commitment-card">
-                  <div class="card-left">
-                    <span class="due-tag">📅 Vence: {{ item.dueDate }}</span>
-                    <strong class="item-title">{{ item.title }}</strong>
-                    <span class="item-creditor">{{ item.creditor }}</span>
-                  </div>
-                  <div class="card-right">
-                    <div class="item-amount">${{ item.remainingAmount | number: '1.2-2' }} USD</div>
-                    <div style="display: flex; gap: 4px; align-items: center;">
-                      <button
-                        type="button"
-                        class="btn-quick-pay"
-                        (click)="payQuickLiability(item.id, item.remainingAmount)"
-                      >
-                        Liquidar Cuota
-                      </button>
-                      <button
-                        type="button"
-                        style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 0.75rem;"
-                        title="Eliminar este compromiso del calendario"
-                        (click)="deleteLiabilityItem(item)"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- WEALTH GOALS & RESERVE FUNDS -->
-        @let goalsList = financeService.goals();
-        <div class="wealth-goals-section">
-          <div class="section-title-row">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <h3>🎯 Metas &amp; Fondos Blindados</h3>
-              <span class="count-badge">{{ goalsList.length }}</span>
-            </div>
-            <button
-              type="button"
-              class="btn-vault-util primary"
-              style="padding: 5px 10px; font-size: 0.72rem;"
-              (click)="openNewGoalModal()"
-            >
-              + Nueva Meta
-            </button>
-          </div>
-
-          @if (goalsList.length === 0) {
-            <div class="no-commitments-box">
-              <span>🎯 Define una meta de ahorro o reserva de emergencia para blindar tu patrimonio.</span>
-            </div>
-          } @else {
-            <div class="goals-scroll-list">
-              @for (goal of goalsList; track goal.id) {
-                @let pct = goal.targetAmountUsd > 0 ? (goal.currentAmountUsd / goal.targetAmountUsd) * 100 : 0;
-                @let isDone = goal.currentAmountUsd >= goal.targetAmountUsd;
-                <div class="goal-item-card" [class.goal-achieved]="isDone">
-                  <div class="goal-top-line">
-                    <div class="goal-info">
-                      <strong class="goal-name">{{ goal.title }}</strong>
-                      <span class="goal-deadline">📅 Meta: {{ goal.deadline || 'Indefinido' }}</span>
-                    </div>
-                    <div class="goal-progress-badge" [class.badge-completed]="isDone">
-                      {{ pct | number: '1.0-0' }}%
-                    </div>
-                  </div>
-
-                  <!-- Goal Progress Bar -->
-                  <div class="goal-track">
-                    <div class="goal-fill" [style.width.%]="pct > 100 ? 100 : pct"></div>
-                  </div>
-
-                  <div class="goal-bottom-line">
-                    <div class="goal-amounts">
-                      <strong>${{ goal.currentAmountUsd | number: '1.0-0' }}</strong>
-                      <span class="muted">de ${{ goal.targetAmountUsd | number: '1.0-0' }} USD</span>
-                    </div>
-
-                    <div style="display: flex; gap: 5px; align-items: center;">
-                      <button
-                        type="button"
-                        class="btn-card-mini"
-                        style="color: #facc15; border-color: rgba(250, 204, 21, 0.4);"
-                        title="Abonar fondos desde una bóveda"
-                        (click)="openContributeGoalModal(goal)"
-                      >
-                        💰 Abonar
-                      </button>
-                      <button
-                        type="button"
-                        style="background: transparent; border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-size: 0.72rem;"
-                        title="Eliminar meta"
-                        (click)="deleteGoal(goal)"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </div>
-
-        <!-- BENTO SUB-MODULES GRID -->
-        <div class="bento-section-wrapper">
-          <div class="section-title-row">
-            <h3>🧩 Ecosistema Operativo 360</h3>
-          </div>
-          <div class="bento-modules-grid">
-            <!-- Tile 1: Analytics & Statistics -->
-            <div class="bento-tile featured-tile" (click)="activeTab.set('analytics')">
-              <div class="tile-header">
-                <span class="tile-icon">📊</span>
-                <span class="tile-badge gold">CFO IA · SVG</span>
-              </div>
-              <h4>Estadísticas &amp; Analítica</h4>
-              <p>Curva predictiva de Runway 30D, anillos de distribución patrimonial y Burn Rate.</p>
-              <div class="tile-footer">
-                <span>Diagnósticos en vivo</span>
-                <span class="tile-arrow">→</span>
-              </div>
-            </div>
-
-            <!-- Tile 2: Cashea Calculator -->
-            <div class="bento-tile" (click)="activeTab.set('cashea')">
-              <div class="tile-header">
-                <span class="tile-icon">⚡</span>
-                <span class="tile-badge">14 Días</span>
-              </div>
-              <h4>Calculadora Cashea</h4>
-              <p>Simula compras, iniciales por nivel y cronograma automático de cuotas.</p>
-              <div class="tile-footer">
-                <span>Planes: {{ financeService.state().casheaPlans.length }}</span>
-                <span class="tile-arrow">→</span>
-              </div>
-            </div>
-
-            <!-- Tile 3: Pyme Management -->
-            <div class="bento-tile" (click)="activeTab.set('pyme')">
-              <div class="tile-header">
-                <span class="tile-icon">🏢</span>
-                <span class="tile-badge">3 Gavetas</span>
-              </div>
-              <h4>Gestión Pyme &amp; Taller</h4>
-              <p>Cortafuegos de 3 gavetas con asiento contable, proveedores e inventario.</p>
-              <div class="tile-footer">
-                <span>Proveedores: {{ financeService.state().providers.length }}</span>
-                <span class="tile-arrow">→</span>
-              </div>
-            </div>
-
-            <!-- Tile 4: Quote Builder -->
-            <div class="bento-tile" (click)="activeTab.set('quotes')">
-              <div class="tile-header">
-                <span class="tile-icon">📝</span>
-                <span class="tile-badge">+10% Merma</span>
-              </div>
-              <h4>Generador Presupuestos</h4>
-              <p>Cotizaciones técnicas con +10% de merma y doble PDF (Cliente / Auditoría).</p>
-              <div class="tile-footer">
-                <span>Cotizaciones: {{ financeService.state().quotes.length }}</span>
-                <span class="tile-arrow">→</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- CLOUD SYNC & MASTER LEDGER BACKUP -->
-        <div class="cloud-sync-card">
-          <div class="sync-header">
-            <div class="sync-title">
-              <span class="sync-icon">☁️</span>
-              <div>
-                <h4>Bóveda Cloud &amp; Libro Maestro</h4>
-                <p class="sync-subtitle">
-                  Google Drive &amp; Sheets
-                  @if (driveSync.lastSyncTimestamp()) {
-                    · Sincronizado: {{ driveSync.lastSyncTimestamp() | date: 'short' }}
-                  }
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              class="btn-sync-cloud"
-              [disabled]="driveSync.syncStatus() === 'syncing'"
-              (click)="syncToGoogleDrive()"
-            >
-              @if (driveSync.syncStatus() === 'syncing') {
-                <span class="spinner-sm"></span> Sincronizando...
-              } @else {
-                ☁️ Sincronizar
-              }
-            </button>
-          </div>
-
-          <div class="backup-actions-row" style="flex-wrap: wrap;">
-            <button type="button" class="btn-backup-export" (click)="downloadJsonBackup()">
-              📥 Exportar JSON
-            </button>
-            <label
-              class="btn-backup-export"
-              style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin: 0;"
-              title="Restaurar portafolio completo desde un archivo .json"
-            >
-              📤 Restaurar JSON
-              <input
-                type="file"
-                accept=".json,application/json"
-                style="display: none;"
-                (change)="onRestoreJsonSelected($event)"
-              />
-            </label>
-            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('expenses')">
-              📊 CSV Gastos
-            </button>
-            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('incomes')">
-              📈 CSV Ingresos
-            </button>
-            <button type="button" class="btn-backup-export" (click)="downloadCsvExport('liabilities')">
-              ⏳ CSV Pasivos
-            </button>
-          </div>
-        </div>
-      </aside>
-    </div>
-  } @else if (activeTab() === 'analytics') {
-    <div class="submodule-view">
-      <div class="submodule-top-bar">
-        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver a Comando 360
+  <!-- Mobile 9:16 Contextual Floating Action Button (Safely above .mobile-bottom-nav) -->
+  <div class="f360-mobile-fab-wrap" data-testid="f360-mobile-fab-wrap">
+    @if (mobileFabOpen()) {
+      <div class="f360-mobile-fab-menu f360-liquid-glass" role="menu" aria-label="Acciones rápidas móviles">
+        <button type="button" role="menuitem" class="fab-menu-item" (click)="handleQuickAction('expense')">
+          <span>Gasto rápido</span>
         </button>
-        <div class="submodule-header-title">
-          <h3>📊 Inteligencia Financiera &amp; Estadísticas CFO</h3>
-          <p>Curva Predictiva de Liquidez 30D, Estructura Patrimonial, Mapa de Calor y Diagnósticos Ejecutivos</p>
-        </div>
-      </div>
-      <app-finance-analytics />
-    </div>
-  } @else if (activeTab() === 'cashea') {
-    <div class="submodule-view">
-      <div class="submodule-top-bar">
-        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver a Comando 360
+        <button type="button" role="menuitem" class="fab-menu-item" (click)="handleQuickAction('income')">
+          <span>Ingreso</span>
         </button>
-        <div class="submodule-header-title">
-          <h3>⚡ Calculadora Cashea &amp; Cuotas Quincenales</h3>
-          <p>Simulación por nivel, pago inicial e inyección automática al calendario de pasivos</p>
-        </div>
-      </div>
-      <app-cashea-calculator />
-    </div>
-  } @else if (activeTab() === 'pyme') {
-    <div class="submodule-view">
-      <div class="submodule-top-bar">
-        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver a Comando 360
+        <button type="button" role="menuitem" class="fab-menu-item" (click)="handleQuickAction('audio')">
+          <span>Dictar IA / OCR</span>
         </button>
-        <div class="submodule-header-title">
-          <h3>🏢 Gestión Pyme &amp; Taller (Cortafuegos de 3 Gavetas)</h3>
-          <p>Partición de ventas en tiempo real, cuentas por pagar a proveedores y semáforo de stock</p>
-        </div>
-      </div>
-      <app-pyme-manager />
-    </div>
-  } @else if (activeTab() === 'quotes') {
-    <div class="submodule-view">
-      <div class="submodule-top-bar">
-        <button type="button" class="btn-submodule-back" (click)="activeTab.set('overview')">
-          ← Volver a Comando 360
+        <button type="button" role="menuitem" class="fab-menu-item" (click)="handleQuickAction('transfer')">
+          <span>Transferencia FX</span>
         </button>
-        <div class="submodule-header-title">
-          <h3>📝 Generador de Presupuestos 360</h3>
-          <p>Latonería, pintura y obras por m² con +10% de merma técnica y exportación dual PDF</p>
-        </div>
       </div>
-      <app-quote-builder />
-    </div>
-  }
-
-  <!-- MOBILE THUMB ZONE (ACCIONES RÁPIDAS STICKY) -->
-  <div class="thumb-action-zone">
-    <button
-      type="button"
-      class="btn-thumb btn-income"
-      (click)="openQuickModal('income')"
-    >
-      <span class="thumb-icon">➕</span>
-      <span>Ingreso / Cobro</span>
-    </button>
+    }
 
     <button
       type="button"
-      class="btn-thumb btn-expense"
-      (click)="openQuickModal('expense')"
+      class="f360-mobile-fab"
+      data-testid="f360-mobile-fab"
+      [class.is-open]="mobileFabOpen()"
+      [attr.aria-expanded]="mobileFabOpen()"
+      aria-label="Abrir acciones rápidas de Finanzas 360"
+      (click)="toggleMobileFab()"
     >
-      <span class="thumb-icon">➖</span>
-      <span>Gasto Rápido</span>
-    </button>
-
-    <button
-      type="button"
-      class="btn-thumb btn-voice"
-      (click)="openQuickModal('audio')"
-    >
-      <span class="thumb-icon">🎙️</span>
-      <span>Comando IA</span>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
     </button>
   </div>
 
-  <!-- ========================================================= -->
-  <!-- MODAL 1: QUICK TRANSACTION + SMART NATURAL LANGUAGE IA     -->
-  <!-- ========================================================= -->
-  @if (quickModalOpen()) {
-    <div class="modal-backdrop" (click)="closeQuickModal()">
-      <div class="modal-card" (click)="$event.stopPropagation()" (paste)="onReceiptPaste($event)">
-        <div class="modal-header">
-          <h3>
-            @if (quickModalType() === 'income') { 🟢 Registrar Ingreso / Cobro }
-            @else if (quickModalType() === 'expense') { 🔴 Registrar Gasto Operativo / Personal }
-            @else { 🎙️ Comando Inteligente &amp; Dictado IA }
-          </h3>
-          <button type="button" class="btn-close" (click)="closeQuickModal()">✕</button>
+  <!-- ====================================================================== -->
+  <!-- MODAL: SCOPED CTRL+K FINANZAS 360 PALETTE                              -->
+  <!-- ====================================================================== -->
+  @if (scopedPaletteOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Paleta de comandos Finanzas 360" data-testid="f360-scoped-palette">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar paleta de comandos" (click)="closeScopedPalette()"></button>
+      <div class="f360-palette-panel f360-liquid-glass">
+        <div class="palette-header">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            #paletteSearchInput
+            type="text"
+            class="palette-input"
+            data-testid="f360-palette-input"
+            placeholder="Buscar acción, submódulo o ámbito en Finanzas 360..."
+            [value]="scopedPaletteQuery()"
+            (input)="onScopedPaletteInput($event)"
+            (keydown.arrowDown)="onScopedPaletteArrowDown($event)"
+            (keydown.arrowUp)="onScopedPaletteArrowUp($event)"
+            (keydown.enter)="onScopedPaletteEnter($event)"
+            autocomplete="off"
+          />
+          <span class="palette-kbd">Esc</span>
         </div>
 
-        <div class="modal-body">
-          <!-- SMART COMMAND INPUT BAR + MULTIMODAL RECEIPT SCANNER -->
-          <div class="smart-ai-bar">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
-              <label style="margin: 0;">✨ Entrada Rápida en Lenguaje Natural o Escáner IA</label>
-              <label
-                style="cursor: pointer; background: rgba(226, 183, 85, 0.14); border: 1px solid rgba(226, 183, 85, 0.38); color: #facc15; padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;"
-                title="Sube una imagen o pega una captura con Ctrl+V"
+        <div class="palette-list">
+          @if (filteredScopedCommands().length === 0) {
+            <p class="palette-empty">Sin comandos coincidentes en Finanzas 360.</p>
+          } @else {
+            @for (cmd of filteredScopedCommands(); track cmd.id; let idx = $index) {
+              <button
+                type="button"
+                class="palette-cmd"
+                [attr.data-testid]="'f360-palette-cmd-' + cmd.id"
+                [class.is-selected]="scopedPaletteIndex() === idx"
+                (mouseenter)="scopedPaletteIndex.set(idx)"
+                (click)="executeScopedCommand(cmd)"
               >
-                @if (isScanningReceipt()) {
-                  ⏳ Escaneando factura...
-                } @else {
-                  📸 Escanear Comprobante / Factura (o Ctrl+V)
+                <span class="palette-cmd-main">
+                  <strong>{{ cmd.label }}</strong>
+                  <small>{{ cmd.group }}</small>
+                </span>
+                @if (cmd.hint) {
+                  <span class="palette-cmd-hint">{{ cmd.hint }}</span>
                 }
-                <input
-                  type="file"
-                  accept="image/*"
-                  style="display: none;"
-                  (change)="onReceiptFileSelected($event)"
-                />
-              </label>
-            </div>
+              </button>
+            }
+          }
+        </div>
+      </div>
+    </div>
+  }
 
-            <div class="smart-input-row">
-              <input
-                type="text"
-                class="form-control"
-                placeholder='Ej: "Gasté 25$ en gasolina por Pago Móvil" o pega captura (Ctrl+V)'
-                [ngModel]="smartCommandText()"
-                (ngModelChange)="smartCommandText.set($event)"
-                (keydown.enter)="parseNaturalLanguageCommand()"
-              />
-              <button
-                type="button"
-                class="btn-ai-parse"
-                [style.background]="voice.isListening() && voice.activeContext() === 'finance360' ? '#ef4444' : 'rgba(226, 183, 85, 0.22)'"
-                [style.color]="voice.isListening() && voice.activeContext() === 'finance360' ? '#fff' : '#facc15'"
-                (click)="toggleVoiceInModal()"
-                title="Activar o detener dictado por voz en vivo"
-              >
-                {{ voice.isListening() && voice.activeContext() === 'finance360' ? '🔴 Escuchando...' : '🎙️ Dictar' }}
-              </button>
-              <button
-                type="button"
-                class="btn-ai-parse"
-                (click)="parseNaturalLanguageCommand()"
-              >
-                Autocompletar
-              </button>
-            </div>
-            @if (lastVoiceBadges().length > 0) {
-              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
-                @for (badge of lastVoiceBadges(); track badge) {
-                  <span class="apple-pill-mini gold font-mono">{{ badge }}</span>
-                }
-              </div>
-            }
-            @if (scannedReceiptName()) {
-              <div style="margin-top: 6px; font-size: 0.75rem; color: #34d399; font-weight: 600;">
-                ✅ Imagen procesada: {{ scannedReceiptName() }}
-              </div>
-            }
-            @if (isRecordingAudio() || (voice.isListening() && voice.activeContext() === 'finance360')) {
-              <div class="voice-status-banner">
-                <span class="pulse-dot"></span> {{ voice.interimTranscript() || 'Escuchando dictado de voz y clasificando categoría...' }}
-              </div>
-            }
+  <!-- ====================================================================== -->
+  <!-- MODAL: QUICK TRANSACTION + SMART VOICE / VISION OCR                    -->
+  <!-- ====================================================================== -->
+  @if (quickModalOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Registrar movimiento Finanzas 360" data-testid="f360-quick-modal" (paste)="onReceiptPaste($event)">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de movimiento" (click)="closeQuickModal()"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Registrar Movimiento</h3>
+            <p>Asiento con tasa BCV congelada y reloj calendario VET</p>
           </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeQuickModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
 
-          <div class="form-group">
-            <label>Descripción / Concepto</label>
+        <div class="modal-mode-tabs" role="tablist" aria-label="Tipo de movimiento">
+          <button type="button" role="tab" class="f360-btn-glass" [class.is-active]="quickModalType() === 'expense'" [attr.aria-selected]="quickModalType() === 'expense'" (click)="quickModalType.set('expense')">Egreso</button>
+          <button type="button" role="tab" class="f360-btn-glass" [class.is-active]="quickModalType() === 'income'" [attr.aria-selected]="quickModalType() === 'income'" (click)="quickModalType.set('income')">Ingreso</button>
+          <button type="button" role="tab" class="f360-btn-glass" [class.is-active]="quickModalType() === 'audio'" [attr.aria-selected]="quickModalType() === 'audio'" (click)="quickModalType.set('audio')">Dictar IA / OCR</button>
+        </div>
+
+        <div class="smart-assist-box">
+          <label for="f360-smart-cmd">Comando inteligente o comprobante (Ctrl+V para pegar captura)</label>
+          <div class="smart-row">
             <input
+              id="f360-smart-cmd"
               type="text"
-              class="form-control"
-              placeholder="ej. Sueldo quincenal, Gasolina, Pago Proveedor..."
-              [ngModel]="formTitle()"
-              (ngModelChange)="formTitle.set($event)"
+              class="f360-input"
+              placeholder='Ej: "Gasté 25 dólares en gasolina por Pago Móvil ref 441920"'
+              [ngModel]="smartCommandText()"
+              (ngModelChange)="smartCommandText.set($event)"
             />
+            <button type="button" class="f360-btn-glass" (click)="parseNaturalLanguageCommand()">Interpretar</button>
+            <button type="button" class="f360-btn-glass" [class.is-active]="voice.isListening()" (click)="toggleVoiceInModal()">
+              {{ voice.isListening() ? 'Detener' : 'Dictar' }}
+            </button>
+            <label class="f360-btn-glass file-trigger" for="f360-receipt-upload">
+              {{ isScanningReceipt() ? 'Leyendo...' : 'Recibo' }}
+            </label>
+            <input id="f360-receipt-upload" type="file" accept="image/*" class="sr-only" (change)="onReceiptFileSelected($event)" />
+          </div>
+          @if (lastVoiceBadges().length > 0 || scannedReceiptName()) {
+            <div class="assist-badges">
+              @if (scannedReceiptName()) {
+                <span class="f360-status-pill tone-cyan">{{ scannedReceiptName() }}</span>
+              }
+              @for (badge of lastVoiceBadges(); track badge) {
+                <span class="f360-status-pill tone-emerald">{{ badge }}</span>
+              }
+            </div>
+          }
+        </div>
+
+        <form class="modal-form" (ngSubmit)="saveQuickTransaction()">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="f360-tx-title">Concepto</label>
+              <input id="f360-tx-title" name="txTitle" type="text" class="f360-input" placeholder="Descripción clara del movimiento" [ngModel]="formTitle()" (ngModelChange)="formTitle.set($event)" />
+            </div>
+            <div class="field">
+              <label for="f360-tx-amount">Monto</label>
+              <input id="f360-tx-amount" name="txAmount" type="number" step="0.01" min="0" class="f360-input f360-tabular" placeholder="0.00" [ngModel]="formAmount()" (ngModelChange)="formAmount.set($event)" required />
+            </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Monto</label>
-              <input
-                type="number"
-                class="form-control font-mono"
-                placeholder="0.00"
-                [ngModel]="formAmount()"
-                (ngModelChange)="formAmount.set($event)"
-              />
+          <div class="form-grid-3">
+            <div class="field">
+              <label for="f360-tx-currency">Divisa</label>
+              <select id="f360-tx-currency" name="txCurrency" class="f360-input" [ngModel]="formCurrency()" (ngModelChange)="formCurrency.set($event)">
+                @for (curr of currencyOptions; track curr) {
+                  <option [value]="curr">{{ curr }}</option>
+                }
+              </select>
             </div>
-
-            <div class="form-group half">
-              <label>Moneda de Origen</label>
-              <select
-                class="form-control"
-                [ngModel]="formCurrency()"
-                (ngModelChange)="formCurrency.set($event)"
-              >
-                <option value="USD">USD ($ Dólares)</option>
-                <option value="VES">VES (Bs Bolívares)</option>
-                <option value="USDT">USDT (Tether)</option>
+            <div class="field">
+              <label for="f360-tx-scope">Ámbito</label>
+              <select id="f360-tx-scope" name="txScope" class="f360-input" [ngModel]="formScope()" (ngModelChange)="formScope.set($event)">
+                <option value="personal">Personal</option>
+                <option value="business">Pyme</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f360-tx-vault">Bóveda</label>
+              <select id="f360-tx-vault" name="txVault" class="f360-input" [ngModel]="formVaultId()" (ngModelChange)="formVaultId.set($event)">
+                <option value="">Sin bóveda vinculada</option>
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }})</option>
+                }
               </select>
             </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Ámbito Contable</label>
-              <select
-                class="form-control"
-                [ngModel]="formScope()"
-                (ngModelChange)="formScope.set($event)"
-              >
-                <option value="personal">👤 Personal / Hogar</option>
-                <option value="business">🏢 Pyme / Taller</option>
-              </select>
-            </div>
-
-            <div class="form-group half">
-              <label>Categoría</label>
-              @if (quickModalType() === 'expense' || quickModalType() === 'audio') {
-                <select
-                  class="form-control"
-                  [ngModel]="formExpenseCategory()"
-                  (ngModelChange)="formExpenseCategory.set($event)"
-                >
-                  <option value="groceries">🛒 Comida y Mercado</option>
-                  <option value="transport">⛽ Gasolina / Transporte</option>
-                  <option value="housing">🏠 Vivienda y Alquiler</option>
-                  <option value="services">💡 Servicios / Internet</option>
-                  <option value="health">💊 Salud y Medicina</option>
-                  <option value="cashea_installment">⚡ Cuota Cashea</option>
-                  <option value="provider_merchandise">📦 Proveedor / Insumos</option>
-                  <option value="payroll">👥 Nómina de Personal</option>
-                  <option value="maintenance">🔧 Mantenimiento / Taller</option>
-                  <option value="other">📌 Otro Gasto</option>
+          <div class="form-grid-2">
+            <div class="field">
+              @if (quickModalType() === 'income') {
+                <label for="f360-tx-inc-cat">Categoría de Ingreso</label>
+                <select id="f360-tx-inc-cat" name="txIncCat" class="f360-input" [ngModel]="formIncomeCategory()" (ngModelChange)="formIncomeCategory.set($event)">
+                  @for (opt of incomeCategoryOptions; track opt.value) {
+                    <option [value]="opt.value">{{ opt.label }}</option>
+                  }
                 </select>
               } @else {
-                <select
-                  class="form-control"
-                  [ngModel]="formIncomeCategory()"
-                  (ngModelChange)="formIncomeCategory.set($event)"
-                >
-                  <option value="salary">💼 Sueldo / Salario</option>
-                  <option value="business_sale">🛍️ Venta Comercial / Taller</option>
-                  <option value="quote_advance">📝 Anticipo de Presupuesto</option>
-                  <option value="freelance">💻 Honorarios Profesionales</option>
-                  <option value="investment">📈 Rendimiento / Inversión</option>
-                  <option value="other">📌 Otro Ingreso</option>
+                <label for="f360-tx-exp-cat">Categoría de Egreso</label>
+                <select id="f360-tx-exp-cat" name="txExpCat" class="f360-input" [ngModel]="formExpenseCategory()" (ngModelChange)="formExpenseCategory.set($event)">
+                  @for (opt of expenseCategoryOptions; track opt.value) {
+                    <option [value]="opt.value">{{ opt.label }}</option>
+                  }
                 </select>
               }
             </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group" style="flex: 2;">
-              <label>Bóveda / Cuenta Afectada</label>
-              <select
-                class="form-control"
-                [ngModel]="formVaultId()"
-                (ngModelChange)="formVaultId.set($event)"
-              >
-                <option value="">(Solo registro contable · Sin afectar bóveda)</option>
-                @for (vault of financeService.state().assets; track vault.id) {
-                  <option [value]="vault.id">
-                    {{ getVaultIcon(vault) }} {{ vault.name }} — {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
-                  </option>
-                }
-              </select>
-            </div>
-            <div class="form-group" style="flex: 1;">
-              <label>Referencia (Opcional)</label>
-              <input
-                type="text"
-                class="form-control font-mono"
-                placeholder="Ej. #849201"
-                [ngModel]="formReferenceNumber()"
-                (ngModelChange)="formReferenceNumber.set($event)"
-              />
+            <div class="field">
+              <label for="f360-tx-ref">Referencia bancaria (anti-duplicado)</label>
+              <input id="f360-tx-ref" name="txRef" type="text" class="f360-input f360-tabular" placeholder="Opcional" [ngModel]="formReferenceNumber()" (ngModelChange)="formReferenceNumber.set($event)" />
             </div>
           </div>
 
-          <!-- VENEZUELAN BANK FEE SWITCH (0%, +0.3% PAGO MÓVIL, +3% IGTF) -->
-          @if (quickModalType() === 'expense' || quickModalType() === 'audio') {
-            <div class="form-group" style="margin-top: 10px;">
-              <label>Comisión Bancaria Venezolana (Opcional)</label>
-              <div class="fee-selector-pills" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button
-                  type="button"
-                  class="fee-pill"
-                  [class.active]="feeRatePct() === 0"
-                  (click)="feeRatePct.set(0)"
-                >
-                  0% Sin Comisión
-                </button>
-                <button
-                  type="button"
-                  class="fee-pill"
-                  [class.active]="feeRatePct() === 0.3"
-                  (click)="feeRatePct.set(0.3)"
-                >
-                  ⚡ +0.3% Pago Móvil
-                </button>
-                <button
-                  type="button"
-                  class="fee-pill"
-                  [class.active]="feeRatePct() === 3"
-                  (click)="feeRatePct.set(3)"
-                >
-                  🏛️ +3.0% IGTF Divisas
-                </button>
-              </div>
-              @if (feeRatePct() > 0 && formAmount()) {
-                <div style="font-size: 0.74rem; color: #facc15; margin-top: 5px;">
-                  ℹ️ Se debitará un total de {{ formCurrency() }} {{ (formAmount()! * (1 + feeRatePct() / 100)) | number: '1.2-2' }} (monto base + {{ (formAmount()! * feeRatePct() / 100) | number: '1.2-2' }} de comisión).
-                </div>
-              }
+          @if (quickModalType() !== 'income') {
+            <div class="fee-row" role="group" aria-label="Comisión bancaria venezolana">
+              <span class="fee-label">Comisión bancaria:</span>
+              <button type="button" class="f360-btn-glass" [class.is-active]="feeRatePct() === 0" (click)="feeRatePct.set(0)">0%</button>
+              <button type="button" class="f360-btn-glass" [class.is-active]="feeRatePct() === 0.3" (click)="feeRatePct.set(0.3)">+0.3% Pago Móvil</button>
+              <button type="button" class="f360-btn-glass" [class.is-active]="feeRatePct() === 3" (click)="feeRatePct.set(3)">+3% IGTF</button>
             </div>
           }
-        </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="closeQuickModal()">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveQuickTransaction()">
-            Asentar Movimiento
-          </button>
-        </div>
+          <div class="field">
+            <label for="f360-tx-notes">Notas</label>
+            <input id="f360-tx-notes" name="txNotes" type="text" class="f360-input" placeholder="Observaciones internas" [ngModel]="formNotes()" (ngModelChange)="formNotes.set($event)" />
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="closeQuickModal()">Cancelar</button>
+            <button type="submit" class="f360-btn-primary" data-testid="f360-quick-submit">Guardar movimiento</button>
+          </footer>
+        </form>
       </div>
     </div>
   }
 
-  <!-- ========================================================= -->
-  <!-- MODAL 2: TRANSFER BETWEEN VAULTS (CROSS-CURRENCY BCV)      -->
-  <!-- ========================================================= -->
+  <!-- ====================================================================== -->
+  <!-- MODAL: DOUBLE-ENTRY FX TRANSFER                                        -->
+  <!-- ====================================================================== -->
   @if (transferModalOpen()) {
-    <div class="modal-backdrop" (click)="transferModalOpen.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>🔄 Transferir Fondos entre Bóvedas</h3>
-          <button type="button" class="btn-close" (click)="transferModalOpen.set(false)">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Bóveda de Origen (Débito)</label>
-            <select
-              class="form-control"
-              [ngModel]="transferFromId()"
-              (ngModelChange)="transferFromId.set($event)"
-            >
-              @for (v of financeService.state().assets; track v.id) {
-                <option [value]="v.id">
-                  {{ getVaultIcon(v) }} {{ v.name }} (Disponible: {{ v.currency }} {{ v.balance | number: '1.2-2' }})
-                </option>
-              }
-            </select>
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Transferencia FX entre bóvedas" data-testid="f360-transfer-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de transferencia" (click)="transferModalOpen.set(false)"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Transferencia FX (Partida Doble)</h3>
+            <p>Asiento pareado sin sobregiros entre tus bóvedas reales</p>
           </div>
-
-          <div class="form-group">
-            <label>Bóveda de Destino (Crédito)</label>
-            <select
-              class="form-control"
-              [ngModel]="transferToId()"
-              (ngModelChange)="transferToId.set($event)"
-            >
-              @for (v of financeService.state().assets; track v.id) {
-                <option [value]="v.id">
-                  {{ getVaultIcon(v) }} {{ v.name }} (Moneda: {{ v.currency }} · Saldo: {{ v.balance | number: '1.2-2' }})
-                </option>
-              }
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Monto a Transferir (en moneda de la bóveda origen)</label>
-            <input
-              type="number"
-              class="form-control font-mono"
-              placeholder="0.00"
-              [ngModel]="transferAmount()"
-              (ngModelChange)="transferAmount.set($event)"
-            />
-          </div>
-
-          @let preview = transferPreview();
-          @if (preview) {
-            <div class="transfer-preview-box">
-              <div>
-                <span>Se debitarán:</span>
-                <strong>{{ preview.fromVault.currency }} {{ transferAmount() | number: '1.2-2' }}</strong>
-                de {{ preview.fromVault.name }}
-              </div>
-              <div>
-                <span>Se acreditarán:</span>
-                <strong class="gold-text">{{ preview.toVault.currency }} {{ preview.targetCredit | number: '1.2-2' }}</strong>
-                en {{ preview.toVault.name }} (Tasa BCV: {{ preview.bcv | number: '1.2-2' }})
-              </div>
-            </div>
-          }
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="transferModalOpen.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="executeVaultTransfer()">
-            Ejecutar Transferencia
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="transferModalOpen.set(false)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
-        </div>
-      </div>
-    </div>
-  }
+        </header>
 
-  <!-- ========================================================= -->
-  <!-- MODAL 3: CREATE NEW ASSET VAULT                           -->
-  <!-- ========================================================= -->
-  @if (newVaultModalOpen()) {
-    <div class="modal-backdrop" (click)="newVaultModalOpen.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>🏦 Crear Nueva Bóveda o Cuenta</h3>
-          <button type="button" class="btn-close" (click)="newVaultModalOpen.set(false)">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group" style="flex: 2;">
-              <label>Nombre de la Bóveda / Banco</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Binance Funding, Mercantil Bs, Caja Chica Taller..."
-                [ngModel]="newVaultName()"
-                (ngModelChange)="newVaultName.set($event)"
-              />
-            </div>
-            <div class="form-group" style="flex: 1;">
-              <label>Canal</label>
-              <select
-                class="form-control"
-                [ngModel]="newVaultChannel()"
-                (ngModelChange)="newVaultChannel.set($event)"
-              >
-                <option value="zelle">💳 Zelle</option>
-                <option value="bs_bank">🏦 Banco Bs</option>
-                <option value="cash">💵 Efectivo</option>
-                <option value="crypto">🪙 Crypto</option>
+        <form class="modal-form" (ngSubmit)="executeVaultTransfer()">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="f360-tr-from">Bóveda origen</label>
+              <select id="f360-tr-from" name="trFrom" class="f360-input" [ngModel]="transferFromId()" (ngModelChange)="transferFromId.set($event)">
+                @for (v of financeService.assets(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance }})</option>
+                }
               </select>
             </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Moneda Base</label>
-              <select
-                class="form-control"
-                [ngModel]="newVaultCurrency()"
-                (ngModelChange)="newVaultCurrency.set($event)"
-              >
-                <option value="USD">USD ($ Dólares)</option>
-                <option value="USDT">USDT (Cripto)</option>
-                <option value="VES">VES (Bs Bolívares)</option>
-              </select>
-            </div>
-
-            <div class="form-group half">
-              <label>Ámbito</label>
-              <select
-                class="form-control"
-                [ngModel]="newVaultScope()"
-                (ngModelChange)="newVaultScope.set($event)"
-              >
-                <option value="personal">👤 Personal</option>
-                <option value="business">🏢 Pyme / Negocio</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Saldo Inicial</label>
-            <input
-              type="number"
-              class="form-control font-mono"
-              placeholder="0.00"
-              [ngModel]="newVaultBalance()"
-              (ngModelChange)="newVaultBalance.set($event)"
-            />
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="newVaultModalOpen.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveNewVault()">Crear Bóveda</button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- ========================================================= -->
-  <!-- MODAL 4: CREATE MANUAL LIABILITY / COMMITMENT              -->
-  <!-- ========================================================= -->
-  @if (newLiabilityModalOpen()) {
-    <div class="modal-backdrop" (click)="newLiabilityModalOpen.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>⏳ Agendar Compromiso o Pasivo</h3>
-          <button type="button" class="btn-close" (click)="newLiabilityModalOpen.set(false)">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Concepto del Compromiso</label>
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Ej. Alquiler del Taller, Condominio, Factura Insumos..."
-              [ngModel]="liabTitle()"
-              (ngModelChange)="liabTitle.set($event)"
-            />
-          </div>
-
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Acreedor / Beneficiario</label>
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Ej. Inmobiliaria / SENIAT / Proveedor"
-                [ngModel]="liabCreditor()"
-                (ngModelChange)="liabCreditor.set($event)"
-              />
-            </div>
-
-            <div class="form-group half">
-              <label>Monto Exigible ($ USD)</label>
-              <input
-                type="number"
-                class="form-control font-mono"
-                placeholder="0.00"
-                [ngModel]="liabAmountUsd()"
-                (ngModelChange)="liabAmountUsd.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Fecha de Vencimiento</label>
-              <input
-                type="date"
-                class="form-control"
-                [ngModel]="liabDueDate()"
-                (ngModelChange)="liabDueDate.set($event)"
-              />
-            </div>
-
-            <div class="form-group half">
-              <label>Tipo de Pasivo</label>
-              <select
-                class="form-control"
-                [ngModel]="liabCategory()"
-                (ngModelChange)="liabCategory.set($event)"
-              >
-                <option value="fixed_service">💡 Servicio Fijo / Alquiler</option>
-                <option value="provider">📦 Factura de Proveedor</option>
-                <option value="loan">🏦 Préstamo / Financiamiento</option>
-                <option value="tax">🏛️ Impuestos / Tasas</option>
-                <option value="cashea">⚡ Cuota Cashea</option>
-                <option value="other">📌 Otro Compromiso</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Ámbito Contable</label>
-            <select
-              class="form-control"
-              [ngModel]="liabScope()"
-              (ngModelChange)="liabScope.set($event)"
-            >
-              <option value="personal">👤 Personal / Hogar</option>
-              <option value="business">🏢 Pyme / Taller</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="newLiabilityModalOpen.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveNewLiability()">
-            Agendar en Calendario
-          </button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- ========================================================= -->
-  <!-- MODAL 5: CREATE NEW WEALTH GOAL                           -->
-  <!-- ========================================================= -->
-  @if (newGoalModalOpen()) {
-    <div class="modal-backdrop" (click)="newGoalModalOpen.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>🎯 Nueva Meta Patrimonial o Fondo de Reserva</h3>
-          <button type="button" class="btn-close" (click)="newGoalModalOpen.set(false)">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Nombre de la Meta / Fondo</label>
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Ej. Fondo de Emergencia 6 Meses, Compra Compresor..."
-              [ngModel]="newGoalTitle()"
-              (ngModelChange)="newGoalTitle.set($event)"
-            />
-          </div>
-
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Monto Objetivo ($ USD)</label>
-              <input
-                type="number"
-                class="form-control font-mono"
-                placeholder="1000.00"
-                [ngModel]="newGoalTargetUsd()"
-                (ngModelChange)="newGoalTargetUsd.set($event)"
-              />
-            </div>
-            <div class="form-group half">
-              <label>Fondo Inicial Acreditado ($ USD)</label>
-              <input
-                type="number"
-                class="form-control font-mono"
-                placeholder="0.00"
-                [ngModel]="newGoalCurrentUsd()"
-                (ngModelChange)="newGoalCurrentUsd.set($event)"
-              />
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group half">
-              <label>Fecha Límite Deseada</label>
-              <input
-                type="date"
-                class="form-control"
-                [ngModel]="newGoalDeadline()"
-                (ngModelChange)="newGoalDeadline.set($event)"
-              />
-            </div>
-            <div class="form-group half">
-              <label>Categoría</label>
-              <select
-                class="form-control"
-                [ngModel]="newGoalCategory()"
-                (ngModelChange)="newGoalCategory.set($event)"
-              >
-                <option value="emergency">🛡️ Reserva de Emergencia</option>
-                <option value="equipment">🔧 Maquinaria y Equipos</option>
-                <option value="savings">💰 Ahorro Personal</option>
-                <option value="real_estate">🏠 Bienes Raíces</option>
-                <option value="other">📌 Otro Propósito</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" (click)="newGoalModalOpen.set(false)">Cancelar</button>
-          <button type="button" class="btn-primary" (click)="saveNewGoal()">Crear Meta</button>
-        </div>
-      </div>
-    </div>
-  }
-
-  <!-- ========================================================= -->
-  <!-- MODAL 6: CONTRIBUTE TO WEALTH GOAL                        -->
-  <!-- ========================================================= -->
-  @if (contributeGoalModalOpen()) {
-    @let g = targetGoalForContribution();
-    @if (g) {
-      <div class="modal-backdrop" (click)="contributeGoalModalOpen.set(false)">
-        <div class="modal-card" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>💰 Abonar a Meta: {{ g.title }}</h3>
-            <button type="button" class="btn-close" (click)="contributeGoalModalOpen.set(false)">✕</button>
-          </div>
-
-          <div class="modal-body">
-            <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08);">
-              <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 6px;">
-                <span>Progreso Actual:</span>
-                <strong>${{ g.currentAmountUsd | number: '1.2-2' }} / ${{ g.targetAmountUsd | number: '1.2-2' }} USD</strong>
-              </div>
-              <div style="font-size: 0.76rem; color: #94a3b8;">
-                Faltan: ${{ (g.targetAmountUsd - g.currentAmountUsd) | number: '1.2-2' }} USD para completar el 100%.
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Monto a Abonar ($ USD)</label>
-              <input
-                type="number"
-                class="form-control font-mono"
-                placeholder="50.00"
-                [ngModel]="contributeAmountUsd()"
-                (ngModelChange)="contributeAmountUsd.set($event)"
-              />
-            </div>
-
-            <div class="form-group">
-              <label>Debitar de Bóveda (Opcional)</label>
-              <select
-                class="form-control"
-                [ngModel]="contributeVaultId()"
-                (ngModelChange)="contributeVaultId.set($event)"
-              >
-                <option value="">(Solo registrar aporte · Sin debitar bóveda)</option>
-                @for (vault of financeService.state().assets; track vault.id) {
-                  <option [value]="vault.id">
-                    {{ getVaultIcon(vault) }} {{ vault.name }} — {{ vault.currency }} {{ vault.balance | number: '1.2-2' }}
-                  </option>
+            <div class="field">
+              <label for="f360-tr-to">Bóveda destino</label>
+              <select id="f360-tr-to" name="trTo" class="f360-input" [ngModel]="transferToId()" (ngModelChange)="transferToId.set($event)">
+                @for (v of financeService.assets(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }})</option>
                 }
               </select>
             </div>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" (click)="contributeGoalModalOpen.set(false)">Cancelar</button>
-            <button type="button" class="btn-primary" (click)="saveGoalContribution()">
-              Confirmar Aporte
-            </button>
+          <div class="field">
+            <label for="f360-tr-amount">Monto a transferir (en divisa de origen)</label>
+            <input id="f360-tr-amount" name="trAmount" type="number" step="0.01" min="0" class="f360-input f360-tabular" [ngModel]="transferAmount()" (ngModelChange)="transferAmount.set($event)" required />
           </div>
+
+          @if (transferPreview(); as preview) {
+            <div class="preview-banner" [class.is-danger]="preview.insufficientFunds || preview.missingRate">
+              @if (preview.insufficientFunds) {
+                <span>Fondos insuficientes en {{ preview.fromVault.name }} (saldo: {{ preview.fromVault.balance }} {{ preview.fromVault.currency }}).</span>
+              } @else if (preview.missingRate) {
+                <span>Tasa FX en vivo offline para esta conversión.</span>
+              } @else {
+                <span>Se acreditarán {{ preview.toVault.currency }} {{ preview.targetCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} en {{ preview.toVault.name }}.</span>
+              }
+            </div>
+          }
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="transferModalOpen.set(false)">Cancelar</button>
+            <button type="submit" class="f360-btn-primary" [disabled]="!transferPreview() || transferPreview()?.insufficientFunds || transferPreview()?.missingRate">Ejecutar transferencia</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: NEW VAULT                                                       -->
+  <!-- ====================================================================== -->
+  @if (newVaultModalOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Crear nueva bóveda" data-testid="f360-new-vault-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de bóveda" (click)="newVaultModalOpen.set(false)"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Nueva Bóveda Patrimonial</h3>
+            <p>Soporte multi-moneda real USD, VES, USDT y EUR</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="newVaultModalOpen.set(false)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="modal-form" (ngSubmit)="saveNewVault()">
+          <div class="field">
+            <label for="f360-nv-name">Nombre de la bóveda o cuenta</label>
+            <input id="f360-nv-name" name="nvName" type="text" class="f360-input" placeholder="Ej: Zelle Principal, Banesco Pyme, Caja EUR" [ngModel]="newVaultName()" (ngModelChange)="newVaultName.set($event)" required />
+          </div>
+
+          <div class="form-grid-3">
+            <div class="field">
+              <label for="f360-nv-curr">Divisa</label>
+              <select id="f360-nv-curr" name="nvCurr" class="f360-input" [ngModel]="newVaultCurrency()" (ngModelChange)="newVaultCurrency.set($event)">
+                @for (curr of currencyOptions; track curr) {
+                  <option [value]="curr">{{ curr }}</option>
+                }
+              </select>
+            </div>
+            <div class="field">
+              <label for="f360-nv-bal">Saldo inicial</label>
+              <input id="f360-nv-bal" name="nvBal" type="number" step="0.01" min="0" class="f360-input f360-tabular" [ngModel]="newVaultBalance()" (ngModelChange)="newVaultBalance.set($event)" />
+            </div>
+            <div class="field">
+              <label for="f360-nv-scope">Ámbito</label>
+              <select id="f360-nv-scope" name="nvScope" class="f360-input" [ngModel]="newVaultScope()" (ngModelChange)="newVaultScope.set($event)">
+                <option value="personal">Personal</option>
+                <option value="business">Pyme</option>
+                <option value="all">Consolidado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f360-nv-channel">Canal</label>
+            <select id="f360-nv-channel" name="nvChannel" class="f360-input" [ngModel]="newVaultChannel()" (ngModelChange)="newVaultChannel.set($event)">
+              @for (ch of channelOptions; track ch.value) {
+                <option [value]="ch.value">{{ ch.label }}</option>
+              }
+            </select>
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="newVaultModalOpen.set(false)">Cancelar</button>
+            <button type="submit" class="f360-btn-primary">Crear bóveda</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: NEW LIABILITY                                                   -->
+  <!-- ====================================================================== -->
+  @if (newLiabilityModalOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Agendar nuevo pasivo" data-testid="f360-new-liability-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de pasivo" (click)="newLiabilityModalOpen.set(false)"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Nuevo Compromiso / Pasivo</h3>
+            <p>Se integra al semáforo de liquidez 14D y alertas de mora</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="newLiabilityModalOpen.set(false)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="modal-form" (ngSubmit)="saveNewLiability()">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="f360-lb-title">Concepto</label>
+              <input id="f360-lb-title" name="lbTitle" type="text" class="f360-input" placeholder="Ej: Alquiler local, Fibra óptica" [ngModel]="liabTitle()" (ngModelChange)="liabTitle.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-lb-creditor">Acreedor</label>
+              <input id="f360-lb-creditor" name="lbCreditor" type="text" class="f360-input" placeholder="Nombre del proveedor o entidad" [ngModel]="liabCreditor()" (ngModelChange)="liabCreditor.set($event)" />
+            </div>
+          </div>
+
+          <div class="form-grid-3">
+            <div class="field">
+              <label for="f360-lb-amount">Monto USD</label>
+              <input id="f360-lb-amount" name="lbAmount" type="number" step="0.01" min="0" class="f360-input f360-tabular" [ngModel]="liabAmountUsd()" (ngModelChange)="liabAmountUsd.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-lb-due">Fecha de vencimiento</label>
+              <input id="f360-lb-due" name="lbDue" type="date" class="f360-input" [ngModel]="liabDueDate()" (ngModelChange)="liabDueDate.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-lb-scope">Ámbito</label>
+              <select id="f360-lb-scope" name="lbScope" class="f360-input" [ngModel]="liabScope()" (ngModelChange)="liabScope.set($event)">
+                <option value="personal">Personal</option>
+                <option value="business">Pyme</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f360-lb-cat">Categoría</label>
+            <select id="f360-lb-cat" name="lbCat" class="f360-input" [ngModel]="liabCategory()" (ngModelChange)="liabCategory.set($event)">
+              @for (opt of liabilityCategoryOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="newLiabilityModalOpen.set(false)">Cancelar</button>
+            <button type="submit" class="f360-btn-primary">Agendar pasivo</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: PAY LIABILITY FROM REAL VAULT                                   -->
+  <!-- ====================================================================== -->
+  @if (payLiabilityModalOpen() && targetLiabilityForPayment(); as targetLiab) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Pagar pasivo" data-testid="f360-pay-liability-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de pago" (click)="closePayLiabilityModal()"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Liquidar Pasivo</h3>
+            <p>{{ targetLiab.title }} · Saldo pendiente ${{ targetLiab.remainingUsd.toFixed(2) }} USD</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closePayLiabilityModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="modal-form" (ngSubmit)="confirmPayLiability()">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="f360-pl-amount">Monto a pagar (USD)</label>
+              <input id="f360-pl-amount" name="plAmount" type="number" step="0.01" min="0.01" class="f360-input f360-tabular" [ngModel]="payLiabilityAmountUsd()" (ngModelChange)="payLiabilityAmountUsd.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-pl-vault">Debitar desde bóveda</label>
+              <select id="f360-pl-vault" name="plVault" class="f360-input" [ngModel]="payLiabilityVaultId()" (ngModelChange)="payLiabilityVaultId.set($event)">
+                <option value="">Solo registro contable</option>
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance }})</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="closePayLiabilityModal()">Cancelar</button>
+            <button type="submit" class="f360-btn-primary">Confirmar pago</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: NEW WEALTH GOAL                                                 -->
+  <!-- ====================================================================== -->
+  @if (newGoalModalOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Crear meta patrimonial" data-testid="f360-new-goal-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de meta" (click)="newGoalModalOpen.set(false)"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Nueva Meta Patrimonial</h3>
+            <p>Los aportes se etiquetan como reserva (no distorsionan gastos P&amp;L)</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="newGoalModalOpen.set(false)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="modal-form" (ngSubmit)="saveNewGoal()">
+          <div class="field">
+            <label for="f360-ng-title">Nombre de la meta</label>
+            <input id="f360-ng-title" name="ngTitle" type="text" class="f360-input" placeholder="Ej: Fondo de Emergencia 6M" [ngModel]="newGoalTitle()" (ngModelChange)="newGoalTitle.set($event)" required />
+          </div>
+
+          <div class="form-grid-3">
+            <div class="field">
+              <label for="f360-ng-target">Meta USD</label>
+              <input id="f360-ng-target" name="ngTarget" type="number" step="0.01" min="1" class="f360-input f360-tabular" [ngModel]="newGoalTargetUsd()" (ngModelChange)="newGoalTargetUsd.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-ng-curr">Ahorro inicial</label>
+              <input id="f360-ng-curr" name="ngCurr" type="number" step="0.01" min="0" class="f360-input f360-tabular" [ngModel]="newGoalCurrentUsd()" (ngModelChange)="newGoalCurrentUsd.set($event)" />
+            </div>
+            <div class="field">
+              <label for="f360-ng-dead">Fecha objetivo</label>
+              <input id="f360-ng-dead" name="ngDead" type="date" class="f360-input" [ngModel]="newGoalDeadline()" (ngModelChange)="newGoalDeadline.set($event)" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f360-ng-cat">Categoría</label>
+            <select id="f360-ng-cat" name="ngCat" class="f360-input" [ngModel]="newGoalCategory()" (ngModelChange)="newGoalCategory.set($event)">
+              @for (opt of goalCategoryOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="newGoalModalOpen.set(false)">Cancelar</button>
+            <button type="submit" class="f360-btn-primary">Crear meta</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: CONTRIBUTE TO WEALTH GOAL (EARMARKED RESERVE)                   -->
+  <!-- ====================================================================== -->
+  @if (contributeGoalModalOpen() && targetGoalForContribution(); as targetGoal) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Aportar a meta patrimonial" data-testid="f360-contribute-goal-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar modal de aporte" (click)="closeContributeGoalModal()"></button>
+      <div class="f360-modal-card f360-liquid-glass">
+        <header class="modal-head">
+          <div>
+            <h3>Reservar Fondo para Meta</h3>
+            <p>{{ targetGoal.title }} · ${{ targetGoal.currentAmountUsd.toFixed(2) }} / ${{ targetGoal.targetAmountUsd.toFixed(2) }} USD</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeContributeGoalModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="modal-form" (ngSubmit)="saveGoalContribution()">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="f360-cg-amount">Monto a reservar (USD)</label>
+              <input id="f360-cg-amount" name="cgAmount" type="number" step="0.01" min="0.01" class="f360-input f360-tabular" [ngModel]="contributeAmountUsd()" (ngModelChange)="contributeAmountUsd.set($event)" required />
+            </div>
+            <div class="field">
+              <label for="f360-cg-vault">Bóveda origen (opcional)</label>
+              <select id="f360-cg-vault" name="cgVault" class="f360-input" [ngModel]="contributeVaultId()" (ngModelChange)="contributeVaultId.set($event)">
+                <option value="">Reserva etiquetada sin débito</option>
+                @for (v of liquidVaults(); track v.id) {
+                  <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance }})</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="closeContributeGoalModal()">Cancelar</button>
+            <button type="submit" class="f360-btn-primary">Confirmar reserva</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- ====================================================================== -->
+  <!-- MODAL: TYPED CONFIRMATION RESET (ANTI-ACCIDENTAL WIPE)                 -->
+  <!-- ====================================================================== -->
+  @if (resetConfirmModalOpen()) {
+    <div class="f360-modal-layer" role="dialog" aria-modal="true" aria-label="Confirmar reinicio total del portafolio" data-testid="f360-reset-modal">
+      <button type="button" class="f360-modal-backdrop" aria-label="Cerrar confirmación de reinicio" (click)="closeResetConfirmModal()"></button>
+      <div class="f360-modal-card f360-liquid-glass danger-modal">
+        <header class="modal-head">
+          <div>
+            <h3>Resetear Portafolio a Cero</h3>
+            <p>Esta acción vacía todas las bóvedas, movimientos, planes Cashea, pasivos y metas.</p>
+          </div>
+          <button type="button" class="f360-icon-btn" aria-label="Cerrar" (click)="closeResetConfirmModal()">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+
+        <div class="modal-form">
+          <div class="preview-banner is-danger">
+            <span>Recomendación: exporta un respaldo maestro JSON antes de vaciar tu libro contable.</span>
+            <button type="button" class="f360-btn-glass" (click)="downloadJsonBackup()">Exportar JSON</button>
+          </div>
+
+          <div class="field">
+            <label for="f360-reset-input">Escribe <strong>RESET</strong> para habilitar el borrado definitivo</label>
+            <input
+              id="f360-reset-input"
+              type="text"
+              class="f360-input f360-tabular"
+              data-testid="f360-reset-input"
+              placeholder="RESET"
+              [ngModel]="resetConfirmText()"
+              (ngModelChange)="resetConfirmText.set($event)"
+              autocomplete="off"
+            />
+          </div>
+
+          <footer class="modal-actions">
+            <button type="button" class="f360-btn-ghost" (click)="closeResetConfirmModal()">Cancelar</button>
+            <button
+              type="button"
+              class="f360-btn-danger"
+              data-testid="f360-reset-confirm-btn"
+              [disabled]="!canConfirmReset()"
+              (click)="confirmResetPortfolio()"
+            >
+              Confirmar reinicio total
+            </button>
+          </footer>
         </div>
       </div>
-    }
+    </div>
   }
-</section>
+</div>
