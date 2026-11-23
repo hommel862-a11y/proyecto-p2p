@@ -58,6 +58,7 @@ export class InboundGatewayService implements OnDestroy {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private baseUrl = 'http://127.0.0.1:3030';
+  private authToken = '';
   private autoReconnect = true;
 
   // Reactive state signals
@@ -82,6 +83,10 @@ export class InboundGatewayService implements OnDestroy {
         const stored = localStorage.getItem('p2p.inbound.gateway_url');
         if (stored) {
           this.baseUrl = stored.trim().replace(/\/+$/, '');
+        }
+        const storedToken = localStorage.getItem('p2p.inbound.auth_token');
+        if (storedToken) {
+          this.authToken = storedToken.trim();
         }
       } catch {
         /* storage fallback */
@@ -110,6 +115,40 @@ export class InboundGatewayService implements OnDestroy {
 
   getGatewayUrl(): string {
     return this.baseUrl;
+  }
+
+  setAuthToken(token: string): void {
+    const trimmed = token.trim();
+    this.authToken = trimmed;
+    try {
+      if (trimmed) {
+        localStorage.setItem('p2p.inbound.auth_token', trimmed);
+      } else {
+        localStorage.removeItem('p2p.inbound.auth_token');
+      }
+    } catch {
+      /* storage fallback */
+    }
+    if (this.status() === 'CONNECTED' || this.status() === 'CONNECTING') {
+      this.disconnect();
+      this.connect();
+    }
+  }
+
+  getAuthToken(): string {
+    return this.authToken;
+  }
+
+  hasAuthToken(): boolean {
+    return this.authToken.length > 0;
+  }
+
+  private buildHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...(extra ?? {}) };
+    if (this.authToken.length > 0) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+    return headers;
   }
 
   async testConnection(targetUrl?: string): Promise<{ ok: boolean; status?: string; error?: string }> {
@@ -142,8 +181,15 @@ export class InboundGatewayService implements OnDestroy {
 
     try {
       const cursor = this.lastOutboxEventId();
-      const sseUrl =
-        cursor > 0 ? `${this.baseUrl}/api/events?lastEventId=${cursor}` : `${this.baseUrl}/api/events`;
+      const params = new URLSearchParams();
+      if (cursor > 0) {
+        params.set('lastEventId', String(cursor));
+      }
+      if (this.authToken.length > 0) {
+        params.set('token', this.authToken);
+      }
+      const query = params.toString();
+      const sseUrl = query ? `${this.baseUrl}/api/events?${query}` : `${this.baseUrl}/api/events`;
       this.eventSource = new EventSource(sseUrl);
 
       this.eventSource.onopen = () => {
@@ -217,7 +263,11 @@ export class InboundGatewayService implements OnDestroy {
    */
   async fetchPendingReceipts(): Promise<InboundReceiptEvent[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/events/pending`);
+      const headers = this.buildHeaders();
+      const res = await fetch(
+        `${this.baseUrl}/api/events/pending`,
+        Object.keys(headers).length > 0 ? { headers } : undefined,
+      );
       if (!res.ok) {
         return [];
       }
@@ -236,7 +286,7 @@ export class InboundGatewayService implements OnDestroy {
     try {
       const res = await fetch(`${this.baseUrl}/api/arm/tools/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(params),
       });
       return (await res.json()) as ArmToolExecutionResult;
@@ -255,7 +305,7 @@ export class InboundGatewayService implements OnDestroy {
     try {
       const res = await fetch(`${this.baseUrl}/api/arm/approvals/resolve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(params),
       });
       if (!res.ok) return null;
@@ -271,11 +321,16 @@ export class InboundGatewayService implements OnDestroy {
   async fetchStorageHealth(targetUrl?: string): Promise<GatewayStorageHealth> {
     const url = (targetUrl || this.baseUrl).trim().replace(/\/+$/, '');
     try {
+      const headers = this.buildHeaders();
       const res = await fetch(`${url}/api/arm/health/storage`, {
         method: 'GET',
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
         signal: AbortSignal.timeout(4000),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          this.lastError.set('UNAUTHORIZED');
+        }
         const fallback = { ...InboundGatewayService.STORAGE_HEALTH_FALLBACK };
         this.storageHealth.set(fallback);
         return fallback;
@@ -315,7 +370,7 @@ export class InboundGatewayService implements OnDestroy {
     try {
       const res = await fetch(`${this.baseUrl}/api/arm/receipts/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(4000),
       });

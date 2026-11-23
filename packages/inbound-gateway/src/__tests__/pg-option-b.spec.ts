@@ -349,4 +349,43 @@ describe('PgArmStore.startOutboxListener resilience (exponential backoff)', () =
       await server.stop();
     }
   });
+
+  it('accepts ?token= query auth strictly for GET /api/events SSE while enforcing Bearer header on REST routes', async () => {
+    vi.useRealTimers();
+    const server = new InboundGatewayServer({
+      port: 0,
+      targetScope: 'P2P_DESK',
+      idempotencyTtlSeconds: 60,
+      authToken: 'super-secret-sse-token',
+    });
+    const port = await server.start();
+    try {
+      // Non-SSE route MUST reject query ?token= and require Authorization: Bearer
+      const restQueryRes = await fetch(
+        `http://127.0.0.1:${port}/api/arm/health/storage?token=super-secret-sse-token`,
+      );
+      expect(restQueryRes.status).toBe(401);
+
+      const restBearerRes = await fetch(`http://127.0.0.1:${port}/api/arm/health/storage`, {
+        headers: { Authorization: 'Bearer super-secret-sse-token' },
+      });
+      expect(restBearerRes.status).toBe(200);
+
+      // SSE route rejects wrong query token
+      const sseWrongRes = await fetch(`http://127.0.0.1:${port}/api/events?token=wrong-token`);
+      expect(sseWrongRes.status).toBe(401);
+
+      // SSE route accepts valid query ?token= (EventSource browser compatibility)
+      const controller = new AbortController();
+      const sseOkRes = await fetch(
+        `http://127.0.0.1:${port}/api/events?token=super-secret-sse-token`,
+        { signal: controller.signal },
+      );
+      expect(sseOkRes.status).toBe(200);
+      expect(sseOkRes.headers.get('content-type')).toContain('text/event-stream');
+      controller.abort();
+    } finally {
+      await server.stop();
+    }
+  });
 });

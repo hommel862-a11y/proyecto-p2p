@@ -267,7 +267,10 @@ export class InboundGatewayServer {
     }
 
     // Fail-closed Bearer authentication guard for /api/arm/*, /api/f360/*, and /api/events*
-    if (this.isProtectedApiPath(pathname) && !this.enforceProtectedRouteAuth(req, res)) {
+    if (
+      this.isProtectedApiPath(pathname) &&
+      !this.enforceProtectedRouteAuth(req, res, parsedUrl, method)
+    ) {
       return;
     }
 
@@ -966,7 +969,12 @@ export class InboundGatewayServer {
     );
   }
 
-  private enforceProtectedRouteAuth(req: IncomingMessage, res: ServerResponse): boolean {
+  private enforceProtectedRouteAuth(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedUrl: URL,
+    method: string,
+  ): boolean {
     const configuredToken = (
       this.config.authToken ??
       process.env['INBOUND_GATEWAY_AUTH_TOKEN'] ??
@@ -974,7 +982,19 @@ export class InboundGatewayServer {
     ).trim();
 
     if (configuredToken.length > 0) {
-      if (!verifyBearerToken(req.headers.authorization, configuredToken)) {
+      let authorized = verifyBearerToken(req.headers.authorization, configuredToken);
+      if (
+        !authorized &&
+        !req.headers.authorization &&
+        method === 'GET' &&
+        parsedUrl.pathname === '/api/events'
+      ) {
+        const queryToken = parsedUrl.searchParams.get('token')?.trim();
+        if (queryToken) {
+          authorized = verifyBearerToken(`Bearer ${queryToken}`, configuredToken);
+        }
+      }
+      if (!authorized) {
         this.sendJson(res, 401, { error: 'UNAUTHORIZED' });
         return false;
       }

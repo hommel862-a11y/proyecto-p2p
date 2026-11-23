@@ -28,6 +28,7 @@ const config: GatewayConfig = {
   metaAppSecret: process.env.META_APP_SECRET,
   metaVerifyToken: process.env.META_VERIFY_TOKEN || 'p2p-verify-secret',
   apiSecretToken: process.env.API_SECRET_TOKEN,
+  authToken: process.env.INBOUND_GATEWAY_AUTH_TOKEN?.trim() || undefined,
   targetScope,
   idempotencyTtlSeconds: Number(process.env.IDEMPOTENCY_TTL_SECONDS || 3600),
   databaseUrl: process.env.DATABASE_URL?.trim() || undefined,

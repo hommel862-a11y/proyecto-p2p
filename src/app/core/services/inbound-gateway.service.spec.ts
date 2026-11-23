@@ -312,4 +312,43 @@ describe('InboundGatewayService', () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it('attaches Bearer Authorization header to REST calls and ?token= to SSE when auth token is configured', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        mode: 'POSTGRES_PGVECTOR',
+        postgresConnected: true,
+        rlsActive: true,
+        pgvectorAvailable: true,
+      }),
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    try {
+      service.setAuthToken('my-gateway-token');
+      expect(service.getAuthToken()).toBe('my-gateway-token');
+      expect(service.hasAuthToken()).toBe(true);
+
+      const latestSse = MockEventSource.instances[MockEventSource.instances.length - 1];
+      expect(latestSse.url).toBe('http://127.0.0.1:3030/api/events?token=my-gateway-token');
+
+      await service.fetchStorageHealth();
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect((init.headers as Record<string, string>)['Authorization']).toBe(
+        'Bearer my-gateway-token',
+      );
+
+      service.setAuthToken('');
+      expect(service.hasAuthToken()).toBe(false);
+      const clearedSse = MockEventSource.instances[MockEventSource.instances.length - 1];
+      expect(clearedSse.url).toBe('http://127.0.0.1:3030/api/events');
+    } finally {
+      service.setAuthToken('');
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
