@@ -208,6 +208,8 @@ export function createP2PApi(ipc: IpcInvoke, onEvent?: IpcOn): P2PApi {
         ipc('arm:record-payment-receipt', receipt) as Promise<ArmPaymentReceiptRecordResult>,
       recordTreasurySettlement: (settlement: ArmTreasurySettlementInput) =>
         ipc('arm:record-treasury-settlement', settlement) as Promise<ArmTreasurySettlementResult>,
+      getGatewayConfig: () =>
+        ipc('arm:get-gateway-config') as Promise<{ url: string; authToken: string }>,
     },
     finance360: {
       getSnapshot: () => ipc('f360:get-snapshot') as Promise<Finance360StoredSnapshot | null>,
@@ -326,6 +328,7 @@ export const ALLOWED_CHANNELS = [
   'arm:list-bank-rails',
   'arm:record-payment-receipt',
   'arm:record-treasury-settlement',
+  'arm:get-gateway-config',
   'f360:get-snapshot',
   'f360:save-snapshot',
   'f360:ai-analyze',

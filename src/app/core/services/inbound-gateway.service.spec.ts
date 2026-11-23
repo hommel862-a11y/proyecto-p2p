@@ -351,4 +351,35 @@ describe('InboundGatewayService', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('normalizes INBOUND_GATEWAY_AUTH_TOKEN= / Bearer prefixes and auto-hydrates token from Electron IPC bridge', async () => {
+    service.setAuthToken('  INBOUND_GATEWAY_AUTH_TOKEN="tok-clean-123"  ');
+    expect(service.getAuthToken()).toBe('tok-clean-123');
+
+    service.setAuthToken('Bearer tok-bearer-456');
+    expect(service.getAuthToken()).toBe('tok-bearer-456');
+    service.setAuthToken('');
+
+    const prevElectron = (window as unknown as { electron?: unknown }).electron;
+    (window as unknown as { electron?: unknown }).electron = {
+      arm: {
+        getGatewayConfig: vi.fn(async () => ({
+          url: 'http://127.0.0.1:3030',
+          authToken: 'electron-ipc-secret-999',
+        })),
+      },
+    };
+
+    try {
+      const electronService = new InboundGatewayService();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(electronService.getAuthToken()).toBe('electron-ipc-secret-999');
+      const latestSse = MockEventSource.instances[MockEventSource.instances.length - 1];
+      expect(latestSse.url).toBe('http://127.0.0.1:3030/api/events?token=electron-ipc-secret-999');
+      electronService.disconnect();
+    } finally {
+      service.setAuthToken('');
+      (window as unknown as { electron?: unknown }).electron = prevElectron;
+    }
+  });
 });

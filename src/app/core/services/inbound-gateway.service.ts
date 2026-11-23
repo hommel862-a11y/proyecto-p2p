@@ -81,12 +81,12 @@ export class InboundGatewayService implements OnDestroy {
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('p2p.inbound.gateway_url');
-        if (stored) {
+        if (stored && /^https?:\/\//i.test(stored.trim())) {
           this.baseUrl = stored.trim().replace(/\/+$/, '');
         }
         const storedToken = localStorage.getItem('p2p.inbound.auth_token');
         if (storedToken) {
-          this.authToken = storedToken.trim();
+          this.authToken = this.normalizeAuthToken(storedToken);
         }
       } catch {
         /* storage fallback */
@@ -94,12 +94,67 @@ export class InboundGatewayService implements OnDestroy {
       if (typeof EventSource !== 'undefined') {
         this.connect();
       }
+      void this.hydrateFromElectronBridge();
+    }
+  }
+
+  private normalizeAuthToken(raw: string): string {
+    return raw
+      .trim()
+      .replace(/^INBOUND_GATEWAY_AUTH_TOKEN\s*=\s*/i, '')
+      .replace(/^Bearer\s+/i, '')
+      .replace(/^["']|["']$/g, '')
+      .trim();
+  }
+
+  private async hydrateFromElectronBridge(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    const armBridge = (
+      window as unknown as {
+        electron?: {
+          arm?: {
+            getGatewayConfig?: () => Promise<{ url?: string; authToken?: string }>;
+          };
+        };
+      }
+    ).electron?.arm;
+    if (typeof armBridge?.getGatewayConfig !== 'function') return;
+
+    try {
+      const cfg = await armBridge.getGatewayConfig();
+      const nextToken = this.normalizeAuthToken(cfg?.authToken ?? '');
+      const nextUrl = (cfg?.url ?? '').trim().replace(/\/+$/, '');
+      let changed = false;
+
+      if (nextUrl && /^https?:\/\//i.test(nextUrl) && !/^https?:\/\//i.test(this.baseUrl)) {
+        this.baseUrl = nextUrl;
+        changed = true;
+      }
+      if (nextToken && nextToken !== this.authToken) {
+        this.authToken = nextToken;
+        try {
+          localStorage.setItem('p2p.inbound.auth_token', nextToken);
+        } catch {
+          /* storage fallback */
+        }
+        changed = true;
+      }
+
+      if (changed) {
+        if (this.status() === 'CONNECTED' || this.status() === 'CONNECTING') {
+          this.disconnect();
+        }
+        this.connect();
+        void this.fetchStorageHealth();
+      }
+    } catch {
+      /* ignore non-Electron or unavailable IPC */
     }
   }
 
   setGatewayUrl(url: string): void {
     const trimmed = url.trim().replace(/\/+$/, '');
-    if (trimmed) {
+    if (trimmed && /^https?:\/\//i.test(trimmed)) {
       this.baseUrl = trimmed;
       try {
         localStorage.setItem('p2p.inbound.gateway_url', trimmed);
@@ -118,7 +173,7 @@ export class InboundGatewayService implements OnDestroy {
   }
 
   setAuthToken(token: string): void {
-    const trimmed = token.trim();
+    const trimmed = this.normalizeAuthToken(token);
     this.authToken = trimmed;
     try {
       if (trimmed) {

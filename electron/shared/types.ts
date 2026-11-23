@@ -956,6 +956,7 @@ export interface ElectronAPI {
     recordTreasurySettlement(
       settlement: ArmTreasurySettlementInput,
     ): Promise<ArmTreasurySettlementResult>;
+    getGatewayConfig(): Promise<{ url: string; authToken: string }>;
   };
   finance360: Finance360ElectronBridge;
 }

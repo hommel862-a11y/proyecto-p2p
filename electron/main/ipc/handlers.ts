@@ -1,4 +1,5 @@
 import { ipcMain, app, net, safeStorage, desktopCapturer, type IpcMainInvokeEvent } from 'electron';
+import * as fs from 'fs';
 import * as path from 'path';
 import { createHmac } from 'crypto';
 import {
@@ -1717,6 +1718,50 @@ export function registerIpcHandlers(): void {
       return db
         .getArmRepo()
         .recordTreasurySettlement(payload as unknown as ArmTreasurySettlementInput);
+    },
+  );
+
+  ipcMain.removeHandler('arm:get-gateway-config');
+  ipcMain.handle(
+    'arm:get-gateway-config',
+    async (): Promise<{ url: string; authToken: string }> => {
+      const readEnvKeyFromFiles = (key: string): string => {
+        const candidates = [
+          path.resolve(process.cwd(), '.env'),
+          path.resolve(process.cwd(), 'deploy', 'vps', '.env'),
+          path.resolve(__dirname, '../../../.env'),
+          path.resolve(__dirname, '../../../deploy/vps/.env'),
+          path.resolve(__dirname, '../../../../.env'),
+          path.resolve(__dirname, '../../../../deploy/vps/.env'),
+        ];
+        const pattern = new RegExp(`^\\s*${key}\\s*=\\s*(.*?)\\s*$`, 'm');
+        for (const filePath of candidates) {
+          try {
+            if (!fs.existsSync(filePath)) continue;
+            const match = fs.readFileSync(filePath, 'utf8').match(pattern);
+            if (match?.[1]) {
+              return match[1].trim().replace(/^["']|["']$/g, '');
+            }
+          } catch {
+            // Try next candidate
+          }
+        }
+        return '';
+      };
+
+      const portRaw =
+        process.env['INBOUND_GATEWAY_PORT']?.trim() ||
+        readEnvKeyFromFiles('INBOUND_GATEWAY_PORT') ||
+        '3030';
+      const port = Number(portRaw) || 3030;
+      const authToken =
+        process.env['INBOUND_GATEWAY_AUTH_TOKEN']?.trim() ||
+        readEnvKeyFromFiles('INBOUND_GATEWAY_AUTH_TOKEN');
+
+      return {
+        url: `http://127.0.0.1:${port}`,
+        authToken,
+      };
     },
   );
 
