@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import { loadGatewayEnv, findMonorepoRoot } from './env-loader.js';
@@ -229,6 +229,9 @@ function sameEntryPath(argPath: string, metaUrl: string): boolean {
     }
   };
   const a = tryReal(argPath);
+  if (!/^migrate\.(ts|js|mjs)$/i.test(basename(a))) {
+    return false;
+  }
   const b = tryReal(fileURLToPath(metaUrl));
   return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
