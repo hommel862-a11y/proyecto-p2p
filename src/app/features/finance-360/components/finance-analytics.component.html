@@ -1,403 +1,534 @@
-<div class="analytics-container">
-  <!-- TOP CONTROL BAR: HORIZON PILLS + DEMO LOADER -->
-  <div class="analytics-top-bar">
-    <div class="horizon-selector" role="tablist">
-      <button
-        type="button"
-        class="horizon-pill"
-        [class.active]="selectedHorizon() === 'day'"
-        (click)="selectedHorizon.set('day')"
-      >
-        ⏱️ Pulso Diario
-      </button>
-      <button
-        type="button"
-        class="horizon-pill"
-        [class.active]="selectedHorizon() === 'week'"
-        (click)="selectedHorizon.set('week')"
-      >
-        🗓️ Semanal (7D)
-      </button>
-      <button
-        type="button"
-        class="horizon-pill"
-        [class.active]="selectedHorizon() === 'month'"
-        (click)="selectedHorizon.set('month')"
-      >
-        📈 Mensual (Runway 30D)
-      </button>
-      <button
-        type="button"
-        class="horizon-pill"
-        [class.active]="selectedHorizon() === 'quarter'"
-        (click)="selectedHorizon.set('quarter')"
-      >
-        🏛️ Trimestral (90D)
-      </button>
-    </div>
-
-    <button
-      type="button"
-      class="btn-analytics-demo"
-      (click)="seedDemoFromAnalytics()"
-    >
-      ✨ Simular Datos Ejecutivos
-    </button>
-  </div>
-
-  <!-- ========================================================= -->
-  <!-- 1. EXECUTIVE KPI STRIP (4 INSTITUTIONAL CARDS)            -->
-  <!-- ========================================================= -->
+<section class="analytics-shell" aria-label="Analítica CFO y Proyecciones Financieras">
+  <!-- TOP LIQUID GLASS COMMAND BAR: HORIZON SELECTOR & PERIOD RANGE -->
+  @let pnl = periodPnL();
   @let kpis = executiveKpis();
   @let vesExp = financeService.vesExposureTelemetry();
+  <header class="analytics-command-bar">
+    <div class="horizon-capsule" role="tablist" aria-label="Horizonte temporal de análisis">
+      @for (opt of horizonOptions; track opt.key) {
+        <button
+          type="button"
+          role="tab"
+          class="horizon-pill"
+          [class.active]="selectedHorizon() === opt.key"
+          [attr.aria-selected]="selectedHorizon() === opt.key"
+          (click)="setHorizon(opt.key)"
+        >
+          {{ opt.label }}
+        </button>
+      }
+    </div>
+
+    <div class="command-meta">
+      <span class="period-chip">
+        <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        {{ activeHorizonMeta().fullLabel }} · {{ pnl.periodStartIso }} a {{ pnl.periodEndIso }}
+      </span>
+      @if (isBcvLive()) {
+        <span class="fx-pill live">
+          BCV Bs {{ financeService.currentBcvRate() | number: '1.2-2' }}
+        </span>
+      } @else {
+        <span class="fx-pill offline">Tasa BCV offline</span>
+      }
+    </div>
+  </header>
+
+  <!-- 1. FOUR INSTITUTIONAL HERO KPIs -->
   <div class="executive-kpi-grid">
-    <!-- KPI 1: Incomes -->
-    <div class="exec-kpi-card income-theme">
+    <article class="kpi-card tone-income">
       <div class="kpi-top">
-        <span class="kpi-label">INGRESOS BRUTOS</span>
+        <span class="kpi-label">Ingresos Brutos</span>
         <span class="kpi-badge emerald">+{{ kpis.incomeCount }} ops</span>
       </div>
-      <div class="kpi-value">${{ kpis.totalIncomeUsd | number: '1.2-2' }} <small>USD</small></div>
-      <div class="kpi-sub">≈ Bs {{ kpis.totalIncomeVes | number: '1.2-2' }}</div>
-    </div>
+      <div class="kpi-value">{{ formatUsd(kpis.totalIncomeUsd) }} <small>USD</small></div>
+      <div class="kpi-sub">
+        @if (isBcvLive()) {
+          Equiv. {{ formatVes(kpis.totalIncomeVes) }}
+        } @else {
+          Tasa BCV offline
+        }
+      </div>
+    </article>
 
-    <!-- KPI 2: Expenses -->
-    <div class="exec-kpi-card expense-theme">
+    <article class="kpi-card tone-expense">
       <div class="kpi-top">
-        <span class="kpi-label">EGRESOS ACUMULADOS</span>
+        <span class="kpi-label">Egresos</span>
         <span class="kpi-badge crimson">-{{ kpis.expenseCount }} ops</span>
       </div>
-      <div class="kpi-value">${{ kpis.totalExpenseUsd | number: '1.2-2' }} <small>USD</small></div>
-      <div class="kpi-sub">≈ Bs {{ kpis.totalExpenseVes | number: '1.2-2' }}</div>
-    </div>
+      <div class="kpi-value">{{ formatUsd(kpis.totalExpenseUsd) }} <small>USD</small></div>
+      <div class="kpi-sub">
+        @if (isBcvLive()) {
+          Equiv. {{ formatVes(kpis.totalExpenseVes) }}
+        } @else {
+          Tasa BCV offline
+        }
+      </div>
+    </article>
 
-    <!-- KPI 3: Net Cashflow & Savings Rate -->
-    <div class="exec-kpi-card net-theme">
+    <article class="kpi-card tone-net">
       <div class="kpi-top">
-        <span class="kpi-label">FLUJO DE CAJA NETO</span>
-        <span class="kpi-badge gold">Ahorro: {{ kpis.savingsRatePct }}%</span>
+        <span class="kpi-label">Flujo Neto &amp; Ahorro</span>
+        <span class="kpi-badge gold">Ahorro {{ kpis.savingsRatePct | number: '1.0-1' }}%</span>
       </div>
       <div
         class="kpi-value"
-        [class.pos]="kpis.netCashflowUsd >= 0"
-        [class.neg]="kpis.netCashflowUsd < 0"
+        [class.positive]="kpis.netCashflowUsd > 0"
+        [class.negative]="kpis.netCashflowUsd < 0"
       >
-        {{ kpis.netCashflowUsd >= 0 ? '+' : '' }}${{ kpis.netCashflowUsd | number: '1.2-2' }}
-        <small>USD</small>
+        {{ formatUsd(kpis.netCashflowUsd, true) }} <small>USD</small>
       </div>
-      <div class="kpi-sub">Margen retenido sobre ingresos</div>
-    </div>
+      <div class="kpi-sub">Margen retenido en horizonte {{ activeHorizonMeta().label }}</div>
+    </article>
 
-    <!-- KPI 4: Leverage & VES Exposure -->
-    <div class="exec-kpi-card risk-theme">
+    <article class="kpi-card tone-risk">
       <div class="kpi-top">
-        <span class="kpi-label">APALANCAMIENTO &amp; RIESGO Bs</span>
-        <span class="kpi-badge blue">Exposición Bs: {{ vesExp.exposurePct | number: '1.0-1' }}%</span>
+        <span class="kpi-label">Apalancamiento &amp; Exposición VES</span>
+        <span class="kpi-badge blue">VES {{ vesExp.exposurePct | number: '1.0-1' }}%</span>
       </div>
       <div class="kpi-value">{{ kpis.debtToAssetPct }}% <small>Deuda/Activo</small></div>
       <div class="kpi-sub">
-        Pasivos: ${{ financeService.totalLiabilitiesUsd() | number: '1.2-2' }} USD
+        Pasivos activos: {{ formatUsd(financeService.totalLiabilitiesUsd()) }} USD
       </div>
-    </div>
+    </article>
   </div>
 
-  <!-- ========================================================= -->
-  <!-- 2. BURN RATE TELEMETRY & 30-DAY PREDICTIVE RUNWAY SVG     -->
-  <!-- ========================================================= -->
+  <!-- 1B. STRUCTURED PERIOD P&L BREAKDOWN -->
+  <section class="glass-panel pnl-panel" aria-label="Estado de Resultados del Período">
+    <div class="panel-header">
+      <div>
+        <span class="panel-kicker">Estado de Resultados (P&amp;L · VET)</span>
+        <h4>Desglose Operativo del Horizonte {{ activeHorizonMeta().label }}</h4>
+      </div>
+      <span class="panel-badge">{{ pnl.incomeCount + pnl.expenseCount }} asientos</span>
+    </div>
+
+    <div class="pnl-grid">
+      <div class="pnl-cell">
+        <span class="pnl-label">Ingresos Operativos</span>
+        <strong class="pnl-val">{{ formatUsd(pnl.operatingIncomeUsd) }}</strong>
+      </div>
+      <div class="pnl-cell">
+        <span class="pnl-label">Utilidad P2P Aislada</span>
+        <strong class="pnl-val accent">{{ formatUsd(pnl.p2pIsolatedProfitUsd) }}</strong>
+      </div>
+      <div class="pnl-cell">
+        <span class="pnl-label">Costos Directos (COGS)</span>
+        <strong class="pnl-val danger">{{ formatUsd(pnl.directCostsCogsUsd) }}</strong>
+      </div>
+      <div class="pnl-cell">
+        <span class="pnl-label">Margen Bruto</span>
+        <strong class="pnl-val">{{ formatUsd(pnl.grossProfitUsd) }}</strong>
+      </div>
+      <div class="pnl-cell">
+        <span class="pnl-label">Gastos Fijos / Operativos</span>
+        <strong class="pnl-val danger">{{ formatUsd(pnl.fixedExpensesUsd) }}</strong>
+      </div>
+      <div class="pnl-cell highlight">
+        <span class="pnl-label">Resultado Neto</span>
+        <strong
+          class="pnl-val"
+          [class.accent]="pnl.netProfitUsd >= 0"
+          [class.danger]="pnl.netProfitUsd < 0"
+        >
+          {{ formatUsd(pnl.netProfitUsd, true) }}
+        </strong>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. PREDICTIVE LIQUIDITY CONE (ZERO SYNTHETIC PROJECTIONS) -->
   @let burn = burnRate();
   @let proj = runwayProjectionSvg();
-  <div class="runway-command-panel" [class]="burn.status">
-    <div class="runway-panel-header">
+  <section class="glass-panel runway-panel" [attr.data-status]="burn.status">
+    <div class="panel-header wrap">
       <div>
-        <span class="burn-tag">CONO PREDICTIVO DE LIQUIDEZ &amp; VELOCÍMETRO DE GASTO (30 DÍAS)</span>
-        <h3 class="burn-status-label">{{ burn.statusLabel }}</h3>
+        <span class="panel-kicker">Cono Predictivo de Liquidez (30 Días)</span>
+        <h4>{{ burn.statusLabel }}</h4>
       </div>
 
-      <div class="burn-kpi-pills">
-        <div class="mini-stat">
-          <span>Burn Rate Diario</span>
-          <strong>${{ burn.dailyBurnRateUsd | number: '1.2-2' }} / día</strong>
+      <div class="burn-metrics-strip">
+        <div class="metric-chip">
+          <span>Burn Diario</span>
+          <strong>{{ formatUsd(burn.dailyBurnRateUsd) }}/día</strong>
         </div>
-        <div class="mini-stat">
-          <span>Proyección Mensual</span>
-          <strong>${{ burn.monthlyBurnRateUsd | number: '1.2-2' }} / mes</strong>
+        <div class="metric-chip">
+          <span>Burn Mensual</span>
+          <strong>{{ formatUsd(burn.monthlyBurnRateUsd) }}/mes</strong>
         </div>
-        <div class="runway-big-badge">
-          <span class="runway-num">{{ burn.runwayDays }}</span>
-          <span class="runway-unit">Días Runway ({{ burn.runwayMonths }}m)</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- VECTOR SVG TRAJECTORY CHART -->
-    <div class="svg-trajectory-wrapper">
-      <div class="chart-legend-row">
-        <span class="legend-item"><i class="dot emerald"></i> Escenario con Flujo de Ingresos</span>
-        <span class="legend-item"><i class="dot gold"></i> Burn Rate Base (Sin nuevos ingresos)</span>
-        <span class="legend-item"><i class="dot crimson"></i> Escenario Estrés (+45% Gasto/Devaluación)</span>
-      </div>
-
-      <svg class="trajectory-svg" viewBox="0 0 680 215" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="optGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#10b981" stop-opacity="0.28" />
-            <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
-          </linearGradient>
-          <linearGradient id="baseGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#e2b755" stop-opacity="0.24" />
-            <stop offset="100%" stop-color="#e2b755" stop-opacity="0.0" />
-          </linearGradient>
-        </defs>
-
-        <!-- Horizontal Reference Grid Lines -->
-        <line x1="50" y1="24" x2="640" y2="24" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 4" />
-        <line x1="50" y1="102" x2="640" y2="102" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 4" />
-        <line x1="50" y1="180" x2="640" y2="180" stroke="rgba(255,255,255,0.12)" />
-
-        <!-- Y-Axis Labels -->
-        <text x="42" y="28" text-anchor="end" class="svg-axis-label">${{ proj.maxVal }}</text>
-        <text x="42" y="106" text-anchor="end" class="svg-axis-label">${{ proj.midVal }}</text>
-        <text x="42" y="184" text-anchor="end" class="svg-axis-label">$0</text>
-
-        <!-- Area Fills -->
-        <polygon [attr.points]="proj.optimisticArea" fill="url(#optGrad)" />
-        <polygon [attr.points]="proj.baselineArea" fill="url(#baseGrad)" />
-
-        <!-- 3 Trajectory Polylines -->
-        <polyline
-          [attr.points]="proj.optimisticPolyline"
-          fill="none"
-          stroke="#10b981"
-          stroke-width="2.6"
-          stroke-linecap="round"
-        />
-        <polyline
-          [attr.points]="proj.baselinePolyline"
-          fill="none"
-          stroke="#e2b755"
-          stroke-width="2.6"
-          stroke-linecap="round"
-        />
-        <polyline
-          [attr.points]="proj.stressPolyline"
-          fill="none"
-          stroke="#ef4444"
-          stroke-width="2"
-          stroke-dasharray="5 4"
-          stroke-linecap="round"
-        />
-
-        <!-- Data Nodes & X-Axis Labels -->
-        @for (pt of proj.points; track pt.day) {
-          <circle [attr.cx]="pt.x" [attr.cy]="pt.yOptimistic" r="4" fill="#10b981" />
-          <circle [attr.cx]="pt.x" [attr.cy]="pt.yBaseline" r="4" fill="#e2b755" />
-          <text [attr.x]="pt.x" y="202" text-anchor="middle" class="svg-axis-label">
-            {{ pt.label }}
-          </text>
-        }
-      </svg>
-    </div>
-  </div>
-
-  <!-- ========================================================= -->
-  <!-- 2B. INTERACTIVE BCV EXCHANGE RATE STRESS-TEST SIMULATOR   -->
-  <!-- ========================================================= -->
-  @let stress = bcvStressSimulation();
-  <div
-    class="donut-panel-card"
-    style="border-color: rgba(226, 183, 85, 0.25); background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.85));"
-  >
-    <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
-      <div>
-        <span class="panel-kicker" style="color: #facc15;">SIMULADOR INTERACTIVO DE RIESGO CAMBIARIO</span>
-        <h4>🎛️ Stress-Test de Devaluación BCV sobre Liquidez en Bolívares</h4>
-      </div>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        <button
-          type="button"
-          class="horizon-pill"
-          (click)="setStressRateMultiplier(1.05)"
-        >
-          +5% BCV
-        </button>
-        <button
-          type="button"
-          class="horizon-pill"
-          (click)="setStressRateMultiplier(1.15)"
-        >
-          +15% Moderado
-        </button>
-        <button
-          type="button"
-          class="horizon-pill"
-          (click)="setStressRateMultiplier(1.30)"
-        >
-          +30% Severo
-        </button>
-        <button
-          type="button"
-          class="horizon-pill active"
-          (click)="matchParallelRateInStress()"
-        >
-          ⚡ Igualar Paralelo ({{ financeService.currentParallelRate() | number: '1.2-2' }})
-        </button>
-      </div>
-    </div>
-
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: center;">
-      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
-        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px;">
-          <span>Tasa BCV Hipotética:</span>
-          <strong style="color: #facc15; font-size: 1rem;">
-            Bs {{ activeSimulatedBcvRate() | number: '1.2-2' }} / $
-          </strong>
-        </div>
-        <input
-          type="range"
-          style="width: 100%; accent-color: #e2b755; cursor: pointer;"
-          [min]="+(financeService.currentBcvRate() * 0.9).toFixed(0)"
-          [max]="+(financeService.currentBcvRate() * 2.2).toFixed(0)"
-          step="0.5"
-          [ngModel]="activeSimulatedBcvRate()"
-          (ngModelChange)="customBcvRate.set($event)"
-        />
-        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #64748b; margin-top: 4px;">
-          <span>Actual: Bs {{ stress.currentBcv | number: '1.2-2' }}</span>
-          <span>Variación: {{ stress.devaluationPct >= 0 ? '+' : '' }}{{ stress.devaluationPct }}%</span>
-        </div>
-      </div>
-
-      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);">
-        <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">
-          Bóvedas en Bolívares (Bs {{ stress.vesBalanceTotal | number: '1.0-0' }})
-        </div>
-        <div style="font-size: 1.25rem; font-weight: 900; color: #f8fafc; margin: 4px 0;">
-          ${{ stress.simulatedVesInUsd | number: '1.2-2' }} <small style="font-size: 0.75rem; color: #94a3b8;">USD</small>
-        </div>
-        <div style="font-size: 0.75rem; color: #64748b;">
-          Hoy equivalen a: <strong>${{ stress.currentVesInUsd | number: '1.2-2' }} USD</strong>
-        </div>
-      </div>
-
-      <div style="background: rgba(2, 6, 23, 0.55); padding: 14px; border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.25);">
-        <div style="font-size: 0.72rem; color: #fca5a5; font-weight: 700; text-transform: uppercase;">
-          Impacto en Poder Adquisitivo
-        </div>
-        <div
-          style="font-size: 1.25rem; font-weight: 900; margin: 4px 0;"
-          [style.color]="stress.purchasingPowerDeltaUsd < 0 ? '#f87171' : '#34d399'"
-        >
-          {{ stress.purchasingPowerDeltaUsd >= 0 ? '+' : '' }}${{ stress.purchasingPowerDeltaUsd | number: '1.2-2' }} USD
-        </div>
-        <div style="font-size: 0.75rem; color: #cbd5e1;">
-          Patrimonio Neto Proyectado: <strong>${{ stress.projectedNetWorthUsd | number: '1.2-2' }} USD</strong>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========================================================= -->
-  <!-- 3. DUAL SVG DONUT CHARTS: ASSET ALLOCATION & CATEGORIES   -->
-  <!-- ========================================================= -->
-  <div class="dual-donuts-grid">
-    <!-- DONUT 1: ASSET ALLOCATION BY CURRENCY -->
-    <div class="donut-panel-card">
-      <div class="panel-header">
-        <div>
-          <span class="panel-kicker">COMPOSICIÓN DE BÓVEDAS</span>
-          <h4>Estructura Patrimonial por Moneda</h4>
-        </div>
-        <span class="panel-badge">Tri-Monetario</span>
-      </div>
-
-      @let currSegments = currencyDonutSegments();
-      <div class="donut-layout">
-        <div class="svg-donut-box">
-          <svg viewBox="0 0 160 160" class="donut-svg">
-            <circle
-              cx="80"
-              cy="80"
-              r="62"
-              fill="transparent"
-              stroke="rgba(255,255,255,0.06)"
-              stroke-width="16"
-            />
-            @for (seg of currSegments; track seg.label) {
-              <circle
-                cx="80"
-                cy="80"
-                r="62"
-                fill="transparent"
-                [attr.stroke]="seg.color"
-                stroke-width="16"
-                [attr.stroke-dasharray]="seg.dashArray"
-                [attr.stroke-dashoffset]="seg.dashOffset"
-                transform="rotate(-90 80 80)"
-              />
-            }
-          </svg>
-          <div class="donut-center-label">
-            <span class="center-kicker">ACTIVOS</span>
-            <strong>${{ financeService.totalAssetsUsd() | number: '1.0-0' }}</strong>
-            <small>USD</small>
-          </div>
-        </div>
-
-        <div class="donut-legend-list">
-          @for (seg of currSegments; track seg.label) {
-            <div class="donut-legend-row">
-              <div class="leg-left">
-                <span class="leg-color" [style.background]="seg.color"></span>
-                <span class="leg-name">{{ seg.label }}</span>
-              </div>
-              <div class="leg-right">
-                <strong>${{ seg.amountUsd | number: '1.2-2' }}</strong>
-                <span class="leg-pct">{{ seg.percentage }}%</span>
-              </div>
-            </div>
+        <div class="metric-chip gold">
+          <span>Runway</span>
+          @if (burn.isRunwayUnbounded) {
+            <strong>Sin consumo</strong>
+          } @else {
+            <strong>{{ burn.runwayDays }} días ({{ burn.runwayMonths }}m)</strong>
           }
         </div>
       </div>
     </div>
 
-    <!-- DONUT 2: EXPENSE CATEGORY RADIOGRAPHY -->
-    <div class="donut-panel-card">
-      <div class="panel-header">
-        <div>
-          <span class="panel-kicker">DISTRIBUCIÓN DEL GASTO</span>
-          <h4>Radiografía por Categorías</h4>
+    @if (!hasProjectionData()) {
+      <div class="empty-state-box">
+        <svg class="empty-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M3 17l6-6 4 4 8-8" />
+          <path d="M14 7h7v7" />
+        </svg>
+        <p class="empty-title">Registra movimientos o activos para proyectar tu cono de liquidez real</p>
+        <span class="empty-sub">
+          Sin datos sintéticos: la curva histórica y el cono predictivo a 30 días se activan al contar con liquidez en bóvedas e historial de egresos.
+        </span>
+      </div>
+    } @else {
+      <div class="cone-stage">
+        <div class="chart-legend-row">
+          <span class="legend-item"><i class="swatch hist"></i> Curva Histórica Real</span>
+          <span class="legend-item"><i class="swatch opt"></i> Optimista (Con ingresos)</span>
+          <span class="legend-item"><i class="swatch base"></i> Base (Burn actual)</span>
+          <span class="legend-item"><i class="swatch stress"></i> Estrés BCV (+35% / devaluación)</span>
         </div>
-        <span class="panel-badge">{{ categoryBreakdown().length }} rubros</span>
+
+        <div class="svg-responsive-frame">
+          <svg
+            class="trajectory-svg"
+            viewBox="0 0 720 260"
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label="Gráfico de curva histórica y cono predictivo de liquidez a 30 días"
+          >
+            <defs>
+              <linearGradient id="f360HistGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" style="stop-color: var(--accent-2); stop-opacity: 0.24" />
+                <stop offset="100%" style="stop-color: var(--accent-2); stop-opacity: 0" />
+              </linearGradient>
+              <linearGradient id="f360ConeGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" style="stop-color: var(--gold); stop-opacity: 0.14" />
+                <stop offset="50%" style="stop-color: var(--accent); stop-opacity: 0.16" />
+                <stop offset="100%" style="stop-color: var(--danger); stop-opacity: 0.14" />
+              </linearGradient>
+            </defs>
+
+            <!-- Horizontal Reference Grid -->
+            <line x1="60" y1="26" x2="692" y2="26" class="grid-line" stroke-dasharray="4 4" />
+            <line x1="60" y1="119" x2="692" y2="119" class="grid-line" stroke-dasharray="4 4" />
+            <line x1="60" y1="212" x2="692" y2="212" class="grid-axis" />
+
+            <!-- Split Divider: Historical vs 30D Forecast -->
+            <line
+              [attr.x1]="proj.splitX"
+              y1="20"
+              [attr.x2]="proj.splitX"
+              y2="212"
+              class="split-divider"
+              stroke-dasharray="3 3"
+            />
+            <text [attr.x]="proj.splitX - 8" y="18" text-anchor="end" class="svg-zone-label">
+              Histórico
+            </text>
+            <text [attr.x]="proj.splitX + 8" y="18" text-anchor="start" class="svg-zone-label accent">
+              Cono 30D
+            </text>
+
+            <!-- Y-Axis Labels -->
+            <text x="52" y="30" text-anchor="end" class="svg-axis-label">
+              {{ formatCompactUsd(proj.maxVal) }}
+            </text>
+            <text x="52" y="123" text-anchor="end" class="svg-axis-label">
+              {{ formatCompactUsd(proj.midVal) }}
+            </text>
+            <text x="52" y="216" text-anchor="end" class="svg-axis-label">
+              {{ privacyMode() ? '••' : '$0' }}
+            </text>
+
+            <!-- Historical Fill & Solid Curve -->
+            <polygon [attr.points]="proj.historicalAreaPolygon" fill="url(#f360HistGrad)" />
+            <polyline
+              [attr.points]="proj.historicalPolyline"
+              fill="none"
+              class="line-historical"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+
+            <!-- 30D Predictive Cone Polygon & Dashed Curves -->
+            <polygon [attr.points]="proj.coneAreaPolygon" fill="url(#f360ConeGrad)" />
+            <polyline
+              [attr.points]="proj.optimisticPolyline"
+              fill="none"
+              class="line-optimistic"
+              stroke-width="2.2"
+              stroke-dasharray="6 4"
+              stroke-linecap="round"
+            />
+            <polyline
+              [attr.points]="proj.baselinePolyline"
+              fill="none"
+              class="line-baseline"
+              stroke-width="2.4"
+              stroke-dasharray="5 4"
+              stroke-linecap="round"
+            />
+            <polyline
+              [attr.points]="proj.stressPolyline"
+              fill="none"
+              class="line-stress"
+              stroke-width="2"
+              stroke-dasharray="4 4"
+              stroke-linecap="round"
+            />
+
+            <!-- Interactive Nodes & X Labels -->
+            @for (pt of proj.allPoints; track pt.id) {
+              @if (hoveredPoint()?.id === pt.id) {
+                <line
+                  [attr.x1]="pt.x"
+                  y1="26"
+                  [attr.x2]="pt.x"
+                  y2="212"
+                  class="hover-guide-line"
+                />
+              }
+              @if (pt.kind === 'historical') {
+                <circle
+                  [attr.cx]="pt.x"
+                  [attr.cy]="pt.yHistorical"
+                  [attr.r]="hoveredPoint()?.id === pt.id ? 6 : 4"
+                  class="node-historical"
+                  (mouseenter)="setHoveredPoint(pt.id)"
+                  (mouseleave)="clearHoveredPoint()"
+                />
+              } @else {
+                <circle
+                  [attr.cx]="pt.x"
+                  [attr.cy]="pt.yOptimistic"
+                  [attr.r]="hoveredPoint()?.id === pt.id ? 5.5 : 3.5"
+                  class="node-optimistic"
+                  (mouseenter)="setHoveredPoint(pt.id)"
+                  (mouseleave)="clearHoveredPoint()"
+                />
+                <circle
+                  [attr.cx]="pt.x"
+                  [attr.cy]="pt.yBaseline"
+                  [attr.r]="hoveredPoint()?.id === pt.id ? 6 : 4"
+                  class="node-baseline"
+                  (mouseenter)="setHoveredPoint(pt.id)"
+                  (mouseleave)="clearHoveredPoint()"
+                />
+                <circle
+                  [attr.cx]="pt.x"
+                  [attr.cy]="pt.yStress"
+                  [attr.r]="hoveredPoint()?.id === pt.id ? 5 : 3"
+                  class="node-stress"
+                  (mouseenter)="setHoveredPoint(pt.id)"
+                  (mouseleave)="clearHoveredPoint()"
+                />
+              }
+              <text [attr.x]="pt.x" y="236" text-anchor="middle" class="svg-axis-label">
+                {{ pt.label }}
+              </text>
+            }
+          </svg>
+        </div>
+
+        <!-- Keyboard & Touch Point Inspector Strip + Tooltip Readout -->
+        <div class="point-inspector-bar">
+          <div class="point-chips" role="group" aria-label="Inspeccionar puntos de la proyección">
+            @for (pt of proj.allPoints; track pt.id) {
+              <button
+                type="button"
+                class="point-chip"
+                [class.active]="hoveredPoint()?.id === pt.id"
+                (mouseenter)="setHoveredPoint(pt.id)"
+                (focus)="setHoveredPoint(pt.id)"
+                (click)="setHoveredPoint(pt.id)"
+              >
+                {{ pt.label }}
+              </button>
+            }
+          </div>
+
+          @if (hoveredPoint(); as tip) {
+            <div class="cone-tooltip-readout" role="status" aria-live="polite">
+              <span class="tip-date">{{ tip.label }} · {{ tip.dateIso }}</span>
+              @if (tip.kind === 'historical') {
+                <span class="tip-metric hist">Saldo real: <strong>{{ formatUsd(tip.historicalUsd) }}</strong></span>
+              } @else {
+                <span class="tip-metric opt">Optimista: <strong>{{ formatUsd(tip.optimisticUsd) }}</strong></span>
+                <span class="tip-metric base">Base: <strong>{{ formatUsd(tip.baselineUsd) }}</strong></span>
+                <span class="tip-metric stress">Estrés BCV: <strong>{{ formatUsd(tip.stressUsd) }}</strong></span>
+              }
+            </div>
+          } @else {
+            <div class="cone-tooltip-readout muted-hint">
+              Pasa el cursor o selecciona un hito temporal para inspeccionar los tres escenarios.
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- 3. INTERACTIVE BCV VS. PARALELO STRESS SIMULATOR -->
+  @let stress = bcvStressSimulation();
+  @let gauge = stressGauge();
+  <section class="glass-panel stress-panel" aria-label="Simulador de Estrés Cambiario BCV">
+    <div class="panel-header wrap">
+      <div>
+        <span class="panel-kicker">Simulador de Riesgo Cambiario</span>
+        <h4>Estrés de Devaluación BCV vs. Paralelo</h4>
       </div>
 
-      @let catSegments = categoryDonutSegments();
-      @if (catSegments.length === 0) {
-        <div class="empty-chart-box">
-          <p>Aún no hay gastos registrados en este ámbito para graficar el anillo de categorías.</p>
-          <button type="button" class="btn-analytics-demo" (click)="seedDemoFromAnalytics()">
-            ✨ Cargar Datos Demo
-          </button>
+      <div class="stress-presets" role="group" aria-label="Escenarios rápidos de estrés BCV">
+        <button
+          type="button"
+          class="preset-pill"
+          [disabled]="!isBcvLive()"
+          (click)="setStressRateMultiplier(1.1)"
+        >
+          +10%
+        </button>
+        <button
+          type="button"
+          class="preset-pill"
+          [disabled]="!isBcvLive()"
+          (click)="setStressRateMultiplier(1.2)"
+        >
+          +20%
+        </button>
+        <button
+          type="button"
+          class="preset-pill emphasis"
+          [disabled]="!isBcvLive() || !isParallelLive()"
+          (click)="matchParallelRateInStress()"
+        >
+          @if (isParallelLive()) {
+            Igualar Paralelo ({{ financeService.currentParallelRate() | number: '1.2-2' }})
+          } @else {
+            Paralelo offline
+          }
+        </button>
+      </div>
+    </div>
+
+    @if (!isBcvLive()) {
+      <div class="empty-state-box compact">
+        <p class="empty-title">Tasa BCV offline</p>
+        <span class="empty-sub">
+          No se aplican tasas inventadas. Sincroniza el monitor cambiario para simular el impacto de deslizamiento BCV sobre tus bóvedas en bolívares.
+        </span>
+      </div>
+    } @else {
+      <div class="stress-layout">
+        <!-- Radial Risk Gauge -->
+        <div class="radial-gauge-box" [attr.data-tone]="gauge.tone">
+          <svg
+            viewBox="0 0 120 120"
+            preserveAspectRatio="xMidYMid meet"
+            class="gauge-svg"
+            role="img"
+            [attr.aria-label]="'Índice de riesgo cambiario VES: ' + gauge.riskPercent + '%'"
+          >
+            <circle cx="60" cy="60" r="44" fill="none" class="gauge-track" stroke-width="10" />
+            <circle
+              cx="60"
+              cy="60"
+              r="44"
+              fill="none"
+              class="gauge-arc"
+              stroke-width="10"
+              stroke-linecap="round"
+              [attr.stroke-dasharray]="gauge.dashArray"
+              transform="rotate(-90 60 60)"
+            />
+          </svg>
+          <div class="gauge-center">
+            <strong>{{ gauge.riskPercent }}%</strong>
+            <span>{{ gauge.riskLabel }}</span>
+          </div>
+        </div>
+
+        <!-- Slider Control -->
+        <div class="stress-control-card">
+          <div class="slider-header">
+            <label for="f360-bcv-stress-slider">Tasa BCV simulada</label>
+            <strong class="slider-rate">Bs {{ activeSimulatedBcvRate() | number: '1.2-2' }} / $</strong>
+          </div>
+          <input
+            id="f360-bcv-stress-slider"
+            type="range"
+            class="stress-range-input"
+            [min]="stressSliderMin()"
+            [max]="stressSliderMax()"
+            step="0.5"
+            [ngModel]="activeSimulatedBcvRate()"
+            (ngModelChange)="onStressSliderChange($event)"
+          />
+          <div class="slider-footer">
+            <span>BCV actual: Bs {{ stress.currentBcv | number: '1.2-2' }}</span>
+            <span>Variación: {{ stress.devaluationPct >= 0 ? '+' : '' }}{{ stress.devaluationPct }}%</span>
+          </div>
+        </div>
+
+        <!-- Patrimonial Impact Cards -->
+        <div class="stress-impact-card">
+          <span class="impact-label">Bóvedas VES ({{ formatVes(stress.vesBalanceTotal) }})</span>
+          <strong class="impact-val">{{ formatUsd(stress.simulatedVesInUsd) }} <small>USD</small></strong>
+          <span class="impact-sub">Valor actual: {{ formatUsd(stress.currentVesInUsd) }} USD</span>
+        </div>
+
+        <div class="stress-impact-card delta-card">
+          <span class="impact-label">Impacto Patrimonial Neto</span>
+          <strong
+            class="impact-val"
+            [class.negative]="stress.purchasingPowerDeltaUsd < 0"
+            [class.positive]="stress.purchasingPowerDeltaUsd >= 0"
+          >
+            {{ formatUsd(stress.purchasingPowerDeltaUsd, true) }} <small>USD</small>
+          </strong>
+          <span class="impact-sub">
+            Patrimonio proyectado: <strong>{{ formatUsd(stress.projectedNetWorthUsd) }} USD</strong>
+          </span>
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- 4. DUAL SVG DONUTS: MULTI-CURRENCY (USD/USDT/VES/EUR) & CATEGORIES -->
+  <div class="dual-donuts-grid">
+    <!-- DONUT 1: CURRENCY ALLOCATION WITH EUR -->
+    <section class="glass-panel donut-card">
+      <div class="panel-header">
+        <div>
+          <span class="panel-kicker">Composición de Bóvedas</span>
+          <h4>Estructura Patrimonial por Moneda</h4>
+        </div>
+        <span class="panel-badge">USD · USDT · VES · EUR</span>
+      </div>
+
+      @let currSegments = currencyDonutSegments();
+      @if (currSegments.length === 0) {
+        <div class="empty-state-box compact">
+          <p class="empty-title">Sin activos en bóvedas</p>
+          <span class="empty-sub">Registra saldos reales en USD, USDT, VES o EUR para visualizar tu distribución patrimonial.</span>
         </div>
       } @else {
         <div class="donut-layout">
           <div class="svg-donut-box">
-            <svg viewBox="0 0 160 160" class="donut-svg">
-              <circle
-                cx="80"
-                cy="80"
-                r="62"
-                fill="transparent"
-                stroke="rgba(255,255,255,0.06)"
-                stroke-width="16"
-              />
-              @for (seg of catSegments; track seg.label) {
+            <svg viewBox="0 0 160 160" preserveAspectRatio="xMidYMid meet" class="donut-svg" aria-hidden="true">
+              <circle cx="80" cy="80" r="62" fill="transparent" class="donut-track" stroke-width="15" />
+              @for (seg of currSegments; track seg.label) {
                 <circle
                   cx="80"
                   cy="80"
                   r="62"
                   fill="transparent"
-                  [attr.stroke]="seg.color"
-                  stroke-width="16"
+                  [style.stroke]="seg.color"
+                  stroke-width="15"
                   [attr.stroke-dasharray]="seg.dashArray"
                   [attr.stroke-dashoffset]="seg.dashOffset"
                   transform="rotate(-90 80 80)"
@@ -405,8 +536,68 @@
               }
             </svg>
             <div class="donut-center-label">
-              <span class="center-kicker">EGRESOS</span>
-              <strong>${{ kpis.totalExpenseUsd | number: '1.0-0' }}</strong>
+              <span class="center-kicker">Activos</span>
+              <strong>{{ formatCompactUsd(financeService.totalAssetsUsd()) }}</strong>
+              <small>USD</small>
+            </div>
+          </div>
+
+          <div class="donut-legend-list">
+            @for (seg of currSegments; track seg.label) {
+              <div class="donut-legend-row">
+                <div class="leg-left">
+                  <span class="leg-color" [style.background]="seg.color"></span>
+                  <span class="leg-name">{{ seg.label }}</span>
+                </div>
+                <div class="leg-right">
+                  <strong>{{ formatUsd(seg.amountUsd) }}</strong>
+                  <span class="leg-pct">{{ seg.percentage }}%</span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- DONUT 2: EXPENSE CATEGORIES (HORIZON FILTERED) -->
+    <section class="glass-panel donut-card">
+      <div class="panel-header">
+        <div>
+          <span class="panel-kicker">Distribución del Gasto ({{ activeHorizonMeta().label }})</span>
+          <h4>Radiografía por Categorías</h4>
+        </div>
+        <span class="panel-badge">{{ categoryBreakdown().length }} rubros</span>
+      </div>
+
+      @let catSegments = categoryDonutSegments();
+      @if (catSegments.length === 0) {
+        <div class="empty-state-box compact">
+          <p class="empty-title">Sin egresos en este horizonte</p>
+          <span class="empty-sub">No existen gastos registrados dentro del período seleccionado ({{ activeHorizonMeta().fullLabel }}).</span>
+        </div>
+      } @else {
+        <div class="donut-layout">
+          <div class="svg-donut-box">
+            <svg viewBox="0 0 160 160" preserveAspectRatio="xMidYMid meet" class="donut-svg" aria-hidden="true">
+              <circle cx="80" cy="80" r="62" fill="transparent" class="donut-track" stroke-width="15" />
+              @for (seg of catSegments; track seg.label) {
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="62"
+                  fill="transparent"
+                  [style.stroke]="seg.color"
+                  stroke-width="15"
+                  [attr.stroke-dasharray]="seg.dashArray"
+                  [attr.stroke-dashoffset]="seg.dashOffset"
+                  transform="rotate(-90 80 80)"
+                />
+              }
+            </svg>
+            <div class="donut-center-label">
+              <span class="center-kicker">Egresos</span>
+              <strong>{{ formatCompactUsd(kpis.totalExpenseUsd) }}</strong>
               <small>USD</small>
             </div>
           </div>
@@ -419,7 +610,7 @@
                   <span class="leg-name">{{ seg.label }}</span>
                 </div>
                 <div class="leg-right">
-                  <strong>${{ seg.amountUsd | number: '1.2-2' }}</strong>
+                  <strong>{{ formatUsd(seg.amountUsd) }}</strong>
                   <span class="leg-pct">{{ seg.percentage }}%</span>
                 </div>
               </div>
@@ -427,29 +618,28 @@
           </div>
         </div>
       }
-    </div>
+    </section>
   </div>
 
-  <!-- ========================================================= -->
-  <!-- 4. BOTTOM GRID: WEEKLY HEATMAP + VIRTUAL CFO INSIGHTS     -->
-  <!-- ========================================================= -->
+  <!-- 5. BOTTOM GRID: VET WEEKLY HEATMAP & CFO AI SIGNALS -->
   <div class="bottom-analytics-grid">
-    <!-- WEEKLY HEATMAP CHART -->
-    <div class="chart-section">
-      <div class="section-title-bar">
+    <!-- WEEKLY HEATMAP (UTC-4 VET SAFE) -->
+    <section class="glass-panel heatmap-panel">
+      <div class="panel-header">
         <div>
-          <span class="panel-kicker">INTENSIDAD POR DÍA DE SEMANA</span>
-          <h4>🗓️ Mapa de Calor Semanal</h4>
+          <span class="panel-kicker">Intensidad Semanal (UTC-4 VET)</span>
+          <h4>Mapa de Calor de Egresos</h4>
         </div>
         @if (peakSpendingDay(); as peak) {
-          <span class="peak-badge">Pico: {{ peak.dayName }} (${{ peak.totalSpentUsd }})</span>
+          <span class="peak-badge">Pico: {{ peak.dayName }} · {{ formatUsd(peak.totalSpentUsd) }}</span>
         }
       </div>
 
       <div class="heatmap-bars-grid">
         @for (day of weeklyHeatmap(); track day.dayNumber) {
-          <div class="heatmap-bar-col">
-            <span class="bar-amount">${{ day.totalSpentUsd | number: '1.0-0' }}</span>
+          @let isPeak = peakSpendingDay()?.dayNumber === day.dayNumber && day.totalSpentUsd > 0;
+          <div class="heatmap-bar-col" [class.is-peak]="isPeak">
+            <span class="bar-amount">{{ formatCompactUsd(day.totalSpentUsd) }}</span>
             <div class="bar-track">
               <div
                 class="bar-fill"
@@ -464,7 +654,6 @@
         }
       </div>
 
-      <!-- Detailed Category Progress Bars -->
       @let categories = categoryBreakdown();
       @if (categories.length > 0) {
         <div class="category-bars-list">
@@ -473,7 +662,7 @@
               <div class="cat-info-row">
                 <span class="cat-label">{{ cat.categoryLabel }}</span>
                 <span class="cat-amounts">
-                  <strong>${{ cat.totalUsd | number: '1.2-2' }} USD</strong>
+                  <strong>{{ formatUsd(cat.totalUsd) }}</strong>
                   <span class="cat-pct">({{ cat.percentageOfTotal }}%)</span>
                 </span>
               </div>
@@ -484,35 +673,41 @@
           }
         </div>
       }
-    </div>
+    </section>
 
-    <!-- VIRTUAL CFO INTELLIGENT INSIGHTS -->
-    <div class="cfo-section">
-      <div class="cfo-header">
+    <!-- CFO AI SIGNALS WITH SEGMENTED CONFIDENCE BARS -->
+    <section class="glass-panel cfo-panel">
+      <div class="panel-header">
         <div>
-          <span class="panel-kicker">AUDITORÍA AUTOMATIZADA</span>
-          <h4>💼 Diagnósticos del CFO Virtual</h4>
+          <span class="panel-kicker">Auditoría Automatizada</span>
+          <h4>Señales del CFO Virtual</h4>
         </div>
-        <span class="cfo-count-pill">{{ cfoInsights().length }} hallazgos</span>
+        <span class="panel-badge accent">{{ cfoInsights().length }} señales</span>
       </div>
 
       <div class="cfo-cards-list">
-        @for (insight of cfoInsights(); track insight.title) {
-          <div class="cfo-card" [class]="insight.type">
-            <div class="cfo-badge">
-              @if (insight.type === 'alert') { 🚨 ALERTA DE RIESGO }
-              @else if (insight.type === 'warning') { ⚠️ PRECAUCIÓN PATRIMONIAL }
-              @else if (insight.type === 'tip') { 💡 ESTRATEGIA CFO }
-              @else { 🟢 SOLVENCIA ÓPTIMA }
+        @for (signalCard of cfoInsights(); track signalCard.title) {
+          <article class="cfo-card" [attr.data-tone]="signalCard.type">
+            <div class="cfo-card-top">
+              <span class="cfo-badge">{{ signalCard.badgeLabel }}</span>
+              <div
+                class="confidence-meter"
+                [attr.aria-label]="signalCard.confidenceLabel"
+                [title]="signalCard.confidenceLabel"
+              >
+                @for (filled of signalCard.segments; track $index) {
+                  <span class="conf-seg" [class.filled]="filled"></span>
+                }
+              </div>
             </div>
-            <strong>{{ insight.title }}</strong>
-            <p class="cfo-message">{{ insight.message }}</p>
+            <strong class="cfo-title">{{ signalCard.title }}</strong>
+            <p class="cfo-message">{{ signalCard.message }}</p>
             <div class="cfo-rec">
-              <span>Acción Sugerida:</span> {{ insight.recommendation }}
+              <span>Acción sugerida:</span> {{ signalCard.recommendation }}
             </div>
-          </div>
+          </article>
         }
       </div>
-    </div>
+    </section>
   </div>
-</div>
+</section>

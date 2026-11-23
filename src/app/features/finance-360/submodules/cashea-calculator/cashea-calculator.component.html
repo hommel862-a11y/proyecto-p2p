@@ -1,226 +1,648 @@
-<div class="cashea-calculator-container">
-  <!-- SIMULATOR FORM -->
-  <div class="cashea-card form-card">
-    <div class="card-header">
-      <div class="tag-row">
-        <span class="cashea-badge">⚡ MÓDULO QUINCENAL CASHEA</span>
-        <span class="rate-badge">BCV: {{ calculation().bcvRate | number: '1.2-2' }} Bs/$</span>
-      </div>
-      <h3>Simulador de Compra & Cuotas</h3>
-      <p class="card-subtitle">Calcula tu inicial según nivel, cuotas quincenales y programa tus pasivos.</p>
-    </div>
-
-    <!-- LEVEL SELECTOR -->
-    <div class="level-selector-section">
-      <label class="section-label">Selecciona tu Nivel Cashea</label>
-      <div class="levels-pills-row">
-        <button
-          type="button"
-          class="level-pill"
-          [class.active]="selectedLevel() === 1"
-          (click)="setLevel(1)"
-        >
-          <span class="lvl-num">Nivel 1</span>
-          <span class="lvl-pct">60% Inicial</span>
-        </button>
-        <button
-          type="button"
-          class="level-pill"
-          [class.active]="selectedLevel() === 2"
-          (click)="setLevel(2)"
-        >
-          <span class="lvl-num">Nivel 2</span>
-          <span class="lvl-pct">50% Inicial</span>
-        </button>
-        <button
-          type="button"
-          class="level-pill"
-          [class.active]="selectedLevel() === 3"
-          (click)="setLevel(3)"
-        >
-          <span class="lvl-num">Nivel 3</span>
-          <span class="lvl-pct">40% Inicial</span>
-        </button>
-        <button
-          type="button"
-          class="level-pill"
-          [class.active]="selectedLevel() === 4"
-          (click)="setLevel(4)"
-        >
-          <span class="lvl-num">Nivel 4</span>
-          <span class="lvl-pct">25% Inicial</span>
-        </button>
-        <button
-          type="button"
-          class="level-pill"
-          [class.active]="selectedLevel() === 5"
-          (click)="setLevel(5)"
-        >
-          <span class="lvl-num">Nivel 5</span>
-          <span class="lvl-pct">20% Inicial</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- INPUTS -->
-    <div class="form-grid">
-      <div class="form-group">
-        <label>Producto o Artículo</label>
-        <input
-          type="text"
-          class="form-control"
-          placeholder="ej. Caucho Rin 14, Taladro Percutor, Nevera..."
-          [ngModel]="itemTitle()"
-          (ngModelChange)="itemTitle.set($event)"
-        />
-      </div>
-
-      <div class="form-group">
-        <label>Tienda / Comercio</label>
-        <input
-          type="text"
-          class="form-control"
-          placeholder="ej. EPA, Daka, Traki, Farmatodo..."
-          [ngModel]="storeName()"
-          (ngModelChange)="storeName.set($event)"
-        />
-      </div>
-
-      <div class="form-row-dual">
-        <div class="form-group">
-          <label>Monto Total ($ USD)</label>
-          <input
-            type="number"
-            class="form-control"
-            min="1"
-            placeholder="150"
-            [ngModel]="totalAmountUsd()"
-            (ngModelChange)="totalAmountUsd.set($event)"
-          />
+<section class="cashea-shell" aria-label="Calculadora y Gestión Club Cashea Más">
+  <!-- ========================================================= -->
+  <!-- 1. PERFIL CLUB CASHEA MÁS STRIP (DUAL LINE & TIER PROGRESS) -->
+  <!-- ========================================================= -->
+  @let profile = profileSummary();
+  <section class="glass-panel profile-strip" aria-label="Perfil Club Cashea Más">
+    <div class="profile-top-row">
+      <div class="profile-identity">
+        <span class="club-badge">Nivel {{ profile.level }} · {{ profile.tierName }}</span>
+        <div class="profile-meta-copy">
+          <h4>Perfil Club Cashea Más</h4>
+          <span class="profile-sub">
+            Recálculo 90D: {{ profile.nextRecalculationDate }} · {{ profile.clubPoints }} pts Club
+          </span>
         </div>
-
-        <div class="form-group">
-          <label>Número de Cuotas</label>
-          <select
-            class="form-control"
-            [ngModel]="totalInstallments()"
-            (ngModelChange)="totalInstallments.set($event)"
-          >
-            <option [value]="3">3 Cuotas (Estándar 42 Días)</option>
-            <option [value]="6">6 Cuotas (Línea Extendida)</option>
-            <option [value]="9">9 Cuotas (Línea Especial)</option>
-            <option [value]="12">12 Cuotas (Grandes Compras)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Fecha de la 1era Cuota</label>
-        <input
-          type="date"
-          class="form-control"
-          [ngModel]="firstDueDate()"
-          (ngModelChange)="firstDueDate.set($event)"
-        />
-      </div>
-    </div>
-
-    <!-- CALCULATION PREVIEW BOX -->
-    @let calc = calculation();
-    <div class="calc-results-box">
-      <div class="calc-result-header">
-        <span>DESGLOSE DE PAGO</span>
-        <span class="zero-interest-tag">0% Interés · Tasa Oficial BCV</span>
-      </div>
-
-      <div class="results-cards-grid">
-        <div class="result-card initial-card">
-          <span class="result-type">PAGO INICIAL (HOY)</span>
-          <strong class="result-usd">${{ calc.initialPaymentUsd | number: '1.2-2' }} USD</strong>
-          <span class="result-ves">≈ Bs {{ calc.initialVes | number: '1.2-2' }}</span>
-          <span class="result-note">{{ calc.initialPercentage }}% del total</span>
-        </div>
-
-        <div class="result-card installment-card">
-          <span class="result-type">CADA 14 DÍAS ({{ totalInstallments() }} CUOTAS)</span>
-          <strong class="result-usd">${{ calc.installmentAmountUsd | number: '1.2-2' }} USD</strong>
-          <span class="result-ves">≈ Bs {{ calc.installmentVes | number: '1.2-2' }}</span>
-          <span class="result-note">Saldo financiado: ${{ (totalAmountUsd() ?? 0) - calc.initialPaymentUsd | number: '1.2-2' }}</span>
-        </div>
-      </div>
-
-      <!-- PROJECTED DATES TIMELINE -->
-      <div class="projected-timeline">
-        <div class="timeline-title">🗓️ Calendario de Pagos Quincenales</div>
-        <div class="timeline-items">
-          @for (item of projectedDates(); track item.number) {
-            <div class="timeline-item">
-              <div class="item-circle">{{ item.number }}</div>
-              <div class="item-details">
-                <span class="item-date">{{ item.dateStr }}</span>
-                <span class="item-val">${{ item.amountUsd | number: '1.2-2' }} USD (Bs {{ item.amountVes | number: '1.2-2' }})</span>
-              </div>
-            </div>
-          }
-        </div>
-      </div>
-
-      <div style="margin: 12px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.55); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
-        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: #cbd5e1; cursor: pointer; margin: 0;">
-          <input
-            type="checkbox"
-            [ngModel]="debitInitialFromVault()"
-            (ngModelChange)="debitInitialFromVault.set($event)"
-          />
-          Debitar Inicial (${{ calc.initialPaymentUsd | number: '1.2-2' }}) hoy de bóveda:
-        </label>
-        <select
-          class="form-control"
-          style="max-width: 240px; padding: 5px 10px; font-size: 0.78rem;"
-          [ngModel]="selectedPaymentVaultId()"
-          (ngModelChange)="selectedPaymentVaultId.set($event)"
-        >
-          @for (v of financeService.state().assets; track v.id) {
-            <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
-          }
-        </select>
       </div>
 
       <button
         type="button"
-        class="btn-save-plan"
-        (click)="savePlan()"
+        class="btn-outline"
+        (click)="showProfileEditor() ? closeProfileEditor() : openProfileEditor()"
       >
-        ⚡ Registrar Plan & Generar Cuotas en Pasivos
+        {{ showProfileEditor() ? 'Cerrar Editor' : 'Configurar Cupos' }}
       </button>
+    </div>
+
+    <div class="credit-lines-grid">
+      <!-- Línea Principal -->
+      <div class="line-quota-card">
+        <div class="quota-header">
+          <span class="quota-title">Línea Principal</span>
+          <span class="quota-pct">{{ profile.principalUsagePct }}% usado</span>
+        </div>
+        <div class="quota-metrics">
+          <span>Límite: <strong>{{ formatUsd(profile.principalLimitUsd) }}</strong></span>
+          <span>Usado: <strong>{{ formatUsd(profile.principalUsedUsd) }}</strong></span>
+          <span class="avail">Disp.: <strong>{{ formatUsd(profile.principalAvailableUsd) }}</strong></span>
+        </div>
+        <div class="quota-track">
+          <div class="quota-fill principal" [style.width.%]="profile.principalUsagePct"></div>
+        </div>
+      </div>
+
+      <!-- Línea Cotidiana -->
+      <div class="line-quota-card">
+        <div class="quota-header">
+          <span class="quota-title">Línea Cotidiana</span>
+          <span class="quota-pct">{{ profile.cotidianaUsagePct }}% usado</span>
+        </div>
+        <div class="quota-metrics">
+          <span>Límite: <strong>{{ formatUsd(profile.cotidianaLimitUsd) }}</strong></span>
+          <span>Usado: <strong>{{ formatUsd(profile.cotidianaUsedUsd) }}</strong></span>
+          <span class="avail">Disp.: <strong>{{ formatUsd(profile.cotidianaAvailableUsd) }}</strong></span>
+        </div>
+        <div class="quota-track">
+          <div class="quota-fill cotidiana" [style.width.%]="profile.cotidianaUsagePct"></div>
+        </div>
+      </div>
+
+      <!-- Next Tier Progress -->
+      <div class="line-quota-card tier-progress-card">
+        @if (profile.nextTier; as nextTier) {
+          <div class="quota-header">
+            <span class="quota-title">Avance a N{{ nextTier.level }} {{ nextTier.name }}</span>
+            <span class="quota-pct">{{ profile.spentProgressPct }}%</span>
+          </div>
+          <div class="quota-metrics">
+            <span>
+              Compras: <strong>{{ formatUsd(profile.cumulativeSpentUsd) }}</strong> /
+              {{ formatUsd(nextTier.requiredSpentUsd) }}
+            </span>
+            <span>
+              Cuotas: <strong>{{ profile.paidInstallmentsCount }}</strong> /
+              {{ nextTier.requiredInstallmentsPaid }}
+            </span>
+          </div>
+          <div class="quota-track">
+            <div class="quota-fill gold" [style.width.%]="profile.spentProgressPct"></div>
+          </div>
+        } @else {
+          <div class="quota-header">
+            <span class="quota-title">Nivel Máximo Alcanzado</span>
+            <span class="quota-pct">N6 Araguaney</span>
+          </div>
+          <div class="quota-metrics">
+            <span>Compras acumuladas: <strong>{{ formatUsd(profile.cumulativeSpentUsd) }}</strong></span>
+            <span>Cuotas saldadas: <strong>{{ profile.paidInstallmentsCount }}</strong></span>
+          </div>
+          <div class="quota-track">
+            <div class="quota-fill gold" style="width: 100%"></div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- INLINE PROFILE EDITOR -->
+    @if (showProfileEditor()) {
+      <div class="profile-editor-drawer">
+        <div class="editor-grid">
+          <div class="field-group">
+            <label for="f360-cashea-prof-level">Nivel Club Actual</label>
+            <select
+              id="f360-cashea-prof-level"
+              class="field-control"
+              [ngModel]="profileDraftLevel()"
+              (ngModelChange)="onProfileDraftLevelChange($event)"
+            >
+              @for (tier of clubTiers; track tier.level) {
+                <option [ngValue]="tier.level">Nivel {{ tier.level }} · {{ tier.name }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-prof-principal">Límite Línea Principal ($ USD)</label>
+            <input
+              id="f360-cashea-prof-principal"
+              type="number"
+              min="0"
+              class="field-control"
+              [ngModel]="profileDraftPrincipalLimit()"
+              (ngModelChange)="onNumericDraftChange('principal', $event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-prof-cotidiana">Límite Línea Cotidiana ($ USD)</label>
+            <input
+              id="f360-cashea-prof-cotidiana"
+              type="number"
+              min="0"
+              class="field-control"
+              [ngModel]="profileDraftCotidianaLimit()"
+              (ngModelChange)="onNumericDraftChange('cotidiana', $event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-prof-spent">Compras Acumuladas ($ USD)</label>
+            <input
+              id="f360-cashea-prof-spent"
+              type="number"
+              min="0"
+              class="field-control"
+              [ngModel]="profileDraftSpentUsd()"
+              (ngModelChange)="onNumericDraftChange('spent', $event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-prof-paid">Cuotas Pagadas a Tiempo</label>
+            <input
+              id="f360-cashea-prof-paid"
+              type="number"
+              min="0"
+              class="field-control"
+              [ngModel]="profileDraftPaidCount()"
+              (ngModelChange)="onNumericDraftChange('paid', $event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-prof-points">Puntos Club Cashea Más</label>
+            <input
+              id="f360-cashea-prof-points"
+              type="number"
+              min="0"
+              class="field-control"
+              [ngModel]="profileDraftClubPoints()"
+              (ngModelChange)="onNumericDraftChange('points', $event)"
+            />
+          </div>
+        </div>
+
+        <div class="editor-actions">
+          <button type="button" class="btn-ghost" (click)="closeProfileEditor()">Cancelar</button>
+          <button type="button" class="btn-primary-sm" (click)="saveProfileEditor()">
+            Guardar Cupos
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ========================================================= -->
+  <!-- 2. SIMULATOR & SCHEDULE CONFIGURATOR                      -->
+  <!-- ========================================================= -->
+  @let calc = calculation();
+  <div class="cashea-workspace-grid">
+    <section class="glass-panel simulator-panel" aria-label="Simulador de Financiamiento Cashea">
+      <div class="panel-header">
+        <div>
+          <span class="panel-kicker">Simulador Cashea 2026 · 0% Interés</span>
+          <h3>Planificador de Compra &amp; Cuotas</h3>
+        </div>
+        @if (isBcvLive()) {
+          <span class="fx-chip live">BCV Bs {{ calc.bcvRate | number: '1.2-2' }}/$</span>
+        } @else {
+          <span class="fx-chip offline">Tasa BCV offline</span>
+        }
+      </div>
+
+      <!-- 6 REAL CLUB LEVELS (N1 SEMILLA -> N6 ARAGUANEY) -->
+      <div class="selector-block">
+        <span class="block-label">Nivel Club Cashea Más (N1–N6)</span>
+        <div class="levels-grid" role="group" aria-label="Seleccionar nivel Club Cashea Más">
+          @for (tier of clubTiers; track tier.level) {
+            <button
+              type="button"
+              class="level-pill"
+              [class.active]="selectedLevel() === tier.level"
+              [attr.aria-pressed]="selectedLevel() === tier.level"
+              (click)="setLevel(tier.level)"
+            >
+              <span class="lvl-head">N{{ tier.level }} {{ tier.name }}</span>
+              <span class="lvl-meta">{{ getTierSubtitle(tier) }}</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- DUAL LINE + VEHICULAR SELECTOR -->
+      <div class="selector-block">
+        <span class="block-label">Línea de Crédito</span>
+        <div class="lines-row" role="group" aria-label="Seleccionar línea de crédito Cashea">
+          @for (line of lineOptions; track line.key) {
+            <button
+              type="button"
+              class="line-pill"
+              [class.active]="selectedCreditLine() === line.key"
+              [attr.aria-pressed]="selectedCreditLine() === line.key"
+              (click)="setCreditLine(line.key)"
+            >
+              <strong>{{ line.label }}</strong>
+              <span>{{ line.subtitle }}</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- INSTALLMENT PILLS (STRICTLY NUMERIC — ZERO STRING COERCION) -->
+      <div class="selector-block">
+        <span class="block-label">
+          {{ selectedCreditLine() === 'vehicular' ? 'Plazo Vehicular (Meses)' : 'Modo Más Cuotas (Quincenales 14D)' }}
+        </span>
+        <div class="installment-pills-row" role="group" aria-label="Número de cuotas">
+          @for (count of availableInstallmentOptions(); track count) {
+            <button
+              type="button"
+              class="installment-pill"
+              [class.active]="totalInstallments() === count"
+              [class.extended]="!isInstallmentSupportedByTier(count)"
+              [attr.aria-pressed]="totalInstallments() === count"
+              (click)="setInstallments(count)"
+            >
+              {{ count }} {{ selectedCreditLine() === 'vehicular' ? 'meses' : count === 1 ? 'cuota' : 'cuotas' }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- FLEXIBLE INITIAL CONTROL -->
+      <div class="selector-block initial-block">
+        <div class="initial-header-row">
+          <span class="block-label">Inicial Flexible ({{ calc.initialPercent }}%)</span>
+          <div class="initial-presets" role="group" aria-label="Modalidad de pago inicial">
+            <button
+              type="button"
+              class="mini-pill"
+              [class.active]="initialMode() === 'standard'"
+              (click)="useStandardInitial()"
+            >
+              Estándar ({{ standardInitialPercent() }}%)
+            </button>
+            @if (canUseZeroCampaign()) {
+              <button
+                type="button"
+                class="mini-pill campaign"
+                [class.active]="initialMode() === 'zero_campaign'"
+                (click)="enableZeroInitialCampaign()"
+              >
+                Campaña 0% (N6)
+              </button>
+            }
+            <button
+              type="button"
+              class="mini-pill"
+              [class.active]="initialMode() === 'custom'"
+              (click)="enableCustomInitial()"
+            >
+              Personalizar
+            </button>
+          </div>
+        </div>
+
+        @if (initialMode() === 'custom') {
+          <div class="custom-initial-row">
+            <label for="f360-cashea-initial-slider" class="sr-only">Porcentaje inicial personalizado</label>
+            <input
+              id="f360-cashea-initial-slider"
+              type="range"
+              class="initial-slider"
+              [min]="minimumInitialPercent()"
+              max="90"
+              step="1"
+              [ngModel]="customInitialPercent()"
+              (ngModelChange)="setCustomInitialPercent($event)"
+            />
+            <div class="initial-num-wrap">
+              <label for="f360-cashea-initial-num" class="sr-only">Inicial en porcentaje</label>
+              <input
+                id="f360-cashea-initial-num"
+                type="number"
+                class="field-control compact-num"
+                [min]="minimumInitialPercent()"
+                max="90"
+                [ngModel]="customInitialPercent()"
+                (ngModelChange)="setCustomInitialPercent($event)"
+              />
+              <span class="pct-unit">%</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- PURCHASE DETAILS FORM -->
+      <div class="form-grid">
+        <div class="field-group">
+          <label for="f360-cashea-title">Producto o Artículo</label>
+          <input
+            id="f360-cashea-title"
+            type="text"
+            class="field-control"
+            placeholder="Ej. Cauchos Rin 15, Laptop, Repuestos..."
+            [ngModel]="itemTitle()"
+            (ngModelChange)="itemTitle.set($event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="f360-cashea-store">Comercio Aliado</label>
+          <input
+            id="f360-cashea-store"
+            type="text"
+            class="field-control"
+            placeholder="Ej. EPA, Daka, Farmatodo, Ivoo..."
+            [ngModel]="storeName()"
+            (ngModelChange)="storeName.set($event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="f360-cashea-amount">Monto Total ($ USD)</label>
+          <input
+            id="f360-cashea-amount"
+            type="number"
+            min="1"
+            step="0.01"
+            class="field-control mono"
+            placeholder="150"
+            [ngModel]="totalAmountUsd()"
+            (ngModelChange)="onTotalAmountChange($event)"
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="f360-cashea-first-due">Fecha 1era Cuota (VET)</label>
+          <input
+            id="f360-cashea-first-due"
+            type="date"
+            class="field-control mono"
+            [ngModel]="firstDueDate()"
+            (ngModelChange)="firstDueDate.set($event)"
+          />
+        </div>
+      </div>
+
+      <!-- SCHEDULE BREAKDOWN SUMMARY -->
+      <div class="breakdown-cards-grid">
+        <div class="breakdown-card initial">
+          <span class="bd-kicker">Pago Inicial Hoy ({{ calc.initialPercent }}%)</span>
+          <strong class="bd-usd">{{ formatUsd(calc.initialPaymentUsd) }}</strong>
+          <span class="bd-sub">
+            @if (isBcvLive()) {
+              Equiv. {{ formatVes(calc.initialVes) }}
+            } @else {
+              Tasa BCV offline
+            }
+          </span>
+        </div>
+
+        <div class="breakdown-card financed">
+          <span class="bd-kicker">
+            {{ calc.installmentsCount }} Cuotas · Cada {{ calc.frequencyDays }}D
+          </span>
+          <strong class="bd-usd">{{ formatUsd(calc.installmentAmountUsd) }}</strong>
+          <span class="bd-sub">
+            Financiado: {{ formatUsd(calc.financedAmountUsd) }}
+            @if (isBcvLive()) {
+              · {{ formatVes(calc.installmentVes) }}/cuota
+            }
+          </span>
+        </div>
+      </div>
+
+      <!-- DYNAMIC VAULT PICKER & SAVE CTA -->
+      <div class="vault-debit-box">
+        @if (availableVaults().length === 0) {
+          <div class="empty-vault-notice">
+            Sin bóvedas registradas. El plan se asentará en Pasivos sin débito de caja hasta que crees una bóveda.
+          </div>
+        } @else {
+          <div class="vault-debit-row">
+            <label for="f360-cashea-debit-check" class="checkbox-label">
+              <input
+                id="f360-cashea-debit-check"
+                type="checkbox"
+                [ngModel]="debitInitialFromVault()"
+                (ngModelChange)="debitInitialFromVault.set($event)"
+              />
+              <span>Debitar inicial ({{ formatUsd(calc.initialPaymentUsd) }}) hoy</span>
+            </label>
+
+            <div class="vault-select-wrap">
+              <label for="f360-cashea-vault-select" class="sr-only">Bóveda de pago</label>
+              <select
+                id="f360-cashea-vault-select"
+                class="field-control compact-select"
+                [ngModel]="selectedPaymentVaultId()"
+                (ngModelChange)="selectedPaymentVaultId.set($event)"
+              >
+                @for (v of availableVaults(); track v.id) {
+                  <option [value]="v.id">
+                    {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-2' }})
+                  </option>
+                }
+              </select>
+            </div>
+          </div>
+        }
+      </div>
+
+      <button type="button" class="btn-primary-cta" (click)="savePlan()">
+        Registrar Plan y Programar {{ calc.installmentsCount }} Cuotas en Pasivos
+      </button>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- 3. RIGHT COLUMN: DUAL PROJECTOR + COLLISION 14D RADAR     -->
+    <!-- ========================================================= -->
+    <div class="decision-column">
+      <!-- DUAL PROJECTOR: CAMINO A VS CAMINO B -->
+      @let dual = dualProjection();
+      <section class="glass-panel projector-panel" aria-label="Proyector Dual Ahorro versus Cashea">
+        <div class="panel-header">
+          <div>
+            <span class="panel-kicker">Proyector Dual de Decisión</span>
+            <h4>Camino A (Ahorro) vs. Camino B (Cashea)</h4>
+          </div>
+          <span class="verdict-pill" [attr.data-rec]="dual.recommendation">
+            {{ getRecommendationLabel(dual.recommendation) }}
+          </span>
+        </div>
+
+        <div class="projector-inputs-row">
+          <div class="field-group">
+            <label for="f360-cashea-savings-cap">Capacidad de Ahorro Quincenal ($ USD)</label>
+            <input
+              id="f360-cashea-savings-cap"
+              type="number"
+              min="0"
+              class="field-control mono"
+              [ngModel]="biweeklySavingsCapacityUsd()"
+              (ngModelChange)="onBiweeklySavingsChange($event)"
+            />
+          </div>
+
+          <div class="field-group">
+            <label for="f360-cashea-inflation">Inflación Quincenal Est. (%)</label>
+            <input
+              id="f360-cashea-inflation"
+              type="number"
+              min="0"
+              max="50"
+              step="0.5"
+              class="field-control mono"
+              [ngModel]="expectedBiweeklyInflationPct()"
+              (ngModelChange)="onInflationChange($event)"
+            />
+          </div>
+        </div>
+
+        <div class="dual-paths-grid">
+          <article class="path-card path-a">
+            <span class="path-kicker">Camino A · Ahorro Programado</span>
+            <strong class="path-headline">
+              {{ dual.pathA_savings.biweeklyPeriodsNeeded }} quincenas
+            </strong>
+            <ul class="path-facts">
+              <li>Espera estimada: <strong>{{ dual.pathA_savings.daysUntilPurchase }} días</strong></li>
+              <li>Precio proyectado: <strong>{{ formatUsd(dual.pathA_savings.projectedCashPriceUsd) }}</strong></li>
+              <li>Deuda adquirida: <strong class="good">$0.00 (Cero riesgo)</strong></li>
+            </ul>
+          </article>
+
+          <article class="path-card path-b">
+            <span class="path-kicker">Camino B · Financiado Cashea</span>
+            <strong class="path-headline">
+              {{ formatUsd(dual.pathB_cashea.installmentAmountUsd) }} / cuota
+            </strong>
+            <ul class="path-facts">
+              <li>Inicial inmediata: <strong>{{ formatUsd(dual.pathB_cashea.initialPaymentUsd) }}</strong></li>
+              <li>
+                Excedente quincenal:
+                <strong
+                  [class.good]="dual.pathB_cashea.biweeklySurplusAfterInstallmentUsd >= 0"
+                  [class.bad]="dual.pathB_cashea.biweeklySurplusAfterInstallmentUsd < 0"
+                >
+                  {{ formatUsd(dual.pathB_cashea.biweeklySurplusAfterInstallmentUsd) }}
+                </strong>
+              </li>
+              <li>
+                Colisiones 14D:
+                <strong [class.warn]="dual.pathB_cashea.collisionCount > 0">
+                  {{ dual.pathB_cashea.collisionCount }} evento(s)
+                </strong>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+        <p class="projector-rationale">{{ dual.rationale }}</p>
+      </section>
+
+      <!-- DETECTOR DE COLISIÓN QUINCENAL (14D) -->
+      <section class="glass-panel collision-panel" aria-label="Detector de Colisión Quincenal 14D">
+        <div class="panel-header">
+          <div>
+            <span class="panel-kicker">Detector de Colisión Quincenal (14D)</span>
+            <h4>Calendario Proyectado vs. Compromisos Previos</h4>
+          </div>
+          <span
+            class="collision-summary-badge"
+            [class.clean]="totalCollisionEvents() === 0"
+            [class.alert]="totalCollisionEvents() > 0"
+          >
+            {{
+              totalCollisionEvents() === 0
+                ? 'Calendario despejado'
+                : totalCollisionEvents() + ' colisión(es) detectadas'
+            }}
+          </span>
+        </div>
+
+        <div class="collision-timeline-track">
+          @for (item of projectedDates(); track item.number) {
+            @let severity = item.collision?.severity ?? 'none';
+            <div class="timeline-node" [attr.data-severity]="severity">
+              <div class="node-head">
+                <span class="node-idx">Cuota #{{ item.number }}</span>
+                <span class="node-sev-pill" [attr.data-severity]="severity">
+                  @if (severity === 'high') { Colisión alta }
+                  @else if (severity === 'medium') { Colisión media }
+                  @else { Libre }
+                </span>
+              </div>
+              <strong class="node-date">{{ item.dateStr }}</strong>
+              <span class="node-amount">
+                {{ formatUsd(item.amountUsd) }}
+                @if (isBcvLive()) {
+                  · {{ formatVes(item.amountVes) }}
+                }
+              </span>
+              @if (item.collision && item.collision.collisionCount > 0) {
+                <div class="node-collision-detail">
+                  <span>
+                    {{ item.collision.collisionCount }} compromiso(s) ·
+                    {{ formatUsd(item.collision.totalExistingCommittedUsd) }}
+                  </span>
+                  @for (liab of item.collision.existingLiabilities.slice(0, 2); track liab.id) {
+                    <small>Pasivo: {{ liab.title }} ({{ liab.dueDate }})</small>
+                  }
+                  @for (rule of item.collision.existingRecurringRules.slice(0, 2); track rule.id) {
+                    <small>Recurrente: {{ rule.title }} ({{ rule.nextDueDate }})</small>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </section>
     </div>
   </div>
 
-  <!-- ACTIVE PLANS SECTION -->
-  <div class="active-plans-card">
-    <div class="card-header">
-      <div class="tag-row">
-        <span class="cashea-badge">PLANES REGISTRADOS</span>
-        <span class="plans-count-badge">{{ activePlans().length }} activos</span>
+  <!-- ========================================================= -->
+  <!-- 4. ACTIVE PLANS & ESCUDO ANTI-MORA (2D GRACIA / $4 FEE)   -->
+  <!-- ========================================================= -->
+  <section class="glass-panel active-plans-panel" aria-label="Planes Activos y Escudo Anti-Mora">
+    <div class="panel-header wrap">
+      <div>
+        <span class="panel-kicker">Escudo Anti-Mora · 2D Gracia / $4 Reactivación</span>
+        <h3>Planes Cashea Activos</h3>
       </div>
-      <h3>Tus Compras a Plazos</h3>
-      <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-        <span style="font-size: 0.76rem; color: #94a3b8;">Bóveda de pago de cuota:</span>
-        <select
-          class="form-control"
-          style="flex: 1; min-width: 170px; padding: 5px 8px; font-size: 0.76rem;"
-          [ngModel]="selectedPaymentVaultId()"
-          (ngModelChange)="selectedPaymentVaultId.set($event)"
-        >
-          @for (v of financeService.state().assets; track v.id) {
-            <option [value]="v.id">{{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-0' }})</option>
-          }
-        </select>
+
+      <div class="plans-toolbar">
+        <span class="count-pill active">{{ activePlans().length }} activos</span>
+        @if (completedPlans().length > 0) {
+          <button
+            type="button"
+            class="btn-outline compact"
+            (click)="showCompletedPlans.set(!showCompletedPlans())"
+          >
+            {{ showCompletedPlans() ? 'Ocultar' : 'Ver' }} {{ completedPlans().length }} completados
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Payment Controls Bar -->
+    <div class="payment-controls-bar">
+      @if (availableVaults().length > 0) {
+        <div class="field-group inline">
+          <label for="f360-cashea-pay-vault">Bóveda de pago</label>
+          <select
+            id="f360-cashea-pay-vault"
+            class="field-control compact-select"
+            [ngModel]="selectedPaymentVaultId()"
+            (ngModelChange)="selectedPaymentVaultId.set($event)"
+          >
+            @for (v of availableVaults(); track v.id) {
+              <option [value]="v.id">
+                {{ v.name }} ({{ v.currency }} {{ v.balance | number: '1.0-2' }})
+              </option>
+            }
+          </select>
+        </div>
+      }
+
+      <div class="field-group inline">
+        <label for="f360-cashea-pay-ref">Referencia de pago (opcional)</label>
         <input
+          id="f360-cashea-pay-ref"
           type="text"
-          class="form-control"
-          style="width: 135px; padding: 5px 8px; font-size: 0.76rem;"
-          placeholder="Ref. Pago Móvil"
+          class="field-control compact-input"
+          placeholder="Ej. Pago Móvil 482910"
           [ngModel]="paymentReference()"
           (ngModelChange)="paymentReference.set($event)"
         />
@@ -228,75 +650,207 @@
     </div>
 
     @if (activePlans().length === 0) {
-      <div class="empty-plans">
-        <span class="empty-icon">🛍️</span>
-        <p>No tienes compras Cashea registradas aún.</p>
-        <span class="empty-hint">Usa el simulador de arriba para proyectar y registrar una compra.</span>
+      <div class="empty-plans-box">
+        <p class="empty-title">No tienes planes Cashea activos en curso</p>
+        <span class="empty-sub">
+          Usa el simulador superior para evaluar tu compra con el Proyector Dual y registrar tus cuotas en Pasivos.
+        </span>
       </div>
     } @else {
-      <div class="plans-list">
+      <div class="plans-grid">
         @for (plan of activePlans(); track plan.id) {
           @let paidCount = getPaidCount(plan);
-          @let totalCount = plan.numberOfInstallments;
-          @let pct = (paidCount / totalCount) * 100;
+          @let nextInst = getNextPendingInstallment(plan);
+          @let badge = getAntiMoraBadge(plan);
+          @let remainingNextUsd = nextInst ? getRemainingInstallmentUsd(nextInst) : 0;
 
-          <div class="plan-item-card" [class.completed]="plan.status === 'completed'">
-            <div class="plan-top-row">
+          <article class="plan-card" [attr.data-mora]="badge.tone">
+            <div class="plan-card-head">
               <div class="plan-meta">
-                <strong class="plan-title">{{ plan.productName }}</strong>
-                <span class="plan-store">{{ plan.storeName }} · {{ plan.initialPercentage }}% Inicial</span>
-              </div>
-              <div class="plan-amounts">
-                <strong class="plan-total">${{ plan.totalPriceUsd | number: '1.2-2' }} USD</strong>
-                <span class="plan-status-pill" [class]="plan.status">
-                  {{ plan.status === 'completed' ? 'Completado' : 'Activo' }}
+                <div class="plan-title-row">
+                  <strong class="plan-title">{{ plan.productName }}</strong>
+                  <span class="line-tag">{{ getPlanLineLabel(plan.creditLine) }}</span>
+                </div>
+                <span class="plan-store">
+                  {{ plan.storeName }} · {{ plan.initialPercent ?? plan.initialPercentage }}% Inicial ·
+                  Total {{ formatUsd(plan.totalPriceUsd) }}
                 </span>
               </div>
-            </div>
 
-            <!-- Progress Bar -->
-            <div class="plan-progress-box">
-              <div class="progress-labels">
-                <span>Cuotas pagadas: {{ paidCount }} de {{ totalCount }}</span>
-                <span>{{ pct | number: '1.0-0' }}%</span>
-              </div>
-              <div class="progress-track">
-                <div class="progress-bar-fill" [style.width.%]="pct"></div>
-              </div>
-            </div>
-
-            <div class="plan-footer-row">
-              <span class="plan-next-due">
-                @if (plan.status === 'active') {
-                  Próxima cuota: ${{ plan.installmentAmountUsd | number: '1.2-2' }} USD
-                } @else {
-                  🎉 Todas las cuotas canceladas
+              <div class="plan-head-right">
+                <span class="mora-badge" [attr.data-tone]="badge.tone">
+                  {{ badge.label }}
+                </span>
+                @if (badge.penaltyTierLabel) {
+                  <span class="penalty-tier-chip">{{ badge.penaltyTierLabel }}</span>
                 }
-              </span>
 
-              <div style="display: flex; gap: 8px; align-items: center;">
-                @if (plan.status === 'active') {
+                <div class="overflow-wrap">
                   <button
                     type="button"
-                    class="btn-pay-installment"
-                    (click)="payNextInstallment(plan)"
+                    class="btn-overflow"
+                    aria-label="Opciones del plan"
+                    [attr.aria-expanded]="openMenuPlanId() === plan.id"
+                    (click)="togglePlanMenu(plan.id)"
                   >
-                    Pagar Cuota #{{ paidCount + 1 }}
+                    ⋯
                   </button>
-                }
-                <button
-                  type="button"
-                  style="background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.38); color: #f87171; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.78rem; font-weight: 700; transition: all 0.2s ease;"
-                  title="Eliminar este plan y anular sus cuotas asociadas en Pasivos"
-                  (click)="deletePlan(plan)"
-                >
-                  🗑️ Eliminar
-                </button>
+
+                  @if (openMenuPlanId() === plan.id) {
+                    <div class="overflow-popover" role="menu">
+                      <label [attr.for]="'f360-rev-' + plan.id" class="popover-check">
+                        <input
+                          [id]="'f360-rev-' + plan.id"
+                          type="checkbox"
+                          [ngModel]="reversePaymentsOnDelete()"
+                          (ngModelChange)="reversePaymentsOnDelete.set($event)"
+                        />
+                        <span>Revertir pagos a bóvedas</span>
+                      </label>
+                      <button
+                        type="button"
+                        class="btn-danger-menu"
+                        role="menuitem"
+                        (click)="deletePlan(plan)"
+                      >
+                        Eliminar plan
+                      </button>
+                    </div>
+                  }
+                </div>
               </div>
             </div>
-          </div>
+
+            <!-- Anti-Mora Alert Note when Grace or Penalty active -->
+            @if (badge.tone === 'danger' || badge.tone === 'warning') {
+              <div class="anti-mora-strip" [attr.data-tone]="badge.tone">
+                <span>{{ badge.clubPointsImpact }}</span>
+              </div>
+            }
+
+            <!-- Visual Installment Dot Tracker -->
+            <div class="dot-tracker-block">
+              <div class="tracker-labels">
+                <span>Cuotas liquidadas: {{ paidCount }} de {{ plan.numberOfInstallments }}</span>
+                @if (nextInst) {
+                  <span>Próx. vencimiento: <strong>{{ nextInst.dueDate }}</strong></span>
+                }
+              </div>
+
+              <div class="installment-dots" role="list" aria-label="Progreso de cuotas">
+                @for (inst of plan.installments; track inst.number) {
+                  @let dotState = getInstallmentDotState(inst);
+                  <span
+                    class="inst-dot"
+                    role="listitem"
+                    [attr.data-state]="dotState"
+                    [title]="'Cuota #' + inst.number + ' · ' + inst.dueDate + ' · $' + inst.amountUsd.toFixed(2)"
+                  >
+                    {{ inst.number }}
+                  </span>
+                }
+              </div>
+            </div>
+
+            <!-- Live Bs BCV Equivalent + Actions -->
+            @if (nextInst) {
+              <div class="plan-card-footer">
+                <div class="next-due-summary">
+                  <span class="due-label">
+                    Cuota #{{ nextInst.number }} restante:
+                    <strong>{{ formatUsd(remainingNextUsd) }}</strong>
+                  </span>
+                  <span class="due-ves">
+                    @if (isBcvLive()) {
+                      Equiv. hoy: {{ formatVes(getInstallmentVes(remainingNextUsd)) }}
+                    } @else {
+                      Tasa BCV offline
+                    }
+                    @if ((nextInst.amountPaidUsd ?? 0) > 0) {
+                      · Abonado {{ formatUsd(nextInst.amountPaidUsd ?? 0) }}
+                    }
+                  </span>
+                </div>
+
+                <div class="plan-actions">
+                  <button
+                    type="button"
+                    class="btn-outline compact"
+                    (click)="openPartialPayment(plan)"
+                  >
+                    Abonar
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-primary-sm"
+                    (click)="payNextInstallment(plan)"
+                  >
+                    Liquidar Cuota
+                  </button>
+                </div>
+              </div>
+
+              <!-- Partial Payment Inline Popover -->
+              @if (activePartialPlanId() === plan.id) {
+                <div class="partial-popover">
+                  <div class="field-group inline-compact">
+                    <label [attr.for]="'f360-partial-' + plan.id">
+                      Monto a abonar ($ USD · máx. {{ remainingNextUsd | number: '1.2-2' }})
+                    </label>
+                    <input
+                      [id]="'f360-partial-' + plan.id"
+                      type="number"
+                      min="0.01"
+                      [max]="remainingNextUsd"
+                      step="0.01"
+                      class="field-control mono"
+                      [ngModel]="partialAmountUsd()"
+                      (ngModelChange)="onNumericDraftChange('partial', $event)"
+                    />
+                  </div>
+                  <div class="partial-actions">
+                    <button
+                      type="button"
+                      class="btn-ghost"
+                      (click)="activePartialPlanId.set(null)"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-primary-sm"
+                      (click)="submitPartialPayment(plan)"
+                    >
+                      Aplicar Abono
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+          </article>
         }
       </div>
     }
-  </div>
-</div>
+
+    <!-- COMPLETED PLANS ARCHIVE -->
+    @if (showCompletedPlans() && completedPlans().length > 0) {
+      <div class="completed-archive">
+        <span class="block-label">Planes Completados ({{ completedPlans().length }})</span>
+        <div class="completed-list">
+          @for (done of completedPlans(); track done.id) {
+            <div class="completed-row">
+              <div>
+                <strong>{{ done.productName }}</strong>
+                <span>{{ done.storeName }} · {{ done.numberOfInstallments }} cuotas saldadas</span>
+              </div>
+              <div class="completed-right">
+                <strong>{{ formatUsd(done.totalPriceUsd) }}</strong>
+                <span class="mora-badge" data-tone="optimal">Completado</span>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+</section>
