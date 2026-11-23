@@ -1,16 +1,22 @@
 import json
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from app.core.config import get_settings, now_vet
-from app.core.security import validate_local_inbox_path, SecurityViolationError
+from app.core.security import (
+    BrandCredentialVault,
+    validate_local_inbox_path,
+    SecurityViolationError,
+)
 from app.services.treasury import TreasuryService, TreasuryError
 from app.agents.creative_director import CreativeDirectorAgent
 from app.agents.compliance_auditor import ComplianceAuditorAgent, ComplianceError
 from app.agents.vault_controller import VaultControllerAgent
 from app.agents.trafficker import TraffickerAgent, TraffickerGateError
 from app.integrations.telegram_bot import TelegramHitlBotService
+from app.integrations.meta_ads import MetaAdsIntegration
+from app.integrations.arm_bridge import ArmBridgeService, ArmWebhookAuthError
 
 app = FastAPI(
     title="Agencia Digital 360 — Execution Module API",
@@ -24,6 +30,8 @@ app = FastAPI(
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "docs" / "arm_webhook_contract.json"
 
+settings_instance = get_settings()
+credential_vault = BrandCredentialVault(master_secret=settings_instance.master_vault_secret)
 treasury_service = TreasuryService()
 creative_director_agent = CreativeDirectorAgent()
 compliance_auditor_agent = ComplianceAuditorAgent()
@@ -37,6 +45,12 @@ telegram_hitl_service = TelegramHitlBotService(
     treasury=treasury_service,
     creative_director=creative_director_agent,
     trafficker=trafficker_agent,
+)
+meta_ads_integration = MetaAdsIntegration(credential_vault=credential_vault)
+arm_bridge_service = ArmBridgeService(
+    treasury=treasury_service,
+    meta_ads=meta_ads_integration,
+    hmac_secret=settings_instance.arm_webhook_hmac_secret,
 )
 
 
@@ -144,4 +158,28 @@ def handle_telegram_webhook(payload: TelegramWebhookPayload) -> dict:
             )
         raise HTTPException(status_code=400, detail=f"Unsupported update_type: {payload.update_type}")
     except (TreasuryError, ComplianceError, TraffickerGateError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/webhooks/arm-conversion")
+async def handle_arm_conversion_webhook(request: Request) -> dict:
+    raw_body = await request.body()
+    sig = request.headers.get("X-Agencia360-Signature", "")
+    ts_str = request.headers.get("X-Agencia360-Timestamp", "0")
+    idem_key = request.headers.get("X-Idempotency-Key", "")
+    test_now_str = request.headers.get("X-Test-Now-Epoch")
+
+    try:
+        ts_val = int(ts_str)
+        now_val = int(test_now_str) if test_now_str is not None else None
+        return arm_bridge_service.process_inbound_closed_won(
+            raw_body=raw_body,
+            signature_header=sig,
+            timestamp_header=ts_val,
+            idempotency_key=idem_key,
+            now_epoch=now_val,
+        )
+    except ArmWebhookAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except (TreasuryError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
