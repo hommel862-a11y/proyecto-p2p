@@ -968,8 +968,8 @@ export class ReceiptScanner {
       orderAmountCrypto: 0,
       fiatCurrency: rec.currency || 'VES',
       cryptoAsset: 'USDT',
-      counterpartyBinanceName: audit.nameMatch.normalizedB || 'Contraparte',
-      counterpartyBinanceIdDoc: rec.payerId || undefined,
+      counterpartyBinanceName: audit.nameMatch.normalizedA || this.expectedCounterparty().trim() || 'Contraparte',
+      counterpartyBinanceIdDoc: this.expectedId().trim() || rec.payerId || undefined,
       bankPayerName: rec.payerName || undefined,
       bankPayerIdDoc: rec.payerId || undefined,
       bankName: rec.bankDisplayName,
@@ -1375,8 +1375,15 @@ export class ReceiptScanner {
     }
 
     const thumbnail = this.thumbnailsByReceiptId().get(record.id);
-    const imageData = thumbnail || btoa(unescape(encodeURIComponent(record.rawText || record.reference)));
-    const mimeType = thumbnail?.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+    const fallbackBytes = new TextEncoder().encode(record.rawText || record.reference);
+    let fallbackBinary = '';
+    for (const byte of fallbackBytes) {
+      fallbackBinary += String.fromCharCode(byte);
+    }
+    const imageData = thumbnail || btoa(fallbackBinary);
+    const isJpeg = Boolean(thumbnail?.startsWith('data:image/jpeg'));
+    const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
+    const fileExt = isJpeg ? 'jpg' : 'png';
     const bcv = this.finance360Service.currentBcvRate?.() ?? 0;
 
     this.backingUpDriveId.set(record.id);
@@ -1390,7 +1397,7 @@ export class ReceiptScanner {
         amountVes: this.estimateVesEquivalent(record, bcv),
         amountUsdt: this.estimateUsdEquivalent(record, bcv),
         timestamp: record.timestamp || new Date().toISOString(),
-        fileName: `comprobante_${record.bank.toLowerCase()}_${record.reference || record.id}.png`,
+        fileName: `comprobante_${record.bank.toLowerCase()}_${record.reference || record.id}.${fileExt}`,
       });
 
       if (response.success) {
