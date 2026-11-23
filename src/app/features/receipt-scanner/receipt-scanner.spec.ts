@@ -14,7 +14,10 @@ import {
   type ParsedFinancialDocument,
 } from '../../core/services/finance-ai-ingestor.service';
 import { CashReceiptGeneratorService } from '../../core/services/cash-receipt-generator.service';
-import type { BankReceiptRecord } from '@p2p/core';
+import { McpService } from '../../core/mcp.service';
+import { HotkeysService } from '../../core/hotkeys.service';
+import { ReceiptOcrPipelineService } from '../../core/services/receipt-ocr-pipeline.service';
+import type { BankReceiptRecord, Counterparty, Operation } from '@p2p/core';
 import type { AssetVault, CasheaPlan } from '../../core/models/finance-360.models';
 
 vi.mock('tesseract.js', () => ({
@@ -420,5 +423,271 @@ describe('ReceiptScanner (Finanzas 360 AI, Cashea & Anti-Duplicate Hardening)', 
     ) as HTMLSelectElement | null;
     expect(incomeSelect).not.toBeNull();
     expect(incomeSelect?.textContent).toContain('Venta');
+  });
+});
+
+describe('ReceiptScanner (O5 Modular Cockpit, Blacklist, SHA-256, Batch, Inline Edit, P2P Guard & Drive)', () => {
+  let component: ReceiptScanner;
+  let storageStore: Record<string, unknown>;
+  let toastMock: {
+    success: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    info: ReturnType<typeof vi.fn>;
+  };
+  let pipelineMock: {
+    preprocessReceiptImage: ReturnType<typeof vi.fn>;
+    loadSession: ReturnType<typeof vi.fn>;
+    saveSession: ReturnType<typeof vi.fn>;
+    clearSession: ReturnType<typeof vi.fn>;
+    computeSha256: ReturnType<typeof vi.fn>;
+    findDuplicateByHash: ReturnType<typeof vi.fn>;
+  };
+  let mcpMock: {
+    hasNativeTransport: ReturnType<typeof vi.fn>;
+    testTool: ReturnType<typeof vi.fn>;
+  };
+  let registeredTogglePalette: (() => void) | null;
+  let registeredEscape: (() => boolean) | null;
+  let unregisterPaletteSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storageStore = { 'p2p.operations': [] };
+    registeredTogglePalette = null;
+    registeredEscape = null;
+    unregisterPaletteSpy = vi.fn();
+
+    toastMock = {
+      success: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+    };
+
+    pipelineMock = {
+      preprocessReceiptImage: vi.fn().mockResolvedValue({
+        processedDataUrl: 'data:image/png;base64,PROC',
+        thumbnailDataUrl: 'data:image/jpeg;base64,THUMB_123',
+        originalDataUrl: 'data:image/png;base64,ORIG',
+        width: 800,
+        height: 1200,
+        wasDarkModeInverted: false,
+        sha256Hash: 'a'.repeat(64),
+        canvasApplied: true,
+      }),
+      loadSession: vi.fn().mockResolvedValue([]),
+      saveSession: vi.fn(),
+      clearSession: vi.fn(),
+      computeSha256: vi.fn().mockResolvedValue('a'.repeat(64)),
+      findDuplicateByHash: vi.fn().mockReturnValue(undefined),
+    };
+
+    mcpMock = {
+      hasNativeTransport: vi.fn().mockReturnValue(false),
+      testTool: vi.fn().mockResolvedValue({ success: true, executionTimeMs: 42 }),
+    };
+
+    const blockedCounterparties: Counterparty[] = [
+      {
+        id: 'cp-blocked',
+        alias: 'Estafador_VIP',
+        realName: 'Carlos Fraude Alerta',
+        documentId: 'V-19888999',
+        reputation: 'BLOCKED',
+        notes: 'Triangulación confirmada',
+        createdAt: '2026-02-28',
+      },
+    ];
+
+    TestBed.configureTestingModule({
+      imports: [ReceiptScanner],
+      providers: [
+        {
+          provide: StorageService,
+          useValue: {
+            get: vi.fn((key: string) => storageStore[key]),
+            set: vi.fn((key: string, val: unknown) => {
+              storageStore[key] = val;
+            }),
+          },
+        },
+        { provide: ToastService, useValue: toastMock },
+        { provide: AccountsService, useValue: { accounts: signal([]), refreshLedger: vi.fn() } },
+        {
+          provide: CounterpartyService,
+          useValue: {
+            counterparties: signal<Counterparty[]>(blockedCounterparties),
+            findByQuery: vi.fn().mockReturnValue(undefined),
+          },
+        },
+        {
+          provide: CotizaveService,
+          useValue: {
+            ratesByMarket: signal({ binance: { mid: 52, ask: 52.5, bid: 51.5 } }),
+            ratesProvenance: signal('live'),
+          },
+        },
+        {
+          provide: Finance360Service,
+          useValue: {
+            assets: signal<AssetVault[]>([]),
+            state: signal({ casheaPlans: [], incomes: [], expenses: [] }),
+            pymeProfile: signal({ businessName: 'Pyme Test' }),
+            currentBcvRate: signal<number>(50),
+            currentParallelRate: signal<number>(60),
+            isDuplicateReference: vi.fn().mockReturnValue(false),
+            addExpense: vi.fn(),
+            addIncome: vi.fn(),
+            addLiability: vi.fn(),
+            markCasheaInstallmentPaid: vi.fn(),
+          },
+        },
+        {
+          provide: FinanceAiIngestorService,
+          useValue: {
+            analyzeReceiptImage: vi.fn().mockResolvedValue(null),
+            parseWithHeuristics: vi.fn(),
+          },
+        },
+        {
+          provide: CashReceiptGeneratorService,
+          useValue: {
+            generateReceiptNumber: vi.fn().mockReturnValue('REC-1'),
+            printReceipt: vi.fn(),
+          },
+        },
+        { provide: ReceiptOcrPipelineService, useValue: pipelineMock },
+        { provide: McpService, useValue: mcpMock },
+        {
+          provide: HotkeysService,
+          useValue: {
+            registerScopedPalette: vi.fn(
+              (onToggle: () => void, onEsc?: () => boolean) => {
+                registeredTogglePalette = onToggle;
+                registeredEscape = onEsc ?? null;
+                return unregisterPaletteSpy;
+              },
+            ),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(ReceiptScanner);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('flags BLACKLISTED_ENTITY (CRITICAL) when receipt payerId matches a BLOCKED CounterpartyService record', () => {
+    component.processManualText(
+      'Banesco Pago Movil Bs 1500,00 Ref 88221144 Pagador: Carlos Fraude Alerta CI V-19888999',
+    );
+    expect(component.receipts().length).toBe(1);
+    const rec = component.receipts()[0];
+    const audit = component.receiptAudits().get(rec.id);
+
+    expect(audit?.riskLevel).toBe('CRITICAL');
+    expect(audit?.flags).toContain('BLACKLISTED_ENTITY');
+  });
+
+  it('detects duplicate images by SHA-256 hash and processes multi-file batches sequentially', async () => {
+    vi.mocked(Tesseract.recognize)
+      .mockResolvedValueOnce({ data: { text: 'Banesco Bs 500 Ref 11223344' } } as never)
+      .mockResolvedValueOnce({ data: { text: 'Banesco Bs 500 Ref 11223344' } } as never);
+
+    const f1 = new File(['img1'], 'cap1.png', { type: 'image/png' });
+    const f2 = new File(['img1'], 'cap2.png', { type: 'image/png' });
+    await component.processImageFiles([f1, f2]);
+
+    expect(component.receipts().length).toBe(2);
+    expect(component.receipts()[0].isDuplicate).toBe(true);
+    expect(toastMock.warn).toHaveBeenCalledWith(expect.stringContaining('SHA-256'));
+    expect(pipelineMock.saveSession).toHaveBeenCalled();
+  });
+
+  it('recalculates forensic audit live when editing a receipt in Split-View Inspector', () => {
+    component.expectedCounterparty.set('Maria Rodriguez');
+    component.expectedAmount.set(2000);
+    component.processManualText(
+      'Banesco Pago Movil Bs 1000,00 Ref 99887766 Pagador: Desconocido Uno',
+    );
+
+    const original = component.receipts()[0];
+    component.openInspector(original);
+    const beforeScore = component.selectedReceiptAudit()?.overallScore ?? 0;
+
+    component.onInspectorReceiptUpdated({
+      ...original,
+      payerName: 'Maria Rodriguez',
+      amount: 2000,
+    });
+
+    const afterAudit = component.selectedReceiptAudit();
+    expect(component.receipts()[0].payerName).toBe('Maria Rodriguez');
+    expect(afterAudit).not.toBeNull();
+    expect(afterAudit?.overallScore ?? 100).toBeLessThan(beforeScore);
+  });
+
+  it('enforces P2P duplicate settlement guard and attaches compressed thumbnail to Operation', () => {
+    const rec = makeBankReceipt({ id: 'rec-p2p-1', reference: '77665544' });
+    component.receipts.set([rec]);
+    component.thumbnailsByReceiptId.set(new Map([[rec.id, 'data:image/jpeg;base64,THUMB_P2P']]));
+
+    component.settleToLedger(rec);
+    const opsAfterFirst = storageStore['p2p.operations'] as Operation[];
+    expect(opsAfterFirst.length).toBe(1);
+    expect(opsAfterFirst[0].receiptImage).toBe('data:image/jpeg;base64,THUMB_P2P');
+
+    // Duplicate blocked by settled ID
+    component.settleToLedger(rec);
+    expect((storageStore['p2p.operations'] as Operation[]).length).toBe(1);
+    expect(toastMock.warn).toHaveBeenCalled();
+
+    // Duplicate blocked by reference even on new receipt ID
+    const dupRec = makeBankReceipt({ id: 'rec-p2p-2', reference: '77665544' });
+    component.settleToLedger(dupRec);
+    expect((storageStore['p2p.operations'] as Operation[]).length).toBe(1);
+
+    // Explicit override succeeds
+    component.settleToLedger(dupRec, { allowDuplicateOverride: true });
+    expect((storageStore['p2p.operations'] as Operation[]).length).toBe(2);
+  });
+
+  it('reports Google Drive backup honestly (DISCONNECTED vs LIVE native MCP)', async () => {
+    const rec = makeBankReceipt({ id: 'rec-drive-1', reference: 'DRV-1001' });
+    component.receipts.set([rec]);
+
+    // Disconnected web mode: must NOT fake success
+    mcpMock.hasNativeTransport.mockReturnValue(false);
+    await component.backupReceiptToDrive(rec);
+    expect(mcpMock.testTool).not.toHaveBeenCalled();
+    expect(component.driveBackedUpIds().has(rec.id)).toBe(false);
+    expect(toastMock.warn).toHaveBeenCalledWith(expect.stringContaining('DISCONNECTED'));
+
+    // Connected native Electron MCP mode: calls gdrive_backup_receipt and marks backed up
+    mcpMock.hasNativeTransport.mockReturnValue(true);
+    await component.backupReceiptToDrive(rec);
+    expect(mcpMock.testTool).toHaveBeenCalledWith(
+      'gdrive_backup_receipt',
+      expect.objectContaining({ tradeId: 'DRV-1001' }),
+    );
+    expect(component.driveBackedUpIds().has(rec.id)).toBe(true);
+  });
+
+  it('registers scoped Ctrl+K palette via HotkeysService and closes cleanly on Escape', () => {
+    expect(registeredTogglePalette).not.toBeNull();
+    expect(component.isPaletteOpen()).toBe(false);
+
+    registeredTogglePalette?.();
+    expect(component.isPaletteOpen()).toBe(true);
+
+    const handled = registeredEscape?.();
+    expect(handled).toBe(true);
+    expect(component.isPaletteOpen()).toBe(false);
   });
 });

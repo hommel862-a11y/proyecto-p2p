@@ -1,607 +1,294 @@
-<section class="panel">
-  <header class="quantum-hero-banner">
-    <div class="quantum-hero-title-group">
-      <span class="quantum-eyebrow">
-        <span class="quantum-live-dot"></span>
-        FORENSIC OCR &amp; ANTI-FRAUD SHIELD
-      </span>
-      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <h2>Comprobantes Bancarios &amp; Ingestión OCR</h2>
-        <span class="badge badge-gold font-mono">{{ receipts().length }} Procesados</span>
-      </div>
-      <p class="panel-subtitle" style="margin: 2px 0 0;">
-        Procesamiento 100% local de comprobantes de pago, auditoría anti-triangulación y exportación a Excel
-      </p>
-    </div>
-    <div class="quantum-hero-actions">
-      <button
-        type="button"
-        class="btn-primary"
-        [disabled]="receipts().length === 0"
-        (click)="exportToExcel()"
-        style="display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 8px 16px;"
-      >
-        <span>📥</span>
-        <span>Exportar a Excel (CSV)</span>
-      </button>
+<section class="ocr-workspace" aria-label="Centro Forense de Comprobantes y OCR">
+  <input
+    #ocrQuickFileInput
+    type="file"
+    class="sr-only"
+    accept="image/*"
+    multiple
+    aria-label="Seleccionar comprobantes de imagen"
+    (change)="onFileInputChange($event)"
+  />
 
-      @if (receipts().length > 0) {
-        <button
-          type="button"
-          class="btn-ghost"
-          (click)="clearReceipts()"
-          style="font-size: 0.8rem;"
-        >
-          Limpiar Lista
-        </button>
-      }
-    </div>
-  </header>
+  <app-ocr-command-header
+    [destinationMode]="destinationMode()"
+    [routing]="routingState()"
+    [vaults]="vaultOptions()"
+    [hasScreenPipe]="hasScreenPipe()"
+    [receiptsCount]="receipts().length"
+    [isProcessing]="isProcessing()"
+    [blacklistedCount]="blacklistedEntities().count"
+    (destinationModeChange)="onDestinationModeChange($event)"
+    (routingChange)="onRoutingChange($event)"
+    (openPalette)="togglePalette()"
+    (triggerCapture)="triggerFileCapture()"
+    (overflowAction)="onOverflowAction($event)"
+  />
 
-  <!-- Destination Mode Router: P2P Mesa vs Portafolio 360 -->
-  <div class="destination-mode-selector terminal-input-card" style="margin-bottom: 18px; gap: 12px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <span style="font-size: 1.1rem;">🧭</span>
-        <strong style="color: var(--text); font-size: 0.92rem; font-family: var(--font-display);">Destino Contable del Comprobante:</strong>
-        <span class="badge badge-gold font-mono" title="El motor OCR procesa las imágenes localmente sin enviarlas a servidores externos. Usa Ctrl+V en cualquier momento.">
-          🔒 100% Local Offline · Ctrl+V Activo
+  <app-ocr-kpi-strip [summary]="kpiSummary()" />
+
+  <app-ocr-ingestion-bento
+    [hasScreenPipe]="hasScreenPipe()"
+    [batchProgress]="batchProgress()"
+    [identityCheck]="identityCheck()"
+    [counterpartySuggestions]="counterpartySuggestions()"
+    [blacklistedCount]="blacklistedEntities().count"
+    (filesSelected)="processImageFiles($event)"
+    (screenPipeRequested)="captureWithScreenPipe()"
+    (manualTextSubmitted)="processManualText($event)"
+    (identityCheckChange)="onIdentityCheckChange($event)"
+  />
+
+  <section class="ocr-content-card ocr-ledger-card" aria-label="Bandeja de comprobantes auditados">
+    <header class="ocr-ledger-header">
+      <div class="ocr-ledger-title-group">
+        <h2 class="ocr-ledger-title">Comprobantes Auditados</h2>
+        <span class="ocr-status-pill tone-cyan ocr-tabular">
+          {{ filteredReceipts().length }} / {{ receipts().length }}
         </span>
       </div>
-      <div class="mode-pills toolbar-segmented">
-        <button
-          type="button"
-          class="btn-tab seg-btn"
-          [class.active]="destinationMode() === 'p2p'"
-          (click)="destinationMode.set('p2p')"
-        >
-          ⚡ Mesa P2P (Arbitraje)
-        </button>
-        <button
-          type="button"
-          class="btn-tab seg-btn"
-          [class.active]="destinationMode() === 'finance360'"
-          (click)="destinationMode.set('finance360')"
-        >
-          💼 Portafolio Financiero 360
-        </button>
-      </div>
-    </div>
 
-    @if (destinationMode() === 'finance360') {
-      <div class="finance360-routing-bar" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1);">
-        <!-- Scope -->
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="text-muted" style="font-size: 0.78rem;">Ámbito:</span>
-          <select [ngModel]="financeScope()" (ngModelChange)="financeScope.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
-            <option value="personal">👤 Personal (Sueldo / Hogar)</option>
-            <option value="business">🏢 Pyme / Negocio (Taller / Comercio)</option>
-          </select>
-        </div>
-
-        <!-- Pillar -->
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="text-muted" style="font-size: 0.78rem;">Pilar:</span>
-          <select [ngModel]="financePillar()" (ngModelChange)="financePillar.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
-            <option value="expense">🔴 Gasto / Salida</option>
-            <option value="income">🟢 Ingreso / Entrada</option>
-            <option value="liability">🟡 Factura por Pagar / Pasivo</option>
-          </select>
-        </div>
-
-        <!-- Category -->
-        @if (financePillar() === 'expense') {
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span class="text-muted" style="font-size: 0.78rem;">Categoría:</span>
-            <select [ngModel]="financeExpenseCategory()" (ngModelChange)="financeExpenseCategory.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
-              <option value="cashea_installment">⚡ Cuota Cashea</option>
-              <option value="groceries">🛒 Comida y Mercado</option>
-              <option value="transport">⛽ Gasolina / Transporte</option>
-              <option value="services">💡 Servicios Públicos</option>
-              <option value="housing">🏠 Vivienda y Alquiler</option>
-              <option value="provider_merchandise">📦 Proveedor / Mercancía</option>
-              <option value="payroll">👥 Nómina de Personal</option>
-              <option value="maintenance">🔧 Mantenimiento / Taller</option>
-              <option value="other">📌 Otro Gasto</option>
-            </select>
-          </div>
-        } @else if (financePillar() === 'income') {
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label class="text-muted" for="finance-income-category" style="font-size: 0.78rem;">Categoría:</label>
-            <select
-              id="finance-income-category"
-              aria-label="Categoría de ingreso"
-              [ngModel]="financeIncomeCategory()"
-              (ngModelChange)="financeIncomeCategory.set($event)"
-              class="form-select"
-              style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;"
-            >
-              <option value="business_sale">Venta Comercial Pyme</option>
-              <option value="quote_advance">Anticipo de Presupuesto</option>
-              <option value="salary">Sueldo / Salario</option>
-              <option value="freelance">Honorarios / Freelance</option>
-              <option value="investment">Rendimiento / Inversión</option>
-              <option value="other">Otro Ingreso</option>
-            </select>
-          </div>
-        }
-
-        <!-- Vault -->
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="text-muted" style="font-size: 0.78rem;">Bóveda / Cuenta:</span>
-          <select [ngModel]="selectedVaultId()" (ngModelChange)="selectedVaultId.set($event)" class="form-select" style="font-size: 0.8rem; padding: 5px 10px; background: var(--bg-1); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px;">
-            <option value="">(Sin debitar cuenta)</option>
-            @for (vault of finance360Service.assets(); track vault.id) {
-              <option [value]="vault.id">{{ vault.name }} ({{ vault.currency }})</option>
-            }
-          </select>
-        </div>
-      </div>
-    }
-  </div>
-
-  <!-- 3-Column Bento Row: Captura OCR (4 cols) + SMS/Texto (4 cols) + Escudo Forense Anti-Fraude (4 cols) -->
-  <div class="quantum-bento-grid" style="margin-bottom: 22px; align-items: stretch;">
-    <!-- Col 1: Drop Zone & File Upload -->
-    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
-      <div class="terminal-card-header">
-        <div class="card-header-title">
-          <span class="quantum-step-badge">01 · OCR</span>
-          <span class="card-icon">📸</span>
-          <span class="card-title">Captura / Imagen</span>
-        </div>
-        <div style="display: flex; gap: 6px; align-items: center;">
-          @if (hasScreenPipe()) {
+      <div class="ocr-ledger-controls">
+        <div class="ocr-filter-bar" role="tablist" aria-label="Filtrar comprobantes por estado">
+          @for (opt of filterOptions; track opt.id) {
             <button
               type="button"
-              class="btn-primary"
-              style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; padding: 4px 8px; font-weight: 700;"
-              [disabled]="isProcessing()"
-              (click)="captureWithScreenPipe()"
-              title="Capturar pantalla en vivo con Screen Pipe nativo de Electron"
+              role="tab"
+              class="ocr-filter-pill"
+              [class.is-active]="activeFilter() === opt.id"
+              [attr.aria-selected]="activeFilter() === opt.id"
+              (click)="setFilter(opt.id)"
             >
-              <span>⚡</span>
-              <span>Screen Pipe</span>
+              {{ opt.label }}
             </button>
           }
-          <span class="badge badge-accent">Ctrl + V</span>
+        </div>
+
+        <div class="ocr-search-wrap">
+          <svg
+            class="ocr-search-icon"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            class="ocr-input ocr-search-input"
+            placeholder="Buscar referencia, banco o pagador..."
+            aria-label="Buscar comprobantes"
+            [value]="searchQuery()"
+            (input)="onSearchInput($event)"
+          />
         </div>
       </div>
+    </header>
 
-      <button
-        type="button"
-        class="drop-zone"
-        style="width: 100%; font: inherit; text-align: center; flex: 1;"
-        [class.dragging]="isDragging()"
-        (dragover)="onDragOver($event)"
-        (dragleave)="onDragLeave($event)"
-        (drop)="onDrop($event)"
-        (click)="fileInput.click()"
-      >
-        <input
-          #fileInput
-          type="file"
-          accept="image/*"
-          style="display: none;"
-          (change)="onFileInputChange($event)"
-        />
-        <span class="drop-icon">🧾</span>
-        <p class="drop-title">Haz clic o arrastra un comprobante aquí</p>
-        <p class="drop-hint">Pago Móvil, BDV, Banesco, Bancolombia, Zinli</p>
-      </button>
-
-      @if (isProcessing()) {
-        <div style="margin-top: 10px;">
-          <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
-            <span class="text-muted">{{ progressStatus() }}</span>
-            <span class="font-mono" style="color: var(--gold);">{{ progressPct() }}%</span>
-          </div>
-          <div class="progress-bar-wrap">
-            <div class="progress-bar-fill" [style.width.%]="progressPct()"></div>
-          </div>
-        </div>
-      }
-    </div>
-
-    <!-- Col 2: Manual Text / SMS Ingestion -->
-    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
-      <div class="terminal-card-header">
-        <div class="card-header-title">
-          <span class="quantum-step-badge">02 · SMS</span>
-          <span class="card-icon">💬</span>
-          <span class="card-title">Texto Bancario</span>
-        </div>
-        <span class="badge">Inmediato</span>
-      </div>
-
-      <div class="terminal-field" style="flex: 1;">
-        <label class="terminal-label" for="manual-receipt-text">
-          <span>Pega el texto del recibo o SMS bancario</span>
-        </label>
-        <textarea
-          id="manual-receipt-text"
-          class="terminal-input"
-          style="height: 112px; font-family: var(--font-mono); font-size: 0.8rem; resize: vertical;"
-          [ngModel]="manualTextInput()"
-          (ngModelChange)="manualTextInput.set($event)"
-          placeholder="Ej: BDV: Pago Móvil exitoso por Bs. 2.450,00 ref 0001234567 a Juan Perez..."
-        ></textarea>
-      </div>
-
-      <div style="display: flex; justify-content: flex-end;">
-        <button
-          type="button"
-          class="btn-primary"
-          [disabled]="!manualTextInput().trim()"
-          (click)="processManualText()"
-          style="font-size: 0.8rem; padding: 7px 14px; width: 100%;"
+    @if (filteredReceipts().length === 0) {
+      <div class="ocr-empty-state">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          aria-hidden="true"
         >
-          ⚡ Procesar Texto Bancario
-        </button>
-      </div>
-    </div>
-
-    <!-- Col 3: Anti-Triangulation & Fraud Shield Reference Bar -->
-    <div class="terminal-input-card bento-span-4" style="margin-bottom: 0;">
-      <div class="terminal-card-header">
-        <div class="card-header-title">
-          <span class="quantum-step-badge">03 · ESCUDO</span>
-          <span class="card-icon">🛡️</span>
-          <span class="card-title">Cruce de Identidad</span>
-        </div>
-        <span class="badge badge-accent">En Vivo</span>
-      </div>
-
-      <div class="terminal-input-grid" style="grid-template-columns: 1fr; gap: 10px;">
-        <div class="terminal-field">
-          <label class="terminal-label" for="counterparty-check-input">
-            <span>Titular Verificado (Exchange)</span>
-          </label>
-          <div class="input-control-wrap">
-            <input
-              id="counterparty-check-input"
-              type="text"
-              class="terminal-input"
-              [ngModel]="expectedCounterparty()"
-              (ngModelChange)="expectedCounterparty.set($event); recomputeAudits()"
-              placeholder="Ej. Pedro Pérez"
-            />
-          </div>
-        </div>
-
-        <div class="terminal-input-grid grid-2" style="gap: 10px;">
-          <div class="terminal-field">
-            <label class="terminal-label" for="counterparty-id-input">
-              <span>Cédula / RIF</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="counterparty-id-input"
-                type="text"
-                class="terminal-input"
-                [ngModel]="expectedId()"
-                (ngModelChange)="expectedId.set($event); recomputeAudits()"
-                placeholder="V-18293041"
-              />
-            </div>
-          </div>
-
-          <div class="terminal-field">
-            <label class="terminal-label" for="counterparty-amount-input">
-              <span>Monto Orden</span>
-            </label>
-            <div class="input-control-wrap">
-              <input
-                id="counterparty-amount-input"
-                type="number"
-                class="terminal-input font-mono"
-                [ngModel]="expectedAmount()"
-                (ngModelChange)="expectedAmount.set($event); recomputeAudits()"
-                placeholder="5400.00"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Forensic Audit Drawer / Card Modal -->
-  @if (selectedAudit(); as audit) {
-    <div
-      class="forensic-panel"
-      [class.safe-panel]="audit.riskLevel === 'SAFE'"
-      [class.warning-panel]="audit.riskLevel === 'WARNING'"
-    >
-      <div class="forensic-header">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 1.3rem;">
-            @if (audit.riskLevel === 'SAFE') { 🛡️ }
-            @else if (audit.riskLevel === 'WARNING') { ⚠️ }
-            @else { 🚨 }
-          </span>
-          <div>
-            <h4 style="margin: 0; font-size: 0.95rem; color: var(--text);">
-              Auditoría Forense Anti-Fraude: Orden {{ audit.orderId }}
-            </h4>
-            <span class="text-muted" style="font-size: 0.75rem;">
-              Evaluación de microestructura y cruce de datos contra estafas triangulares
-            </span>
-          </div>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 10px;">
-          @if (audit.riskLevel === 'SAFE') {
-            <span class="badge badge-accent">SAFE • AUTO RELEASE OK</span>
-          } @else if (audit.riskLevel === 'WARNING') {
-            <span class="badge font-mono" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">
-              RIESGO {{ audit.overallScore }}/100 • AUDITORÍA REQUERIDA
-            </span>
-          } @else {
-            <span class="badge badge-danger">
-              CRÍTICO {{ audit.overallScore }}/100 • BLOQUEAR Y DISPUTAR
-            </span>
-          }
+          <path d="M9 12h6M9 16h4M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+        </svg>
+        @if (receipts().length === 0) {
+          <p class="ocr-empty-title">Sin comprobantes en sesión</p>
+          <p class="ocr-empty-hint">
+            Arrastra capturas bancarias, pega con Ctrl+V o ingresa un SMS bancario para iniciar la
+            auditoría forense.
+          </p>
+        } @else {
+          <p class="ocr-empty-title">Sin coincidencias para el filtro actual</p>
           <button
             type="button"
-            class="btn-ghost"
-            (click)="selectedAudit.set(null)"
-            style="font-size: 0.85rem; padding: 4px 8px;"
+            class="ocr-btn-glass"
+            (click)="setFilter('all'); searchQuery.set('')"
           >
-            ✕
+            Mostrar todos los comprobantes
           </button>
-        </div>
-      </div>
-
-      <div style="margin-bottom: 12px;">
-        <strong style="color: var(--text); font-size: 0.88rem;">{{ audit.summaryHeadline }}</strong>
-      </div>
-
-      <div class="terminal-input-grid grid-3" style="margin-bottom: 14px;">
-        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
-          <span class="text-muted" style="font-size: 0.72rem; display: block;">Coincidencia de Titular</span>
-          <strong class="font-mono" style="color: var(--gold); font-size: 0.85rem;">
-            {{ (audit.nameMatch.score * 100).toFixed(0) }}% Similitud
-          </strong>
-          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
-            {{ audit.nameMatch.isMatch ? '✓ Titular directo' : '✕ Posible tercero' }}
-          </span>
-        </div>
-
-        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
-          <span class="text-muted" style="font-size: 0.72rem; display: block;">Integridad de Referencia</span>
-          <strong class="font-mono" style="font-size: 0.85rem;" [style.color]="audit.referenceValidation.isValid ? 'var(--accent)' : 'var(--danger)'">
-            {{ audit.referenceValidation.isValid ? '✓ Válida (' + audit.referenceValidation.bank + ')' : '✕ Inválida' }}
-          </strong>
-          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
-            {{ audit.referenceValidation.reference }}
-          </span>
-        </div>
-
-        <div class="terminal-field" style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
-          <span class="text-muted" style="font-size: 0.72rem; display: block;">Diferencia de Monto</span>
-          <strong class="font-mono" style="font-size: 0.85rem;" [style.color]="audit.amountDifference === 0 ? 'var(--accent)' : 'var(--danger)'">
-            {{ audit.amountDifference === 0 ? '0.00 Exacto' : 'Discrepancia: ' + audit.amountDifference.toFixed(2) }}
-          </strong>
-          <span style="font-size: 0.72rem; display: block; color: var(--muted);">
-            Tolerancia estándar
-          </span>
-        </div>
-      </div>
-
-      <!-- Inconsistencies List -->
-      <div>
-        <span class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">
-          Detalle del Diagnóstico Forense:
-        </span>
-        <ul class="audit-detail-list">
-          @for (detail of audit.auditDetails; track detail) {
-            <li>{{ detail }}</li>
-          }
-        </ul>
-      </div>
-
-      <!-- Quick Action Dispute Claim Box -->
-      @if (audit.disputeTemplateText && audit.riskLevel !== 'SAFE') {
-        <div style="margin-top: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-            <span style="font-size: 0.75rem; font-weight: 700; color: var(--gold); text-transform: uppercase;">
-              Copiloto de Disputas & Arbitraje P2P:
-            </span>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <button
-                type="button"
-                class="btn-primary"
-                (click)="copyDossierEs(audit)"
-                style="font-size: 0.72rem; padding: 4px 10px;"
-                title="Copiar expediente formal en español para soporte"
-              >
-                ⚖️ Expediente ES
-              </button>
-              <button
-                type="button"
-                class="btn-secondary"
-                (click)="copyDossierEn(audit)"
-                style="font-size: 0.72rem; padding: 4px 10px;"
-                title="Copy formal arbitration appeal dossier in English"
-              >
-                🌐 Dossier EN
-              </button>
-              <button
-                type="button"
-                class="btn-ghost"
-                (click)="copyChatWarning(audit)"
-                style="font-size: 0.72rem; padding: 4px 10px;"
-                title="Copiar advertencia de titularidad para el chat de Binance"
-              >
-                💬 Chat Contraparte
-              </button>
-              <button
-                type="button"
-                class="btn-ghost"
-                (click)="copyRefundInstructions(audit)"
-                style="font-size: 0.72rem; padding: 4px 10px;"
-                title="Copiar instrucciones para devolución bancaria y cancelación mutua"
-              >
-                💸 Devolución
-              </button>
-            </div>
-          </div>
-          <div class="dispute-box">{{ audit.disputeTemplateText }}</div>
-        </div>
-      }
-    </div>
-  }
-
-  <!-- Parsed Receipts Results Table -->
-  <div class="section-group">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 1.1rem;">📑</span>
-        <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: var(--text);">
-          Comprobantes Procesados ({{ receipts().length }})
-        </h3>
-      </div>
-      @if (receipts().length > 0) {
-        <span class="text-muted" style="font-size: 0.8rem;">
-          Listo para exportar a hoja de cálculo o registrar en la bitácora
-        </span>
-      }
-    </div>
-
-    @if (receipts().length === 0) {
-      <div class="terminal-input-card" style="text-align: center; padding: 40px 20px;">
-        <span style="font-size: 2rem; display: block; margin-bottom: 8px;">📋</span>
-        <strong style="color: var(--text); font-size: 0.95rem;">No hay comprobantes cargados en esta sesión</strong>
-        <p class="text-muted" style="font-size: 0.82rem; margin: 4px 0 0;">
-          Pega una captura con <kbd style="background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 3px;">Ctrl+V</kbd> o sube una imagen para extraer los datos automáticamente.
-        </p>
+        }
       </div>
     } @else {
-      <div class="receipt-table-wrap">
-        <table class="receipt-table">
+      <!-- Desktop Table -->
+      <div class="ocr-table-wrap">
+        <table class="ocr-table">
           <thead>
             <tr>
-              <th>Banco</th>
-              <th>Referencia</th>
-              <th>Monto</th>
-              <th>Pagador / Cédula</th>
-              <th>Beneficiario</th>
-              <th>Fecha</th>
-              <th>Estado & Seguridad Forense</th>
-              <th style="text-align: right;">Acciones</th>
+              <th scope="col">Comprobante</th>
+              <th scope="col">Monto</th>
+              <th scope="col">Pagador / Titular</th>
+              <th scope="col">Riesgo Forense</th>
+              <th scope="col">Estado</th>
+              <th scope="col" class="ocr-col-actions">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            @for (rec of receipts(); track rec.id) {
+            @for (rec of filteredReceipts(); track rec.id) {
               @let audit = receiptAudits().get(rec.id);
-              <tr [class.alert-row]="(audit && audit.riskLevel === 'CRITICAL') || rec.antiTriangulationAlert || rec.isDuplicate">
+              @let thumb = thumbnailsByReceiptId().get(rec.id);
+              @let settled = isReceiptSettledInActiveMode(rec.id);
+              @let driveOk = driveBackedUpIds().has(rec.id);
+              <tr>
                 <td>
-                  <span class="badge font-mono" style="font-size: 0.72rem;">{{ rec.bankDisplayName }}</span>
+                  <div class="ocr-cell-bank">
+                    @if (thumb) {
+                      <img
+                        class="ocr-thumb"
+                        [src]="thumb"
+                        [alt]="'Miniatura de ' + rec.bankDisplayName"
+                      />
+                    } @else {
+                      <span class="ocr-thumb-placeholder" aria-hidden="true">TXT</span>
+                    }
+                    <div class="ocr-cell-stack">
+                      <span class="ocr-bank-name">{{ rec.bankDisplayName }}</span>
+                      <span class="ocr-ref-code ocr-tabular">Ref #{{ rec.reference }}</span>
+                    </div>
+                  </div>
                 </td>
                 <td>
-                  <strong class="font-mono" style="color: var(--text);">{{ rec.reference }}</strong>
-                </td>
-                <td>
-                  <span class="font-mono font-bold" style="color: var(--gold);">
-                    {{ rec.amount | number: '1.2-2' }} {{ rec.currency }}
-                  </span>
-                </td>
-                <td>
-                  <div>
-                    <span style="color: var(--text);">{{ rec.payerName || 'N/A' }}</span>
-                    @if (rec.payerId) {
-                      <span class="text-muted font-mono" style="font-size: 0.75rem; margin-left: 4px;">({{ rec.payerId }})</span>
+                  <div class="ocr-cell-stack">
+                    <span class="ocr-amount ocr-tabular">
+                      {{ rec.amount | number: '1.2-2' }} {{ rec.currency }}
+                    </span>
+                    @if (rec.timestamp) {
+                      <span class="ocr-meta-sub ocr-tabular">{{ rec.timestamp }}</span>
                     }
                   </div>
                 </td>
                 <td>
-                  <span class="text-muted">{{ rec.beneficiaryName || 'N/A' }}</span>
+                  <div class="ocr-cell-stack">
+                    <span class="ocr-payer-name">{{ rec.payerName || 'Sin titular detectado' }}</span>
+                    <span class="ocr-meta-sub ocr-tabular">
+                      {{ rec.payerId || rec.beneficiaryName || 'Sin documento' }}
+                    </span>
+                  </div>
                 </td>
                 <td>
-                  <span class="text-muted font-mono" style="font-size: 0.75rem;">{{ rec.timestamp }}</span>
-                </td>
-                <td>
-                  <div style="display: flex; flex-direction: column; gap: 4px;">
-                    @if (audit) {
-                      @if (audit.riskLevel === 'SAFE') {
-                        <span class="badge badge-accent" style="font-size: 0.68rem;">🛡️ SAFE (0% RIESGO)</span>
-                      } @else if (audit.riskLevel === 'WARNING') {
-                        <span class="badge font-mono" style="font-size: 0.68rem; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">
-                          ⚠️ AUDITORÍA (Riesgo {{ audit.overallScore }}/100)
-                        </span>
-                      } @else {
-                        <span class="badge badge-danger font-mono" style="font-size: 0.68rem;">
-                          🚨 BLOQUEAR (Riesgo {{ audit.overallScore }}/100)
-                        </span>
+                  <div class="ocr-cell-risk">
+                    <span class="ocr-status-pill" [class]="riskToneClass(audit?.riskLevel)">
+                      {{ riskLabel(audit?.riskLevel) }}
+                      @if (audit) {
+                        <span class="ocr-tabular">· {{ audit.overallScore }}</span>
                       }
-                      @for (flag of audit.flags; track flag) {
-                        <span class="badge badge-danger" style="font-size: 0.62rem;">{{ flag }}</span>
-                      }
-                    } @else {
-                      @if (rec.antiTriangulationAlert) {
-                        <span class="badge badge-danger" style="font-size: 0.68rem;">⚠️ ALERTA TERCEROS</span>
-                      }
-                      @if (rec.isDuplicate) {
-                        <span class="badge badge-secondary" style="font-size: 0.68rem;">DUPLICADO</span>
-                      }
-                      @if (!rec.antiTriangulationAlert && !rec.isDuplicate) {
-                        <span class="badge badge-accent" style="font-size: 0.68rem;">OK VERIFICADO</span>
-                      }
+                    </span>
+                    @if (rec.isDuplicate) {
+                      <span class="ocr-status-pill tone-danger">Duplicado</span>
                     }
                   </div>
                 </td>
-                <td style="text-align: right;">
-                  <div style="display: flex; gap: 6px; justify-content: flex-end;">
-                    @if (audit) {
-                      <button
-                        type="button"
-                        class="btn-ghost"
-                        (click)="selectedAudit.set(audit)"
-                        style="font-size: 0.72rem; padding: 4px 8px;"
-                        title="Ver auditoría forense detallada"
-                      >
-                        🔍 Forense
-                      </button>
-                    }
-                    @if (destinationMode() === 'finance360') {
-                      <button
-                        type="button"
-                        class="btn-primary"
-                        (click)="settleToFinance360(rec)"
-                        style="font-size: 0.72rem; padding: 4px 8px; font-weight: 700;"
-                        title="Asentar en Portafolio Financiero 360 (Aislado de P2P)"
-                      >
-                        💼 Asentar 360
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-secondary"
-                        (click)="generateCashReceipt(rec)"
-                        style="font-size: 0.72rem; padding: 4px 8px;"
-                        title="Generar e imprimir comprobante formal en PDF/Papel"
-                      >
-                        🖨️ Recibo
-                      </button>
+                <td>
+                  <div class="ocr-cell-risk">
+                    @if (settled) {
+                      <span class="ocr-status-pill tone-emerald">Asentado</span>
                     } @else {
-                      <button
-                        type="button"
-                        class="btn-primary"
-                        (click)="settleToLedger(rec)"
-                        style="font-size: 0.72rem; padding: 4px 8px;"
-                        title="Asentar en bitácora P2P"
-                      >
-                        ⚡ Asentar P2P
-                      </button>
+                      <span class="ocr-status-pill tone-gold">Pendiente</span>
                     }
+                    @if (driveOk) {
+                      <span class="ocr-status-pill tone-cyan">En Drive</span>
+                    }
+                  </div>
+                </td>
+                <td class="ocr-col-actions">
+                  <div class="ocr-row-actions">
                     <button
                       type="button"
-                      class="btn-ghost"
-                      (click)="removeReceipt(rec.id)"
-                      style="font-size: 0.72rem; padding: 4px 8px;"
+                      class="ocr-btn-glass ocr-btn-sm"
+                      (click)="openInspector(rec)"
                     >
-                      ✕
+                      Inspeccionar
                     </button>
+                    <button
+                      type="button"
+                      class="ocr-btn-primary ocr-btn-sm"
+                      [disabled]="settled"
+                      (click)="
+                        destinationMode() === 'finance360'
+                          ? settleToFinance360(rec)
+                          : settleToLedger(rec)
+                      "
+                    >
+                      {{ settled ? 'Asentado' : 'Asentar' }}
+                    </button>
+
+                    <div class="ocr-row-menu-anchor">
+                      <button
+                        type="button"
+                        class="ocr-icon-btn ocr-icon-sm"
+                        aria-label="Más acciones del comprobante"
+                        [attr.aria-expanded]="openRowMenuId() === rec.id"
+                        (click)="toggleRowMenu(rec.id)"
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <circle cx="5" cy="12" r="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <circle cx="19" cy="12" r="2" />
+                        </svg>
+                      </button>
+
+                      @if (openRowMenuId() === rec.id) {
+                        <div class="ocr-row-popover ocr-liquid-glass" role="menu">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="ocr-popover-item"
+                            (click)="generateCashReceipt(rec)"
+                          >
+                            Generar Recibo PDF
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="ocr-popover-item"
+                            [disabled]="backingUpDriveId() === rec.id"
+                            (click)="backupReceiptToDrive(rec)"
+                          >
+                            {{
+                              backingUpDriveId() === rec.id
+                                ? 'Subiendo a Drive...'
+                                : driveOk
+                                  ? 'Respaldar de nuevo en Drive'
+                                  : 'Respaldar en Google Drive'
+                            }}
+                          </button>
+                          @if (audit) {
+                            <button
+                              type="button"
+                              role="menuitem"
+                              class="ocr-popover-item"
+                              (click)="copyDossierEs(audit); openRowMenuId.set(null)"
+                            >
+                              Copiar Expediente ES
+                            </button>
+                          }
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="ocr-popover-item is-danger"
+                            (click)="removeReceipt(rec.id)"
+                          >
+                            Eliminar de sesión
+                          </button>
+                        </div>
+                      }
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -609,6 +296,139 @@
           </tbody>
         </table>
       </div>
+
+      <!-- Mobile 9:16 Card Stack -->
+      <div class="ocr-mobile-cards">
+        @for (rec of filteredReceipts(); track rec.id) {
+          @let audit = receiptAudits().get(rec.id);
+          @let settled = isReceiptSettledInActiveMode(rec.id);
+          <article class="ocr-mobile-card">
+            <div class="ocr-mobile-card-top">
+              <div class="ocr-cell-stack">
+                <span class="ocr-bank-name">{{ rec.bankDisplayName }}</span>
+                <span class="ocr-ref-code ocr-tabular">Ref #{{ rec.reference }}</span>
+              </div>
+              <span class="ocr-status-pill" [class]="riskToneClass(audit?.riskLevel)">
+                {{ riskLabel(audit?.riskLevel) }}
+              </span>
+            </div>
+
+            <div class="ocr-mobile-card-mid">
+              <span class="ocr-amount ocr-tabular">
+                {{ rec.amount | number: '1.2-2' }} {{ rec.currency }}
+              </span>
+              <span class="ocr-meta-sub">{{ rec.payerName || 'Sin titular' }}</span>
+            </div>
+
+            <div class="ocr-mobile-card-actions">
+              <button
+                type="button"
+                class="ocr-btn-glass"
+                (click)="openInspector(rec)"
+              >
+                Inspeccionar
+              </button>
+              <button
+                type="button"
+                class="ocr-btn-primary"
+                [disabled]="settled"
+                (click)="
+                  destinationMode() === 'finance360'
+                    ? settleToFinance360(rec)
+                    : settleToLedger(rec)
+                "
+              >
+                {{ settled ? 'Asentado' : 'Asentar' }}
+              </button>
+            </div>
+          </article>
+        }
+      </div>
     }
-  </div>
+  </section>
+
+  @if (selectedReceipt(); as activeReceipt) {
+    <app-ocr-forensic-inspector
+      [receipt]="activeReceipt"
+      [audit]="selectedReceiptAudit()"
+      [thumbnailDataUrl]="selectedThumbnailDataUrl()"
+      [imageHash]="selectedImageHash()"
+      [destinationMode]="destinationMode()"
+      [isSettled]="selectedIsSettled()"
+      [isDriveBackedUp]="selectedIsDriveBackedUp()"
+      [isBackingUpDrive]="selectedIsBackingUpDrive()"
+      [casheaMatchLabel]="selectedCasheaMatchLabel()"
+      (closed)="closeInspector()"
+      (receiptUpdated)="onInspectorReceiptUpdated($event)"
+      (settleRequested)="onInspectorSettleRequested($event)"
+      (copyDossierEs)="copyDossierEs($event)"
+      (copyDossierEn)="copyDossierEn($event)"
+      (copyChatWarning)="copyChatWarning($event)"
+      (copyRefundInstructions)="copyRefundInstructions($event)"
+      (generatePdfReceipt)="generateCashReceipt($event)"
+      (backupToDrive)="backupReceiptToDrive($event)"
+    />
+  }
+
+  @if (isPaletteOpen()) {
+    <div class="ocr-palette-overlay" role="dialog" aria-modal="true" aria-label="Paleta de comandos OCR">
+      <button
+        type="button"
+        class="ocr-palette-backdrop"
+        aria-label="Cerrar paleta de comandos"
+        (click)="closePalette()"
+      ></button>
+      <div class="ocr-palette-panel ocr-liquid-glass">
+        <div class="ocr-palette-header">
+          <input
+            type="search"
+            class="ocr-input"
+            placeholder="Ejecutar comando OCR (Ctrl+K)..."
+            aria-label="Buscar comando OCR"
+            [ngModel]="paletteQuery()"
+            (ngModelChange)="paletteQuery.set($event)"
+          />
+          <button type="button" class="ocr-btn-glass ocr-btn-sm" (click)="closePalette()">
+            Esc
+          </button>
+        </div>
+
+        <ul class="ocr-palette-list" role="listbox">
+          @for (cmd of paletteCommands(); track cmd.id) {
+            <li>
+              <button
+                type="button"
+                class="ocr-palette-item"
+                (click)="runPaletteCommand(cmd)"
+              >
+                <span class="ocr-palette-label">{{ cmd.label }}</span>
+                <span class="ocr-palette-hint">{{ cmd.hint }}</span>
+              </button>
+            </li>
+          } @empty {
+            <li class="ocr-palette-empty">Sin comandos coincidentes.</li>
+          }
+        </ul>
+      </div>
+    </div>
+  }
+
+  <button
+    type="button"
+    class="ocr-mobile-fab"
+    aria-label="Capturar comprobante"
+    (click)="triggerFileCapture()"
+  >
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  </button>
 </section>
