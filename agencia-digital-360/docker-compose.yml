@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: ag360-redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6389:6379"
+    cpus: 0.50
+    mem_limit: 320m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  moneyprinterturbo:
+    image: harry0703/moneyprinterturbo:latest
+    container_name: ag360-moneyprinterturbo
+    environment:
+      - TZ=America/Caracas
+      - MPT_CUSTOM_AUDIO_PATCH_ENABLED=true
+      - WHISPER_MODEL=large-v3-turbo
+      - WHISPER_COMPUTE_TYPE=int8
+      - OMP_NUM_THREADS=2
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./storage/mpt_workspace:/app/storage
+    cpus: 2.00
+    mem_limit: 4g
+    memswap_limit: 4g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ag360-backend
+    env_file:
+      - .env
+    environment:
+      - TZ=America/Caracas
+      - REDIS_URL=redis://redis:6379/0
+      - MONEYPRINTER_API_URL=http://moneyprinterturbo:8080
+      - LOCAL_INBOX_DIR=/mnt/agencia_inbox
+    ports:
+      - "8090:8090"
+    volumes:
+      - "E:/Agencia_Inbox:/mnt/agencia_inbox:ro"
+      - ./storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+    cpus: 1.00
+    mem_limit: 1g
+    restart: unless-stopped
+
+  celery-worker-video:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ag360-worker-video
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "video_heavy", "--concurrency=1", "--prefetch-multiplier=1", "--loglevel=info"]
+    env_file:
+      - .env
+    environment:
+      - TZ=America/Caracas
+      - REDIS_URL=redis://redis:6379/0
+      - MONEYPRINTER_API_URL=http://moneyprinterturbo:8080
+      - LOCAL_INBOX_DIR=/mnt/agencia_inbox
+      - VIDEO_WORKER_CONCURRENCY=1
+    volumes:
+      - "E:/Agencia_Inbox:/mnt/agencia_inbox:ro"
+      - ./storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      moneyprinterturbo:
+        condition: service_started
+    cpus: 2.00
+    mem_limit: 3g
+    restart: unless-stopped
+
+  celery-worker-light:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ag360-worker-light
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "light_io", "--concurrency=2", "--loglevel=info"]
+    env_file:
+      - .env
+    environment:
+      - TZ=America/Caracas
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    cpus: 0.75
+    mem_limit: 512m
+    restart: unless-stopped

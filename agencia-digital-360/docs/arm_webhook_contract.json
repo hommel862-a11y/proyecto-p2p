@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract_name": "Agencia Digital 360 <-> ARM Decoupled Webhook Contract",
+  "contract_version": "1.0.0",
+  "timezone": "America/Caracas (VET UTC-04:00)",
+  "decoupling_policy": {
+    "shared_database_allowed": false,
+    "direct_arm_core_mutation_allowed": false,
+    "transport": "HTTPS REST JSON Webhooks",
+    "authentication": {
+      "signature_header": "X-Agencia360-Signature",
+      "timestamp_header": "X-Agencia360-Timestamp",
+      "idempotency_header": "X-Idempotency-Key",
+      "algorithm": "HMAC-SHA256",
+      "canonical_string": "{timestamp}.{raw_json_body}",
+      "max_clock_skew_seconds": 300
+    }
+  },
+  "webhooks": {
+    "outbound_agencia_to_arm": {
+      "description": "Dispatched by Agencia Digital 360 to ARM Inbound Gateway when an ad click/lead enters with attribution parameters.",
+      "method": "POST",
+      "default_endpoint": "/api/arm/webhooks/ad-attribution",
+      "events": ["ad_lead_attributed"],
+      "payload_schema": {
+        "type": "object",
+        "required": [
+          "event",
+          "idempotency_key",
+          "brand_id",
+          "platform",
+          "campaign_id",
+          "ad_id",
+          "timestamp_vet"
+        ],
+        "properties": {
+          "event": { "const": "ad_lead_attributed" },
+          "idempotency_key": { "type": "string", "minLength": 12 },
+          "brand_id": { "type": "string", "description": "Isolated brand UUID or slug from brands table" },
+          "platform": { "enum": ["META_ADS", "TIKTOK_ADS", "YOUTUBE_ADS"] },
+          "campaign_id": { "type": "string" },
+          "ad_id": { "type": "string" },
+          "hook_variant": { "enum": ["HOOK_A", "HOOK_B", "HOOK_C"] },
+          "contact_phone": { "type": "string" },
+          "ctwa_clid": { "type": "string", "description": "Click-to-WhatsApp click ID for Meta CAPI matching" },
+          "utm_source": { "type": "string" },
+          "utm_campaign": { "type": "string" },
+          "timestamp_vet": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "inbound_arm_to_agencia": {
+      "description": "Dispatched by ARM when a deal closes (closed_won) to credit ROAS in Agencia Digital 360 and fire server-side Meta CAPI / TikTok Purchase events.",
+      "method": "POST",
+      "default_endpoint": "/api/v1/webhooks/arm-conversion",
+      "events": ["closed_won"],
+      "payload_schema": {
+        "type": "object",
+        "required": [
+          "event",
+          "idempotency_key",
+          "brand_id",
+          "deal_id",
+          "campaign_id",
+          "ad_id",
+          "amount_usd",
+          "closed_at_vet"
+        ],
+        "properties": {
+          "event": { "const": "closed_won" },
+          "idempotency_key": { "type": "string", "minLength": 12 },
+          "brand_id": { "type": "string" },
+          "deal_id": { "type": "string" },
+          "lead_id": { "type": "string" },
+          "campaign_id": { "type": "string" },
+          "ad_id": { "type": "string" },
+          "amount_usd": { "type": "number", "minimum": 0.01 },
+          "currency_original": { "enum": ["USD", "USDT", "VES_BCV"] },
+          "trigger_server_side_capi": { "type": "boolean", "default": true },
+          "closed_at_vet": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
